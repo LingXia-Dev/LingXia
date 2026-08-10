@@ -300,7 +300,7 @@ impl AppleBridgeTransport {
             );
         }
 
-        let (replaced_existing, resumable, bootstrap) = {
+        let (replaced_existing, resumable, fresh_session, bootstrap) = {
             let mut guard = self.state.lock().unwrap_or_else(|e| e.into_inner());
             if guard.shutdown {
                 return Err(WebViewError::WebView(format!(
@@ -311,10 +311,19 @@ impl AppleBridgeTransport {
             let replaced = guard.connection.is_some();
             guard.log.evict_through(from);
             let resumable = guard.log.resumable(from);
+            // A new document starts at zero even when the retained transport
+            // belonged to the document it replaced. Reset that old sequence
+            // silently: sending lxreset after the response headers lets the
+            // fresh page begin its handshake first, then rejects its first
+            // request as an apparent transport failure.
+            let fresh_session = from == 0 && !resumable;
             if !resumable {
-                // Cannot replay from here: tell the client to resync. A fresh
-                // handshake starts a new seq run, so reset the log too.
-                let _ = write_end.write_all(&reset_frame());
+                // A non-zero cursor is a reconnect that fell outside the
+                // replay window, so its live document still needs the reset
+                // sentinel before it re-handshakes.
+                if !fresh_session {
+                    let _ = write_end.write_all(&reset_frame());
+                }
                 guard.log = FrameLog::new(APPLE_BRIDGE_REPLAY_LIMIT);
             }
             let cursor = if resumable {
@@ -329,9 +338,9 @@ impl AppleBridgeTransport {
                 id,
                 writer: write_end,
                 cursor,
-                response_has_data: !resumable,
+                response_has_data: !resumable && !fresh_session,
             });
-            (replaced, resumable, bootstrap)
+            (replaced, resumable, fresh_session, bootstrap)
         };
         self.signal.notify_all();
         log::info!(
@@ -345,6 +354,8 @@ impl AppleBridgeTransport {
             },
             if resumable {
                 ""
+            } else if fresh_session {
+                " (fresh session)"
             } else {
                 " (unreplayable, reset)"
             },
@@ -603,6 +614,30 @@ mod tests {
         let text = String::from_utf8(bytes).unwrap();
         assert!(text.contains(r#"{"lxff":1,"m":{"kind":"helloAck"}}"#));
         assert!(text.contains(r#"{"lxff":2,"m":{"kind":"ready"}}"#));
+    }
+
+    #[test]
+    fn new_document_resets_an_old_sequence_without_rejecting_its_handshake() {
+        let transport = AppleBridgeTransport::new(WebTag::new("test", "page", None));
+        transport.enqueue_message(r#"{"kind":"old"}"#).unwrap();
+        let old_reader = transport.connect_downstream(1).unwrap();
+
+        let reader = transport.connect_downstream(0).unwrap();
+        transport.enqueue_message(r#"{"kind":"helloAck"}"#).unwrap();
+
+        let mut downstream = unsafe { UnixStream::from_raw_fd(reader.into_raw_fd()) };
+        downstream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut bytes = Vec::new();
+        downstream.read_to_end(&mut bytes).unwrap();
+        transport.shutdown();
+        drop(old_reader);
+
+        let text = String::from_utf8(bytes).unwrap();
+        assert!(!text.contains(r#"{"lxreset":true}"#));
+        assert!(text.contains(r#"{"lxff":1,"m":{"kind":"helloAck"}}"#));
+        assert!(!text.contains(r#"{"kind":"old"}"#));
     }
 
     #[test]

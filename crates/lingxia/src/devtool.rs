@@ -555,8 +555,11 @@ pub async fn lxapp_dev_page_wait(
     }
 }
 
-/// Restarts an lxapp and waits for its replacement runtime session and entry
-/// page to finish the lxapp lifecycle.
+/// Reloads an lxapp in place and waits for its live page to finish loading.
+///
+/// Dev reload must preserve the host-owned surface. A full product restart
+/// closes that surface and cannot reconstruct whether a dynamic lxapp was a
+/// main or aside, leaving it detached from the layout that opened it.
 pub async fn lxapp_dev_restart(
     appid: &str,
     timeout: std::time::Duration,
@@ -564,6 +567,9 @@ pub async fn lxapp_dev_restart(
     let appid = resolve_dev_appid(appid)?;
     let app = resolve_dev_lxapp(&appid)?;
     let previous_session = app.runtime_info().session_id;
+    let previous_page = app.current_page().map_err(|error| error.to_string())?;
+    let previous_page_id = previous_page.instance_id_string();
+    let previous_load = *previous_page.subscribe_loaded().borrow();
     let simulated_device = device_get().ok();
 
     // A host dev session runs from its synchronized bundle cache rather than
@@ -572,7 +578,9 @@ pub async fn lxapp_dev_restart(
     let runtime = crate::runtime::platform().map_err(|err| err.to_string())?;
     sync::sync_dev_home_bundle(runtime)?;
 
-    lxapp::restart_lxapp(&appid).map_err(|err| err.to_string())?;
+    app.restart_in_place_and_wait()
+        .await
+        .map_err(|err| err.to_string())?;
     let deadline = tokio::time::Instant::now()
         .checked_add(timeout)
         .ok_or_else(|| "restart timeout is too large".to_string())?;
@@ -580,15 +588,18 @@ pub async fn lxapp_dev_restart(
     loop {
         if let Some(app) = lxapp::try_get(&appid) {
             let runtime = app.runtime_info();
-            if runtime.session_id != previous_session
+            if runtime.session_id == previous_session
                 && runtime.status == "opened"
                 && let Ok((page, name)) = resolve_dev_page(&app, None)
             {
                 let state = page.automation_state();
                 if let Some(error) = state.webview_error {
-                    return Err(format!("restarted page WebView failed: {error}"));
+                    return Err(format!("reloaded page WebView failed: {error}"));
                 }
-                if state.ready {
+                let load = *page.subscribe_loaded().borrow();
+                let reload_finished =
+                    page.instance_id_string() != previous_page_id || load != previous_load;
+                if reload_finished && state.ready {
                     if let Some(device) = &simulated_device {
                         device_set(
                             Some(&device.id),
@@ -606,7 +617,7 @@ pub async fn lxapp_dev_restart(
         let now = tokio::time::Instant::now();
         if now >= deadline {
             return Err(format!(
-                "timed out after {}ms waiting for lxapp {appid} to restart",
+                "timed out after {}ms waiting for lxapp {appid} to reload",
                 timeout.as_millis()
             ));
         }
