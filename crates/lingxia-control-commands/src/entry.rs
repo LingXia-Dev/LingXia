@@ -16,7 +16,7 @@ use clap::Parser;
 use lingxia_control_protocol::invocation;
 
 use crate::transport::ControlSocket;
-use crate::{app, browser, desktop, skills, terminal};
+use crate::{app, browser, desktop, skills};
 
 #[derive(Parser)]
 #[command(
@@ -46,8 +46,6 @@ enum Command {
     Browser(browser::BrowserOptions),
     /// Automate the machine: windows, capture, input, accessibility, clipboard
     Computer(desktop::DesktopOptions),
-    /// Inspect and configure this product's terminal
-    Terminal(terminal::TerminalOptions),
     /// Write an agent skill describing these commands
     Skills(skills::SkillsOptions),
     /// Turn the automation interface on or off, and report it
@@ -105,7 +103,6 @@ pub fn run_if_invoked(state_dir: &Path) -> Option<i32> {
             report(browser::execute(&context, options))
         }
         Command::Computer(options) => desktop::execute(&desktop::Backend::App(&transport), options),
-        Command::Terminal(options) => terminal::execute(&transport, options),
         Command::Skills(options) => skills::execute::<Cli>(&manifest(&transport), options),
         Command::Control { action } => control(state_dir, &transport, action),
         Command::Own(command) => {
@@ -281,7 +278,6 @@ const COMMANDS: &[&str] = &[
     "computer",
     "control",
     "skills",
-    "terminal",
     "doctor",
     "screenshot",
     "windows",

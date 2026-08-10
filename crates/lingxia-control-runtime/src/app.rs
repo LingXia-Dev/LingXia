@@ -142,9 +142,6 @@ pub(crate) fn declared_capabilities() -> Vec<&'static str> {
     if capabilities.browser_use {
         declared.push("browserUse");
     }
-    if cfg!(feature = "terminal") && capabilities.terminal {
-        declared.push("terminal");
-    }
     declared
 }
 

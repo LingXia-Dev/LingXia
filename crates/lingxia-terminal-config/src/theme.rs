@@ -56,7 +56,7 @@ impl ThemeConfig {
     }
 }
 
-/// Where a theme came from, shown by settings and `terminal themes list`.
+/// Where a theme came from, shown by settings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ThemeSource {

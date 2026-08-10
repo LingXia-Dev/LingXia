@@ -11,7 +11,6 @@ capabilities:
   appUse: true       # this product's own windows
   computerUse: true  # the whole machine
   browserUse: true   # this product's in-app browser (requires `browser`)
-  terminal: true     # terminal UI plus terminal configuration commands
 ```
 
 These capabilities are available on macOS and Windows and are enforced by the
@@ -23,9 +22,6 @@ running product:
   window chrome.
 - `browserUse` never reaches an external Chrome, Edge, or Safari process.
   External browsers are ordinary machine windows and require `computerUse`.
-- `terminal` compiles the product's `terminal.*` configuration namespace as
-  well as the terminal runtime. The endpoint still stays off until the user
-  enables it; the bundled settings screen does not require that endpoint.
 - A refused namespace is final. An agent must not route around it.
 
 ## User control and command discovery

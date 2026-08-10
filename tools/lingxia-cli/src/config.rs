@@ -2862,7 +2862,7 @@ android:
 
         assert!(config.desktop_runtime_enabled("macos"));
         assert!(config.terminal_enabled("windows"));
-        assert!(config.control_enabled("macos"));
+        assert!(!config.control_enabled("macos"));
         assert!(!config.desktop_runtime_enabled("android"));
         assert_eq!(
             config.native_features_for_platform("macos"),
@@ -2870,7 +2870,6 @@ android:
                 "standard".to_string(),
                 "terminal-runtime".to_string(),
                 "webview-input".to_string(),
-                "control".to_string(),
             ]
         );
         assert_eq!(
@@ -2879,7 +2878,6 @@ android:
                 "standard".to_string(),
                 "terminal-runtime".to_string(),
                 "webview-input".to_string(),
-                "control".to_string(),
             ]
         );
     }

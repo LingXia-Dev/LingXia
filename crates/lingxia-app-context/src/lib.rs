@@ -272,7 +272,7 @@ impl CapabilitiesConfig {
     /// declared: no product should have to know the transport's name to say
     /// what it wants.
     pub fn needs_control_socket(&self) -> bool {
-        self.app_use_effective() || self.browser_use || self.terminal
+        self.app_use_effective() || self.browser_use
     }
 
     /// Whether this product's own windows may be driven.

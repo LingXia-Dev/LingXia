@@ -177,11 +177,9 @@ where
 #[cfg(feature = "terminal-runtime")]
 pub mod terminal {
     pub use crate::terminal_config_impl::{
-        ConfigSnapshot, SETTINGS_APP_ID, ThemeImportResult, app_data_dir, apply_theme,
-        config_apply, config_get, config_reset, current_json as config_json, fonts_list,
-        generation as config_generation, installed_fonts, load as load_config, load_for_app,
-        refresh_appearance_for_app, set_installed_fonts, theme_import, themes_list,
-        visual_generation,
+        app_data_dir, apply_theme, current_json as config_json, generation as config_generation,
+        installed_fonts, load as load_config, load_for_app, refresh_appearance_for_app,
+        set_installed_fonts, visual_generation,
     };
     pub use lingxia_terminal::{
         BackendStatus, FrameCell, RowDamage, TerminalBackend, TerminalCell, TerminalFrame,

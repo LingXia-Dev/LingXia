@@ -12,11 +12,9 @@ default = ["dev-bridge"]
 # tungstenite and rustls, which a shipped product has no reason to carry.
 dev-bridge = ["dep:tungstenite", "dep:rustls"]
 # The product's local control socket (UDS / named pipe). Opt-in per host,
-# derived from `capabilities.control` in lingxia.yaml.
+# derived from appUse/computerUse/browserUse in lingxia.yaml.
 local-control = []
 browser = ["dep:lingxia-browser", "lingxia/browser-runtime"]
-# Terminal settings over the same product socket and development bridge.
-terminal = ["lingxia/terminal-runtime"]
 # Automating the machine, not just this app. Derived from
 # `capabilities.computerUse`; separate from `local-control` because it is what
 # makes the product ask for Accessibility and Screen Recording.
