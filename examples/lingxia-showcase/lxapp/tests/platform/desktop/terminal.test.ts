@@ -107,7 +107,10 @@ desktopTerminalTest('publishes and mutates the native nested pane tree without d
 desktopTerminalTest('applies terminal mode to native chrome before terminal input', async () => {
   const app = showcaseApp();
   const token = `automation-terminal-theme-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const refs = await app.eval({
+  // One surface per eval. Opening both in a single script reports only that
+  // "eval timed out", which says nothing about which surface never settled —
+  // and a native surface and a bundled lxapp settle along different paths.
+  const terminalId = await app.eval({
     timeoutMs: 20_000,
     script: `
       const terminal = await lx.openSurface({
@@ -115,15 +118,25 @@ desktopTerminalTest('applies terminal mode to native chrome before terminal inpu
         key: ${JSON.stringify(token)},
         as: 'main',
       });
+      globalThis.__terminalThemeAutomationHandles = { terminal };
+      return terminal.id;
+    `,
+  }) as string;
+  // Opening a bundled lxapp aside has to reach the host and come back, so it
+  // is slower than the native surface above and pays a cold start on CI.
+  const settingsId = await app.eval({
+    timeoutMs: 60_000,
+    script: `
       const settings = await lx.openSurface({
         appId: 'app.lingxia.terminal-settings',
         as: 'aside',
         edge: 'right',
       });
-      globalThis.__terminalThemeAutomationHandles = { terminal, settings };
-      return { terminal: terminal.id, settings: settings.id };
+      globalThis.__terminalThemeAutomationHandles.settings = settings;
+      return settings.id;
     `,
-  }) as { terminal: string; settings: string };
+  }) as string;
+  const refs = { terminal: terminalId, settings: settingsId };
   const terminal = lx.automation().terminal;
   const settingsApp = lx.automation().lxapp('app.lingxia.terminal-settings');
   const page = settingsApp.page;
