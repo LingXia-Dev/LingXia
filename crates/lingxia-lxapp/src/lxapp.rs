@@ -98,6 +98,7 @@ pub(crate) const USER_CACHE_DIR: &str = "usercache";
 pub(crate) const TEMP_DIR: &str = "temp";
 
 const LXAPPS_DB_FILE: &str = "lxapps.redb";
+type PendingPageServiceRestart = (PageInstance, oneshot::Receiver<Result<(), String>>);
 const DEFAULT_VERSION: &str = "0.0.1";
 
 const LXAPP_STACK_MAX: usize = 5;
@@ -1978,66 +1979,78 @@ impl LxApp {
             .map_err(|err| LxAppError::WebView(err.to_string()))
     }
 
-    /// In-place dev restart: recreate the JS app service, rebuild the live page
-    /// services, then reload the current page against them — without closing or
-    /// recreating the host window (no flash / no app disappear-then-reappear).
+    /// In-place restart: recreate the JS app service, rebuild the live page
+    /// services, then regenerate HTML in their retained WebViews — without closing or
+    /// recreating the host surface.
     /// The steps belong together: restarting the app service alone leaves the
     /// page bound to the terminated worker, and reloading without rebuilding the
     /// page services drops the page's bridge messages ("page service not
-    /// loaded"). The app service's `OnLaunch` and the page services are enqueued
-    /// before the reload, so the reloaded page observes the fresh state.
+    /// loaded"). Reloading waits for every new PageSvc acknowledgement so a
+    /// fast WebView cannot send its ready handshake before the service exists.
     pub fn restart_in_place(&self) -> Result<(), LxAppError> {
-        self.restart_app_service_in_place()?;
-        self.recreate_live_page_services();
-        // Relaunch to the initial route (clearing the page stack) so restarting
-        // the lxapp resets it to its home page — restarting the app restarts the
-        // app, not just whatever page happens to be showing. If the navigation
-        // can't resolve, fall back to reloading the current page.
-        let initial = self.initial_route();
-        match self.current_page() {
-            Ok(current)
-                if current.path() != initial && self.ensure_page_exists(&initial).is_ok() =>
-            {
-                let target = self.get_or_create_page(&initial);
-                let _ = current.navigate_to(target, crate::page::NavigationType::Launch);
+        let pending = self.begin_in_place_restart()?;
+        let appid = self.appid.clone();
+        std::mem::drop(crate::executor::spawn(async move {
+            if let Err(error) = Self::finish_in_place_restart(pending).await {
+                error!("Failed to finish in-place lxapp restart: {error}").with_appid(appid);
             }
-            Ok(_) => {}
-            Err(_) if self.ensure_page_exists(&initial).is_ok() => {
-                let _ = self.get_or_create_page(&initial);
-                let _ = self.clear_page_stack();
-                let _ = self.push_to_page_stack(&initial);
-            }
-            Err(_) => {}
-        }
-        self.reload_current_page()
+        }));
+        Ok(())
     }
 
-    /// Recreates the worker-side page service for every live page. The app
-    /// service restart kills the worker (dropping all page services); the page
-    /// instances survive, so `get_or_create_page` would skip them. Recreate the
-    /// services directly so the existing pages keep working after the reload.
-    fn recreate_live_page_services(&self) {
-        let pages: Vec<(String, String)> = {
-            let Ok(state) = self.state.lock() else {
-                return;
-            };
-            let Ok(pages) = state.pages.lock() else {
-                return;
-            };
-            pages
-                .values()
-                .map(|page| (page.path().to_string(), page.instance_id_string()))
-                .collect()
+    /// Awaitable form used by devtools, which must not report success before
+    /// the retained page has completed the new document load.
+    pub async fn restart_in_place_and_wait(&self) -> Result<(), LxAppError> {
+        let pending = self.begin_in_place_restart()?;
+        Self::finish_in_place_restart(pending).await
+    }
+
+    fn begin_in_place_restart(&self) -> Result<Vec<PendingPageServiceRestart>, LxAppError> {
+        self.restart_app_service_in_place()?;
+        let pages: Vec<PageInstance> = {
+            let state = self
+                .state
+                .lock()
+                .map_err(|_| LxAppError::Runtime("lxapp state lock poisoned".to_string()))?;
+            let pages = state
+                .pages
+                .lock()
+                .map_err(|_| LxAppError::Runtime("page registry lock poisoned".to_string()))?;
+            pages.values().cloned().collect()
         };
-        for (path, instance_id) in pages {
-            let (ack_tx, _ack_rx) = oneshot::channel::<Result<(), String>>();
-            let _ = self.executor.create_page_svc_with_ack(
+        let mut pending = Vec::with_capacity(pages.len());
+        for page in pages {
+            page.prepare_for_service_restart();
+            let (ack_tx, ack_rx) = oneshot::channel::<Result<(), String>>();
+            self.executor.create_page_svc_with_ack(
                 self.clone_arc(),
-                path,
-                Some(instance_id),
+                page.path().to_string(),
+                Some(page.instance_id_string()),
                 ack_tx,
-            );
+            )?;
+            pending.push((page, ack_rx));
         }
+        Ok(pending)
+    }
+
+    async fn finish_in_place_restart(
+        pending: Vec<PendingPageServiceRestart>,
+    ) -> Result<(), LxAppError> {
+        let mut pages = Vec::with_capacity(pending.len());
+        for (page, ack_rx) in pending {
+            ack_rx
+                .await
+                .map_err(|_| LxAppError::Runtime("page service restart cancelled".to_string()))?
+                .map_err(LxAppError::Runtime)?;
+            pages.push(page);
+        }
+        for page in pages {
+            // These pages originate from loadHTMLString + a logical base URL.
+            // WebView::reload would request that base URL's raw source and skip
+            // generate_page_html, losing the bridge config and nonce.
+            page.load_html()?;
+        }
+        Ok(())
     }
 
     /// Clears this lxapp's user cache directory, recreating it empty. Dev
