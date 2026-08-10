@@ -7271,24 +7271,6 @@ fn window_logical_client_width(hwnd: HWND) -> f64 {
 /// Every WebView2 controller starts with its own 1024px top-level parent; an
 /// aside or a new aside-browser tab must not overwrite the real workspace
 /// width while that temporary parent is created.
-/// Re-report the shell width from the primary host window.
-///
-/// The earlier seeds all run before the home lxapp exists, so the surface
-/// graph has nowhere to put the width and keeps its Medium default. Call this
-/// once that app is open — otherwise the sidebar's first projection is an icon
-/// rail that expands the moment any later resize arrives.
-#[cfg(feature = "shell-chrome")]
-pub(crate) fn report_primary_shell_surface_width() {
-    let Some(hwnd) = PRIMARY_HOST_WINDOW
-        .get()
-        .and_then(|slot| slot.lock().ok())
-        .and_then(|slot| slot.map(hwnd_from_handle))
-    else {
-        return;
-    };
-    report_shell_surface_width(hwnd);
-}
-
 #[cfg(feature = "shell-chrome")]
 fn report_shell_surface_width(hwnd: HWND) {
     let primary = PRIMARY_HOST_WINDOW
@@ -9735,11 +9717,6 @@ fn set_host_active_webtag(hwnd: HWND, webtag_key: &str) {
     if let Ok(mut hosts) = hosts.lock() {
         hosts.insert(hwnd_handle(hwnd), webtag_key.to_string());
     }
-    // A webtag switch can change which width is the shell's. Reporting is
-    // idempotent and ignores a window that is not on screen, so this is a
-    // no-op during startup and only matters once the window is up.
-    #[cfg(feature = "shell-chrome")]
-    report_shell_surface_width(hwnd);
     sync_active_webtag_host_ui(webtag_key);
 }
 

@@ -633,9 +633,6 @@ pub(crate) fn open_home_app(appid: &str) -> Result<(), String> {
     let _ = lingxia_browser::prune_stale_owner_tabs(&app.appid, app.session_id());
     #[cfg(not(feature = "browser-runtime"))]
     let _ = app;
-    // The home lxapp owns the surface graph, so this is the first moment the
-    // real window width has anywhere to land.
-    crate::window_host::report_primary_shell_surface_width();
     Ok(())
 }
 
