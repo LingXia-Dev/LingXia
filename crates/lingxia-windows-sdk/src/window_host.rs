@@ -35,13 +35,15 @@ use lingxia_windows_contract::{
 };
 use windows::Win32::Foundation::SIZE;
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+#[cfg(feature = "shell-chrome")]
+use windows::Win32::Graphics::Gdi::MonitorFromRect;
 use windows::Win32::Graphics::Gdi::{AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection,
     CreatePen, CreateSolidBrush, DIB_RGB_COLORS, DeleteDC, DeleteObject, Ellipse, EndPaint,
     ExcludeClipRect, GetDC, GetMonitorInfoW, HDC, HGDIOBJ, IntersectClipRect,
-    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromRect, MonitorFromWindow, PAINTSTRUCT,
-    PS_SOLID, ReleaseDC, RestoreDC, SRCCOPY, SaveDC, ScreenToClient, SelectObject,
+    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, PAINTSTRUCT, PS_SOLID, ReleaseDC,
+    RestoreDC, SRCCOPY, SaveDC, ScreenToClient, SelectObject,
 };
 use windows::Win32::System::LibraryLoader;
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
@@ -9507,6 +9509,7 @@ fn physical_default_window_size() -> (i32, i32) {
     (width, height)
 }
 
+#[cfg(feature = "shell-chrome")]
 fn persisted_window_rect() -> Option<RECT> {
     let frame = lingxia_shell::window_frame()?;
     let left = rounded_i32(frame.x)?;
@@ -9547,12 +9550,14 @@ fn persisted_window_rect() -> Option<RECT> {
     Some(rect)
 }
 
+#[cfg(feature = "shell-chrome")]
 fn rounded_i32(value: f64) -> Option<i32> {
     let value = value.round();
     (value.is_finite() && value >= f64::from(i32::MIN) && value <= f64::from(i32::MAX))
         .then_some(value as i32)
 }
 
+#[cfg(feature = "shell-chrome")]
 fn restore_primary_window_frame(hwnd: HWND) {
     if DEFAULT_HOST_HEADLESS.load(Ordering::Acquire) {
         return;
@@ -9583,6 +9588,10 @@ fn restore_primary_window_frame(hwnd: HWND) {
     }
 }
 
+#[cfg(not(feature = "shell-chrome"))]
+fn restore_primary_window_frame(_hwnd: HWND) {}
+
+#[cfg(feature = "shell-chrome")]
 fn persist_primary_window_frame(hwnd: HWND) {
     if !is_top_level_window(hwnd)
         || !is_window_visible(hwnd)
@@ -9625,6 +9634,9 @@ fn persist_primary_window_frame(hwnd: HWND) {
         log::warn!("could not persist the app window frame: {error}");
     }
 }
+
+#[cfg(not(feature = "shell-chrome"))]
+fn persist_primary_window_frame(_hwnd: HWND) {}
 
 fn primary_work_area() -> Option<RECT> {
     let mut work = RECT::default();
