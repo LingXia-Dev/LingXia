@@ -24,8 +24,8 @@
 
       'general.title': 'General',
       'general.language': 'Language',
-      'general.languageHint': 'Only changes this settings screen.',
-      'general.systemDefault': 'System default',
+      'general.languageHint': 'Only changes this screen. The app decides the rest.',
+      'general.followApp': 'Same as app',
 
       'appearance.title': 'Appearance',
       'appearance.mode': 'Mode',
@@ -73,8 +73,8 @@
 
       'general.title': '通用',
       'general.language': '语言',
-      'general.languageHint': '仅更改本设置页面。',
-      'general.systemDefault': '跟随系统',
+      'general.languageHint': '仅更改本页面，其余部分由应用决定。',
+      'general.followApp': '与应用一致',
 
       'appearance.title': '外观',
       'appearance.mode': '模式',
@@ -174,6 +174,13 @@
         node.setAttribute(mapping[1], t(node.getAttribute(mapping[0])));
       });
     });
+    // Anything that mirrors this markup has to re-read it. A styled select
+    // keeps its own visible label, and translating the underlying options
+    // fires no event of its own — the label would keep the previous
+    // language while the list it opens shows the new one.
+    if (typeof CustomEvent === 'function') {
+      document.dispatchEvent(new CustomEvent('lx-i18n-applied'));
+    }
   }
 
   function setLocale(value) {
@@ -204,6 +211,18 @@
     apply: apply,
     setLocale: setLocale,
     useSystemLocale: useSystemLocale,
+    /// Drop this screen's own choice and take the app's language again. The
+    /// host decides it, so this is not the same as the operating system's.
+    followApp: function () {
+      try {
+        global.localStorage.removeItem(LOCALE_STORAGE_KEY);
+      } catch (_) {}
+      if (typeof api._refreshFromHost === 'function') {
+        api._refreshFromHost();
+        return locale;
+      }
+      return useSystemLocale();
+    },
     storageKey: LOCALE_STORAGE_KEY
   };
   global.LingXiaI18n = api;
@@ -213,26 +232,20 @@
     if (!bridge || typeof bridge.invoke !== 'function') return;
     function adoptHostLocale(result) {
       if (result && result.language == null) {
-        var previousLocale = locale;
-        var hadStoredLocale = !!storedLocale();
         useSystemLocale();
-        if ((hadStoredLocale || previousLocale !== locale) &&
-            global.location && typeof global.location.reload === 'function') {
-          global.location.reload();
-        }
         return;
       }
       var hostLocale = normalizeLocale(result && result.language);
       if (!hostLocale || hostLocale === locale) return;
+      // Reached with no stored override, so this is the app's language, not a
+      // choice this screen made.
+      // setLocale re-applies every translation in place. Reloading instead
+      // would destroy the page: its document was injected with the bridge
+      // configuration, and navigating to the base URL fetches the raw file
+      // without it, leaving a screen whose Logic calls are never answered.
       setLocale(hostLocale);
-      // Reload only when the locale actually persisted; if localStorage is
-      // unavailable the mismatch would survive the reload and loop forever,
-      // so keep the in-memory apply() from setLocale instead.
-      if (storedLocale() === hostLocale &&
-          global.location && typeof global.location.reload === 'function') {
-        global.location.reload();
-      }
     }
+    api._refreshFromHost = refreshFromHost;
     function refreshFromHost() {
       bridge.invoke('settings.getLanguage').then(adoptHostLocale, function () {});
     }
@@ -275,11 +288,7 @@
       if (next === locale) return;
       locale = next;
       api.locale = locale;
-      if (global.location && typeof global.location.reload === 'function') {
-        global.location.reload();
-      } else {
-        apply();
-      }
+      apply();
     });
   }
 

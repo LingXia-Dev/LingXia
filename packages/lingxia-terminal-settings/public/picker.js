@@ -157,6 +157,12 @@
     // The option list is rebuilt elsewhere (installed fonts arrive after a
     // native call), so the label has to follow whatever the app writes.
     select.addEventListener("change", sync);
+    // Re-translated options change the label and the list without changing the
+    // value, so nothing else would tell this picker to catch up.
+    document.addEventListener("lx-i18n-applied", function () {
+      sync();
+      render();
+    });
     var observer = new MutationObserver(sync);
     observer.observe(select, { childList: true });
 

@@ -365,11 +365,14 @@
   });
   var language = byId("language");
   if (language && window.LingXiaI18n) {
-    language.value = localStorage.getItem(window.LingXiaI18n.storageKey) || "system";
+    // No local override means this screen follows the app's language, which is
+    // what the host reports — not the operating system's. Labelling that
+    // "system" claimed otherwise while the screen rendered in the app's locale.
+    language.value = localStorage.getItem(window.LingXiaI18n.storageKey) || "app";
     language.addEventListener("change", function () {
       // Screen-local by design; terminal appearance config does not own the
       // locale of this settings package.
-      if (language.value === "system") window.LingXiaI18n.useSystemLocale();
+      if (language.value === "app") window.LingXiaI18n.followApp();
       else window.LingXiaI18n.setLocale(language.value);
       window.LingXiaI18n.apply();
       if (snapshot) {
