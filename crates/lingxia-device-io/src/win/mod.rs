@@ -199,7 +199,6 @@ pub fn doctor() -> Doctor {
 }
 
 #[cfg(feature = "diagnostics")]
-#[cfg(feature = "diagnostics")]
 fn os_version() -> String {
     // Best-effort; avoids a version-shim dependency.
     std::env::var("OS").unwrap_or_default()

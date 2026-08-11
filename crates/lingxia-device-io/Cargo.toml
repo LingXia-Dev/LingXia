@@ -26,7 +26,7 @@ clipboard = ["input"]
 diagnostics = ["native"]
 input = ["window"]
 process = ["native"]
-snapshot = ["window", "dep:image"]
+snapshot = ["window", "dep:image", "dep:log"]
 supervision = ["snapshot", "dep:lingxia-app-context"]
 window = ["native"]
 wire = []
@@ -50,11 +50,13 @@ required-features = ["supervision"]
 [dependencies]
 serde = { workspace = true }
 base64 = { workspace = true }
-serde_json = { workspace = true }
 thiserror = { workspace = true }
-log = { workspace = true }
+log = { workspace = true, optional = true }
 lingxia-app-context = { workspace = true, optional = true }
 image = { version = "0.25", optional = true, default-features = false, features = ["png"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { workspace = true, optional = true, features = [
