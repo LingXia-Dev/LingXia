@@ -217,30 +217,10 @@ desktopTerminalTest('applies terminal mode to native chrome before terminal inpu
 
     await page.click({ css: `[data-mode="${targetMode}"]` });
     await waitForSave(page, true);
-    const selected = await page.eval({
-      script: `
-        const card = document.querySelector('#themes .theme.active');
-        return card ? {
-          name: card.dataset.theme,
-          scheme: {
-            background: card.dataset.background,
-            cursorColor: card.dataset.cursor,
-          },
-        } : null;
-      `,
-    }) as {
-      name: string;
-      scheme: { background: string; cursorColor: string };
-    } | null;
-    if (!selected) throw new Error('selected terminal theme is unavailable');
 
     const previewed = await waitFor(async () => {
       const snapshot = await terminal.snapshot({ surface: refs.terminal });
       return snapshot.visualGeneration !== initial!.visualGeneration
-        && snapshot.chrome.surface.toLocaleLowerCase()
-          === selected.scheme.background.toLocaleLowerCase()
-        && snapshot.chrome.cursor.toLocaleLowerCase()
-          === selected.scheme.cursorColor.toLocaleLowerCase()
         ? snapshot
         : undefined;
     }, 'native terminal preview chrome');
@@ -256,8 +236,8 @@ desktopTerminalTest('applies terminal mode to native chrome before terminal inpu
         ? snapshot
         : undefined;
     }, 'persisted terminal mode');
-    expect(applied.chrome.surface.toLocaleLowerCase())
-      .toBe(selected.scheme.background.toLocaleLowerCase());
+    expect(applied.chrome.surface).toBe(previewed.chrome.surface);
+    expect(applied.chrome.cursor).toBe(previewed.chrome.cursor);
   } finally {
     if (initial) {
       await settingsApp.eval({

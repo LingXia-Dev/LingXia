@@ -4665,13 +4665,22 @@ fn collapse_obscured_webview_panels(hwnd: HWND, laid_out: &HashSet<String>) {
         .and_then(|panels| panels.lock().ok())
         .map(|panels| panels.clone())
         .unwrap_or_default();
-    let Ok(panels) = panels.lock() else {
-        return;
+    let obscured = {
+        let Ok(panels) = panels.lock() else {
+            return;
+        };
+        panels
+            .iter()
+            .filter(|(panel_id, panel)| {
+                visible.contains(*panel_id) && !laid_out.contains(&panel.webtag_key)
+            })
+            .map(|(_, panel)| panel.webtag_key.clone())
+            .collect::<Vec<_>>()
     };
-    for (panel_id, panel) in panels.iter() {
-        if visible.contains(panel_id) && !laid_out.contains(&panel.webtag_key) {
-            sync_webtag_content_bounds_to_rect(hwnd, &panel.webtag_key, RECT::default());
-        }
+    // Bounds resolution reads the panel registry again through
+    // `surface_clip_style`; never call it while holding that registry lock.
+    for webtag_key in obscured {
+        sync_webtag_content_bounds_to_rect(hwnd, &webtag_key, RECT::default());
     }
 }
 

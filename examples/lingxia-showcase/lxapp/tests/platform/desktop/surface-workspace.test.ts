@@ -491,13 +491,6 @@ async function expectExactMainPresentation(
   // top in either direction. It still has to share the root's left, right, and
   // bottom edges, stay within one chrome band, and leave no outgoing WebView
   // or duplicate workspace visible.
-  expect(active.bounds.x).toBe(baseline.bounds.x);
-  expect(active.bounds.w).toBe(baseline.bounds.w);
-  expect(active.bounds.y >= host.bounds.y).toBeTruthy();
-  expect(Math.abs(active.bounds.y - baseline.bounds.y) <= 64 * host.scale).toBeTruthy();
-  expect(active.bounds.y + active.bounds.h).toBe(
-    baseline.bounds.y + baseline.bounds.h,
-  );
   // WebView2 commits controller visibility asynchronously even though the
   // host call is synchronous. Require physical convergence instead of
   // sampling that commit boundary once; a controller that remains exposed
@@ -517,10 +510,17 @@ async function expectExactMainPresentation(
       bounds: window.bounds,
       z: window.z,
     })));
-    return visible.length === 1 && visible[0].id === active.id
+    const current = visible.find((window) => window.id === active.id);
+    return visible.length === 1
+      && current
+      && current.bounds.x === baseline.bounds.x
+      && current.bounds.w === baseline.bounds.w
+      && current.bounds.y >= host.bounds.y
+      && Math.abs(current.bounds.y - baseline.bounds.y) <= 64 * host.scale
+      && current.bounds.y + current.bounds.h === baseline.bounds.y + baseline.bounds.h
       ? candidate
       : undefined;
-  }, 'outgoing main WebView hidden', 60_000).catch((error) => {
+  }, 'main WebView restored to its exact presentation', 60_000).catch((error) => {
     throw new Error(`${String(error)}; last observed host WebViews: ${lastObserved}`);
   });
   expectSingleWorkspaceHost(host, windows);

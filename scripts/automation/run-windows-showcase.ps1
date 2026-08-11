@@ -141,6 +141,7 @@ try {
   }
 
   $frameworks = if ($Framework -eq 'all') { @('react', 'vue') } else { @($Framework) }
+  $frameworks = @($frameworks)
   for ($frameworkIndex = 0; $frameworkIndex -lt $frameworks.Count; $frameworkIndex += 1) {
     $currentFramework = $frameworks[$frameworkIndex]
     Write-Host "Starting Windows Showcase ($currentFramework)..."
