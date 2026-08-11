@@ -46,13 +46,67 @@ fn main() {
 }
 
 /// Where the panel is, straight from the window server, or `None` when it is
-/// not on screen. The one source of truth about whether a person can see it.
+/// not on screen. This deliberately bypasses `lingxia_device_io::windows()`:
+/// the public device surface must exclude the viewer from its own targets.
 #[cfg(target_os = "macos")]
 fn panel() -> Option<(i32, i32)> {
-    use lingxia_device_io as cu;
-    let query = cu::WindowQuery::parse(&format!("pid:{}", std::process::id()));
-    let mine = cu::windows(&query).ok()?;
-    mine.first().map(|w| (w.bounds.x, w.bounds.y))
+    use objc2_core_foundation::{CFArray, CFDictionary, CFNumber, CFString, CGRect};
+    use objc2_core_graphics::{
+        CGRectMakeWithDictionaryRepresentation, CGWindowListCopyWindowInfo, CGWindowListOption,
+        kCGWindowBounds, kCGWindowLayer, kCGWindowOwnerPID,
+    };
+    use std::ffi::c_void;
+
+    unsafe extern "C-unwind" {
+        fn CFArrayGetCount(array: *const c_void) -> isize;
+        fn CFArrayGetValueAtIndex(array: *const c_void, index: isize) -> *const c_void;
+        fn CFDictionaryGetValue(dict: *const c_void, key: *const c_void) -> *const c_void;
+        fn CFGetTypeID(cf: *const c_void) -> usize;
+        fn CFNumberGetTypeID() -> usize;
+    }
+
+    unsafe fn number(dict: *const c_void, key: &CFString) -> Option<i64> {
+        let value = unsafe { CFDictionaryGetValue(dict, key as *const CFString as *const c_void) };
+        if value.is_null() || unsafe { CFGetTypeID(value) != CFNumberGetTypeID() } {
+            return None;
+        }
+        unsafe { (*(value as *const CFNumber)).as_i64() }
+    }
+
+    let info = CGWindowListCopyWindowInfo(
+        CGWindowListOption::OptionOnScreenOnly | CGWindowListOption::ExcludeDesktopElements,
+        0,
+    )?;
+    let array = (&*info as *const CFArray).cast::<c_void>();
+    let pid = std::process::id() as i64;
+
+    unsafe {
+        for index in 0..CFArrayGetCount(array).max(0) {
+            let dict = CFArrayGetValueAtIndex(array, index);
+            if dict.is_null()
+                || number(dict, kCGWindowOwnerPID) != Some(pid)
+                || number(dict, kCGWindowLayer).unwrap_or(0) <= 0
+            {
+                continue;
+            }
+            let value =
+                CFDictionaryGetValue(dict, kCGWindowBounds as *const CFString as *const c_void);
+            if value.is_null() {
+                continue;
+            }
+            let mut bounds = CGRect::default();
+            if CGRectMakeWithDictionaryRepresentation(
+                Some(&*(value as *const CFDictionary)),
+                &mut bounds,
+            ) {
+                return Some((
+                    bounds.origin.x.round() as i32,
+                    bounds.origin.y.round() as i32,
+                ));
+            }
+        }
+    }
+    None
 }
 
 #[cfg(target_os = "macos")]
@@ -96,6 +150,15 @@ fn behaviours() {
     std::thread::sleep(Duration::from_secs(2));
     let opened = panel().expect("the first actuating command must open it");
     println!("   panel at {opened:?}, with nobody having asked for it");
+    let own_windows = cu::windows(&cu::WindowQuery::parse(&format!(
+        "pid:{}",
+        std::process::id()
+    )))
+    .expect("public window enumeration");
+    assert!(
+        own_windows.is_empty(),
+        "the activity viewer must not be exposed as a device target"
+    );
 
     println!("\n2. moves aside when the work is underneath it");
     for _ in 0..12 {

@@ -26,11 +26,11 @@ cloud = []
 [package.metadata.lingxia.providers.cloud]
 features = ["dev"]
 
-# The macOS Runner is a development container: it needs browser runtime support
-# for lx.surface URL/browser surfaces, but it must not require the product
-# browser shell webui bundle.
+# The macOS Runner is a trusted development container: it keeps sessionless
+# desktop automation for tests and browser runtime support for lx.surface URL
+# surfaces, without taking product-host supervision or browser-shell webui.
 [dependencies]
-lingxia = { workspace = true, features = ["standard", "devtool", "browser-runtime", "webview-input", "automation"] }
+lingxia = { workspace = true, features = ["standard", "devtool", "browser-runtime", "webview-input", "desktop-automation"] }
 lingxia-control-runtime = { workspace = true, features = ["browser", "test-runtime"] }
 libc = "0.2"
 serde = { workspace = true }
