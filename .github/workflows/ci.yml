@@ -421,6 +421,8 @@ jobs:
         with:
           prefix-key: rust-android
 
+      - uses: taiki-e/install-action@cargo-hack
+
       # The runtime has no Linux host backend, but its published crate must
       # still compile on the registry's default Linux verification target.
       - name: Check WebView compiles for plain Linux
@@ -449,6 +451,11 @@ jobs:
       - name: Check Rust compiles for Android target
         run: cargo check --target aarch64-linux-android -p lingxia --lib
 
+      # Android selects stub.rs today. Keep every public capability combination
+      # compiling without pretending that this adds an Android implementation.
+      - name: Check device-io feature powerset on stub target
+        run: cargo hack check -p lingxia-device-io --feature-powerset --exclude-features full,native --no-dev-deps --target aarch64-linux-android
+
   # The Windows host stack (lingxia-windows-sdk / -contract / -build and the Windows
   # backends of lingxia-platform / lingxia-webview / lingxia-shell) is
   # cfg(target_os = "windows"), so the macOS clippy job never compiles it (and
@@ -475,6 +482,8 @@ jobs:
         with:
           prefix-key: rust-windows
 
+      - uses: taiki-e/install-action@cargo-hack
+
       # Some embedded-runtime build scripts expect the bundled bridge/polyfills JS.
       - uses: ./.github/actions/build-web-runtime
 
@@ -490,20 +499,13 @@ jobs:
         shell: bash
         run: cargo test -p lingxia-device-io --features full --lib
 
+      - name: Check Windows device-io feature powerset
+        shell: bash
+        run: cargo hack check -p lingxia-device-io --feature-powerset --exclude-features full,native --no-dev-deps
+
       - name: Verify device-io feature boundaries
         shell: bash
-        run: |
-          cargo check -p lingxia-device-io --no-default-features
-          cargo check -p lingxia-automation --no-default-features
-          cargo check -p lingxia-control-commands --no-default-features
-          if cargo tree -e features -p lingxia --no-default-features --features automation | grep -q 'lingxia-device-io'; then
-            echo 'lingxia automation unexpectedly enables desktop device I/O' >&2
-            exit 1
-          fi
-          if cargo tree -e features -p lingxia-control-commands --no-default-features | grep -q 'lingxia-device-io feature "snapshot"'; then
-            echo 'base control commands unexpectedly enable snapshot' >&2
-            exit 1
-          fi
+        run: bash scripts/ci/check-device-io-features.sh
 
       - name: Test Windows local-control named pipe
         shell: bash
@@ -609,6 +611,8 @@ jobs:
         with:
           shared-key: macos-rust
 
+      - uses: taiki-e/install-action@cargo-hack
+
       # lingxia-cli build.rs embeds the bridge/polyfills JS runtime.
       - uses: ./.github/actions/build-web-runtime
 
@@ -627,6 +631,9 @@ jobs:
       # The Runner enables it by default; lint that path too.
       - name: Clippy (lingxia automation feature)
         run: cargo clippy -p lingxia --features automation -- -D warnings -A clippy::let_underscore_future
+
+      - name: Check macOS device-io feature powerset
+        run: cargo hack check -p lingxia-device-io --feature-powerset --exclude-features full,native --no-dev-deps
 
   runner:
     needs: changes
