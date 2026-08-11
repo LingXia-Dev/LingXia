@@ -93,6 +93,15 @@ fn root_js_extension_exports_stay_scoped_to_js_module() {
 }
 
 #[test]
+fn media_playback_contracts_stay_in_the_playback_namespace() {
+    let source = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/media.rs"))
+        .expect("read lingxia media facade");
+    assert!(source.contains("pub mod playback"));
+    assert!(source.contains("pub use lingxia_media::playback::{"));
+    assert!(!source.contains("pub use lingxia_media::{"));
+}
+
+#[test]
 fn windows_facade_must_not_reexport_webview_internals() {
     let source = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/windows.rs"))
         .expect("read lingxia src/windows.rs");

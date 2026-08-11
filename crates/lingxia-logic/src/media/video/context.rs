@@ -1,7 +1,7 @@
 use super::events::handle_player_event;
 use super::stream::seek_stream_session_sync_shared;
 use crate::i18n::{js_error_from_platform_error, js_internal_error, js_invalid_parameter_error};
-use lingxia_media::StreamSession;
+use lingxia_media::playback::StreamSession;
 use lingxia_messaging::{CallbackResult, register_handler, remove_callback};
 use lingxia_platform::Platform;
 use lingxia_platform::traits::stream_decoder::VideoStreamDecoderHandle;
@@ -178,9 +178,16 @@ impl JSVideoContext {
         if !shared.seek_callback_registered.swap(true, Ordering::AcqRel) {
             let shared_for_seek = shared.clone();
             let component_id_for_seek = component_id.clone();
-            lingxia_media::register_stream_seek_callback(&component_id, move |position| {
-                seek_stream_session_sync_shared(&shared_for_seek, &component_id_for_seek, position)
-            });
+            lingxia_media::playback::register_stream_seek_callback(
+                &component_id,
+                move |position| {
+                    seek_stream_session_sync_shared(
+                        &shared_for_seek,
+                        &component_id_for_seek,
+                        position,
+                    )
+                },
+            );
         }
 
         Ok(Self {

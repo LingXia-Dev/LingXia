@@ -1,7 +1,6 @@
-pub mod video;
+//! Runtime-neutral media contracts.
+//!
+//! Playback owns the existing provider/session registry and accepts both video
+//! and audio frames. Capture and other device input belong outside this crate.
 
-pub use video::{
-    FrameSink, StreamError, StreamProvider, StreamSession, get_stream_provider,
-    register_stream_provider, register_stream_seek_callback, seek_stream_session,
-    unregister_stream_seek_callback,
-};
+pub mod playback;

@@ -1,6 +1,6 @@
 # lingxia-media
 
-Shared media streaming abstractions for LingXia.
+Shared media playback abstractions for LingXia.
 
 ## What it provides
 
@@ -11,10 +11,11 @@ Shared media streaming abstractions for LingXia.
 
 ## Primary module
 
-- `video`: runtime-neutral video/audio streaming interfaces used by higher-level
+- `playback`: runtime-neutral video/audio streaming interfaces used by higher-level
   playback integrations
 
 ## Notes
 
-This crate defines shared contracts. Concrete playback, decoder, and platform
-implementations live in platform/runtime crates.
+This crate defines playback contracts. Device capture and other input concerns
+belong to device I/O; concrete playback, decoder, and platform implementations
+live in platform/runtime crates.

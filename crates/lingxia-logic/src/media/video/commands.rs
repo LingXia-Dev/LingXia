@@ -8,7 +8,7 @@ use crate::i18n::{
     js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
     js_resource_not_found_error,
 };
-use lingxia_media::get_stream_provider;
+use lingxia_media::playback::get_stream_provider;
 use lingxia_platform::traits::stream_decoder::{
     VideoStreamDecoderHandle, VideoStreamDecoderManager,
 };

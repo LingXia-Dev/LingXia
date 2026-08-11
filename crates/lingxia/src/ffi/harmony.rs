@@ -1167,7 +1167,7 @@ pub fn video_player_seek(component_id: String, position_ms: f64) -> bool {
         let position_s = position_ms / 1000.0;
 
         // Call lxapp layer to perform actual stream seek (via registered callback)
-        let seek_result = lingxia_media::seek_stream_session(&component_id, position_s);
+        let seek_result = lingxia_media::playback::seek_stream_session(&component_id, position_s);
         if !seek_result {
             log::warn!(
                 "[Harmony.VideoPlayer] video_player_seek: stream seek failed, no callback registered for component_id={}",
