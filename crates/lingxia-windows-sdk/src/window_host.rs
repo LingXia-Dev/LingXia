@@ -7281,6 +7281,15 @@ fn report_shell_surface_width(hwnd: HWND) {
     if !primary || is_native_framed_window(hwnd) || active_webtag_key_for_window(hwnd).is_none() {
         return;
     }
+    // A window that is not on screen has not reached the size it will be shown
+    // at, and size classes carry hysteresis: one early narrow measurement locks
+    // Medium in, so the sidebar paints as an icon rail and visibly expands once
+    // a real resize clears the boundary. Leaving the graph unseeded until then
+    // costs nothing — the class falls back to Expanded, which is where a
+    // desktop window lands anyway.
+    if !is_window_visible(hwnd) {
+        return;
+    }
     crate::shell::update_surface_width(window_logical_client_width(hwnd));
 }
 
