@@ -141,13 +141,20 @@ try {
   }
 
   $frameworks = if ($Framework -eq 'all') { @('react', 'vue') } else { @($Framework) }
-  foreach ($currentFramework in $frameworks) {
+  for ($frameworkIndex = 0; $frameworkIndex -lt $frameworks.Count; $frameworkIndex += 1) {
+    $currentFramework = $frameworks[$frameworkIndex]
     Write-Host "Starting Windows Showcase ($currentFramework)..."
     $started = $false
     try {
-      Invoke-Checked $lingxia @(
+      $devArguments = @(
         'dev', '--background', '--platform', 'windows', '--framework', $currentFramework
       )
+      if ($frameworkIndex -gt 0) {
+        # React and Vue exercise the same native host. Keep the second pass in
+        # this job and only rebuild its lxapp assets.
+        $devArguments += '--skip-native'
+      }
+      Invoke-Checked $lingxia $devArguments
       $started = $true
       # `dev --background` may return while the host is still compiling; on a
       # cold CI runner that can take far longer than its internal wait. Poll
