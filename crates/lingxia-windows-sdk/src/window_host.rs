@@ -5934,15 +5934,24 @@ fn prepare_shell_window_for_presentation(hwnd: HWND) -> StdResult<()> {
     apply_shell_window_frame(hwnd)
 }
 
+#[cfg(feature = "runtime")]
 static INITIAL_HOME_READY: AtomicBool = AtomicBool::new(false);
+#[cfg(feature = "runtime")]
 const INITIAL_HOME_COMPOSITOR_SETTLE: std::time::Duration = std::time::Duration::from_millis(180);
 
+#[cfg(feature = "runtime")]
 fn defer_initial_home_window(webtag: &WebTag, hwnd: HWND) -> bool {
     !INITIAL_HOME_READY.load(Ordering::Acquire)
         && !is_window_visible(hwnd)
         && lingxia::home_app_id().is_some_and(|home| home == webtag.extract_appid())
 }
 
+#[cfg(not(feature = "runtime"))]
+fn defer_initial_home_window(_webtag: &WebTag, _hwnd: HWND) -> bool {
+    false
+}
+
+#[cfg(feature = "runtime")]
 pub(crate) fn reveal_initial_home_window() {
     INITIAL_HOME_READY.store(true, Ordering::Release);
     let Some(hwnd) = primary_host_window_except(None) else {
@@ -7779,6 +7788,8 @@ fn navigate_with_snapshot_slide(
             return result;
         }
     }
+    #[cfg(not(feature = "components"))]
+    let _ = host;
     let _ = animation;
     present()
 }
