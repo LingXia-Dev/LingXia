@@ -83,6 +83,36 @@ JSDoc is authoritative for its exact behavior.
 
 ---
 
+## Handling errors
+
+A rejection carries a numeric code from the runtime's error registry, which is
+generated from the same Rust definitions as the typings. Read that code through
+`@lingxia/types/error`; never branch on the message text, which is localized and
+not a contract:
+
+```ts
+import { parseLxApiError, formatLxApiError } from '@lingxia/types/error'
+
+try {
+  await lx.scanCode()
+} catch (error) {
+  const failure = parseLxApiError(error)
+  if (!failure) throw error                 // not a runtime error; let it surface
+  if (failure.code === 2000) return         // registry: "User cancelled"
+  lx.showToast({ title: formatLxApiError(failure), icon: 'none' })
+}
+```
+
+`parseLxApiError` returns `null` for anything that is not a recognized runtime
+error, so a genuine bug stays distinguishable from a known failure. The
+module also exports `isLxApiError` as a type guard, `requireLxApiError` when an
+unrecognized error should escalate, and `extractLxErrorCode` /
+`infoForLxErrorCode` for direct registry access. A parsed error's `key` is an
+i18n key, so a product with its own copy can look up wording instead of showing
+the runtime's message.
+
+---
+
 ## Logic and native APIs
 
 `lx.*` belongs to Logic. Host routes declared with `#[lingxia::native(...)]` are
