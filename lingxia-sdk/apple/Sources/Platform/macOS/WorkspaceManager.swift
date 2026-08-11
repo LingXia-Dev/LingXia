@@ -418,11 +418,13 @@ class WorkspaceManager: NSObject {
         tabs: [AsideSlotTab],
         activeId: String?,
         onSelect: @escaping (String) -> Void,
-        onClose: @escaping (String) -> Void
+        onClose: @escaping (String) -> Void,
+        onCollapse: @escaping () -> Void
     ) {
         guard let slot = panels[panelId] else { return }
         slot.slotTabStrip.onSelect = onSelect
         slot.slotTabStrip.onClose = onClose
+        slot.slotTabStrip.onCollapse = onCollapse
         slot.setSlotTabs(tabs, activeId: activeId)
     }
 

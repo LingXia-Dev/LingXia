@@ -267,8 +267,9 @@ enum LxAppLayoutReconciler {
 
         // Slot tab pass — bind each visible slot's header strip onto the panel
         // presenting it. Selecting a tab focuses that child in the core graph
-        // (the next plan swaps the visible child); closing destroys that child.
-        // The strip remains visible for a single child as its close affordance.
+        // (the next plan swaps the visible child); closing destroys that child;
+        // collapsing puts the region away with every child still open. The strip
+        // remains visible for a single child as its close affordance.
         for slot in slots where slot.visible && slot.kind == "lxapp" {
             guard let active = slot.activeChild ?? slot.children.last,
                   workspace.isPanelRegistered(id: active) else { continue }
@@ -295,6 +296,9 @@ enum LxAppLayoutReconciler {
                 },
                 onClose: { childId in
                     _ = LxAppMacAppUIRuntime.handleAsideSlotClose(surfaceId: childId)
+                },
+                onCollapse: {
+                    _ = collapseAsideSlot(focusAppId, "lxapp")
                 }
             )
         }
