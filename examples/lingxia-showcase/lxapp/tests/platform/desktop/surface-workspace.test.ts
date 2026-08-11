@@ -2506,6 +2506,14 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       .filter((window) => window.visible)
       .map((window) => window.id));
     host = await ensureHostForeground(desktop, host);
+    // Reopening Chat replaces the active native chrome while the pointer is
+    // still parked on the Pin that launched it. Windows emits no WM_MOUSEMOVE
+    // when the pixels below a stationary pointer change, so refresh the native
+    // hit target before asking that same Pin for its context menu.
+    await desktop.pointer.move({
+      at: [host.bounds.x + 12, host.bounds.y + Math.round(host.bounds.h * 0.55)],
+    });
+    await desktop.pointer.move({ at: coldPinPoint });
     await desktop.pointer.click({ at: coldPinPoint, button: 'right' });
     const menu = await waitForValue(async () => (
       (await desktop.windows()).find((window) => (
