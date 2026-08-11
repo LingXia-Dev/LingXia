@@ -417,11 +417,11 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
         }
         method::SCREENSHOT => {
             let args: cu::wire::Screenshot = decode(params)?;
-            report(cu::screenshot(args.target))
+            report(cu::capture::snapshot(args.target))
         }
         method::PIXEL => {
             let args: cu::wire::Point = decode(params)?;
-            report(cu::pixel(args.x, args.y))
+            report(cu::capture::pixel(args.x, args.y))
         }
         method::WAIT_WINDOW => {
             let args: cu::wire::WaitWindow = decode(params)?;
@@ -429,7 +429,7 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
         }
         method::WAIT_PIXEL => {
             let args: cu::wire::WaitPixel = decode(params)?;
-            report(cu::wait_pixel(
+            report(cu::capture::wait_pixel(
                 args.x,
                 args.y,
                 &args.hex,

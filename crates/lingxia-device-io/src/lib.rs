@@ -11,7 +11,10 @@ pub mod model;
 #[cfg(feature = "wire")]
 pub mod wire;
 
-#[cfg(feature = "supervision")]
+#[cfg(all(
+    feature = "supervision",
+    any(target_os = "macos", target_os = "windows")
+))]
 mod supervision_state;
 
 pub use error::{Error, ErrorCode, Result};
@@ -28,13 +31,10 @@ pub use model::{
 /// tool runs them in its own process. Saying "this terminal" to someone whose
 /// *app* was refused sends them to the wrong row in System Settings, and
 /// naming the binary of a bare CLI sends them to a row that does not exist.
-#[cfg(any(feature = "diagnostics", feature = "supervision"))]
-pub fn responsible_app() -> String {
-    #[cfg(target_os = "macos")]
-    {
-        if let Some(name) = backend::responsible_app_name() {
-            return name;
-        }
+#[cfg(all(feature = "window", target_os = "macos"))]
+pub(crate) fn responsible_app() -> String {
+    if let Some(name) = backend::responsible_app_name() {
+        return name;
     }
     "this terminal".to_string()
 }
@@ -65,12 +65,6 @@ pub mod ax {
 #[cfg(feature = "window")]
 pub fn wait_window(query: &WindowQuery, visible: Option<bool>, timeout_ms: u64) -> Result<Window> {
     backend::wait_window(query, visible, timeout_ms)
-}
-
-/// Wait for a pixel color (`desktop wait pixel`).
-#[cfg(feature = "snapshot")]
-pub fn wait_pixel(x: i32, y: i32, hex: &str, tolerance: u8, timeout_ms: u64) -> Result<Pixel> {
-    backend::wait_pixel(x, y, hex, tolerance, timeout_ms)
 }
 
 /// Clipboard access (`desktop clipboard ...`).
@@ -122,6 +116,15 @@ pub mod window {
         window_restore as restore, window_set_always_on_top as set_always_on_top,
         window_status as status,
     };
+}
+
+/// Sessionless, one-shot visual capture.
+///
+/// This facade is deliberately separate from persistent/realtime media
+/// capture. It owns no session and captures only visual desktop content.
+#[cfg(feature = "snapshot")]
+pub mod capture {
+    pub use crate::backend::{pixel, screenshot as snapshot, wait_pixel};
 }
 
 #[cfg(all(feature = "native", target_os = "windows"))]
@@ -181,14 +184,23 @@ pub fn input_window_at_point(x: i32, y: i32) -> Option<Window> {
     backend::input_window_at_point(x, y)
 }
 
-/// Capture a display/window/region (`desktop screenshot`).
-#[cfg(feature = "snapshot")]
-pub fn screenshot(target: CaptureTarget) -> Result<Capture> {
-    backend::screenshot(target)
-}
-
-/// Read a single pixel's color (`desktop pixel`).
-#[cfg(feature = "snapshot")]
-pub fn pixel(x: i32, y: i32) -> Result<Pixel> {
-    backend::pixel(x, y)
+#[cfg(all(
+    test,
+    feature = "diagnostics",
+    any(target_os = "macos", target_os = "windows")
+))]
+mod tests {
+    #[test]
+    fn doctor_reports_only_compiled_capabilities() {
+        let capabilities = super::doctor().capabilities;
+        assert_eq!(capabilities.displays, cfg!(feature = "window"));
+        assert_eq!(capabilities.windows, cfg!(feature = "window"));
+        assert_eq!(capabilities.window_management, cfg!(feature = "window"));
+        assert_eq!(capabilities.screenshot, cfg!(feature = "snapshot"));
+        assert_eq!(capabilities.pixel, cfg!(feature = "snapshot"));
+        assert_eq!(capabilities.pointer, cfg!(feature = "input"));
+        assert_eq!(capabilities.key, cfg!(feature = "input"));
+        assert_eq!(capabilities.clipboard, cfg!(feature = "clipboard"));
+        assert_eq!(capabilities.ax_tree, cfg!(feature = "ax"));
+    }
 }

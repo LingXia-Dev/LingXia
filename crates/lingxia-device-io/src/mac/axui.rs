@@ -8,6 +8,8 @@ use crate::error::{Error, Result};
 use objc2_core_foundation::{CFRetained, CFString, CGPoint, CGSize};
 use std::ffi::c_void;
 
+use super::ax_permission::is_trusted;
+
 // AXValueType raw values (CoreGraphics/AXValue.h).
 const AX_VALUE_CGPOINT: u32 = 1;
 const AX_VALUE_CGSIZE: u32 = 2;
@@ -42,8 +44,6 @@ unsafe extern "C" {
         y: f32,
         element: *mut *mut c_void,
     ) -> i32;
-    fn AXIsProcessTrusted() -> bool;
-    fn AXIsProcessTrustedWithOptions(options: *const c_void) -> bool;
     fn AXValueGetValue(value: *const c_void, the_type: u32, value_ptr: *mut c_void) -> bool;
     fn AXValueCreate(the_type: u32, value_ptr: *const c_void) -> *const c_void;
     // Private but long-stable: maps an AX window element to its CGWindowID, the
@@ -61,27 +61,6 @@ unsafe extern "C-unwind" {
     fn CFBooleanGetValue(boolean: *const c_void) -> bool;
     fn CFArrayGetCount(array: *const c_void) -> isize;
     fn CFArrayGetValueAtIndex(array: *const c_void, index: isize) -> *const c_void;
-}
-
-/// True if this process is trusted for the Accessibility API.
-pub(super) fn is_trusted() -> bool {
-    unsafe { AXIsProcessTrusted() }
-}
-
-/// Trigger the Accessibility "add this app" system prompt (and return the
-/// current trust state). The user must still toggle the switch — this only
-/// surfaces the prompt / adds the app to the list.
-pub(super) fn prompt_trusted() -> bool {
-    // {kAXTrustedCheckOptionPrompt: true}. The key's constant value is the
-    // literal string "AXTrustedCheckOptionPrompt".
-    let key = CFString::from_str("AXTrustedCheckOptionPrompt");
-    let value = objc2_core_foundation::CFBoolean::new(true);
-    let options = objc2_core_foundation::CFDictionary::from_slices(&[&*key], &[value]);
-    unsafe {
-        AXIsProcessTrustedWithOptions(
-            (&*options as *const objc2_core_foundation::CFDictionary<CFString, _>).cast(),
-        )
-    }
 }
 
 /// Map a raw `AXError` to our taxonomy for a resolved target.
