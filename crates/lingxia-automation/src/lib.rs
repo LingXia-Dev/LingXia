@@ -167,8 +167,8 @@ impl JSAutomation {
                     "desktop tier requires a trusted host automation runtime or dev host",
                 ));
             }
-            return Ok(Class::lookup::<desktop::JSDesktopDriver>(&ctx)?
-                .instance(desktop::JSDesktopDriver::new()));
+            Ok(Class::lookup::<desktop::JSDesktopDriver>(&ctx)?
+                .instance(desktop::JSDesktopDriver::new()))
         }
         #[cfg(not(feature = "desktop"))]
         {

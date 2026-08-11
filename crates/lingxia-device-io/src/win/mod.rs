@@ -96,7 +96,7 @@ const MONITORINFOF_PRIMARY: u32 = 1;
 fn direct_target_class_allowed(class: &str) -> bool {
     #[cfg(feature = "supervision")]
     {
-        return !pip::is_viewer_class(class);
+        !pip::is_viewer_class(class)
     }
     #[cfg(not(feature = "supervision"))]
     {
