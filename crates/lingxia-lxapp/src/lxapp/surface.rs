@@ -116,6 +116,16 @@ pub(crate) const PRIMARY_WINDOW: &str = "primary";
 /// Get-or-create the controller for a window. On first use of a window id we
 /// clone the runtime handle and seed a fresh `SurfaceManager` for that window's
 /// graph.
+/// Slot kind named by a shell control ("lxapp" / "browser" / "native").
+fn shell_slot_kind(kind: &str) -> Option<lingxia_surface::SlotKind> {
+    match kind.trim() {
+        "lxapp" => Some(lingxia_surface::SlotKind::Lxapp),
+        "browser" => Some(lingxia_surface::SlotKind::Browser),
+        "native" => Some(lingxia_surface::SlotKind::Native),
+        _ => None,
+    }
+}
+
 pub(crate) fn window_controller(
     window_id: &str,
     runtime: &std::sync::Arc<Platform>,
@@ -889,6 +899,22 @@ impl WindowSurfaceController {
             self.commit();
         }
         focused
+    }
+
+    fn slot_collapsed(&self, kind: lingxia_surface::SlotKind) -> bool {
+        self.manager.lock().unwrap().graph().slot_collapsed(kind)
+    }
+
+    fn set_slot_collapsed(&self, kind: lingxia_surface::SlotKind, collapsed: bool) -> bool {
+        let changed = self
+            .manager
+            .lock()
+            .unwrap()
+            .set_slot_collapsed(kind, collapsed);
+        if changed {
+            self.commit();
+        }
+        changed
     }
 
     /// Report the container width so the core resolves size class and physical
@@ -2238,6 +2264,22 @@ impl LxApp {
             return false;
         }
         window_controller(PRIMARY_WINDOW, &self.runtime).focus_surface(surface_id)
+    }
+
+    /// Collapse or restore a whole aside slot from the shell — the region's
+    /// "put it away" control. Nothing closes: the slot's children stay open
+    /// and reappear when the app opens or focuses one of them again.
+    pub fn set_shell_slot_collapsed(&self, kind: &str, collapsed: bool) -> bool {
+        let Some(kind) = shell_slot_kind(kind) else {
+            return false;
+        };
+        window_controller(PRIMARY_WINDOW, &self.runtime).set_slot_collapsed(kind, collapsed)
+    }
+
+    pub fn shell_slot_collapsed(&self, kind: &str) -> bool {
+        shell_slot_kind(kind).is_some_and(|kind| {
+            window_controller(PRIMARY_WINDOW, &self.runtime).slot_collapsed(kind)
+        })
     }
 
     pub fn forget_surface(&self, id: &str) -> bool {
