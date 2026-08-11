@@ -16,16 +16,20 @@ use lingxia_platform::traits::media_runtime::{
 };
 use serde::{Deserialize, Serialize};
 
-pub use lingxia_media::{
-    FrameSink, StreamError, StreamProvider, StreamSession, get_stream_provider,
-    register_stream_provider, register_stream_seek_callback, seek_stream_session,
-    unregister_stream_seek_callback,
-};
 pub use lingxia_service::media::{
     CameraFacing, ChooseMediaMode, ChooseMediaRequest, MediaKind, MediaObjectFit, MediaQuality,
     MediaSource, PreviewMediaAdvance, PreviewMediaItem, PreviewMediaRequest, SaveMediaRequest,
     ScanCodeRequest, ScanType,
 };
+
+/// Runtime-neutral playback provider and decoded-frame contracts.
+pub mod playback {
+    pub use lingxia_media::playback::{
+        FrameSink, StreamError, StreamProvider, StreamSession, get_stream_provider,
+        register_stream_provider, register_stream_seek_callback, seek_stream_session,
+        unregister_stream_seek_callback,
+    };
+}
 
 /// Presents the host media picker and returns the serialized selection payload.
 pub async fn choose(request: ChooseMediaRequest) -> crate::Result<String> {

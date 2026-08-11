@@ -84,7 +84,7 @@ pub(super) fn handle_player_event(
                     .seek_callback_registered
                     .swap(false, Ordering::AcqRel)
                 {
-                    lingxia_media::unregister_stream_seek_callback(component_id);
+                    lingxia_media::playback::unregister_stream_seek_callback(component_id);
                 }
             }
             // If a play intent was latched but the user cancels before configuring a source,
@@ -325,7 +325,7 @@ pub(super) fn handle_player_event(
                 .seek_callback_registered
                 .swap(false, Ordering::AcqRel)
             {
-                lingxia_media::unregister_stream_seek_callback(component_id);
+                lingxia_media::playback::unregister_stream_seek_callback(component_id);
             }
         }
         _ => {}
