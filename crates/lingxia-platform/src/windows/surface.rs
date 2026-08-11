@@ -72,20 +72,28 @@ enum WindowsCloseAction {
 
 pub(super) fn show_webtag_window(
     webtag: WebTag,
-    title: String,
+    host_title: String,
+    surface_title: String,
     activate: bool,
     open_mode: LxAppOpenMode,
     panel_id: String,
 ) {
     if open_mode == LxAppOpenMode::Panel {
-        remember_runtime_lxapp_aside(&panel_id, webtag.clone(), title.clone());
+        remember_runtime_lxapp_aside(&panel_id, webtag.clone(), surface_title.clone());
     }
     let request_key = show_request_key(&webtag, open_mode, &panel_id);
     let request_id = remember_show_request(&request_key);
     if let Some(handler) = find_webview_handler(&webtag) {
         if show_request_is_current(&request_key, request_id) {
             install_close_handler(&webtag, close_action_for_mode(open_mode));
-            show_webview_handler_for_mode(handler, &title, activate, open_mode, &panel_id);
+            show_webview_handler_for_mode(
+                handler,
+                &host_title,
+                &surface_title,
+                activate,
+                open_mode,
+                &panel_id,
+            );
         }
         return;
     }
@@ -100,7 +108,14 @@ pub(super) fn show_webtag_window(
                 }
                 if let Some(handler) = find_webview_handler(&webtag) {
                     install_close_handler(&webtag, close_action_for_mode(open_mode));
-                    show_webview_handler_for_mode(handler, &title, activate, open_mode, &panel_id);
+                    show_webview_handler_for_mode(
+                        handler,
+                        &host_title,
+                        &surface_title,
+                        activate,
+                        open_mode,
+                        &panel_id,
+                    );
                     return;
                 }
                 thread::sleep(Duration::from_millis(50));
@@ -183,7 +198,8 @@ pub(super) fn hide_lxapp_window(appid: &str, session_id: u64) {
 
 fn show_webview_handler_for_mode(
     handler: WindowsWebViewHandler,
-    title: &str,
+    host_title: &str,
+    surface_title: &str,
     activate: bool,
     open_mode: LxAppOpenMode,
     panel_id: &str,
@@ -204,13 +220,13 @@ fn show_webview_handler_for_mode(
             } else {
                 // Hosts without an adaptive shell plan retain the legacy
                 // single-panel presentation.
-                show_webview_as_panel(&handler.webtag(), title, panel_id)
+                show_webview_as_panel(&handler.webtag(), surface_title, panel_id)
             }
         }
         LxAppOpenMode::Normal if active_host_window_is_device_framed() => {
             present_webview_in_active_group(&handler.webtag())
         }
-        LxAppOpenMode::Normal => show_webview_window(&handler.webtag(), title, activate),
+        LxAppOpenMode::Normal => show_webview_window(&handler.webtag(), host_title, activate),
     };
     if let Err(err) = result {
         log::warn!(
@@ -825,20 +841,14 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         .as_deref()
         .filter(|id| slot.children.iter().any(|child| child == *id))
         .or_else(|| slot.children.last().map(String::as_str));
-    let aside_by_id: HashMap<_, _> = plan
-        .asides
-        .iter()
-        .map(|aside| (aside.id.as_str(), aside))
-        .collect();
     let tabs = slot
         .children
         .iter()
         .map(|id| WindowsAsidePanelTab {
             surface_id: id.clone(),
-            title: aside_by_id
-                .get(id.as_str())
-                .and_then(|aside| aside.title.clone())
-                .or_else(|| entries.get(id).map(|entry| entry.title.clone()))
+            title: entries
+                .get(id)
+                .map(|entry| entry.title.clone())
                 .filter(|title| !title.trim().is_empty())
                 .unwrap_or_else(|| id.clone()),
             active: Some(id.as_str()) == active_id,
@@ -852,24 +862,20 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         && let Some(entry) = entries.get(active_id)
         && find_webview_handler(&entry.webtag).is_some()
     {
-        let aside = aside_by_id.get(active_id).copied();
-        let title = aside
-            .and_then(|aside| aside.title.as_deref())
-            .filter(|title| !title.trim().is_empty())
-            .unwrap_or(&entry.title);
+        let aside = plan.asides.iter().find(|aside| aside.id == active_id);
         let edge = slot.edge.or_else(|| aside.and_then(|aside| aside.edge));
         let preferred_size = aside.and_then(|aside| aside.preferred_size);
         let result = if slot.overlay {
             show_webview_as_overlay_panel(
                 &entry.webtag,
-                title,
+                &entry.title,
                 ASIDE_LXAPP_PANEL_ID,
                 panel_position_for(edge, 3),
             )
         } else {
             show_webview_as_adaptive_panel(
                 &entry.webtag,
-                title,
+                &entry.title,
                 ASIDE_LXAPP_PANEL_ID,
                 panel_position_for(edge, 3),
                 preferred_panel_size(preferred_size),

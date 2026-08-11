@@ -197,9 +197,6 @@ pub struct DerivedLayout {
 #[serde(rename_all = "camelCase")]
 pub struct PlanAside {
     pub id: SurfaceId,
-    /// Human-facing provider title for this aside.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
     /// Edge the aside docks to; `None` when no edge was placed (skin default).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edge: Option<crate::model::Edge>,

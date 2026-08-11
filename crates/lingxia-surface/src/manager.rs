@@ -427,13 +427,6 @@ impl SurfaceManager {
             self.graph
                 .presentation_plan(self.size_class, self.workspace_width(), &self.policy);
         plan.main_switcher = self.switcher_snapshot();
-        for aside in &mut plan.asides {
-            aside.title = self
-                .presentations
-                .get(&aside.id)
-                .and_then(SurfacePresentation::title)
-                .map(str::to_string);
-        }
         if self.size_class == SizeClass::Compact {
             for slot in plan.aside_slots.iter_mut().filter(|slot| slot.visible) {
                 slot.overlay = true;
@@ -483,19 +476,6 @@ mod tests {
         let d = m.derive();
         assert_eq!(d.split_form, SplitForm::Split);
         assert!(m.graph().is_valid());
-    }
-
-    #[test]
-    fn presentation_plan_projects_provider_titles_for_asides() {
-        let mut manager = SurfaceManager::new(1200.0);
-        manager.open(main_s("home"));
-        manager.open(aside_s("lingxia-chat", Edge::Right));
-
-        assert!(manager.update_automatic_title("lingxia-chat", Some("LingXia Chat")));
-
-        let plan = manager.presentation_plan();
-        assert_eq!(plan.asides[0].id, "lingxia-chat");
-        assert_eq!(plan.asides[0].title.as_deref(), Some("LingXia Chat"));
     }
 
     #[test]

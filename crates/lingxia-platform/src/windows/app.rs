@@ -421,6 +421,7 @@ impl AppRuntime for Platform {
     fn show_lxapp(
         &self,
         appid: String,
+        title: String,
         path: String,
         session_id: u64,
         open_mode: LxAppOpenMode,
@@ -430,7 +431,14 @@ impl AppRuntime for Platform {
         if !matches!(open_mode, LxAppOpenMode::Panel) {
             ui_update::sync_windows_ui(&appid);
         }
-        surface::show_webtag_window(webtag, self.product_name.clone(), true, open_mode, panel_id);
+        surface::show_webtag_window(
+            webtag,
+            self.product_name.clone(),
+            title,
+            true,
+            open_mode,
+            panel_id,
+        );
         Ok(())
     }
 

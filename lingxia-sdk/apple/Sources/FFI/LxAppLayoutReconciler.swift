@@ -92,7 +92,6 @@ enum LxAppLayoutReconciler {
 
     private struct PlanAside: Decodable {
         let id: String
-        let title: String?
         let edge: String?
         let preferredSize: Double?
     }
@@ -271,7 +270,6 @@ enum LxAppLayoutReconciler {
         // (the next plan swaps the visible child); closing destroys that child;
         // collapsing puts the region away with every child still open. The strip
         // remains visible for a single child as its close affordance.
-        let asideById = Dictionary(uniqueKeysWithValues: plan.asides.map { ($0.id, $0) })
         for slot in slots where slot.visible && slot.kind == "lxapp" {
             guard let active = slot.activeChild ?? slot.children.last,
                   workspace.isPanelRegistered(id: active) else { continue }
@@ -280,12 +278,10 @@ enum LxAppLayoutReconciler {
             let tabs = slot.children.map { child -> AsideSlotTab in
                 let info = getLxAppInfo(child)
                 let name = info.app_name.toString()
-                let planTitle = asideById[child]?.title?
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 let icon = info.icon.toString()
                 return AsideSlotTab(
                     id: child,
-                    title: planTitle.isEmpty ? (name.isEmpty ? child : name) : planTitle,
+                    title: name.isEmpty ? child : name,
                     iconPath: icon.isEmpty ? nil : icon
                 )
             }

@@ -442,7 +442,6 @@ export interface SurfaceSwitcherSnapshot {
 
 export interface SurfaceLayoutAside {
   id: string;
-  title?: string;
   edge?: SurfaceLayoutEdge;
   preferredSize?: number;
 }

@@ -48,7 +48,6 @@ interface SurfaceDimensions {
 
 interface SurfacePlanAside {
   id: string;
-  title?: string;
 }
 
 interface SurfacePlanFloat {
