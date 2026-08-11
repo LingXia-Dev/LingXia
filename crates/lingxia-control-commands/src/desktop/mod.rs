@@ -148,7 +148,7 @@ pub enum DesktopCommand {
         #[arg(long, short = 'o')]
         output: Option<String>,
         /// Print the JSON envelope (metadata + base64 PNG)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "output")]
         json: bool,
     },
     /// Read the color of a pixel at a screen coordinate
@@ -1610,5 +1610,21 @@ mod tests {
     struct Cli {
         #[command(subcommand)]
         command: DesktopCommand,
+    }
+
+    #[test]
+    fn screenshot_rejects_output_with_inline_json() {
+        let error = match Cli::try_parse_from([
+            "desktop",
+            "screenshot",
+            "--output",
+            "capture.png",
+            "--json",
+        ]) {
+            Err(error) => error,
+            Ok(_) => panic!("--json returns inline image data and must not ignore --output"),
+        };
+
+        assert_eq!(error.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 }
