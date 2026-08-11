@@ -126,6 +126,8 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 | `capabilities` | Recommended | Platform/runtime integrations that may initialize SDK capability flows |
 | `theme` | Optional | Application-wide semantic colors for host-owned native UI |
 | `resources` | Conditional | Bundle asset sources; omit when no control/product lxapp is bundled |
+| `splash` | Optional | Generated launch placeholder and first-frame cover |
+| `assets` | Optional | Raw host files packaged through each platform's asset pipeline |
 | `browser` | Optional | Override the in-app browser webui (only used when `capabilities.browser: true`) |
 | `appLinks` | Optional | Universal-link / app-link hosts (see [App Links](./applinks.md)) |
 | `storage` | Recommended | Explicit host temp/cache/data size limits |
@@ -318,7 +320,7 @@ resources:
       path: ../settings
 ```
 
-If a bundle entry has only `type` and `appId`, it declares the appId but does not bundle local assets; the runtime/update provider must make it available. SDK-reserved appIds (e.g. `app.lingxia.browser`) are not listed here — use `browser.webui.*` instead.
+If a bundle entry has only `type` and `appId`, it declares the appId but does not bundle local assets; the runtime/update provider must make it available. Browser-shell internals (`app.lingxia.browser`) are configured through `browser.webui.*`; other lxapps, including product settings pages, are ordinary resources.
 
 ---
 

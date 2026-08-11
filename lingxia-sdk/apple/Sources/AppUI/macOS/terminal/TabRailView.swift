@@ -19,8 +19,8 @@ private final class LingXiaTerminalInlineTitleTextView: NSTextView {
     private func configure() {
         drawsBackground = true
         backgroundColor = .lxTerminalBackground
-        insertionPointColor = NSColor.white.withAlphaComponent(0.95)
-        textColor = NSColor.white.withAlphaComponent(0.96)
+        insertionPointColor = NSColor.lxTerminalForeground.withAlphaComponent(0.95)
+        textColor = NSColor.lxTerminalForeground.withAlphaComponent(0.96)
         font = NSFont.systemFont(ofSize: 12, weight: .semibold)
         isRichText = false
         isAutomaticQuoteSubstitutionEnabled = false
@@ -67,6 +67,7 @@ private final class LingXiaTerminalInlineTitleTextView: NSTextView {
     override func menu(for event: NSEvent) -> NSMenu? {
         nil
     }
+
 }
 
 @MainActor
@@ -208,6 +209,21 @@ final class LingXiaTerminalTabRailView: NSView {
         nil
     }
 
+    /// Re-apply colors cached by child layers and invalidate tab drawing.
+    /// Invalidating the rail alone does not redraw its NSView children, which
+    /// otherwise leaves an active tab on the previous scheme until hover.
+    func refreshChromeColors() {
+        layer?.backgroundColor = NSColor.lxTerminalChrome.cgColor
+        titleEditor.backgroundColor = .lxTerminalBackground
+        titleEditor.insertionPointColor = NSColor.lxTerminalForeground.withAlphaComponent(0.95)
+        titleEditor.textColor = NSColor.lxTerminalForeground.withAlphaComponent(0.96)
+        tabViews.values.forEach { $0.refreshChromeColors() }
+        addButton.refreshChromeColors()
+        zoomButton.refreshChromeColors()
+        needsDisplay = true
+        displayIfNeeded()
+    }
+
     func beginEditing(tabID: UUID) {
         guard let item = items.first(where: { $0.id == tabID }) else {
             return
@@ -317,12 +333,12 @@ final class LingXiaTerminalTabRailView: NSView {
     private func positionTitleEditor(for tabID: UUID) {
         guard let tabView = tabViews[tabID] else { return }
         let tabFrame = convert(tabView.bounds, from: tabView)
-        let editorX = tabFrame.minX + 28
+        let editorX = tabFrame.minX + 14
         let editorHeight: CGFloat = 18
         titleEditor.frame = NSRect(
             x: editorX,
             y: max(0, tabFrame.midY - editorHeight / 2),
-            width: max(32, tabFrame.width - 56),
+            width: max(32, tabFrame.width - 42),
             height: editorHeight
         )
     }
@@ -462,7 +478,7 @@ private final class LingXiaTerminalTabChromeView: NSView {
             NSColor.lxTerminalBackground.setFill()
             activePath.fill()
 
-            NSColor.white.withAlphaComponent(0.07).setFill()
+            NSColor.lxTerminalForeground.withAlphaComponent(0.07).setFill()
             NSRect(x: 10, y: 3, width: max(0, bounds.width - 20), height: pixel).fill()
 
             // Active tabs visually connect into the terminal body, like iTerm tab strips.
@@ -471,34 +487,27 @@ private final class LingXiaTerminalTabChromeView: NSView {
         } else {
             if isHovered {
                 let inactivePath = NSBezierPath(roundedRect: rect.insetBy(dx: 2, dy: 5), xRadius: 7, yRadius: 7)
-                NSColor.white.withAlphaComponent(0.045).setFill()
+                NSColor.lxTerminalForeground.withAlphaComponent(0.045).setFill()
                 inactivePath.fill()
             }
 
             if !isHovered {
-                NSColor.white.withAlphaComponent(0.055).setFill()
+                NSColor.lxTerminalForeground.withAlphaComponent(0.055).setFill()
                 NSRect(x: bounds.width - pixel, y: 9, width: pixel, height: max(0, bounds.height - 18)).fill()
             }
         }
     }
 
     private func drawTabTitle() {
-        let markerRect = NSRect(x: 14, y: max(0, (bounds.height - 6) / 2), width: 6, height: 6)
-        let titleRect = NSRect(x: 28, y: 7, width: max(0, closeButton.frame.minX - 36), height: 17)
-
-        let markerColor = isActive
-            ? NSColor(red: 0.682, green: 0.812, blue: 0.735, alpha: 1)
-            : NSColor.white.withAlphaComponent(isHovered ? 0.58 : 0.40)
-        markerColor.setFill()
-        NSBezierPath(ovalIn: markerRect).fill()
+        let titleRect = NSRect(x: 14, y: 7, width: max(0, closeButton.frame.minX - 22), height: 17)
 
         guard !editing else { return }
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineBreakMode = .byTruncatingTail
         paragraph.alignment = .left
         let titleColor = isActive
-            ? NSColor.white.withAlphaComponent(0.97)
-            : NSColor.white.withAlphaComponent(isHovered ? 0.78 : 0.66)
+            ? NSColor.lxTerminalForeground.withAlphaComponent(0.97)
+            : NSColor.lxTerminalForeground.withAlphaComponent(isHovered ? 0.78 : 0.66)
         (titleValue as NSString).draw(
             in: titleRect,
             withAttributes: [
@@ -532,8 +541,12 @@ private final class LingXiaTerminalTabChromeView: NSView {
 
     private func updateChrome() {
         closeButton.alphaValue = isActive || isHovered ? 1 : 0.48
-        closeButton.contentTintColor = NSColor.white.withAlphaComponent(isActive ? 0.62 : 0.40)
+        closeButton.contentTintColor = NSColor.lxTerminalForeground.withAlphaComponent(isActive ? 0.62 : 0.40)
         needsDisplay = true
+    }
+
+    func refreshChromeColors() {
+        updateChrome()
     }
 }
 
@@ -620,13 +633,17 @@ private class LingXiaTerminalRailIconButton: NSButton {
         }
     }
 
+    func refreshChromeColors() {
+        updateAppearance()
+    }
+
     private func updateAppearance() {
         layer?.backgroundColor = hovered
-            ? NSColor.white.withAlphaComponent(0.065).cgColor
+            ? NSColor.lxTerminalForeground.withAlphaComponent(0.065).cgColor
             : NSColor.clear.cgColor
         layer?.borderWidth = 0
         layer?.borderColor = NSColor.clear.cgColor
-        contentTintColor = NSColor.white.withAlphaComponent(hovered ? 0.92 : 0.68)
+        contentTintColor = NSColor.lxTerminalForeground.withAlphaComponent(hovered ? 0.92 : 0.68)
     }
 }
 

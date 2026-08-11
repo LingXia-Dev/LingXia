@@ -16,9 +16,9 @@ standard = ["lingxia/standard"]
 browser-shell = ["lingxia/browser-shell", "webview-input", "standard"]
 terminal-runtime = ["lingxia/terminal-runtime"]
 process = ["lingxia/process", "standard"]
-# The local control socket, derived from `capabilities.control`. Separate
-# from `devtools` on purpose: a shipped product gets the handlers without
-# the dev websocket and its TLS stack.
+# The local control socket, derived from appUse/computerUse/browserUse. Separate
+# from devtools so a shipped product gets the handlers without the dev websocket
+# and its TLS stack.
 control = ["dep:lingxia-control-runtime", "dep:log", "lingxia/devtool", "lingxia-control-runtime/local-control", "lingxia/product-cli"]
 computer-use = ["control", "lingxia-control-runtime/computer-use"]
 # Derived from `capabilities.browserUse`. Without it the browser handlers are

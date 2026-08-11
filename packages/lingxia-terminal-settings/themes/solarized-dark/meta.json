@@ -1,0 +1,7 @@
+{
+  "name": "solarized-dark",
+  "displayName": "Solarized Dark",
+  "author": "Ethan Schoonover",
+  "upstream": "https://github.com/altercation/solarized",
+  "spdx": "MIT"
+}

@@ -8,7 +8,12 @@ struct LxAppGeneratedAppConfig: Decodable, Sendable {
     let homeAppId: String?
     let homeAppVersion: String?
     let cacheMaxSizeMB: Int?
+    let capabilities: LxAppGeneratedCapabilitiesConfig?
     let theme: LxAppGeneratedThemeConfig?
+}
+
+struct LxAppGeneratedCapabilitiesConfig: Decodable, Sendable {
+    let terminal: Bool?
 }
 
 struct LxAppGeneratedThemeConfig: Decodable, Sendable {

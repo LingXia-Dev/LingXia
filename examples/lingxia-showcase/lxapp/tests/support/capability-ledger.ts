@@ -29,7 +29,16 @@ const allTargets = (outcome: TargetOutcome): Record<CoverageTarget, TargetOutcom
   windows: outcome,
 });
 
-const SHAPE_ONLY = ['app', 'appearance', 'env', 'navigationBar', 'shell', 'tabBar', 'tray'] as const satisfies readonly LxApiName[];
+const SHAPE_ONLY = [
+  'app',
+  'appearance',
+  'env',
+  'navigationBar',
+  'shell',
+  'tabBar',
+  'terminal',
+  'tray',
+] as const satisfies readonly LxApiName[];
 
 const AUTOMATED = [
   { name: 'automation', ownerCaseId: 'AUT-000', requiredLevels: ['boundary'] },

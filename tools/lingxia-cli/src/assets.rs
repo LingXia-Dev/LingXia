@@ -42,6 +42,8 @@ mod hash;
 mod icons;
 #[path = "assets/json.rs"]
 mod json;
+#[path = "assets/lxapp_package.rs"]
+mod lxapp_package;
 #[path = "assets/runtime.rs"]
 mod runtime_asset;
 pub(crate) use browser_shell_webui::APP_ID as BROWSER_SHELL_WEBUI_APP_ID;
@@ -193,8 +195,8 @@ pub(crate) fn prepare_configured_host_assets(
     let app_json =
         build_app_json_from_config(config, home_bundle.as_ref(), dev_ws_url, resolved_env)?;
     let app_json_hash = sha256_hex(app_json.as_bytes());
-    let mut prepared_bundles = home_bundle.into_iter().collect::<Vec<_>>();
-    prepared_bundles.extend(prepare_resource_lxapp_bundles(
+    let mut common_bundles = home_bundle.into_iter().collect::<Vec<_>>();
+    common_bundles.extend(prepare_resource_lxapp_bundles(
         project_root,
         config,
         build_profile,
@@ -204,7 +206,7 @@ pub(crate) fn prepare_configured_host_assets(
         &mut cache,
     )?);
     if config.browser_enabled() {
-        prepared_bundles.push(prepare_browser_shell_webui_bundle(
+        common_bundles.push(prepare_browser_shell_webui_bundle(
             project_root,
             config,
             build_profile,
@@ -270,7 +272,7 @@ pub(crate) fn prepare_configured_host_assets(
                     &app_json_hash,
                     ui_json.as_deref(),
                     ui_json_hash.as_deref(),
-                    &prepared_bundles,
+                    &common_bundles,
                     prepared_runtime_es5
                         .as_ref()
                         .or(prepared_runtime_es2020.as_ref()),
@@ -300,7 +302,7 @@ pub(crate) fn prepare_configured_host_assets(
                     &app_json_hash,
                     ui_json.as_deref(),
                     ui_json_hash.as_deref(),
-                    &prepared_bundles,
+                    &common_bundles,
                     &prepared_app_ui_icons,
                     prepared_runtime_es2020.as_ref(),
                     &mut prepared_resource_roots,
@@ -329,7 +331,7 @@ pub(crate) fn prepare_configured_host_assets(
                     &app_json_hash,
                     ui_json.as_deref(),
                     ui_json_hash.as_deref(),
-                    &prepared_bundles,
+                    &common_bundles,
                     &prepared_app_ui_icons,
                     prepared_runtime_es2020.as_ref(),
                     &mut prepared_resource_roots,
@@ -349,7 +351,7 @@ pub(crate) fn prepare_configured_host_assets(
                     &app_json_hash,
                     ui_json.as_deref(),
                     ui_json_hash.as_deref(),
-                    &prepared_bundles,
+                    &common_bundles,
                     prepared_runtime_es2020.as_ref(),
                     &mut cache,
                 )?;
@@ -369,7 +371,7 @@ pub(crate) fn prepare_configured_host_assets(
                     &app_json_hash,
                     windows_ui_json.as_deref(),
                     windows_ui_json_hash.as_deref(),
-                    &prepared_bundles,
+                    &common_bundles,
                     &prepared_app_ui_icons,
                     prepared_runtime_es2020.as_ref(),
                     &mut cache,

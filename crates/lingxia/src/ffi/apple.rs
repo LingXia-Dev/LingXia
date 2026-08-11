@@ -129,6 +129,43 @@ mod bridge {
         pub webview_ptr: usize,
     }
 
+    // One terminal frame, addressed by pointer so the render path copies
+    // no per-cell data and builds no JSON. The buffers belong to the
+    // session and stay valid until the next `terminalSessionFrame` call
+    // for it, or until it closes. `cells` is `cellsLen` records of
+    // `FrameCell` layout (three `UInt32` colors, a `UInt32` text offset,
+    // then four `UInt8`s: text length, attrs, underline style, columns);
+    // `text` is the UTF-8 cluster blob those offsets index; `damage` is
+    // `damageLen` `(row, startCol, endCol)` `UInt16` triples.
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct TerminalFrameHandle {
+        pub changed: bool,
+        pub full_damage: bool,
+        pub generation: u64,
+        pub cols: u16,
+        pub rows: u16,
+        pub cells: usize,
+        pub cells_len: usize,
+        pub text: usize,
+        pub text_len: usize,
+        pub damage: usize,
+        pub damage_len: usize,
+        pub default_fg: u32,
+        pub default_bg: u32,
+        pub cursor_col: u16,
+        pub cursor_row: u16,
+        pub cursor_visible: bool,
+        // 0 block, 1 bar, 2 underline, 3 hollow block.
+        pub cursor_style: u8,
+        pub application_cursor: bool,
+        pub bracketed_paste: bool,
+        pub alternate_screen: bool,
+        pub scrollbar_total: u64,
+        pub scrollbar_offset: u64,
+        pub scrollbar_len: u64,
+        pub exited: bool,
+    }
+
     #[swift_bridge(swift_repr = "struct")]
     pub struct LingxiaInitResult {
         pub ok: bool,
@@ -562,6 +599,48 @@ mod bridge {
 
         #[swift_bridge(swift_name = "terminalSessionSnapshot")]
         fn terminal_session_snapshot(id: u64) -> String;
+
+        #[swift_bridge(swift_name = "terminalSessionFrame")]
+        fn terminal_session_frame(id: u64, since_generation: u64) -> TerminalFrameHandle;
+
+        #[swift_bridge(swift_name = "terminalSessionTitleState")]
+        fn terminal_session_title_state(id: u64) -> String;
+
+        #[swift_bridge(swift_name = "terminalLoadConfig")]
+        fn terminal_load_config(system_is_dark: bool) -> String;
+
+        #[swift_bridge(swift_name = "terminalRegisterFonts")]
+        fn terminal_register_fonts(fonts_json: &str);
+
+        #[swift_bridge(swift_name = "terminalConfigGeneration")]
+        fn terminal_config_generation() -> u64;
+
+        #[swift_bridge(swift_name = "terminalVisualGeneration")]
+        fn terminal_visual_generation() -> u64;
+
+        #[swift_bridge(swift_name = "terminalCurrentConfig")]
+        fn terminal_current_config() -> String;
+
+        #[swift_bridge(swift_name = "terminalRefreshAppearance")]
+        fn terminal_refresh_appearance(system_is_dark: bool);
+
+        #[swift_bridge(swift_name = "terminalAutomationPublishSnapshot")]
+        fn terminal_automation_publish_snapshot(surface_id: &str, snapshot_json: &str) -> bool;
+
+        #[swift_bridge(swift_name = "terminalAutomationRemoveWorkspace")]
+        fn terminal_automation_remove_workspace(surface_id: &str);
+
+        #[swift_bridge(swift_name = "terminalAutomationTakeCommand")]
+        fn terminal_automation_take_command(surface_id: &str) -> String;
+
+        #[swift_bridge(swift_name = "terminalAutomationCompleteCommand")]
+        fn terminal_automation_complete_command(id: u64, ok: bool, payload: &str) -> bool;
+
+        #[swift_bridge(swift_name = "terminalConfigDirectory")]
+        fn terminal_config_directory() -> String;
+
+        #[swift_bridge(swift_name = "terminalSurfaceChrome")]
+        fn terminal_surface_chrome() -> String;
 
         #[swift_bridge(swift_name = "terminalSessionExited")]
         fn terminal_session_exited(id: u64) -> bool;
@@ -2057,7 +2136,7 @@ pub fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
 pub fn get_terminal_backend_status_json() -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::backend_status_json();
+        crate::terminal::backend_status_json()
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2071,7 +2150,14 @@ pub fn terminal_session_create(cols: u16, rows: u16, cwd: &str) -> u64 {
     #[cfg(feature = "terminal-runtime")]
     {
         let cwd = (!cwd.is_empty()).then(|| std::path::Path::new(cwd));
-        return crate::terminal::terminal_create_at(cols, rows, cwd);
+        crate::terminal::terminal_create_with_spec(
+            cols,
+            rows,
+            crate::terminal::TerminalSessionSpec {
+                cwd: cwd.map(std::path::Path::to_path_buf),
+                ..crate::terminal::TerminalSessionSpec::default()
+            },
+        )
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2084,9 +2170,9 @@ pub fn terminal_session_create(cols: u16, rows: u16, cwd: &str) -> u64 {
 pub fn terminal_session_current_directory(id: u64) -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_current_directory(id)
+        crate::terminal::terminal_current_directory(id)
             .and_then(|path| path.into_os_string().into_string().ok())
-            .unwrap_or_default();
+            .unwrap_or_default()
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2099,7 +2185,7 @@ pub fn terminal_session_current_directory(id: u64) -> String {
 pub fn terminal_session_write(id: u64, input: &str) -> bool {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_write(id, input);
+        crate::terminal::terminal_write(id, input)
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2112,7 +2198,7 @@ pub fn terminal_session_write(id: u64, input: &str) -> bool {
 pub fn terminal_session_read(id: u64) -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_read(id);
+        crate::terminal::terminal_read(id)
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2122,10 +2208,202 @@ pub fn terminal_session_read(id: u64) -> String {
     }
 }
 
+pub fn terminal_session_frame(id: u64, since_generation: u64) -> bridge::TerminalFrameHandle {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        if let Some(view) = crate::terminal::terminal_frame_view(id, since_generation) {
+            return bridge::TerminalFrameHandle {
+                changed: view.changed,
+                full_damage: view.full_damage,
+                generation: view.generation,
+                cols: view.cols,
+                rows: view.rows,
+                cells: view.cells as usize,
+                cells_len: view.cells_len,
+                text: view.text as usize,
+                text_len: view.text_len,
+                damage: view.damage as usize,
+                damage_len: view.damage_len,
+                default_fg: view.default_fg,
+                default_bg: view.default_bg,
+                cursor_col: view.cursor_col,
+                cursor_row: view.cursor_row,
+                cursor_visible: view.cursor_visible,
+                cursor_style: view.cursor_style,
+                application_cursor: view.application_cursor,
+                bracketed_paste: view.bracketed_paste,
+                alternate_screen: view.alternate_screen,
+                scrollbar_total: view.scrollbar_total,
+                scrollbar_offset: view.scrollbar_offset,
+                scrollbar_len: view.scrollbar_len,
+                exited: view.exited,
+            };
+        }
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    let _ = since_generation;
+    // A closed or unknown session: nothing to draw, and `exited` tells
+    // the pane to tear down.
+    let _ = id;
+    bridge::TerminalFrameHandle {
+        changed: false,
+        full_damage: false,
+        generation: 0,
+        cols: 0,
+        rows: 0,
+        cells: 0,
+        cells_len: 0,
+        text: 0,
+        text_len: 0,
+        damage: 0,
+        damage_len: 0,
+        default_fg: 0,
+        default_bg: 0,
+        cursor_col: 0,
+        cursor_row: 0,
+        cursor_visible: false,
+        cursor_style: 0,
+        application_cursor: false,
+        bracketed_paste: false,
+        alternate_screen: false,
+        scrollbar_total: 0,
+        scrollbar_offset: 0,
+        scrollbar_len: 0,
+        exited: true,
+    }
+}
+
+/// The directory that contains terminal configuration.
+pub fn terminal_config_directory() -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        crate::terminal::app_data_dir()
+            .and_then(|dir| {
+                crate::terminal::TerminalConfig::path(&dir)
+                    .parent()
+                    .map(std::path::Path::to_path_buf)
+            })
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    String::new()
+}
+
+/// Colors for the chrome around a terminal, from the scheme in effect.
+///
+/// Derived in the shared configuration layer so the Windows host draws its
+/// card from the same rule; the tab strip belongs to the terminal, not to the
+/// app, so a theme change has to move it too.
+pub fn terminal_surface_chrome() -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        lingxia_terminal_config::runtime::current_chrome_json()
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    String::new()
+}
+
+pub fn terminal_config_generation() -> u64 {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        crate::terminal::config_generation()
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    0
+}
+
+pub fn terminal_visual_generation() -> u64 {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        crate::terminal::visual_generation()
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    0
+}
+
+pub fn terminal_current_config() -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        crate::terminal::config_json()
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    "{}".to_string()
+}
+
+pub fn terminal_refresh_appearance(system_is_dark: bool) {
+    #[cfg(feature = "terminal-runtime")]
+    crate::terminal::refresh_appearance_for_app(system_is_dark);
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    let _ = system_is_dark;
+}
+
+pub fn terminal_automation_publish_snapshot(surface_id: &str, snapshot_json: &str) -> bool {
+    lxapp::terminal_automation::publish_snapshot(surface_id, snapshot_json).is_ok()
+}
+
+pub fn terminal_automation_remove_workspace(surface_id: &str) {
+    lxapp::terminal_automation::remove_workspace(surface_id);
+}
+
+pub fn terminal_automation_take_command(surface_id: &str) -> String {
+    lxapp::terminal_automation::take_command(surface_id)
+}
+
+pub fn terminal_automation_complete_command(id: u64, ok: bool, payload: &str) -> bool {
+    lxapp::terminal_automation::complete_command(id, ok, payload)
+}
+
+pub fn terminal_register_fonts(fonts_json: &str) {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        if let Ok(fonts) = serde_json::from_str::<Vec<crate::terminal::InstalledFont>>(fonts_json) {
+            crate::terminal::set_installed_fonts(fonts);
+        }
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    let _ = fonts_json;
+}
+
+pub fn terminal_load_config(system_is_dark: bool) -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        let config = crate::terminal::load_for_app(system_is_dark).unwrap_or_default();
+        serde_json::to_string(&config).unwrap_or_else(|_| "{}".to_string())
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = system_is_dark;
+        "{}".to_string()
+    }
+}
+
+pub fn terminal_session_title_state(id: u64) -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        crate::terminal::terminal_title_state_json(id)
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = id;
+        "{}".to_string()
+    }
+}
+
 pub fn terminal_session_snapshot(id: u64) -> String {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_snapshot(id);
+        crate::terminal::terminal_snapshot(id)
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2138,7 +2416,7 @@ pub fn terminal_session_snapshot(id: u64) -> String {
 pub fn terminal_session_exited(id: u64) -> bool {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_exited(id);
+        crate::terminal::terminal_exited(id)
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2151,7 +2429,7 @@ pub fn terminal_session_exited(id: u64) -> bool {
 pub fn terminal_session_resize(id: u64, cols: u16, rows: u16) -> bool {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_resize(id, cols, rows);
+        crate::terminal::terminal_resize(id, cols, rows)
     }
 
     #[cfg(not(feature = "terminal-runtime"))]
@@ -2170,7 +2448,7 @@ pub fn terminal_session_scroll(
 ) -> bool {
     #[cfg(feature = "terminal-runtime")]
     {
-        return crate::terminal::terminal_scroll(id, delta_rows, col, row, allow_application_input);
+        crate::terminal::terminal_scroll(id, delta_rows, col, row, allow_application_input)
     }
 
     #[cfg(not(feature = "terminal-runtime"))]

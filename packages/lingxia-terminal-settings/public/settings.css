@@ -1,0 +1,640 @@
+/*
+ * Terminal settings.
+ *
+ * Palette from the LingXia mark (design/app-icon/README.md): ink on paper,
+ * with the jade pearl as the one accent. Jade carries selection and focus and
+ * nothing else, so the colour on this screen belongs to the schemes on offer.
+ *
+ * A settings surface for people who live in a terminal, so it is built like an
+ * instrument rather than a page: neutral chrome, one accent reserved for
+ * selection and focus, and every value in the same monospace the thing it
+ * configures uses. The colour in this app belongs to the schemes on offer; if
+ * the chrome competes with them, the swatches stop reading as samples.
+ *
+ * Dark is not a variant here. A terminal's settings are opened from a dark
+ * screen more often than not, so both modes carry the full token set and
+ * neither is a patch on the other.
+ */
+
+:root {
+  --bg: #fafaf7;
+  --surface: #ffffff;
+  --surface-sunk: #f2f2ee;
+  --line: #e4e4de;
+  --line-strong: #d0d0c8;
+  --text: #1b1f26;
+  --text-dim: #6a6f78;
+  --text-faint: #9498a0;
+  --accent: #14cf95;
+  --accent-fg: #07281e;
+  --accent-weak: rgba(20, 207, 149, 0.14);
+  --danger: #c0392b;
+  --focus: #14cf95;
+  --shadow: 0 8px 28px rgba(27, 31, 38, 0.1);
+  --radius: 9px;
+  --radius-lg: 12px;
+
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  color-scheme: light;
+}
+
+/*
+ * The runtime projects the lxapp's resolved branch onto <html> as
+ * `data-theme`, and an in-place switch lands there before the platform media
+ * query catches up. So the attribute is what the page keys off, and the media
+ * query is the no-JS first-paint fallback only, guarded so it cannot win over
+ * someone who has pinned light.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15181d;
+    --surface: #1d2127;
+    --surface-sunk: #111419;
+    --line: #2a2f36;
+    --line-strong: #3a4048;
+    --text: #f4f5f2;
+    --text-dim: #a2a8b0;
+    --text-faint: #757b84;
+    --accent: #1fdda4;
+    --accent-fg: #06231a;
+    --accent-weak: rgba(31, 221, 164, 0.16);
+    --danger: #ef6a5c;
+    --focus: #1fdda4;
+    --shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #15181d;
+  --surface: #1d2127;
+  --surface-sunk: #111419;
+  --line: #2a2f36;
+  --line-strong: #3a4048;
+  --text: #f4f5f2;
+  --text-dim: #a2a8b0;
+  --text-faint: #757b84;
+  --accent: #1fdda4;
+  --accent-fg: #06231a;
+  --accent-weak: rgba(31, 221, 164, 0.16);
+  --danger: #ef6a5c;
+  --focus: #1fdda4;
+  --shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--bg); }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 400 13px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, select, output { font: inherit; color: inherit; }
+
+/* ----------------------------------------------------------------- layout */
+
+.page {
+  width: min(720px, calc(100% - 48px));
+  margin: 0 auto;
+  padding: 28px 0 32px;
+}
+
+body.has-actions .page { padding-bottom: 86px; }
+
+.group + .group { margin-top: 34px; }
+
+.group-head { padding-bottom: 9px; }
+
+.group h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 620;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/*
+ * Rows, not cards. Elevation would say these settings are separable things;
+ * they are one list, and a hairline says that with less furniture.
+ */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 232px);
+  align-items: center;
+  gap: 16px 24px;
+  padding: 13px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-bottom-width: 0;
+}
+
+.row:first-of-type { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+
+.row:last-of-type {
+  border-bottom-width: 1px;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.row:only-of-type { border-radius: var(--radius-lg); border-bottom-width: 1px; }
+
+.row.stack { border-radius: 0; }
+
+.row-label span { display: block; font-weight: 520; }
+
+.row-label small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.row-control { display: flex; justify-content: flex-end; min-width: 0; }
+
+.warnings {
+  margin-bottom: 18px;
+  padding: 10px 13px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--danger) 8%, var(--surface));
+  color: var(--text);
+  font-size: 12px;
+}
+
+.warnings p { margin: 0; }
+.warnings p + p { margin-top: 5px; }
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  padding: 0 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 520;
+  transition: background 120ms, border-color 120ms, opacity 120ms;
+}
+
+.btn:hover:not(:disabled) { border-color: var(--text-faint); }
+.btn:active:not(:disabled) { transform: translateY(0.5px); }
+.btn:disabled { cursor: default; opacity: 0.45; }
+
+.btn.primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.btn.primary:hover:not(:disabled) {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent) 88%, black);
+}
+
+.btn.quiet {
+  height: 24px;
+  padding: 0 7px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11.5px;
+}
+
+.btn.quiet:hover { background: var(--surface-sunk); border-color: transparent; color: var(--text); }
+.btn.quiet.danger:hover { color: var(--danger); }
+
+/* ----------------------------------------------------------------- inputs */
+
+input[type="text"], input:not([type]), input[type="number"] {
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-sunk);
+  font: 400 12.5px/1 var(--mono);
+  transition: border-color 120ms, background 120ms;
+}
+
+input::placeholder { color: var(--text-faint); }
+input:focus { background: var(--surface); }
+
+.stepper { display: inline-flex; align-items: center; gap: 7px; }
+.stepper input { width: 78px; text-align: right; }
+.stepper span { color: var(--text-faint); font: 400 11px/1 var(--mono); }
+
+/* A switch reads as a setting; a checkbox reads as a form field. */
+.switch { position: relative; display: inline-block; width: 38px; height: 22px; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+
+.switch span {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition: background 140ms;
+}
+
+.switch span::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 140ms;
+}
+
+.switch input:checked + span { background: var(--accent); }
+.switch input:checked + span::after { transform: translateX(16px); }
+.switch input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ----------------------------------------------------------------- picker */
+
+.picker { position: relative; display: inline-block; min-width: 0; max-width: 100%; }
+.picker select { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+.picker-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 148px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-sunk);
+  cursor: pointer;
+  text-align: left;
+  font-size: 12.5px;
+  transition: border-color 120ms, background 120ms;
+}
+
+.picker-button:hover { border-color: var(--text-faint); }
+.picker.open .picker-button { background: var(--surface); border-color: var(--text-faint); }
+
+.picker-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.picker-value.placeholder { color: var(--text-faint); }
+
+.picker-caret {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-top: -3px;
+  border-right: 1.5px solid var(--text-faint);
+  border-bottom: 1.5px solid var(--text-faint);
+  transform: rotate(45deg);
+  transition: transform 140ms;
+}
+
+.picker.open .picker-caret { margin-top: 2px; transform: rotate(-135deg); }
+
+.picker-list {
+  position: absolute;
+  top: calc(100% + 5px);
+  right: 0;
+  z-index: 30;
+  min-width: 100%;
+  max-height: 268px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.picker-option {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+.picker-option:hover, .picker-option:focus-visible { background: var(--surface-sunk); outline: none; }
+.picker-option.selected { background: var(--accent-weak); color: var(--accent); font-weight: 560; }
+
+/* ----------------------------------------------------------------- themes */
+
+.themes:empty::after {
+  content: "No schemes yet. Import one below.";
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.themes:empty { display: block; padding: 11px 14px; }
+
+.themes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(178px, 1fr));
+  gap: 9px;
+  padding: 13px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-bottom-width: 0;
+}
+
+.theme {
+  position: relative;
+  padding: 11px 12px 12px;
+  overflow: hidden;
+  border: 1px solid rgba(128, 128, 128, 0.22);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 120ms, box-shadow 120ms;
+}
+
+.theme:hover { transform: translateY(-1px); }
+.theme.active { border-color: var(--accent); box-shadow: 0 0 0 1.5px var(--accent); }
+
+.theme-name { display: block; font-size: 12.5px; font-weight: 600; }
+
+.theme-source {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.theme-sample { display: block; margin-top: 16px; font: 500 15px/1 var(--mono); }
+
+.ramp { display: flex; gap: 3px; margin-top: 11px; }
+.ramp i { width: 9px; height: 9px; border-radius: 2px; }
+
+.theme-license {
+  position: absolute;
+  top: 11px;
+  right: 11px;
+  color: inherit;
+  opacity: 0.5;
+  font-size: 9.5px;
+  text-decoration: none;
+}
+
+.theme-license:hover { opacity: 0.9; }
+
+/* ------------------------------------------------------------------ toast */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  z-index: 60;
+  max-width: min(460px, calc(100% - 36px));
+  padding: 9px 15px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  transform: translate(-50%, 8px);
+  pointer-events: none;
+  transition: opacity 160ms, transform 160ms;
+}
+
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.error { background: var(--danger); color: #fff; }
+
+*:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* ------------------------------------------------------------- responsive */
+
+@media (max-width: 640px) {
+  .bar-inner, .page { width: calc(100% - 32px); }
+
+  .row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+  }
+
+  .row-control { justify-content: flex-start; }
+  .picker, .picker-button { width: 100%; }
+  .picker-list { left: 0; right: auto; }
+  .themes { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 1ms !important; }
+  .theme:hover { transform: none; }
+}
+
+
+/* ------------------------------------------------------- value + slider */
+
+/*
+ * A number alone makes someone guess the useful range; a slider alone makes
+ * an exact value unreachable. Both, sharing one value, is how a size control
+ * in a terminal's own settings behaves.
+ */
+.ranged { display: flex; align-items: center; gap: 12px; width: 100%; }
+.ranged .stepper { flex: none; }
+
+input[type="range"].ticks {
+  flex: 1;
+  min-width: 96px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  accent-color: var(--accent);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* The ticks are the track, so the scale is legible before it is dragged. */
+input[type="range"].ticks::-webkit-slider-runnable-track {
+  height: 20px;
+  border-radius: 2px;
+  background:
+    repeating-linear-gradient(
+      to right,
+      var(--line-strong) 0 1px,
+      transparent 1px var(--tick, 8.33%)
+    ) center / 100% 12px no-repeat,
+    linear-gradient(var(--line-strong), var(--line-strong)) center / 100% 1px no-repeat;
+}
+
+input[type="range"].ticks::-webkit-slider-thumb {
+  width: 12px;
+  height: 20px;
+  border: 0;
+  border-radius: 3px;
+  background: var(--text-dim);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="range"].ticks:hover::-webkit-slider-thumb { background: var(--text); }
+
+/* ------------------------------------------------------------ reset row */
+
+.danger-row .row-label span { color: var(--text); }
+
+.btn.danger {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  color: var(--danger);
+}
+
+.btn.danger:hover { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+
+/* --------------------------------------------------------- action strip */
+
+/*
+ * Not a title bar. The host already names this workspace, and an Apply button
+ * in the far corner sits nowhere near the settings it applies. This follows
+ * the end of the list instead, and stays quiet until there is something to
+ * apply.
+ */
+.actions {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  width: 100%;
+  margin: 0;
+  padding: 12px max(24px, calc((100% - 720px) / 2)) 16px;
+  background: var(--bg);
+}
+
+.actions.visible { display: flex; }
+
+
+/* ------------------------------------------------------------ theme modes */
+
+/*
+ * Three little terminals rather than three words. The choice is about how
+ * something will look, and a label cannot answer that as fast as a picture of
+ * it can; the split tile also says what "System" means without a sentence.
+ */
+.modes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 4px 14px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-bottom-width: 0;
+}
+
+.modes button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: center;
+}
+
+.mode-art {
+  display: block;
+  height: 74px;
+  box-shadow: inset 0 0 0 1px rgba(128, 128, 128, 0.28);
+  margin-bottom: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  transition: box-shadow 120ms, border-color 120ms;
+}
+
+.modes button:hover .mode-art { border-color: var(--text-faint); }
+
+.modes button.active .mode-art {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.modes em {
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 520;
+  color: var(--text-dim);
+}
+
+.modes button.active em { color: var(--text); }
+
+/*
+ * The tiles are drawn, not photographed: a screenshot would be wrong the
+ * moment a scheme changes, and this only has to say light, dark, or both.
+ */
+/*
+ * Fixed, not themed. These tiles show what a terminal will look like, so they
+ * must stay legible against either page background - a dark tile tinted to
+ * match a dark page stops reading as a window at all.
+ */
+.mode-art.light { background: #fbfaf6; }
+.mode-art.dark { background: #0f1216; }
+.mode-art.system { background: linear-gradient(105deg, #fbfaf6 0 50%, #0f1216 50% 100%); }
+
+.mode-art::before {
+  content: "";
+  display: block;
+  height: 13px;
+  background:
+    radial-gradient(circle at 8px 50%, #ff5f57 3px, transparent 3px),
+    radial-gradient(circle at 18px 50%, #febc2e 3px, transparent 3px),
+    radial-gradient(circle at 28px 50%, #28c840 3px, transparent 3px);
+}
+
+.mode-art::after {
+  content: "";
+  display: block;
+  height: 44px;
+  margin: 7px 10px 0;
+  background:
+    linear-gradient(currentColor, currentColor) 0 2px / 62% 3px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 12px / 44% 3px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 22px / 72% 3px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 32px / 34% 3px no-repeat;
+  border-radius: 1px;
+  opacity: 0.42;
+}
+
+.mode-art.light::after { color: #1b1f26; }
+.mode-art.dark::after { color: #f4f5f2; }
+.mode-art.dark::before, .mode-art.system::before { filter: saturate(1.05); }
+.mode-art.system::after { color: #7b8794; opacity: 0.6; }
+
+@media (max-width: 640px) {
+  .modes { gap: 8px; }
+  .mode-art { height: 62px; }
+  .mode-art::after { height: 36px; }
+}

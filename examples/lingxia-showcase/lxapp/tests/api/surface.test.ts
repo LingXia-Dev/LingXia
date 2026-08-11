@@ -9,6 +9,7 @@ function automationSurface(name: string): unknown {
   switch (name) {
     case 'Automation': return automation;
     case 'ShellDriver': return automation.shell;
+    case 'TerminalDriver': return automation.terminal;
     case 'LxAppDriver': return automation.lxapp(SHOWCASE_APP_ID);
     case 'PageDriver': return automation.lxapp(SHOWCASE_APP_ID).page;
     case 'PagePointer': return automation.lxapp(SHOWCASE_APP_ID).page.pointer;
@@ -62,23 +63,35 @@ LX_RUNTIME_SURFACES.forEach((surface) => {
       : 'supported',
   }, async ({ app }) => {
     const propertyNames = 'properties' in surface ? surface.properties : [];
+    const optionalMembers: readonly string[] = 'optionalMembers' in surface
+      ? surface.optionalMembers
+      : [];
     const result = surface.layer === 'automation'
-      ? inspectSurface(automationSurface(surface.name), surface.members, propertyNames)
+      ? inspectSurface(
+        automationSurface(surface.name),
+        surface.members.filter((name) => !optionalMembers.includes(name)),
+        propertyNames,
+      )
       : await app.eval({
         script: `
           const target = ${surface.expression};
           const members = ${JSON.stringify(surface.members)};
+          const optionalMembers = ${JSON.stringify(optionalMembers)};
           const properties = ${JSON.stringify(propertyNames)};
           return {
             available: target !== null && typeof target !== 'undefined',
             missing: target == null
               ? members
-              : members.filter((name) => typeof target[name] === 'undefined'),
+              : members.filter((name) => (
+                typeof target[name] === 'undefined' && !optionalMembers.includes(name)
+              )),
             wrongKinds: target == null
               ? []
-              : members.filter((name) => properties.includes(name)
-                ? target[name] === null
-                : typeof target[name] !== 'function'),
+              : members.filter((name) => !optionalMembers.includes(name) && (
+                properties.includes(name)
+                  ? target[name] === null
+                  : typeof target[name] !== 'function'
+              )),
           };
         `,
       }) as { available: boolean; missing: string[]; wrongKinds: string[] };

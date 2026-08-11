@@ -1,16 +1,16 @@
-//! Terminal panel grid: the snapshot store shared with the product facade
-//! and the GDI cell-grid painter used by the shell chrome.
+//! Terminal panel state: the frame store, the grid geometry, and everything
+//! the shell hit-tests against.
 //!
-//! The facade's poll thread pushes full [`TerminalSnapshot`]s through
-//! [`set_session_snapshot`] and reads [`desired_session_grid_size`] to keep
-//! each pane's PTY grid in sync with its rect; the chrome painter consumes
-//! the latest snapshot of every active pane on repaint and records the grid
-//! geometry it painted into, so both sides agree on cell metrics. The
-//! chrome painter also records the
-//! header tab-title rects it painted, which [`begin_tab_rename`] uses to
-//! place the inline rename editor. Styling mirrors the macOS terminal
-//! surface (`SurfaceCore.swift`): dark `#282C34` background, white default
-//! foreground, mono font, dim text blended at 58%.
+//! The facade's poll thread pushes renderer-ready frames through
+//! [`set_session_frame`] and reads [`desired_session_grid_size`] to keep each
+//! pane's PTY sized to its rect. Drawing belongs to the renderer, which takes
+//! a pane's frame through [`with_pane`] and records the geometry it drew at,
+//! so hit-testing and PTY sizing agree with what is on screen.
+//!
+//! A frame is two buffers and a damage list, not a cell tree: colors arrive as
+//! packed RGBA and every cluster lives in one text blob. The store keeps the
+//! generation it last accepted so an idle session costs nothing — the engine
+//! answers `Unchanged` and there is no repaint at all.
 #![cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
 
 use std::collections::HashMap;
@@ -18,72 +18,42 @@ use std::ffi::c_void;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
-use lingxia_terminal::{TerminalCell, TerminalSnapshot};
+use super::chrome::{inset_rect, rect_height, rect_width};
+use lingxia_terminal::{TerminalFrame, TerminalScrollbar};
 use windows::Win32::Foundation::{HWND, RECT};
-use windows::Win32::Graphics::Gdi::{
-    CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, DEFAULT_CHARSET, DeleteObject,
-    ETO_OPTIONS, ExtTextOutW, FF_MODERN, FIXED_PITCH, GetTextFaceW, GetTextMetricsW, HDC, HFONT,
-    HGDIOBJ, IntersectClipRect, OUT_DEFAULT_PRECIS, RestoreDC, SaveDC, SelectObject, SetBkMode,
-    SetTextColor, TEXTMETRICW, TRANSPARENT,
-};
-use windows::core::PCWSTR;
-
-use super::chrome::{
-    blend_rgb, fill_rect, inset_rect, logical_font_height, rect_height, rect_width, rgb_to_colorref,
-};
 
 /// Inner padding between the terminal card edge and the cell grid.
-const GRID_PADDING: i32 = 8;
+pub(super) const GRID_PADDING: i32 = 8;
 
-/// Terminal text size; 10pt GDI tracks the macOS surface's 13pt Menlo look.
-const GRID_FONT_POINT_SIZE: i32 = 10;
-
-/// Fallback surface colors mirroring the macOS terminal surface
-/// (`lxTerminalBackground` #282C34, `lxTerminalForeground` white).
-const GRID_DEFAULT_BACKGROUND: u32 = 0x282c34;
-
-const GRID_DEFAULT_FOREGROUND: u32 = 0xffffff;
+/// Fallback surface color, for a pane that has no frame yet. Once one
+/// arrives it carries the scheme's own defaults, so there is nothing to fall
+/// back to for the foreground.
+pub(super) const GRID_DEFAULT_BACKGROUND: u32 = 0x282c34;
 
 /// Dim cells blend the foreground this far toward the background (the
 /// macOS surface draws dim text at 0.58 alpha).
-const GRID_DIM_FOREGROUND_PERCENT: u32 = 58;
+pub(super) const GRID_DIM_FOREGROUND_PERCENT: u32 = 58;
 
 /// Minimum grid reported to the PTY, mirroring the macOS surface clamp.
 const GRID_MIN_COLS: i32 = 20;
 
 const GRID_MIN_ROWS: i32 = 4;
 
-/// Hairline divider between panes - a soft gray line on the terminal
-/// surface, matching the macOS split divider.
-const PANE_DIVIDER_COLOR: u32 = 0x3a3f4a;
-
-/// Low-profile pane grab handle and the active drop target outline.
-const PANE_DRAG_HANDLE_COLOR: u32 = 0x69717f;
-const PANE_DRAG_HANDLE_ACTIVE_COLOR: u32 = 0xa8b0bf;
-const PANE_DROP_TARGET_COLOR: u32 = 0x4b9cff;
-
-/// Unfocused panes keep this fraction of their colors (the remainder blends
-/// toward the surface background); the focused pane reads as active without
-/// an obtrusive border.
-const UNFOCUSED_KEEP_PERCENT: u32 = 62;
-
-/// Windows selection highlight, blended toward each pane's background.
-const SELECTION_ACCENT: u32 = 0x4b9cff;
-
-const SELECTION_ACCENT_PERCENT: u32 = 46;
+/// Outline drawn around the pane a dragged pane would land on.
+pub(super) const PANE_DROP_TARGET_COLOR: u32 = 0x4b9cff;
 
 /// Keep the overlay visible briefly after the latest wheel gesture.
 const SCROLLBAR_VISIBLE_FOR: Duration = Duration::from_millis(900);
 
-const SCROLLBAR_WIDTH: i32 = 3;
-const SCROLLBAR_MARGIN: i32 = 2;
-const SCROLLBAR_MIN_THUMB: i32 = 12;
-const SCROLLBAR_MAX_THUMB: i32 = 40;
+pub(super) const SCROLLBAR_WIDTH: i32 = 3;
+pub(super) const SCROLLBAR_MARGIN: i32 = 2;
+pub(super) const SCROLLBAR_MIN_THUMB: i32 = 12;
+pub(super) const SCROLLBAR_MAX_THUMB: i32 = 40;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct GridPoint {
-    row: u16,
-    col: u16,
+pub(super) struct GridPoint {
+    pub(super) row: u16,
+    pub(super) col: u16,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -116,11 +86,25 @@ struct GridGeometry {
     grid_height: i32,
 }
 
-/// Per-session state: the latest snapshot and the geometry it last painted
-/// into (so the facade can keep each pane's PTY grid sized to its rect).
+/// What a pane shows beyond its grid.
+#[derive(Clone, Copy, Default)]
+pub(super) struct PaneView {
+    pub scrollbar: Option<TerminalScrollbar>,
+    pub exited: bool,
+}
+
+/// Per-session state: the latest frame and the geometry it last painted into
+/// (so the facade can keep each pane's PTY grid sized to its rect).
 #[derive(Default)]
 struct SessionGridState {
-    snapshot: Option<TerminalSnapshot>,
+    frame: Option<TerminalFrame>,
+    /// Generation of `frame`; handed back to the engine so it can answer
+    /// "nothing changed" instead of building a frame nobody needs.
+    generation: u64,
+    /// The child is gone — the renderer stops drawing a cursor for it.
+    exited: bool,
+    /// Scroll position. Not part of a frame: it moves on its own schedule.
+    scrollbar: Option<TerminalScrollbar>,
     geometry: Option<GridGeometry>,
     selection: Option<GridSelection>,
     scrollbar_visible_until: Option<Instant>,
@@ -141,11 +125,8 @@ struct PanelHeaderGeometry {
 #[derive(Default)]
 struct PanelGridState {
     header: Option<PanelHeaderGeometry>,
-    /// Terminal body rect (below the header) at the last paint.
+    /// Terminal body rect, below the header, as last drawn.
     body: Option<RECT>,
-    /// `(cell_width, line_height)` from the last pane paint (font-derived,
-    /// shared by every pane).
-    cell: Option<(i32, i32)>,
     /// Pane whose selection is currently being dragged.
     selection_session: Option<u64>,
 }
@@ -170,8 +151,67 @@ fn panel_grids() -> MutexGuard<'static, HashMap<String, PanelGridState>> {
 
 /// Stores the latest snapshot for `session_id`; the chrome painter renders
 /// it on the next repaint of the host window.
-pub fn set_session_snapshot(session_id: u64, snapshot: TerminalSnapshot) {
-    session_grids().entry(session_id).or_default().snapshot = Some(snapshot);
+pub fn set_session_frame(session_id: u64, frame: TerminalFrame) {
+    let mut grids = session_grids();
+    let state = grids.entry(session_id).or_default();
+    state.generation = frame.generation;
+    state.frame = Some(frame);
+}
+
+/// The parts of a pane that move without the grid changing, so an exit or a
+/// scroll still reaches the renderer on a generation it already has.
+/// Returns whether anything moved, so a caller can skip a repaint the grid
+/// did not ask for.
+pub fn set_session_view_state(
+    session_id: u64,
+    scrollbar: Option<TerminalScrollbar>,
+    exited: bool,
+) -> bool {
+    let mut grids = session_grids();
+    let state = grids.entry(session_id).or_default();
+    let moved = state.exited != exited
+        || state.scrollbar.map(|bar| (bar.total, bar.offset, bar.len))
+            != scrollbar.map(|bar| (bar.total, bar.offset, bar.len));
+    state.scrollbar = scrollbar;
+    state.exited = exited;
+    moved
+}
+
+/// The grid size the store last painted, for callers deciding whether the PTY
+/// needs resizing when no new frame arrived.
+pub fn session_grid_size(session_id: u64) -> Option<(u16, u16)> {
+    let grids = session_grids();
+    let frame = grids.get(&session_id)?.frame.as_ref()?;
+    Some((frame.cols, frame.rows))
+}
+
+/// The generation the store already holds, so the caller can ask the engine
+/// only for what changed since.
+pub fn session_generation(session_id: u64) -> u64 {
+    session_grids()
+        .get(&session_id)
+        .map(|state| state.generation)
+        .unwrap_or(0)
+}
+
+/// Compact semantic frame state for trusted terminal automation. Keep this in
+/// the frame store so the automation path observes exactly what the renderer
+/// has accepted, without asking the engine for a second copy of the grid.
+#[cfg(feature = "terminal-runtime")]
+pub(super) fn automation_grid_snapshot(session_id: u64) -> Option<serde_json::Value> {
+    let grids = session_grids();
+    let frame = grids.get(&session_id)?.frame.as_ref()?;
+    Some(serde_json::json!({
+        "cols": frame.cols,
+        "rows": frame.rows,
+        "generation": frame.generation,
+        "defaultForeground": frame.default_fg,
+        "defaultBackground": frame.default_bg,
+        "cursorRow": frame.cursor.row,
+        "cursorCol": frame.cursor.col,
+        "cursorVisible": frame.cursor.visible,
+        "cursorStyle": frame.cursor.style.as_str().replace('_', "-"),
+    }))
 }
 
 /// Reveals the lightweight scrollbar for one pane after a scroll gesture.
@@ -221,22 +261,36 @@ pub fn clear_panel(panel_id: &str) {
 /// background reported by the terminal), or `None` before its first
 /// snapshot. The chrome painter fills the dock card with the focused pane's
 /// color so the header, card corners, and cell grid agree.
+/// The card's colors, from the scheme in effect. One rule shared with the
+/// Apple host, so a theme change moves the whole card.
+pub(crate) fn surface_chrome() -> super::PanelChrome {
+    let chrome = lingxia_terminal_config::runtime::current_chrome();
+    super::PanelChrome {
+        surface: chrome.surface,
+        header: chrome.header,
+        separator: chrome.separator,
+        text: chrome.text,
+        text_muted: chrome.text_muted,
+    }
+}
+
 pub(super) fn session_surface_background(session_id: u64) -> Option<u32> {
-    session_grids()
-        .get(&session_id)?
-        .snapshot
-        .as_ref()?
-        .default_background
-        .as_deref()
-        .and_then(parse_hex_color)
+    let grids = session_grids();
+    let frame = grids.get(&session_id)?.frame.as_ref()?;
+    // Frame colors are packed 0xRRGGBBAA; the painter wants 0xRRGGBB. The
+    // frame's defaults always carry alpha — only a *cell* uses alpha 0 to mean
+    // "inherit the default".
+    Some(frame.default_bg >> 8)
 }
 
 /// Plain-text fallback for the focused pane's snapshot. Used only when the
 /// cell-grid painter cannot draw with the current DC/font state.
 pub(super) fn panel_snapshot_text(panel_id: &str) -> Option<String> {
     let session_id = super::terminal_panel::focused_session(panel_id)?;
-    let grids = session_grids();
-    let snapshot = grids.get(&session_id)?.snapshot.as_ref()?;
+    // Asked for once, when a panel is shown — not on the render path. Paying
+    // for a full snapshot here costs nothing and keeps the frame store free of
+    // the line text and process title only this needs.
+    let snapshot = lingxia_terminal::terminal_snapshot_data(session_id)?;
     let mut lines: Vec<&str> = snapshot.lines.iter().map(|line| line.trim_end()).collect();
     while lines.last().is_some_and(|line| line.is_empty()) {
         lines.pop();
@@ -270,14 +324,14 @@ pub(crate) fn focused_cursor_rect(panel_id: &str) -> Option<RECT> {
         .find(|frame| frame.focused)?;
     let grids = session_grids();
     let state = grids.get(&frame.session_id)?;
-    let snapshot = state.snapshot.as_ref()?;
+    let painted = state.frame.as_ref()?;
     let geometry = state.geometry?;
     cursor_rect_for_grid(
         inset_rect(frame.rect, GRID_PADDING, GRID_PADDING),
-        snapshot.cursor_col,
-        snapshot.cursor_row,
-        snapshot.cols,
-        snapshot.rows,
+        painted.cursor.col,
+        painted.cursor.row,
+        painted.cols,
+        painted.rows,
         geometry.cell_width,
         geometry.line_height,
     )
@@ -316,12 +370,11 @@ fn selection_point(
     client_x: i32,
     client_y: i32,
 ) -> Option<(u64, GridPoint)> {
-    let (body, cell_width, line_height) = {
+    let (cell_width, line_height) = super::terminal_gpu::cell_size()?;
+    let (cell_width, line_height) = (cell_width.max(1), line_height.max(1));
+    let body = {
         let panels = panel_grids();
-        let panel = panels.get(panel_id)?;
-        let body = panel.body?;
-        let (cell_width, line_height) = panel.cell?;
-        (body, cell_width.max(1), line_height.max(1))
+        panels.get(panel_id)?.body?
     };
     let frames = super::terminal_panel::active_pane_frames(panel_id, body);
     let frame = match session_id {
@@ -337,15 +390,15 @@ fn selection_point(
     };
     let grid = inset_rect(frame.rect, GRID_PADDING, GRID_PADDING);
     let grids = session_grids();
-    let snapshot = grids.get(&frame.session_id)?.snapshot.as_ref()?;
+    let painted = grids.get(&frame.session_id)?.frame.as_ref()?;
     let relative_x = (client_x - grid.left).clamp(0, rect_width(&grid).max(0));
     let relative_y = (client_y - grid.top).clamp(0, rect_height(&grid).saturating_sub(1));
     Some((
         frame.session_id,
         GridPoint {
-            row: (relative_y / line_height).clamp(0, i32::from(snapshot.rows.saturating_sub(1)))
+            row: (relative_y / line_height).clamp(0, i32::from(painted.rows.saturating_sub(1)))
                 as u16,
-            col: (relative_x / cell_width).clamp(0, i32::from(snapshot.cols)) as u16,
+            col: (relative_x / cell_width).clamp(0, i32::from(painted.cols)) as u16,
         },
     ))
 }
@@ -443,14 +496,11 @@ pub(crate) fn clear_selection(session_id: u64) {
 pub(crate) fn selected_text(session_id: u64) -> Option<String> {
     let grids = session_grids();
     let state = grids.get(&session_id)?;
-    let snapshot = state.snapshot.as_ref()?;
-    selected_text_from_snapshot(snapshot, state.selection?)
+    let frame = state.frame.as_ref()?;
+    selected_text_from_frame(frame, state.selection?)
 }
 
-fn selected_text_from_snapshot(
-    snapshot: &TerminalSnapshot,
-    selection: GridSelection,
-) -> Option<String> {
+fn selected_text_from_frame(snapshot: &TerminalFrame, selection: GridSelection) -> Option<String> {
     let (start, end) = selection.normalized()?;
     let mut lines = Vec::new();
     for row in start.row..=end.row {
@@ -466,17 +516,25 @@ fn selected_text_from_snapshot(
     (!text.is_empty()).then_some(text)
 }
 
-fn text_in_row(snapshot: &TerminalSnapshot, row: u16, start_col: u16, end_col: u16) -> String {
+fn text_in_row(frame: &TerminalFrame, row: u16, start_col: u16, end_col: u16) -> String {
     let mut text = String::new();
     let mut next_col = start_col;
-    for cell in snapshot.cells.iter().filter(|cell| {
-        cell.row == row && cell.col >= start_col && cell.col < end_col && !cell.text.is_empty()
-    }) {
-        if cell.col > next_col {
-            text.extend(std::iter::repeat_n(' ', usize::from(cell.col - next_col)));
+    let cols = usize::from(frame.cols);
+    let base = usize::from(row) * cols;
+    for col in start_col..end_col.min(frame.cols) {
+        let Some(cell) = frame.cells.get(base + usize::from(col)) else {
+            break;
+        };
+        // A continuation column carries no cluster of its own.
+        let cluster = frame.cell_text(cell);
+        if cluster.is_empty() {
+            continue;
         }
-        text.push_str(&cell.text);
-        next_col = cell.col.saturating_add(if cell.wide { 2 } else { 1 });
+        if col > next_col {
+            text.extend(std::iter::repeat_n(' ', usize::from(col - next_col)));
+        }
+        text.push_str(cluster);
+        next_col = col.saturating_add(u16::from(cell.columns.max(1)));
     }
     text.trim_end().to_string()
 }
@@ -543,7 +601,7 @@ pub fn desired_panel_grid_size(panel_id: &str) -> Option<(u16, u16)> {
     let grids = panel_grids();
     let state = grids.get(panel_id)?;
     let body = state.body?;
-    let (cell_width, line_height) = state.cell?;
+    let (cell_width, line_height) = super::terminal_gpu::cell_size()?;
     grid_size_from_geometry(GridGeometry {
         cell_width,
         line_height,
@@ -564,738 +622,32 @@ fn grid_size_from_geometry(geometry: GridGeometry) -> Option<(u16, u16)> {
     ))
 }
 
-/// Paints every pane of `panel_id`'s active tab into `body` (the dock body
-/// below the panel header row). Sibling panes are separated by a hairline
-/// divider and, when a tab has more than one pane, the unfocused panes are
-/// dimmed so the focused one reads as active (no border). Returns `false`
-/// when no pane has a snapshot yet so the caller can fall back to body-text
-/// rendering; pane geometry is recorded either way so the facade can size
-/// each PTY from the first paint on.
-pub(super) fn draw_panel_panes(hdc: HDC, panel_id: &str, body: RECT) -> bool {
-    panel_grids().entry(panel_id.to_string()).or_default().body = Some(body);
-
-    let frames = super::terminal_panel::active_pane_frames(panel_id, body);
-    if frames.is_empty() {
-        return false;
-    }
-    let multi = frames.len() > 1;
-
-    // Divider gaps show through as dark lines between panes.
-    if multi {
-        fill_rect(hdc, body, PANE_DIVIDER_COLOR);
-    }
-
-    let (drag_source, drop_indicator) = super::terminal_panel::pane_drag_visuals(panel_id, body);
-    let mut fonts = GridFonts::new(hdc);
-    let mut drew_any = false;
-    for frame in &frames {
-        // Each pane fills its own surface background so panes with distinct
-        // backgrounds (and the divider gaps) stay correct.
-        let surface =
-            session_surface_background(frame.session_id).unwrap_or(GRID_DEFAULT_BACKGROUND);
-        fill_rect(hdc, frame.rect, surface);
-
-        let grid_rect = inset_rect(frame.rect, GRID_PADDING, GRID_PADDING);
-        if rect_width(&grid_rect) > 0 && rect_height(&grid_rect) > 0 {
-            // SaveDC/RestoreDC bracket all font/clip/color changes; the
-            // fonts are deleted (on drop) only after the DC stopped
-            // referencing them.
-            let saved = unsafe { SaveDC(hdc) };
-            // Dim every pane except the focused one (only when split).
-            let dim = multi && !frame.focused;
-            drew_any |=
-                draw_pane_grid_clipped(hdc, panel_id, frame.session_id, grid_rect, dim, &mut fonts);
-            unsafe {
-                let _ = RestoreDC(hdc, saved);
-            }
-        }
-    }
-
-    if multi {
-        for frame in &frames {
-            let hit = super::terminal_panel::pane_drag_handle_rect(frame.rect);
-            let dot_size = 3;
-            let dot_gap = 4;
-            let dots_width = dot_size * 3 + dot_gap * 2;
-            let left = hit.left + (hit.right - hit.left - dots_width) / 2;
-            let top = hit.top + 3;
-            let color = if drag_source == Some(frame.session_id) {
-                PANE_DRAG_HANDLE_ACTIVE_COLOR
-            } else {
-                PANE_DRAG_HANDLE_COLOR
-            };
-            for index in 0..3 {
-                let dot_left = left + index * (dot_size + dot_gap);
-                fill_rect(
-                    hdc,
-                    RECT {
-                        left: dot_left,
-                        top,
-                        right: dot_left + dot_size,
-                        bottom: (top + dot_size).min(hit.bottom),
-                    },
-                    color,
-                );
-            }
-        }
-    }
-    if let Some(indicator) = drop_indicator {
-        draw_rect_outline(hdc, indicator, 3, PANE_DROP_TARGET_COLOR);
-    }
-    drew_any
-}
-
-fn draw_rect_outline(hdc: HDC, rect: RECT, thickness: i32, color: u32) {
-    let thickness = thickness
-        .max(1)
-        .min((rect.right - rect.left).max(1) / 2)
-        .min((rect.bottom - rect.top).max(1) / 2)
-        .max(1);
-    fill_rect(
-        hdc,
-        RECT {
-            bottom: rect.top + thickness,
-            ..rect
-        },
-        color,
-    );
-    fill_rect(
-        hdc,
-        RECT {
-            top: rect.bottom - thickness,
-            ..rect
-        },
-        color,
-    );
-    fill_rect(
-        hdc,
-        RECT {
-            right: rect.left + thickness,
-            ..rect
-        },
-        color,
-    );
-    fill_rect(
-        hdc,
-        RECT {
-            left: rect.right - thickness,
-            ..rect
-        },
-        color,
-    );
-}
-
-fn draw_pane_grid_clipped(
-    hdc: HDC,
-    panel_id: &str,
-    session_id: u64,
-    grid_rect: RECT,
-    dim: bool,
-    fonts: &mut GridFonts,
-) -> bool {
-    if !fonts.select(hdc, false, false, false) {
-        return false;
-    }
-    let mut text_metrics = TEXTMETRICW::default();
-    if unsafe { !GetTextMetricsW(hdc, &mut text_metrics).as_bool() } {
-        return false;
-    }
-    let cell_width = text_metrics.tmAveCharWidth.max(1);
-    let line_height = (text_metrics.tmHeight + text_metrics.tmExternalLeading).max(1);
-
-    panel_grids().entry(panel_id.to_string()).or_default().cell = Some((cell_width, line_height));
-
-    // Hold the session store lock while drawing this pane (the snapshot is
-    // not `Clone`); the lock is released between panes.
-    let mut grids = session_grids();
-    let state = grids.entry(session_id).or_default();
-    state.geometry = Some(GridGeometry {
-        cell_width,
-        line_height,
-        grid_width: rect_width(&grid_rect),
-        grid_height: rect_height(&grid_rect),
-    });
-    let Some(snapshot) = state.snapshot.as_ref() else {
-        return false;
-    };
-    let selection = state.selection;
-    let scrollbar_visible = state
-        .scrollbar_visible_until
-        .is_some_and(|deadline| Instant::now() < deadline);
-
-    let background = snapshot
-        .default_background
-        .as_deref()
-        .and_then(parse_hex_color)
-        .unwrap_or(GRID_DEFAULT_BACKGROUND);
-    let foreground = snapshot
-        .default_foreground
-        .as_deref()
-        .and_then(parse_hex_color)
-        .unwrap_or(GRID_DEFAULT_FOREGROUND);
-
-    unsafe {
-        let _ = IntersectClipRect(
-            hdc,
-            grid_rect.left,
-            grid_rect.top,
-            grid_rect.right,
-            grid_rect.bottom,
-        );
-        let _ = SetBkMode(hdc, TRANSPARENT);
-    }
-
-    // All cell backgrounds first: a later cell's background must not cover
-    // the right half of a wide glyph drawn by the previous cell.
-    for cell in &snapshot.cells {
-        if !cell.inverse && cell.bg.is_none() {
-            continue;
-        }
-        let (_, mut cell_background) = resolved_cell_colors(cell, background, foreground);
-        if dim {
-            cell_background = dim_unfocused(cell_background, background);
-        }
-        let left = grid_rect.left + i32::from(cell.col) * cell_width;
-        let top = grid_rect.top + i32::from(cell.row) * line_height;
-        if left >= grid_rect.right || top >= grid_rect.bottom {
-            continue;
-        }
-        let span = if cell.wide { 2 } else { 1 };
-        fill_rect(
-            hdc,
-            RECT {
-                left,
-                top,
-                right: left + span * cell_width,
-                bottom: top + line_height,
-            },
-            cell_background,
-        );
-    }
-
-    if let Some((start, end)) = selection.and_then(GridSelection::normalized) {
-        draw_selection_overlay(
-            hdc,
-            snapshot.cols,
-            start,
-            end,
-            grid_rect,
-            cell_width,
-            line_height,
-            background,
-        );
-    }
-
-    draw_cell_runs(
-        hdc,
-        snapshot,
-        grid_rect,
-        cell_width,
-        line_height,
-        background,
-        foreground,
-        dim,
-        fonts,
-    );
-
-    // Match macOS: only the focused pane paints the terminal cursor. Drawing
-    // hollow cursors in every split makes cursor-heavy TUIs appear to flicker
-    // at several positions at once.
-    if !dim && !snapshot.exited && snapshot.cursor_visible {
-        draw_cursor(
-            hdc,
-            snapshot,
-            grid_rect,
-            cell_width,
-            line_height,
-            background,
-            foreground,
-            fonts,
-        );
-    }
-    if scrollbar_visible {
-        draw_scrollbar(hdc, snapshot, grid_rect, background, foreground);
-    }
-    true
-}
-
-fn draw_scrollbar(
-    hdc: HDC,
-    snapshot: &TerminalSnapshot,
-    grid_rect: RECT,
-    background: u32,
-    foreground: u32,
-) {
-    let Some(scrollbar) = snapshot.scrollbar else {
-        return;
-    };
-    let track = RECT {
-        left: grid_rect.right - SCROLLBAR_MARGIN - SCROLLBAR_WIDTH,
-        top: grid_rect.top + SCROLLBAR_MARGIN,
-        right: grid_rect.right - SCROLLBAR_MARGIN,
-        bottom: grid_rect.bottom - SCROLLBAR_MARGIN,
-    };
-    let Some(thumb) = scrollbar_thumb_rect(track, scrollbar.total, scrollbar.offset, scrollbar.len)
-    else {
-        return;
-    };
-    fill_rect(hdc, thumb, blend_rgb(foreground, background, 38));
-}
-
-fn scrollbar_thumb_rect(track: RECT, total: u64, offset: u64, visible_len: u64) -> Option<RECT> {
-    let track_height = rect_height(&track);
-    if total == 0 || visible_len == 0 || total <= visible_len || track_height <= 0 {
-        return None;
-    }
-    let visible_len = visible_len.min(total);
-    let thumb_height = ((u128::from(track_height as u32) * u128::from(visible_len))
-        / u128::from(total))
-    .try_into()
-    .unwrap_or(track_height);
-    let thumb_height = thumb_height.clamp(
-        SCROLLBAR_MIN_THUMB.min(track_height),
-        SCROLLBAR_MAX_THUMB.min(track_height),
-    );
-    let available = track_height - thumb_height;
-    let max_offset = total - visible_len;
-    let offset = offset.min(max_offset);
-    let top_offset = if available == 0 {
-        0
-    } else {
-        ((u128::from(available as u32) * u128::from(offset) + u128::from(max_offset / 2))
-            / u128::from(max_offset))
-        .try_into()
-        .unwrap_or(available)
-    };
-    Some(RECT {
-        top: track.top + top_offset,
-        bottom: track.top + top_offset + thumb_height,
-        ..track
-    })
-}
-
-#[allow(clippy::too_many_arguments)]
-fn draw_selection_overlay(
-    hdc: HDC,
-    cols: u16,
-    start: GridPoint,
-    end: GridPoint,
-    grid_rect: RECT,
-    cell_width: i32,
-    line_height: i32,
-    background: u32,
-) {
-    let highlight = blend_rgb(SELECTION_ACCENT, background, SELECTION_ACCENT_PERCENT);
-    for row in start.row..=end.row {
-        let start_col = if row == start.row { start.col } else { 0 };
-        let end_col = if row == end.row { end.col } else { cols };
-        if end_col <= start_col {
-            continue;
-        }
-        fill_rect(
-            hdc,
-            RECT {
-                left: grid_rect.left + i32::from(start_col) * cell_width,
-                top: grid_rect.top + i32::from(row) * line_height,
-                right: grid_rect.left + i32::from(end_col) * cell_width,
-                bottom: grid_rect.top + i32::from(row + 1) * line_height,
-            },
-            highlight,
-        );
-    }
-}
-
-/// Per-run text style after color resolution (inverse swap + dim blend).
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct RunStyle {
-    color: u32,
-    bold: bool,
-    italic: bool,
-    underline: bool,
-}
-
-fn resolved_cell_colors(cell: &TerminalCell, background: u32, foreground: u32) -> (u32, u32) {
-    let normal_foreground = cell
-        .fg
-        .as_deref()
-        .and_then(parse_hex_color)
-        .unwrap_or(foreground);
-    let normal_background = cell
-        .bg
-        .as_deref()
-        .and_then(parse_hex_color)
-        .unwrap_or(background);
-    if cell.inverse {
-        (normal_background, normal_foreground)
-    } else {
-        (normal_foreground, normal_background)
-    }
-}
-
-fn cell_style(cell: &TerminalCell, background: u32, foreground: u32, dim: bool) -> RunStyle {
-    let (mut color, cell_background) = resolved_cell_colors(cell, background, foreground);
-    if cell.dim {
-        color = blend_rgb(color, cell_background, GRID_DIM_FOREGROUND_PERCENT);
-    }
-    // Unfocused split pane: fade the text toward the surface background.
-    if dim {
-        color = dim_unfocused(color, background);
-    }
-    RunStyle {
-        color,
-        bold: cell.bold,
-        italic: cell.italic,
-        underline: cell.underline,
-    }
-}
-
-/// One horizontal run of equally styled cells, flushed as a single
-/// `ExtTextOutW` call with per-cell advances so the grid stays column
-/// aligned regardless of actual glyph widths.
-struct GridRun {
-    text: Vec<u16>,
-    dx: Vec<i32>,
-    row: u16,
-    start_col: u16,
-    next_col: u16,
-    style: RunStyle,
-}
-
-#[allow(clippy::too_many_arguments)]
-fn draw_cell_runs(
-    hdc: HDC,
-    snapshot: &TerminalSnapshot,
-    grid_rect: RECT,
-    cell_width: i32,
-    line_height: i32,
-    background: u32,
-    foreground: u32,
-    dim: bool,
-    fonts: &mut GridFonts,
-) {
-    let mut run: Option<GridRun> = None;
-    // Snapshot cells arrive in row-major order.
-    for cell in &snapshot.cells {
-        if cell.text.is_empty() {
-            continue;
-        }
-        let style = cell_style(cell, background, foreground, dim);
-        let continues = run.as_ref().is_some_and(|run| {
-            run.row == cell.row && run.next_col == cell.col && run.style == style
-        });
-        if !continues {
-            flush_run(hdc, grid_rect, cell_width, line_height, fonts, &mut run);
-            run = Some(GridRun {
-                text: Vec::new(),
-                dx: Vec::new(),
-                row: cell.row,
-                start_col: cell.col,
-                next_col: cell.col,
-                style,
-            });
-        }
-        let Some(run) = run.as_mut() else {
-            continue;
-        };
-        let span: u16 = if cell.wide { 2 } else { 1 };
-        let advance = cell_width * i32::from(span);
-        for (index, unit) in cell.text.encode_utf16().enumerate() {
-            run.text.push(unit);
-            // lpDx is per UTF-16 unit; trailing units (surrogate halves,
-            // combining marks) advance 0 so they stack on the base cell.
-            run.dx.push(if index == 0 { advance } else { 0 });
-        }
-        run.next_col = cell.col.saturating_add(span);
-    }
-    flush_run(hdc, grid_rect, cell_width, line_height, fonts, &mut run);
-}
-
-fn flush_run(
-    hdc: HDC,
-    grid_rect: RECT,
-    cell_width: i32,
-    line_height: i32,
-    fonts: &mut GridFonts,
-    run: &mut Option<GridRun>,
-) {
-    let Some(run) = run.take() else {
-        return;
-    };
-    if run.text.is_empty()
-        || !fonts.select(hdc, run.style.bold, run.style.italic, run.style.underline)
-    {
-        return;
-    }
-    let x = grid_rect.left + i32::from(run.start_col) * cell_width;
-    let y = grid_rect.top + i32::from(run.row) * line_height;
-    unsafe {
-        let _ = SetTextColor(hdc, rgb_to_colorref(run.style.color));
-        let _ = ExtTextOutW(
-            hdc,
-            x,
-            y,
-            ETO_OPTIONS(0),
-            None,
-            PCWSTR(run.text.as_ptr()),
-            run.text.len() as u32,
-            Some(run.dx.as_ptr()),
-        );
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn draw_cursor(
-    hdc: HDC,
-    snapshot: &TerminalSnapshot,
-    grid_rect: RECT,
-    cell_width: i32,
-    line_height: i32,
-    background: u32,
-    foreground: u32,
-    fonts: &mut GridFonts,
-) {
-    let left = grid_rect.left + i32::from(snapshot.cursor_col) * cell_width;
-    let top = grid_rect.top + i32::from(snapshot.cursor_row) * line_height;
-    if left >= grid_rect.right || top >= grid_rect.bottom {
-        return;
-    }
-    let cell_rect = RECT {
-        left,
-        top,
-        right: left + cell_width,
-        bottom: top + line_height,
-    };
-    match snapshot.cursor_style {
-        "bar" => fill_rect(
-            hdc,
-            RECT {
-                right: left + 2,
-                ..cell_rect
-            },
-            foreground,
-        ),
-        "underline" => fill_rect(
-            hdc,
-            RECT {
-                top: cell_rect.bottom - 2,
-                ..cell_rect
-            },
-            foreground,
-        ),
-        "hollow" => {
-            for edge in [
-                RECT {
-                    bottom: top + 1,
-                    ..cell_rect
-                },
-                RECT {
-                    top: cell_rect.bottom - 1,
-                    ..cell_rect
-                },
-                RECT {
-                    right: left + 1,
-                    ..cell_rect
-                },
-                RECT {
-                    left: cell_rect.right - 1,
-                    ..cell_rect
-                },
-            ] {
-                fill_rect(hdc, edge, foreground);
-            }
-        }
-        // Block cursor: inverse video: a foreground-filled cell with the
-        // covered glyph redrawn in the background color.
-        _ => {
-            let covered = snapshot
-                .cells
-                .iter()
-                .find(|cell| cell.row == snapshot.cursor_row && cell.col == snapshot.cursor_col);
-            let (cursor_background, cursor_foreground) = covered
-                .map(|cell| resolved_cell_colors(cell, background, foreground))
-                .unwrap_or((foreground, background));
-            fill_rect(hdc, cell_rect, cursor_background);
-            if let Some(cell) = covered.filter(|cell| !cell.text.is_empty())
-                && fonts.select(hdc, cell.bold, cell.italic, cell.underline)
-            {
-                let text: Vec<u16> = cell.text.encode_utf16().collect();
-                unsafe {
-                    let _ = SetTextColor(hdc, rgb_to_colorref(cursor_foreground));
-                    let _ = ExtTextOutW(
-                        hdc,
-                        left,
-                        top,
-                        ETO_OPTIONS(0),
-                        None,
-                        PCWSTR(text.as_ptr()),
-                        text.len() as u32,
-                        None,
-                    );
-                }
-            }
-        }
-    }
-}
-
-/// Lazily created terminal font variants for one paint pass, keyed by
-/// (bold, italic, underline). Deleted on drop; the caller must restore the
-/// DC's original font selection (`RestoreDC`) before the cache drops.
-struct GridFonts {
-    height: i32,
-    fonts: [Option<HFONT>; 8],
-}
-
-impl GridFonts {
-    fn new(hdc: HDC) -> Self {
-        Self {
-            height: logical_font_height(hdc, GRID_FONT_POINT_SIZE),
-            fonts: [None; 8],
-        }
-    }
-
-    /// Selects the font variant into `hdc`, creating it on first use.
-    /// Returns `false` when font creation failed entirely.
-    fn select(&mut self, hdc: HDC, bold: bool, italic: bool, underline: bool) -> bool {
-        let index = usize::from(bold) | usize::from(italic) << 1 | usize::from(underline) << 2;
-        let height = self.height;
-        let font = *self.fonts[index]
-            .get_or_insert_with(|| create_terminal_font(hdc, height, bold, italic, underline));
-        if font.is_invalid() {
-            return false;
-        }
-        unsafe {
-            let _ = SelectObject(hdc, HGDIOBJ(font.0));
-        }
-        true
-    }
-}
-
-impl Drop for GridFonts {
-    fn drop(&mut self) {
-        for font in self.fonts.into_iter().flatten() {
-            if !font.is_invalid() {
-                unsafe {
-                    let _ = DeleteObject(HGDIOBJ(font.0));
-                }
-            }
-        }
-    }
-}
-
-/// Terminal mono font: prefer modern terminal faces, then Windows' built-ins.
-/// Faces are verified via `GetTextFaceW` (the GDI font mapper silently
-/// substitutes missing faces); when none resolves, the empty face name
-/// lets the mapper pick any fixed-pitch font via the pitch/family hint.
-fn create_terminal_font(hdc: HDC, height: i32, bold: bool, italic: bool, underline: bool) -> HFONT {
-    let weight = if bold { 700 } else { 400 };
-    for face in [
-        "Cascadia Mono",
-        "Cascadia Code",
-        "JetBrains Mono",
-        "Sarasa Mono SC",
-        "Consolas",
-        "Courier New",
-        "",
-    ] {
-        let face_wide: Vec<u16> = face.encode_utf16().chain(std::iter::once(0)).collect();
-        unsafe {
-            let font = CreateFontW(
-                -height,
-                0,
-                0,
-                0,
-                weight,
-                u32::from(italic),
-                u32::from(underline),
-                0,
-                DEFAULT_CHARSET,
-                OUT_DEFAULT_PRECIS,
-                CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY,
-                FIXED_PITCH.0 as u32 | FF_MODERN.0 as u32,
-                PCWSTR(face_wide.as_ptr()),
-            );
-            if font.is_invalid() {
-                continue;
-            }
-            if face.is_empty() {
-                return font;
-            }
-            let old_font = SelectObject(hdc, HGDIOBJ(font.0));
-            let mut resolved = [0u16; 64];
-            let copied = GetTextFaceW(hdc, Some(&mut resolved)).max(0) as usize;
-            if !old_font.is_invalid() {
-                let _ = SelectObject(hdc, old_font);
-            }
-            let resolved_len = resolved
-                .iter()
-                .position(|&unit| unit == 0)
-                .unwrap_or(copied.min(resolved.len()));
-            let resolved = String::from_utf16_lossy(&resolved[..resolved_len]);
-            if resolved.eq_ignore_ascii_case(face) {
-                return font;
-            }
-            let _ = DeleteObject(HGDIOBJ(font.0));
-        }
-    }
-    HFONT::default()
-}
-
-/// Parses the `#rrggbb` color tokens produced by `lingxia-terminal`.
-fn parse_hex_color(token: &str) -> Option<u32> {
-    let hex = token.strip_prefix('#')?;
-    if hex.len() != 6 {
-        return None;
-    }
-    u32::from_str_radix(hex, 16).ok()
-}
-
-/// Fades `color` toward `background` for an unfocused split pane.
-fn dim_unfocused(color: u32, background: u32) -> u32 {
-    blend_rgb(color, background, UNFOCUSED_KEEP_PERCENT)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lingxia_terminal::FrameCell;
 
-    fn cell(row: u16, col: u16, text: &str) -> TerminalCell {
-        TerminalCell {
-            row,
-            col,
-            text: text.to_string(),
-            fg: None,
-            bg: None,
-            bold: false,
-            dim: false,
-            italic: false,
-            underline: false,
-            inverse: false,
-            wide: false,
+    /// A frame is row-major and its clusters live in one blob, so a fixture
+    /// places text by index rather than carrying a coordinate per cell.
+    fn frame(cols: u16, rows: u16, placed: &[(u16, u16, &str)]) -> TerminalFrame {
+        let mut cells = vec![FrameCell::default(); usize::from(cols) * usize::from(rows)];
+        let mut text = String::new();
+        for (row, col, cluster) in placed {
+            let index = usize::from(*row) * usize::from(cols) + usize::from(*col);
+            cells[index] = FrameCell {
+                text_offset: text.len() as u32,
+                text_len: cluster.len() as u8,
+                columns: 1,
+                ..FrameCell::default()
+            };
+            text.push_str(cluster);
         }
-    }
-
-    fn snapshot(cells: Vec<TerminalCell>) -> TerminalSnapshot {
-        TerminalSnapshot {
-            cols: 8,
-            rows: 2,
-            lines: Vec::new(),
+        TerminalFrame {
+            cols,
+            rows,
             cells,
-            default_foreground: None,
-            default_background: None,
-            cursor_row: 0,
-            cursor_col: 0,
-            cursor_visible: false,
-            cursor_style: "block",
-            application_cursor: false,
-            bracketed_paste: false,
-            alternate_screen: false,
-            scrollbar: None,
-            process_title: None,
-            title: None,
-            generation: 0,
-            title_generation: 0,
-            exited: false,
+            text,
+            ..TerminalFrame::default()
         }
     }
 
@@ -1313,37 +665,25 @@ mod tests {
 
     #[test]
     fn extracts_selected_cells_with_spaces_and_lines() {
-        let snapshot = snapshot(vec![
-            cell(0, 1, "a"),
-            cell(0, 2, "b"),
-            cell(0, 5, "c"),
-            cell(1, 0, "d"),
-            cell(1, 1, "e"),
-        ]);
-        let text = selected_text_from_snapshot(
-            &snapshot,
+        let painted = frame(
+            8,
+            2,
+            &[
+                (0, 1, "a"),
+                (0, 2, "b"),
+                (0, 5, "c"),
+                (1, 0, "d"),
+                (1, 1, "e"),
+            ],
+        );
+        let text = selected_text_from_frame(
+            &painted,
             GridSelection {
                 anchor: GridPoint { row: 0, col: 1 },
                 focus: GridPoint { row: 1, col: 2 },
             },
         );
         assert_eq!(text.as_deref(), Some("ab  c\r\nde"));
-    }
-
-    #[test]
-    fn inverse_default_colors_are_swapped() {
-        let mut inverse = cell(0, 0, "x");
-        inverse.inverse = true;
-        inverse.fg = Some("#ddeeff".to_string());
-
-        assert_eq!(
-            resolved_cell_colors(&inverse, 0x112233, 0xaabbcc),
-            (0x112233, 0xddeeff)
-        );
-        assert_eq!(
-            cell_style(&inverse, 0x112233, 0xaabbcc, false).color,
-            0x112233
-        );
     }
 
     #[test]
@@ -1371,33 +711,36 @@ mod tests {
             })
         );
     }
+}
 
-    #[test]
-    fn scrollbar_thumb_stays_short_and_tracks_viewport_offset() {
-        let track = RECT {
-            left: 97,
-            top: 2,
-            right: 100,
-            bottom: 102,
-        };
-        assert_eq!(
-            scrollbar_thumb_rect(track, 100, 40, 20),
-            Some(RECT {
-                left: 97,
-                top: 42,
-                right: 100,
-                bottom: 62,
-            })
-        );
-        assert_eq!(
-            scrollbar_thumb_rect(track, 40, 10, 20),
-            Some(RECT {
-                left: 97,
-                top: 32,
-                right: 100,
-                bottom: 72,
-            })
-        );
-        assert_eq!(scrollbar_thumb_rect(track, 20, 0, 20), None);
+/// Record where a panel's body is being drawn, so the PTY can be sized to it
+/// before any pane has reported geometry.
+pub(super) fn set_panel_body(panel_id: &str, body: RECT) {
+    panel_grids().entry(panel_id.to_string()).or_default().body = Some(body);
+}
+
+/// Hand one pane's snapshot to the renderer, recording the geometry it is
+/// being drawn at so the facade can keep the PTY sized to the rect.
+pub(super) fn with_pane(
+    session_id: u64,
+    rect: RECT,
+    cell: (i32, i32),
+    draw: impl FnOnce(&TerminalFrame, PaneView, Option<(GridPoint, GridPoint)>),
+) {
+    let mut grids = session_grids();
+    let state = grids.entry(session_id).or_default();
+    state.geometry = Some(GridGeometry {
+        cell_width: cell.0.max(1),
+        line_height: cell.1.max(1),
+        grid_width: (rect.right - rect.left) - 2 * GRID_PADDING,
+        grid_height: (rect.bottom - rect.top) - 2 * GRID_PADDING,
+    });
+    let selection = state.selection.and_then(GridSelection::normalized);
+    let view = PaneView {
+        scrollbar: state.scrollbar,
+        exited: state.exited,
+    };
+    if let Some(frame) = state.frame.as_ref() {
+        draw(frame, view, selection);
     }
 }

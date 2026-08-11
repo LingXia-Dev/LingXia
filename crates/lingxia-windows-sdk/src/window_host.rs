@@ -585,8 +585,18 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
             if !should_sync_webview_layout_now(hwnd) {
                 return;
             }
-            sync_window_layout(hwnd);
-            invalidate_window_chrome(hwnd);
+            let owner_thread = unsafe { WindowsAndMessaging::GetWindowThreadProcessId(hwnd, None) };
+            if owner_thread != 0 && owner_thread != unsafe { GetCurrentThreadId() } {
+                // Layout registry updates can originate in a Logic bridge
+                // request while the WebView UI thread waits for that request's
+                // reply. Waiting for the UI thread here deadlocks both sides.
+                // Presentation paths perform their own synchronous layout pass;
+                // ordinary state updates only need to enqueue one.
+                request_host_layout_sync(hwnd);
+            } else {
+                sync_window_layout(hwnd);
+                invalidate_window_chrome(hwnd);
+            }
         }
     }
 
@@ -4655,13 +4665,22 @@ fn collapse_obscured_webview_panels(hwnd: HWND, laid_out: &HashSet<String>) {
         .and_then(|panels| panels.lock().ok())
         .map(|panels| panels.clone())
         .unwrap_or_default();
-    let Ok(panels) = panels.lock() else {
-        return;
+    let obscured = {
+        let Ok(panels) = panels.lock() else {
+            return;
+        };
+        panels
+            .iter()
+            .filter(|(panel_id, panel)| {
+                visible.contains(*panel_id) && !laid_out.contains(&panel.webtag_key)
+            })
+            .map(|(_, panel)| panel.webtag_key.clone())
+            .collect::<Vec<_>>()
     };
-    for (panel_id, panel) in panels.iter() {
-        if visible.contains(panel_id) && !laid_out.contains(&panel.webtag_key) {
-            sync_webtag_content_bounds_to_rect(hwnd, &panel.webtag_key, RECT::default());
-        }
+    // Bounds resolution reads the panel registry again through
+    // `surface_clip_style`; never call it while holding that registry lock.
+    for webtag_key in obscured {
+        sync_webtag_content_bounds_to_rect(hwnd, &webtag_key, RECT::default());
     }
 }
 
@@ -6661,9 +6680,12 @@ fn invoke_chrome_command(
         command.payload = serde_json::Value::Object(payload);
     }
     if let Some(handler) = webview_chrome_event_handler(webtag_key) {
-        let _ = std::thread::Builder::new()
-            .name(format!("lingxia-windows-chrome-{webtag_key}"))
-            .spawn(move || handler(command));
+        // Chrome state and HWND ownership meet here. Queue the whole command
+        // onto the parent window's existing message loop: a fresh thread per
+        // click both violates Win32 affinity and lets adjacent clicks race.
+        if !post_to_window_thread(hwnd_handle(hwnd), Box::new(move || handler(command))) {
+            log::warn!("failed to dispatch Windows chrome command for {webtag_key}");
+        }
     }
 }
 
@@ -7276,6 +7298,15 @@ fn report_shell_surface_width(hwnd: HWND) {
         .and_then(|slot| *slot)
         .is_some_and(|window| window == hwnd_handle(hwnd));
     if !primary || is_native_framed_window(hwnd) || active_webtag_key_for_window(hwnd).is_none() {
+        return;
+    }
+    // A window that is not on screen has not reached the size it will be shown
+    // at, and size classes carry hysteresis: one early narrow measurement locks
+    // Medium in, so the sidebar paints as an icon rail and visibly expands once
+    // a real resize clears the boundary. Leaving the graph unseeded until then
+    // costs nothing — the class falls back to Expanded, which is where a
+    // desktop window lands anyway.
+    if !is_window_visible(hwnd) {
         return;
     }
     crate::shell::update_surface_width(window_logical_client_width(hwnd));
@@ -8973,7 +9004,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
 
     unsafe {
         WindowsAndMessaging::RegisterClassW(&class);
-        let (width, height) = default_window_size();
+        let (width, height) = physical_default_window_size();
         let user_data = Box::new(webtag.key().to_string());
         let user_data_ptr = Box::into_raw(user_data);
         let style = if windows_chrome_renderer().is_some() {
@@ -9360,7 +9391,32 @@ fn consume_update_relaunch_marker() -> bool {
 /// Top-left origin that centers a `width`x`height` window on the primary
 /// monitor's work area. Used at window-creation time so the window is born
 /// centered instead of at the WS_POPUP default of (0, 0).
-fn primary_centered_origin(width: i32, height: i32) -> Option<(i32, i32)> {
+/// The default window size in physical pixels for the primary display.
+///
+/// The configured size is logical: a host asking for 1024x768 means the window
+/// a person sees at 100%, not a smaller one on every scaled display. Handing
+/// those numbers to `CreateWindowExW` unscaled makes a 150% display open at 683
+/// logical px wide — inside the Medium breakpoint, where the shell projects the
+/// sidebar as an icon rail — so the app looks like it launched collapsed.
+fn physical_default_window_size() -> (i32, i32) {
+    let (width, height) = default_window_size();
+    let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForSystem() };
+    if dpi == 0 || dpi == 96 {
+        return (width, height);
+    }
+    let scale = f64::from(dpi) / 96.0;
+    let scaled = |value: i32| ((f64::from(value) * scale).round() as i32).max(value);
+    let (mut width, mut height) = (scaled(width), scaled(height));
+    // Scaling can outgrow a small high-density display — 768 at 150% is taller
+    // than a 1080p screen's work area. Fit it rather than open off-screen.
+    if let Some(work) = primary_work_area() {
+        width = width.min((work.right - work.left).max(1));
+        height = height.min((work.bottom - work.top).max(1));
+    }
+    (width, height)
+}
+
+fn primary_work_area() -> Option<RECT> {
     let mut work = RECT::default();
     let ok = unsafe {
         WindowsAndMessaging::SystemParametersInfoW(
@@ -9371,9 +9427,11 @@ fn primary_centered_origin(width: i32, height: i32) -> Option<(i32, i32)> {
         )
         .is_ok()
     };
-    if !ok {
-        return None;
-    }
+    ok.then_some(work)
+}
+
+fn primary_centered_origin(width: i32, height: i32) -> Option<(i32, i32)> {
+    let work = primary_work_area()?;
     let x = work.left + (((work.right - work.left) - width) / 2).max(0);
     let y = work.top + (((work.bottom - work.top) - height) / 2).max(0);
     Some((x, y))

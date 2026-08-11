@@ -915,6 +915,15 @@ impl LxApp {
         self.release_type
     }
 
+    /// Whether this lxapp's code was supplied by the host build (or its local
+    /// development source), rather than installed or updated independently.
+    pub fn is_host_bundled(&self) -> bool {
+        matches!(
+            self.bundle_source,
+            LxAppBundleSource::BuiltinAssets | LxAppBundleSource::DevPath { .. }
+        )
+    }
+
     #[cfg(feature = "process")]
     pub(crate) fn process_access_enabled(&self) -> bool {
         if !self.is_home_lxapp || !lingxia_app_context::process_enabled() {

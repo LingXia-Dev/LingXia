@@ -5,25 +5,50 @@
 //! emulation.
 
 mod alacritty_vt;
+mod links;
+mod osc;
+mod paste;
 #[cfg(windows)]
 mod process_windows;
+mod restore;
+mod search;
+mod shell_integration;
+mod theme;
 
-use alacritty_vt::{
-    ATTR_BOLD, ATTR_DIM, ATTR_INVERSE, ATTR_ITALIC, ATTR_UNDERLINE, CursorVisualStyle,
-    PtyWriteCallback, ThemeColors, VtScreen,
+use alacritty_vt::{CursorVisualStyle, PtyWriteCallback, ThemeColors, VtScreen};
+// A renderer reads `FrameCell::attrs`, so the bits are part of the contract.
+pub use alacritty_vt::{
+    ATTR_BOLD, ATTR_DIM, ATTR_HIDDEN, ATTR_INVERSE, ATTR_ITALIC, ATTR_STRIKE, ATTR_UNDERLINE,
 };
+pub use alacritty_vt::{
+    CommandBlock, FrameCell, FrameUpdate as TerminalFrameUpdate,
+    LogicalLine as TerminalLogicalLine, RowDamage, TerminalActivity, TerminalEvent,
+    TerminalEventBatch, TerminalEventKind, TerminalFrame, TerminalProgress, TerminalProgressState,
+    TextView as TerminalTextView, UnderlineStyle as TerminalUnderlineStyle,
+};
+pub use links::{DetectedLink, LinkSource as TerminalLinkSource};
+pub use paste::{PasteRisk as TerminalPasteRisk, classify_paste, classify_paste_json};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
+pub use restore::{
+    DEFAULT_RESTORE_SCROLLBACK_LIMIT, TERMINAL_RESTORE_VERSION, TerminalRestoreError,
+    TerminalRestoreState,
+};
+pub use search::{
+    SearchMatch as TerminalSearchMatch, SearchMode as TerminalSearchMode,
+    SearchResults as TerminalSearchResults,
+};
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use std::ffi::CStr;
 use std::io::{Read, Write};
-use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, TrySendError};
 use std::sync::{Arc, Condvar, LazyLock, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
+pub use theme::{TerminalTheme, TerminalThemeError, parse_hex_rgb};
 
 #[cfg(windows)]
 use process_windows::process_cwd;
@@ -82,6 +107,38 @@ pub fn backend_status_json() -> String {
         .unwrap_or_else(|_| r#"{"backend":"alacritty","available":true}"#.to_string())
 }
 
+/// Options describing how a terminal session should be created.
+///
+/// Hosts resolve their own profiles into this spec; the crate never
+/// reads user configuration files. `None`/empty fields fall back to the
+/// engine defaults: the user's shell in the host process directory with
+/// the default scrollback limit.
+#[derive(Debug, Clone, Default)]
+pub struct TerminalSessionSpec {
+    /// Working directory for the spawned program. `None` inherits the
+    /// host process directory.
+    pub cwd: Option<PathBuf>,
+    /// Program to run. `None` resolves the user's shell.
+    pub program: Option<String>,
+    /// Arguments for `program`. `None` uses the engine defaults for the
+    /// resolved program (e.g. `-i` for POSIX shells); `Some(vec![])`
+    /// runs the program with no arguments.
+    pub args: Option<Vec<String>>,
+    /// Environment overlay applied on top of the engine defaults.
+    pub env: Vec<(String, String)>,
+    /// Scrollback line cap. `None` uses the engine default.
+    pub scrollback_limit: Option<usize>,
+    /// Enable shell integration: known interactive shells are spawned
+    /// so they emit OSC 133 command marks and OSC 7 cwd reports. Only
+    /// applies to the engine-default invocation (no explicit `args`);
+    /// user rc files are never modified.
+    pub shell_integration: bool,
+    /// Color scheme for this session. `None` uses the theme set by
+    /// [`terminal_set_default_theme`]. Themes are live-swappable
+    /// afterwards via [`terminal_set_theme`].
+    pub theme: Option<TerminalTheme>,
+}
+
 /// Create a cross-platform terminal engine session.
 ///
 /// The engine owns PTY/conpty transport plus alacritty terminal
@@ -97,9 +154,23 @@ pub fn terminal_create(cols: u16, rows: u16) -> u64 {
 /// `None` inherits the host process directory. Returns `0` if the PTY, shell,
 /// or session registry cannot be initialized, matching [`terminal_create`].
 pub fn terminal_create_at(cols: u16, rows: u16, cwd: Option<&Path>) -> u64 {
+    terminal_create_with_spec(
+        cols,
+        rows,
+        TerminalSessionSpec {
+            cwd: cwd.map(Path::to_path_buf),
+            ..TerminalSessionSpec::default()
+        },
+    )
+}
+
+/// Create a terminal session from a full [`TerminalSessionSpec`].
+///
+/// Returns `0` on failure, matching [`terminal_create`].
+pub fn terminal_create_with_spec(cols: u16, rows: u16, spec: TerminalSessionSpec) -> u64 {
     let cols = cols.max(1);
     let rows = rows.max(1);
-    let result = TerminalSession::spawn(cols, rows, cwd).and_then(|session| {
+    let result = TerminalSession::spawn(cols, rows, &spec).and_then(|session| {
         let mut sessions = SESSIONS
             .lock()
             .map_err(|_| "session registry lock poisoned".to_string())?;
@@ -165,6 +236,661 @@ pub fn terminal_snapshot_data(session_id: u64) -> Option<TerminalSnapshot> {
     let session = session(session_id)?;
     let mut session = session.lock().ok()?;
     Some(session.drain_snapshot())
+}
+
+/// Drain pending semantic events (cwd, title, bell, progress,
+/// notification, clipboard, command marks, exit) as JSON.
+///
+/// Events are monotonically sequenced per session; `dropped` reports
+/// queue overflows so hosts know when they fell behind.
+pub fn terminal_events_drain(id: u64) -> String {
+    terminal_events_drain_data(id)
+        .map(|batch| serde_json::to_string(&batch).unwrap_or_else(|_| "{}".to_string()))
+        .unwrap_or_else(|| "{}".to_string())
+}
+
+/// Structured variant of [`terminal_events_drain`]. `None` when the
+/// session does not exist.
+pub fn terminal_events_drain_data(id: u64) -> Option<TerminalEventBatch> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    Some(session.drain_events())
+}
+
+/// Recent command blocks (OSC 133 prompt/input/output extents with
+/// exit codes) as a JSON array, oldest first.
+pub fn terminal_command_blocks(id: u64) -> String {
+    terminal_command_blocks_data(id)
+        .map(|blocks| serde_json::to_string(&blocks).unwrap_or_else(|_| "[]".to_string()))
+        .unwrap_or_else(|| "[]".to_string())
+}
+
+/// Structured variant of [`terminal_command_blocks`].
+pub fn terminal_command_blocks_data(id: u64) -> Option<Vec<CommandBlock>> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    // Marks arrive with PTY output; flush pending bytes first.
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    Some(session.vt.command_blocks())
+}
+
+/// The renderer's frame for a session, diffed against the frame the
+/// caller last drew.
+///
+/// This is the path a GPU renderer should take instead of
+/// [`terminal_snapshot`]: cells are fixed-size records over one text
+/// blob (no per-cell allocation, no JSON), and `damage` names the rows
+/// that actually changed, so a quiet poll costs nothing and a busy one
+/// uploads only what moved. Pass `0` for the first frame; afterwards
+/// pass the `generation` of the frame you last drew.
+pub fn terminal_frame_data(id: u64, since_generation: u64) -> Option<TerminalFrameUpdate> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    Some(session.vt.frame(since_generation))
+}
+
+/// A session's retained frame, described by raw pointers for hosts that
+/// read it across an FFI boundary.
+///
+/// The buffers belong to the session and stay valid until the next
+/// [`terminal_frame_view`] call for the same session or until it closes,
+/// whichever comes first — copy what you keep before either happens.
+/// Titles are deliberately absent: computing them costs process lookups,
+/// which have no place on a render-rate poll (see
+/// [`terminal_title_state_json`]).
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct TerminalFrameView {
+    /// False when nothing changed since `since_generation`; every other
+    /// field is then stale and the renderer should keep its last frame.
+    pub changed: bool,
+    pub full_damage: bool,
+    pub generation: u64,
+    pub cols: u16,
+    pub rows: u16,
+    pub cells: *const FrameCell,
+    pub cells_len: usize,
+    /// UTF-8 cluster blob addressed by `FrameCell::text_offset/len`.
+    pub text: *const u8,
+    pub text_len: usize,
+    pub damage: *const RowDamage,
+    pub damage_len: usize,
+    pub default_fg: u32,
+    pub default_bg: u32,
+    pub cursor_col: u16,
+    pub cursor_row: u16,
+    pub cursor_visible: bool,
+    /// 0 block, 1 bar, 2 underline, 3 hollow block.
+    pub cursor_style: u8,
+    pub application_cursor: bool,
+    pub bracketed_paste: bool,
+    pub alternate_screen: bool,
+    pub scrollbar_total: u64,
+    pub scrollbar_offset: u64,
+    pub scrollbar_len: u64,
+    pub exited: bool,
+}
+
+impl TerminalFrameView {
+    fn unchanged(generation: u64, exited: bool) -> Self {
+        Self {
+            changed: false,
+            full_damage: false,
+            generation,
+            cols: 0,
+            rows: 0,
+            cells: std::ptr::null(),
+            cells_len: 0,
+            text: std::ptr::null(),
+            text_len: 0,
+            damage: std::ptr::null(),
+            damage_len: 0,
+            default_fg: 0,
+            default_bg: 0,
+            cursor_col: 0,
+            cursor_row: 0,
+            cursor_visible: false,
+            cursor_style: 0,
+            application_cursor: false,
+            bracketed_paste: false,
+            alternate_screen: false,
+            scrollbar_total: 0,
+            scrollbar_offset: 0,
+            scrollbar_len: 0,
+            // A shell that exits without writing leaves the grid
+            // untouched, so this has to be answered even when there is
+            // no new frame — otherwise the pane never tears down.
+            exited,
+        }
+    }
+}
+
+/// Produce the next frame and retain it, returning pointers into its
+/// buffers. This is [`terminal_frame_data`] for FFI hosts: nothing is
+/// copied, serialized, or allocated per cell.
+/// Scroll position and the child's exit state — the two things a renderer
+/// needs that a frame deliberately leaves out.
+///
+/// A frame describes the grid; neither of these is part of it, and both change
+/// on their own schedule. Kept out of [`terminal_frame_data`] so asking for a
+/// frame stays "what changed on screen".
+pub fn terminal_view_state(id: u64) -> Option<(Option<TerminalScrollbar>, bool)> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let exited = session.poll_child().is_some();
+    let scrollbar = session.vt.scrollbar().map(|bar| TerminalScrollbar {
+        total: bar.total,
+        offset: bar.offset,
+        len: bar.len,
+    });
+    Some((scrollbar, exited))
+}
+
+pub fn terminal_frame_view(id: u64, since_generation: u64) -> Option<TerminalFrameView> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    match session.vt.frame(since_generation) {
+        TerminalFrameUpdate::Unchanged { generation } => Some(TerminalFrameView::unchanged(
+            generation,
+            session.poll_child().is_some(),
+        )),
+        TerminalFrameUpdate::Changed(frame) => {
+            let scrollbar = session.vt.scrollbar().unwrap_or_default();
+            let view = TerminalFrameView {
+                changed: true,
+                full_damage: frame.full_damage,
+                generation: frame.generation,
+                cols: frame.cols,
+                rows: frame.rows,
+                cells: frame.cells.as_ptr(),
+                cells_len: frame.cells.len(),
+                text: frame.text.as_ptr(),
+                text_len: frame.text.len(),
+                damage: frame.damage.as_ptr(),
+                damage_len: frame.damage.len(),
+                default_fg: frame.default_fg,
+                default_bg: frame.default_bg,
+                cursor_col: frame.cursor.col,
+                cursor_row: frame.cursor.row,
+                cursor_visible: frame.cursor.visible,
+                cursor_style: match frame.cursor.style {
+                    CursorVisualStyle::Block => 0,
+                    CursorVisualStyle::Bar => 1,
+                    CursorVisualStyle::Underline => 2,
+                    CursorVisualStyle::BlockHollow => 3,
+                },
+                application_cursor: session.vt.is_decckm(),
+                bracketed_paste: session.vt.is_bracketed_paste(),
+                alternate_screen: session.vt.is_alternate_screen(),
+                scrollbar_total: scrollbar.total,
+                scrollbar_offset: scrollbar.offset,
+                scrollbar_len: scrollbar.len,
+                exited: session.poll_child().is_some(),
+            };
+            // Retain the buffers the pointers address; the previous
+            // frame is dropped here, which is what bounds their life.
+            session.last_frame = Some(frame);
+            Some(view)
+        }
+    }
+}
+
+/// Process/window title state, for hosts polling it at a lower rate than
+/// frames: resolving it walks the foreground process, so it must not sit on
+/// the render path.
+pub fn terminal_title_state_data(id: u64) -> Option<TerminalTitleView> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let foreground_pid = session.foreground_process_pid();
+    let alternate_screen = session.vt.is_alternate_screen();
+    Some(TerminalTitleView {
+        process_title: session.title_state.title(foreground_pid, alternate_screen),
+        title: session
+            .vt
+            .osc_title()
+            .map(|title| title.trim().to_string())
+            .filter(|title| !title.is_empty()),
+        generation: session.title_state.generation(),
+    })
+}
+
+/// What a tab shows for a session, and the generation that says whether it
+/// moved since the caller last looked.
+#[derive(Debug, Clone, Default)]
+pub struct TerminalTitleView {
+    pub process_title: String,
+    pub title: Option<String>,
+    pub generation: u64,
+}
+
+/// [`terminal_title_state_data`] as JSON, for hosts reached over FFI.
+pub fn terminal_title_state_json(id: u64) -> String {
+    let Some(session) = session(id) else {
+        return "{}".to_string();
+    };
+    let Ok(mut session) = session.lock() else {
+        return "{}".to_string();
+    };
+    let foreground_pid = session.foreground_process_pid();
+    let alternate_screen = session.vt.is_alternate_screen();
+    let process_title = session.title_state.title(foreground_pid, alternate_screen);
+    let state = TerminalTitleStateJson {
+        process_title,
+        title: session
+            .vt
+            .osc_title()
+            .map(|title| title.trim().to_string())
+            .filter(|title| !title.is_empty()),
+        title_generation: session.title_state.generation(),
+    };
+    serde_json::to_string(&state).unwrap_or_else(|_| "{}".to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TerminalTitleStateJson {
+    process_title: String,
+    title: Option<String>,
+    title_generation: u64,
+}
+
+/// Set the theme new sessions inherit when their spec carries none.
+///
+/// Existing sessions keep their theme; use [`terminal_set_theme_all`]
+/// to switch everything at once.
+pub fn terminal_set_default_theme(theme: &TerminalTheme) -> Result<(), TerminalThemeError> {
+    let colors = theme.to_colors()?;
+    if let Ok(mut default) = DEFAULT_THEME.lock() {
+        *default = colors;
+    }
+    Ok(())
+}
+
+/// Swap one session's theme in place.
+///
+/// Colors are resolved at snapshot time, so this is a repaint — the
+/// grid, scrollback and running program are untouched, which is what
+/// makes live theme preview free. The session's generation bumps so a
+/// polling host picks the new colors up on its next frame.
+pub fn terminal_set_theme(id: u64, theme: &TerminalTheme) -> Result<bool, TerminalThemeError> {
+    let colors = theme.to_colors()?;
+    let Some(session) = session(id) else {
+        return Ok(false);
+    };
+    let Ok(session) = session.lock() else {
+        return Ok(false);
+    };
+    session.vt.set_theme(colors);
+    Ok(true)
+}
+
+/// Swap the theme of every live session and of sessions created later.
+/// Returns how many live sessions were updated.
+pub fn terminal_set_theme_all(theme: &TerminalTheme) -> Result<usize, TerminalThemeError> {
+    let colors = theme.to_colors()?;
+    if let Ok(mut default) = DEFAULT_THEME.lock() {
+        *default = colors.clone();
+    }
+    // Copy the handles out before touching per-session locks; holding
+    // the registry lock while each session repaints would serialize
+    // them behind one another.
+    let sessions: Vec<Arc<Mutex<TerminalSession>>> = SESSIONS
+        .lock()
+        .map(|sessions| sessions.values().cloned().collect())
+        .unwrap_or_default();
+    let mut updated = 0;
+    for session in sessions {
+        if let Ok(session) = session.lock() {
+            session.vt.set_theme(colors.clone());
+            updated += 1;
+        }
+    }
+    Ok(updated)
+}
+
+/// [`terminal_set_theme`] from a scheme JSON document, for hosts that
+/// cross an FFI boundary. Returns `false` for an unparsable scheme,
+/// an invalid color, or an unknown session.
+pub fn terminal_set_theme_json(id: u64, scheme_json: &str) -> bool {
+    match TerminalTheme::from_json(scheme_json) {
+        Ok(theme) => terminal_set_theme(id, &theme).unwrap_or_else(|err| {
+            eprintln!("lingxia terminal theme rejected: {err}");
+            false
+        }),
+        Err(err) => {
+            eprintln!("lingxia terminal theme rejected: {err}");
+            false
+        }
+    }
+}
+
+/// [`terminal_set_theme_all`] from a scheme JSON document. Returns
+/// `false` for an unparsable scheme or an invalid color.
+pub fn terminal_set_theme_all_json(scheme_json: &str) -> bool {
+    let theme = match TerminalTheme::from_json(scheme_json) {
+        Ok(theme) => theme,
+        Err(err) => {
+            eprintln!("lingxia terminal theme rejected: {err}");
+            return false;
+        }
+    };
+    match terminal_set_theme_all(&theme) {
+        Ok(_) => true,
+        Err(err) => {
+            eprintln!("lingxia terminal theme rejected: {err}");
+            false
+        }
+    }
+}
+
+/// Logical lines, cursor position and visible range as JSON, for
+/// accessibility trees.
+///
+/// `start_line` is an absolute line (oldest scrollback line = 0);
+/// negative means "from the first visible line". At most `max_lines`
+/// logical lines are returned, so a screen reader never pulls the whole
+/// scrollback. Selection stays with the host — it owns the gesture and
+/// the mapping to screen geometry.
+pub fn terminal_text_view(id: u64, start_line: i64, max_lines: usize) -> String {
+    let start = (start_line >= 0).then_some(start_line);
+    terminal_text_view_data(id, start, max_lines)
+        .map(|view| serde_json::to_string(&view).unwrap_or_else(|_| "{}".to_string()))
+        .unwrap_or_else(|| "{}".to_string())
+}
+
+/// Structured variant of [`terminal_text_view`]. `start_line` of `None`
+/// starts at the first visible line.
+pub fn terminal_text_view_data(
+    id: u64,
+    start_line: Option<i64>,
+    max_lines: usize,
+) -> Option<TerminalTextView> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    Some(session.vt.text_view(start_line, max_lines.max(1)))
+}
+
+/// Progress, attention and lifecycle state of a session, in the form
+/// hosts render as tab badges.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalStatus {
+    #[serde(flatten)]
+    pub activity: TerminalActivity,
+    pub exited: bool,
+    /// The child's exit code, once it has exited.
+    pub exit_code: Option<i32>,
+}
+
+/// Session status (progress state, bell/notification counters, exit) as
+/// JSON.
+///
+/// This is the resync path for badges: the event stream carries the
+/// same information incrementally, but a host that missed events —
+/// dropped queue, re-attach — reads current truth here instead of
+/// guessing from output text.
+pub fn terminal_status(id: u64) -> String {
+    terminal_status_data(id)
+        .map(|status| serde_json::to_string(&status).unwrap_or_else(|_| "{}".to_string()))
+        .unwrap_or_else(|| "{}".to_string())
+}
+
+/// Structured variant of [`terminal_status`]. `None` when the session
+/// does not exist.
+pub fn terminal_status_data(id: u64) -> Option<TerminalStatus> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    // Progress marks arrive with PTY output; flush pending bytes first.
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    let activity = session.vt.activity();
+    let status = session.poll_child();
+    Some(TerminalStatus {
+        activity,
+        exited: status.is_some(),
+        exit_code: status.flatten(),
+    })
+}
+
+/// Search the complete logical scrollback as JSON.
+///
+/// `mode` is `"plain"` (case-insensitive), `"case"`, or `"regex"`.
+/// Match ranges are absolute (line, cell column) coordinates. The grid
+/// is copied under a short session lock and matching happens after it
+/// is released, so search never stalls PTY processing or other
+/// sessions.
+pub fn terminal_search(id: u64, pattern: &str, mode: &str, max_matches: usize) -> String {
+    let mode = match mode {
+        "case" => TerminalSearchMode::CaseSensitive,
+        "regex" => TerminalSearchMode::Regex,
+        _ => TerminalSearchMode::Plain,
+    };
+    terminal_search_data(id, pattern, mode, max_matches)
+        .map(|results| serde_json::to_string(&results).unwrap_or_else(|_| "{}".to_string()))
+        .unwrap_or_else(|| "{}".to_string())
+}
+
+/// Structured variant of [`terminal_search`].
+pub fn terminal_search_data(
+    id: u64,
+    pattern: &str,
+    mode: TerminalSearchMode,
+    max_matches: usize,
+) -> Option<TerminalSearchResults> {
+    let session = session(id)?;
+    let (rows, cancel) = {
+        let mut session = session.lock().ok()?;
+        let bytes = session.drain_bytes();
+        if !bytes.is_empty() {
+            session.vt.feed(&bytes);
+        }
+        session.search_cancel.store(false, Ordering::Relaxed);
+        (session.vt.grid_text(), Arc::clone(&session.search_cancel))
+    };
+    Some(search::search_rows(
+        &rows,
+        pattern,
+        mode,
+        max_matches.max(1),
+        &cancel,
+    ))
+}
+
+/// Cancel a running search on the session; the search returns promptly
+/// with `cancelled: true` and the matches gathered so far.
+pub fn terminal_search_cancel(id: u64) {
+    if let Some(session) = session(id)
+        && let Ok(session) = session.lock()
+    {
+        session.search_cancel.store(true, Ordering::Relaxed);
+    }
+}
+
+/// A clickable link on the live screen: explicit OSC 8 hyperlinks and
+/// heuristic URL/path detections with cwd-resolved targets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalLink {
+    /// Absolute line (oldest scrollback line = 0).
+    pub line: i64,
+    pub start_col: u16,
+    /// Exclusive end cell column.
+    pub end_col: u16,
+    /// URL verbatim or the cwd-resolved normalized path.
+    pub target: String,
+    pub source: TerminalLinkSource,
+    /// `:line[:column]` suffix parsed from a path target, when present.
+    pub target_line: Option<u32>,
+    pub target_column: Option<u32>,
+}
+
+/// Links visible on the session's live screen as JSON.
+pub fn terminal_links(id: u64) -> String {
+    terminal_links_data(id)
+        .map(|links| serde_json::to_string(&links).unwrap_or_else(|_| "[]".to_string()))
+        .unwrap_or_else(|| "[]".to_string())
+}
+
+/// Structured variant of [`terminal_links`].
+///
+/// Heuristic path targets resolve against the OSC 7-reported cwd,
+/// falling back to the foreground process directory. OSC 8 ranges are
+/// authoritative: heuristic matches overlapping them are dropped.
+pub fn terminal_links_data(id: u64) -> Option<Vec<TerminalLink>> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    let cwd = session
+        .vt
+        .cwd()
+        .or_else(|| session.foreground_process_pid().and_then(process_cwd))
+        .or_else(|| session.title_state.shell_pid.and_then(process_cwd));
+
+    let mut result: Vec<TerminalLink> = Vec::new();
+    for row in session.vt.screen_text() {
+        for detected in links::detect_links(&row.text, cwd.as_deref()) {
+            let start_col = row
+                .cells
+                .get(detected.start)
+                .map(|&(col, _)| col)
+                .unwrap_or(0);
+            let end_col = if detected.end > detected.start {
+                row.cells
+                    .get(detected.end - 1)
+                    .map(|&(col, width)| col.saturating_add(u16::from(width)))
+                    .unwrap_or(start_col)
+            } else {
+                start_col
+            };
+            result.push(TerminalLink {
+                line: row.line,
+                start_col,
+                end_col,
+                target: detected.target,
+                source: TerminalLinkSource::Heuristic,
+                target_line: detected.line,
+                target_column: detected.column,
+            });
+        }
+    }
+
+    let mut osc8_ranges: Vec<(i64, u16, u16)> = Vec::new();
+    for (line, start_col, end_col, uri) in session.vt.screen_hyperlinks() {
+        osc8_ranges.push((line, start_col, end_col));
+        result.push(TerminalLink {
+            line,
+            start_col,
+            end_col,
+            target: uri,
+            source: TerminalLinkSource::Osc8,
+            target_line: None,
+            target_column: None,
+        });
+    }
+    result.retain(|link| {
+        link.source == TerminalLinkSource::Osc8
+            || !osc8_ranges.iter().any(|&(line, start, end)| {
+                line == link.line && start < link.end_col && link.start_col < end
+            })
+    });
+    result.sort_by_key(|link| (link.line, link.start_col));
+    Some(result)
+}
+
+/// Export the session's restorable state: cwd, title, a host-supplied
+/// profile reference, and plain-text scrollback clipped to
+/// `max_scrollback_bytes` (`0` selects the default budget).
+pub fn terminal_export_restore_state(
+    id: u64,
+    profile_id: Option<&str>,
+    max_scrollback_bytes: usize,
+) -> Option<TerminalRestoreState> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    let budget = if max_scrollback_bytes == 0 {
+        DEFAULT_RESTORE_SCROLLBACK_LIMIT
+    } else {
+        max_scrollback_bytes
+    };
+    let (scrollback, truncated) = restore::clip_scrollback(
+        session
+            .vt
+            .grid_text()
+            .into_iter()
+            .map(|row| row.text)
+            .collect(),
+        budget,
+    );
+    let cwd = session
+        .vt
+        .cwd()
+        .or_else(|| session.foreground_process_pid().and_then(process_cwd))
+        .or_else(|| session.title_state.shell_pid.and_then(process_cwd));
+    let title = session.vt.snapshot().title;
+    Some(TerminalRestoreState {
+        version: TERMINAL_RESTORE_VERSION,
+        cwd,
+        title,
+        profile_id: profile_id.map(str::to_string),
+        scrollback,
+        truncated,
+    })
+}
+
+/// Create a session from a spec and replay a validated restore state
+/// into it. The shell starts fresh from a clean emulator state; the
+/// restored scrollback precedes its output, and a `Restored` event
+/// marks the content boundary. Unknown schema versions fail with
+/// [`TerminalRestoreError::UnknownVersion`] instead of being misread.
+pub fn terminal_create_with_restore(
+    cols: u16,
+    rows: u16,
+    spec: TerminalSessionSpec,
+    restore: &TerminalRestoreState,
+) -> Result<u64, TerminalRestoreError> {
+    restore.validate()?;
+    let id = terminal_create_with_spec(cols, rows, spec);
+    if id == 0 {
+        return Err(TerminalRestoreError::Invalid(
+            "session spawn failed".to_string(),
+        ));
+    }
+    if !restore.scrollback.is_empty()
+        && let Some(session) = session(id)
+        && let Ok(session) = session.lock()
+    {
+        let mut replay = restore.scrollback.join("\r\n");
+        replay.push_str("\r\n");
+        session.vt.feed(replay.as_bytes());
+        session.vt.push_event(TerminalEventKind::Restored {
+            lines: restore.scrollback.len(),
+        });
+    }
+    Ok(id)
 }
 
 pub fn terminal_exited(id: u64) -> bool {
@@ -273,6 +999,15 @@ struct TerminalSession {
     output: Receiver<Vec<u8>>,
     vt: VtScreen,
     title_state: TerminalTitleState,
+    exit_event_sent: bool,
+    /// Cached child status: `try_wait` reaps the child, so the outcome
+    /// is kept here for every later reader. `Some(None)` means exited
+    /// with no readable code.
+    child_status: Option<Option<i32>>,
+    /// Frame retained so a host can read its buffers by pointer until
+    /// its next frame call.
+    last_frame: Option<Box<TerminalFrame>>,
+    search_cancel: Arc<AtomicBool>,
     _reader: thread::JoinHandle<()>,
     _writer: thread::JoinHandle<()>,
 }
@@ -499,13 +1234,53 @@ pub struct TerminalCell {
     pub bold: bool,
     pub dim: bool,
     pub italic: bool,
+    /// True for every underline style; `underline_style` names which.
     pub underline: bool,
+    /// `none` | `single` | `double` | `curly` | `dotted` | `dashed`.
+    pub underline_style: &'static str,
+    /// SGR 58 underline color, when the cell sets one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub underline_color: Option<String>,
+    pub strike: bool,
     pub inverse: bool,
+    /// SGR 8: `text` is empty but the cell keeps its colors, and the
+    /// concealed run still occupies its columns.
+    pub hidden: bool,
+    /// Grid columns this cell's text occupies; 0 marks a continuation
+    /// column covered by an earlier wide char or joined cluster.
+    pub columns: u8,
     pub wide: bool,
+    /// OSC 8 hyperlink URI attached to the cell, when any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hyperlink: Option<String>,
+}
+
+impl Default for TerminalCell {
+    fn default() -> Self {
+        Self {
+            row: 0,
+            col: 0,
+            text: String::new(),
+            fg: None,
+            bg: None,
+            bold: false,
+            dim: false,
+            italic: false,
+            underline: false,
+            underline_style: TerminalUnderlineStyle::None.as_str(),
+            underline_color: None,
+            strike: false,
+            inverse: false,
+            hidden: false,
+            columns: 1,
+            wide: false,
+            hyperlink: None,
+        }
+    }
 }
 
 impl TerminalSession {
-    fn spawn(cols: u16, rows: u16, cwd: Option<&Path>) -> Result<Self, String> {
+    fn spawn(cols: u16, rows: u16, spec: &TerminalSessionSpec) -> Result<Self, String> {
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -516,13 +1291,42 @@ impl TerminalSession {
             })
             .map_err(|err| format!("open pty failed: {err}"))?;
 
-        let shell = resolved_shell();
+        let mut shell = spec
+            .program
+            .as_ref()
+            .filter(|program| !program.trim().is_empty())
+            .map(|program| TerminalShell {
+                path: program.clone(),
+                args: spec.args.clone().unwrap_or_default(),
+            })
+            .unwrap_or_else(|| {
+                let shell = resolved_shell();
+                TerminalShell {
+                    path: shell.path,
+                    args: spec.args.clone().unwrap_or(shell.args),
+                }
+            });
+        // Shell integration rewrites only the engine-default invocation;
+        // explicit args mean the caller drives the shell itself.
+        let integration_env = if spec.shell_integration && spec.args.is_none() {
+            match shell_integration::plan_for(&shell.path) {
+                Some(plan) => {
+                    if let Some(args) = plan.args {
+                        shell.args = args;
+                    }
+                    plan.env
+                }
+                None => Vec::new(),
+            }
+        } else {
+            Vec::new()
+        };
         let shell_title = process_name_from_path(&shell.path);
         let mut command = CommandBuilder::new(shell.path);
         for arg in shell.args {
             command.arg(arg);
         }
-        if let Some(cwd) = cwd {
+        if let Some(cwd) = spec.cwd.as_deref() {
             command.cwd(cwd);
         }
         command.env("TERM", "xterm-256color");
@@ -531,6 +1335,12 @@ impl TerminalSession {
         command.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
         if std::env::var_os("LANG").is_none() {
             command.env("LANG", "en_US.UTF-8");
+        }
+        for (key, value) in &integration_env {
+            command.env(key, value);
+        }
+        for (key, value) in &spec.env {
+            command.env(key, value);
         }
 
         let child = pair
@@ -557,8 +1367,17 @@ impl TerminalSession {
                 let _ = writer.enqueue(bytes);
             }
         });
-        let theme = terminal_theme();
-        let vt = VtScreen::new_with_write_pty(cols, rows, Some(&theme), Some(write_pty));
+        let theme = match spec.theme.as_ref() {
+            Some(theme) => theme.to_colors().map_err(|err| err.to_string())?,
+            None => default_theme(),
+        };
+        let vt = VtScreen::new_with_options(
+            cols,
+            rows,
+            Some(&theme),
+            Some(write_pty),
+            spec.scrollback_limit,
+        );
 
         // Bounded so a consumer that stops polling can't buffer PTY
         // output without limit. When the channel fills the reader
@@ -595,9 +1414,44 @@ impl TerminalSession {
             output: rx,
             vt,
             title_state,
+            exit_event_sent: false,
+            child_status: None,
+            last_frame: None,
+            search_cancel: Arc::new(AtomicBool::new(false)),
             _reader: reader_thread,
             _writer: writer_thread,
         })
+    }
+
+    /// Feed pending PTY output into the VT, surface the child exit once,
+    /// then drain the semantic event queue.
+    fn drain_events(&mut self) -> TerminalEventBatch {
+        let bytes = self.drain_bytes();
+        if !bytes.is_empty() {
+            self.vt.feed(&bytes);
+        }
+        if let Some(exit_code) = self.poll_child()
+            && !self.exit_event_sent
+        {
+            self.exit_event_sent = true;
+            self.vt.push_event(TerminalEventKind::Exited { exit_code });
+        }
+        self.vt.drain_events()
+    }
+
+    /// `Some(code)` once the child has exited, cached across calls.
+    /// A `try_wait` error counts as exited: the child is no longer
+    /// observable, and reporting a live session forever is worse than
+    /// reporting an unknown exit code.
+    fn poll_child(&mut self) -> Option<Option<i32>> {
+        if self.child_status.is_none() {
+            match self.child.try_wait() {
+                Ok(Some(status)) => self.child_status = Some(Some(status.exit_code() as i32)),
+                Ok(None) => {}
+                Err(_) => self.child_status = Some(None),
+            }
+        }
+        self.child_status
     }
 
     fn drain_text(&mut self) -> String {
@@ -620,10 +1474,7 @@ impl TerminalSession {
     }
 
     fn exited(&mut self) -> bool {
-        self.child
-            .try_wait()
-            .map(|status| status.is_some())
-            .unwrap_or(true)
+        self.poll_child().is_some()
     }
 
     fn resize(&mut self, cols: u16, rows: u16) -> Result<(), String> {
@@ -756,8 +1607,16 @@ impl TerminalSession {
                     dim: cell.attrs & ATTR_DIM != 0,
                     italic: cell.attrs & ATTR_ITALIC != 0,
                     underline: cell.attrs & ATTR_UNDERLINE != 0,
+                    underline_style: cell.underline.as_str(),
+                    underline_color: cell
+                        .underline_color
+                        .and_then(|color| color_from_rgba(color, true)),
+                    strike: cell.attrs & ATTR_STRIKE != 0,
                     inverse: cell.attrs & ATTR_INVERSE != 0,
+                    hidden: cell.attrs & ATTR_HIDDEN != 0,
+                    columns: cell.columns,
                     wide: cell.wide,
+                    hyperlink: cell.hyperlink.clone(),
                 });
             }
             if let Some(slot) = lines.get_mut(row as usize) {
@@ -1203,52 +2062,21 @@ fn color_from_rgba(value: u32, include_transparent: bool) -> Option<String> {
     ))
 }
 
-fn terminal_theme() -> ThemeColors {
-    let fg = env_rgb("LINGXIA_TERMINAL_FOREGROUND").unwrap_or([0xff, 0xff, 0xff]);
-    let bg = env_rgb("LINGXIA_TERMINAL_BACKGROUND").unwrap_or([0x28, 0x2c, 0x34]);
-    let mut ansi16 = [
-        [0x1d, 0x1f, 0x21],
-        [0xcc, 0x66, 0x66],
-        [0xb5, 0xbd, 0x68],
-        [0xf0, 0xc6, 0x74],
-        [0x81, 0xa2, 0xbe],
-        [0xb2, 0x94, 0xbb],
-        [0x8a, 0xbe, 0xb7],
-        [0xc5, 0xc8, 0xc6],
-        [0x66, 0x66, 0x66],
-        [0xd5, 0x4e, 0x53],
-        [0xb9, 0xca, 0x4a],
-        [0xe7, 0xc5, 0x47],
-        [0x7a, 0xa6, 0xda],
-        [0xc3, 0x97, 0xd8],
-        [0x70, 0xc0, 0xb1],
-        [0xea, 0xea, 0xea],
-    ];
-    for (index, color) in ansi16.iter_mut().enumerate() {
-        if let Some(value) = env_rgb(&format!("LINGXIA_TERMINAL_ANSI_{index}")) {
-            *color = value;
-        }
-    }
-    ThemeColors::from_ansi16(fg, bg, ansi16)
+/// Theme new sessions inherit when their spec carries none.
+static DEFAULT_THEME: LazyLock<Mutex<ThemeColors>> =
+    LazyLock::new(|| Mutex::new(default_theme_colors()));
+
+fn default_theme_colors() -> ThemeColors {
+    TerminalTheme::default()
+        .to_colors()
+        .expect("built-in theme is valid")
 }
 
-fn env_rgb(key: &str) -> Option<[u8; 3]> {
-    std::env::var(key)
-        .ok()
-        .and_then(|value| parse_hex_rgb(value.trim()))
-}
-
-fn parse_hex_rgb(value: &str) -> Option<[u8; 3]> {
-    let hex = value.strip_prefix('#').unwrap_or(value);
-    if hex.len() != 6 {
-        return None;
-    }
-    let rgb = u32::from_str_radix(hex, 16).ok()?;
-    Some([
-        ((rgb >> 16) & 0xff) as u8,
-        ((rgb >> 8) & 0xff) as u8,
-        (rgb & 0xff) as u8,
-    ])
+fn default_theme() -> ThemeColors {
+    DEFAULT_THEME
+        .lock()
+        .map(|theme| theme.clone())
+        .unwrap_or_else(|_| default_theme_colors())
 }
 
 #[cfg(test)]
@@ -1454,6 +2282,536 @@ mod tests {
             },
         ];
         assert_eq!(deepest_process_name(&members).as_deref(), Some("cli-tool"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn session_spec_runs_program_with_args_env_and_scrollback_limit() {
+        let id = terminal_create_with_spec(
+            80,
+            5,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "i=0; while [ $i -lt 40 ]; do echo line$i; i=$((i+1)); done; echo \"var=$LINGXIA_SPEC_TEST_VAR\"; sleep 30".to_string(),
+                ]),
+                env: vec![("LINGXIA_SPEC_TEST_VAR".to_string(), "spec-ok".to_string())],
+                scrollback_limit: Some(5),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut snapshot = terminal_snapshot_data(id);
+        while Instant::now() < deadline {
+            snapshot = terminal_snapshot_data(id);
+            if snapshot
+                .as_ref()
+                .is_some_and(|snapshot| snapshot.lines.iter().any(|line| line.contains("var=")))
+            {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let snapshot = snapshot.expect("snapshot for live session");
+        let text = snapshot.lines.join("\n");
+        assert!(text.contains("var=spec-ok"), "spec env visible: {text}");
+        let scrollbar = snapshot.scrollbar.expect("scrollbar present");
+        assert!(
+            scrollbar.total <= 5 + 5,
+            "scrollback capped at 5 lines + 5 rows: {scrollbar:?}"
+        );
+        terminal_close(id);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn shell_integration_marks_commands_in_bash() {
+        if !Path::new("/bin/bash").exists() {
+            return;
+        }
+        let id = terminal_create_with_spec(
+            80,
+            24,
+            TerminalSessionSpec {
+                program: Some("/bin/bash".to_string()),
+                shell_integration: true,
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        // Wait for the first prompt mark, then run a command.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut saw_prompt = false;
+        while Instant::now() < deadline && !saw_prompt {
+            let batch = terminal_events_drain_data(id).expect("live session");
+            saw_prompt = batch
+                .events
+                .iter()
+                .any(|event| matches!(event.kind, TerminalEventKind::PromptStart { .. }));
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        assert!(saw_prompt, "bash integration emits prompt marks");
+        // A subshell keeps the shell alive so the next prompt reports
+        // the command's exit code via OSC 133 D.
+        assert!(terminal_write(id, "( exit 3 )\n"));
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut exit_code = None;
+        while Instant::now() < deadline {
+            let batch = terminal_events_drain_data(id).expect("live session");
+            for event in batch.events {
+                if let TerminalEventKind::CommandFinished {
+                    exit_code: code, ..
+                } = event.kind
+                {
+                    exit_code = code;
+                }
+                if matches!(event.kind, TerminalEventKind::Exited { .. }) {
+                    break;
+                }
+            }
+            if exit_code.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        terminal_close(id);
+        assert_eq!(exit_code, Some(3), "command exit code from OSC 133 D");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn session_surfaces_cwd_and_exit_events() {
+        let id = terminal_create_with_spec(
+            80,
+            24,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "printf '\\033]7;file:///tmp\\a'; sleep 0.1; exit 7".to_string(),
+                ]),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut events = Vec::new();
+        while Instant::now() < deadline {
+            let batch = terminal_events_drain_data(id).expect("live session");
+            events.extend(batch.events.into_iter().map(|event| event.kind));
+            if events
+                .iter()
+                .any(|kind| matches!(kind, TerminalEventKind::Exited { .. }))
+            {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        terminal_close(id);
+
+        assert!(
+            events.iter().any(|kind| matches!(
+                kind,
+                TerminalEventKind::Cwd { path } if path == "/tmp"
+            )),
+            "cwd event surfaced: {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|kind| matches!(kind, TerminalEventKind::Exited { exit_code: Some(7) })),
+            "exit event surfaced: {events:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn frame_view_exposes_retained_buffers() {
+        let id = terminal_create_with_spec(
+            20,
+            4,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "printf 'frame-view'; sleep 30".to_string(),
+                ]),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        // Read the buffers exactly as a host would: through the pointers,
+        // before the next frame call invalidates them.
+        let read = |view: &TerminalFrameView| -> String {
+            let cells = unsafe { std::slice::from_raw_parts(view.cells, view.cells_len) };
+            let text = unsafe {
+                std::str::from_utf8_unchecked(std::slice::from_raw_parts(view.text, view.text_len))
+            };
+            cells[..view.cols as usize]
+                .iter()
+                .map(|cell| {
+                    let start = cell.text_offset as usize;
+                    &text[start..start + cell.text_len as usize]
+                })
+                .collect()
+        };
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut generation = 0;
+        let mut row = String::new();
+        while Instant::now() < deadline && !row.contains("frame-view") {
+            let view = terminal_frame_view(id, generation).expect("live session");
+            if view.changed {
+                generation = view.generation;
+                assert_eq!(view.cols, 20);
+                assert_eq!(view.cells_len, 20 * 4);
+                row = read(&view);
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        assert!(row.starts_with("frame-view"), "row from pointers: {row:?}");
+
+        // A quiet poll reports no change and hands out no buffers.
+        let quiet = terminal_frame_view(id, generation).expect("live session");
+        assert!(!quiet.changed);
+        assert!(quiet.cells.is_null());
+        assert_eq!(quiet.generation, generation);
+        assert!(
+            !quiet.exited,
+            "a quiet poll still answers the lifecycle question"
+        );
+
+        // Titles stay off the frame path but remain reachable.
+        let titles = terminal_title_state_json(id);
+        assert!(titles.contains("processTitle"), "titles: {titles}");
+
+        terminal_close(id);
+        assert!(terminal_frame_view(id, generation).is_none());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn theme_applies_at_spawn_and_swaps_live() {
+        let spawn_theme = TerminalTheme {
+            background: "#101112".to_string(),
+            red: "#ff0001".to_string(),
+            ..TerminalTheme::default()
+        };
+        let id = terminal_create_with_spec(
+            40,
+            4,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "printf '\\033[31mRED\\033[m'; sleep 30".to_string(),
+                ]),
+                theme: Some(spawn_theme),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let red_cell = |id: u64| -> Option<TerminalCell> {
+            let snapshot = terminal_snapshot_data(id)?;
+            snapshot.cells.into_iter().find(|cell| cell.text == "R")
+        };
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut cell = None;
+        while Instant::now() < deadline && cell.is_none() {
+            cell = red_cell(id);
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let cell = cell.expect("colored output rendered");
+        assert_eq!(cell.fg.as_deref(), Some("#ff0001"), "spec theme at spawn");
+        assert_eq!(
+            terminal_snapshot_data(id)
+                .unwrap()
+                .default_background
+                .as_deref(),
+            Some("#101112")
+        );
+
+        // Live swap: same session, same grid, new colors.
+        let updated = terminal_set_theme_all(&TerminalTheme {
+            background: "#202122".to_string(),
+            red: "#0000ff".to_string(),
+            ..TerminalTheme::default()
+        })
+        .expect("valid theme");
+        assert!(updated >= 1, "live sessions repainted");
+
+        let snapshot = terminal_snapshot_data(id).expect("live session");
+        let cell = snapshot
+            .cells
+            .iter()
+            .find(|cell| cell.text == "R")
+            .expect("text survives a theme swap");
+        assert_eq!(cell.fg.as_deref(), Some("#0000ff"));
+        assert_eq!(snapshot.default_background.as_deref(), Some("#202122"));
+
+        // An invalid color is rejected before anything is applied.
+        let bad = terminal_set_theme(
+            id,
+            &TerminalTheme {
+                red: "nope".to_string(),
+                ..TerminalTheme::default()
+            },
+        );
+        assert_eq!(bad.unwrap_err().field, "red");
+        assert_eq!(
+            terminal_snapshot_data(id)
+                .unwrap()
+                .cells
+                .iter()
+                .find(|cell| cell.text == "R")
+                .unwrap()
+                .fg
+                .as_deref(),
+            Some("#0000ff"),
+            "rejected theme left the session untouched"
+        );
+        terminal_close(id);
+        // The swap above moved the process-wide default; put it back so
+        // sessions spawned by other tests keep the built-in palette.
+        terminal_set_default_theme(&TerminalTheme::default()).expect("built-in theme");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn session_status_reports_progress_and_exit() {
+        let id = terminal_create_with_spec(
+            80,
+            24,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    // The status has to be observed while the command is
+                    // still running, and the poll below samples every 25ms.
+                    // A 100ms lifetime lets a loaded runner miss the window
+                    // entirely and see an exited session on its first read.
+                    "printf '\\033]9;4;1;70\\a\\a'; sleep 2; exit 5".to_string(),
+                ]),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut running = None;
+        while Instant::now() < deadline {
+            let status = terminal_status_data(id).expect("live session");
+            if status.activity.progress.state == TerminalProgressState::Running {
+                running = Some(status);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let running = running.expect("progress report reaches status");
+        assert_eq!(running.activity.progress.percent, Some(70));
+        assert_eq!(running.activity.bells, 1);
+        assert!(!running.exited);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut exited = None;
+        while Instant::now() < deadline {
+            let status = terminal_status_data(id).expect("live session");
+            if status.exited {
+                exited = Some(status);
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let exited = exited.expect("child exit reaches status");
+        assert_eq!(exited.exit_code, Some(5));
+        // The event stream still reports the exit after status observed
+        // it: reading status must not consume the child's status.
+        let events = terminal_events_drain_data(id).expect("live session");
+        assert!(
+            events.events.iter().any(|event| matches!(
+                event.kind,
+                TerminalEventKind::Exited { exit_code: Some(5) }
+            )),
+            "exit event survives a status read: {events:?}"
+        );
+        terminal_close(id);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn restore_state_exports_and_replays_into_a_fresh_shell() {
+        let id = terminal_create_with_spec(
+            60,
+            6,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "i=0; while [ $i -lt 20 ]; do echo \"restore-line-$i\"; i=$((i+1)); done; sleep 30".to_string(),
+                ]),
+                scrollback_limit: Some(100),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut state = None;
+        while Instant::now() < deadline {
+            let exported = terminal_export_restore_state(id, Some("profile-a"), 0);
+            if exported.as_ref().is_some_and(|state| {
+                state
+                    .scrollback
+                    .iter()
+                    .any(|line| line.contains("restore-line-19"))
+            }) {
+                state = exported;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let state = state.expect("export captured all lines");
+        terminal_close(id);
+        assert_eq!(state.version, TERMINAL_RESTORE_VERSION);
+        assert_eq!(state.profile_id.as_deref(), Some("profile-a"));
+        assert!(state.cwd.is_some());
+
+        // Replay into a fresh shell; restored content stays searchable.
+        let restored_id = terminal_create_with_restore(
+            60,
+            6,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec!["-c".to_string(), "sleep 30".to_string()]),
+                ..TerminalSessionSpec::default()
+            },
+            &state,
+        )
+        .expect("restore creates session");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut marks = (false, false);
+        while Instant::now() < deadline {
+            let batch = terminal_events_drain_data(restored_id).expect("live session");
+            for event in batch.events {
+                if let TerminalEventKind::Restored { lines } = event.kind {
+                    marks.0 = lines == state.scrollback.len();
+                }
+            }
+            let results = terminal_search_data(
+                restored_id,
+                "restore-line-19",
+                TerminalSearchMode::Plain,
+                10,
+            );
+            if results.as_ref().is_some_and(|r| r.total == 1) {
+                marks.1 = true;
+            }
+            if marks.0 && marks.1 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        terminal_close(restored_id);
+        assert!(marks.0, "Restored event with replayed line count");
+        assert!(marks.1, "restored scrollback searchable in fresh shell");
+
+        // Unknown versions are rejected, not misread.
+        let mut future = state.clone();
+        future.version = TERMINAL_RESTORE_VERSION + 1;
+        assert!(matches!(
+            terminal_create_with_restore(60, 6, TerminalSessionSpec::default(), &future),
+            Err(TerminalRestoreError::UnknownVersion(_))
+        ));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn session_links_detect_urls_and_resolve_paths() {
+        let cwd = std::env::temp_dir().canonicalize().unwrap();
+        let id = terminal_create_with_spec(
+            80,
+            24,
+            TerminalSessionSpec {
+                cwd: Some(cwd.clone()),
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "echo 'see https://example.com/docs'; echo 'edit src/main.rs:3'; sleep 30"
+                        .to_string(),
+                ]),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut found = Vec::new();
+        while Instant::now() < deadline {
+            found = terminal_links_data(id).unwrap_or_default();
+            if found.len() >= 2 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        terminal_close(id);
+
+        let url = found
+            .iter()
+            .find(|link| link.target == "https://example.com/docs");
+        assert!(url.is_some(), "url detected: {found:?}");
+        let path = found.iter().find(|link| link.target_line == Some(3));
+        let path = path.expect("path with line suffix detected");
+        let expected = cwd.join("src/main.rs");
+        assert_eq!(path.target, expected.to_string_lossy());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn session_search_finds_matches_across_scrollback() {
+        let id = terminal_create_with_spec(
+            40,
+            4,
+            TerminalSessionSpec {
+                program: Some("/bin/sh".to_string()),
+                args: Some(vec![
+                    "-c".to_string(),
+                    "i=0; while [ $i -lt 30 ]; do echo \"row $i needle here\"; i=$((i+1)); done; sleep 30".to_string(),
+                ]),
+                scrollback_limit: Some(100),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let mut results = None;
+        while Instant::now() < deadline {
+            let found = terminal_search_data(id, "needle", TerminalSearchMode::Plain, 100);
+            if found.as_ref().is_some_and(|r| r.total >= 30) {
+                results = found;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        let results = results.expect("all 30 rows searchable");
+        assert_eq!(results.total, 30);
+        // Matches span scrollback and screen: first rows scrolled out
+        // of the 4-row viewport but stay searchable.
+        let lines: Vec<i64> = results.matches.iter().map(|m| m.start_line).collect();
+        assert_eq!(lines.first(), Some(&0));
+        assert_eq!(lines.last(), Some(&29));
+        let regex = terminal_search_data(id, r"row 1\d", TerminalSearchMode::Regex, 100)
+            .expect("regex search");
+        assert_eq!(regex.total, 10, "rows 10-19: {regex:?}");
+        terminal_close(id);
     }
 
     #[test]

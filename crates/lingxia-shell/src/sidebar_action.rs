@@ -2,6 +2,20 @@ use crate::{ShellError, ShellResult};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+/// The header strip is shared with the window controls, so it holds a few
+/// actions rather than an open-ended list. Exceeding it rejects the whole
+/// declaration instead of truncating: silently dropping one entry would leave
+/// an app believing it published something the user cannot see.
+///
+/// The header is a borrowed corner of the window's caption row, shared with the
+/// traffic lights or app menu and the collapse toggle. Two icon-only buttons is
+/// what reads as a pair a person can learn; past that it becomes a row of
+/// unlabelled glyphs in the part of the window that belongs to the window.
+///
+/// Exceeding it rejects the whole declaration instead of truncating: silently
+/// dropping one would leave an app believing it published something the user
+/// cannot see. Anything that must always be reachable belongs in the footer,
+/// which is unbounded and scrolls.
 pub const MAX_HEADER_SIDEBAR_ACTIONS: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -248,21 +262,38 @@ mod tests {
     }
 
     #[test]
-    fn header_is_limited_to_two_items_without_truncation() {
+    fn the_header_limit_rejects_rather_than_truncates() {
         let mut state = SidebarActionCollection::default();
-        let mut one = action("one");
-        one.placement = SidebarActionPlacement::Header;
-        let mut two = action("two");
-        two.placement = SidebarActionPlacement::Header;
-        let mut three = action("three");
-        three.placement = SidebarActionPlacement::Header;
+        let over_limit: Vec<_> = (0..=MAX_HEADER_SIDEBAR_ACTIONS)
+            .map(|index| {
+                let mut item = action(&format!("header-{index}"));
+                item.placement = SidebarActionPlacement::Header;
+                item
+            })
+            .collect();
 
         assert_eq!(
-            state.replace(vec![one, two, three]),
+            state.replace(over_limit),
             Err(ShellError::SidebarActionHeaderLimit {
                 max: MAX_HEADER_SIDEBAR_ACTIONS
             })
         );
         assert_eq!(state.generation(), 0);
+    }
+
+    /// The limit itself must be usable — a declaration exactly at it commits.
+    #[test]
+    fn the_header_limit_is_inclusive() {
+        let mut state = SidebarActionCollection::default();
+        let at_limit: Vec<_> = (0..MAX_HEADER_SIDEBAR_ACTIONS)
+            .map(|index| {
+                let mut item = action(&format!("header-{index}"));
+                item.placement = SidebarActionPlacement::Header;
+                item
+            })
+            .collect();
+
+        assert!(state.replace(at_limit).is_ok());
+        assert_eq!(state.generation(), 1);
     }
 }

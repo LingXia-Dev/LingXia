@@ -4,16 +4,109 @@ import CLingXiaRustAPI
 import CoreText
 import OSLog
 
+/// Chrome colors for a terminal surface, from the scheme in effect.
+///
+/// The tab rail belongs to the terminal, not to the app — its `+` opens
+/// another PTY — so it is tinted from the scheme rather than fixed. The rule
+/// lives in the shared configuration layer, which the Windows host reads too;
+/// fixed colors here meant a theme change moved the grid and left a dark rail
+/// bolted to a light terminal.
+enum LingXiaTerminalChrome {
+    private struct Palette: Decodable {
+        var surface: String
+        var header: String
+        var separator: String
+        var text: String
+        var textMuted: String
+        var cursor: String
+        var selectionBackground: String
+        var selectionForeground: String
+    }
+
+    nonisolated(unsafe) private(set) static var surface = NSColor(
+        red: 0.157, green: 0.173, blue: 0.204, alpha: 1)
+    nonisolated(unsafe) private(set) static var header = NSColor(
+        red: 0.129, green: 0.145, blue: 0.169, alpha: 1)
+    nonisolated(unsafe) private(set) static var separator = NSColor(
+        red: 0.243, green: 0.267, blue: 0.318, alpha: 1)
+    nonisolated(unsafe) private(set) static var text = NSColor.white
+    nonisolated(unsafe) private(set) static var textMuted = NSColor.white.withAlphaComponent(0.66)
+    nonisolated(unsafe) private(set) static var cursor = NSColor.white
+    nonisolated(unsafe) private(set) static var selectionBackground = NSColor.white
+    nonisolated(unsafe) private(set) static var selectionForeground = NSColor.black
+
+    /// Posted when the scheme moved, so views holding a chrome color re-apply it.
+    static let didChangeNotification = Notification.Name("LingXiaTerminalChromeDidChange")
+
+    /// Re-read after the configuration generation moves. Cheap enough to call
+    /// on every change; the values only move at human speed.
+    static func reload() {
+        let json = terminalSurfaceChrome().toString()
+        guard let data = json.data(using: .utf8),
+            let palette = try? JSONDecoder().decode(Palette.self, from: data),
+            let surface = NSColor(lxHex: palette.surface),
+            let header = NSColor(lxHex: palette.header),
+            let separator = NSColor(lxHex: palette.separator),
+            let text = NSColor(lxHex: palette.text),
+            let textMuted = NSColor(lxHex: palette.textMuted),
+            let cursor = NSColor(lxHex: palette.cursor),
+            let selectionBackground = NSColor(lxHex: palette.selectionBackground),
+            let selectionForeground = NSColor(lxHex: palette.selectionForeground)
+        else { return }
+        guard surface != Self.surface
+            || header != Self.header
+            || text != Self.text
+            || cursor != Self.cursor
+            || selectionBackground != Self.selectionBackground
+            || selectionForeground != Self.selectionForeground
+        else { return }
+        Self.surface = surface
+        Self.header = header
+        Self.separator = separator
+        Self.text = text
+        Self.textMuted = textMuted
+        Self.cursor = cursor
+        Self.selectionBackground = selectionBackground
+        Self.selectionForeground = selectionForeground
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
+    }
+}
+
 extension NSColor {
-    static let lxTerminalBackground = NSColor(red: 0.157, green: 0.173, blue: 0.204, alpha: 1)
-    static let lxTerminalForeground = NSColor.white
-    static let lxTerminalChrome = NSColor(red: 0.129, green: 0.145, blue: 0.169, alpha: 1)
-    static let lxTerminalChromeRaised = NSColor(red: 0.173, green: 0.192, blue: 0.227, alpha: 1)
-    static let lxTerminalBorder = NSColor(red: 0.243, green: 0.267, blue: 0.318, alpha: 1)
+    /// `#rrggbb`, which is how the shared layer spells a color.
+    convenience init?(lxHex: String) {
+        let hex = lxHex.hasPrefix("#") ? String(lxHex.dropFirst()) : lxHex
+        guard hex.count == 6, let value = UInt32(hex, radix: 16) else { return nil }
+        self.init(
+            srgbRed: CGFloat((value >> 16) & 0xff) / 255,
+            green: CGFloat((value >> 8) & 0xff) / 255,
+            blue: CGFloat(value & 0xff) / 255,
+            alpha: 1)
+    }
+
+    static var lxTerminalBackground: NSColor { LingXiaTerminalChrome.surface }
+    static var lxTerminalForeground: NSColor { LingXiaTerminalChrome.text }
+    static var lxTerminalChrome: NSColor { LingXiaTerminalChrome.header }
+    /// One step off the rail, for a control that has to sit on it.
+    static var lxTerminalChromeRaised: NSColor {
+        LingXiaTerminalChrome.header.blended(
+            withFraction: 0.08, of: LingXiaTerminalChrome.text) ?? LingXiaTerminalChrome.header
+    }
+    static var lxTerminalBorder: NSColor { LingXiaTerminalChrome.separator }
+    static var lxTerminalCursor: NSColor { LingXiaTerminalChrome.cursor }
+    static var lxTerminalSelectionBackground: NSColor {
+        LingXiaTerminalChrome.selectionBackground
+    }
+    static var lxTerminalSelectionForeground: NSColor {
+        LingXiaTerminalChrome.selectionForeground
+    }
     static let lxTerminalAccent = NSColor(red: 0.773, green: 0.784, blue: 0.776, alpha: 1)
-    /// Split divider — deliberately lighter than the pane background so it reads
-    /// clearly between two dark terminal panes.
-    static let lxTerminalDivider = NSColor(red: 0.36, green: 0.39, blue: 0.44, alpha: 1)
+    /// Split divider — deliberately further from the pane background than the
+    /// rail's separator, so it reads clearly between two panes of the same color.
+    static var lxTerminalDivider: NSColor {
+        LingXiaTerminalChrome.surface.blended(
+            withFraction: 0.30, of: LingXiaTerminalChrome.text) ?? LingXiaTerminalChrome.separator
+    }
 }
 
 /// Container for a terminal pane split: a visible, draggable divider between the
@@ -48,6 +141,52 @@ final class LingXiaTerminalSplitView: NSSplitView {
 
     override func layout() {
         super.layout()
+        equalizeIfReady()
+    }
+
+    func equalizeAfterInsertion() {
+        didEqualize = false
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+        if !didEqualize {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.needsLayout = true
+                self.layoutSubtreeIfNeeded()
+            }
+        }
+    }
+
+    /// Replace one leaf without letting the remaining sibling consume the
+    /// removed leaf's entire extent. NSSplitView eagerly expands its sole
+    /// child between remove/insert, so the nested replacement otherwise lands
+    /// at zero width or height until another structural change occurs.
+    func replaceArrangedSubviewPreservingDivider(
+        _ target: NSView,
+        with replacement: NSView
+    ) -> Bool {
+        guard arrangedSubviews.count == 2,
+              let index = arrangedSubviews.firstIndex(of: target) else {
+            return false
+        }
+        let firstExtent = isVertical
+            ? arrangedSubviews[0].frame.width
+            : arrangedSubviews[0].frame.height
+
+        removeArrangedSubview(target)
+        target.removeFromSuperview()
+        replacement.translatesAutoresizingMaskIntoConstraints = true
+        insertArrangedSubview(replacement, at: index)
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+
+        let total = isVertical ? bounds.width : bounds.height
+        let position = min(max(firstExtent, 0), max(total - dividerThickness, 0))
+        setPosition(position, ofDividerAt: 0)
+        return true
+    }
+
+    private func equalizeIfReady() {
         guard !didEqualize,
               arrangedSubviews.count == 2,
               bounds.width > 1, bounds.height > 1 else { return }
@@ -75,8 +214,13 @@ enum LingXiaTerminalFont {
         "Monaco",
     ]
 
+    // JetBrains Mono first, for its programming ligatures and its wider
+    // coverage of the symbols shells actually print; Menlo, which ships with
+    // macOS, is the guaranteed fallback. Once the font is bundled with the
+    // SDK the default stops depending on what the machine happens to have.
     static func regular(size: CGFloat = defaultSize) -> NSFont {
-        withCascade(NSFont(name: "Menlo-Regular", size: size)
+        withCascade(NSFont(name: "JetBrainsMono-Regular", size: size)
+            ?? NSFont(name: "Menlo-Regular", size: size)
             ?? NSFont(name: "Menlo", size: size)
             ?? NSFont(name: "SFMono-Regular", size: size)
             ?? NSFont(name: "Monaco", size: size)
@@ -84,18 +228,21 @@ enum LingXiaTerminalFont {
     }
 
     static func bold(size: CGFloat = defaultSize) -> NSFont {
-        withCascade(NSFont(name: "Menlo-Bold", size: size)
+        withCascade(NSFont(name: "JetBrainsMono-Bold", size: size)
+            ?? NSFont(name: "Menlo-Bold", size: size)
             ?? NSFont(name: "SFMono-Semibold", size: size)
             ?? NSFont.monospacedSystemFont(ofSize: size, weight: .semibold))
     }
 
     static func italic(size: CGFloat = defaultSize) -> NSFont {
-        withCascade(NSFont(name: "Menlo-Italic", size: size)
+        withCascade(NSFont(name: "JetBrainsMono-Italic", size: size)
+            ?? NSFont(name: "Menlo-Italic", size: size)
             ?? NSFontManager.shared.convert(regular(size: size), toHaveTrait: .italicFontMask))
     }
 
     static func boldItalic(size: CGFloat = defaultSize) -> NSFont {
-        withCascade(NSFont(name: "Menlo-BoldItalic", size: size)
+        withCascade(NSFont(name: "JetBrainsMono-BoldItalic", size: size)
+            ?? NSFont(name: "Menlo-BoldItalic", size: size)
             ?? NSFontManager.shared.convert(bold(size: size), toHaveTrait: .italicFontMask))
     }
 
@@ -118,7 +265,8 @@ enum LingXiaTerminalFont {
         return withCascade(fallback)
     }
 
-    private static func withCascade(_ font: NSFont) -> NSFont {
+    /// Attach the symbol/emoji fallback chain to a face.
+    static func withCascade(_ font: NSFont) -> NSFont {
         let cascade = cascadeNames.compactMap { NSFontDescriptor(name: $0, size: font.pointSize) }
         guard !cascade.isEmpty else { return font }
         let descriptor = font.fontDescriptor.addingAttributes([
@@ -258,6 +406,17 @@ func lxTerminalLogAsync(_ message: String, type: OSLogType = .info) {
     }
 }
 
+private struct LingXiaTerminalAutomationCommand: Decodable {
+    struct Params: Decodable {
+        var direction: String?
+        var maximized: Bool?
+    }
+
+    let id: UInt64
+    let action: String
+    let params: Params
+}
+
 @MainActor
 final class LingXiaTerminalWorkspaceView: NSView {
     enum Presentation: Equatable {
@@ -318,6 +477,10 @@ final class LingXiaTerminalWorkspaceView: NSView {
     private var surfaceZoomed = false
     nonisolated(unsafe) private var mouseEventMonitor: Any?
     nonisolated(unsafe) private var keyEventMonitor: Any?
+    nonisolated(unsafe) private var chromeObserver: NSObjectProtocol?
+    private var visualTimer: Timer?
+    private var lastConfigGeneration = terminalConfigGeneration()
+    private var lastVisualGeneration = terminalVisualGeneration()
     private var inputArmed = false
 
     nonisolated override var isFlipped: Bool { true }
@@ -347,11 +510,15 @@ final class LingXiaTerminalWorkspaceView: NSView {
     }
 
     deinit {
+        terminalAutomationRemoveWorkspace(surfaceID)
         if let mouseEventMonitor {
             NSEvent.removeMonitor(mouseEventMonitor)
         }
         if let keyEventMonitor {
             NSEvent.removeMonitor(keyEventMonitor)
+        }
+        if let chromeObserver {
+            NotificationCenter.default.removeObserver(chromeObserver)
         }
     }
 
@@ -359,7 +526,48 @@ final class LingXiaTerminalWorkspaceView: NSView {
         super.viewDidMoveToWindow()
         lxTerminalLog("workspace.viewDidMoveToWindow surface=\(surfaceID) hasWindow=\(window != nil)")
         updateEventMonitors()
+        if window == nil {
+            visualTimer?.invalidate()
+            visualTimer = nil
+        } else {
+            startVisualUpdates()
+        }
         focusActiveTerminal()
+    }
+
+    private func startVisualUpdates() {
+        guard visualTimer == nil else { return }
+        let timer = Timer(
+            timeInterval: 0.05,
+            target: self,
+            selector: #selector(refreshVisualIfNeeded),
+            userInfo: nil,
+            repeats: true
+        )
+        RunLoop.main.add(timer, forMode: .common)
+        visualTimer = timer
+    }
+
+    @objc private func refreshVisualIfNeeded() {
+        processAutomationCommands()
+        let configGeneration = terminalConfigGeneration()
+        let visualGeneration = terminalVisualGeneration()
+        let configChanged = configGeneration != lastConfigGeneration
+        let visualChanged = visualGeneration != lastVisualGeneration
+        guard configChanged || visualChanged else { return }
+        lastConfigGeneration = configGeneration
+        lastVisualGeneration = visualGeneration
+        if visualChanged {
+            LingXiaTerminalChrome.reload()
+        }
+        publishAutomationSnapshot()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        guard window != nil else { return }
+        let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        terminalRefreshAppearance(dark)
     }
 
     override func layout() {
@@ -378,6 +586,7 @@ final class LingXiaTerminalWorkspaceView: NSView {
         lxTerminalLog(
             "workspace.layout surface=\(surfaceID) frame=\(String(format: "%.0f,%.0f %.0fx%.0f", frame.minX, frame.minY, frame.width, frame.height)) bounds=\(String(format: "%.0f,%.0f %.0fx%.0f", bounds.minX, bounds.minY, bounds.width, bounds.height)) toolbarFrame=\(String(format: "%.0f,%.0f %.0fx%.0f", toolbarStack.frame.minX, toolbarStack.frame.minY, toolbarStack.frame.width, toolbarStack.frame.height)) contentFrame=\(String(format: "%.0f,%.0f %.0fx%.0f", contentHost.frame.minX, contentHost.frame.minY, contentHost.frame.width, contentHost.frame.height))"
         )
+        publishAutomationSnapshot()
     }
 
     func focusActiveTerminal() {
@@ -390,7 +599,14 @@ final class LingXiaTerminalWorkspaceView: NSView {
         inputArmed = true
         lxTerminalLog("workspace.focusActiveTerminal surface=\(surfaceID) tab=\(tab.id.uuidString) pane=\(activePane.paneID.uuidString) window=\(window != nil)")
         activePane.focusTerminal()
-        DispatchQueue.main.async { [weak activePane] in
+        let tabID = tab.id
+        let paneID = activePane.paneID
+        DispatchQueue.main.async { [weak self, weak activePane] in
+            guard let self,
+                  let tab = self.tabs.first(where: { $0.id == tabID }),
+                  tab.activePaneID == paneID else {
+                return
+            }
             activePane?.focusTerminal()
         }
     }
@@ -482,6 +698,31 @@ final class LingXiaTerminalWorkspaceView: NSView {
 
         addSubview(contentHost)
         addSubview(toolbarStack, positioned: .above, relativeTo: contentHost)
+
+        chromeObserver = NotificationCenter.default.addObserver(
+            forName: LingXiaTerminalChrome.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyChromeColors() }
+        }
+    }
+
+    /// Re-apply every chrome color a layer is holding a copy of. Layer colors
+    /// are snapshots, so a scheme change has to walk them; anything drawn in
+    /// `draw(_:)` only needs the redraw below.
+    private func applyChromeColors() {
+        layer?.backgroundColor = NSColor.lxTerminalBackground.cgColor
+        toolbarStack.layer?.backgroundColor = NSColor.lxTerminalChrome.cgColor
+        contentHost.layer?.backgroundColor = NSColor.lxTerminalBackground.cgColor
+        tabRailView.refreshChromeColors()
+        for tab in tabs {
+            tab.rootContainer.layer?.backgroundColor = NSColor.lxTerminalBackground.cgColor
+            for pane in tab.panes.values {
+                pane.refreshChromeColors()
+            }
+        }
+        needsDisplay = true
     }
 
     private func updateEventMonitors() {
@@ -715,11 +956,12 @@ final class LingXiaTerminalWorkspaceView: NSView {
         }
     }
 
-    private func splitActivePane(direction: LingXiaTerminalSplitDirection) {
+    @discardableResult
+    private func splitActivePane(direction: LingXiaTerminalSplitDirection) -> Bool {
         guard let tab = activeTab(),
               let activePane = activePane(in: tab) else {
             lxTerminalLog("workspace.split no-active-pane surface=\(surfaceID) direction=\(direction)", type: .error)
-            return
+            return false
         }
         lxTerminalLog("workspace.split start surface=\(surfaceID) direction=\(direction) activePane=\(activePane.paneID.uuidString)")
 
@@ -737,7 +979,7 @@ final class LingXiaTerminalWorkspaceView: NSView {
         guard replaceNodeView(activePane, with: split, in: tab.rootContainer) else {
             LXLog.error("terminal split failed: cannot replace pane surface=\(surfaceID)", category: "MacTerminal")
             lxTerminalLog("workspace.split failed-replace surface=\(surfaceID) direction=\(direction)", type: .error)
-            return
+            return false
         }
 
         if direction == .left || direction == .up {
@@ -752,9 +994,172 @@ final class LingXiaTerminalWorkspaceView: NSView {
         tab.activePaneID = newPane.paneID
         tab.zoomedPaneID = nil
         applyZoomState(in: tab)
+        tab.rootContainer.needsLayout = true
+        tab.rootContainer.layoutSubtreeIfNeeded()
+        split.equalizeAfterInsertion()
         updatePaneHighlight(in: tab)
         newPane.focusTerminal()
         lxTerminalLog("workspace.split complete surface=\(surfaceID) direction=\(direction) newPane=\(newPane.paneID.uuidString) totalPanes=\(tab.panes.count)")
+        publishAutomationSnapshot()
+        return true
+    }
+
+    private func processAutomationCommands() {
+        for _ in 0..<8 {
+            let raw = terminalAutomationTakeCommand(surfaceID).toString()
+            guard !raw.isEmpty else { return }
+            guard let data = raw.data(using: .utf8),
+                  let command = try? JSONDecoder().decode(
+                    LingXiaTerminalAutomationCommand.self,
+                    from: data
+                  ) else {
+                continue
+            }
+
+            switch command.action {
+            case "split":
+                let direction: LingXiaTerminalSplitDirection?
+                switch command.params.direction {
+                case "left": direction = .left
+                case "right": direction = .right
+                case "up": direction = .up
+                case "down": direction = .down
+                default: direction = nil
+                }
+                guard let direction else {
+                    _ = terminalAutomationCompleteCommand(
+                        command.id,
+                        false,
+                        "split requires left, right, up, or down"
+                    )
+                    continue
+                }
+                guard splitActivePane(direction: direction) else {
+                    _ = terminalAutomationCompleteCommand(
+                        command.id,
+                        false,
+                        "terminal surface has no active pane"
+                    )
+                    continue
+                }
+                layoutSubtreeIfNeeded()
+                let snapshot = automationSnapshotJSON()
+                _ = terminalAutomationPublishSnapshot(surfaceID, snapshot)
+                _ = terminalAutomationCompleteCommand(command.id, true, snapshot)
+            case "setMaximized":
+                guard let maximized = command.params.maximized else {
+                    _ = terminalAutomationCompleteCommand(
+                        command.id,
+                        false,
+                        "setMaximized requires a boolean 'maximized'"
+                    )
+                    continue
+                }
+                setSurfaceZoomEnabled(maximized, notifyRuntime: true)
+                layoutSubtreeIfNeeded()
+                let zoomSnapshot = automationSnapshotJSON()
+                _ = terminalAutomationPublishSnapshot(surfaceID, zoomSnapshot)
+                _ = terminalAutomationCompleteCommand(command.id, true, zoomSnapshot)
+            case "newTab":
+                createTabAndActivate()
+                layoutSubtreeIfNeeded()
+                let snapshot = automationSnapshotJSON()
+                _ = terminalAutomationPublishSnapshot(surfaceID, snapshot)
+                _ = terminalAutomationCompleteCommand(command.id, true, snapshot)
+            default:
+                _ = terminalAutomationCompleteCommand(
+                    command.id,
+                    false,
+                    "unknown terminal automation action '\(command.action)'"
+                )
+            }
+        }
+    }
+
+    private func publishAutomationSnapshot() {
+        _ = terminalAutomationPublishSnapshot(surfaceID, automationSnapshotJSON())
+    }
+
+    private func automationSnapshotJSON() -> String {
+        let tabsSnapshot: [[String: Any]] = tabs.map { tab in
+            let active = tab.id == activeTabID
+            var value: [String: Any] = [
+                "id": tab.id.uuidString,
+                "active": active,
+                "paneCount": tab.panes.count,
+            ]
+            if let activePaneID = tab.activePaneID {
+                value["activePaneId"] = activePaneID.uuidString
+            }
+            if let root = tab.rootContainer.subviews.first,
+               let tree = automationPaneTree(root, tab: tab, tabActive: active) {
+                value["tree"] = tree
+            }
+            return value
+        }
+        var value: [String: Any] = [
+            "surfaceId": surfaceID,
+            "presentation": presentation == .main ? "main" : "aside",
+            "visible": window != nil && !isHidden,
+            // Expanded to the full content area. A layout sync used to reset
+            // this silently, so automation has to be able to assert it holds.
+            "maximized": surfaceZoomed,
+            "tabCount": tabs.count,
+            "paneCount": tabs.reduce(0) { $0 + $1.panes.count },
+            "configGeneration": terminalConfigGeneration(),
+            "visualGeneration": terminalVisualGeneration(),
+            "config": terminalAutomationJSONObject(terminalCurrentConfig().toString()),
+            "chrome": terminalAutomationJSONObject(terminalSurfaceChrome().toString()),
+            "tabs": tabsSnapshot,
+        ]
+        if let activeTabID {
+            value["activeTabId"] = activeTabID.uuidString
+        }
+        guard JSONSerialization.isValidJSONObject(value),
+              let data = try? JSONSerialization.data(
+                withJSONObject: value,
+                options: [.sortedKeys]
+              ) else {
+            return "{}"
+        }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    private func automationPaneTree(
+        _ view: NSView,
+        tab: TerminalTab,
+        tabActive: Bool
+    ) -> [String: Any]? {
+        if let pane = view as? LingXiaTerminalPaneView {
+            return [
+                "kind": "leaf",
+                "pane": pane.automationSnapshot(
+                    in: tab.rootContainer,
+                    active: tabActive && tab.activePaneID == pane.paneID
+                ),
+            ]
+        }
+        if let split = view as? LingXiaTerminalSplitView {
+            let children = split.arrangedSubviews.compactMap {
+                automationPaneTree($0, tab: tab, tabActive: tabActive)
+            }
+            return [
+                "kind": "split",
+                "axis": split.isVertical ? "horizontal" : "vertical",
+                "children": children,
+            ]
+        }
+        return view.subviews.first.flatMap {
+            automationPaneTree($0, tab: tab, tabActive: tabActive)
+        }
+    }
+
+    private func terminalAutomationJSONObject(_ json: String) -> Any {
+        guard let data = json.data(using: .utf8),
+              let value = try? JSONSerialization.jsonObject(with: data) else {
+            return [String: Any]()
+        }
+        return value
     }
 
     /// Reparents an existing pane beside another leaf in the same tab. The
@@ -800,8 +1205,10 @@ final class LingXiaTerminalWorkspaceView: NSView {
         tab.activePaneID = sourceID
         tab.zoomedPaneID = nil
         applyZoomState(in: tab)
-        updatePaneHighlight(in: tab)
+        tab.rootContainer.needsLayout = true
         tab.rootContainer.layoutSubtreeIfNeeded()
+        split.equalizeAfterInsertion()
+        updatePaneHighlight(in: tab)
         source.focusTerminal()
         lxTerminalLog(
             "workspace.movePane surface=\(surfaceID) tab=\(tabID.uuidString) source=\(sourceID.uuidString) target=\(targetID.uuidString) direction=\(direction)"
@@ -822,11 +1229,16 @@ final class LingXiaTerminalWorkspaceView: NSView {
     private func replaceNodeView(_ target: NSView, with replacement: NSView, in root: NSView) -> Bool {
         guard let parent = target.superview else { return false }
         if let split = parent as? NSSplitView {
-            guard let index = split.arrangedSubviews.firstIndex(of: target) else {
-                return false
+            if let terminalSplit = split as? LingXiaTerminalSplitView {
+                return terminalSplit.replaceArrangedSubviewPreservingDivider(
+                    target,
+                    with: replacement
+                )
             }
+            guard let index = split.arrangedSubviews.firstIndex(of: target) else { return false }
             split.removeArrangedSubview(target)
             target.removeFromSuperview()
+            replacement.translatesAutoresizingMaskIntoConstraints = true
             split.insertArrangedSubview(replacement, at: index)
             return true
         }
@@ -988,6 +1400,7 @@ final class LingXiaTerminalWorkspaceView: NSView {
            let index = parentSplit.arrangedSubviews.firstIndex(of: split) {
             parentSplit.removeArrangedSubview(split)
             split.removeFromSuperview()
+            survivor.translatesAutoresizingMaskIntoConstraints = true
             parentSplit.insertArrangedSubview(survivor, at: index)
             collapseSingleChildSplit(parentSplit, in: root)
             return

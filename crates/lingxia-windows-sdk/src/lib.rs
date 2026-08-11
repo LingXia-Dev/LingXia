@@ -63,6 +63,8 @@ mod native_components;
 mod pull_to_refresh;
 #[cfg(all(target_os = "windows", feature = "shell-chrome"))]
 mod shell;
+#[cfg(all(target_os = "windows", feature = "terminal-runtime"))]
+mod terminal_fonts;
 #[cfg(all(target_os = "windows", feature = "browser-shell"))]
 mod tray_icon;
 #[cfg(all(target_os = "windows", feature = "components"))]
@@ -105,7 +107,6 @@ pub use shell::{
     WindowsShellTabBarPosition, set_windows_default_shell_tabbar_position,
     set_windows_shell_tabbar_position, windows_shell_background_color, windows_system_dark_mode,
 };
-
 /// Host process description used to initialize the LingXia runtime.
 ///
 /// Construct it with [`WindowsApp::from_env`] before passing it to

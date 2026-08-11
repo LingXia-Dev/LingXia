@@ -394,6 +394,11 @@ class SidebarView: NSView, NSPopoverDelegate {
 
     private let headerView = NSView()
     private let headerActionStack = NSStackView()
+    /// Keeps the action buttons clear of the traffic lights. The clearance is
+    /// measured, not assumed: the buttons may be hidden or placed in the
+    /// toolbar, and reserving for them anyway leaves a visibly empty strip that
+    /// the header then refuses to use.
+    private var headerActionLeadingConstraint: NSLayoutConstraint?
     private var headerActionItems: [PanelIconItem] = []
     private var headerActionIdentities: [ObjectIdentifier: SidebarActionIdentity] = [:]
     private let scrollView = SidebarScrollView()
@@ -816,8 +821,7 @@ class SidebarView: NSView, NSPopoverDelegate {
             hideButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -8),
 
             headerActionStack.trailingAnchor.constraint(equalTo: hideButton.leadingAnchor, constant: -4),
-            headerActionStack.leadingAnchor.constraint(
-                greaterThanOrEqualTo: headerView.leadingAnchor, constant: 72),
+            headerActionLeadingClearance(),
 
             // Scroll view: inset trailing by resize handle width, extends above footer
             scrollView.topAnchor.constraint(equalTo: headerView.bottomAnchor),
@@ -1538,12 +1542,43 @@ class SidebarView: NSView, NSPopoverDelegate {
         updateHeaderActionVisibility()
     }
 
+    /// The constraint keeping the actions clear of the traffic lights, created
+    /// once and refreshed whenever the measured clearance changes.
+    private func headerActionLeadingClearance() -> NSLayoutConstraint {
+        let constraint = headerActionStack.leadingAnchor.constraint(
+            greaterThanOrEqualTo: headerView.leadingAnchor,
+            constant: measuredHeaderLeadingReserve()
+        )
+        headerActionLeadingConstraint = constraint
+        return constraint
+    }
+
+    /// How much of the header's leading edge the window buttons actually take.
+    private func measuredHeaderLeadingReserve() -> CGFloat {
+        trafficLightClearanceProvider?() ?? Layout.railWidth
+    }
+
+    /// Show the buttons the header can seat, hiding only the overflow.
+    ///
+    /// Measuring the whole set and hiding the stack means one action too many
+    /// removes the ones that did fit, which reads as the sidebar losing its
+    /// buttons rather than being one narrower than it wants. The leading
+    /// reserve is the traffic lights plus the collapse toggle.
     private func updateHeaderActionVisibility() {
         let hidden = isFullyHidden || appUIOnlyMode || isCompact || headerActionItems.isEmpty
-        let requiredWidth = CGFloat(headerActionItems.count) * Layout.actionButtonSize
-            + CGFloat(max(0, headerActionItems.count - 1)) * headerActionStack.spacing
-        let availableWidth = max(0, bounds.width - 72 - 8 - Layout.actionButtonSize - 4)
-        headerActionStack.isHidden = hidden || requiredWidth > availableWidth
+        headerActionStack.isHidden = hidden
+        guard !hidden else { return }
+        let reserve = measuredHeaderLeadingReserve()
+        headerActionLeadingConstraint?.constant = reserve
+        let availableWidth = max(0, bounds.width - reserve - 8 - Layout.actionButtonSize - 4)
+        let stride = Layout.actionButtonSize + headerActionStack.spacing
+        let fits = availableWidth < Layout.actionButtonSize
+            ? 0
+            : Int((availableWidth + headerActionStack.spacing) / stride)
+        for (index, button) in headerActionStack.arrangedSubviews.enumerated() {
+            button.isHidden = index >= fits
+        }
+        headerActionStack.isHidden = fits == 0
     }
 
     func updatePanelItems(_ items: [PanelIconItem]) {

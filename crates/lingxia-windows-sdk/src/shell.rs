@@ -9,6 +9,19 @@ pub mod clipboard;
 pub mod context_menu;
 mod runtime;
 mod style;
+
+/// The panel card's colors. The terminal owns them — its scheme decides what
+/// the card around it looks like — so both the real grid module and its stub
+/// hand back the same shape and the painter never reaches past them.
+#[derive(Clone, Copy)]
+pub(crate) struct PanelChrome {
+    pub surface: u32,
+    pub header: u32,
+    pub separator: u32,
+    pub text: u32,
+    pub text_muted: u32,
+}
+
 #[cfg(feature = "terminal-runtime")]
 pub mod terminal_grid;
 /// Terminal pane rendering lives behind `terminal-runtime` because it pulls
@@ -19,13 +32,19 @@ pub mod terminal_grid;
 #[cfg(not(feature = "terminal-runtime"))]
 pub mod terminal_grid {
     use windows::Win32::Foundation::RECT;
-    use windows::Win32::Graphics::Gdi::HDC;
 
     pub(super) fn session_surface_background(_session_id: u64) -> Option<u32> {
         None
     }
-    pub(super) fn panel_snapshot_text(_panel_id: &str) -> Option<String> {
-        None
+    /// Never drawn without a terminal, but the painter is compiled either way.
+    pub(crate) fn surface_chrome() -> super::PanelChrome {
+        super::PanelChrome {
+            surface: 0x1e1e1e,
+            header: 0x252526,
+            separator: 0x333333,
+            text: 0xcccccc,
+            text_muted: 0x8a8a8a,
+        }
     }
     pub(super) fn set_panel_tab_title_rects(
         _panel_id: &str,
@@ -33,9 +52,16 @@ pub mod terminal_grid {
         _titles: Vec<(u64, RECT)>,
     ) {
     }
-    pub(super) fn draw_panel_panes(_hdc: HDC, _panel_id: &str, _body: RECT) -> bool {
-        false
-    }
+}
+#[cfg(feature = "terminal-runtime")]
+mod terminal_gpu;
+/// Without the terminal runtime there is no grid to composite, so the panel
+/// painter's call compiles away to "GDI keeps it".
+#[cfg(not(feature = "terminal-runtime"))]
+mod terminal_gpu {
+    use windows::Win32::Foundation::{HWND, RECT};
+
+    pub(super) fn present(_: HWND, _: &str, _: RECT, _: [i32; 4]) {}
 }
 mod terminal_panel;
 pub mod text_input;

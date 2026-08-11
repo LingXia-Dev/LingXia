@@ -411,8 +411,8 @@ pub enum SurfaceTrayAction {
 /// - `lxapp`/`url` + `role: aside` -> surface `role: aside`,
 ///   `attachTo: <launch surface>`, edge defaulting to `right`.
 /// - `native: terminal` + `role: aside` -> the built-in terminal surface,
-///   edge defaulting to `bottom`. `capabilities.terminal` only enables the
-///   runtime; it does not add UI by itself.
+///   edge defaulting to `bottom`. `capabilities.terminal` does not invent a
+///   terminal surface.
 /// - `url` -> content `{ kind: url, url }` (requires the browser capability).
 /// - `native` -> content `{ kind: native, name }`.
 /// - `tray` -> a `menuBarItem` activator (closest existing kind).
@@ -1810,7 +1810,7 @@ impl LingXiaConfig {
                 return Err(anyhow!("app.homeAppId must not be empty when set"));
             }
             if let Some(home_app_id) = home_app_id
-                && is_sdk_reserved_app_id(home_app_id)
+                && is_home_forbidden_app_id(home_app_id)
             {
                 return Err(anyhow!(
                     "app.homeAppId '{home_app_id}' is an SDK-reserved appId. Pick a different id \
@@ -1872,12 +1872,11 @@ impl LingXiaConfig {
                 if app_id.is_empty() {
                     return Err(anyhow!("resources.bundles[].appId must not be empty"));
                 }
-                if is_sdk_reserved_app_id(app_id) {
+                if is_resource_forbidden_app_id(app_id) {
                     return Err(anyhow!(
                         "resources.bundles[{app_id}] uses an SDK-reserved appId. \
-                         To customize the in-app browser webui, use `browser.webui.path` \
-                         (or `browser.webui.package`) instead of declaring \
-                         `{app_id}` as a resource bundle."
+                         Customize it with `browser.webui.path` (or `browser.webui.package`) \
+                         instead of declaring `{app_id}` as a resource bundle."
                     ));
                 }
                 // Bundles land in the asset root as a directory named by
@@ -2005,20 +2004,22 @@ fn optional_non_empty_str(value: Option<&Value>) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-/// App IDs reserved for SDK-internal hosts that ship their own customization API.
-/// These must not appear in `resources.bundles` or `app.homeAppId`; the SDK provides
-/// dedicated config keys (e.g. `browser.webui.*` for the in-app browser webui).
+/// App IDs whose assets are owned by SDK-internal hosts rather than resource bundles.
 ///
 /// Source of truth for each entry (kept in sync manually to avoid pulling the
 /// full browser runtime into the CLI build):
 /// - `crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID` mirrors `lingxia_browser::BUILTIN_BROWSER_APPID`.
-const SDK_RESERVED_APP_IDS: &[&str] = &[
+const RESOURCE_FORBIDDEN_APP_IDS: &[&str] = &[
     crate::host_assets::BROWSER_SHELL_WEBUI_APP_ID,
     "app.lingxia.host-surface-owner",
 ];
 
-fn is_sdk_reserved_app_id(app_id: &str) -> bool {
-    SDK_RESERVED_APP_IDS.contains(&app_id)
+fn is_resource_forbidden_app_id(app_id: &str) -> bool {
+    RESOURCE_FORBIDDEN_APP_IDS.contains(&app_id)
+}
+
+fn is_home_forbidden_app_id(app_id: &str) -> bool {
+    RESOURCE_FORBIDDEN_APP_IDS.contains(&app_id)
 }
 
 fn validate_applink_host(host: &str) -> Result<()> {
@@ -2763,6 +2764,7 @@ android:
 
         assert!(config.desktop_runtime_enabled("macos"));
         assert!(config.terminal_enabled("windows"));
+        assert!(!config.control_enabled("macos"));
         assert!(!config.desktop_runtime_enabled("android"));
         assert_eq!(
             config.native_features_for_platform("macos"),

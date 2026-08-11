@@ -11,16 +11,16 @@ behind.
 |---|---|---|
 | `shared.test.ts` | All cross-platform API, Logic, Bridge, page, component, and render contracts | every platform and framework |
 | `windows.test.ts` | Shared suite plus physical desktop and Windows-only behavior | Windows |
-| `macos.test.ts` | Shared suite plus physical desktop and macOS-only behavior | macOS, local |
+| `macos.test.ts` | Shared suite plus physical desktop and macOS-only behavior | macOS |
 | `android.test.ts` | Shared suite; external Android system UI remains device-lab work | Android, local |
 
 React and Vue use the same platform entry. The framework is a build argument,
 not a separate test definition. `all.test.ts` remains a shared compatibility
 entry and deliberately excludes physical platform tests.
 
-CI runs `windows.test.ts` once for each framework. macOS and Android use their
-matching thin platform entries locally. Shared cases must never be copied into
-a platform entry.
+CI runs both frameworks on Windows and React on macOS. Android uses its matching
+thin platform entry locally. Shared cases must never be copied into a platform
+entry.
 
 ## What every public capability needs
 
@@ -95,8 +95,21 @@ From the repository root:
 The runner builds `lingxia` and `lxdev` from the current checkout, installs
 both executables into `~/.local/bin`, then starts and tests React and Vue in
 separate Windows dev sessions. Pass `-Framework react` or `-Framework vue` to
-run one renderer. Artifacts and session logs are retained under
+run one renderer. In `all` mode, Vue reuses the React native build with
+`--skip-native`. Artifacts and session logs are retained under
 `lxapp/test-results/automation/windows-<framework>`.
+
+## Running on macOS
+
+From the repository root:
+
+```bash
+bash scripts/automation/run-macos-showcase.sh all
+```
+
+Pass `react` or `vue` as the first argument to run one renderer. The `all`
+mode builds the native host for React, then reuses that host with
+`--skip-native` for Vue.
 
 ## Running on Android locally
 

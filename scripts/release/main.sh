@@ -17,7 +17,7 @@ Usage:
 Commands:
   doctor              Show key versions, release tag, and script locations
   crates              Release crates.io packages
-  npm                 Release npm packages (@lingxia/bridge/polyfills/elements/react/vue/html/types/skill and internal page-runtime)
+  npm                 Release npm packages (including the terminal settings app)
   cli                 Build/upload CLI GitHub Release assets
   runner              Build/upload Runner GitHub Release assets
   sdk                 Build/package SDK release artifacts
@@ -127,7 +127,7 @@ current_cli_target() {
 }
 
 doctor() {
-  local ws_v cli_v cli_asset cli_runner_tag sdk_tag bridge_v polyfills_v elements_v react_v vue_v html_v page_runtime_v types_v skill_v cli_target
+  local ws_v cli_v cli_asset cli_runner_tag sdk_tag bridge_v polyfills_v elements_v react_v vue_v html_v page_runtime_v terminal_settings_v types_v skill_v cli_target
   ws_v="$(workspace_version)"
   cli_v="$(cli_version)"
   if cli_target="$(current_cli_target 2>/dev/null)"; then
@@ -144,6 +144,7 @@ doctor() {
   vue_v="$(node -p "require('$ROOT_DIR/packages/lingxia-vue/package.json').version" 2>/dev/null || echo "N/A")"
   html_v="$(node -p "require('$ROOT_DIR/packages/lingxia-html/package.json').version" 2>/dev/null || echo "N/A")"
   page_runtime_v="$(node -p "require('$ROOT_DIR/packages/lingxia-page-runtime/package.json').version" 2>/dev/null || echo "N/A")"
+  terminal_settings_v="$(node -p "require('$ROOT_DIR/packages/lingxia-terminal-settings/package.json').version" 2>/dev/null || echo "N/A")"
   types_v="$(node -p "require('$ROOT_DIR/packages/lingxia-types/package.json').version" 2>/dev/null || echo "N/A")"
   skill_v="$(node -p "require('$ROOT_DIR/packages/lingxia-skill/package.json').version" 2>/dev/null || echo "N/A")"
 
@@ -162,6 +163,7 @@ NPM react version:      $react_v
 NPM vue version:        $vue_v
 NPM html version:       $html_v
 NPM page-runtime version: $page_runtime_v
+NPM terminal-settings version: $terminal_settings_v
 NPM types version:      $types_v
 NPM skill version:      $skill_v
 GitHub release repo:    $GH_REPO

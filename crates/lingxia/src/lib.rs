@@ -155,6 +155,9 @@ mod runtime;
 pub(crate) mod shell;
 /// Shared async task helpers backed by LingXia's global executor.
 pub mod task;
+#[cfg(feature = "terminal-runtime")]
+#[path = "terminal_config.rs"]
+mod terminal_config_impl;
 
 /// Runs a future on LingXia's runtime, from any phase of the process.
 ///
@@ -169,14 +172,27 @@ where
 {
     task::spawn_or_defer(future);
 }
+
 /// Terminal backend status and integration helpers.
 #[cfg(feature = "terminal-runtime")]
 pub mod terminal {
+    pub use crate::terminal_config_impl::{
+        app_data_dir, apply_theme, current_json as config_json, generation as config_generation,
+        installed_fonts, load as load_config, load_for_app, refresh_appearance_for_app,
+        set_installed_fonts, visual_generation,
+    };
     pub use lingxia_terminal::{
-        BackendStatus, TerminalBackend, TerminalCell, TerminalSnapshot, backend_available,
+        BackendStatus, FrameCell, RowDamage, TerminalBackend, TerminalCell, TerminalFrame,
+        TerminalFrameView, TerminalSessionSpec, TerminalSnapshot, TerminalTheme, backend_available,
         backend_status, backend_status_json, terminal_close, terminal_create, terminal_create_at,
-        terminal_current_directory, terminal_exited, terminal_read, terminal_resize,
-        terminal_scroll, terminal_snapshot, terminal_snapshot_data, terminal_write,
+        terminal_create_with_spec, terminal_current_directory, terminal_exited,
+        terminal_frame_view, terminal_read, terminal_resize, terminal_scroll, terminal_set_theme,
+        terminal_set_theme_all, terminal_snapshot, terminal_snapshot_data,
+        terminal_title_state_json, terminal_write,
+    };
+    pub use lingxia_terminal_config::{
+        FontConfig, InstalledFont, ResolvedFont, TerminalConfig, ThemeConfig, ThemeDetails,
+        ThemeMode, ThemeStore, resolve_font,
     };
 }
 /// Host app update helpers and update event types.

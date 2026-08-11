@@ -372,11 +372,17 @@ impl LxApp {
         Err(last_err)
     }
 
+    /// Text resources carry `charset=utf-8`.
+    ///
+    /// A custom scheme gives the engine no encoding to fall back on, so a
+    /// script or stylesheet served without one is decoded as Latin-1 and every
+    /// non-ASCII string in it renders as mojibake — the localized strings in an
+    /// lxapp's own JS being the obvious casualty.
     fn infer_mime_type(path: &str) -> &'static str {
         if path.ends_with(".js") {
-            "application/javascript"
+            "application/javascript; charset=utf-8"
         } else if path.ends_with(".css") {
-            "text/css"
+            "text/css; charset=utf-8"
         } else if path.ends_with(".png") {
             "image/png"
         } else if path.ends_with(".jpg") || path.ends_with(".jpeg") {
@@ -384,13 +390,13 @@ impl LxApp {
         } else if path.ends_with(".gif") {
             "image/gif"
         } else if path.ends_with(".svg") {
-            "image/svg+xml"
+            "image/svg+xml; charset=utf-8"
         } else if path.ends_with(".webp") {
             "image/webp"
         } else if path.ends_with(".ico") {
             "image/x-icon"
         } else if path.ends_with(".json") {
-            "application/json"
+            "application/json; charset=utf-8"
         } else if path.ends_with(".woff") {
             "font/woff"
         } else if path.ends_with(".woff2") {

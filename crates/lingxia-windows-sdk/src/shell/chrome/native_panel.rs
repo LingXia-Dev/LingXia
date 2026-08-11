@@ -140,15 +140,8 @@ pub(super) fn terminal_header_rects(
                     bottom: tab_rect.bottom,
                 })
             });
-            let title_inset = if rect_width(&tab_rect) >= TERMINAL_TAB_DOT_MIN_WIDTH {
-                // Clears the marker dot drawn at the leading edge; same
-                // 14/28 geometry as the macOS tab rail.
-                14 + TERMINAL_TAB_DOT_SIZE + 8
-            } else {
-                10
-            };
             let title = normalize_rect(RECT {
-                left: tab_rect.left + title_inset,
+                left: tab_rect.left + 14,
                 top: tab_rect.top,
                 right: close.map(|close| close.left).unwrap_or(tab_rect.right - 6),
                 bottom: tab_rect.bottom,
@@ -256,9 +249,13 @@ pub(super) fn draw_terminal_panel_content(
         return;
     }
     let _ = client;
+    // The strip is the terminal's own — its `+` opens another PTY — so it is
+    // tinted from the scheme in effect rather than fixed. One rule, shared
+    // with the Apple host, so a theme change moves the whole card.
+    let chrome = super::super::terminal_grid::surface_chrome();
     let surface = super::super::terminal_panel::focused_session(&panel.panel_id)
         .and_then(super::super::terminal_grid::session_surface_background)
-        .unwrap_or(TERMINAL_SURFACE_BACKGROUND);
+        .unwrap_or(chrome.surface);
 
     // Card: ONE rounded path, filled in two colors split at the header's
     // bottom edge. Each fill is clipped by a plain horizontal band (straight
@@ -277,7 +274,7 @@ pub(super) fn draw_terminal_panel_content(
         hdc,
         rect,
         SHELL_CONTENT_RADIUS,
-        TERMINAL_HEADER_BACKGROUND,
+        chrome.header,
         rect.top,
         header.bottom,
     );
@@ -305,7 +302,7 @@ pub(super) fn draw_terminal_panel_content(
             right: rect.right,
             bottom: header.bottom,
         },
-        blend_rgb(0xffffff, TERMINAL_HEADER_BACKGROUND, 6),
+        chrome.separator,
     );
 
     for tab in &header_rects.tabs {
@@ -328,7 +325,7 @@ pub(super) fn draw_terminal_panel_content(
                     right: tab.rect.right - TERMINAL_TAB_RADIUS - 2,
                     bottom: tab.rect.top + 2,
                 },
-                blend_rgb(0xffffff, surface, 8),
+                blend_rgb(chrome.text, surface, 8),
             );
         } else {
             // Hairline separator at the trailing edge of inactive tabs.
@@ -341,28 +338,8 @@ pub(super) fn draw_terminal_panel_content(
                     right: tab.rect.right + TERMINAL_TAB_GAP / 2 + 1,
                     bottom: tab.rect.bottom - inset,
                 },
-                blend_rgb(0xffffff, TERMINAL_HEADER_BACKGROUND, 8),
+                blend_rgb(chrome.text, chrome.header, 8),
             );
-        }
-        if rect_width(&tab.rect) >= TERMINAL_TAB_DOT_MIN_WIDTH {
-            let dot_top = tab.rect.top + (rect_height(&tab.rect) - TERMINAL_TAB_DOT_SIZE) / 2;
-            let dot = RECT {
-                left: tab.rect.left + 14,
-                top: dot_top,
-                right: tab.rect.left + 14 + TERMINAL_TAB_DOT_SIZE,
-                bottom: dot_top + TERMINAL_TAB_DOT_SIZE,
-            };
-            let dot_background = if tab.active {
-                surface
-            } else {
-                TERMINAL_HEADER_BACKGROUND
-            };
-            let color = if tab.active {
-                TERMINAL_TAB_ACCENT
-            } else {
-                blend_rgb(0xffffff, dot_background, 40)
-            };
-            fill_round_rect_aa(hdc, dot, TERMINAL_TAB_DOT_SIZE / 2, color);
         }
         let title = native
             .tabs
@@ -371,18 +348,18 @@ pub(super) fn draw_terminal_panel_content(
             .map(|item| item.title.as_str())
             .unwrap_or_default();
         let color = if tab.active {
-            TERMINAL_HEADER_TEXT
+            chrome.text
         } else {
-            TERMINAL_HEADER_TEXT_MUTED
+            chrome.text_muted
         };
         // Grayscale AA throughout the header: ClearType subpixel rendering
-        // fringes light text on this dark chrome.
+        // fringes text against a chrome color it knows nothing about.
         draw_text_antialiased(hdc, title, tab.title, color, DT_LEFT);
         if let Some(close) = tab.close {
             let close_color = if tab.active {
-                TERMINAL_HEADER_TEXT_MUTED
+                chrome.text_muted
             } else {
-                blend_rgb(TERMINAL_HEADER_TEXT_MUTED, TERMINAL_HEADER_BACKGROUND, 55)
+                blend_rgb(chrome.text_muted, chrome.header, 55)
             };
             draw_text_antialiased(hdc, GLYPH_TAB_CLOSE, close, close_color, DT_CENTER);
         }
@@ -403,12 +380,12 @@ pub(super) fn draw_terminal_panel_content(
             hdc,
             native.title.as_deref().unwrap_or(&fallback_title),
             title_rect,
-            TERMINAL_HEADER_TEXT,
+            chrome.text,
             DT_LEFT,
         );
     }
     if let Some(new_tab) = header_rects.new_tab {
-        draw_frame_button_glyph_grayscale(hdc, GLYPH_ADD, new_tab, TERMINAL_HEADER_TEXT_MUTED);
+        draw_frame_button_glyph_grayscale(hdc, GLYPH_ADD, new_tab, chrome.text_muted);
     }
     if let Some(maximize) = header_rects.maximize {
         let glyph = if native.maximized {
@@ -416,7 +393,7 @@ pub(super) fn draw_terminal_panel_content(
         } else {
             GLYPH_PANEL_EXPAND
         };
-        draw_frame_button_glyph_grayscale(hdc, glyph, maximize, TERMINAL_HEADER_TEXT_MUTED);
+        draw_frame_button_glyph_grayscale(hdc, glyph, maximize, chrome.text_muted);
     }
 
     // Record the painted tab-title rects so the facade can start an inline
@@ -442,80 +419,15 @@ pub(super) fn draw_terminal_panel_content(
         return;
     }
 
-    // Live sessions are drawn as a cell grid from the snapshot store; the
-    // body-text path below remains for pre-session states ("Starting
-    // terminal...", runtime-unavailable, failures).
-    if super::super::terminal_grid::draw_panel_panes(hdc, &panel.panel_id, body) {
-        return;
-    }
-
-    let text_rect = inset_rect(body, 12, 10);
-    // Line advance with leading: the glyph cell alone clips descenders
-    // when DrawText clamps to the per-line rect.
-    let line_height = (logical_font_height(hdc, 10).max(13) * 4 + 2) / 3;
-    let max_lines = (rect_height(&text_rect) / line_height).max(1) as usize;
-    let snapshot_body = super::super::terminal_grid::panel_snapshot_text(&panel.panel_id);
-    let body = snapshot_body
-        .as_deref()
-        .filter(|body| !body.trim().is_empty())
-        .or_else(|| {
-            native
-                .body
-                .as_deref()
-                .filter(|body| !body.trim().is_empty())
-        })
-        .unwrap_or("Terminal session is waiting for output");
-
-    unsafe {
-        let height = logical_font_height(hdc, 10);
-        let font = cached_font_with("Cascadia Mono", height, 400, CLEARTYPE_QUALITY, || {
-            CreateFontW(
-                -height,
-                0,
-                0,
-                0,
-                400,
-                0,
-                0,
-                0,
-                DEFAULT_CHARSET,
-                OUT_DEFAULT_PRECIS,
-                CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY,
-                DEFAULT_PITCH.0 as u32 | FF_SWISS.0 as u32,
-                w!("Cascadia Mono"),
-            )
-        });
-        let old_font = if font.is_invalid() {
-            HGDIOBJ::default()
-        } else {
-            SelectObject(hdc, HGDIOBJ(font.0))
-        };
-        let _ = SetBkMode(hdc, TRANSPARENT);
-        let _ = SetTextColor(hdc, rgb_to_colorref(SHELL_TERMINAL_TEXT));
-        for (line_index, line) in body.lines().take(max_lines).enumerate() {
-            let top = text_rect.top + (line_index as i32 * line_height);
-            let mut line_rect = RECT {
-                left: text_rect.left,
-                top,
-                right: text_rect.right,
-                bottom: (top + line_height).min(text_rect.bottom),
-            };
-            if rect_height(&line_rect) <= 0 {
-                break;
-            }
-            let mut wide: Vec<u16> = line.encode_utf16().collect();
-            let _ = DrawTextW(
-                hdc,
-                &mut wide,
-                &mut line_rect,
-                DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS,
-            );
-        }
-        if !old_font.is_invalid() {
-            let _ = SelectObject(hdc, old_font);
-        }
-    }
+    // The body is the renderer's: a composited surface covers whatever GDI
+    // drew underneath it, so the two cannot both paint it. Only the card's
+    // bottom corners are its to round — the header above keeps the top two.
+    super::super::terminal_gpu::present(
+        hwnd,
+        &panel.panel_id,
+        body,
+        [0, 0, SHELL_CONTENT_RADIUS, SHELL_CONTENT_RADIUS],
+    );
 }
 
 #[cfg(test)]

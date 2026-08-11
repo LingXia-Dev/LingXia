@@ -19,12 +19,12 @@ use serde_json::json;
 use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::Graphics::Gdi::{
     CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER,
-    DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, FF_SWISS,
-    GetTextFaceW, HDC, HFONT, HGDIOBJ, IntersectClipRect, OUT_DEFAULT_PRECIS, RestoreDC, SaveDC,
-    SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+    DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, FF_SWISS, GetTextFaceW, HDC,
+    HFONT, HGDIOBJ, IntersectClipRect, OUT_DEFAULT_PRECIS, RestoreDC, SaveDC, SelectObject,
+    SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::UI::WindowsAndMessaging;
-use windows::core::{PCWSTR, w};
+use windows::core::PCWSTR;
 
 use crate::WindowsDesignIcon;
 
@@ -385,7 +385,7 @@ fn chrome_mouse_wheel(
     if delta == 0 {
         return None;
     }
-    let covered_layout = covering_overlay_layout(state, layout);
+    let covered_layout = covering_panel_layout(state, layout);
     let layout = covered_layout.as_ref().unwrap_or(layout);
     let rects = chrome_rects_for_state(state, layout);
     let tabbar_rect = rects.tab_bar?;
@@ -450,7 +450,7 @@ fn chrome_hover_rect(
     layout: &WindowsShellWindowLayout,
     point: (i32, i32),
 ) -> Option<RECT> {
-    let covered_layout = covering_overlay_layout(state, layout);
+    let covered_layout = covering_panel_layout(state, layout);
     let layout = covered_layout.as_ref().unwrap_or(layout);
     let client = state.client;
     let rects = chrome_rects_for_state(state, layout);
@@ -1393,15 +1393,26 @@ fn layout_without_covered_main_chrome(
     layout
 }
 
-fn covering_overlay_layout(
+fn layout_for_maximized_native_panel(
+    layout: &WindowsShellWindowLayout,
+) -> WindowsShellWindowLayout {
+    let mut layout = layout_without_covered_main_chrome(layout);
+    layout.tab_bar = None;
+    layout
+}
+
+fn covering_panel_layout(
     state: &WindowsChromeState,
     layout: &WindowsShellWindowLayout,
 ) -> Option<WindowsShellWindowLayout> {
-    state
-        .attached
-        .as_ref()
-        .is_some_and(|attached| attached.panels.iter().any(|panel| panel.overlay))
-        .then(|| layout_without_covered_main_chrome(layout))
+    let attached = state.attached.as_ref()?;
+    if attached.panels.iter().any(panel_is_maximized) {
+        Some(layout_for_maximized_native_panel(layout))
+    } else if attached.panels.iter().any(|panel| panel.overlay) {
+        Some(layout_without_covered_main_chrome(layout))
+    } else {
+        None
+    }
 }
 
 fn compute_attached_layout(
@@ -1409,10 +1420,16 @@ fn compute_attached_layout(
     layout: &WindowsShellWindowLayout,
     panels: &[WindowsChromePanelLayoutInput],
 ) -> WindowsChromeAttachedLayout {
-    let covered_layout = panels
+    let covered_layout = if panels
         .iter()
-        .any(|panel| panel.overlay)
-        .then(|| layout_without_covered_main_chrome(layout));
+        .any(|panel| !panel.overlay && panel.docked && panel.maximized)
+    {
+        Some(layout_for_maximized_native_panel(layout))
+    } else if panels.iter().any(|panel| panel.overlay) {
+        Some(layout_without_covered_main_chrome(layout))
+    } else {
+        None
+    };
     let layout = covered_layout.as_ref().unwrap_or(layout);
     let workspace = compute_chrome_rects(client, layout).workspace;
     let mut main_region = workspace;
@@ -1666,7 +1683,7 @@ pub(super) fn draw_window_chrome(
     state: &WindowsChromeState,
     layout: &WindowsShellWindowLayout,
 ) {
-    let covered_layout = covering_overlay_layout(state, layout);
+    let covered_layout = covering_panel_layout(state, layout);
     let layout = covered_layout.as_ref().unwrap_or(layout);
     let client = state.client;
     let rects = chrome_rects_for_state(state, layout);
@@ -1784,7 +1801,7 @@ pub(super) fn chrome_hit_test(
     layout: &WindowsShellWindowLayout,
     point: (i32, i32),
 ) -> Option<WindowsChromeHit> {
-    let covered_layout = covering_overlay_layout(state, layout);
+    let covered_layout = covering_panel_layout(state, layout);
     let layout = covered_layout.as_ref().unwrap_or(layout);
     let client = state.client;
     let rects = chrome_rects_for_state(state, layout);
@@ -2439,13 +2456,15 @@ mod scroll_tests {
         WindowsShellNavigationBarLayout, WindowsShellTabBarItemLayout, WindowsShellTabBarLayout,
         WindowsShellTabBarPosition, WindowsShellWindowLayout, chrome_hit_test,
         chrome_rects_for_state, clamp_sidebar_scroll, collapsed_sidebar_tabbar_click_command,
-        compute_attached_layout, compute_chrome_rects, layout_without_covered_main_chrome,
+        compute_attached_layout, compute_chrome_rects, covering_panel_layout,
+        layout_for_maximized_native_panel, layout_without_covered_main_chrome,
         phone_browser_bar_active, phone_browser_bar_rects, rect_height, sidebar_auxiliary_rects,
         sidebar_caption_contains, sidebar_group_rect, sidebar_top_level_icon_rect,
         tabbar_requires_full_repaint, top_bar_controls,
     };
     use lingxia_windows_contract::{
-        WindowsChromeAttachedState, WindowsChromePanel, WindowsWindowLayout,
+        WindowsChromeAttachedState, WindowsChromePanel, WindowsHostPanelContent,
+        WindowsWindowLayout,
     };
     use windows::Win32::Foundation::{HWND, RECT};
 
@@ -2862,6 +2881,85 @@ mod scroll_tests {
                 .is_none()
         );
         assert!(chrome_rects_for_state(&state, &layout).tab_bar.is_none());
+    }
+
+    #[test]
+    fn maximized_native_panel_covers_lxapp_sidebar_and_navigation() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 1024,
+            bottom: 768,
+        };
+        let mut sidebar = bottom_tabbar(true, false);
+        sidebar.position = WindowsShellTabBarPosition::Left;
+        sidebar.dimension = 220;
+        let layout = WindowsShellWindowLayout {
+            navigation_bar: Some(WindowsShellNavigationBarLayout {
+                visible: true,
+                title: "Device".to_string(),
+                background_color: 0,
+                text_color: 0,
+                show_back_button: true,
+                show_home_button: true,
+                height: 38,
+            }),
+            tab_bar: Some(sidebar),
+            ..Default::default()
+        };
+        let normal_workspace = compute_chrome_rects(client, &layout).workspace;
+        let covered_layout = layout_for_maximized_native_panel(&layout);
+        let covered_workspace = compute_chrome_rects(client, &covered_layout).workspace;
+        let input = WindowsChromePanelLayoutInput {
+            panel_id: "terminal".to_string(),
+            webtag_key: "terminal:native".to_string(),
+            position: WindowsPanelPosition::Bottom,
+            requested_size: Some(240),
+            docked: true,
+            overlay: false,
+            maximized: true,
+        };
+        let attached = compute_attached_layout(client, &layout, &[input]);
+
+        assert!(covered_layout.navigation_bar.is_none());
+        assert!(covered_layout.tab_bar.is_none());
+        assert!(covered_workspace.left < normal_workspace.left);
+        assert_eq!(attached.panels[0].rect, covered_workspace);
+        assert_eq!(attached.main_region.top, attached.main_region.bottom);
+
+        let panel = &attached.panels[0];
+        let state = WindowsChromeState {
+            hwnd: HWND::default(),
+            client,
+            layout: WindowsWindowLayout::new(layout.clone()),
+            attached: Some(WindowsChromeAttachedState {
+                main_region: attached.main_region,
+                main: attached.main,
+                panels: vec![WindowsChromePanel {
+                    panel_id: panel.panel_id.clone(),
+                    webtag_key: panel.webtag_key.clone(),
+                    title: "Terminal".to_string(),
+                    rect: panel.rect,
+                    header_rect: panel.header_rect,
+                    resize_handle: panel.resize_handle,
+                    host_content: Some(WindowsHostPanelContent {
+                        title: None,
+                        body: None,
+                        tabs: Vec::new(),
+                        maximized: true,
+                        show_maximize: true,
+                    }),
+                    docked: true,
+                    overlay: false,
+                }],
+            }),
+            frame_button_hover: None,
+            frame_button_pressed: None,
+            cursor: None,
+        };
+        let painted_layout = covering_panel_layout(&state, &layout).unwrap();
+        assert!(painted_layout.navigation_bar.is_none());
+        assert!(painted_layout.tab_bar.is_none());
     }
 
     #[test]

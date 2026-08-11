@@ -82,6 +82,47 @@ enum PaneNode {
     },
 }
 
+/// Lock-free copy of a pane tree used while assembling an automation
+/// snapshot. Grid state has its own mutex, so carrying the live tree across
+/// that lookup would invert the renderer's lock order.
+#[cfg(feature = "terminal-runtime")]
+#[derive(Clone)]
+enum AutomationPaneNode {
+    Leaf(u64),
+    Split {
+        orient: PaneOrientation,
+        first: Box<AutomationPaneNode>,
+        second: Box<AutomationPaneNode>,
+    },
+}
+
+#[cfg(feature = "terminal-runtime")]
+impl From<&PaneNode> for AutomationPaneNode {
+    fn from(value: &PaneNode) -> Self {
+        match value {
+            PaneNode::Leaf(id) => Self::Leaf(*id),
+            PaneNode::Split {
+                orient,
+                first,
+                second,
+                ..
+            } => Self::Split {
+                orient: *orient,
+                first: Box::new(Self::from(first.as_ref())),
+                second: Box::new(Self::from(second.as_ref())),
+            },
+        }
+    }
+}
+
+#[cfg(feature = "terminal-runtime")]
+struct AutomationTabState {
+    id: u64,
+    focused: u64,
+    active: bool,
+    tree: AutomationPaneNode,
+}
+
 #[cfg(feature = "terminal-runtime")]
 impl PaneNode {
     /// Collects every leaf session id, left-to-right / top-to-bottom.
@@ -283,6 +324,12 @@ struct WindowsTerminalPanel {
     /// Index of the active tab in `tabs`.
     active: usize,
     maximized: bool,
+    /// The layout's last word on whether this panel fills the content area.
+    /// A re-present carrying the same value is incidental — a title change
+    /// syncing the shell — and must not overwrite the user's own toggle; a
+    /// different value is the layout moving the panel between roles, which
+    /// the user's toggle does not get to veto.
+    projected_maximized: Option<bool>,
     /// When set, keyboard input to the panel's panes is dropped (the menu's
     /// "Terminal Read-only" toggle), mirroring the macOS surface.
     read_only: bool,
@@ -465,13 +512,13 @@ pub(super) fn open_terminal_tab(panel_id: &str) {
     not(all(feature = "terminal-runtime", feature = "shell-chrome")),
     allow(dead_code)
 )]
-pub(super) fn split_focused_pane(panel_id: &str, dir: SplitDir) {
+pub(super) fn split_focused_pane(panel_id: &str, dir: SplitDir) -> bool {
     #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
     {
         let session_id = create_panel_session(panel_id, active_session_id(panel_id));
         if session_id == 0 {
             log::warn!("failed to create terminal session to split pane in {panel_id}");
-            return;
+            return false;
         }
         let split = {
             let mut panels = windows_terminal_panels();
@@ -480,7 +527,7 @@ pub(super) fn split_focused_pane(panel_id: &str, dir: SplitDir) {
                 .and_then(|panel| panel.active_tab_mut())
             else {
                 lingxia_terminal::terminal_close(session_id);
-                return;
+                return false;
             };
             let target = tab.focused;
             if tab.root.split(target, session_id, dir) {
@@ -496,9 +543,13 @@ pub(super) fn split_focused_pane(panel_id: &str, dir: SplitDir) {
         } else {
             lingxia_terminal::terminal_close(session_id);
         }
+        split
     }
     #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
-    let _ = (panel_id, dir);
+    {
+        let _ = (panel_id, dir);
+        false
+    }
 }
 
 /// Closes the active tab's focused pane; its sibling takes the space. When
@@ -624,9 +675,7 @@ pub(crate) fn scroll_pane_at(
         }
         super::terminal_grid::reveal_scrollbar(session_id);
         super::terminal_grid::clear_selection(session_id);
-        if let Some(snapshot) = lingxia_terminal::terminal_snapshot_data(session_id) {
-            store_session_snapshot(panel_id, session_id, snapshot);
-        }
+        publish_session_frame(panel_id, session_id);
         invalidate_panel(panel_id);
         true
     }
@@ -685,26 +734,45 @@ pub(crate) fn end_terminal_selection(panel_id: &str) -> bool {
     }
 }
 
+/// Whether the panel is currently expanded to the full content area, or
+/// `None` when no terminal panel owns `panel_id`.
+#[cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
+pub(super) fn terminal_panel_maximized(panel_id: &str) -> Option<bool> {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        windows_terminal_panels()
+            .get(panel_id)
+            .map(|panel| panel.maximized)
+    }
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = panel_id;
+        None
+    }
+}
+
 /// Toggles the panel between its dock height and the full content area.
 pub(super) fn toggle_terminal_panel_maximized(panel_id: &str) {
     #[cfg(feature = "terminal-runtime")]
     {
-        let maximized = {
-            let mut panels = windows_terminal_panels();
-            let Some(panel) = panels.get_mut(panel_id) else {
+        let next = {
+            let panels = windows_terminal_panels();
+            let Some(panel) = panels.get(panel_id) else {
                 return;
             };
-            panel.maximized = !panel.maximized;
-            panel.maximized
+            !panel.maximized
         };
-        lingxia_windows_contract::set_host_panel_maximized(panel_id, maximized);
+        set_terminal_panel_maximized_by_user(panel_id, next);
     }
     #[cfg(not(feature = "terminal-runtime"))]
     let _ = panel_id;
 }
 
-/// Applies the shared layout projection without treating it as a user toggle.
-pub(super) fn set_terminal_panel_maximized(panel_id: &str, maximized: bool) {
+/// The user's own choice, from the chrome toggle or an automation driver. It
+/// overrides the current state outright and survives a repeated layout
+/// projection; only the layout moving the panel between roles replaces it.
+#[cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
+pub(super) fn set_terminal_panel_maximized_by_user(panel_id: &str, maximized: bool) {
     #[cfg(feature = "terminal-runtime")]
     {
         {
@@ -714,6 +782,33 @@ pub(super) fn set_terminal_panel_maximized(panel_id: &str, maximized: bool) {
             };
             panel.maximized = maximized;
         }
+        lingxia_windows_contract::set_host_panel_maximized(panel_id, maximized);
+    }
+    #[cfg(not(feature = "terminal-runtime"))]
+    let _ = (panel_id, maximized);
+}
+
+/// Applies the shared layout projection without treating it as a user toggle.
+///
+/// A layout sync runs for ordinary reasons — opening a tab renames the active
+/// tab, which syncs the shell — so repeating the projection the panel already
+/// has must leave the user's own toggle alone. A *changed* projection is the
+/// layout moving the panel between roles, and that wins.
+pub(super) fn set_terminal_panel_maximized(panel_id: &str, maximized: bool) {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        let maximized = {
+            let mut panels = windows_terminal_panels();
+            let Some(panel) = panels.get_mut(panel_id) else {
+                return;
+            };
+            let unchanged = panel.projected_maximized == Some(maximized);
+            panel.projected_maximized = Some(maximized);
+            if !unchanged {
+                panel.maximized = maximized;
+            }
+            panel.maximized
+        };
         // Showing an existing panel recreates its host entry with the default
         // docked state. Reapply the projection even when the terminal registry
         // already held the requested value.
@@ -1040,7 +1135,34 @@ fn create_panel_session(panel_id: &str, inherit_from: Option<u64>) -> u64 {
     #[cfg(not(feature = "shell-chrome"))]
     let (cols, rows) = (100, 24);
     let cwd = inherit_from.and_then(lingxia_terminal::terminal_current_directory);
-    lingxia_terminal::terminal_create_at(cols, rows, cwd.as_deref())
+    ensure_configuration_loaded();
+    lingxia_terminal::terminal_create_with_spec(
+        cols,
+        rows,
+        lingxia_terminal::TerminalSessionSpec {
+            cwd,
+            ..lingxia_terminal::TerminalSessionSpec::default()
+        },
+    )
+}
+
+/// Load `terminal.json` once and apply the configuration in effect. Later
+/// changes arrive through the settings API and bump the shared generation.
+#[cfg(feature = "terminal-runtime")]
+pub(super) fn ensure_configuration_loaded() {
+    use std::sync::OnceLock;
+    static LOADED: OnceLock<()> = OnceLock::new();
+    if LOADED.set(()).is_err() {
+        return;
+    }
+    lingxia::terminal::set_installed_fonts(crate::terminal_fonts::installed_fonts());
+    let _ = lingxia::terminal::load_for_app(system_prefers_dark());
+}
+
+/// Windows' light/dark preference, as the shell chrome already reads it.
+#[cfg(feature = "terminal-runtime")]
+fn system_prefers_dark() -> bool {
+    super::theme::is_dark()
 }
 
 #[cfg(feature = "terminal-runtime")]
@@ -1144,20 +1266,230 @@ fn open_windows_terminal_session_panel(
             tabs: vec![TerminalTab::new(session_id)],
             active: 0,
             maximized: false,
+            projected_maximized: None,
             read_only: false,
             stop: Arc::clone(&stop),
             published_tabs: Vec::new(),
         },
     );
     publish_tab_strip(&panel_key);
+    // The plain-text body wants the snapshot it was handed; the grid store
+    // asks the engine for a frame either way.
+    #[cfg(not(feature = "shell-chrome"))]
     if let Some(snapshot) = initial_snapshot {
         publish_windows_terminal_snapshot(&panel_key, session_id, snapshot);
-    } else {
-        publish_active_snapshot(&panel_key);
     }
+    #[cfg(feature = "shell-chrome")]
+    let _ = initial_snapshot;
+    publish_active_snapshot(&panel_key);
 
     thread::spawn(move || run_terminal_panel_poll_loop(&panel_key, &stop));
     Ok(())
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn automation_node_count(node: &AutomationPaneNode) -> usize {
+    match node {
+        AutomationPaneNode::Leaf(_) => 1,
+        AutomationPaneNode::Split { first, second, .. } => {
+            automation_node_count(first) + automation_node_count(second)
+        }
+    }
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn automation_tree_json(
+    node: &AutomationPaneNode,
+    focused: u64,
+    active: bool,
+    visible: bool,
+    frames: &HashMap<u64, RECT>,
+) -> Option<serde_json::Value> {
+    match node {
+        AutomationPaneNode::Leaf(session_id) => {
+            let grid = super::terminal_grid::automation_grid_snapshot(*session_id)?;
+            let rect = frames.get(session_id).copied().unwrap_or_default();
+            Some(serde_json::json!({
+                "kind": "leaf",
+                "pane": {
+                    "paneId": session_id.to_string(),
+                    "active": active && focused == *session_id,
+                    "visible": visible
+                        && rect.right - rect.left > 1
+                        && rect.bottom - rect.top > 1,
+                    "frame": {
+                        "x": rect.left,
+                        "y": rect.top,
+                        "width": (rect.right - rect.left).max(0),
+                        "height": (rect.bottom - rect.top).max(0),
+                    },
+                    "grid": grid,
+                },
+            }))
+        }
+        AutomationPaneNode::Split {
+            orient,
+            first,
+            second,
+        } => Some(serde_json::json!({
+            "kind": "split",
+            "axis": match orient {
+                PaneOrientation::Cols => "horizontal",
+                PaneOrientation::Rows => "vertical",
+            },
+            "children": [
+                automation_tree_json(first, focused, active, visible, frames)?,
+                automation_tree_json(second, focused, active, visible, frames)?,
+            ],
+        })),
+    }
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn automation_snapshot_json(panel_id: &str) -> Option<String> {
+    let tabs = {
+        let panels = windows_terminal_panels();
+        let panel = panels.get(panel_id)?;
+        panel
+            .tabs
+            .iter()
+            .enumerate()
+            .map(|(index, tab)| AutomationTabState {
+                id: tab.root.first_leaf(),
+                focused: tab.focused,
+                active: index == panel.active,
+                tree: AutomationPaneNode::from(&tab.root),
+            })
+            .collect::<Vec<_>>()
+    };
+    let body = super::terminal_grid::panel_body_rect(panel_id)?;
+    let frames = active_pane_frames(panel_id, body)
+        .into_iter()
+        .map(|frame| (frame.session_id, frame.rect))
+        .collect::<HashMap<_, _>>();
+    let visible = crate::window_host::is_panel_visible(panel_id);
+    let mut tab_values = Vec::with_capacity(tabs.len());
+    let mut pane_count = 0;
+    for tab in &tabs {
+        let count = automation_node_count(&tab.tree);
+        pane_count += count;
+        let tree = automation_tree_json(&tab.tree, tab.focused, tab.active, visible, &frames);
+        if tab.active && tree.is_none() {
+            // Do not expose a half-laid-out active tree. The driver waits for
+            // the next poll, after both host geometry and the engine frame are
+            // available.
+            return None;
+        }
+        let mut value = serde_json::json!({
+            "id": tab.id.to_string(),
+            "active": tab.active,
+            "activePaneId": tab.focused.to_string(),
+            "paneCount": count,
+        });
+        if let Some(tree) = tree {
+            value["tree"] = tree;
+        }
+        tab_values.push(value);
+    }
+    let active_tab = tabs.iter().find(|tab| tab.active)?.id.to_string();
+    let config = serde_json::from_str::<serde_json::Value>(
+        &lingxia_terminal_config::runtime::current_json(),
+    )
+    .unwrap_or_else(|_| serde_json::json!({}));
+    let chrome = serde_json::from_str::<serde_json::Value>(
+        &lingxia_terminal_config::runtime::current_chrome_json(),
+    )
+    .unwrap_or_else(|_| serde_json::json!({}));
+    serde_json::to_string(&serde_json::json!({
+        "surfaceId": panel_id,
+        "presentation": super::runtime::terminal_surface_presentation(panel_id),
+        "visible": visible,
+        // Whether the panel is expanded to the full content area. A layout
+        // sync used to silently reset this, so automation has to be able to
+        // assert it survives one.
+        "maximized": terminal_panel_maximized(panel_id).unwrap_or(false),
+        "activeTabId": active_tab,
+        "tabCount": tabs.len(),
+        "paneCount": pane_count,
+        "configGeneration": lingxia_terminal_config::runtime::generation(),
+        "visualGeneration": lingxia_terminal_config::runtime::visual_generation(),
+        "config": config,
+        "chrome": chrome,
+        "tabs": tab_values,
+    }))
+    .ok()
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn take_automation_command(panel_id: &str) -> Option<u64> {
+    let raw = lxapp::terminal_automation::take_command(panel_id);
+    if raw.is_empty() {
+        return None;
+    }
+    let value = match serde_json::from_str::<serde_json::Value>(&raw) {
+        Ok(value) => value,
+        Err(error) => {
+            log::warn!("invalid terminal automation command: {error}");
+            return None;
+        }
+    };
+    let id = value.get("id")?.as_u64()?;
+    let action = value.get("action").and_then(serde_json::Value::as_str);
+    if action == Some("newTab") {
+        open_terminal_tab(panel_id);
+        return Some(id);
+    }
+    if action == Some("setMaximized") {
+        let Some(maximized) = value
+            .pointer("/params/maximized")
+            .and_then(serde_json::Value::as_bool)
+        else {
+            lxapp::terminal_automation::complete_command(
+                id,
+                false,
+                "setMaximized requires a boolean 'maximized'",
+            );
+            return None;
+        };
+        set_terminal_panel_maximized_by_user(panel_id, maximized);
+        return Some(id);
+    }
+    if action != Some("split") {
+        let name = action.unwrap_or("missing");
+        lxapp::terminal_automation::complete_command(
+            id,
+            false,
+            &format!("unknown terminal automation action '{name}'"),
+        );
+        return None;
+    }
+    let direction = value
+        .pointer("/params/direction")
+        .and_then(serde_json::Value::as_str);
+    let direction = match direction {
+        Some("left") => SplitDir::Left,
+        Some("right") => SplitDir::Right,
+        Some("up") => SplitDir::Up,
+        Some("down") => SplitDir::Down,
+        _ => {
+            lxapp::terminal_automation::complete_command(
+                id,
+                false,
+                "split requires left, right, up, or down",
+            );
+            return None;
+        }
+    };
+    if split_focused_pane(panel_id, direction) {
+        Some(id)
+    } else {
+        lxapp::terminal_automation::complete_command(
+            id,
+            false,
+            "terminal surface has no active pane",
+        );
+        None
+    }
 }
 
 /// Poll loop of one panel: reaps exited sessions (any pane of any tab),
@@ -1166,15 +1498,21 @@ fn open_windows_terminal_session_panel(
 /// active tab's pane snapshots when they change. Inactive tabs keep
 /// running; only their exit flag is checked per tick.
 #[cfg(feature = "terminal-runtime")]
-fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
+fn run_terminal_panel_poll_loop(panel_key: &str, stop: &Arc<AtomicBool>) {
     let mut last_generations: HashMap<u64, (u64, u64)> = HashMap::new();
     let mut last_active_set: Vec<u64> = Vec::new();
     let mut refresh_tick: u32 = 0;
+    let mut last_config = lingxia_terminal_config::runtime::generation();
+    let mut last_visual = lingxia_terminal_config::runtime::visual_generation();
+    let mut pending_automation = None;
     #[cfg(feature = "shell-chrome")]
     let mut pending_resize: HashMap<u64, (u16, u16)> = HashMap::new();
     loop {
-        if stop.load(Ordering::Acquire) {
+        if stop.load(Ordering::Acquire) || !terminal_panel_poll_is_current(panel_key, stop) {
             break;
+        }
+        if pending_automation.is_none() {
+            pending_automation = take_automation_command(panel_key);
         }
         let all_sessions: Vec<u64> = {
             let panels = windows_terminal_panels();
@@ -1218,18 +1556,38 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
             if super::terminal_grid::expire_scrollbar(session_id) {
                 any_change = true;
             }
-            let Some(snapshot) = lingxia_terminal::terminal_snapshot_data(session_id) else {
+            // Frame first, then the two things a frame leaves out. None of it
+            // walks the grid cell by cell, so an idle pane costs a generation
+            // comparison rather than a copy of the screen.
+            let Some((scrollbar, exited)) = lingxia_terminal::terminal_view_state(session_id)
+            else {
                 if close_pane_session(panel_key, session_id) {
                     panel_closed = true;
                 }
                 break;
             };
-            if snapshot.exited {
+            if exited {
                 if close_pane_session(panel_key, session_id) {
                     panel_closed = true;
                 }
                 break;
             }
+            let title = lingxia_terminal::terminal_title_state_data(session_id).unwrap_or_default();
+            let since = super::terminal_grid::session_generation(session_id);
+            let update = lingxia_terminal::terminal_frame_data(session_id, since);
+            let (grid_generation, frame) = match update {
+                Some(lingxia_terminal::TerminalFrameUpdate::Changed(frame)) => {
+                    (frame.generation, Some(frame))
+                }
+                Some(lingxia_terminal::TerminalFrameUpdate::Unchanged { generation }) => {
+                    (generation, None)
+                }
+                None => (since, None),
+            };
+            let grid_size = frame
+                .as_ref()
+                .map(|frame| (frame.cols, frame.rows))
+                .or_else(|| super::terminal_grid::session_grid_size(session_id));
 
             #[cfg(feature = "shell-chrome")]
             {
@@ -1237,7 +1595,7 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
                     pending_resize.remove(&session_id);
                 }
                 let desired = super::terminal_grid::desired_session_grid_size(session_id)
-                    .filter(|&(cols, rows)| (cols, rows) != (snapshot.cols, snapshot.rows));
+                    .filter(|&size| Some(size) != grid_size);
                 // Resize the PTY only once the desired grid held for two
                 // consecutive ticks, so divider/grow drags don't cause
                 // resize storms (converges within two ticks).
@@ -1257,12 +1615,15 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
                 }
             }
 
-            update_focused_auto_title(panel_key, session_id, &snapshot);
+            update_focused_auto_title(panel_key, session_id, &title);
+            super::terminal_grid::set_session_view_state(session_id, scrollbar, exited);
 
-            let generations = (snapshot.generation, snapshot.title_generation);
+            let generations = (grid_generation, title.generation);
             if last_generations.get(&session_id) != Some(&generations) {
                 any_change = true;
-                store_session_snapshot(panel_key, session_id, snapshot);
+                if let Some(frame) = frame {
+                    store_session_frame(panel_key, session_id, *frame);
+                }
                 last_generations.insert(session_id, generations);
             }
         }
@@ -1270,22 +1631,66 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &AtomicBool) {
             break;
         }
 
+        // A font or theme change moves nothing in the snapshot, so without
+        // this the card keeps its old colors and metrics until something else
+        // happens to dirty it — up to two seconds of looking broken.
+        let config = lingxia_terminal_config::runtime::generation();
+        let config_changed = config != last_config;
+        last_config = config;
+        let visual = lingxia_terminal_config::runtime::visual_generation();
+        let visual_changed = visual != last_visual;
+        last_visual = visual;
+
         refresh_tick = refresh_tick.wrapping_add(1);
-        if any_change || refresh_tick.is_multiple_of(25) {
+        if any_change || config_changed || visual_changed || refresh_tick.is_multiple_of(25) {
             invalidate_panel(panel_key);
+        }
+        if let Some(snapshot) = automation_snapshot_json(panel_key) {
+            // Hold the panel registry across publication so a close/reopen of
+            // the same surface id cannot let this stale worker overwrite the
+            // new workspace's snapshot after its stop flag was set.
+            let panels = windows_terminal_panels();
+            if !panels
+                .get(panel_key)
+                .is_some_and(|panel| Arc::ptr_eq(&panel.stop, stop))
+            {
+                break;
+            }
+            let _ = lxapp::terminal_automation::publish_snapshot(panel_key, &snapshot);
+            if let Some(id) = pending_automation.take() {
+                let _ = lxapp::terminal_automation::complete_command(id, true, &snapshot);
+            }
         }
         last_active_set = active_sessions;
         thread::sleep(Duration::from_millis(80));
     }
+    if let Some(id) = pending_automation {
+        let _ = lxapp::terminal_automation::complete_command(
+            id,
+            false,
+            "terminal surface closed before the command completed",
+        );
+    }
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn terminal_panel_poll_is_current(panel_key: &str, stop: &Arc<AtomicBool>) -> bool {
+    windows_terminal_panels()
+        .get(panel_key)
+        .is_some_and(|panel| Arc::ptr_eq(&panel.stop, stop))
 }
 
 /// Tracks the session-reported title of the active tab's focused pane and
 /// republishes the strip when it changed (no-op while a custom title
 /// overrides it or the session is not the focused pane).
 #[cfg(feature = "terminal-runtime")]
-fn update_focused_auto_title(panel_id: &str, session_id: u64, snapshot: &TerminalSnapshot) {
-    let auto_title =
-        stable_tab_title(snapshot.process_title.as_deref(), snapshot.title.as_deref()).to_string();
+fn update_focused_auto_title(
+    panel_id: &str,
+    session_id: u64,
+    title: &lingxia_terminal::TerminalTitleView,
+) {
+    let process_title = (!title.process_title.is_empty()).then_some(title.process_title.as_str());
+    let auto_title = stable_tab_title(process_title, title.title.as_deref()).to_string();
     let changed = {
         let mut panels = windows_terminal_panels();
         let Some(tab) = panels
@@ -1475,7 +1880,10 @@ fn close_terminal_tab_by_sessions(panel_id: &str, session_ids: &[u64]) {
 /// input handler and grid store. The caller hides the panel window.
 #[cfg(feature = "terminal-runtime")]
 fn shutdown_windows_terminal_panel_state(panel_id: &str) {
+    lxapp::terminal_automation::remove_workspace(panel_id);
     lingxia_windows_contract::clear_host_panel_input_handler(panel_id);
+    #[cfg(feature = "shell-chrome")]
+    super::terminal_gpu::drop_panel(panel_id);
     #[cfg(feature = "shell-chrome")]
     super::terminal_grid::clear_panel(panel_id);
     if let Some(panel) = windows_terminal_panels().remove(panel_id) {
@@ -2032,32 +2440,50 @@ fn publish_active_snapshot(panel_id: &str) {
         };
         tab.sessions()
     };
+    let mut changed = false;
     for session_id in sessions {
-        if let Some(snapshot) = lingxia_terminal::terminal_snapshot_data(session_id) {
-            store_session_snapshot(panel_id, session_id, snapshot);
-        }
+        changed |= publish_session_frame(panel_id, session_id);
     }
-    invalidate_panel(panel_id);
+    // An idle session hands back "unchanged" and there is nothing to repaint;
+    // invalidating anyway would put the whole grid through the GPU for output
+    // that never arrived.
+    if changed {
+        invalidate_panel(panel_id);
+    }
+}
+
+/// Pulls whatever changed since the store's generation. Returns whether the
+/// pane needs repainting.
+#[cfg(feature = "terminal-runtime")]
+fn publish_session_frame(panel_id: &str, session_id: u64) -> bool {
+    let since = super::terminal_grid::session_generation(session_id);
+    let update = lingxia_terminal::terminal_frame_data(session_id, since);
+    let (scrollbar, exited) =
+        lingxia_terminal::terminal_view_state(session_id).unwrap_or((None, false));
+    let view_changed = super::terminal_grid::set_session_view_state(session_id, scrollbar, exited);
+    match update {
+        Some(lingxia_terminal::TerminalFrameUpdate::Changed(frame)) => {
+            store_session_frame(panel_id, session_id, *frame);
+            true
+        }
+        // The grid is untouched, but the scrollbar or the child's exit still
+        // has to reach the screen.
+        _ => view_changed,
+    }
 }
 
 /// Stores `session_id`'s snapshot in the grid store and (without the shell
 /// chrome) flattens it to the panel's plain body text.
 #[cfg(feature = "terminal-runtime")]
-fn store_session_snapshot(panel_id: &str, session_id: u64, snapshot: TerminalSnapshot) {
-    publish_windows_terminal_snapshot(panel_id, session_id, snapshot);
+fn store_session_frame(panel_id: &str, session_id: u64, frame: lingxia_terminal::TerminalFrame) {
+    let _ = panel_id;
+    super::terminal_grid::set_session_frame(session_id, frame);
 }
 
 /// Repaints the panel window (the chrome redraws every active pane).
 #[cfg(feature = "terminal-runtime")]
 fn invalidate_panel(panel_id: &str) {
     lingxia_windows_contract::invalidate_host_panel(panel_id);
-}
-
-/// Hands the snapshot to the shell chrome's grid store (keyed by session).
-#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
-fn publish_windows_terminal_snapshot(panel_id: &str, session_id: u64, snapshot: TerminalSnapshot) {
-    let _ = panel_id;
-    super::terminal_grid::set_session_snapshot(session_id, snapshot);
 }
 
 /// Without the shell chrome there is no grid painter; flatten the focused

@@ -141,6 +141,12 @@ declare global {
 
   interface Lx {
     /**
+     * Terminal product settings. Present only in the host-bundled Terminal
+     * Settings lxapp when the host declares `capabilities.terminal`.
+     */
+    readonly terminal?: TerminalApi;
+
+    /**
      * Open a surface. Browser tabs resolve to `null`, declared surfaces to a
      * host-managed handle, and page surfaces to a full `Surface`. URL asides
      * return a `Surface` when docked and `null` in compact browser chrome.
@@ -646,6 +652,13 @@ export type HostAppUpdateTask = PromiseLike<HostAppUpdateResult> & AsyncIterable
     catch<TResult = never>(onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null): Promise<HostAppUpdateResult | TResult>;
     finally(onfinally?: (() => void) | null): Promise<HostAppUpdateResult>;
     wait(): Promise<HostAppUpdateResult>;
+};
+
+export type InstalledTerminalFont = {
+    family: string;
+    monospace: boolean;
+    ligatures: boolean;
+    nerdIcons: boolean;
 };
 
 /**
@@ -1361,7 +1374,10 @@ export type ShellApi = {
 export type ShellSidebarAction = {
     /** Stable, non-empty id; unique across both header and footer actions. */
     id: string;
-    /** Initial host-owned region. Use `replace` to move an action. */
+    /**
+     * Initial host-owned region. Use `replace` to move an action. The header
+     * takes at most two; everything else belongs in the footer.
+     */
     placement: ShellSidebarActionPlacement;
     /**
      * Local lxapp-accessible icon. Use a bundled relative path such as
@@ -1394,6 +1410,12 @@ export type ShellSidebarAction = {
  * compact rail. The host wraps cells and scrolls after five visible
  * rows.
  * Apps cannot configure cell size, row, weight, color, or selected state.
+ * Where an action lives in the sidebar.
+ * `header` is the caption row beside the window controls: at most two
+ * actions, for the ones a person reaches for constantly. Declaring a
+ * third rejects the whole `replace` call rather than hiding one.
+ * `footer` is unbounded and scrolls, and every entry stays visible at
+ * any window size. Anything that must be findable belongs here.
  */
 export type ShellSidebarActionPlacement = 'header' | 'footer';
 
@@ -1642,6 +1664,135 @@ export type TabBarPatch = {
 export type TabBarStylePatch = {
     foregroundColor?: string | null;
     selectedForegroundColor?: string | null;
+};
+
+export type TerminalApi = {
+    readonly settings: TerminalSettingsApi;
+    readonly colorSchemes: TerminalColorSchemesApi;
+    readonly fonts: TerminalFontsApi;
+};
+
+export type TerminalColorScheme = {
+    name?: string;
+    background: string;
+    foreground: string;
+    cursorColor?: string;
+    selectionBackground?: string;
+    selectionForeground?: string;
+    black: string;
+    red: string;
+    green: string;
+    yellow: string;
+    blue: string;
+    purple: string;
+    cyan: string;
+    white: string;
+    brightBlack: string;
+    brightRed: string;
+    brightGreen: string;
+    brightYellow: string;
+    brightBlue: string;
+    brightPurple: string;
+    brightCyan: string;
+    brightWhite: string;
+};
+
+export type TerminalColorSchemeDetails = {
+    name: string;
+    source: 'builtIn' | 'imported';
+    scheme: TerminalColorScheme;
+};
+
+export type TerminalColorSchemesApi = {
+    list(): Promise<TerminalColorSchemeDetails[]>;
+    import(options: {
+        text: string;
+        name?: string;
+        /** Existing names are rejected unless overwrite is explicit. */
+        overwrite?: boolean;
+    }): Promise<TerminalColorSchemeDetails>;
+    createPreview(): TerminalPreviewController;
+};
+
+export type TerminalFontSettings = {
+    /** Ordered candidates; the first installed monospaced family wins. */
+    family: string[];
+    size: number;
+    lineHeight: number;
+    ligatures: boolean;
+};
+
+export type TerminalFontsApi = {
+    list(): Promise<InstalledTerminalFont[]>;
+};
+
+export type TerminalPreviewController = {
+    /** Preview a stored name or an unpersisted scheme. Last request wins. */
+    show(scheme: string | TerminalColorScheme): Promise<void>;
+    /** Restore saved settings only when this controller owns the preview. */
+    clear(): Promise<void>;
+    /** Idempotently clear and retire this controller. */
+    close(): Promise<void>;
+};
+
+export type TerminalSettingsApi = {
+    get(): Promise<TerminalSettingsSnapshot>;
+    update(
+        patch: TerminalSettingsPatch,
+        options: { ifRevision: number },
+    ): Promise<TerminalSettingsSnapshot>;
+    reset(options: {
+        ifRevision: number;
+        scope?: 'font' | 'theme';
+    }): Promise<TerminalSettingsSnapshot>;
+    /** Fires after saved settings, effective appearance, or fonts change. */
+    onChange(listener: (snapshot: TerminalSettingsSnapshot) => void): () => void;
+};
+
+export type TerminalSettingsPatch = {
+    font?: Partial<TerminalFontSettings>;
+    theme?: Partial<TerminalThemeSettings>;
+};
+
+export type TerminalSettingsSnapshot = {
+    /** Monotonic process revision used by update/reset compare-and-swap. */
+    revision: number;
+    /** Framework defaults. */
+    defaults: TerminalSettingsValue;
+    /** User-authored fields only. */
+    overrides: TerminalSettingsPatch;
+    /** Resolved configuration after all valid layers. */
+    value: TerminalSettingsValue;
+    effective: {
+        /** Host appearance before applying terminal.theme.mode. */
+        systemAppearance: 'light' | 'dark';
+        appearance: 'light' | 'dark';
+        colorScheme: string | null;
+        font: {
+            family: string;
+            missing: string[];
+            fellBack: boolean;
+        };
+    };
+    warnings: TerminalSettingsWarning[];
+};
+
+export type TerminalSettingsValue = {
+    font: TerminalFontSettings;
+    theme: TerminalThemeSettings;
+};
+
+export type TerminalSettingsWarning = {
+    code: 'invalidUserFile' | 'missingColorScheme';
+    message: string;
+};
+
+export type TerminalThemeMode = 'system' | 'light' | 'dark';
+
+export type TerminalThemeSettings = {
+    mode: TerminalThemeMode;
+    light: string;
+    dark: string;
 };
 
 export type TrayApi = globalThis.TrayApi;

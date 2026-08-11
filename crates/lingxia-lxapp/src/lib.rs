@@ -26,6 +26,8 @@ pub(crate) mod plugin;
 pub mod provider;
 mod route;
 pub mod startup;
+/// Host-published terminal workspace state for trusted automation drivers.
+pub mod terminal_automation;
 mod update;
 pub(crate) mod view_call;
 

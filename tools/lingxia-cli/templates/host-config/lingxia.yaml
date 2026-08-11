@@ -95,8 +95,25 @@ capabilities:
   # Declaring this never registers the app by itself — enabling is a user decision
   # via the API, typically a settings-page toggle.
   autostart: false
+  # Product/agent control capabilities (desktop only; all default to false).
+  # Uncomment only the access this product should expose.
+  # appUse: true
+  # computerUse: true  # implies appUse
+  # browserUse: true   # requires browser: true
 
 {{RESOURCES_SECTION}}
+
+# Optional launch screen. Paths are relative to the host project root and
+# image/mark must be PNG files. `background` is required when splash is set.
+# splash:
+#   background: "#171C22"
+#   image: design/splash.png
+#   mark: design/splash-mark.png
+#   minDuration: 600
+
+# Optional directory of raw host assets packaged by each native platform.
+# Use resources.bundles for lxapps instead.
+# assets: assets
 
 # Optional: override the SDK's default in-app browser webui (used only when
 # capabilities.browser is true). Omit to use the npm-published default
@@ -105,6 +122,7 @@ capabilities:
 #   webui:
 #     package: '@lingxia/browser-shell-webui'
 #     version: '0.5.1'
+
 {{SHELL_SECTION}}
 {{APP_LINKS_SECTION}}
 # Storage and cache limits. Values are MiB.

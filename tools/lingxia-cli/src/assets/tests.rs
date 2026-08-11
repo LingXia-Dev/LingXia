@@ -483,7 +483,6 @@ surfaces:
     assert_eq!(value["launch"]["initialSurface"], "home");
 
     let surfaces = value["surfaces"].as_array().unwrap();
-    // Exactly 3 explicit surfaces (main + chat + terminal).
     assert_eq!(surfaces.len(), 3);
     let terminal_count = surfaces
         .iter()
@@ -506,7 +505,6 @@ surfaces:
     assert_eq!(surfaces[2]["id"], "terminal");
     assert_eq!(surfaces[2]["edge"], "bottom");
     assert_eq!(surfaces[2]["size"]["height"], 320);
-
     // Only the tray entry: persistent sidebar entries come from the runtime
     // activator API, never from YAML.
     let activators = value["activators"].as_array().unwrap();

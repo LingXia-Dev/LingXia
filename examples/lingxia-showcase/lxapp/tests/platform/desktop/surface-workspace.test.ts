@@ -491,13 +491,6 @@ async function expectExactMainPresentation(
   // top in either direction. It still has to share the root's left, right, and
   // bottom edges, stay within one chrome band, and leave no outgoing WebView
   // or duplicate workspace visible.
-  expect(active.bounds.x).toBe(baseline.bounds.x);
-  expect(active.bounds.w).toBe(baseline.bounds.w);
-  expect(active.bounds.y >= host.bounds.y).toBeTruthy();
-  expect(Math.abs(active.bounds.y - baseline.bounds.y) <= 64 * host.scale).toBeTruthy();
-  expect(active.bounds.y + active.bounds.h).toBe(
-    baseline.bounds.y + baseline.bounds.h,
-  );
   // WebView2 commits controller visibility asynchronously even though the
   // host call is synchronous. Require physical convergence instead of
   // sampling that commit boundary once; a controller that remains exposed
@@ -517,10 +510,17 @@ async function expectExactMainPresentation(
       bounds: window.bounds,
       z: window.z,
     })));
-    return visible.length === 1 && visible[0].id === active.id
+    const current = visible.find((window) => window.id === active.id);
+    return visible.length === 1
+      && current
+      && current.bounds.x === baseline.bounds.x
+      && current.bounds.w === baseline.bounds.w
+      && current.bounds.y >= host.bounds.y
+      && Math.abs(current.bounds.y - baseline.bounds.y) <= 64 * host.scale
+      && current.bounds.y + current.bounds.h === baseline.bounds.y + baseline.bounds.h
       ? candidate
       : undefined;
-  }, 'outgoing main WebView hidden', 60_000).catch((error) => {
+  }, 'main WebView restored to its exact presentation', 60_000).catch((error) => {
     throw new Error(`${String(error)}; last observed host WebViews: ${lastObserved}`);
   });
   expectSingleWorkspaceHost(host, windows);
@@ -668,6 +668,13 @@ function pinnedShortcutPoint(
   ];
 }
 
+/// Footer actions the showcase declares on desktop, in `lxapp/lxapp.ts`:
+/// chat, terminal, ping, and terminal settings. The rail lays them out from
+/// the bottom, so the first one's position depends on how many there are —
+/// declaring another without updating this clicks a different action, and the
+/// test then waits for a surface that was never opened.
+const DESKTOP_FOOTER_ACTION_COUNT = 4;
+
 function firstRailFooterActionPoint(
   host: DesktopWindowInfo,
   footerActionCount: number,
@@ -691,6 +698,7 @@ function firstLxappWorkspacePoint(
   host: DesktopWindowInfo,
   pinCount: number,
   rootPageCount: number,
+  workspaceIndex = 0,
 ): [number, number] {
   const pinRows = Math.ceil(pinCount / 4);
   const pinnedGridHeight = pinRows * (36 + 5);
@@ -709,6 +717,7 @@ function firstLxappWorkspacePoint(
       + parentChildGap
       + rootPageCount * childHeight
       + topLevelGap
+      + workspaceIndex * rowHeight
       + rowHeight / 2,
   ];
 }
@@ -717,11 +726,14 @@ function firstLxappWorkspaceMenuRegion(
   host: DesktopWindowInfo,
   pinCount: number,
   rootPageCount: number,
+  workspaceIndex = 0,
 ): [number, number, number, number] {
   const sidebarWidth = 184;
   const itemInset = 8;
   const trailingControlWidth = 22;
-  const [, centerY] = firstLxappWorkspacePoint(host, pinCount, rootPageCount);
+  const [, centerY] = firstLxappWorkspacePoint(
+    host, pinCount, rootPageCount, workspaceIndex,
+  );
   return [
     host.bounds.x + sidebarWidth - itemInset - trailingControlWidth * 2,
     centerY - 18,
@@ -734,10 +746,13 @@ function firstLxappWorkspaceRegion(
   host: DesktopWindowInfo,
   pinCount: number,
   rootPageCount: number,
+  workspaceIndex = 0,
 ): [number, number, number, number] {
   const sidebarWidth = 184;
   const itemInset = 8;
-  const [, centerY] = firstLxappWorkspacePoint(host, pinCount, rootPageCount);
+  const [, centerY] = firstLxappWorkspacePoint(
+    host, pinCount, rootPageCount, workspaceIndex,
+  );
   return [
     host.bounds.x + itemInset,
     centerY - 18,
@@ -769,8 +784,11 @@ function firstLxappWorkspaceClosePoint(
   host: DesktopWindowInfo,
   pinCount: number,
   rootPageCount: number,
+  workspaceIndex = 0,
 ): [number, number] {
-  const menu = firstLxappWorkspaceMenuRegion(host, pinCount, rootPageCount);
+  const menu = firstLxappWorkspaceMenuRegion(
+    host, pinCount, rootPageCount, workspaceIndex,
+  );
   return [menu[0] + menu[2] * 1.5, menu[1] + menu[3] / 2];
 }
 
@@ -1546,7 +1564,7 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     // Derive Chat's first-cell center from that production geometry so this
     // cannot accidentally click the expand control or a main-page item.
     await desktop.pointer.click({
-      at: firstRailFooterActionPoint(host, 3),
+      at: firstRailFooterActionPoint(host, DESKTOP_FOOTER_ACTION_COUNT),
     });
 
     const overlayLayout = await waitForValue(async () => {
@@ -2302,6 +2320,10 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     expect(coldLayout.mainSwitcher.items.find((item) => (
       item.surfaceId === 'lingxia-chat'
     ))?.closable).toBeTruthy();
+    const chatWorkspaceIndex = coldLayout.mainSwitcher.items
+      .filter((item) => !item.root)
+      .findIndex((item) => item.surfaceId === 'lingxia-chat');
+    if (chatWorkspaceIndex < 0) throw new Error('Chat workspace row was not projected');
 
     const coldMain = await waitForDesktopWindow(
       () => desktop.windows(),
@@ -2329,8 +2351,12 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     // Hover must visibly reveal the row's explicit ellipsis, and clicking that
     // affordance must open the native lifecycle menu. This checks both
     // discoverability and routing instead of relying on an invisible right-click.
-    const workspacePoint = firstLxappWorkspacePoint(host, coldPins.length, 4);
-    const workspaceMenuRegion = firstLxappWorkspaceMenuRegion(host, coldPins.length, 4);
+    const workspacePoint = firstLxappWorkspacePoint(
+      host, coldPins.length, 4, chatWorkspaceIndex,
+    );
+    const workspaceMenuRegion = firstLxappWorkspaceMenuRegion(
+      host, coldPins.length, 4, chatWorkspaceIndex,
+    );
     const workspaceMenuPoint = regionCenter(workspaceMenuRegion);
     await waitForNativeHover(
       desktop,
@@ -2402,7 +2428,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       desktop,
       host,
       workspacePoint,
-      firstLxappWorkspaceRegion(host, coldPins.length, 4),
+      firstLxappWorkspaceRegion(host, coldPins.length, 4, chatWorkspaceIndex),
       'hovered Chat workspace before selection',
     );
     await desktop.pointer.click({ at: workspacePoint });
@@ -2424,7 +2450,9 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       { type: 'show', id: 'lingxia-chat', source: 'shell' },
     ]);
 
-    const workspaceClosePoint = firstLxappWorkspaceClosePoint(host, coldPins.length, 4);
+    const workspaceClosePoint = firstLxappWorkspaceClosePoint(
+      host, coldPins.length, 4, chatWorkspaceIndex,
+    );
     host = await ensureHostForeground(desktop, host);
     await desktop.pointer.move({ at: workspaceClosePoint });
     await desktop.pointer.click({ at: workspaceClosePoint });
@@ -2478,6 +2506,14 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       .filter((window) => window.visible)
       .map((window) => window.id));
     host = await ensureHostForeground(desktop, host);
+    // Reopening Chat replaces the active native chrome while the pointer is
+    // still parked on the Pin that launched it. Windows emits no WM_MOUSEMOVE
+    // when the pixels below a stationary pointer change, so refresh the native
+    // hit target before asking that same Pin for its context menu.
+    await desktop.pointer.move({
+      at: [host.bounds.x + 12, host.bounds.y + Math.round(host.bounds.h * 0.55)],
+    });
+    await desktop.pointer.move({ at: coldPinPoint });
     await desktop.pointer.click({ at: coldPinPoint, button: 'right' });
     const menu = await waitForValue(async () => (
       (await desktop.windows()).find((window) => (
@@ -2565,13 +2601,14 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       host,
       pinsAfterMenu.length,
       4,
+      chatWorkspaceIndex,
     );
     host = await ensureHostForeground(desktop, host);
     await waitForNativeHover(
       desktop,
       host,
       remainingWorkspacePoint,
-      firstLxappWorkspaceRegion(host, pinsAfterMenu.length, 4),
+      firstLxappWorkspaceRegion(host, pinsAfterMenu.length, 4, chatWorkspaceIndex),
       'hovered remaining Chat workspace before selection',
     );
     await desktop.pointer.click({ at: remainingWorkspacePoint });

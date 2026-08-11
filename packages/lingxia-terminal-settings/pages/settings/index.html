@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Terminal settings</title>
+    <style>
+      html, body { min-height: 100%; margin: 0; background: #fafaf7; }
+      @media (prefers-color-scheme: dark) { html, body { background: #15181d; } }
+    </style>
+    <link rel="stylesheet" href="../../public/settings.css" />
+  </head>
+  <body>
+
+    <main class="page">
+      <div class="warnings" id="warnings" role="status" aria-live="polite" hidden></div>
+      <section class="group" aria-labelledby="appearance-heading">
+        <div class="group-head">
+          <h2 id="appearance-heading" data-i18n="appearance.title">Appearance</h2>
+        </div>
+
+        <div class="row stack">
+          <div class="row-label">
+            <span data-i18n="appearance.mode">Mode</span>
+            <small data-i18n="appearance.modeHint">Which scheme a terminal uses.</small>
+          </div>
+        </div>
+        <div class="modes" id="mode-grid" role="group" aria-label="Appearance mode">
+          <button data-mode="system" aria-pressed="false">
+            <span class="mode-art system" aria-hidden="true"></span>
+            <em data-i18n="appearance.system">System</em>
+          </button>
+          <button data-mode="light" aria-pressed="false">
+            <span class="mode-art light" aria-hidden="true"></span>
+            <em data-i18n="appearance.light">Light</em>
+          </button>
+          <button data-mode="dark" aria-pressed="false">
+            <span class="mode-art dark" aria-hidden="true"></span>
+            <em data-i18n="appearance.dark">Dark</em>
+          </button>
+        </div>
+
+        <div class="row stack">
+          <div class="row-label">
+            <span data-i18n="appearance.scheme">Color scheme</span>
+            <small data-i18n="appearance.schemeHint">Mode chooses whether light or dark schemes are shown. Select one to preview it.</small>
+          </div>
+        </div>
+        <div class="themes" id="themes"></div>
+
+        <div class="row">
+          <div class="row-label">
+            <span data-i18n="appearance.import">Import a scheme</span>
+            <small data-i18n="appearance.importHint">Choose a compatible color-scheme file.</small>
+          </div>
+          <div class="row-control">
+            <label class="btn"><span data-i18n="appearance.choose">Choose file…</span><input id="theme-file" type="file" accept=".json,.conf,.txt,.xresources,.xdefaults" hidden /></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="group" aria-labelledby="type-heading">
+        <div class="group-head">
+          <h2 id="type-heading" data-i18n="type.title">Type</h2>
+        </div>
+
+        <div class="row">
+          <div class="row-label">
+            <span data-i18n="type.family">Font family</span>
+            <small data-i18n="type.familyHint">Installed monospaced fonts.</small>
+          </div>
+          <div class="row-control">
+            <select id="font-family" data-picker data-i18n-aria-label="type.family"></select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-label"><span data-i18n="type.size">Size</span></div>
+          <div class="row-control">
+            <div class="ranged">
+              <input class="ticks" data-for="font-size" type="range" min="9" max="24" step="1" list="size-ticks" />
+              <datalist id="size-ticks"><option value="9"></option><option value="12"></option><option value="15"></option><option value="18"></option><option value="21"></option><option value="24"></option></datalist>
+              <div class="stepper">
+                <input id="font-size" type="number" min="4" max="96" step="1" />
+                <span>pt</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-label">
+            <span data-i18n="type.lineHeight">Line height</span>
+            <small data-i18n="type.lineHeightHint">Multiplier for the font's natural line height.</small>
+          </div>
+          <div class="row-control">
+            <div class="ranged">
+              <input class="ticks" data-for="line-height" type="range" min="0.8" max="2" step="0.05" list="lh-ticks" />
+              <datalist id="lh-ticks"><option value="0.8"></option><option value="1"></option><option value="1.2"></option><option value="1.4"></option><option value="1.6"></option><option value="1.8"></option><option value="2"></option></datalist>
+              <div class="stepper"><input id="line-height" type="number" min="0.5" max="3" step="0.05" /></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="row-label">
+            <span data-i18n="type.ligatures">Ligatures</span>
+            <small data-i18n="type.ligaturesHint">Shape sequences such as != and =&gt;.</small>
+          </div>
+          <div class="row-control">
+            <label class="switch"><input id="ligatures" type="checkbox" /><span></span></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="group" aria-labelledby="general-heading">
+        <div class="group-head">
+          <h2 id="general-heading" data-i18n="general.title">General</h2>
+        </div>
+        <div class="row">
+          <div class="row-label">
+            <span data-i18n="general.language">Language</span>
+            <small data-i18n="general.languageHint">Only changes this settings screen.</small>
+          </div>
+          <div class="row-control">
+            <select id="language" data-picker data-i18n-aria-label="general.language">
+              <option value="app" data-i18n="general.followApp">Same as app</option>
+              <option value="en-US">English</option>
+              <option value="zh-CN">简体中文</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <section class="group">
+        <div class="row danger-row">
+          <div class="row-label">
+            <span data-i18n="reset.title">Reset everything</span>
+            <small data-i18n="reset.hint">Drops every override and returns to what this product ships.</small>
+          </div>
+          <div class="row-control">
+            <button class="btn danger" data-reset="all" data-i18n="reset.action">Reset</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <div class="actions" id="actions" role="region" aria-label="Pending changes">
+      <span class="state" id="state" aria-live="polite" data-i18n="app.state.loading">Loading</span>
+      <button class="btn primary" id="save" disabled data-i18n="app.apply">Apply</button>
+    </div>
+
+    <div class="toast" id="toast" role="status"></div>
+    <script src="../../public/i18n.js"></script>
+    <script src="../../public/themes.js"></script>
+    <script src="../../public/picker.js"></script>
+    <script src="../../public/settings.js"></script>
+  </body>
+</html>

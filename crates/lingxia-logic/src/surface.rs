@@ -1533,6 +1533,18 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         move_closed_senders(&requested_surface_id, &surface_id);
     }
     let surface_id_for_closed = surface_id.clone();
+    // Windows: the platform presents the surface's page-instance webview before
+    // it mounts, so it never receives a visibility transition of its own. Mark
+    // it visible here, before waiting on the page — an overlay carries a
+    // dispose timer, and a page that is still "hidden" while its webview is
+    // being created can be reclaimed mid-wait. The surface then closes, nothing
+    // ever reports the page ready, and the open never settles. Other platforms
+    // drive this from their native presenter.
+    #[cfg(target_os = "windows")]
+    if let Some(page_instance_id) = opened_surface.page_instance_id.as_deref() {
+        let _ =
+            lxapp::notify_page_instance_by_id(page_instance_id, lxapp::PageInstanceEvent::Visible);
+    }
     let page_svc = match opened_surface.page_instance_id.as_deref() {
         Some(page_instance_id) => Some(
             lxapp
@@ -1546,16 +1558,6 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         ),
         None => None,
     };
-    // Windows: the platform presents the surface's page-instance webview before
-    // it mounts, so it never received a visibility transition. Now that the
-    // page is ready, mark it visible so it fires onShow and is not reclaimed by
-    // the page-instance dispose timer (which would close the surface). Other
-    // platforms drive this from their native presenter.
-    #[cfg(target_os = "windows")]
-    if let Some(page_instance_id) = opened_surface.page_instance_id.as_deref() {
-        let _ =
-            lxapp::notify_page_instance_by_id(page_instance_id, lxapp::PageInstanceEvent::Visible);
-    }
     let (opener_port, page_port) = crate::message_port::pair(&ctx)?;
     let surface = Class::lookup::<JSSurface>(&ctx)?.instance(JSSurface {
         id: opened_surface.id.clone(),

@@ -647,6 +647,38 @@ pub(super) fn sidebar_group_menu_rect(
     })
 }
 
+/// Width the leading controls take before the action strip can start.
+///
+/// Header actions only draw while the sidebar is expanded, so the collapse
+/// toggle is always there; the app-menu button beside it exists only in the
+/// product shell — a runner-style build has no menu worth showing and draws
+/// none. Reserving for it regardless leaves a visibly empty slot the header
+/// then refuses to use.
+fn header_leading_reserve() -> i32 {
+    let app_menu = if cfg!(feature = "browser-shell") {
+        TOP_BAR_BUTTON_SIZE + TOP_BAR_BUTTON_GAP
+    } else {
+        0
+    };
+    TOP_BAR_PADDING + app_menu + TOP_BAR_BUTTON_SIZE + SIDEBAR_HEADER_ACTION_GAP
+}
+
+/// How many header actions a strip of `available` pixels can seat. The last
+/// one needs no trailing gap, so the run is `n * SIZE + (n - 1) * GAP`.
+///
+/// `lingxia_shell::MAX_HEADER_SIDEBAR_ACTIONS` is the contract an lxapp is held
+/// to at declaration time; this is what the window can actually show right now.
+/// At `SHELL_SIDEBAR_WIDTH` the two agree — widening the buttons or the leading
+/// controls without revisiting the limit would let an app declare an action
+/// that never draws.
+fn header_action_capacity(available: i32) -> usize {
+    if available < SIDEBAR_HEADER_ACTION_SIZE {
+        return 0;
+    }
+    let stride = SIDEBAR_HEADER_ACTION_SIZE + SIDEBAR_HEADER_ACTION_GAP;
+    ((available + SIDEBAR_HEADER_ACTION_GAP) / stride).max(0) as usize
+}
+
 /// Sidebar action buttons in the top caption strip,
 /// hidden while the sidebar is collapsed. Right-aligned at the column's
 /// trailing edge (flush with the chevron below) so the strip reads as two
@@ -660,22 +692,22 @@ pub(super) fn sidebar_header_action_rects(
         return Vec::new();
     }
     let top = sidebar_rect.top + (SHELL_TOP_BAR_HEIGHT - SIDEBAR_HEADER_ACTION_SIZE).max(0) / 2;
-    // Right edge of the leading app-menu + toggle buttons.
-    let leading_limit = sidebar_rect.left
-        + TOP_BAR_PADDING
-        + 2 * TOP_BAR_BUTTON_SIZE
-        + TOP_BAR_BUTTON_GAP
-        + SIDEBAR_HEADER_ACTION_GAP;
+    let leading_limit = sidebar_rect.left + header_leading_reserve();
     let mut right = sidebar_rect.right - SIDEBAR_ITEM_INSET;
-    let mut out = Vec::with_capacity(tabbar.header_actions.len());
-    let required_width = tabbar.header_actions.len() as i32 * SIDEBAR_HEADER_ACTION_SIZE
-        + tabbar.header_actions.len().saturating_sub(1) as i32 * SIDEBAR_HEADER_ACTION_GAP;
-    if right - required_width < leading_limit {
+    // Draw the ones that fit rather than measuring the whole set and giving up
+    // on it: a sidebar one icon too narrow would otherwise lose the buttons
+    // that did fit, which reads as the header having lost them all.
+    let shown = tabbar
+        .header_actions
+        .len()
+        .min(header_action_capacity(right - leading_limit));
+    if shown == 0 {
         return Vec::new();
     }
+    let mut out = Vec::with_capacity(shown);
     // Reverse order from the trailing edge keeps the declared left-to-right
-    // reading order.
-    for action in tabbar.header_actions.iter().rev() {
+    // reading order; an overflow drops the last declared, not the first.
+    for action in tabbar.header_actions[..shown].iter().rev() {
         let left = right - SIDEBAR_HEADER_ACTION_SIZE;
         out.push((
             action.id.clone(),
@@ -755,4 +787,65 @@ pub(super) fn sidebar_item_rect(
         right: rect.right - SIDEBAR_ITEM_INSET,
         bottom: top + SIDEBAR_CHILD_ITEM_HEIGHT,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lingxia_shell::MAX_HEADER_SIDEBAR_ACTIONS;
+
+    /// Space the strip has left once the leading controls took theirs.
+    fn available_at(sidebar_width: i32) -> i32 {
+        sidebar_width - SIDEBAR_ITEM_INSET - header_leading_reserve()
+    }
+
+    /// The declaration limit is only honest if the standard sidebar can seat
+    /// every action it allows. Widening the buttons or the leading controls
+    /// without revisiting the limit trips this, instead of a user finding a
+    /// declared action that never draws.
+    #[test]
+    fn the_contract_limit_fits_the_standard_sidebar() {
+        assert!(
+            header_action_capacity(available_at(SHELL_SIDEBAR_WIDTH)) >= MAX_HEADER_SIDEBAR_ACTIONS,
+            "the standard sidebar must seat every action the contract allows"
+        );
+    }
+
+    /// Dropping the app-menu button hands its slot to the actions rather than
+    /// leaving a gap where it would have been.
+    #[test]
+    fn the_reserve_tracks_the_buttons_that_exist() {
+        let expected = if cfg!(feature = "browser-shell") {
+            TOP_BAR_PADDING
+                + 2 * TOP_BAR_BUTTON_SIZE
+                + TOP_BAR_BUTTON_GAP
+                + SIDEBAR_HEADER_ACTION_GAP
+        } else {
+            TOP_BAR_PADDING + TOP_BAR_BUTTON_SIZE + SIDEBAR_HEADER_ACTION_GAP
+        };
+        assert_eq!(header_leading_reserve(), expected);
+    }
+
+    #[test]
+    fn capacity_counts_one_action_at_a_time() {
+        let stride = SIDEBAR_HEADER_ACTION_SIZE + SIDEBAR_HEADER_ACTION_GAP;
+        assert_eq!(header_action_capacity(SIDEBAR_HEADER_ACTION_SIZE - 1), 0);
+        assert_eq!(header_action_capacity(SIDEBAR_HEADER_ACTION_SIZE), 1);
+        assert_eq!(
+            header_action_capacity(stride + SIDEBAR_HEADER_ACTION_SIZE),
+            2
+        );
+    }
+
+    /// A strip too narrow for the whole set keeps what it can draw. Coming back
+    /// empty is what made one action too many look like losing them all.
+    #[test]
+    fn a_narrow_strip_still_seats_what_it_can() {
+        // One button's worth, so the strip is short of the contract limit
+        // however that limit is later set.
+        let narrow = SIDEBAR_HEADER_ACTION_SIZE;
+        assert_eq!(header_action_capacity(narrow), 1);
+        assert!(header_action_capacity(narrow) < MAX_HEADER_SIDEBAR_ACTIONS);
+        assert_eq!(header_action_capacity(0), 0);
+    }
 }

@@ -1,10 +1,11 @@
-use crate::{PinCollection, ShellError, ShellResult};
+use crate::{PinCollection, ShellError, ShellResult, SidebarChrome};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 pub const PIN_STORE_FILE: &str = "shell-pins-v1.json";
+pub const SIDEBAR_CHROME_FILE: &str = "shell-sidebar-v1.json";
 
 #[derive(Debug, Clone)]
 pub struct ShellStore {
@@ -35,6 +36,23 @@ impl ShellStore {
 
     pub fn save_pins(&self, pins: &PinCollection) -> ShellResult<()> {
         self.save(PIN_STORE_FILE, pins)
+    }
+
+    /// The user's sidebar choice. A missing or unreadable file is the ordinary
+    /// "never chose" case, not an error: the sidebar has to open either way.
+    pub fn load_sidebar_chrome(&self) -> SidebarChrome {
+        match self.load_optional::<SidebarChrome>(SIDEBAR_CHROME_FILE) {
+            Ok(Some(chrome)) => chrome,
+            Ok(None) => SidebarChrome::default(),
+            Err(_) => {
+                let _ = self.quarantine(SIDEBAR_CHROME_FILE);
+                SidebarChrome::default()
+            }
+        }
+    }
+
+    pub fn save_sidebar_chrome(&self, chrome: &SidebarChrome) -> ShellResult<()> {
+        self.save(SIDEBAR_CHROME_FILE, chrome)
     }
 
     fn load_optional<T: DeserializeOwned>(&self, name: &str) -> ShellResult<Option<T>> {

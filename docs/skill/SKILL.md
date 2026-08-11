@@ -61,7 +61,7 @@ that matters:
 
 | You changed | Do |
 |---|---|
-| **lxapp code** (View / Logic / `lxapp.json`) — the embedded home lxapp or a standalone lxapp project | `lxdev lxapp reload` — rebuilds the bundle and reloads the running lxapp. No new session. |
+| **lxapp code** (View / Logic / `lxapp.json`) — an embedded resource or a standalone lxapp project | `lxdev lxapp reload` — rebuilds the current bundle and reloads it. Use `--app <appid>` for a non-home resource. No new session. |
 | **host/app code** (`lingxia.yaml`, native Rust, platform projects) | re-run `lingxia dev` — it automatically stops the project's previous same-platform session and takes over. |
 
 ```bash

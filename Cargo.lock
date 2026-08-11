@@ -3103,6 +3103,7 @@ dependencies = [
  "lingxia-shell",
  "lingxia-surface",
  "lingxia-terminal",
+ "lingxia-terminal-config",
  "lingxia-transfer",
  "lingxia-update",
  "lingxia-webview",
@@ -3314,6 +3315,7 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -3405,6 +3407,8 @@ dependencies = [
  "lingxia-service",
  "lingxia-shell",
  "lingxia-surface",
+ "lingxia-terminal",
+ "lingxia-terminal-config",
  "lingxia-transfer",
  "log",
  "rong",
@@ -3666,8 +3670,21 @@ dependencies = [
  "libc",
  "parking_lot",
  "portable-pty",
+ "regex",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "lingxia-terminal-config"
+version = "0.11.2"
+dependencies = [
+ "lingxia-app-context",
+ "lingxia-terminal",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -3768,6 +3785,7 @@ dependencies = [
  "lingxia-shell",
  "lingxia-surface",
  "lingxia-terminal",
+ "lingxia-terminal-config",
  "lingxia-webview",
  "lingxia-windows-contract",
  "log",

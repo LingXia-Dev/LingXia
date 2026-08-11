@@ -20,7 +20,10 @@ function isTransientPageReadinessError(error: unknown): boolean {
   return message.includes('page is not active:')
     || message.includes('page webview is not ready')
     || message.includes('no current page')
-    || message.includes('0x8007139f');
+    || message.includes('0x8007139f')
+    || message.includes('webview destroyed during javascript evaluation')
+    || message.includes('navigation changed during javascript evaluation')
+    || message.endsWith('javascript error: @');
 }
 
 async function waitForRenderedFeature(
@@ -33,13 +36,18 @@ async function waitForRenderedFeature(
   const state = await eventually(
     () => app.page.eval({
         page,
-        script: `({
-          title: document.title,
-          text: document.body.innerText.trim(),
-          isNotFound: document.title === '404'
-            || document.body.innerText.includes('Page Not Found')
-            || document.body.innerText.includes('not_found'),
-        })`,
+        script: `(() => {
+          const body = document.body;
+          if (!body) return null;
+          const text = body.innerText.trim();
+          return {
+            title: document.title,
+            text,
+            isNotFound: document.title === '404'
+              || text.includes('Page Not Found')
+              || text.includes('not_found'),
+          };
+        })()`,
       }) as Promise<DocumentState | null>,
     (candidate) => (
         candidate !== null

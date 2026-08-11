@@ -33,6 +33,7 @@ on:
           - lingxia-polyfills
           - lingxia-react
           - lingxia-skill
+          - lingxia-terminal-settings
           - lingxia-types
           - lingxia-vue
       version:
@@ -54,6 +55,7 @@ env:
     lingxia-html
     lingxia-react
     lingxia-vue
+    lingxia-terminal-settings
     lingxia-types
     lingxia-skill
 

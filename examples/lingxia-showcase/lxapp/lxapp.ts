@@ -64,6 +64,23 @@ App({
     ];
 
     if (os === "macOS" || os === "Windows") {
+      // Footer: the header is a two-slot corner of the caption row, and
+      // terminal settings is scoped to the terminal rather than app-wide.
+      sidebarActions.push({
+        id: "terminal-settings",
+        placement: "footer",
+        icon: "public/sidebar-terminal.svg",
+        label: "Terminal Settings",
+        onActivate: () => {
+          void lx
+            .openSurface({
+              appId: "app.lingxia.terminal-settings",
+              as: "aside",
+              edge: "right",
+            })
+            .catch((error) => console.warn("terminal settings action failed", error));
+        },
+      });
       sidebarActions.push({
         id: "terminal",
         placement: "footer",

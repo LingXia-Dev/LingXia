@@ -1,7 +1,7 @@
 {
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
-  "version": "1.4.0",
+  "version": "1.6.0",
   "icon": "public/showcase-icon.png",
   "security": {
     "network": {

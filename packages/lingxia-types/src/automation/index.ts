@@ -9,6 +9,8 @@
  * product-side API.
  */
 
+import type { TerminalSettingsValue } from '../generated/logic.js';
+
 // ============================ factory ============================
 
 /** Stable automation root; it grants no capability until one is selected. */
@@ -31,6 +33,96 @@ export interface Automation {
    * Runner) on top of the `host` privilege. Windows/macOS only.
    */
   readonly desktop: DesktopDriver;
+  /** Native terminal workspace state and pane actions in trusted dev/test hosts. */
+  readonly terminal: TerminalDriver;
+}
+
+// ========================== terminal tier ==========================
+
+export type TerminalSplitDirection = 'left' | 'right' | 'up' | 'down';
+
+export interface TerminalSurfaceRef {
+  /** Stable id returned by `lx.openSurface({ surface: 'terminal', ... })`. */
+  surface: string;
+}
+
+export interface TerminalPaneSnapshot {
+  paneId: string;
+  active: boolean;
+  visible: boolean;
+  frame: { x: number; y: number; width: number; height: number };
+  grid: {
+    cols: number;
+    rows: number;
+    generation: number;
+    defaultForeground: number;
+    defaultBackground: number;
+    cursorRow: number;
+    cursorCol: number;
+    cursorVisible: boolean;
+    cursorStyle: 'block' | 'bar' | 'underline' | 'block-hollow';
+  };
+}
+
+export type TerminalPaneTree =
+  | { kind: 'leaf'; pane: TerminalPaneSnapshot }
+  | {
+    kind: 'split';
+    /** `horizontal` places children left/right; `vertical` stacks them. */
+    axis: 'horizontal' | 'vertical';
+    children: TerminalPaneTree[];
+  };
+
+export interface TerminalTabSnapshot {
+  id: string;
+  active: boolean;
+  activePaneId?: string;
+  paneCount: number;
+  tree?: TerminalPaneTree;
+}
+
+/** Semantic state published by the native terminal host after layout. */
+export interface TerminalWorkspaceSnapshot {
+  surfaceId: string;
+  presentation: 'main' | 'aside';
+  visible: boolean;
+  /** Expanded to the full content area rather than its docked size. */
+  maximized: boolean;
+  activeTabId?: string;
+  tabCount: number;
+  paneCount: number;
+  configGeneration: number;
+  visualGeneration: number;
+  config: TerminalSettingsValue;
+  chrome: {
+    surface: string;
+    header: string;
+    separator: string;
+    text: string;
+    textMuted: string;
+    cursor: string;
+    selectionBackground: string;
+    selectionForeground: string;
+  };
+  tabs: TerminalTabSnapshot[];
+}
+
+export interface TerminalSplitOptions extends TerminalSurfaceRef {
+  direction: TerminalSplitDirection;
+}
+
+/** Native terminal automation; available only to trusted dev/test hosts. */
+export interface TerminalDriver {
+  snapshot(options: TerminalSurfaceRef): Promise<TerminalWorkspaceSnapshot>;
+  split(options: TerminalSplitOptions): Promise<TerminalWorkspaceSnapshot>;
+  /** Open a tab and activate it. Resolves with the snapshot that follows. */
+  newTab(options: TerminalSurfaceRef): Promise<TerminalWorkspaceSnapshot>;
+  /** Expand to the full content area, or return to the docked size. */
+  setMaximized(options: TerminalMaximizeOptions): Promise<TerminalWorkspaceSnapshot>;
+}
+
+export interface TerminalMaximizeOptions extends TerminalSurfaceRef {
+  maximized: boolean;
 }
 
 // ============================ shell tier ============================

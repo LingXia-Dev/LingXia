@@ -4,6 +4,10 @@ use crate::info;
 use crate::lxapp::LxApp;
 
 impl LxApp {
+    /// Emitted ahead of everything else injected into `<head>`, so the parser
+    /// settles on UTF-8 while it is still sniffing for an encoding.
+    const CHARSET_META: &'static str = r#"<meta charset="utf-8" />"#;
+
     fn trusted_domains_snapshot(&self) -> Vec<String> {
         self.state
             .lock()
@@ -94,7 +98,12 @@ impl LxApp {
         {
             let insert_pos = head_pos + head_end + 1;
             let (before, after) = html_str.split_at(insert_pos);
-            return format!("{}\n{}\n{}", before, meta, after).into_bytes();
+            // Charset first. Everything injected here lands ahead of the page's
+            // own `<meta charset>`, and the CSP plus the bridge config easily
+            // exceed the prescan window the parser uses to find an encoding —
+            // past it the parser falls back to a legacy default and every
+            // non-ASCII character in the markup renders as mojibake.
+            return format!("{}\n{}\n{}\n{}", before, Self::CHARSET_META, meta, after).into_bytes();
         }
 
         if let Some(html_pos) = find_ascii_case_insensitive(&html_str, "<html")
@@ -102,10 +111,23 @@ impl LxApp {
         {
             let insert_pos = html_pos + html_end + 1;
             let (before, after) = html_str.split_at(insert_pos);
-            return format!("{}\n<head>\n{}\n</head>\n{}", before, meta, after).into_bytes();
+            return format!(
+                "{}\n<head>\n{}\n{}\n</head>\n{}",
+                before,
+                Self::CHARSET_META,
+                meta,
+                after
+            )
+            .into_bytes();
         }
 
-        format!("<head>\n{}\n</head>\n{}", meta, html_str).into_bytes()
+        format!(
+            "<head>\n{}\n{}\n</head>\n{}",
+            Self::CHARSET_META,
+            meta,
+            html_str
+        )
+        .into_bytes()
     }
 
     fn content_security_policy_meta(&self) -> String {

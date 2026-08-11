@@ -155,6 +155,7 @@ jobs:
               - 'tools/lingxia-devtools-cli/**'
               - 'packages/lingxia-bridge/**'
               - 'packages/lingxia-polyfills/**'
+              - 'packages/lingxia-terminal-settings/**'
               - 'i18n/**'
               - '.github/actions/build-web-packages/**'
             automation_macos:
@@ -176,8 +177,8 @@ jobs:
               - 'packages/lingxia-react/**'
             automation_vue:
               - 'packages/lingxia-vue/**'
-            # Shared Showcase changes run both frontend adapters on the Windows
-            # host. macOS physical suites remain available as local entries.
+            # Windows covers both frontend adapters; macOS covers the React
+            # view plus its platform-specific native behavior.
             automation_showcase:
               - 'examples/lingxia-showcase/lingxia.yaml'
               - 'examples/lingxia-showcase/lxapp/**'
@@ -491,6 +492,13 @@ jobs:
         shell: bash
         run: cargo test -p lingxia-control-runtime --no-default-features --features local-control --lib named_pipe_restarts_while_an_old_client_is_open
 
+      # The shell chrome and the terminal renderer are behind non-default
+      # features, so `--workspace` above never compiles them and their unit
+      # tests — glyph-to-column mapping, sidebar geometry — run nowhere else.
+      - name: Test Windows shell chrome and terminal renderer
+        shell: bash
+        run: cargo test -p lingxia-windows-sdk --features shell-chrome,terminal-runtime --lib
+
       # `--workspace` above only builds each crate's default features, i.e.
       # windows-sdk's `standard`. Exercise the other tiers standalone too — in
       # particular `components` (advanced / bring-your-own-host mode, without the
@@ -738,7 +746,7 @@ jobs:
         working-directory: examples/lingxia-showcase/lxapp
         run: npm run test:automation:types
 
-      - name: Parse Android automation runner
+      - name: Parse automation runners
         shell: pwsh
         run: |
           foreach ($runner in @(
@@ -754,10 +762,12 @@ jobs:
             ) | Out-Null
             if ($errors.Count -gt 0) { throw "$runner`n$($errors | Out-String)" }
           }
+          bash -n scripts/automation/run-macos-showcase.sh
+          if ($LASTEXITCODE -ne 0) { throw 'Could not parse macOS automation runner.' }
 
   showcase-automation:
     needs: changes
-    name: automation-windows-${{ matrix.profile }}
+    name: automation-${{ matrix.platform }}-${{ matrix.profile }}
     if: ${{ needs.changes.outputs.automation == 'true' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
@@ -771,12 +781,20 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
+      - uses: maxim-lobanov/setup-xcode@v1
+        if: runner.os == 'macOS'
+        with:
+          xcode-version: "26.0"
+
       - uses: Swatinem/rust-cache@v2
         with:
-          prefix-key: showcase-automation-${{ matrix.platform }}-${{ matrix.framework }}
+          prefix-key: showcase-automation-${{ matrix.platform }}-${{ matrix.profile }}
           cache-on-failure: true
 
       - uses: ./.github/actions/build-web-packages
+
+      - uses: ./.github/actions/bootstrap-apple-sdk
+        if: runner.os == 'macOS'
 
       - name: Install showcase test dependencies
         working-directory: examples/lingxia-showcase/lxapp
@@ -784,12 +802,17 @@ jobs:
         run: npm ci
 
       - name: Run showcase automation
+        if: runner.os == 'Windows'
         working-directory: examples/lingxia-showcase
         shell: pwsh
         run: >-
           ../../scripts/automation/run-windows-showcase.ps1
           -Framework '${{ matrix.framework }}'
           -TimeoutSeconds 300
+
+      - name: Run showcase automation
+        if: runner.os == 'macOS'
+        run: bash scripts/automation/run-macos-showcase.sh '${{ matrix.framework }}' 300
 
       - name: Show session diagnostics
         if: always()

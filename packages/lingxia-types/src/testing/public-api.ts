@@ -19,6 +19,7 @@ import type {
   PageKey,
   PagePointer,
   ShellDriver,
+  TerminalDriver,
 } from '../automation/index.js';
 import type {
   AppearanceApi,
@@ -37,6 +38,11 @@ import type {
   Surface,
   SurfaceHandle,
   TabBarApi,
+  TerminalApi,
+  TerminalColorSchemesApi,
+  TerminalFontsApi,
+  TerminalPreviewController,
+  TerminalSettingsApi,
   TrayApi,
   UpdateManager,
   UploadTask,
@@ -110,6 +116,7 @@ export const LX_API_NAMES = [
   'stopWifi',
   'switchTab',
   'tabBar',
+  'terminal',
   'tray',
   'uploadFile',
   'vibrateLong',
@@ -130,6 +137,11 @@ const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
 const APPEARANCE_API = ['get', 'set'] as const;
 const NAVIGATION_BAR_API = ['update'] as const;
 const TAB_BAR_API = ['update'] as const;
+const TERMINAL_API = ['colorSchemes', 'fonts', 'settings'] as const;
+const TERMINAL_SETTINGS_API = ['get', 'onChange', 'reset', 'update'] as const;
+const TERMINAL_COLOR_SCHEMES_API = ['createPreview', 'import', 'list'] as const;
+const TERMINAL_FONTS_API = ['list'] as const;
+const TERMINAL_PREVIEW_API = ['clear', 'close', 'show'] as const;
 const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
 const SHELL_API = ['sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['clear', 'remove', 'replace', 'update'] as const;
@@ -157,8 +169,17 @@ const VIDEO_CONTEXT_API = [
   'stop',
 ] as const;
 
-const AUTOMATION_API = ['browser', 'desktop', 'device', 'lxapp', 'lxapps', 'shell'] as const;
+const AUTOMATION_API = [
+  'browser',
+  'desktop',
+  'device',
+  'lxapp',
+  'lxapps',
+  'shell',
+  'terminal',
+] as const;
 const SHELL_DRIVER_API = ['pins', 'setPin'] as const;
+const TERMINAL_DRIVER_API = ['newTab', 'setMaximized', 'snapshot', 'split'] as const;
 const LXAPP_DRIVER_API = ['eval', 'info', 'nav', 'page', 'pages', 'surfaceLayout'] as const;
 const LXAPP_MANAGER_API = [
   'close',
@@ -275,7 +296,17 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx',
     members: LX_API_NAMES,
-    properties: ['app', 'appearance', 'env', 'navigationBar', 'shell', 'tabBar', 'tray'],
+    optionalMembers: ['terminal'],
+    properties: [
+      'app',
+      'appearance',
+      'env',
+      'navigationBar',
+      'shell',
+      'tabBar',
+      'terminal',
+      'tray',
+    ],
   },
   {
     name: 'lx.app',
@@ -310,6 +341,35 @@ export const LX_RUNTIME_SURFACES = [
     members: TAB_BAR_API,
   },
   {
+    name: 'lx.terminal',
+    layer: 'logic',
+    expression: 'lx.terminal',
+    members: TERMINAL_API,
+    properties: TERMINAL_API,
+    optional: true,
+  },
+  {
+    name: 'lx.terminal.settings',
+    layer: 'logic',
+    expression: 'lx.terminal?.settings',
+    members: TERMINAL_SETTINGS_API,
+    optional: true,
+  },
+  {
+    name: 'lx.terminal.colorSchemes',
+    layer: 'logic',
+    expression: 'lx.terminal?.colorSchemes',
+    members: TERMINAL_COLOR_SCHEMES_API,
+    optional: true,
+  },
+  {
+    name: 'lx.terminal.fonts',
+    layer: 'logic',
+    expression: 'lx.terminal?.fonts',
+    members: TERMINAL_FONTS_API,
+    optional: true,
+  },
+  {
     name: 'lx.env',
     layer: 'logic',
     expression: 'lx.env',
@@ -338,9 +398,15 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation()',
     members: AUTOMATION_API,
-    properties: ['browser', 'desktop', 'device', 'lxapps', 'shell'],
+    properties: ['browser', 'desktop', 'device', 'lxapps', 'shell', 'terminal'],
   },
   { name: 'ShellDriver', layer: 'automation', expression: 'lx.automation().shell', members: SHELL_DRIVER_API },
+  {
+    name: 'TerminalDriver',
+    layer: 'automation',
+    expression: 'lx.automation().terminal',
+    members: TERMINAL_DRIVER_API,
+  },
   {
     name: 'LxAppDriver',
     layer: 'automation',
@@ -555,6 +621,11 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<AppearanceApi, typeof APPEARANCE_API>>,
   AssertTrue<Exact<NavigationBarApi, typeof NAVIGATION_BAR_API>>,
   AssertTrue<Exact<TabBarApi, typeof TAB_BAR_API>>,
+  AssertTrue<Exact<TerminalApi, typeof TERMINAL_API>>,
+  AssertTrue<Exact<TerminalSettingsApi, typeof TERMINAL_SETTINGS_API>>,
+  AssertTrue<Exact<TerminalColorSchemesApi, typeof TERMINAL_COLOR_SCHEMES_API>>,
+  AssertTrue<Exact<TerminalFontsApi, typeof TERMINAL_FONTS_API>>,
+  AssertTrue<Exact<TerminalPreviewController, typeof TERMINAL_PREVIEW_API>>,
   AssertTrue<Exact<LxEnv, typeof ENV_API>>,
   AssertTrue<Exact<ShellApi, typeof SHELL_API>>,
   AssertTrue<Exact<ShellApi['sidebarActions'], typeof SHELL_SIDEBAR_ACTIONS_API>>,
@@ -565,6 +636,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<VideoContext, typeof VIDEO_CONTEXT_API>>,
   AssertTrue<Exact<Automation, typeof AUTOMATION_API>>,
   AssertTrue<Exact<ShellDriver, typeof SHELL_DRIVER_API>>,
+  AssertTrue<Exact<TerminalDriver, typeof TERMINAL_DRIVER_API>>,
   AssertTrue<Exact<LxAppDriver, typeof LXAPP_DRIVER_API>>,
   AssertTrue<Exact<LxAppManager, typeof LXAPP_MANAGER_API>>,
   AssertTrue<Exact<PageDriver, typeof PAGE_DRIVER_API>>,

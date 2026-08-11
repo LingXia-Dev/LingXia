@@ -20,6 +20,7 @@ on:
           - lingxia-polyfills
           - lingxia-react
           - lingxia-skill
+          - lingxia-terminal-settings
           - lingxia-types
           - lingxia-vue
       version:
@@ -53,6 +54,7 @@ env:
     lingxia-html
     lingxia-react
     lingxia-vue
+    lingxia-terminal-settings
     lingxia-types
     lingxia-skill
 
@@ -112,6 +114,7 @@ jobs:
               lingxia-polyfills-v*) package="lingxia-polyfills"; version="${tag#lingxia-polyfills-v}" ;;
               lingxia-react-v*) package="lingxia-react"; version="${tag#lingxia-react-v}" ;;
               lingxia-skill-v*) package="lingxia-skill"; version="${tag#lingxia-skill-v}" ;;
+              lingxia-terminal-settings-v*) package="lingxia-terminal-settings"; version="${tag#lingxia-terminal-settings-v}" ;;
               lingxia-types-v*) package="lingxia-types"; version="${tag#lingxia-types-v}" ;;
               lingxia-vue-v*) package="lingxia-vue"; version="${tag#lingxia-vue-v}" ;;
               *) echo "Unknown tag format: $tag" >&2; exit 1 ;;
@@ -124,7 +127,7 @@ jobs:
               directory="packages"
               package_set="all"
               ;;
-            lingxia-bridge|lingxia-elements|lingxia-html|lingxia-page-runtime|lingxia-polyfills|lingxia-react|lingxia-skill|lingxia-types|lingxia-vue)
+            lingxia-bridge|lingxia-elements|lingxia-html|lingxia-page-runtime|lingxia-polyfills|lingxia-react|lingxia-skill|lingxia-terminal-settings|lingxia-types|lingxia-vue)
               directory="packages/$package"
               package_set="${package#lingxia-}"
               ;;
@@ -225,11 +228,11 @@ jobs:
           set -euo pipefail
           expected="${{ needs.determine-package.outputs.version }}"
 
-          # bridge/polyfills/types track the workspace version in lockstep; other
+          # bridge/polyfills/types/terminal-settings track the workspace version in lockstep; other
           # packages are framework/tools and may legitimately stay at an older
           # version when version.sh skipped their bump.
           is_base_npm() {
-            case " lingxia-bridge lingxia-polyfills lingxia-types " in
+            case " lingxia-bridge lingxia-polyfills lingxia-terminal-settings lingxia-types " in
               *" $1 "*) return 0 ;;
             esac
             return 1

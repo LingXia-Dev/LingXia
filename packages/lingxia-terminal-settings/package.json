@@ -1,0 +1,27 @@
+{
+  "name": "@lingxia/terminal-settings",
+  "version": "0.11.2",
+  "private": false,
+  "description": "Prebuilt LingXia terminal settings lxapp bundle",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LingXia-Dev/LingXia.git",
+    "directory": "packages/lingxia-terminal-settings"
+  },
+  "files": [
+    "dist",
+    "lxapp.json",
+    "themes",
+    "NOTICES.md"
+  ],
+  "scripts": {
+    "check:themes": "node scripts/check-themes.mjs",
+    "build": "npm run check:themes && cargo run -p lingxia-cli -- build --release",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "license": "MIT"
+}

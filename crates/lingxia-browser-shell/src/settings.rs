@@ -136,9 +136,11 @@ fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResul
     download_settings_result(&app)
 }
 
+/// Readable by any lxapp: the host's display language is what every screen has
+/// to render in, and a Logic worker already reads it from `lx.app` base info.
+/// Only the write path stays browser-private.
 #[lingxia::native("settings.getLanguage")]
 fn get_display_language(app: Arc<LxApp>) -> HostResult<LanguageSettingsResult> {
-    crate::require_builtin_browser(&app)?;
     language_settings_result(&app)
 }
 
@@ -170,7 +172,6 @@ async fn watch_display_language(
     app: Arc<LxApp>,
     mut stream: StreamContext<LanguageSettingsResult>,
 ) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     let mut receiver = language_channel().subscribe();
     stream.send(language_settings_result(&app)?)?;
     loop {

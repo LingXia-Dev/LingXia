@@ -8,6 +8,10 @@ repository.workspace = true
 keywords = ["lingxia", "javascript", "runtime"]
 categories = ["web-programming", "api-bindings"]
 
+[features]
+default = []
+terminal = ["dep:lingxia-terminal-config", "dep:lingxia-terminal"]
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -21,6 +25,8 @@ lingxia-platform = { workspace = true }
 lingxia-surface = { workspace = true }
 lingxia-shell = { workspace = true }
 lingxia-messaging = { workspace = true }
+lingxia-terminal-config = { workspace = true, optional = true }
+lingxia-terminal = { workspace = true, optional = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 urlencoding = { workspace = true }

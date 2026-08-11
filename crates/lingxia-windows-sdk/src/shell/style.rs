@@ -205,36 +205,18 @@ pub(super) const FRAME_BUTTON_HOVER_OVERLAY: u32 = 6;
 /// Black-overlay strength (percent) for pressed minimize/maximize buttons.
 pub(super) const FRAME_BUTTON_PRESSED_OVERLAY: u32 = 9;
 
-pub(super) const SHELL_TERMINAL_TEXT: u32 = 0xe5e7eb;
-
 /// Height of the terminal panel header (tab strip + maximize) row.
 pub(super) const TERMINAL_HEADER_HEIGHT: i32 = 34;
 
-/// Fallback terminal surface background (#282C34, `lxTerminalBackground`)
-/// used until a snapshot reports its own background color.
-pub(super) const TERMINAL_SURFACE_BACKGROUND: u32 = 0x282c34;
-
-/// Header background: darker than the terminal surface so the strip reads
-/// as recessed chrome while the active tab flows into the surface. Matches
-/// the macOS terminal rail (`lxTerminalChrome`).
-pub(super) const TERMINAL_HEADER_BACKGROUND: u32 = 0x21252b;
-
-pub(super) const TERMINAL_HEADER_TEXT: u32 = 0xe8eaf0;
-
-pub(super) const TERMINAL_HEADER_TEXT_MUTED: u32 = 0x9aa3b2;
+// The terminal card's colors — surface, header, separator and both text
+// weights — are not constants: they are derived from the scheme in effect by
+// `lingxia_terminal_config::runtime::current_chrome()`, which the Apple host
+// reads too. Fixing them here left a hardcoded dark strip attached to a light
+// terminal every time someone changed a theme.
 
 /// Corner radius of the active tab's top-rounded pill; shared with the
 /// macOS tab rail so both platforms draw the same shape.
 pub(super) const TERMINAL_TAB_RADIUS: i32 = 8;
-
-/// Marker-dot accent of the active tab (macOS tab rail mint).
-pub(super) const TERMINAL_TAB_ACCENT: u32 = 0xaecfbb;
-
-/// Diameter of the per-tab marker dot.
-pub(super) const TERMINAL_TAB_DOT_SIZE: i32 = 6;
-
-/// Minimum tab width that still draws the marker dot + inset title.
-pub(super) const TERMINAL_TAB_DOT_MIN_WIDTH: i32 = 56;
 
 /// Maximum width of one header tab; tabs shrink evenly below this.
 pub(super) const TERMINAL_TAB_MAX_WIDTH: i32 = 190;
