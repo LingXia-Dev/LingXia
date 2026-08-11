@@ -88,7 +88,8 @@ enum Response {
 /// Unix uses a filesystem socket under `~/.lingxia` (user-owned, so the
 /// socket inherits user-only access and we tighten it to 0600 after bind).
 /// Windows uses a per-user named pipe; pipe names are machine-global, so the
-/// user name is part of the pipe name.
+/// user's security identifier is part of the pipe name. `%USERNAME%` is not
+/// an identity: service and interactive tokens can expose the same value.
 fn broker_name() -> std::io::Result<Name<'static>> {
     #[cfg(unix)]
     {
@@ -96,12 +97,73 @@ fn broker_name() -> std::io::Result<Name<'static>> {
     }
     #[cfg(windows)]
     {
-        let user = std::env::var("USERNAME").unwrap_or_else(|_| "default".to_string());
-        format!("lingxia-dev-broker-{user}").to_ns_name::<GenericNamespaced>()
+        windows_broker_name(&current_user_sid()?).to_ns_name::<GenericNamespaced>()
     }
     #[cfg(not(any(unix, windows)))]
     {
         Err(std::io::Error::other("unsupported platform"))
+    }
+}
+
+#[cfg(windows)]
+fn windows_broker_name(user_sid: &str) -> String {
+    format!("lingxia-dev-broker-{user_sid}")
+}
+
+#[cfg(windows)]
+fn current_user_sid() -> std::io::Result<String> {
+    use windows::Win32::Foundation::{HANDLE, LocalFree};
+    use windows::Win32::Security::Authorization::ConvertSidToStringSidW;
+    use windows::Win32::Security::{GetTokenInformation, TOKEN_QUERY, TOKEN_USER, TokenUser};
+    use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    unsafe {
+        let mut token = HANDLE::default();
+        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token)
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        let token = OwnedHandle(token);
+
+        let mut needed = 0u32;
+        let _ = GetTokenInformation(token.0, TokenUser, None, 0, &mut needed);
+        if needed == 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+
+        let words = (needed as usize).div_ceil(std::mem::size_of::<u64>());
+        let mut buffer = vec![0u64; words.max(1)];
+        GetTokenInformation(
+            token.0,
+            TokenUser,
+            Some(buffer.as_mut_ptr().cast()),
+            needed,
+            &mut needed,
+        )
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
+
+        let user = &*(buffer.as_ptr() as *const TOKEN_USER);
+        let mut text = windows::core::PWSTR::null();
+        ConvertSidToStringSidW(user.User.Sid, &mut text)
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        let sid = text
+            .to_string()
+            .map_err(|error| std::io::Error::other(error.to_string()))?;
+        let _ = LocalFree(Some(windows::Win32::Foundation::HLOCAL(text.0.cast())));
+        if sid.is_empty() {
+            return Err(std::io::Error::other("empty user SID"));
+        }
+        Ok(sid)
+    }
+}
+
+#[cfg(windows)]
+struct OwnedHandle(windows::Win32::Foundation::HANDLE);
+
+#[cfg(windows)]
+impl Drop for OwnedHandle {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = windows::Win32::Foundation::CloseHandle(self.0);
+        }
     }
 }
 
@@ -405,5 +467,18 @@ mod tests {
         assert_eq!(info.target, "lxapp");
         assert!(info.content.is_none());
         assert!(info.executable.is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_broker_names_are_scoped_by_sid() {
+        assert_eq!(
+            windows_broker_name("S-1-5-21-1-2-3-1001"),
+            "lingxia-dev-broker-S-1-5-21-1-2-3-1001"
+        );
+        assert_ne!(
+            windows_broker_name("S-1-5-18"),
+            windows_broker_name("S-1-5-21-1-2-3-1001")
+        );
     }
 }

@@ -11,7 +11,15 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 interprocess = { version = "2", optional = true }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true, optional = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Threading",
+] }
+
 [features]
 # Per-user dev-session broker (local IPC). Only the CLI binaries enable this;
 # the app runtime consumes the wire types without pulling in interprocess.
-broker = ["dep:interprocess"]
+broker = ["dep:interprocess", "dep:windows"]
