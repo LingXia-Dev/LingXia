@@ -332,6 +332,11 @@ mod bridge {
         #[swift_bridge(swift_name = "focusSurface")]
         fn focus_surface(appid: &str, surface_id: &str) -> bool;
 
+        // Put a whole aside slot away without closing anything in it. The
+        // slot comes back as soon as content is opened or focused in it.
+        #[swift_bridge(swift_name = "collapseAsideSlot")]
+        fn collapse_aside_slot(appid: &str, kind: &str) -> bool;
+
         // Runtime sidebar action clicks hand off to the home Logic's registered
         // callback. The callback owns any resulting surface operation.
         #[swift_bridge(swift_name = "shellActivate")]
@@ -1494,6 +1499,16 @@ pub fn focus_surface(appid: &str, surface_id: &str) -> bool {
     ffi_catch_unwind!("focus_surface", false, || {
         if let Some(lxapp) = lxapp::try_get(appid) {
             lxapp.focus_shell_surface(surface_id)
+        } else {
+            false
+        }
+    })
+}
+
+pub fn collapse_aside_slot(appid: &str, kind: &str) -> bool {
+    ffi_catch_unwind!("collapse_aside_slot", false, || {
+        if let Some(lxapp) = lxapp::try_get(appid) {
+            lxapp.set_shell_slot_collapsed(kind, true)
         } else {
             false
         }

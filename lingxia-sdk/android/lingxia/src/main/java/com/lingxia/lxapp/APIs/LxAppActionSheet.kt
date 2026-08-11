@@ -12,6 +12,7 @@ import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import android.graphics.drawable.GradientDrawable
 import com.lingxia.app.NativeApi
+import com.lingxia.lxapp.chrome.OverlayPalette
 import org.json.JSONObject
 
 /**
@@ -61,8 +62,10 @@ internal object LxAppActionSheet {
         // Hide any existing action sheet first
         hideActionSheetInternal()
 
+        val palette = OverlayPalette.of(activity)
+
         // Create mask
-        currentMaskView = createMaskView(activity) {
+        currentMaskView = createMaskView(activity, palette) {
             // Cancel on mask click
             sendActionSheetCancel(callbackId)
             hideActionSheetInternal()
@@ -70,17 +73,18 @@ internal object LxAppActionSheet {
         rootView.addView(currentMaskView)
 
         // Create action sheet view
-        currentActionSheetView = createActionSheetView(activity, options, cancelText, itemColor, callbackId)
+        currentActionSheetView =
+            createActionSheetView(activity, options, cancelText, itemColor, callbackId, palette)
         rootView.addView(currentActionSheetView)
     }
 
-    private fun createMaskView(context: Context, onCancel: () -> Unit): View {
+    private fun createMaskView(context: Context, palette: OverlayPalette, onCancel: () -> Unit): View {
         return View(context).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(Color.parseColor("#80000000"))
+            setBackgroundColor(palette.scrim)
             isClickable = true
             setOnClickListener { onCancel() }
         }
@@ -91,7 +95,8 @@ internal object LxAppActionSheet {
         options: List<String>,
         cancelText: String,
         itemColor: String,
-        callbackId: Long
+        callbackId: Long,
+        palette: OverlayPalette
     ): View {
         val container = FrameLayout(context).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -110,7 +115,7 @@ internal object LxAppActionSheet {
                 gravity = Gravity.BOTTOM
             }
 
-            background = createActionSheetBackground(context)
+            background = createActionSheetBackground(context, palette)
         }
 
         // Add option buttons
@@ -123,14 +128,14 @@ internal object LxAppActionSheet {
 
             // Add separator (except for last item)
             if (index < options.size - 1) {
-                val separator = createSeparator(context)
+                val separator = createSeparator(context, palette)
                 actionSheetContent.addView(separator)
             }
         }
 
         // Add thicker separator before cancel button
         val thickSeparator = View(context).apply {
-            setBackgroundColor(Color.parseColor("#E0E0E0"))
+            setBackgroundColor(palette.gap)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 (8 * context.resources.displayMetrics.density).toInt()
@@ -139,7 +144,7 @@ internal object LxAppActionSheet {
         actionSheetContent.addView(thickSeparator)
 
         // Add cancel button
-        val cancelButton = createCancelButton(context, cancelText) {
+        val cancelButton = createCancelButton(context, cancelText, palette) {
             sendActionSheetCancel(callbackId)
             hideActionSheetInternal()
         }
@@ -175,11 +180,16 @@ internal object LxAppActionSheet {
         }
     }
 
-    private fun createCancelButton(context: Context, text: String, onClick: () -> Unit): TextView {
+    private fun createCancelButton(
+        context: Context,
+        text: String,
+        palette: OverlayPalette,
+        onClick: () -> Unit
+    ): TextView {
         return TextView(context).apply {
             this.text = text
             textSize = 18f
-            setTextColor(Color.parseColor("#666666"))
+            setTextColor(palette.secondaryText)
             gravity = Gravity.CENTER
             isClickable = true
             setOnClickListener { onClick() }
@@ -198,9 +208,9 @@ internal object LxAppActionSheet {
         }
     }
 
-    private fun createSeparator(context: Context): View {
+    private fun createSeparator(context: Context, palette: OverlayPalette): View {
         return View(context).apply {
-            setBackgroundColor(Color.parseColor("#E0E0E0"))
+            setBackgroundColor(palette.separator)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 1
@@ -208,12 +218,12 @@ internal object LxAppActionSheet {
         }
     }
 
-    private fun createActionSheetBackground(context: Context): GradientDrawable {
+    private fun createActionSheetBackground(context: Context, palette: OverlayPalette): GradientDrawable {
         val density = context.resources.displayMetrics.density
         val radius = 16f * density
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            setColor(Color.WHITE)
+            setColor(palette.surface)
             cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
         }
     }

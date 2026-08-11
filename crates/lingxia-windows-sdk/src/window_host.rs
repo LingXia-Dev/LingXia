@@ -7286,6 +7286,20 @@ fn window_logical_client_width(hwnd: HWND) -> f64 {
     physical / scale
 }
 
+/// Returns the primary shell host's current client width even while the host
+/// is still completing its first show. Shell state can be published after the
+/// initial `WM_SIZE`; callers use this snapshot to make that startup ordering
+/// converge without waiting for a user resize.
+#[cfg(feature = "shell-chrome")]
+pub(crate) fn primary_shell_logical_client_width() -> Option<f64> {
+    let hwnd = primary_host_window_except(None)?;
+    if is_native_framed_window(hwnd) {
+        return None;
+    }
+    let width = window_logical_client_width(hwnd);
+    (width > 0.0).then_some(width)
+}
+
 /// Reports the adaptive container width only from the primary shell host.
 /// Every WebView2 controller starts with its own 1024px top-level parent; an
 /// aside or a new aside-browser tab must not overwrite the real workspace

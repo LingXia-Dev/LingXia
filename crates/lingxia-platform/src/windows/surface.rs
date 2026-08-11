@@ -72,20 +72,28 @@ enum WindowsCloseAction {
 
 pub(super) fn show_webtag_window(
     webtag: WebTag,
-    title: String,
+    host_title: String,
+    surface_title: String,
     activate: bool,
     open_mode: LxAppOpenMode,
     panel_id: String,
 ) {
     if open_mode == LxAppOpenMode::Panel {
-        remember_runtime_lxapp_aside(&panel_id, webtag.clone(), title.clone());
+        remember_runtime_lxapp_aside(&panel_id, webtag.clone(), surface_title.clone());
     }
     let request_key = show_request_key(&webtag, open_mode, &panel_id);
     let request_id = remember_show_request(&request_key);
     if let Some(handler) = find_webview_handler(&webtag) {
         if show_request_is_current(&request_key, request_id) {
             install_close_handler(&webtag, close_action_for_mode(open_mode));
-            show_webview_handler_for_mode(handler, &title, activate, open_mode, &panel_id);
+            show_webview_handler_for_mode(
+                handler,
+                &host_title,
+                &surface_title,
+                activate,
+                open_mode,
+                &panel_id,
+            );
         }
         return;
     }
@@ -100,7 +108,14 @@ pub(super) fn show_webtag_window(
                 }
                 if let Some(handler) = find_webview_handler(&webtag) {
                     install_close_handler(&webtag, close_action_for_mode(open_mode));
-                    show_webview_handler_for_mode(handler, &title, activate, open_mode, &panel_id);
+                    show_webview_handler_for_mode(
+                        handler,
+                        &host_title,
+                        &surface_title,
+                        activate,
+                        open_mode,
+                        &panel_id,
+                    );
                     return;
                 }
                 thread::sleep(Duration::from_millis(50));
@@ -183,7 +198,8 @@ pub(super) fn hide_lxapp_window(appid: &str, session_id: u64) {
 
 fn show_webview_handler_for_mode(
     handler: WindowsWebViewHandler,
-    title: &str,
+    host_title: &str,
+    surface_title: &str,
     activate: bool,
     open_mode: LxAppOpenMode,
     panel_id: &str,
@@ -204,13 +220,13 @@ fn show_webview_handler_for_mode(
             } else {
                 // Hosts without an adaptive shell plan retain the legacy
                 // single-panel presentation.
-                show_webview_as_panel(&handler.webtag(), title, panel_id)
+                show_webview_as_panel(&handler.webtag(), surface_title, panel_id)
             }
         }
         LxAppOpenMode::Normal if active_host_window_is_device_framed() => {
             present_webview_in_active_group(&handler.webtag())
         }
-        LxAppOpenMode::Normal => show_webview_window(&handler.webtag(), title, activate),
+        LxAppOpenMode::Normal => show_webview_window(&handler.webtag(), host_title, activate),
     };
     if let Err(err) = result {
         log::warn!(
@@ -840,17 +856,13 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         .collect();
     set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, tabs);
 
-    let aside_by_id: HashMap<_, _> = plan
-        .asides
-        .iter()
-        .map(|aside| (aside.id.as_str(), aside))
-        .collect();
+    let mut active_presented = false;
     if slot.visible
         && let Some(active_id) = active_id
         && let Some(entry) = entries.get(active_id)
         && find_webview_handler(&entry.webtag).is_some()
     {
-        let aside = aside_by_id.get(active_id).copied();
+        let aside = plan.asides.iter().find(|aside| aside.id == active_id);
         let edge = slot.edge.or_else(|| aside.and_then(|aside| aside.edge));
         let preferred_size = aside.and_then(|aside| aside.preferred_size);
         let result = if slot.overlay {
@@ -869,6 +881,7 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
                 preferred_panel_size(preferred_size),
             )
         };
+        active_presented = result.is_ok();
         if let Err(err) = result {
             log::warn!(
                 "Failed to present lxapp aside {}: {}",
@@ -878,12 +891,26 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         }
     }
     for (id, entry) in entries {
-        if !slot.visible || Some(id.as_str()) != active_id {
+        if should_hide_runtime_lxapp_aside(slot.visible, active_presented, id.as_str(), active_id) {
             let _ = hide_webview_window(&entry.webtag);
         }
     }
+    // A slot that is not admitted (or that the user collapsed) must not leave
+    // its dock behind: the children stay alive, the region goes away.
+    if !slot.visible {
+        let _ = hide_host_panel(ASIDE_LXAPP_PANEL_ID);
+    }
     refresh_aside_panel(ASIDE_LXAPP_PANEL_ID);
     true
+}
+
+fn should_hide_runtime_lxapp_aside(
+    slot_visible: bool,
+    active_presented: bool,
+    candidate_id: &str,
+    active_id: Option<&str>,
+) -> bool {
+    !slot_visible || (active_presented && Some(candidate_id) != active_id)
 }
 
 fn hide_all_runtime_lxapp_asides() {
@@ -1021,12 +1048,15 @@ fn handle_aside_panel_event(event: WindowsAsidePanelEvent) {
     let panel_id = match &event {
         WindowsAsidePanelEvent::TabClick { panel_id, .. }
         | WindowsAsidePanelEvent::TabClose { panel_id, .. }
-        | WindowsAsidePanelEvent::CloseAll { panel_id }
+        | WindowsAsidePanelEvent::Collapse { panel_id }
         | WindowsAsidePanelEvent::NavBack { panel_id }
         | WindowsAsidePanelEvent::NavForward { panel_id }
         | WindowsAsidePanelEvent::NavReload { panel_id } => panel_id,
     };
-    if panel_id != ASIDE_BROWSER_PANEL_ID {
+    // Collapsing is a slot state in the shared graph, never a local tab
+    // operation — the browser panel's own group has nothing to do for it.
+    let collapse = matches!(event, WindowsAsidePanelEvent::Collapse { .. });
+    if panel_id != ASIDE_BROWSER_PANEL_ID || collapse {
         if let Some(handler) = MANAGED_ASIDE_EVENT_HANDLER
             .lock()
             .ok()
@@ -1048,12 +1078,8 @@ fn handle_aside_panel_event(event: WindowsAsidePanelEvent) {
             sync_aside_browser_group();
         }
         WindowsAsidePanelEvent::TabClose { surface_id, .. } => close_aside_tab(&surface_id),
-        WindowsAsidePanelEvent::CloseAll { .. } => {
-            let order = aside_browser_group().order.clone();
-            for id in order {
-                close_aside_tab(&id);
-            }
-        }
+        // Routed to the graph above; never reached here.
+        WindowsAsidePanelEvent::Collapse { .. } => {}
         WindowsAsidePanelEvent::NavBack { .. } => {
             with_active_aside_webview(|webview| webview.go_back())
         }
@@ -1442,5 +1468,32 @@ fn present_surface_with_handler(webtag: &WebTag, id: &str, target: PresentationT
     // fires the page's onShow.
     if let Some(page_instance_id) = surface_entry(id).and_then(|entry| entry.page_instance_id) {
         notify_page_visibility_when_ready(page_instance_id, true);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_hide_runtime_lxapp_aside;
+
+    #[test]
+    fn cold_lxapp_tab_swap_keeps_the_previous_aside_until_the_target_is_presented() {
+        assert!(!should_hide_runtime_lxapp_aside(
+            true,
+            false,
+            "terminal-settings",
+            Some("lingxia-chat"),
+        ));
+        assert!(should_hide_runtime_lxapp_aside(
+            true,
+            true,
+            "terminal-settings",
+            Some("lingxia-chat"),
+        ));
+        assert!(!should_hide_runtime_lxapp_aside(
+            true,
+            true,
+            "lingxia-chat",
+            Some("lingxia-chat"),
+        ));
     }
 }

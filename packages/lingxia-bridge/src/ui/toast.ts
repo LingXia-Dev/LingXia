@@ -10,7 +10,17 @@ interface ToastParams {
 const ANIMATION_MS = 200;
 const STYLE_ID = 'lx-toast-style';
 
-let currentToast: { dismiss: () => void; timer: ReturnType<typeof setTimeout> | null } | null = null;
+interface LiveToast {
+  dismiss: () => void;
+  timer: ReturnType<typeof setTimeout> | null;
+  titleEl: HTMLElement;
+  /// The shape a repeat call must match to be an in-place text update.
+  icon: string;
+  position: string;
+  mask: boolean;
+}
+
+let currentToast: LiveToast | null = null;
 
 const SVG_SUCCESS = `<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="18" cy="18" r="17" stroke="currentColor" stroke-width="2"/><path d="M11 18l5 5 9-9" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const SVG_ERROR = `<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="18" cy="18" r="17" stroke="currentColor" stroke-width="2"/><path d="M13 13l10 10M23 13l-10 10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>`;
@@ -76,6 +86,22 @@ export function showToast(params: unknown): Promise<void> {
   const mask = p?.mask ?? false;
   const position = p?.position ?? 'center';
 
+  // A repeat call that only changes the text updates the live toast in place —
+  // stepping "connecting 1/4" to "2/4" must not replay the enter animation or
+  // restart the spinner. Anything structural still rebuilds.
+  if (
+    currentToast &&
+    currentToast.icon === icon &&
+    currentToast.position === position &&
+    currentToast.mask === mask
+  ) {
+    const live = currentToast;
+    live.titleEl.textContent = title;
+    if (live.timer) clearTimeout(live.timer);
+    live.timer = duration > 0 ? setTimeout(live.dismiss, duration) : null;
+    return Promise.resolve();
+  }
+
   // Hide existing toast first
   if (currentToast) {
     currentToast.dismiss();
@@ -134,21 +160,28 @@ export function showToast(params: unknown): Promise<void> {
   function dismiss(): void {
     if (dismissed) return;
     dismissed = true;
-    if (currentToast?.dismiss === dismiss) currentToast = null;
+    if (live.timer) clearTimeout(live.timer);
+    if (currentToast === live) currentToast = null;
     box.classList.remove('lx-toast-visible');
-    if (timer) clearTimeout(timer);
     setTimeout(() => {
       container.remove();
       maskEl?.remove();
     }, ANIMATION_MS);
   }
 
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  const live: LiveToast = {
+    dismiss,
+    timer: null,
+    titleEl,
+    icon,
+    position,
+    mask,
+  };
   if (duration > 0) {
-    timer = setTimeout(dismiss, duration);
+    live.timer = setTimeout(dismiss, duration);
   }
 
-  currentToast = { dismiss, timer };
+  currentToast = live;
   return Promise.resolve();
 }
 

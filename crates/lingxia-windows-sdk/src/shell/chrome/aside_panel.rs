@@ -56,8 +56,8 @@ pub(super) fn browser_panel_hit_test(
 }
 
 /// Aside-slot chrome hit testing. Browser slots add navigation; every slot
-/// shares the tab strip and close-all affordance, with no address or new-tab
-/// controls in the strip itself.
+/// shares the tab strip (each tab closes itself) and the collapse control that
+/// puts the region away, with no address or new-tab controls in the strip.
 pub(super) fn aside_panel_header_hit(
     panel: &WindowsChromePanel,
     tabs: &[WindowsAsidePanelTab],
@@ -72,7 +72,7 @@ pub(super) fn aside_panel_header_hit(
     }
     if rect_contains(&browser_panel_close_rect(panel), point) {
         return chrome_command(
-            command_id::ASIDE_PANEL_CLOSE_ALL,
+            command_id::ASIDE_PANEL_COLLAPSE,
             json!({ "panel_id": panel.panel_id.clone() }),
         );
     }
@@ -177,10 +177,14 @@ const ASIDE_PANEL_TAB_GAP: i32 = 4;
 const ASIDE_PANEL_TAB_TOP_INSET: i32 = 6;
 /// Upper-corner radius of the active tab shape.
 const ASIDE_PANEL_TAB_RADIUS: i32 = 8;
+const ASIDE_PANEL_TAB_CLOSE_SIZE: i32 = 16;
+/// Below this the tab has no room for a title next to the close glyph, so the
+/// glyph is dropped and the tab is closed from its neighbours or the slot.
+const ASIDE_PANEL_TAB_CLOSE_MIN_TAB_WIDTH: i32 = 76;
 
 /// Tab rects of the aside panel's strip, index-aligned with the registered
 /// tabs: each fitted to its title (capped), shrunk proportionally when the
-/// strip runs out of room between the nav cluster and close-all.
+/// strip runs out of room between the nav cluster and the collapse control.
 pub(super) fn aside_panel_tab_rects(
     panel: &WindowsChromePanel,
     tabs: &[WindowsAsidePanelTab],
@@ -200,7 +204,9 @@ pub(super) fn aside_panel_tab_rects(
     let mut widths = tabs
         .iter()
         .map(|tab| {
-            (measure_chrome_text_width(&tab.title) + 2 * ASIDE_PANEL_TAB_TEXT_PADDING)
+            (measure_chrome_text_width(&tab.title)
+                + 2 * ASIDE_PANEL_TAB_TEXT_PADDING
+                + ASIDE_PANEL_TAB_CLOSE_SIZE)
                 .clamp(ASIDE_PANEL_TAB_MIN_WIDTH, ASIDE_PANEL_TAB_MAX_WIDTH)
         })
         .collect::<Vec<_>>();
@@ -227,10 +233,16 @@ pub(super) fn aside_panel_tab_rects(
 /// Close-glyph rect at a tab's trailing edge; dropped on tabs too narrow to
 /// keep a readable title next to it.
 pub(super) fn aside_panel_tab_close_rect(tab: RECT) -> Option<RECT> {
-    // The pill is an address/title chip, not a closable tab — the header's
-    // close-all button is the aside's only close affordance.
-    let _ = tab;
-    None
+    if rect_width(&tab) < ASIDE_PANEL_TAB_CLOSE_MIN_TAB_WIDTH {
+        return None;
+    }
+    let top = tab.top + (rect_height(&tab) - ASIDE_PANEL_TAB_CLOSE_SIZE) / 2;
+    Some(normalize_rect(RECT {
+        left: tab.right - ASIDE_PANEL_TAB_CLOSE_SIZE - 6,
+        top,
+        right: tab.right - 6,
+        bottom: top + ASIDE_PANEL_TAB_CLOSE_SIZE,
+    }))
 }
 
 /// The URL capsule rect inside a browser aside's header (between the nav
@@ -324,7 +336,7 @@ pub(super) fn browser_panel_title(panel: &WindowsChromePanel) -> String {
     }
 }
 
-/// Shared aside-slot chrome row: title tabs and close-all. The browser slot
+/// Shared aside-slot chrome row: title tabs and the collapse control. The browser slot
 /// additionally gets back/forward/reload; lxapp slots start the strip at the
 /// leading edge. No slot carries a "+" affordance.
 pub(super) fn draw_aside_panel_header(
@@ -412,14 +424,15 @@ pub(super) fn draw_aside_panel_header(
         }
     }
 
-    let close_all = browser_panel_close_rect(panel);
-    draw_hover_wash(hdc, close_all, 5, cursor);
-    draw_design_icon_button_with_fallback(
+    // Putting the region away is not a close: it keeps every tab alive, so it
+    // gets the panel-collapse mark rather than an ✕.
+    let collapse = browser_panel_close_rect(panel);
+    draw_hover_wash(hdc, collapse, 5, cursor);
+    draw_design_icon_button(
         hdc,
-        close_all,
-        WindowsDesignIcon::CloseX,
+        collapse,
+        WindowsDesignIcon::AsideCollapse,
         pal.frame_button_icon,
-        14,
-        Some(GLYPH_CLOSE),
+        16,
     );
 }

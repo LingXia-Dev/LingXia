@@ -107,8 +107,14 @@ export class LxAppToast {
     mask: boolean = false,
     position: ToastPosition = ToastPosition.Center
   ): void {
-    // Hide any existing toast first
-    LxAppToast.hideToast();
+    // Only the timer is cancelled here: the manager assigns the new config to
+    // its @State, so a repeat call with the same shape updates the words in
+    // place ("connecting 1/4" → "2/4") instead of tearing the toast down and
+    // replaying its entrance.
+    if (LxAppToast.currentTimer) {
+      clearTimeout(LxAppToast.currentTimer);
+      LxAppToast.currentTimer = null;
+    }
 
     const config: ToastConfig = {
       title,

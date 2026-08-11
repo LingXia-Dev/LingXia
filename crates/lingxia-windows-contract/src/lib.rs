@@ -61,7 +61,8 @@ pub enum WindowsAsidePanelEvent {
         panel_id: String,
         surface_id: String,
     },
-    CloseAll {
+    /// Put the whole slot away without closing anything in it.
+    Collapse {
         panel_id: String,
     },
     NavBack {

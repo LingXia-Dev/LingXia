@@ -35,6 +35,11 @@ pub struct SurfaceGraph {
     /// recently used sibling without reordering the slot's tabs.
     #[serde(default)]
     aside_child_mru: Vec<SurfaceId>,
+    /// Slot kinds the user collapsed from the shell. Collapsing only stops the
+    /// slot from being admitted — every child stays alive, and opening or
+    /// focusing a child in it brings the slot straight back.
+    #[serde(default)]
+    collapsed_slots: Vec<SlotKind>,
 }
 
 impl SurfaceGraph {
@@ -158,6 +163,26 @@ impl SurfaceGraph {
     fn touch_aside_slot(&mut self, kind: SlotKind) {
         self.aside_slot_mru.retain(|entry| *entry != kind);
         self.aside_slot_mru.push(kind);
+        // Content arriving in (or being focused inside) a collapsed slot must
+        // not land invisibly.
+        self.collapsed_slots.retain(|entry| *entry != kind);
+    }
+
+    pub fn slot_collapsed(&self, kind: SlotKind) -> bool {
+        self.collapsed_slots.contains(&kind)
+    }
+
+    /// Collapse or restore an aside slot. Returns whether the state changed.
+    pub fn set_slot_collapsed(&mut self, kind: SlotKind, collapsed: bool) -> bool {
+        if collapsed == self.slot_collapsed(kind) {
+            return false;
+        }
+        if collapsed {
+            self.collapsed_slots.push(kind);
+        } else {
+            self.collapsed_slots.retain(|entry| *entry != kind);
+        }
+        true
     }
 
     fn prune_aside_slot_mru(&mut self) {
@@ -167,6 +192,8 @@ impl SurfaceGraph {
             .map(|aside| aside.content.slot_kind())
             .collect();
         self.aside_slot_mru.retain(|kind| live.contains(kind));
+        // A slot that lost its last child starts fresh (uncollapsed) next time.
+        self.collapsed_slots.retain(|kind| live.contains(kind));
         let live_children: std::collections::HashSet<SurfaceId> = self
             .asides()
             .into_iter()
@@ -423,7 +450,7 @@ impl SurfaceGraph {
             if admitted == max_visible {
                 break;
             }
-            if slots[i].active_child.is_none() {
+            if slots[i].active_child.is_none() || slots[i].collapsed {
                 continue;
             }
             if size_class == SizeClass::Compact {
@@ -473,6 +500,7 @@ impl SurfaceGraph {
                         active_child: None,
                         visible: false,
                         overlay: false,
+                        collapsed: self.slot_collapsed(kind),
                     });
                     slots.last_mut().expect("just pushed")
                 }
@@ -506,11 +534,13 @@ impl SurfaceGraph {
                     })
                 });
         }
-        for slot_index in self
+        let admitted: Vec<usize> = self
             .slot_indices_by_recency(&slots)
             .into_iter()
+            .filter(|index| !slots[*index].collapsed)
             .take(max_visible)
-        {
+            .collect();
+        for slot_index in admitted {
             slots[slot_index].visible = true;
         }
         slots

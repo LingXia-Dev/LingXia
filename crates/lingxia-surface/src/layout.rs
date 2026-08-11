@@ -229,6 +229,11 @@ pub struct PlanAsideSlot {
     /// that physical admission cannot fit.
     #[serde(default)]
     pub overlay: bool,
+    /// The user collapsed this slot from the shell. Children stay alive and
+    /// keep their tabs; the region is simply not shown until something opens
+    /// or focuses a child again.
+    #[serde(default)]
+    pub collapsed: bool,
 }
 
 /// One float in the [`LayoutPresentationPlan`]: the surface id plus the

@@ -22,9 +22,13 @@ final class AsideSlotTabStripView: NSView {
 
     var onSelect: ((String) -> Void)?
     var onClose: ((String) -> Void)?
+    /// Put the whole slot away. Nothing closes — the tabs come back with the
+    /// region, so this is a chevron, never an ✕.
+    var onCollapse: (() -> Void)?
 
     private let stack = NSStackView()
     private let separator = NSView()
+    private let collapseButton = NSButton()
     private var tabs: [AsideSlotTab] = []
     private var activeId: String?
     private var itemViews: [AsideSlotTabItemView] = []
@@ -55,16 +59,37 @@ final class AsideSlotTabStripView: NSView {
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
 
+        collapseButton.translatesAutoresizingMaskIntoConstraints = false
+        collapseButton.isBordered = false
+        collapseButton.imagePosition = .imageOnly
+        collapseButton.image = LxIcon.image(
+            named: "icon_aside_collapse", size: CGSize(width: 15, height: 15))
+        collapseButton.contentTintColor = LxAppHostTheme.mutedForeground
+        collapseButton.toolTip = "Collapse panel"
+        collapseButton.target = self
+        collapseButton.action = #selector(collapseTapped)
+        addSubview(collapseButton)
+
         NSLayoutConstraint.activate([
             separator.leadingAnchor.constraint(equalTo: leadingAnchor),
             separator.trailingAnchor.constraint(equalTo: trailingAnchor),
             separator.bottomAnchor.constraint(equalTo: bottomAnchor),
             separator.heightAnchor.constraint(equalToConstant: 1),
+            collapseButton.trailingAnchor.constraint(
+                equalTo: trailingAnchor, constant: -ChromeTabMetrics.edge),
+            collapseButton.widthAnchor.constraint(equalToConstant: 22),
+            collapseButton.heightAnchor.constraint(equalToConstant: 22),
+            collapseButton.centerYAnchor.constraint(
+                equalTo: separator.topAnchor,
+                constant: -ChromeTabMetrics.tabHeight / 2),
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: ChromeTabMetrics.edge),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -ChromeTabMetrics.edge),
+            stack.trailingAnchor.constraint(
+                lessThanOrEqualTo: collapseButton.leadingAnchor, constant: -6),
             stack.bottomAnchor.constraint(equalTo: separator.topAnchor),
         ])
     }
+
+    @objc private func collapseTapped() { onCollapse?() }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 

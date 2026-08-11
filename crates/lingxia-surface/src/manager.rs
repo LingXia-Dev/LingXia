@@ -379,6 +379,25 @@ impl SurfaceManager {
         shown
     }
 
+    /// Collapse or restore a whole aside slot. Collapsing is the shell's
+    /// "put this region away" gesture: nothing closes, so the overlay
+    /// fallback for a child of the slot is dropped along with the dock.
+    pub fn set_slot_collapsed(&mut self, kind: crate::SlotKind, collapsed: bool) -> bool {
+        if !self.graph.set_slot_collapsed(kind, collapsed) {
+            return false;
+        }
+        if collapsed
+            && let Some(id) = self.overlay_fallback_surface_id.clone()
+            && self
+                .graph
+                .get(&id)
+                .is_some_and(|surface| surface.content.slot_kind() == kind)
+        {
+            self.overlay_fallback_surface_id = None;
+        }
+        true
+    }
+
     pub fn hide(&mut self, id: &str) -> bool {
         let hidden = self.graph.hide(id);
         if hidden && self.overlay_fallback_surface_id.as_deref() == Some(id) {
@@ -418,6 +437,7 @@ impl SurfaceManager {
                 .aside_slots
                 .iter_mut()
                 .find(|slot| slot.children.iter().any(|child| child == id))
+            && !slot.collapsed
             && (self.size_class == SizeClass::Compact || !slot.visible)
         {
             slot.visible = true;
@@ -476,6 +496,65 @@ mod tests {
         assert!(slot.visible);
         assert!(slot.overlay);
         assert!(m.graph().is_valid());
+    }
+
+    #[test]
+    fn collapsing_a_slot_keeps_its_children_alive() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(aside_s("assistant", Edge::Right));
+        m.open(aside_s("notes", Edge::Right));
+
+        assert!(m.set_slot_collapsed(crate::SlotKind::Lxapp, true));
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(!slot.visible);
+        assert!(slot.collapsed);
+        assert_eq!(slot.children.len(), 2);
+
+        assert!(m.set_slot_collapsed(crate::SlotKind::Lxapp, false));
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(slot.visible);
+        assert_eq!(slot.children.len(), 2);
+    }
+
+    #[test]
+    fn a_collapsed_slot_reopens_when_content_arrives_or_is_focused() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(aside_s("assistant", Edge::Right));
+
+        m.set_slot_collapsed(crate::SlotKind::Lxapp, true);
+        m.open(aside_s("notes", Edge::Right));
+        assert!(m.presentation_plan().aside_slots[0].visible);
+
+        m.set_slot_collapsed(crate::SlotKind::Lxapp, true);
+        assert!(m.set_focus("assistant"));
+        assert!(m.presentation_plan().aside_slots[0].visible);
+    }
+
+    #[test]
+    fn a_collapsed_slot_that_loses_its_last_child_starts_open_again() {
+        let mut m = SurfaceManager::new(1200.0);
+        m.open(main_s("home"));
+        m.open(aside_s("assistant", Edge::Right));
+        m.set_slot_collapsed(crate::SlotKind::Lxapp, true);
+        m.close("assistant");
+
+        m.open(aside_s("notes", Edge::Right));
+        assert!(m.presentation_plan().aside_slots[0].visible);
+    }
+
+    #[test]
+    fn a_collapsed_compact_slot_does_not_come_back_as_an_overlay() {
+        let mut m = SurfaceManager::new(390.0);
+        m.open(main_s("home"));
+        m.open(aside_s("assistant", Edge::Right));
+        assert!(m.presentation_plan().aside_slots[0].overlay);
+
+        m.set_slot_collapsed(crate::SlotKind::Lxapp, true);
+        let slot = &m.presentation_plan().aside_slots[0];
+        assert!(!slot.visible);
+        assert!(!slot.overlay);
     }
 
     #[test]

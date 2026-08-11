@@ -2277,8 +2277,10 @@ impl LxApp {
         page.set_query(startup_options.query.clone());
 
         // Open UI
+        let title = self.get_lxapp_info().app_name;
         self.runtime.show_lxapp(
             self.appid.clone(),
+            title,
             startup_options.path.clone(),
             self.session.id,
             startup_options.open_mode,

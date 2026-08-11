@@ -217,7 +217,7 @@ pub(super) mod command_id {
     pub(super) const BROWSER_PANEL_NAV_RELOAD: &str = "browser-panel.nav.reload";
     pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
     pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
-    pub(super) const ASIDE_PANEL_CLOSE_ALL: &str = "aside-panel.close-all";
+    pub(super) const ASIDE_PANEL_COLLAPSE: &str = "aside-panel.collapse";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
     pub(super) const ASIDE_PANEL_NAV_FORWARD: &str = "aside-panel.nav.forward";
     pub(super) const ASIDE_PANEL_NAV_RELOAD: &str = "aside-panel.nav.reload";

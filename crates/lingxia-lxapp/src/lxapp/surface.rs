@@ -116,6 +116,16 @@ pub(crate) const PRIMARY_WINDOW: &str = "primary";
 /// Get-or-create the controller for a window. On first use of a window id we
 /// clone the runtime handle and seed a fresh `SurfaceManager` for that window's
 /// graph.
+/// Slot kind named by a shell control ("lxapp" / "browser" / "native").
+fn shell_slot_kind(kind: &str) -> Option<lingxia_surface::SlotKind> {
+    match kind.trim() {
+        "lxapp" => Some(lingxia_surface::SlotKind::Lxapp),
+        "browser" => Some(lingxia_surface::SlotKind::Browser),
+        "native" => Some(lingxia_surface::SlotKind::Native),
+        _ => None,
+    }
+}
+
 pub(crate) fn window_controller(
     window_id: &str,
     runtime: &std::sync::Arc<Platform>,
@@ -670,18 +680,21 @@ impl WindowSurfaceController {
     /// change state, but we still commit so a reconciler that missed the
     /// (already-correct) plan can re-converge — the reconciler is itself a no-op
     /// when the target main is already attached.
-    fn set_active_main(&self, app_id: &str, root_main: lingxia_surface::Surface) {
+    fn set_active_main(&self, app_id: &str, title: &str, root_main: lingxia_surface::Surface) {
         {
             let mut manager = self.manager.lock().unwrap();
             // A tab's appid may not be a graph node yet (the main is seeded lazily
             // by set_width / register_host_aside). Seed it before switching, else
             // set_active_main silently no-ops on an unknown id.
             if manager.graph().role_of(app_id).is_none() {
-                let presentation = lxapp_workspace_presentation(&root_main.content);
+                let mut presentation = lxapp_workspace_presentation(&root_main.content);
+                presentation.automatic_title = Some(title.to_string());
                 // The first main remains the stable, non-closable root by graph
                 // identity. Later lxapps are ordinary workspaces and must expose
                 // lifecycle controls in the platform switcher.
                 let _ = manager.open_main(root_main, presentation);
+            } else {
+                manager.update_automatic_title(app_id, Some(title));
             }
             manager.set_active_main(app_id);
         }
@@ -889,6 +902,22 @@ impl WindowSurfaceController {
             self.commit();
         }
         focused
+    }
+
+    fn slot_collapsed(&self, kind: lingxia_surface::SlotKind) -> bool {
+        self.manager.lock().unwrap().graph().slot_collapsed(kind)
+    }
+
+    fn set_slot_collapsed(&self, kind: lingxia_surface::SlotKind, collapsed: bool) -> bool {
+        let changed = self
+            .manager
+            .lock()
+            .unwrap()
+            .set_slot_collapsed(kind, collapsed);
+        if changed {
+            self.commit();
+        }
+        changed
     }
 
     /// Report the container width so the core resolves size class and physical
@@ -1926,8 +1955,12 @@ impl LxApp {
     /// drive the switch imperatively — it routes the switch through here so the
     /// graph stays the single source of truth.
     pub fn set_active_main(&self) {
-        window_controller(PRIMARY_WINDOW, &self.runtime)
-            .set_active_main(&self.appid, self.root_main_node());
+        let title = self.get_lxapp_info().app_name;
+        window_controller(PRIMARY_WINDOW, &self.runtime).set_active_main(
+            &self.appid,
+            &title,
+            self.root_main_node(),
+        );
     }
 
     /// Explicitly bring this main provider to the front. Unlike the startup
@@ -2238,6 +2271,22 @@ impl LxApp {
             return false;
         }
         window_controller(PRIMARY_WINDOW, &self.runtime).focus_surface(surface_id)
+    }
+
+    /// Collapse or restore a whole aside slot from the shell — the region's
+    /// "put it away" control. Nothing closes: the slot's children stay open
+    /// and reappear when the app opens or focuses one of them again.
+    pub fn set_shell_slot_collapsed(&self, kind: &str, collapsed: bool) -> bool {
+        let Some(kind) = shell_slot_kind(kind) else {
+            return false;
+        };
+        window_controller(PRIMARY_WINDOW, &self.runtime).set_slot_collapsed(kind, collapsed)
+    }
+
+    pub fn shell_slot_collapsed(&self, kind: &str) -> bool {
+        shell_slot_kind(kind).is_some_and(|kind| {
+            window_controller(PRIMARY_WINDOW, &self.runtime).slot_collapsed(kind)
+        })
     }
 
     pub fn forget_surface(&self, id: &str) -> bool {

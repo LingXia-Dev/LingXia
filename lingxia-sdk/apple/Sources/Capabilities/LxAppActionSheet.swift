@@ -8,6 +8,36 @@ import UIKit
 import AppKit
 #endif
 
+#if os(iOS)
+/// Colors of the custom action sheet, resolved from the scheme the overlay
+/// must adopt (the current lxapp's, else the host's).
+@MainActor
+private struct ActionSheetPalette {
+    let scrim: UIColor
+    let surface: UIColor
+    let label: UIColor
+    let separator: UIColor
+    let gap: UIColor
+
+    static func resolve() -> ActionSheetPalette {
+        if LxAppAppearanceRegistry.overlayIsDark() {
+            return ActionSheetPalette(
+                scrim: UIColor.black.withAlphaComponent(0.55),
+                surface: UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1.0),
+                label: .white,
+                separator: UIColor(white: 1.0, alpha: 0.12),
+                gap: UIColor.black.withAlphaComponent(0.4))
+        }
+        return ActionSheetPalette(
+            scrim: UIColor.black.withAlphaComponent(0.4),
+            surface: .white,
+            label: .black,
+            separator: UIColor(red: 0.88, green: 0.88, blue: 0.88, alpha: 1.0),
+            gap: UIColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.0))
+    }
+}
+#endif
+
 class LxAppActionSheet {
 
     static func showActionSheet(options: ActionSheetOptions, callback_id: UInt64) {
@@ -86,12 +116,13 @@ class LxAppActionSheet {
 
     @MainActor
     private static func createCustomActionSheet(options: [String], cancelText: String, itemColor: String, callback_id: UInt64) -> UIView {
+        let palette = ActionSheetPalette.resolve()
         let backgroundView = UIView(frame: UIScreen.main.bounds)
-        backgroundView.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        backgroundView.backgroundColor = palette.scrim
         backgroundView.alpha = 0
 
         let containerView = UIView()
-        containerView.backgroundColor = UIColor.white
+        containerView.backgroundColor = palette.surface
         containerView.layer.cornerRadius = 16
         containerView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         containerView.translatesAutoresizingMaskIntoConstraints = false
@@ -102,7 +133,8 @@ class LxAppActionSheet {
         stackView.translatesAutoresizingMaskIntoConstraints = false
 
         for (index, option) in options.enumerated() {
-            let button = createOptionButton(title: option, color: itemColor, isFirst: index == 0) {
+            let button = createOptionButton(
+                title: option, color: itemColor, palette: palette, isFirst: index == 0) {
                 dismissActionSheet(backgroundView) {
                     sendResult(callback_id: callback_id, tapIndex: index)
                 }
@@ -110,13 +142,13 @@ class LxAppActionSheet {
             stackView.addArrangedSubview(button)
 
             if index < options.count - 1 {
-                stackView.addArrangedSubview(createSeparator())
+                stackView.addArrangedSubview(createSeparator(palette: palette))
             }
         }
 
-        stackView.addArrangedSubview(createThickSeparator())
+        stackView.addArrangedSubview(createThickSeparator(palette: palette))
 
-        let cancelButton = createCancelButton(title: cancelText) {
+        let cancelButton = createCancelButton(title: cancelText, palette: palette) {
             dismissActionSheet(backgroundView) {
                 sendResult(callback_id: callback_id, tapIndex: -1)
             }
@@ -152,16 +184,23 @@ class LxAppActionSheet {
     }
 
     @MainActor
-    private static func createOptionButton(title: String, color: String, isFirst: Bool = false, action: @escaping () -> Void) -> UIButton {
+    private static func createOptionButton(
+        title: String,
+        color: String,
+        palette: ActionSheetPalette,
+        isFirst: Bool = false,
+        action: @escaping () -> Void
+    ) -> UIButton {
         let button = UIButton(type: .system)
         button.setTitle(title, for: .normal)
 
-        // Parse color from hex string, use a softer black as fallback (similar to Android)
-        let buttonColor = parseColor(color) ?? UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1.0)
+        // Parse color from hex string; without one the sheet's own label color
+        // keeps the row legible in either scheme.
+        let buttonColor = parseColor(color) ?? palette.label
         button.setTitleColor(buttonColor, for: .normal)
 
         button.titleLabel?.font = UIFont.systemFont(ofSize: 18)
-        button.backgroundColor = isFirst ? UIColor.white : UIColor.clear
+        button.backgroundColor = isFirst ? palette.surface : UIColor.clear
         button.contentHorizontalAlignment = .center
         button.translatesAutoresizingMaskIntoConstraints = false
 
@@ -198,16 +237,20 @@ class LxAppActionSheet {
 
     /// Create cancel button matching Android style
     @MainActor
-    private static func createCancelButton(title: String, action: @escaping () -> Void) -> UIView {
+    private static func createCancelButton(
+        title: String,
+        palette: ActionSheetPalette,
+        action: @escaping () -> Void
+    ) -> UIView {
         let containerView = UIView()
-        containerView.backgroundColor = UIColor.white
+        containerView.backgroundColor = palette.surface
         containerView.translatesAutoresizingMaskIntoConstraints = false
 
         let button = UIButton(type: .system)
         button.setTitle(title, for: .normal)
-        button.setTitleColor(UIColor.black, for: .normal)
+        button.setTitleColor(palette.label, for: .normal)
         button.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .medium)
-        button.backgroundColor = UIColor.white
+        button.backgroundColor = palette.surface
         button.contentHorizontalAlignment = .center
         button.translatesAutoresizingMaskIntoConstraints = false
 
@@ -233,18 +276,18 @@ class LxAppActionSheet {
     }
 
     @MainActor
-    private static func createSeparator() -> UIView {
+    private static func createSeparator(palette: ActionSheetPalette) -> UIView {
         let separator = UIView()
-        separator.backgroundColor = UIColor(red: 0.88, green: 0.88, blue: 0.88, alpha: 1.0)
+        separator.backgroundColor = palette.separator
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.heightAnchor.constraint(equalToConstant: 1).isActive = true
         return separator
     }
 
     @MainActor
-    private static func createThickSeparator() -> UIView {
+    private static func createThickSeparator(palette: ActionSheetPalette) -> UIView {
         let separator = UIView()
-        separator.backgroundColor = UIColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.0)
+        separator.backgroundColor = palette.gap
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.heightAnchor.constraint(equalToConstant: 8).isActive = true
         return separator
@@ -295,6 +338,8 @@ class LxAppActionSheet {
         callback_id: UInt64
     ) {
         let alert = NSAlert()
+        alert.window.appearance =
+            NSAppearance(named: LxAppAppearanceRegistry.overlayIsDark() ? .darkAqua : .aqua)
         for option in options {
             alert.addButton(withTitle: option)
         }

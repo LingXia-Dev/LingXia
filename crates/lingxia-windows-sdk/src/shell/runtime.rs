@@ -40,10 +40,9 @@ use lingxia_webview::platform::windows::find_webview_handler;
 use lingxia_windows_contract::current_window_layout;
 use lingxia_windows_contract::{
     WindowsAsidePanelEvent, WindowsChromeCommand, WindowsHostWindow, WindowsPanelPosition,
-    WindowsWindowLayout, active_host_window_webtag_key, aside_panel_tabs,
-    dispatch_windows_aside_panel_event, hide_host_panel, is_panel_visible,
-    present_webview_in_active_group, restore_presented_group_main,
-    set_webview_chrome_event_handler, set_webview_window_layout,
+    WindowsWindowLayout, active_host_window_webtag_key, dispatch_windows_aside_panel_event,
+    hide_host_panel, is_panel_visible, present_webview_in_active_group,
+    restore_presented_group_main, set_webview_chrome_event_handler, set_webview_window_layout,
 };
 use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, ReleaseType};
 #[cfg(feature = "browser-runtime")]
@@ -495,7 +494,7 @@ mod chrome_command {
     pub(super) const BROWSER_PANEL_NAV_RELOAD: &str = "browser-panel.nav.reload";
     pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
     pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
-    pub(super) const ASIDE_PANEL_CLOSE_ALL: &str = "aside-panel.close-all";
+    pub(super) const ASIDE_PANEL_COLLAPSE: &str = "aside-panel.collapse";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
     pub(super) const ASIDE_PANEL_NAV_FORWARD: &str = "aside-panel.nav.forward";
     pub(super) const ASIDE_PANEL_NAV_RELOAD: &str = "aside-panel.nav.reload";
@@ -1187,10 +1186,16 @@ fn sync_shell_layout(appid: &str) {
             active_main_lxapp_id(),
         )
         .unwrap_or_else(|| appid.to_string());
-        lingxia::windows::set_surface_sidebar_width(
-            &owner_appid,
-            current_sidebar_width(&group_appid),
-        );
+        let sidebar_width = current_sidebar_width(&group_appid);
+        if let Some(logical_width) = crate::window_host::primary_shell_logical_client_width() {
+            lingxia::windows::set_surface_layout_metrics(
+                &owner_appid,
+                logical_width,
+                sidebar_width,
+            );
+        } else {
+            lingxia::windows::set_surface_sidebar_width(&owner_appid, sidebar_width);
+        }
     }
     sync_related_shell_layouts(appid);
 }
@@ -3042,14 +3047,25 @@ fn handle_managed_aside_event(event: WindowsAsidePanelEvent) {
         WindowsAsidePanelEvent::TabClose { surface_id, .. } => {
             close_managed_aside_child(&surface_id);
         }
-        WindowsAsidePanelEvent::CloseAll { panel_id } => {
-            for tab in aside_panel_tabs(&panel_id) {
-                close_managed_aside_child(&tab.surface_id);
+        WindowsAsidePanelEvent::Collapse { panel_id } => {
+            if let Some(owner_appid) = shell_owner_appid()
+                && let Some(owner) = lxapp::try_get(&owner_appid)
+            {
+                owner.set_shell_slot_collapsed(aside_slot_kind(&panel_id), true);
             }
         }
         WindowsAsidePanelEvent::NavBack { .. }
         | WindowsAsidePanelEvent::NavForward { .. }
         | WindowsAsidePanelEvent::NavReload { .. } => {}
+    }
+}
+
+/// Slot kind behind a well-known aside panel id.
+fn aside_slot_kind(panel_id: &str) -> &'static str {
+    match panel_id {
+        lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID => "browser",
+        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID => "lxapp",
+        _ => "native",
     }
 }
 
@@ -3342,11 +3358,11 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             });
             return;
         }
-        chrome_command::ASIDE_PANEL_CLOSE_ALL => {
+        chrome_command::ASIDE_PANEL_COLLAPSE => {
             let Some(panel_id) = payload_string(&event, "panel_id") else {
                 return;
             };
-            dispatch_aside_panel_event(WindowsAsidePanelEvent::CloseAll { panel_id });
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::Collapse { panel_id });
             return;
         }
         chrome_command::ASIDE_PANEL_NAV_BACK => {

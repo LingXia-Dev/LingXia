@@ -16,6 +16,7 @@ import com.lingxia.app.NativeApi
 import org.json.JSONObject
 import com.lingxia.app.Lingxia
 import com.lingxia.lxapp.LxApp
+import com.lingxia.lxapp.chrome.OverlayPalette
 
 /**
  * Modal configuration data class
@@ -113,22 +114,24 @@ internal object LxAppModal {
         // Hide any existing modal first
         hideModalInternal()
 
+        val palette = OverlayPalette.of(activity)
+
         // Create mask
-        currentMaskView = createMaskView(activity, config.showCancel)
+        currentMaskView = createMaskView(activity, config.showCancel, palette)
         rootView.addView(currentMaskView)
 
         // Create modal view
-        currentModalView = createModalView(activity, config, callbackId)
+        currentModalView = createModalView(activity, config, callbackId, palette)
         rootView.addView(currentModalView)
     }
 
-    private fun createMaskView(context: Context, allowCancel: Boolean): View {
+    private fun createMaskView(context: Context, allowCancel: Boolean, palette: OverlayPalette): View {
         return View(context).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(Color.parseColor("#80000000")) // Semi-transparent black
+            setBackgroundColor(palette.scrim)
             isClickable = true
 
             if (allowCancel) {
@@ -143,7 +146,12 @@ internal object LxAppModal {
         }
     }
 
-    private fun createModalView(context: Context, config: ModalConfig, callbackId: Long): View {
+    private fun createModalView(
+        context: Context,
+        config: ModalConfig,
+        callbackId: Long,
+        palette: OverlayPalette
+    ): View {
         val container = FrameLayout(context).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -161,7 +169,7 @@ internal object LxAppModal {
 
             // Background with shadow effect
             background = GradientDrawable().apply {
-                setColor(Color.WHITE)
+                setColor(palette.surface)
                 cornerRadius = 12f * context.resources.displayMetrics.density
             }
             elevation = 20f * context.resources.displayMetrics.density
@@ -182,7 +190,7 @@ internal object LxAppModal {
             val titleView = TextView(context).apply {
                 text = config.title
                 textSize = 18f
-                setTextColor(Color.BLACK)
+                setTextColor(palette.title)
                 gravity = Gravity.CENTER
                 maxLines = 2
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -197,7 +205,7 @@ internal object LxAppModal {
             val contentView = TextView(context).apply {
                 text = config.content
                 textSize = 16f
-                setTextColor(Color.parseColor("#666666"))
+                setTextColor(palette.body)
                 gravity = Gravity.CENTER
                 maxLines = 4
                 setLineSpacing(6f * context.resources.displayMetrics.density, 1f)
@@ -208,7 +216,7 @@ internal object LxAppModal {
         }
 
         // Add buttons
-        val buttonsContainer = createButtonsContainer(context, config, callbackId)
+        val buttonsContainer = createButtonsContainer(context, config, callbackId, palette)
         modalContent.addView(buttonsContainer)
 
         container.addView(modalContent)
@@ -218,7 +226,8 @@ internal object LxAppModal {
     private fun createButtonsContainer(
         context: Context,
         config: ModalConfig,
-        callbackId: Long
+        callbackId: Long,
+        palette: OverlayPalette
     ): LinearLayout {
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -233,6 +242,7 @@ internal object LxAppModal {
                 // Two buttons layout
                 val cancelButton = createButton(
                     context = context,
+                    palette = palette,
                     text = config.cancelText ?: "",
                     isPrimary = false,
                     onClick = {
@@ -252,6 +262,7 @@ internal object LxAppModal {
 
                 val confirmButton = createButton(
                     context = context,
+                    palette = palette,
                     text = config.confirmText ?: "",
                     isPrimary = true,
                     color = config.confirmColor,
@@ -270,6 +281,7 @@ internal object LxAppModal {
                 // Single button layout - ensure button has proper width and height
                 val confirmButton = createButton(
                     context = context,
+                    palette = palette,
                     text = config.confirmText ?: "",
                     isPrimary = true,
                     color = config.confirmColor,
@@ -294,6 +306,7 @@ internal object LxAppModal {
 
     private fun createButton(
         context: Context,
+        palette: OverlayPalette,
         text: String,
         isPrimary: Boolean,
         color: String? = null,
@@ -320,9 +333,9 @@ internal object LxAppModal {
                     cornerRadius = 8f * context.resources.displayMetrics.density
                 }
             } else {
-                setTextColor(Color.parseColor("#666666"))
+                setTextColor(palette.secondaryText)
                 background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#F5F5F5"))
+                    setColor(palette.secondaryFill)
                     cornerRadius = 8f * context.resources.displayMetrics.density
                 }
             }

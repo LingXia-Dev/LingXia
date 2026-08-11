@@ -517,6 +517,7 @@ impl AppRuntime for Platform {
     fn show_lxapp(
         &self,
         appid: String,
+        _title: String,
         path: String,
         session_id: u64,
         _open_mode: LxAppOpenMode,

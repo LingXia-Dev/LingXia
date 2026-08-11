@@ -135,6 +135,7 @@ pub trait AppRuntime:
     fn show_lxapp(
         &self,
         appid: String,
+        title: String,
         path: String,
         session_id: u64,
         open_mode: LxAppOpenMode,

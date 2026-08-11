@@ -26,6 +26,17 @@ struct ToastConfig {
     }
 }
 
+/// Live title of the toast on screen. Progress steps ("connecting 1/4" →
+/// "2/4") publish through this so the overlay is never torn down and rebuilt.
+@MainActor
+final class ToastTitle: ObservableObject {
+    @Published var value: String
+
+    init(_ value: String) {
+        self.value = value
+    }
+}
+
 /// Extension for ToastIcon to add UI properties
 extension ToastIcon {
     var systemImageName: String? {
@@ -78,6 +89,8 @@ class LxAppToast {
     /// Current toast state
     @MainActor private static var currentToastTimer: Timer?
     @MainActor private static var toastOverlay: ToastOverlayManager?
+    /// Shape of the toast on screen; a repeat call matching it is a text update.
+    @MainActor private static var currentShape: (ToastIcon, String?, Bool, ToastPosition)?
 
     /// Show toast
     /// - Parameters:
@@ -97,6 +110,15 @@ class LxAppToast {
     ) {
         os_log("%@", log: Self.log, type: .info, "Showing toast: \(title)")
 
+        // Same shape, new words: update in place so stepping through progress
+        // neither replays the enter animation nor restarts the spinner.
+        if let overlay = toastOverlay, let shape = currentShape,
+           shape.0 == icon, shape.1 == image, shape.2 == mask, shape.3 == position {
+            overlay.update(title: title)
+            scheduleAutoHide(after: duration)
+            return
+        }
+
         // Hide any existing toast first
         hideToast()
 
@@ -108,7 +130,21 @@ class LxAppToast {
             mask: mask
         )
 
+        currentShape = (icon, image, mask, position)
         showToastWindow(config: config, position: position)
+    }
+
+    /// (Re)arm the auto-dismiss timer; a non-positive duration keeps the toast
+    /// up until `hideToast`.
+    @MainActor private static func scheduleAutoHide(after duration: TimeInterval) {
+        currentToastTimer?.invalidate()
+        currentToastTimer = nil
+        guard duration > 0 else { return }
+        currentToastTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { _ in
+            Task { @MainActor in
+                hideToast()
+            }
+        }
     }
 
     /// Hide current toast immediately
@@ -116,6 +152,7 @@ class LxAppToast {
         os_log("%@", log: Self.log, type: .info, "Hiding toast")
         currentToastTimer?.invalidate()
         currentToastTimer = nil
+        currentShape = nil
         toastOverlay?.hide()
         toastOverlay = nil
     }
@@ -124,15 +161,7 @@ class LxAppToast {
     private static func showToastWindow(config: ToastConfig, position: ToastPosition) {
         toastOverlay = ToastOverlayManager(config: config, position: position)
         toastOverlay?.show()
-
-        // Auto-hide after duration
-        if config.duration > 0 {
-            currentToastTimer = Timer.scheduledTimer(withTimeInterval: config.duration, repeats: false) { _ in
-                Task { @MainActor in
-                    hideToast()
-                }
-            }
-        }
+        scheduleAutoHide(after: config.duration)
     }
 }
 
@@ -141,6 +170,7 @@ class LxAppToast {
 class ToastOverlayManager {
     private let config: ToastConfig
     private let position: ToastPosition
+    private let title: ToastTitle
 
 #if os(iOS)
     private var overlayViewController: UIViewController?
@@ -150,6 +180,11 @@ class ToastOverlayManager {
     init(config: ToastConfig, position: ToastPosition) {
         self.config = config
         self.position = position
+        self.title = ToastTitle(config.title)
+    }
+
+    func update(title: String) {
+        self.title.value = title
     }
 
     func show() {
@@ -190,7 +225,7 @@ class ToastOverlayManager {
         }
 
         // Create overlay view controller
-        let toastView = ToastContentView(config: config, position: position)
+        let toastView = ToastContentView(config: config, position: position, title: title)
         let hostingController = UIHostingController(rootView: toastView)
         hostingController.view.backgroundColor = UIColor.clear
         hostingController.modalPresentationStyle = .overFullScreen
@@ -228,6 +263,7 @@ final class PassthroughWindow: UIWindow {
 struct ToastContentView: View {
     let config: ToastConfig
     let position: ToastPosition
+    @ObservedObject var title: ToastTitle
     @State private var isVisible = false
 
     var body: some View {
@@ -254,7 +290,7 @@ struct ToastContentView: View {
                 }
 
                 // Title text
-                Text(config.title)
+                Text(title.value)
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)

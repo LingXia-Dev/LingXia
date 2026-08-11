@@ -1,5 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { onCallback } from 'liblingxia.so';
+import { LxAppContainer } from '../LxAppContainer';
 
 /**
  * Modal configuration structure
@@ -122,6 +123,9 @@ export class LxAppModal {
 export struct ModalManager {
   @State isVisible: boolean = false;
   @State config: ModalConfig | null = null;
+  // Card colors follow the foreground lxapp's scheme, resolved when the modal
+  // is shown; the overlay itself belongs to no app.
+  @State appearanceDark: boolean = false;
   private callbackId: string = "";
 
   aboutToAppear() {
@@ -140,7 +144,7 @@ export struct ModalManager {
           .width('100%')
           .height('100%')
           .backgroundColor(Color.Black)
-          .opacity(0.5)
+          .opacity(this.appearanceDark ? 0.65 : 0.5)
 
         // Modal content
         this.buildModalContent()
@@ -159,7 +163,7 @@ export struct ModalManager {
         Text(this.config.title)
           .fontSize(18)
           .fontWeight(FontWeight.Bold)
-          .fontColor(Color.Black)
+          .fontColor(this.appearanceDark ? Color.White : Color.Black)
           .textAlign(TextAlign.Center)
           .maxLines(2)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -169,7 +173,7 @@ export struct ModalManager {
       if (this.config?.content) {
         Text(this.config.content)
           .fontSize(16)
-          .fontColor('#666666')
+          .fontColor(this.appearanceDark ? '#A1A1AA' : '#666666')
           .textAlign(TextAlign.Center)
           .maxLines(4)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -181,7 +185,7 @@ export struct ModalManager {
     }
     .width(280)
     .padding(24)
-    .backgroundColor(Color.White)
+    .backgroundColor(this.appearanceDark ? '#1C1C1E' : Color.White)
     .borderRadius(12)
     .shadow({
       radius: 20,
@@ -200,8 +204,8 @@ export struct ModalManager {
           .layoutWeight(1)
           .height(44)
           .fontSize(16)
-          .fontColor('#666666')
-          .backgroundColor('#F5F5F5')
+          .fontColor(this.appearanceDark ? '#E5E5E7' : '#666666')
+          .backgroundColor(this.appearanceDark ? '#2C2C2E' : '#F5F5F5')
           .borderRadius(8)
           .onClick(() => {
             this.handleCancel();
@@ -270,6 +274,7 @@ export struct ModalManager {
     this.isVisible = false;
     this.config = null;
     this.callbackId = "";
+    this.appearanceDark = LxAppContainer.appearanceDarkNow();
 
     // Then set new state
     this.config = config;
