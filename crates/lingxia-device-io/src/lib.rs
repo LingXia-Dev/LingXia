@@ -8,9 +8,11 @@
 
 pub mod error;
 pub mod model;
+#[cfg(feature = "wire")]
 pub mod wire;
 
-mod pip_state;
+#[cfg(feature = "supervision")]
+mod supervision_state;
 
 pub use error::{Error, ErrorCode, Result};
 pub use model::{
@@ -26,6 +28,7 @@ pub use model::{
 /// tool runs them in its own process. Saying "this terminal" to someone whose
 /// *app* was refused sends them to the wrong row in System Settings, and
 /// naming the binary of a bare CLI sends them to a row that does not exist.
+#[cfg(any(feature = "diagnostics", feature = "supervision"))]
 pub fn responsible_app() -> String {
     #[cfg(target_os = "macos")]
     {
@@ -37,16 +40,19 @@ pub fn responsible_app() -> String {
 }
 
 /// App lifecycle (`desktop app ...`).
+#[cfg(feature = "app")]
 pub mod app {
     pub use crate::backend::{app_launch as launch, app_quit as quit};
 }
 
 /// Process control (`desktop process ...`).
+#[cfg(feature = "process")]
 pub mod process {
     pub use crate::backend::{process_kill as kill, process_list as list};
 }
 
 /// Native accessibility (`desktop ax ...`).
+#[cfg(feature = "ax")]
 pub mod ax {
     pub use crate::backend::{
         ax_collapse as collapse, ax_expand as expand, ax_focus as focus, ax_hit_test as hit_test,
@@ -56,16 +62,19 @@ pub mod ax {
 }
 
 /// Wait for a window to appear (`desktop wait window`).
+#[cfg(feature = "window")]
 pub fn wait_window(query: &WindowQuery, visible: Option<bool>, timeout_ms: u64) -> Result<Window> {
     backend::wait_window(query, visible, timeout_ms)
 }
 
 /// Wait for a pixel color (`desktop wait pixel`).
+#[cfg(feature = "snapshot")]
 pub fn wait_pixel(x: i32, y: i32, hex: &str, tolerance: u8, timeout_ms: u64) -> Result<Pixel> {
     backend::wait_pixel(x, y, hex, tolerance, timeout_ms)
 }
 
 /// Clipboard access (`desktop clipboard ...`).
+#[cfg(feature = "clipboard")]
 pub mod clipboard {
     pub use crate::backend::{
         clipboard_clear as clear, clipboard_get as get, clipboard_paste as paste,
@@ -74,6 +83,7 @@ pub mod clipboard {
 }
 
 /// Synthetic input (`desktop pointer` / `desktop key`). All mutating.
+#[cfg(feature = "input")]
 pub mod input {
     pub use crate::backend::{
         key_down, key_press, key_type, key_up, pointer_click, pointer_down, pointer_drag,
@@ -81,7 +91,7 @@ pub mod input {
     };
 }
 
-/// The picture-in-picture viewer.
+/// The current desktop activity supervision viewer.
 ///
 /// Not a command surface. It exists so a person can watch their own machine
 /// being driven, and an agent that could switch it off would be able to work
@@ -90,7 +100,8 @@ pub mod input {
 /// leave. The only control belongs to the person in front of the screen.
 ///
 /// Implemented on macOS and Windows; elsewhere this is a no-op.
-pub mod pip {
+#[cfg(feature = "supervision")]
+pub mod supervision {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub use crate::backend::{pip_dismiss as dismiss, pip_note_activity as note_activity};
 
@@ -102,6 +113,7 @@ pub mod pip {
 }
 
 /// Window management (`desktop window ...`). All mutating.
+#[cfg(feature = "window")]
 pub mod window {
     pub use crate::backend::{
         window_activate as activate, window_close as close, window_focus as focus,
@@ -112,25 +124,30 @@ pub mod window {
     };
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "native", target_os = "windows"))]
 #[path = "win/mod.rs"]
 mod backend;
 
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "native", target_os = "macos"))]
 #[path = "mac/mod.rs"]
 mod backend;
 
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+#[cfg(all(
+    feature = "native",
+    not(any(target_os = "windows", target_os = "macos"))
+))]
 #[path = "stub.rs"]
 mod backend;
 
 /// Backend + capability + live-permission report (`desktop doctor`).
+#[cfg(feature = "diagnostics")]
 pub fn doctor() -> Doctor {
     backend::doctor()
 }
 
 /// The host process's current OS-permission grants, without prompting
 /// (`desktop permissions`).
+#[cfg(feature = "diagnostics")]
 pub fn permissions() -> Permissions {
     backend::permissions()
 }
@@ -139,34 +156,39 @@ pub fn permissions() -> Permissions {
 /// the resulting state (`desktop permissions --request`). The OS cannot grant
 /// silently: the user must approve (and often relaunch) for the change to take
 /// effect, so a follow-up call may still show `false` until then.
+#[cfg(feature = "diagnostics")]
 pub fn request_permissions() -> Permissions {
     backend::request_permissions()
 }
 
 /// Enumerate monitors (`desktop displays`).
+#[cfg(feature = "window")]
 pub fn displays() -> Result<Vec<Display>> {
     backend::displays()
 }
 
 /// Enumerate top-level OS windows, optionally filtered (`desktop windows`).
+#[cfg(feature = "window")]
 pub fn windows(query: &WindowQuery) -> Result<Vec<Window>> {
     backend::windows(query)
 }
 
 /// Resolve the top-level window that native pointer input would reach.
 /// Internal host-viewer plumbing, not a control-surface method.
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "input", target_os = "windows"))]
 #[doc(hidden)]
 pub fn input_window_at_point(x: i32, y: i32) -> Option<Window> {
     backend::input_window_at_point(x, y)
 }
 
 /// Capture a display/window/region (`desktop screenshot`).
+#[cfg(feature = "snapshot")]
 pub fn screenshot(target: CaptureTarget) -> Result<Capture> {
     backend::screenshot(target)
 }
 
 /// Read a single pixel's color (`desktop pixel`).
+#[cfg(feature = "snapshot")]
 pub fn pixel(x: i32, y: i32) -> Result<Pixel> {
     backend::pixel(x, y)
 }

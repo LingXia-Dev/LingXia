@@ -15,6 +15,7 @@
 pub mod app;
 pub mod browser;
 mod console;
+#[cfg(feature = "desktop")]
 pub mod desktop;
 pub mod entry;
 pub mod guard;

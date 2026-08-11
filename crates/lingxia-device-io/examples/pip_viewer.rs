@@ -4,11 +4,11 @@
 //! command surface: nothing opens or
 //! closes it, and the host only says what just happened to the machine. So
 //! everything here drives it the way a real run does — through
-//! `pip::note_activity` — and every assertion reads the actual window from the
+//! `supervision::note_activity` — and every assertion reads the actual window from the
 //! window server rather than anything this process believes.
 //!
-//!     cargo run --release -p lingxia-device-io --example pip_viewer
-//!     cargo run --release -p lingxia-device-io --example pip_viewer -- circle 120
+//!     cargo run --release -p lingxia-device-io --features supervision --example pip_viewer
+//!     cargo run --release -p lingxia-device-io --features supervision --example pip_viewer -- circle 120
 
 #[cfg(not(target_os = "macos"))]
 fn main() {
@@ -74,7 +74,7 @@ fn circle(hold: u64) {
     println!("driving for {hold}s — nothing calls show; the viewer opens itself");
     for step in 0..(hold * 1000 / 120) {
         let angle = step as f64 * 0.18;
-        cu::pip::note_activity(cu::Acted::At {
+        cu::supervision::note_activity(cu::Acted::At {
             x: cx + (radius * angle.cos()) as i32,
             y: cy + (radius * angle.sin()) as i32,
         });
@@ -92,14 +92,14 @@ fn behaviours() {
     assert!(panel().is_none(), "nothing should be on screen yet");
 
     println!("\n1. opens by itself on the first thing that changes the machine");
-    cu::pip::note_activity(cu::Acted::At { x: cx, y: cy });
+    cu::supervision::note_activity(cu::Acted::At { x: cx, y: cy });
     std::thread::sleep(Duration::from_secs(2));
     let opened = panel().expect("the first actuating command must open it");
     println!("   panel at {opened:?}, with nobody having asked for it");
 
     println!("\n2. moves aside when the work is underneath it");
     for _ in 0..12 {
-        cu::pip::note_activity(cu::Acted::At {
+        cu::supervision::note_activity(cu::Acted::At {
             x: opened.0 + 60,
             y: opened.1 + 60,
         });
@@ -126,7 +126,7 @@ fn behaviours() {
     println!("   gone after {rested}s, with nobody having closed it");
 
     println!("\n4. comes straight back on the next thing that happens");
-    cu::pip::note_activity(cu::Acted::At {
+    cu::supervision::note_activity(cu::Acted::At {
         x: cx / 2,
         y: cy / 2,
     });

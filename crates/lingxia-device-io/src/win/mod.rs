@@ -3,34 +3,55 @@
 //! not virtualized.
 
 use crate::error::{Error, Result};
-use crate::model::{Capabilities, Display, Doctor, Permissions, Rect, Window, WindowQuery};
+#[cfg(feature = "diagnostics")]
+use crate::model::{Capabilities, Doctor, Permissions};
+use crate::model::{Display, Rect, Window, WindowQuery};
 use std::sync::Once;
-use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, POINT, RECT, TRUE};
+#[cfg(feature = "input")]
+use windows::Win32::Foundation::POINT;
+use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, RECT, TRUE};
 use windows::core::{BOOL, PWSTR};
 
+#[cfg(feature = "ax")]
 mod ax;
+#[cfg(feature = "snapshot")]
 mod capture;
+#[cfg(feature = "clipboard")]
 mod clipboard;
+#[cfg(feature = "input")]
 mod input;
+#[cfg(feature = "supervision")]
 mod pip;
+#[cfg(feature = "process")]
 mod process;
+#[cfg(feature = "snapshot")]
 mod wgc;
+#[cfg(feature = "window")]
 mod window_ops;
+#[cfg(feature = "ax")]
 pub use ax::{
     collapse as ax_collapse, expand as ax_expand, focus as ax_focus, hit_test as ax_hit_test,
     invoke as ax_invoke, query as ax_query, scroll_into_view as ax_scroll_into_view,
     select as ax_select, set_value as ax_set_value, tree as ax_tree, wait as ax_wait,
 };
+#[cfg(feature = "snapshot")]
 pub use capture::{pixel, screenshot, wait_pixel};
+#[cfg(feature = "clipboard")]
 pub use clipboard::{
     clear as clipboard_clear, get as clipboard_get, paste as clipboard_paste, set as clipboard_set,
 };
+#[cfg(feature = "input")]
 pub use input::{
     key_down, key_press, key_type, key_up, pointer_click, pointer_down, pointer_drag, pointer_move,
     pointer_scroll, pointer_up,
 };
+#[cfg(feature = "supervision")]
 pub use pip::{dismiss as pip_dismiss, note_activity as pip_note_activity};
-pub use process::{app_launch, app_quit, process_kill, process_list};
+#[cfg(feature = "app")]
+pub use process::{app_launch, app_quit};
+#[cfg(feature = "process")]
+pub use process::{process_kill, process_list};
+#[cfg(feature = "window")]
 pub use window_ops::{
     activate as window_activate, close as window_close, focus as window_focus,
     maximize as window_maximize, minimize as window_minimize, move_to as window_move,
@@ -64,15 +85,24 @@ use windows::Win32::UI::HiDpi::{
     SetProcessDpiAwarenessContext,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GA_ROOT, GWL_EXSTYLE, GetAncestor, GetClassNameW, GetForegroundWindow,
-    GetWindowLongW, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
-    IsWindowVisible, IsZoomed, WS_EX_TOPMOST, WindowFromPoint,
+    EnumWindows, GWL_EXSTYLE, GetClassNameW, GetForegroundWindow, GetWindowLongW, GetWindowRect,
+    GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, WS_EX_TOPMOST,
 };
+#[cfg(feature = "input")]
+use windows::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor, WindowFromPoint};
 
 const MONITORINFOF_PRIMARY: u32 = 1;
 
 fn direct_target_class_allowed(class: &str) -> bool {
-    !pip::is_viewer_class(class)
+    #[cfg(feature = "supervision")]
+    {
+        return !pip::is_viewer_class(class);
+    }
+    #[cfg(not(feature = "supervision"))]
+    {
+        let _ = class;
+        true
+    }
 }
 
 pub(crate) fn is_viewer_hwnd(hwnd: HWND) -> bool {
@@ -116,14 +146,17 @@ pub(crate) fn rect_to(r: RECT) -> Rect {
 
 /// Windows needs no per-process TCC-style grants for these APIs, so all
 /// permissions read as granted.
+#[cfg(feature = "diagnostics")]
 pub fn permissions() -> Permissions {
     Permissions::all_granted()
 }
 
+#[cfg(feature = "diagnostics")]
 pub fn request_permissions() -> Permissions {
     Permissions::all_granted()
 }
 
+#[cfg(feature = "diagnostics")]
 pub fn doctor() -> Doctor {
     ensure_dpi_aware();
     Doctor {
@@ -147,6 +180,7 @@ pub fn doctor() -> Doctor {
     }
 }
 
+#[cfg(feature = "diagnostics")]
 fn os_version() -> String {
     // Best-effort; avoids a version-shim dependency.
     std::env::var("OS").unwrap_or_default()
@@ -275,6 +309,7 @@ pub fn windows(query: &WindowQuery) -> Result<Vec<Window>> {
 /// The top-level window that would receive pointer input at this physical
 /// desktop point. Resolve it immediately before SendInput so owned popups and
 /// overlapping topmost windows win over a caller's stale proposed window id.
+#[cfg(feature = "input")]
 pub(crate) fn input_window_at_point(x: i32, y: i32) -> Option<Window> {
     ensure_dpi_aware();
     unsafe {
@@ -440,7 +475,7 @@ pub(crate) fn process_name(pid: u32) -> String {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "supervision"))]
 mod tests {
     use super::{direct_target_class_allowed, pip};
 

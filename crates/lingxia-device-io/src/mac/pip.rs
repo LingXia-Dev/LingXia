@@ -44,7 +44,7 @@ use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
 use crate::error::{Error, Result};
 use crate::model::{Acted, WindowTarget};
-use crate::pip_state::{ActivityState, ActivityTarget, Transition};
+use crate::supervision_state::{ActivityState, ActivityTarget, Transition};
 
 /// Which corner it sits in. It is placed rather than dragged: it ignores the
 /// mouse so it can never swallow a click meant for what is underneath, and a
@@ -406,7 +406,7 @@ fn presentation(watch: &ActivityTarget) -> Result<(CGRect, ViewerMode, String)> 
             )
         }
     };
-    let label = crate::pip_state::control_label(&controller_identity(), &target);
+    let label = crate::supervision_state::control_label(&controller_identity(), &target);
     Ok((rect, mode, label))
 }
 

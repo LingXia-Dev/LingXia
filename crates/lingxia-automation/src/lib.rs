@@ -4,6 +4,7 @@
 //! returns one lxapp driver. Host-only managers and surfaces enforce their
 //! privilege when used; callers do not select an internal privilege tier.
 
+#[cfg(feature = "desktop")]
 mod desktop;
 mod host;
 mod info;
@@ -154,18 +155,26 @@ impl JSAutomation {
     }
 
     /// Session-less local-OS desktop automation (`lxdev desktop`). Beyond the
-    /// app sandbox — it drives the whole OS — so it is available only to a
+    /// app sandbox, it drives the whole OS, so it is available only to a
     /// trusted host automation runtime or an explicitly enabled dev host.
     #[js_method(getter, enumerable)]
     fn desktop(&self, ctx: JSContext) -> JSResult<JSObject> {
         self.require_host()?;
-        if !(self.host_runtime || lxapp::is_dev_session() || lxapp::automation_auto_grant()) {
-            return Err(auto_err(
-                "desktop tier requires a trusted host automation runtime or dev host",
-            ));
+        #[cfg(feature = "desktop")]
+        {
+            if !(self.host_runtime || lxapp::is_dev_session() || lxapp::automation_auto_grant()) {
+                return Err(auto_err(
+                    "desktop tier requires a trusted host automation runtime or dev host",
+                ));
+            }
+            return Ok(Class::lookup::<desktop::JSDesktopDriver>(&ctx)?
+                .instance(desktop::JSDesktopDriver::new()));
         }
-        Ok(Class::lookup::<desktop::JSDesktopDriver>(&ctx)?
-            .instance(desktop::JSDesktopDriver::new()))
+        #[cfg(not(feature = "desktop"))]
+        {
+            let _ = ctx;
+            Err(auto_err("desktop automation is not built into this host"))
+        }
     }
 
     /// Native terminal workspace state and pane actions. Like desktop
@@ -226,15 +235,18 @@ pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<host::JSBrowserCookies>()?;
     ctx.register_hidden_class::<shell::JSShellDriver>()?;
     ctx.register_hidden_class::<terminal::JSTerminalDriver>()?;
-    ctx.register_hidden_class::<desktop::JSDesktopDriver>()?;
-    ctx.register_hidden_class::<desktop::JSDesktopWindow>()?;
-    ctx.register_hidden_class::<desktop::JSDesktopPointer>()?;
-    ctx.register_hidden_class::<desktop::JSDesktopKey>()?;
-    ctx.register_hidden_class::<desktop::JSDesktopClipboard>()?;
-    ctx.register_hidden_class::<desktop::JSDesktopAx>()?;
-    ctx.register_hidden_class::<desktop::JSDesktopWait>()?;
-    ctx.register_hidden_class::<desktop::JSDesktopApp>()?;
-    ctx.register_hidden_class::<desktop::JSDesktopProcess>()?;
+    #[cfg(feature = "desktop")]
+    {
+        ctx.register_hidden_class::<desktop::JSDesktopDriver>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopWindow>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopPointer>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopKey>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopClipboard>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopAx>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopWait>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopApp>()?;
+        ctx.register_hidden_class::<desktop::JSDesktopProcess>()?;
+    }
     lx::register_js_api(ctx, "automation", JSFunc::new(ctx, make_automation)?)?;
     Ok(())
 }

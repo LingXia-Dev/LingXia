@@ -20,7 +20,7 @@ process = ["lingxia/process", "standard"]
 # from devtools so a shipped product gets the handlers without the dev websocket
 # and its TLS stack.
 control = ["dep:lingxia-control-runtime", "dep:log", "lingxia/devtool", "lingxia-control-runtime/local-control", "lingxia/product-cli"]
-computer-use = ["control", "lingxia-control-runtime/computer-use"]
+computer-use = ["control", "lingxia/computer-use", "lingxia-control-runtime/computer-use"]
 # Derived from `capabilities.browserUse`. Without it the browser handlers are
 # not linked and every browser command answers "feature unavailable".
 browser-use = ["control", "lingxia-control-runtime/browser"]

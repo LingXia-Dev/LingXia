@@ -34,6 +34,7 @@ terminal-runtime = [
 # The product's executable doubling as its own command line. Derived from the
 # `*Use` capabilities; clap only appears in a product that ships one.
 product-cli = ["dep:lingxia-control-commands"]
+computer-use = ["product-cli", "lingxia-control-commands/desktop"]
 webview-input = ["lingxia-webview/webview-input"]
 
 [dependencies]
