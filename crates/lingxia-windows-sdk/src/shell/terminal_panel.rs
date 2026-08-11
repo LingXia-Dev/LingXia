@@ -1190,12 +1190,16 @@ fn open_windows_terminal_session_panel(
         .filter(|body| !body.trim().is_empty())
         .unwrap_or_else(|| "Terminal session started".to_string());
 
+    #[cfg(feature = "shell-chrome")]
+    super::terminal_gpu::activate_panel(panel_id);
     if let Err(err) = lingxia_windows_contract::show_interactive_host_panel(
         panel_id,
         title,
         &initial_body,
         position,
     ) {
+        #[cfg(feature = "shell-chrome")]
+        super::terminal_gpu::drop_panel(panel_id);
         lingxia_terminal::terminal_close(session_id);
         return Err(err.to_string());
     }
