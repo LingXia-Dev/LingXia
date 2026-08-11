@@ -259,4 +259,17 @@ mod tests {
         assert!(manifest.contains("log = { version = \"0.4\", optional = true }"));
         assert!(source.contains("log::warn!"));
     }
+
+    #[test]
+    fn computer_use_template_composes_every_public_surface_explicitly() {
+        let manifest = include_str!("../../../templates/native/Cargo.toml.template");
+        let computer_use = manifest
+            .lines()
+            .find(|line| line.starts_with("computer-use = "))
+            .expect("native template must define its computer-use feature");
+
+        assert!(computer_use.contains("lingxia/computer-use"));
+        assert!(computer_use.contains("lingxia/desktop-automation"));
+        assert!(computer_use.contains("lingxia-control-runtime/computer-use"));
+    }
 }
