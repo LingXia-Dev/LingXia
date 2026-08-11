@@ -8,10 +8,21 @@ repository.workspace = true
 
 [features]
 default = []
-desktop = ["lingxia-device-io/full"]
+desktop = [
+    "dep:lingxia-device-io",
+    "lingxia-device-io/app",
+    "lingxia-device-io/ax",
+    "lingxia-device-io/clipboard",
+    "lingxia-device-io/diagnostics",
+    "lingxia-device-io/input",
+    "lingxia-device-io/process",
+    "lingxia-device-io/snapshot",
+    "lingxia-device-io/window",
+    "lingxia-device-io/wire",
+]
 
 [dependencies]
-lingxia-device-io = { workspace = true }
+lingxia-device-io = { workspace = true, optional = true }
 lingxia-control-protocol = { workspace = true }
 # The persisted "is the automation interface on" answer, so a product without a
 # settings screen still has a way to switch it.
@@ -26,6 +37,7 @@ serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
 base64 = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
+thiserror = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { workspace = true, features = [

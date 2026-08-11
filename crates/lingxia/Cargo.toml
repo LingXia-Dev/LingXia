@@ -12,6 +12,9 @@ categories = ["web-programming", "api-bindings"]
 default = ["standard"]
 standard = ["lxapp/standard", "dep:lingxia-logic"]
 automation = ["dep:lingxia-automation"]
+# Sessionless local-OS automation is an explicit host capability; the base JS
+# automation facade does not pull native input, AX, clipboard, or snapshot code.
+desktop-automation = ["automation", "lingxia-automation/desktop"]
 automation-runtime = ["automation", "lingxia-automation/runtime"]
 # Apple hard cancellation for non-yielding scripts; uses JSC's private
 # execution-time-limit SPI and is therefore opt-in for product hosts.

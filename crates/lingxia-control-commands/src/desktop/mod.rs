@@ -2,7 +2,7 @@ mod backend;
 
 pub use backend::Backend;
 
-use crate::guard::gate;
+use crate::guard::desktop_gate as gate;
 use clap::{Args, Subcommand};
 use lingxia_device_io as cu;
 use serde::Serialize;

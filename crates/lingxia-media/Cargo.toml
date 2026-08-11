@@ -7,8 +7,11 @@ license = "MIT"
 readme = "README.md"
 repository.workspace = true
 
+[features]
+default = ["playback"]
+playback = ["dep:lingxia-platform", "dep:serde_json", "dep:log"]
+
 [dependencies]
-lingxia-platform = { workspace = true }
-serde_json = { workspace = true }
-dashmap = { workspace = true }
-log = { workspace = true }
+lingxia-platform = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+log = { workspace = true, optional = true }
