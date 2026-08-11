@@ -585,8 +585,18 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
             if !should_sync_webview_layout_now(hwnd) {
                 return;
             }
-            sync_window_layout(hwnd);
-            invalidate_window_chrome(hwnd);
+            let owner_thread = unsafe { WindowsAndMessaging::GetWindowThreadProcessId(hwnd, None) };
+            if owner_thread != 0 && owner_thread != unsafe { GetCurrentThreadId() } {
+                // Layout registry updates can originate in a Logic bridge
+                // request while the WebView UI thread waits for that request's
+                // reply. Waiting for the UI thread here deadlocks both sides.
+                // Presentation paths perform their own synchronous layout pass;
+                // ordinary state updates only need to enqueue one.
+                request_host_layout_sync(hwnd);
+            } else {
+                sync_window_layout(hwnd);
+                invalidate_window_chrome(hwnd);
+            }
         }
     }
 
