@@ -635,6 +635,9 @@ jobs:
       - name: Check macOS device-io feature powerset
         run: cargo hack check -p lingxia-device-io --feature-powerset --exclude-features full,native --no-dev-deps
 
+      - name: Test macOS activity viewer against WindowServer
+        run: cargo run -p lingxia-device-io --features supervision --example pip_viewer
+
   runner:
     needs: changes
     if: ${{ needs.changes.outputs.runner == 'true' }}

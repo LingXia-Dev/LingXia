@@ -8,9 +8,9 @@ use crate::error::{Error, Result};
 use crate::model::{Capabilities, Doctor, Permissions};
 #[cfg(feature = "window")]
 use crate::model::{Display, Rect, Window, WindowQuery};
-#[cfg(any(feature = "diagnostics", feature = "window"))]
+#[cfg(any(feature = "diagnostics", feature = "input", feature = "window"))]
 use std::sync::Once;
-#[cfg(feature = "input")]
+#[cfg(all(feature = "input", feature = "window"))]
 use windows::Win32::Foundation::POINT;
 #[cfg(feature = "window")]
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, RECT, TRUE};
@@ -89,7 +89,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
-#[cfg(any(feature = "diagnostics", feature = "window"))]
+#[cfg(any(feature = "diagnostics", feature = "input", feature = "window"))]
 use windows::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext,
 };
@@ -100,7 +100,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GWL_EXSTYLE, GetClassNameW, GetForegroundWindow, GetWindowLongW, GetWindowRect,
     GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, WS_EX_TOPMOST,
 };
-#[cfg(feature = "input")]
+#[cfg(all(feature = "input", feature = "window"))]
 use windows::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor, WindowFromPoint};
 
 #[cfg(feature = "window")]
@@ -144,7 +144,7 @@ pub(crate) fn ensure_automatable_hwnd(hwnd: HWND) -> Result<()> {
 
 /// Make the process per-monitor DPI aware once, so window/monitor rects come
 /// back in true physical pixels instead of being virtualized.
-#[cfg(any(feature = "diagnostics", feature = "window"))]
+#[cfg(any(feature = "diagnostics", feature = "input", feature = "window"))]
 pub(crate) fn ensure_dpi_aware() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| unsafe {
@@ -333,7 +333,7 @@ pub fn windows(query: &WindowQuery) -> Result<Vec<Window>> {
 /// The top-level window that would receive pointer input at this physical
 /// desktop point. Resolve it immediately before SendInput so owned popups and
 /// overlapping topmost windows win over a caller's stale proposed window id.
-#[cfg(feature = "input")]
+#[cfg(all(feature = "input", feature = "window"))]
 pub(crate) fn input_window_at_point(x: i32, y: i32) -> Option<Window> {
     ensure_dpi_aware();
     unsafe {

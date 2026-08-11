@@ -151,7 +151,7 @@ fn os_version() -> String {
 /// The bundled app the OS will attribute a grant to. Bare binaries have no
 /// bundle URL and must fall back to the terminal that macOS actually records
 /// in its privacy database.
-#[cfg(feature = "window")]
+#[cfg(any(feature = "input", feature = "window"))]
 pub(crate) fn responsible_app_name() -> Option<String> {
     use objc2_app_kit::NSRunningApplication;
 
@@ -317,7 +317,7 @@ pub(crate) fn display_for_rect(displays: &[Display], r: &Rect) -> (String, u32, 
 
 /// The pid of the frontmost GUI application, for `focused` reporting and for
 /// directing keyboard input at the active app.
-#[cfg(feature = "window")]
+#[cfg(any(feature = "input", feature = "window"))]
 pub(crate) fn frontmost_pid() -> Option<i32> {
     use objc2_app_kit::NSWorkspace;
     NSWorkspace::sharedWorkspace()

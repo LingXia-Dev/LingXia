@@ -23,11 +23,10 @@ cloud = ["dep:lingxia-runner-config"]
 features = ["dev"]
 
 [dependencies]
-# The device-frame runner hosts a single lxapp in the shell, but self/aside URL
-# targets must stay in-app (never the system browser), so it takes the browser
-# ENGINE (`browser-runtime`, which implies `shell-chrome`) without the
-# `browser-shell` webui product — mirroring the macOS runner's feature set.
-lingxia = { workspace = true, features = ["standard", "devtool", "webview-input"] }
+# The trusted device-frame runner keeps sessionless desktop automation for
+# tests. Self/aside URL targets must also stay in-app (never the system browser),
+# so its SDK takes the browser engine without the browser-shell webui product.
+lingxia = { workspace = true, features = ["standard", "devtool", "webview-input", "desktop-automation"] }
 # The runner links the browser engine (below), so the devtool bridge carries
 # its browser commands too — otherwise `lxdev browser ...` errors on Windows.
 lingxia-control-runtime = { workspace = true, features = ["browser", "test-runtime"] }

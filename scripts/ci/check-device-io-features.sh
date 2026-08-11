@@ -47,6 +47,18 @@ assert_lacks "$scratch/process-features" 'lingxia-device-io feature "window"' \
 assert_lacks "$scratch/process" "image v" \
   "process inspection must not include snapshot image encoding"
 
+cargo tree -e features -p lingxia-device-io --no-default-features \
+  --features input -i lingxia-device-io > "$scratch/input-features"
+assert_lacks "$scratch/input-features" 'lingxia-device-io feature "window"' \
+  "synthetic input must not expose window enumeration or management"
+
+cargo tree -e features -p lingxia-device-io --no-default-features \
+  --features clipboard -i lingxia-device-io > "$scratch/clipboard-features"
+assert_has "$scratch/clipboard-features" 'lingxia-device-io feature "input"' \
+  "clipboard paste must include synthetic keyboard input"
+assert_lacks "$scratch/clipboard-features" 'lingxia-device-io feature "window"' \
+  "clipboard access must not expose window enumeration or management"
+
 cargo tree -e features -p lingxia --no-default-features --features desktop-automation \
   > "$scratch/desktop-automation"
 cargo tree -e features -p lingxia --no-default-features --features desktop-automation \
@@ -79,6 +91,15 @@ cargo tree -e features -p lingxia-control-runtime --no-default-features \
   --features test-runtime > "$scratch/test-runtime"
 assert_lacks "$scratch/test-runtime" "lingxia-device-io" \
   "test runtime without computer-use must not enable desktop device I/O"
+
+for runner in lingxia-runner-lib lingxia-runner-windows; do
+  cargo tree -e features -p "$runner" -i lingxia-device-io \
+    > "$scratch/$runner-features"
+  assert_has "$scratch/$runner-features" 'lingxia-device-io feature "snapshot"' \
+    "$runner must preserve desktop automation for its trusted test runtime"
+  assert_lacks "$scratch/$runner-features" 'lingxia-device-io feature "supervision"' \
+    "$runner desktop automation must not include product-host supervision"
+done
 
 cargo tree -e features -p lingxia-control-runtime --no-default-features \
   --features computer-use > "$scratch/control-runtime"

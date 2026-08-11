@@ -31,7 +31,7 @@ pub use model::{
 /// tool runs them in its own process. Saying "this terminal" to someone whose
 /// *app* was refused sends them to the wrong row in System Settings, and
 /// naming the binary of a bare CLI sends them to a row that does not exist.
-#[cfg(all(feature = "window", target_os = "macos"))]
+#[cfg(all(any(feature = "input", feature = "window"), target_os = "macos"))]
 pub(crate) fn responsible_app() -> String {
     if let Some(name) = backend::responsible_app_name() {
         return name;
@@ -178,7 +178,7 @@ pub fn windows(query: &WindowQuery) -> Result<Vec<Window>> {
 
 /// Resolve the top-level window that native pointer input would reach.
 /// Internal host-viewer plumbing, not a control-surface method.
-#[cfg(all(feature = "input", target_os = "windows"))]
+#[cfg(all(feature = "input", feature = "window", target_os = "windows"))]
 #[doc(hidden)]
 pub fn input_window_at_point(x: i32, y: i32) -> Option<Window> {
     backend::input_window_at_point(x, y)
