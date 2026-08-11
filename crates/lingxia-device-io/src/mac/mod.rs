@@ -20,15 +20,23 @@ use objc2_core_graphics::{
     kCGWindowOwnerPID,
 };
 
+#[cfg(feature = "ax")]
 mod ax;
 mod axui;
+#[cfg(feature = "snapshot")]
 mod capture;
 mod cf;
+#[cfg(feature = "clipboard")]
 mod clipboard;
+#[cfg(feature = "input")]
 mod input;
+#[cfg(feature = "input")]
 mod keymap;
+#[cfg(feature = "supervision")]
 mod pip;
+#[cfg(feature = "process")]
 mod process;
+#[cfg(feature = "window")]
 mod window_ops;
 
 // Borderless panels do not display their title, but WindowServer still exposes
@@ -37,21 +45,39 @@ mod window_ops;
 // not enumerate and automate another product's activity viewer.
 const VIEWER_WINDOW_SENTINEL: &str = "__lingxia_activity_viewer_8d61c5b2_v1__";
 
+fn current_viewer_window() -> u32 {
+    #[cfg(feature = "supervision")]
+    {
+        return pip::window_number();
+    }
+    #[cfg(not(feature = "supervision"))]
+    {
+        0
+    }
+}
+
+#[cfg(feature = "ax")]
 pub use ax::{
     collapse as ax_collapse, expand as ax_expand, focus as ax_focus, hit_test as ax_hit_test,
     invoke as ax_invoke, query as ax_query, scroll_into_view as ax_scroll_into_view,
     select as ax_select, set_value as ax_set_value, tree as ax_tree, wait as ax_wait,
 };
+#[cfg(feature = "snapshot")]
 pub use capture::{pixel, screenshot, wait_pixel};
+#[cfg(feature = "clipboard")]
 pub use clipboard::{
     clear as clipboard_clear, get as clipboard_get, paste as clipboard_paste, set as clipboard_set,
 };
+#[cfg(feature = "input")]
 pub use input::{
     key_down, key_press, key_type, key_up, pointer_click, pointer_down, pointer_drag, pointer_move,
     pointer_scroll, pointer_up,
 };
+#[cfg(feature = "supervision")]
 pub use pip::{dismiss as pip_dismiss, note_activity as pip_note_activity};
+#[cfg(feature = "process")]
 pub use process::{app_launch, app_quit, process_kill, process_list};
+#[cfg(feature = "window")]
 pub use window_ops::{
     activate as window_activate, close as window_close, focus as window_focus,
     maximize as window_maximize, minimize as window_minimize, move_to as window_move,
@@ -82,6 +108,7 @@ pub(crate) fn parse_window_id(id: &str) -> Result<u32> {
 }
 
 /// Best-effort macOS product version (e.g. "14.5") via sysctl.
+#[cfg(feature = "diagnostics")]
 fn os_version() -> String {
     let mut buf = [0u8; 64];
     let mut len = buf.len();
@@ -104,6 +131,7 @@ fn os_version() -> String {
 /// The bundled app the OS will attribute a grant to. Bare binaries have no
 /// bundle URL and must fall back to the terminal that macOS actually records
 /// in its privacy database.
+#[cfg(any(feature = "diagnostics", feature = "supervision"))]
 pub(crate) fn responsible_app_name() -> Option<String> {
     use objc2_app_kit::NSRunningApplication;
 
@@ -114,6 +142,7 @@ pub(crate) fn responsible_app_name() -> Option<String> {
         .filter(|name| !name.is_empty())
 }
 
+#[cfg(feature = "diagnostics")]
 pub fn permissions() -> Permissions {
     Permissions {
         accessibility: axui::is_trusted(),
@@ -124,6 +153,7 @@ pub fn permissions() -> Permissions {
 
 /// Prompt for any permission not yet granted, then re-report. macOS shows the
 /// system dialog / adds the app to the relevant list; the user still approves.
+#[cfg(feature = "diagnostics")]
 pub fn request_permissions() -> Permissions {
     if !CGPreflightScreenCaptureAccess() {
         let _ = CGRequestScreenCaptureAccess();
@@ -137,6 +167,7 @@ pub fn request_permissions() -> Permissions {
     permissions()
 }
 
+#[cfg(feature = "diagnostics")]
 pub fn doctor() -> Doctor {
     Doctor {
         backend: "macos".to_string(),
@@ -303,7 +334,7 @@ fn enumerate(query: &WindowQuery, only_onscreen: bool) -> Result<Vec<Window>> {
     let array = (&*info as *const objc2_core_foundation::CFArray).cast::<std::ffi::c_void>();
     let displays = displays().unwrap_or_default();
     let front = frontmost_pid();
-    let viewer_window = pip::window_number();
+    let viewer_window = current_viewer_window();
 
     let mut out = Vec::new();
     let mut focused_taken = false;

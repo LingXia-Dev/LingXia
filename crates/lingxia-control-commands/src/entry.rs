@@ -15,8 +15,10 @@ use std::path::Path;
 use clap::Parser;
 use lingxia_control_protocol::invocation;
 
+#[cfg(feature = "desktop")]
+use crate::desktop;
 use crate::transport::ControlSocket;
-use crate::{app, browser, desktop, skills};
+use crate::{app, browser, skills};
 
 #[derive(Parser)]
 #[command(
@@ -45,6 +47,7 @@ enum Command {
     /// Drive the in-app browser: tabs, navigation, page content
     Browser(browser::BrowserOptions),
     /// Automate the machine: windows, capture, input, accessibility, clipboard
+    #[cfg(feature = "desktop")]
     Computer(desktop::DesktopOptions),
     /// Write an agent skill describing these commands
     Skills(skills::SkillsOptions),
@@ -102,6 +105,7 @@ pub fn run_if_invoked(state_dir: &Path) -> Option<i32> {
             };
             report(browser::execute(&context, options))
         }
+        #[cfg(feature = "desktop")]
         Command::Computer(options) => desktop::execute(&desktop::Backend::App(&transport), options),
         Command::Skills(options) => skills::execute::<Cli>(&manifest(&transport), options),
         Command::Control { action } => control(state_dir, &transport, action),
@@ -275,6 +279,7 @@ fn report(outcome: anyhow::Result<()>) -> i32 {
 /// developer does and what a `--help` in a bug report looks like.
 const COMMANDS: &[&str] = &[
     "browser",
+    #[cfg(feature = "desktop")]
     "computer",
     "control",
     "skills",

@@ -6,17 +6,58 @@ description = "Sessionless desktop device I/O for LingXia tools and hosts"
 license = "MIT"
 repository.workspace = true
 
+[features]
+default = []
+full = [
+    "app",
+    "ax",
+    "clipboard",
+    "diagnostics",
+    "input",
+    "process",
+    "snapshot",
+    "supervision",
+    "window",
+    "wire",
+]
+app = ["process"]
+ax = ["window"]
+clipboard = ["input"]
+diagnostics = ["ax", "clipboard", "input", "snapshot", "window"]
+input = ["window"]
+process = ["window"]
+snapshot = ["window", "dep:image"]
+supervision = ["snapshot", "dep:lingxia-app-context"]
+window = ["native"]
+wire = []
+# Target bindings shared by the concrete desktop capabilities above. This is
+# an implementation feature; consumers should enable capability features.
+native = [
+    "dep:windows",
+    "dep:dispatch2",
+    "dep:libc",
+    "dep:objc2",
+    "dep:objc2-app-kit",
+    "dep:objc2-core-foundation",
+    "dep:objc2-core-graphics",
+    "dep:objc2-foundation",
+]
+
+[[example]]
+name = "pip_viewer"
+required-features = ["supervision"]
+
 [dependencies]
 serde = { workspace = true }
 base64 = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
-lingxia-app-context = { workspace = true }
-image = { version = "0.25", default-features = false, features = ["png"] }
+lingxia-app-context = { workspace = true, optional = true }
+image = { version = "0.25", optional = true, default-features = false, features = ["png"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { workspace = true, features = [
+windows = { workspace = true, optional = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_Graphics_Dwm",
@@ -50,10 +91,10 @@ windows = { workspace = true, features = [
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-dispatch2 = "0.3"
-libc = "0.2.186"
-objc2 = "0.6.4"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "objc2-core-foundation", "objc2-core-graphics", "NSApplication", "NSGraphics", "NSPasteboard", "NSScreen", "NSWorkspace", "NSRunningApplication", "NSPanel", "NSWindow", "NSView", "NSResponder", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSImageView", "NSControl", "NSCell", "NSColor", "NSFont", "NSParagraphStyle", "NSTextField", "libc"] }
-objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFBase", "CFArray", "CFDictionary", "CFString", "CFNumber", "CFCGTypes"] }
-objc2-core-graphics = { version = "0.3.2", default-features = false, features = ["std", "objc2", "libc", "CGBase", "CGGeometry", "CGError", "CGDirectDisplay", "CGWindow", "CGWindowLevel", "CGImage", "CGColorSpace", "CGContext", "CGBitmapContext", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation", "CGDisplayConfiguration"] }
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSArray", "NSDictionary", "NSEnumerator", "NSURL", "NSData", "NSGeometry"] }
+dispatch2 = { version = "0.3", optional = true }
+libc = { version = "0.2.186", optional = true }
+objc2 = { version = "0.6.4", optional = true }
+objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, features = ["std", "objc2-core-foundation", "objc2-core-graphics", "NSApplication", "NSGraphics", "NSPasteboard", "NSScreen", "NSWorkspace", "NSRunningApplication", "NSPanel", "NSWindow", "NSView", "NSResponder", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSImageView", "NSControl", "NSCell", "NSColor", "NSFont", "NSParagraphStyle", "NSTextField", "libc"] }
+objc2-core-foundation = { version = "0.3.2", optional = true, default-features = false, features = ["std", "CFBase", "CFArray", "CFDictionary", "CFString", "CFNumber", "CFCGTypes"] }
+objc2-core-graphics = { version = "0.3.2", optional = true, default-features = false, features = ["std", "objc2", "libc", "CGBase", "CGGeometry", "CGError", "CGDirectDisplay", "CGWindow", "CGWindowLevel", "CGImage", "CGColorSpace", "CGContext", "CGBitmapContext", "CGEvent", "CGEventSource", "CGEventTypes", "CGRemoteOperation", "CGDisplayConfiguration"] }
+objc2-foundation = { version = "0.3.2", optional = true, default-features = false, features = ["std", "NSString", "NSArray", "NSDictionary", "NSEnumerator", "NSURL", "NSData", "NSGeometry"] }

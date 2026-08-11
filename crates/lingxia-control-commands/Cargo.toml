@@ -6,6 +6,10 @@ description = "Command surface shared by lxdev and shipped LingXia products"
 license = "MIT"
 repository.workspace = true
 
+[features]
+default = []
+desktop = ["lingxia-device-io/full"]
+
 [dependencies]
 lingxia-device-io = { workspace = true }
 lingxia-control-protocol = { workspace = true }
@@ -27,6 +31,7 @@ chrono = { version = "0.4", features = ["serde"] }
 windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Globalization",
+    "Win32_Security",
     "Win32_Storage_FileSystem",
     "Win32_System_Console",
 ] }

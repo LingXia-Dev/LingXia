@@ -31,7 +31,7 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
 
 use crate::model::{Acted, Rect, WindowTarget};
-use crate::pip_state::{ActivityState, ActivityTarget, Transition};
+use crate::supervision_state::{ActivityState, ActivityTarget, Transition};
 
 const FPS: u32 = 8;
 const IDLE_REST: Duration = Duration::from_secs(12);
@@ -974,7 +974,7 @@ fn identity_label(target: &ActivityTarget) -> String {
             .map(|identity| trim_executable_suffix(&identity).to_string())
             .unwrap_or_else(|| "Window".into()),
     };
-    crate::pip_state::control_label(&controller_identity(), &target)
+    crate::supervision_state::control_label(&controller_identity(), &target)
 }
 
 fn controller_identity() -> String {

@@ -9,9 +9,9 @@
 //! app bundle: one entry, the product's own name, revocable in the one place
 //! a user would look.
 
-use lingxia_device_io as cu;
 use lingxia_control_protocol::ControlResponse;
 use lingxia_control_protocol::methods::desktop as method;
+use lingxia_device_io as cu;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
@@ -38,7 +38,7 @@ pub fn handle(id: String, name: &str, params: Option<Value>) -> Option<ControlRe
             activity_target.as_ref(),
         )
     {
-        cu::pip::note_activity(acted);
+        cu::supervision::note_activity(acted);
     }
     Some(match outcome {
         Ok(result) => ControlResponse::success(id, result),

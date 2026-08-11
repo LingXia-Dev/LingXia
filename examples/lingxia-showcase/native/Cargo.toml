@@ -27,7 +27,7 @@ process = ["lingxia/process", "standard"]
 # Dev builds always enable `devtools`; ride automation in so `lingxia dev`
 # sessions get lx.automation() by default (still privilege-gated per lxapp.json).
 control = ["dep:lingxia-control-runtime", "lingxia/devtool", "lingxia-control-runtime/local-control", "lingxia/product-cli"]
-computer-use = ["control", "lingxia-control-runtime/computer-use"]
+computer-use = ["control", "lingxia/computer-use", "lingxia-control-runtime/computer-use"]
 # Derived from `capabilities.browserUse`. Without it the browser methods are
 # not linked and every browser command answers "feature unavailable".
 browser-use = ["control", "lingxia-control-runtime/browser"]

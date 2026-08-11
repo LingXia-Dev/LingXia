@@ -1,18 +1,24 @@
 //! App/process lifecycle: launch (CreateProcess), list (ToolHelp), kill
 //! (TerminateProcess), and graceful app quit (WM_CLOSE to a process's windows).
 
+#[cfg(feature = "app")]
 use super::parse_hwnd;
 use crate::error::{Error, Result};
-use crate::model::{Ack, LaunchResult, ProcessInfo, QuitTarget, WindowQuery};
+use crate::model::{Ack, ProcessInfo};
+#[cfg(feature = "app")]
+use crate::model::{LaunchResult, QuitTarget, WindowQuery};
 use windows::Win32::Foundation::{CloseHandle, HANDLE};
 use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
 };
+#[cfg(feature = "app")]
 use windows::Win32::System::Threading::{
-    CreateProcessW, OpenProcess, PROCESS_CREATION_FLAGS, PROCESS_INFORMATION, PROCESS_TERMINATE,
-    STARTUPINFOW, TerminateProcess,
+    CreateProcessW, PROCESS_CREATION_FLAGS, PROCESS_INFORMATION, STARTUPINFOW,
 };
+use windows::Win32::System::Threading::{OpenProcess, PROCESS_TERMINATE, TerminateProcess};
+#[cfg(feature = "app")]
 use windows::Win32::UI::WindowsAndMessaging::{GetWindowThreadProcessId, PostMessageW, WM_CLOSE};
+#[cfg(feature = "app")]
 use windows::core::{PCWSTR, PWSTR};
 
 pub fn process_list(filter: Option<&str>) -> Result<Vec<ProcessInfo>> {
@@ -59,10 +65,12 @@ pub fn process_kill(pid: u32, _force: bool) -> Result<Ack> {
     Ok(Ack::new("process.kill"))
 }
 
+#[cfg(feature = "app")]
 fn to_wide_nul(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
+#[cfg(feature = "app")]
 pub fn app_launch(
     app: &str,
     args: &[String],
@@ -133,6 +141,7 @@ pub fn app_launch(
 }
 
 /// Resolve a quit target to a pid.
+#[cfg(feature = "app")]
 fn quit_pid(target: &QuitTarget) -> Result<u32> {
     match target {
         QuitTarget::Pid(p) => Ok(*p),
@@ -159,6 +168,7 @@ fn quit_pid(target: &QuitTarget) -> Result<u32> {
     }
 }
 
+#[cfg(feature = "app")]
 pub fn app_quit(target: QuitTarget, force: bool) -> Result<Ack> {
     let pid = quit_pid(&target)?;
     if force {

@@ -3357,7 +3357,6 @@ dependencies = [
  "libc",
  "lingxia-control-commands",
  "lingxia-control-protocol",
- "lingxia-device-io",
  "owo-colors",
  "oxc_allocator",
  "oxc_ast",

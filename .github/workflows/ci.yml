@@ -488,7 +488,22 @@ jobs:
 
       - name: Test Windows device-io state and backend
         shell: bash
-        run: cargo test -p lingxia-device-io --lib
+        run: cargo test -p lingxia-device-io --features full --lib
+
+      - name: Verify device-io feature boundaries
+        shell: bash
+        run: |
+          cargo check -p lingxia-device-io --no-default-features
+          cargo check -p lingxia-automation --no-default-features
+          cargo check -p lingxia-control-commands --no-default-features
+          if cargo tree -e features -p lingxia --no-default-features --features automation | grep -q 'lingxia-device-io'; then
+            echo 'lingxia automation unexpectedly enables desktop device I/O' >&2
+            exit 1
+          fi
+          if cargo tree -e features -p lingxia-control-commands --no-default-features | grep -q 'lingxia-device-io feature "snapshot"'; then
+            echo 'base control commands unexpectedly enable snapshot' >&2
+            exit 1
+          fi
 
       - name: Test Windows local-control named pipe
         shell: bash
