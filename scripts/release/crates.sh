@@ -7,7 +7,7 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CRATES=(
   # Foundational crates.
   "lingxia-app-context"
-  "lingxia-computer-use"
+  "lingxia-device-io"
   "lingxia-provider"
   "lingxia-log"
   "lingxia-update"

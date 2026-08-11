@@ -7,7 +7,7 @@ license = "MIT"
 repository.workspace = true
 
 [dependencies]
-lingxia-computer-use = { workspace = true }
+lingxia-device-io = { workspace = true }
 lingxia-control-protocol = { workspace = true }
 # The persisted "is the automation interface on" answer, so a product without a
 # settings screen still has a way to switch it.

@@ -1,5 +1,5 @@
 //! `desktop` tier — session-less local-OS desktop automation, the in-process
-//! JS binding of `lxdev desktop` over the shared `lingxia-computer-use`
+//! JS binding of `lxdev desktop` over the shared `lingxia-device-io`
 //! backend (Windows / macOS; other platforms report `unsupported`).
 //!
 //! The backend's serde DTOs are the command contract's JSON, so results match
@@ -9,7 +9,7 @@
 //! logic thread responsive.
 
 use crate::resolve::json_to_js;
-use lingxia_computer_use as cu;
+use lingxia_device_io as cu;
 use rong::{
     Class, FromJSObject, HostError, JSContext, JSObject, JSResult, JSValue, function::Optional,
     js_class, js_method,

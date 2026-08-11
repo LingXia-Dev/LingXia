@@ -7,7 +7,7 @@
 //! here is what stops the two from drifting the moment a flag is added to one.
 //!
 //! Not every command needs a transport. `desktop` automates the local OS
-//! through [`lingxia_computer_use`] and never talks to a running app, so it
+//! through [`lingxia_device_io`] and never talks to a running app, so it
 //! works in any binary that links it. The namespaces that do need a live app
 //! reach it over the dev websocket in `lxdev` and over the product's local
 //! control socket in a shipped binary.

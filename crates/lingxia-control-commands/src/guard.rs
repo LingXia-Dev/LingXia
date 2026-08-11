@@ -5,7 +5,7 @@
 //! acknowledgement rule, and every failure carries a code the caller can branch
 //! on instead of collapsing to prose and exit 1.
 
-use lingxia_computer_use as cu;
+use lingxia_device_io as cu;
 
 /// Whether this invocation may change anything.
 ///

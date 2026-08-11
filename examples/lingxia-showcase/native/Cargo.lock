@@ -2173,7 +2173,7 @@ dependencies = [
  "base64",
  "futures",
  "lingxia-browser",
- "lingxia-computer-use",
+ "lingxia-device-io",
  "lingxia-log",
  "lingxia-lxapp",
  "lingxia-platform",
@@ -2235,7 +2235,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-computer-use"
+name = "lingxia-device-io"
 version = "0.11.2"
 dependencies = [
  "base64",
@@ -2263,7 +2263,7 @@ dependencies = [
  "base64",
  "chrono",
  "clap",
- "lingxia-computer-use",
+ "lingxia-device-io",
  "lingxia-control-protocol",
  "lingxia-settings",
  "log",
@@ -2290,7 +2290,7 @@ dependencies = [
  "lingxia-app-context",
  "lingxia-automation",
  "lingxia-browser",
- "lingxia-computer-use",
+ "lingxia-device-io",
  "lingxia-control-protocol",
  "lingxia-log",
  "lingxia-lxapp",

@@ -7,8 +7,8 @@
 //! `pip::note_activity` — and every assertion reads the actual window from the
 //! window server rather than anything this process believes.
 //!
-//!     cargo run --release -p lingxia-computer-use --example pip_viewer
-//!     cargo run --release -p lingxia-computer-use --example pip_viewer -- circle 120
+//!     cargo run --release -p lingxia-device-io --example pip_viewer
+//!     cargo run --release -p lingxia-device-io --example pip_viewer -- circle 120
 
 #[cfg(not(target_os = "macos"))]
 fn main() {
@@ -49,7 +49,7 @@ fn main() {
 /// not on screen. The one source of truth about whether a person can see it.
 #[cfg(target_os = "macos")]
 fn panel() -> Option<(i32, i32)> {
-    use lingxia_computer_use as cu;
+    use lingxia_device_io as cu;
     let query = cu::WindowQuery::parse(&format!("pid:{}", std::process::id()));
     let mine = cu::windows(&query).ok()?;
     mine.first().map(|w| (w.bounds.x, w.bounds.y))
@@ -57,14 +57,14 @@ fn panel() -> Option<(i32, i32)> {
 
 #[cfg(target_os = "macos")]
 fn centre() -> (i32, i32) {
-    use lingxia_computer_use as cu;
+    use lingxia_device_io as cu;
     let b = cu::displays().expect("displays")[0].bounds;
     (b.x + b.w / 2, b.y + b.h / 2)
 }
 
 #[cfg(target_os = "macos")]
 fn circle(hold: u64) {
-    use lingxia_computer_use as cu;
+    use lingxia_device_io as cu;
     use std::time::Duration;
 
     let bounds = cu::displays().expect("displays")[0].bounds;
@@ -85,7 +85,7 @@ fn circle(hold: u64) {
 /// The four behaviours that exist because this watches live work.
 #[cfg(target_os = "macos")]
 fn behaviours() {
-    use lingxia_computer_use as cu;
+    use lingxia_device_io as cu;
     use std::time::Duration;
 
     let (cx, cy) = centre();

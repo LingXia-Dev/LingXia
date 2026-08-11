@@ -32,7 +32,7 @@ lingxia-webview = { workspace = true }
 lingxia-platform = { workspace = true }
 lingxia-shell = { workspace = true }
 lingxia-browser = { workspace = true }
-lingxia-computer-use = { workspace = true }
+lingxia-device-io = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 base64 = { workspace = true }

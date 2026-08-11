@@ -1,6 +1,6 @@
 //! Automating the machine, run inside the host process.
 //!
-//! The work is local either way — `lingxia-computer-use` talks to the OS, not
+//! The work is local either way — `lingxia-device-io` talks to the OS, not
 //! to a server. What routing it through the host buys is *whose* permission it
 //! is. macOS attributes Accessibility and Screen Recording to the responsible
 //! process, so the same binary invoked from two terminals reports two answers,
@@ -9,14 +9,14 @@
 //! app bundle: one entry, the product's own name, revocable in the one place
 //! a user would look.
 
-use lingxia_computer_use as cu;
+use lingxia_device_io as cu;
 use lingxia_control_protocol::ControlResponse;
 use lingxia_control_protocol::methods::desktop as method;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
 /// This namespace answers with its own error codes rather than the generic
-/// `request_failed`, because `lingxia-computer-use` codes are a contract:
+/// `request_failed`, because `lingxia-device-io` codes are a contract:
 /// callers branch on them and a client turns them into its exit status.
 pub fn handle(id: String, name: &str, params: Option<Value>) -> Option<ControlResponse> {
     if !name.starts_with("desktop.") {
@@ -393,7 +393,7 @@ struct Failure {
 }
 
 /// Malformed parameters are the client's mistake, and `usage` is the code
-/// `lingxia-computer-use` uses for exactly that.
+/// `lingxia-device-io` uses for exactly that.
 fn usage(message: impl Into<String>) -> Failure {
     Failure {
         code: cu::ErrorCode::Usage.as_str(),
