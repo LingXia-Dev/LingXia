@@ -201,11 +201,19 @@ desktopTerminalTest('applies terminal mode to native chrome before terminal inpu
     });
     await waitForSave(page, false);
     const runtime = await settingsApp.eval({
-      script: `return {
-        terminal: typeof lx.terminal?.settings?.get,
-        fileManager: typeof lx.getFileManager,
-      }`,
-    }) as { terminal: string; fileManager: string };
+      script: `
+        const settings = await lx.terminal.settings.get();
+        return {
+          terminal: typeof lx.terminal?.settings?.get,
+          fileManager: typeof lx.getFileManager,
+          systemAppearance: settings.effective.systemAppearance,
+        };
+      `,
+    }) as {
+      terminal: string;
+      fileManager: string;
+      systemAppearance: 'light' | 'dark';
+    };
     expect(runtime.terminal).toBe('function');
     expect(runtime.fileManager).toBe('undefined');
     initial = await terminal.snapshot({ surface: refs.terminal });
@@ -213,7 +221,10 @@ desktopTerminalTest('applies terminal mode to native chrome before terminal inpu
       script: `document.querySelector('[data-mode][aria-pressed="true"]')?.dataset.mode`,
     }) as 'system' | 'light' | 'dark' | undefined;
     if (!selectedMode) throw new Error('selected terminal mode is unavailable');
-    const targetMode = selectedMode === 'light' ? 'dark' : 'light';
+    const effectiveMode = selectedMode === 'system'
+      ? runtime.systemAppearance
+      : selectedMode;
+    const targetMode = effectiveMode === 'light' ? 'dark' : 'light';
 
     await page.click({ css: `[data-mode="${targetMode}"]` });
     await waitForSave(page, true);
