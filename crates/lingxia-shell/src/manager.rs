@@ -1,6 +1,7 @@
 use crate::{
     PinCollection, PinMutation, ShellPinTarget, ShellResult, ShellSidebarAction,
-    ShellSidebarActionUpdate, ShellStore, SidebarActionCollection, SidebarChrome,
+    ShellSidebarActionUpdate, ShellStore, ShellWindowState, SidebarActionCollection, SidebarChrome,
+    WindowFrame,
 };
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
@@ -14,6 +15,7 @@ pub struct ShellSnapshot {
 pub struct ShellManager {
     store: ShellStore,
     state: Mutex<ShellSnapshot>,
+    window_state: Mutex<ShellWindowState>,
 }
 
 impl ShellManager {
@@ -23,9 +25,11 @@ impl ShellManager {
             sidebar_actions: SidebarActionCollection::default(),
             pins: store.load_pins_recovering(),
         };
+        let window_state = store.load_window_state();
         Ok(Self {
             store,
             state: Mutex::new(state),
+            window_state: Mutex::new(window_state),
         })
     }
 
@@ -33,14 +37,41 @@ impl ShellManager {
         self.lock().clone()
     }
 
-    /// The sidebar width the user last settled on. Read straight from the
-    /// store: a host asks once at startup, and writes are rare.
     pub fn sidebar_chrome(&self) -> SidebarChrome {
-        self.store.load_sidebar_chrome()
+        self.lock_window_state().sidebar
     }
 
     pub fn set_sidebar_chrome(&self, chrome: SidebarChrome) -> ShellResult<()> {
-        self.store.save_sidebar_chrome(&chrome)
+        let mut current = self.lock_window_state();
+        let mut next = *current;
+        next.sidebar = chrome.normalized();
+        if next == *current {
+            return Ok(());
+        }
+        self.store.save_window_state(&next)?;
+        *current = next;
+        Ok(())
+    }
+
+    pub fn window_frame(&self) -> Option<WindowFrame> {
+        self.lock_window_state().window
+    }
+
+    pub fn set_window_frame(&self, frame: WindowFrame) -> ShellResult<()> {
+        if !frame.valid() {
+            return Err(crate::ShellError::InvalidState(
+                "window frame must be finite with positive dimensions".to_string(),
+            ));
+        }
+        let mut current = self.lock_window_state();
+        let mut next = *current;
+        next.window = Some(frame);
+        if next == *current {
+            return Ok(());
+        }
+        self.store.save_window_state(&next)?;
+        *current = next;
+        Ok(())
     }
 
     pub fn replace_sidebar_actions(
@@ -139,6 +170,12 @@ impl ShellManager {
     fn lock(&self) -> MutexGuard<'_, ShellSnapshot> {
         self.state.lock().unwrap_or_else(|error| error.into_inner())
     }
+
+    fn lock_window_state(&self) -> MutexGuard<'_, ShellWindowState> {
+        self.window_state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+    }
 }
 
 #[cfg(test)]
@@ -190,5 +227,24 @@ mod tests {
         let reopened = ShellManager::open(dir.path()).unwrap();
         assert!(!reopened.snapshot().sidebar_actions.declared());
         assert!(reopened.snapshot().sidebar_actions.items().is_empty());
+    }
+
+    #[test]
+    fn sidebar_and_window_updates_preserve_each_other() {
+        let dir = tempfile::tempdir().unwrap();
+        let manager = ShellManager::open(dir.path()).unwrap();
+        let frame = WindowFrame::new(10.0, 20.0, 1200.0, 800.0).unwrap();
+
+        manager.set_window_frame(frame).unwrap();
+        manager
+            .set_sidebar_chrome(SidebarChrome::with_expanded(false, 248.0))
+            .unwrap();
+
+        let reopened = ShellManager::open(dir.path()).unwrap();
+        assert_eq!(reopened.window_frame(), Some(frame));
+        assert_eq!(
+            reopened.sidebar_chrome(),
+            SidebarChrome::with_expanded(false, 248.0)
+        );
     }
 }

@@ -22,6 +22,8 @@ private class SidebarResizeHandle: NSView {
 
     // Always return self so the separator subview doesn't steal events
     override func hitTest(_ point: NSPoint) -> NSView? {
+        // AppKit passes this point in the superview's coordinate space, so the
+        // handle must test its frame rather than its local bounds.
         guard !isHidden, frame.contains(point) else { return nil }
         return self
     }
@@ -546,6 +548,8 @@ class SidebarView: NSView, NSPopoverDelegate {
     var onManagedMainRenameCommitted: ((String, String) -> Void)?
     /// Called when the bottom hide button is clicked
     var onHideRequested: (() -> Void)?
+    /// Called when the rail expand button is clicked
+    var onShowRequested: (() -> Void)?
     /// Called when width changes via drag: (width, animated)
     var onWidthChanged: ((CGFloat, Bool) -> Void)?
     /// Called when the global "+" button requests content for the active main.
@@ -2347,9 +2351,7 @@ class SidebarView: NSView, NSPopoverDelegate {
     }
 
     @objc private func railExpandClicked() {
-        // Restore the expanded sidebar from the icon rail.
-        setCompactMode(false)
-        onWidthChanged?(Layout.expandedWidth, true)
+        onShowRequested?()
     }
 
     // MARK: - Footer / Add button hover
