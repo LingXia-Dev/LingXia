@@ -18,7 +18,7 @@ browser = ["dep:lingxia-browser", "lingxia/browser-runtime"]
 # Automating the machine, not just this app. Derived from
 # `capabilities.computerUse`; separate from `local-control` because it is what
 # makes the product ask for Accessibility and Screen Recording.
-computer-use = ["dep:lingxia-computer-use"]
+computer-use = ["dep:lingxia-device-io"]
 # Session test runner (`lxdev test`). Development hosts only: production
 # builds omit it, so the session.test.* methods are absent rather than
 # permission-gated.
@@ -30,7 +30,7 @@ lingxia = { workspace = true, default-features = false, features = ["devtool"] }
 lingxia-app-context = { workspace = true }
 lingxia-settings = { workspace = true }
 lingxia-browser = { workspace = true, optional = true }
-lingxia-computer-use = { workspace = true, optional = true }
+lingxia-device-io = { workspace = true, optional = true }
 lingxia-log = { workspace = true }
 lxapp = { workspace = true, default-features = false }
 log = { workspace = true }

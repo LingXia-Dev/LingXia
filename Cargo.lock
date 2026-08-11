@@ -3134,7 +3134,7 @@ dependencies = [
  "base64",
  "futures",
  "lingxia-browser",
- "lingxia-computer-use",
+ "lingxia-device-io",
  "lingxia-log",
  "lingxia-lxapp",
  "lingxia-platform",
@@ -3274,27 +3274,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-computer-use"
-version = "0.11.2"
-dependencies = [
- "base64",
- "dispatch2",
- "image",
- "libc",
- "lingxia-app-context",
- "log",
- "objc2",
- "objc2-app-kit",
- "objc2-core-foundation",
- "objc2-core-graphics",
- "objc2-foundation",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "windows 0.62.2",
-]
-
-[[package]]
 name = "lingxia-control-commands"
 version = "0.11.2"
 dependencies = [
@@ -3302,8 +3281,8 @@ dependencies = [
  "base64",
  "chrono",
  "clap",
- "lingxia-computer-use",
  "lingxia-control-protocol",
+ "lingxia-device-io",
  "lingxia-settings",
  "log",
  "serde",
@@ -3331,8 +3310,8 @@ dependencies = [
  "lingxia-app-context",
  "lingxia-automation",
  "lingxia-browser",
- "lingxia-computer-use",
  "lingxia-control-protocol",
+ "lingxia-device-io",
  "lingxia-log",
  "lingxia-lxapp",
  "lingxia-settings",
@@ -3346,6 +3325,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "lingxia-device-io"
+version = "0.11.2"
+dependencies = [
+ "base64",
+ "dispatch2",
+ "image",
+ "libc",
+ "lingxia-app-context",
+ "log",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-foundation",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "lingxia-devtools-cli"
 version = "0.11.2"
 dependencies = [
@@ -3355,9 +3355,9 @@ dependencies = [
  "clap",
  "ctrlc",
  "libc",
- "lingxia-computer-use",
  "lingxia-control-commands",
  "lingxia-control-protocol",
+ "lingxia-device-io",
  "owo-colors",
  "oxc_allocator",
  "oxc_ast",

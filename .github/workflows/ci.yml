@@ -124,7 +124,7 @@ jobs:
               - 'crates/lingxia-automation-runtime/**'
               - 'crates/lingxia-browser/**'
               - 'crates/lingxia-browser-shell/**'
-              - 'crates/lingxia-computer-use/**'
+              - 'crates/lingxia-device-io/**'
               - 'crates/lingxia-control-runtime/**'
               - 'crates/lingxia-control-protocol/**'
               - 'crates/lingxia-control-commands/**'
@@ -486,9 +486,9 @@ jobs:
         shell: bash
         run: cargo test -p lingxia-platform codec_subtypes_use_stable_mime_names
 
-      - name: Test Windows computer-use state and backend
+      - name: Test Windows device-io state and backend
         shell: bash
-        run: cargo test -p lingxia-computer-use --lib
+        run: cargo test -p lingxia-device-io --lib
 
       - name: Test Windows local-control named pipe
         shell: bash

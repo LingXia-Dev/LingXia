@@ -4,7 +4,7 @@ pub use backend::Backend;
 
 use crate::guard::gate;
 use clap::{Args, Subcommand};
-use lingxia_computer_use as cu;
+use lingxia_device_io as cu;
 use serde::Serialize;
 
 #[derive(Args, Clone)]

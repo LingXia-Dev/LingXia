@@ -1,8 +1,8 @@
 [package]
-name = "lingxia-computer-use"
+name = "lingxia-device-io"
 version.workspace = true
 edition.workspace = true
-description = "Local desktop OS automation backend for LingXia devtools (lxdev desktop)"
+description = "Sessionless desktop device I/O for LingXia tools and hosts"
 license = "MIT"
 repository.workspace = true
 

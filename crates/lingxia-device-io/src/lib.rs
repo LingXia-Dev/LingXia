@@ -1,4 +1,4 @@
-//! Local desktop OS automation backend for LingXia devtools.
+//! Sessionless desktop device I/O for LingXia tools and hosts.
 //!
 //! This crate is linked directly into the process that drives the desktop
 //! (`lxdev.exe` for the CLI; a future in-process JS binding). It is
