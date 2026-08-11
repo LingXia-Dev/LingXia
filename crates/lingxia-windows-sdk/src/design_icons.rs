@@ -55,6 +55,7 @@ pub enum WindowsDesignIcon {
     FullscreenExit,
     SidebarCollapse,
     SidebarExpand,
+    AsideCollapse,
     Rotate,
     // Light/dark back the simulator toolbar's appearance flip; System is
     // CLI-only on Windows (macOS consumes the same SVG sources).
@@ -100,6 +101,7 @@ impl WindowsDesignIcon {
             Self::FullscreenEnter => "icon_fullscreen_enter.png",
             Self::FullscreenExit => "icon_fullscreen_exit.png",
             Self::SidebarCollapse => "icon_sidebar_collapse.png",
+            Self::AsideCollapse => "icon_aside_collapse.png",
             Self::SidebarExpand => "icon_sidebar_expand.png",
             Self::Rotate => "icon_rotate.png",
             Self::AppearanceSystem => "icon_appearance_system.png",

@@ -882,6 +882,11 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
             let _ = hide_webview_window(&entry.webtag);
         }
     }
+    // A slot that is not admitted (or that the user collapsed) must not leave
+    // its dock behind: the children stay alive, the region goes away.
+    if !slot.visible {
+        let _ = hide_host_panel(ASIDE_LXAPP_PANEL_ID);
+    }
     refresh_aside_panel(ASIDE_LXAPP_PANEL_ID);
     true
 }
@@ -1021,12 +1026,15 @@ fn handle_aside_panel_event(event: WindowsAsidePanelEvent) {
     let panel_id = match &event {
         WindowsAsidePanelEvent::TabClick { panel_id, .. }
         | WindowsAsidePanelEvent::TabClose { panel_id, .. }
-        | WindowsAsidePanelEvent::CloseAll { panel_id }
+        | WindowsAsidePanelEvent::Collapse { panel_id }
         | WindowsAsidePanelEvent::NavBack { panel_id }
         | WindowsAsidePanelEvent::NavForward { panel_id }
         | WindowsAsidePanelEvent::NavReload { panel_id } => panel_id,
     };
-    if panel_id != ASIDE_BROWSER_PANEL_ID {
+    // Collapsing is a slot state in the shared graph, never a local tab
+    // operation — the browser panel's own group has nothing to do for it.
+    let collapse = matches!(event, WindowsAsidePanelEvent::Collapse { .. });
+    if panel_id != ASIDE_BROWSER_PANEL_ID || collapse {
         if let Some(handler) = MANAGED_ASIDE_EVENT_HANDLER
             .lock()
             .ok()
@@ -1048,12 +1056,8 @@ fn handle_aside_panel_event(event: WindowsAsidePanelEvent) {
             sync_aside_browser_group();
         }
         WindowsAsidePanelEvent::TabClose { surface_id, .. } => close_aside_tab(&surface_id),
-        WindowsAsidePanelEvent::CloseAll { .. } => {
-            let order = aside_browser_group().order.clone();
-            for id in order {
-                close_aside_tab(&id);
-            }
-        }
+        // Routed to the graph above; never reached here.
+        WindowsAsidePanelEvent::Collapse { .. } => {}
         WindowsAsidePanelEvent::NavBack { .. } => {
             with_active_aside_webview(|webview| webview.go_back())
         }

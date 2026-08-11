@@ -495,7 +495,7 @@ mod chrome_command {
     pub(super) const BROWSER_PANEL_NAV_RELOAD: &str = "browser-panel.nav.reload";
     pub(super) const ASIDE_PANEL_TAB_CLICK: &str = "aside-panel.tab.click";
     pub(super) const ASIDE_PANEL_TAB_CLOSE: &str = "aside-panel.tab.close";
-    pub(super) const ASIDE_PANEL_CLOSE_ALL: &str = "aside-panel.close-all";
+    pub(super) const ASIDE_PANEL_COLLAPSE: &str = "aside-panel.collapse";
     pub(super) const ASIDE_PANEL_NAV_BACK: &str = "aside-panel.nav.back";
     pub(super) const ASIDE_PANEL_NAV_FORWARD: &str = "aside-panel.nav.forward";
     pub(super) const ASIDE_PANEL_NAV_RELOAD: &str = "aside-panel.nav.reload";
@@ -3042,14 +3042,25 @@ fn handle_managed_aside_event(event: WindowsAsidePanelEvent) {
         WindowsAsidePanelEvent::TabClose { surface_id, .. } => {
             close_managed_aside_child(&surface_id);
         }
-        WindowsAsidePanelEvent::CloseAll { panel_id } => {
-            for tab in aside_panel_tabs(&panel_id) {
-                close_managed_aside_child(&tab.surface_id);
+        WindowsAsidePanelEvent::Collapse { panel_id } => {
+            if let Some(owner_appid) = shell_owner_appid()
+                && let Some(owner) = lxapp::try_get(&owner_appid)
+            {
+                owner.set_shell_slot_collapsed(aside_slot_kind(&panel_id), true);
             }
         }
         WindowsAsidePanelEvent::NavBack { .. }
         | WindowsAsidePanelEvent::NavForward { .. }
         | WindowsAsidePanelEvent::NavReload { .. } => {}
+    }
+}
+
+/// Slot kind behind a well-known aside panel id.
+fn aside_slot_kind(panel_id: &str) -> &'static str {
+    match panel_id {
+        lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID => "browser",
+        lingxia_windows_contract::ASIDE_LXAPP_PANEL_ID => "lxapp",
+        _ => "native",
     }
 }
 
@@ -3342,11 +3353,11 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             });
             return;
         }
-        chrome_command::ASIDE_PANEL_CLOSE_ALL => {
+        chrome_command::ASIDE_PANEL_COLLAPSE => {
             let Some(panel_id) = payload_string(&event, "panel_id") else {
                 return;
             };
-            dispatch_aside_panel_event(WindowsAsidePanelEvent::CloseAll { panel_id });
+            dispatch_aside_panel_event(WindowsAsidePanelEvent::Collapse { panel_id });
             return;
         }
         chrome_command::ASIDE_PANEL_NAV_BACK => {
