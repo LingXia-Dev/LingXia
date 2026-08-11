@@ -5934,6 +5934,53 @@ fn prepare_shell_window_for_presentation(hwnd: HWND) -> StdResult<()> {
     apply_shell_window_frame(hwnd)
 }
 
+static INITIAL_HOME_READY: AtomicBool = AtomicBool::new(false);
+const INITIAL_HOME_COMPOSITOR_SETTLE: std::time::Duration = std::time::Duration::from_millis(180);
+
+fn defer_initial_home_window(webtag: &WebTag, hwnd: HWND) -> bool {
+    !INITIAL_HOME_READY.load(Ordering::Acquire)
+        && !is_window_visible(hwnd)
+        && lingxia::home_app_id().is_some_and(|home| home == webtag.extract_appid())
+}
+
+pub(crate) fn reveal_initial_home_window() {
+    INITIAL_HOME_READY.store(true, Ordering::Release);
+    let Some(hwnd) = primary_host_window_except(None) else {
+        return;
+    };
+    let window = hwnd_handle(hwnd);
+    let _ = std::thread::Builder::new()
+        .name("lingxia-windows-first-frame".into())
+        .spawn(move || {
+            // `OnReady` follows the View's first render, but WebView2 commits
+            // that render to its composition surface asynchronously. Keep the
+            // still-hidden host out of DWM for that measured one-frame gap.
+            std::thread::sleep(INITIAL_HOME_COMPOSITOR_SETTLE);
+            let _ = post_to_window_thread(
+                window,
+                Box::new(move || unsafe {
+                    let hwnd = hwnd_from_handle(window);
+                    let _ = WindowsAndMessaging::SetWindowPos(
+                        hwnd,
+                        None,
+                        0,
+                        0,
+                        0,
+                        0,
+                        WindowsAndMessaging::SWP_NOMOVE
+                            | WindowsAndMessaging::SWP_NOSIZE
+                            | WindowsAndMessaging::SWP_SHOWWINDOW,
+                    );
+                    let _ = WindowsAndMessaging::BringWindowToTop(hwnd);
+                    let _ = WindowsAndMessaging::SetForegroundWindow(hwnd);
+                    if let Some(webtag_key) = active_webtag_key_for_window(hwnd) {
+                        notify_webtag_visibility(&webtag_key, true);
+                    }
+                }),
+            );
+        });
+}
+
 /// Last main shell host selected by a presentation. Unlike a page-derived
 /// lookup this remains valid after WM_CLOSE hides the window, so tray activate
 /// can restore the exact HWND the user closed.
@@ -7575,7 +7622,8 @@ fn show_webview_window_replacing(
 
     retire_other_group_main_controllers(target, webtag.key(), &[]);
 
-    if !is_window_visible(target) || activate {
+    let defer_initial_show = defer_initial_home_window(webtag, target);
+    if !defer_initial_show && (!is_window_visible(target) || activate) {
         unsafe {
             let mut flags = WindowsAndMessaging::SWP_NOMOVE
                 | WindowsAndMessaging::SWP_NOSIZE
@@ -7593,7 +7641,9 @@ fn show_webview_window_replacing(
     }
 
     mark_active(webtag);
-    notify_webtag_visibility(webtag.key(), true);
+    if !defer_initial_show {
+        notify_webtag_visibility(webtag.key(), true);
+    }
     hide_other_workspace_windows(target);
     Ok(())
 }
@@ -9065,6 +9115,12 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
         );
         match result {
             Ok(hwnd) => {
+                // Give DWM the final non-client shape while the HWND is still
+                // hidden. WebView2 may attach its composition target before
+                // the presentation path gets a chance to apply this frame.
+                if windows_chrome_renderer().is_some() {
+                    prepare_shell_window_for_presentation(hwnd)?;
+                }
                 register_window_handle(webtag.key(), hwnd);
                 invoke_host_window_created_handler(hwnd);
                 Ok(WindowsWebViewNativeView {

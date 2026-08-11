@@ -7,6 +7,9 @@ use crate::traits::ui::UIUpdate;
 
 type WindowsUiUpdateHandler = Arc<dyn Fn(String) + Send + Sync>;
 static WINDOWS_UI_UPDATE_HANDLER: Mutex<Option<WindowsUiUpdateHandler>> = Mutex::new(None);
+type WindowsHomeFirstReadyHandler = Arc<dyn Fn() + Send + Sync>;
+static WINDOWS_HOME_FIRST_READY_HANDLER: Mutex<Option<WindowsHomeFirstReadyHandler>> =
+    Mutex::new(None);
 
 /// Async UI update: the handler receives the appid and a completion closure
 /// it must call (with success) once the UI has actually applied the change.
@@ -31,6 +34,12 @@ pub fn set_windows_ui_update_async_handler(handler: WindowsUiUpdateAsyncHandler)
     }
 }
 
+pub fn set_windows_home_first_ready_handler(handler: WindowsHomeFirstReadyHandler) {
+    if let Ok(mut slot) = WINDOWS_HOME_FIRST_READY_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
 fn invoke_windows_ui_update_handler(appid: String) {
     let handler = WINDOWS_UI_UPDATE_HANDLER
         .lock()
@@ -46,6 +55,16 @@ pub fn sync_windows_ui(appid: &str) {
 }
 
 impl UIUpdate for Platform {
+    fn notify_home_first_ready(&self) {
+        let handler = WINDOWS_HOME_FIRST_READY_HANDLER
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone());
+        if let Some(handler) = handler {
+            handler();
+        }
+    }
+
     fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError> {
         invoke_windows_ui_update_handler(appid);
         Ok(())

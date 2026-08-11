@@ -31,15 +31,15 @@ pub(crate) fn create_controller(
 pub(crate) fn configure_controller(controller: &ICoreWebView2Controller) -> StdResult<()> {
     use windows::core::Interface as _;
     unsafe {
-        // White default background so a resize or reload (device rotate, lxapp
-        // restart, navigation) shows white instead of a black flash before the
-        // page repaints. Best-effort: older WebView2 runtimes lack Controller2.
+        // Keep the controller transparent until the document paints so the
+        // native host canvas remains visible during cold start and reload.
+        // Best-effort: older WebView2 runtimes lack Controller2.
         if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
             let _ = controller2.SetDefaultBackgroundColor(COREWEBVIEW2_COLOR {
-                A: 255,
-                R: 255,
-                G: 255,
-                B: 255,
+                A: 0,
+                R: 0,
+                G: 0,
+                B: 0,
             });
         }
         // LingXia host windows author their content rectangles in physical
