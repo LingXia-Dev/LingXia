@@ -31,25 +31,31 @@ assert_lacks "$scratch/automation" "lingxia-device-io" \
 
 cargo tree -e features -p lingxia-device-io --no-default-features \
   --features diagnostics > "$scratch/diagnostics"
-assert_lacks "$scratch/diagnostics" 'lingxia-device-io feature "snapshot"' \
+cargo tree -e features -p lingxia-device-io --no-default-features \
+  --features diagnostics -i lingxia-device-io > "$scratch/diagnostics-features"
+assert_lacks "$scratch/diagnostics-features" 'lingxia-device-io feature "snapshot"' \
   "device diagnostics must not enable snapshot"
 assert_lacks "$scratch/diagnostics" "image v" \
   "device diagnostics must not include snapshot image encoding"
 
 cargo tree -e features -p lingxia-device-io --no-default-features \
   --features process > "$scratch/process"
-assert_lacks "$scratch/process" 'lingxia-device-io feature "window"' \
+cargo tree -e features -p lingxia-device-io --no-default-features \
+  --features process -i lingxia-device-io > "$scratch/process-features"
+assert_lacks "$scratch/process-features" 'lingxia-device-io feature "window"' \
   "process inspection must not enable window automation"
 assert_lacks "$scratch/process" "image v" \
   "process inspection must not include snapshot image encoding"
 
 cargo tree -e features -p lingxia --no-default-features --features desktop-automation \
   > "$scratch/desktop-automation"
-assert_has "$scratch/desktop-automation" 'lingxia-device-io feature "snapshot"' \
+cargo tree -e features -p lingxia --no-default-features --features desktop-automation \
+  -i lingxia-device-io > "$scratch/desktop-automation-features"
+assert_has "$scratch/desktop-automation-features" 'lingxia-device-io feature "snapshot"' \
   "lingxia/desktop-automation must include snapshot"
-assert_lacks "$scratch/desktop-automation" 'lingxia-device-io feature "supervision"' \
+assert_lacks "$scratch/desktop-automation-features" 'lingxia-device-io feature "supervision"' \
   "lingxia/desktop-automation must not include host supervision"
-assert_lacks "$scratch/desktop-automation" 'lingxia-device-io feature "wire"' \
+assert_lacks "$scratch/desktop-automation-features" 'lingxia-device-io feature "wire"' \
   "in-process desktop automation must not include transport DTOs"
 
 cargo tree -e features -p lingxia-control-commands --no-default-features \
@@ -58,22 +64,31 @@ assert_lacks "$scratch/control-commands" "lingxia-device-io" \
   "base control commands must not depend on device I/O"
 
 cargo tree -e features -p lingxia-devtools-cli > "$scratch/lxdev"
-assert_has "$scratch/lxdev" 'lingxia-device-io feature "snapshot"' \
+cargo tree -e features -p lingxia-devtools-cli -i lingxia-device-io \
+  > "$scratch/lxdev-features"
+assert_has "$scratch/lxdev-features" 'lingxia-device-io feature "snapshot"' \
   "lxdev desktop must include snapshot"
-assert_has "$scratch/lxdev" 'lingxia-device-io feature "wire"' \
+assert_has "$scratch/lxdev-features" 'lingxia-device-io feature "wire"' \
   "lxdev desktop must include command DTOs"
-assert_lacks "$scratch/lxdev" 'lingxia-device-io feature "supervision"' \
+assert_lacks "$scratch/lxdev-features" 'lingxia-device-io feature "supervision"' \
   "standalone lxdev must not include host supervision"
 assert_lacks "$scratch/lxdev" "lingxia-platform" \
   "standalone lxdev must not include the platform host runtime"
 
 cargo tree -e features -p lingxia-control-runtime --no-default-features \
+  --features test-runtime > "$scratch/test-runtime"
+assert_lacks "$scratch/test-runtime" "lingxia-device-io" \
+  "test runtime without computer-use must not enable desktop device I/O"
+
+cargo tree -e features -p lingxia-control-runtime --no-default-features \
   --features computer-use > "$scratch/control-runtime"
-assert_has "$scratch/control-runtime" 'lingxia-device-io feature "snapshot"' \
+cargo tree -e features -p lingxia-control-runtime --no-default-features \
+  --features computer-use -i lingxia-device-io > "$scratch/control-runtime-features"
+assert_has "$scratch/control-runtime-features" 'lingxia-device-io feature "snapshot"' \
   "host computer-use must include snapshot"
-assert_has "$scratch/control-runtime" 'lingxia-device-io feature "supervision"' \
+assert_has "$scratch/control-runtime-features" 'lingxia-device-io feature "supervision"' \
   "host computer-use must include supervision"
-assert_has "$scratch/control-runtime" 'lingxia-device-io feature "wire"' \
+assert_has "$scratch/control-runtime-features" 'lingxia-device-io feature "wire"' \
   "host computer-use must include transport DTOs"
 
 cargo tree -e features -p lingxia-media --no-default-features > "$scratch/media-core"
