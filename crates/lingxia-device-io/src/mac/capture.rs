@@ -109,6 +109,7 @@ pub fn screenshot(target: CaptureTarget) -> Result<Capture> {
 /// Without the exclusion the viewer photographs itself every frame and shows a
 /// tunnel of its own past frames, which is both useless to look at and a
 /// feedback loop that never settles.
+#[cfg(feature = "supervision")]
 pub(super) fn rgba_below_window(
     rect: CGRect,
     below: u32,
@@ -134,6 +135,7 @@ pub(super) fn rgba_below_window(
 
 /// Capture a window's own backing store as raw top-down RGBA, so the viewer
 /// keeps showing it while it is occluded.
+#[cfg(feature = "supervision")]
 pub(super) fn rgba_of_window(id: u32, max_width: u32) -> Result<(u32, u32, Vec<u8>)> {
     let img = unsafe {
         CGWindowListCreateImage(

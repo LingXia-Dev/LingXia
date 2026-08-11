@@ -2,14 +2,19 @@
 //! pixels; the process is made per-monitor DPI aware on first use so reads are
 //! not virtualized.
 
+#[cfg(feature = "window")]
 use crate::error::{Error, Result};
 #[cfg(feature = "diagnostics")]
 use crate::model::{Capabilities, Doctor, Permissions};
+#[cfg(feature = "window")]
 use crate::model::{Display, Rect, Window, WindowQuery};
+#[cfg(any(feature = "diagnostics", feature = "window"))]
 use std::sync::Once;
 #[cfg(feature = "input")]
 use windows::Win32::Foundation::POINT;
+#[cfg(feature = "window")]
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, RECT, TRUE};
+#[cfg(feature = "window")]
 use windows::core::{BOOL, PWSTR};
 
 #[cfg(feature = "ax")]
@@ -61,6 +66,7 @@ pub use window_ops::{
 };
 
 /// Parse a "0x…"-style window id back into an `HWND`.
+#[cfg(feature = "window")]
 pub(crate) fn parse_hwnd(id: &str) -> Result<HWND> {
     let hex = id
         .strip_prefix("0x")
@@ -72,18 +78,24 @@ pub(crate) fn parse_hwnd(id: &str) -> Result<HWND> {
     ensure_automatable_hwnd(hwnd)?;
     Ok(hwnd)
 }
+#[cfg(feature = "window")]
 use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
+#[cfg(feature = "window")]
 use windows::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITOR_DEFAULTTONEAREST, MONITORINFO,
     MONITORINFOEXW, MonitorFromRect,
 };
+#[cfg(feature = "window")]
 use windows::Win32::System::Threading::{
     OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
 };
+#[cfg(any(feature = "diagnostics", feature = "window"))]
 use windows::Win32::UI::HiDpi::{
-    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForMonitor, MDT_EFFECTIVE_DPI,
-    SetProcessDpiAwarenessContext,
+    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext,
 };
+#[cfg(feature = "window")]
+use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
+#[cfg(feature = "window")]
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GWL_EXSTYLE, GetClassNameW, GetForegroundWindow, GetWindowLongW, GetWindowRect,
     GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, WS_EX_TOPMOST,
@@ -91,8 +103,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
 #[cfg(feature = "input")]
 use windows::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor, WindowFromPoint};
 
+#[cfg(feature = "window")]
 const MONITORINFOF_PRIMARY: u32 = 1;
 
+#[cfg(feature = "window")]
 fn direct_target_class_allowed(class: &str) -> bool {
     #[cfg(feature = "supervision")]
     {
@@ -105,6 +119,7 @@ fn direct_target_class_allowed(class: &str) -> bool {
     }
 }
 
+#[cfg(feature = "window")]
 pub(crate) fn is_viewer_hwnd(hwnd: HWND) -> bool {
     unsafe {
         let mut class = [0u16; 256];
@@ -116,6 +131,7 @@ pub(crate) fn is_viewer_hwnd(hwnd: HWND) -> bool {
     }
 }
 
+#[cfg(feature = "window")]
 pub(crate) fn ensure_automatable_hwnd(hwnd: HWND) -> Result<()> {
     if is_viewer_hwnd(hwnd) {
         Err(Error::NotFound(
@@ -128,6 +144,7 @@ pub(crate) fn ensure_automatable_hwnd(hwnd: HWND) -> Result<()> {
 
 /// Make the process per-monitor DPI aware once, so window/monitor rects come
 /// back in true physical pixels instead of being virtualized.
+#[cfg(any(feature = "diagnostics", feature = "window"))]
 pub(crate) fn ensure_dpi_aware() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| unsafe {
@@ -135,6 +152,7 @@ pub(crate) fn ensure_dpi_aware() {
     });
 }
 
+#[cfg(feature = "window")]
 pub(crate) fn rect_to(r: RECT) -> Rect {
     Rect {
         x: r.left,
@@ -165,21 +183,22 @@ pub fn doctor() -> Doctor {
         os_version: os_version(),
         permissions: permissions(),
         capabilities: Capabilities {
-            displays: true,
-            windows: true,
-            screenshot: true,
-            window_screenshot_occlusion_independent: true,
-            pixel: true,
-            window_management: true,
-            pointer: true,
-            key: true,
-            clipboard: true,
-            ax_tree: true,
+            displays: cfg!(feature = "window"),
+            windows: cfg!(feature = "window"),
+            screenshot: cfg!(feature = "snapshot"),
+            window_screenshot_occlusion_independent: cfg!(feature = "snapshot"),
+            pixel: cfg!(feature = "snapshot"),
+            window_management: cfg!(feature = "window"),
+            pointer: cfg!(feature = "input"),
+            key: cfg!(feature = "input"),
+            clipboard: cfg!(feature = "clipboard"),
+            ax_tree: cfg!(feature = "ax"),
             ..Capabilities::default()
         },
     }
 }
 
+#[cfg(feature = "diagnostics")]
 #[cfg(feature = "diagnostics")]
 fn os_version() -> String {
     // Best-effort; avoids a version-shim dependency.
@@ -188,6 +207,7 @@ fn os_version() -> String {
 
 // ============================ displays ============================
 
+#[cfg(feature = "window")]
 pub fn displays() -> Result<Vec<Display>> {
     ensure_dpi_aware();
     let mut out: Vec<Display> = Vec::new();
@@ -202,6 +222,7 @@ pub fn displays() -> Result<Vec<Display>> {
     Ok(out)
 }
 
+#[cfg(feature = "window")]
 fn monitor_dpi(hmon: HMONITOR) -> u32 {
     let mut dpi_x: u32 = 96;
     let mut dpi_y: u32 = 96;
@@ -211,6 +232,7 @@ fn monitor_dpi(hmon: HMONITOR) -> u32 {
     dpi_x
 }
 
+#[cfg(feature = "window")]
 unsafe extern "system" fn monitor_enum_proc(
     hmon: HMONITOR,
     _hdc: HDC,
@@ -238,6 +260,7 @@ unsafe extern "system" fn monitor_enum_proc(
     TRUE
 }
 
+#[cfg(feature = "window")]
 pub(crate) fn display_id_for_rect(displays: &[Display], r: &RECT) -> (String, u32, f64) {
     let hmon = unsafe { MonitorFromRect(r, MONITOR_DEFAULTTONEAREST) };
     let dpi = monitor_dpi(hmon);
@@ -260,6 +283,7 @@ pub(crate) fn display_id_for_rect(displays: &[Display], r: &RECT) -> (String, u3
 
 // ============================ windows ============================
 
+#[cfg(feature = "window")]
 struct Raw {
     hwnd: HWND,
     title: String,
@@ -271,6 +295,7 @@ struct Raw {
     topmost: bool,
 }
 
+#[cfg(feature = "window")]
 pub fn windows(query: &WindowQuery) -> Result<Vec<Window>> {
     ensure_dpi_aware();
     let mut raw: Vec<Raw> = Vec::new();
@@ -333,6 +358,7 @@ pub(crate) fn input_window_at_point(x: i32, y: i32) -> Option<Window> {
 
 /// Poll `windows()` until one matches (and, if given, matches `visible`), or
 /// time out (exit 5).
+#[cfg(feature = "window")]
 pub fn wait_window(query: &WindowQuery, visible: Option<bool>, timeout_ms: u64) -> Result<Window> {
     // Enumeration only surfaces visible, uncloaked, non-zero-area top-level
     // windows, so every candidate is visible. `--state hidden` is therefore
@@ -358,6 +384,7 @@ pub fn wait_window(query: &WindowQuery, visible: Option<bool>, timeout_ms: u64) 
     }
 }
 
+#[cfg(feature = "window")]
 fn matches_query(r: &Raw, q: &WindowQuery) -> bool {
     if q.is_malformed() {
         return false;
@@ -386,6 +413,7 @@ fn matches_query(r: &Raw, q: &WindowQuery) -> bool {
     true
 }
 
+#[cfg(feature = "window")]
 unsafe extern "system" fn window_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
     unsafe {
         let out = &mut *(lparam.0 as *mut Vec<Raw>);
@@ -445,6 +473,7 @@ unsafe extern "system" fn window_enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
     TRUE
 }
 
+#[cfg(feature = "window")]
 pub(crate) fn process_name(pid: u32) -> String {
     if pid == 0 {
         return String::new();

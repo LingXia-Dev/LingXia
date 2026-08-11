@@ -68,14 +68,14 @@ impl Backend<'_> {
 
     pub fn screenshot(&self, target: cu::CaptureTarget) -> cu::Result<cu::Capture> {
         match self {
-            Self::Local => cu::screenshot(target),
+            Self::Local => cu::capture::snapshot(target),
             Self::App(_) => self.call(method::SCREENSHOT, cu::wire::Screenshot { target }),
         }
     }
 
     pub fn pixel(&self, x: i32, y: i32) -> cu::Result<cu::Pixel> {
         match self {
-            Self::Local => cu::pixel(x, y),
+            Self::Local => cu::capture::pixel(x, y),
             Self::App(_) => self.call(method::PIXEL, cu::wire::Point { x, y }),
         }
     }
@@ -108,7 +108,7 @@ impl Backend<'_> {
         timeout_ms: u64,
     ) -> cu::Result<cu::Pixel> {
         match self {
-            Self::Local => cu::wait_pixel(x, y, hex, tolerance, timeout_ms),
+            Self::Local => cu::capture::wait_pixel(x, y, hex, tolerance, timeout_ms),
             Self::App(_) => self.call(
                 method::WAIT_PIXEL,
                 cu::wire::WaitPixel {

@@ -20,12 +20,12 @@ full = [
     "window",
     "wire",
 ]
-app = ["process"]
+app = ["process", "window"]
 ax = ["window"]
 clipboard = ["input"]
-diagnostics = ["ax", "clipboard", "input", "snapshot", "window"]
+diagnostics = ["native"]
 input = ["window"]
-process = ["window"]
+process = ["native"]
 snapshot = ["window", "dep:image"]
 supervision = ["snapshot", "dep:lingxia-app-context"]
 window = ["native"]

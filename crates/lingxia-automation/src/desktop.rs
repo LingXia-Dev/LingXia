@@ -282,7 +282,7 @@ impl JSDesktopDriver {
             },
             _ => return Err(usage("pass only one of display / window / region")),
         };
-        let capture = blocking(move || cu::screenshot(target)).await?;
+        let capture = blocking(move || cu::capture::snapshot(target)).await?;
         capture_to_js(&ctx, &capture)
     }
 
@@ -290,7 +290,7 @@ impl JSDesktopDriver {
     #[js_method]
     async fn pixel(&self, ctx: JSContext, options: AtOpt) -> JSResult<JSValue> {
         let (x, y) = point(&options.at, "at")?;
-        let pixel = blocking(move || cu::pixel(x, y)).await?;
+        let pixel = blocking(move || cu::capture::pixel(x, y)).await?;
         to_js(&ctx, &pixel)
     }
 
@@ -306,7 +306,7 @@ impl JSDesktopDriver {
         let depth = options.depth;
         let (info, shot, ax) = blocking(move || {
             let info = cu::window::status(&cu::WindowTarget::Id(window.clone()))?;
-            let shot = cu::screenshot(cu::CaptureTarget::Window(window.clone())).ok();
+            let shot = cu::capture::snapshot(cu::CaptureTarget::Window(window.clone())).ok();
             let ax = if no_ax {
                 None
             } else {
@@ -1050,7 +1050,8 @@ impl JSDesktopWait {
         let tolerance = options.tolerance.unwrap_or(0);
         let timeout_ms = desktop_timeout_ms(options.timeout_ms);
         let pixel =
-            blocking(move || cu::wait_pixel(x, y, &options.color, tolerance, timeout_ms)).await?;
+            blocking(move || cu::capture::wait_pixel(x, y, &options.color, tolerance, timeout_ms))
+                .await?;
         to_js(&ctx, &pixel)
     }
 }

@@ -3,7 +3,10 @@
 //! (`NSRunningApplication.terminate`, else `SIGTERM`).
 
 use crate::error::{Error, Result};
-use crate::model::{Ack, LaunchResult, ProcessInfo, QuitTarget, WindowQuery};
+use crate::model::{Ack, ProcessInfo};
+#[cfg(feature = "app")]
+use crate::model::{LaunchResult, QuitTarget, WindowQuery};
+#[cfg(feature = "app")]
 use objc2_app_kit::NSRunningApplication;
 
 pub fn process_list(filter: Option<&str>) -> Result<Vec<ProcessInfo>> {
@@ -64,6 +67,7 @@ pub fn process_kill(pid: u32, force: bool) -> Result<Ack> {
     Ok(Ack::new("process.kill"))
 }
 
+#[cfg(feature = "app")]
 pub fn app_launch(
     app: &str,
     args: &[String],
@@ -105,6 +109,7 @@ pub fn app_launch(
     })
 }
 
+#[cfg(feature = "app")]
 fn quit_pid(target: &QuitTarget) -> Result<u32> {
     match target {
         QuitTarget::Pid(p) => Ok(*p),
@@ -128,6 +133,7 @@ fn quit_pid(target: &QuitTarget) -> Result<u32> {
     }
 }
 
+#[cfg(feature = "app")]
 pub fn app_quit(target: QuitTarget, force: bool) -> Result<Ack> {
     let pid = quit_pid(&target)?;
     if force {

@@ -8,23 +8,37 @@
 //! `scale`× larger than the point bounds they cover. Each [`Display`] and
 //! [`Window`] carries its `scale`/`dpi` so a caller can convert when needed.
 
+#[cfg(feature = "window")]
 use crate::error::{Error, Result};
-use crate::model::{Capabilities, Display, Doctor, Permissions, Rect, Window, WindowQuery};
+#[cfg(feature = "diagnostics")]
+use crate::model::{Capabilities, Doctor, Permissions};
+#[cfg(feature = "window")]
+use crate::model::{Display, Rect, Window, WindowQuery};
+#[cfg(feature = "window")]
 use objc2_core_foundation::CGRect;
+#[cfg(feature = "window")]
 use objc2_core_graphics::{
     CGDirectDisplayID, CGDisplayBounds, CGDisplayCopyDisplayMode, CGDisplayMode,
-    CGGetActiveDisplayList, CGMainDisplayID, CGPreflightPostEventAccess,
-    CGPreflightScreenCaptureAccess, CGRequestPostEventAccess, CGRequestScreenCaptureAccess,
-    CGWindowListCopyWindowInfo, CGWindowListOption, kCGWindowAlpha, kCGWindowBounds,
-    kCGWindowIsOnscreen, kCGWindowLayer, kCGWindowName, kCGWindowNumber, kCGWindowOwnerName,
-    kCGWindowOwnerPID,
+    CGGetActiveDisplayList, CGMainDisplayID, CGWindowListCopyWindowInfo, CGWindowListOption,
+    kCGWindowAlpha, kCGWindowBounds, kCGWindowIsOnscreen, kCGWindowLayer, kCGWindowName,
+    kCGWindowNumber, kCGWindowOwnerName, kCGWindowOwnerPID,
+};
+#[cfg(feature = "diagnostics")]
+use objc2_core_graphics::{
+    CGPreflightPostEventAccess, CGPreflightScreenCaptureAccess, CGRequestPostEventAccess,
+    CGRequestScreenCaptureAccess,
 };
 
 #[cfg(feature = "ax")]
 mod ax;
+#[cfg(any(feature = "diagnostics", feature = "window"))]
+mod ax_permission;
+#[cfg(feature = "window")]
+#[cfg_attr(not(feature = "ax"), allow(dead_code))]
 mod axui;
 #[cfg(feature = "snapshot")]
 mod capture;
+#[cfg(feature = "window")]
 mod cf;
 #[cfg(feature = "clipboard")]
 mod clipboard;
@@ -43,8 +57,10 @@ mod window_ops;
 // it as kCGWindowName when Screen Recording metadata is available. Every host
 // uses the same deliberately collision-resistant sentinel so one product does
 // not enumerate and automate another product's activity viewer.
+#[cfg(feature = "window")]
 const VIEWER_WINDOW_SENTINEL: &str = "__lingxia_activity_viewer_8d61c5b2_v1__";
 
+#[cfg(feature = "window")]
 fn current_viewer_window() -> u32 {
     #[cfg(feature = "supervision")]
     {
@@ -75,8 +91,10 @@ pub use input::{
 };
 #[cfg(feature = "supervision")]
 pub use pip::{dismiss as pip_dismiss, note_activity as pip_note_activity};
+#[cfg(feature = "app")]
+pub use process::{app_launch, app_quit};
 #[cfg(feature = "process")]
-pub use process::{app_launch, app_quit, process_kill, process_list};
+pub use process::{process_kill, process_list};
 #[cfg(feature = "window")]
 pub use window_ops::{
     activate as window_activate, close as window_close, focus as window_focus,
@@ -87,6 +105,7 @@ pub use window_ops::{
 };
 
 /// Convert a `CGRect` (points) to the model's integer `Rect`.
+#[cfg(feature = "window")]
 pub(crate) fn rect_to(r: CGRect) -> Rect {
     Rect {
         x: r.origin.x.round() as i32,
@@ -98,6 +117,7 @@ pub(crate) fn rect_to(r: CGRect) -> Rect {
 
 /// Parse a window id (decimal, as emitted by `windows()`, or `0x…` hex) back
 /// into a `CGWindowID`.
+#[cfg(feature = "window")]
 pub(crate) fn parse_window_id(id: &str) -> Result<u32> {
     let parsed = if let Some(hex) = id.strip_prefix("0x").or_else(|| id.strip_prefix("0X")) {
         u32::from_str_radix(hex, 16)
@@ -108,6 +128,7 @@ pub(crate) fn parse_window_id(id: &str) -> Result<u32> {
 }
 
 /// Best-effort macOS product version (e.g. "14.5") via sysctl.
+#[cfg(feature = "diagnostics")]
 #[cfg(feature = "diagnostics")]
 fn os_version() -> String {
     let mut buf = [0u8; 64];
@@ -131,7 +152,7 @@ fn os_version() -> String {
 /// The bundled app the OS will attribute a grant to. Bare binaries have no
 /// bundle URL and must fall back to the terminal that macOS actually records
 /// in its privacy database.
-#[cfg(any(feature = "diagnostics", feature = "supervision"))]
+#[cfg(feature = "window")]
 pub(crate) fn responsible_app_name() -> Option<String> {
     use objc2_app_kit::NSRunningApplication;
 
@@ -145,7 +166,7 @@ pub(crate) fn responsible_app_name() -> Option<String> {
 #[cfg(feature = "diagnostics")]
 pub fn permissions() -> Permissions {
     Permissions {
-        accessibility: axui::is_trusted(),
+        accessibility: ax_permission::is_trusted(),
         screen_recording: CGPreflightScreenCaptureAccess(),
         input: CGPreflightPostEventAccess(),
     }
@@ -161,8 +182,8 @@ pub fn request_permissions() -> Permissions {
     if !CGPreflightPostEventAccess() {
         let _ = CGRequestPostEventAccess();
     }
-    if !axui::is_trusted() {
-        let _ = axui::prompt_trusted();
+    if !ax_permission::is_trusted() {
+        let _ = ax_permission::prompt_trusted();
     }
     permissions()
 }
@@ -175,18 +196,18 @@ pub fn doctor() -> Doctor {
         os_version: os_version(),
         permissions: permissions(),
         capabilities: Capabilities {
-            displays: true,
-            windows: true,
-            screenshot: true,
+            displays: cfg!(feature = "window"),
+            windows: cfg!(feature = "window"),
+            screenshot: cfg!(feature = "snapshot"),
             // CGWindowListCreateImage composites the target window's own
             // backing store, so occluded regions still come through.
-            window_screenshot_occlusion_independent: true,
-            pixel: true,
-            pointer: true,
-            key: true,
-            window_management: true,
-            clipboard: true,
-            ax_tree: true,
+            window_screenshot_occlusion_independent: cfg!(feature = "snapshot"),
+            pixel: cfg!(feature = "snapshot"),
+            pointer: cfg!(feature = "input"),
+            key: cfg!(feature = "input"),
+            window_management: cfg!(feature = "window"),
+            clipboard: cfg!(feature = "clipboard"),
+            ax_tree: cfg!(feature = "ax"),
             ..Capabilities::default()
         },
     }
@@ -194,6 +215,7 @@ pub fn doctor() -> Doctor {
 
 // ============================ displays ============================
 
+#[cfg(feature = "window")]
 pub fn displays() -> Result<Vec<Display>> {
     let mut ids = [0 as CGDirectDisplayID; 16];
     let mut count: u32 = 0;
@@ -227,6 +249,7 @@ pub fn displays() -> Result<Vec<Display>> {
 /// Return `NSScreen.visibleFrame` in the same top-left coordinate space as
 /// `CGDisplayBounds`. AppKit is main-thread-only, so non-main callers retain the
 /// safe full-display fallback.
+#[cfg(feature = "window")]
 fn display_work_area(id: CGDirectDisplayID, bounds: CGRect) -> Rect {
     use objc2::MainThreadMarker;
     use objc2_app_kit::NSScreen;
@@ -257,6 +280,7 @@ fn display_work_area(id: CGDirectDisplayID, bounds: CGRect) -> Rect {
 }
 
 /// A display's backing scale factor (2.0 on Retina), from its current mode.
+#[cfg(feature = "window")]
 fn display_scale(id: CGDirectDisplayID) -> f64 {
     match CGDisplayCopyDisplayMode(id) {
         Some(mode) => {
@@ -273,6 +297,7 @@ fn display_scale(id: CGDirectDisplayID) -> f64 {
 }
 
 /// The display whose bounds contain a rect's top-left, else the first display.
+#[cfg(feature = "window")]
 pub(crate) fn display_for_rect(displays: &[Display], r: &Rect) -> (String, u32, f64) {
     for d in displays {
         if r.x >= d.bounds.x
@@ -293,6 +318,7 @@ pub(crate) fn display_for_rect(displays: &[Display], r: &Rect) -> (String, u32, 
 
 /// The pid of the frontmost GUI application, for `focused` reporting and for
 /// directing keyboard input at the active app.
+#[cfg(feature = "window")]
 pub(crate) fn frontmost_pid() -> Option<i32> {
     use objc2_app_kit::NSWorkspace;
     NSWorkspace::sharedWorkspace()
@@ -301,6 +327,7 @@ pub(crate) fn frontmost_pid() -> Option<i32> {
 }
 
 /// List on-screen OS windows (the public `desktop windows` surface).
+#[cfg(feature = "window")]
 pub fn windows(query: &WindowQuery) -> Result<Vec<Window>> {
     enumerate(query, true)
 }
@@ -308,6 +335,7 @@ pub fn windows(query: &WindowQuery) -> Result<Vec<Window>> {
 /// Locate a single window by `CGWindowID`, including minimized/off-screen ones
 /// (`OptionAll`). Used by window operations, which must still reach a window a
 /// user has minimized — those drop out of the on-screen list.
+#[cfg(feature = "window")]
 pub(crate) fn window_record(wid: u32) -> Option<Window> {
     enumerate(&WindowQuery::default(), false)
         .ok()?
@@ -317,6 +345,7 @@ pub(crate) fn window_record(wid: u32) -> Option<Window> {
 
 /// Enumerate windows. `only_onscreen` picks `OptionOnScreenOnly` (visible
 /// windows, front-to-back) vs `OptionAll` (also minimized/off-screen).
+#[cfg(feature = "window")]
 fn enumerate(query: &WindowQuery, only_onscreen: bool) -> Result<Vec<Window>> {
     if query.is_malformed() {
         return Ok(Vec::new());
@@ -421,10 +450,12 @@ fn enumerate(query: &WindowQuery, only_onscreen: bool) -> Result<Vec<Window>> {
     Ok(out)
 }
 
+#[cfg(feature = "window")]
 fn is_viewer_window(number: u32, viewer_window: u32, title: &str) -> bool {
     (viewer_window != 0 && number == viewer_window) || title == VIEWER_WINDOW_SENTINEL
 }
 
+#[cfg(feature = "window")]
 struct RawWindow<'a> {
     number: u32,
     title: &'a str,
@@ -432,6 +463,7 @@ struct RawWindow<'a> {
     pid: u32,
 }
 
+#[cfg(feature = "window")]
 fn matches_query(w: &RawWindow, q: &WindowQuery) -> bool {
     if q.is_malformed() {
         return false;
@@ -461,6 +493,7 @@ fn matches_query(w: &RawWindow, q: &WindowQuery) -> bool {
 }
 
 /// Poll `windows()` until one matches, or time out (exit 5).
+#[cfg(feature = "window")]
 pub fn wait_window(query: &WindowQuery, visible: Option<bool>, timeout_ms: u64) -> Result<Window> {
     // Only visible, on-screen windows are enumerated, so `--state hidden` can
     // never be satisfied; reject it up front rather than spinning to a timeout.
@@ -485,7 +518,7 @@ pub fn wait_window(query: &WindowQuery, visible: Option<bool>, timeout_ms: u64) 
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "window"))]
 mod tests {
     use super::{VIEWER_WINDOW_SENTINEL, is_viewer_window};
 
