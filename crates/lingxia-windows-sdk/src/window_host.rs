@@ -6668,6 +6668,9 @@ fn end_window_resize_drag(hwnd: HWND, release_capture: bool) -> bool {
             let _ = ReleaseCapture();
         }
     }
+    if removed {
+        persist_primary_window_frame(hwnd);
+    }
     removed
 }
 
@@ -8923,6 +8926,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             }
             WindowsAndMessaging::WM_EXITSIZEMOVE => {
                 snap_window_after_caption_drag(hwnd);
+                persist_primary_window_frame(hwnd);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_MOUSEMOVE => {
