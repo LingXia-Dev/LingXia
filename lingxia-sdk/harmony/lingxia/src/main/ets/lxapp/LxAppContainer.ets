@@ -61,6 +61,10 @@ export struct LxAppContainer {
 
   // Static registry for TabBar updates (simple and direct)
   private static activeContainers: Map<string, LxAppContainer> = new Map()
+  // Scheme of the lxapp currently on screen. Overlays that are mounted above
+  // the containers (modal, action sheet) have no appId of their own, so they
+  // read the foreground scheme from here.
+  private static currentAppearanceDark: boolean = false
   private static appearanceByApp: Map<string, boolean> = new Map()
 
   // Static registry for animation type information
@@ -170,6 +174,7 @@ export struct LxAppContainer {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
     const hostDark = context?.config?.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
     this.appearanceDark = LxAppContainer.appearanceByApp.get(this.appId) ?? hostDark;
+    LxAppContainer.currentAppearanceDark = this.appearanceDark;
 
     this.path = this.initialPath;
     hilog.info(DOMAIN, TAG, `Container creating for ${this.appId}:${this.path}, isHome=${this.isHomeApp()}`);
@@ -448,12 +453,18 @@ export struct LxAppContainer {
     return false;
   }
 
+  /** Scheme of the lxapp currently on screen, for overlays without an appId. */
+  public static appearanceDarkNow(): boolean {
+    return LxAppContainer.currentAppearanceDark;
+  }
+
   public static applyAppearance(appId: string, dark: boolean): boolean {
     LxAppContainer.appearanceByApp.set(appId, dark);
     LxAppSurface.applyAppearance(appId, dark);
     const container = LxAppContainer.activeContainers.get(appId);
     if (container) {
       container.appearanceDark = dark;
+      LxAppContainer.currentAppearanceDark = dark;
       container.pageConfig = getNavigationBarState(appId, container.path);
       container.navbarRefreshKey++;
       container.tabBarRefreshKey++;

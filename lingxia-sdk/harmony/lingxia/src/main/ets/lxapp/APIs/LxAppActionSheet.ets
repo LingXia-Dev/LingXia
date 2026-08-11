@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../../app/LxLog';
 import { onCallback } from 'liblingxia.so';
+import { LxAppContainer } from '../LxAppContainer';
 
 /**
  * ActionSheet configuration structure
@@ -99,6 +100,9 @@ export class LxAppActionSheet {
 export struct ActionSheetManager {
   @State isVisible: boolean = false;
   @State config: ActionSheetConfig | null = null;
+  // Sheet colors follow the foreground lxapp's scheme, resolved when shown;
+  // the overlay itself belongs to no app.
+  @State appearanceDark: boolean = false;
   private callbackId: string = "";
 
   aboutToAppear() {
@@ -116,7 +120,7 @@ export struct ActionSheetManager {
         Column()
           .width('100%')
           .height('100%')
-          .backgroundColor('rgba(0, 0, 0, 0.5)')
+          .backgroundColor(this.appearanceDark ? 'rgba(0, 0, 0, 0.65)' : 'rgba(0, 0, 0, 0.5)')
           .onClick(() => {
             this.handleCancel();
           })
@@ -140,7 +144,7 @@ export struct ActionSheetManager {
             if (index < (this.config?.options?.length || 0) - 1) {
               Divider()
                 .height(0.5)
-                .color('#E0E0E0')
+                .color(this.appearanceDark ? '#3A3A3C' : '#E0E0E0')
             }
           })
 
@@ -148,12 +152,12 @@ export struct ActionSheetManager {
           Column()
             .width('100%')
             .height(8)
-            .backgroundColor('#E0E0E0')
+            .backgroundColor(this.appearanceDark ? '#000000' : '#E0E0E0')
 
           // Cancel button - part of same container, no separate styling
           Text(this.config?.cancelText || '')
             .fontSize(18)
-            .fontColor('#666666')
+            .fontColor(this.appearanceDark ? '#E5E5E7' : '#666666')
             .textAlign(TextAlign.Center)
             .width('100%')
             .height(56)
@@ -162,7 +166,7 @@ export struct ActionSheetManager {
             })
         }
         .width('100%')
-        .backgroundColor('#FFFFFF')
+        .backgroundColor(this.appearanceDark ? '#1C1C1E' : '#FFFFFF')
         // Top rounded corners - bottom attached to edge
         .borderRadius({ topLeft: 16, topRight: 16, bottomLeft: 0, bottomRight: 0 })
       }
@@ -199,6 +203,7 @@ export struct ActionSheetManager {
    * Show ActionSheet (called by LxAppActionSheet)
    */
   public showActionSheet(config: ActionSheetConfig, callbackId: string): void {
+    this.appearanceDark = LxAppContainer.appearanceDarkNow();
     this.config = config;
     this.callbackId = callbackId;
     this.isVisible = true;

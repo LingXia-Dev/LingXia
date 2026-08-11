@@ -33,6 +33,16 @@ enum LxAppAppearanceRegistry {
         schemes[appId]
     }
 
+    /// Scheme for chrome that belongs to no single lxapp — modals, action
+    /// sheets and friends. They sit above the current lxapp, so they follow
+    /// its scheme first and the host's only as a fallback.
+    static func overlayIsDark() -> Bool {
+        if let appId = LxAppCore.currentAppId, let dark = schemes[appId] {
+            return dark
+        }
+        return hostIsDark()
+    }
+
     static func register(_ webView: WKWebView, appId: String) {
         let table = webViews[appId] ?? NSHashTable<WKWebView>.weakObjects()
         table.add(webView)

@@ -113,6 +113,9 @@ class LxAppModal {
 
     let alertTitle = title.isEmpty ? nil : title
     let alert = UIAlertController(title: alertTitle, message: content, preferredStyle: .alert)
+    // A system alert follows the OS; the lxapp behind it may be pinned to the
+    // opposite scheme.
+    alert.overrideUserInterfaceStyle = LxAppAppearanceRegistry.overlayIsDark() ? .dark : .light
 
     // Add confirm action
     let confirmAction = UIAlertAction(title: confirmText, style: .default) { _ in
@@ -163,6 +166,8 @@ class LxAppModal {
         callback_id: UInt64
     ) {
         let alert = NSAlert()
+        alert.window.appearance =
+            NSAppearance(named: LxAppAppearanceRegistry.overlayIsDark() ? .darkAqua : .aqua)
         alert.messageText = title
         alert.informativeText = content
         alert.addButton(withTitle: confirmText)
