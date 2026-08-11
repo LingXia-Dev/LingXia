@@ -14,7 +14,7 @@ mod pipeline;
 mod sprites;
 mod text;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use lingxia_terminal::{
@@ -45,9 +45,9 @@ use windows::Win32::Graphics::Dxgi::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, HTTRANSPARENT, HWND_TOP, PostMessageW,
-    RegisterClassW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOZORDER, SetParent, SetWindowPos,
-    ShowWindow, WM_CLOSE, WM_ERASEBKGND, WM_NCHITTEST, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS,
-    WS_EX_NOREDIRECTIONBITMAP, WS_VISIBLE,
+    RegisterClassW, SW_HIDE, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOZORDER, SetParent,
+    SetWindowPos, ShowWindow, WM_CLOSE, WM_ERASEBKGND, WM_NCHITTEST, WNDCLASSW, WS_CHILD,
+    WS_CLIPSIBLINGS, WS_EX_NOREDIRECTIONBITMAP, WS_VISIBLE,
 };
 use windows::core::{Interface, PCWSTR, Result, w};
 
@@ -81,8 +81,11 @@ fn sole_sprite(run: &str) -> Option<u32> {
 /// Render a panel's terminal body.
 pub(super) fn present(parent: HWND, panel_id: &str, body: RECT, radii: [i32; 4]) {
     register_captures();
-    let mut surfaces = surfaces();
-    let surface = match surfaces.entry(panel_id.to_string()) {
+    let mut registry = surface_registry();
+    if !registry.permits_present(panel_id) {
+        return;
+    }
+    let surface = match registry.surfaces.entry(panel_id.to_string()) {
         std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
         std::collections::hash_map::Entry::Vacant(entry) => match Surface::new(parent) {
             Ok(surface) => entry.insert(surface),
@@ -94,7 +97,7 @@ pub(super) fn present(parent: HWND, panel_id: &str, body: RECT, radii: [i32; 4])
     };
     if let Err(error) = surface.present(parent, panel_id, body, radii) {
         log::error!("terminal GPU present failed: {error}");
-        surfaces.remove(panel_id);
+        registry.surfaces.remove(panel_id);
     }
 }
 
@@ -104,8 +107,9 @@ pub(super) fn present(parent: HWND, panel_id: &str, body: RECT, radii: [i32; 4])
 /// come through here shows the card with an empty body — which is what every
 /// Windows screenshot of the terminal did before this existed.
 fn captures_for_window(window_id: usize) -> Vec<lingxia_windows_contract::WindowsSurfaceCapture> {
-    let mut surfaces = surfaces();
-    surfaces
+    let mut registry = surface_registry();
+    registry
+        .surfaces
         .values_mut()
         .filter(|surface| surface.parent.0 as usize == window_id)
         .filter_map(Surface::capture)
@@ -120,9 +124,22 @@ fn register_captures() {
     });
 }
 
+/// Admit paints for a newly opened panel. A panel id can be reused after its
+/// previous provider was completely torn down.
+pub(super) fn activate_panel(panel_id: &str) {
+    surface_registry().activate(panel_id);
+}
+
 /// Tear down a panel's surface when the panel closes.
 pub(super) fn drop_panel(panel_id: &str) {
-    surfaces().remove(panel_id);
+    let surface = {
+        let mut registry = surface_registry();
+        registry.retire(panel_id)
+    };
+    if let Some(surface) = surface {
+        surface.hide();
+        drop(surface);
+    }
 }
 
 /// Cell size of the font in effect, so the facade can size PTYs and hit-test
@@ -136,10 +153,31 @@ pub(super) fn cell_size() -> Option<(i32, i32)> {
     Some((metrics.cell_width as i32, metrics.line_height as i32))
 }
 
-fn surfaces() -> MutexGuard<'static, HashMap<String, Surface>> {
-    static SURFACES: OnceLock<Mutex<HashMap<String, Surface>>> = OnceLock::new();
-    SURFACES
-        .get_or_init(|| Mutex::new(HashMap::new()))
+#[derive(Default)]
+struct SurfaceRegistry {
+    surfaces: HashMap<String, Surface>,
+    active_panels: HashSet<String>,
+}
+
+impl SurfaceRegistry {
+    fn activate(&mut self, panel_id: &str) {
+        self.active_panels.insert(panel_id.to_string());
+    }
+
+    fn retire(&mut self, panel_id: &str) -> Option<Surface> {
+        self.active_panels.remove(panel_id);
+        self.surfaces.remove(panel_id)
+    }
+
+    fn permits_present(&self, panel_id: &str) -> bool {
+        self.active_panels.contains(panel_id)
+    }
+}
+
+fn surface_registry() -> MutexGuard<'static, SurfaceRegistry> {
+    static REGISTRY: OnceLock<Mutex<SurfaceRegistry>> = OnceLock::new();
+    REGISTRY
+        .get_or_init(|| Mutex::new(SurfaceRegistry::default()))
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
@@ -195,6 +233,12 @@ struct Readback {
 unsafe impl Send for Surface {}
 
 impl Surface {
+    fn hide(&self) {
+        unsafe {
+            let _ = ShowWindow(self.hwnd, SW_HIDE);
+        }
+    }
+
     fn new(parent: HWND) -> Result<Self> {
         unsafe {
             let hwnd = create_surface_window(parent)?;
@@ -560,6 +604,7 @@ impl Surface {
 
 impl Drop for Surface {
     fn drop(&mut self) {
+        self.hide();
         unsafe {
             // Panels are torn down from chrome-command and poll threads too,
             // and DestroyWindow refuses to work across threads. A leaked
@@ -1214,5 +1259,23 @@ fn drain_debug_messages(device: &ID3D11Device) {
             log::warn!("d3d11: {}", String::from_utf8_lossy(text));
         }
         queue.ClearStoredMessages();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SurfaceRegistry;
+
+    #[test]
+    fn retired_panel_rejects_late_paints_until_explicitly_reopened() {
+        let mut registry = SurfaceRegistry::default();
+        registry.activate("terminal");
+        assert!(registry.permits_present("terminal"));
+
+        registry.retire("terminal");
+        assert!(!registry.permits_present("terminal"));
+
+        registry.activate("terminal");
+        assert!(registry.permits_present("terminal"));
     }
 }
