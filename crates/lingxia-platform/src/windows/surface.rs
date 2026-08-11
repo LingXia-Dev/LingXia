@@ -825,14 +825,20 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         .as_deref()
         .filter(|id| slot.children.iter().any(|child| child == *id))
         .or_else(|| slot.children.last().map(String::as_str));
+    let aside_by_id: HashMap<_, _> = plan
+        .asides
+        .iter()
+        .map(|aside| (aside.id.as_str(), aside))
+        .collect();
     let tabs = slot
         .children
         .iter()
         .map(|id| WindowsAsidePanelTab {
             surface_id: id.clone(),
-            title: entries
-                .get(id)
-                .map(|entry| entry.title.clone())
+            title: aside_by_id
+                .get(id.as_str())
+                .and_then(|aside| aside.title.clone())
+                .or_else(|| entries.get(id).map(|entry| entry.title.clone()))
                 .filter(|title| !title.trim().is_empty())
                 .unwrap_or_else(|| id.clone()),
             active: Some(id.as_str()) == active_id,
@@ -840,35 +846,36 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         .collect();
     set_aside_panel_tabs(ASIDE_LXAPP_PANEL_ID, tabs);
 
-    let aside_by_id: HashMap<_, _> = plan
-        .asides
-        .iter()
-        .map(|aside| (aside.id.as_str(), aside))
-        .collect();
+    let mut active_presented = false;
     if slot.visible
         && let Some(active_id) = active_id
         && let Some(entry) = entries.get(active_id)
         && find_webview_handler(&entry.webtag).is_some()
     {
         let aside = aside_by_id.get(active_id).copied();
+        let title = aside
+            .and_then(|aside| aside.title.as_deref())
+            .filter(|title| !title.trim().is_empty())
+            .unwrap_or(&entry.title);
         let edge = slot.edge.or_else(|| aside.and_then(|aside| aside.edge));
         let preferred_size = aside.and_then(|aside| aside.preferred_size);
         let result = if slot.overlay {
             show_webview_as_overlay_panel(
                 &entry.webtag,
-                &entry.title,
+                title,
                 ASIDE_LXAPP_PANEL_ID,
                 panel_position_for(edge, 3),
             )
         } else {
             show_webview_as_adaptive_panel(
                 &entry.webtag,
-                &entry.title,
+                title,
                 ASIDE_LXAPP_PANEL_ID,
                 panel_position_for(edge, 3),
                 preferred_panel_size(preferred_size),
             )
         };
+        active_presented = result.is_ok();
         if let Err(err) = result {
             log::warn!(
                 "Failed to present lxapp aside {}: {}",
@@ -878,7 +885,7 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
         }
     }
     for (id, entry) in entries {
-        if !slot.visible || Some(id.as_str()) != active_id {
+        if should_hide_runtime_lxapp_aside(slot.visible, active_presented, id.as_str(), active_id) {
             let _ = hide_webview_window(&entry.webtag);
         }
     }
@@ -889,6 +896,15 @@ fn sync_runtime_lxapp_asides(plan: &LayoutPresentationPlan) -> bool {
     }
     refresh_aside_panel(ASIDE_LXAPP_PANEL_ID);
     true
+}
+
+fn should_hide_runtime_lxapp_aside(
+    slot_visible: bool,
+    active_presented: bool,
+    candidate_id: &str,
+    active_id: Option<&str>,
+) -> bool {
+    !slot_visible || (active_presented && Some(candidate_id) != active_id)
 }
 
 fn hide_all_runtime_lxapp_asides() {
@@ -1446,5 +1462,32 @@ fn present_surface_with_handler(webtag: &WebTag, id: &str, target: PresentationT
     // fires the page's onShow.
     if let Some(page_instance_id) = surface_entry(id).and_then(|entry| entry.page_instance_id) {
         notify_page_visibility_when_ready(page_instance_id, true);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_hide_runtime_lxapp_aside;
+
+    #[test]
+    fn cold_lxapp_tab_swap_keeps_the_previous_aside_until_the_target_is_presented() {
+        assert!(!should_hide_runtime_lxapp_aside(
+            true,
+            false,
+            "terminal-settings",
+            Some("lingxia-chat"),
+        ));
+        assert!(should_hide_runtime_lxapp_aside(
+            true,
+            true,
+            "terminal-settings",
+            Some("lingxia-chat"),
+        ));
+        assert!(!should_hide_runtime_lxapp_aside(
+            true,
+            true,
+            "lingxia-chat",
+            Some("lingxia-chat"),
+        ));
     }
 }

@@ -429,6 +429,7 @@ async fn open_app_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
             ));
         }
         show_lxapp_region(&lxapp, &app_id, &app_id, current_region, edge.as_deref()).await?;
+        publish_lxapp_surface_title(&lxapp, &app_id, &app_id);
         return lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id, current_region);
     }
     let (startup_options, release_type) =
@@ -452,12 +453,21 @@ async fn open_app_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
                 startup_options.clone(),
             )?;
             lxapp.register_host_aside(&app_id, edge.as_deref().unwrap_or("right"));
+            publish_lxapp_surface_title(&lxapp, &app_id, &app_id);
             (lxapp::LxAppOpenRegion::Aside, app_id.clone())
         }
         _ => unreachable!("validated above"),
     };
     lxapp::schedule_lxapp_update_check(&app_id, release_type);
     lxapp_surface_handle(&ctx, lxapp, app_id, shell_surface_id, region)
+}
+
+fn publish_lxapp_surface_title(shell: &LxApp, surface_id: &str, app_id: &str) {
+    let Some(app) = lxapp::try_get(app_id) else {
+        return;
+    };
+    let title = app.get_lxapp_info().app_name;
+    shell.update_shell_surface_automatic_title(surface_id, Some(&title));
 }
 
 fn open_lxapp_region(
@@ -584,8 +594,8 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
             "key is supported only for declared native surfaces",
         ));
     }
-    if let Some(app_id) = declared_app_id {
-        lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release)
+    if let Some(app_id) = declared_app_id.as_deref() {
+        lxapp::prepare_lxapp_open(app_id, lxapp::ReleaseType::Release)
             .await
             .map_err(|err| {
                 surface_error(rong::error::E_NOT_FOUND, "lxapp_not_found", err.to_string())
@@ -602,6 +612,9 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
         .set_shell_surface_visible(id, true, role, edge.as_deref())
         .await
         .map_err(|err| surface_lifecycle_error("open", err))?;
+    if let Some(app_id) = declared_app_id.as_deref() {
+        publish_lxapp_surface_title(&lxapp, id, app_id);
+    }
     managed_surface_handle(ctx, lxapp, id.to_string(), role)
 }
 

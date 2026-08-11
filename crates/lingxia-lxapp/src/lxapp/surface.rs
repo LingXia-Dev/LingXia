@@ -680,18 +680,21 @@ impl WindowSurfaceController {
     /// change state, but we still commit so a reconciler that missed the
     /// (already-correct) plan can re-converge — the reconciler is itself a no-op
     /// when the target main is already attached.
-    fn set_active_main(&self, app_id: &str, root_main: lingxia_surface::Surface) {
+    fn set_active_main(&self, app_id: &str, title: &str, root_main: lingxia_surface::Surface) {
         {
             let mut manager = self.manager.lock().unwrap();
             // A tab's appid may not be a graph node yet (the main is seeded lazily
             // by set_width / register_host_aside). Seed it before switching, else
             // set_active_main silently no-ops on an unknown id.
             if manager.graph().role_of(app_id).is_none() {
-                let presentation = lxapp_workspace_presentation(&root_main.content);
+                let mut presentation = lxapp_workspace_presentation(&root_main.content);
+                presentation.automatic_title = Some(title.to_string());
                 // The first main remains the stable, non-closable root by graph
                 // identity. Later lxapps are ordinary workspaces and must expose
                 // lifecycle controls in the platform switcher.
                 let _ = manager.open_main(root_main, presentation);
+            } else {
+                manager.update_automatic_title(app_id, Some(title));
             }
             manager.set_active_main(app_id);
         }
@@ -1952,8 +1955,12 @@ impl LxApp {
     /// drive the switch imperatively — it routes the switch through here so the
     /// graph stays the single source of truth.
     pub fn set_active_main(&self) {
-        window_controller(PRIMARY_WINDOW, &self.runtime)
-            .set_active_main(&self.appid, self.root_main_node());
+        let title = self.get_lxapp_info().app_name;
+        window_controller(PRIMARY_WINDOW, &self.runtime).set_active_main(
+            &self.appid,
+            &title,
+            self.root_main_node(),
+        );
     }
 
     /// Explicitly bring this main provider to the front. Unlike the startup

@@ -661,6 +661,7 @@ impl SurfaceGraph {
             .filter(|s| s.state == SurfaceState::Mounted)
             .map(|s| PlanAside {
                 id: s.id.clone(),
+                title: None,
                 edge: s.placement.edge,
                 preferred_size: s.placement.preferred_size,
             })

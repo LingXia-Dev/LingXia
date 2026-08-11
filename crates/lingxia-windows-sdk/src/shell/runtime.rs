@@ -40,10 +40,9 @@ use lingxia_webview::platform::windows::find_webview_handler;
 use lingxia_windows_contract::current_window_layout;
 use lingxia_windows_contract::{
     WindowsAsidePanelEvent, WindowsChromeCommand, WindowsHostWindow, WindowsPanelPosition,
-    WindowsWindowLayout, active_host_window_webtag_key, aside_panel_tabs,
-    dispatch_windows_aside_panel_event, hide_host_panel, is_panel_visible,
-    present_webview_in_active_group, restore_presented_group_main,
-    set_webview_chrome_event_handler, set_webview_window_layout,
+    WindowsWindowLayout, active_host_window_webtag_key, dispatch_windows_aside_panel_event,
+    hide_host_panel, is_panel_visible, present_webview_in_active_group,
+    restore_presented_group_main, set_webview_chrome_event_handler, set_webview_window_layout,
 };
 use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, ReleaseType};
 #[cfg(feature = "browser-runtime")]
@@ -1187,10 +1186,16 @@ fn sync_shell_layout(appid: &str) {
             active_main_lxapp_id(),
         )
         .unwrap_or_else(|| appid.to_string());
-        lingxia::windows::set_surface_sidebar_width(
-            &owner_appid,
-            current_sidebar_width(&group_appid),
-        );
+        let sidebar_width = current_sidebar_width(&group_appid);
+        if let Some(logical_width) = crate::window_host::primary_shell_logical_client_width() {
+            lingxia::windows::set_surface_layout_metrics(
+                &owner_appid,
+                logical_width,
+                sidebar_width,
+            );
+        } else {
+            lingxia::windows::set_surface_sidebar_width(&owner_appid, sidebar_width);
+        }
     }
     sync_related_shell_layouts(appid);
 }
