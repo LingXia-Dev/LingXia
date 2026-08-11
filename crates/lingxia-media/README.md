@@ -14,6 +14,10 @@ Shared media playback abstractions for LingXia.
 - `playback`: runtime-neutral video/audio streaming interfaces used by higher-level
   playback integrations
 
+Playback is the default Cargo feature. Consumers that do not use playback can
+set `default-features = false`, keeping its platform decoder dependency out of
+their resolved feature graph.
+
 ## Notes
 
 This crate defines playback contracts. Device capture and other input concerns

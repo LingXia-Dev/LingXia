@@ -3287,6 +3287,7 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "windows 0.62.2",
 ]
 
@@ -3465,7 +3466,6 @@ dependencies = [
 name = "lingxia-media"
 version = "0.11.2"
 dependencies = [
- "dashmap 6.2.1",
  "lingxia-platform",
  "log",
  "serde_json",

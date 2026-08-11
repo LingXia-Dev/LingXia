@@ -10,7 +10,17 @@ categories = ["api-bindings"]
 
 [features]
 default = []
-desktop = ["dep:lingxia-device-io", "lingxia-device-io/full"]
+desktop = [
+    "dep:lingxia-device-io",
+    "lingxia-device-io/app",
+    "lingxia-device-io/ax",
+    "lingxia-device-io/clipboard",
+    "lingxia-device-io/diagnostics",
+    "lingxia-device-io/input",
+    "lingxia-device-io/process",
+    "lingxia-device-io/snapshot",
+    "lingxia-device-io/window",
+]
 # Isolated host-owned automation programs. Optional so embedding
 # `lx.automation()` alone does not pull the worker/profile dependencies.
 runtime = [
