@@ -48,7 +48,7 @@ const VIEWER_WINDOW_SENTINEL: &str = "__lingxia_activity_viewer_8d61c5b2_v1__";
 fn current_viewer_window() -> u32 {
     #[cfg(feature = "supervision")]
     {
-        return pip::window_number();
+        pip::window_number()
     }
     #[cfg(not(feature = "supervision"))]
     {
