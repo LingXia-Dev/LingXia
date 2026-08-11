@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+scratch="$(mktemp -d)"
+trap 'rm -rf "$scratch"' EXIT
+
+assert_has() {
+  local file="$1"
+  local needle="$2"
+  local description="$3"
+  if ! grep -Fq "$needle" "$file"; then
+    echo "missing feature boundary: $description" >&2
+    exit 1
+  fi
+}
+
+assert_lacks() {
+  local file="$1"
+  local needle="$2"
+  local description="$3"
+  if grep -Fq "$needle" "$file"; then
+    echo "violated feature boundary: $description" >&2
+    exit 1
+  fi
+}
+
+cargo tree -e features -p lingxia --no-default-features --features automation \
+  > "$scratch/automation"
+assert_lacks "$scratch/automation" "lingxia-device-io" \
+  "base lingxia/automation must not enable desktop device I/O"
+
+cargo tree -e features -p lingxia-device-io --no-default-features \
+  --features diagnostics > "$scratch/diagnostics"
+assert_lacks "$scratch/diagnostics" 'lingxia-device-io feature "snapshot"' \
+  "device diagnostics must not enable snapshot"
+assert_lacks "$scratch/diagnostics" "image v" \
+  "device diagnostics must not include snapshot image encoding"
+
+cargo tree -e features -p lingxia-device-io --no-default-features \
+  --features process > "$scratch/process"
+assert_lacks "$scratch/process" 'lingxia-device-io feature "window"' \
+  "process inspection must not enable window automation"
+assert_lacks "$scratch/process" "image v" \
+  "process inspection must not include snapshot image encoding"
+
+cargo tree -e features -p lingxia --no-default-features --features desktop-automation \
+  > "$scratch/desktop-automation"
+assert_has "$scratch/desktop-automation" 'lingxia-device-io feature "snapshot"' \
+  "lingxia/desktop-automation must include snapshot"
+assert_lacks "$scratch/desktop-automation" 'lingxia-device-io feature "supervision"' \
+  "lingxia/desktop-automation must not include host supervision"
+assert_lacks "$scratch/desktop-automation" 'lingxia-device-io feature "wire"' \
+  "in-process desktop automation must not include transport DTOs"
+
+cargo tree -e features -p lingxia-control-commands --no-default-features \
+  > "$scratch/control-commands"
+assert_lacks "$scratch/control-commands" "lingxia-device-io" \
+  "base control commands must not depend on device I/O"
+
+cargo tree -e features -p lingxia-devtools-cli > "$scratch/lxdev"
+assert_has "$scratch/lxdev" 'lingxia-device-io feature "snapshot"' \
+  "lxdev desktop must include snapshot"
+assert_has "$scratch/lxdev" 'lingxia-device-io feature "wire"' \
+  "lxdev desktop must include command DTOs"
+assert_lacks "$scratch/lxdev" 'lingxia-device-io feature "supervision"' \
+  "standalone lxdev must not include host supervision"
+assert_lacks "$scratch/lxdev" "lingxia-platform" \
+  "standalone lxdev must not include the platform host runtime"
+
+cargo tree -e features -p lingxia-control-runtime --no-default-features \
+  --features computer-use > "$scratch/control-runtime"
+assert_has "$scratch/control-runtime" 'lingxia-device-io feature "snapshot"' \
+  "host computer-use must include snapshot"
+assert_has "$scratch/control-runtime" 'lingxia-device-io feature "supervision"' \
+  "host computer-use must include supervision"
+assert_has "$scratch/control-runtime" 'lingxia-device-io feature "wire"' \
+  "host computer-use must include transport DTOs"
+
+cargo tree -e features -p lingxia-media --no-default-features > "$scratch/media-core"
+assert_lacks "$scratch/media-core" "lingxia-platform" \
+  "lingxia-media without playback must not include platform playback contracts"
+assert_lacks "$scratch/media-core" "lingxia-device-io" \
+  "lingxia-media must not depend on the desktop device-I/O implementation"
+
+cargo tree -e features -p lingxia-media --features playback > "$scratch/media-playback"
+assert_has "$scratch/media-playback" "lingxia-platform" \
+  "lingxia-media/playback must include the existing platform contracts"
+assert_lacks "$scratch/media-playback" "lingxia-device-io" \
+  "lingxia-media/playback must remain independent of desktop device I/O"
