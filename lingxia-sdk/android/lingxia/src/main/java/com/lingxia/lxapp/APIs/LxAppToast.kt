@@ -84,6 +84,10 @@ internal object LxAppToast {
     private var currentMaskView: View? = null
     private var hideHandler: Handler? = null
     private var hideRunnable: Runnable? = null
+    // Shape of the toast on screen plus its title view, so a repeat call that
+    // only changes the words can swap the text instead of rebuilding.
+    private var currentConfig: ToastConfig? = null
+    private var currentTitleView: TextView? = null
 
     @JvmStatic
     fun showToast(
@@ -131,9 +135,24 @@ internal object LxAppToast {
         mask: Boolean = false,
         position: ToastPosition = ToastPosition.Center
     ) {
-        hideToastInternal()
-
         val config = ToastConfig(title, icon, image, duration, mask, position)
+
+        // Same shape, new words: update in place so stepping through progress
+        // ("connecting 1/4" → "2/4") neither replays the enter animation nor
+        // restarts the spinner.
+        val live = currentConfig
+        val titleView = currentTitleView
+        if (live != null && titleView != null &&
+            live.icon == config.icon && live.image == config.image &&
+            live.mask == config.mask && live.position == config.position
+        ) {
+            titleView.text = config.title
+            currentConfig = config
+            scheduleAutoHide(config.duration)
+            return
+        }
+
+        hideToastInternal()
         showToastInternal(context, config)
     }
 
@@ -147,6 +166,8 @@ internal object LxAppToast {
         }
         hideHandler = null
         hideRunnable = null
+        currentConfig = null
+        currentTitleView = null
 
         // Hide toast immediately without animation to prevent conflicts
         currentToastView?.let { toastView ->
@@ -182,12 +203,22 @@ internal object LxAppToast {
             animateIn(toastView)
         }
 
-        // Auto-hide after duration
-        if (config.duration > 0) {
-            hideHandler = Handler(Looper.getMainLooper())
-            hideRunnable = Runnable { hideToastInternal() }
-            hideHandler?.postDelayed(hideRunnable!!, (config.duration * 1000).toLong())
-        }
+        currentConfig = config
+        scheduleAutoHide(config.duration)
+    }
+
+    /**
+     * (Re)arm the auto-dismiss timer; a non-positive duration keeps the toast
+     * up until hideToast.
+     */
+    private fun scheduleAutoHide(duration: Double) {
+        hideRunnable?.let { runnable -> hideHandler?.removeCallbacks(runnable) }
+        hideHandler = null
+        hideRunnable = null
+        if (duration <= 0) return
+        hideHandler = Handler(Looper.getMainLooper())
+        hideRunnable = Runnable { hideToastInternal() }
+        hideHandler?.postDelayed(hideRunnable!!, (duration * 1000).toLong())
     }
 
     private fun createMaskView(context: Context): View {
@@ -268,6 +299,7 @@ internal object LxAppToast {
             }
         }
         toastContent.addView(titleView)
+        currentTitleView = titleView
 
         container.addView(toastContent)
         return container
