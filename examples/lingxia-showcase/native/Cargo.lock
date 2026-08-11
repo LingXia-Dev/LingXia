@@ -2235,27 +2235,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lingxia-device-io"
-version = "0.11.2"
-dependencies = [
- "base64",
- "dispatch2",
- "image",
- "libc",
- "lingxia-app-context",
- "log",
- "objc2",
- "objc2-app-kit",
- "objc2-core-foundation",
- "objc2-core-graphics",
- "objc2-foundation",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "windows 0.62.2",
-]
-
-[[package]]
 name = "lingxia-control-commands"
 version = "0.11.2"
 dependencies = [
@@ -2263,12 +2242,13 @@ dependencies = [
  "base64",
  "chrono",
  "clap",
- "lingxia-device-io",
  "lingxia-control-protocol",
+ "lingxia-device-io",
  "lingxia-settings",
  "log",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "windows 0.62.2",
 ]
 
@@ -2290,8 +2270,8 @@ dependencies = [
  "lingxia-app-context",
  "lingxia-automation",
  "lingxia-browser",
- "lingxia-device-io",
  "lingxia-control-protocol",
+ "lingxia-device-io",
  "lingxia-log",
  "lingxia-lxapp",
  "lingxia-settings",
@@ -2301,6 +2281,26 @@ dependencies = [
  "serde_json",
  "tokio",
  "tungstenite",
+ "windows 0.62.2",
+]
+
+[[package]]
+name = "lingxia-device-io"
+version = "0.11.2"
+dependencies = [
+ "base64",
+ "dispatch2",
+ "image",
+ "libc",
+ "lingxia-app-context",
+ "log",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-foundation",
+ "serde",
+ "thiserror 2.0.18",
  "windows 0.62.2",
 ]
 
@@ -2393,7 +2393,6 @@ dependencies = [
 name = "lingxia-media"
 version = "0.11.2"
 dependencies = [
- "dashmap 6.2.1",
  "lingxia-platform",
  "log",
  "serde_json",

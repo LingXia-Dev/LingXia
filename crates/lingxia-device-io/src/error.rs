@@ -1,6 +1,6 @@
 //! The single error taxonomy shared by every `desktop` command surface. Each
-//! variant maps to a stable exit code (see the proposal's exit-code contract),
-//! so the `lxdev` CLI and any future JS binding branch on the same codes.
+//! variant maps to the stable command exit-code contract, so CLI, transport,
+//! and in-process JS callers branch on the same codes.
 
 use serde::{Deserialize, Serialize};
 

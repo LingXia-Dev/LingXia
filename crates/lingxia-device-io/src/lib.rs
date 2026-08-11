@@ -1,7 +1,7 @@
 //! Sessionless desktop device I/O for LingXia tools and hosts.
 //!
-//! This crate is linked directly into the process that drives the desktop
-//! (`lxdev.exe` for the CLI; a future in-process JS binding). It is
+//! This crate is linked directly into the process that drives the desktop,
+//! such as `lxdev`, a host runtime, or the in-process JS binding. It is
 //! session-less: it calls the local OS APIs directly. Every operation returns
 //! typed DTOs ([`model`]) that serialize to the `desktop` command contract's
 //! JSON, and a single [`Error`] taxonomy that maps to stable exit codes.

@@ -129,7 +129,6 @@ pub(crate) fn parse_window_id(id: &str) -> Result<u32> {
 
 /// Best-effort macOS product version (e.g. "14.5") via sysctl.
 #[cfg(feature = "diagnostics")]
-#[cfg(feature = "diagnostics")]
 fn os_version() -> String {
     let mut buf = [0u8; 64];
     let mut len = buf.len();
