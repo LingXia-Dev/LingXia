@@ -21,6 +21,7 @@ use tungstenite::{Error as WsError, WebSocket, accept_hdr};
 
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
+const RUNTIME_EVENT_QUEUE_CAPACITY: usize = 64;
 const DEV_LXAPP_HTTP_PREFIX: &str = "/__lingxia/dev/lxapp/";
 
 #[derive(Debug)]
@@ -616,45 +617,95 @@ fn handle_devtool_connection(
         eprintln!("[lingxia dev] devtool runtime reconnected; replacing stale runtime connection");
     }
 
-    let result = loop {
-        if let Err(err) = drain_outgoing_messages(&mut websocket, &outgoing_rx) {
-            if is_expected_websocket_shutdown_error(&err) {
-                break Ok(());
+    let result = thread::scope(|scope| {
+        let (event_tx, event_rx) = mpsc::sync_channel(RUNTIME_EVENT_QUEUE_CAPACITY);
+        let persistence = scope
+            .spawn(move || persist_runtime_events(event_rx, |events| writer.append_events(events)));
+        let mut dropped_event_batch_warning = false;
+        let connection_result = loop {
+            if let Err(err) = drain_outgoing_messages(&mut websocket, &outgoing_rx) {
+                if is_expected_websocket_shutdown_error(&err) {
+                    break Ok(());
+                }
+                break Err(err);
             }
-            break Err(err);
-        }
 
-        match websocket.read() {
-            Ok(message) => match parse_text_message(message)? {
-                ParsedWireMessage::Wire(message) => match *message {
-                    DevSessionMessage::EventBatch { events } => {
-                        writer.append_events(&events)?;
+            match websocket.read() {
+                Ok(message) => match parse_text_message(message)? {
+                    ParsedWireMessage::Wire(message) => {
+                        route_runtime_message(
+                            *message,
+                            state,
+                            &event_tx,
+                            &mut dropped_event_batch_warning,
+                        )?;
                     }
-                    DevSessionMessage::Response(response) => {
-                        let id = response.id.clone();
-                        let payload = DevSessionMessage::Response(response);
-                        if let Some(tx) = state.take_pending_result(&id) {
-                            let _ = tx.send(payload);
-                        }
-                    }
-                    DevSessionMessage::Hello { .. } | DevSessionMessage::Request(_) => {}
+                    ParsedWireMessage::Ignored => {}
+                    ParsedWireMessage::Closed => break Ok(()),
                 },
-                ParsedWireMessage::Ignored => {}
-                ParsedWireMessage::Closed => break Ok(()),
-            },
-            Err(WsError::Io(err))
-                if err.kind() == std::io::ErrorKind::WouldBlock
-                    || err.kind() == std::io::ErrorKind::TimedOut => {}
-            Err(err) if is_expected_tungstenite_shutdown_error(&err) => break Ok(()),
-            Err(WsError::ConnectionClosed) | Err(WsError::AlreadyClosed) => break Ok(()),
-            Err(err) => break Err(err.into()),
-        }
-    };
+                Err(WsError::Io(err))
+                    if err.kind() == std::io::ErrorKind::WouldBlock
+                        || err.kind() == std::io::ErrorKind::TimedOut => {}
+                Err(err) if is_expected_tungstenite_shutdown_error(&err) => break Ok(()),
+                Err(WsError::ConnectionClosed) | Err(WsError::AlreadyClosed) => break Ok(()),
+                Err(err) => break Err(err.into()),
+            }
+        };
+        drop(event_tx);
+        let persistence_result = persistence
+            .join()
+            .map_err(|_| anyhow!("session log writer thread panicked"))?;
+        connection_result.and(persistence_result)
+    });
 
     if state.clear_runtime_sender(runtime_id) {
         state.clear_pending_results();
     }
     result
+}
+
+fn route_runtime_message(
+    message: DevSessionMessage,
+    state: &DevServerState,
+    event_tx: &mpsc::SyncSender<Vec<DevSessionEvent>>,
+    dropped_event_batch_warning: &mut bool,
+) -> Result<()> {
+    match message {
+        DevSessionMessage::EventBatch { events } => match event_tx.try_send(events) {
+            Ok(()) => {}
+            Err(mpsc::TrySendError::Full(events)) => {
+                if !*dropped_event_batch_warning {
+                    eprintln!(
+                        "[lingxia dev] session log writer fell behind; dropping a batch of {} events",
+                        events.len()
+                    );
+                    *dropped_event_batch_warning = true;
+                }
+            }
+            Err(mpsc::TrySendError::Disconnected(_)) => {
+                return Err(anyhow!("session log writer stopped"));
+            }
+        },
+        DevSessionMessage::Response(response) => {
+            let id = response.id.clone();
+            let payload = DevSessionMessage::Response(response);
+            if let Some(tx) = state.take_pending_result(&id) {
+                let _ = tx.send(payload);
+            }
+        }
+        DevSessionMessage::Hello { .. } | DevSessionMessage::Request(_) => {}
+    }
+    Ok(())
+}
+
+fn persist_runtime_events(
+    event_rx: mpsc::Receiver<Vec<DevSessionEvent>>,
+    mut persist: impl FnMut(&[DevSessionEvent]) -> Result<()>,
+) -> Result<()> {
+    while let Ok(events) = event_rx.recv() {
+        persist(&events)?;
+    }
+    Ok(())
 }
 
 fn is_expected_websocket_shutdown_error(err: &anyhow::Error) -> bool {
@@ -928,17 +979,18 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        DevServerState, accept_websocket, dev_port, read_wire_message, refresh_lxapp_manifests,
-        resolve_lxapp_dir, send_wire_message,
+        DevServerState, accept_websocket, dev_port, persist_runtime_events, read_wire_message,
+        refresh_lxapp_manifests, resolve_lxapp_dir, route_runtime_message, send_wire_message,
     };
     use lingxia_control_protocol::dev_session::{
         DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities,
     };
     use std::net::TcpListener;
     use std::path::PathBuf;
-    use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, mpsc};
     use std::thread;
+    use std::time::Duration;
 
     fn authenticated_state() -> DevServerState {
         DevServerState::new(
@@ -1043,6 +1095,53 @@ mod tests {
         .unwrap();
 
         assert!(server.join().unwrap());
+    }
+
+    #[test]
+    fn slow_session_log_persistence_does_not_block_runtime_responses() {
+        let state = authenticated_state();
+        let (event_tx, event_rx) = mpsc::sync_channel(1);
+        let (persistence_started_tx, persistence_started_rx) = mpsc::channel();
+        let (release_persistence_tx, release_persistence_rx) = mpsc::channel();
+        let (response_tx, response_rx) = mpsc::channel();
+        state.register_pending_result("poll".to_string(), response_tx);
+
+        thread::scope(|scope| {
+            let persistence = scope.spawn(move || {
+                persist_runtime_events(event_rx, |_| {
+                    persistence_started_tx.send(()).unwrap();
+                    release_persistence_rx.recv().unwrap();
+                    Ok(())
+                })
+            });
+            let mut dropped_event_batch_warning = false;
+            route_runtime_message(
+                DevSessionMessage::EventBatch { events: Vec::new() },
+                &state,
+                &event_tx,
+                &mut dropped_event_batch_warning,
+            )
+            .unwrap();
+            persistence_started_rx
+                .recv_timeout(Duration::from_secs(1))
+                .unwrap();
+
+            route_runtime_message(
+                DevSessionMessage::success("poll".to_string(), None),
+                &state,
+                &event_tx,
+                &mut dropped_event_batch_warning,
+            )
+            .unwrap();
+            assert!(
+                response_rx.recv_timeout(Duration::from_millis(100)).is_ok(),
+                "runtime response waited for session log persistence"
+            );
+
+            release_persistence_tx.send(()).unwrap();
+            drop(event_tx);
+            persistence.join().unwrap().unwrap();
+        });
     }
 
     #[test]
