@@ -77,6 +77,7 @@ async function allowLocation(
 
 const targetPlatform = (test.args as Record<string, string>).platform?.toLocaleLowerCase();
 const locationTest = targetPlatform && targetPlatform !== 'macos' ? test.skip : test;
+const promptAppearanceGraceMs = 5_000;
 
 locationTest('handles the macOS location permission sheet when it appears', async () => {
   const auto = lx.automation();
@@ -92,6 +93,7 @@ locationTest('handles the macOS location permission sheet when it appears', asyn
   const deadline = Date.now() + 15_000;
   let requestStarted = false;
   let promptHandled = false;
+  let requestSettledAt: number | undefined;
   while (Date.now() < deadline) {
     const prompt = locationPrompt(await auto.desktop.windows());
     if (prompt) {
@@ -118,11 +120,25 @@ locationTest('handles the macOS location permission sheet when it appears', asyn
       `,
     }) as { loading: boolean; location: unknown; error: string };
     requestStarted ||= state.loading;
-    if (!state.loading && (state.location !== null || state.error.length > 0)) {
+    const requestSettled = !state.loading
+      && (state.location !== null || state.error.length > 0);
+    if (requestSettled) {
       if (locationPrompt(await auto.desktop.windows())) {
         throw new Error('Location request settled while its macOS permission dialog stayed open');
       }
-      return;
+      if (promptHandled) return;
+
+      requestSettledAt ??= Date.now();
+      // CoreLocation can return a cached fix before its authorization dialog
+      // is composited. Do not let that response turn a still-pending prompt
+      // into a passing test; keep watching long enough for the system window
+      // to appear and require allowLocation() to close it if it does.
+      if (Date.now() - requestSettledAt >= promptAppearanceGraceMs) {
+        console.info('No macOS location permission dialog appeared after the request settled');
+        return;
+      }
+    } else {
+      requestSettledAt = undefined;
     }
     await new Promise<void>((resolve) => setTimeout(() => resolve(), 250));
   }
