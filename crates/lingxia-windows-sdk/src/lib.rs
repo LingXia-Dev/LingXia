@@ -373,6 +373,9 @@ pub fn install_windows_components() {
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 pub fn install_default_windows_host() {
     window_host::install_default_windows_backend();
+    lingxia_platform::set_windows_home_first_ready_handler(std::sync::Arc::new(
+        window_host::reveal_initial_home_window,
+    ));
     install_windows_components();
     #[cfg(feature = "shell-chrome")]
     shell::install();
