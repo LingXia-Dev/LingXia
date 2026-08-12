@@ -1,7 +1,9 @@
+use crate::dismissal::{canceled, completed};
 use crate::i18n::{js_error_from_platform_error, js_internal_error, js_invalid_parameter_error};
+use lingxia_platform::error::PlatformError;
 use lingxia_service::media::{ScanCodeRequest, ScanType};
 use lxapp::LxApp;
-use rong::{FromJSObject, IntoJSObject, JSContext, JSResult, function::Optional};
+use rong::{FromJSObject, JSContext, JSObject, JSResult, function::Optional};
 use serde_json::Value;
 
 #[derive(FromJSObject, Clone, Default)]
@@ -11,15 +13,6 @@ struct JSScanOptions {
     only_from_camera: Option<bool>,
     #[js_name = "scanType"]
     scan_type: Option<Vec<String>>,
-}
-
-#[derive(Debug, Clone, IntoJSObject)]
-#[ts_skip]
-struct ScanResultObj {
-    #[js_name = "scanResult"]
-    scan_result: String,
-    #[js_name = "scanType"]
-    scan_type: String,
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
@@ -36,7 +29,7 @@ rong::js_api! {
     }
 }
 
-async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<ScanResultObj> {
+async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let opts = options.as_ref().cloned().unwrap_or_default();
     let scan_types = parse_scan_types(opts.scan_type)?;
@@ -47,9 +40,13 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<Scan
         only_from_camera,
     };
 
-    let data = lingxia_service::media::scan_code(&*lxapp.runtime, request)
-        .await
-        .map_err(|e| js_error_from_platform_error(&e))?;
+    let data = match lingxia_service::media::scan_code(&*lxapp.runtime, request).await {
+        Ok(data) => data,
+        // Business code 2000 is the platform's "user dismissed the scanner";
+        // every other platform error stays a rejection.
+        Err(PlatformError::BusinessError(2000)) => return canceled(&ctx),
+        Err(err) => return Err(js_error_from_platform_error(&err)),
+    };
 
     let payload: Value = serde_json::from_str(&data)
         .map_err(|e| js_internal_error(format!("scanCode invalid payload: {}", e)))?;
@@ -68,10 +65,10 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<Scan
 
     let _ = lingxia_service::applink::handle(&scan_result);
 
-    Ok(ScanResultObj {
-        scan_result,
-        scan_type,
-    })
+    let result = completed(&ctx)?;
+    result.set("scanResult", scan_result)?;
+    result.set("scanType", scan_type)?;
+    Ok(result)
 }
 
 fn parse_scan_types(value: Option<Vec<String>>) -> JSResult<Vec<ScanType>> {

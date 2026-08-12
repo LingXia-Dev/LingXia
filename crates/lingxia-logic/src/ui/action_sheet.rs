@@ -1,3 +1,4 @@
+use crate::dismissal::{canceled, completed};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::i18n::js_error_from_platform_error;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -9,7 +10,7 @@ use lingxia_platform::error::PlatformError;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::UserFeedback;
 use lxapp::LxApp;
-use rong::{FromJSObject, IntoJSObject, JSContext, JSResult, RongJSError};
+use rong::{FromJSObject, JSContext, JSObject, JSResult, RongJSError};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -23,14 +24,6 @@ struct JSActionSheetOptions {
     item_color: Option<String>,
 }
 
-/// JavaScript ActionSheetResult for return value
-#[derive(Debug, Clone, IntoJSObject)]
-#[ts_skip]
-struct JSActionSheetResult {
-    #[js_name = "tapIndex"]
-    tap_index: i32,
-}
-
 #[derive(Debug, Deserialize)]
 struct ViewActionSheetResult {
     #[serde(rename = "tapIndex")]
@@ -41,17 +34,20 @@ struct ViewActionSheetResult {
 async fn show_action_sheet(
     ctx: JSContext,
     options: JSActionSheetOptions,
-) -> Result<JSActionSheetResult, RongJSError> {
+) -> Result<JSObject, RongJSError> {
     let JSActionSheetOptions {
         item_list,
         item_color,
     } = options;
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    let selected_index = present_action_sheet(&lxapp, item_list, None, item_color).await?;
-    let tap_index = selected_index.map(|idx| idx as i32).unwrap_or(-1);
+    let Some(index) = present_action_sheet(&lxapp, item_list, None, item_color).await? else {
+        return canceled(&ctx);
+    };
 
-    Ok(JSActionSheetResult { tap_index })
+    let result = completed(&ctx)?;
+    result.set("index", index as u32)?;
+    Ok(result)
 }
 
 pub(crate) async fn present_action_sheet(

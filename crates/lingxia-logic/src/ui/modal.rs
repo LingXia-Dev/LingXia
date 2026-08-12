@@ -1,3 +1,4 @@
+use crate::dismissal::{canceled, completed};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::i18n::js_error_from_platform_error;
 use crate::i18n::{js_internal_error, js_service_unavailable_error};
@@ -7,7 +8,7 @@ use lingxia_platform::error::PlatformError;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::{ModalOptions, UserFeedback};
 use lxapp::LxApp;
-use rong::{FromJSObject, IntoJSObject, JSContext, JSResult, RongJSError};
+use rong::{FromJSObject, JSContext, JSObject, JSResult, RongJSError};
 use serde::Deserialize;
 use std::sync::Arc;
 
@@ -46,21 +47,13 @@ impl JSModalOptions {
     }
 }
 
-/// JavaScript ModalResult for return value
-#[derive(Debug, Clone, IntoJSObject)]
-#[ts_skip]
-struct JSModalResult {
-    confirm: bool,
-    cancel: bool,
-}
-
 #[derive(Debug, Deserialize)]
 struct ViewModalResult {
     confirm: bool,
 }
 
 /// Show modal function (async)
-async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSModalResult> {
+async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     // Do not show UI if app is not opened
@@ -70,13 +63,15 @@ async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSModal
         ));
     }
 
-    present_modal(&lxapp, options).await
+    if present_modal(&lxapp, options).await? {
+        completed(&ctx)
+    } else {
+        canceled(&ctx)
+    }
 }
 
-async fn present_modal(
-    lxapp: &Arc<LxApp>,
-    options: JSModalOptions,
-) -> Result<JSModalResult, RongJSError> {
+/// Resolves true when the user confirmed.
+async fn present_modal(lxapp: &Arc<LxApp>, options: JSModalOptions) -> Result<bool, RongJSError> {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
         return present_modal_webview(lxapp, options).await;
@@ -93,7 +88,7 @@ async fn present_modal(
 async fn present_modal_webview(
     lxapp: &Arc<LxApp>,
     options: JSModalOptions,
-) -> Result<JSModalResult, RongJSError> {
+) -> Result<bool, RongJSError> {
     let params = serde_json::json!({
         "title": options.title.unwrap_or_default(),
         "content": options.content.unwrap_or_default(),
@@ -109,10 +104,7 @@ async fn present_modal_webview(
         .await
         .map_err(|e| js_internal_error(format!("WebView modal failed: {}", e)))?;
 
-    Ok(JSModalResult {
-        confirm: result.confirm,
-        cancel: !result.confirm,
-    })
+    Ok(result.confirm)
 }
 
 /// Non-macOS: show modal via native platform UI.
@@ -120,22 +112,16 @@ async fn present_modal_webview(
 async fn present_modal_native(
     lxapp: &Arc<LxApp>,
     options: JSModalOptions,
-) -> Result<JSModalResult, RongJSError> {
+) -> Result<bool, RongJSError> {
     let modal_options = options.into_modal_options();
 
     match lxapp.runtime.show_modal(modal_options).await {
         Ok(data) => {
             let result: ViewModalResult = serde_json::from_str(&data)
                 .map_err(|e| js_internal_error(format!("Modal callback invalid payload: {}", e)))?;
-            Ok(JSModalResult {
-                confirm: result.confirm,
-                cancel: !result.confirm,
-            })
+            Ok(result.confirm)
         }
-        Err(PlatformError::BusinessError(2000)) => Ok(JSModalResult {
-            confirm: false,
-            cancel: true,
-        }),
+        Err(PlatformError::BusinessError(2000)) => Ok(false),
         Err(e) => Err(js_error_from_platform_error(&e)),
     }
 }

@@ -12,9 +12,17 @@ rong::js_api! {
     fn register_public_types(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
 
-        type ActionSheetResult = r###"{
-    tapIndex: number;
+        /// The user dismissed the operation. Never an error.
+        ///
+        type CanceledResult = r###"{
+    canceled: true;
 }"###;
+
+        type ActionSheetResult = r###"{
+    canceled: false;
+    /** Index of the tapped item in `itemList`. */
+    index: number;
+} | CanceledResult"###;
 
         type AppConfig = r###"{
     globalData?: Record<string, unknown>;
@@ -333,11 +341,10 @@ rong::js_api! {
 }"###;
 
         type ChooseDirectoryResult = r###"{
-    /** True if the user dismissed the dialog without selecting. */
-    canceled: boolean;
-    /** Native-consumable directory reference (path or URI). Undefined when canceled. */
-    path?: string;
-}"###;
+    canceled: false;
+    /** Native-consumable directory reference (path or URI). */
+    path: string;
+} | CanceledResult"###;
 
         type ChooseFileOptions = r###"{
     /** Allow selecting multiple files. Default: false */
@@ -354,15 +361,15 @@ rong::js_api! {
 }"###;
 
         type ChooseFileResult = r###"{
-    /** True if the user dismissed the dialog without selecting. */
-    canceled: boolean;
+    canceled: false;
     /**
-     * File paths returned by LingXia. Values may be app-local paths, `lx://...`
-     * paths, or platform system-picker references. Treat them as opaque strings
-     * and pass them back to LingXia APIs such as `lx.share`.
+     * File paths returned by LingXia; always at least one. Values may be
+     * app-local paths, `lx://...` paths, or platform system-picker references.
+     * Treat them as opaque strings and pass them back to LingXia APIs such as
+     * `lx.share`.
      */
     paths: string[];
-}"###;
+} | CanceledResult"###;
 
         type ChooseMediaOptions = r###"{
     count?: number;
@@ -371,6 +378,12 @@ rong::js_api! {
     camera?: 'back' | 'front';
     maxDuration?: number;
 }"###;
+
+        type ChooseMediaResult = r###"{
+    canceled: false;
+    /** Picked media; always at least one entry. */
+    entries: ChosenMediaEntry[];
+} | CanceledResult"###;
 
         type ChosenMediaEntry = r###"{
     tempFilePath: string;
@@ -715,10 +728,11 @@ rong::js_api! {
     recursive?: boolean;
 }"###;
 
+        /// `canceled: false` means the user confirmed; there is no third outcome.
+        ///
         type ModalResult = r###"{
-    confirm: boolean;
-    cancel: boolean;
-}"###;
+    canceled: false;
+} | CanceledResult"###;
 
         type NavigateBackOptions = r###"{
     delta: number;
@@ -1245,9 +1259,10 @@ rong::js_api! {
 }"###;
 
         type ScanCodeResult = r###"{
+    canceled: false;
     scanResult: string;
     scanType: string;
-}"###;
+} | CanceledResult"###;
 
         /// Share images, PDFs, or other files.
         ///

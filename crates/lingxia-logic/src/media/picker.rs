@@ -3,17 +3,19 @@ mod parser;
 mod source_picker;
 mod types;
 
+use crate::dismissal::{canceled, completed};
 #[cfg(not(target_os = "macos"))]
 use crate::i18n::js_invalid_parameter_error;
-use crate::i18n::{js_error_from_business_code, js_error_from_platform_error, js_internal_error};
+use crate::i18n::{js_error_from_platform_error, js_internal_error};
 use cache::ensure_temp_media_path;
+use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 #[cfg(not(target_os = "macos"))]
 use lingxia_service::media::ChooseMediaMode;
 use lingxia_service::media::{ChooseMediaRequest, MediaKind, MediaSource};
 use lxapp::LxApp;
 use parser::{parse_camera, parse_choose_mode, parse_sources};
-use rong::{JSContext, JSResult, JSValue, JsonToJSValue, function::Optional};
+use rong::{JSContext, JSObject, JSResult, JSValue, JsonToJSValue, function::Optional};
 use serde_json::Value;
 use source_picker::present_source_picker;
 use std::fs;
@@ -29,7 +31,7 @@ rong::js_api! {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         fn chooseMedia(
             ts_params = "options?: ChooseMediaOptions",
-            ts_return = "Promise<ChosenMediaEntry[]>"
+            ts_return = "Promise<ChooseMediaResult>"
         ) = choose_media;
     }
 }
@@ -37,7 +39,7 @@ rong::js_api! {
 async fn choose_media(
     ctx: JSContext,
     options: Optional<JSChooseMediaOptions>,
-) -> JSResult<JSValue> {
+) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     let opts = options.as_ref().cloned().unwrap_or(JSChooseMediaOptions {
@@ -69,7 +71,7 @@ async fn choose_media(
     let selected_source = if sources.len() > 1 {
         match present_source_picker(&lxapp, &sources).await? {
             Some(source) => source,
-            None => return Err(js_error_from_business_code(2000)),
+            None => return canceled(&ctx),
         }
     } else {
         sources.first().copied().unwrap_or(MediaSource::Album)
@@ -96,9 +98,13 @@ async fn choose_media(
         camera_facing: parse_camera(opts.camera),
     };
 
-    let data = lingxia_service::media::choose_media(&*lxapp.runtime, request)
-        .await
-        .map_err(|e| js_error_from_platform_error(&e))?;
+    let data = match lingxia_service::media::choose_media(&*lxapp.runtime, request).await {
+        Ok(data) => data,
+        // Business code 2000 is the platform's "user dismissed the picker";
+        // every other platform error stays a rejection.
+        Err(PlatformError::BusinessError(2000)) => return canceled(&ctx),
+        Err(err) => return Err(js_error_from_platform_error(&err)),
+    };
 
     let parsed: Value = serde_json::from_str(&data)
         .map_err(|e| js_internal_error(format!("chooseMedia invalid payload: {}", e)))?;
@@ -210,15 +216,22 @@ async fn choose_media(
             is_original,
         });
     }
+    if out.is_empty() {
+        return canceled(&ctx);
+    }
+
     let json = serde_json::to_string(&out)
         .map_err(|e| js_internal_error(format!("chooseMedia failed to serialize result: {}", e)))?;
-
-    json.as_str().json_to_js_value(&ctx).map_err(|e| {
+    let entries: JSValue = json.as_str().json_to_js_value(&ctx).map_err(|e| {
         js_internal_error(format!(
             "chooseMedia failed to materialize JS result: {}",
             e
         ))
-    })
+    })?;
+
+    let result = completed(&ctx)?;
+    result.set("entries", entries)?;
+    Ok(result)
 }
 
 fn response_path_for_media(lxapp: &LxApp, path: &Path) -> JSResult<String> {
