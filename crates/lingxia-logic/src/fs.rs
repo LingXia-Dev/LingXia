@@ -1,3 +1,4 @@
+use crate::dismissal::{canceled, completed};
 use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_lxapp_error,
     js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
@@ -161,25 +162,11 @@ struct JSChooseFileOptions {
     default_path: Option<String>,
 }
 
-#[derive(Debug, Clone, IntoJSObject)]
-#[ts_skip]
-struct ChooseFileResultObj {
-    canceled: bool,
-    paths: Vec<String>,
-}
-
 #[derive(FromJSObject, Clone, Default)]
 #[ts_skip]
 struct JSChooseDirectoryOptions {
     #[js_name = "defaultPath"]
     default_path: Option<String>,
-}
-
-#[derive(Debug, Clone, IntoJSObject)]
-#[ts_skip]
-struct ChooseDirectoryResultObj {
-    canceled: bool,
-    path: Option<String>,
 }
 
 #[derive(FromJSObject)]
@@ -539,10 +526,7 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
     )))
 }
 
-async fn choose_file(
-    ctx: JSContext,
-    options: Optional<JSChooseFileOptions>,
-) -> JSResult<ChooseFileResultObj> {
+async fn choose_file(ctx: JSContext, options: Optional<JSChooseFileOptions>) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let opts = options.as_ref().cloned().unwrap_or_default();
     let default_path = opts
@@ -581,10 +565,8 @@ async fn choose_file(
     .await
     .map_err(|e| js_error_from_platform_error(&e))?;
 
-    if !result.canceled && result.paths.is_empty() {
-        return Err(js_internal_error(
-            "chooseFile invalid payload: non-canceled result must include at least one path",
-        ));
+    if result.canceled || result.paths.is_empty() {
+        return canceled(&ctx);
     }
 
     let paths = result
@@ -593,16 +575,15 @@ async fn choose_file(
         .map(|path| selected_file_path_to_uri(&lxapp, path))
         .collect::<JSResult<Vec<_>>>()?;
 
-    Ok(ChooseFileResultObj {
-        canceled: result.canceled,
-        paths,
-    })
+    let chosen = completed(&ctx)?;
+    chosen.set("paths", paths)?;
+    Ok(chosen)
 }
 
 async fn choose_directory(
     ctx: JSContext,
     options: Optional<JSChooseDirectoryOptions>,
-) -> JSResult<ChooseDirectoryResultObj> {
+) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let opts = options.as_ref().cloned().unwrap_or_default();
     let default_path = opts
@@ -623,23 +604,16 @@ async fn choose_directory(
     .await
     .map_err(|e| js_error_from_platform_error(&e))?;
 
-    if !result.canceled && result.paths.len() != 1 {
-        return Err(js_internal_error(
-            "chooseDirectory invalid payload: non-canceled result must include exactly one path",
-        ));
-    }
+    let selected = (!result.canceled)
+        .then(|| result.paths.into_iter().next())
+        .flatten();
+    let Some(path) = selected else {
+        return canceled(&ctx);
+    };
 
-    let path = result
-        .paths
-        .into_iter()
-        .next()
-        .map(|path| selected_directory_path_to_uri(&lxapp, &path))
-        .transpose()?;
-
-    Ok(ChooseDirectoryResultObj {
-        canceled: result.canceled,
-        path,
-    })
+    let chosen = completed(&ctx)?;
+    chosen.set("path", selected_directory_path_to_uri(&lxapp, &path)?)?;
+    Ok(chosen)
 }
 
 fn system_time_millis(value: std::io::Result<SystemTime>) -> Option<u64> {

@@ -3,6 +3,7 @@ use rong::{JSContext, JSResult};
 
 mod app;
 mod device;
+mod dismissal;
 mod display;
 mod env;
 mod fs;

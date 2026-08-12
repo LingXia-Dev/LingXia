@@ -170,8 +170,10 @@ declare global {
 }
 
 export type ActionSheetResult = {
-    tapIndex: number;
-};
+    canceled: false;
+    /** Index of the tapped item in `itemList`. */
+    index: number;
+} | CanceledResult;
 
 export type AppConfig = {
     globalData?: Record<string, unknown>;
@@ -307,17 +309,21 @@ export type BinaryFileData = ArrayBuffer | ArrayBufferView;
  */
 export type BuiltinBrowserSurfaceUrl = 'lingxia://settings' | 'lingxia://downloads';
 
+/** The user dismissed the operation. Never an error. */
+export type CanceledResult = {
+    canceled: true;
+};
+
 export type ChooseDirectoryOptions = {
     /** Initial directory the dialog opens in. Platform default if omitted. */
     defaultPath?: string;
 };
 
 export type ChooseDirectoryResult = {
-    /** True if the user dismissed the dialog without selecting. */
-    canceled: boolean;
-    /** Native-consumable directory reference (path or URI). Undefined when canceled. */
-    path?: string;
-};
+    canceled: false;
+    /** Native-consumable directory reference (path or URI). */
+    path: string;
+} | CanceledResult;
 
 export type ChooseFileOptions = {
     /** Allow selecting multiple files. Default: false */
@@ -334,15 +340,15 @@ export type ChooseFileOptions = {
 };
 
 export type ChooseFileResult = {
-    /** True if the user dismissed the dialog without selecting. */
-    canceled: boolean;
+    canceled: false;
     /**
-     * File paths returned by LingXia. Values may be app-local paths, `lx://...`
-     * paths, or platform system-picker references. Treat them as opaque strings
-     * and pass them back to LingXia APIs such as `lx.share`.
+     * File paths returned by LingXia; always at least one. Values may be
+     * app-local paths, `lx://...` paths, or platform system-picker references.
+     * Treat them as opaque strings and pass them back to LingXia APIs such as
+     * `lx.share`.
      */
     paths: string[];
-};
+} | CanceledResult;
 
 export type ChooseMediaOptions = {
     count?: number;
@@ -351,6 +357,12 @@ export type ChooseMediaOptions = {
     camera?: 'back' | 'front';
     maxDuration?: number;
 };
+
+export type ChooseMediaResult = {
+    canceled: false;
+    /** Picked media; always at least one entry. */
+    entries: ChosenMediaEntry[];
+} | CanceledResult;
 
 export type ChosenMediaEntry = {
     tempFilePath: string;
@@ -700,10 +712,10 @@ export type MkdirOptions = {
     recursive?: boolean;
 };
 
+/** `canceled: false` means the user confirmed; there is no third outcome. */
 export type ModalResult = {
-    confirm: boolean;
-    cancel: boolean;
-};
+    canceled: false;
+} | CanceledResult;
 
 /**
  * One app-declared action shown in the host-provided More affordance.
@@ -1264,9 +1276,10 @@ export type ScanCodeOptions = {
 };
 
 export type ScanCodeResult = {
+    canceled: false;
     scanResult: string;
     scanType: string;
-};
+} | CanceledResult;
 
 /** Share images, PDFs, or other files. */
 export type ShareFilesOptions = ShareTitleOptions & {
@@ -2292,7 +2305,7 @@ declare global {
     getLxAppInfo(): LxAppInfo;
     getImageInfo(options: GetImageInfoOptions): Promise<ImageInfo>;
     compressImage(options: CompressImageOptions): Promise<CompressImageResult>;
-    chooseMedia(options?: ChooseMediaOptions): Promise<ChosenMediaEntry[]>;
+    chooseMedia(options?: ChooseMediaOptions): Promise<ChooseMediaResult>;
     /**
      * Synchronously returns a JS handle so listeners can be attached before the
      * first event fires:
