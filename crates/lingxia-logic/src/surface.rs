@@ -704,19 +704,16 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
                 return Err(surface_error(
                     rong::error::E_NOT_SUPPORTED,
                     "window_unsupported_platform",
-                    "lx.surface window is not supported on this platform",
+                    "as: 'window' opens a separate desktop window, which this host build cannot do; check lx.supports({ surface: 'window' }) first",
                 ));
             }
             #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
             {
-                // A compact (phone-shaped) layout — e.g. the macOS runner emulating
-                // an iPhone — has no room for a separate desktop window, so reject
-                // it exactly as a real phone does instead of spawning one.
-                if is_compact_layout(&lxapp) {
+                if !window_placement_available() {
                     return Err(surface_error(
                         rong::error::E_NOT_SUPPORTED,
                         "window_unsupported_platform",
-                        "as: 'window' opens a separate desktop window and is not available on this platform",
+                        "as: 'window' opens a separate desktop window, which this host build cannot do; check lx.supports({ surface: 'window' }) first",
                     ));
                 }
                 build_window_options(&ctx, &path_value, size.as_ref())?
@@ -1455,19 +1452,35 @@ fn surface_context_for(lxapp: &LxApp) -> JSSurfaceContext {
     }
 }
 
-/// Whether the lxapp's window currently renders at a compact (phone) width.
-/// Drives the desktop `as: 'window'` gate so the macOS runner's iPhone shape
-/// rejects windows like a real phone. Only the desktop build consults this.
+/// Whether `as: 'window'` can open a separate top-level window in this host
+/// build. A property of the build and of which device the runner simulates —
+/// never of how wide the user has dragged the current window.
+pub(crate) fn window_placement_available() -> bool {
+    #[cfg(any(target_os = "ios", target_os = "android", target_env = "ohos"))]
+    {
+        false
+    }
+    #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
+    {
+        !simulating_handheld_device()
+    }
+}
+
+/// A runner framed as a phone or tablet has no room for a second top-level
+/// window, and refusing one is what the simulation is for. A desktop preset,
+/// or a host with no device controller at all, is a real desktop.
 #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
-fn is_compact_layout(lxapp: &LxApp) -> bool {
-    use lingxia_surface::SizeClass;
+fn simulating_handheld_device() -> bool {
     matches!(
-        lxapp
-            .surface_derived_layout()
-            .as_ref()
-            .map(|l| l.size_class),
-        Some(SizeClass::Compact)
+        lxapp::device::device_get(),
+        Ok(state) if state.group == "phone" || state.group == "tablet"
     )
+}
+
+/// Whether a docked aside region exists right now. Live: a desktop window
+/// dragged below the compact breakpoint loses its dock.
+pub(crate) fn aside_dock_available(lxapp: &LxApp) -> bool {
+    !url_aside_uses_compact_browser(lxapp)
 }
 
 /// Compact has no dock region. A URL aside therefore uses the native in-app

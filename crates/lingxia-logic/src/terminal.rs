@@ -90,7 +90,7 @@ impl JSContextService for TerminalContextService {
     }
 }
 
-fn eligible(app: &LxApp) -> bool {
+pub(crate) fn eligible(app: &LxApp) -> bool {
     cfg!(any(target_os = "macos", target_os = "windows"))
         && lingxia_app_context::terminal_enabled()
         && app.appid == SETTINGS_APP_ID
