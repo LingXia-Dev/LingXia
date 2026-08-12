@@ -210,6 +210,7 @@ pub fn begin_inline_edit(
 
 /// Opens a live terminal search field. Unlike [`begin_inline_edit`], Enter
 /// navigates without destroying the control; Escape or focus loss closes it.
+#[cfg(feature = "terminal-runtime")]
 pub fn begin_search_edit(
     host_hwnd: HWND,
     rect: RECT,
