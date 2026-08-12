@@ -95,6 +95,57 @@ contract({
 });
 
 contract({
+  id: 'LOGIC-006',
+  title: 'answer capability questions consistently with the optional members',
+  covers: ['lx.supports'],
+  layer: 'logic',
+  levels: ['semantic', 'boundary'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app }) => {
+  const result = await app.eval({
+    script: `
+      const terminalAgrees = ('terminal' in lx) === lx.supports({ terminal: true });
+      const autostartAgrees = !!lx.app.autostart === lx.supports({ autostart: true });
+      let rejectedUnknown = false;
+      try {
+        lx.supports({});
+      } catch {
+        rejectedUnknown = true;
+      }
+      return {
+        terminalAgrees,
+        autostartAgrees,
+        rejectedUnknown,
+        // Placements every host can realize.
+        main: lx.supports({ surface: 'main' }),
+        float: lx.supports({ surface: 'float' }),
+        // Answers are booleans, never undefined, for every declared capability.
+        allBooleans: [
+          { surface: 'window' }, { surface: 'aside' }, { surface: 'tab' },
+          { notifications: true }, { browser: true }, { proxy: true },
+          { selfUpdate: true }, { nativeFileReview: true },
+        ].every((query) => typeof lx.supports(query) === 'boolean'),
+      };
+    `,
+  }) as {
+    terminalAgrees: boolean;
+    autostartAgrees: boolean;
+    rejectedUnknown: boolean;
+    main: boolean;
+    float: boolean;
+    allBooleans: boolean;
+  };
+
+  expect(result.terminalAgrees).toBeTruthy();
+  expect(result.autostartAgrees).toBeTruthy();
+  expect(result.rejectedUnknown).toBeTruthy();
+  expect(result.main).toBeTruthy();
+  expect(result.float).toBeTruthy();
+  expect(result.allBooleans).toBeTruthy();
+});
+
+contract({
   id: 'LOGIC-003',
   title: 'round-trip isolated key-value storage',
   covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.list', 'Storage.delete'],

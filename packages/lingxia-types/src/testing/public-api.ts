@@ -109,6 +109,7 @@ export const LX_API_NAMES = [
   'startWifi',
   'stopPullDownRefresh',
   'stopWifi',
+  'supports',
   'switchTab',
   'tabBar',
   'terminal',

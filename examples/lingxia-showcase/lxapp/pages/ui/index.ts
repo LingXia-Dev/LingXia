@@ -24,21 +24,6 @@ function surfaceErrorMessage(error: unknown): string {
     : String(error || "unknown error");
 }
 
-function isSurfaceNotSupported(error: unknown): boolean {
-  const object = surfaceErrorObject(error);
-  const data = surfaceErrorObject(object?.data);
-  const dataCode = data?.code;
-  const message = surfaceErrorMessage(error).toLowerCase();
-  return (
-    object?.code === "E_NOT_SUPPORTED" &&
-    (dataCode === "window_unsupported_platform" ||
-      dataCode === "surface_not_supported" ||
-      message.includes("not supported") ||
-      message.includes("desktop window") ||
-      message.includes("not available on this platform"))
-  );
-}
-
 const LAST_INSTANCE_TAG_KEY = "lifecycle:lastInstanceTag";
 const MAX_EVENTS = 8;
 
@@ -315,6 +300,17 @@ Page({
       // target this app's own page — an aside can only be a url.
       const as =
         cfg.verb === "float" ? "float" : cfg.verb === "window" ? "window" : "aside";
+      // Ask before offering: a window is a property of the host build, so this
+      // answer is stable and does not need the error path to discover it.
+      if (as === "window" && !lx.supports({ surface: "window" })) {
+        this.setData({
+          "surfaceDemo.message": "not supported",
+          "surfaceDemo.active": false,
+          "surfaceDemo.visible": false,
+        });
+        lx.showToast({ title: "not supported", icon: "none" });
+        return;
+      }
       let spec;
       if (cfg.verb === "lxapp") {
         // Open another lxapp docked as an aside (home-app privilege): the
@@ -402,19 +398,13 @@ Page({
       });
     } catch (error) {
       const message = surfaceErrorMessage(error);
-      const notSupported = isSurfaceNotSupported(error);
-      if (!notSupported) {
-        console.error("lx.surface open failed:", error);
-      }
+      console.error("lx.surface open failed:", error);
       this.setData({
-        "surfaceDemo.message": notSupported ? "not supported" : `Failed: ${message}`,
+        "surfaceDemo.message": `Failed: ${message}`,
         "surfaceDemo.active": false,
         "surfaceDemo.visible": false,
       });
-      lx.showToast({
-        title: notSupported ? "not supported" : `open failed: ${message}`,
-        icon: "none",
-      });
+      lx.showToast({ title: `open failed: ${message}`, icon: "none" });
     }
   },
 
