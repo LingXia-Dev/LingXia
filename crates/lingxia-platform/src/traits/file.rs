@@ -56,6 +56,13 @@ pub struct FileDialogResult {
 }
 
 pub trait FileService: Send + Sync + 'static {
+    /// Whether this host can preview a file in-app rather than handing it to
+    /// another application. Advisory: `review_file` still rejects for a file
+    /// type the in-app viewer cannot render.
+    fn native_review_supported(&self) -> bool {
+        false
+    }
+
     fn review_file(
         &self,
         _request: OpenFileRequest,

@@ -10,6 +10,10 @@ use serde::Deserialize;
 use std::error::Error;
 
 impl FileService for Platform {
+    fn native_review_supported(&self) -> bool {
+        true
+    }
+
     async fn review_file(&self, request: OpenFileRequest) -> Result<(), PlatformError> {
         crate::rt::blocking(move || review_file_sync(request)).await
     }

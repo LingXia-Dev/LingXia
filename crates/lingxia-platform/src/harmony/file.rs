@@ -7,6 +7,10 @@ use serde::Deserialize;
 use std::path::Path;
 
 impl FileService for Platform {
+    fn native_review_supported(&self) -> bool {
+        true
+    }
+
     async fn review_file(&self, request: OpenFileRequest) -> Result<(), PlatformError> {
         if !supports_native_review(&request) {
             return Err(PlatformError::NotSupported(
