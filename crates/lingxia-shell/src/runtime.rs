@@ -76,8 +76,8 @@ pub fn apply_current_sidebar_actions() -> ShellResult<Vec<ResolvedShellSidebarAc
     })
 }
 
-/// The sidebar width the user last settled on, or the expanded default when
-/// the shell is not initialized — a host must be able to paint either way.
+/// The sidebar state the user last settled on, or the expanded default when
+/// the shell is not initialized.
 pub fn sidebar_chrome() -> crate::SidebarChrome {
     manager()
         .map(|manager| manager.sidebar_chrome())
@@ -89,6 +89,14 @@ pub fn sidebar_chrome() -> crate::SidebarChrome {
 /// down would make the next launch open as a rail on any window size.
 pub fn set_sidebar_chrome(chrome: crate::SidebarChrome) -> ShellResult<()> {
     manager()?.set_sidebar_chrome(chrome)
+}
+
+pub fn window_frame() -> Option<crate::WindowFrame> {
+    manager().ok().and_then(|manager| manager.window_frame())
+}
+
+pub fn set_window_frame(frame: crate::WindowFrame) -> ShellResult<()> {
+    manager()?.set_window_frame(frame)
 }
 
 pub fn pins() -> ShellResult<Vec<ShellPin>> {

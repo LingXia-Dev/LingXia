@@ -35,6 +35,8 @@ use lingxia_windows_contract::{
 };
 use windows::Win32::Foundation::SIZE;
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+#[cfg(feature = "shell-chrome")]
+use windows::Win32::Graphics::Gdi::MonitorFromRect;
 use windows::Win32::Graphics::Gdi::{AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection,
@@ -93,6 +95,7 @@ static HOST_CHROME_SNAPSHOTS: OnceLock<Mutex<HashMap<isize, HostChromeSnapshot>>
 static CHROME_INTERACTIONS: OnceLock<Mutex<HashMap<isize, ChromeInteraction>>> = OnceLock::new();
 static WINDOW_RESIZE_DRAGS: OnceLock<Mutex<HashMap<isize, WindowResizeDrag>>> = OnceLock::new();
 static DEFAULT_HOST_HEADLESS: AtomicBool = AtomicBool::new(false);
+static RESTORED_WINDOW_FRAME: AtomicBool = AtomicBool::new(false);
 static CHROME_BACK_BUFFERS: OnceLock<Mutex<HashMap<isize, ChromeBackBuffer>>> = OnceLock::new();
 static ATTACHED_PANEL_RESIZE_DRAG: OnceLock<Mutex<Option<AttachedPanelResizeDrag>>> =
     OnceLock::new();
@@ -796,11 +799,11 @@ fn present_webview_in_active_group_with_policy(
         let view = handler.native_view();
         let hwnd = hwnd_from_handle(view.window);
         prepare_shell_window_for_presentation(hwnd)?;
-        handler.set_content_visible(true)?;
-        show_native_view(view, "", true)?;
         set_window_handle(webtag.key(), hwnd);
         set_host_active_webtag(hwnd, webtag.key());
         set_primary_host_window(hwnd);
+        handler.set_content_visible(true)?;
+        show_native_view(view, "", true)?;
         mark_active(webtag);
         notify_webtag_visibility(webtag.key(), true);
         if presentation == GroupMainPresentation::Replace {
@@ -5155,6 +5158,7 @@ fn active_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
 }
 
 fn set_primary_host_window(hwnd: HWND) {
+    restore_primary_window_frame(hwnd);
     let slot = PRIMARY_HOST_WINDOW.get_or_init(|| Mutex::new(None));
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(hwnd_handle(hwnd));
@@ -5168,11 +5172,20 @@ fn set_primary_host_window(hwnd: HWND) {
 }
 
 fn primary_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
+    let hwnd = stored_primary_host_window()?;
+    if Some(hwnd) == excluded || !is_valid_host_window(hwnd) {
+        return None;
+    }
+    Some(hwnd)
+}
+
+fn stored_primary_host_window() -> Option<HWND> {
     let hwnd = PRIMARY_HOST_WINDOW
         .get()
         .and_then(|slot| slot.lock().ok())
         .and_then(|slot| slot.map(hwnd_from_handle))?;
-    if Some(hwnd) == excluded || !is_valid_host_window(hwnd) {
+    if !unsafe { WindowsAndMessaging::IsWindow(Some(hwnd)).as_bool() } || !is_top_level_window(hwnd)
+    {
         return None;
     }
     Some(hwnd)
@@ -6654,6 +6667,9 @@ fn end_window_resize_drag(hwnd: HWND, release_capture: bool) -> bool {
         unsafe {
             let _ = ReleaseCapture();
         }
+    }
+    if removed {
+        persist_primary_window_frame(hwnd);
     }
     removed
 }
@@ -8676,6 +8692,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_CLOSE => {
+                persist_primary_window_frame(hwnd);
                 if is_native_framed_window(hwnd) && invoke_window_close_handler(hwnd) {
                     return LRESULT(0);
                 }
@@ -8909,6 +8926,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             }
             WindowsAndMessaging::WM_EXITSIZEMOVE => {
                 snap_window_after_caption_drag(hwnd);
+                persist_primary_window_frame(hwnd);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_MOUSEMOVE => {
@@ -9080,6 +9098,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
     unsafe {
         WindowsAndMessaging::RegisterClassW(&class);
         let (width, height) = physical_default_window_size();
+        let (origin_x, origin_y) = primary_centered_origin(width, height).unwrap_or((
+            WindowsAndMessaging::CW_USEDEFAULT,
+            WindowsAndMessaging::CW_USEDEFAULT,
+        ));
         let user_data = Box::new(webtag.key().to_string());
         let user_data_ptr = Box::into_raw(user_data);
         let style = if windows_chrome_renderer().is_some() {
@@ -9089,15 +9111,9 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
         } else {
             WS_OVERLAPPEDWINDOW
         };
-        // Create centered on the primary work area - the WS_POPUP default is
-        // (0, 0)/top-left, which looks broken. This applies to every launch (so
-        // a normal start and a post-update relaunch are consistent); the
-        // relaunch additionally force-foregrounds, since a normal launch already
-        // gets focus from the shell.
-        let (origin_x, origin_y) = primary_centered_origin(width, height).unwrap_or((
-            WindowsAndMessaging::CW_USEDEFAULT,
-            WindowsAndMessaging::CW_USEDEFAULT,
-        ));
+        // First launches are centered instead of accepting the WS_POPUP
+        // default of (0, 0). A saved frame is applied if this window becomes
+        // the primary host.
         let ex_style = if HIDE_FROM_TASKBAR.load(Ordering::Relaxed) {
             WindowsAndMessaging::WS_EX_TOOLWINDOW
         } else {
@@ -9497,6 +9513,135 @@ fn physical_default_window_size() -> (i32, i32) {
     (width, height)
 }
 
+#[cfg(feature = "shell-chrome")]
+fn persisted_window_rect() -> Option<RECT> {
+    let frame = lingxia_shell::window_frame()?;
+    let left = rounded_i32(frame.x)?;
+    let top = rounded_i32(frame.y)?;
+    let right = rounded_i32(frame.x + frame.width)?;
+    let bottom = rounded_i32(frame.y + frame.height)?;
+    let raw_width = i64::from(right) - i64::from(left);
+    let raw_height = i64::from(bottom) - i64::from(top);
+    if !(1..=i64::from(i32::MAX)).contains(&raw_width)
+        || !(1..=i64::from(i32::MAX)).contains(&raw_height)
+    {
+        return None;
+    }
+    let mut rect = RECT {
+        left,
+        top,
+        right,
+        bottom,
+    };
+
+    let monitor = unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST) };
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !unsafe { GetMonitorInfoW(monitor, &mut info).as_bool() } {
+        return None;
+    }
+    let work = info.rcWork;
+    let max_width = (work.right - work.left).max(1);
+    let max_height = (work.bottom - work.top).max(1);
+    let width = (rect.right - rect.left).clamp(MAIN_WINDOW_MIN_WIDTH.min(max_width), max_width);
+    let height = (rect.bottom - rect.top).clamp(MAIN_WINDOW_MIN_HEIGHT.min(max_height), max_height);
+    rect.left = rect.left.clamp(work.left, work.right - width);
+    rect.top = rect.top.clamp(work.top, work.bottom - height);
+    rect.right = rect.left + width;
+    rect.bottom = rect.top + height;
+    Some(rect)
+}
+
+#[cfg(feature = "shell-chrome")]
+fn rounded_i32(value: f64) -> Option<i32> {
+    let value = value.round();
+    (value.is_finite() && value >= f64::from(i32::MIN) && value <= f64::from(i32::MAX))
+        .then_some(value as i32)
+}
+
+#[cfg(feature = "shell-chrome")]
+fn restore_primary_window_frame(hwnd: HWND) {
+    if DEFAULT_HOST_HEADLESS.load(Ordering::Acquire) {
+        return;
+    }
+    let Some(rect) = persisted_window_rect() else {
+        return;
+    };
+    if RESTORED_WINDOW_FRAME
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return;
+    }
+    let restored = unsafe {
+        WindowsAndMessaging::SetWindowPos(
+            hwnd,
+            None,
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            WindowsAndMessaging::SWP_NOZORDER | WindowsAndMessaging::SWP_NOACTIVATE,
+        )
+        .is_ok()
+    };
+    if !restored {
+        RESTORED_WINDOW_FRAME.store(false, Ordering::Release);
+    }
+}
+
+#[cfg(not(feature = "shell-chrome"))]
+fn restore_primary_window_frame(_hwnd: HWND) {}
+
+#[cfg(feature = "shell-chrome")]
+fn persist_primary_window_frame(hwnd: HWND) {
+    if !is_top_level_window(hwnd)
+        || !is_window_visible(hwnd)
+        || stored_primary_host_window().is_some_and(|primary| primary != hwnd)
+    {
+        return;
+    }
+
+    let mut rect = RECT::default();
+    let got_rect = unsafe {
+        if WindowsAndMessaging::IsIconic(hwnd).as_bool()
+            || WindowsAndMessaging::IsZoomed(hwnd).as_bool()
+        {
+            let mut placement = WindowsAndMessaging::WINDOWPLACEMENT {
+                length: std::mem::size_of::<WindowsAndMessaging::WINDOWPLACEMENT>() as u32,
+                ..Default::default()
+            };
+            if WindowsAndMessaging::GetWindowPlacement(hwnd, &mut placement).is_ok() {
+                rect = placement.rcNormalPosition;
+                true
+            } else {
+                false
+            }
+        } else {
+            WindowsAndMessaging::GetWindowRect(hwnd, &mut rect).is_ok()
+        }
+    };
+    if !got_rect {
+        return;
+    }
+    let Some(frame) = lingxia_shell::WindowFrame::new(
+        f64::from(rect.left),
+        f64::from(rect.top),
+        f64::from(rect.right - rect.left),
+        f64::from(rect.bottom - rect.top),
+    ) else {
+        return;
+    };
+    if let Err(error) = lingxia_shell::set_window_frame(frame) {
+        log::warn!("could not persist the app window frame: {error}");
+    }
+}
+
+#[cfg(not(feature = "shell-chrome"))]
+fn persist_primary_window_frame(_hwnd: HWND) {}
+
 fn primary_work_area() -> Option<RECT> {
     let mut work = RECT::default();
     let ok = unsafe {
@@ -9525,29 +9670,31 @@ fn primary_centered_origin(width: i32, height: i32) -> Option<(i32, i32)> {
 /// thread (from `WM_SHOWWINDOW`), so it doesn't race the app's own layout.
 fn center_and_foreground_window(hwnd: HWND) {
     unsafe {
-        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
-        let mut mi = MONITORINFO {
-            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-            ..Default::default()
-        };
-        let mut rc = RECT::default();
-        if GetMonitorInfoW(monitor, &mut mi).as_bool()
-            && WindowsAndMessaging::GetWindowRect(hwnd, &mut rc).is_ok()
-        {
-            let work = mi.rcWork;
-            let w = rc.right - rc.left;
-            let h = rc.bottom - rc.top;
-            let x = work.left + (((work.right - work.left) - w) / 2).max(0);
-            let y = work.top + (((work.bottom - work.top) - h) / 2).max(0);
-            let _ = WindowsAndMessaging::SetWindowPos(
-                hwnd,
-                None,
-                x,
-                y,
-                0,
-                0,
-                WindowsAndMessaging::SWP_NOSIZE | WindowsAndMessaging::SWP_NOZORDER,
-            );
+        if !RESTORED_WINDOW_FRAME.load(Ordering::Acquire) {
+            let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            let mut mi = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            let mut rc = RECT::default();
+            if GetMonitorInfoW(monitor, &mut mi).as_bool()
+                && WindowsAndMessaging::GetWindowRect(hwnd, &mut rc).is_ok()
+            {
+                let work = mi.rcWork;
+                let w = rc.right - rc.left;
+                let h = rc.bottom - rc.top;
+                let x = work.left + (((work.right - work.left) - w) / 2).max(0);
+                let y = work.top + (((work.bottom - work.top) - h) / 2).max(0);
+                let _ = WindowsAndMessaging::SetWindowPos(
+                    hwnd,
+                    None,
+                    x,
+                    y,
+                    0,
+                    0,
+                    WindowsAndMessaging::SWP_NOSIZE | WindowsAndMessaging::SWP_NOZORDER,
+                );
+            }
         }
 
         let foreground = WindowsAndMessaging::GetForegroundWindow();

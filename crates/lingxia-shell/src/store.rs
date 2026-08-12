@@ -1,11 +1,11 @@
-use crate::{PinCollection, ShellError, ShellResult, SidebarChrome};
+use crate::{PinCollection, ShellError, ShellResult, ShellWindowState};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 pub const PIN_STORE_FILE: &str = "shell-pins-v1.json";
-pub const SIDEBAR_CHROME_FILE: &str = "shell-sidebar-v1.json";
+pub const SHELL_WINDOW_FILE: &str = "shell-window-v1.json";
 
 #[derive(Debug, Clone)]
 pub struct ShellStore {
@@ -38,21 +38,20 @@ impl ShellStore {
         self.save(PIN_STORE_FILE, pins)
     }
 
-    /// The user's sidebar choice. A missing or unreadable file is the ordinary
-    /// "never chose" case, not an error: the sidebar has to open either way.
-    pub fn load_sidebar_chrome(&self) -> SidebarChrome {
-        match self.load_optional::<SidebarChrome>(SIDEBAR_CHROME_FILE) {
-            Ok(Some(chrome)) => chrome,
-            Ok(None) => SidebarChrome::default(),
+    /// A missing or unreadable file is the ordinary first-launch case.
+    pub fn load_window_state(&self) -> ShellWindowState {
+        match self.load_optional::<ShellWindowState>(SHELL_WINDOW_FILE) {
+            Ok(Some(state)) => state.normalized(),
+            Ok(None) => ShellWindowState::default(),
             Err(_) => {
-                let _ = self.quarantine(SIDEBAR_CHROME_FILE);
-                SidebarChrome::default()
+                let _ = self.quarantine(SHELL_WINDOW_FILE);
+                ShellWindowState::default()
             }
         }
     }
 
-    pub fn save_sidebar_chrome(&self, chrome: &SidebarChrome) -> ShellResult<()> {
-        self.save(SIDEBAR_CHROME_FILE, chrome)
+    pub fn save_window_state(&self, state: &ShellWindowState) -> ShellResult<()> {
+        self.save(SHELL_WINDOW_FILE, state)
     }
 
     fn load_optional<T: DeserializeOwned>(&self, name: &str) -> ShellResult<Option<T>> {
@@ -178,6 +177,37 @@ mod tests {
 
         let restored_pins = store.load_pins().unwrap();
         assert_eq!(restored_pins, pins);
+    }
+
+    #[test]
+    fn stores_sidebar_and_window_in_the_renamed_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ShellStore::new(dir.path());
+        let state = ShellWindowState {
+            sidebar: crate::SidebarChrome::with_expanded(false, 260.0),
+            window: crate::WindowFrame::new(20.0, 30.0, 1280.0, 720.0),
+        };
+
+        store.save_window_state(&state).unwrap();
+
+        assert_eq!(store.load_window_state(), state);
+        assert!(dir.path().join(SHELL_WINDOW_FILE).is_file());
+        assert!(!dir.path().join("shell-sidebar-v1.json").exists());
+    }
+
+    #[test]
+    fn old_sidebar_file_is_not_loaded() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("shell-sidebar-v1.json"),
+            r#"{"mode":"rail"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            ShellStore::new(dir.path()).load_window_state(),
+            ShellWindowState::default()
+        );
     }
 
     #[test]

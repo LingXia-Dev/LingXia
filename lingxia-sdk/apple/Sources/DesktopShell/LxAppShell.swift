@@ -406,9 +406,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         window.minSize = Layout.mainWindowMinimumSize
         window.configureForTabStyle()
         window.center()
-        // After center() so first launch centers; a saved frame overrides it
-        // (AppKit clamps the restored frame to the current screens).
-        window.setFrameAutosaveName(LxAppShellPersistence.windowFrameName)
+        if let restored = LxAppShellPersistence.restoredWindowFrame(
+            minSize: Layout.mainWindowMinimumSize
+        ) {
+            window.setFrame(restored, display: false)
+        }
         window.isReleasedWhenClosed = false
         return window
     }
@@ -452,6 +454,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     // MARK: - NSWindowDelegate
 
     public func windowWillClose(_ notification: Notification) {
+        if let window {
+            LxAppShellPersistence.setWindowFrame(window.frame)
+        }
         for (_, viewController) in viewControllers {
             viewController.destroyNativeComponents()
         }
@@ -470,6 +475,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     public func windowShouldClose(_ sender: NSWindow) -> Bool {
+        LxAppShellPersistence.setWindowFrame(sender.frame)
         guard startupBehavior == .managedByAppUI else { return true }
         onManagedWindowCloseRequested?()
         return false
@@ -479,18 +485,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         syncSidebarHeaderButtonAlignment()
         workspaceManager.relayoutPanels()
         reportSurfaceWidth()
-        // AppKit's autosave only fires for user-driven changes; save explicitly
-        // so programmatic resizes (automation, AX) persist too.
-        window?.saveFrame(usingName: LxAppShellPersistence.windowFrameName)
     }
 
     public func windowWillStartLiveResize(_ notification: Notification) {
         // A real drag supersedes any delayed frame restoration queued by panel layout.
         panelFramePreservationGeneration &+= 1
-    }
-
-    public func windowDidMove(_ notification: Notification) {
-        window?.saveFrame(usingName: LxAppShellPersistence.windowFrameName)
     }
 
     /// Report the content width to the Adaptive Surface Layout core so it
@@ -565,6 +564,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
         sidebar.onHideRequested = { [weak self] in
             self?.hideSidebar()
+        }
+        sidebar.onShowRequested = { [weak self] in
+            self?.showSidebar()
         }
         sidebar.onWidthChanged = { [weak self] width, animated in
             self?.updateSidebarWidth(width, animated: animated)
@@ -753,24 +755,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         defer { sidebarStateRestored = true }
         guard sidebarChromeEnabled, let sidebarView else { return }
 
-        if let width = LxAppShellPersistence.sidebarWidth {
+        let persisted = LxAppShellPersistence.sidebarState
+        if let width = persisted?.expandedWidth {
             lastExpandedSidebarWidth = min(
                 max(width, SidebarView.Layout.expandedWidth), SidebarView.Layout.maxWidth)
         }
-        let persistedMode = LxAppShellPersistence.sidebarMode
-        // Older builds let a resize gesture persist a fully hidden sidebar.
-        // Dragging now bottoms out at the rail, so migrate that stale user state;
-        // an explicit host `.hidden` configuration is reapplied after startup.
-        userSidebarMode = persistedMode == .hidden ? .rail : persistedMode
-        if persistedMode == .hidden {
-            LxAppShellPersistence.sidebarMode = .rail
-        }
+        userSidebarMode = persisted?.mode
         let targetWidth: CGFloat
         switch userSidebarMode {
         case .rail:
-            sidebarView.setCompactMode(true)
-            targetWidth = sidebarView.compactWidth
-        case .hidden:
             sidebarView.setCompactMode(true)
             targetWidth = sidebarView.compactWidth
         case .expanded, nil:
@@ -781,21 +774,24 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     /// Store the settled sidebar mode + expanded width. Called from every
-    /// visibility refresh; cheap (UserDefaults), no-op until restore ran.
+    /// visibility refresh; no-op until restore ran.
     private func persistSidebarState() {
         guard sidebarStateRestored, sidebarChromeEnabled, let sidebarView else { return }
         let width = sidebarWidthConstraint?.constant ?? 0
+        // Fully hidden is an app/adaptive projection, not the user's sidebar
+        // choice, so it must not overwrite the last expanded/rail state.
+        guard width >= Layout.sidebarHiddenThreshold else { return }
         let mode: LxAppShellPersistence.SidebarMode
-        if width < Layout.sidebarHiddenThreshold {
-            mode = .hidden
-        } else if sidebarView.isCompact {
+        if sidebarView.isCompact {
             mode = .rail
         } else {
             mode = .expanded
         }
         userSidebarMode = mode
-        LxAppShellPersistence.sidebarMode = mode
-        LxAppShellPersistence.sidebarWidth = lastExpandedSidebarWidth
+        LxAppShellPersistence.setSidebarState(
+            mode: mode,
+            expandedWidth: lastExpandedSidebarWidth
+        )
     }
 
     private func setupNotificationObservers() {
@@ -964,7 +960,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         let targetWidth: CGFloat
         let iconRail: Bool
-        if !sidebarChromeEnabled || userSidebarMode == .hidden {
+        if !sidebarChromeEnabled {
             targetWidth = 0
             iconRail = false
         } else if surfaceSizeClass == .compact
@@ -1055,13 +1051,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     private func showSidebar() {
         guard surfaceSizeClass != .compact else { return }
+        userSidebarMode = .expanded
         if surfaceSizeClass == .medium {
             mediumSidebarExpandedByUser = true
-            sidebarView?.setCompactMode(false)
-            updateSidebarWidth(lastExpandedSidebarWidth, animated: true)
-            return
         }
-        setSidebarVisible(true, animated: true)
+        sidebarView?.setCompactMode(false)
+        updateSidebarWidth(lastExpandedSidebarWidth, animated: true)
     }
 
     private func collapseSidebarToRail(animated: Bool) {

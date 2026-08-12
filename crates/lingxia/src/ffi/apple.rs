@@ -349,6 +349,18 @@ mod bridge {
         #[swift_bridge(swift_name = "shellPins")]
         fn shell_pins() -> String;
 
+        #[swift_bridge(swift_name = "shellSidebarChrome")]
+        fn shell_sidebar_chrome() -> String;
+
+        #[swift_bridge(swift_name = "shellSetSidebarChrome")]
+        fn shell_set_sidebar_chrome(expanded: bool, expanded_width: f64) -> bool;
+
+        #[swift_bridge(swift_name = "shellWindowFrame")]
+        fn shell_window_frame() -> String;
+
+        #[swift_bridge(swift_name = "shellSetWindowFrame")]
+        fn shell_set_window_frame(x: f64, y: f64, width: f64, height: f64) -> bool;
+
         #[swift_bridge(swift_name = "shellIsPinned")]
         fn shell_is_pinned(kind: &str, key: &str) -> bool;
 
@@ -1442,6 +1454,37 @@ pub fn shell_pins() -> String {
             .map(|pins| crate::shell::visible_shell_pins(&pins, lingxia_app_context::home_app_id()))
             .and_then(|pins| serde_json::to_string(&pins).ok())
             .unwrap_or_default()
+    })
+}
+
+pub fn shell_sidebar_chrome() -> String {
+    ffi_catch_unwind!("shell_sidebar_chrome", String::new(), || {
+        serde_json::to_string(&lingxia_shell::sidebar_chrome()).unwrap_or_default()
+    })
+}
+
+pub fn shell_set_sidebar_chrome(expanded: bool, expanded_width: f64) -> bool {
+    ffi_catch_unwind!("shell_set_sidebar_chrome", false, || {
+        lingxia_shell::set_sidebar_chrome(lingxia_shell::SidebarChrome::with_expanded(
+            expanded,
+            expanded_width,
+        ))
+        .is_ok()
+    })
+}
+
+pub fn shell_window_frame() -> String {
+    ffi_catch_unwind!("shell_window_frame", String::new(), || {
+        lingxia_shell::window_frame()
+            .and_then(|frame| serde_json::to_string(&frame).ok())
+            .unwrap_or_default()
+    })
+}
+
+pub fn shell_set_window_frame(x: f64, y: f64, width: f64, height: f64) -> bool {
+    ffi_catch_unwind!("shell_set_window_frame", false, || {
+        lingxia_shell::WindowFrame::new(x, y, width, height)
+            .is_some_and(|frame| lingxia_shell::set_window_frame(frame).is_ok())
     })
 }
 

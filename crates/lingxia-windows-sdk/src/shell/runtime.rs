@@ -50,6 +50,7 @@ use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTAT
 
 const DEFAULT_NAV_BAR_HEIGHT: i32 = 38;
 const MIN_SIDEBAR_WIDTH: i32 = 184;
+const MAX_SIDEBAR_WIDTH: i32 = 400;
 /// Bottom tab bar height (icons + labels). The strip sits just above the
 /// content area's bottom, which is already inset for the home-indicator safe
 /// area, so no extra height is reserved here.
@@ -576,11 +577,19 @@ fn sidebar_ui_state(group: &str) -> SidebarUiState {
 
 /// Write down the user's own sidebar choice, never the adaptive projection.
 fn persist_sidebar_chrome(rail: bool) {
-    if let Err(error) =
-        lingxia_shell::set_sidebar_chrome(lingxia_shell::SidebarChrome::with_rail(rail))
-    {
+    let expanded_width = lingxia_shell::sidebar_chrome().expanded_width;
+    if let Err(error) = lingxia_shell::set_sidebar_chrome(
+        lingxia_shell::SidebarChrome::with_expanded(!rail, expanded_width),
+    ) {
         log::warn!("could not persist the sidebar mode: {error}");
     }
+}
+
+fn persisted_expanded_sidebar_width() -> i32 {
+    lingxia_shell::sidebar_chrome()
+        .expanded_width
+        .round()
+        .clamp(f64::from(MIN_SIDEBAR_WIDTH), f64::from(MAX_SIDEBAR_WIDTH)) as i32
 }
 
 fn update_sidebar_ui_state(group: &str, update: impl FnOnce(&mut SidebarUiState)) {
@@ -2101,7 +2110,9 @@ fn build_tab_bar_layout(
     // must not re-reserve that height (which would float it up by that much).
     let dimension = match position {
         WindowsShellTabBarPosition::Bottom => BOTTOM_TABBAR_CONTENT_HEIGHT,
-        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right => MIN_SIDEBAR_WIDTH,
+        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right => {
+            persisted_expanded_sidebar_width()
+        }
     };
     let desktop_sidebar = matches!(
         position,
