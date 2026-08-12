@@ -42,6 +42,17 @@ use lingxia_windows_contract::{WindowsHostPanelKeyEvent, WindowsHostPanelTab};
 #[cfg(feature = "terminal-runtime")]
 use windows::Win32::Foundation::RECT;
 
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+static SEARCH_GENERATIONS: OnceLock<Mutex<HashMap<u64, u64>>> = OnceLock::new();
+
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+fn search_generations() -> std::sync::MutexGuard<'static, HashMap<u64, u64>> {
+    SEARCH_GENERATIONS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// Direction a pane splits in, mirroring the macOS surface context menu.
 #[cfg(feature = "shell-chrome")]
 #[cfg_attr(not(feature = "terminal-runtime"), allow(dead_code))]
@@ -1212,6 +1223,15 @@ fn open_windows_terminal_session_panel(
         panel_id,
         Arc::new(move |event: WindowsHostPanelKeyEvent| {
             #[cfg(feature = "shell-chrome")]
+            if event.ctrl && !event.shift && !event.alt && event.vk == 0x46 {
+                begin_terminal_search(&input_panel_key);
+                return true;
+            }
+            #[cfg(feature = "shell-chrome")]
+            if event.ctrl && event.vk == 0 && matches!(event.character, Some('\u{6}' | 'F' | 'f')) {
+                return true;
+            }
+            #[cfg(feature = "shell-chrome")]
             if event.ctrl && event.shift && event.vk == 0x43 {
                 copy_panel_screen_to_clipboard(&input_panel_key);
                 return true;
@@ -1289,6 +1309,90 @@ fn open_windows_terminal_session_panel(
 
     thread::spawn(move || run_terminal_panel_poll_loop(&panel_key, &stop));
     Ok(())
+}
+
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+fn begin_terminal_search(panel_id: &str) {
+    let Some(session_id) = active_session_id(panel_id) else {
+        return;
+    };
+    let Some((hwnd, rect)) = super::terminal_grid::search_edit_geometry(panel_id) else {
+        return;
+    };
+    let panel_for_change = panel_id.to_string();
+    let panel_for_nav = panel_id.to_string();
+    let panel_for_close = panel_id.to_string();
+    lingxia_windows_contract::post_to_window_thread(
+        hwnd,
+        Box::new(move || {
+            super::text_input::begin_search_edit(
+                windows::Win32::Foundation::HWND(hwnd as *mut _),
+                rect,
+                "",
+                super::text_input::SearchEditCallbacks {
+                    on_change: Arc::new(move |query| {
+                        perform_terminal_search(&panel_for_change, session_id, query);
+                    }),
+                    on_navigate: Arc::new(move |delta| {
+                        if let Some(line) = super::terminal_grid::navigate_search(session_id, delta)
+                        {
+                            lingxia_terminal::terminal_scroll_to_line(session_id, line);
+                            publish_active_snapshot(&panel_for_nav);
+                            invalidate_panel(&panel_for_nav);
+                        }
+                    }),
+                    on_close: Arc::new(move || {
+                        cancel_terminal_search(&panel_for_close, session_id);
+                    }),
+                },
+            );
+        }),
+    );
+}
+
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+fn perform_terminal_search(panel_id: &str, session_id: u64, query: String) {
+    let generation = {
+        let mut searches = search_generations();
+        let generation = searches.get(&session_id).copied().unwrap_or(0) + 1;
+        searches.insert(session_id, generation);
+        generation
+    };
+    if query.is_empty() {
+        super::terminal_grid::clear_search(session_id);
+        invalidate_panel(panel_id);
+        return;
+    }
+    lingxia_terminal::terminal_search_cancel(session_id);
+    let panel_id = panel_id.to_string();
+    thread::spawn(move || {
+        let Some(results) = lingxia_terminal::terminal_search_data(
+            session_id,
+            &query,
+            lingxia_terminal::TerminalSearchMode::Plain,
+            10_000,
+        ) else {
+            return;
+        };
+        if results.cancelled || search_generations().get(&session_id).copied() != Some(generation) {
+            return;
+        }
+        if let Some(line) = super::terminal_grid::set_search_results(session_id, results) {
+            lingxia_terminal::terminal_scroll_to_line(session_id, line);
+            publish_active_snapshot(&panel_id);
+        }
+        invalidate_panel(&panel_id);
+    });
+}
+
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+fn cancel_terminal_search(panel_id: &str, session_id: u64) {
+    let mut searches = search_generations();
+    let generation = searches.get(&session_id).copied().unwrap_or(0) + 1;
+    searches.insert(session_id, generation);
+    drop(searches);
+    super::terminal_grid::clear_search(session_id);
+    invalidate_panel(panel_id);
 }
 
 #[cfg(feature = "terminal-runtime")]
@@ -1991,6 +2095,42 @@ pub(super) fn pane_drag_handle_rect(rect: RECT) -> RECT {
     }
 }
 
+/// Trailing-edge close target for a split pane. It deliberately stays clear
+/// of the centered drag handle so each control has one unambiguous action.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+pub(super) fn pane_close_button_rect(rect: RECT) -> RECT {
+    const SIZE: i32 = 24;
+    const INSET: i32 = 4;
+    RECT {
+        left: (rect.right - INSET - SIZE).max(rect.left),
+        top: (rect.top + INSET).min(rect.bottom),
+        right: (rect.right - INSET).max(rect.left),
+        bottom: (rect.top + INSET + SIZE).min(rect.bottom),
+    }
+}
+
+/// Closes the exact split pane under the pointer. A lone pane keeps its close
+/// action in the tab strip, matching the split controls on macOS.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+pub(crate) fn close_pane_at(panel_id: &str, x: i32, y: i32) -> bool {
+    let Some(body) = super::terminal_grid::panel_body_rect(panel_id) else {
+        return false;
+    };
+    let frames = active_pane_frames(panel_id, body);
+    if frames.len() <= 1 {
+        return false;
+    }
+    let Some(session_id) = frames
+        .into_iter()
+        .find(|frame| point_in_rect(pane_close_button_rect(frame.rect), x, y))
+        .map(|frame| frame.session_id)
+    else {
+        return false;
+    };
+    close_pane_session(panel_id, session_id);
+    true
+}
+
 #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
 #[derive(Clone)]
 struct ActivePaneDrag {
@@ -2191,6 +2331,11 @@ fn pane_drop_rect(rect: RECT, direction: SplitDir) -> RECT {
 
 #[cfg(all(not(feature = "terminal-runtime"), feature = "shell-chrome"))]
 pub(crate) fn pane_drag_handle_at(_panel_id: &str, _x: i32, _y: i32) -> bool {
+    false
+}
+
+#[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
+pub(crate) fn close_pane_at(_panel_id: &str, _x: i32, _y: i32) -> bool {
     false
 }
 
@@ -2469,7 +2614,7 @@ fn publish_active_snapshot(panel_id: &str) {
 /// Pulls whatever changed since the store's generation. Returns whether the
 /// pane needs repainting.
 #[cfg(feature = "terminal-runtime")]
-fn publish_session_frame(panel_id: &str, session_id: u64) -> bool {
+fn publish_session_frame(_panel_id: &str, session_id: u64) -> bool {
     let since = super::terminal_grid::session_generation(session_id);
     let image_since = super::terminal_grid::session_image_generation(session_id);
     let update = lingxia_terminal::terminal_render_data(session_id, since, image_since);
@@ -2541,7 +2686,10 @@ mod tests {
     use super::create_panel_session;
     use super::stable_tab_title;
     #[cfg(feature = "shell-chrome")]
-    use super::{PaneNode, PaneOrientation, SplitDir, pane_drop_direction};
+    use super::{
+        PaneNode, PaneOrientation, SplitDir, pane_close_button_rect, pane_drag_handle_rect,
+        pane_drop_direction,
+    };
     #[cfg(windows)]
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
     #[cfg(feature = "shell-chrome")]
@@ -2668,6 +2816,23 @@ mod tests {
             pane_drop_direction(square, 20, 34, Some(SplitDir::Up)),
             Some(SplitDir::Left)
         );
+    }
+
+    #[cfg(feature = "shell-chrome")]
+    #[test]
+    fn pane_close_stays_at_trailing_edge_clear_of_drag_handle() {
+        let pane = RECT {
+            left: 20,
+            top: 40,
+            right: 420,
+            bottom: 300,
+        };
+        let close = pane_close_button_rect(pane);
+        let drag = pane_drag_handle_rect(pane);
+        assert_eq!(close.right, pane.right - 4);
+        assert!(close.left >= drag.right);
+        assert!(close.top >= pane.top);
+        assert!(close.bottom <= pane.bottom);
     }
 
     #[cfg(feature = "shell-chrome")]

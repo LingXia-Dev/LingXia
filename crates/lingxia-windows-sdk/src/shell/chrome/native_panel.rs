@@ -361,7 +361,19 @@ pub(super) fn draw_terminal_panel_content(
             } else {
                 blend_rgb(chrome.text_muted, chrome.header, 55)
             };
-            draw_text_antialiased(hdc, GLYPH_TAB_CLOSE, close, close_color, DT_CENTER);
+            let size = 12.min(rect_width(&close)).min(rect_height(&close));
+            let icon = normalize_rect(RECT {
+                left: close.left + (rect_width(&close) - size) / 2,
+                top: close.top + (rect_height(&close) - size) / 2,
+                right: close.left + (rect_width(&close) - size) / 2 + size,
+                bottom: close.top + (rect_height(&close) - size) / 2 + size,
+            });
+            crate::draw_windows_design_icon_with_color(
+                hdc,
+                WindowsDesignIcon::CloseX,
+                icon,
+                close_color,
+            );
         }
     }
     if header_rects.tabs.is_empty() {

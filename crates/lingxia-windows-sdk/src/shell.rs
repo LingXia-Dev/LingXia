@@ -179,9 +179,10 @@ pub(crate) fn windows_shell_frame_colors() -> (u32, u32, bool) {
     )
 }
 pub(crate) use terminal_panel::{
-    begin_divider_drag, begin_pane_drag, begin_terminal_selection, divider_orientation_at,
-    end_divider_drag, end_pane_drag, end_terminal_selection, pane_drag_handle_at, scroll_pane_at,
-    update_divider_drag, update_pane_drag, update_terminal_selection,
+    begin_divider_drag, begin_pane_drag, begin_terminal_selection, close_pane_at,
+    divider_orientation_at, end_divider_drag, end_pane_drag, end_terminal_selection,
+    pane_drag_handle_at, scroll_pane_at, update_divider_drag, update_pane_drag,
+    update_terminal_selection,
 };
 
 /// Registers the Windows SDK default shell.

@@ -59,7 +59,7 @@ use windows::core::{Interface, PCWSTR, Result, w};
 use super::terminal_grid::{
     GRID_DEFAULT_BACKGROUND, GRID_DIM_FOREGROUND_PERCENT, GRID_PADDING, GridPoint,
     PANE_DROP_TARGET_COLOR, SCROLLBAR_MARGIN, SCROLLBAR_MAX_THUMB, SCROLLBAR_MIN_THUMB,
-    SCROLLBAR_WIDTH,
+    SCROLLBAR_WIDTH, SearchHighlight,
 };
 use pipeline::{DrawBatch, Pipeline, Quad};
 use text::{BOLD, BOLD_ITALIC, Fonts, ITALIC, Metrics, REGULAR};
@@ -232,6 +232,7 @@ struct Surface {
     batches: Vec<DrawBatch>,
     images: HashMap<(u64, u32), CachedImage>,
     image_generations: HashMap<u64, u64>,
+    close_icon: Option<ID3D11ShaderResourceView>,
     /// Clear color of the last frame, so a capture reproduces it exactly.
     background: u32,
     /// Offscreen copy of the frame, for screenshots. Built on demand.
@@ -312,6 +313,7 @@ impl Surface {
                 batches: Vec::new(),
                 images: HashMap::new(),
                 image_generations: HashMap::new(),
+                close_icon: None,
                 background: GRID_DEFAULT_BACKGROUND,
                 readback: None,
             })
@@ -357,7 +359,7 @@ impl Surface {
                 pane.session_id,
                 rect,
                 (metrics.cell_width as i32, metrics.line_height as i32),
-                |frame, images, view, selection| {
+                |frame, images, view, selection, search| {
                     if pane.focused || !multi {
                         background = frame.default_bg >> 8;
                     }
@@ -372,7 +374,7 @@ impl Surface {
                         selection_background: chrome.selection_background,
                         selection_foreground: chrome.selection_foreground,
                     }
-                    .pane(frame, view, selection, rect, dim);
+                    .pane(frame, view, selection, search, rect, dim);
                     self.append_pane(
                         pane.session_id,
                         frame,
@@ -386,6 +388,10 @@ impl Surface {
                     );
                 },
             );
+        }
+
+        if multi {
+            self.append_split_controls(&panes, body, chrome.text_muted);
         }
 
         if let Some(target) = drop_target {
@@ -529,6 +535,58 @@ impl Surface {
 }
 
 impl Surface {
+    fn append_split_controls(
+        &mut self,
+        panes: &[super::terminal_panel::PaneFrame],
+        body: RECT,
+        color: u32,
+    ) {
+        if self.close_icon.is_none() {
+            self.close_icon =
+                create_design_icon_texture(&self.device, crate::WindowsDesignIcon::CloseX, 16).ok();
+        }
+        let icon = self.close_icon.clone();
+        for pane in panes {
+            let handle = super::terminal_panel::pane_drag_handle_rect(pane.rect);
+            let center_x = (handle.left + handle.right) as f32 / 2.0 - body.left as f32;
+            let y = (handle.top + handle.bottom) as f32 / 2.0 - body.top as f32;
+            let start = self.quads.len();
+            for offset in [-7.0, 0.0, 7.0] {
+                self.quads.push(solid_quad(
+                    center_x + offset - 1.5,
+                    y - 1.5,
+                    3.0,
+                    3.0,
+                    color,
+                    self.pipeline.solid_uv,
+                ));
+            }
+            self.batches.push(DrawBatch {
+                range: start..self.quads.len(),
+                texture: None,
+                linear: false,
+            });
+            if let Some(texture) = &icon {
+                let close = super::terminal_panel::pane_close_button_rect(pane.rect);
+                let size = 14.0;
+                let x = (close.left + close.right) as f32 / 2.0 - body.left as f32 - size / 2.0;
+                let y = (close.top + close.bottom) as f32 / 2.0 - body.top as f32 - size / 2.0;
+                let start = self.quads.len();
+                self.quads.push(Quad {
+                    rect: [x.round(), y.round(), size, size],
+                    color: linear(color),
+                    uv: [0.0, 0.0, 1.0, 1.0],
+                    params: [0.0; 4],
+                });
+                self.batches.push(DrawBatch {
+                    range: start..start + 1,
+                    texture: Some(texture.clone()),
+                    linear: true,
+                });
+            }
+        }
+    }
+
     fn sync_images(&mut self, session_id: u64, snapshot: &TerminalImageSnapshot) {
         if self.image_generations.get(&session_id) == Some(&snapshot.generation) {
             return;
@@ -959,6 +1017,63 @@ fn create_image_texture(device: &ID3D11Device, png: &[u8]) -> Result<ID3D11Shade
     }
 }
 
+fn create_design_icon_texture(
+    device: &ID3D11Device,
+    icon: crate::WindowsDesignIcon,
+    size: u32,
+) -> Result<ID3D11ShaderResourceView> {
+    let pixels = crate::design_icons::design_icon_argb_premultiplied(icon, size, Some(0xffffff))
+        .ok_or_else(windows::core::Error::from_thread)?;
+    let mut bgra = Vec::with_capacity(pixels.len() * 4);
+    for pixel in pixels.iter().copied() {
+        bgra.extend_from_slice(&[
+            pixel as u8,
+            (pixel >> 8) as u8,
+            (pixel >> 16) as u8,
+            (pixel >> 24) as u8,
+        ]);
+    }
+    create_bgra_texture(device, size, size, &bgra)
+}
+
+fn create_bgra_texture(
+    device: &ID3D11Device,
+    width: u32,
+    height: u32,
+    pixels: &[u8],
+) -> Result<ID3D11ShaderResourceView> {
+    let desc = D3D11_TEXTURE2D_DESC {
+        Width: width,
+        Height: height,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
+        ..Default::default()
+    };
+    let initial = D3D11_SUBRESOURCE_DATA {
+        pSysMem: pixels.as_ptr().cast(),
+        SysMemPitch: width * 4,
+        SysMemSlicePitch: 0,
+    };
+    unsafe {
+        let mut texture = None;
+        device.CreateTexture2D(&desc, Some(&initial), Some(&mut texture))?;
+        let mut view = None;
+        device.CreateShaderResourceView(
+            &texture.ok_or_else(windows::core::Error::from_thread)?,
+            None,
+            Some(&mut view),
+        )?;
+        view.ok_or_else(windows::core::Error::from_thread)
+    }
+}
+
 fn clip_image(
     mut destination: [f32; 4],
     mut source: [f32; 4],
@@ -1052,6 +1167,7 @@ impl Builder<'_> {
         frame: &TerminalFrame,
         view: PaneView,
         selection: Option<(GridPoint, GridPoint)>,
+        search: &[SearchHighlight],
         rect: RECT,
         dim: bool,
     ) -> usize {
@@ -1110,6 +1226,18 @@ impl Builder<'_> {
                     self.selection_background,
                 );
             }
+        }
+
+        for highlight in search {
+            let color = if highlight.active { 0xd99000 } else { 0xc9a000 };
+            self.solid_alpha(
+                origin.0 + f32::from(highlight.start_col) * self.metrics.cell_width,
+                origin.1 + f32::from(highlight.row) * self.metrics.line_height,
+                f32::from(highlight.end_col - highlight.start_col) * self.metrics.cell_width,
+                self.metrics.line_height,
+                color,
+                if highlight.active { 0.52 } else { 0.25 },
+            );
         }
 
         let foreground_start = self.quads.len();
@@ -1410,6 +1538,29 @@ impl Builder<'_> {
             uv: self.pipeline.solid_uv,
             params: [0.0; 4],
         });
+    }
+
+    fn solid_alpha(&mut self, x: f32, y: f32, width: f32, height: f32, color: u32, alpha: f32) {
+        let mut quad = solid_quad(x, y, width, height, color, self.pipeline.solid_uv);
+        for channel in &mut quad.color[..3] {
+            *channel *= alpha;
+        }
+        quad.color[3] = alpha;
+        self.quads.push(quad);
+    }
+}
+
+fn solid_quad(x: f32, y: f32, width: f32, height: f32, color: u32, uv: [f32; 4]) -> Quad {
+    Quad {
+        rect: [
+            x.round(),
+            y.round(),
+            width.round().max(1.0),
+            height.round().max(1.0),
+        ],
+        color: linear(color),
+        uv,
+        params: [0.0; 4],
     }
 }
 

@@ -7155,6 +7155,12 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
             id, click_command, ..
         } => {
             #[cfg(feature = "shell-chrome")]
+            if crate::shell::close_pane_at(&id, point.0, point.1) {
+                focus_host_panel(&id);
+                focus_host_window(hwnd);
+                return true;
+            }
+            #[cfg(feature = "shell-chrome")]
             if crate::shell::pane_drag_handle_at(&id, point.0, point.1) {
                 PENDING_PANE_DRAGS
                     .get_or_init(|| Mutex::new(HashMap::new()))

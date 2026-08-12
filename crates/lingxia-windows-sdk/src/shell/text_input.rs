@@ -45,6 +45,14 @@ use windows::core::{PCWSTR, w};
 /// focus loss. Runs on the host window's UI thread.
 pub type InlineEditCommit = Arc<dyn Fn(String) + Send + Sync>;
 
+/// Callbacks for the terminal's persistent find field. Text changes search
+/// immediately, Enter/Shift+Enter move between results, and Escape closes it.
+pub struct SearchEditCallbacks {
+    pub on_change: Arc<dyn Fn(String) + Send + Sync>,
+    pub on_navigate: Arc<dyn Fn(i32) + Send + Sync>,
+    pub on_close: Arc<dyn Fn() + Send + Sync>,
+}
+
 /// `EM_SETSEL` (select text range) lives in `Win32::UI::Controls` in the
 /// windows crate; defined locally to avoid pulling the whole feature.
 const EM_SETSEL: u32 = 0x00b1;
@@ -55,7 +63,9 @@ struct InlineEditState {
     original_proc: isize,
     /// Raw handle of the host (parent) window.
     host: isize,
-    on_commit: InlineEditCommit,
+    on_commit: Option<InlineEditCommit>,
+    search: Option<SearchEditCallbacks>,
+    last_search_text: Option<String>,
     /// Guards against double commit/cancel: destroying the control on
     /// Enter re-enters the proc with WM_KILLFOCUS.
     finished: bool,
@@ -163,7 +173,9 @@ pub fn begin_inline_edit(
     let state = Box::new(InlineEditState {
         original_proc,
         host: host_hwnd.0 as isize,
-        on_commit,
+        on_commit: Some(on_commit),
+        search: None,
+        last_search_text: None,
         finished: false,
     });
     unsafe {
@@ -192,6 +204,36 @@ pub fn begin_inline_edit(
         // Select-all so typing replaces the previous title outright.
         let _ =
             WindowsAndMessaging::SendMessageW(edit, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(-1)));
+    }
+    true
+}
+
+/// Opens a live terminal search field. Unlike [`begin_inline_edit`], Enter
+/// navigates without destroying the control; Escape or focus loss closes it.
+pub fn begin_search_edit(
+    host_hwnd: HWND,
+    rect: RECT,
+    initial_text: &str,
+    callbacks: SearchEditCallbacks,
+) -> bool {
+    let started = begin_inline_edit(host_hwnd, rect, initial_text, Arc::new(|_| {}));
+    if !started {
+        return false;
+    }
+    let edit = active_edits()
+        .get(&(host_hwnd.0 as isize))
+        .map(|(edit, _)| *edit);
+    let Some(edit) = edit else {
+        return false;
+    };
+    let state = inline_edit_state(HWND(edit as *mut _));
+    if state.is_null() {
+        return false;
+    }
+    unsafe {
+        (*state).on_commit = None;
+        (*state).search = Some(callbacks);
+        (*state).last_search_text = Some(initial_text.to_string());
     }
     true
 }
@@ -225,6 +267,20 @@ fn inline_edit_text(hwnd: HWND) -> String {
     }
 }
 
+fn notify_search_changed(hwnd: HWND, state: *mut InlineEditState) {
+    let text = inline_edit_text(hwnd);
+    let changed = unsafe { (*state).last_search_text.as_deref() != Some(text.as_str()) };
+    if !changed {
+        return;
+    }
+    unsafe {
+        (*state).last_search_text = Some(text.clone());
+    }
+    if let Some(search) = unsafe { (*state).search.as_ref() } {
+        (search.on_change)(text);
+    }
+}
+
 /// Ends the edit: commits (unless cancelled), destroys the control, and
 /// for keyboard-driven ends, returns focus to the host so terminal input
 /// resumes without an extra click. Focus-loss ends leave focus where the
@@ -239,8 +295,19 @@ fn finish_inline_edit(hwnd: HWND, commit: bool, refocus_host: bool) {
     }
     if commit {
         let text = inline_edit_text(hwnd);
-        let on_commit = unsafe { Arc::clone(&(*state).on_commit) };
-        on_commit(text);
+        let on_commit = unsafe { (*state).on_commit.as_ref().map(Arc::clone) };
+        if let Some(on_commit) = on_commit {
+            on_commit(text);
+        }
+    }
+    let on_close = unsafe {
+        (*state)
+            .search
+            .as_ref()
+            .map(|search| Arc::clone(&search.on_close))
+    };
+    if let Some(on_close) = on_close {
+        on_close();
     }
     let host = unsafe { (*state).host };
     unsafe {
@@ -267,6 +334,15 @@ unsafe extern "system" fn inline_edit_proc(
 
     match msg {
         WindowsAndMessaging::WM_KEYDOWN if wparam.0 == VK_RETURN.0 as usize => {
+            if let Some(search) = unsafe { (*state).search.as_ref() } {
+                let backwards = unsafe {
+                    windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(
+                        windows::Win32::UI::Input::KeyboardAndMouse::VK_SHIFT.0 as i32,
+                    ) < 0
+                };
+                (search.on_navigate)(if backwards { -1 } else { 1 });
+                return LRESULT(0);
+            }
             finish_inline_edit(hwnd, true, true);
             return LRESULT(0);
         }
@@ -311,7 +387,25 @@ unsafe extern "system" fn inline_edit_proc(
         }
         _ => {}
     }
-    unsafe { call_original(original, hwnd, msg, wparam, lparam) }
+    let result = unsafe { call_original(original, hwnd, msg, wparam, lparam) };
+    // The original EDIT proc may destroy the control for messages we do not
+    // own. Never dereference its userdata after that teardown.
+    if msg == WindowsAndMessaging::WM_NCDESTROY || inline_edit_state(hwnd) != state {
+        return result;
+    }
+    if matches!(
+        msg,
+        WindowsAndMessaging::WM_CHAR
+            | WindowsAndMessaging::WM_KEYUP
+            | WindowsAndMessaging::WM_PASTE
+            | WindowsAndMessaging::WM_CUT
+            | WindowsAndMessaging::WM_CLEAR
+            | WindowsAndMessaging::WM_UNDO
+    ) && unsafe { (*state).search.is_some() }
+    {
+        notify_search_changed(hwnd, state);
+    }
+    result
 }
 
 /// Calls the EDIT class procedure captured at subclass time.
