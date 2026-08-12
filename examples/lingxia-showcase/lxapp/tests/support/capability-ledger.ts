@@ -49,6 +49,7 @@ const AUTOMATED = [
   { name: 'getScreenInfo', ownerCaseId: 'DEVICE-001', requiredLevels: ['semantic', 'boundary'] },
   { name: 'getStorage', ownerCaseId: 'TODO-001', requiredLevels: ['semantic', 'boundary', 'lifecycle'] },
   { name: 'getSystemSetting', ownerCaseId: 'SYSTEM-001', requiredLevels: ['semantic', 'boundary'] },
+  { name: 'supports', ownerCaseId: 'LOGIC-006', requiredLevels: ['semantic', 'boundary'] },
   { name: 'getImageInfo', ownerCaseId: 'MEDIA-INFO-001', requiredLevels: ['semantic', 'failure'] },
   { name: 'onDeviceOrientationChange', ownerCaseId: 'LOGIC-002', requiredLevels: ['lifecycle'] },
   { name: 'onKeyDown', ownerCaseId: 'LOGIC-002', requiredLevels: ['lifecycle'] },

@@ -130,8 +130,9 @@ declare global {
     readonly envVersion: HostAppEnvVersion;
 
     /**
-     * Launch-at-startup control. Present only on macOS / Windows with the
-     * capability declared; gate access with `lx.app.autostart?.…`.
+     * Launch-at-startup control. Absent where the host cannot register a
+     * startup item; its presence and `lx.supports({ autostart: true })` always
+     * agree, so `lx.app.autostart?.…` and the query are interchangeable.
      */
     autostart?: AutostartApi;
   }
@@ -142,7 +143,8 @@ declare global {
   interface Lx {
     /**
      * Terminal product settings. Present only in the host-bundled Terminal
-     * Settings lxapp when the host declares `capabilities.terminal`.
+     * Settings lxapp when the host declares `capabilities.terminal`; its
+     * presence and `lx.supports({ terminal: true })` always agree.
      */
     readonly terminal?: TerminalApi;
 
@@ -271,11 +273,11 @@ export type AppearancePreference = 'auto' | 'light' | 'dark';
 
 /**
  * Launch-at-startup control for the host app.
- * **macOS 13+ / Windows only.** Everywhere else — other platforms, or a
- * macOS shell older than 13 — `lx.app.autostart` is absent (`undefined`);
- * presence is the support check, so portable code gates on the member itself:
+ * Absent (`undefined`) wherever the host cannot register a startup item.
+ * `lx.supports({ autostart: true })` and the member's presence always
+ * agree, so either gate works:
  * ```ts
- * if (lx.app.autostart) {
+ * if (lx.supports({ autostart: true })) {
  * // render the "Launch at startup" toggle
  * }
  * ```
@@ -657,9 +659,9 @@ export type HostAppUpdateInfo = {
      * The returned task can be awaited directly when progress is not needed, or
      * consumed with `for await...of` to render progress.
      *
-     * Direct package handoff is currently supported on Android and macOS. Other
-     * platforms reject with an unsupported-operation error; use `version` and
-     * `releaseNotes` to guide users to the appropriate app marketplace.
+     * Requires `lx.supports({ selfUpdate: true })`. Where the host cannot
+     * install its own update it rejects with an unsupported-operation error;
+     * use `version` and `releaseNotes` to guide users to the app marketplace.
      */
     apply(): HostAppUpdateTask;
 };
@@ -711,6 +713,19 @@ export type LxAppEnvVersion = 'release' | 'preview' | 'develop';
 
 /** LxApp metadata APIs. */
 export type LxAppReleaseType = 'release' | 'preview' | 'developer';
+
+/**
+ * One capability question per call. The catalog is a closed union, so
+ * completion enumerates it and a typo is a compile error.
+ */
+export type LxCapabilityQuery = { surface: 'main' | 'aside' | 'float' | 'window' | 'tab' }
+  | { terminal: true }
+  | { autostart: true }
+  | { notifications: true }
+  | { browser: true }
+  | { proxy: true }
+  | { selfUpdate: true }
+  | { nativeFileReview: true };
 
 export type LxEnv = globalThis.LxEnv;
 
@@ -2282,6 +2297,16 @@ declare global {
 declare global {
   interface Lx {
     readonly app: HostAppApi;
+    /**
+     * Whether this host can do something, right now.
+     * Synchronous, because the callers are render paths and menu construction. The
+     * answer is live and may be stale by the time you act on it — it is an
+     * affordance for deciding what to render, not a replacement for handling a
+     * rejection. `{ surface: 'aside' }` in particular changes when a desktop
+     * window crosses the compact breakpoint; pair it with `lx.onSurfaceContext`
+     * instead of polling.
+     */
+    supports(query: LxCapabilityQuery): boolean;
     vibrateShort(): boolean;
     vibrateLong(): boolean;
     makePhoneCall(options: MakePhoneCallOptions): boolean;

@@ -77,9 +77,28 @@ OS process APIs are a separate host capability with opt-in declarations at
 
 Unsupported cosmetic capabilities with no meaningful result, such as desktop
 tray presentation on mobile, are silent no-ops. Result-bearing operations and
-invalid usage reject or throw, while platform-exclusive result APIs may be
-optional members whose presence is the support check. Each generated method's
-JSDoc is authoritative for its exact behavior.
+invalid usage reject or throw. Each generated method's JSDoc is authoritative
+for its exact behavior.
+
+Ask before you offer, with `lx.supports(query)`:
+
+```ts
+if (lx.supports({ surface: 'window' })) {
+  // render "Open in new window"
+}
+```
+
+The catalog is a closed union, so completion enumerates it and a typo is a
+compile error. The answer is live — `{ surface: 'aside' }` changes when a
+desktop window crosses the compact breakpoint, so pair it with
+`lx.onSurfaceContext` rather than caching it. It is an affordance for deciding
+what to render and never replaces handling a rejection: the answer can be stale
+by the time you act on it, and every gated operation still rejects.
+
+A whole namespace that a host may not carry at all stays an optional member —
+`lx.terminal`, `lx.app.autostart`. Presence and `lx.supports()` are answered
+from one registry, so `('terminal' in lx)` and `lx.supports({ terminal: true })`
+can never disagree.
 
 ---
 

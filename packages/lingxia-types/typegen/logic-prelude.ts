@@ -127,8 +127,9 @@ declare global {
     readonly envVersion: HostAppEnvVersion;
 
     /**
-     * Launch-at-startup control. Present only on macOS / Windows with the
-     * capability declared; gate access with `lx.app.autostart?.…`.
+     * Launch-at-startup control. Absent where the host cannot register a
+     * startup item; its presence and `lx.supports({ autostart: true })` always
+     * agree, so `lx.app.autostart?.…` and the query are interchangeable.
      */
     autostart?: AutostartApi;
   }
@@ -139,7 +140,8 @@ declare global {
   interface Lx {
     /**
      * Terminal product settings. Present only in the host-bundled Terminal
-     * Settings lxapp when the host declares `capabilities.terminal`.
+     * Settings lxapp when the host declares `capabilities.terminal`; its
+     * presence and `lx.supports({ terminal: true })` always agree.
      */
     readonly terminal?: TerminalApi;
 

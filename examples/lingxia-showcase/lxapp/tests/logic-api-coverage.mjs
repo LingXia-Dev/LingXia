@@ -57,6 +57,7 @@ export default {
     { "api": "lx.share", "mode": "external-ui", "owner": "os-share-sheet-fixture" },
     { "api": "lx.app.autostart", "mode": "external-fixture", "owner": "desktop-autostart-fixture" },
     { "api": "lx.getSystemSetting", "mode": "automated", "owner": "SYSTEM-001" },
+    { "api": "lx.supports", "mode": "automated", "owner": "LOGIC-006" },
     { "api": "lx.getStorage", "mode": "automated", "owner": "TODO-001" },
     { "api": "lx.navigateBack", "mode": "automated", "owner": "UI-NAV-001" },
     { "api": "lx.switchTab", "mode": "automated", "owner": "UI-NAV-001" },
