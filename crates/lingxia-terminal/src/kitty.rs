@@ -64,6 +64,8 @@ pub struct TerminalImagePlacement {
     pub source_height: u32,
     pub z_index: i32,
     pub alternate_screen: bool,
+    /// Prototype used by U+10EEEE cells; it has no screen position itself.
+    pub virtual_placement: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -102,6 +104,7 @@ struct Command {
     y_offset: u16,
     z_index: i32,
     no_cursor_move: bool,
+    unicode_placeholder: bool,
     delete: Option<u8>,
 }
 
@@ -128,6 +131,7 @@ impl Default for Command {
             y_offset: 0,
             z_index: 0,
             no_cursor_move: false,
+            unicode_placeholder: false,
             delete: None,
         }
     }
@@ -177,6 +181,45 @@ impl KittyGraphics {
                 })
                 .collect(),
             placements: self.placements.clone(),
+        }
+    }
+
+    /// Move physical placements with an alternate-screen scroll. Alternate
+    /// grids have no history, so their anchors must move when rows scroll.
+    pub fn scroll_alternate_screen(&mut self, rows: u16) {
+        if rows == 0 {
+            return;
+        }
+        let before = self.placements.len();
+        let rows = i64::from(rows);
+        for placement in &mut self.placements {
+            if placement.alternate_screen && !placement.virtual_placement {
+                placement.line -= rows;
+            }
+        }
+        self.placements.retain(|placement| {
+            placement.virtual_placement
+                || !placement.alternate_screen
+                || placement.line + i64::from(placement.rows) > 0
+        });
+        if self.placements.len() != before
+            || self
+                .placements
+                .iter()
+                .any(|placement| placement.alternate_screen && !placement.virtual_placement)
+        {
+            self.bump_generation();
+        }
+    }
+
+    /// Drop pixel-positioned placements when the character grid reflows.
+    /// Their stored image data remains available for a fresh placement.
+    pub fn clear_physical_placements(&mut self) {
+        let before = self.placements.len();
+        self.placements
+            .retain(|placement| placement.virtual_placement);
+        if self.placements.len() != before {
+            self.bump_generation();
         }
     }
 
@@ -391,35 +434,55 @@ impl KittyGraphics {
             source_height,
             z_index: command.z_index,
             alternate_screen: anchor.alternate_screen,
+            virtual_placement: command.unicode_placeholder,
         });
         self.bump_generation();
-        Ok((!command.no_cursor_move).then_some((columns, rows)))
+        Ok((!command.no_cursor_move && !command.unicode_placeholder).then_some((columns, rows)))
     }
 
     fn delete(&mut self, command: &Command) -> GraphicsResult {
+        // Any delete command aborts an in-flight chunked upload, regardless
+        // of whether its selector matches an existing image.
+        self.pending = None;
         let before_placements = self.placements.len();
         let before_images = self.images.len();
         match command.delete.unwrap_or(b'a') {
             b'i' if command.image_id != 0 => {
-                self.placements
-                    .retain(|placement| placement.image_id != command.image_id);
+                self.placements.retain(|placement| {
+                    placement.image_id != command.image_id
+                        || (command.placement_id != 0
+                            && placement.placement_id != command.placement_id)
+                });
             }
             b'p' if command.placement_id != 0 => {
-                self.placements
-                    .retain(|placement| placement.placement_id != command.placement_id);
+                self.placements.retain(|placement| {
+                    placement.virtual_placement || placement.placement_id != command.placement_id
+                });
             }
-            b'a' => self.placements.clear(),
+            b'a' => self
+                .placements
+                .retain(|placement| placement.virtual_placement),
             b'I' if command.image_id != 0 => {
-                self.placements
-                    .retain(|placement| placement.image_id != command.image_id);
-                self.remove_image(command.image_id);
+                self.placements.retain(|placement| {
+                    placement.image_id != command.image_id
+                        || (command.placement_id != 0
+                            && placement.placement_id != command.placement_id)
+                });
+                if !self
+                    .placements
+                    .iter()
+                    .any(|placement| placement.image_id == command.image_id)
+                {
+                    self.remove_image(command.image_id);
+                }
             }
-            b'A' => {
-                self.placements.clear();
-                self.images.clear();
-                self.total_bytes = 0;
-            }
+            b'A' => self
+                .placements
+                .retain(|placement| placement.virtual_placement),
             _ => return GraphicsResult::reply_for(command, Err("ENOTSUP:delete selector")),
+        }
+        if command.delete == Some(b'A') {
+            self.remove_unreferenced_images();
         }
         if self.placements.len() != before_placements || self.images.len() != before_images {
             self.bump_generation();
@@ -431,6 +494,22 @@ impl KittyGraphics {
         if let Some(image) = self.images.remove(&image_id) {
             self.total_bytes = self.total_bytes.saturating_sub(image.byte_cost);
         }
+    }
+
+    fn remove_unreferenced_images(&mut self) {
+        let referenced: std::collections::BTreeSet<_> = self
+            .placements
+            .iter()
+            .map(|placement| placement.image_id)
+            .collect();
+        self.images.retain(|image_id, image| {
+            if referenced.contains(image_id) {
+                true
+            } else {
+                self.total_bytes = self.total_bytes.saturating_sub(image.byte_cost);
+                false
+            }
+        });
     }
 
     fn allocate_image_id(&mut self) -> u32 {
@@ -517,6 +596,7 @@ fn parse_command(control: &[u8]) -> Result<Command, &'static str> {
                     .ok_or("EINVAL:z-index")?;
             }
             b"C" => command.no_cursor_move = value_number()? == 1,
+            b"U" => command.unicode_placeholder = value_number()? == 1,
             b"d" => command.delete = value.first().copied(),
             // Image number, byte size/offset and usage hints are accepted but
             // not needed by the direct static-image subset.
@@ -723,5 +803,133 @@ mod tests {
         let snapshot = graphics.snapshot(generation);
         assert!(snapshot.changed);
         assert!(snapshot.placements.is_empty());
+    }
+
+    #[test]
+    fn unicode_placeholder_is_an_invisible_non_moving_prototype() {
+        let mut graphics = KittyGraphics::default();
+        let _ = graphics.handle(
+            b"a=T,f=32,s=1,v=1,i=42,p=7,c=14,r=8,U=1;/wAA/w==",
+            anchor(),
+            8,
+            16,
+        );
+        let placed = graphics.snapshot(0).placements.remove(0);
+        assert!(placed.virtual_placement);
+        assert_eq!((placed.image_id, placed.placement_id), (42, 7));
+        assert_eq!((placed.columns, placed.rows), (14, 8));
+
+        let result = graphics.handle(b"a=p,i=42,p=7,c=14,r=8,U=1", anchor(), 8, 16);
+        assert_eq!(result.cursor_move, None);
+
+        let _ = graphics.handle(b"a=d,d=a", anchor(), 8, 16);
+        assert!(graphics.snapshot(0).placements[0].virtual_placement);
+    }
+
+    #[test]
+    fn image_delete_honors_virtual_placement_id() {
+        let mut graphics = KittyGraphics::default();
+        for placement_id in [7, 8] {
+            let command = format!("a=T,f=32,s=1,v=1,i=42,p={placement_id},c=14,r=8,U=1;/wAA/w==");
+            let _ = graphics.handle(command.as_bytes(), anchor(), 8, 16);
+        }
+
+        let _ = graphics.handle(b"a=d,d=i,i=42,p=7", anchor(), 8, 16);
+        let snapshot = graphics.snapshot(0);
+        assert_eq!(snapshot.placements.len(), 1);
+        assert_eq!(snapshot.placements[0].placement_id, 8);
+        assert!(snapshot.images.iter().any(|image| image.id == 42));
+
+        let _ = graphics.handle(b"a=d,d=I,i=42,p=8", anchor(), 8, 16);
+        let snapshot = graphics.snapshot(0);
+        assert!(snapshot.placements.is_empty());
+        assert!(snapshot.images.iter().all(|image| image.id != 42));
+    }
+
+    #[test]
+    fn freeing_one_placement_keeps_image_data_referenced_by_another() {
+        let mut graphics = KittyGraphics::default();
+        let _ = graphics.handle(
+            b"a=T,f=32,s=1,v=1,i=42,p=7,c=2,r=2,C=1;/wAA/w==",
+            anchor(),
+            8,
+            16,
+        );
+        let _ = graphics.handle(b"a=p,i=42,p=8,c=2,r=2,C=1", anchor(), 8, 16);
+
+        let _ = graphics.handle(b"a=d,d=I,i=42,p=7", anchor(), 8, 16);
+        let snapshot = graphics.snapshot(0);
+        assert_eq!(snapshot.placements.len(), 1);
+        assert_eq!(snapshot.placements[0].placement_id, 8);
+        assert!(snapshot.images.iter().any(|image| image.id == 42));
+
+        let _ = graphics.handle(b"a=d,d=I,i=42,p=8", anchor(), 8, 16);
+        let snapshot = graphics.snapshot(0);
+        assert!(snapshot.placements.is_empty());
+        assert!(snapshot.images.iter().all(|image| image.id != 42));
+    }
+
+    #[test]
+    fn delete_aborts_an_incomplete_transfer() {
+        let mut graphics = KittyGraphics::default();
+        let _ = graphics.handle(b"a=T,f=32,s=1,v=1,i=42,m=1;/w", anchor(), 8, 16);
+        assert!(graphics.pending.is_some());
+
+        let _ = graphics.handle(b"a=d,d=a", anchor(), 8, 16);
+        assert!(graphics.pending.is_none());
+
+        let result = graphics.handle(b"m=0;AA/w==", anchor(), 8, 16);
+        assert!(result.response.as_deref().is_some_and(|response| {
+            response
+                .windows(b"EINVAL".len())
+                .any(|part| part == b"EINVAL")
+        }));
+        assert!(graphics.snapshot(0).images.is_empty());
+    }
+
+    #[test]
+    fn delete_all_and_free_preserves_only_virtual_prototype_data() {
+        let mut graphics = KittyGraphics::default();
+        let _ = graphics.handle(
+            b"a=T,f=32,s=1,v=1,i=41,p=1,c=2,r=2,C=1;/wAA/w==",
+            anchor(),
+            8,
+            16,
+        );
+        let _ = graphics.handle(
+            b"a=T,f=32,s=1,v=1,i=42,p=2,c=2,r=2,U=1;/wAA/w==",
+            anchor(),
+            8,
+            16,
+        );
+
+        let _ = graphics.handle(b"a=d,d=A", anchor(), 8, 16);
+        let snapshot = graphics.snapshot(0);
+        assert_eq!(snapshot.placements.len(), 1);
+        assert!(snapshot.placements[0].virtual_placement);
+        assert!(snapshot.images.iter().all(|image| image.id != 41));
+        assert!(snapshot.images.iter().any(|image| image.id == 42));
+    }
+
+    #[test]
+    fn alternate_screen_scroll_moves_and_clips_physical_placements() {
+        let mut graphics = KittyGraphics::default();
+        let alternate = GraphicsAnchor {
+            line: 3,
+            col: 0,
+            alternate_screen: true,
+        };
+        let _ = graphics.handle(
+            b"a=T,f=32,s=1,v=1,i=9,c=2,r=2,C=1;/wAA/w==",
+            alternate,
+            8,
+            16,
+        );
+        let generation = graphics.generation();
+        graphics.scroll_alternate_screen(2);
+        assert!(graphics.generation() > generation);
+        assert_eq!(graphics.snapshot(0).placements[0].line, 1);
+        graphics.scroll_alternate_screen(3);
+        assert!(graphics.snapshot(0).placements.is_empty());
     }
 }

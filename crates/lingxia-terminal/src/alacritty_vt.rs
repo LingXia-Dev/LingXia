@@ -588,6 +588,8 @@ struct VtInner {
     /// from a different point gets a full redraw instead of a diff
     /// against a frame it never saw.
     last_frame_generation: u64,
+    /// Image generation safe to publish outside a DEC 2026 transaction.
+    published_image_generation: u64,
 }
 
 // ── Renderer frame (damage-tracked, allocation-free cells) ─────────────
@@ -833,6 +835,7 @@ impl VtScreen {
                     ..DamageSet::default()
                 },
                 last_frame_generation: 0,
+                published_image_generation: 0,
             }),
         }
     }
@@ -841,14 +844,18 @@ impl VtScreen {
     ///
     /// The OSC tap runs alongside the parser so semantic sequences the
     /// emulator drops (OSC 7/9/99/133/777) still produce typed events.
-    /// Bytes are advanced up to each tapped sequence before the event is
-    /// recorded, giving marks an exact grid position; the tapped bytes
-    /// are then fed through the parser as usual so sequences the
-    /// emulator does handle (title, hyperlink, clipboard) keep working.
+    /// Bytes are advanced through each tapped sequence before its semantics
+    /// are recorded, giving marks an exact grid position while preserving
+    /// the parser's control-string state across PTY reads. DEC 2026 buffering
+    /// is briefly drained around tapped controls so their positions observe
+    /// all preceding bytes in the synchronized frame.
     pub fn feed(&self, bytes: &[u8]) {
         let mut inner = self.inner.lock();
         let inner = &mut *inner;
         let tapped = inner.tap.feed_controls(bytes);
+        let linefeeds = inner.tap.take_linefeeds();
+        let cell_size_queries = inner.tap.take_cell_size_queries();
+        inner.answer_cell_size_queries(cell_size_queries);
         let mut last = 0;
         for control in tapped {
             let (start, end) = match &control {
@@ -861,15 +868,23 @@ impl VtScreen {
                 inner.record_control(control);
                 continue;
             }
-            inner.parser.advance(&mut inner.term, &bytes[last..start]);
+            inner.advance_grid(&bytes[last..start], &linefeeds, last);
+            let synchronized = inner.parser.sync_timeout().sync_timeout().is_some();
+            if synchronized {
+                inner.parser.stop_sync(&mut inner.term);
+            }
+            inner.advance_grid(&bytes[start..end], &linefeeds, start);
             inner.record_control(control);
-            inner.parser.advance(&mut inner.term, &bytes[start..end]);
+            if synchronized {
+                inner.parser.advance(&mut inner.term, b"\x1b[?2026h");
+            }
             last = end;
         }
-        inner.parser.advance(&mut inner.term, &bytes[last..]);
+        inner.advance_grid(&bytes[last..], &linefeeds, last);
         inner.answer_pending_replies();
-        inner.collect_damage();
-        inner.generation = inner.generation.wrapping_add(1);
+        if inner.parser.sync_timeout().sync_timeout().is_none() {
+            inner.publish_update();
+        }
     }
 
     /// Push an externally-sourced event (e.g. process exit) into the
@@ -1051,6 +1066,12 @@ impl VtScreen {
         let cols = cols.max(1);
         let rows = rows.max(1);
         let mut inner = self.inner.lock();
+        let grid_changed =
+            inner.term.columns() != cols as usize || inner.term.screen_lines() != rows as usize;
+        if grid_changed {
+            inner.graphics.clear_physical_placements();
+            inner.published_image_generation = inner.graphics.generation();
+        }
         inner.term.resize(GridSize {
             columns: cols as usize,
             screen_lines: rows as usize,
@@ -1075,6 +1096,12 @@ impl VtScreen {
         let mut inner = self.inner.lock();
         let inner = &mut *inner;
         inner.flush_expired_sync();
+
+        if inner.parser.sync_timeout().sync_timeout().is_some() {
+            return FrameUpdate::Unchanged {
+                generation: inner.generation,
+            };
+        }
 
         let resumed = since_generation != inner.last_frame_generation;
         if !resumed && since_generation == inner.generation && !inner.damage.is_dirty() {
@@ -1322,15 +1349,60 @@ impl VtScreen {
     }
 
     pub fn image_generation(&self) -> u64 {
-        self.inner.lock().graphics.generation()
+        self.inner.lock().published_image_generation
     }
 
     pub fn image_snapshot(&self, since_generation: u64) -> TerminalImageSnapshot {
-        self.inner.lock().graphics.snapshot(since_generation)
+        let inner = self.inner.lock();
+        if inner.parser.sync_timeout().sync_timeout().is_some() {
+            TerminalImageSnapshot {
+                changed: false,
+                generation: inner.published_image_generation,
+                ..TerminalImageSnapshot::default()
+            }
+        } else {
+            inner.graphics.snapshot(since_generation)
+        }
     }
 }
 
 impl VtInner {
+    fn answer_cell_size_queries(&mut self, count: usize) {
+        if count > 0
+            && let Some(write_pty) = &self.listener.write_pty
+        {
+            let response = format!(
+                "\x1b[6;{};{}t",
+                self.cell_height_px.max(1),
+                self.cell_width_px.max(1)
+            );
+            for _ in 0..count {
+                write_pty(response.as_bytes());
+            }
+        }
+    }
+
+    fn advance_grid(&mut self, bytes: &[u8], linefeeds: &[usize], offset: usize) {
+        let mut start = 0;
+        for index in linefeeds
+            .iter()
+            .copied()
+            .filter(|index| *index >= offset && *index < offset + bytes.len())
+            .map(|index| index - offset)
+        {
+            self.parser.advance(&mut self.term, &bytes[start..index]);
+            let at_bottom = self.term.mode().intersects(TermMode::ALT_SCREEN)
+                && self.term.grid().cursor.point.line.0
+                    >= self.term.screen_lines().saturating_sub(1) as i32;
+            self.parser.advance(&mut self.term, &bytes[index..=index]);
+            if at_bottom {
+                self.graphics.scroll_alternate_screen(1);
+            }
+            start = index + 1;
+        }
+        self.parser.advance(&mut self.term, &bytes[start..]);
+    }
+
     fn record_control(&mut self, control: TappedControl) {
         match control {
             TappedControl::Osc(osc) => self.record_osc(&osc.body),
@@ -1451,9 +1523,14 @@ impl VtInner {
         {
             self.parser.stop_sync(&mut self.term);
             self.answer_pending_replies();
-            self.collect_damage();
-            self.generation = self.generation.wrapping_add(1);
+            self.publish_update();
         }
+    }
+
+    fn publish_update(&mut self) {
+        self.collect_damage();
+        self.generation = self.generation.wrapping_add(1);
+        self.published_image_generation = self.graphics.generation();
     }
 
     /// Fold the terminal's per-line damage into our own set.
@@ -1576,24 +1653,66 @@ fn convert_frame_cell(
     text: &mut String,
 ) -> FrameCell {
     let converted = convert_cell(cell, resolve, default_fg, default_bg);
+    let placeholder = cell.c == '\u{10EEEE}';
+    let display_text = &converted.text;
     let offset = text.len().min(u32::MAX as usize) as u32;
-    let mut len = converted.text.len();
+    let mut len = display_text.len();
     if len > MAX_CLUSTER_BYTES {
         len = MAX_CLUSTER_BYTES;
-        while len > 0 && !converted.text.is_char_boundary(len) {
+        while len > 0 && !display_text.is_char_boundary(len) {
             len -= 1;
         }
     }
-    text.push_str(&converted.text[..len]);
+    text.push_str(&display_text[..len]);
     FrameCell {
-        fg: converted.fg,
+        // Placeholder colors are protocol identifiers, not display colors.
+        // Preserve indexed IDs instead of resolving them through the palette.
+        fg: if placeholder {
+            placeholder_color_id(cell.fg).unwrap_or(converted.fg >> 8) << 8 | 0xFF
+        } else {
+            converted.fg
+        },
         bg: converted.bg,
-        underline_color: converted.underline_color.unwrap_or(0),
+        underline_color: if placeholder {
+            cell.underline_color()
+                .and_then(placeholder_color_id)
+                .map_or(0, |id| id << 8 | 0xFF)
+        } else {
+            converted.underline_color.unwrap_or(0)
+        },
         text_offset: offset,
         text_len: len as u8,
         attrs: converted.attrs,
         underline: converted.underline as u8,
         columns: converted.columns,
+    }
+}
+
+fn placeholder_color_id(color: AnsiColor) -> Option<u32> {
+    match color {
+        AnsiColor::Spec(rgb) => {
+            Some((u32::from(rgb.r) << 16) | (u32::from(rgb.g) << 8) | u32::from(rgb.b))
+        }
+        AnsiColor::Indexed(index) => Some(u32::from(index)),
+        AnsiColor::Named(named) => match named {
+            NamedColor::Black => Some(0),
+            NamedColor::Red => Some(1),
+            NamedColor::Green => Some(2),
+            NamedColor::Yellow => Some(3),
+            NamedColor::Blue => Some(4),
+            NamedColor::Magenta => Some(5),
+            NamedColor::Cyan => Some(6),
+            NamedColor::White => Some(7),
+            NamedColor::BrightBlack => Some(8),
+            NamedColor::BrightRed => Some(9),
+            NamedColor::BrightGreen => Some(10),
+            NamedColor::BrightYellow => Some(11),
+            NamedColor::BrightBlue => Some(12),
+            NamedColor::BrightMagenta => Some(13),
+            NamedColor::BrightCyan => Some(14),
+            NamedColor::BrightWhite => Some(15),
+            _ => None,
+        },
     }
 }
 
@@ -1875,6 +1994,34 @@ mod tests {
     }
 
     #[test]
+    fn reports_cell_pixel_size_for_inline_image_clients() {
+        let written: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&written);
+        let write_pty: PtyWriteCallback = Arc::new(move |bytes: &[u8]| {
+            sink.lock().extend_from_slice(bytes);
+        });
+        let screen = VtScreen::new_with_options(80, 24, None, Some(write_pty), None);
+        screen.resize(80, 24, 14, 20).unwrap();
+        screen.feed(b"\x1b[");
+        screen.feed(b"16t");
+        assert_eq!(written.lock().as_slice(), b"\x1b[6;20;14t");
+    }
+
+    #[test]
+    fn cell_size_query_inside_control_string_is_ignored() {
+        let written: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&written);
+        let write_pty: PtyWriteCallback = Arc::new(move |bytes: &[u8]| {
+            sink.lock().extend_from_slice(bytes);
+        });
+        let screen = VtScreen::new_with_options(80, 24, None, Some(write_pty), None);
+
+        screen.feed(b"\x1bPignored\x1b[16t\x1b\\");
+
+        assert!(written.lock().is_empty());
+    }
+
+    #[test]
     fn kitty_graphics_reaches_image_snapshot_and_replies() {
         let written: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&written);
@@ -1892,6 +2039,266 @@ mod tests {
         assert_eq!(snapshot.placements[0].col, 1);
         assert!(!snapshot.placements[0].alternate_screen);
         assert_eq!(written.lock().as_slice(), b"\x1b_Gi=9;OK\x1b\\");
+    }
+
+    #[test]
+    fn unicode_placeholder_preserves_ansi_image_id() {
+        let screen = VtScreen::new_with_options(4, 1, None, None, None);
+        screen.feed("\x1b[91m\u{10EEEE}".as_bytes());
+
+        let frame = changed(screen.frame(0));
+        assert_eq!(frame.cells[0].fg >> 8, 9);
+    }
+
+    #[test]
+    fn kitty_placement_scrolls_with_alternate_screen_content() {
+        let screen = VtScreen::new_with_options(8, 4, None, None, None);
+        screen.resize(8, 4, 8, 16).unwrap();
+        screen.feed(b"\x1b[?1049h\x1b[H\x1b_Ga=T,f=32,s=1,v=1,i=9,c=2,r=2,C=1;/wAA/w==\x1b\\");
+        let first = screen.image_snapshot(0);
+        assert_eq!(first.placements[0].line, 0);
+        assert!(first.placements[0].alternate_screen);
+
+        screen.feed(b"\r\n\r\n\r\n\r\n");
+        let scrolled = screen.image_snapshot(first.generation);
+        assert!(scrolled.changed);
+        assert_eq!(scrolled.placements[0].line, -1);
+    }
+
+    #[test]
+    fn kitty_placement_scroll_uses_cursor_position_before_linefeed() {
+        let screen = VtScreen::new_with_options(8, 4, None, None, None);
+        screen.resize(8, 4, 8, 16).unwrap();
+        screen.feed(b"\x1b[?1049h\x1b[H\x1b_Ga=T,f=32,s=1,v=1,i=9,c=2,r=2,C=1;/wAA/w==\x1b\\");
+        let first = screen.image_snapshot(0);
+
+        // Full-screen TUIs commonly move to the last row and emit the linefeed
+        // in one PTY write while redrawing after a resize.
+        screen.feed(b"\x1b[3B\r\n");
+
+        let scrolled = screen.image_snapshot(first.generation);
+        assert!(scrolled.changed);
+        assert_eq!(scrolled.placements[0].line, -1);
+    }
+
+    #[test]
+    fn control_string_linefeed_does_not_scroll_kitty_placement() {
+        let screen = VtScreen::new_with_options(8, 4, None, None, None);
+        screen.resize(8, 4, 8, 16).unwrap();
+        screen
+            .feed(b"\x1b[?1049h\x1b[H\x1b_Ga=T,f=32,s=1,v=1,i=9,c=2,r=2,C=1;/wAA/w==\x1b\\\x1b[3B");
+        let first = screen.image_snapshot(0);
+
+        screen.feed(b"\x1bPignored\ncontent\x1b\\");
+
+        let unchanged = screen.image_snapshot(first.generation);
+        assert!(!unchanged.changed);
+        assert_eq!(screen.image_snapshot(0).placements[0].line, 0);
+    }
+
+    #[test]
+    fn kitty_no_move_placement_respects_tui_reserved_rows() {
+        let screen = VtScreen::new_with_options(20, 12, None, None, None);
+        screen.resize(20, 12, 8, 16).unwrap();
+        screen.feed(
+            b"\x1b[?1049h\x1b[H\n\n\n\n\x1b[4A\x1b_Ga=T,f=32,s=1,v=1,i=9,c=6,r=5,C=1;/wAA/w==\x1b\\\x1b[4B\r\nAFTER_IMAGE",
+        );
+        let images = screen.image_snapshot(0);
+        assert_eq!(images.placements[0].line, 0);
+        let snapshot = screen.snapshot();
+        let after_row = snapshot
+            .cells
+            .chunks(snapshot.cols as usize)
+            .position(|row| row.iter().any(|cell| cell.text == "A"))
+            .expect("AFTER_IMAGE row");
+        assert_eq!(after_row, 5);
+        assert!(after_row as i64 >= i64::from(images.placements[0].rows));
+    }
+
+    #[test]
+    fn chunked_kitty_placement_preserves_following_cursor_movement() {
+        let screen = VtScreen::new_with_options(20, 12, None, None, None);
+        screen.resize(20, 12, 8, 16).unwrap();
+        for chunk in [
+            b"\x1b[?1049h\x1b[H\n\n\n\n\x1b[4A\x1b_Ga=T,f=32,s=1,v=1,i=9,c=6,r=5,C=1,m=1;"
+                .as_slice(),
+            b"/wAA".as_slice(),
+            b"\x1b\\\x1b_Gm=0;/w==\x1b".as_slice(),
+            b"\\\x1b[4".as_slice(),
+            b"B\r\nAFTER_IMAGE".as_slice(),
+        ] {
+            screen.feed(chunk);
+        }
+        let images = screen.image_snapshot(0);
+        assert_eq!(images.placements[0].line, 0);
+        let snapshot = screen.snapshot();
+        let after_row = snapshot
+            .cells
+            .chunks(snapshot.cols as usize)
+            .position(|row| row.iter().any(|cell| cell.text == "A"))
+            .expect("AFTER_IMAGE row");
+        assert_eq!(after_row, 5);
+    }
+
+    #[test]
+    fn main_screen_full_redraw_reanchors_image_after_resize() {
+        let screen = VtScreen::new_with_options(20, 12, None, None, None);
+        screen.resize(20, 12, 8, 16).unwrap();
+        let redraw = |image_id: u32| {
+            format!(
+                "\x1b_Ga=d,d=I,i={image_id},q=2\x1b\\\x1b[2J\x1b[H\x1b[3J\
+HEADER\r\n\r\n[image]\r\n\r\n\x1b[2A\
+\x1b_Ga=T,f=32,s=1,v=1,i={image_id},c=3,r=3,C=1,q=2;/wAA/w==\x1b\\\x1b[2B\
+\r\nERROR\r\n\r\nINPUT"
+            )
+        };
+        screen.feed(redraw(91).as_bytes());
+
+        screen.resize(32, 18, 8, 16).unwrap();
+        screen.feed(redraw(92).as_bytes());
+
+        let snapshot = screen.snapshot();
+        let image_row = snapshot
+            .cells
+            .chunks(snapshot.cols as usize)
+            .position(|row| {
+                row.iter()
+                    .map(|cell| cell.text.as_str())
+                    .collect::<String>()
+                    .contains("[image]")
+            })
+            .expect("image label row");
+        let placement = screen.image_snapshot(0).placements.remove(0);
+        let viewport_top = screen.scrollbar().unwrap().offset as i64;
+        assert_eq!(placement.line - viewport_top, image_row as i64);
+    }
+
+    #[test]
+    fn resize_does_not_render_a_physical_image_against_a_reflowed_grid() {
+        let screen = VtScreen::new_with_options(20, 12, None, None, None);
+        screen.resize(20, 12, 8, 16).unwrap();
+        screen.feed(
+            b"HEADER\r\n\r\n\r\n\x1b[2A\x1b_Ga=T,f=32,s=1,v=1,i=91,c=3,r=3,C=1,q=2;/wAA/w==\x1b\\\x1b[2B",
+        );
+        let before = screen.image_snapshot(0);
+        assert_eq!(before.placements.len(), 1);
+
+        // The application redraw follows SIGWINCH asynchronously. Until its
+        // fresh placement arrives, an old pixel rectangle must not be paired
+        // with the newly reflowed character grid.
+        screen.resize(32, 18, 8, 16).unwrap();
+        let resized = screen.image_snapshot(before.generation);
+        assert!(resized.changed);
+        assert!(resized.placements.is_empty());
+    }
+
+    #[test]
+    fn main_screen_redraw_reanchors_after_small_viewport_scrollback() {
+        let screen = VtScreen::new_with_options(194, 12, None, None, None);
+        screen.resize(194, 12, 8, 16).unwrap();
+        let redraw = |image_id: u32| {
+            let mut output = format!("\x1b_Ga=d,d=I,i={image_id},q=2\x1b\\\x1b[2J\x1b[H\x1b[3J");
+            for line in 0..15 {
+                output.push_str(&format!("HEADER {line}\r\n"));
+            }
+            output.push_str("[image]\r\n");
+            output.push_str(&"\r\n".repeat(8));
+            output.push_str("\x1b[8A");
+            output.push_str(&format!(
+                "\x1b_Ga=T,f=32,s=1,v=1,i={image_id},c=12,r=9,C=1,q=2;/wAA/w==\x1b\\"
+            ));
+            output.push_str("\x1b[8B\r\nERROR\r\n\r\nINPUT");
+            output
+        };
+        screen.feed(redraw(91).as_bytes());
+        assert!(screen.scrollbar().unwrap().total > 12);
+
+        screen.resize(194, 49, 8, 16).unwrap();
+        screen.feed(redraw(92).as_bytes());
+
+        let snapshot = screen.snapshot();
+        let label_row = snapshot
+            .cells
+            .chunks(snapshot.cols as usize)
+            .position(|row| {
+                row.iter()
+                    .map(|cell| cell.text.as_str())
+                    .collect::<String>()
+                    .contains("[image]")
+            })
+            .expect("image label row");
+        let placement = screen.image_snapshot(0).placements.remove(0);
+        let viewport_top = screen.scrollbar().unwrap().offset as i64;
+        assert_eq!(placement.line - viewport_top, label_row as i64 + 1);
+    }
+
+    #[test]
+    fn synchronized_redraw_rebases_placement_after_history_is_cleared() {
+        let screen = VtScreen::new_with_options(194, 12, None, None, None);
+        screen.resize(194, 12, 8, 22).unwrap();
+        let redraw = |image_id: u32| {
+            format!(
+                "\x1b[?2026h\x1b_Ga=d,d=I,i={image_id},q=2\x1b\\\x1b[2J\x1b[H\x1b[3J\
+TITLE\r\n\r\n[image]\r\n{}\x1b[8A\
+\x1b_Ga=T,f=32,s=1,v=1,i={image_id},c=12,r=9,C=1,q=2;/wAA/w==\x1b\\\
+\x1b[8B\r\nERROR\r\n\r\nINPUT\x1b[?2026l",
+                "\r\n".repeat(8)
+            )
+        };
+        screen.feed(redraw(91).as_bytes());
+        assert!(screen.scrollbar().unwrap().offset > 0);
+
+        screen.resize(194, 49, 8, 22).unwrap();
+        let second = redraw(92);
+        for chunk in second.as_bytes().chunks(4096) {
+            screen.feed(chunk);
+        }
+
+        let snapshot = screen.snapshot();
+        let label_row = snapshot
+            .cells
+            .chunks(snapshot.cols as usize)
+            .position(|row| {
+                row.iter()
+                    .map(|cell| cell.text.as_str())
+                    .collect::<String>()
+                    .contains("[image]")
+            })
+            .expect("image label row");
+        let placement = screen.image_snapshot(0).placements.remove(0);
+        let viewport_top = screen.scrollbar().unwrap().offset as i64;
+        assert_eq!(placement.line - viewport_top, label_row as i64 + 1);
+    }
+
+    #[test]
+    fn synchronized_kitty_update_is_not_published_before_esu() {
+        let screen = VtScreen::new_with_options(20, 6, None, None, None);
+        screen.resize(20, 6, 8, 16).unwrap();
+        screen.feed(b"before");
+        let first = changed(screen.frame(0));
+        let first_image_generation = screen.image_generation();
+
+        screen.feed(
+            b"\x1b[?2026h\x1b[2J\x1b[Hafter\r\n\x1b_Ga=T,f=32,s=1,v=1,i=9,c=2,r=2,C=1;/wAA/w==\x1b\\",
+        );
+        assert!(matches!(
+            screen.frame(first.generation),
+            FrameUpdate::Unchanged { generation } if generation == first.generation
+        ));
+        assert_eq!(screen.image_generation(), first_image_generation);
+        assert!(!screen.image_snapshot(first_image_generation).changed);
+
+        screen.feed(b"\x1b[?2026l");
+        let committed = changed(screen.frame(first.generation));
+        assert_eq!(frame_row(&committed, 0).trim_end(), "after");
+        assert!(screen.image_generation() > first_image_generation);
+        assert_eq!(
+            screen
+                .image_snapshot(first_image_generation)
+                .placements
+                .len(),
+            1
+        );
     }
 
     #[test]

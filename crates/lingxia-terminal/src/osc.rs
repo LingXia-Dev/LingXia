@@ -54,6 +54,9 @@ enum TapState {
 pub struct OscTap {
     state: TapState,
     buffer: Vec<u8>,
+    csi: Vec<u8>,
+    linefeeds: Vec<usize>,
+    cell_size_queries: usize,
 }
 
 impl OscTap {
@@ -75,12 +78,21 @@ impl OscTap {
 
     pub fn feed_controls(&mut self, bytes: &[u8]) -> Vec<TappedControl> {
         let mut tapped = Vec::new();
+        self.linefeeds.clear();
         let mut start = 0_usize;
         for (index, &byte) in bytes.iter().enumerate() {
+            if byte == b'\n'
+                && matches!(self.state, TapState::Ground | TapState::Esc | TapState::Csi)
+            {
+                self.linefeeds.push(index);
+            }
             match self.state {
                 TapState::Ground => match byte {
                     0x1b => self.state = TapState::Esc,
-                    0x9b => self.state = TapState::Csi,
+                    0x9b => {
+                        self.csi.clear();
+                        self.state = TapState::Csi;
+                    }
                     0x9d => {
                         self.buffer.clear();
                         start = index;
@@ -96,7 +108,10 @@ impl OscTap {
                 },
                 TapState::Esc => {
                     self.state = match byte {
-                        b'[' => TapState::Csi,
+                        b'[' => {
+                            self.csi.clear();
+                            TapState::Csi
+                        }
                         b']' => {
                             self.buffer.clear();
                             start = index - 1;
@@ -116,7 +131,13 @@ impl OscTap {
                     if byte == 0x1b {
                         self.state = TapState::Esc;
                     } else if (0x40..=0x7e).contains(&byte) {
+                        if byte == b't' && self.csi == b"16" {
+                            self.cell_size_queries += 1;
+                        }
+                        self.csi.clear();
                         self.state = TapState::Ground;
+                    } else if self.csi.len() < 32 {
+                        self.csi.push(byte);
                     }
                 }
                 TapState::Osc => match byte {
@@ -198,6 +219,14 @@ impl OscTap {
             }
         }
         tapped
+    }
+
+    pub fn take_linefeeds(&mut self) -> Vec<usize> {
+        std::mem::take(&mut self.linefeeds)
+    }
+
+    pub fn take_cell_size_queries(&mut self) -> usize {
+        std::mem::take(&mut self.cell_size_queries)
     }
 }
 
