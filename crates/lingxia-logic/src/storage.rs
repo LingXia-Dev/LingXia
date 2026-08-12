@@ -1,6 +1,9 @@
 use crate::i18n::js_service_unavailable_error;
 use lxapp::LxApp;
-use rong::{JSContext, JSContextService, JSResult};
+use rong::function::Optional;
+use rong::{
+    FromJSValue, IntoJSValue, JSContext, JSContextService, JSFunc, JSObject, JSResult, Promise,
+};
 use rong_storage::{Storage as RongStorage, StorageOptions};
 
 const STORAGE_MAX_KEY_BYTES: u32 = 1024; // match module defaults
@@ -29,14 +32,48 @@ impl JSContextService for LxStorageService {
     }
 }
 
-/// Open this lxapp's asynchronous persistent key-value store. Values returned
-/// by `get` are untyped; validate or narrow them at the call site. Use
+/// Drains a JS iterator into the resolved key list.
+fn collect_iterator_keys(iterator: &JSObject) -> JSResult<Vec<String>> {
+    let next: JSFunc = iterator.get("next")?;
+    let mut keys = Vec::new();
+    loop {
+        let step: JSObject = next.call(Some(iterator.clone()), ())?;
+        if step.get::<_, bool>("done")? {
+            return Ok(keys);
+        }
+        keys.push(step.get::<_, String>("value")?);
+    }
+}
+
+/// The storage module resolves `list` to a JS iterator; `Storage.list` is an
+/// array, so shadow the prototype method on the instance.
+fn install_list_array_shim(ctx: &JSContext, storage: &JSObject) -> JSResult<()> {
+    let inner: JSFunc = storage.get("list")?;
+    let target = storage.clone();
+    let shim = JSFunc::new(ctx, move |prefix: Optional<String>| {
+        let inner = inner.clone();
+        let target = target.clone();
+        async move {
+            let pending: Promise = match prefix.0 {
+                Some(prefix) => inner.call(Some(target), (prefix,))?,
+                None => inner.call(Some(target), ())?,
+            };
+            let iterator: JSObject = pending.into_future().await?;
+            collect_iterator_keys(&iterator)
+        }
+    })?;
+    storage.set("list", shim)?;
+    Ok(())
+}
+
+/// Open this lxapp's asynchronous persistent key-value store. `get` asserts the
+/// value shape at the call site and resolves `undefined` for a missing key. Use
 /// `lx.getFileManager()` instead for path-based data.
-fn get_storage(ctx: JSContext) -> JSResult<RongStorage> {
+fn get_storage(ctx: JSContext) -> JSResult<JSObject> {
     // If a Storage instance has already been created for this JSContext,
     // return a clone so getStorage() can be called multiple times safely.
     if let Some(existing) = ctx.get_service::<LxStorageService>() {
-        return Ok(existing.storage.clone());
+        return expose_storage(&ctx, existing.storage.clone());
     }
 
     let lxapp = LxApp::from_ctx(&ctx)?;
@@ -58,7 +95,13 @@ fn get_storage(ctx: JSContext) -> JSResult<RongStorage> {
         storage: storage.clone(),
     });
 
-    Ok(storage)
+    expose_storage(&ctx, storage)
+}
+
+fn expose_storage(ctx: &JSContext, storage: RongStorage) -> JSResult<JSObject> {
+    let object = JSObject::from_js_value(ctx, storage.into_js_value(ctx))?;
+    install_list_array_shim(ctx, &object)?;
+    Ok(object)
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
