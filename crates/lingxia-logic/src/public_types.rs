@@ -114,12 +114,12 @@ rong::js_api! {
 
         /// Launch-at-startup control for the host app.
         ///
-        /// **macOS 13+ / Windows only.** Everywhere else — other platforms, or a
-        /// macOS shell older than 13 — `lx.app.autostart` is absent (`undefined`);
-        /// presence is the support check, so portable code gates on the member itself:
+        /// Absent (`undefined`) wherever the host cannot register a startup item.
+        /// `lx.supports({ autostart: true })` and the member's presence always
+        /// agree, so either gate works:
         ///
         /// ```ts
-        /// if (lx.app.autostart) {
+        /// if (lx.supports({ autostart: true })) {
         ///   // render the "Launch at startup" toggle
         /// }
         /// ```
@@ -693,9 +693,9 @@ rong::js_api! {
      * The returned task can be awaited directly when progress is not needed, or
      * consumed with `for await...of` to render progress.
      *
-     * Direct package handoff is currently supported on Android and macOS. Other
-     * platforms reject with an unsupported-operation error; use `version` and
-     * `releaseNotes` to guide users to the appropriate app marketplace.
+     * Requires `lx.supports({ selfUpdate: true })`. Where the host cannot
+     * install its own update it rejects with an unsupported-operation error;
+     * use `version` and `releaseNotes` to guide users to the app marketplace.
      */
     apply(): HostAppUpdateTask;
 }"###;
