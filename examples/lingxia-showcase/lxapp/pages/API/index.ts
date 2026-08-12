@@ -122,26 +122,24 @@ Page({
   openDeepSeek: async function() {
     const targets: Array<"self" | "aside" | "external"> = ["self", "aside", "external"];
 
+    const choice = await lx.showActionSheet({
+      itemList: targets,
+      itemColor: "#007AFF",
+    });
+    if (choice.canceled) {
+      return;
+    }
+
     try {
-      const { tapIndex } = await lx.showActionSheet({
-        itemList: targets,
-        itemColor: "#007AFF",
-      });
-      if (tapIndex < 0 || tapIndex >= targets.length) {
-        return;
-      }
       const url = "https://www.deepseek.com/";
-      if (targets[tapIndex] === "external") {
+      if (targets[choice.index] === "external") {
         lx.openExternal(url);
-      } else if (targets[tapIndex] === "aside") {
+      } else if (targets[choice.index] === "aside") {
         await lx.openSurface({ url, as: "aside" });
       } else {
         await lx.openSurface({ url });
       }
     } catch (error) {
-      if (error.message.toLowerCase().includes("cancel")) {
-        return;
-      }
       lx.showToast({ title: error.message, icon: "none" });
     }
   },
@@ -159,7 +157,7 @@ Page({
       confirmText: "Exit",
       cancelText: "Cancel",
     });
-    if (result.confirm) {
+    if (!result.canceled) {
       lx.app.exit();
     }
   },

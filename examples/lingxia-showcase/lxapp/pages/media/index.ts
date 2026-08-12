@@ -276,15 +276,10 @@ async function enrichVideoItemsWithMetadata(items) {
 }
 
 async function pickOption(options, currentKey) {
-  try {
-    const result = await lx.showActionSheet({
-      itemList: options.map((option) => option.label),
-    });
-    return options[result.tapIndex] || null;
-  } catch (error) {
-    // User cancelled
-    return null;
-  }
+  const result = await lx.showActionSheet({
+    itemList: options.map((option) => option.label),
+  });
+  return result.canceled ? null : options[result.index] || null;
 }
 
 function createState(modeKey) {
@@ -565,8 +560,11 @@ Page({
     this.setData({ isRunning: true, selectedMedia: [] });
 
     try {
-      const results = await lx.chooseMedia(request);
-      const mapped = mapChosenMedia(results);
+      const picked = await lx.chooseMedia(request);
+      if (picked.canceled) {
+        return;
+      }
+      const mapped = mapChosenMedia(picked.entries);
       const enrichedList =
         this.data.mediaType === "video"
           ? await enrichVideoItemsWithMetadata(mapped)
@@ -596,6 +594,10 @@ Page({
         payload.scanType = [scanTypeKey];
       }
       const result = await lx.scanCode(payload);
+      if (result.canceled) {
+        this.setData({ scanBusy: false });
+        return;
+      }
       this.setData({ scanBusy: false, scanResult: result.scanResult, scanType: result.scanType });
     } catch (error) {
       console.error("scanCode failed:", error);
@@ -1091,7 +1093,7 @@ Page({
         sourceType: ["album", "camera"],
         camera: "back",
       });
-      return result[0]?.tempFilePath || null;
+      return result.canceled ? null : result.entries[0].tempFilePath;
     } catch (error) {
       console.error("[media-demo] pickSingleMedia failed:", error);
       lx.showToast({ title: error?.message || "chooseMedia failed", icon: "none" });
@@ -1106,7 +1108,8 @@ Page({
       const result = await lx.chooseMedia({
         count: 1, mediaType: ["image"], sourceType: ["camera"], camera: "back",
       });
-      await lx.saveImageToPhotosAlbum({ filePath: result[0].tempFilePath });
+      if (result.canceled) return;
+      await lx.saveImageToPhotosAlbum({ filePath: result.entries[0].tempFilePath });
       lx.showToast({ title: "Image saved to album", icon: "success" });
     } catch (error) {
       lx.showToast({ title: error?.message || "Failed to save image", icon: "none" });
@@ -1122,7 +1125,8 @@ Page({
       const result = await lx.chooseMedia({
         count: 1, mediaType: ["video"], sourceType: ["camera"], camera: "back", maxDuration: 60,
       });
-      await lx.saveVideoToPhotosAlbum({ filePath: result[0].tempFilePath });
+      if (result.canceled) return;
+      await lx.saveVideoToPhotosAlbum({ filePath: result.entries[0].tempFilePath });
       lx.showToast({ title: "Video saved to album", icon: "success" });
     } catch (error) {
       lx.showToast({ title: error?.message || "Failed to save video", icon: "none" });

@@ -1,8 +1,3 @@
-function isCancelError(error) {
-  const message = String(error?.message || error || "");
-  return /cancel|abort/i.test(message);
-}
-
 function mediaPath(entry) {
   if (!entry) return "";
   if (typeof entry === "string") return entry;
@@ -55,17 +50,18 @@ Page({
         mediaType: ["image"],
         sourceType: ["album", "camera"],
       });
-      const path = mediaPath(result?.[0]);
+      if (result.canceled) {
+        this.setData({ statusText: "No image selected" });
+        return;
+      }
       this.setData({
-        selectedImagePath: path,
-        statusText: path ? "Image selected" : "No image selected",
+        selectedImagePath: mediaPath(result.entries[0]),
+        statusText: "Image selected",
       });
     } catch (error) {
-      if (!isCancelError(error)) {
-        const message = error?.message || "chooseMedia failed";
-        this.setData({ statusText: message });
-        lx.showToast({ title: message, icon: "none" });
-      }
+      const message = error?.message || "chooseMedia failed";
+      this.setData({ statusText: message });
+      lx.showToast({ title: message, icon: "none" });
     }
   },
 
@@ -84,10 +80,9 @@ Page({
   chooseFile: async function() {
     try {
       const result = await lx.chooseFile({ multiple: false });
-      const path = result?.paths?.[0] || "";
       this.setData({
-        selectedFilePath: path,
-        statusText: path ? "File selected" : "File selection canceled",
+        selectedFilePath: result.canceled ? "" : result.paths[0],
+        statusText: result.canceled ? "File selection canceled" : "File selected",
       });
     } catch (error) {
       const message = error?.message || "chooseFile failed";

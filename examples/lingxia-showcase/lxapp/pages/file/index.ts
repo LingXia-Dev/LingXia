@@ -389,7 +389,7 @@ Page({
       const result = await lx.chooseFile({
         defaultPath: this.data.chooseFileDefaultPath,
       });
-      if (result.canceled || !Array.isArray(result.paths) || result.paths.length === 0) {
+      if (result.canceled) {
         this.setData({
           chooseFileStatusText: "File selection canceled",
           chooseFileSelectedPath: "",
