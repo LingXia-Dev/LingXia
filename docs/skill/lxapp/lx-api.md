@@ -85,6 +85,17 @@ JSDoc is authoritative for its exact behavior.
 
 ## Handling errors
 
+A rejection means the operation failed. It never means the user said no: every
+dismissable API — `showActionSheet`, `showModal`, `chooseFile`,
+`chooseDirectory`, `chooseMedia`, `scanCode` — resolves a result discriminated
+on `canceled`, so dismissal is a branch rather than an error path.
+
+```ts
+const scan = await lx.scanCode()
+if (scan.canceled) return                   // the user backed out
+lx.showToast({ title: scan.scanResult })    // narrowed: the payload is present
+```
+
 A rejection carries a numeric code from the runtime's error registry, which is
 generated from the same Rust definitions as the typings. Read that code through
 `@lingxia/types/error`; never branch on the message text, which is localized and
@@ -94,11 +105,10 @@ not a contract:
 import { parseLxApiError, formatLxApiError } from '@lingxia/types/error'
 
 try {
-  await lx.scanCode()
+  await lx.saveImageToPhotosAlbum({ filePath })
 } catch (error) {
   const failure = parseLxApiError(error)
   if (!failure) throw error                 // not a runtime error; let it surface
-  if (failure.code === 2000) return         // registry: "User cancelled"
   lx.showToast({ title: formatLxApiError(failure), icon: 'none' })
 }
 ```

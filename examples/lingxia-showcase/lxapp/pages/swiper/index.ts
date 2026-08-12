@@ -54,11 +54,11 @@ Page({
         camera: "back",
         maxDuration: 60,
       });
-      if (!Array.isArray(result) || result.length === 0) {
+      if (result.canceled) {
         this.setData({ busy: false });
         return;
       }
-      const picked = result.map((entry) => ({
+      const picked = result.entries.map((entry) => ({
         id: makeId(),
         type: entry.fileType,
         src: entry.tempFilePath,

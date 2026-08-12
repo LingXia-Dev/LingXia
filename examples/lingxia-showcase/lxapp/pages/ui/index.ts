@@ -247,30 +247,28 @@ Page({
 
   // Choose toast icon via action sheet
   chooseToastIcon: async function () {
-    try {
-      const { tapIndex } = await lx.showActionSheet({
-        itemList: this.data.toastIconOptions.map((option) => option.label),
-        itemColor: "#007AFF",
-      });
-      const selected = this.data.toastIconOptions[tapIndex];
-      this.setData({ toastIcon: selected.value, toastIconLabel: selected.label });
-    } catch (error) {
-      console.log("chooseToastIcon cancelled:", error);
+    const result = await lx.showActionSheet({
+      itemList: this.data.toastIconOptions.map((option) => option.label),
+      itemColor: "#007AFF",
+    });
+    if (result.canceled) {
+      return;
     }
+    const selected = this.data.toastIconOptions[result.index];
+    this.setData({ toastIcon: selected.value, toastIconLabel: selected.label });
   },
 
   // Choose toast position via action sheet
   chooseToastPosition: async function () {
-    try {
-      const { tapIndex } = await lx.showActionSheet({
-        itemList: this.data.toastPositionOptions.map((option) => option.label),
-        itemColor: "#007AFF",
-      });
-      const selected = this.data.toastPositionOptions[tapIndex];
-      this.setData({ toastPosition: selected.value, toastPositionLabel: selected.label });
-    } catch (error) {
-      console.log("chooseToastPosition cancelled:", error);
+    const result = await lx.showActionSheet({
+      itemList: this.data.toastPositionOptions.map((option) => option.label),
+      itemColor: "#007AFF",
+    });
+    if (result.canceled) {
+      return;
     }
+    const selected = this.data.toastPositionOptions[result.index];
+    this.setData({ toastPosition: selected.value, toastPositionLabel: selected.label });
   },
 
   hideToast: function () {
@@ -280,15 +278,15 @@ Page({
   // Demo action sheet with mixed language options
   showDemoActionSheet: async function () {
     const items = ["View Details", "查看日志", "Send Email", "删除"];
-    try {
-      const { tapIndex } = await lx.showActionSheet({
-        itemList: items,
-        itemColor: "#007AFF",
-      });
-      lx.showToast({ title: `Selected: ${items[tapIndex]}`, icon: "success" });
-    } catch (error) {
-      console.log("Action sheet dismissed:", error);
+    const result = await lx.showActionSheet({
+      itemList: items,
+      itemColor: "#007AFF",
+    });
+    if (result.canceled) {
+      lx.showToast({ title: "Dismissed", icon: "none" });
+      return;
     }
+    lx.showToast({ title: `Selected: ${items[result.index]}`, icon: "success" });
   },
 
   openSurfaceDemo: async function (config) {

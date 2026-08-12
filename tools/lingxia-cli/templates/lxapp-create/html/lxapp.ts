@@ -10,14 +10,14 @@ App({
         return;
       }
 
-      const { confirm } = await lx.showModal({
+      const applyNow = await lx.showModal({
         title: "Update Available",
         content: "A new version is ready. Apply now?",
         showCancel: true,
         cancelText: "Later",
         confirmText: "Apply",
       });
-      if (confirm) {
+      if (!applyNow.canceled) {
         um.applyUpdate();
       }
     });
