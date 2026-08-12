@@ -1396,15 +1396,20 @@ true
 }"###;
 
         /// Asynchronous persistent key-value storage backed by the lxapp
-        /// database. Values are untyped; validate or narrow values returned by
-        /// `get`. Use `lx.getFileManager()` for path-based data.
+        /// database. Use `lx.getFileManager()` for path-based data.
         ///
         type Storage = r###"{
-    get(key: string): Promise<unknown>;
+    /**
+     * Reads a stored value. `T` is an unchecked assertion about the stored
+     * shape, exactly like a `JSON.parse` boundary; a missing key resolves
+     * `undefined`, which a stored `null` never does.
+     */
+    get<T = unknown>(key: string): Promise<T | undefined>;
     set(key: string, value: unknown): Promise<void>;
     delete(key: string): Promise<void>;
     clear(): Promise<void>;
-    list(prefix?: string): Promise<IterableIterator<string>>;
+    /** Resolves every key, optionally filtered by prefix. */
+    list(prefix?: string): Promise<string[]>;
     info(): Promise<StorageInfo>;
 }"###;
 

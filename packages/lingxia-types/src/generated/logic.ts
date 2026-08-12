@@ -1469,15 +1469,20 @@ export type StatOptions = {
 
 /**
  * Asynchronous persistent key-value storage backed by the lxapp
- * database. Values are untyped; validate or narrow values returned by
- * `get`. Use `lx.getFileManager()` for path-based data.
+ * database. Use `lx.getFileManager()` for path-based data.
  */
 export type Storage = {
-    get(key: string): Promise<unknown>;
+    /**
+     * Reads a stored value. `T` is an unchecked assertion about the stored
+     * shape, exactly like a `JSON.parse` boundary; a missing key resolves
+     * `undefined`, which a stored `null` never does.
+     */
+    get<T = unknown>(key: string): Promise<T | undefined>;
     set(key: string, value: unknown): Promise<void>;
     delete(key: string): Promise<void>;
     clear(): Promise<void>;
-    list(prefix?: string): Promise<IterableIterator<string>>;
+    /** Resolves every key, optionally filtered by prefix. */
+    list(prefix?: string): Promise<string[]>;
     info(): Promise<StorageInfo>;
 };
 
@@ -2320,8 +2325,8 @@ declare global {
     navigateBackApp(): Promise<void>;
     share(options: ShareOptions): Promise<ShareResult>;
     /**
-     * Open this lxapp's asynchronous persistent key-value store. Values returned
-     * by `get` are untyped; validate or narrow them at the call site. Use
+     * Open this lxapp's asynchronous persistent key-value store. `get` asserts the
+     * value shape at the call site and resolves `undefined` for a missing key. Use
      * `lx.getFileManager()` instead for path-based data.
      */
     getStorage(): Storage;

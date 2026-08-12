@@ -114,7 +114,7 @@ contract({
       try {
         await storage.set(key, { ok: true, count: 2 });
         value = await storage.get(key);
-        present = Array.from(await storage.list()).includes(key);
+        present = (await storage.list()).includes(key);
       } finally {
         await storage.delete(key);
       }
@@ -122,7 +122,7 @@ contract({
       return {
         value,
         present,
-        removed: !Array.from(await storage.list()).includes(key),
+        removed: !(await storage.list()).includes(key),
         sizeRestored: after.keyCount === before.keyCount,
       };
     `,

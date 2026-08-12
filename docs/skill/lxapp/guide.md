@@ -457,7 +457,7 @@ App({
     // Called once when the lxapp boots.
     // `options`: AppLaunchOptions — { path?, query?, scene?, referrerInfo? }
     //   referrerInfo is populated when this lxapp was opened by another lxapp.
-    const stored = await lx.getStorage().get('userId') as string | undefined;
+    const stored = await lx.getStorage().get<string>('userId');
     if (stored) this.globalData.userId = stored;
   },
 
