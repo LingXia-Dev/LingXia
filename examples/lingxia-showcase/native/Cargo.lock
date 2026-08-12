@@ -2536,6 +2536,9 @@ name = "lingxia-terminal"
 version = "0.11.2"
 dependencies = [
  "alacritty_terminal",
+ "base64",
+ "flate2",
+ "image",
  "libc",
  "parking_lot",
  "portable-pty",

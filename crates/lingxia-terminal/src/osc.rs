@@ -1,4 +1,4 @@
-//! OSC (operating system command) tapping and semantic parsing.
+//! OSC and Kitty APC tapping plus semantic OSC parsing.
 //!
 //! `alacritty_terminal`'s vte parser dispatches only the OSC sequences it
 //! understands internally (title, colors, hyperlink, clipboard); semantic
@@ -18,6 +18,18 @@ pub struct TappedOsc {
     pub body: Vec<u8>,
 }
 
+/// A completed control string that the shared engine handles alongside the
+/// VT parser. Kitty bodies omit the leading G protocol discriminator.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TappedControl {
+    Osc(TappedOsc),
+    KittyGraphics {
+        start: usize,
+        end: usize,
+        body: Vec<u8>,
+    },
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 enum TapState {
     #[default]
@@ -26,11 +38,13 @@ enum TapState {
     Csi,
     Osc,
     OscEsc,
+    Apc,
+    ApcEsc,
     String,
     StringEsc,
 }
 
-/// Incrementally scans terminal output for OSC sequences.
+/// Incrementally scans terminal output for OSC and Kitty APC sequences.
 ///
 /// Tracks CSI and DCS/SOS/PM/APC string states so `ESC ]` bytes inside
 /// them are not misread as OSC starts. State persists across feed calls;
@@ -43,11 +57,23 @@ pub struct OscTap {
 }
 
 impl OscTap {
-    /// Maximum OSC body retained; oversized sequences are dropped to
+    /// Maximum control body retained; oversized sequences are dropped to
     /// bound memory when a peer floods the stream.
-    const MAX_BODY: usize = 256 * 1024;
+    const MAX_OSC_BODY: usize = 256 * 1024;
+    const MAX_APC_BODY: usize = 96 * 1024 * 1024;
 
+    #[cfg(test)]
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<TappedOsc> {
+        self.feed_controls(bytes)
+            .into_iter()
+            .filter_map(|control| match control {
+                TappedControl::Osc(osc) => Some(osc),
+                TappedControl::KittyGraphics { .. } => None,
+            })
+            .collect()
+    }
+
+    pub fn feed_controls(&mut self, bytes: &[u8]) -> Vec<TappedControl> {
         let mut tapped = Vec::new();
         let mut start = 0_usize;
         for (index, &byte) in bytes.iter().enumerate() {
@@ -60,7 +86,12 @@ impl OscTap {
                         start = index;
                         self.state = TapState::Osc;
                     }
-                    0x90 | 0x98 | 0x9e | 0x9f => self.state = TapState::String,
+                    0x9f => {
+                        self.buffer.clear();
+                        start = index;
+                        self.state = TapState::Apc;
+                    }
+                    0x90 | 0x98 | 0x9e => self.state = TapState::String,
                     _ => {}
                 },
                 TapState::Esc => {
@@ -71,7 +102,12 @@ impl OscTap {
                             start = index - 1;
                             TapState::Osc
                         }
-                        b'P' | b'X' | b'^' | b'_' => TapState::String,
+                        b'_' => {
+                            self.buffer.clear();
+                            start = index - 1;
+                            TapState::Apc
+                        }
+                        b'P' | b'X' | b'^' => TapState::String,
                         0x1b => TapState::Esc,
                         _ => TapState::Ground,
                     };
@@ -85,16 +121,16 @@ impl OscTap {
                 }
                 TapState::Osc => match byte {
                     0x07 | 0x9c => {
-                        tapped.push(TappedOsc {
+                        tapped.push(TappedControl::Osc(TappedOsc {
                             start,
                             end: index + 1,
                             body: std::mem::take(&mut self.buffer),
-                        });
+                        }));
                         self.state = TapState::Ground;
                     }
                     0x1b => self.state = TapState::OscEsc,
                     _ => {
-                        if self.buffer.len() >= Self::MAX_BODY {
+                        if self.buffer.len() >= Self::MAX_OSC_BODY {
                             self.buffer.clear();
                             self.state = TapState::String;
                         } else {
@@ -104,11 +140,39 @@ impl OscTap {
                 },
                 TapState::OscEsc => {
                     if byte == b'\\' {
-                        tapped.push(TappedOsc {
+                        tapped.push(TappedControl::Osc(TappedOsc {
                             start,
                             end: index + 1,
                             body: std::mem::take(&mut self.buffer),
-                        });
+                        }));
+                        self.state = TapState::Ground;
+                    } else {
+                        self.buffer.clear();
+                        self.state = if byte == 0x1b {
+                            TapState::Esc
+                        } else {
+                            TapState::Ground
+                        };
+                    }
+                }
+                TapState::Apc => match byte {
+                    0x9c => {
+                        push_apc(&mut tapped, start, index + 1, &mut self.buffer);
+                        self.state = TapState::Ground;
+                    }
+                    0x1b => self.state = TapState::ApcEsc,
+                    _ => {
+                        if self.buffer.len() >= Self::MAX_APC_BODY {
+                            self.buffer.clear();
+                            self.state = TapState::String;
+                        } else {
+                            self.buffer.push(byte);
+                        }
+                    }
+                },
+                TapState::ApcEsc => {
+                    if byte == b'\\' {
+                        push_apc(&mut tapped, start, index + 1, &mut self.buffer);
                         self.state = TapState::Ground;
                     } else {
                         self.buffer.clear();
@@ -134,6 +198,17 @@ impl OscTap {
             }
         }
         tapped
+    }
+}
+
+fn push_apc(tapped: &mut Vec<TappedControl>, start: usize, end: usize, buffer: &mut Vec<u8>) {
+    let body = std::mem::take(buffer);
+    if let Some(body) = body.strip_prefix(b"G") {
+        tapped.push(TappedControl::KittyGraphics {
+            start,
+            end,
+            body: body.to_vec(),
+        });
     }
 }
 
@@ -325,7 +400,7 @@ mod tests {
     #[test]
     fn drops_oversized_osc_body() {
         let mut bytes = b"\x1b]7;".to_vec();
-        bytes.extend(std::iter::repeat_n(b'a', OscTap::MAX_BODY + 16));
+        bytes.extend(std::iter::repeat_n(b'a', OscTap::MAX_OSC_BODY + 16));
         bytes.push(0x07);
         let tapped = tap_all(&[&bytes]);
         assert!(tapped.is_empty());
@@ -423,5 +498,17 @@ mod tests {
         assert_eq!(parse_osc(b"0;title"), None);
         assert_eq!(parse_osc(b"8;;https://example.com"), None);
         assert_eq!(parse_osc(b"52;c;aGVsbG8="), None);
+    }
+
+    #[test]
+    fn taps_kitty_apc_across_chunks_without_exposing_it_as_osc() {
+        let mut tap = OscTap::default();
+        assert!(tap.feed_controls(b"before\x1b_Gi=4,m=1;").is_empty());
+        let controls = tap.feed_controls(b"AAAA\x1b\\after");
+        assert_eq!(controls.len(), 1);
+        assert!(matches!(
+            &controls[0],
+            TappedControl::KittyGraphics { body, .. } if body == b"i=4,m=1;AAAA"
+        ));
     }
 }

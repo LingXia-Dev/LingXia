@@ -27,7 +27,8 @@ use alacritty_terminal::vte::ansi::{
 use parking_lot::Mutex;
 use serde::Serialize;
 
-use crate::osc::{OscProgress, OscSemantic, OscTap, parse_osc};
+use crate::kitty::{GraphicsAnchor, KittyGraphics, TerminalImageSnapshot};
+use crate::osc::{OscProgress, OscSemantic, OscTap, TappedControl, parse_osc};
 use crate::search::SearchRow;
 
 // Attr bits packed into `Cell.attrs` (bit 0 = bold, 1 = italic, 2 =
@@ -563,6 +564,7 @@ struct VtInner {
     term: Term<ListenerHandle>,
     parser: Processor<StdSyncHandler>,
     tap: OscTap,
+    graphics: KittyGraphics,
     listener: Arc<Listener>,
     replies: Receiver<PendingReply>,
     theme: ThemeColors,
@@ -812,6 +814,7 @@ impl VtScreen {
                 term,
                 parser: Processor::new(),
                 tap: OscTap::default(),
+                graphics: KittyGraphics::default(),
                 listener,
                 replies,
                 theme: theme.cloned().unwrap_or_else(default_theme),
@@ -845,23 +848,23 @@ impl VtScreen {
     pub fn feed(&self, bytes: &[u8]) {
         let mut inner = self.inner.lock();
         let inner = &mut *inner;
-        let tapped = inner.tap.feed(bytes);
+        let tapped = inner.tap.feed_controls(bytes);
         let mut last = 0;
-        for osc in tapped {
-            if osc.start < last {
+        for control in tapped {
+            let (start, end) = match &control {
+                TappedControl::Osc(osc) => (osc.start, osc.end),
+                TappedControl::KittyGraphics { start, end, .. } => (*start, *end),
+            };
+            if start < last {
                 // The sequence started in an earlier feed call and its
                 // bytes were already parsed; only record its semantics.
-                inner.record_osc(&osc.body);
+                inner.record_control(control);
                 continue;
             }
-            inner
-                .parser
-                .advance(&mut inner.term, &bytes[last..osc.start]);
-            inner.record_osc(&osc.body);
-            inner
-                .parser
-                .advance(&mut inner.term, &bytes[osc.start..osc.end]);
-            last = osc.end;
+            inner.parser.advance(&mut inner.term, &bytes[last..start]);
+            inner.record_control(control);
+            inner.parser.advance(&mut inner.term, &bytes[start..end]);
+            last = end;
         }
         inner.parser.advance(&mut inner.term, &bytes[last..]);
         inner.answer_pending_replies();
@@ -1298,9 +1301,67 @@ impl VtScreen {
         inner.generation = inner.generation.wrapping_add(1);
         true
     }
+
+    /// Put an absolute retained line at the top of the viewport.
+    pub fn scroll_viewport_to_line(&self, line: i64) -> bool {
+        let mut inner = self.inner.lock();
+        let grid = inner.term.grid();
+        let max_top = grid.total_lines().saturating_sub(grid.screen_lines()) as i64;
+        let target = line.clamp(0, max_top);
+        let current = max_top.saturating_sub(grid.display_offset() as i64);
+        if target == current {
+            return false;
+        }
+        let delta_rows = target.saturating_sub(current);
+        let delta =
+            i32::try_from(-delta_rows).unwrap_or(if delta_rows < 0 { i32::MAX } else { i32::MIN });
+        inner.term.scroll_display(Scroll::Delta(delta));
+        inner.damage.mark_full();
+        inner.generation = inner.generation.wrapping_add(1);
+        true
+    }
+
+    pub fn image_generation(&self) -> u64 {
+        self.inner.lock().graphics.generation()
+    }
+
+    pub fn image_snapshot(&self, since_generation: u64) -> TerminalImageSnapshot {
+        self.inner.lock().graphics.snapshot(since_generation)
+    }
 }
 
 impl VtInner {
+    fn record_control(&mut self, control: TappedControl) {
+        match control {
+            TappedControl::Osc(osc) => self.record_osc(&osc.body),
+            TappedControl::KittyGraphics { body, .. } => self.record_kitty_graphics(&body),
+        }
+    }
+
+    fn record_kitty_graphics(&mut self, body: &[u8]) {
+        let grid = self.term.grid();
+        let anchor = GraphicsAnchor {
+            line: grid.history_size() as i64 + grid.cursor.point.line.0 as i64,
+            col: grid.cursor.point.column.0.min(u16::MAX as usize) as u16,
+            alternate_screen: self.term.mode().intersects(TermMode::ALT_SCREEN),
+        };
+        let result = self.graphics.handle(
+            body,
+            anchor,
+            self.cell_width_px.max(1),
+            self.cell_height_px.max(1),
+        );
+        if let Some(response) = result.response
+            && let Some(write_pty) = &self.listener.write_pty
+        {
+            write_pty(&response);
+        }
+        if let Some((columns, rows)) = result.cursor_move {
+            let movement = format!("\x1b[{columns}C\x1b[{rows}B");
+            self.parser.advance(&mut self.term, movement.as_bytes());
+        }
+    }
+
     /// Record the semantics of a tapped OSC sequence, positioned at the
     /// current grid state (the parser has already consumed all
     /// preceding bytes).
@@ -1811,6 +1872,26 @@ mod tests {
         screen.feed(b"\x1b[6n");
         let response = written.lock().clone();
         assert_eq!(response, b"\x1b[1;1R");
+    }
+
+    #[test]
+    fn kitty_graphics_reaches_image_snapshot_and_replies() {
+        let written: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&written);
+        let write_pty: PtyWriteCallback = Arc::new(move |bytes: &[u8]| {
+            sink.lock().extend_from_slice(bytes);
+        });
+        let screen = VtScreen::new_with_options(8, 2, None, Some(write_pty), None);
+        screen.resize(8, 2, 8, 16).unwrap();
+        screen.feed(b"x\x1b_Ga=T,f=32,s=1,v=1,i=9,c=1,r=1,C=1;/wAA/w==\x1b\\");
+
+        let snapshot = screen.image_snapshot(0);
+        assert!(snapshot.changed);
+        assert_eq!(snapshot.images.len(), 1);
+        assert_eq!(snapshot.placements.len(), 1);
+        assert_eq!(snapshot.placements[0].col, 1);
+        assert!(!snapshot.placements[0].alternate_screen);
+        assert_eq!(written.lock().as_slice(), b"\x1b_Gi=9;OK\x1b\\");
     }
 
     #[test]

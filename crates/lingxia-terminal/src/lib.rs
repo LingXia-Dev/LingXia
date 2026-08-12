@@ -5,6 +5,7 @@
 //! emulation.
 
 mod alacritty_vt;
+mod kitty;
 mod links;
 mod osc;
 mod paste;
@@ -26,6 +27,7 @@ pub use alacritty_vt::{
     TerminalEventBatch, TerminalEventKind, TerminalFrame, TerminalProgress, TerminalProgressState,
     TextView as TerminalTextView, UnderlineStyle as TerminalUnderlineStyle,
 };
+pub use kitty::{TerminalImage, TerminalImagePlacement, TerminalImageSnapshot};
 pub use links::{DetectedLink, LinkSource as TerminalLinkSource};
 pub use paste::{PasteRisk as TerminalPasteRisk, classify_paste, classify_paste_json};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -313,6 +315,7 @@ pub struct TerminalFrameView {
     pub changed: bool,
     pub full_damage: bool,
     pub generation: u64,
+    pub image_generation: u64,
     pub cols: u16,
     pub rows: u16,
     pub cells: *const FrameCell,
@@ -339,11 +342,12 @@ pub struct TerminalFrameView {
 }
 
 impl TerminalFrameView {
-    fn unchanged(generation: u64, exited: bool) -> Self {
+    fn unchanged(generation: u64, image_generation: u64, exited: bool) -> Self {
         Self {
             changed: false,
             full_damage: false,
             generation,
+            image_generation,
             cols: 0,
             rows: 0,
             cells: std::ptr::null(),
@@ -403,6 +407,7 @@ pub fn terminal_frame_view(id: u64, since_generation: u64) -> Option<TerminalFra
     match session.vt.frame(since_generation) {
         TerminalFrameUpdate::Unchanged { generation } => Some(TerminalFrameView::unchanged(
             generation,
+            session.vt.image_generation(),
             session.poll_child().is_some(),
         )),
         TerminalFrameUpdate::Changed(frame) => {
@@ -411,6 +416,7 @@ pub fn terminal_frame_view(id: u64, since_generation: u64) -> Option<TerminalFra
                 changed: true,
                 full_damage: frame.full_damage,
                 generation: frame.generation,
+                image_generation: session.vt.image_generation(),
                 cols: frame.cols,
                 rows: frame.rows,
                 cells: frame.cells.as_ptr(),
@@ -679,6 +685,8 @@ pub fn terminal_status_data(id: u64) -> Option<TerminalStatus> {
 pub fn terminal_search(id: u64, pattern: &str, mode: &str, max_matches: usize) -> String {
     let mode = match mode {
         "case" => TerminalSearchMode::CaseSensitive,
+        "word" => TerminalSearchMode::WholeWord,
+        "case-word" => TerminalSearchMode::CaseSensitiveWholeWord,
         "regex" => TerminalSearchMode::Regex,
         _ => TerminalSearchMode::Plain,
     };
@@ -721,6 +729,37 @@ pub fn terminal_search_cancel(id: u64) {
     {
         session.search_cancel.store(true, Ordering::Relaxed);
     }
+}
+
+/// Move the viewport so an absolute retained line is visible.
+pub fn terminal_scroll_to_line(id: u64, line: i64) -> bool {
+    let Some(session) = session(id) else {
+        return false;
+    };
+    let Ok(mut session) = session.lock() else {
+        return false;
+    };
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    session.vt.scroll_viewport_to_line(line)
+}
+
+/// Return image placements changed after the supplied generation as JSON.
+pub fn terminal_image_snapshot(id: u64, since_generation: u64) -> String {
+    let Some(session) = session(id) else {
+        return "{}".to_string();
+    };
+    let Ok(mut session) = session.lock() else {
+        return "{}".to_string();
+    };
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    serde_json::to_string(&session.vt.image_snapshot(since_generation))
+        .unwrap_or_else(|_| "{}".to_string())
 }
 
 /// A clickable link on the live screen: explicit OSC 8 hyperlinks and
@@ -904,13 +943,30 @@ pub fn terminal_exited(id: u64) -> bool {
 }
 
 pub fn terminal_resize(id: u64, cols: u16, rows: u16) -> bool {
+    terminal_resize_pixels(id, cols, rows, 1, 1)
+}
+
+pub fn terminal_resize_pixels(
+    id: u64,
+    cols: u16,
+    rows: u16,
+    cell_width: u16,
+    cell_height: u16,
+) -> bool {
     let Some(session) = session(id) else {
         return false;
     };
     let Ok(mut session) = session.lock() else {
         return false;
     };
-    session.resize(cols.max(1), rows.max(1)).is_ok()
+    session
+        .resize(
+            cols.max(1),
+            rows.max(1),
+            cell_width.max(1),
+            cell_height.max(1),
+        )
+        .is_ok()
 }
 
 /// Handle vertical scroll input at a viewport cell.
@@ -1477,16 +1533,23 @@ impl TerminalSession {
         self.poll_child().is_some()
     }
 
-    fn resize(&mut self, cols: u16, rows: u16) -> Result<(), String> {
+    fn resize(
+        &mut self,
+        cols: u16,
+        rows: u16,
+        cell_width: u16,
+        cell_height: u16,
+    ) -> Result<(), String> {
         self.master
             .resize(PtySize {
                 rows,
                 cols,
-                pixel_width: 0,
-                pixel_height: 0,
+                pixel_width: cols.saturating_mul(cell_width),
+                pixel_height: rows.saturating_mul(cell_height),
             })
             .map_err(|err| err.to_string())?;
-        self.vt.resize(cols, rows, 1, 1)?;
+        self.vt
+            .resize(cols, rows, u32::from(cell_width), u32::from(cell_height))?;
         Ok(())
     }
 
