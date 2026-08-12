@@ -186,8 +186,9 @@ pub mod terminal {
         TerminalFrameView, TerminalSessionSpec, TerminalSnapshot, TerminalTheme, backend_available,
         backend_status, backend_status_json, terminal_close, terminal_create, terminal_create_at,
         terminal_create_with_spec, terminal_current_directory, terminal_exited,
-        terminal_frame_view, terminal_read, terminal_resize, terminal_scroll, terminal_set_theme,
-        terminal_set_theme_all, terminal_snapshot, terminal_snapshot_data,
+        terminal_frame_view, terminal_image_snapshot, terminal_read, terminal_resize,
+        terminal_resize_pixels, terminal_scroll, terminal_scroll_to_line, terminal_search,
+        terminal_set_theme, terminal_set_theme_all, terminal_snapshot, terminal_snapshot_data,
         terminal_title_state_json, terminal_write,
     };
     pub use lingxia_terminal_config::{

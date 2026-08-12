@@ -15,6 +15,91 @@ private struct LingXiaTerminalScrollbar: Decodable {
     let len: UInt64
 }
 
+private struct LingXiaTerminalImageSnapshot: Decodable, Sendable {
+    let changed: Bool
+    let generation: UInt64
+    let images: [LingXiaTerminalImage]
+    let placements: [LingXiaTerminalImagePlacement]
+
+    private enum CodingKeys: String, CodingKey {
+        case changed, generation, images, placements
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        changed = try values.decode(Bool.self, forKey: .changed)
+        generation = try values.decode(UInt64.self, forKey: .generation)
+        images = try values.decodeIfPresent([LingXiaTerminalImage].self, forKey: .images) ?? []
+        placements = try values.decodeIfPresent([LingXiaTerminalImagePlacement].self, forKey: .placements) ?? []
+    }
+}
+
+private struct LingXiaTerminalImage: Decodable, Sendable {
+    let id: UInt32
+    let width: UInt32
+    let height: UInt32
+    let pngBase64: String
+}
+
+private struct LingXiaTerminalImagePlacement: Decodable, Sendable {
+    let imageId: UInt32
+    let placementId: UInt32
+    let line: Int64
+    let col: UInt16
+    let columns: UInt16
+    let rows: UInt16
+    let xOffset: UInt16
+    let yOffset: UInt16
+    let sourceX: UInt32
+    let sourceY: UInt32
+    let sourceWidth: UInt32
+    let sourceHeight: UInt32
+    let zIndex: Int32
+    let alternateScreen: Bool
+    let virtualPlacement: Bool
+}
+
+private struct LingXiaTerminalSearchMatch: Decodable, Sendable {
+    let startLine: Int64
+    let startCol: UInt16
+    let endLine: Int64
+    let endCol: UInt16
+}
+
+private struct LingXiaTerminalSearchResults: Decodable, Sendable {
+    let matches: [LingXiaTerminalSearchMatch]
+    let total: UInt64
+    let truncated: Bool
+    let cancelled: Bool
+}
+
+@MainActor
+private final class LingXiaTerminalImagePreviewController: NSWindowController {
+    init(image: NSImage, title: String) {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = title
+        window.isReleasedWhenClosed = false
+        window.backgroundColor = .black
+        let imageView = NSImageView(frame: window.contentView?.bounds ?? .zero)
+        imageView.autoresizingMask = [.width, .height]
+        imageView.image = image
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        imageView.wantsLayer = true
+        imageView.layer?.backgroundColor = NSColor.black.cgColor
+        window.contentView = imageView
+        super.init(window: window)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
 struct LingXiaTerminalGridPoint: Equatable {
     var row: Int
     var col: Int
@@ -51,7 +136,7 @@ private final class LingXiaTerminalPaneDragHandleView: NSView {
         }
         let area = NSTrackingArea(
             rect: bounds,
-            options: [.activeInKeyWindow, .mouseEnteredAndExited, .cursorUpdate],
+            options: [.activeInKeyWindow, .mouseEnteredAndExited, .mouseMoved, .cursorUpdate],
             owner: self
         )
         addTrackingArea(area)
@@ -95,14 +180,15 @@ private final class LingXiaTerminalPaneDragHandleView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard dragEnabled else { return }
-        (hovered ? NSColor.lxTerminalAccent : NSColor.lxTerminalDivider).setFill()
+        if hovered {
+            NSColor.lxTerminalChromeRaised.withAlphaComponent(0.94).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 8, yRadius: 8).fill()
+        }
+        (hovered ? NSColor.lxTerminalForeground.withAlphaComponent(0.72) : NSColor.lxTerminalDivider).setFill()
         let diameter: CGFloat = 3
         let spacing: CGFloat = 4
         let totalWidth = diameter * 3 + spacing * 2
-        let origin = NSPoint(
-            x: (bounds.width - totalWidth) / 2,
-            y: (bounds.height - diameter) / 2
-        )
+        let origin = NSPoint(x: (bounds.width - totalWidth) / 2, y: (bounds.height - diameter) / 2)
         for index in 0..<3 {
             NSBezierPath(
                 ovalIn: NSRect(
@@ -113,6 +199,225 @@ private final class LingXiaTerminalPaneDragHandleView: NSView {
                 )
             ).fill()
         }
+
+    }
+}
+
+@MainActor
+private final class LingXiaTerminalPaneCloseButton: NSButton {
+    private var hovered = false {
+        didSet { updateAppearance() }
+    }
+    private var trackingArea_: NSTrackingArea?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        isBordered = false
+        bezelStyle = .regularSquare
+        imagePosition = .imageOnly
+        imageScaling = .scaleProportionallyDown
+        image = LxIcon.image(named: "icon_close_x", size: CGSize(width: 12, height: 12))
+        toolTip = L10n.string("lx_common_close")
+        setAccessibilityLabel(L10n.string("lx_common_close"))
+        focusRingType = .none
+        wantsLayer = true
+        layer?.cornerRadius = 6
+        updateAppearance()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingArea_ {
+            removeTrackingArea(trackingArea_)
+        }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.activeInKeyWindow, .mouseEnteredAndExited, .inVisibleRect],
+            owner: self
+        )
+        addTrackingArea(area)
+        trackingArea_ = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        hovered = true
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        hovered = false
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        nil
+    }
+
+    private func updateAppearance() {
+        contentTintColor = hovered
+            ? NSColor.lxTerminalForeground.withAlphaComponent(0.92)
+            : NSColor.lxTerminalForeground.withAlphaComponent(0.52)
+        layer?.backgroundColor = hovered
+            ? NSColor.lxTerminalForeground.withAlphaComponent(0.09).cgColor
+            : NSColor.clear.cgColor
+    }
+}
+
+@MainActor
+private final class LingXiaTerminalSearchBar: NSVisualEffectView, NSSearchFieldDelegate {
+    var onSearch: ((String, Bool, Bool) -> Void)?
+    var onNavigate: ((Int) -> Void)?
+    var onClose: (() -> Void)?
+
+    private let field = NSSearchField()
+    private let caseButton = NSButton(title: "Aa", target: nil, action: nil)
+    private let wordButton = NSButton(title: "ab", target: nil, action: nil)
+    private let statusLabel = NSTextField(labelWithString: "")
+    private lazy var previousButton = iconButton("chevron.up", toolTip: "Previous Match", action: #selector(previousMatch))
+    private lazy var nextButton = iconButton("chevron.down", toolTip: "Next Match", action: #selector(nextMatch))
+    private lazy var clearButton = iconButton("trash", toolTip: "Clear Search", action: #selector(clearSearch))
+    private lazy var closeButton = iconButton("xmark", toolTip: "Close Search", action: #selector(closeSearch))
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        material = .popover
+        blendingMode = .withinWindow
+        state = .active
+        wantsLayer = true
+        layer?.cornerRadius = 11
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.lxTerminalDivider.withAlphaComponent(0.65).cgColor
+        shadow = NSShadow()
+        shadow?.shadowBlurRadius = 14
+        shadow?.shadowOffset = NSSize(width: 0, height: -4)
+        shadow?.shadowColor = NSColor.black.withAlphaComponent(0.28)
+
+        field.placeholderString = "Search"
+        field.delegate = self
+        field.sendsSearchStringImmediately = true
+        field.target = self
+        field.action = #selector(searchChanged)
+
+        configureToggle(caseButton, toolTip: "Match Case")
+        configureToggle(wordButton, toolTip: "Match Whole Word")
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.alignment = .center
+        statusLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
+
+        let views: [NSView] = [
+            field, caseButton, wordButton, statusLabel,
+            previousButton, nextButton, clearButton, closeButton,
+        ]
+        for view in views {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(view)
+        }
+        let minimumFieldWidth = field.widthAnchor.constraint(greaterThanOrEqualToConstant: 130)
+        minimumFieldWidth.priority = .defaultHigh
+        NSLayoutConstraint.activate([
+            field.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            field.centerYAnchor.constraint(equalTo: centerYAnchor),
+            minimumFieldWidth,
+            caseButton.leadingAnchor.constraint(equalTo: field.trailingAnchor, constant: 8),
+            caseButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            wordButton.leadingAnchor.constraint(equalTo: caseButton.trailingAnchor, constant: 4),
+            wordButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            statusLabel.leadingAnchor.constraint(equalTo: wordButton.trailingAnchor, constant: 5),
+            statusLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            previousButton.leadingAnchor.constraint(equalTo: statusLabel.trailingAnchor, constant: 4),
+            previousButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            nextButton.leadingAnchor.constraint(equalTo: previousButton.trailingAnchor, constant: 2),
+            nextButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            clearButton.leadingAnchor.constraint(equalTo: nextButton.trailingAnchor, constant: 7),
+            clearButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+            closeButton.leadingAnchor.constraint(equalTo: clearButton.trailingAnchor, constant: 4),
+            closeButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            closeButton.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        setResult(active: nil, total: 0)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    var identity: (query: String, caseSensitive: Bool, wholeWord: Bool) {
+        (field.stringValue, caseButton.state == .on, wordButton.state == .on)
+    }
+
+    func focus() {
+        window?.makeFirstResponder(field)
+        field.selectText(nil)
+    }
+
+    func setResult(active: Int?, total: UInt64) {
+        if field.stringValue.isEmpty {
+            statusLabel.stringValue = ""
+        } else if let active, total > 0 {
+            statusLabel.stringValue = "\(active + 1)/\(total)"
+        } else {
+            statusLabel.stringValue = "0/0"
+        }
+        previousButton.isEnabled = total > 0
+        nextButton.isEnabled = total > 0
+        clearButton.isEnabled = !field.stringValue.isEmpty
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        submit()
+    }
+
+    @objc private func searchChanged() {
+        submit()
+    }
+
+    @objc private func toggleOption() {
+        submit()
+    }
+
+    @objc private func previousMatch() {
+        onNavigate?(-1)
+    }
+
+    @objc private func nextMatch() {
+        onNavigate?(1)
+    }
+
+    @objc private func clearSearch() {
+        field.stringValue = ""
+        submit()
+        focus()
+    }
+
+    @objc private func closeSearch() {
+        onClose?()
+    }
+
+    private func submit() {
+        let identity = identity
+        onSearch?(identity.query, identity.caseSensitive, identity.wholeWord)
+    }
+
+    private func configureToggle(_ button: NSButton, toolTip: String) {
+        button.setButtonType(.toggle)
+        button.bezelStyle = .accessoryBarAction
+        button.controlSize = .small
+        button.toolTip = toolTip
+        button.target = self
+        button.action = #selector(toggleOption)
+        button.widthAnchor.constraint(equalToConstant: 34).isActive = true
+    }
+
+    private func iconButton(_ symbol: String, toolTip: String, action: Selector) -> NSButton {
+        let button = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: toolTip) ?? NSImage(), target: self, action: action)
+        button.bezelStyle = .accessoryBarAction
+        button.controlSize = .small
+        button.toolTip = toolTip
+        button.imageScaling = .scaleProportionallyDown
+        button.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        return button
     }
 }
 
@@ -138,14 +443,19 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
     var onManualTitleChanged: ((UUID, String) -> Void)?
     var onTitleEditRequested: ((UUID) -> Void)?
     var onExited: ((UUID) -> Void)?
+    var onCloseRequested: ((UUID) -> Void)?
     var onPaneMoveRequested: ((UUID, UUID, LingXiaTerminalSplitDirection) -> Bool)?
 
     private let terminalView = LingXiaTerminalCanvasView()
     private let dragHandle = LingXiaTerminalPaneDragHandleView()
+    private let closeButton = LingXiaTerminalPaneCloseButton()
+    private let searchBar = LingXiaTerminalSearchBar()
     private let dropOverlay = LingXiaTerminalPaneDropOverlay()
     private let session: LingXiaPTYTerminalSession
     private var font = LingXiaTerminalFont.regular()
     private var dropDirection: LingXiaTerminalSplitDirection?
+    private var searchResults = LingXiaTerminalSearchResults(matches: [], total: 0, truncated: false, cancelled: false)
+    private var activeSearchMatch: Int?
 
     init(initialDirectory: String? = nil) {
         self.session = LingXiaPTYTerminalSession(initialDirectory: initialDirectory)
@@ -164,6 +474,18 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
 
         dragHandle.onBeginDrag = { [weak self] event in
             self?.beginPaneDrag(with: event)
+        }
+        closeButton.target = self
+        closeButton.action = #selector(closePane)
+
+        searchBar.onSearch = { [weak self] query, caseSensitive, wholeWord in
+            self?.performSearch(query: query, caseSensitive: caseSensitive, wholeWord: wholeWord)
+        }
+        searchBar.onNavigate = { [weak self] delta in
+            self?.navigateSearch(delta: delta)
+        }
+        searchBar.onClose = { [weak self] in
+            self?.hideSearch()
         }
 
         terminalView.onInput = { [weak self] input in
@@ -186,8 +508,13 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
             self.onActivated?(self.paneID)
             self.onZoomRequested?(self.paneID)
         }
-        terminalView.onResize = { [weak self] cols, rows in
-            self?.session.resize(cols: cols, rows: rows)
+        terminalView.onResize = { [weak self] cols, rows, cellWidth, cellHeight in
+            self?.session.resize(
+                cols: cols,
+                rows: rows,
+                cellWidth: cellWidth,
+                cellHeight: cellHeight
+            )
         }
         terminalView.onScroll = { [weak self] rows, col, row, allowApplicationInput in
             self?.session.scroll(
@@ -198,17 +525,22 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
             )
         }
         terminalView.onResetRequested = { [weak self] in
+            self?.terminalView.clearImages()
             self?.session.restart()
         }
         terminalView.onTitleEditRequested = { [weak self] in
             guard let self else { return }
             self.onTitleEditRequested?(self.paneID)
         }
+        terminalView.onSearchRequested = { [weak self] in
+            self?.showSearch()
+        }
 
-        session.onFrame = { [weak self] frame in
-            Task { @MainActor [weak self] in
-                self?.terminalView.applyFrame(frame)
+        session.onUpdate = { [weak self] frame, images in
+            if let images {
+                self?.terminalView.applyImages(images)
             }
+            self?.terminalView.applyFrame(frame)
         }
         session.onConfigChanged = { [weak self] in
             Task { @MainActor [weak self] in
@@ -258,6 +590,7 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
 
     func setPaneDragEnabled(_ enabled: Bool) {
         dragHandle.dragEnabled = enabled
+        closeButton.isHidden = !enabled
     }
 
     func focusTerminal() {
@@ -280,6 +613,11 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
             )
         }
         onActivated?(paneID)
+    }
+
+    func shouldPreserveFocus(for event: NSEvent) -> Bool {
+        guard !searchBar.isHidden else { return false }
+        return searchBar.frame.contains(convert(event.locationInWindow, from: nil))
     }
 
     func currentWorkingDirectory() -> String? {
@@ -332,10 +670,23 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
     override func layout() {
         super.layout()
         dragHandle.frame = NSRect(
-            x: max(0, (bounds.width - 44) / 2),
-            y: max(0, bounds.height - 14),
-            width: min(44, bounds.width),
-            height: min(14, bounds.height)
+            x: max(0, (bounds.width - 34) / 2),
+            y: max(0, bounds.height - 23),
+            width: min(34, bounds.width),
+            height: min(20, bounds.height)
+        )
+        closeButton.frame = NSRect(
+            x: max(0, bounds.width - 30),
+            y: max(0, bounds.height - 27),
+            width: min(24, bounds.width),
+            height: min(24, bounds.height)
+        )
+        let searchWidth = min(410, max(320, bounds.width - 24))
+        searchBar.frame = NSRect(
+            x: max(12, bounds.width - searchWidth - 12),
+            y: max(12, bounds.height - 75),
+            width: searchWidth,
+            height: 46
         )
         updateDropOverlayFrame()
     }
@@ -396,14 +747,22 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
         dropOverlay.isHidden = true
         dropOverlay.wantsLayer = true
         addSubview(dropOverlay, positioned: .above, relativeTo: terminalView)
+        searchBar.isHidden = true
+        addSubview(searchBar, positioned: .above, relativeTo: dropOverlay)
         dragHandle.isHidden = true
-        addSubview(dragHandle, positioned: .above, relativeTo: dropOverlay)
+        addSubview(dragHandle, positioned: .above, relativeTo: searchBar)
+        closeButton.isHidden = true
+        addSubview(closeButton, positioned: .above, relativeTo: dragHandle)
         NSLayoutConstraint.activate([
             terminalView.topAnchor.constraint(equalTo: topAnchor),
             terminalView.leadingAnchor.constraint(equalTo: leadingAnchor),
             terminalView.trailingAnchor.constraint(equalTo: trailingAnchor),
             terminalView.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+    }
+
+    @objc private func closePane() {
+        onCloseRequested?(paneID)
     }
 
     private func beginPaneDrag(with event: NSEvent) {
@@ -572,6 +931,55 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
         terminalView.append(output)
     }
 
+    private func showSearch() {
+        searchBar.isHidden = false
+        // A context menu restores its previous responder while dismissing. Focus
+        // on the next run-loop turn so Find consistently owns keyboard input.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, !self.searchBar.isHidden else { return }
+            self.searchBar.focus()
+        }
+    }
+
+    private func hideSearch() {
+        searchBar.isHidden = true
+        searchResults = LingXiaTerminalSearchResults(matches: [], total: 0, truncated: false, cancelled: false)
+        activeSearchMatch = nil
+        terminalView.applySearch(matches: [], active: nil)
+        focusTerminal()
+    }
+
+    private func performSearch(query: String, caseSensitive: Bool, wholeWord: Bool) {
+        guard !query.isEmpty else {
+            searchResults = LingXiaTerminalSearchResults(matches: [], total: 0, truncated: false, cancelled: false)
+            activeSearchMatch = nil
+            terminalView.applySearch(matches: [], active: nil)
+            searchBar.setResult(active: nil, total: 0)
+            return
+        }
+        session.search(query: query, caseSensitive: caseSensitive, wholeWord: wholeWord) { [weak self] identity, results in
+            guard let self, self.searchBar.identity == identity else { return }
+            self.searchResults = results
+            self.activeSearchMatch = results.matches.isEmpty ? nil : 0
+            self.applyActiveSearchMatch()
+        }
+    }
+
+    private func navigateSearch(delta: Int) {
+        guard !searchResults.matches.isEmpty else { return }
+        let current = activeSearchMatch ?? 0
+        activeSearchMatch = (current + delta + searchResults.matches.count) % searchResults.matches.count
+        applyActiveSearchMatch()
+    }
+
+    private func applyActiveSearchMatch() {
+        searchBar.setResult(active: activeSearchMatch, total: searchResults.total)
+        terminalView.applySearch(matches: searchResults.matches, active: activeSearchMatch)
+        if let activeSearchMatch {
+            session.scroll(toLine: searchResults.matches[activeSearchMatch].startLine)
+        }
+    }
+
 
 }
 
@@ -581,10 +989,11 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
     var onActivated: (() -> Void)?
     var onSplitRequested: ((LingXiaTerminalSplitDirection) -> Void)?
     var onZoomRequested: (() -> Void)?
-    var onResize: ((UInt16, UInt16) -> Void)?
+    var onResize: ((UInt16, UInt16, UInt16, UInt16) -> Void)?
     var onScroll: ((Int, UInt16, UInt16, Bool) -> Void)?
     var onResetRequested: (() -> Void)?
     var onTitleEditRequested: (() -> Void)?
+    var onSearchRequested: (() -> Void)?
     var zoomed = false
 
     var font = LingXiaTerminalFont.regular() {
@@ -625,6 +1034,12 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
     private var keyTextAccumulator: [String]?
     private let renderer = LingXiaTerminalMetalRenderer()
     private var frame_: LingXiaTerminalGPUFrame?
+    private var terminalImages: [UInt32: CGImage] = [:]
+    private var imagePlacements: [LingXiaTerminalImagePlacement] = []
+    private var imagePreviewController: LingXiaTerminalImagePreviewController?
+    private var pressedImageID: UInt32?
+    private var searchMatches: [LingXiaTerminalSearchMatch] = []
+    private var activeSearchMatch: Int?
     private var renderScheduled = false
     /// Shape runs with the font's ligatures; comes from configuration.
     var ligatures = true {
@@ -740,6 +1155,39 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         setNeedsRender()
     }
 
+    func applyImages(_ snapshot: LingXiaTerminalImageSnapshot) {
+        guard snapshot.changed else { return }
+        terminalImages = Dictionary(uniqueKeysWithValues: snapshot.images.compactMap { image in
+            guard let data = Data(base64Encoded: image.pngBase64),
+                  let decoded = NSImage(data: data) else { return nil }
+            var rect = NSRect(origin: .zero, size: decoded.size)
+            guard let cgImage = decoded.cgImage(forProposedRect: &rect, context: nil, hints: nil) else {
+                return nil
+            }
+            return (image.id, cgImage)
+        })
+        imagePlacements = snapshot.placements.filter { terminalImages[$0.imageId] != nil }.sorted { lhs, rhs in
+            if lhs.zIndex != rhs.zIndex { return lhs.zIndex < rhs.zIndex }
+            if lhs.imageId != rhs.imageId { return lhs.imageId < rhs.imageId }
+            return lhs.placementId < rhs.placementId
+        }
+        renderer?.updateImages(terminalImages)
+        setNeedsRender()
+    }
+
+    func clearImages() {
+        terminalImages.removeAll(keepingCapacity: false)
+        imagePlacements.removeAll(keepingCapacity: false)
+        renderer?.updateImages([:])
+        setNeedsRender()
+    }
+
+    func applySearch(matches: [LingXiaTerminalSearchMatch], active: Int?) {
+        searchMatches = matches
+        activeSearchMatch = active
+        setNeedsRender()
+    }
+
     private func renderGPUFrame() {
         guard let renderer, let metalLayer else { return }
         let scale = backingScale
@@ -762,6 +1210,7 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         context.selection = selectionSpans()
         context.selectionColor = NSColor.lxTerminalSelectionBackground
         context.selectionForegroundColor = NSColor.lxTerminalSelectionForeground
+        context.searchHighlights = searchHighlightSpans()
         context.cursorColor = NSColor.lxTerminalCursor
         context.drawCursor = window?.firstResponder === self && !hasMarkedText()
         context.markedText = markedText.string.isEmpty ? nil : markedText.string
@@ -770,6 +1219,7 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
             ? NSColor.lxTerminalForeground.withAlphaComponent(0.28)
             : NSColor.clear
         context.ligatures = ligatures
+        context.images = visibleImagePlacements()
         return context
     }
 
@@ -785,6 +1235,222 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
             }
         }
         return spans
+    }
+
+    private func searchHighlightSpans() -> [(row: Int, startCol: Int, endCol: Int, active: Bool)] {
+        guard let frame = frame_ else { return [] }
+        let top = Int64(clamping: frame.scrollbarOffset)
+        let bottom = top + Int64(frame.rows)
+        var spans: [(row: Int, startCol: Int, endCol: Int, active: Bool)] = []
+        for (index, match) in searchMatches.enumerated() {
+            let first = max(match.startLine, top)
+            let last = min(match.endLine, bottom - 1)
+            guard first <= last else { continue }
+            for line in first...last {
+                let start = line == match.startLine ? Int(match.startCol) : 0
+                let end = line == match.endLine ? Int(match.endCol) : frame.cols
+                if end > start {
+                    spans.append((
+                        row: Int(line - top),
+                        startCol: start,
+                        endCol: min(end, frame.cols),
+                        active: index == activeSearchMatch
+                    ))
+                }
+            }
+        }
+        return spans
+    }
+
+    private func visibleImagePlacements() -> [LingXiaTerminalRenderImagePlacement] {
+        guard let frame = frame_ else { return [] }
+        let top = Int64(clamping: frame.scrollbarOffset)
+        let physical = imagePlacements.compactMap { placement -> LingXiaTerminalRenderImagePlacement? in
+            guard !placement.virtualPlacement else { return nil }
+            let row = placement.line - top
+            let visible = placement.alternateScreen == frame.alternateScreen
+                && row < Int64(frame.rows)
+                && row + Int64(placement.rows) > 0
+            guard visible else { return nil }
+            return LingXiaTerminalRenderImagePlacement(
+                imageID: placement.imageId,
+                rect: CGRect(
+                    x: CGFloat(placement.col) * charSize.width + CGFloat(placement.xOffset) / backingScale,
+                    y: CGFloat(row) * charSize.height + CGFloat(placement.yOffset) / backingScale,
+                    width: CGFloat(placement.columns) * charSize.width,
+                    height: CGFloat(placement.rows) * charSize.height
+                ),
+                source: CGRect(
+                    x: CGFloat(placement.sourceX),
+                    y: CGFloat(placement.sourceY),
+                    width: CGFloat(placement.sourceWidth),
+                    height: CGFloat(placement.sourceHeight)
+                ),
+                zIndex: placement.zIndex
+            )
+        }
+        return (physical + unicodePlaceholderPlacements(frame: frame)).sorted { lhs, rhs in
+            if lhs.zIndex != rhs.zIndex { return lhs.zIndex < rhs.zIndex }
+            return lhs.imageID < rhs.imageID
+        }
+    }
+
+    private struct PlaceholderCell {
+        let imageID: UInt32
+        let placementID: UInt32
+        let imageRow: Int
+        let imageCol: Int
+    }
+
+    private func unicodePlaceholderPlacements(
+        frame: LingXiaTerminalGPUFrame
+    ) -> [LingXiaTerminalRenderImagePlacement] {
+        let prototypes = imagePlacements.filter(\.virtualPlacement)
+        guard !prototypes.isEmpty else { return [] }
+        var result: [LingXiaTerminalRenderImagePlacement] = []
+        for row in 0..<frame.rows {
+            var previous: PlaceholderCell?
+            for col in 0..<frame.cols {
+                guard let cell = frame.cell(row: row, col: col) else { continue }
+                let scalars = Array(frame.clusterString(cell).unicodeScalars)
+                guard scalars.first?.value == 0x10EEEE else {
+                    previous = nil
+                    continue
+                }
+                let diacritics = Array(scalars.dropFirst().prefix(3))
+                let colorImageID = cell.fg >> 8
+                let placementID = cell.underlineColor >> 8
+                var imageRow = diacritics.indices.contains(0)
+                    ? Self.placeholderDiacriticIndex(diacritics[0].value)
+                    : nil
+                var imageCol = diacritics.indices.contains(1)
+                    ? Self.placeholderDiacriticIndex(diacritics[1].value)
+                    : nil
+                var highByte = diacritics.indices.contains(2)
+                    ? Self.placeholderDiacriticIndex(diacritics[2].value)
+                    : nil
+                if let highByte, highByte > UInt8.max { continue }
+                if let previous,
+                   previous.imageID & 0x00FF_FFFF == colorImageID,
+                   previous.placementID == placementID {
+                    if imageRow == nil {
+                        imageRow = previous.imageRow
+                        imageCol = previous.imageCol + 1
+                        highByte = Int(previous.imageID >> 24)
+                    } else if imageCol == nil, imageRow == previous.imageRow {
+                        imageCol = previous.imageCol + 1
+                        highByte = Int(previous.imageID >> 24)
+                    } else if highByte == nil,
+                              imageRow == previous.imageRow,
+                              imageCol == previous.imageCol + 1 {
+                        highByte = Int(previous.imageID >> 24)
+                    }
+                }
+                let resolvedRow = imageRow ?? 0
+                let resolvedCol = imageCol ?? 0
+                let imageID = colorImageID | UInt32(highByte ?? 0) << 24
+                let decoded = PlaceholderCell(
+                    imageID: imageID,
+                    placementID: placementID,
+                    imageRow: resolvedRow,
+                    imageCol: resolvedCol
+                )
+                previous = decoded
+                let prototype = prototypes.first {
+                    $0.imageId == imageID
+                        && (placementID == 0 || $0.placementId == placementID)
+                }
+                guard let prototype,
+                      resolvedRow >= 0, resolvedCol >= 0,
+                      resolvedRow < Int(prototype.rows),
+                      resolvedCol < Int(prototype.columns) else { continue }
+                let sourceWidth = CGFloat(prototype.sourceWidth) / CGFloat(prototype.columns)
+                let sourceHeight = CGFloat(prototype.sourceHeight) / CGFloat(prototype.rows)
+                result.append(LingXiaTerminalRenderImagePlacement(
+                    imageID: imageID,
+                    rect: CGRect(
+                        x: CGFloat(col) * charSize.width,
+                        y: CGFloat(row) * charSize.height,
+                        width: charSize.width,
+                        height: charSize.height
+                    ),
+                    source: CGRect(
+                        x: CGFloat(prototype.sourceX) + CGFloat(resolvedCol) * sourceWidth,
+                        y: CGFloat(prototype.sourceY) + CGFloat(resolvedRow) * sourceHeight,
+                        width: sourceWidth,
+                        height: sourceHeight
+                    ),
+                    zIndex: prototype.zIndex
+                ))
+            }
+        }
+        return result
+    }
+
+    private static func placeholderDiacriticIndex(_ scalar: UInt32) -> Int? {
+        placeholderDiacriticIndices[scalar]
+    }
+
+    /// Kitty's canonical Unicode-placeholder row/column table. The complete
+    /// table is required because terminal grids routinely exceed 30 cells.
+    private static let placeholderDiacriticIndices: [UInt32: Int] = {
+        let diacritics: [UInt32] = [
+            0x0305, 0x030D, 0x030E, 0x0310, 0x0312, 0x033D, 0x033E, 0x033F,
+            0x0346, 0x034A, 0x034B, 0x034C, 0x0350, 0x0351, 0x0352, 0x0357,
+            0x035B, 0x0363, 0x0364, 0x0365, 0x0366, 0x0367, 0x0368, 0x0369,
+            0x036A, 0x036B, 0x036C, 0x036D, 0x036E, 0x036F, 0x0483, 0x0484,
+            0x0485, 0x0486, 0x0487, 0x0592, 0x0593, 0x0594, 0x0595, 0x0597,
+            0x0598, 0x0599, 0x059C, 0x059D, 0x059E, 0x059F, 0x05A0, 0x05A1,
+            0x05A8, 0x05A9, 0x05AB, 0x05AC, 0x05AF, 0x05C4, 0x0610, 0x0611,
+            0x0612, 0x0613, 0x0614, 0x0615, 0x0616, 0x0617, 0x0657, 0x0658,
+            0x0659, 0x065A, 0x065B, 0x065D, 0x065E, 0x06D6, 0x06D7, 0x06D8,
+            0x06D9, 0x06DA, 0x06DB, 0x06DC, 0x06DF, 0x06E0, 0x06E1, 0x06E2,
+            0x06E4, 0x06E7, 0x06E8, 0x06EB, 0x06EC, 0x0730, 0x0732, 0x0733,
+            0x0735, 0x0736, 0x073A, 0x073D, 0x073F, 0x0740, 0x0741, 0x0743,
+            0x0745, 0x0747, 0x0749, 0x074A, 0x07EB, 0x07EC, 0x07ED, 0x07EE,
+            0x07EF, 0x07F0, 0x07F1, 0x07F3, 0x0816, 0x0817, 0x0818, 0x0819,
+            0x081B, 0x081C, 0x081D, 0x081E, 0x081F, 0x0820, 0x0821, 0x0822,
+            0x0823, 0x0825, 0x0826, 0x0827, 0x0829, 0x082A, 0x082B, 0x082C,
+            0x082D, 0x0951, 0x0953, 0x0954, 0x0F82, 0x0F83, 0x0F86, 0x0F87,
+            0x135D, 0x135E, 0x135F, 0x17DD, 0x193A, 0x1A17, 0x1A75, 0x1A76,
+            0x1A77, 0x1A78, 0x1A79, 0x1A7A, 0x1A7B, 0x1A7C, 0x1B6B, 0x1B6D,
+            0x1B6E, 0x1B6F, 0x1B70, 0x1B71, 0x1B72, 0x1B73, 0x1CD0, 0x1CD1,
+            0x1CD2, 0x1CDA, 0x1CDB, 0x1CE0, 0x1DC0, 0x1DC1, 0x1DC3, 0x1DC4,
+            0x1DC5, 0x1DC6, 0x1DC7, 0x1DC8, 0x1DC9, 0x1DCB, 0x1DCC, 0x1DD1,
+            0x1DD2, 0x1DD3, 0x1DD4, 0x1DD5, 0x1DD6, 0x1DD7, 0x1DD8, 0x1DD9,
+            0x1DDA, 0x1DDB, 0x1DDC, 0x1DDD, 0x1DDE, 0x1DDF, 0x1DE0, 0x1DE1,
+            0x1DE2, 0x1DE3, 0x1DE4, 0x1DE5, 0x1DE6, 0x1DFE, 0x20D0, 0x20D1,
+            0x20D4, 0x20D5, 0x20D6, 0x20D7, 0x20DB, 0x20DC, 0x20E1, 0x20E7,
+            0x20E9, 0x20F0, 0x2CEF, 0x2CF0, 0x2CF1, 0x2DE0, 0x2DE1, 0x2DE2,
+            0x2DE3, 0x2DE4, 0x2DE5, 0x2DE6, 0x2DE7, 0x2DE8, 0x2DE9, 0x2DEA,
+            0x2DEB, 0x2DEC, 0x2DED, 0x2DEE, 0x2DEF, 0x2DF0, 0x2DF1, 0x2DF2,
+            0x2DF3, 0x2DF4, 0x2DF5, 0x2DF6, 0x2DF7, 0x2DF8, 0x2DF9, 0x2DFA,
+            0x2DFB, 0x2DFC, 0x2DFD, 0x2DFE, 0x2DFF, 0xA66F, 0xA67C, 0xA67D,
+            0xA6F0, 0xA6F1, 0xA8E0, 0xA8E1, 0xA8E2, 0xA8E3, 0xA8E4, 0xA8E5,
+            0xA8E6, 0xA8E7, 0xA8E8, 0xA8E9, 0xA8EA, 0xA8EB, 0xA8EC, 0xA8ED,
+            0xA8EE, 0xA8EF, 0xA8F0, 0xA8F1, 0xAAB0, 0xAAB2, 0xAAB3, 0xAAB7,
+            0xAAB8, 0xAABE, 0xAABF, 0xAAC1, 0xFE20, 0xFE21, 0xFE22, 0xFE23,
+            0xFE24, 0xFE25, 0xFE26, 0x10A0F, 0x10A38, 0x1D185, 0x1D186, 0x1D187,
+            0x1D188, 0x1D189, 0x1D1AA, 0x1D1AB, 0x1D1AC, 0x1D1AD, 0x1D242, 0x1D243,
+            0x1D244,
+        ]
+        return Dictionary(uniqueKeysWithValues: diacritics.enumerated().map { ($1, $0) })
+    }()
+
+    private func imageID(at point: NSPoint) -> UInt32? {
+        let renderPoint = CGPoint(x: point.x, y: bounds.height - point.y)
+        return visibleImagePlacements().reversed().first { $0.rect.contains(renderPoint) }?.imageID
+    }
+
+    private func preview(image: CGImage, imageID: UInt32) {
+        let controller = LingXiaTerminalImagePreviewController(
+            image: NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height)),
+            title: "Terminal Image \(imageID)"
+        )
+        imagePreviewController = controller
+        controller.showWindow(nil)
+        controller.window?.center()
+        controller.window?.makeKeyAndOrderFront(nil)
     }
 
     required init?(coder: NSCoder) {
@@ -822,22 +1488,31 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         lxTerminalLog("canvas.mouseDown keyWindow=\(window?.isKeyWindow ?? false)")
         _ = window?.makeFirstResponder(self)
         onActivated?()
-        let point = gridPoint(for: convert(event.locationInWindow, from: nil))
+        let localPoint = convert(event.locationInWindow, from: nil)
+        pressedImageID = imageID(at: localPoint)
+        let point = gridPoint(for: localPoint)
         selectionAnchor = point
         selectionFocus = point
         setNeedsRender()
     }
 
     override func mouseDragged(with event: NSEvent) {
+        pressedImageID = nil
         selectionFocus = gridPoint(for: convert(event.locationInWindow, from: nil))
         setNeedsRender()
     }
 
     override func mouseUp(with event: NSEvent) {
+        defer { pressedImageID = nil }
         guard selectionAnchor == selectionFocus else { return }
         selectionAnchor = nil
         selectionFocus = nil
         setNeedsRender()
+        let localPoint = convert(event.locationInWindow, from: nil)
+        guard let pressedID = pressedImageID,
+              imageID(at: localPoint) == pressedID,
+              let image = terminalImages[pressedID] else { return }
+        preview(image: image, imageID: pressedID)
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -929,6 +1604,10 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         case 9:
             lxTerminalLog("\(source).keyDown commandPaste")
             paste(nil)
+            return true
+        case 3:
+            lxTerminalLog("\(source).keyDown commandFind")
+            onSearchRequested?()
             return true
         default:
             return false
@@ -1087,6 +1766,7 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         copyItem.isEnabled = selectedText()?.isEmpty == false
         menu.addItem(copyItem)
         menu.addItem(menuItem("Paste", action: #selector(paste(_:))))
+        menu.addItem(menuItem("Find...", action: #selector(findFromMenu)))
         menu.addItem(.separator())
         menu.addItem(menuItem("Split Right", action: #selector(splitRightFromMenu)))
         menu.addItem(menuItem("Split Left", action: #selector(splitLeftFromMenu)))
@@ -1140,6 +1820,11 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
     @objc private func toggleReadOnlyFromMenu() {
         readOnly.toggle()
         lxTerminalLog("canvas.menu toggleReadOnly readOnly=\(readOnly)")
+    }
+
+    @objc private func findFromMenu() {
+        lxTerminalLog("canvas.menu find")
+        onSearchRequested?()
     }
 
     private func pastePayload(for text: String) -> String {
@@ -1268,7 +1953,9 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
                 "canvas.resizeGrid bounds=\(String(format: "%.0fx%.0f", bounds.width, bounds.height)) char=\(String(format: "%.1fx%.1f", charSize.width, charSize.height)) cols=\(safeCols) rows=\(safeRows) scale=\(String(format: "%.1f", backingScale))"
             )
             lastSentSize = (safeCols, safeRows)
-            onResize?(safeCols, safeRows)
+            let pixelWidth = UInt16(clamping: Int((charSize.width * backingScale).rounded()))
+            let pixelHeight = UInt16(clamping: Int((charSize.height * backingScale).rounded()))
+            onResize?(safeCols, safeRows, max(1, pixelWidth), max(1, pixelHeight))
         }
         setNeedsRender()
     }
@@ -1357,7 +2044,10 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
 private final class LingXiaPTYTerminalSession: @unchecked Sendable {
     private static let log = OSLog(subsystem: "LingXia", category: "MacTerminalPTY")
 
-    var onFrame: ((LingXiaTerminalGPUFrame) -> Void)?
+    var onUpdate: (@MainActor @Sendable (
+        LingXiaTerminalGPUFrame,
+        LingXiaTerminalImageSnapshot?
+    ) -> Void)?
     var onTitles: ((String, String?) -> Void)?
     var onConfigChanged: (() -> Void)?
     var onError: ((String) -> Void)?
@@ -1369,6 +2059,7 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
     private var readTimer: DispatchSourceTimer?
     private var pendingInput = ""
     private var frameGeneration: UInt64 = 0
+    private var imageGeneration: UInt64 = 0
     private var lastTitlePoll = DispatchTime.now()
     private var lastTitleState = ""
     private var lastConfigGeneration: UInt64 = 0
@@ -1437,11 +2128,41 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
         }
     }
 
-    func resize(cols: UInt16, rows: UInt16) {
+    func resize(cols: UInt16, rows: UInt16, cellWidth: UInt16, cellHeight: UInt16) {
         ioQueue.async { [weak self] in
             guard let self, self.sessionID != 0 else { return }
-            let ok = terminalSessionResize(self.sessionID, cols, rows)
-            lxTerminalLogAsync("pty.resize session=\(self.sessionID) cols=\(cols) rows=\(rows) ok=\(ok)")
+            let ok = terminalSessionResizePixels(self.sessionID, cols, rows, cellWidth, cellHeight)
+            lxTerminalLogAsync("pty.resize session=\(self.sessionID) cols=\(cols) rows=\(rows) cell=\(cellWidth)x\(cellHeight) ok=\(ok)")
+        }
+    }
+
+    func search(
+        query: String,
+        caseSensitive: Bool,
+        wholeWord: Bool,
+        completion: @escaping @MainActor @Sendable (
+            (query: String, caseSensitive: Bool, wholeWord: Bool),
+            LingXiaTerminalSearchResults
+        ) -> Void
+    ) {
+        ioQueue.async { [weak self] in
+            guard let self, self.sessionID != 0 else { return }
+            let json = terminalSessionSearch(self.sessionID, query, caseSensitive, wholeWord).toString()
+            guard let data = json.data(using: .utf8),
+                  let results = try? self.decoder.decode(LingXiaTerminalSearchResults.self, from: data) else {
+                return
+            }
+            let identity = (query, caseSensitive, wholeWord)
+            DispatchQueue.main.async {
+                completion(identity, results)
+            }
+        }
+    }
+
+    func scroll(toLine line: Int64) {
+        ioQueue.async { [weak self] in
+            guard let self, self.sessionID != 0 else { return }
+            _ = terminalSessionScrollToLine(self.sessionID, line)
         }
     }
 
@@ -1482,6 +2203,7 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
         readTimer = nil
         pendingInput.removeAll(keepingCapacity: false)
         frameGeneration = 0
+        imageGeneration = 0
         lastTitleState = ""
         if sessionID != 0 {
             lxTerminalLogAsync("pty.stop close session=\(sessionID)")
@@ -1497,7 +2219,16 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
         // no JSON, and a quiet poll allocates nothing at all.
         if let frame = LingXiaTerminalFrameSource.poll(sessionID: id, since: frameGeneration) {
             frameGeneration = frame.generation
-            emit(frame)
+            var images: LingXiaTerminalImageSnapshot?
+            if frame.imageGeneration != imageGeneration {
+                let json = terminalSessionImageSnapshot(id, imageGeneration).toString()
+                if let data = json.data(using: .utf8),
+                   let snapshot = try? decoder.decode(LingXiaTerminalImageSnapshot.self, from: data) {
+                    imageGeneration = snapshot.generation
+                    images = snapshot
+                }
+            }
+            emit(frame, images: images)
             if frame.exited {
                 lxTerminalLogAsync("pty.exited session=\(id)")
                 stopOnIOQueue()
@@ -1542,9 +2273,12 @@ private final class LingXiaPTYTerminalSession: @unchecked Sendable {
         }
     }
 
-    private func emit(_ frame: LingXiaTerminalGPUFrame) {
-        DispatchQueue.main.async { [onFrame] in
-            onFrame?(frame)
+    private func emit(
+        _ frame: LingXiaTerminalGPUFrame,
+        images: LingXiaTerminalImageSnapshot?
+    ) {
+        DispatchQueue.main.async { [onUpdate] in
+            onUpdate?(frame, images)
         }
     }
 

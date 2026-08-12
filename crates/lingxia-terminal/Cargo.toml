@@ -8,6 +8,9 @@ license = "MIT"
 
 [dependencies]
 alacritty_terminal = { version = "0.26", default-features = false }
+base64 = { workspace = true }
+flate2 = "1"
+image = { version = "0.25.10", default-features = false, features = ["png"] }
 portable-pty = "0.9"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

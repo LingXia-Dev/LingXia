@@ -142,6 +142,7 @@ mod bridge {
         pub changed: bool,
         pub full_damage: bool,
         pub generation: u64,
+        pub image_generation: u64,
         pub cols: u16,
         pub rows: u16,
         pub cells: usize,
@@ -664,6 +665,29 @@ mod bridge {
 
         #[swift_bridge(swift_name = "terminalSessionResize")]
         fn terminal_session_resize(id: u64, cols: u16, rows: u16) -> bool;
+
+        #[swift_bridge(swift_name = "terminalSessionResizePixels")]
+        fn terminal_session_resize_pixels(
+            id: u64,
+            cols: u16,
+            rows: u16,
+            cell_width: u16,
+            cell_height: u16,
+        ) -> bool;
+
+        #[swift_bridge(swift_name = "terminalSessionImageSnapshot")]
+        fn terminal_session_image_snapshot(id: u64, since_generation: u64) -> String;
+
+        #[swift_bridge(swift_name = "terminalSessionSearch")]
+        fn terminal_session_search(
+            id: u64,
+            query: &str,
+            case_sensitive: bool,
+            whole_word: bool,
+        ) -> String;
+
+        #[swift_bridge(swift_name = "terminalSessionScrollToLine")]
+        fn terminal_session_scroll_to_line(id: u64, line: i64) -> bool;
 
         #[swift_bridge(swift_name = "terminalSessionScroll")]
         fn terminal_session_scroll(
@@ -2274,6 +2298,7 @@ pub fn terminal_session_frame(id: u64, since_generation: u64) -> bridge::Termina
                 changed: view.changed,
                 full_damage: view.full_damage,
                 generation: view.generation,
+                image_generation: view.image_generation,
                 cols: view.cols,
                 rows: view.rows,
                 cells: view.cells as usize,
@@ -2308,6 +2333,7 @@ pub fn terminal_session_frame(id: u64, since_generation: u64) -> bridge::Termina
         changed: false,
         full_damage: false,
         generation: 0,
+        image_generation: 0,
         cols: 0,
         rows: 0,
         cells: 0,
@@ -2493,6 +2519,75 @@ pub fn terminal_session_resize(id: u64, cols: u16, rows: u16) -> bool {
     #[cfg(not(feature = "terminal-runtime"))]
     {
         let _ = (id, cols, rows);
+        false
+    }
+}
+
+pub fn terminal_session_resize_pixels(
+    id: u64,
+    cols: u16,
+    rows: u16,
+    cell_width: u16,
+    cell_height: u16,
+) -> bool {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        crate::terminal::terminal_resize_pixels(id, cols, rows, cell_width, cell_height)
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = (id, cols, rows, cell_width, cell_height);
+        false
+    }
+}
+
+pub fn terminal_session_image_snapshot(id: u64, since_generation: u64) -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        crate::terminal::terminal_image_snapshot(id, since_generation)
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = (id, since_generation);
+        "{}".to_string()
+    }
+}
+
+pub fn terminal_session_search(
+    id: u64,
+    query: &str,
+    case_sensitive: bool,
+    whole_word: bool,
+) -> String {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        let mode = match (case_sensitive, whole_word) {
+            (false, false) => "plain",
+            (true, false) => "case",
+            (false, true) => "word",
+            (true, true) => "case-word",
+        };
+        crate::terminal::terminal_search(id, query, mode, 10_000)
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = (id, query, case_sensitive, whole_word);
+        "{}".to_string()
+    }
+}
+
+pub fn terminal_session_scroll_to_line(id: u64, line: i64) -> bool {
+    #[cfg(feature = "terminal-runtime")]
+    {
+        crate::terminal::terminal_scroll_to_line(id, line)
+    }
+
+    #[cfg(not(feature = "terminal-runtime"))]
+    {
+        let _ = (id, line);
         false
     }
 }

@@ -2,6 +2,7 @@
 import AppKit
 import CoreText
 import Metal
+import MetalKit
 import QuartzCore
 import simd
 
@@ -47,6 +48,7 @@ struct LingXiaTerminalGPUFrame {
     var cols = 0
     var rows = 0
     var generation: UInt64 = 0
+    var imageGeneration: UInt64 = 0
     var cells: [LingXiaTerminalFrameCell] = []
     var text: [UInt8] = []
     var defaultForeground: UInt32 = 0xFFFF_FFFF
@@ -83,6 +85,10 @@ struct LingXiaTerminalGPUFrame {
         return String(decoding: bytes, as: UTF8.self)
     }
 
+    func isImagePlaceholder(_ cell: LingXiaTerminalFrameCell) -> Bool {
+        clusterString(cell).unicodeScalars.first?.value == 0x10EEEE
+    }
+
     /// Text of one row, used for selection and accessibility.
     func rowText(_ row: Int) -> String {
         guard row >= 0, row < rows else { return "" }
@@ -116,6 +122,7 @@ enum LingXiaTerminalFrameSource {
         frame.cols = Int(handle.cols)
         frame.rows = Int(handle.rows)
         frame.generation = handle.generation
+        frame.imageGeneration = handle.image_generation
         let cellsPointer = UnsafeRawPointer(bitPattern: handle.cells)!
             .assumingMemoryBound(to: LingXiaTerminalFrameCell.self)
         frame.cells = Array(UnsafeBufferPointer(start: cellsPointer, count: Int(handle.cells_len)))
@@ -532,6 +539,13 @@ private struct LingXiaTerminalQuad {
     var mode: SIMD4<Float>
 }
 
+struct LingXiaTerminalRenderImagePlacement {
+    let imageID: UInt32
+    let rect: CGRect
+    let source: CGRect
+    let zIndex: Int32
+}
+
 /// Geometry and colors the view supplies for one draw.
 struct LingXiaTerminalRenderContext {
     var cellSize: CGSize
@@ -540,6 +554,7 @@ struct LingXiaTerminalRenderContext {
     var scale: CGFloat
     var viewSize: CGSize
     var selection: [(row: Int, startCol: Int, endCol: Int)] = []
+    var searchHighlights: [(row: Int, startCol: Int, endCol: Int, active: Bool)] = []
     var selectionColor: NSColor = .selectedTextBackgroundColor
     var selectionForegroundColor: NSColor = .selectedTextColor
     var cursorColor: NSColor = .white
@@ -553,6 +568,7 @@ struct LingXiaTerminalRenderContext {
     var markedTextOrigin = LingXiaTerminalGridPoint(row: 0, col: 0)
     var markedTextColor: NSColor = .lxTerminalForeground
     var markedTextBackground: NSColor = NSColor.black.withAlphaComponent(0.85)
+    var images: [LingXiaTerminalRenderImagePlacement] = []
 }
 
 final class LingXiaTerminalMetalRenderer {
@@ -560,11 +576,14 @@ final class LingXiaTerminalMetalRenderer {
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
     private let sampler: MTLSamplerState
+    private let imageSampler: MTLSamplerState
+    private let textureLoader: MTKTextureLoader
     private var atlas: LingXiaTerminalGlyphAtlas?
     private let shaper = LingXiaTerminalShaper()
     private var quads: [LingXiaTerminalQuad] = []
     private var instanceBuffer: MTLBuffer?
     private var atlasKey: String = ""
+    private var imageTextures: [UInt32: MTLTexture] = [:]
 
     /// One device for every pane: each split otherwise pays for its own
     /// device, queue and shader library.
@@ -606,10 +625,35 @@ final class LingXiaTerminalMetalRenderer {
         guard let sampler = device.makeSamplerState(descriptor: samplerDescriptor) else {
             return nil
         }
+        let imageSamplerDescriptor = MTLSamplerDescriptor()
+        imageSamplerDescriptor.minFilter = .linear
+        imageSamplerDescriptor.magFilter = .linear
+        imageSamplerDescriptor.sAddressMode = .clampToEdge
+        imageSamplerDescriptor.tAddressMode = .clampToEdge
+        guard let imageSampler = device.makeSamplerState(descriptor: imageSamplerDescriptor) else {
+            return nil
+        }
         self.device = device
         self.queue = queue
         self.pipeline = pipeline
         self.sampler = sampler
+        self.imageSampler = imageSampler
+        self.textureLoader = MTKTextureLoader(device: device)
+    }
+
+    func updateImages(_ images: [UInt32: CGImage]) {
+        var textures: [UInt32: MTLTexture] = [:]
+        textures.reserveCapacity(images.count)
+        for (id, image) in images {
+            let options: [MTKTextureLoader.Option: Any] = [
+                .SRGB: false,
+                .origin: MTKTextureLoader.Origin.topLeft.rawValue,
+            ]
+            if let texture = try? textureLoader.newTexture(cgImage: image, options: options) {
+                textures[id] = texture
+            }
+        }
+        imageTextures = textures
     }
 
     func makeLayer() -> CAMetalLayer {
@@ -622,8 +666,14 @@ final class LingXiaTerminalMetalRenderer {
     }
 
     func render(frame: LingXiaTerminalGPUFrame, context: LingXiaTerminalRenderContext, in layer: CAMetalLayer) {
-        let (atlas, clear) = build(frame: frame, context: context)
-        draw(layer: layer, clear: clear, atlas: atlas)
+        let (atlas, clear, foregroundStart) = build(frame: frame, context: context)
+        draw(
+            layer: layer,
+            clear: clear,
+            atlas: atlas,
+            foregroundStart: foregroundStart,
+            images: context.images
+        )
     }
 
     /// Render one frame into an image instead of onto the screen.
@@ -649,8 +699,16 @@ final class LingXiaTerminalMetalRenderer {
         descriptor.storageMode = .managed
         guard let target = device.makeTexture(descriptor: descriptor) else { return nil }
 
-        let (atlas, clear) = build(frame: frame, context: context)
-        guard encode(into: target, clear: clear, atlas: atlas, viewSize: context.viewSize, synchronize: true) else {
+        let (atlas, clear, foregroundStart) = build(frame: frame, context: context)
+        guard encode(
+            into: target,
+            clear: clear,
+            atlas: atlas,
+            foregroundStart: foregroundStart,
+            images: context.images,
+            viewSize: context.viewSize,
+            synchronize: true
+        ) else {
             return nil
         }
 
@@ -686,14 +744,16 @@ final class LingXiaTerminalMetalRenderer {
     private func build(
         frame: LingXiaTerminalGPUFrame,
         context: LingXiaTerminalRenderContext
-    ) -> (LingXiaTerminalGlyphAtlas, SIMD4<Float>) {
+    ) -> (LingXiaTerminalGlyphAtlas, SIMD4<Float>, Int) {
         let atlas = ensureAtlas(context: context)
         quads.removeAll(keepingCapacity: true)
 
         let defaultBackground = Self.color(frame.defaultBackground, fallbackAlpha: 1)
         let defaultForeground = Self.color(frame.defaultForeground, fallbackAlpha: 1)
         appendBackgrounds(frame: frame, context: context, defaultForeground: defaultForeground)
+        appendSearchHighlights(context: context)
         appendSelection(context: context)
+        let foregroundStart = quads.count
         appendGlyphs(
             frame: frame,
             context: context,
@@ -704,7 +764,7 @@ final class LingXiaTerminalMetalRenderer {
         appendCursor(frame: frame, context: context, defaultBackground: defaultBackground)
         appendMarkedText(context: context, atlas: atlas)
         appendScrollbar(frame: frame, context: context)
-        return (atlas, defaultBackground)
+        return (atlas, defaultBackground, foregroundStart)
     }
 
     // MARK: Quad building
@@ -741,6 +801,20 @@ final class LingXiaTerminalMetalRenderer {
         guard !context.selection.isEmpty else { return }
         let color = Self.color(context.selectionColor)
         for span in context.selection where span.endCol > span.startCol {
+            let rect = CGRect(
+                x: CGFloat(span.startCol) * context.cellSize.width,
+                y: CGFloat(span.row) * context.cellSize.height,
+                width: CGFloat(span.endCol - span.startCol) * context.cellSize.width,
+                height: context.cellSize.height
+            )
+            quads.append(solid(rect: rect, color: color))
+        }
+    }
+
+    private func appendSearchHighlights(context: LingXiaTerminalRenderContext) {
+        for span in context.searchHighlights where span.endCol > span.startCol {
+            let base = span.active ? NSColor.systemOrange : NSColor.systemYellow
+            let color = Self.color(base.withAlphaComponent(span.active ? 0.52 : 0.25))
             let rect = CGRect(
                 x: CGFloat(span.startCol) * context.cellSize.width,
                 y: CGFloat(span.row) * context.cellSize.height,
@@ -806,6 +880,11 @@ final class LingXiaTerminalMetalRenderer {
                 defer { col += span }
 
                 if cell.textLen == 0 || cell.attrs & LingXiaTerminalAttr.hidden != 0 {
+                    flushRun(row: row)
+                    continue
+                }
+
+                if frame.isImagePlaceholder(cell) {
                     flushRun(row: row)
                     continue
                 }
@@ -891,7 +970,7 @@ final class LingXiaTerminalMetalRenderer {
                 defer { col += span }
                 let decorated = cell.underline != 0
                     || cell.attrs & LingXiaTerminalAttr.strike != 0
-                guard decorated else { continue }
+                guard decorated, !frame.isImagePlaceholder(cell) else { continue }
 
                 let inverse = cell.attrs & LingXiaTerminalAttr.inverse != 0
                 var color = inverse
@@ -1130,7 +1209,13 @@ final class LingXiaTerminalMetalRenderer {
 
     // MARK: Drawing
 
-    private func draw(layer: CAMetalLayer, clear: SIMD4<Float>, atlas: LingXiaTerminalGlyphAtlas) {
+    private func draw(
+        layer: CAMetalLayer,
+        clear: SIMD4<Float>,
+        atlas: LingXiaTerminalGlyphAtlas,
+        foregroundStart: Int,
+        images: [LingXiaTerminalRenderImagePlacement]
+    ) {
         // The clear color alone is a valid frame (an empty grid), so this
         // runs even with no quads.
         guard let drawable = layer.nextDrawable() else { return }
@@ -1142,6 +1227,8 @@ final class LingXiaTerminalMetalRenderer {
             into: drawable.texture,
             clear: clear,
             atlas: atlas,
+            foregroundStart: foregroundStart,
+            images: images,
             viewSize: viewSize,
             synchronize: false,
             present: drawable
@@ -1155,6 +1242,8 @@ final class LingXiaTerminalMetalRenderer {
         into target: MTLTexture,
         clear: SIMD4<Float>,
         atlas: LingXiaTerminalGlyphAtlas,
+        foregroundStart: Int,
+        images: [LingXiaTerminalRenderImagePlacement],
         viewSize: CGSize,
         synchronize: Bool,
         present: (any MTLDrawable)? = nil
@@ -1171,25 +1260,77 @@ final class LingXiaTerminalMetalRenderer {
             return false
         }
 
-        if !quads.isEmpty {
-            let length = MemoryLayout<LingXiaTerminalQuad>.stride * quads.count
+        let imageDraws = images.compactMap { placement -> (LingXiaTerminalQuad, MTLTexture, Int32)? in
+            guard let texture = imageTextures[placement.imageID],
+                  placement.rect.width > 0, placement.rect.height > 0 else { return nil }
+            let textureWidth = CGFloat(texture.width)
+            let textureHeight = CGFloat(texture.height)
+            let source = placement.source.intersection(
+                CGRect(x: 0, y: 0, width: textureWidth, height: textureHeight)
+            )
+            guard !source.isEmpty else { return nil }
+            let uv = SIMD4<Float>(
+                Float(source.minX / textureWidth),
+                Float(source.minY / textureHeight),
+                Float(source.maxX / textureWidth),
+                Float(source.maxY / textureHeight)
+            )
+            return (
+                LingXiaTerminalQuad(
+                    rect: SIMD4<Float>(
+                        Float(placement.rect.minX), Float(placement.rect.minY),
+                        Float(placement.rect.width), Float(placement.rect.height)
+                    ),
+                    color: SIMD4<Float>(1, 1, 1, 1),
+                    uv: uv,
+                    mode: SIMD4<Float>(2, 0, 0, 0)
+                ),
+                texture,
+                placement.zIndex
+            )
+        }
+        let allQuads = quads + imageDraws.map(\.0)
+        if !allQuads.isEmpty {
+            let stride = MemoryLayout<LingXiaTerminalQuad>.stride
+            let length = stride * allQuads.count
             if instanceBuffer == nil || instanceBuffer!.length < length {
                 instanceBuffer = device.makeBuffer(length: max(length, 64 * 1024), options: .storageModeShared)
             }
             if let buffer = instanceBuffer {
-                buffer.contents().copyMemory(from: quads, byteCount: length)
+                buffer.contents().copyMemory(from: allQuads, byteCount: length)
                 var viewport = SIMD2<Float>(Float(viewSize.width), Float(viewSize.height))
                 encoder.setRenderPipelineState(pipeline)
-                encoder.setVertexBuffer(buffer, offset: 0, index: 0)
                 encoder.setVertexBytes(&viewport, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
-                encoder.setFragmentTexture(atlas.texture, index: 0)
-                encoder.setFragmentSamplerState(sampler, index: 0)
-                encoder.drawPrimitives(
-                    type: .triangleStrip,
-                    vertexStart: 0,
-                    vertexCount: 4,
-                    instanceCount: quads.count
-                )
+                func drawRange(_ range: Range<Int>, texture: MTLTexture, sampler: MTLSamplerState) {
+                    guard !range.isEmpty else { return }
+                    encoder.setVertexBuffer(buffer, offset: range.lowerBound * stride, index: 0)
+                    encoder.setFragmentTexture(texture, index: 0)
+                    encoder.setFragmentSamplerState(sampler, index: 0)
+                    encoder.drawPrimitives(
+                        type: .triangleStrip,
+                        vertexStart: 0,
+                        vertexCount: 4,
+                        instanceCount: range.count
+                    )
+                }
+
+                let split = min(max(foregroundStart, 0), quads.count)
+                drawRange(0..<split, texture: atlas.texture, sampler: sampler)
+                for (index, draw) in imageDraws.enumerated() where draw.2 < 0 {
+                    drawRange(
+                        (quads.count + index)..<(quads.count + index + 1),
+                        texture: draw.1,
+                        sampler: imageSampler
+                    )
+                }
+                drawRange(split..<quads.count, texture: atlas.texture, sampler: sampler)
+                for (index, draw) in imageDraws.enumerated() where draw.2 >= 0 {
+                    drawRange(
+                        (quads.count + index)..<(quads.count + index + 1),
+                        texture: draw.1,
+                        sampler: imageSampler
+                    )
+                }
             }
         }
         encoder.endEncoding()

@@ -29,6 +29,10 @@ pub enum SearchMode {
     Plain,
     /// Case-sensitive plain text.
     CaseSensitive,
+    /// Case-insensitive plain text, bounded by non-word characters.
+    WholeWord,
+    /// Case-sensitive plain text, bounded by non-word characters.
+    CaseSensitiveWholeWord,
     /// Regular expression.
     Regex,
 }
@@ -166,6 +170,8 @@ pub fn search_rows(
 enum Matcher {
     Plain(String),
     PlainCase(String),
+    WholeWord(String),
+    WholeWordCase(String),
     Regex(regex::Regex),
 }
 
@@ -174,6 +180,8 @@ impl Matcher {
         match mode {
             SearchMode::Plain => Some(Self::Plain(pattern.to_lowercase())),
             SearchMode::CaseSensitive => Some(Self::PlainCase(pattern.to_string())),
+            SearchMode::WholeWord => Some(Self::WholeWord(pattern.to_lowercase())),
+            SearchMode::CaseSensitiveWholeWord => Some(Self::WholeWordCase(pattern.to_string())),
             SearchMode::Regex => regex::Regex::new(pattern).ok().map(Self::Regex),
         }
     }
@@ -207,8 +215,25 @@ impl Matcher {
             }
             Matcher::Plain(needle) => find_plain(&line.text.to_lowercase(), needle),
             Matcher::PlainCase(needle) => find_plain(&line.text, needle),
+            Matcher::WholeWord(needle) => find_plain(&line.text.to_lowercase(), needle)
+                .into_iter()
+                .filter(|&(start, end)| has_word_boundaries(&line.text, start, end))
+                .collect(),
+            Matcher::WholeWordCase(needle) => find_plain(&line.text, needle)
+                .into_iter()
+                .filter(|&(start, end)| has_word_boundaries(&line.text, start, end))
+                .collect(),
         }
     }
+}
+
+fn has_word_boundaries(text: &str, start: usize, end: usize) -> bool {
+    let chars: Vec<char> = text.chars().collect();
+    let is_word = |character: char| character.is_alphanumeric() || character == '_';
+    chars
+        .get(start.wrapping_sub(1))
+        .is_none_or(|character| !is_word(*character))
+        && chars.get(end).is_none_or(|character| !is_word(*character))
 }
 
 /// Character-offset matches of `needle` in `haystack` (both already
@@ -270,6 +295,14 @@ mod tests {
     fn case_sensitive_search_respects_case() {
         let rows = vec![row(0, "Hello hello", false)];
         let results = search(&rows, "Hello", SearchMode::CaseSensitive);
+        assert_eq!(results.total, 1);
+        assert_eq!(results.matches[0].start_col, 0);
+    }
+
+    #[test]
+    fn whole_word_search_ignores_substrings() {
+        let rows = vec![row(0, "cat catalog cat_2", false)];
+        let results = search(&rows, "cat", SearchMode::WholeWord);
         assert_eq!(results.total, 1);
         assert_eq!(results.matches[0].start_col, 0);
     }
