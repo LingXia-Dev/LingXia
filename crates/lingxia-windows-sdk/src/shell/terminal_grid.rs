@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use super::chrome::{inset_rect, rect_height, rect_width};
-use lingxia_terminal::{TerminalFrame, TerminalScrollbar};
+use lingxia_terminal::{TerminalFrame, TerminalImageSnapshot, TerminalScrollbar};
 use windows::Win32::Foundation::{HWND, RECT};
 
 /// Inner padding between the terminal card edge and the cell grid.
@@ -98,6 +98,7 @@ pub(super) struct PaneView {
 #[derive(Default)]
 struct SessionGridState {
     frame: Option<TerminalFrame>,
+    images: TerminalImageSnapshot,
     /// Generation of `frame`; handed back to the engine so it can answer
     /// "nothing changed" instead of building a frame nobody needs.
     generation: u64,
@@ -149,13 +150,21 @@ fn panel_grids() -> MutexGuard<'static, HashMap<String, PanelGridState>> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Stores the latest snapshot for `session_id`; the chrome painter renders
-/// it on the next repaint of the host window.
-pub fn set_session_frame(session_id: u64, frame: TerminalFrame) {
+/// Atomically publish whichever parts of a renderer update changed.
+pub fn set_session_render(
+    session_id: u64,
+    frame: Option<TerminalFrame>,
+    images: Option<TerminalImageSnapshot>,
+) {
     let mut grids = session_grids();
     let state = grids.entry(session_id).or_default();
-    state.generation = frame.generation;
-    state.frame = Some(frame);
+    if let Some(frame) = frame {
+        state.generation = frame.generation;
+        state.frame = Some(frame);
+    }
+    if let Some(images) = images {
+        state.images = images;
+    }
 }
 
 /// The parts of a pane that move without the grid changing, so an exit or a
@@ -191,6 +200,13 @@ pub fn session_generation(session_id: u64) -> u64 {
     session_grids()
         .get(&session_id)
         .map(|state| state.generation)
+        .unwrap_or(0)
+}
+
+pub fn session_image_generation(session_id: u64) -> u64 {
+    session_grids()
+        .get(&session_id)
+        .map(|state| state.images.generation)
         .unwrap_or(0)
 }
 
@@ -244,6 +260,8 @@ pub(crate) fn expire_scrollbar(session_id: u64) -> bool {
 /// Drops all stored state for one pane session (snapshot and geometry).
 pub fn clear_session(session_id: u64) {
     session_grids().remove(&session_id);
+    #[cfg(feature = "shell-chrome")]
+    super::terminal_gpu::drop_session(session_id);
     for panel in panel_grids().values_mut() {
         if panel.selection_session == Some(session_id) {
             panel.selection_session = None;
@@ -725,7 +743,7 @@ pub(super) fn with_pane(
     session_id: u64,
     rect: RECT,
     cell: (i32, i32),
-    draw: impl FnOnce(&TerminalFrame, PaneView, Option<(GridPoint, GridPoint)>),
+    draw: impl FnOnce(&TerminalFrame, &TerminalImageSnapshot, PaneView, Option<(GridPoint, GridPoint)>),
 ) {
     let mut grids = session_grids();
     let state = grids.entry(session_id).or_default();
@@ -741,6 +759,6 @@ pub(super) fn with_pane(
         exited: state.exited,
     };
     if let Some(frame) = state.frame.as_ref() {
-        draw(frame, view, selection);
+        draw(frame, &state.images, view, selection);
     }
 }

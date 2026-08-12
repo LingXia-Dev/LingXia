@@ -9,6 +9,7 @@
 //! GPU does the encode and blending happens in the space it is correct in.
 
 use std::collections::HashMap;
+use std::ops::Range;
 
 use windows::Win32::Graphics::Direct3D::Fxc::{D3DCOMPILE_OPTIMIZATION_LEVEL3, D3DCompile};
 use windows::Win32::Graphics::Direct3D::{D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP, ID3DBlob};
@@ -16,13 +17,14 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_APPEND_ALIGNED_ELEMENT, D3D11_BIND_CONSTANT_BUFFER, D3D11_BIND_SHADER_RESOURCE,
     D3D11_BIND_VERTEX_BUFFER, D3D11_BLEND_DESC, D3D11_BLEND_INV_SRC_ALPHA, D3D11_BLEND_ONE,
     D3D11_BLEND_OP_ADD, D3D11_BUFFER_DESC, D3D11_COLOR_WRITE_ENABLE_ALL, D3D11_CPU_ACCESS_WRITE,
-    D3D11_CULL_NONE, D3D11_FILL_SOLID, D3D11_FILTER_MIN_MAG_MIP_POINT, D3D11_INPUT_ELEMENT_DESC,
-    D3D11_INPUT_PER_INSTANCE_DATA, D3D11_MAP_WRITE_DISCARD, D3D11_RASTERIZER_DESC,
-    D3D11_RENDER_TARGET_BLEND_DESC, D3D11_SAMPLER_DESC, D3D11_SUBRESOURCE_DATA,
-    D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, D3D11_USAGE_DYNAMIC,
-    D3D11_VIEWPORT, ID3D11BlendState, ID3D11Buffer, ID3D11Device, ID3D11DeviceContext,
-    ID3D11InputLayout, ID3D11PixelShader, ID3D11RasterizerState, ID3D11RenderTargetView,
-    ID3D11SamplerState, ID3D11ShaderResourceView, ID3D11Texture2D, ID3D11VertexShader,
+    D3D11_CULL_NONE, D3D11_FILL_SOLID, D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT,
+    D3D11_FILTER_MIN_MAG_MIP_POINT, D3D11_INPUT_ELEMENT_DESC, D3D11_INPUT_PER_INSTANCE_DATA,
+    D3D11_MAP_WRITE_DISCARD, D3D11_RASTERIZER_DESC, D3D11_RENDER_TARGET_BLEND_DESC,
+    D3D11_SAMPLER_DESC, D3D11_SUBRESOURCE_DATA, D3D11_TEXTURE_ADDRESS_CLAMP, D3D11_TEXTURE2D_DESC,
+    D3D11_USAGE_DEFAULT, D3D11_USAGE_DYNAMIC, D3D11_VIEWPORT, ID3D11BlendState, ID3D11Buffer,
+    ID3D11Device, ID3D11DeviceContext, ID3D11InputLayout, ID3D11PixelShader, ID3D11RasterizerState,
+    ID3D11RenderTargetView, ID3D11SamplerState, ID3D11ShaderResourceView, ID3D11Texture2D,
+    ID3D11VertexShader,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R32G32B32A32_FLOAT, DXGI_SAMPLE_DESC,
@@ -41,6 +43,12 @@ pub(super) struct Quad {
     /// drawn as it is rather than tinted. The rest is padding the instance
     /// stride wants anyway.
     pub(super) params: [f32; 4],
+}
+
+pub(super) struct DrawBatch {
+    pub(super) range: Range<usize>,
+    pub(super) texture: Option<ID3D11ShaderResourceView>,
+    pub(super) linear: bool,
 }
 
 const SHADER: &str = r#"
@@ -107,6 +115,7 @@ pub(super) struct Pipeline {
     /// default state culls back faces.
     rasterizer: ID3D11RasterizerState,
     sampler: ID3D11SamplerState,
+    image_sampler: ID3D11SamplerState,
     frame: ID3D11Buffer,
     instances: ID3D11Buffer,
     capacity: usize,
@@ -160,6 +169,8 @@ impl Pipeline {
             )?;
             let mut sampler = None;
             device.CreateSamplerState(&point_sampler(), Some(&mut sampler))?;
+            let mut image_sampler = None;
+            device.CreateSamplerState(&image_sampler_desc(), Some(&mut image_sampler))?;
 
             let mut frame = None;
             device.CreateBuffer(
@@ -182,6 +193,7 @@ impl Pipeline {
                 blend: blend.ok_or_else(err)?,
                 rasterizer: rasterizer.ok_or_else(err)?,
                 sampler: sampler.ok_or_else(err)?,
+                image_sampler: image_sampler.ok_or_else(err)?,
                 frame: frame.ok_or_else(err)?,
                 instances: create_instances(device, 4096)?,
                 capacity: 4096,
@@ -305,6 +317,7 @@ impl Pipeline {
         width: f32,
         height: f32,
         quads: &[Quad],
+        batches: &[DrawBatch],
     ) -> Result<()> {
         if quads.is_empty() {
             return Ok(());
@@ -339,9 +352,20 @@ impl Pipeline {
             context.VSSetShader(&self.vertex, None);
             context.VSSetConstantBuffers(0, Some(&[Some(self.frame.clone())]));
             context.PSSetShader(&self.pixel, None);
-            context.PSSetShaderResources(0, Some(&[Some(self.atlas_view.clone())]));
-            context.PSSetSamplers(0, Some(&[Some(self.sampler.clone())]));
-            context.DrawInstanced(4, quads.len() as u32, 0, 0);
+            for batch in batches {
+                if batch.range.is_empty() {
+                    continue;
+                }
+                let texture = batch.texture.as_ref().unwrap_or(&self.atlas_view);
+                let sampler = if batch.linear {
+                    &self.image_sampler
+                } else {
+                    &self.sampler
+                };
+                context.PSSetShaderResources(0, Some(&[Some(texture.clone())]));
+                context.PSSetSamplers(0, Some(&[Some(sampler.clone())]));
+                context.DrawInstanced(4, batch.range.len() as u32, 0, batch.range.start as u32);
+            }
         }
         Ok(())
     }
@@ -417,6 +441,17 @@ fn premultiplied_blend() -> D3D11_BLEND_DESC {
 fn point_sampler() -> D3D11_SAMPLER_DESC {
     D3D11_SAMPLER_DESC {
         Filter: D3D11_FILTER_MIN_MAG_MIP_POINT,
+        AddressU: D3D11_TEXTURE_ADDRESS_CLAMP,
+        AddressV: D3D11_TEXTURE_ADDRESS_CLAMP,
+        AddressW: D3D11_TEXTURE_ADDRESS_CLAMP,
+        MaxLOD: f32::MAX,
+        ..Default::default()
+    }
+}
+
+fn image_sampler_desc() -> D3D11_SAMPLER_DESC {
+    D3D11_SAMPLER_DESC {
+        Filter: D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT,
         AddressU: D3D11_TEXTURE_ADDRESS_CLAMP,
         AddressV: D3D11_TEXTURE_ADDRESS_CLAMP,
         AddressW: D3D11_TEXTURE_ADDRESS_CLAMP,

@@ -708,6 +708,7 @@ pub struct TerminalFrame {
     pub cursor: Cursor,
     pub default_fg: u32,
     pub default_bg: u32,
+    pub alternate_screen: bool,
 }
 
 impl TerminalFrame {
@@ -1168,6 +1169,7 @@ impl VtScreen {
             cursor,
             default_fg: pack_rgb(default_fg, 0xFF),
             default_bg: pack_rgb(default_bg, 0xFF),
+            alternate_screen: content.mode.contains(TermMode::ALT_SCREEN),
         }))
     }
 

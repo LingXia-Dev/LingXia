@@ -1503,7 +1503,7 @@ fn take_automation_command(panel_id: &str) -> Option<u64> {
 /// running; only their exit flag is checked per tick.
 #[cfg(feature = "terminal-runtime")]
 fn run_terminal_panel_poll_loop(panel_key: &str, stop: &Arc<AtomicBool>) {
-    let mut last_generations: HashMap<u64, (u64, u64)> = HashMap::new();
+    let mut last_generations: HashMap<u64, (u64, u64, u64)> = HashMap::new();
     let mut last_active_set: Vec<u64> = Vec::new();
     let mut refresh_tick: u32 = 0;
     let mut last_config = lingxia_terminal_config::runtime::generation();
@@ -1578,15 +1578,22 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &Arc<AtomicBool>) {
             }
             let title = lingxia_terminal::terminal_title_state_data(session_id).unwrap_or_default();
             let since = super::terminal_grid::session_generation(session_id);
-            let update = lingxia_terminal::terminal_frame_data(session_id, since);
+            let image_since = super::terminal_grid::session_image_generation(session_id);
+            let update = lingxia_terminal::terminal_render_data(session_id, since, image_since);
+            let (update, images) = update.unwrap_or((
+                lingxia_terminal::TerminalFrameUpdate::Unchanged { generation: since },
+                lingxia_terminal::TerminalImageSnapshot {
+                    generation: image_since,
+                    ..Default::default()
+                },
+            ));
             let (grid_generation, frame) = match update {
-                Some(lingxia_terminal::TerminalFrameUpdate::Changed(frame)) => {
+                lingxia_terminal::TerminalFrameUpdate::Changed(frame) => {
                     (frame.generation, Some(frame))
                 }
-                Some(lingxia_terminal::TerminalFrameUpdate::Unchanged { generation }) => {
+                lingxia_terminal::TerminalFrameUpdate::Unchanged { generation } => {
                     (generation, None)
                 }
-                None => (since, None),
             };
             let grid_size = frame
                 .as_ref()
@@ -1622,12 +1629,15 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &Arc<AtomicBool>) {
             update_focused_auto_title(panel_key, session_id, &title);
             super::terminal_grid::set_session_view_state(session_id, scrollbar, exited);
 
-            let generations = (grid_generation, title.generation);
+            let image_generation = images.generation;
+            let generations = (grid_generation, title.generation, image_generation);
             if last_generations.get(&session_id) != Some(&generations) {
                 any_change = true;
-                if let Some(frame) = frame {
-                    store_session_frame(panel_key, session_id, *frame);
-                }
+                super::terminal_grid::set_session_render(
+                    session_id,
+                    frame.map(|frame| *frame),
+                    images.changed.then_some(images),
+                );
                 last_generations.insert(session_id, generations);
             }
         }
@@ -2461,27 +2471,29 @@ fn publish_active_snapshot(panel_id: &str) {
 #[cfg(feature = "terminal-runtime")]
 fn publish_session_frame(panel_id: &str, session_id: u64) -> bool {
     let since = super::terminal_grid::session_generation(session_id);
-    let update = lingxia_terminal::terminal_frame_data(session_id, since);
+    let image_since = super::terminal_grid::session_image_generation(session_id);
+    let update = lingxia_terminal::terminal_render_data(session_id, since, image_since);
     let (scrollbar, exited) =
         lingxia_terminal::terminal_view_state(session_id).unwrap_or((None, false));
     let view_changed = super::terminal_grid::set_session_view_state(session_id, scrollbar, exited);
     match update {
-        Some(lingxia_terminal::TerminalFrameUpdate::Changed(frame)) => {
-            store_session_frame(panel_id, session_id, *frame);
-            true
+        Some((frame, images)) => {
+            let frame = match frame {
+                lingxia_terminal::TerminalFrameUpdate::Changed(frame) => Some(*frame),
+                lingxia_terminal::TerminalFrameUpdate::Unchanged { .. } => None,
+            };
+            let changed = frame.is_some() || images.changed;
+            super::terminal_grid::set_session_render(
+                session_id,
+                frame,
+                images.changed.then_some(images),
+            );
+            changed || view_changed
         }
         // The grid is untouched, but the scrollbar or the child's exit still
         // has to reach the screen.
         _ => view_changed,
     }
-}
-
-/// Stores `session_id`'s snapshot in the grid store and (without the shell
-/// chrome) flattens it to the panel's plain body text.
-#[cfg(feature = "terminal-runtime")]
-fn store_session_frame(panel_id: &str, session_id: u64, frame: lingxia_terminal::TerminalFrame) {
-    let _ = panel_id;
-    super::terminal_grid::set_session_frame(session_id, frame);
 }
 
 /// Repaints the panel window (the chrome redraws every active pane).

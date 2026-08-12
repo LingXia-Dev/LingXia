@@ -27,7 +27,10 @@ pub use alacritty_vt::{
     TerminalEventBatch, TerminalEventKind, TerminalFrame, TerminalProgress, TerminalProgressState,
     TextView as TerminalTextView, UnderlineStyle as TerminalUnderlineStyle,
 };
-pub use kitty::{TerminalImage, TerminalImagePlacement, TerminalImageSnapshot};
+pub use kitty::{
+    TerminalImage, TerminalImagePlacement, TerminalImageSnapshot, UnicodePlaceholder,
+    decode_unicode_placeholder, placeholder_diacritic_index,
+};
 pub use links::{DetectedLink, LinkSource as TerminalLinkSource};
 pub use paste::{PasteRisk as TerminalPasteRisk, classify_paste, classify_paste_json};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -296,6 +299,28 @@ pub fn terminal_frame_data(id: u64, since_generation: u64) -> Option<TerminalFra
         session.vt.feed(&bytes);
     }
     Some(session.vt.frame(since_generation))
+}
+
+/// Sample a renderer frame and its Kitty image state under one session lock.
+///
+/// In-process hosts should prefer this over separate frame/image calls: a PTY
+/// writer may enqueue output between two calls, while this pair always
+/// describes one published synchronized-update boundary.
+pub fn terminal_render_data(
+    id: u64,
+    since_frame_generation: u64,
+    since_image_generation: u64,
+) -> Option<(TerminalFrameUpdate, TerminalImageSnapshot)> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    Some((
+        session.vt.frame(since_frame_generation),
+        session.vt.image_snapshot(since_image_generation),
+    ))
 }
 
 /// A session's retained frame, described by raw pointers for hosts that
