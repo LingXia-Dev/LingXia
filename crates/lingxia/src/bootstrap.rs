@@ -244,6 +244,7 @@ pub(crate) fn init_with_platform(
     crate::app::set_data_dir(runtime.app_data_dir());
     seed_display_language(&runtime.app_data_dir());
     install_global_executor();
+    lingxia_app_context::set_host_build(crate::capabilities::host_build());
     if let Err(err) = lingxia_app_context::set_app_config(app_config.clone()) {
         return Err(crate::Error::internal(format!(
             "failed to initialize app configuration: {err}"

@@ -575,6 +575,76 @@ pub fn terminal_enabled() -> bool {
         .unwrap_or(false)
 }
 
+/// What the host *binary* was compiled with, recorded once at boot.
+///
+/// A capability is available only when the build carries it and the app
+/// declares it in `lingxia.yaml`; the declaration accessors above answer the
+/// second half. Defaults to all-false so a host that never records its build
+/// (tests, tools) reports nothing rather than over-promising.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HostBuild {
+    pub browser: bool,
+    pub terminal: bool,
+    pub proxy: bool,
+}
+
+static HOST_BUILD: OnceLock<HostBuild> = OnceLock::new();
+
+/// Records the host build's capabilities. Idempotent; the first call wins.
+pub fn set_host_build(build: HostBuild) {
+    let _ = HOST_BUILD.set(build);
+}
+
+pub fn host_build() -> HostBuild {
+    HOST_BUILD.get().copied().unwrap_or_default()
+}
+
+/// The one place each host capability is decided. `lx.supports()`, the FFI
+/// capability bitmask, and the optional `lx.*` members all read these, so they
+/// cannot drift apart.
+pub mod capability {
+    /// What the binary carries, independent of what an app declared. The
+    /// native SDKs' capability bitmask reports this.
+    pub mod build {
+        pub fn browser() -> bool {
+            super::super::host_build().browser
+        }
+
+        pub fn terminal() -> bool {
+            super::super::host_build().terminal
+        }
+
+        pub fn proxy() -> bool {
+            super::super::host_build().proxy
+        }
+
+        /// Notifications are a platform fact rather than a build feature.
+        pub fn notifications() -> bool {
+            cfg!(any(target_os = "ios", target_env = "ohos"))
+        }
+    }
+
+    /// Managed browser tabs and the browser shell.
+    pub fn browser() -> bool {
+        build::browser() && super::browser_enabled()
+    }
+
+    /// Host notifications.
+    pub fn notifications() -> bool {
+        build::notifications() && super::notifications_enabled()
+    }
+
+    /// The terminal product surface and `lx.terminal`.
+    pub fn terminal() -> bool {
+        build::terminal() && super::terminal_enabled()
+    }
+
+    /// Browser proxy configuration.
+    pub fn proxy() -> bool {
+        build::proxy() && super::browser_enabled()
+    }
+}
+
 pub fn process_enabled() -> bool {
     APP_CONFIG
         .get()
