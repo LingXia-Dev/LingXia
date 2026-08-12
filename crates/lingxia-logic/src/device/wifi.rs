@@ -4,7 +4,6 @@ use lingxia_messaging::{CallbackResult, get_callback, register_handler, remove_c
 use lingxia_platform::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
 use lxapp::{LxApp, publish_app_event, register_app_handler, unregister_app_handler};
 use lxapp::{info, warn};
-use rong::function::Optional;
 use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::{Value, json};
 
@@ -342,23 +341,23 @@ async fn get_connected_wifi(ctx: JSContext) -> JSResult<WifiInfo> {
     .await
 }
 
-fn on_wifi_connected(ctx: JSContext, callback: JSFunc) -> JSResult<()> {
+/// Subscribes to WiFi connection events and returns the unsubscribe fn.
+fn on_wifi_connected(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
     info!("onWifiConnected called");
     register_app_handler(&ctx, WIFI_CONNECTED_EVENT, callback.clone())?;
     if let Err(err) = ensure_wifi_connected_callback(&ctx) {
         let _ = unregister_app_handler(&ctx, WIFI_CONNECTED_EVENT, Some(callback));
         return Err(err);
     }
-    Ok(())
-}
-
-fn off_wifi_connected(ctx: JSContext, callback: Optional<JSFunc>) -> JSResult<()> {
-    info!("offWifiConnected called");
-    let remaining = unregister_app_handler(&ctx, WIFI_CONNECTED_EVENT, callback.0);
-    if remaining == 0 {
-        clear_wifi_connected_callback(&ctx)?;
-    }
-    Ok(())
+    let off_ctx = ctx.clone();
+    JSFunc::new(&ctx, move || {
+        info!("onWifiConnected unsubscribe called");
+        let remaining =
+            unregister_app_handler(&off_ctx, WIFI_CONNECTED_EVENT, Some(callback.clone()));
+        if remaining == 0 {
+            let _ = clear_wifi_connected_callback(&off_ctx);
+        }
+    })
 }
 
 /// Initialize WiFi API bindings
@@ -374,7 +373,9 @@ rong::js_api! {
         fn connectWifi(ts_params = "options: ConnectWifiOptions") = connect_wifi;
         fn getWifiList(ts_return = "Promise<WifiInfo[]>") = get_wifi_list;
         fn getConnectedWifi(ts_return = "Promise<WifiInfo>") = get_connected_wifi;
-        fn onWifiConnected(ts_params = "callback: WifiConnectedCallback") = on_wifi_connected;
-        fn offWifiConnected(ts_params = "callback?: WifiConnectedCallback") = off_wifi_connected;
+        fn onWifiConnected(
+            ts_params = "callback: WifiConnectedCallback",
+            ts_return = "() => void"
+        ) = on_wifi_connected;
     }
 }

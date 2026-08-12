@@ -115,25 +115,23 @@ Page({
   },
 
   startNetworkChangeListen: function () {
-    if (this._networkChangeHandler) {
+    if (this._offNetworkChange) {
       return;
     }
-    const handler = (info) => {
+    this._offNetworkChange = lx.onNetworkChange((info) => {
       this.setData({
         networkChange: info || null,
       });
-    };
-    this._networkChangeHandler = handler;
-    lx.onNetworkChange(handler);
+    });
     this.setData({ networkListening: true });
   },
 
   stopNetworkChangeListen: function () {
-    if (!this._networkChangeHandler) {
+    if (!this._offNetworkChange) {
       return;
     }
-    lx.offNetworkChange(this._networkChangeHandler);
-    this._networkChangeHandler = null;
+    this._offNetworkChange();
+    this._offNetworkChange = null;
     this.setData({ networkListening: false });
   },
 
@@ -171,38 +169,34 @@ Page({
   },
 
   startDeviceOrientationListen: function () {
-    if (this._deviceOrientationHandler) {
+    if (this._offDeviceOrientationChange) {
       return;
     }
 
-    const handler = (event) => {
-      const value = typeof event === "string" ? event : event?.value;
-      this._appendOrientationEvent(value);
-    };
-
-    this._deviceOrientationHandler = handler;
     try {
-      lx.onDeviceOrientationChange(handler);
+      this._offDeviceOrientationChange = lx.onDeviceOrientationChange((event) => {
+        const value = typeof event === "string" ? event : event?.value;
+        this._appendOrientationEvent(value);
+      });
       this.setData({ orientationListening: true });
     } catch (error) {
-      this._deviceOrientationHandler = null;
       console.error("Failed to start device orientation listener:", error);
       lx.showToast({ title: error.message, icon: "none" });
     }
   },
 
   stopDeviceOrientationListen: function () {
-    if (!this._deviceOrientationHandler) {
+    if (!this._offDeviceOrientationChange) {
       return;
     }
 
     try {
-      lx.offDeviceOrientationChange(this._deviceOrientationHandler);
+      this._offDeviceOrientationChange();
     } catch (error) {
       console.error("Failed to stop device orientation listener:", error);
     }
 
-    this._deviceOrientationHandler = null;
+    this._offDeviceOrientationChange = null;
     this.setData({ orientationListening: false });
   },
 

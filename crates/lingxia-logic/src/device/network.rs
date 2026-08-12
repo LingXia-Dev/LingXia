@@ -3,7 +3,6 @@ use crate::i18n::js_internal_error;
 use lingxia_messaging::{CallbackResult, register_handler, remove_callback};
 use lingxia_platform::traits::network::Network;
 use lxapp::{LxApp, info, publish_app_event, register_app_handler, unregister_app_handler, warn};
-use rong::function::Optional;
 use rong::{IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::{Value, json};
 use std::collections::BTreeSet;
@@ -209,21 +208,21 @@ fn clear_network_change_callback(ctx: &JSContext) -> JSResult<()> {
     Ok(())
 }
 
-fn on_network_change(ctx: JSContext, callback: JSFunc) -> JSResult<()> {
+/// Subscribes to network changes and returns the unsubscribe fn.
+fn on_network_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
     register_app_handler(&ctx, NETWORK_CHANGE_EVENT, callback.clone())?;
     if let Err(err) = ensure_network_change_callback(&ctx) {
         let _ = unregister_app_handler(&ctx, NETWORK_CHANGE_EVENT, Some(callback));
         return Err(err);
     }
-    Ok(())
-}
-
-fn off_network_change(ctx: JSContext, callback: Optional<JSFunc>) -> JSResult<()> {
-    let remaining = unregister_app_handler(&ctx, NETWORK_CHANGE_EVENT, callback.0);
-    if remaining == 0 {
-        clear_network_change_callback(&ctx)?;
-    }
-    Ok(())
+    let off_ctx = ctx.clone();
+    JSFunc::new(&ctx, move || {
+        let remaining =
+            unregister_app_handler(&off_ctx, NETWORK_CHANGE_EVENT, Some(callback.clone()));
+        if remaining == 0 {
+            let _ = clear_network_change_callback(&off_ctx);
+        }
+    })
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
@@ -234,7 +233,9 @@ rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         fn getNetworkInfo(ts_return = "Promise<NetworkInfo>") = get_network_info;
-        fn onNetworkChange(ts_params = "callback: NetworkChangeCallback") = on_network_change;
-        fn offNetworkChange(ts_params = "callback?: NetworkChangeCallback") = off_network_change;
+        fn onNetworkChange(
+            ts_params = "callback: NetworkChangeCallback",
+            ts_return = "() => void"
+        ) = on_network_change;
     }
 }
