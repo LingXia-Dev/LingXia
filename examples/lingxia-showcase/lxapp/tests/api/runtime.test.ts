@@ -60,15 +60,10 @@ contract({
   title: 'register and remove portable runtime listeners',
   covers: [
     'lx.onNetworkChange',
-    'lx.offNetworkChange',
     'lx.onDeviceOrientationChange',
-    'lx.offDeviceOrientationChange',
     'lx.onKeyDown',
-    'lx.offKeyDown',
     'lx.onKeyUp',
-    'lx.offKeyUp',
     'lx.onWifiConnected',
-    'lx.offWifiConnected',
   ],
   layer: 'logic',
   levels: ['semantic', 'lifecycle'],
@@ -78,16 +73,15 @@ contract({
   const result = await app.eval({
     script: `
       const callback = () => {};
-      lx.onNetworkChange(callback);
-      lx.offNetworkChange(callback);
-      lx.onDeviceOrientationChange(callback);
-      lx.offDeviceOrientationChange(callback);
-      lx.onKeyDown(callback);
-      lx.offKeyDown(callback);
-      lx.onKeyUp(callback);
-      lx.offKeyUp(callback);
-      lx.onWifiConnected(callback);
-      lx.offWifiConnected(callback);
+      const unsubscribes = [
+        lx.onNetworkChange(callback),
+        lx.onDeviceOrientationChange(callback),
+        lx.onKeyDown(callback),
+        lx.onKeyUp(callback),
+        lx.onWifiConnected(callback),
+      ];
+      if (unsubscribes.some((off) => typeof off !== 'function')) return false;
+      unsubscribes.forEach((off) => off());
       return true;
     `,
   });

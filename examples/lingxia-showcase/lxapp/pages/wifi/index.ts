@@ -5,24 +5,20 @@ function startWifiConnectedListener(page) {
     return;
   }
 
-  const handler = (payload) => {
-    const event = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      time: new Date().toLocaleTimeString(),
-      ...payload,
-    };
-
-    const nextEvents = [event, ...page.data.wifiConnectedEvents].slice(0, 5);
-    page.setData({ wifiConnectedEvents: nextEvents });
-  };
-
-  page._wifiConnectedHandler = handler;
   try {
-    lx.onWifiConnected(handler);
+    page._offWifiConnected = lx.onWifiConnected((payload) => {
+      const event = {
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        time: new Date().toLocaleTimeString(),
+        ...payload,
+      };
+
+      const nextEvents = [event, ...page.data.wifiConnectedEvents].slice(0, 5);
+      page.setData({ wifiConnectedEvents: nextEvents });
+    });
     page.setData({ wifiListenerEnabled: true });
   } catch (error) {
     console.error("Failed to register WiFi listener:", error);
-    page._wifiConnectedHandler = null;
   }
 }
 
@@ -31,11 +27,11 @@ function stopWifiConnectedListener(page) {
     return;
   }
   try {
-    lx.offWifiConnected(page._wifiConnectedHandler);
+    page._offWifiConnected?.();
   } catch (error) {
     console.error("Failed to unregister WiFi listener:", error);
   } finally {
-    page._wifiConnectedHandler = null;
+    page._offWifiConnected = null;
     page.setData({ wifiListenerEnabled: false });
   }
 }

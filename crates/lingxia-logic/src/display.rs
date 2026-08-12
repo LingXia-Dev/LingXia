@@ -5,7 +5,6 @@ use lingxia_platform::traits::ui::UIUpdate;
 use lxapp::{
     LxApp, OrientationConfig, publish_app_event, register_app_handler, unregister_app_handler,
 };
-use rong::function::Optional;
 use rong::{JSContext, JSFunc, JSObject, JSResult};
 
 const DEVICE_ORIENTATION_CHANGE_EVENT: &str = "DeviceOrientationChange";
@@ -60,7 +59,8 @@ fn set_device_orientation(ctx: JSContext, orientation: String) -> JSResult<bool>
     Ok(true)
 }
 
-fn on_device_orientation_change(ctx: JSContext, callback: JSFunc) -> JSResult<()> {
+/// Subscribes to orientation changes and returns the unsubscribe fn.
+fn on_device_orientation_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let current_path = lxapp.peek_current_page_path().unwrap_or_default();
     let current = if current_path.is_empty() {
@@ -72,19 +72,20 @@ fn on_device_orientation_change(ctx: JSContext, callback: JSFunc) -> JSResult<()
     let value = normalize_orientation_value(current.to_label())
         .ok_or_else(|| js_invalid_parameter_error("Current orientation unavailable"))?;
 
-    let callback_for_initial = callback.clone();
-    register_app_handler(&ctx, DEVICE_ORIENTATION_CHANGE_EVENT, callback)?;
+    register_app_handler(&ctx, DEVICE_ORIENTATION_CHANGE_EVENT, callback.clone())?;
 
     let payload = JSObject::new(&ctx);
     payload.set("value", value)?;
-    let _ = callback_for_initial.call::<_, ()>(None, (payload,));
+    let _ = callback.call::<_, ()>(None, (payload,));
 
-    Ok(())
-}
-
-fn off_device_orientation_change(ctx: JSContext, callback: Optional<JSFunc>) -> JSResult<()> {
-    unregister_app_handler(&ctx, DEVICE_ORIENTATION_CHANGE_EVENT, callback.0);
-    Ok(())
+    let off_ctx = ctx.clone();
+    JSFunc::new(&ctx, move || {
+        unregister_app_handler(
+            &off_ctx,
+            DEVICE_ORIENTATION_CHANGE_EVENT,
+            Some(callback.clone()),
+        );
+    })
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
@@ -96,10 +97,8 @@ rong::js_api! {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         fn setDeviceOrientation(ts_params = "orientation: DeviceOrientation") = set_device_orientation;
         fn onDeviceOrientationChange(
-            ts_params = "callback: (event: DeviceOrientationChangeEvent) => void"
+            ts_params = "callback: (event: DeviceOrientationChangeEvent) => void",
+            ts_return = "() => void"
         ) = on_device_orientation_change;
-        fn offDeviceOrientationChange(
-            ts_params = "callback?: (event: DeviceOrientationChangeEvent) => void"
-        ) = off_device_orientation_change;
     }
 }

@@ -2246,8 +2246,8 @@ declare global {
     getDeviceInfo(): DeviceInfo;
     getScreenInfo(): ScreenInfo;
     getNetworkInfo(): Promise<NetworkInfo>;
-    onNetworkChange(callback: NetworkChangeCallback): void;
-    offNetworkChange(callback?: NetworkChangeCallback): void;
+    /** Subscribes to network changes and returns the unsubscribe fn. */
+    onNetworkChange(callback: NetworkChangeCallback): () => void;
     /** Initialize WiFi module */
     startWifi(): Promise<void>;
     /** Stop WiFi module */
@@ -2262,11 +2262,11 @@ declare global {
     getWifiList(): Promise<WifiInfo[]>;
     /** Get connected WiFi info */
     getConnectedWifi(): Promise<WifiInfo>;
-    onWifiConnected(callback: WifiConnectedCallback): void;
-    offWifiConnected(callback?: WifiConnectedCallback): void;
+    /** Subscribes to WiFi connection events and returns the unsubscribe fn. */
+    onWifiConnected(callback: WifiConnectedCallback): () => void;
     setDeviceOrientation(orientation: DeviceOrientation): boolean;
-    onDeviceOrientationChange(callback: (event: DeviceOrientationChangeEvent) => void): void;
-    offDeviceOrientationChange(callback?: (event: DeviceOrientationChangeEvent) => void): void;
+    /** Subscribes to orientation changes and returns the unsubscribe fn. */
+    onDeviceOrientationChange(callback: (event: DeviceOrientationChangeEvent) => void): () => void;
     readonly env: LxEnv;
     downloadFile(options: never): never;
     uploadFile(options: UploadOptions): UploadTask;
@@ -2279,10 +2279,10 @@ declare global {
     chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
     chooseDirectory(options?: ChooseDirectoryOptions): Promise<ChooseDirectoryResult>;
     getFileManager(): FileManager;
-    onKeyDown(callback: KeyEventCallback): void;
-    offKeyDown(callback?: KeyEventCallback): void;
-    onKeyUp(callback: KeyEventCallback): void;
-    offKeyUp(callback?: KeyEventCallback): void;
+    /** Subscribes to key-down events and returns the unsubscribe fn. */
+    onKeyDown(callback: KeyEventCallback): () => void;
+    /** Subscribes to key-up events and returns the unsubscribe fn. */
+    onKeyUp(callback: KeyEventCallback): () => void;
     /** Get location function */
     getLocation(options?: GetLocationOptions): Promise<LocationInfo>;
     getLxAppInfo(): LxAppInfo;

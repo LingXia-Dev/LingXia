@@ -79,7 +79,7 @@ contract({
 contract({
   id: 'DEVICE-002',
   title: 'keep network query and listener behavior equivalent across renderers',
-  covers: ['lx.getNetworkInfo', 'lx.onNetworkChange', 'lx.offNetworkChange'],
+  covers: ['lx.getNetworkInfo', 'lx.onNetworkChange'],
   layer: 'logic',
   levels: ['semantic', 'boundary', 'lifecycle'],
   scope: 'portable',
