@@ -221,7 +221,7 @@ private final class LingXiaTerminalPaneCloseButton: NSButton {
         setAccessibilityLabel(L10n.string("lx_common_close"))
         focusRingType = .none
         wantsLayer = true
-        layer?.cornerRadius = 6
+        layer?.cornerRadius = 12
         updateAppearance()
     }
 
@@ -260,8 +260,8 @@ private final class LingXiaTerminalPaneCloseButton: NSButton {
             ? NSColor.lxTerminalForeground.withAlphaComponent(0.92)
             : NSColor.lxTerminalForeground.withAlphaComponent(0.52)
         layer?.backgroundColor = hovered
-            ? NSColor.lxTerminalForeground.withAlphaComponent(0.09).cgColor
-            : NSColor.clear.cgColor
+            ? NSColor.lxTerminalForeground.withAlphaComponent(0.16).cgColor
+            : NSColor.lxTerminalForeground.withAlphaComponent(0.09).cgColor
     }
 }
 
@@ -456,6 +456,9 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
     private var dropDirection: LingXiaTerminalSplitDirection?
     private var searchResults = LingXiaTerminalSearchResults(matches: [], total: 0, truncated: false, cancelled: false)
     private var activeSearchMatch: Int?
+    private var paneTrackingArea: NSTrackingArea?
+    private var paneControlsEnabled = false
+    private var paneHovered = false
 
     init(initialDirectory: String? = nil) {
         self.session = LingXiaPTYTerminalSession(initialDirectory: initialDirectory)
@@ -589,8 +592,9 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
     }
 
     func setPaneDragEnabled(_ enabled: Bool) {
+        paneControlsEnabled = enabled
         dragHandle.dragEnabled = enabled
-        closeButton.isHidden = !enabled
+        updatePaneControlsVisibility()
     }
 
     func focusTerminal() {
@@ -667,6 +671,30 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
         onActivated?(paneID)
     }
 
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let paneTrackingArea {
+            removeTrackingArea(paneTrackingArea)
+        }
+        let area = NSTrackingArea(
+            rect: paneControlsHoverRect,
+            options: [.activeInKeyWindow, .mouseEnteredAndExited],
+            owner: self
+        )
+        addTrackingArea(area)
+        paneTrackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        paneHovered = true
+        updatePaneControlsVisibility()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        paneHovered = false
+        updatePaneControlsVisibility()
+    }
+
     override func layout() {
         super.layout()
         dragHandle.frame = NSRect(
@@ -689,6 +717,11 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
             height: 46
         )
         updateDropOverlayFrame()
+    }
+
+    private var paneControlsHoverRect: NSRect {
+        let height = min(32, bounds.height)
+        return NSRect(x: 0, y: bounds.height - height, width: bounds.width, height: height)
     }
 
     override func keyDown(with event: NSEvent) {
@@ -763,6 +796,12 @@ final class LingXiaTerminalPaneView: NSView, NSDraggingSource {
 
     @objc private func closePane() {
         onCloseRequested?(paneID)
+    }
+
+    private func updatePaneControlsVisibility() {
+        let visible = paneControlsEnabled && paneHovered
+        dragHandle.isHidden = !visible
+        closeButton.isHidden = !visible
     }
 
     private func beginPaneDrag(with event: NSEvent) {
@@ -1766,7 +1805,9 @@ private final class LingXiaTerminalCanvasView: NSView, @MainActor NSTextInputCli
         copyItem.isEnabled = selectedText()?.isEmpty == false
         menu.addItem(copyItem)
         menu.addItem(menuItem("Paste", action: #selector(paste(_:))))
-        menu.addItem(menuItem("Find...", action: #selector(findFromMenu)))
+        let searchItem = menuItem("Search…", action: #selector(findFromMenu))
+        searchItem.keyEquivalent = "f"
+        menu.addItem(searchItem)
         menu.addItem(.separator())
         menu.addItem(menuItem("Split Right", action: #selector(splitRightFromMenu)))
         menu.addItem(menuItem("Split Left", action: #selector(splitLeftFromMenu)))

@@ -33,6 +33,7 @@ host = { package = "native", path = "../native", default-features = false }
 lingxia-windows-build = { path = "../../../crates/lingxia-windows-build" }
 
 [patch.crates-io]
+portable-pty = { git = "https://github.com/LingXia-Dev/wezterm.git", rev = "59d0fb89c54a77c12afe2561dc6969d8dc55fc4f", package = "portable-pty" }
 lingxia = { path = "../../../crates/lingxia" }
 lingxia-app-context = { path = "../../../crates/lingxia-app-context" }
 lingxia-browser = { path = "../../../crates/lingxia-browser" }

@@ -889,6 +889,7 @@ pub(super) fn show_terminal_context_menu(
         use lingxia_logic::i18n::t;
         // Item order mirrors the macOS surface context menu.
         let mut items = vec![t(I18nKey::TerminalCopy), t(I18nKey::TerminalPaste)];
+        items.push(format!("{}\tCtrl+F", t(I18nKey::TerminalSearch)));
         items.push(String::new()); // separator marker
         items.push(t(I18nKey::TerminalSplitRight));
         items.push(t(I18nKey::TerminalSplitLeft));
@@ -938,6 +939,8 @@ fn handle_context_menu_choice(panel_id: &str, items: &[String], index: usize) {
         copy_panel_screen_to_clipboard(panel_id);
     } else if label == t(I18nKey::TerminalPaste) {
         paste_clipboard_into_panel(panel_id);
+    } else if label == format!("{}\tCtrl+F", t(I18nKey::TerminalSearch)) {
+        begin_terminal_search(panel_id);
     } else if label == t(I18nKey::TerminalSplitRight) {
         split_focused_pane(panel_id, SplitDir::Right);
     } else if label == t(I18nKey::TerminalSplitLeft) {
@@ -1562,6 +1565,28 @@ fn take_automation_command(panel_id: &str) -> Option<u64> {
         set_terminal_panel_maximized_by_user(panel_id, maximized);
         return Some(id);
     }
+    if action == Some("input") {
+        let Some(text) = value
+            .pointer("/params/text")
+            .and_then(serde_json::Value::as_str)
+        else {
+            lxapp::terminal_automation::complete_command(id, false, "input requires text");
+            return None;
+        };
+        let Some(session_id) = active_session_id(panel_id) else {
+            lxapp::terminal_automation::complete_command(
+                id,
+                false,
+                "terminal surface has no active pane",
+            );
+            return None;
+        };
+        if lingxia_terminal::terminal_write(session_id, text) {
+            return Some(id);
+        }
+        lxapp::terminal_automation::complete_command(id, false, "terminal input was rejected");
+        return None;
+    }
     if action != Some("split") {
         let name = action.unwrap_or("missing");
         lxapp::terminal_automation::complete_command(
@@ -2109,6 +2134,34 @@ pub(super) fn pane_close_button_rect(rect: RECT) -> RECT {
     }
 }
 
+/// Top-edge reveal zone for a split pane's drag and close controls.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+pub(super) fn pane_controls_hover_rect(rect: RECT) -> RECT {
+    const HEIGHT: i32 = 32;
+    RECT {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: (rect.top + HEIGHT).min(rect.bottom),
+    }
+}
+
+/// Pane top edge under the pointer, used to invalidate hover-only split
+/// controls when the pointer enters, leaves, or crosses a pane boundary.
+#[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
+pub(crate) fn pane_hover_rect(panel_id: &str, x: i32, y: i32) -> Option<RECT> {
+    let body = super::terminal_grid::panel_body_rect(panel_id)?;
+    let frames = active_pane_frames(panel_id, body);
+    (frames.len() > 1)
+        .then(|| {
+            frames
+                .into_iter()
+                .map(|frame| pane_controls_hover_rect(frame.rect))
+                .find(|rect| point_in_rect(*rect, x, y))
+        })
+        .flatten()
+}
+
 /// Closes the exact split pane under the pointer. A lone pane keeps its close
 /// action in the tab strip, matching the split controls on macOS.
 #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
@@ -2332,6 +2385,15 @@ fn pane_drop_rect(rect: RECT, direction: SplitDir) -> RECT {
 #[cfg(all(not(feature = "terminal-runtime"), feature = "shell-chrome"))]
 pub(crate) fn pane_drag_handle_at(_panel_id: &str, _x: i32, _y: i32) -> bool {
     false
+}
+
+#[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
+pub(crate) fn pane_hover_rect(
+    _panel_id: &str,
+    _x: i32,
+    _y: i32,
+) -> Option<windows::Win32::Foundation::RECT> {
+    None
 }
 
 #[cfg(not(all(feature = "terminal-runtime", feature = "shell-chrome")))]
@@ -2687,8 +2749,8 @@ mod tests {
     use super::stable_tab_title;
     #[cfg(feature = "shell-chrome")]
     use super::{
-        PaneNode, PaneOrientation, SplitDir, pane_close_button_rect, pane_drag_handle_rect,
-        pane_drop_direction,
+        PaneNode, PaneOrientation, SplitDir, pane_close_button_rect, pane_controls_hover_rect,
+        pane_drag_handle_rect, pane_drop_direction, point_in_rect,
     };
     #[cfg(windows)]
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -2833,6 +2895,24 @@ mod tests {
         assert!(close.left >= drag.right);
         assert!(close.top >= pane.top);
         assert!(close.bottom <= pane.bottom);
+    }
+
+    #[cfg(feature = "shell-chrome")]
+    #[test]
+    fn pane_controls_reveal_zone_is_limited_to_the_top_edge() {
+        let pane = RECT {
+            left: 20,
+            top: 40,
+            right: 420,
+            bottom: 300,
+        };
+        let hover = pane_controls_hover_rect(pane);
+        assert_eq!(hover.left, pane.left);
+        assert_eq!(hover.top, pane.top);
+        assert_eq!(hover.right, pane.right);
+        assert_eq!(hover.bottom, pane.top + 32);
+        assert!(point_in_rect(hover, 200, pane.top + 31));
+        assert!(!point_in_rect(hover, 200, pane.top + 32));
     }
 
     #[cfg(feature = "shell-chrome")]

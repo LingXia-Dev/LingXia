@@ -29,6 +29,12 @@ struct SplitOptions {
 }
 
 #[derive(FromJSObject)]
+struct InputOptions {
+    surface: String,
+    text: String,
+}
+
+#[derive(FromJSObject)]
 struct MaximizeOptions {
     surface: String,
     maximized: bool,
@@ -72,6 +78,25 @@ impl JSTerminalDriver {
     #[js_method]
     async fn snapshot(&self, ctx: JSContext, options: SurfaceOptions) -> JSResult<JSValue> {
         let snapshot = wait_for_snapshot(options.surface.trim()).await?;
+        json_to_js(&ctx, &snapshot)
+    }
+
+    /// Send text to the focused pane through the native PTY input path.
+    #[js_method]
+    async fn input(&self, ctx: JSContext, options: InputOptions) -> JSResult<JSValue> {
+        let surface = options.surface.trim();
+        if surface.is_empty() {
+            return Err(auto_err("terminal input requires a surface id"));
+        }
+        wait_for_snapshot(surface).await?;
+        let snapshot = lxapp::terminal_automation::run_command(
+            surface,
+            "input",
+            json!({ "text": options.text }),
+            HOST_TIMEOUT,
+        )
+        .await
+        .map_err(auto_err)?;
         json_to_js(&ctx, &snapshot)
     }
 

@@ -6194,6 +6194,36 @@ fn clear_chrome_hover(hwnd: HWND) {
     }
 }
 
+fn sync_chrome_hover(
+    hwnd: HWND,
+    point: (i32, i32),
+    hover_rect: Option<RECT>,
+    from_host: bool,
+) -> bool {
+    let previous = chrome_interaction(hwnd);
+    update_chrome_interaction(hwnd, |state| {
+        state.cursor = Some(point);
+        state.hover_rect = hover_rect;
+    });
+    if previous.hover_rect != hover_rect {
+        for rect in [previous.hover_rect, hover_rect].into_iter().flatten() {
+            invalidate_rect_if_non_empty(hwnd, rect);
+        }
+    }
+    if from_host && hover_rect.is_some() {
+        let mut track = TRACKMOUSEEVENT {
+            cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+            dwFlags: TME_LEAVE,
+            hwndTrack: hwnd,
+            dwHoverTime: 0,
+        };
+        unsafe {
+            let _ = TrackMouseEvent(&mut track);
+        }
+    }
+    previous.hover_rect != hover_rect
+}
+
 /// Invalidates only the caption-button rects; frame-button hover/press
 /// feedback must not repaint the rest of the chrome.
 fn invalidate_frame_buttons(hwnd: HWND) {
@@ -6983,7 +7013,16 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         if let Some(WindowsChromeHit::Focusable { id, .. }) = &hit
             && crate::shell::pane_drag_handle_at(id, point.0, point.1)
         {
-            clear_chrome_hover(hwnd);
+            if sync_chrome_hover(
+                hwnd,
+                point,
+                crate::shell::pane_hover_rect(id, point.0, point.1),
+                from_host,
+            ) {
+                unsafe {
+                    let _ = windows::Win32::Graphics::Gdi::UpdateWindow(hwnd);
+                }
+            }
             set_pane_handle_cursor();
             return true;
         }
@@ -7012,18 +7051,16 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         (Some(renderer), Some(state)) => renderer.hover_rect(state, point),
         _ => None,
     };
-    let previous = chrome_interaction(hwnd);
-    update_chrome_interaction(hwnd, |state| {
-        state.cursor = Some(point);
-        state.hover_rect = hover_rect;
-    });
-    if previous.hover_rect != hover_rect {
-        for rect in [previous.hover_rect, hover_rect].into_iter().flatten() {
-            invalidate_rect_if_non_empty(hwnd, rect);
+    let hover_changed = sync_chrome_hover(hwnd, point, hover_rect, from_host);
+    if hover_changed && matches!(&hit, Some(WindowsChromeHit::Focusable { .. })) {
+        // Native terminal grids are DirectComposition children updated from
+        // this paint pass, so flush their reveal boundary synchronously.
+        unsafe {
+            let _ = windows::Win32::Graphics::Gdi::UpdateWindow(hwnd);
         }
     }
 
-    if from_host && (hover.is_some() || hover_rect.is_some()) {
+    if from_host && hover.is_some() && hover_rect.is_none() {
         // WM_MOUSELEAVE clears highlights when the cursor exits the window
         // or moves onto the webview child.
         let mut track = TRACKMOUSEEVENT {

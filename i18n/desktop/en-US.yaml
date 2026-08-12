@@ -28,6 +28,7 @@ terminal:
   title: "Terminal"
   copy: "Copy"
   paste: "Paste"
+  search: "Search…"
   split_right: "Split Right"
   split_left: "Split Left"
   split_down: "Split Down"

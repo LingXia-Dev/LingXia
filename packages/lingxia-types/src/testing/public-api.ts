@@ -179,7 +179,7 @@ const AUTOMATION_API = [
   'terminal',
 ] as const;
 const SHELL_DRIVER_API = ['pins', 'setPin'] as const;
-const TERMINAL_DRIVER_API = ['newTab', 'setMaximized', 'snapshot', 'split'] as const;
+const TERMINAL_DRIVER_API = ['input', 'newTab', 'setMaximized', 'snapshot', 'split'] as const;
 const LXAPP_DRIVER_API = ['eval', 'info', 'nav', 'page', 'pages', 'surfaceLayout'] as const;
 const LXAPP_MANAGER_API = [
   'close',

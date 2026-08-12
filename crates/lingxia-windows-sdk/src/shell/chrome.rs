@@ -503,6 +503,12 @@ fn chrome_hover_rect(
     // close-all light up on hover like the top-bar buttons.
     if let Some(attached) = &state.attached {
         for panel in &attached.panels {
+            if panel.host_content.is_some()
+                && let Some(rect) =
+                    super::terminal_panel::pane_hover_rect(&panel.panel_id, point.0, point.1)
+            {
+                return Some(rect);
+            }
             if !browser_panel_header_visible(panel)
                 || !rect_contains(&browser_panel_header_rect(panel), point)
             {
@@ -1792,7 +1798,7 @@ fn paint_native_panel_region(hdc: HDC, state: &WindowsChromeState, invalid: RECT
     // ever-darker, ever-squarer corners. The DC is already clipped to
     // `invalid`.
     fill_rect(hdc, panel.rect, shell_palette().window_background);
-    draw_native_panel_content(hdc, state.hwnd, state.client, panel);
+    draw_native_panel_content(hdc, state.hwnd, state.client, panel, state.cursor);
     true
 }
 
@@ -2295,7 +2301,7 @@ pub(super) fn draw_content_cards(
             // Maximized native panels are drawn as an overlay later in
             // `draw_window_chrome`, above sidebar/tabbar shell chrome.
             if panel.host_content.is_some() && !panel_is_maximized(panel) {
-                draw_native_panel_content(hdc, state.hwnd, state.client, panel);
+                draw_native_panel_content(hdc, state.hwnd, state.client, panel, state.cursor);
             }
         }
         // The card's arcs show wherever no surface covers them (loading,

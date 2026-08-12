@@ -84,7 +84,13 @@ fn sole_sprite(run: &str) -> Option<u32> {
 }
 
 /// Render a panel's terminal body.
-pub(super) fn present(parent: HWND, panel_id: &str, body: RECT, radii: [i32; 4]) {
+pub(super) fn present(
+    parent: HWND,
+    panel_id: &str,
+    body: RECT,
+    radii: [i32; 4],
+    cursor: Option<(i32, i32)>,
+) {
     register_captures();
     let mut registry = surface_registry();
     if !registry.permits_present(panel_id) {
@@ -100,7 +106,7 @@ pub(super) fn present(parent: HWND, panel_id: &str, body: RECT, radii: [i32; 4])
             }
         },
     };
-    if let Err(error) = surface.present(parent, panel_id, body, radii) {
+    if let Err(error) = surface.present(parent, panel_id, body, radii, cursor) {
         log::error!("terminal GPU present failed: {error}");
         registry.surfaces.remove(panel_id);
     }
@@ -233,6 +239,7 @@ struct Surface {
     images: HashMap<(u64, u32), CachedImage>,
     image_generations: HashMap<u64, u64>,
     close_icon: Option<ID3D11ShaderResourceView>,
+    close_background: Option<ID3D11ShaderResourceView>,
     /// Clear color of the last frame, so a capture reproduces it exactly.
     background: u32,
     /// Offscreen copy of the frame, for screenshots. Built on demand.
@@ -314,13 +321,21 @@ impl Surface {
                 images: HashMap::new(),
                 image_generations: HashMap::new(),
                 close_icon: None,
+                close_background: None,
                 background: GRID_DEFAULT_BACKGROUND,
                 readback: None,
             })
         }
     }
 
-    fn present(&mut self, parent: HWND, panel_id: &str, body: RECT, radii: [i32; 4]) -> Result<()> {
+    fn present(
+        &mut self,
+        parent: HWND,
+        panel_id: &str,
+        body: RECT,
+        radii: [i32; 4],
+        cursor: Option<(i32, i32)>,
+    ) -> Result<()> {
         let width = (body.right - body.left).max(1);
         let height = (body.bottom - body.top).max(1);
         self.place(parent, body, radii, width, height)?;
@@ -391,7 +406,7 @@ impl Surface {
         }
 
         if multi {
-            self.append_split_controls(&panes, body, chrome.text_muted);
+            self.append_split_controls(&panes, body, chrome.text_muted, cursor);
         }
 
         if let Some(target) = drop_target {
@@ -534,19 +549,34 @@ impl Surface {
     }
 }
 
+fn pane_controls_visible(rect: RECT, cursor: Option<(i32, i32)>) -> bool {
+    let hover = super::terminal_panel::pane_controls_hover_rect(rect);
+    cursor.is_some_and(|(x, y)| {
+        x >= hover.left && x < hover.right && y >= hover.top && y < hover.bottom
+    })
+}
+
 impl Surface {
     fn append_split_controls(
         &mut self,
         panes: &[super::terminal_panel::PaneFrame],
         body: RECT,
         color: u32,
+        cursor: Option<(i32, i32)>,
     ) {
         if self.close_icon.is_none() {
             self.close_icon =
                 create_design_icon_texture(&self.device, crate::WindowsDesignIcon::CloseX, 16).ok();
         }
+        if self.close_background.is_none() {
+            self.close_background = create_circle_texture(&self.device, 24).ok();
+        }
         let icon = self.close_icon.clone();
-        for pane in panes {
+        let close_background = self.close_background.clone();
+        for pane in panes
+            .iter()
+            .filter(|pane| pane_controls_visible(pane.rect, cursor))
+        {
             let handle = super::terminal_panel::pane_drag_handle_rect(pane.rect);
             let center_x = (handle.left + handle.right) as f32 / 2.0 - body.left as f32;
             let y = (handle.top + handle.bottom) as f32 / 2.0 - body.top as f32;
@@ -566,8 +596,28 @@ impl Surface {
                 texture: None,
                 linear: false,
             });
+            let close = super::terminal_panel::pane_close_button_rect(pane.rect);
+            if let Some(texture) = &close_background {
+                let size = 24.0;
+                let x = (close.left + close.right) as f32 / 2.0 - body.left as f32 - size / 2.0;
+                let y = (close.top + close.bottom) as f32 / 2.0 - body.top as f32 - size / 2.0;
+                let hovered = cursor.is_some_and(|(x, y)| {
+                    x >= close.left && x < close.right && y >= close.top && y < close.bottom
+                });
+                let start = self.quads.len();
+                self.quads.push(Quad {
+                    rect: [x.round(), y.round(), size, size],
+                    color: linear_alpha(color, if hovered { 0.16 } else { 0.09 }),
+                    uv: [0.0, 0.0, 1.0, 1.0],
+                    params: [0.0; 4],
+                });
+                self.batches.push(DrawBatch {
+                    range: start..start + 1,
+                    texture: Some(texture.clone()),
+                    linear: true,
+                });
+            }
             if let Some(texture) = &icon {
-                let close = super::terminal_panel::pane_close_button_rect(pane.rect);
                 let size = 14.0;
                 let x = (close.left + close.right) as f32 / 2.0 - body.left as f32 - size / 2.0;
                 let y = (close.top + close.bottom) as f32 / 2.0 - body.top as f32 - size / 2.0;
@@ -1032,6 +1082,21 @@ fn create_design_icon_texture(
             (pixel >> 16) as u8,
             (pixel >> 24) as u8,
         ]);
+    }
+    create_bgra_texture(device, size, size, &bgra)
+}
+
+fn create_circle_texture(device: &ID3D11Device, size: u32) -> Result<ID3D11ShaderResourceView> {
+    let radius = size as f32 / 2.0;
+    let mut bgra = Vec::with_capacity((size * size * 4) as usize);
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 + 0.5 - radius;
+            let dy = y as f32 + 0.5 - radius;
+            let coverage = (radius - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
+            let alpha = (coverage * 255.0).round() as u8;
+            bgra.extend_from_slice(&[alpha, alpha, alpha, alpha]);
+        }
     }
     create_bgra_texture(device, size, size, &bgra)
 }
@@ -1641,6 +1706,15 @@ fn linear(color: u32) -> [f32; 4] {
     [channel(16), channel(8), channel(0), 1.0]
 }
 
+fn linear_alpha(color: u32, alpha: f32) -> [f32; 4] {
+    let mut value = linear(color);
+    for channel in &mut value[..3] {
+        *channel *= alpha;
+    }
+    value[3] = alpha;
+    value
+}
+
 fn swapchain_desc(width: u32, height: u32) -> DXGI_SWAP_CHAIN_DESC1 {
     DXGI_SWAP_CHAIN_DESC1 {
         Width: width,
@@ -1797,7 +1871,25 @@ fn drain_debug_messages(device: &ID3D11Device) {
 
 #[cfg(test)]
 mod tests {
-    use super::{SurfaceRegistry, clip_image};
+    use super::{SurfaceRegistry, clip_image, pane_controls_visible};
+    use windows::Win32::Foundation::RECT;
+
+    #[test]
+    fn pane_controls_only_appear_at_the_hovered_pane_top_edge() {
+        let pane = RECT {
+            left: 10,
+            top: 20,
+            right: 110,
+            bottom: 220,
+        };
+        assert!(!pane_controls_visible(pane, None));
+        assert!(!pane_controls_visible(pane, Some((9, 20))));
+        assert!(pane_controls_visible(pane, Some((10, 20))));
+        assert!(pane_controls_visible(pane, Some((109, 51))));
+        assert!(!pane_controls_visible(pane, Some((109, 52))));
+        assert!(!pane_controls_visible(pane, Some((110, 51))));
+        assert!(!pane_controls_visible(pane, Some((109, 219))));
+    }
 
     #[test]
     fn retired_panel_rejects_late_paints_until_explicitly_reopened() {

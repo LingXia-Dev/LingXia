@@ -146,6 +146,7 @@ export const I18N_KEYS = [
   "terminal_paste",
   "terminal_read_only",
   "terminal_reset",
+  "terminal_search",
   "terminal_split_down",
   "terminal_split_left",
   "terminal_split_right",
