@@ -47,6 +47,7 @@ struct LingXiaTerminalGPUFrame {
     var cols = 0
     var rows = 0
     var generation: UInt64 = 0
+    var imageGeneration: UInt64 = 0
     var cells: [LingXiaTerminalFrameCell] = []
     var text: [UInt8] = []
     var defaultForeground: UInt32 = 0xFFFF_FFFF
@@ -116,6 +117,7 @@ enum LingXiaTerminalFrameSource {
         frame.cols = Int(handle.cols)
         frame.rows = Int(handle.rows)
         frame.generation = handle.generation
+        frame.imageGeneration = handle.image_generation
         let cellsPointer = UnsafeRawPointer(bitPattern: handle.cells)!
             .assumingMemoryBound(to: LingXiaTerminalFrameCell.self)
         frame.cells = Array(UnsafeBufferPointer(start: cellsPointer, count: Int(handle.cells_len)))
@@ -540,6 +542,7 @@ struct LingXiaTerminalRenderContext {
     var scale: CGFloat
     var viewSize: CGSize
     var selection: [(row: Int, startCol: Int, endCol: Int)] = []
+    var searchHighlights: [(row: Int, startCol: Int, endCol: Int, active: Bool)] = []
     var selectionColor: NSColor = .selectedTextBackgroundColor
     var selectionForegroundColor: NSColor = .selectedTextColor
     var cursorColor: NSColor = .white
@@ -693,6 +696,7 @@ final class LingXiaTerminalMetalRenderer {
         let defaultBackground = Self.color(frame.defaultBackground, fallbackAlpha: 1)
         let defaultForeground = Self.color(frame.defaultForeground, fallbackAlpha: 1)
         appendBackgrounds(frame: frame, context: context, defaultForeground: defaultForeground)
+        appendSearchHighlights(context: context)
         appendSelection(context: context)
         appendGlyphs(
             frame: frame,
@@ -741,6 +745,20 @@ final class LingXiaTerminalMetalRenderer {
         guard !context.selection.isEmpty else { return }
         let color = Self.color(context.selectionColor)
         for span in context.selection where span.endCol > span.startCol {
+            let rect = CGRect(
+                x: CGFloat(span.startCol) * context.cellSize.width,
+                y: CGFloat(span.row) * context.cellSize.height,
+                width: CGFloat(span.endCol - span.startCol) * context.cellSize.width,
+                height: context.cellSize.height
+            )
+            quads.append(solid(rect: rect, color: color))
+        }
+    }
+
+    private func appendSearchHighlights(context: LingXiaTerminalRenderContext) {
+        for span in context.searchHighlights where span.endCol > span.startCol {
+            let base = span.active ? NSColor.systemOrange : NSColor.systemYellow
+            let color = Self.color(base.withAlphaComponent(span.active ? 0.52 : 0.25))
             let rect = CGRect(
                 x: CGFloat(span.startCol) * context.cellSize.width,
                 y: CGFloat(span.row) * context.cellSize.height,

@@ -776,6 +776,9 @@ final class LingXiaTerminalWorkspaceView: NSView {
 
         if let tab = activeTab(),
            let pane = activePane(in: tab) {
+            if pane.shouldPreserveFocus(for: event) {
+                return event
+            }
             lxTerminalLog("workspace.mouseDown focusPane surface=\(surfaceID) pane=\(pane.paneID.uuidString)")
             pane.focusTerminal()
         }
@@ -1306,6 +1309,9 @@ final class LingXiaTerminalWorkspaceView: NSView {
             self.tabRailView.beginEditing(tabID: tab.id)
         }
         pane.onExited = { [weak self] paneID in
+            self?.closePane(paneID, forTabID: tab.id)
+        }
+        pane.onCloseRequested = { [weak self] paneID in
             self?.closePane(paneID, forTabID: tab.id)
         }
         pane.onPaneMoveRequested = { [weak self] sourceID, targetID, direction in
