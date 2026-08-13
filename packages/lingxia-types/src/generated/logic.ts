@@ -717,6 +717,12 @@ export type LxAppReleaseType = 'release' | 'preview' | 'developer';
 /**
  * One capability question per call. The catalog is a closed union, so
  * completion enumerates it and a typo is a compile error.
+ * Two surface answers describe an *affordance*, not whether the call
+ * succeeds: `tab` is "the host has an in-app browser" — without it a
+ * url still opens, in the OS browser instead — and `aside` is "a
+ * docked region exists right now", while a compact layout still opens
+ * the url through the in-app browser's own chrome. Ask them to decide
+ * what to render, not whether to call.
  */
 export type LxCapabilityQuery = { surface: 'main' | 'aside' | 'float' | 'window' | 'tab' }
   | { terminal: true }

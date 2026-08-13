@@ -22,6 +22,11 @@ lx.supports({ surface: "popover" });
 // @ts-expect-error a capability flag is always `true`
 lx.supports({ terminal: false });
 
+// Note: a multi-key query cannot be a *type* error without giving every union
+// member `?: never` siblings — the shape this batch exists to delete — so
+// `lx.supports({ terminal: true, browser: true })` is rejected at runtime
+// instead of silently answering whichever key came first.
+
 // The query is a closed union, so a stringly-typed catalog cannot creep back in.
 // @ts-expect-error canIUse-style dotted strings are not accepted
 lx.supports("surface.window");

@@ -599,6 +599,12 @@ pub fn host_build() -> HostBuild {
     HOST_BUILD.get().copied().unwrap_or_default()
 }
 
+/// Whether the boot recorded the build yet. Lets a consumer assert it is not
+/// reading the all-false default before `set_host_build` ran.
+pub fn host_build_recorded() -> bool {
+    HOST_BUILD.get().is_some()
+}
+
 /// The one place each host capability is decided. `lx.supports()`, the FFI
 /// capability bitmask, and the optional `lx.*` members all read these, so they
 /// cannot drift apart.

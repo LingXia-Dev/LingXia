@@ -54,9 +54,17 @@ fn terminal_supported(lxapp: &Arc<LxApp>) -> bool {
     }
 }
 
-/// `lx.app.autostart`'s presence check, so the two can never disagree.
+/// `lx.app.autostart`'s presence check, so the two can never disagree. Fenced
+/// exactly like the member: `lingxia_platform::autostart_supported` only
+/// exists where a startup item can exist at all.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 fn autostart_supported() -> bool {
     lingxia_app_context::autostart_enabled() && lingxia_platform::autostart_supported()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn autostart_supported() -> bool {
+    false
 }
 
 fn self_update_supported(lxapp: &Arc<LxApp>) -> bool {
@@ -94,21 +102,34 @@ fn surface_supported(placement: &str, lxapp: &Arc<LxApp>) -> bool {
 /// instead of polling.
 fn supports(ctx: JSContext, query: JSObject) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    // One question per call: answering the first recognized key of several
+    // would silently ignore the rest, and an unknown key must be as loud as a
+    // typo'd flag rather than a quiet `false`.
+    let asked = query.keys_as::<String>()?;
+    let [key] = asked.as_slice() else {
+        return Err(js_invalid_parameter_error(format!(
+            "lx.supports asks one capability per call: surface, {}",
+            FLAG_KEYS.join(", ")
+        )));
+    };
 
-    if let Some(placement) = query.get_opt::<_, String>("surface")? {
+    if key == "surface" {
+        let placement = query.get::<_, String>("surface")?;
+        if !SURFACE_PLACEMENTS.contains(&placement.as_str()) {
+            return Err(js_invalid_parameter_error(format!(
+                "unknown surface placement '{placement}'; expected {}",
+                SURFACE_PLACEMENTS.join(", ")
+            )));
+        }
         return Ok(surface_supported(&placement, &lxapp));
     }
 
-    for key in FLAG_KEYS {
-        if query.get_opt::<_, bool>(*key)?.is_some() {
-            return Ok(flag_supported(key, &lxapp).unwrap_or(false));
-        }
-    }
-
-    Err(js_invalid_parameter_error(format!(
-        "lx.supports expects one capability key: surface, {}",
-        FLAG_KEYS.join(", ")
-    )))
+    flag_supported(key, &lxapp).ok_or_else(|| {
+        js_invalid_parameter_error(format!(
+            "unknown capability '{key}'; expected surface, {}",
+            FLAG_KEYS.join(", ")
+        ))
+    })
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
@@ -121,6 +142,13 @@ rong::js_api! {
 
         /// One capability question per call. The catalog is a closed union, so
         /// completion enumerates it and a typo is a compile error.
+        ///
+        /// Two surface answers describe an *affordance*, not whether the call
+        /// succeeds: `tab` is "the host has an in-app browser" — without it a
+        /// url still opens, in the OS browser instead — and `aside` is "a
+        /// docked region exists right now", while a compact layout still opens
+        /// the url through the in-app browser's own chrome. Ask them to decide
+        /// what to render, not whether to call.
         ///
         type LxCapabilityQuery = r###"{ surface: 'main' | 'aside' | 'float' | 'window' | 'tab' }
   | { terminal: true }
