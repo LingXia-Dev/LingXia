@@ -50,6 +50,21 @@ async function identityReplacesCaching(): Promise<boolean> {
   return live?.alive ?? false;
 }
 
+// `chrome: 'full'` is a window option, and the capability query can be asked
+// about it before the affordance is offered.
+async function edgeToEdgeWindow(): Promise<"window" | "float"> {
+  const win = await lx.surface.openPage("/pages/editor/index", {
+    as: "window",
+    chrome: "full",
+  });
+  return win.realized;
+}
+const fullChromeOffered: boolean = lx.supports({ surface: "window", chrome: "full" });
+// @ts-expect-error 'frameless' is not a window chrome
+lx.supports({ surface: "window", chrome: "frameless" });
+// @ts-expect-error chrome only qualifies a window
+lx.supports({ surface: "float", chrome: "full" });
+
 // Capability answers are not surface members; `lx.supports` owns them.
 const windowOffered: boolean = lx.supports({ surface: "window" });
 // @ts-expect-error capability queries do not live on lx.surface
@@ -72,6 +87,8 @@ lx.onSurfaceContext;
 const unsubscribeContext: () => void = lx.surface.onContext(() => {});
 
 export type SurfaceNamespaceGate = [
+  typeof edgeToEdgeWindow,
+  typeof fullChromeOffered,
   typeof conditionalOpenTypeChecks,
   typeof narrowsByKind,
   typeof urlResultCloses,

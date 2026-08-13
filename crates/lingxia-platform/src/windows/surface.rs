@@ -16,7 +16,7 @@ use lingxia_windows_contract::{
     refresh_aside_panel, set_aside_panel_tabs, set_webview_close_handler,
     set_windows_aside_panel_event_handler, show_webview_as_adaptive_panel,
     show_webview_as_overlay_panel, show_webview_as_panel, show_webview_window,
-    show_webview_window_with_content_size,
+    show_webview_window_with_chrome,
 };
 
 use super::request_windows_app_exit;
@@ -25,6 +25,7 @@ use crate::traits::app_runtime::{AnimationType, LxAppOpenMode};
 use crate::traits::ui::{
     ManagedSurfaceFuture, ManagedSurfaceProvider, ManagedSurfaceProviderDestroyRequest,
     ManagedSurfaceProviderRequest, SurfaceContent, SurfaceKind, SurfaceRequest, SurfaceRole,
+    WindowChrome,
 };
 
 static WINDOWS_SHOW_SEQUENCE: AtomicU64 = AtomicU64::new(1);
@@ -672,6 +673,8 @@ struct SurfaceEntry {
     /// shared multi-tab aside browser panel instead of docking one panel each.
     is_web: bool,
     interaction: SurfaceInteraction,
+    /// Window decoration; only `SurfaceKind::Window` reads it.
+    chrome: WindowChrome,
 }
 
 #[derive(Clone, Copy)]
@@ -757,12 +760,13 @@ fn present_entry(id: &str, entry: &SurfaceEntry, target: PresentationTarget) -> 
         }
         (SurfaceRole::Main, _) => match entry.kind {
             SurfaceKind::Overlay => present_webview_in_active_group(&entry.webtag),
-            SurfaceKind::Window => show_webview_window_with_content_size(
+            SurfaceKind::Window => show_webview_window_with_chrome(
                 &entry.webtag,
                 &entry.title,
                 true,
                 window_dimension(entry.placement.width),
                 window_dimension(entry.placement.height),
+                entry.chrome == WindowChrome::Full,
             ),
         },
     };
@@ -1193,6 +1197,7 @@ pub(super) fn present_surface(
                 placement,
                 is_web,
                 interaction: request.interaction,
+                chrome: request.chrome,
             },
         );
     }

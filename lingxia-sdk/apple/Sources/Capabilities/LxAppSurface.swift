@@ -14,6 +14,13 @@ enum LxAppSurface {
     static weak var hostAnchorView: NSView?
     private static let kindWindow: Int32 = 0
     private static let kindPopup: Int32 = 1
+    /// Mirrors `lingxia_platform::traits::ui::WindowChrome`.
+    static let chromeSystem: Int32 = 0
+    static let chromeFull: Int32 = 1
+    /// Height of the native drag strip `chrome: 'full'` keeps above the page,
+    /// matching the standard macOS title bar so the traffic lights land where
+    /// the user expects them.
+    static let fullChromeDragStripHeight: CGFloat = 28
     // Arbitrated role (mirrors lingxia_platform SurfaceRole): only an aside docks.
     private static let roleMain: Int32 = 0
     private static let roleAside: Int32 = 1
@@ -174,6 +181,23 @@ enum LxAppSurface {
         }
     }
 
+    /// `chrome: 'full'`'s drag affordance: an invisible strip across the top of
+    /// the window that moves the window. The runtime owns it, so a page that
+    /// does nothing still cannot leave the user unable to move the window —
+    /// exactly what the earlier edge-to-edge attempt got wrong. Its height is
+    /// published to the page as a chrome inset, so content can lay out beneath
+    /// it the same way it already does for the capsule.
+    private final class WindowDragStrip: NSView {
+        override var mouseDownCanMoveWindow: Bool { true }
+        override var isOpaque: Bool { false }
+        // Only the strip itself drags; the traffic lights sit above it in the
+        // window's own titlebar view and keep their own hit testing.
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            let hit = super.hitTest(point)
+            return hit === self ? self : hit
+        }
+    }
+
     /// Back button for a phone full-screen surface; closes the surface (the
     /// drill-in "return to the page beneath" affordance).
     private final class SurfaceActionButton: NSButton {
@@ -288,7 +312,8 @@ enum LxAppSurface {
         dismissOnOutside: Bool,
         modal: Bool,
         ephemeralWebData: Bool,
-        urlCallback: Bool
+        urlCallback: Bool,
+        chrome: Int32 = chromeSystem
     ) -> Bool {
         if let existing = entries[id] {
             if existing.dockedPosition != nil {
@@ -379,7 +404,7 @@ enum LxAppSurface {
             )
         }
         let windowFrame = kind == kindPopup ? context.frame : surfaceFrame
-        let window: NSWindow? = makeWindow(kind: kind, frame: windowFrame)
+        let window: NSWindow? = makeWindow(kind: kind, frame: windowFrame, chrome: chrome)
         let windowContent = SurfaceContentView(frame: NSRect(origin: .zero, size: windowFrame.size))
         windowContent.passesBackgroundClicks = kind == kindPopup && !modal && !dismissOnOutside
         let contentHost: NSView
@@ -415,6 +440,18 @@ enum LxAppSurface {
         } else {
             configureContentChrome(windowContent, kind: kind)
             contentHost = windowContent
+        }
+
+        if kind == kindWindow && chrome == chromeFull {
+            let dragStrip = WindowDragStrip(frame: .zero)
+            dragStrip.translatesAutoresizingMaskIntoConstraints = false
+            windowContent.addSubview(dragStrip, positioned: .above, relativeTo: nil)
+            NSLayoutConstraint.activate([
+                dragStrip.leadingAnchor.constraint(equalTo: windowContent.leadingAnchor),
+                dragStrip.trailingAnchor.constraint(equalTo: windowContent.trailingAnchor),
+                dragStrip.topAnchor.constraint(equalTo: windowContent.topAnchor),
+                dragStrip.heightAnchor.constraint(equalToConstant: fullChromeDragStripHeight),
+            ])
         }
 
         let delegate = WindowDelegate(id: id, appId: appId)
@@ -609,7 +646,7 @@ enum LxAppSurface {
             return false
         }
 
-        let window = makeWindow(kind: kindPopup, frame: context.frame)
+        let window = makeWindow(kind: kindPopup, frame: context.frame, chrome: chromeSystem)
         let windowContent = NSView(frame: NSRect(origin: .zero, size: context.frame.size))
         windowContent.wantsLayer = true
         windowContent.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
@@ -1170,13 +1207,17 @@ enum LxAppSurface {
         ])
     }
 
-    private static func makeWindow(kind: Int32, frame: NSRect) -> NSWindow {
+    private static func makeWindow(kind: Int32, frame: NSRect, chrome: Int32) -> NSWindow {
         var style: NSWindow.StyleMask
         switch kind {
         case kindWindow:
             style = [.titled, .closable, .miniaturizable, .resizable]
         default:
             style = [.borderless]
+        }
+        let wantsFullChrome = kind == kindWindow && chrome == chromeFull
+        if wantsFullChrome {
+            style.insert(.fullSizeContentView)
         }
 
         let window: NSWindow
@@ -1192,23 +1233,17 @@ enum LxAppSurface {
         window.title = ""
         window.isReleasedWhenClosed = false
         if kind == kindWindow {
-            // Use a standard NSWindow chrome (title bar + traffic lights)
-            // rather than the previous "fullSizeContentView + transparent
-            // title bar + hidden title" combination. The chromeless look was
-            // pretty but left users with no visible affordance to grab the
-            // window for drag/resize: WebView covers the entire content view
-            // and captures the mouse events that would otherwise reach the
-            // (invisible) title bar. A standard title bar gives back drag,
-            // close/minimize/zoom, and corner resize at the cost of a
-            // ~28-pt header strip.
-            //
-            // Note: deliberately NOT setting `isMovableByWindowBackground =
-            // true` — the WebView intercepts text selection, scroll, and
-            // drag-and-drop, so a "drag anywhere on background" policy
-            // would steal those gestures from the page. The visible title
-            // bar is the drag affordance.
-            window.titlebarAppearsTransparent = false
-            window.titleVisibility = .visible
+            // `chrome: 'system'` keeps the standard title bar. Edge-to-edge was
+            // tried once before and reverted, because the WebView covers the
+            // content view and swallows the mouse events that would reach an
+            // invisible titlebar — leaving no way to drag or resize. So
+            // `chrome: 'full'` is only edge-to-edge in appearance: the runtime
+            // keeps a real, transparent drag strip above the WebView and tells
+            // the page how tall it is. Still deliberately NOT setting
+            // `isMovableByWindowBackground` — that would steal text selection,
+            // scroll, and drag-and-drop from the page.
+            window.titlebarAppearsTransparent = wantsFullChrome
+            window.titleVisibility = wantsFullChrome ? .hidden : .visible
             window.backgroundColor = .windowBackgroundColor
         } else if kind == kindPopup {
             window.backgroundColor = .clear

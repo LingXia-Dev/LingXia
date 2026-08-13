@@ -5903,6 +5903,27 @@ fn apply_native_window_frame(hwnd: HWND) -> StdResult<()> {
     Ok(())
 }
 
+/// `chrome: 'full'` — the page runs to the window edge while the system keeps
+/// minimize, maximize, restore, and resize.
+///
+/// This is the shell window's own style: `WS_POPUP` with no `WS_CAPTION`, so
+/// there is no title bar eating a strip of the window, plus `WS_SIZEBOX` for
+/// corner resize and the min/max boxes so the system menu and the taskbar
+/// keep working. The window is *not* registered as native-framed, which is
+/// what lets the custom chrome renderer answer `HTMAXBUTTON` from
+/// `WM_NCHITTEST` — that answer is what keeps Windows 11 snap layouts on a
+/// caption we draw ourselves.
+fn apply_full_chrome_window_frame(hwnd: HWND) -> StdResult<()> {
+    apply_window_style(
+        hwnd,
+        WINDOW_STYLE(
+            WS_POPUP.0 | WS_SIZEBOX.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0,
+        ),
+    )?;
+    apply_native_window_dressing(hwnd);
+    Ok(())
+}
+
 #[cfg(feature = "shell-chrome")]
 fn apply_native_window_dressing(hwnd: HWND) {
     use windows::Win32::Graphics::Dwm::{
@@ -7628,10 +7649,31 @@ pub fn show_webview_window_with_content_size(
     width: Option<i32>,
     height: Option<i32>,
 ) -> StdResult<()> {
+    show_webview_window_with_chrome(webtag, title, activate, width, height, false)
+}
+
+/// `full_chrome` keeps the system window controls while the page runs to the
+/// window edge; the runtime owns a drag strip across the top and publishes its
+/// height to the page, so a page that does nothing still cannot leave the user
+/// unable to move the window.
+pub fn show_webview_window_with_chrome(
+    webtag: &WebTag,
+    title: &str,
+    activate: bool,
+    width: Option<i32>,
+    height: Option<i32>,
+    full_chrome: bool,
+) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
     let hwnd = hwnd_from_handle(handler.native_view().window);
-    set_native_framed_window(hwnd, true);
-    apply_native_window_frame(hwnd)?;
+    // A full-chrome window keeps the custom caption renderer, so it must not
+    // join the native-framed set that renderer skips.
+    set_native_framed_window(hwnd, !full_chrome);
+    if full_chrome {
+        apply_full_chrome_window_frame(hwnd)?;
+    } else {
+        apply_native_window_frame(hwnd)?;
+    }
     show_native_view(handler.native_view(), title, activate)?;
     handler.set_content_visible(true)?;
     set_window_handle(webtag.key(), hwnd);

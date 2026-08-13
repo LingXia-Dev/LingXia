@@ -5,6 +5,7 @@ use futures::{
 use lingxia_platform::traits::app_runtime::{
     AppRuntime, BuiltinBrowserPage, OpenUrlRequest, OpenUrlTarget,
 };
+use lingxia_platform::traits::ui::WindowChrome;
 use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{
     LxApp, LxAppError, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget,
@@ -1087,6 +1088,11 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
             ));
         }
     };
+    if let Some(chrome) = read_optional_string(spec, "chrome")?
+        && let Some(opts) = options.clone().into_object()
+    {
+        opts.set("chrome", chrome)?;
+    }
     if let Some(query) = query
         && let Some(opts) = options.clone().into_object()
     {
@@ -1805,6 +1811,12 @@ pub(crate) fn window_placement_available() -> bool {
     }
 }
 
+/// Whether `chrome: 'full'` can keep the system window controls while the page
+/// runs to the edge. Desktop skins own the caption; mobile has no window.
+pub(crate) fn window_full_chrome_available() -> bool {
+    cfg!(any(target_os = "macos", target_os = "windows"))
+}
+
 /// A runner framed as a phone or tablet has no room for a second top-level
 /// window, and refusing one is what the simulation is for. A desktop preset,
 /// or a host with no device controller at all, is a real desktop.
@@ -2424,7 +2436,23 @@ fn parse_surface_options(lxapp: &LxApp, options: &JSValue) -> JSResult<PageSurfa
         position,
         role,
         interaction,
+        chrome: parse_window_chrome(&obj)?,
     })
+}
+
+/// `chrome` is a window property; a float has no decoration to configure.
+fn parse_window_chrome(obj: &JSObject) -> JSResult<WindowChrome> {
+    match read_optional_string(obj, "chrome")?
+        .as_deref()
+        .map(str::trim)
+    {
+        None | Some("system") => Ok(WindowChrome::System),
+        Some("full") => Ok(WindowChrome::Full),
+        Some(other) => Err(surface_error(
+            SurfaceErrorCode::InvalidArg,
+            format!("chrome must be 'system' or 'full'; got {other}"),
+        )),
+    }
 }
 
 fn parse_surface_interaction(

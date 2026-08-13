@@ -213,6 +213,9 @@ pub struct PageChromeRect {
 #[serde(rename_all = "camelCase")]
 pub struct EffectivePageChromeLayout {
     pub revision: u64,
+    /// Height of the runtime-owned drag strip a `chrome: 'full'` window keeps
+    /// above the page. Zero everywhere else.
+    pub top_inset: f64,
     pub bottom_inset: f64,
     pub capsule_rect: Option<PageChromeRect>,
     pub capsule_inline_end_inset: f64,
@@ -252,6 +255,7 @@ pub(crate) fn bootstrap_script(
     const layout = Object.freeze({{ ...raw, capsuleRect: rect }});
     const root = document.documentElement;
     if (root) {{
+      root.style.setProperty('--lx-page-chrome-top-inset', `${{layout.topInset}}px`);
       root.style.setProperty('--lx-page-chrome-bottom-inset', `${{layout.bottomInset}}px`);
       root.style.setProperty('--lx-page-chrome-capsule-inline-end-inset', `${{layout.capsuleInlineEndInset}}px`);
       root.style.colorScheme = scheme;
@@ -352,6 +356,7 @@ impl LxApp {
         } else {
             None
         };
+        let top_inset = self.full_chrome_drag_strip_inset(page);
         let bottom_inset = self
             .get_tabbar()
             .filter(|tabbar| {
@@ -371,6 +376,7 @@ impl LxApp {
                 page.instance_id_string(),
                 EffectivePageChromeLayout {
                     revision,
+                    top_inset,
                     bottom_inset,
                     capsule_rect,
                     capsule_inline_end_inset,

@@ -110,6 +110,21 @@ pub enum SurfacePosition {
     Top = 4,
 }
 
+/// Window decoration for `SurfaceKind::Window`.
+///
+/// `Full` extends the page to the window edge while keeping the system
+/// minimize, maximize, resize, and drag affordances. The runtime owns a native
+/// drag strip across the top and publishes its height to the page, so a page
+/// that does nothing to opt in still cannot trap the user — which is what sank
+/// the earlier edge-to-edge attempt.
+#[repr(i32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WindowChrome {
+    #[default]
+    System = 0,
+    Full = 1,
+}
+
 #[derive(Debug, Clone)]
 pub struct SurfaceRequest {
     pub id: String,
@@ -128,6 +143,8 @@ pub struct SurfaceRequest {
     pub role: SurfaceRole,
     /// Resolved interaction contract. Platforms render this verbatim.
     pub interaction: lingxia_surface::SurfaceInteraction,
+    /// Window decoration. Ignored unless `kind` is `Window`.
+    pub chrome: WindowChrome,
     /// `Url` content only: isolate the WebView's cookies/site storage from
     /// shared persistent data and discard them when the surface closes (auth
     /// handoffs). `Page` content ignores it.
