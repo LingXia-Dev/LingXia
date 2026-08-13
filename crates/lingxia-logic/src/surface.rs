@@ -8,7 +8,7 @@ use lingxia_platform::traits::app_runtime::{
 use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{
     LxApp, LxAppError, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget,
-    publish_app_event, register_app_handler, try_get, unregister_app_handler,
+    publish_app_event, register_app_handler, try_get, unregister_app_handler_token,
 };
 use rong::{
     Class, HostError, IntoJSObject, JSContext, JSContextService, JSFunc, JSObject, JSResult,
@@ -219,16 +219,19 @@ const SURFACE_CONTEXT_EVENT: &str = "SurfaceContextChange";
 fn surface_on_change(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let initial = surface_context_for(&lxapp);
-    register_app_handler(&ctx, SURFACE_CONTEXT_EVENT, handler.clone())?;
+    let token = register_app_handler(&ctx, SURFACE_CONTEXT_EVENT, handler.clone())?;
     let payload = JSValue::from_rust(&ctx, initial);
     if let Err(err) = handler.call::<_, ()>(None, (payload,)) {
-        unregister_app_handler(&ctx, SURFACE_CONTEXT_EVENT, Some(handler.clone()));
+        unregister_app_handler_token(&ctx, SURFACE_CONTEXT_EVENT, token);
         return Err(err);
     }
     let off_ctx = ctx.clone();
-    let off_handler = handler;
+    let unsubscribed = Cell::new(false);
     JSFunc::new(&ctx, move || {
-        unregister_app_handler(&off_ctx, SURFACE_CONTEXT_EVENT, Some(off_handler.clone()));
+        if unsubscribed.replace(true) {
+            return;
+        }
+        unregister_app_handler_token(&off_ctx, SURFACE_CONTEXT_EVENT, token);
     })
 }
 

@@ -37,11 +37,12 @@ pub const SDK_RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg(feature = "js-appservice")]
 pub use appservice::PageSvc;
-pub use appservice::event_bus::{publish_app_event, publish_page_event};
 #[cfg(feature = "js-appservice")]
 pub use appservice::event_bus::{
-    register_app_handler, register_page_handler, unregister_app_handler, unregister_page_handler,
+    HandlerToken, register_app_handler, register_page_handler, unregister_app_handler,
+    unregister_app_handler_token, unregister_page_handler,
 };
+pub use appservice::event_bus::{publish_app_event, publish_page_event};
 pub use cache::touch_access_time;
 pub use delegate::{LxAppDelegate, LxAppUiEventType};
 pub use error::LxAppError;

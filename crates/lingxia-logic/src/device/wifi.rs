@@ -2,10 +2,11 @@ use crate::i18n::{js_error_from_business_code, js_error_from_platform_error};
 use crate::i18n::{js_internal_error, js_timeout_error};
 use lingxia_messaging::{CallbackResult, get_callback, register_handler, remove_callback};
 use lingxia_platform::traits::wifi::{Wifi, WifiConnectRequest, WifiGetConnectedRequest};
-use lxapp::{LxApp, publish_app_event, register_app_handler, unregister_app_handler};
+use lxapp::{LxApp, publish_app_event, register_app_handler, unregister_app_handler_token};
 use lxapp::{info, warn};
 use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::{Value, json};
+use std::cell::Cell;
 
 const WIFI_CONNECTED_EVENT: &str = "WifiConnected";
 
@@ -344,16 +345,19 @@ async fn get_connected_wifi(ctx: JSContext) -> JSResult<WifiInfo> {
 /// Subscribes to WiFi connection events and returns the unsubscribe fn.
 fn on_wifi_connected(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
     info!("onWifiConnected called");
-    register_app_handler(&ctx, WIFI_CONNECTED_EVENT, callback.clone())?;
+    let token = register_app_handler(&ctx, WIFI_CONNECTED_EVENT, callback)?;
     if let Err(err) = ensure_wifi_connected_callback(&ctx) {
-        let _ = unregister_app_handler(&ctx, WIFI_CONNECTED_EVENT, Some(callback));
+        let _ = unregister_app_handler_token(&ctx, WIFI_CONNECTED_EVENT, token);
         return Err(err);
     }
     let off_ctx = ctx.clone();
+    let unsubscribed = Cell::new(false);
     JSFunc::new(&ctx, move || {
+        if unsubscribed.replace(true) {
+            return;
+        }
         info!("onWifiConnected unsubscribe called");
-        let remaining =
-            unregister_app_handler(&off_ctx, WIFI_CONNECTED_EVENT, Some(callback.clone()));
+        let remaining = unregister_app_handler_token(&off_ctx, WIFI_CONNECTED_EVENT, token);
         if remaining == 0 {
             let _ = clear_wifi_connected_callback(&off_ctx);
         }

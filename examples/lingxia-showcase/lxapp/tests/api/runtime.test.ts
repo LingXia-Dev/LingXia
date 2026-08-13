@@ -82,6 +82,11 @@ contract({
       ];
       if (unsubscribes.some((off) => typeof off !== 'function')) return false;
       unsubscribes.forEach((off) => off());
+      // A spent handle is inert: calling it again must not disturb a later
+      // subscription on the same function.
+      const offAgain = lx.onDeviceOrientationChange(callback);
+      unsubscribes.forEach((off) => off());
+      offAgain();
       return true;
     `,
   });
