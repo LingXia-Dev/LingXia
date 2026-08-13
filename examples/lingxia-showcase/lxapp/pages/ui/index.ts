@@ -153,6 +153,10 @@ Page({
     });
   },
 
+  demoPageReset: async function () {
+    await lx.navigateTo({ page: "lifecycle" });
+  },
+
   demoSwitchTab: async function () {
     await lx.switchTab({
       page: "home",

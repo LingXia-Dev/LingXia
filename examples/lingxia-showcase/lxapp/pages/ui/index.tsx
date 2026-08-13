@@ -32,6 +32,7 @@ export default function UIPage() {
     demoNavigateTo,
     demoNavigateBack,
     demoSwitchTab,
+    demoPageReset,
     demoRedirectTo,
     showToastWithParams,
     hideToast,
@@ -164,10 +165,21 @@ export default function UIPage() {
           </div>
           <div
             data-testid="ui-switch-tab"
-            className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer transition-all active:scale-[0.99]"
+            className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-line-100 transition-all active:scale-[0.99]"
             onClick={demoSwitchTab}
           >
             <div className="text-sm text-gray-800 font-medium">Jump to Tab page</div>
+            <span className="text-gray-400 text-lg">›</span>
+          </div>
+          <div
+            data-testid="ui-page-reset"
+            className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer transition-all active:scale-[0.99]"
+            onClick={demoPageReset}
+          >
+            <div>
+              <div className="text-sm text-gray-800 font-medium">Leave and come back</div>
+              <div className="text-xs text-gray-500 mt-0.5">See what a page keeps and what it resets</div>
+            </div>
             <span className="text-gray-400 text-lg">›</span>
           </div>
         </div>

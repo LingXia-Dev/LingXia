@@ -1,6 +1,6 @@
 import { expect } from '@rongjs/test';
 import type { LxAppDriver } from 'lingxia-types/automation';
-import { waitForCurrentPage } from '../helpers/page.js';
+import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 import { contract, eventually } from '../support/contract.js';
 
 interface SurfaceLifecycleState {
@@ -73,4 +73,91 @@ contract({
     { showCount, hideCount },
   ) => showCount === 2 && hideCount === 1);
   expect(reshown.lastLifecycle).toBe('onShow (#2)');
+});
+
+interface ResetDemoState {
+  instanceTag: string;
+  previousInstanceTag: string;
+  logicCounter: number;
+}
+
+async function resetDemoState(app: LxAppDriver): Promise<ResetDemoState | null> {
+  return app.eval({
+    script: `
+      const page = getCurrentPages().find((candidate) => candidate.route.includes('/lifecycle/'));
+      return page
+        ? {
+            instanceTag: page.data.instanceTag ?? '',
+            previousInstanceTag: page.data.previousInstanceTag ?? '',
+            logicCounter: page.data.logicCounter ?? -1,
+          }
+        : null;
+    `,
+  }) as Promise<ResetDemoState | null>;
+}
+
+async function enterResetDemo(app: LxAppDriver): Promise<ResetDemoState> {
+  await app.nav.to({ page: 'lifecycle' });
+  await waitForCurrentPage(app, 'lifecycle');
+  await app.page.waitFor({ page: 'lifecycle', css: '[data-testid="lifecycle-page"]' });
+  const state = await eventually(resetDemoState.bind(null, app), (
+    candidate,
+  ) => candidate !== null && candidate.instanceTag !== '', {
+    describe: 'page reset demo to report its instance tag',
+  });
+  if (state === null) throw new Error('Page reset demo left the stack while loading');
+  return state;
+}
+
+const waitForViewCounter = (app: LxAppDriver, expected: string) => waitForElementText(
+  app,
+  'lifecycle',
+  '[data-testid="lifecycle-view-counter"]',
+  (text) => text.trim() === expected,
+);
+
+contract({
+  id: 'PAGE-LIFECYCLE-002',
+  title: 'reset logic data and the rendered document when a page is re-entered',
+  covers: ['lx.navigateTo', 'lx.navigateBack'],
+  layer: 'logic',
+  levels: ['semantic', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app, defer }) => {
+  defer(async () => {
+    await app.nav.relaunch({ page: 'home' });
+  });
+
+  await app.nav.relaunch({ page: 'home' });
+  await waitForCurrentPage(app, 'home');
+
+  const first = await enterResetDemo(app);
+  expect(first.logicCounter).toBe(0);
+
+  // Dirty both layers plus the DOM.
+  await app.page.click({ page: 'lifecycle', css: '[data-testid="lifecycle-bump-logic"]' });
+  await app.page.click({ page: 'lifecycle', css: '[data-testid="lifecycle-bump-view"]' });
+  await app.page.click({ page: 'lifecycle', css: '[data-testid="lifecycle-open-popup"]' });
+  await app.page.waitFor({ page: 'lifecycle', css: '[data-testid="lifecycle-popup"]' });
+  await eventually(resetDemoState.bind(null, app), (
+    candidate,
+  ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });
+  await waitForViewCounter(app, '1');
+
+  // Leaving ends the instance; the reset lands after the pop transition.
+  await app.nav.back();
+  await waitForCurrentPage(app, 'home');
+
+  const second = await enterResetDemo(app);
+  expect(second.instanceTag).not.toBe(first.instanceTag);
+  expect(second.previousInstanceTag).toBe(first.instanceTag);
+  expect(second.logicCounter).toBe(0);
+  await waitForViewCounter(app, '0');
+
+  const popup = await app.page.query({
+    page: 'lifecycle',
+    css: '[data-testid="lifecycle-popup"]',
+  });
+  expect(popup.exists).toBe(false);
 });
