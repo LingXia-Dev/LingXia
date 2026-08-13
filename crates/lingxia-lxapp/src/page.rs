@@ -132,26 +132,46 @@ pub(crate) struct PageInstanceInner {
     navigation_progress: Arc<std::sync::Mutex<lingxia_webview::NavigationProgress>>,
 }
 
+/// A page runs on three independent clocks, and conflating them is what let
+/// `onReady` fire against a document that had not re-rendered: a logical entry
+/// owes one `onLoad`, the container's visibility owes `onShow`/`onHide`, and
+/// each rendered document owes one `onReady`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EntryPhase {
+    /// No entry is pending — nothing has been navigated to since the last unload.
+    Idle,
+    /// An entry is pending; `onLoad` fires once render has started and, for
+    /// Logic-enabled pages, the bridge is up.
+    LoadOwed,
+    /// `onLoad` was delivered for the current entry.
+    Loaded,
+}
+
+/// What the container wants, and whether `onShow` has caught up with it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Visibility {
+    Hidden,
+    /// Visible to the container, but `onShow` waits for `onLoad` first.
+    ShowOwed,
+    Shown,
+}
+
 #[derive(Clone, Debug)]
 pub struct PageState {
     // PageInstance(webview) render status
     render_status: PageRenderStatus,
     // page lifecycle event
     event: Option<PageLifecycleEvent>,
-    /// Tracks if the UI has requested to show this page. Handles onShow arriving before onLoad.
-    show_requested: bool,
-    /// Tracks whether the current logical navigation still needs onLoad.
-    load_requested: bool,
+    /// How far the current logical entry has got.
+    entry: EntryPhase,
+    /// What the container wants, and whether `onShow` has caught up with it.
+    visibility: Visibility,
     /// Tracks whether the current WebView document has completed its bridge handshake.
     bridge_ready: bool,
     /// Logic-enabled pages must wait for AppService bridge readiness before onLoad.
     requires_bridge_ready: bool,
-    /// Tracks if the onLoad JavaScript event has been fired to prevent duplicates.
-    on_load_fired: bool,
-    /// Tracks if the onShow JavaScript event has been fired. Reset on hide to allow re-entry.
-    on_show_fired: bool,
-    /// Tracks if the onReady JavaScript event has been fired to prevent duplicates.
-    on_ready_fired: bool,
+    /// Whether the current document has had its `onReady`.
+    ready_dispatched: bool,
     // Navigation bar state
     pub(crate) navbar_state: NavigationBarState,
     // A malformed page config owns this page's load outcome; it must not
@@ -356,13 +376,11 @@ impl PageInstance {
         PageState {
             event: None,
             render_status: PageRenderStatus::Unstarted,
-            show_requested: false,
-            load_requested: false,
+            entry: EntryPhase::Idle,
+            visibility: Visibility::Hidden,
             bridge_ready: false,
             requires_bridge_ready: lxapp.logic_enabled(),
-            on_load_fired: false,
-            on_show_fired: false,
-            on_ready_fired: false,
+            ready_dispatched: false,
             navbar_state: page_config.create_navbar_state(),
             config_load_error,
             enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
@@ -634,13 +652,14 @@ impl PageInstance {
         self.inner.state.lock().ok().map(|state| state.clone())
     }
 
-    // `onReady` is deliberately untouched here: it belongs to the rendered
-    // document, not to the logical load. A cached instance that re-enters
-    // without a document reload has nothing new to be ready about.
+    // Only the entry clock rewinds here. `onReady` belongs to the rendered
+    // document, so a cached instance that re-enters without a document reload
+    // has nothing new to be ready about.
     fn request_on_load(state: &mut PageState) {
-        state.load_requested = true;
-        state.on_load_fired = false;
-        state.on_show_fired = false;
+        state.entry = EntryPhase::LoadOwed;
+        if state.visibility == Visibility::Shown {
+            state.visibility = Visibility::ShowOwed;
+        }
     }
 
     fn should_reset_lifecycle_on_attach(current_webview_is_same: Option<bool>) -> bool {
@@ -650,43 +669,42 @@ impl PageInstance {
     fn reset_webview_lifecycle_state(state: &mut PageState) {
         let is_currently_visible = state.event == Some(PageLifecycleEvent::OnShow);
         state.render_status = PageRenderStatus::Unstarted;
-        state.show_requested = is_currently_visible;
-        state.load_requested = false;
+        state.visibility = if is_currently_visible {
+            Visibility::ShowOwed
+        } else {
+            Visibility::Hidden
+        };
+        state.entry = EntryPhase::Idle;
         state.bridge_ready = false;
-        state.on_load_fired = false;
-        state.on_show_fired = false;
-        state.on_ready_fired = false;
+        state.ready_dispatched = false;
     }
 
     fn collect_ready_lifecycle_events(
         state: &mut PageState,
         events_to_fire: &mut Vec<(PageLifecycleEvent, Option<String>)>,
     ) {
-        if state.load_requested
+        if state.entry == EntryPhase::LoadOwed
             && (!state.requires_bridge_ready || state.bridge_ready)
-            && !state.on_load_fired
             && !matches!(state.render_status, PageRenderStatus::Unstarted)
         {
             let query = serde_json::to_string(&state.query).ok();
             events_to_fire.push((PageLifecycleEvent::OnLoad, query));
-            state.load_requested = false;
-            state.on_load_fired = true;
-            state.on_show_fired = false;
+            state.entry = EntryPhase::Loaded;
         }
 
         // Weixin ordering for the first visible load is Load -> Show -> Ready.
-        if state.on_load_fired && state.show_requested && !state.on_show_fired {
+        if state.entry == EntryPhase::Loaded && state.visibility == Visibility::ShowOwed {
             events_to_fire.push((PageLifecycleEvent::OnShow, None));
-            state.on_show_fired = true;
+            state.visibility = Visibility::Shown;
             state.event = Some(PageLifecycleEvent::OnShow);
         }
 
-        if state.on_load_fired
+        if state.entry == EntryPhase::Loaded
             && state.render_status == PageRenderStatus::Finished
-            && !state.on_ready_fired
+            && !state.ready_dispatched
         {
             events_to_fire.push((PageLifecycleEvent::OnReady, None));
-            state.on_ready_fired = true;
+            state.ready_dispatched = true;
         }
     }
 
@@ -700,17 +718,17 @@ impl PageInstance {
             PageLifecycleEvent::OnHide | PageLifecycleEvent::OnUnload
         ));
 
-        state.show_requested = false;
-        if event == PageLifecycleEvent::OnUnload {
-            state.load_requested = false;
-            // PageInstance can be reused after OnUnload without a fresh bridge-ready.
-            // Real WebView/document teardown still clears this through reset.
+        state.visibility = Visibility::Hidden;
+        if event == PageLifecycleEvent::OnUnload && state.entry == EntryPhase::LoadOwed {
+            // Cancel an entry that never got its `onLoad`. One already
+            // delivered stays delivered: the PageInstance can be reused after
+            // `onUnload` without a fresh bridge handshake, and only real
+            // document teardown rewinds the entry through reset.
+            state.entry = EntryPhase::Idle;
         }
         if state.event != Some(event) {
             events_to_fire.push((event, None));
             state.event = Some(event);
-            // Reset on_show_fired when the page is hidden, to allow onShow to fire again on re-entry.
-            state.on_show_fired = false;
         }
     }
 
@@ -776,7 +794,7 @@ impl PageInstance {
             }
 
             state.bridge_ready = true;
-            if !state.load_requested && !state.on_load_fired {
+            if state.entry == EntryPhase::Idle {
                 Self::request_on_load(&mut state);
             }
             Self::collect_ready_lifecycle_events(&mut state, &mut events_to_fire);
@@ -852,8 +870,8 @@ impl PageInstance {
                 // This logic handles the Load -> Show -> Ready cascade.
 
                 // Update raw status based on the incoming event.
-                if event == PageLifecycleEvent::OnShow {
-                    state.show_requested = true;
+                if event == PageLifecycleEvent::OnShow && state.visibility != Visibility::Shown {
+                    state.visibility = Visibility::ShowOwed;
                 }
 
                 if event == PageLifecycleEvent::OnLoad {
@@ -932,7 +950,7 @@ impl PageInstance {
             .as_ref()
             .and_then(|state| state.event.map(|event| event.as_str()))
             .unwrap_or("unknown");
-        let ready = state.as_ref().is_some_and(|state| state.on_ready_fired);
+        let ready = state.as_ref().is_some_and(|state| state.ready_dispatched);
         let query = state
             .as_ref()
             .map(|state| state.query.clone())
@@ -1642,13 +1660,11 @@ mod tests {
         PageState {
             event: None,
             render_status: PageRenderStatus::Unstarted,
-            show_requested: false,
-            load_requested: false,
+            entry: EntryPhase::Idle,
+            visibility: Visibility::Hidden,
             bridge_ready: false,
             requires_bridge_ready: true,
-            on_load_fired: false,
-            on_show_fired: false,
-            on_ready_fired: false,
+            ready_dispatched: false,
             navbar_state: NavigationBarState::default(),
             config_load_error: None,
             enable_pull_down_refresh: false,
@@ -1718,8 +1734,8 @@ mod tests {
         PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
 
         assert!(events.is_empty());
-        assert!(state.load_requested);
-        assert!(!state.on_load_fired);
+        assert_eq!(state.entry, EntryPhase::LoadOwed);
+        assert_ne!(state.entry, EntryPhase::Loaded);
 
         state.bridge_ready = true;
         PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
@@ -1728,8 +1744,8 @@ mod tests {
             events,
             vec![(PageLifecycleEvent::OnLoad, Some("{}".to_string()))]
         );
-        assert!(!state.load_requested);
-        assert!(state.on_load_fired);
+        assert_ne!(state.entry, EntryPhase::LoadOwed);
+        assert_eq!(state.entry, EntryPhase::Loaded);
     }
 
     #[test]
@@ -1746,8 +1762,8 @@ mod tests {
             events,
             vec![(PageLifecycleEvent::OnLoad, Some("{}".to_string()))]
         );
-        assert!(!state.load_requested);
-        assert!(state.on_load_fired);
+        assert_ne!(state.entry, EntryPhase::LoadOwed);
+        assert_eq!(state.entry, EntryPhase::Loaded);
     }
 
     #[test]
@@ -1755,9 +1771,9 @@ mod tests {
         let mut state = test_page_state();
         let mut events = Vec::new();
 
-        state.load_requested = true;
+        state.entry = EntryPhase::LoadOwed;
         state.bridge_ready = true;
-        state.show_requested = true;
+        state.visibility = Visibility::ShowOwed;
         state.render_status = PageRenderStatus::Finished;
         PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
 
@@ -1769,25 +1785,25 @@ mod tests {
                 (PageLifecycleEvent::OnReady, None),
             ]
         );
-        assert!(!state.load_requested);
-        assert!(state.on_load_fired);
-        assert!(state.on_show_fired);
-        assert!(state.on_ready_fired);
+        assert_ne!(state.entry, EntryPhase::LoadOwed);
+        assert_eq!(state.entry, EntryPhase::Loaded);
+        assert_eq!(state.visibility, Visibility::Shown);
+        assert!(state.ready_dispatched);
     }
 
     #[test]
     fn reentering_a_cached_page_does_not_refire_ready_without_a_reload() {
         let mut state = test_page_state();
         state.bridge_ready = true;
-        state.show_requested = true;
+        state.visibility = Visibility::ShowOwed;
         state.render_status = PageRenderStatus::Finished;
         PageInstance::request_on_load(&mut state);
         PageInstance::collect_ready_lifecycle_events(&mut state, &mut Vec::new());
-        assert!(state.on_ready_fired);
+        assert!(state.ready_dispatched);
 
         // Re-entry without a document reload: load and show repeat, ready does not.
         let mut events = Vec::new();
-        state.show_requested = true;
+        state.visibility = Visibility::ShowOwed;
         PageInstance::request_on_load(&mut state);
         PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
 
@@ -1804,7 +1820,7 @@ mod tests {
     fn a_reset_page_fires_ready_again_for_the_new_document() {
         let mut state = test_page_state();
         state.bridge_ready = true;
-        state.show_requested = true;
+        state.visibility = Visibility::ShowOwed;
         state.render_status = PageRenderStatus::Finished;
         PageInstance::request_on_load(&mut state);
         PageInstance::collect_ready_lifecycle_events(&mut state, &mut Vec::new());
@@ -1812,7 +1828,7 @@ mod tests {
         // A reset reloads the document, so the next render is ready-worthy.
         PageInstance::reset_webview_lifecycle_state(&mut state);
         state.bridge_ready = true;
-        state.show_requested = true;
+        state.visibility = Visibility::ShowOwed;
         state.render_status = PageRenderStatus::Finished;
         PageInstance::request_on_load(&mut state);
         let mut events = Vec::new();
@@ -1822,25 +1838,74 @@ mod tests {
     }
 
     #[test]
+    fn unload_cancels_a_pending_entry_but_not_a_delivered_one() {
+        let mut owed = test_page_state();
+        owed.entry = EntryPhase::LoadOwed;
+        PageInstance::collect_hidden_or_unloaded_lifecycle_event(
+            &mut owed,
+            PageLifecycleEvent::OnUnload,
+            &mut Vec::new(),
+        );
+        assert_eq!(owed.entry, EntryPhase::Idle);
+
+        // A delivered entry stays delivered, so a reused instance does not
+        // re-request `onLoad` off the back of its existing bridge.
+        let mut delivered = test_page_state();
+        delivered.entry = EntryPhase::Loaded;
+        PageInstance::collect_hidden_or_unloaded_lifecycle_event(
+            &mut delivered,
+            PageLifecycleEvent::OnUnload,
+            &mut Vec::new(),
+        );
+        assert_eq!(delivered.entry, EntryPhase::Loaded);
+    }
+
+    #[test]
+    fn hiding_a_shown_page_owes_on_show_again_on_re_entry() {
+        let mut state = test_page_state();
+        state.bridge_ready = true;
+        state.visibility = Visibility::ShowOwed;
+        state.render_status = PageRenderStatus::Finished;
+        PageInstance::request_on_load(&mut state);
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut Vec::new());
+        assert_eq!(state.visibility, Visibility::Shown);
+
+        let mut events = Vec::new();
+        PageInstance::collect_hidden_or_unloaded_lifecycle_event(
+            &mut state,
+            PageLifecycleEvent::OnHide,
+            &mut events,
+        );
+        assert_eq!(state.visibility, Visibility::Hidden);
+
+        // Becoming visible again owes another onShow, with no second onLoad:
+        // the entry never ended.
+        state.visibility = Visibility::ShowOwed;
+        let mut events = Vec::new();
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+        assert_eq!(events, vec![(PageLifecycleEvent::OnShow, None)]);
+    }
+
+    #[test]
     fn reset_webview_lifecycle_state_does_not_keep_stale_hidden_show_request() {
         let mut state = test_page_state();
         state.event = Some(PageLifecycleEvent::OnHide);
-        state.show_requested = true;
-        state.load_requested = true;
+        state.visibility = Visibility::ShowOwed;
+        state.entry = EntryPhase::LoadOwed;
         state.bridge_ready = true;
-        state.on_load_fired = true;
-        state.on_show_fired = true;
-        state.on_ready_fired = true;
+        state.entry = EntryPhase::Loaded;
+        state.visibility = Visibility::Shown;
+        state.ready_dispatched = true;
         state.render_status = PageRenderStatus::Finished;
 
         PageInstance::reset_webview_lifecycle_state(&mut state);
 
-        assert!(!state.show_requested);
-        assert!(!state.load_requested);
+        assert_eq!(state.visibility, Visibility::Hidden);
+        assert_ne!(state.entry, EntryPhase::LoadOwed);
         assert!(!state.bridge_ready);
-        assert!(!state.on_load_fired);
-        assert!(!state.on_show_fired);
-        assert!(!state.on_ready_fired);
+        assert_ne!(state.entry, EntryPhase::Loaded);
+        assert_ne!(state.visibility, Visibility::Shown);
+        assert!(!state.ready_dispatched);
         assert_eq!(state.render_status, PageRenderStatus::Unstarted);
     }
 
@@ -1851,7 +1916,7 @@ mod tests {
 
         PageInstance::reset_webview_lifecycle_state(&mut state);
 
-        assert!(state.show_requested);
+        assert_ne!(state.visibility, Visibility::Hidden);
     }
 
     #[test]
@@ -1859,8 +1924,8 @@ mod tests {
         let mut state = test_page_state();
         let mut events = Vec::new();
 
-        state.show_requested = true;
-        state.load_requested = true;
+        state.visibility = Visibility::ShowOwed;
+        state.entry = EntryPhase::LoadOwed;
         state.bridge_ready = true;
 
         PageInstance::collect_hidden_or_unloaded_lifecycle_event(
@@ -1870,8 +1935,8 @@ mod tests {
         );
 
         assert_eq!(events, vec![(PageLifecycleEvent::OnUnload, None)]);
-        assert!(!state.show_requested);
-        assert!(!state.load_requested);
+        assert_eq!(state.visibility, Visibility::Hidden);
+        assert_ne!(state.entry, EntryPhase::LoadOwed);
         assert!(state.bridge_ready);
     }
 
@@ -1909,7 +1974,7 @@ mod tests {
             events,
             vec![(PageLifecycleEvent::OnLoad, Some("{}".to_string()))]
         );
-        assert!(state.on_load_fired);
+        assert_eq!(state.entry, EntryPhase::Loaded);
     }
 
     #[test]
@@ -1917,7 +1982,7 @@ mod tests {
         let mut state = test_page_state();
         let mut events = Vec::new();
 
-        state.show_requested = true;
+        state.visibility = Visibility::ShowOwed;
         state.bridge_ready = true;
         PageInstance::request_on_load(&mut state);
         state.render_status = PageRenderStatus::Started;
@@ -1933,7 +1998,7 @@ mod tests {
                 (PageLifecycleEvent::OnShow, None),
             ]
         );
-        assert!(state.on_load_fired);
-        assert!(state.on_show_fired);
+        assert_eq!(state.entry, EntryPhase::Loaded);
+        assert_eq!(state.visibility, Visibility::Shown);
     }
 }
