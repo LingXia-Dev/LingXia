@@ -91,7 +91,7 @@ if (lx.supports({ capability: 'surface', value: 'window' })) {
 The catalog is a closed union, so completion enumerates it and a typo is a
 compile error. The answer is live — `{ capability: 'surface', value: 'aside' }` changes when a
 desktop window crosses the compact breakpoint, so pair it with
-`lx.onSurfaceContext` rather than caching it. It is an affordance for deciding
+`lx.surface.onContext` rather than caching it. It is an affordance for deciding
 what to render and never replaces handling a rejection: the answer can be stale
 by the time you act on it, and every gated operation still rejects.
 

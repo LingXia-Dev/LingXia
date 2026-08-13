@@ -98,7 +98,7 @@ than stopping it through `lxdev`.
 
 Scripts may be an expression or a function body using `return` / `await`. A
 native workspace can be opened directly for host verification, for example
-`await lx.openSurface({ surface: 'terminal', key: 'project-a', as: 'main' })`.
+`await lx.shell.openDeclared('terminal', { key: 'project-a', as: 'main' })`.
 Use a function body and return a serializable assertion value rather than the
 surface handle itself. For page navigation, prefer `lxapp nav`; when the behavior
 under test is a user interaction, trigger it through `lxapp page click`. The JS

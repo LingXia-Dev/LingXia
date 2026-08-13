@@ -381,7 +381,7 @@ Each entry starts with its **content key** — exactly one of `lxapp` / `url` / 
 | Field | Type | Required | Description |
 |---|---|---:|---|
 | `lxapp` | string | one content key | An lxapp, by appId. Roles: `main` \| `aside` \| `float`. |
-| `url` | string | one content key | A page in the managed browser (requires `capabilities.browser: true`). macOS and Windows admit it as `main`; Windows also retains declarative `aside` support, while browser asides may be opened dynamically with `lx.openSurface`. |
+| `url` | string | one content key | A page in the managed browser (requires `capabilities.browser: true`). macOS and Windows admit it as `main`; Windows also retains declarative `aside` support, while browser asides may be opened dynamically with `lx.surface.openUrl(url, { as: 'aside' })`. |
 | `native` | string | one content key | A built-in host surface: `terminal` or `browser`. On macOS and Windows, terminal supports `main` / `aside`; browser supports `main`. |
 | `role` | `main` \| `aside` \| `float` | Yes | `main` = a switchable primary surface; `aside` = a docked companion; `float` = a tray-anchored popover (requires a `tray:`). |
 | `launch` | bool | No | Open on start. At most one `main` may set `launch: true` (the initial surface). Omit on all mains for a tray-launched app. |
@@ -464,13 +464,13 @@ URL field and a separate tab group; the field accepts URLs, not search queries.
 
 Two sidebar regions have fixed ownership:
 
-- **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. An lxapp Pin always opens or focuses a main workspace. The Pin tile remains a shortcut while the open lxapp also gets an independent sidebar workspace row for switching and lifecycle controls; hovering the row reveals an explicit ellipsis for its provider-backed menu, and right-click opens the same menu. Unpinning does not close or remove that live row. Its content uses the same rectangle as the home lxapp, with the previous main hidden, no duplicate host window, and no content-area tab strip. It does not inherit a declared aside role. That restriction changes entry role only: a Pin must not add an inset, clip, navigation offset, or alternate content rectangle. Use a sidebar action plus `lx.openSurface({ surface: ... })` for the aside entry. There is no production app API to write Pins.
+- **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. An lxapp Pin always opens or focuses a main workspace. The Pin tile remains a shortcut while the open lxapp also gets an independent sidebar workspace row for switching and lifecycle controls; hovering the row reveals an explicit ellipsis for its provider-backed menu, and right-click opens the same menu. Unpinning does not close or remove that live row. Its content uses the same rectangle as the home lxapp, with the previous main hidden, no duplicate host window, and no content-area tab strip. It does not inherit a declared aside role. That restriction changes entry role only: a Pin must not add an inset, clip, navigation offset, or alternate content rectangle. Use a sidebar action plus `lx.surface.openDeclared(id)` for the aside entry. There is no production app API to write Pins.
 - **Sidebar actions are the control lxapp's** — when one is configured, it may
   declare runtime entries via `lx.shell.sidebarActions` (see the
   `@lingxia/types` declarations). Header actions are icon-only and limited to
   two; footer actions use labeled cells and scroll after five visible rows. The
   shell invokes `onActivate` and performs no built-in navigation; callbacks can
-  call `lx.openSurface(...)` or run any other app logic. Redeclare them each
+  call `lx.surface.openPage(...)` or run any other app logic. Redeclare them each
   Logic launch.
 
 The initial `main` is admitted first as the window's stable root and cannot be closed. Other
@@ -524,7 +524,7 @@ Pass `null` / empty to clear a badge or title. The tray *shape* is declared in `
 
 The built-in terminal is gated by `capabilities.terminal`. On macOS and Windows its default declaration may be a main surface or an aside (`edge: top | bottom`, default `bottom`). Omitting `as` uses that declared role and edge; an explicit `as` migrates a non-root live workspace without changing the declaration.
 
-When terminal is declared as `main`, its declaration is the default workspace. The sidebar's global `+` creates another terminal workspace as a separate main Surface; the `+` inside a terminal workspace creates another PTY tab in that workspace. Logic can open or reuse a named workspace with `lx.openSurface({ surface: 'terminal', key: 'project-a', as: 'main' })`. Equal keys resolve to the same runtime Surface, distinct keys create distinct entries, and the returned handle's read-only `id` is the runtime `SurfaceId` — it is not the key. `as` controls where the same workspace is presented, independently from `key`.
+When terminal is declared as `main`, its declaration is the default workspace. The sidebar's global `+` creates another terminal workspace as a separate main Surface; the `+` inside a terminal workspace creates another PTY tab in that workspace. Logic can open or reuse a named workspace with `lx.shell.openDeclared('terminal', { key: 'project-a', as: 'main' })`. Equal keys resolve to the same runtime Surface, distinct keys create distinct entries, and the returned handle's read-only `id` is the runtime `SurfaceId` — it is not the key. `as` controls where the same workspace is presented, independently from `key`.
 
 `native: browser` is a macOS or Windows host-owned browser workspace. It starts with an empty tab and uses the managed browser profile and chrome; use a `url:` main when the declaration should open a specific `https://` or authorized `file://` target.
 

@@ -876,7 +876,7 @@ async function closeChatSurface(app: LxAppDriver): Promise<void> {
       await app.eval({
         timeoutMs: 20_000,
         script: `
-          const handle = await lx.openSurface({ surface: 'lingxia-chat' });
+          const handle = await lx.surface.openDeclared('lingxia-chat');
           await handle.close();
         `,
       });
@@ -932,7 +932,7 @@ async function retainDynamicChatHandle(app: LxAppDriver): Promise<RetainedAppSur
     script: `
       const previous = globalThis.__surfaceSwitcherDynamicHandleGate;
       for (const unsubscribe of previous?.unsubscribe ?? []) unsubscribe();
-      const handle = await lx.openSurface({ appId: 'lingxia-chat', as: 'main' });
+      const handle = await lx.shell.openApp('lingxia-chat', { as: 'main' });
       const events = [];
       const unsubscribe = [
         handle.onHide((event) => events.push({ type: 'hide', ...event })),
@@ -986,7 +986,7 @@ desktopTest('projects the declared terminal aside and restores its baseline stat
       const before = await snapshot();
       const existed = before.asideSlots.some((slot) => slot.children.includes('terminal'));
       const wasVisible = before.asides.some((surface) => surface.id === 'terminal');
-      const terminal = await lx.openSurface({ surface: 'terminal' });
+      const terminal = await lx.surface.openDeclared('terminal');
       const visibility = { hide: [], show: [] };
       const off = [
         terminal.onHide((event) => visibility.hide.push(event)),
@@ -1231,7 +1231,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     const opened = await app.eval({
       timeoutMs: 20_000,
       script: `
-        const handle = await lx.openSurface({ surface: 'lingxia-chat' });
+        const handle = await lx.surface.openDeclared('lingxia-chat');
         return { id: handle.id, visible: handle.visible, alive: handle.alive };
       `,
     }) as { id: string; visible: boolean; alive: boolean };
@@ -1300,7 +1300,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     chatOpened = false;
     await app.eval({
       timeoutMs: 20_000,
-      script: `await lx.openSurface({ url: 'lingxia://settings' });`,
+      script: `await lx.shell.openBuiltin('settings');`,
     });
     const settingsTab = await waitForValue(async () => {
       const current = await browser.current();
@@ -1309,7 +1309,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     browserTabId = settingsTab.tab_id;
     await app.eval({
       timeoutMs: 20_000,
-      script: `await lx.openSurface({ url: 'lingxia://downloads' });`,
+      script: `await lx.shell.openBuiltin('downloads');`,
     });
     const downloadsTab = await waitForValue(async () => {
       const current = await browser.current();
@@ -1732,8 +1732,8 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
         });
         const rejected = {};
         try {
-          await lx.openSurface({
-            appId: 'lingxia-chat', as: 'main', path: 'pages/chat/index.tsx',
+          await lx.shell.openApp('lingxia-chat', {
+            as: 'main', path: 'pages/chat/index.tsx',
           });
         } catch (error) {
           rejected.path = rejection(error);
@@ -1746,17 +1746,17 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
           rejected.navigatePath = rejection(error);
         }
         try {
-          await lx.openSurface({ appId: 'lingxia-chat', as: 'float' });
+          await lx.shell.openApp('lingxia-chat', { as: 'float' });
         } catch (error) {
           rejected.float = rejection(error);
         }
         try {
-          await lx.openSurface({ appId: 'lingxia-chat', as: 'main', edge: 'left' });
+          await lx.shell.openApp('lingxia-chat', { as: 'main', edge: 'left' });
         } catch (error) {
           rejected.mainEdge = rejection(error);
         }
         try {
-          await lx.openSurface({ page: 'todo', as: 'float', edge: 'right' });
+          await lx.surface.openPage('todo', { as: 'float', edge: 'right' });
         } catch (error) {
           rejected.pageEdge = rejection(error);
         }
@@ -1770,8 +1770,8 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
     const openedHandle = await automationPhase('open dynamic Chat main', () => app.eval({
       timeoutMs: 30_000,
       script: `
-        const handle = await lx.openSurface({
-          appId: 'lingxia-chat', as: 'main', page: 'chat',
+        const handle = await lx.shell.openApp('lingxia-chat', {
+          as: 'main', page: 'chat',
         });
         const events = [];
         const unsubscribe = [
@@ -1809,7 +1809,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
         const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
         const rootId = ${JSON.stringify(before.mainSwitcher.rootSurfaceId)};
         if (!gate || !rootId) throw new Error('dynamic main gate lost its root or handle');
-        await lx.openSurface({ surface: rootId, as: 'main' });
+        await lx.shell.openDeclared(rootId, { as: 'main' });
         const deadline = Date.now() + 5_000;
         while (Date.now() < deadline) {
           if (!gate.handle.visible
@@ -1885,7 +1885,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
     // restore the same physical Chat WebView, and emit no duplicate show event.
     await app.eval({
       timeoutMs: 20_000,
-      script: `await lx.openSurface({ url: 'lingxia://settings' });`,
+      script: `await lx.shell.openBuiltin('settings');`,
     });
     const browserMain = await waitForValue(async () => {
       const current = await browser.current();
@@ -2142,7 +2142,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     // a Pin must promote the one live aside instance into a main workspace.
     await app.eval({
       timeoutMs: 20_000,
-      script: `await lx.openSurface({ surface: 'lingxia-chat' });`,
+      script: `await lx.surface.openDeclared('lingxia-chat');`,
     });
     const declaredAside = await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
@@ -2592,13 +2592,13 @@ desktopTest('rejects stable-root mutations without changing the host model', asy
       const initial = await snapshot();
       const rootId = initial.mainSwitcher.rootSurfaceId;
       if (!rootId) throw new Error('surface graph has no stable root');
-      const root = await lx.openSurface({ surface: rootId, as: 'main' });
+      const root = await lx.shell.openDeclared(rootId, { as: 'main' });
       const beforeRejections = await snapshot();
       let closeError = '';
       try { await root.close(); } catch (error) { closeError = String(error); }
       let roleError = '';
       try {
-        await lx.openSurface({ surface: rootId, as: 'aside', edge: 'right' });
+        await lx.shell.openDeclared(rootId, { as: 'aside', edge: 'right' });
       } catch (error) {
         roleError = String(error);
       }
@@ -2656,8 +2656,8 @@ desktopTest('migrates one keyed workspace across aside edges and main exactly on
       const off = [];
       let output;
       try {
-        surface = await lx.openSurface({
-          surface: 'terminal', key, as: 'aside', edge: 'right',
+        surface = await lx.shell.openDeclared('terminal', {
+          key, as: 'aside', edge: 'right',
         });
         off.push(
           surface.onHide((event) => visibility.hide.push(event)),
@@ -2665,14 +2665,14 @@ desktopTest('migrates one keyed workspace across aside edges and main exactly on
           surface.onClose((event) => closed.push(event)),
         );
         const aside = await snapshot();
-        const main = await lx.openSurface({ surface: 'terminal', key, as: 'main' });
+        const main = await lx.shell.openDeclared('terminal', { key, as: 'main' });
         const mainLayout = await snapshot();
         const roleAfterMain = main.role;
         let hideError = '';
         try { await main.hide(); } catch (error) { hideError = String(error); }
         const afterRejectedHide = await snapshot();
-        const docked = await lx.openSurface({
-          surface: 'terminal', key, as: 'aside', edge: 'bottom',
+        const docked = await lx.shell.openDeclared('terminal', {
+          key, as: 'aside', edge: 'bottom',
         });
         const dockedLayout = await snapshot();
         await docked.hide();
@@ -2836,8 +2836,8 @@ desktopTest('switches, deduplicates concurrent opens, and leaves no ghost rows',
       let output;
       try {
         const baseline = await snapshot();
-        const first = await lx.openSurface({
-          surface: 'terminal', key: '  ' + keys.first + '  ', as: 'main',
+        const first = await lx.shell.openDeclared('terminal', {
+          key: '  ' + keys.first + '  ', as: 'main',
         });
         opened.push(first);
         off.push(
@@ -2846,16 +2846,16 @@ desktopTest('switches, deduplicates concurrent opens, and leaves no ghost rows',
         );
         const afterFirst = await snapshot();
 
-        const second = await lx.openSurface({
-          surface: 'terminal', key: keys.second, as: 'main',
+        const second = await lx.shell.openDeclared('terminal', {
+          key: keys.second, as: 'main',
         });
         opened.push(second);
         off.push(second.onHide((event) => events.secondHide.push(event)));
         await waitFor(() => events.firstHide.length === 1, 'first hide after second open');
         const afterSecond = await snapshot();
 
-        const reopened = await lx.openSurface({
-          surface: 'terminal', key: keys.first, as: 'main',
+        const reopened = await lx.shell.openDeclared('terminal', {
+          key: keys.first, as: 'main',
         });
         opened.push(reopened);
         await waitFor(
@@ -2865,8 +2865,8 @@ desktopTest('switches, deduplicates concurrent opens, and leaves no ghost rows',
         const afterReopen = await snapshot();
 
         const [concurrentFirst, concurrentSecond] = await Promise.all([
-          lx.openSurface({ surface: 'terminal', key: keys.concurrent, as: 'main' }),
-          lx.openSurface({ surface: 'terminal', key: keys.concurrent, as: 'main' }),
+          lx.shell.openDeclared('terminal', { key: keys.concurrent, as: 'main' }),
+          lx.shell.openDeclared('terminal', { key: keys.concurrent, as: 'main' }),
         ]);
         opened.push(concurrentFirst, concurrentSecond);
         off.push(concurrentFirst.onClose((event) => events.concurrentClose.push(event)));

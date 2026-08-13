@@ -15,7 +15,7 @@ type SurfaceContext = {
   height: number;
 };
 
-lx.onSurfaceContext(
+lx.surface.onContext(
   handler: (context: SurfaceContext) => void,
 ): () => void;
 ```
@@ -58,7 +58,7 @@ Page<PageData>({
   },
 
   onLoad() {
-    const unsubscribe = lx.onSurfaceContext((surfaceContext) => {
+    const unsubscribe = lx.surface.onContext((surfaceContext) => {
       this.setData({ surfaceContext });
     });
     subscriptions.set(this, unsubscribe);

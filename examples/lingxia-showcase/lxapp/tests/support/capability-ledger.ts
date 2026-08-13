@@ -34,7 +34,6 @@ const SHAPE_ONLY = [
   'appearance',
   'env',
   'navigationBar',
-  'shell',
   'tabBar',
   'terminal',
   'tray',
@@ -57,7 +56,13 @@ const AUTOMATED = [
   { name: 'onNetworkChange', ownerCaseId: 'DEVICE-002', requiredLevels: ['lifecycle'] },
   { name: 'onWifiConnected', ownerCaseId: 'LOGIC-002', requiredLevels: ['lifecycle'] },
   {
-    name: 'openSurface',
+    name: 'surface',
+    ownerCaseId: 'DESKTOP-BROWSER-001',
+    requiredLevels: ['semantic', 'lifecycle'],
+    requiredTargets: ['windows', 'macos'],
+  },
+  {
+    name: 'shell',
     ownerCaseId: 'DESKTOP-BROWSER-001',
     requiredLevels: ['semantic', 'lifecycle'],
     requiredTargets: ['windows', 'macos'],
@@ -113,7 +118,6 @@ const PLANNED = [
   'getVideoInfo',
   'navigateBackApp',
   'navigateToApp',
-  'onSurfaceContext',
   'reLaunch',
   'uploadFile',
 ] as const satisfies readonly LxApiName[];
