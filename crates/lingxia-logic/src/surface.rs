@@ -13,7 +13,7 @@ use lxapp::{
 use rong::{
     Class, HostError, IntoJSObject, JSContext, JSContextService, JSFunc, JSObject, JSResult,
     JSValue, Promise,
-    function::{Rest, This},
+    function::{Optional, Rest, This},
     js_class, js_method,
 };
 use rong_event::{Emitter, EmitterExt, EventEmitter, EventKey};
@@ -135,9 +135,9 @@ impl JSSurface {
         let lxapp = LxApp::from_ctx(&ctx)?;
         let id = self.id.clone();
         Promise::from_future(&ctx, None, async move {
-            lxapp.close_surface(&id, "programmatic").map_err(|err| {
-                surface_error(rong::error::E_INTERNAL, "surface_close_failed", err)
-            })?;
+            lxapp
+                .close_surface(&id, "programmatic")
+                .map_err(|err| surface_error(SurfaceErrorCode::Failed, err))?;
             Ok(())
         })
     }
@@ -194,19 +194,90 @@ impl Emitter for JSSurface {
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<JSSurface>()?;
-    register_surface_api(ctx)
+    register_surface_api(ctx)?;
+    register_surface_namespace(ctx)?;
+    register_shell_surface_api(ctx)
 }
 
 rong::js_api! {
     fn register_surface_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        // Precise correlated overloads remain in the curated Lx augmentation.
-        fn openSurface(ts_params = "spec: never", ts_return = "never") = open_surface_spec;
         fn openExternal = open_external;
-        fn onSurfaceContext(
+        const surface: "SurfaceApi" = surface_namespace(ctx)?;
+    }
+}
+
+rong::js_api! {
+    fn register_surface_namespace(ctx) {
+        namespace SurfaceApi = surface_namespace(ctx)?;
+        fn openPage(
+            ts_params = "page: string, options?: OpenPageOptions",
+            ts_return = "Promise<PageSurface>"
+        ) = open_page;
+        fn openUrl(
+            ts_params = "url: string, options?: OpenUrlOptions",
+            ts_return = "Promise<TabSurface>"
+        ) = open_url;
+        fn openDeclared(
+            ts_params = "id: string, options?: OpenDeclaredOptions",
+            ts_return = "Promise<DeclaredSurface>"
+        ) = open_declared;
+        fn get(
+            ts_params = "keyOrId: string",
+            ts_return = "AnySurface | undefined"
+        ) = get_surface;
+        fn onContext(
             ts_params = "handler: (context: SurfaceContext) => void",
             ts_return = "() => void"
         ) = surface_on_change;
+    }
+}
+
+rong::js_api! {
+    fn register_shell_surface_api(ctx) {
+        namespace ShellApi = shell_namespace(ctx)?;
+        fn openApp(
+            ts_params = "appId: string, options: ShellOpenAppOptions",
+            ts_return = "Promise<AppSurface>"
+        ) = shell_open_app;
+        fn openBuiltin(
+            ts_params = "page: BuiltinShellPage",
+            ts_return = "Promise<BuiltinSurface>"
+        ) = shell_open_builtin;
+        fn openDeclared(
+            ts_params = "id: string, options?: OpenDeclaredOptions",
+            ts_return = "Promise<DeclaredSurface>"
+        ) = shell_open_declared;
+        fn reconfigure(
+            ts_params = "id: string, patch: ShellSurfacePatch",
+            ts_return = "Promise<void>"
+        ) = shell_reconfigure;
+    }
+}
+
+/// `lx.surface`, created on demand so registration order does not matter.
+fn surface_namespace(ctx: &JSContext) -> JSResult<JSObject> {
+    let lx = ctx.global().get::<_, JSObject>("lx")?;
+    match lx.get::<_, JSObject>("surface") {
+        Ok(obj) => Ok(obj),
+        Err(_) => {
+            let obj = JSObject::new(ctx);
+            lx.set("surface", obj.clone())?;
+            Ok(obj)
+        }
+    }
+}
+
+/// `lx.shell`, shared with `crate::ui::shell`.
+fn shell_namespace(ctx: &JSContext) -> JSResult<JSObject> {
+    let lx = ctx.global().get::<_, JSObject>("lx")?;
+    match lx.get::<_, JSObject>("shell") {
+        Ok(obj) => Ok(obj),
+        Err(_) => {
+            let obj = JSObject::new(ctx);
+            lx.set("shell", obj.clone())?;
+            Ok(obj)
+        }
     }
 }
 
@@ -272,77 +343,379 @@ struct WebSurfaceOptions {
     role: String,
 }
 
-/// `lx.openSurface(spec)` — unified surface entry point. The spec is a
-/// discriminated union keyed by exactly one of `page`, `url`, `appId`, or
-/// `surface`:
-///
-/// - `{ page, as, position?, size?, query? }` opens one of this lxapp's own
-///   pages as a `float` (overlay popup) or a `window` (bare standalone desktop
-///   window). Pages cannot be docked as an `aside` — an aside shows external
-///   content only.
-/// - `{ appId, as, page?, ... }` composes a dynamic business lxapp as a main or
-///   aside Surface. `page` is a configured page name; route paths are rejected.
-///   Dynamic floats require a host declaration and use `{ surface }` instead.
-/// - `{ surface, key?, as?, edge? }` opens a host declaration by id.
-/// - `{ url }` opens an authorized HTTPS/file URL in the in-app chromed browser.
-async fn open_surface_spec(ctx: JSContext, spec: JSValue) -> JSResult<JSValue> {
-    let Some(obj) = spec.clone().into_object() else {
-        return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
-            "lx.openSurface expects a spec object",
-        ));
-    };
-    let selector = surface_spec_selector(
-        get_property(&obj, "page").is_some(),
-        get_property(&obj, "url").is_some(),
-        get_property(&obj, "appId").is_some(),
-        get_property(&obj, "surface").is_some(),
-    )
-    .ok_or_else(|| {
-        surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
-            "spec must contain exactly one selector: surface, appId, page, or url",
-        )
+/// `lx.surface.openPage(page, options?)` — one of this lxapp's own pages as a
+/// float or a window. A page can never be an aside: asides carry external
+/// content only, which is why that member does not exist on this signature.
+async fn open_page(
+    ctx: JSContext,
+    page: String,
+    options: Optional<JSObject>,
+) -> JSResult<JSObject> {
+    let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
+    let realized = resolve_placement(&ctx, &options, &["float", "window"], "float", |placement| {
+        placement != "window" || window_placement_available()
     })?;
-    match selector {
-        SurfaceSpecSelector::Page => open_page_spec(ctx, &obj).await.map(JSObject::into_js_value),
-        SurfaceSpecSelector::Url => open_url_spec(ctx, &obj).await,
-        SurfaceSpecSelector::App => open_app_spec(ctx, &obj).await.map(JSObject::into_js_value),
-        SurfaceSpecSelector::Declared => open_declared_surface_spec(&ctx, &obj)
-            .await
-            .map(JSObject::into_js_value),
+
+    let chrome = read_optional_string(&options, "chrome")?;
+    if let Some(chrome) = chrome.as_deref() {
+        if !matches!(chrome, "system" | "full") {
+            return Err(surface_error(
+                SurfaceErrorCode::InvalidArg,
+                format!("chrome must be 'system' or 'full'; got {chrome}"),
+            ));
+        }
+        if realized != "window" {
+            return Err(surface_error(
+                SurfaceErrorCode::InvalidArg,
+                "chrome applies to as: 'window' only",
+            ));
+        }
     }
+
+    let spec = JSObject::new(&ctx);
+    spec.set("page", page)?;
+    spec.set("as", realized.as_str())?;
+    copy_options(
+        &options,
+        &spec,
+        &["position", "size", "interaction", "query"],
+    )?;
+    if let Some(chrome) = chrome {
+        spec.set("chrome", chrome)?;
+    }
+
+    let key = read_surface_key(&options)?;
+    let handle = open_page_spec(ctx.clone(), &spec).await?;
+    finish_handle(&ctx, &handle, "page", &realized, key, None)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SurfaceSpecSelector {
-    Page,
-    Url,
-    App,
-    Declared,
+/// `lx.surface.openUrl(url, options?)` — external content in the in-app
+/// browser, as a tab or docked as an aside.
+async fn open_url(ctx: JSContext, url: String, options: Optional<JSObject>) -> JSResult<JSObject> {
+    let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    let realized = resolve_placement(&ctx, &options, &["tab", "aside"], "tab", |placement| {
+        placement != "aside" || aside_dock_available(&lxapp)
+    })?;
+
+    let spec = JSObject::new(&ctx);
+    spec.set("url", url)?;
+    if realized == "aside" {
+        spec.set("as", "aside")?;
+    }
+    copy_options(&options, &spec, &["edge", "size"])?;
+
+    let key = read_surface_key(&options)?;
+    let opened = open_url_spec(ctx.clone(), &spec).await?;
+    browser_tab_handle(&ctx, opened, &realized, key)
 }
 
-fn surface_spec_selector(
-    has_page: bool,
-    has_url: bool,
-    has_app_id: bool,
-    has_surface: bool,
-) -> Option<SurfaceSpecSelector> {
-    // `page` is the selector for a page surface, but an optional startup field
-    // for an app surface. Once `appId` is present it must not be counted as a
-    // second selector; the other top-level selectors remain mutually exclusive.
-    let selectors = [has_page && !has_app_id, has_url, has_app_id, has_surface];
-    if selectors.iter().filter(|selected| **selected).count() != 1 {
-        return None;
+/// `lx.surface.openDeclared(id, options?)` — a surface the host declared in
+/// `lingxia.yaml`, opened with the declaration's own presentation.
+async fn open_declared(
+    ctx: JSContext,
+    id: String,
+    options: Optional<JSObject>,
+) -> JSResult<JSObject> {
+    let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
+    let key = read_surface_key(&options)?;
+    let spec = JSObject::new(&ctx);
+    spec.set("surface", id)?;
+    if let Some(key) = key.as_deref() {
+        spec.set("key", key)?;
     }
-    match selectors {
-        [true, ..] => Some(SurfaceSpecSelector::Page),
-        [_, true, ..] => Some(SurfaceSpecSelector::Url),
-        [_, _, true, _] => Some(SurfaceSpecSelector::App),
-        _ => Some(SurfaceSpecSelector::Declared),
+    let handle = open_declared_surface_spec(&ctx, &spec).await?;
+    let realized = handle_realized_placement(&handle);
+    finish_handle(&ctx, &handle, "declared", &realized, key, None)
+}
+
+/// `lx.surface.get(keyOrId)` — the live handle for a surface this lxapp
+/// opened, so no caller has to cache one in order to reuse or close it.
+fn get_surface(ctx: JSContext, key_or_id: String) -> JSResult<JSValue> {
+    let registry = surface_registry(&ctx)?;
+    let Ok(found) = registry.get::<_, JSObject>(key_or_id.as_str()) else {
+        return Ok(JSValue::undefined(&ctx));
+    };
+    if !found.get::<_, bool>("alive").unwrap_or(false) {
+        let _ = registry.delete(key_or_id.as_str());
+        return Ok(JSValue::undefined(&ctx));
     }
+    Ok(found.into_js_value())
+}
+
+/// `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
+/// slot. Home-lxapp only; the namespace is the privilege.
+async fn shell_open_app(ctx: JSContext, app_id: String, options: JSObject) -> JSResult<JSObject> {
+    let spec = JSObject::new(&ctx);
+    spec.set("appId", app_id)?;
+    copy_options(
+        &options,
+        &spec,
+        &["as", "edge", "page", "query", "envVersion", "targetVersion"],
+    )?;
+    let key = read_surface_key(&options)?;
+    let handle = open_app_spec(ctx.clone(), &spec).await?;
+    let realized = handle_realized_placement(&handle);
+    finish_handle(&ctx, &handle, "app", &realized, key, None)
+}
+
+/// `lx.shell.openBuiltin(page)` — a host builtin page. Home-lxapp only.
+async fn shell_open_builtin(ctx: JSContext, page: String) -> JSResult<JSObject> {
+    let url = match page.trim() {
+        "settings" => "lingxia://settings",
+        "downloads" => "lingxia://downloads",
+        other => {
+            return Err(surface_error(
+                SurfaceErrorCode::NotDeclared,
+                format!("unknown builtin page: {other}"),
+            ));
+        }
+    };
+    let spec = JSObject::new(&ctx);
+    spec.set("url", url)?;
+    open_url_spec(ctx.clone(), &spec).await?;
+    builtin_surface_handle(&ctx, page.trim())
+}
+
+/// `lx.shell.openDeclared(id, options?)` — the declared surface, plus the
+/// keyed multi-instance form. Home-lxapp only.
+async fn shell_open_declared(
+    ctx: JSContext,
+    id: String,
+    options: Optional<JSObject>,
+) -> JSResult<JSObject> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    require_home_caller(&lxapp, "lx.shell.openDeclared")?;
+    open_declared(ctx, id, options).await
+}
+
+/// `lx.shell.reconfigure(id, patch)` — re-place a live declared surface.
+async fn shell_reconfigure(ctx: JSContext, id: String, patch: JSObject) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    require_home_caller(&lxapp, "lx.shell.reconfigure")?;
+    let spec = JSObject::new(&ctx);
+    spec.set("surface", id)?;
+    copy_options(&patch, &spec, &["as", "edge"])?;
+    open_declared_surface_spec(&ctx, &spec).await?;
+    Ok(())
+}
+
+/// Resolves an `as` option against what the host can realize. A single value
+/// is a strict requirement; an ordered array is a preference list.
+fn resolve_placement(
+    ctx: &JSContext,
+    options: &JSObject,
+    allowed: &[&str],
+    default: &str,
+    available: impl Fn(&str) -> bool,
+) -> JSResult<String> {
+    let requested: Vec<String> = match get_property(options, "as") {
+        None => vec![default.to_string()],
+        Some(value) => {
+            if let Some(list) = value.clone().into_object().filter(|obj| obj.is_array()) {
+                let length = list.get::<_, u32>("length").unwrap_or(0);
+                (0..length)
+                    .map(|index| list.get::<_, String>(index.to_string().as_str()))
+                    .collect::<JSResult<Vec<_>>>()?
+            } else {
+                vec![value.to_rust::<String>().map_err(|_| {
+                    surface_error(
+                        SurfaceErrorCode::InvalidArg,
+                        "as must be a placement or an ordered array of placements",
+                    )
+                })?]
+            }
+        }
+    };
+    let _ = ctx;
+    if requested.is_empty() {
+        return Err(surface_error(
+            SurfaceErrorCode::InvalidArg,
+            "as must name at least one placement",
+        ));
+    }
+    for placement in &requested {
+        let placement = placement.trim();
+        if !allowed.contains(&placement) {
+            return Err(surface_error(
+                SurfaceErrorCode::InvalidArg,
+                format!(
+                    "as must be one of {}; got {placement}",
+                    allowed
+                        .iter()
+                        .map(|value| format!("'{value}'"))
+                        .collect::<Vec<_>>()
+                        .join(" | ")
+                ),
+            ));
+        }
+        if available(placement) {
+            return Ok(placement.to_string());
+        }
+    }
+    Err(surface_error(
+        SurfaceErrorCode::UnsupportedPlacement,
+        format!(
+            "this host build cannot realize {}; check lx.supports({{ surface: … }}) first",
+            requested.join(" or ")
+        ),
+    ))
+}
+
+fn copy_options(from: &JSObject, to: &JSObject, fields: &[&str]) -> JSResult<()> {
+    for field in fields {
+        if let Some(value) = get_property(from, field) {
+            to.set(*field, value)?;
+        }
+    }
+    Ok(())
+}
+
+fn read_surface_key(options: &JSObject) -> JSResult<Option<String>> {
+    let Some(key) = read_optional_string(options, "key")? else {
+        return Ok(None);
+    };
+    let key = key.trim().to_string();
+    if key.is_empty() || key.len() > 128 {
+        return Err(surface_error(
+            SurfaceErrorCode::InvalidArg,
+            "key must be 1 to 128 UTF-8 bytes",
+        ));
+    }
+    Ok(Some(key))
+}
+
+/// `key -> handle`, kept on a non-enumerable slot of `lx.surface` so the JS
+/// engine keeps the handles alive for us.
+fn surface_registry(ctx: &JSContext) -> JSResult<JSObject> {
+    let namespace = surface_namespace(ctx)?;
+    if let Ok(existing) = namespace.get::<_, JSObject>(SURFACE_REGISTRY_SLOT) {
+        return Ok(existing);
+    }
+    let registry = JSObject::new(ctx);
+    namespace.define_property(
+        SURFACE_REGISTRY_SLOT,
+        rong::PropertyDescriptor::from_value(registry.clone().into_js_value()),
+    )?;
+    Ok(registry)
+}
+
+const SURFACE_REGISTRY_SLOT: &str = "__lxSurfaces";
+
+/// Stamps the content-keyed fields onto a handle and records it for
+/// `lx.surface.get`.
+fn finish_handle(
+    ctx: &JSContext,
+    handle: &JSObject,
+    kind: &str,
+    realized: &str,
+    key: Option<String>,
+    scope: Option<&str>,
+) -> JSResult<JSObject> {
+    handle.set("kind", kind)?;
+    handle.set("realized", realized)?;
+    if let Some(scope) = scope {
+        handle.set("scope", scope)?;
+    }
+    let registry = surface_registry(ctx)?;
+    if let Some(key) = key {
+        handle.set("key", key.as_str())?;
+        registry.set(key.as_str(), handle.clone())?;
+    }
+    if let Ok(id) = handle.get::<_, String>("id") {
+        registry.set(id.as_str(), handle.clone())?;
+    }
+    Ok(handle.clone())
+}
+
+/// A `TabSurface` for content the in-app browser owns. Where the host hands
+/// back a tab identity the handle owns exactly that tab; where compact browser
+/// chrome owns the strip it reports `scope: 'group'` — a readable field rather
+/// than the `null` the old shape returned on one platform and not another.
+fn browser_tab_handle(
+    ctx: &JSContext,
+    opened: JSValue,
+    realized: &str,
+    key: Option<String>,
+) -> JSResult<JSObject> {
+    if let Some(handle) = opened.clone().into_object() {
+        return finish_handle(ctx, &handle, "tab", realized, key, Some("tab"));
+    }
+
+    // The browser owns the tab strip here, so the handle addresses the group.
+    let handle = JSObject::new(ctx);
+    let lxapp = LxApp::from_ctx(ctx)?;
+    handle.set("id", format!("browser-group:{}", lxapp.appid))?;
+    handle.set("alive", true)?;
+    handle.set("visible", true)?;
+    attach_browser_group_methods(ctx, &handle)?;
+    finish_handle(ctx, &handle, "tab", realized, key, Some("group"))
+}
+
+/// `close` / `activate` / `onClose` for a handle whose content the browser
+/// chrome owns. The group's lifetime belongs to that chrome, so these reject
+/// with a code rather than pretending to control it.
+fn attach_browser_group_methods(ctx: &JSContext, handle: &JSObject) -> JSResult<()> {
+    for owned_by_chrome in ["close", "activate"] {
+        handle.set(
+            owned_by_chrome,
+            JSFunc::new(ctx, |ctx: JSContext| {
+                Promise::from_future(&ctx, None, async move {
+                    Err::<(), _>(surface_error(
+                        SurfaceErrorCode::UnsupportedPlacement,
+                        "the browser chrome owns this group; check `scope` before calling",
+                    ))
+                })
+            })?,
+        )?;
+    }
+    handle.set(
+        "onClose",
+        JSFunc::new(ctx, |ctx: JSContext, _handler: JSFunc| {
+            // The chrome owns this group's lifetime and reports no close event.
+            JSFunc::new(&ctx, || {})
+        })?,
+    )?;
+    Ok(())
+}
+
+/// A `BuiltinSurface` for a host product page. The browser owns its lifetime,
+/// so the handle reports identity and leaves control to the shell.
+fn builtin_surface_handle(ctx: &JSContext, page: &str) -> JSResult<JSObject> {
+    let handle = JSObject::new(ctx);
+    handle.set("id", format!("builtin:{page}"))?;
+    handle.set("alive", true)?;
+    handle.set("visible", true)?;
+    attach_browser_group_methods(ctx, &handle)?;
+    for absent in ["show", "hide"] {
+        handle.set(
+            absent,
+            JSFunc::new(ctx, |ctx: JSContext| {
+                Promise::from_future(&ctx, None, async move {
+                    Err::<(), _>(surface_error(
+                        SurfaceErrorCode::UnsupportedPlacement,
+                        "a builtin page's visibility is owned by the shell",
+                    ))
+                })
+            })?,
+        )?;
+    }
+    for absent in ["onShow", "onHide"] {
+        handle.set(
+            absent,
+            JSFunc::new(ctx, |ctx: JSContext, _handler: JSFunc| {
+                JSFunc::new(&ctx, || {})
+            })?,
+        )?;
+    }
+    finish_handle(ctx, &handle, "builtin", "main", None, None)
+}
+
+/// Reads back the placement the host actually produced for a managed handle.
+fn handle_realized_placement(handle: &JSObject) -> String {
+    handle
+        .get::<_, String>("role")
+        .unwrap_or_else(|_| "aside".to_string())
 }
 
 /// Reject callers other than the home lxapp for the privileged content keys
@@ -354,8 +727,7 @@ fn require_home_caller(lxapp: &LxApp, key: &str) -> JSResult<()> {
         return Ok(());
     }
     Err(surface_error(
-        rong::error::E_PERMISSION_DENIED,
-        "denied",
+        SurfaceErrorCode::Denied,
         format!("openSurface({{ {key} }}) is restricted to the home lxapp"),
     ))
 }
@@ -370,8 +742,7 @@ async fn open_app_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     let app_id = app_id.trim().to_string();
     if app_id.is_empty() {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
+            SurfaceErrorCode::InvalidArg,
             "appId must be non-empty",
         ));
     }
@@ -383,26 +754,20 @@ async fn open_app_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     let as_role = as_role.trim();
     if !matches!(as_role, "main" | "aside") {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
+            SurfaceErrorCode::InvalidArg,
             format!("an app surface supports as: 'main' | 'aside'; got {as_role}"),
         ));
     }
     if edge.is_some() && as_role != "aside" {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
+            SurfaceErrorCode::InvalidArg,
             "edge is only valid with as: 'aside'",
         ));
     }
 
     let query = match get_property(spec, "query") {
         Some(value) => Some(value.into_object().ok_or_else(|| {
-            surface_error(
-                rong::error::E_INVALID_ARG,
-                "invalid_surface_spec",
-                "query must be an object",
-            )
+            surface_error(SurfaceErrorCode::InvalidArg, "query must be an object")
         })?),
         None => None,
     };
@@ -422,8 +787,7 @@ async fn open_app_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     if let Some(current_region) = lxapp::open_region(&app_id) {
         if current_region != requested_region {
             return Err(surface_error(
-                "E_SURFACE_CONFLICT",
-                "surface_conflict",
+                SurfaceErrorCode::AlreadyOpenOtherRole,
                 format!(
                     "lxapp '{app_id}' is already open as {}; close it before opening as {}",
                     current_region.as_str(),
@@ -489,8 +853,7 @@ async fn show_lxapp_region(
         lxapp::LxAppOpenRegion::Main => {
             let app = lxapp::try_get(app_id).ok_or_else(|| {
                 surface_error(
-                    rong::error::E_NOT_FOUND,
-                    "lxapp_not_found",
+                    SurfaceErrorCode::NotDeclared,
                     format!("lxapp is not active: {app_id}"),
                 )
             })?;
@@ -521,13 +884,9 @@ async fn show_lxapp_region(
 fn lxapp_open_error(err: LxAppError) -> rong::RongJSError {
     match err {
         LxAppError::SurfaceConflict(message) => {
-            surface_error("E_SURFACE_CONFLICT", "surface_conflict", message)
+            surface_error(SurfaceErrorCode::AlreadyOpenOtherRole, message)
         }
-        other => surface_error(
-            rong::error::E_NOT_FOUND,
-            "lxapp_not_found",
-            other.to_string(),
-        ),
+        other => surface_error(SurfaceErrorCode::NotDeclared, other.to_string()),
     }
 }
 
@@ -538,8 +897,7 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
     if key.as_deref().is_some_and(str::is_empty) || key.as_ref().is_some_and(|key| key.len() > 128)
     {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
+            SurfaceErrorCode::InvalidArg,
             "key must contain 1 to 128 UTF-8 bytes",
         ));
     }
@@ -548,8 +906,7 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
     let id = id.trim();
     if id.is_empty() {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
+            SurfaceErrorCode::InvalidArg,
             "surface must be non-empty",
         ));
     }
@@ -559,16 +916,14 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
         && lxapp.surface_switcher_snapshot().root_surface_id.as_deref() == Some(id)
     {
         return Err(surface_error(
-            rong::error::E_NOT_SUPPORTED,
-            "root_main_role_unsupported",
+            SurfaceErrorCode::AlreadyOpenOtherRole,
             "the stable root main surface cannot change role",
         ));
     }
     let role = requested_role.or_else(|| lxapp.shell_surface_role(id));
     if role.is_some_and(|role| role != lingxia_surface::Role::Aside) && edge.is_some() {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
+            SurfaceErrorCode::InvalidArg,
             "edge is only valid for an aside surface",
         ));
     }
@@ -582,17 +937,14 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
     }
     if key.is_some() && declared_app_id.is_some() {
         return Err(surface_error(
-            rong::error::E_NOT_SUPPORTED,
-            "keyed_surface_unsupported",
+            SurfaceErrorCode::CapabilityMissing,
             "key is supported only for declared native surfaces",
         ));
     }
     if let Some(app_id) = declared_app_id {
         lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release)
             .await
-            .map_err(|err| {
-                surface_error(rong::error::E_NOT_FOUND, "lxapp_not_found", err.to_string())
-            })?;
+            .map_err(|err| surface_error(SurfaceErrorCode::NotDeclared, err.to_string()))?;
     }
     if key.is_some() {
         let resolved = lxapp
@@ -638,8 +990,7 @@ fn read_optional_managed_role(spec: &JSObject) -> JSResult<Option<lingxia_surfac
         Some("aside") => Ok(Some(lingxia_surface::Role::Aside)),
         Some("float") => Ok(Some(lingxia_surface::Role::Float)),
         Some(other) => Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
+            SurfaceErrorCode::InvalidArg,
             format!("as must be main, aside, or float; got {other}"),
         )),
     }
@@ -651,8 +1002,7 @@ fn read_validated_edge(spec: &JSObject) -> JSResult<Option<String>> {
         && !matches!(edge.trim(), "left" | "right" | "top" | "bottom")
     {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
+            SurfaceErrorCode::InvalidArg,
             format!("edge must be left, right, top, or bottom; got {edge}"),
         ));
     }
@@ -680,8 +1030,7 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     let position = read_optional_string(spec, "position")?;
     if edge.is_some() {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
+            SurfaceErrorCode::InvalidArg,
             "edge is not supported for page surfaces; use position with as: 'float'",
         ));
     }
@@ -702,8 +1051,7 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
             #[cfg(any(target_os = "ios", target_os = "android", target_env = "ohos"))]
             {
                 return Err(surface_error(
-                    rong::error::E_NOT_SUPPORTED,
-                    "window_unsupported_platform",
+                    SurfaceErrorCode::UnsupportedPlacement,
                     "as: 'window' opens a separate desktop window, which this host build cannot do; check lx.supports({ capability: 'surface', value: 'window' }) first",
                 ));
             }
@@ -711,8 +1059,7 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
             {
                 if !window_placement_available() {
                     return Err(surface_error(
-                        rong::error::E_NOT_SUPPORTED,
-                        "window_unsupported_platform",
+                        SurfaceErrorCode::UnsupportedPlacement,
                         "as: 'window' opens a separate desktop window, which this host build cannot do; check lx.supports({ capability: 'surface', value: 'window' }) first",
                     ));
                 }
@@ -721,8 +1068,7 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
         }
         other => {
             return Err(surface_error(
-                rong::error::E_INVALID_ARG,
-                "invalid_surface_spec",
+                SurfaceErrorCode::InvalidArg,
                 format!(
                     "as must be 'float' or 'window' (a page cannot be an aside — asides are external content only); got {other}"
                 ),
@@ -758,8 +1104,7 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
         require_home_caller(&lxapp, "url")?;
         if !lingxia_app_context::browser_enabled() {
             return Err(surface_error(
-                rong::error::E_NOT_SUPPORTED,
-                "browser_not_supported",
+                SurfaceErrorCode::UnsupportedPlacement,
                 "built-in browser pages require capabilities.browser",
             ));
         }
@@ -768,9 +1113,9 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
             .open_builtin_browser_page(page)
             .map_err(|err| match err {
                 lingxia_platform::error::PlatformError::NotSupported(_) => {
-                    surface_error(rong::error::E_NOT_SUPPORTED, "browser_not_supported", err)
+                    surface_error(SurfaceErrorCode::UnsupportedPlacement, err)
                 }
-                _ => surface_error(rong::error::E_INTERNAL, "browser_open_failed", err),
+                _ => surface_error(SurfaceErrorCode::Failed, err),
             })?;
         return Ok(JSValue::null(&ctx));
     }
@@ -808,8 +1153,7 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
         }
         None => open_url_in_browser(&ctx, &lxapp, trimmed_url, false),
         Some(other) => Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
+            SurfaceErrorCode::InvalidArg,
             format!(
                 "a url surface supports as: 'aside' (or omit `as` for a browser tab); got {other}"
             ),
@@ -831,8 +1175,7 @@ fn validate_builtin_browser_surface_keys(spec: &JSObject) -> JSResult<()> {
         return Ok(());
     }
     Err(surface_error(
-        rong::error::E_INVALID_ARG,
-        "invalid_surface_spec",
+        SurfaceErrorCode::InvalidArg,
         "a built-in browser surface accepts only the url field",
     ))
 }
@@ -849,7 +1192,7 @@ fn open_external(ctx: JSContext, url: String) -> JSResult<()> {
             url,
             target: OpenUrlTarget::External,
         })
-        .map_err(|err| surface_error(rong::error::E_INTERNAL, "open_url_failed", err))
+        .map_err(|err| surface_error(SurfaceErrorCode::Failed, err))
 }
 
 /// Handle for a live lxapp presentation. Hide preserves the claimed region;
@@ -930,8 +1273,7 @@ fn lxapp_surface_handle(
                 ensure_lxapp_surface_open(&handle, &id, region, hide_session_id)?;
                 match region {
                     lxapp::LxAppOpenRegion::Main => Err(surface_error(
-                        rong::error::E_NOT_SUPPORTED,
-                        "main_hide_unsupported",
+                        SurfaceErrorCode::UnsupportedPlacement,
                         "a main surface cannot be hidden; select another main or close it",
                     )),
                     lxapp::LxAppOpenRegion::Aside => {
@@ -967,21 +1309,15 @@ fn lxapp_surface_handle(
                         == Some(surface_id.as_str())
                 {
                     return Err(surface_error(
-                        rong::error::E_NOT_SUPPORTED,
-                        "root_main_close_unsupported",
+                        SurfaceErrorCode::UnsupportedPlacement,
                         "the stable root main surface cannot be closed",
                     ));
                 }
                 if region == lxapp::LxAppOpenRegion::Aside {
                     hide_lxapp_aside(&shell, &id, &surface_id).await?;
                 }
-                lxapp::close_lxapp(&id).map_err(|err| {
-                    surface_error(
-                        rong::error::E_INTERNAL,
-                        "surface_close_failed",
-                        err.to_string(),
-                    )
-                })?;
+                lxapp::close_lxapp(&id)
+                    .map_err(|err| surface_error(SurfaceErrorCode::Failed, err.to_string()))?;
                 // Closing the provider alone leaves a dead main/aside node in
                 // the window graph. Remove that shell identity as part of the
                 // same operation so the successor and every retained handle
@@ -1067,20 +1403,13 @@ async fn hide_lxapp_aside(shell: &LxApp, app_id: &str, shell_surface_id: &str) -
     }
     let app = lxapp::try_get(app_id).ok_or_else(|| {
         surface_error(
-            rong::error::E_NOT_FOUND,
-            "lxapp_not_found",
+            SurfaceErrorCode::NotDeclared,
             format!("lxapp is not active: {app_id}"),
         )
     })?;
     app.runtime
         .hide_lxapp(app_id.to_string(), app.session_id())
-        .map_err(|err| {
-            surface_error(
-                rong::error::E_INTERNAL,
-                "shell_surface_failed",
-                err.to_string(),
-            )
-        })?;
+        .map_err(|err| surface_error(SurfaceErrorCode::Failed, err.to_string()))?;
     shell.unregister_host_aside(shell_surface_id);
     Ok(())
 }
@@ -1187,8 +1516,7 @@ fn managed_surface_handle(
                 let role = lxapp.shell_surface_role(&id);
                 if role == Some(lingxia_surface::Role::Main) {
                     return Err(surface_error(
-                        rong::error::E_NOT_SUPPORTED,
-                        "main_surface_hide_unsupported",
+                        SurfaceErrorCode::UnsupportedPlacement,
                         "a main surface cannot be hidden; close it instead",
                     ));
                 }
@@ -1307,8 +1635,7 @@ fn lxapp_url(lxapp: &LxApp, raw: &str) -> JSResult<String> {
 fn read_required_string(obj: &JSObject, field: &str) -> JSResult<String> {
     read_optional_string(obj, field)?.ok_or_else(|| {
         surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_spec",
+            SurfaceErrorCode::InvalidArg,
             format!("{field} must be a string"),
         )
     })
@@ -1521,7 +1848,7 @@ fn open_url_in_browser(
                 OpenUrlTarget::SelfTarget
             },
         })
-        .map_err(|err| surface_error(rong::error::E_INTERNAL, "open_url_failed", err))?;
+        .map_err(|err| surface_error(SurfaceErrorCode::Failed, err))?;
     Ok(JSValue::null(ctx))
 }
 
@@ -1536,12 +1863,10 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let opened_surface = lxapp.open_surface(request).map_err(|err| {
         unregister_closed_sender(&requested_surface_id);
         match err {
-            LxAppError::UnsupportedOperation(detail) => surface_error(
-                rong::error::E_NOT_SUPPORTED,
-                "surface_not_supported",
-                detail,
-            ),
-            other => surface_error(rong::error::E_INTERNAL, "surface_open_failed", other),
+            LxAppError::UnsupportedOperation(detail) => {
+                surface_error(SurfaceErrorCode::UnsupportedPlacement, detail)
+            }
+            other => surface_error(SurfaceErrorCode::Failed, other),
         }
     })?;
     let surface_id = opened_surface.id.clone();
@@ -1569,7 +1894,7 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
                 .map_err(|err| {
                     unregister_closed_sender(&surface_id);
                     let _ = lxapp.close_surface(&surface_id, "failed");
-                    surface_error(rong::error::E_INTERNAL, "surface_open_failed", err)
+                    surface_error(SurfaceErrorCode::Failed, err)
                 })?,
         ),
         None => None,
@@ -1622,7 +1947,7 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         page_svc.bind_surface(page_surface.clone()).map_err(|err| {
             unregister_closed_sender(&surface_id);
             let _ = lxapp.close_surface(&surface_id, "failed");
-            surface_error(rong::error::E_INTERNAL, "surface_open_failed", err)
+            surface_error(SurfaceErrorCode::Failed, err)
         })?;
         // Link the two surface objects so visibility events fired on one also
         // fire on the other. Borrow scope is tight so we never hold a borrow
@@ -1674,9 +1999,9 @@ fn attach_surface_methods(
             let lxapp = close_lxapp.clone();
             let id = close_id.clone();
             Promise::from_future(&ctx, None, async move {
-                lxapp.close_surface(&id, "programmatic").map_err(|err| {
-                    surface_error(rong::error::E_INTERNAL, "surface_close_failed", err)
-                })?;
+                lxapp
+                    .close_surface(&id, "programmatic")
+                    .map_err(|err| surface_error(SurfaceErrorCode::Failed, err))?;
                 Ok(())
             })
         })?,
@@ -1808,37 +2133,24 @@ fn ensure_surface_object_open(surface: &JSObject) -> JSResult<()> {
 }
 
 fn closed_surface_error() -> rong::RongJSError {
-    surface_error(
-        "E_SURFACE_CLOSED",
-        "surface_closed",
-        "surface handle is closed",
-    )
+    surface_error(SurfaceErrorCode::Closed, "surface handle is closed")
 }
 
 fn surface_lifecycle_error(operation: &str, error: LxAppError) -> rong::RongJSError {
     match error {
-        LxAppError::InvalidParameter(detail) => {
-            surface_error(rong::error::E_INVALID_ARG, "invalid_surface_spec", detail)
-        }
+        LxAppError::InvalidParameter(detail) => surface_error(SurfaceErrorCode::InvalidArg, detail),
         LxAppError::ResourceNotFound(detail) => {
-            surface_error(rong::error::E_NOT_FOUND, "surface_not_found", detail)
+            surface_error(SurfaceErrorCode::NotDeclared, detail)
         }
-        LxAppError::UnsupportedOperation(detail) => surface_error(
-            rong::error::E_NOT_SUPPORTED,
-            "surface_not_supported",
-            detail,
-        ),
+        LxAppError::UnsupportedOperation(detail) => {
+            surface_error(SurfaceErrorCode::UnsupportedPlacement, detail)
+        }
         LxAppError::SurfaceConflict(detail) => {
-            surface_error("E_SURFACE_CONFLICT", "surface_conflict", detail)
+            surface_error(SurfaceErrorCode::AlreadyOpenOtherRole, detail)
         }
         other => surface_error(
-            rong::error::E_INTERNAL,
-            match operation {
-                "show" => "surface_show_failed",
-                "hide" => "surface_hide_failed",
-                _ => "surface_operation_failed",
-            },
-            other,
+            SurfaceErrorCode::Failed,
+            format!("surface {operation} failed: {other}"),
         ),
     }
 }
@@ -2066,8 +2378,7 @@ fn unregister_closed_sender(id: &str) {
 fn parse_surface_options(lxapp: &LxApp, options: &JSValue) -> JSResult<PageSurfaceRequest> {
     let Some(obj) = options.clone().into_object() else {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_options",
+            SurfaceErrorCode::InvalidArg,
             "surface options must be an object",
         ));
     };
@@ -2113,8 +2424,7 @@ fn parse_surface_interaction(
     };
     let Some(interaction) = value.into_object() else {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_options",
+            SurfaceErrorCode::InvalidArg,
             "interaction must be an object",
         ));
     };
@@ -2131,8 +2441,7 @@ fn parse_surface_interaction(
         "manual" => lxapp::lingxia_surface::FloatDismiss::Manual,
         other => {
             return Err(surface_error(
-                rong::error::E_INVALID_ARG,
-                "invalid_surface_options",
+                SurfaceErrorCode::InvalidArg,
                 format!("unsupported interaction.dismiss: {other}"),
             ));
         }
@@ -2189,23 +2498,20 @@ fn parse_query(obj: &JSObject) -> JSResult<Option<PageQueryInput>> {
     };
     let Some(query_obj) = query.into_object() else {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_options",
+            SurfaceErrorCode::InvalidArg,
             "query must be an object",
         ));
     };
 
     let json: Value = serde_json::from_str(&query_obj.to_json_string()?).map_err(|err| {
         surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_options",
+            SurfaceErrorCode::InvalidArg,
             format!("query must be JSON serializable: {err}"),
         )
     })?;
     let Some(map) = json.as_object() else {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_options",
+            SurfaceErrorCode::InvalidArg,
             "query must be an object",
         ));
     };
@@ -2227,27 +2533,14 @@ fn parse_query(obj: &JSObject) -> JSResult<Option<PageQueryInput>> {
 
 fn parse_surface_kind(obj: &JSObject) -> JSResult<SurfaceKind> {
     let raw = get_property(obj, "kind")
-        .ok_or_else(|| {
-            surface_error(
-                rong::error::E_INVALID_ARG,
-                "invalid_surface_options",
-                "surface options require kind",
-            )
-        })?
+        .ok_or_else(|| surface_error(SurfaceErrorCode::InvalidArg, "surface options require kind"))?
         .to_rust::<String>()
-        .map_err(|_| {
-            surface_error(
-                rong::error::E_INVALID_ARG,
-                "invalid_surface_options",
-                "kind must be a string",
-            )
-        })?;
+        .map_err(|_| surface_error(SurfaceErrorCode::InvalidArg, "kind must be a string"))?;
     match raw.trim().to_ascii_lowercase().as_str() {
         "overlay" => Ok(SurfaceKind::Overlay),
         "window" => Ok(SurfaceKind::Window),
         _ => Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "unsupported_surface_kind",
+            SurfaceErrorCode::InvalidArg,
             format!("unsupported surface kind: {raw}; supported kinds are overlay and window"),
         )),
     }
@@ -2259,18 +2552,13 @@ fn parse_position(obj: &JSObject, kind: SurfaceKind) -> JSResult<SurfacePosition
     };
     if kind == SurfaceKind::Window {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_options",
+            SurfaceErrorCode::InvalidArg,
             "position is only supported for overlay surfaces",
         ));
     }
-    let raw = value.to_rust::<String>().map_err(|_| {
-        surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_options",
-            "position must be a string",
-        )
-    })?;
+    let raw = value
+        .to_rust::<String>()
+        .map_err(|_| surface_error(SurfaceErrorCode::InvalidArg, "position must be a string"))?;
     match raw.trim().to_ascii_lowercase().as_str() {
         "center" => Ok(SurfacePosition::Center),
         "bottom" => Ok(SurfacePosition::Bottom),
@@ -2278,8 +2566,7 @@ fn parse_position(obj: &JSObject, kind: SurfaceKind) -> JSResult<SurfacePosition
         "right" => Ok(SurfacePosition::Right),
         "top" => Ok(SurfacePosition::Top),
         _ => Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_options",
+            SurfaceErrorCode::InvalidArg,
             format!("unsupported position: {raw}"),
         )),
     }
@@ -2295,8 +2582,7 @@ fn parse_size(
     };
     let Some(size_obj) = size.into_object() else {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_options",
+            SurfaceErrorCode::InvalidArg,
             "size must be an object",
         ));
     };
@@ -2317,15 +2603,13 @@ fn parse_size_value(
     if value.is_number() {
         let number = value.to_rust::<f64>().map_err(|_| {
             surface_error(
-                rong::error::E_INVALID_ARG,
-                "invalid_surface_options",
+                SurfaceErrorCode::InvalidArg,
                 format!("size.{field} must be a positive number or percentage"),
             )
         })?;
         if !number.is_finite() || number <= 0.0 {
             return Err(surface_error(
-                rong::error::E_INVALID_ARG,
-                "invalid_surface_options",
+                SurfaceErrorCode::InvalidArg,
                 format!("size.{field} must be positive"),
             ));
         }
@@ -2334,36 +2618,31 @@ fn parse_size_value(
     if value.is_string() {
         let raw = value.to_rust::<String>().map_err(|_| {
             surface_error(
-                rong::error::E_INVALID_ARG,
-                "invalid_surface_options",
+                SurfaceErrorCode::InvalidArg,
                 format!("size.{field} must be a positive number or percentage"),
             )
         })?;
         if !allow_percentage {
             return Err(surface_error(
-                rong::error::E_INVALID_ARG,
-                "invalid_surface_options",
+                SurfaceErrorCode::InvalidArg,
                 format!("size.{field} percentage is only supported for overlay surfaces"),
             ));
         }
         let Some(percent) = raw.trim().strip_suffix('%') else {
             return Err(surface_error(
-                rong::error::E_INVALID_ARG,
-                "invalid_surface_options",
+                SurfaceErrorCode::InvalidArg,
                 format!("size.{field} string must be a percentage"),
             ));
         };
         let ratio = percent.trim().parse::<f64>().map_err(|_| {
             surface_error(
-                rong::error::E_INVALID_ARG,
-                "invalid_surface_options",
+                SurfaceErrorCode::InvalidArg,
                 format!("size.{field} percentage is invalid"),
             )
         })? / 100.0;
         if !ratio.is_finite() || ratio <= 0.0 || ratio > 1.0 {
             return Err(surface_error(
-                rong::error::E_INVALID_ARG,
-                "invalid_surface_options",
+                SurfaceErrorCode::InvalidArg,
                 format!("size.{field} percentage must be > 0% and <= 100%"),
             ));
         }
@@ -2371,8 +2650,7 @@ fn parse_size_value(
     }
 
     Err(surface_error(
-        rong::error::E_INVALID_ARG,
-        "invalid_surface_options",
+        SurfaceErrorCode::InvalidArg,
         format!("size.{field} must be a positive number or percentage"),
     ))
 }
@@ -2396,19 +2674,14 @@ fn read_optional_bool(obj: &JSObject, field: &str) -> JSResult<Option<bool>> {
     };
     value.to_rust::<bool>().map(Some).map_err(|_| {
         surface_error(
-            rong::error::E_INVALID_ARG,
-            "invalid_surface_options",
+            SurfaceErrorCode::InvalidArg,
             format!("interaction.{field} must be a boolean"),
         )
     })
 }
 
 fn invalid_surface_target(detail: impl AsRef<str>) -> rong::RongJSError {
-    surface_error(
-        rong::error::E_INVALID_ARG,
-        "invalid_surface_target",
-        detail.as_ref(),
-    )
+    surface_error(SurfaceErrorCode::InvalidArg, detail.as_ref())
 }
 
 fn validate_url_target(lxapp: &LxApp, raw: &str) -> JSResult<String> {
@@ -2423,8 +2696,7 @@ fn validate_url_target(lxapp: &LxApp, raw: &str) -> JSResult<String> {
         let path = file_url_path(url)?;
         lxapp.resolve_accessible_path(&path).map_err(|_| {
             surface_error(
-                "E_DENIED",
-                "security_denied",
+                SurfaceErrorCode::Denied,
                 "file URL is outside this lxapp's host-authorized paths",
             )
         })?;
@@ -2442,8 +2714,7 @@ fn validate_url_target(lxapp: &LxApp, raw: &str) -> JSResult<String> {
     }
     if !lxapp.is_domain_allowed(host) {
         return Err(surface_error(
-            rong::error::E_INVALID_ARG,
-            "security_denied",
+            SurfaceErrorCode::Denied,
             format!("domain '{host}' is not allowed by lxapp security policy"),
         ));
     }
@@ -2470,8 +2741,7 @@ fn validate_external_url(lxapp: &LxApp, raw: &str) -> JSResult<String> {
         .ok_or_else(|| invalid_surface_target("openExternal requires an absolute URL"))?;
     if !external_scheme_allowed(&scheme) {
         return Err(surface_error(
-            "E_DENIED",
-            "security_denied",
+            SurfaceErrorCode::Denied,
             format!("URL scheme '{scheme}' is not allowed for external hand-off"),
         ));
     }
@@ -2511,8 +2781,7 @@ fn file_url_path(url: &str) -> JSResult<String> {
     };
     if !authority.is_empty() && !authority.eq_ignore_ascii_case("localhost") {
         return Err(surface_error(
-            "E_DENIED",
-            "security_denied",
+            SurfaceErrorCode::Denied,
             "remote file URL authorities are not allowed",
         ));
     }
@@ -2602,19 +2871,88 @@ fn surface_role_label(role: lingxia_surface::Role) -> &'static str {
     }
 }
 
-fn surface_error(
-    host_code: &'static str,
-    surface_code: &'static str,
-    detail: impl std::fmt::Display,
-) -> rong::RongJSError {
-    HostError::new(host_code, detail.to_string())
-        .with_data(rong::err_data!({ code: (surface_code) }))
+/// Why a surface operation was refused. The JS `SurfaceErrorCode` union is
+/// generated from this enum, so no caller has to match on message text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SurfaceErrorCode {
+    UnsupportedPlacement,
+    Denied,
+    NotDeclared,
+    InvalidArg,
+    AlreadyOpenOtherRole,
+    Closed,
+    CapabilityMissing,
+    Failed,
+}
+
+impl SurfaceErrorCode {
+    /// The `code` an lxapp reads off the error.
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::UnsupportedPlacement => "unsupported_placement",
+            Self::Denied => "denied",
+            Self::NotDeclared => "not_declared",
+            Self::InvalidArg => "invalid_arg",
+            Self::AlreadyOpenOtherRole => "already_open_other_role",
+            Self::Closed => "closed",
+            Self::CapabilityMissing => "capability_missing",
+            Self::Failed => "failed",
+        }
+    }
+
+    /// The transport-level host code, kept so existing error plumbing and the
+    /// i18n registry keep working unchanged.
+    const fn host_code(self) -> &'static str {
+        match self {
+            Self::UnsupportedPlacement => rong::error::E_NOT_SUPPORTED,
+            Self::Denied => rong::error::E_PERMISSION_DENIED,
+            Self::NotDeclared => rong::error::E_NOT_FOUND,
+            Self::InvalidArg => rong::error::E_INVALID_ARG,
+            // Documented in the shell UI spec and asserted by hosts.
+            Self::AlreadyOpenOtherRole => "E_SURFACE_CONFLICT",
+            Self::Closed => "E_SURFACE_CLOSED",
+            Self::CapabilityMissing => rong::error::E_NOT_SUPPORTED,
+            Self::Failed => rong::error::E_INTERNAL,
+        }
+    }
+}
+
+fn surface_error(code: SurfaceErrorCode, detail: impl std::fmt::Display) -> rong::RongJSError {
+    HostError::new(code.host_code(), detail.to_string())
+        .with_data(rong::err_data!({ code: (code.as_str()) }))
         .into()
 }
+
+/// Every code, in the order the generated union lists them.
+#[cfg(test)]
+const SURFACE_ERROR_CODES: &[&str] = &[
+    SurfaceErrorCode::UnsupportedPlacement.as_str(),
+    SurfaceErrorCode::Denied.as_str(),
+    SurfaceErrorCode::NotDeclared.as_str(),
+    SurfaceErrorCode::InvalidArg.as_str(),
+    SurfaceErrorCode::AlreadyOpenOtherRole.as_str(),
+    SurfaceErrorCode::Closed.as_str(),
+    SurfaceErrorCode::CapabilityMissing.as_str(),
+    SurfaceErrorCode::Failed.as_str(),
+];
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The public `SurfaceErrorCode` union must list exactly the codes the
+    /// runtime raises, so a new code can never ship without a type for it.
+    #[test]
+    fn declared_error_codes_match_the_enum() {
+        let source = include_str!("public_types.rs");
+        let block = source
+            .split("type SurfaceErrorCode = r###\"")
+            .nth(1)
+            .and_then(|rest| rest.split("\"###").next())
+            .expect("SurfaceErrorCode literal");
+        let declared: Vec<&str> = block.split('\'').skip(1).step_by(2).collect();
+        assert_eq!(declared, SURFACE_ERROR_CODES);
+    }
 
     #[test]
     fn surface_urls_reject_plain_http() {
@@ -2686,20 +3024,6 @@ mod tests {
             Some(Main),
             Some(8)
         ));
-    }
-
-    #[test]
-    fn app_surface_page_is_a_startup_field_not_a_second_selector() {
-        assert_eq!(
-            surface_spec_selector(true, false, true, false),
-            Some(SurfaceSpecSelector::App)
-        );
-        assert_eq!(
-            surface_spec_selector(true, false, false, false),
-            Some(SurfaceSpecSelector::Page)
-        );
-        assert_eq!(surface_spec_selector(true, true, true, false), None);
-        assert_eq!(surface_spec_selector(true, false, true, true), None);
     }
 
     #[test]

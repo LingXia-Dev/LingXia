@@ -34,10 +34,11 @@ import type {
   NavigationBarApi,
   PageMessagePort,
   PreviewMediaHandle,
+  TabSurface,
+  PageSurface,
   ShellApi,
   Storage,
-  Surface,
-  SurfaceHandle,
+  SurfaceApi,
   TabBarApi,
   TerminalApi,
   TerminalColorSchemesApi,
@@ -88,11 +89,9 @@ export const LX_API_NAMES = [
   'onKeyDown',
   'onKeyUp',
   'onNetworkChange',
-  'onSurfaceContext',
   'onWifiConnected',
   'openExternal',
   'openFile',
-  'openSurface',
   'previewMedia',
   'reLaunch',
   'redirectTo',
@@ -111,6 +110,7 @@ export const LX_API_NAMES = [
   'stopPullDownRefresh',
   'stopWifi',
   'supports',
+  'surface',
   'switchTab',
   'tabBar',
   'terminal',
@@ -141,7 +141,7 @@ const TERMINAL_FONTS_API = ['list'] as const;
 const TERMINAL_PREVIEW_API = ['clear', 'close', 'show'] as const;
 const WINDOWS_TERMINAL_API = ['install', 'setEnabled', 'status'] as const;
 const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
-const SHELL_API = ['sidebarActions'] as const;
+const SHELL_API = ['openApp', 'openBuiltin', 'openDeclared', 'reconfigure', 'sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['clear', 'remove', 'replace', 'update'] as const;
 const TRAY_API = ['hide', 'onClick', 'setBadge', 'setIcon', 'setMenu', 'setTitle', 'show'] as const;
 const FILE_SYSTEM_API = [
@@ -492,32 +492,33 @@ const COMPRESS_VIDEO_TASK_API = ['cancel', 'catch', 'finally', 'next', 'return',
 const HOST_UPDATE_INFO_API = ['apply', 'isForceUpdate', 'releaseNotes', 'size', 'version'] as const;
 const HOST_UPDATE_TASK_API = ['catch', 'finally', 'next', 'return', 'then', 'wait'] as const;
 const PREVIEW_MEDIA_API = ['completed', 'current', 'onChange', 'presented'] as const;
-const SURFACE_HANDLE_API = [
+const SURFACE_NAMESPACE_API = ['get', 'onContext', 'openDeclared', 'openPage', 'openUrl'] as const;
+const PAGE_SURFACE_API = [
   'alive',
   'close',
   'hide',
   'id',
-  'onClose',
-  'onHide',
-  'onShow',
-  'presentation',
-  'role',
-  'show',
-  'visible',
-] as const;
-const SURFACE_API = [
-  'alive',
-  'close',
-  'hide',
-  'id',
+  'key',
+  'kind',
   'onClose',
   'onHide',
   'onMessage',
   'onShow',
   'postMessage',
-  'presentation',
-  'role',
+  'realized',
   'show',
+  'visible',
+] as const;
+const TAB_SURFACE_API = [
+  'activate',
+  'alive',
+  'close',
+  'id',
+  'key',
+  'kind',
+  'onClose',
+  'realized',
+  'scope',
   'visible',
 ] as const;
 const PAGE_MESSAGE_PORT_API = ['onMessage', 'postMessage'] as const;
@@ -588,20 +589,20 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     factory: 'lx.previewMedia',
   },
   {
-    name: 'SurfaceHandle',
-    members: SURFACE_HANDLE_API,
-    properties: ['alive', 'id', 'presentation', 'role', 'visible'],
-    optionalProperties: ['role'],
+    name: 'PageSurface',
+    members: PAGE_SURFACE_API,
+    properties: ['alive', 'id', 'key', 'kind', 'realized', 'visible'],
+    optionalProperties: ['key'],
     fixture: 'surface',
-    factory: 'lx.openSurface',
+    factory: 'lx.surface.openPage',
   },
   {
-    name: 'Surface',
-    members: SURFACE_API,
-    properties: ['alive', 'id', 'presentation', 'role', 'visible'],
-    optionalProperties: ['role'],
+    name: 'TabSurface',
+    members: TAB_SURFACE_API,
+    properties: ['alive', 'id', 'key', 'kind', 'realized', 'scope', 'visible'],
+    optionalProperties: ['key'],
     fixture: 'surface',
-    factory: 'lx.openSurface',
+    factory: 'lx.surface.openUrl',
   },
   {
     name: 'PageMessagePort',
@@ -686,7 +687,8 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<HostAppUpdateInfo, typeof HOST_UPDATE_INFO_API>>,
   AssertTrue<Exact<HostAppUpdateTask, typeof HOST_UPDATE_TASK_API>>,
   AssertTrue<Exact<PreviewMediaHandle, typeof PREVIEW_MEDIA_API>>,
-  AssertTrue<Exact<SurfaceHandle, typeof SURFACE_HANDLE_API>>,
-  AssertTrue<Exact<Surface, typeof SURFACE_API>>,
+  AssertTrue<Exact<SurfaceApi, typeof SURFACE_NAMESPACE_API>>,
+  AssertTrue<Exact<PageSurface, typeof PAGE_SURFACE_API>>,
+  AssertTrue<Exact<TabSurface, typeof TAB_SURFACE_API>>,
   AssertTrue<Exact<PageMessagePort, typeof PAGE_MESSAGE_PORT_API>>,
 ];

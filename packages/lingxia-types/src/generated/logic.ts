@@ -21,9 +21,10 @@ export interface PageInstance<TData extends Record<string, unknown> = Record<str
   data: TData;
   route: string;
   /**
-   * Available when this page was opened as a surface via `lx.openSurface(...)`.
+   * Available when this page was opened as a surface via
+   * `lx.surface.openPage(...)`.
    */
-  surface?: Surface;
+  surface?: PageSurface;
   /**
    * Available when this page was opened by `lx.navigateTo(...)`.
    */
@@ -142,18 +143,6 @@ declare global {
      */
     readonly terminal?: TerminalApi;
 
-    /**
-     * Open a surface. Browser tabs resolve to `null`, declared surfaces to a
-     * host-managed handle, and page surfaces to a full `Surface`. URL asides
-     * return a `Surface` when docked and `null` in compact browser chrome.
-     * `as: "window"` is desktop-only.
-     */
-    openSurface(spec: OpenUrlTabSpec): Promise<null>;
-    openSurface(spec: OpenDeclaredSurfaceSpec | OpenAppSurfaceSpec): Promise<SurfaceHandle>;
-    openSurface(spec: OpenPageSurfaceSpec): Promise<Surface>;
-    openSurface(spec: OpenUrlAsideSpec): Promise<Surface | null>;
-    openSurface(spec: OpenSurfaceSpec): Promise<Surface | SurfaceHandle | null>;
-
     /** Download to the downloads directory. */
     downloadFile(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
     /** Download to the lxapp-managed app directory. */
@@ -174,6 +163,9 @@ export type ActionSheetResult = {
     /** Index of the tapped item in `itemList`. */
     index: number;
 } | CanceledResult;
+
+/** Every surface handle, narrowable by `kind`. */
+export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface | BuiltinSurface;
 
 export type AppConfig = {
     globalData?: Record<string, unknown>;
@@ -261,6 +253,12 @@ export type AppScreenshotResult = {
     height?: number;
 };
 
+/** Another lxapp composed into a shell slot. */
+export type AppSurface = SurfaceBase & SurfaceShowable & {
+    readonly kind: 'app';
+    readonly realized: 'main' | 'aside';
+};
+
 export type AppearanceApi = globalThis.AppearanceApi;
 
 export type AppearancePreference = 'auto' | 'light' | 'dark';
@@ -307,7 +305,12 @@ export type BinaryFileData = ArrayBuffer | ArrayBufferView;
  * Built-in browser product page. Opening one requires
  * `capabilities.browser` and is restricted to the home lxapp.
  */
-export type BuiltinBrowserSurfaceUrl = 'lingxia://settings' | 'lingxia://downloads';
+export type BuiltinShellPage = 'settings' | 'downloads';
+
+/** A host builtin page such as settings or downloads. */
+export type BuiltinSurface = SurfaceBase & SurfaceShowable & {
+    readonly kind: 'builtin';
+};
 
 /** The user dismissed the operation. Never an error. */
 export type CanceledResult = {
@@ -473,6 +476,11 @@ export type CompressVideoTask = PromiseLike<CompressVideoResult> & AsyncIterable
 export type ConnectWifiOptions = {
     SSID: string;
     password?: string;
+};
+
+/** A surface declared by the host in `lingxia.yaml`. */
+export type DeclaredSurface = SurfaceBase & SurfaceShowable & {
+    readonly kind: 'declared';
 };
 
 /** Display and orientation APIs. */
@@ -839,115 +847,14 @@ export type NetworkInfo = {
 /** Network status APIs. */
 export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet';
 
-/**
- * Compose a dynamic business lxapp as its own shell Surface (home lxapp
- * only). Unlike `navigateToApp`, this creates a parallel shell item and
- * lifecycle handle. No YAML declaration is required. Reopening its
- * current role focuses the live instance; changing a live main/aside
- * role requires closing it first.
- * Dynamic App Surfaces intentionally do not support `float`: a shell
- * float needs a host-declared tray anchor, dismissal policy, and
- * presentation contract that `{ appId }` cannot supply. Declare that
- * lxapp as a float in `lingxia.yaml` and open it with `{ surface }`.
- */
-export type OpenAppSurfaceSpec = {
-    appId: string;
-    /**
-     * Configured page name from the target lxapp's `lxapp.json`. Omit it to
-     * open the target app's initial page. Full page routes are not supported.
-     */
-    page?: string;
-    query?: PageQuery;
-    /** Defaults to 'release'. */
-    envVersion?: LxAppEnvVersion;
-    targetVersion?: string;
-    interaction?: never;
-    url?: never;
-    surface?: never;
-    key?: never;
-    position?: never;
-    size?: never;
-} & ({
-    /**
-     * Occupies the primary content area and appears in the main/sidebar
-     * switcher. Main content has no tab strip of its own. Dynamic floats are
-     * not supported.
-     */
-    as: 'main';
-    edge?: never;
-} | {
-    /**
-     * Occupies a companion region around the current main, with switching in
-     * that region's tab strip. It does not appear in the main/sidebar switcher.
-     */
-    as: 'aside';
-    /**
-     * Preferred docking side. `aside` selects the companion region; `edge`
-     * selects where that region docks on layouts with room. Omit it for the
-     * default (`right` for dynamic lxapps); compact hosts may reproject it.
-     */
-    edge?: SurfaceEdge;
-});
-
-export type OpenBuiltinBrowserSurfaceSpec = {
-    url: BuiltinBrowserSurfaceUrl;
-    as?: never;
-    edge?: never;
-    size?: never;
-    position?: never;
-    interaction?: never;
-    page?: never;
-    appId?: never;
-    envVersion?: never;
-    targetVersion?: never;
-    key?: never;
-    surface?: never;
-    query?: never;
-};
-
-/**
- * Open a surface declaration from the host's `lingxia.yaml`.
- * `key` identifies an additional reusable instance when supported;
- * `as` changes the live instance's role without changing its identity.
- */
-export type OpenDeclaredSurfaceSpec = {
-    surface: string;
+export type OpenDeclaredOptions = {
     /**
      * Stable caller-owned identity for an additional native declaration
-     * instance. Leading/trailing whitespace is ignored; use 1 to 128 UTF-8
-     * bytes. Declarations without instantiable native providers reject it.
+     * instance. 1 to 128 UTF-8 bytes. Declarations without instantiable
+     * native providers reject it with `capability_missing`.
      */
     key?: string;
-    /**
-     * Omit to use the declaration's role. Overrides must be realizable by the
-     * declared provider. `float` does not synthesize a popover contract: the
-     * declaration must already provide the required float/tray presentation.
-     * A `main` occupies the primary content area, appears in the main/sidebar
-     * switcher, and has no content-area tab strip. An `aside` occupies a
-     * companion region around the main and uses that region's tab strip; it
-     * never enters the main switcher. A stable root rejects non-main overrides.
-     */
-    as?: 'main' | 'aside' | 'float';
-    interaction?: never;
-    page?: never;
-    url?: never;
-    appId?: never;
-    envVersion?: never;
-    targetVersion?: never;
-    position?: never;
-    size?: never;
-    query?: never;
-} & ({
-    edge?: never;
-} | {
-    /**
-     * Preferred docking side when the effective role is `aside`. `aside`
-     * selects the companion region; `edge` selects a side within that region.
-     * Omit it to keep the declaration's edge. Compact hosts may reproject it.
-     */
-    as?: 'aside';
-    edge: SurfaceEdge;
-});
+};
 
 /** File system APIs. */
 export type OpenFileOptions = {
@@ -965,120 +872,36 @@ export type OpenFileOptions = {
     showMenu?: boolean;
 };
 
-/**
- * Spec for {@link OpenSurfaceSpec}. A discriminated union keyed by source so a
- * page name and a declared surface id never collide (each is its own string
- * space, separately type-checkable).
- * - `{ page }` — one of this lxapp's own pages, by name, arranged as `as`
- * (`float` is a popup; `window` is a bare desktop window, which rejects on
- * mobile). `position` applies to `float`, and `size` is a Host-clamped hint.
- * They are fixed at open (re-open to change). Your own pages **cannot** be
- * docked as an `aside` — an aside is external content only (see `{ url }`).
- * For a side panel of your own, use a declared `surface`, an in-page split
- * layout, or `role: main` for a switchable destination.
- * `float` is a popup layered above the main at `position` (like a dialog); it
- * takes no layout space. `interaction` controls the native close button,
- * outside-click dismissal, and modality. Defaults are no button,
- * `tapOutside`, and non-modal.
- * - `{ surface }` — a surface declared in `lingxia.yaml` `surfaces:`, by id
- * (e.g. `'terminal'`, `'ai-assistant'`). Form, position, and startup data come
- * from the declaration.
- * - `{ url }` — external content in the in-app browser. Without `as` it opens as
- * a main browser tab (the **self** browser: full chrome **with an editable
- * address bar**, no handle). With `as: 'aside'` it opens in the **browser
- * aside** — a docked (large screen) / full-screen (phone) **multi-tab** browser
- * for external content only (`https://` or `file://`).
- * The aside is **API-only** and never permits address editing or a manual
- * "new tab" action. Desktop may show the current address read-only; compact
- * phone/Runner chrome omits the address row entirely.
- * Tabs are **deduped by URL** — reopening a URL focuses the existing tab and
- * preserves its current navigation. On `medium` / `expanded`, the returned
- * handle is **tab-scoped**: `close()` closes that tab. Compact browser chrome
- * owns the group and returns `null`. Closing the last tab closes the aside;
- * dismissing it only hides the group. The tab UI shows page **titles** (never
- * the URL), plus per-tab close, back/forward, refresh, and dismissal.
- * Presentation is the only large/small difference: on `medium` / `expanded`
- * the aside **docks** and splits beside the main at `edge` (default `'right'`)
- * with a horizontal title tab strip; on `compact` (phone / runner) it presents
- * **full-screen** with a single-row **bottom** browser toolbar (tabs reached
- * via an aside-only switcher). System/edge Back and the toolbar dismiss action
- * exit the whole aside even when page history exists; the explicit browser
- * Back button navigates history. `size` is a host-clamped preferred size
- * (large screen only).
- */
-export type OpenPageSurfaceSpec = {
-    /** Configured page name from this lxapp's `lxapp.json`. */
-    page: string;
-    /** A popup above the main. */
-    as: 'float';
+export type OpenPageOptions = {
+    /**
+     * A single value is a strict requirement and rejects when the host cannot
+     * realize it. An ordered array is a preference list: the first placement
+     * the host can realize wins, and `realized` reports which. Defaults to
+     * `'float'`.
+     */
+    as?: 'float' | 'window' | readonly ('float' | 'window')[];
+    /** Window decoration. Rejected with any float-only placement. */
+    chrome?: WindowChrome;
+    /** Where a float anchors. Rejected when the realized placement is a window. */
     position?: SurfaceFloatPosition;
-    size?: OverlaySurfaceSize;
+    size?: OverlaySurfaceSize & WindowSurfaceSize;
     interaction?: SurfaceInteraction;
     query?: Record<string, unknown>;
-    edge?: never;
-    surface?: never;
-    url?: never;
-    appId?: never;
-    key?: never;
-    envVersion?: never;
-    targetVersion?: never;
-} | {
-    /** Configured page name from this lxapp's `lxapp.json`. */
-    page: string;
-    as: 'window';
-    size?: WindowSurfaceSize;
-    /** Windows use manual dismissal; `tapOutside` is invalid. */
-    interaction?: SurfaceInteraction;
-    query?: Record<string, unknown>;
-    edge?: never;
-    position?: never;
-    surface?: never;
-    url?: never;
-    appId?: never;
-    key?: never;
-    envVersion?: never;
-    targetVersion?: never;
+    /** Stable identity for `lx.surface.get(key)`. */
+    key?: string;
 };
 
-export type OpenSurfaceSpec = OpenPageSurfaceSpec | OpenDeclaredSurfaceSpec | OpenAppSurfaceSpec | OpenBuiltinBrowserSurfaceSpec | OpenUrlTabSpec | OpenUrlAsideSpec;
-
-/**
- * Open `url` in the multi-tab browser aside. `url` must be `https://` or
- * `file://` (external content only). Repeated calls add/focus tabs (deduped by
- * URL) in the single aside per window. Medium/expanded returns a tab-scoped
- * handle; compact returns `null` because browser chrome owns the group. See
- * {@link OpenSurfaceSpec} for the full aside contract.
- */
-export type OpenUrlAsideSpec = {
-    url: string;
-    as: 'aside';
+export type OpenUrlOptions = {
+    /**
+     * `tab` opens a browser tab; `aside` docks the browser beside the main.
+     * Defaults to `'tab'`.
+     */
+    as?: 'tab' | 'aside' | readonly ('tab' | 'aside')[];
+    /** Preferred docking side when the realized placement is an aside. */
     edge?: SurfaceEdge;
     size?: OverlaySurfaceSize;
-    interaction?: never;
-    page?: never;
-    surface?: never;
-    appId?: never;
-    envVersion?: never;
-    targetVersion?: never;
-    key?: never;
-    position?: never;
-    query?: never;
-};
-
-export type OpenUrlTabSpec = {
-    url: string;
-    as?: never;
-    interaction?: never;
-    page?: never;
-    surface?: never;
-    appId?: never;
-    envVersion?: never;
-    targetVersion?: never;
-    key?: never;
-    edge?: never;
-    position?: never;
-    size?: never;
-    query?: never;
+    /** Stable identity for `lx.surface.get(key)`. */
+    key?: string;
 };
 
 export type OverlaySurfaceSize = {
@@ -1107,6 +930,12 @@ export type PageMessagePort = {
 export type PageQuery = Record<string, PageQueryValue>;
 
 export type PageQueryValue = string | number | boolean | null | undefined;
+
+/** One of this lxapp's own pages, opened as a float or a window. */
+export type PageSurface = SurfaceBase & SurfaceShowable & SurfaceMessaging & {
+    readonly kind: 'page';
+    readonly realized: 'float' | 'window';
+};
 
 /**
  * Target page for `navigateTo`, `redirectTo`, `switchTab`, and `reLaunch`.
@@ -1403,6 +1232,35 @@ export type ShellApi = {
      * navigation and all other behavior.
      */
     sidebarActions: ShellSidebarActionsApi;
+    /** Compose another lxapp into a shell slot. */
+    openApp(appId: string, options: ShellOpenAppOptions): Promise<AppSurface>;
+    /** Open a host builtin page such as settings or downloads. */
+    openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
+    /**
+     * Open a declared surface with shell privileges — the same declaration
+     * `lx.surface.openDeclared` opens, plus the keyed multi-instance form.
+     */
+    openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface>;
+    /** Re-place a live declared surface: change its role or its edge. */
+    reconfigure(id: string, patch: ShellSurfacePatch): Promise<void>;
+};
+
+export type ShellOpenAppOptions = {
+    /** `main` occupies the primary content area; `aside` a companion region. */
+    as: 'main' | 'aside';
+    /** Preferred docking side. Only meaningful with `as: 'aside'`. */
+    edge?: SurfaceEdge;
+    /**
+     * Configured page name from the target lxapp's `lxapp.json`. Omit it to
+     * open that app's initial page. Full page routes are not supported.
+     */
+    page?: string;
+    query?: PageQuery;
+    /** Defaults to 'release'. */
+    envVersion?: LxAppEnvVersion;
+    targetVersion?: string;
+    /** Stable identity for `lx.surface.get(key)`. */
+    key?: string;
 };
 
 /**
@@ -1472,6 +1330,15 @@ export type ShellSidebarActionUpdate = {
     disabled?: boolean;
 };
 
+/**
+ * Role and edge overrides the home lxapp may apply to a live declared
+ * surface. A stable root rejects non-main roles.
+ */
+export type ShellSurfacePatch = {
+    as?: 'main' | 'aside' | 'float';
+    edge?: SurfaceEdge;
+};
+
 export type ShowActionSheetOptions = {
     itemList: string[];
     itemColor?: string;
@@ -1530,56 +1397,51 @@ export type StreamSourceOptions = {
     params?: Record<string, unknown>;
 };
 
-export type Surface = SurfaceHandle & {
+/**
+ * Content-keyed surface composition, callable by any lxapp. Privileged
+ * composition lives on `lx.shell`, so the namespace is the privilege.
+ */
+export type SurfaceApi = {
+    /** Open one of this lxapp's own pages as a float or a window. */
+    openPage(page: string, options?: OpenPageOptions): Promise<PageSurface>;
+    /** Open external content in the in-app browser. */
+    openUrl(url: string, options?: OpenUrlOptions): Promise<TabSurface>;
+    /** Open a surface the host declared in `lingxia.yaml`. */
+    openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface>;
     /**
-     * Last-known visibility, kept in sync with the native side via show/hide
-     * events. False once the surface has been closed. Safe to bind into
-     * declarative UI; for event-driven updates subscribe via `onShow`/`onHide`.
+     * The live handle for a surface this lxapp opened, by `key` or by `id`.
+     * Removes the need to cache handles in order to reuse or close them.
+     */
+    get(keyOrId: string): AnySurface | undefined;
+    /**
+     * Observe this presentation's viewport. Invoked immediately with the
+     * current context, then again whenever it changes. Returns an unsubscribe
+     * function.
+     */
+    onContext(handler: (context: SurfaceContext) => void): () => void;
+};
+
+/** What every surface handle carries, whatever opened it. */
+export type SurfaceBase = {
+    readonly kind: SurfaceKind;
+    readonly id: string;
+    /** The caller-supplied identity, when this surface was opened with one. */
+    readonly key?: string;
+    /** The placement the host produced, which an ordered preference may narrow. */
+    readonly realized: SurfacePlacement;
+    /** True until `close()` fires; afterwards the page instance is torn down. */
+    readonly alive: boolean;
+    /**
+     * Last-known visibility, kept in sync with the native side. Safe to bind
+     * into declarative UI; for event-driven updates use `onShow` / `onHide`.
      */
     readonly visible: boolean;
     /**
-     * True until `close()` fires. After close the surface is detached and the
-     * page instance is being torn down; further `show()` / `hide()` calls will
-     * reject.
+     * Destroy the surface. The stable root main cannot be closed. Repeated
+     * calls after a successful close are idempotent.
      */
-    readonly alive: boolean;
-    /**
-     * Sends a message to the other side of a page surface.
-     *
-     * For the opener this targets the opened page. For the opened page this
-     * targets the opener. URL surfaces have no page-side receiver.
-    */
-    postMessage(message: unknown): void;
-    onMessage(handler: (message: unknown) => void): () => void;
-    onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
-    /**
-     * Fires when the surface transitions to visible, regardless of whether
-     * `show()` was called on this side or on the peer. Returns an unsubscribe
-     * function. Only fires on real state changes — calling `show()` on an
-     * already-visible surface is a no-op for listeners.
-     */
-    onShow(handler: (event: SurfaceVisibilityEvent) => void): () => void;
-    /**
-     * Fires when the surface transitions to hidden, regardless of which side
-     * triggered it. Returns an unsubscribe function. Only fires on real state
-     * changes.
-     */
-    onHide(handler: (event: SurfaceVisibilityEvent) => void): () => void;
     close(): Promise<void>;
-    /**
-     * Toggle the surface to visible without tearing it down. The page instance
-     * and its state survive a hide / show round-trip — only close() actually
-     * destroys the surface and fires the onClose listener. Idempotent: calling
-     * on an already-visible surface resolves without firing `onShow`.
-     */
-    show(): Promise<void>;
-    /**
-     * Hide the surface without destroying it. The page instance stays mounted,
-     * so a subsequent show() restores the same scroll position, form input,
-     * and JS state. Hidden surfaces still receive postMessage but are not
-     * visible to the user. Idempotent.
-     */
-    hide(): Promise<void>;
+    onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
 };
 
 /**
@@ -1620,36 +1482,38 @@ export type SurfaceContext = {
  */
 export type SurfaceEdge = 'left' | 'right' | 'top' | 'bottom';
 
+/**
+ * A surface rejection. `instanceof SurfaceError` narrows it, and
+ * `code` is a member of the exported union — never parse the message.
+ */
+export type SurfaceError = Error & {
+    readonly code: SurfaceErrorCode;
+};
+
+/**
+ * Why a surface operation was refused. Carried as `code` on every
+ * `SurfaceError`, so no caller has to match on message text.
+ */
+export type SurfaceErrorCode = /** The placement cannot be realized by this host build. */
+'unsupported_placement'
+/** A privileged operation was called by an lxapp other than the home lxapp. */
+ | 'denied'
+/** No such declared surface, lxapp, or builtin page. */
+ | 'not_declared'
+/** The arguments are malformed or combine options that cannot apply together. */
+ | 'invalid_arg'
+/** The target is already open in a role this call cannot change. */
+ | 'already_open_other_role'
+/** The surface has been closed; the handle is detached. */
+ | 'closed'
+/** The host lacks a capability the request needs, such as an instantiable
+ * native provider for a keyed surface. */
+ | 'capability_missing'
+/** The operation reached the host and failed there. */
+ | 'failed';
+
 /** Where a float popup anchors (default `center`). */
 export type SurfaceFloatPosition = 'center' | 'top' | 'bottom' | 'left' | 'right';
-
-export type SurfaceHandle = {
-    readonly id: string;
-    /** Standalone windows have no role in the primary shell graph. */
-    readonly role?: SurfaceRole;
-    readonly presentation: SurfacePresentation;
-    readonly visible: boolean;
-    readonly alive: boolean;
-    /**
-     * Show a host-managed surface. Resolves only after native presentation
-     * succeeds and the handle's visibility has been updated.
-     */
-    show(): Promise<void>;
-    /**
-     * Hide without destroying user-visible state when the platform supports it.
-     * Main surfaces cannot be hidden and reject this operation.
-     */
-    hide(): Promise<void>;
-    /**
-     * Destroy the live surface. The stable root main cannot be closed and
-     * rejects this operation. Repeated calls after a successful close are
-     * idempotent.
-     */
-    close(): Promise<void>;
-    onShow(handler: (event: SurfaceVisibilityEvent) => void): () => void;
-    onHide(handler: (event: SurfaceVisibilityEvent) => void): () => void;
-    onClose(handler: (event: SurfaceClosedEvent) => void): () => void;
-};
 
 /** Native interaction supplied by the host around page content. */
 export type SurfaceInteraction = {
@@ -1661,9 +1525,49 @@ export type SurfaceInteraction = {
     modal?: boolean;
 };
 
+/**
+ * Where the content came from. The discriminant on every surface
+ * handle, so `AnySurface` narrows without a runtime `typeof` check.
+ */
+export type SurfaceKind = 'page' | 'declared' | 'app' | 'tab' | 'builtin';
+
+/** Two-way messaging, available when both sides are lxapp pages. */
+export type SurfaceMessaging = {
+    /**
+     * Send to the other side. For the opener this targets the opened page;
+     * for the opened page it targets the opener.
+     */
+    postMessage(message: unknown): void;
+    onMessage(handler: (message: unknown) => void): () => void;
+};
+
+/**
+ * What the host actually produced. Reported by `realized`, which is
+ * how a caller reads the outcome of an ordered placement preference.
+ */
+export type SurfacePlacement = 'main' | 'aside' | 'float' | 'window' | 'tab';
+
 export type SurfacePresentation = 'main' | 'dock' | 'overlay' | 'popover' | 'sheet' | 'window';
 
 export type SurfaceRole = 'main' | 'aside' | 'float';
+
+/** Surfaces the host can hide and restore without losing page state. */
+export type SurfaceShowable = {
+    /**
+     * Restore a hidden surface. The page instance survived, so scroll
+     * position, form input, and JS state come back with it. Idempotent.
+     */
+    show(): Promise<void>;
+    /**
+     * Hide without destroying. Main surfaces cannot be hidden and reject.
+     * Idempotent.
+     */
+    hide(): Promise<void>;
+    /** Fires on a real transition to visible, whichever side drove it. */
+    onShow(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+    /** Fires on a real transition to hidden, whichever side drove it. */
+    onHide(handler: (event: SurfaceVisibilityEvent) => void): () => void;
+};
 
 /**
  * Detail payload for `onShow` / `onHide` events. `source` identifies which
@@ -1704,6 +1608,21 @@ export type TabBarPatch = {
 export type TabBarStylePatch = {
     foregroundColor?: string | null;
     selectedForegroundColor?: string | null;
+};
+
+/** External content in the in-app browser. */
+export type TabSurface = SurfaceBase & {
+    readonly kind: 'tab';
+    readonly realized: 'tab' | 'aside';
+    /**
+     * `tab` when this handle owns exactly the tab it opened. `group` when
+     * compact browser chrome owns the tab strip, so `close()` dismisses the
+     * browser group rather than a single tab — a readable field instead of a
+     * platform-dependent `null`.
+     */
+    readonly scope: 'tab' | 'group';
+    /** Bring this tab to the front of its browser. */
+    activate(): Promise<void>;
 };
 
 export type TerminalApi = {
@@ -2020,6 +1939,16 @@ export type WifiConnectedInfo = WifiInfo & {
     connected: boolean;
     state: string;
 };
+
+/**
+ * Window decoration. `system` is the standard title bar. `full`
+ * extends the page to the window edge while keeping the system
+ * minimize, maximize, resize, and drag affordances — the runtime owns
+ * a native drag strip across the top and publishes its height as
+ * `topInset` on the page-chrome snapshot, so a page that does nothing
+ * to opt in still cannot trap the user.
+ */
+export type WindowChrome = 'system' | 'full';
 
 export type WindowSurfaceSize = {
     /** Initial window width in logical pixels. */
@@ -2421,29 +2350,9 @@ declare global {
      * `lx.fs` instead for path-based data.
      */
     getStorage(): Storage;
-    /**
-     * `lx.openSurface(spec)` — unified surface entry point. The spec is a
-     * discriminated union keyed by exactly one of `page`, `url`, `appId`, or
-     * `surface`:
-     * - `{ page, as, position?, size?, query? }` opens one of this lxapp's own
-     * pages as a `float` (overlay popup) or a `window` (bare standalone desktop
-     * window). Pages cannot be docked as an `aside` — an aside shows external
-     * content only.
-     * - `{ appId, as, page?, ... }` composes a dynamic business lxapp as a main or
-     * aside Surface. `page` is a configured page name; route paths are rejected.
-     * Dynamic floats require a host declaration and use `{ surface }` instead.
-     * - `{ surface, key?, as?, edge? }` opens a host declaration by id.
-     * - `{ url }` opens an authorized HTTPS/file URL in the in-app chromed browser.
-     */
-    openSurface(spec: never): Promise<never>;
     /** `lx.openExternal(url)` — hand the url off to the OS default browser. */
     openExternal(url: string): void;
-    /**
-     * `lx.onSurfaceContext(handler)` — register a JS callback (scoped to this
-     * lxapp's JS context), invoke it immediately, then again whenever that
-     * presentation's actual viewport changes. Returns an unsubscribe fn.
-     */
-    onSurfaceContext(handler: (context: SurfaceContext) => void): () => void;
+    readonly surface: SurfaceApi;
     getSystemSetting(): SystemSettingInfo;
     /**
      * Shows a list of actions.
@@ -2539,6 +2448,25 @@ declare global {
 }
 
 declare global {
+  interface ShellApi {
+    /**
+     * `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
+     * slot. Home-lxapp only; the namespace is the privilege.
+     */
+    openApp(appId: string, options: ShellOpenAppOptions): Promise<AppSurface>;
+    /** `lx.shell.openBuiltin(page)` — a host builtin page. Home-lxapp only. */
+    openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
+    /**
+     * `lx.shell.openDeclared(id, options?)` — the declared surface, plus the
+     * keyed multi-instance form. Home-lxapp only.
+     */
+    openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface>;
+    /** `lx.shell.reconfigure(id, patch)` — re-place a live declared surface. */
+    reconfigure(id: string, patch: ShellSurfacePatch): Promise<void>;
+  }
+}
+
+declare global {
   interface ShellSidebarActionsApi {
     /**
      * Atomically replaces the complete desktop sidebar action declaration. Only the
@@ -2571,6 +2499,38 @@ declare global {
      * empty; the home lxapp must still redeclare actions after the next Logic launch.
      */
     clear(): void;
+  }
+}
+
+declare global {
+  interface SurfaceApi {
+    /**
+     * `lx.surface.openPage(page, options?)` — one of this lxapp's own pages as a
+     * float or a window. A page can never be an aside: asides carry external
+     * content only, which is why that member does not exist on this signature.
+     */
+    openPage(page: string, options?: OpenPageOptions): Promise<PageSurface>;
+    /**
+     * `lx.surface.openUrl(url, options?)` — external content in the in-app
+     * browser, as a tab or docked as an aside.
+     */
+    openUrl(url: string, options?: OpenUrlOptions): Promise<TabSurface>;
+    /**
+     * `lx.surface.openDeclared(id, options?)` — a surface the host declared in
+     * `lingxia.yaml`, opened with the declaration's own presentation.
+     */
+    openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface>;
+    /**
+     * `lx.surface.get(keyOrId)` — the live handle for a surface this lxapp
+     * opened, so no caller has to cache one in order to reuse or close it.
+     */
+    get(keyOrId: string): AnySurface | undefined;
+    /**
+     * `lx.onSurfaceContext(handler)` — register a JS callback (scoped to this
+     * lxapp's JS context), invoke it immediately, then again whenever that
+     * presentation's actual viewport changes. Returns an unsubscribe fn.
+     */
+    onContext(handler: (context: SurfaceContext) => void): () => void;
   }
 }
 
