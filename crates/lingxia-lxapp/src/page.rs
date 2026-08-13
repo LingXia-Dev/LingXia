@@ -835,6 +835,13 @@ impl PageInstance {
             self.cancel_bridge_work();
         }
 
+        // An entry never inherits the instance that left: if this page was
+        // popped and its deferred reset has not run yet, complete it here,
+        // before the entry's own onLoad is queued against the fresh state.
+        if event == PageLifecycleEvent::OnLoad {
+            self.owning_lxapp().flush_page_reset(self);
+        }
+
         // A collection of events to fire after the lock is released.
         let mut events_to_fire: Vec<(PageLifecycleEvent, Option<String>)> = Vec::new();
 
@@ -1259,6 +1266,7 @@ impl PageInstance {
         match nav_type {
             NavigationType::Replace => {
                 self.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
+                lxapp.schedule_page_reset(self);
             }
             NavigationType::Launch => {}
             _ => {
@@ -1307,6 +1315,11 @@ impl PageInstance {
                 && let Some(page) = lxapp.get_page(path.as_str())
             {
                 page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
+                // `onUnload` means the instance ended. The WebView is retained
+                // for a warm re-entry, so reset the service and the document
+                // behind it — otherwise the next entry inherits this one's
+                // `data` and its DOM, popups included.
+                lxapp.schedule_page_reset(&page);
             }
         }
 

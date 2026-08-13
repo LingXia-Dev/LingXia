@@ -410,6 +410,7 @@ impl LxApp {
         dispatch_on_hide: bool,
     ) -> Result<(), LxAppError> {
         self.cancel_page_instance_dispose_timer(id);
+        self.cancel_page_reset(id.as_str());
         let child_reason = if matches!(reason, CloseReason::AppClosed) {
             CloseReason::AppClosed
         } else {

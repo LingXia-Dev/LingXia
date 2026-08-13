@@ -502,6 +502,9 @@ pub(crate) struct LxAppState {
 
     /// Delayed dispose timers for hidden page instances.
     page_instance_dispose_timers: Mutex<HashMap<String, oneshot::Sender<()>>>,
+    /// Pending in-place resets for pages that left the stack, keyed by page
+    /// instance id. Cancelled when the page is navigated to again.
+    page_reset_timers: Mutex<HashMap<String, oneshot::Sender<()>>>,
 
     /// PageInstance navigation stack for tracking page navigation history within this app
     /// Stores all pages for navigation history
@@ -549,6 +552,7 @@ impl LxAppState {
             pages_by_id: Mutex::new(HashMap::new()),
             page_instance_runtime: Mutex::new(HashMap::new()),
             page_instance_dispose_timers: Mutex::new(HashMap::new()),
+            page_reset_timers: Mutex::new(HashMap::new()),
             page_stack: Mutex::new(VecDeque::with_capacity(PAGE_STACK_MAX)),
             last_active_time: Instant::now(),
             network_security: NetworkSecurity::new(),
@@ -1080,6 +1084,160 @@ impl LxApp {
         }
     }
 
+    /// How long to wait past a back/replace transition before resetting the
+    /// page that left. Long enough for the native container's pop animation to
+    /// finish, so the outgoing page is never blanked while it is on screen.
+    const PAGE_RESET_DELAY: Duration = Duration::from_millis(500);
+
+    /// Schedules the in-place reset of a page that just left the stack.
+    ///
+    /// Leaving a page ends its instance: the next entry must see fresh `data`
+    /// and a fresh document, which is what `onLoad` has always promised. The
+    /// WebView itself is retained, so the re-entry is warm — the document
+    /// reboots while it is invisible.
+    pub(crate) fn schedule_page_reset(&self, page: &PageInstance) {
+        let instance_id = page.instance_id_string();
+        let path = page.path().to_string();
+        self.cancel_page_reset(&instance_id);
+
+        let (tx, rx) = oneshot::channel();
+        if let Ok(state) = self.state.lock() {
+            state
+                .page_reset_timers
+                .lock()
+                .unwrap()
+                .insert(instance_id.clone(), tx);
+        }
+
+        let appid = self.appid.clone();
+        std::mem::drop(crate::executor::spawn(async move {
+            let sleep = time::sleep(Self::PAGE_RESET_DELAY);
+            tokio::pin!(sleep);
+            tokio::pin!(rx);
+            tokio::select! {
+                _ = &mut sleep => {}
+                _ = &mut rx => return,
+            }
+
+            let Some(app) = crate::lxapp::try_get(&appid) else {
+                return;
+            };
+            // A re-entry inside the delay window resets through
+            // `flush_page_reset` instead: both paths claim the same pending
+            // entry, so exactly one of them runs the reset.
+            if !app.cancel_page_reset(&instance_id) {
+                return;
+            }
+            if let Err(err) = app.reset_page_in_place(&path, &instance_id) {
+                warn!("Failed to reset page {} after leaving: {}", path, err).with_appid(appid);
+            }
+        }));
+    }
+
+    /// Cancels a pending reset, reporting whether one was outstanding.
+    pub(crate) fn cancel_page_reset(&self, instance_id: &str) -> bool {
+        let Ok(state) = self.state.lock() else {
+            return false;
+        };
+        let cancel = state.page_reset_timers.lock().unwrap().remove(instance_id);
+        match cancel {
+            Some(cancel) => {
+                let _ = cancel.send(());
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Completes a pending reset immediately instead of waiting out the delay.
+    ///
+    /// Entering a page again inside the delay window must still give the user a
+    /// fresh instance — the deferred reset is an optimization that keeps the
+    /// work off-screen, never a licence to hand back the old one.
+    pub(crate) fn flush_page_reset(&self, page: &PageInstance) {
+        let instance_id = page.instance_id_string();
+        if !self.cancel_page_reset(&instance_id) {
+            return;
+        }
+        let path = page.path().to_string();
+        if let Err(err) = self.reset_page_in_place(&path, &instance_id) {
+            warn!("Failed to reset page {} before re-entry: {}", path, err)
+                .with_appid(self.appid.clone());
+        }
+    }
+
+    /// Replaces the page's Logic service and reloads its document, keeping the
+    /// same `PageInstance` and WebView.
+    ///
+    /// Order matters: cancelling bridge work first drops in-flight view calls
+    /// (they would otherwise hang to their 15s timeout against a document that
+    /// is about to be replaced), terminating closes the old service's channels
+    /// and page event bus, and only then is a fresh service created — with
+    /// `None` so it re-registers under both the path and the instance id.
+    fn reset_page_in_place(&self, path: &str, instance_id: &str) -> Result<(), LxAppError> {
+        let Some(page) = self.get_page(path) else {
+            return Ok(());
+        };
+        if page.instance_id_string() != instance_id {
+            // The instance was replaced while the reset was pending.
+            return Ok(());
+        }
+
+        page.prepare_for_service_restart();
+        self.executor.terminate_page_svc(
+            self.clone_arc(),
+            path.to_string(),
+            Some(instance_id.to_string()),
+        )?;
+
+        let (ack_tx, ack_rx) = oneshot::channel::<Result<(), String>>();
+        self.executor
+            .create_page_svc_with_ack(self.clone_arc(), path.to_string(), None, ack_tx)?;
+
+        let appid = self.appid.clone();
+        let path = path.to_string();
+        std::mem::drop(crate::executor::spawn(async move {
+            match ack_rx.await {
+                Ok(Ok(())) => {
+                    let Some(app) = crate::lxapp::try_get(&appid) else {
+                        return;
+                    };
+                    let Some(page) = app.get_page(&path) else {
+                        return;
+                    };
+                    // load_html, not WebView::reload: the document came from
+                    // loadHTMLString with a logical base URL, and a reload would
+                    // fetch that URL's raw source, losing the bridge config and
+                    // nonce.
+                    if let Err(err) = page.load_html() {
+                        warn!("Failed to reload {} after reset: {}", path, err).with_appid(appid);
+                        return;
+                    }
+                    // The page is back on the stack, so it was re-entered while
+                    // the reset was in flight and its `onLoad` request went down
+                    // with the old instance. Re-arm it against the fresh one.
+                    if app.get_page_stack().iter().any(|entry| entry == &path) {
+                        page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnLoad);
+                    }
+                }
+                Ok(Err(err)) => {
+                    warn!("Page service reset failed for {}: {}", path, err).with_appid(appid);
+                }
+                Err(_) => {}
+            }
+        }));
+        Ok(())
+    }
+
+    fn cancel_all_page_resets(&self) {
+        if let Ok(state) = self.state.lock() {
+            let mut timers = state.page_reset_timers.lock().unwrap();
+            for (_id, cancel) in timers.drain() {
+                let _ = cancel.send(());
+            }
+        }
+    }
+
     fn cancel_all_page_instance_dispose_timers(&self) {
         if let Ok(state) = self.state.lock() {
             let mut timers = state.page_instance_dispose_timers.lock().unwrap();
@@ -1183,6 +1341,7 @@ impl LxApp {
         self.cancel_all_page_bridge_work();
         self.clear_transient_files();
         self.cancel_all_page_instance_dispose_timers();
+        self.cancel_all_page_resets();
         self.close_all_surfaces(CloseReason::AppClosed);
         crate::lifecycle::key_events::clear(&self.appid, self.session.id);
 

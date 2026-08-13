@@ -497,7 +497,7 @@ Platform hosts decide *when* to discard:
 - `OnLoad` is ignored before render starts.
 - First-load / re-navigation order: `OnLoad` (query-aware) → `OnShow`
   (visibility) → `OnReady` (after render finished, once per logical load).
-- `OnHide` on visibility loss; `OnUnload` on disposal.
+- `OnHide` on visibility loss; `OnUnload` on disposal or on leaving the stack.
 
 Browser-profile WebViews only participate in this state machine when their
 delegate resolves to a bound headless `Page`. External-URL tabs and URL-target
@@ -626,6 +626,35 @@ Disposal is triggered by:
 - `PageInstanceEvent::Hidden` with a dispose TTL — timer-based, reason
   `Reclaimed` (used by surfaces).
 - `PageInstanceEvent::Disposed { reason }` — explicit.
+
+### Page reset on leaving the stack (distinct from disposal)
+
+Popping a page (`navigate_back`) or replacing it (`redirectTo`) ends that page
+*instance* without destroying its WebView — the view is kept so the next entry
+is warm. `LxApp::schedule_page_reset()` therefore rebuilds what the instance
+owned:
+
+1. `prepare_for_service_restart()` — cancel in-flight bridge work and reset the
+   WebView lifecycle state.
+2. `TerminatePage` for the outgoing `PageSvc` (scoped to the instance id).
+3. Create a fresh `PageSvc` for the path, so Logic `data` returns to its
+   declared initial value.
+4. `page.load_html()` — **not** `WebView::reload()`. The document was installed
+   with `loadHTMLString` against a logical base URL; a reload would refetch that
+   URL's raw source and lose the injected bridge config and nonce.
+
+The reset is deferred by `PAGE_RESET_DELAY` (500ms) so it runs behind the
+container's pop animation rather than blanking a page still on screen. Entering
+the page again inside that window does not skip the reset: `flush_page_reset()`
+runs it at the top of the `OnLoad` dispatch, *before* `request_on_load`, so the
+entry's `onLoad` is queued against the fresh state. The timer and the flush
+claim the same pending entry, so exactly one of them performs the reset; if an
+entry lands while a reset is already in flight, the reset re-arms `OnLoad`
+itself once the document reloads.
+
+Pending resets are cancelled by `dispose_page_instance_internal()` and by
+`shutdown_with_options()`. `reLaunch` needs none: it destroys the WebViews and
+removes the instances outright.
 
 ### LRU eviction (distinct from disposal)
 
