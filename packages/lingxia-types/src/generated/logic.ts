@@ -1238,9 +1238,10 @@ export type ShellApi = {
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
      * Open a declared surface with shell privileges — the same declaration
-     * `lx.surface.openDeclared` opens, plus the keyed multi-instance form.
+     * `lx.surface.openDeclared` opens, plus the keyed multi-instance form and
+     * placement overrides.
      */
-    openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface>;
+    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface>;
     /** Re-place a live declared surface: change its role or its edge. */
     reconfigure(id: string, patch: ShellSurfacePatch): Promise<void>;
 };
@@ -1261,6 +1262,23 @@ export type ShellOpenAppOptions = {
     targetVersion?: string;
     /** Stable identity for `lx.surface.get(key)`. */
     key?: string;
+};
+
+/**
+ * The declared-surface options only the home lxapp may use. Placement
+ * overrides live here rather than on `lx.surface.openDeclared`, so an
+ * ordinary lxapp always gets the placement the declaration chose.
+ */
+export type ShellOpenDeclaredOptions = OpenDeclaredOptions & {
+    /**
+     * Open with a role other than the declaration's. Must be realizable by the
+     * declared provider; a stable root rejects anything but `main`. Prefer this
+     * over opening and then calling `reconfigure`, which would present the
+     * wrong role first.
+     */
+    as?: 'main' | 'aside' | 'float';
+    /** Preferred docking side when the effective role is `aside`. */
+    edge?: SurfaceEdge;
 };
 
 /**
@@ -2458,7 +2476,7 @@ declare global {
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
      * `lx.shell.openDeclared(id, options?)` — the declared surface, plus the
-     * keyed multi-instance form. Home-lxapp only.
+     * keyed multi-instance form and placement overrides. Home-lxapp only.
      */
     openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface>;
     /** `lx.shell.reconfigure(id, patch)` — re-place a live declared surface. */

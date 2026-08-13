@@ -42,7 +42,7 @@ export interface Automation {
 export type TerminalSplitDirection = 'left' | 'right' | 'up' | 'down';
 
 export interface TerminalSurfaceRef {
-  /** Stable id returned by `lx.openSurface({ surface: 'terminal', ... })`. */
+  /** Stable id returned by `lx.shell.openDeclared('terminal', { key })`. */
   surface: string;
 }
 
