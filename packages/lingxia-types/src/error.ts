@@ -1,3 +1,4 @@
+import type { SurfaceErrorCode } from './generated/logic.js';
 import { ERR_CODE_INFO_BY_CODE, type LxErrorCodeInfo } from "./generated/error";
 
 const ERR_CODE_INDEX = ERR_CODE_INFO_BY_CODE as Record<number, LxErrorCodeInfo>;
@@ -65,6 +66,35 @@ export function extractLxErrorCode(error: unknown): number | null {
 
   return parseIntegerCode(data.bizCode) ?? parseIntegerCode(data.code);
 }
+
+/**
+ * The surface code carried by a `lx.surface.*` / `lx.shell.*` rejection.
+ *
+ * A rejection's `code` is the transport-level host code shared with every
+ * other `lx` API; the surface-specific member of `SurfaceErrorCode` rides on
+ * `data.code`. Reading it through this helper keeps callers off both the
+ * message text and the shape.
+ */
+export function surfaceErrorCode(error: unknown): SurfaceErrorCode | null {
+  const root = toRecord(error);
+  const data = root ? toRecord(root.data) : null;
+  const code = data?.code;
+  return typeof code === 'string' && SURFACE_ERROR_CODES.includes(code as SurfaceErrorCode)
+    ? (code as SurfaceErrorCode)
+    : null;
+}
+
+/** Every member of `SurfaceErrorCode`, for runtime narrowing. */
+export const SURFACE_ERROR_CODES = [
+  'unsupported_placement',
+  'denied',
+  'not_declared',
+  'invalid_arg',
+  'already_open_other_role',
+  'closed',
+  'capability_missing',
+  'failed',
+] as const satisfies readonly SurfaceErrorCode[];
 
 export function isKnownLxErrorCode(code: number): boolean {
   return Number.isInteger(code) && Object.prototype.hasOwnProperty.call(ERR_CODE_INDEX, code);

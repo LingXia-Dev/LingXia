@@ -575,6 +575,18 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
         show_webview_window_with_content_size(webtag, title, activate, width, height)
     }
 
+    fn show_webview_window_with_chrome(
+        &self,
+        webtag: &WebTag,
+        title: &str,
+        activate: bool,
+        width: Option<i32>,
+        height: Option<i32>,
+        full_chrome: bool,
+    ) -> StdResult<()> {
+        show_webview_window_with_chrome(webtag, title, activate, width, height, full_chrome)
+    }
+
     fn navigate_webview_window(
         &self,
         webtag: &WebTag,

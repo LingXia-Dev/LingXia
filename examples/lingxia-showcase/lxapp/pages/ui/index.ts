@@ -1,3 +1,5 @@
+import { surfaceErrorCode } from "lingxia-types/error";
+
 const app = getApp();
 
 const DEMO_SURFACE_KEY = "surface-demo";
@@ -315,11 +317,12 @@ Page({
         this._observeDemoPageSurface(surface);
       }
     } catch (error) {
-      // Every rejection carries a code from the exported union.
+      // Every rejection carries a code from the exported union; read it with
+      // the helper rather than reaching into the error's shape.
       const message = surfaceErrorMessage(error);
       console.error("lx.surface open failed:", error);
       this.setData({
-        "surfaceDemo.message": `Failed (${error?.data?.code ?? "unknown"}): ${message}`,
+        "surfaceDemo.message": `Failed (${surfaceErrorCode(error) ?? "unknown"}): ${message}`,
         "surfaceDemo.active": false,
         "surfaceDemo.visible": false,
       });
