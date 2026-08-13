@@ -631,7 +631,6 @@ fn assemble_windows_dist(
     let dist_exe = dist_dir.join(exe_name);
     std::fs::copy(&exe_path, &dist_exe)
         .with_context(|| format!("Failed to copy {} into dist", exe_path.display()))?;
-
     let assets_src = crate::platform::windows::resolve_windows_assets_dir(project_root)?;
     if assets_src.is_dir() {
         let dist_assets = dist_dir.join("assets");

@@ -1333,8 +1333,14 @@ fn begin_terminal_search(panel_id: &str) {
                 rect,
                 "",
                 super::text_input::SearchEditCallbacks {
-                    on_change: Arc::new(move |query| {
-                        perform_terminal_search(&panel_for_change, session_id, query);
+                    on_change: Arc::new(move |query, case_sensitive, whole_word| {
+                        perform_terminal_search(
+                            &panel_for_change,
+                            session_id,
+                            query,
+                            case_sensitive,
+                            whole_word,
+                        );
                     }),
                     on_navigate: Arc::new(move |delta| {
                         if let Some(line) = super::terminal_grid::navigate_search(session_id, delta)
@@ -1343,6 +1349,10 @@ fn begin_terminal_search(panel_id: &str) {
                             publish_active_snapshot(&panel_for_nav);
                             invalidate_panel(&panel_for_nav);
                         }
+                        super::text_input::update_search_status(
+                            windows::Win32::Foundation::HWND(hwnd as *mut _),
+                            super::terminal_grid::search_status(session_id),
+                        );
                     }),
                     on_close: Arc::new(move || {
                         cancel_terminal_search(&panel_for_close, session_id);
@@ -1354,7 +1364,13 @@ fn begin_terminal_search(panel_id: &str) {
 }
 
 #[cfg(all(feature = "terminal-runtime", feature = "shell-chrome"))]
-fn perform_terminal_search(panel_id: &str, session_id: u64, query: String) {
+fn perform_terminal_search(
+    panel_id: &str,
+    session_id: u64,
+    query: String,
+    case_sensitive: bool,
+    whole_word: bool,
+) {
     let generation = {
         let mut searches = search_generations();
         let generation = searches.get(&session_id).copied().unwrap_or(0) + 1;
@@ -1364,17 +1380,26 @@ fn perform_terminal_search(panel_id: &str, session_id: u64, query: String) {
     if query.is_empty() {
         super::terminal_grid::clear_search(session_id);
         invalidate_panel(panel_id);
+        if let Some((hwnd, _)) = super::terminal_grid::search_edit_geometry(panel_id) {
+            super::text_input::update_search_status(
+                windows::Win32::Foundation::HWND(hwnd as *mut _),
+                (None, 0),
+            );
+        }
         return;
     }
     lingxia_terminal::terminal_search_cancel(session_id);
     let panel_id = panel_id.to_string();
     thread::spawn(move || {
-        let Some(results) = lingxia_terminal::terminal_search_data(
-            session_id,
-            &query,
-            lingxia_terminal::TerminalSearchMode::Plain,
-            10_000,
-        ) else {
+        let mode = match (case_sensitive, whole_word) {
+            (true, true) => lingxia_terminal::TerminalSearchMode::CaseSensitiveWholeWord,
+            (true, false) => lingxia_terminal::TerminalSearchMode::CaseSensitive,
+            (false, true) => lingxia_terminal::TerminalSearchMode::WholeWord,
+            (false, false) => lingxia_terminal::TerminalSearchMode::Plain,
+        };
+        let Some(results) =
+            lingxia_terminal::terminal_search_data(session_id, &query, mode, 10_000)
+        else {
             return;
         };
         if results.cancelled || search_generations().get(&session_id).copied() != Some(generation) {
@@ -1383,6 +1408,12 @@ fn perform_terminal_search(panel_id: &str, session_id: u64, query: String) {
         if let Some(line) = super::terminal_grid::set_search_results(session_id, results) {
             lingxia_terminal::terminal_scroll_to_line(session_id, line);
             publish_active_snapshot(&panel_id);
+        }
+        if let Some((hwnd, _)) = super::terminal_grid::search_edit_geometry(&panel_id) {
+            super::text_input::update_search_status(
+                windows::Win32::Foundation::HWND(hwnd as *mut _),
+                super::terminal_grid::search_status(session_id),
+            );
         }
         invalidate_panel(&panel_id);
     });

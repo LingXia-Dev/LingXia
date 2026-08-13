@@ -28,6 +28,14 @@ pub enum TappedControl {
         end: usize,
         body: Vec<u8>,
     },
+    ClearScreen {
+        start: usize,
+        end: usize,
+        /// ED parameter (`0`, `2`, or the ConPTY clear-buffer marker `3`).
+        mode: u8,
+        /// Full lines erased immediately before ConPTY's ED 3 marker.
+        erased_lines: usize,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -57,6 +65,7 @@ pub struct OscTap {
     csi: Vec<u8>,
     linefeeds: Vec<usize>,
     cell_size_queries: usize,
+    erased_lines: usize,
 }
 
 impl OscTap {
@@ -71,7 +80,7 @@ impl OscTap {
             .into_iter()
             .filter_map(|control| match control {
                 TappedControl::Osc(osc) => Some(osc),
-                TappedControl::KittyGraphics { .. } => None,
+                TappedControl::KittyGraphics { .. } | TappedControl::ClearScreen { .. } => None,
             })
             .collect()
     }
@@ -88,8 +97,12 @@ impl OscTap {
             }
             match self.state {
                 TapState::Ground => match byte {
-                    0x1b => self.state = TapState::Esc,
+                    0x1b => {
+                        start = index;
+                        self.state = TapState::Esc;
+                    }
                     0x9b => {
+                        start = index;
                         self.csi.clear();
                         self.state = TapState::Csi;
                     }
@@ -104,9 +117,13 @@ impl OscTap {
                         self.state = TapState::Apc;
                     }
                     0x90 | 0x98 | 0x9e => self.state = TapState::String,
-                    _ => {}
+                    b'\r' | b'\n' => {}
+                    _ => self.erased_lines = 0,
                 },
                 TapState::Esc => {
+                    if byte == 0x1b {
+                        start = index;
+                    }
                     self.state = match byte {
                         b'[' => {
                             self.csi.clear();
@@ -114,12 +131,10 @@ impl OscTap {
                         }
                         b']' => {
                             self.buffer.clear();
-                            start = index - 1;
                             TapState::Osc
                         }
                         b'_' => {
                             self.buffer.clear();
-                            start = index - 1;
                             TapState::Apc
                         }
                         b'P' | b'X' | b'^' => TapState::String,
@@ -129,10 +144,34 @@ impl OscTap {
                 }
                 TapState::Csi => {
                     if byte == 0x1b {
+                        start = index;
                         self.state = TapState::Esc;
                     } else if (0x40..=0x7e).contains(&byte) {
                         if byte == b't' && self.csi == b"16" {
                             self.cell_size_queries += 1;
+                        }
+                        let mode = match self.csi.as_slice() {
+                            b"" | b"0" => 0,
+                            b"2" => 2,
+                            b"3" => 3,
+                            _ => u8::MAX,
+                        };
+                        if byte == b'K' && mode == 0 {
+                            self.erased_lines = self.erased_lines.saturating_add(1);
+                        } else if byte == b'J'
+                            && (mode == 0 || mode == 2 || (mode == 3 && self.erased_lines > 0))
+                        {
+                            tapped.push(TappedControl::ClearScreen {
+                                start,
+                                end: index + 1,
+                                mode,
+                                erased_lines: self.erased_lines,
+                            });
+                            self.erased_lines = 0;
+                        } else if !(matches!(byte, b'H' | b'f')
+                            || (matches!(byte, b'h' | b'l') && self.csi == b"?25"))
+                        {
+                            self.erased_lines = 0;
                         }
                         self.csi.clear();
                         self.state = TapState::Ground;
@@ -539,5 +578,81 @@ mod tests {
             &controls[0],
             TappedControl::KittyGraphics { body, .. } if body == b"i=4,m=1;AAAA"
         ));
+    }
+
+    #[test]
+    fn taps_clear_screen_in_stream_order() {
+        let mut tap = OscTap::default();
+        let controls = tap.feed_controls(b"before\x1b[2Jafter\x9b2J");
+
+        assert_eq!(
+            controls,
+            vec![
+                TappedControl::ClearScreen {
+                    start: 6,
+                    end: 10,
+                    mode: 2,
+                    erased_lines: 0,
+                },
+                TappedControl::ClearScreen {
+                    start: 15,
+                    end: 18,
+                    mode: 2,
+                    erased_lines: 0,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn taps_clear_screen_across_chunks() {
+        let mut tap = OscTap::default();
+        assert!(tap.feed_controls(b"\x1b[").is_empty());
+        assert_eq!(
+            tap.feed_controls(b"2Jafter"),
+            vec![TappedControl::ClearScreen {
+                start: 0,
+                end: 2,
+                mode: 2,
+                erased_lines: 0,
+            }]
+        );
+    }
+
+    #[test]
+    fn taps_erase_to_end_and_ignores_other_modes() {
+        let mut tap = OscTap::default();
+        assert_eq!(
+            tap.feed_controls(b"\x1b[J\x1b[0J\x1b[1J\x1b[3J\x1b[2K"),
+            vec![
+                TappedControl::ClearScreen {
+                    start: 0,
+                    end: 3,
+                    mode: 0,
+                    erased_lines: 0,
+                },
+                TappedControl::ClearScreen {
+                    start: 3,
+                    end: 7,
+                    mode: 0,
+                    erased_lines: 0,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn taps_conpty_console_clear_across_chunks() {
+        let mut tap = OscTap::default();
+        assert!(tap.feed_controls(b"\x1b[H\x1b[K\r\n\x1b[K\r\n").is_empty());
+        assert_eq!(
+            tap.feed_controls(b"\x1b[H\x1b[3J"),
+            vec![TappedControl::ClearScreen {
+                start: 3,
+                end: 7,
+                mode: 3,
+                erased_lines: 2,
+            }]
+        );
     }
 }

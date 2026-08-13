@@ -32,12 +32,23 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
+#[cfg(feature = "terminal-runtime")]
+use windows::Win32::Graphics::Gdi::{BeginPaint, DT_CENTER, EndPaint, PAINTSTRUCT};
 use windows::Win32::Graphics::Gdi::{
     ExcludeClipRect, GetDC, HDC, HFONT, InvalidateRect, ReleaseDC,
 };
+#[cfg(feature = "terminal-runtime")]
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{SetFocus, VK_ESCAPE, VK_RETURN};
 use windows::Win32::UI::WindowsAndMessaging::{
     self, ES_AUTOHSCROLL, WINDOW_EX_STYLE, WINDOW_STYLE, WNDPROC,
+};
+#[cfg(feature = "terminal-runtime")]
+use windows::Win32::UI::WindowsAndMessaging::{CREATESTRUCTW, WNDCLASSW, WS_CLIPCHILDREN};
+#[cfg(feature = "terminal-runtime")]
+use windows::Win32::{
+    Foundation::COLORREF,
+    Graphics::Gdi::{CreateSolidBrush, DeleteObject, HBRUSH, HGDIOBJ, SetBkColor, SetTextColor},
 };
 use windows::core::{PCWSTR, w};
 
@@ -48,7 +59,7 @@ pub type InlineEditCommit = Arc<dyn Fn(String) + Send + Sync>;
 /// Callbacks for the terminal's persistent find field. Text changes search
 /// immediately, Enter/Shift+Enter move between results, and Escape closes it.
 pub struct SearchEditCallbacks {
-    pub on_change: Arc<dyn Fn(String) + Send + Sync>,
+    pub on_change: Arc<dyn Fn(String, bool, bool) + Send + Sync>,
     pub on_navigate: Arc<dyn Fn(i32) + Send + Sync>,
     pub on_close: Arc<dyn Fn() + Send + Sync>,
 }
@@ -56,6 +67,28 @@ pub struct SearchEditCallbacks {
 /// `EM_SETSEL` (select text range) lives in `Win32::UI::Controls` in the
 /// windows crate; defined locally to avoid pulling the whole feature.
 const EM_SETSEL: u32 = 0x00b1;
+#[cfg(feature = "terminal-runtime")]
+const EM_SETMARGINS: u32 = 0x00d3;
+#[cfg(feature = "terminal-runtime")]
+const EC_LEFTMARGIN: usize = 0x0001;
+#[cfg(feature = "terminal-runtime")]
+const EC_RIGHTMARGIN: usize = 0x0002;
+#[cfg(feature = "terminal-runtime")]
+const SEARCH_OVERLAY_CLASS: PCWSTR = w!("LingXiaTerminalSearchOverlay");
+#[cfg(feature = "terminal-runtime")]
+const SEARCH_FIELD: RECT = RECT {
+    left: 12,
+    top: 9,
+    right: 157,
+    bottom: 37,
+};
+
+#[cfg(feature = "terminal-runtime")]
+struct SearchEditAppearance {
+    background: COLORREF,
+    foreground: COLORREF,
+    brush: HBRUSH,
+}
 
 /// Per-control state stashed in the EDIT child's `GWLP_USERDATA`.
 struct InlineEditState {
@@ -65,6 +98,15 @@ struct InlineEditState {
     host: isize,
     on_commit: Option<InlineEditCommit>,
     search: Option<SearchEditCallbacks>,
+    search_overlay: isize,
+    search_case_sensitive: bool,
+    search_whole_word: bool,
+    #[cfg(feature = "terminal-runtime")]
+    search_active: Option<usize>,
+    #[cfg(feature = "terminal-runtime")]
+    search_total: u64,
+    #[cfg(feature = "terminal-runtime")]
+    search_appearance: Option<SearchEditAppearance>,
     last_search_text: Option<String>,
     /// Guards against double commit/cancel: destroying the control on
     /// Enter re-enters the proc with WM_KILLFOCUS.
@@ -107,6 +149,16 @@ pub fn begin_inline_edit(
     rect: RECT,
     initial_text: &str,
     on_commit: InlineEditCommit,
+) -> bool {
+    begin_inline_edit_impl(host_hwnd, rect, initial_text, on_commit, true)
+}
+
+fn begin_inline_edit_impl(
+    host_hwnd: HWND,
+    rect: RECT,
+    initial_text: &str,
+    on_commit: InlineEditCommit,
+    focus_immediately: bool,
 ) -> bool {
     // Replace any previous edit on this host; destroying it commits it
     // through its own kill-focus path before the new control appears.
@@ -175,6 +227,15 @@ pub fn begin_inline_edit(
         host: host_hwnd.0 as isize,
         on_commit: Some(on_commit),
         search: None,
+        search_overlay: 0,
+        search_case_sensitive: false,
+        search_whole_word: false,
+        #[cfg(feature = "terminal-runtime")]
+        search_active: None,
+        #[cfg(feature = "terminal-runtime")]
+        search_total: 0,
+        #[cfg(feature = "terminal-runtime")]
+        search_appearance: None,
         last_search_text: None,
         finished: false,
     });
@@ -200,10 +261,31 @@ pub fn begin_inline_edit(
     );
 
     unsafe {
-        let _ = SetFocus(Some(edit));
-        // Select-all so typing replaces the previous title outright.
-        let _ =
-            WindowsAndMessaging::SendMessageW(edit, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(-1)));
+        // The terminal body is a sibling GPU child window. Keep the editor
+        // above it or the control exists and receives focus but remains
+        // completely hidden behind the composed terminal surface.
+        let _ = WindowsAndMessaging::SetWindowPos(
+            edit,
+            Some(WindowsAndMessaging::HWND_TOP),
+            0,
+            0,
+            0,
+            0,
+            WindowsAndMessaging::SWP_NOMOVE
+                | WindowsAndMessaging::SWP_NOSIZE
+                | WindowsAndMessaging::SWP_NOACTIVATE
+                | WindowsAndMessaging::SWP_SHOWWINDOW,
+        );
+        if focus_immediately {
+            let _ = SetFocus(Some(edit));
+            // Select-all so typing replaces the previous title outright.
+            let _ = WindowsAndMessaging::SendMessageW(
+                edit,
+                EM_SETSEL,
+                Some(WPARAM(0)),
+                Some(LPARAM(-1)),
+            );
+        }
     }
     true
 }
@@ -217,7 +299,9 @@ pub fn begin_search_edit(
     initial_text: &str,
     callbacks: SearchEditCallbacks,
 ) -> bool {
-    let started = begin_inline_edit(host_hwnd, rect, initial_text, Arc::new(|_| {}));
+    // Create the native editor without focusing it until the self-painted card
+    // is above it; otherwise its focus transition can race the first frame.
+    let started = begin_inline_edit_impl(host_hwnd, rect, initial_text, Arc::new(|_| {}), false);
     if !started {
         return false;
     }
@@ -235,8 +319,378 @@ pub fn begin_search_edit(
         (*state).on_commit = None;
         (*state).search = Some(callbacks);
         (*state).last_search_text = Some(initial_text.to_string());
+
+        let chrome = super::terminal_grid::surface_chrome();
+        // Match the EDIT brush to the card's painted field. A different fill
+        // becomes visible whenever the native caret invalidates the control.
+        let background = blend_rgb(chrome.surface, chrome.header, 76);
+        let background = rgb_to_colorref(background);
+        let foreground = rgb_to_colorref(chrome.text);
+        let brush = CreateSolidBrush(background);
+        if !brush.is_invalid() {
+            (*state).search_appearance = Some(SearchEditAppearance {
+                background,
+                foreground,
+                brush,
+            });
+        }
+
+        let margin = 10isize | (10isize << 16);
+        let _ = WindowsAndMessaging::SendMessageW(
+            HWND(edit as *mut _),
+            EM_SETMARGINS,
+            Some(WPARAM(EC_LEFTMARGIN | EC_RIGHTMARGIN)),
+            Some(LPARAM(margin)),
+        );
+        let (_, rect) = active_edits()
+            .get(&(host_hwnd.0 as isize))
+            .copied()
+            .unwrap_or((edit, RECT::default()));
+        if let Some(overlay) = create_search_overlay(host_hwnd, HWND(edit as *mut _), rect) {
+            (*state).search_overlay = overlay.0 as isize;
+            // Keep EDIT as a host sibling behind the self-painted card. It
+            // retains native keyboard, selection, clipboard and IME behavior;
+            // the card paints the query so D3D child composition cannot hide
+            // the glyphs while leaving the caret visible.
+            let _ = WindowsAndMessaging::SetWindowPos(
+                overlay,
+                Some(WindowsAndMessaging::HWND_TOP),
+                rect.left,
+                rect.top,
+                rect.right - rect.left,
+                rect.bottom - rect.top,
+                WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
+            );
+            let _ = SetFocus(Some(HWND(edit as *mut _)));
+        }
     }
     true
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn create_search_overlay(host: HWND, edit: HWND, rect: RECT) -> Option<HWND> {
+    static REGISTERED: OnceLock<()> = OnceLock::new();
+    REGISTERED.get_or_init(|| unsafe {
+        let instance = GetModuleHandleW(None).ok();
+        let class = WNDCLASSW {
+            hInstance: instance.map(|module| module.into()).unwrap_or_default(),
+            lpszClassName: SEARCH_OVERLAY_CLASS,
+            lpfnWndProc: Some(search_overlay_proc),
+            ..Default::default()
+        };
+        let _ = WindowsAndMessaging::RegisterClassW(&class);
+    });
+    let instance = unsafe { GetModuleHandleW(None).ok() };
+    unsafe {
+        WindowsAndMessaging::CreateWindowExW(
+            WINDOW_EX_STYLE::default(),
+            SEARCH_OVERLAY_CLASS,
+            PCWSTR::null(),
+            WINDOW_STYLE(
+                WindowsAndMessaging::WS_CHILD.0
+                    | WindowsAndMessaging::WS_VISIBLE.0
+                    | WS_CLIPCHILDREN.0,
+            ),
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            Some(host),
+            None,
+            instance.map(|module| module.into()),
+            Some(edit.0),
+        )
+        .ok()
+    }
+}
+
+#[cfg(feature = "terminal-runtime")]
+unsafe extern "system" fn search_overlay_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if msg == WindowsAndMessaging::WM_NCCREATE {
+        let create = lparam.0 as *const CREATESTRUCTW;
+        if !create.is_null() {
+            unsafe {
+                WindowsAndMessaging::SetWindowLongPtrW(
+                    hwnd,
+                    WindowsAndMessaging::GWLP_USERDATA,
+                    (*create).lpCreateParams as isize,
+                );
+            }
+        }
+    }
+    let edit = HWND(unsafe {
+        WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
+    } as *mut _);
+    match msg {
+        WindowsAndMessaging::WM_ERASEBKGND => LRESULT(1),
+        WindowsAndMessaging::WM_CTLCOLOREDIT => {
+            control_color(HWND(lparam.0 as *mut _), HDC(wparam.0 as *mut _)).unwrap_or(LRESULT(0))
+        }
+        WindowsAndMessaging::WM_PAINT => {
+            paint_search_overlay(hwnd, edit);
+            LRESULT(0)
+        }
+        WindowsAndMessaging::WM_LBUTTONUP => {
+            let point = ((lparam.0 as i16) as i32, ((lparam.0 >> 16) as i16) as i32);
+            handle_search_overlay_click(hwnd, edit, point);
+            LRESULT(0)
+        }
+        _ => unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn search_control_rect(index: usize) -> RECT {
+    const RECTS: [RECT; 8] = [
+        SEARCH_FIELD,
+        RECT {
+            left: 163,
+            top: 9,
+            right: 195,
+            bottom: 37,
+        },
+        RECT {
+            left: 199,
+            top: 9,
+            right: 231,
+            bottom: 37,
+        },
+        RECT {
+            left: 235,
+            top: 9,
+            right: 275,
+            bottom: 37,
+        },
+        RECT {
+            left: 279,
+            top: 9,
+            right: 305,
+            bottom: 37,
+        },
+        RECT {
+            left: 307,
+            top: 9,
+            right: 333,
+            bottom: 37,
+        },
+        RECT {
+            left: 339,
+            top: 9,
+            right: 365,
+            bottom: 37,
+        },
+        RECT {
+            left: 371,
+            top: 9,
+            right: 399,
+            bottom: 37,
+        },
+    ];
+    RECTS[index]
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn paint_search_overlay(hwnd: HWND, edit: HWND) {
+    let mut paint = PAINTSTRUCT::default();
+    let hdc = unsafe { BeginPaint(hwnd, &mut paint) };
+    let mut client = RECT::default();
+    unsafe {
+        let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
+    }
+    let chrome = super::terminal_grid::surface_chrome();
+    super::chrome::fill_round_rect_aa(
+        hdc,
+        client,
+        11,
+        blend_rgb(chrome.header, chrome.surface, 70),
+    );
+    super::chrome::stroke_round_rect_aa(
+        hdc,
+        client,
+        11,
+        blend_rgb(chrome.separator, chrome.text, 80),
+    );
+    super::chrome::fill_round_rect_aa(
+        hdc,
+        SEARCH_FIELD,
+        8,
+        blend_rgb(chrome.surface, chrome.header, 76),
+    );
+    let state = inline_edit_state(edit);
+    if let Some(state) = unsafe { state.as_ref() } {
+        let query_rect = RECT {
+            left: SEARCH_FIELD.left + 10,
+            top: SEARCH_FIELD.top,
+            right: SEARCH_FIELD.right - 6,
+            bottom: SEARCH_FIELD.bottom,
+        };
+        super::chrome::draw_text_antialiased(
+            hdc,
+            state.last_search_text.as_deref().unwrap_or_default(),
+            query_rect,
+            chrome.text,
+            windows::Win32::Graphics::Gdi::DT_LEFT,
+        );
+        for (index, label) in ["Aa", "ab", "", "↑", "↓", "⌫", "×"].into_iter().enumerate() {
+            let rect = search_control_rect(index + 1);
+            let selected = (index == 0 && state.search_case_sensitive)
+                || (index == 1 && state.search_whole_word);
+            if selected {
+                super::chrome::fill_round_rect_aa(
+                    hdc,
+                    rect,
+                    7,
+                    blend_rgb(chrome.text, chrome.surface, 22),
+                );
+            }
+            let text = if index == 2 {
+                match (state.search_active, state.search_total) {
+                    (Some(active), total) if total > 0 => format!("{}/{}", active + 1, total),
+                    (_, 0) => "0/0".to_string(),
+                    _ => format!("0/{}", state.search_total),
+                }
+            } else {
+                label.to_string()
+            };
+            super::chrome::draw_text_antialiased(
+                hdc,
+                &text,
+                rect,
+                if selected {
+                    chrome.text
+                } else {
+                    chrome.text_muted
+                },
+                DT_CENTER,
+            );
+        }
+    }
+    unsafe {
+        let _ = EndPaint(hwnd, &paint);
+    }
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn handle_search_overlay_click(hwnd: HWND, edit: HWND, point: (i32, i32)) {
+    let hit = (1..8).find(|index| {
+        let rect = search_control_rect(*index);
+        point.0 >= rect.left && point.0 < rect.right && point.1 >= rect.top && point.1 < rect.bottom
+    });
+    let state = inline_edit_state(edit);
+    let Some(state) = (unsafe { state.as_mut() }) else {
+        return;
+    };
+    match hit {
+        Some(1) => {
+            state.search_case_sensitive = !state.search_case_sensitive;
+            notify_search_changed_force(edit, state);
+        }
+        Some(2) => {
+            state.search_whole_word = !state.search_whole_word;
+            notify_search_changed_force(edit, state);
+        }
+        Some(4) => {
+            if let Some(search) = state.search.as_ref() {
+                (search.on_navigate)(-1);
+            }
+        }
+        Some(5) => {
+            if let Some(search) = state.search.as_ref() {
+                (search.on_navigate)(1);
+            }
+        }
+        Some(6) => unsafe {
+            let _ = WindowsAndMessaging::SetWindowTextW(edit, w!(""));
+            notify_search_changed_force(edit, state);
+        },
+        Some(7) => {
+            finish_inline_edit(edit, false, true);
+            return;
+        }
+        _ => {}
+    }
+    unsafe {
+        let _ = InvalidateRect(Some(hwnd), None, false);
+        let _ = SetFocus(Some(edit));
+    }
+}
+
+#[cfg(feature = "terminal-runtime")]
+pub(crate) fn update_search_status(host: HWND, status: (Option<usize>, u64)) {
+    let host = host.0 as isize;
+    lingxia_windows_contract::post_to_window_thread(
+        host,
+        Box::new(move || {
+            let edit = active_edits().get(&host).map(|entry| entry.0);
+            let Some(edit) = edit else {
+                return;
+            };
+            let state = inline_edit_state(HWND(edit as *mut _));
+            if let Some(state) = unsafe { state.as_mut() } {
+                state.search_active = status.0;
+                state.search_total = status.1;
+                if state.search_overlay != 0 {
+                    unsafe {
+                        let _ =
+                            InvalidateRect(Some(HWND(state.search_overlay as *mut _)), None, false);
+                    }
+                }
+            }
+        }),
+    );
+}
+
+/// Close the persistent search popover owned by `host`. Returns whether an
+/// active search was handled, so the terminal does not also receive Escape.
+#[cfg(feature = "terminal-runtime")]
+pub(crate) fn close_search_edit(host: HWND) -> bool {
+    let edit = active_edits().get(&(host.0 as isize)).map(|entry| entry.0);
+    let Some(edit) = edit else {
+        return false;
+    };
+    let edit = HWND(edit as *mut _);
+    let state = inline_edit_state(edit);
+    if unsafe { state.as_ref() }.is_none_or(|state| state.search.is_none()) {
+        return false;
+    }
+    finish_inline_edit(edit, false, true);
+    true
+}
+
+/// Supplies the themed colors for an active search edit when its host receives
+/// `WM_CTLCOLOREDIT`.
+#[cfg(feature = "terminal-runtime")]
+pub(crate) fn control_color(edit: HWND, hdc: HDC) -> Option<LRESULT> {
+    let state = inline_edit_state(edit);
+    let appearance = unsafe { state.as_ref()?.search_appearance.as_ref()? };
+    unsafe {
+        let _ = SetTextColor(hdc, appearance.foreground);
+        let _ = SetBkColor(hdc, appearance.background);
+    }
+    Some(LRESULT(appearance.brush.0 as isize))
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn rgb_to_colorref(rgb: u32) -> COLORREF {
+    let r = (rgb >> 16) & 0xff;
+    let g = (rgb >> 8) & 0xff;
+    let b = rgb & 0xff;
+    COLORREF(r | (g << 8) | (b << 16))
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn blend_rgb(foreground: u32, background: u32, foreground_percent: u32) -> u32 {
+    let blend = |shift: u32| {
+        let foreground = (foreground >> shift) & 0xff;
+        let background = (background >> shift) & 0xff;
+        ((foreground * foreground_percent + background * (100 - foreground_percent)) / 100) << shift
+    };
+    blend(16) | blend(8) | blend(0)
 }
 
 /// Chrome text font for the editor (same font `chrome::draw_text` uses).
@@ -276,9 +730,28 @@ fn notify_search_changed(hwnd: HWND, state: *mut InlineEditState) {
     }
     unsafe {
         (*state).last_search_text = Some(text.clone());
+        if (*state).search_overlay != 0 {
+            let _ = InvalidateRect(Some(HWND((*state).search_overlay as *mut _)), None, false);
+        }
     }
     if let Some(search) = unsafe { (*state).search.as_ref() } {
-        (search.on_change)(text);
+        (search.on_change)(text, unsafe { (*state).search_case_sensitive }, unsafe {
+            (*state).search_whole_word
+        });
+    }
+}
+
+#[cfg(feature = "terminal-runtime")]
+fn notify_search_changed_force(hwnd: HWND, state: &mut InlineEditState) {
+    let text = inline_edit_text(hwnd);
+    state.last_search_text = Some(text.clone());
+    if let Some(search) = state.search.as_ref() {
+        (search.on_change)(text, state.search_case_sensitive, state.search_whole_word);
+    }
+    if state.search_overlay != 0 {
+        unsafe {
+            let _ = InvalidateRect(Some(HWND(state.search_overlay as *mut _)), None, false);
+        }
     }
 }
 
@@ -311,7 +784,11 @@ fn finish_inline_edit(hwnd: HWND, commit: bool, refocus_host: bool) {
         on_close();
     }
     let host = unsafe { (*state).host };
+    let overlay = unsafe { (*state).search_overlay };
     unsafe {
+        if overlay != 0 {
+            let _ = WindowsAndMessaging::DestroyWindow(HWND(overlay as *mut _));
+        }
         let _ = WindowsAndMessaging::DestroyWindow(hwnd);
         if refocus_host {
             let _ = SetFocus(Some(HWND(host as *mut _)));
@@ -356,11 +833,23 @@ unsafe extern "system" fn inline_edit_proc(
             return LRESULT(0);
         }
         WindowsAndMessaging::WM_KILLFOCUS => {
+            // Search is a persistent popover, not a transient rename field.
+            // Clicking the terminal body or one of the overlay's own buttons
+            // may move focus away from the EDIT, but must not dismiss it.
+            if unsafe { (*state).search.is_some() } {
+                return unsafe { call_original(original, hwnd, msg, wparam, lparam) };
+            }
             finish_inline_edit(hwnd, true, false);
             return LRESULT(0);
         }
         WindowsAndMessaging::WM_NCDESTROY => {
             let state = unsafe { Box::from_raw(state) };
+            #[cfg(feature = "terminal-runtime")]
+            if let Some(appearance) = state.search_appearance.as_ref() {
+                unsafe {
+                    let _ = DeleteObject(HGDIOBJ(appearance.brush.0));
+                }
+            }
             unsafe {
                 WindowsAndMessaging::SetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA, 0);
                 WindowsAndMessaging::SetWindowLongPtrW(
@@ -394,7 +883,7 @@ unsafe extern "system" fn inline_edit_proc(
     if msg == WindowsAndMessaging::WM_NCDESTROY || inline_edit_state(hwnd) != state {
         return result;
     }
-    if matches!(
+    let text_may_have_changed = matches!(
         msg,
         WindowsAndMessaging::WM_CHAR
             | WindowsAndMessaging::WM_KEYUP
@@ -402,8 +891,8 @@ unsafe extern "system" fn inline_edit_proc(
             | WindowsAndMessaging::WM_CUT
             | WindowsAndMessaging::WM_CLEAR
             | WindowsAndMessaging::WM_UNDO
-    ) && unsafe { (*state).search.is_some() }
-    {
+    );
+    if text_may_have_changed && unsafe { (*state).search.is_some() } {
         notify_search_changed(hwnd, state);
     }
     result

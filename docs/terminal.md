@@ -23,10 +23,10 @@ no selectable terminal backend in `lingxia.yaml`.
   tabs can be renamed. An aside terminal can expand to the full content area;
   macOS can also temporarily zoom one split pane. When several panes are open,
   the pane drag affordance includes a close action.
-- On macOS, **Find...** in the terminal context menu (or Command-F) searches
-  retained scrollback. The search bar supports case matching, whole-word
-  matching, previous/next navigation, and visible match highlights. Regular
-  expressions remain an engine API and are not exposed in this UI.
+- **Find...** in the terminal context menu (or Command-F on macOS and Ctrl-F on
+  Windows) searches retained scrollback. The search bar supports case matching,
+  whole-word matching, previous/next navigation, and visible match highlights.
+  Regular expressions remain an engine API and are not exposed in this UI.
 - Understands OSC 8 links and tracks terminal title, working directory,
   notifications, progress, command boundaries, scrollback, and process exit as
   structured engine state. Product UI for these signals is added separately;
@@ -36,7 +36,7 @@ no selectable terminal backend in `lingxia.yaml`.
 
 ## Inline images
 
-macOS supports the first static-image subset of the Kitty graphics protocol.
+macOS and Windows support the first static-image subset of the Kitty graphics protocol.
 Terminal applications can transmit direct PNG, RGB, or RGBA payloads (including
 chunked and zlib-compressed payloads), query support, create cell-anchored
 placements, and delete placements or image data. Placements follow the visible
@@ -49,10 +49,15 @@ therefore transferred to the host only when image state changes, not copied
 once per cell or once per quiet render poll. Per-session transfer, decoded-byte,
 dimension, image-count, and placement-count limits bound untrusted payloads.
 
-The Windows renderer does not consume this image snapshot yet. Sixel, iTerm2
-inline images, animation, Unicode placeholders, file/shared-memory transport,
-negative-z compositing behind terminal text, and persistence into restored
-scrollback are also not supported in this milestone.
+Both desktop renderers consume the shared image snapshot; macOS uses Metal and
+Windows uses the terminal's D3D11 surface. Clicking a visible placement opens
+a resizable, aspect-fit native preview on either desktop. The Microsoft ConPTY
+redistributable is not bundled into Windows applications. A pasted or uploaded
+image is only displayed when the terminal application emits Kitty graphics
+output; the clipboard action itself is not an inline-image protocol. Sixel,
+iTerm2 inline images, animation,
+file/shared-memory transport, negative-z compositing behind terminal text, and
+persistence into restored scrollback are also not supported in this milestone.
 
 Prompt and TUI icons such as Powerline and Nerd Font symbols do not need an
 image protocol. They are Unicode characters (usually private-use code points)
@@ -67,10 +72,10 @@ The cross-platform implementation path is:
 
 1. The shared Rust Kitty parser, image store, placement model, limits, pixel
    resize data, and generation snapshot are platform-neutral.
-2. macOS currently composites the static placements with its Metal-backed
-   terminal view and owns native click preview.
-3. Windows should consume the same snapshot through D3D11 rather than adding a
-   second protocol parser or platform-specific image state.
+2. macOS composites the static placements with its Metal-backed terminal view
+   and owns native click preview.
+3. Windows composites the same snapshot through D3D11 without a second protocol
+   parser or platform-specific image state.
 4. Future iTerm2 and Sixel parsers should be input adapters onto the same image
    store and placement model.
 

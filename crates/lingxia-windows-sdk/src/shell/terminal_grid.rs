@@ -356,16 +356,24 @@ pub(super) fn search_edit_geometry(panel_id: &str) -> Option<(isize, RECT)> {
     let panel = panels.get(panel_id)?;
     let hwnd = panel.header.as_ref()?.hwnd;
     let body = panel.body?;
-    let width = rect_width(&body).clamp(160, 320);
+    let width = rect_width(&body).clamp(320, 410);
     Some((
         hwnd,
         RECT {
             left: body.right - width - 12,
             top: body.top + 10,
             right: body.right - 12,
-            bottom: (body.top + 38).min(body.bottom),
+            bottom: (body.top + 56).min(body.bottom),
         },
     ))
+}
+
+pub(crate) fn search_status(session_id: u64) -> (Option<usize>, u64) {
+    let grids = session_grids();
+    let Some(search) = grids.get(&session_id).map(|state| &state.search) else {
+        return (None, 0);
+    };
+    (search.active, search.matches.len() as u64)
 }
 
 /// Focused terminal cursor cell in host-window client coordinates. Windows
@@ -752,6 +760,7 @@ fn grid_size_from_geometry(geometry: GridGeometry) -> Option<(u16, u16)> {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
     use lingxia_terminal::{FrameCell, TerminalSearchMatch};

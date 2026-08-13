@@ -6496,6 +6496,21 @@ fn lparam_screen_point(lparam: LPARAM) -> POINT {
     }
 }
 
+fn context_menu_client_point(hwnd: HWND, lparam: LPARAM) -> Option<(i32, i32)> {
+    let mut point = if lparam.0 == -1 {
+        let mut cursor = POINT::default();
+        unsafe { WindowsAndMessaging::GetCursorPos(&mut cursor).ok()? };
+        cursor
+    } else {
+        lparam_screen_point(lparam)
+    };
+    unsafe {
+        ScreenToClient(hwnd, &mut point)
+            .as_bool()
+            .then_some((point.x, point.y))
+    }
+}
+
 fn hit_test_window(hwnd: HWND, lparam: LPARAM) -> LRESULT {
     let mut point = lparam_screen_point(lparam);
     unsafe {
@@ -8888,6 +8903,16 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
+            WindowsAndMessaging::WM_CTLCOLOREDIT => {
+                #[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
+                if let Some(result) = crate::shell::text_input::control_color(
+                    HWND(lparam.0 as *mut _),
+                    HDC(wparam.0 as *mut _),
+                ) {
+                    return result;
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
             WindowsAndMessaging::WM_NCCALCSIZE => {
                 if let Some(result) = custom_shell_nc_calc_size(hwnd, wparam, lparam) {
                     return result;
@@ -9040,6 +9065,16 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
+            WindowsAndMessaging::WM_CONTEXTMENU => {
+                if windows_chrome_renderer().is_some()
+                    && !is_native_framed_window(hwnd)
+                    && context_menu_client_point(hwnd, lparam)
+                        .is_some_and(|point| handle_chrome_right_up(hwnd, point))
+                {
+                    return LRESULT(0);
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
             WindowsAndMessaging::WM_DESTROY => {
                 #[cfg(feature = "shell-chrome")]
                 destroy_transparent_tabbar_overlay(hwnd);
@@ -9093,9 +9128,11 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 let _ = sync_terminal_ime_position(hwnd);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
-            WindowsAndMessaging::WM_CHAR => {
+            WindowsAndMessaging::WM_CHAR | WindowsAndMessaging::WM_SYSCHAR => {
                 #[cfg(feature = "shell-chrome")]
-                if take_suppressed_escape_char(hwnd, wparam.0) {
+                if msg == WindowsAndMessaging::WM_CHAR
+                    && take_suppressed_escape_char(hwnd, wparam.0)
+                {
                     return LRESULT(0);
                 }
                 if handle_host_panel_key_message(msg, wparam) {
@@ -9104,6 +9141,13 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_KEYDOWN => {
+                #[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
+                if wparam.0 == usize::from(VK_ESCAPE.0)
+                    && crate::shell::text_input::close_search_edit(hwnd)
+                {
+                    suppress_next_escape_char(hwnd);
+                    return LRESULT(0);
+                }
                 #[cfg(feature = "shell-chrome")]
                 if wparam.0 == usize::from(VK_ESCAPE.0) && cancel_pane_drag(hwnd, true) {
                     suppress_next_escape_char(hwnd);
@@ -9380,7 +9424,10 @@ fn handle_host_panel_key_message(msg: u32, wparam: WPARAM) -> bool {
     let Some(handler) = host_panel_input_handler(&panel_id) else {
         return false;
     };
-    let character = if msg == WindowsAndMessaging::WM_CHAR {
+    let character = if matches!(
+        msg,
+        WindowsAndMessaging::WM_CHAR | WindowsAndMessaging::WM_SYSCHAR
+    ) {
         char::from_u32(wparam.0 as u32)
     } else {
         None

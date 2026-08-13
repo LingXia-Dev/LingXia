@@ -1630,7 +1630,7 @@ fn solid_quad(x: f32, y: f32, width: f32, height: f32, color: u32, uv: [f32; 4])
 }
 
 fn is_image_placeholder(cluster: &str) -> bool {
-    cluster.chars().next() == Some('\u{10EEEE}')
+    cluster.starts_with('\u{10EEEE}')
 }
 
 fn is_selected(
