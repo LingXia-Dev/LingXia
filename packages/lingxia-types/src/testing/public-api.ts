@@ -312,6 +312,7 @@ export const LX_RUNTIME_SURFACES = [
       'fs',
       'navigationBar',
       'shell',
+      'surface',
       'tabBar',
       'terminal',
       'tray',

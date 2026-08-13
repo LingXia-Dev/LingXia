@@ -353,6 +353,19 @@ async fn open_page(
     options: Optional<JSObject>,
 ) -> JSResult<JSObject> {
     let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
+    reject_unknown_options(
+        &options,
+        &[
+            "as",
+            "chrome",
+            "position",
+            "size",
+            "interaction",
+            "query",
+            "key",
+        ],
+        "lx.surface.openPage",
+    )?;
     let realized = resolve_placement(&ctx, &options, &["float", "window"], "float", |placement| {
         placement != "window" || window_placement_available()
     })?;
@@ -394,6 +407,11 @@ async fn open_page(
 /// browser, as a tab or docked as an aside.
 async fn open_url(ctx: JSContext, url: String, options: Optional<JSObject>) -> JSResult<JSObject> {
     let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
+    reject_unknown_options(
+        &options,
+        &["as", "edge", "size", "key"],
+        "lx.surface.openUrl",
+    )?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     let realized = resolve_placement(&ctx, &options, &["tab", "aside"], "tab", |placement| {
         placement != "aside" || aside_dock_available(&lxapp)
@@ -419,6 +437,7 @@ async fn open_declared(
     options: Optional<JSObject>,
 ) -> JSResult<JSObject> {
     let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
+    reject_unknown_options(&options, &["key"], "lx.surface.openDeclared")?;
     let key = read_surface_key(&options)?;
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
@@ -447,6 +466,19 @@ fn get_surface(ctx: JSContext, key_or_id: String) -> JSResult<JSValue> {
 /// `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
 /// slot. Home-lxapp only; the namespace is the privilege.
 async fn shell_open_app(ctx: JSContext, app_id: String, options: JSObject) -> JSResult<JSObject> {
+    reject_unknown_options(
+        &options,
+        &[
+            "as",
+            "edge",
+            "page",
+            "query",
+            "envVersion",
+            "targetVersion",
+            "key",
+        ],
+        "lx.shell.openApp",
+    )?;
     let spec = JSObject::new(&ctx);
     spec.set("appId", app_id)?;
     copy_options(
@@ -488,6 +520,7 @@ async fn shell_open_declared(
     let lxapp = LxApp::from_ctx(&ctx)?;
     require_home_caller(&lxapp, "lx.shell.openDeclared")?;
     let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
+    reject_unknown_options(&options, &["key", "as", "edge"], "lx.shell.openDeclared")?;
     let key = read_surface_key(&options)?;
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
@@ -506,6 +539,7 @@ async fn shell_open_declared(
 async fn shell_reconfigure(ctx: JSContext, id: String, patch: JSObject) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     require_home_caller(&lxapp, "lx.shell.reconfigure")?;
+    reject_unknown_options(&patch, &["as", "edge"], "lx.shell.reconfigure")?;
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
     copy_options(&patch, &spec, &["as", "edge"])?;
@@ -580,6 +614,40 @@ fn copy_options(from: &JSObject, to: &JSObject, fields: &[&str]) -> JSResult<()>
         if let Some(value) = get_property(from, field) {
             to.set(*field, value)?;
         }
+    }
+    Ok(())
+}
+
+/// Rejects an option this signature does not accept, naming it. Silently
+/// ignoring a key is how a misspelling — or an option that belongs to a
+/// different content source — turns into a surface nobody asked for.
+fn reject_unknown_options(options: &JSObject, allowed: &[&str], api: &str) -> JSResult<()> {
+    for key in options.keys_as::<String>()? {
+        if allowed.contains(&key.as_str()) {
+            continue;
+        }
+        // A key that belongs to a different content source gets the same
+        // guidance it would have got there, rather than a bare "unknown".
+        let detail = match (api, key.as_str()) {
+            (_, "path") => {
+                "path is not supported; pass the configured page name in page".to_string()
+            }
+            ("lx.surface.openPage", "edge") => {
+                "edge is not supported for page surfaces; use position with as: 'float'".to_string()
+            }
+            ("lx.surface.openPage", "appId") | ("lx.surface.openUrl", "appId") => {
+                "composing another lxapp is a shell operation; use lx.shell.openApp".to_string()
+            }
+            _ => format!(
+                "{api} has no option '{key}'; it accepts {}",
+                allowed
+                    .iter()
+                    .map(|value| format!("'{value}'"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        };
+        return Err(surface_error(SurfaceErrorCode::InvalidArg, detail));
     }
     Ok(())
 }
