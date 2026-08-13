@@ -85,10 +85,12 @@ JSDoc is authoritative for its exact behavior.
 
 ## Handling errors
 
-A rejection means the operation failed. It never means the user said no: every
-dismissable API — `showActionSheet`, `showModal`, `chooseFile`,
-`chooseDirectory`, `chooseMedia`, `scanCode` — resolves a result discriminated
-on `canceled`, so dismissal is a branch rather than an error path.
+A rejection means the operation failed. It never means the user said no: the
+six dismissable APIs — `showActionSheet`, `showModal`, `chooseFile`,
+`chooseDirectory`, `chooseMedia`, `scanCode` — resolve a result discriminated
+on `canceled`, so dismissal is a branch rather than an error path. (`lx.share`
+predates this and reports its outcome as `completed`; it is not part of the
+`canceled` family.)
 
 ```ts
 const scan = await lx.scanCode()

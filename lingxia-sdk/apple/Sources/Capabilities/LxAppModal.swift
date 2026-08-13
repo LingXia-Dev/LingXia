@@ -11,6 +11,12 @@ import AppKit
 /// Modal dialog management for LingXia applications
 class LxAppModal {
 
+    /// A dismissal is business code 2000; everything that merely *failed* —
+    /// no presenter, serialization — reports the generic failure code, so
+    /// `canceled: true` on the JS side can only ever mean the user said no.
+    private static let modalFailureCode = "1000"
+
+
     private final class CallbackOnce {
         private let callbackId: UInt64
         private let lock = NSLock()
@@ -93,7 +99,7 @@ class LxAppModal {
           let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
           let rootViewController = window.rootViewController else {
         LXLog.error("Could not find root view controller", category: "Modal")
-        callback.send(success: false, payload: "2000")
+        callback.send(success: false, payload: modalFailureCode)
         return
     }
 
@@ -107,7 +113,7 @@ class LxAppModal {
           !topViewController.isBeingDismissed,
           topViewController.transitionCoordinator == nil else {
         LXLog.error("Could not find a stable modal presenter", category: "Modal")
-        callback.send(success: false, payload: "2000")
+        callback.send(success: false, payload: modalFailureCode)
         return
     }
 
@@ -127,7 +133,7 @@ class LxAppModal {
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: result),
               let jsonString = String(data: jsonData, encoding: .utf8) else {
-            callback.send(success: false, payload: "2000")
+            callback.send(success: false, payload: modalFailureCode)
             return
         }
         callback.send(success: true, payload: jsonString)
@@ -148,7 +154,7 @@ class LxAppModal {
     DispatchQueue.main.async {
         guard alert.presentingViewController != nil || alert.viewIfLoaded?.window != nil else {
             LXLog.error("UIKit did not present modal alert", category: "Modal")
-            callback.send(success: false, payload: "2000")
+            callback.send(success: false, payload: modalFailureCode)
             return
         }
     }
@@ -183,7 +189,7 @@ class LxAppModal {
         let result: [String: Any] = ["confirm": true, "cancel": false]
         guard let jsonData = try? JSONSerialization.data(withJSONObject: result),
               let jsonString = String(data: jsonData, encoding: .utf8) else {
-            _ = onCallback(callback_id, false, "2000")
+            _ = onCallback(callback_id, false, modalFailureCode)
             return
         }
         _ = onCallback(callback_id, true, jsonString)

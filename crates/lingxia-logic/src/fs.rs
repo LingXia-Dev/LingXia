@@ -604,10 +604,16 @@ async fn choose_directory(
     .await
     .map_err(|e| js_error_from_platform_error(&e))?;
 
-    let selected = (!result.canceled)
-        .then(|| result.paths.into_iter().next())
-        .flatten();
-    let Some(path) = selected else {
+    if result.canceled {
+        return canceled(&ctx);
+    }
+    // Same tripwire as chooseFile: the union removed the type, not the state.
+    if result.paths.len() != 1 {
+        return Err(js_internal_error(
+            "chooseDirectory invalid payload: non-canceled result must include exactly one path",
+        ));
+    }
+    let Some(path) = result.paths.into_iter().next() else {
         return canceled(&ctx);
     };
 

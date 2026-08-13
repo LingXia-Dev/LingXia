@@ -76,6 +76,11 @@ class LxAppActionSheet {
         #endif
     }
 
+    /// A dismissal is business code 2000; everything that merely *failed* —
+    /// no presenter, serialization — reports the generic failure code, so
+    /// `canceled: true` on the JS side can only ever mean the user said no.
+    private static let actionSheetFailureCode = "1000"
+
     internal static func sendResult(callback_id: UInt64, tapIndex: Int) {
         if tapIndex < 0 {
             _ = onCallback(callback_id, false, "2000")
@@ -86,8 +91,13 @@ class LxAppActionSheet {
            let jsonString = String(data: jsonData, encoding: .utf8) {
             _ = onCallback(callback_id, true, jsonString)
         } else {
-            _ = onCallback(callback_id, false, "2000")
+            _ = onCallback(callback_id, false, actionSheetFailureCode)
         }
+    }
+
+    /// The sheet could not be shown at all. Distinct from a dismissal.
+    internal static func sendPresentationFailure(callback_id: UInt64) {
+        _ = onCallback(callback_id, false, actionSheetFailureCode)
     }
 
     #if os(iOS)
@@ -97,7 +107,7 @@ class LxAppActionSheet {
               let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
               let rootViewController = window.rootViewController else {
             LXLog.error("Could not find root view controller", category: "ActionSheet")
-            sendResult(callback_id: callback_id, tapIndex: -1)
+            sendPresentationFailure(callback_id: callback_id)
             return
         }
 
@@ -109,7 +119,7 @@ class LxAppActionSheet {
         let actionSheetView = createCustomActionSheet(options: options, cancelText: cancelText, itemColor: itemColor, callback_id: callback_id)
         guard presentCustomActionSheet(actionSheetView, on: topViewController) else {
             LXLog.error("Could not attach action sheet to a visible presenter", category: "ActionSheet")
-            sendResult(callback_id: callback_id, tapIndex: -1)
+            sendPresentationFailure(callback_id: callback_id)
             return
         }
     }

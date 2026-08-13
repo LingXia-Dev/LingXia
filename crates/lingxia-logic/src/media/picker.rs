@@ -132,6 +132,7 @@ async fn choose_media(
     })?;
 
     let mut out: Vec<ChosenMediaEntry> = Vec::new();
+    let offered = arr.len();
     for key in arr.into_iter() {
         let uri = key.uri.trim();
         if uri.is_empty() {
@@ -217,6 +218,14 @@ async fn choose_media(
         });
     }
     if out.is_empty() {
+        // An empty selection is how several hosts report a dismissal. But if
+        // the picker offered entries and every one was unusable, the user did
+        // choose — say so instead of laundering an adapter bug into a cancel.
+        if offered > 0 {
+            return Err(js_internal_error(
+                "chooseMedia invalid payload: every selected entry was unusable",
+            ));
+        }
         return canceled(&ctx);
     }
 
