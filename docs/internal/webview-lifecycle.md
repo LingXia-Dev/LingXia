@@ -501,6 +501,14 @@ Platform hosts decide *when* to discard:
   `OnReady`, because nothing re-rendered).
 - `OnHide` on visibility loss; `OnUnload` on disposal or on leaving the stack.
 
+`PageState` keeps these on three separate clocks, because they advance
+independently: `EntryPhase` (`Idle`/`LoadOwed`/`Loaded`) owes one `onLoad` per
+logical entry, `Visibility` (`Hidden`/`ShowOwed`/`Shown`) owes `onShow`/`onHide`
+per flip, and `ready_dispatched` owes one `onReady` per rendered document and is
+cleared only by `reset_webview_lifecycle_state`. `onUnload` cancels a *pending*
+entry but leaves a *delivered* one alone, so a reused instance does not
+re-request `onLoad` off the back of its existing bridge.
+
 Browser-profile WebViews only participate in this state machine when their
 delegate resolves to a bound headless `Page`. External-URL tabs and URL-target
 surfaces are WebView-lifecycle only — no app page lifecycle events fire.
