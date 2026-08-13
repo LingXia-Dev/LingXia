@@ -137,11 +137,12 @@ const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
 const APPEARANCE_API = ['get', 'set'] as const;
 const NAVIGATION_BAR_API = ['update'] as const;
 const TAB_BAR_API = ['update'] as const;
-const TERMINAL_API = ['colorSchemes', 'fonts', 'settings'] as const;
+const TERMINAL_API = ['colorSchemes', 'fonts', 'settings', 'windows'] as const;
 const TERMINAL_SETTINGS_API = ['get', 'onChange', 'reset', 'update'] as const;
 const TERMINAL_COLOR_SCHEMES_API = ['createPreview', 'import', 'list'] as const;
 const TERMINAL_FONTS_API = ['list'] as const;
 const TERMINAL_PREVIEW_API = ['clear', 'close', 'show'] as const;
+const WINDOWS_TERMINAL_API = ['install', 'setEnabled', 'status'] as const;
 const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
 const SHELL_API = ['sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['clear', 'remove', 'replace', 'update'] as const;
@@ -367,6 +368,13 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.terminal?.fonts',
     members: TERMINAL_FONTS_API,
+    optional: true,
+  },
+  {
+    name: 'lx.terminal.windows',
+    layer: 'logic',
+    expression: 'lx.terminal?.windows',
+    members: WINDOWS_TERMINAL_API,
     optional: true,
   },
   {

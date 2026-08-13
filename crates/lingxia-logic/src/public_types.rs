@@ -271,10 +271,31 @@ rong::js_api! {
     list(): Promise<InstalledTerminalFont[]>;
 }"###;
 
+        type WindowsTerminalInlineImageStatus = r###"{
+    enabled: boolean;
+    installed: boolean;
+    package: {
+        version: string;
+        url: string;
+        sha256: string;
+        bytes: number;
+    };
+}"###;
+
+        type WindowsTerminalApi = r###"{
+    status(): Promise<WindowsTerminalInlineImageStatus>;
+    /** Verify and install the fixed Microsoft ConPTY package from lxapp temp storage. */
+    install(options: { path: string }): Promise<WindowsTerminalInlineImageStatus>;
+    /** Select the installed runtime for new terminal sessions. */
+    setEnabled(options: { enabled: boolean }): Promise<WindowsTerminalInlineImageStatus>;
+}"###;
+
         type TerminalApi = r###"{
     readonly settings: TerminalSettingsApi;
     readonly colorSchemes: TerminalColorSchemesApi;
     readonly fonts: TerminalFontsApi;
+    /** Windows-only optional inline-image compatibility runtime. */
+    readonly windows?: WindowsTerminalApi;
 }"###;
 
         type BinaryFileData = r###"ArrayBuffer | ArrayBufferView"###;

@@ -7,7 +7,7 @@
   "logic": true,
   "security": {
     "network": {
-      "trustedDomains": []
+      "trustedDomains": ["api.nuget.org"]
     },
     "privileges": []
   },

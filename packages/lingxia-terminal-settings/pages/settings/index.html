@@ -114,6 +114,25 @@
         </div>
       </section>
 
+      <section class="group" id="windows-group" aria-labelledby="windows-heading" hidden>
+        <div class="group-head">
+          <h2 id="windows-heading" data-i18n="windows.title">Windows</h2>
+        </div>
+        <div class="row windows-inline-row">
+          <div class="row-label">
+            <span data-i18n="windows.inlineImages">Inline images</span>
+            <small data-i18n="windows.inlineImagesHint">Download Microsoft's optional compatibility runtime so Kitty images reach the terminal unchanged.</small>
+            <div class="download-progress" id="inline-image-progress" hidden>
+              <div class="download-track"><span id="inline-image-progress-bar"></span></div>
+              <output id="inline-image-progress-label" aria-live="polite"></output>
+            </div>
+          </div>
+          <div class="row-control">
+            <label class="switch"><input id="windows-inline-images" type="checkbox" /><span></span></label>
+          </div>
+        </div>
+      </section>
+
       <section class="group" aria-labelledby="general-heading">
         <div class="group-head">
           <h2 id="general-heading" data-i18n="general.title">General</h2>

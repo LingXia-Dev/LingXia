@@ -93,6 +93,16 @@ pub fn backend_available() -> bool {
     backend_status().available
 }
 
+#[cfg(target_os = "windows")]
+pub fn terminal_set_conpty_path(path: PathBuf) -> Result<(), String> {
+    portable_pty::win::set_conpty_path(path).map_err(|error| format!("{error:?}"))
+}
+
+#[cfg(target_os = "windows")]
+pub fn terminal_clear_conpty_path() {
+    portable_pty::win::clear_conpty_path();
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BackendStatusJson {

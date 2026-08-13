@@ -52,10 +52,17 @@ dimension, image-count, and placement-count limits bound untrusted payloads.
 Both desktop renderers consume the shared image snapshot; macOS uses Metal and
 Windows uses the terminal's D3D11 surface. Clicking a visible placement opens
 a resizable, aspect-fit native preview on either desktop. The Microsoft ConPTY
-redistributable is not bundled into Windows applications. A pasted or uploaded
-image is only displayed when the terminal application emits Kitty graphics
-output; the clipboard action itself is not an inline-image protocol. Sixel,
-iTerm2 inline images, animation,
+redistributable is not bundled into Windows applications. On Windows, Terminal
+Settings shows an Inline images switch. Enabling it downloads the fixed package
+with `lx.downloadFile`, displays transfer progress, and hands the temporary file
+to the restricted native terminal API. The native layer verifies the package
+and selected binaries by SHA-256 before installing them under the host's app
+state directory. Disabling stops selecting that cached runtime without deleting
+it; new tabs and panes pick up either change immediately.
+
+A pasted or uploaded image is only displayed when the terminal application
+emits Kitty graphics output; the clipboard action itself is not an inline-image
+protocol. Sixel, iTerm2 inline images, animation,
 file/shared-memory transport, negative-z compositing behind terminal text, and
 persistence into restored scrollback are also not supported in this milestone.
 

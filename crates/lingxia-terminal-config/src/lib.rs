@@ -16,6 +16,8 @@
 mod font;
 pub mod runtime;
 mod theme;
+#[cfg(target_os = "windows")]
+pub mod windows;
 
 pub use font::{FontConfig, InstalledFont, ResolvedFont, resolve as resolve_font};
 use serde::{Deserialize, Serialize};

@@ -51,6 +51,15 @@
       'type.ligatures': 'Ligatures',
       'type.ligaturesHint': 'Shape sequences such as != and =>.',
 
+      'windows.title': 'Windows',
+      'windows.inlineImages': 'Inline images',
+      'windows.inlineImagesHint': "Download Microsoft's optional compatibility runtime so Kitty images reach the terminal unchanged. New tabs and panes use it immediately.",
+      'windows.downloading': 'Downloading compatibility runtime…',
+      'windows.downloadingAmount': 'Downloading {received} of {total}',
+      'windows.enabled': 'Inline images enabled for new terminal sessions',
+      'windows.disabled': 'Inline image compatibility disabled',
+      'windows.failed': 'Could not change inline images: {message}',
+
       'reset.title': 'Reset everything',
       'reset.hint': 'Drops every override and returns to what this product ships.',
       'reset.action': 'Reset',
@@ -99,6 +108,15 @@
       'type.lineHeightHint': '字体自然行高的倍数。',
       'type.ligatures': '连字',
       'type.ligaturesHint': '将 != 和 => 这类序列合并显示。',
+
+      'windows.title': 'Windows',
+      'windows.inlineImages': '内联图片',
+      'windows.inlineImagesHint': '下载 Microsoft 可选兼容运行库，让 Kitty 图片完整传给终端。新标签页和面板立即生效。',
+      'windows.downloading': '正在下载兼容运行库…',
+      'windows.downloadingAmount': '已下载 {received} / {total}',
+      'windows.enabled': '新终端会话已启用内联图片',
+      'windows.disabled': '已关闭内联图片兼容支持',
+      'windows.failed': '无法更改内联图片设置：{message}',
 
       'reset.title': '全部重置',
       'reset.hint': '丢弃所有自定义,回到本产品出厂的设置。',

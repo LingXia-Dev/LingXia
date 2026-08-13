@@ -46,6 +46,20 @@ struct ImportOptions {
     overwrite: Option<bool>,
 }
 
+#[cfg(target_os = "windows")]
+#[derive(FromJSObject)]
+#[ts_skip]
+struct InstallConptyOptions {
+    path: String,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(FromJSObject)]
+#[ts_skip]
+struct SetConptyEnabledOptions {
+    enabled: bool,
+}
+
 struct TerminalContextService {
     app: Weak<LxApp>,
     app_data_dir: PathBuf,
@@ -321,6 +335,50 @@ async fn fonts_list(ctx: JSContext) -> JSResult<JSValue> {
     to_js(&ctx, &lingxia_terminal_config::runtime::installed_fonts())
 }
 
+#[cfg(target_os = "windows")]
+async fn conpty_status(ctx: JSContext) -> JSResult<JSValue> {
+    let (_, data_dir, _) = context(&ctx)?;
+    to_js(&ctx, &lingxia_terminal_config::windows::status(&data_dir))
+}
+
+#[cfg(target_os = "windows")]
+async fn conpty_install(ctx: JSContext, options: InstallConptyOptions) -> JSResult<JSValue> {
+    let (app, data_dir, _) = context(&ctx)?;
+    let logical_path = options.path.trim();
+    if !logical_path.starts_with("lx://temp/") {
+        return Err(HostError::new(
+            rong::error::E_PERMISSION_DENIED,
+            "ConPTY package must be an lxapp-owned temp file",
+        )
+        .into());
+    }
+    let package_path = app.resolve_accessible_path(logical_path).map_err(|_| {
+        HostError::new(
+            rong::error::E_PERMISSION_DENIED,
+            "ConPTY package must be an lxapp-owned temp file",
+        )
+    })?;
+    let temp_dir = std::fs::canonicalize(&app.temp_dir).unwrap_or_else(|_| app.temp_dir.clone());
+    if !package_path.starts_with(temp_dir) || !package_path.is_file() {
+        return Err(HostError::new(
+            rong::error::E_PERMISSION_DENIED,
+            "ConPTY package must be an lxapp-owned temp file",
+        )
+        .into());
+    }
+    let status = lingxia_terminal_config::windows::install(&data_dir, &package_path)
+        .map_err(|error| HostError::new(rong::error::E_INVALID_DATA, error.to_string()))?;
+    to_js(&ctx, &status)
+}
+
+#[cfg(target_os = "windows")]
+async fn conpty_set_enabled(ctx: JSContext, options: SetConptyEnabledOptions) -> JSResult<JSValue> {
+    let (_, data_dir, _) = context(&ctx)?;
+    let status = lingxia_terminal_config::windows::set_enabled(&data_dir, options.enabled)
+        .map_err(|error| HostError::new(rong::error::E_INVALID_STATE, error.to_string()))?;
+    to_js(&ctx, &status)
+}
+
 fn preview_theme(ctx: &JSContext, input: JSValue, data_dir: &Path) -> JSResult<TerminalTheme> {
     require_access(ctx)?;
     let theme = if input.is_string() {
@@ -551,6 +609,8 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let settings = child_namespace(&terminal, ctx, "settings")?;
     let schemes = child_namespace(&terminal, ctx, "colorSchemes")?;
     let fonts = child_namespace(&terminal, ctx, "fonts")?;
+    #[cfg(target_os = "windows")]
+    let windows = child_namespace(&terminal, ctx, "windows")?;
 
     settings.set("get", JSFunc::new(ctx, settings_get)?.name("get")?)?;
     settings.set("update", JSFunc::new(ctx, settings_update)?.name("update")?)?;
@@ -565,6 +625,18 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     )?;
 
     fonts.set("list", JSFunc::new(ctx, fonts_list)?.name("list")?)?;
+    #[cfg(target_os = "windows")]
+    {
+        windows.set("status", JSFunc::new(ctx, conpty_status)?.name("status")?)?;
+        windows.set(
+            "install",
+            JSFunc::new(ctx, conpty_install)?.name("install")?,
+        )?;
+        windows.set(
+            "setEnabled",
+            JSFunc::new(ctx, conpty_set_enabled)?.name("setEnabled")?,
+        )?;
+    }
     install_change_pump(ctx)
 }
 
