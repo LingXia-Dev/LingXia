@@ -282,6 +282,20 @@ pub trait WindowsHostBackend: Send + Sync {
         unsupported_operation("show_webview_window_with_content_size")
     }
 
+    /// `full_chrome` runs the page to the window edge while the system keeps
+    /// minimize, maximize, resize, and drag.
+    fn show_webview_window_with_chrome(
+        &self,
+        _webtag: &WebTag,
+        _title: &str,
+        _activate: bool,
+        _width: Option<i32>,
+        _height: Option<i32>,
+        _full_chrome: bool,
+    ) -> StdResult<()> {
+        unsupported_operation("show_webview_window_with_chrome")
+    }
+
     fn navigate_webview_window(
         &self,
         _webtag: &WebTag,
@@ -1007,6 +1021,17 @@ pub fn show_webview_window_with_content_size(
     height: Option<i32>,
 ) -> StdResult<()> {
     backend()?.show_webview_window_with_content_size(webtag, title, activate, width, height)
+}
+
+pub fn show_webview_window_with_chrome(
+    webtag: &WebTag,
+    title: &str,
+    activate: bool,
+    width: Option<i32>,
+    height: Option<i32>,
+    full_chrome: bool,
+) -> StdResult<()> {
+    backend()?.show_webview_window_with_chrome(webtag, title, activate, width, height, full_chrome)
 }
 
 pub fn navigate_webview_window(

@@ -220,7 +220,7 @@ rong::js_api! {
             ts_return = "Promise<TabSurface>"
         ) = open_url;
         fn openDeclared(
-            ts_params = "id: string, options?: OpenDeclaredOptions",
+            ts_params = "id: string",
             ts_return = "Promise<DeclaredSurface>"
         ) = open_declared;
         fn get(
@@ -246,7 +246,7 @@ rong::js_api! {
             ts_return = "Promise<BuiltinSurface>"
         ) = shell_open_builtin;
         fn openDeclared(
-            ts_params = "id: string, options?: OpenDeclaredOptions",
+            ts_params = "id: string, options?: ShellOpenDeclaredOptions",
             ts_return = "Promise<DeclaredSurface>"
         ) = shell_open_declared;
         fn reconfigure(
@@ -370,6 +370,9 @@ async fn open_page(
         placement != "window" || window_placement_available()
     })?;
 
+    let asked_one_placement = get_property(&options, "as")
+        .and_then(|value| value.into_object().filter(|obj| obj.is_array()))
+        .is_none();
     let chrome = read_optional_string(&options, "chrome")?;
     if let Some(chrome) = chrome.as_deref() {
         if !matches!(chrome, "system" | "full") {
@@ -378,7 +381,12 @@ async fn open_page(
                 format!("chrome must be 'system' or 'full'; got {chrome}"),
             ));
         }
-        if realized != "window" {
+        // A single `as` is a strict request, so a window-only option with a
+        // float is a mistake worth reporting. An ordered preference is the
+        // opposite: the caller asked the host to choose, so an option that
+        // does not apply to the chosen placement is simply dropped — otherwise
+        // "prefer a full-chrome window, else a float" could never be written.
+        if realized != "window" && asked_one_placement {
             return Err(surface_error(
                 SurfaceErrorCode::InvalidArg,
                 "chrome applies to as: 'window' only",
@@ -389,12 +397,21 @@ async fn open_page(
     let spec = JSObject::new(&ctx);
     spec.set("page", page)?;
     spec.set("as", realized.as_str())?;
-    copy_options(
-        &options,
-        &spec,
-        &["position", "size", "interaction", "query"],
-    )?;
-    if let Some(chrome) = chrome {
+    let mut carried = vec!["size", "interaction", "query"];
+    // `position` anchors a float and is meaningless on a window; carry it only
+    // where it applies, for the same reason `chrome` is dropped above.
+    if realized == "float" {
+        carried.push("position");
+    } else if asked_one_placement && get_property(&options, "position").is_some() {
+        return Err(surface_error(
+            SurfaceErrorCode::InvalidArg,
+            "position applies to as: 'float' only",
+        ));
+    }
+    copy_options(&options, &spec, &carried)?;
+    if realized == "window"
+        && let Some(chrome) = chrome
+    {
         spec.set("chrome", chrome)?;
     }
 
@@ -412,10 +429,12 @@ async fn open_url(ctx: JSContext, url: String, options: Optional<JSObject>) -> J
         &["as", "edge", "size", "key"],
         "lx.surface.openUrl",
     )?;
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    let realized = resolve_placement(&ctx, &options, &["tab", "aside"], "tab", |placement| {
-        placement != "aside" || aside_dock_available(&lxapp)
-    })?;
+    let _lxapp = LxApp::from_ctx(&ctx)?;
+    // Every placement the browser offers is realizable: a compact layout has no
+    // dock, but it still projects an aside through the in-app browser's own
+    // chrome. Refusing it here would take URL asides away from every phone —
+    // `scope` is how that platform difference is reported, not a rejection.
+    let realized = resolve_placement(&ctx, &options, &["tab", "aside"], "tab", |_| true)?;
 
     let spec = JSObject::new(&ctx);
     spec.set("url", url)?;
@@ -431,36 +450,37 @@ async fn open_url(ctx: JSContext, url: String, options: Optional<JSObject>) -> J
 
 /// `lx.surface.openDeclared(id, options?)` — a surface the host declared in
 /// `lingxia.yaml`, opened with the declaration's own presentation.
-async fn open_declared(
-    ctx: JSContext,
-    id: String,
-    options: Optional<JSObject>,
-) -> JSResult<JSObject> {
-    let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
-    reject_unknown_options(&options, &["key"], "lx.surface.openDeclared")?;
-    let key = read_surface_key(&options)?;
+async fn open_declared(ctx: JSContext, id: String) -> JSResult<JSObject> {
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
-    if let Some(key) = key.as_deref() {
-        spec.set("key", key)?;
-    }
     let handle = open_declared_surface_spec(&ctx, &spec).await?;
     let realized = handle_realized_placement(&handle);
-    finish_handle(&ctx, &handle, "declared", &realized, key, None)
+    finish_handle(&ctx, &handle, "declared", &realized, None, None)
 }
 
 /// `lx.surface.get(keyOrId)` — the live handle for a surface this lxapp
 /// opened, so no caller has to cache one in order to reuse or close it.
 fn get_surface(ctx: JSContext, key_or_id: String) -> JSResult<JSValue> {
     let registry = surface_registry(&ctx)?;
-    let Ok(found) = registry.get::<_, JSObject>(key_or_id.as_str()) else {
-        return Ok(JSValue::undefined(&ctx));
-    };
-    if !found.get::<_, bool>("alive").unwrap_or(false) {
-        let _ = registry.delete(key_or_id.as_str());
-        return Ok(JSValue::undefined(&ctx));
+    // Drop anything already closed, so a dead handle is never handed back and
+    // the registry cannot grow across a session of opens and closes.
+    let mut found = None;
+    for entry_key in registry.keys_as::<String>()? {
+        let Ok(handle) = registry.get::<_, JSObject>(entry_key.as_str()) else {
+            continue;
+        };
+        if !handle.get::<_, bool>("alive").unwrap_or(false) {
+            let _ = registry.delete(entry_key.as_str());
+            continue;
+        }
+        let matches_id = handle
+            .get::<_, String>("id")
+            .is_ok_and(|id| id == key_or_id);
+        if entry_key == key_or_id || matches_id {
+            found = Some(handle);
+        }
     }
-    Ok(found.into_js_value())
+    Ok(found.map_or_else(|| JSValue::undefined(&ctx), JSObject::into_js_value))
 }
 
 /// `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
@@ -698,13 +718,12 @@ fn finish_handle(
     if let Some(scope) = scope {
         handle.set("scope", scope)?;
     }
-    let registry = surface_registry(ctx)?;
+    // Only a keyed surface is registered. Registering every generated id kept
+    // a strong reference — with its closures, message port, and emitter — for
+    // the whole session, and nobody can look up a uuid they never chose.
     if let Some(key) = key {
         handle.set("key", key.as_str())?;
-        registry.set(key.as_str(), handle.clone())?;
-    }
-    if let Ok(id) = handle.get::<_, String>("id") {
-        registry.set(id.as_str(), handle.clone())?;
+        surface_registry(ctx)?.set(key.as_str(), handle.clone())?;
     }
     Ok(handle.clone())
 }
@@ -720,6 +739,20 @@ fn browser_tab_handle(
     key: Option<String>,
 ) -> JSResult<JSObject> {
     if let Some(handle) = opened.clone().into_object() {
+        // A docked aside owns its surface, so `activate` is "bring it
+        // forward" — the type promises the method on every TabSurface.
+        let show_handle = handle.clone();
+        handle.set(
+            "activate",
+            JSFunc::new(ctx, move |ctx: JSContext| {
+                let show: JSResult<JSFunc> = show_handle.get("show");
+                let target = show_handle.clone();
+                Promise::from_future(&ctx, None, async move {
+                    show?.call::<_, JSValue>(Some(target), ())?;
+                    Ok(())
+                })
+            })?,
+        )?;
         return finish_handle(ctx, &handle, "tab", realized, key, Some("tab"));
     }
 
@@ -768,27 +801,6 @@ fn builtin_surface_handle(ctx: &JSContext, page: &str) -> JSResult<JSObject> {
     handle.set("alive", true)?;
     handle.set("visible", true)?;
     attach_browser_group_methods(ctx, &handle)?;
-    for absent in ["show", "hide"] {
-        handle.set(
-            absent,
-            JSFunc::new(ctx, |ctx: JSContext| {
-                Promise::from_future(&ctx, None, async move {
-                    Err::<(), _>(surface_error(
-                        SurfaceErrorCode::UnsupportedPlacement,
-                        "a builtin page's visibility is owned by the shell",
-                    ))
-                })
-            })?,
-        )?;
-    }
-    for absent in ["onShow", "onHide"] {
-        handle.set(
-            absent,
-            JSFunc::new(ctx, |ctx: JSContext, _handler: JSFunc| {
-                JSFunc::new(&ctx, || {})
-            })?,
-        )?;
-    }
     finish_handle(ctx, &handle, "builtin", "main", None, None)
 }
 
@@ -809,7 +821,7 @@ fn require_home_caller(lxapp: &LxApp, key: &str) -> JSResult<()> {
     }
     Err(surface_error(
         SurfaceErrorCode::Denied,
-        format!("openSurface({{ {key} }}) is restricted to the home lxapp"),
+        format!("{key} is restricted to the home lxapp"),
     ))
 }
 
@@ -829,7 +841,7 @@ async fn open_app_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     }
     let edge = read_validated_edge(spec)?;
     let lxapp = LxApp::from_ctx(&ctx)?;
-    require_home_caller(&lxapp, "appId")?;
+    require_home_caller(&lxapp, "lx.shell.openApp")?;
 
     let as_role = read_required_string(spec, "as")?;
     let as_role = as_role.trim();
@@ -1014,7 +1026,7 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
         // Every lxapp may consume a declaration exactly as the host authored
         // it. Instance creation and placement overrides mutate shared shell
         // composition, so they stay under the home lxapp's single-writer role.
-        require_home_caller(&lxapp, "surface override")?;
+        require_home_caller(&lxapp, "overriding a declared surface")?;
     }
     if key.is_some() && declared_app_id.is_some() {
         return Err(surface_error(
@@ -1098,8 +1110,10 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     let page = read_required_string(spec, "page")?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     let path = lxapp.find_page_path_by_name(page.trim()).ok_or_else(|| {
-        HostError::new(rong::error::E_NOT_FOUND, format!("unknown page: {page}"))
-            .with_data(rong::err_data!({ code: ("page_not_found") }))
+        surface_error(
+            SurfaceErrorCode::NotDeclared,
+            format!("unknown page: {page}"),
+        )
     })?;
     let path_value = JSValue::from_rust(&ctx, path);
 
@@ -1187,7 +1201,7 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
 
     if let Some(page) = parse_builtin_browser_page(trimmed_url) {
         validate_builtin_browser_surface_keys(spec)?;
-        require_home_caller(&lxapp, "url")?;
+        require_home_caller(&lxapp, "lx.shell.openBuiltin")?;
         if !lingxia_app_context::browser_enabled() {
             return Err(surface_error(
                 SurfaceErrorCode::UnsupportedPlacement,

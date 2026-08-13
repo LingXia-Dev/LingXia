@@ -307,8 +307,12 @@ export type BinaryFileData = ArrayBuffer | ArrayBufferView;
  */
 export type BuiltinShellPage = 'settings' | 'downloads';
 
-/** A host builtin page such as settings or downloads. */
-export type BuiltinSurface = SurfaceBase & SurfaceShowable & {
+/**
+ * A host builtin page such as settings or downloads. The shell owns
+ * its lifetime and its visibility, so this handle reports identity
+ * only — there is no `show` / `hide` / `close` to call.
+ */
+export type BuiltinSurface = SurfaceBase & {
     readonly kind: 'builtin';
 };
 
@@ -850,15 +854,6 @@ export type NetworkInfo = {
 /** Network status APIs. */
 export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet';
 
-export type OpenDeclaredOptions = {
-    /**
-     * Stable caller-owned identity for an additional native declaration
-     * instance. 1 to 128 UTF-8 bytes. Declarations without instantiable
-     * native providers reject it with `capability_missing`.
-     */
-    key?: string;
-};
-
 /** File system APIs. */
 export type OpenFileOptions = {
     /** Local file path or runtime-managed temp path. */
@@ -887,10 +882,19 @@ export type OpenPageOptions = {
     chrome?: WindowChrome;
     /** Where a float anchors. Rejected when the realized placement is a window. */
     position?: SurfaceFloatPosition;
-    size?: OverlaySurfaceSize & WindowSurfaceSize;
+    /**
+     * A float accepts a percentage; a window is in logical pixels and ignores
+     * one. Both live here rather than in two option types, because `as` may be
+     * an ordered preference and the realized placement is not known up front.
+     */
+    size?: OverlaySurfaceSize;
     interaction?: SurfaceInteraction;
     query?: Record<string, unknown>;
-    /** Stable identity for `lx.surface.get(key)`. */
+    /**
+     * Caller-owned identity for `lx.surface.get(key)`. It names *this handle*
+     * for later lookup; it is not the native instance key that
+     * `lx.shell.openDeclared` accepts.
+     */
     key?: string;
 };
 
@@ -1268,11 +1272,19 @@ export type ShellOpenAppOptions = {
 };
 
 /**
- * The declared-surface options only the home lxapp may use. Placement
- * overrides live here rather than on `lx.surface.openDeclared`, so an
- * ordinary lxapp always gets the placement the declaration chose.
+ * The declared-surface options only the home lxapp may use.
+ * Creating an extra instance and overriding a placement both mutate
+ * shared shell composition, so they live here and not on
+ * `lx.surface.openDeclared` — which consumes a declaration exactly as
+ * the host authored it, and therefore takes no options at all.
  */
-export type ShellOpenDeclaredOptions = OpenDeclaredOptions & {
+export type ShellOpenDeclaredOptions = {
+    /**
+     * Stable caller-owned identity for an additional native declaration
+     * instance. 1 to 128 UTF-8 bytes. Declarations without instantiable
+     * native providers reject it with `capability_missing`.
+     */
+    key?: string;
     /**
      * Open with a role other than the declaration's. Must be realizable by the
      * declared provider; a stable root rejects anything but `main`. Prefer this
@@ -1427,8 +1439,12 @@ export type SurfaceApi = {
     openPage(page: string, options?: OpenPageOptions): Promise<PageSurface>;
     /** Open external content in the in-app browser. */
     openUrl(url: string, options?: OpenUrlOptions): Promise<TabSurface>;
-    /** Open a surface the host declared in `lingxia.yaml`. */
-    openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface>;
+    /**
+     * Open a surface the host declared in `lingxia.yaml`, with the placement
+     * the declaration chose. Instance keys and placement overrides are shell
+     * composition; they live on `lx.shell.openDeclared`.
+     */
+    openDeclared(id: string): Promise<DeclaredSurface>;
     /**
      * The live handle for a surface this lxapp opened, by `key` or by `id`.
      * Removes the need to cache handles in order to reuse or close them.
@@ -1504,11 +1520,18 @@ export type SurfaceContext = {
 export type SurfaceEdge = 'left' | 'right' | 'top' | 'bottom';
 
 /**
- * A surface rejection. `instanceof SurfaceError` narrows it, and
- * `code` is a member of the exported union — never parse the message.
+ * A surface rejection. The runtime carries the surface code on
+ * `data.code` — `code` itself is the transport-level host code, shared
+ * with every other `lx` rejection — so read it with
+ * `surfaceErrorCode(error)` and never parse the message.
+ * ```ts
+ * catch (error) {
+ * if (surfaceErrorCode(error) === 'unsupported_placement') { … }
+ * }
+ * ```
  */
 export type SurfaceError = Error & {
-    readonly code: SurfaceErrorCode;
+    readonly data?: { readonly code?: SurfaceErrorCode };
 };
 
 /**
@@ -1636,13 +1659,14 @@ export type TabSurface = SurfaceBase & {
     readonly kind: 'tab';
     readonly realized: 'tab' | 'aside';
     /**
-     * `tab` when this handle owns exactly the tab it opened. `group` when
-     * compact browser chrome owns the tab strip, so `close()` dismisses the
-     * browser group rather than a single tab — a readable field instead of a
-     * platform-dependent `null`.
+     * `tab` when this handle owns exactly the tab it opened, and `close()` /
+     * `activate()` act on it. `group` when the browser chrome owns the tab
+     * strip: the content is open, but control belongs to that chrome, so both
+     * methods reject with `unsupported_placement`. Branch on this rather than
+     * on the old platform-dependent `null`.
      */
     readonly scope: 'tab' | 'group';
-    /** Bring this tab to the front of its browser. */
+    /** Bring this tab to the front of its browser. `scope: 'group'` rejects. */
     activate(): Promise<void>;
 };
 
@@ -2481,7 +2505,7 @@ declare global {
      * `lx.shell.openDeclared(id, options?)` — the declared surface, plus the
      * keyed multi-instance form and placement overrides. Home-lxapp only.
      */
-    openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface>;
+    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface>;
     /** `lx.shell.reconfigure(id, patch)` — re-place a live declared surface. */
     reconfigure(id: string, patch: ShellSurfacePatch): Promise<void>;
   }
@@ -2540,7 +2564,7 @@ declare global {
      * `lx.surface.openDeclared(id, options?)` — a surface the host declared in
      * `lingxia.yaml`, opened with the declaration's own presentation.
      */
-    openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface>;
+    openDeclared(id: string): Promise<DeclaredSurface>;
     /**
      * `lx.surface.get(keyOrId)` — the live handle for a surface this lxapp
      * opened, so no caller has to cache one in order to reuse or close it.

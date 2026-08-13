@@ -442,18 +442,6 @@ enum LxAppSurface {
             contentHost = windowContent
         }
 
-        if kind == kindWindow && chrome == chromeFull {
-            let dragStrip = WindowDragStrip(frame: .zero)
-            dragStrip.translatesAutoresizingMaskIntoConstraints = false
-            windowContent.addSubview(dragStrip, positioned: .above, relativeTo: nil)
-            NSLayoutConstraint.activate([
-                dragStrip.leadingAnchor.constraint(equalTo: windowContent.leadingAnchor),
-                dragStrip.trailingAnchor.constraint(equalTo: windowContent.trailingAnchor),
-                dragStrip.topAnchor.constraint(equalTo: windowContent.topAnchor),
-                dragStrip.heightAnchor.constraint(equalToConstant: fullChromeDragStripHeight),
-            ])
-        }
-
         let delegate = WindowDelegate(id: id, appId: appId)
         window?.contentView = windowContent
         window?.delegate = delegate
@@ -556,6 +544,10 @@ enum LxAppSurface {
         default:
             LXLog.error("unsupported surface content=\(content) id=\(id) app=\(appId) path=\(path) kind=\(kind)", category: "Surface", appId: appId, path: path)
             return false
+        }
+
+        if kind == kindWindow && chrome == chromeFull {
+            installFullChromeDragStrip(on: contentHost)
         }
 
         if closeButton {
@@ -1253,6 +1245,22 @@ enum LxAppSurface {
             window.backgroundColor = .windowBackgroundColor
         }
         return window
+    }
+
+    /// Installs `chrome: 'full'`'s drag strip *after* the page content, because
+    /// AppKit hit-tests the last-added sibling first and the page host pins to
+    /// every edge — adding it earlier is what left the previous attempt with an
+    /// unmovable window.
+    private static func installFullChromeDragStrip(on content: NSView) {
+        let dragStrip = WindowDragStrip(frame: .zero)
+        dragStrip.translatesAutoresizingMaskIntoConstraints = false
+        content.addSubview(dragStrip, positioned: .above, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            dragStrip.leadingAnchor.constraint(equalTo: content.leadingAnchor),
+            dragStrip.trailingAnchor.constraint(equalTo: content.trailingAnchor),
+            dragStrip.topAnchor.constraint(equalTo: content.topAnchor),
+            dragStrip.heightAnchor.constraint(equalToConstant: fullChromeDragStripHeight),
+        ])
     }
 
     private static func configureContentChrome(_ content: NSView, kind: Int32) {

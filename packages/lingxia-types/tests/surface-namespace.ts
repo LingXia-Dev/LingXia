@@ -37,6 +37,43 @@ async function urlResultCloses(): Promise<void> {
   await tab.activate();
 }
 
+// An ordered preference must not be defeated by an option that applies to only
+// one candidate — this is the one portable call the feature exists for.
+async function preferenceKeepsPerPlacementOptions(): Promise<"window" | "float"> {
+  const surface = await lx.surface.openPage("editor", {
+    as: ["window", "float"],
+    chrome: "full",
+    position: "bottom",
+    size: { width: "100%" },
+  });
+  return surface.realized;
+}
+
+// A float still takes a percentage size; the window/overlay split must not
+// collapse it to `number`.
+async function floatTakesPercentageSize(): Promise<void> {
+  await lx.surface.openPage("feedback", {
+    as: "float",
+    size: { width: "100%", height: "80%" },
+  });
+}
+
+// Instance keys and placement overrides are shell composition.
+// @ts-expect-error lx.surface.openDeclared consumes the declaration as authored
+lx.surface.openDeclared("terminal", { key: "project-a" });
+const shellDeclared: Promise<unknown> = lx.shell.openDeclared("terminal", {
+  key: "project-a",
+  as: "main",
+});
+
+// A builtin page's lifetime belongs to the shell.
+async function builtinReportsIdentityOnly(): Promise<string> {
+  const settings = await lx.shell.openBuiltin("settings");
+  // @ts-expect-error the shell owns a builtin page's visibility
+  settings.show;
+  return settings.id;
+}
+
 // An ordered preference degrades, and `realized` reports the outcome.
 async function orderedPreference(): Promise<"window" | "float"> {
   const surface = await lx.surface.openPage("inspector", { as: ["window", "float"] });
@@ -87,6 +124,10 @@ lx.onSurfaceContext;
 const unsubscribeContext: () => void = lx.surface.onContext(() => {});
 
 export type SurfaceNamespaceGate = [
+  typeof preferenceKeepsPerPlacementOptions,
+  typeof floatTakesPercentageSize,
+  typeof builtinReportsIdentityOnly,
+  typeof shellDeclared,
   typeof edgeToEdgeWindow,
   typeof fullChromeOffered,
   typeof conditionalOpenTypeChecks,
