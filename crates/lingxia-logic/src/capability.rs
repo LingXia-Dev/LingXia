@@ -14,6 +14,9 @@ use std::sync::Arc;
 /// Values `{ capability: 'surface', value: … }` accepts, in type order.
 const SURFACE_PLACEMENTS: &[&str] = &["main", "aside", "float", "window", "tab"];
 
+/// Window decorations `{ surface: 'window', chrome }` may ask about.
+const WINDOW_CHROMES: &[&str] = &["system", "full"];
+
 /// Declares the boolean capabilities: the JS key, the TS doc line, and the
 /// predicate that answers it.
 macro_rules! flag_capabilities {
@@ -75,10 +78,21 @@ fn self_update_supported(lxapp: &Arc<LxApp>) -> bool {
     lxapp.runtime.self_update_supported()
 }
 
-/// Answers `{ capability: 'surface', value: … }`. Only `aside` is
-/// width-dependent; `window` is a property of the host build and does not
-/// flicker as a window is resized.
-fn surface_supported(placement: &str, lxapp: &Arc<LxApp>) -> bool {
+/// Answers `{ capability: 'surface', value: … }`, optionally qualified by
+/// `chrome`. Only `aside` is width-dependent; `window` is a property of the
+/// host build and does not flicker as a window is resized.
+fn surface_supported(placement: &str, chrome: Option<&str>, lxapp: &Arc<LxApp>) -> bool {
+    if let Some(chrome) = chrome {
+        // `chrome` qualifies a window and nothing else. The caller has already
+        // rejected an unknown decoration, so this only has to refuse the
+        // decoration being asked about the wrong placement.
+        if placement != "window" {
+            return false;
+        }
+        if chrome == "full" && !crate::surface::window_full_chrome_available() {
+            return false;
+        }
+    }
     match placement {
         // Every host can put content in the main region or float it over one.
         "main" | "float" => true,
@@ -145,10 +159,24 @@ fn supports(ctx: JSContext, query: JSValue) -> JSResult<bool> {
     })?;
 
     if capability == "surface" {
-        if !has_exact_keys(&keys, &["capability", "value"]) {
+        let chrome = query.get_opt::<_, String>("chrome")?;
+        let expected: &[&str] = if chrome.is_some() {
+            &["capability", "value", "chrome"]
+        } else {
+            &["capability", "value"]
+        };
+        if !has_exact_keys(&keys, expected) {
             return Err(js_invalid_parameter_error(
-                "surface capability query requires exactly `capability` and `value`",
+                "surface capability query requires `capability` and `value`, and accepts only `chrome` besides",
             ));
+        }
+        if let Some(chrome) = chrome.as_deref()
+            && !WINDOW_CHROMES.contains(&chrome)
+        {
+            return Err(js_invalid_parameter_error(format!(
+                "unknown window chrome '{chrome}'; expected {}",
+                WINDOW_CHROMES.join(", ")
+            )));
         }
         let placement = query.get::<_, String>("value").map_err(|_| {
             js_invalid_parameter_error("surface capability `value` must be a string")
@@ -162,7 +190,7 @@ fn supports(ctx: JSContext, query: JSValue) -> JSResult<bool> {
         if !context_exposes_capability(&capability, terminal_settings) {
             return Ok(false);
         }
-        return Ok(surface_supported(&placement, &lxapp));
+        return Ok(surface_supported(&placement, chrome.as_deref(), &lxapp));
     }
 
     if !FLAG_KEYS.contains(&capability.as_str()) {
@@ -215,9 +243,13 @@ rong::js_api! {
         /// the url through the in-app browser's own chrome. Ask them to decide
         /// what to render, not whether to call.
         ///
+        /// `chrome` qualifies a window and only a window: it asks whether this
+        /// host can produce that decoration, not merely a window.
+        ///
         type LxCapabilityQuery = r###"{
     capability: 'surface';
     value: LxSurfaceCapability;
+    chrome?: WindowChrome;
 } | {
     capability: LxCapabilityFlag;
 }"###;

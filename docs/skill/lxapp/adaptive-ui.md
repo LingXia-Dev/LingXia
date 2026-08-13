@@ -33,6 +33,24 @@ uses the following ranges with platform-managed hysteresis:
 Content size class is scoped to the lxapp surface. It is not the shell size
 class. An aside inside an expanded desktop shell can receive `compact`.
 
+## Edge-to-edge windows
+
+`lx.surface.openPage(page, { as: 'window', chrome: 'full' })` runs the page to
+the window edge while the system keeps minimize, maximize, resize, and drag.
+The runtime owns a native drag strip across the top and publishes its height as
+`topInset` on the page-chrome snapshot, so the window stays movable whether or
+not the page cooperates — nothing is asked of the page, and there is no
+opt-in to forget.
+
+```css
+header {
+  padding-top: var(--lx-page-chrome-top-inset);
+}
+```
+
+`chrome` defaults to `'system'`, which is the standard title bar. Ask
+`lx.supports({ surface: 'window', chrome: 'full' })` before offering it.
+
 ## Subscribe in Logic
 
 Keep the authoritative value in Page Logic and replicate it to the View. Store

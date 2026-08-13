@@ -748,10 +748,13 @@ export type LxCapabilityFlag = 'terminal' | 'autostart' | 'notifications' | 'bro
  * docked region exists right now", while a compact layout still opens
  * the url through the in-app browser's own chrome. Ask them to decide
  * what to render, not whether to call.
+ * `chrome` qualifies a window and only a window: it asks whether this
+ * host can produce that decoration, not merely a window.
  */
 export type LxCapabilityQuery = {
     capability: 'surface';
     value: LxSurfaceCapability;
+    chrome?: WindowChrome;
 } | {
     capability: LxCapabilityFlag;
 };

@@ -353,11 +353,25 @@ Page({
         size,
       });
     }
+    if (verb === "window") {
+      // Edge-to-edge when the host build can keep the system controls; the
+      // page lays out under the runtime's drag strip via the page-chrome
+      // top inset, so it never has to opt in to stay movable.
+      const chrome = lx.supports({ surface: "window", chrome: "full" })
+        ? ("full" as const)
+        : ("system" as const);
+      return lx.surface.openPage("surface", {
+        as: "window",
+        chrome,
+        key: DEMO_SURFACE_KEY,
+        size,
+      });
+    }
     return lx.surface.openPage("surface", {
-      as: verb,
+      as: "float",
+      position: cfg.position ?? "center",
       key: DEMO_SURFACE_KEY,
       size,
-      ...(verb === "float" ? { position: cfg.position ?? "center" } : {}),
     });
   },
 

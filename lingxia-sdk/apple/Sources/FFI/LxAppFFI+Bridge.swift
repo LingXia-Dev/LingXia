@@ -141,7 +141,8 @@ extension LxApp {
         dismiss_on_outside: Bool,
         modal: Bool,
         ephemeral_web_data: Bool,
-        url_callback: Bool
+        url_callback: Bool,
+        chrome: Int32
     ) -> Bool {
         let idString = id.toString()
         let appIdString = appid.toString()
@@ -174,7 +175,8 @@ extension LxApp {
                 dismissOnOutside: dismiss_on_outside,
                 modal: modal,
                 ephemeralWebData: ephemeral_web_data,
-                urlCallback: url_callback
+                urlCallback: url_callback,
+                chrome: chrome
             )
         }
     }

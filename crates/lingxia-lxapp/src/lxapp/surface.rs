@@ -3,7 +3,7 @@ use lingxia_platform::Platform;
 use lingxia_platform::traits::ui::{
     ManagedSurfaceProvider, ManagedSurfaceProviderDestroyRequest, ManagedSurfaceProviderRequest,
     SurfaceContent, SurfaceKind, SurfacePosition, SurfacePresenter,
-    SurfaceRequest as PlatformSurfaceRequest, SurfaceRole as PlatformSurfaceRole,
+    SurfaceRequest as PlatformSurfaceRequest, SurfaceRole as PlatformSurfaceRole, WindowChrome,
 };
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -1099,6 +1099,8 @@ pub struct PageSurfaceRequest {
     pub role: lingxia_surface::Role,
     /// Overrides the interaction preset selected by the opening API.
     pub interaction: Option<lingxia_surface::SurfaceInteraction>,
+    /// Window decoration. Only `SurfaceKind::Window` reads it.
+    pub chrome: WindowChrome,
 }
 
 #[derive(Debug, Clone)]
@@ -1116,6 +1118,9 @@ pub struct PageSurface {
     pub role: lingxia_surface::Role,
     pub position: SurfacePosition,
     pub presentation: String,
+    /// Window decoration this surface was opened with. Drives the page-chrome
+    /// top inset so a `chrome: 'full'` page can lay out under the drag strip.
+    pub chrome: WindowChrome,
 }
 
 /// Resolved identity and declaration-owned role of a managed native surface.
@@ -1328,6 +1333,9 @@ impl Drop for UrlCallbackSurface {
 
 #[derive(Debug, Clone)]
 pub(crate) struct SurfaceRecord {
+    /// Window decoration, so the page-chrome layout can publish the drag
+    /// strip's height to the page hosted inside.
+    pub chrome: WindowChrome,
     pub owner_page_instance_id: Option<String>,
     /// The page instance hosted inside this surface (when content is a page).
     /// Used to close the surface when its inner page is disposed (e.g. SDK
@@ -1476,6 +1484,7 @@ impl LxApp {
                 role: present_role,
                 position: present_position,
                 presentation: surface_presentation(present_kind, present_role, overlay).to_string(),
+                chrome: request.chrome,
             });
         }
 
@@ -1483,6 +1492,7 @@ impl LxApp {
             state.surfaces.lock().unwrap().insert(
                 id.clone(),
                 SurfaceRecord {
+                    chrome: request.chrome,
                     owner_page_instance_id: owner_pid.clone(),
                     content_page_instance_id,
                     content,
@@ -1510,6 +1520,7 @@ impl LxApp {
             position: present_position,
             role: present_role.into(),
             interaction,
+            chrome: request.chrome,
             ephemeral_web_data,
             url_callback,
         });
@@ -1552,6 +1563,7 @@ impl LxApp {
             role: present_role,
             position: present_position,
             presentation: surface_presentation(present_kind, present_role, overlay).to_string(),
+            chrome: request.chrome,
         })
     }
 
@@ -1608,6 +1620,7 @@ impl LxApp {
             state.surfaces.lock().unwrap().insert(
                 id.clone(),
                 SurfaceRecord {
+                    chrome: request.chrome,
                     owner_page_instance_id: owner_pid,
                     content_page_instance_id,
                     content,
@@ -1637,6 +1650,7 @@ impl LxApp {
             position: SurfacePosition::Center,
             role: PlatformSurfaceRole::Main,
             interaction,
+            chrome: request.chrome,
             // Window surfaces host this lxapp's own pages, never external web.
             ephemeral_web_data: false,
             url_callback: false,
@@ -1660,6 +1674,7 @@ impl LxApp {
             role: lingxia_surface::Role::Main,
             position: SurfacePosition::Center,
             presentation: "window".to_string(),
+            chrome: request.chrome,
         })
     }
 
@@ -2253,6 +2268,28 @@ impl LxApp {
             .flatten()
     }
 
+    /// Height of the drag strip a `chrome: 'full'` window keeps above `page`.
+    /// The runtime owns that strip, so the page can lay out beneath it without
+    /// being able to remove it.
+    pub(crate) fn full_chrome_drag_strip_inset(&self, page: &PageInstance) -> f64 {
+        let instance_id = page.instance_id_string();
+        let Ok(state) = self.state.lock() else {
+            return 0.0;
+        };
+        let surfaces = state
+            .surfaces
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        surfaces
+            .values()
+            .any(|record| {
+                record.chrome == WindowChrome::Full
+                    && record.content_page_instance_id.as_deref() == Some(instance_id.as_str())
+            })
+            .then(full_chrome_drag_strip_height)
+            .unwrap_or(0.0)
+    }
+
     pub fn shell_surface_visible(&self, surface_id: &str) -> Option<bool> {
         let surface_id = surface_id.trim();
         (!surface_id.is_empty())
@@ -2645,6 +2682,12 @@ fn validate_surface_interaction(
 
 pub(crate) type SurfaceRecords = HashMap<String, SurfaceRecord>;
 
+/// Matches `LxAppSurface.fullChromeDragStripHeight` on macOS and the Windows
+/// caption height: one strip height, published to the page as a chrome inset.
+pub(crate) fn full_chrome_drag_strip_height() -> f64 {
+    28.0
+}
+
 /// Map a core-arbitrated role (+ resolved edge) back to the platform present
 /// parameters, so native presentation follows the core's decision. A float keeps
 /// its requested position (popup at that edge/center); an aside docks at its
@@ -2872,6 +2915,7 @@ mod tests {
             role: crate::SurfaceRole::Main,
             position: SurfacePosition::Center,
             presentation: "window".to_string(),
+            chrome: WindowChrome::System,
         };
         let role: crate::SurfaceRole = surface.role;
         assert_eq!(role, crate::SurfaceRole::Main);
@@ -2958,6 +3002,7 @@ mod tests {
 
     fn url_record(url_callback: bool, ephemeral_web_data: bool) -> SurfaceRecord {
         SurfaceRecord {
+            chrome: WindowChrome::System,
             owner_page_instance_id: Some("owner".to_string()),
             content_page_instance_id: None,
             content: SurfaceContent::Url,

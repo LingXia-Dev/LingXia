@@ -9,6 +9,13 @@ export interface PageChromeRect {
 
 export interface PageChromeLayoutSnapshot {
   readonly revision: number;
+  /**
+   * Height of the runtime-owned drag strip across the top of a
+   * `chrome: 'full'` window. Zero everywhere else. Lay content out beneath it
+   * the same way you already do for the capsule — the strip stays draggable
+   * whether or not the page cooperates.
+   */
+  readonly topInset: number;
   readonly bottomInset: number;
   readonly capsuleRect: PageChromeRect | null;
   readonly capsuleInlineEndInset: number;
@@ -34,6 +41,7 @@ declare global {
 
 const initialLayout = Object.freeze<PageChromeLayoutSnapshot>({
   revision: 0,
+  topInset: 0,
   bottomInset: 0,
   capsuleRect: null,
   capsuleInlineEndInset: 0,
@@ -48,6 +56,10 @@ export function shouldApplyPageChromeRevision(
 
 function projectPageChromeLayout(layout: PageChromeLayoutSnapshot): void {
   const root = document.documentElement;
+  root?.style.setProperty(
+    "--lx-page-chrome-top-inset",
+    `${layout.topInset}px`,
+  );
   root?.style.setProperty(
     "--lx-page-chrome-bottom-inset",
     `${layout.bottomInset}px`,
