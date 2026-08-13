@@ -174,6 +174,26 @@ Page({
 | `onShow()` | Lifecycle — page becomes visible (including back-navigation). |
 | `lx.*` | Global platform APIs (e.g. `lx.navigationBar.update()`, `lx.createVideoContext()`). |
 
+### Page lifecycle
+
+| Hook | When it fires |
+| --- | --- |
+| `onLoad(options)` | Entering the page. `options` carries the query params. |
+| `onShow()` | Becoming visible — on entry, and again every time it comes back. |
+| `onReady()` | The page's document has finished rendering. |
+| `onHide()` | Another page covered it, or the lxapp went to the background. |
+| `onUnload()` | The page left the stack (`lx.navigateBack`, `lx.redirectTo`). |
+
+**Leaving a page ends that page instance.** After `onUnload`, entering the same
+page again starts a fresh one: `data` is back to what `Page({ data })` declares,
+and the View is a newly rendered document — a dialog left open, a scroll
+position, or anything else the page accumulated is gone. Put whatever must
+survive in `lx.getStorage()` or in `App({})`.
+
+`onHide` is not `onUnload`. A page covered by another page, or backgrounded with
+the lxapp, keeps its instance and its `data`, and simply gets `onShow` again on
+return.
+
 ### Private helpers
 
 Functions starting with `_` are private — they are **not** exposed to the View. Use them for internal logic:
