@@ -1,19 +1,24 @@
 use lxapp::lifecycle::key_events;
-use lxapp::{LxApp, register_app_handler, unregister_app_handler};
+use lxapp::{LxApp, register_app_handler, unregister_app_handler_token};
 use rong::{JSContext, JSFunc, JSResult};
+use std::cell::Cell;
 
 const KEY_DOWN_EVENT: &str = "KeyDown";
 const KEY_UP_EVENT: &str = "KeyUp";
 
 /// Subscribes to key-down events and returns the unsubscribe fn.
 fn on_key_down(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
-    register_app_handler(&ctx, KEY_DOWN_EVENT, callback.clone())?;
+    let token = register_app_handler(&ctx, KEY_DOWN_EVENT, callback)?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     key_events::inc_key_down(&lxapp.appid, lxapp.session_id());
 
     let off_ctx = ctx.clone();
+    let unsubscribed = Cell::new(false);
     JSFunc::new(&ctx, move || {
-        let remaining = unregister_app_handler(&off_ctx, KEY_DOWN_EVENT, Some(callback.clone()));
+        if unsubscribed.replace(true) {
+            return;
+        }
+        let remaining = unregister_app_handler_token(&off_ctx, KEY_DOWN_EVENT, token);
         if let Ok(lxapp) = LxApp::from_ctx(&off_ctx) {
             key_events::set_key_down(&lxapp.appid, lxapp.session_id(), remaining);
         }
@@ -22,13 +27,17 @@ fn on_key_down(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
 
 /// Subscribes to key-up events and returns the unsubscribe fn.
 fn on_key_up(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
-    register_app_handler(&ctx, KEY_UP_EVENT, callback.clone())?;
+    let token = register_app_handler(&ctx, KEY_UP_EVENT, callback)?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     key_events::inc_key_up(&lxapp.appid, lxapp.session_id());
 
     let off_ctx = ctx.clone();
+    let unsubscribed = Cell::new(false);
     JSFunc::new(&ctx, move || {
-        let remaining = unregister_app_handler(&off_ctx, KEY_UP_EVENT, Some(callback.clone()));
+        if unsubscribed.replace(true) {
+            return;
+        }
+        let remaining = unregister_app_handler_token(&off_ctx, KEY_UP_EVENT, token);
         if let Ok(lxapp) = LxApp::from_ctx(&off_ctx) {
             key_events::set_key_up(&lxapp.appid, lxapp.session_id(), remaining);
         }

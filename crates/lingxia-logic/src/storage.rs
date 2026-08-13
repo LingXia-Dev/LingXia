@@ -5,6 +5,8 @@ use rong::{
     FromJSValue, IntoJSValue, JSContext, JSContextService, JSFunc, JSObject, JSResult, Promise,
 };
 use rong_storage::{Storage as RongStorage, StorageOptions};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 const STORAGE_MAX_KEY_BYTES: u32 = 1024; // match module defaults
 const STORAGE_MAX_VALUE_BYTES: u32 = 5 * 1024 * 1024;
@@ -21,6 +23,10 @@ fn storage_options() -> StorageOptions {
 #[derive(Clone)]
 struct LxStorageService {
     storage: RongStorage,
+    /// The JS object handed to `lx.getStorage()`. Cached so repeated calls
+    /// return the same object — `getStorage() === getStorage()` — and so the
+    /// shimmed `list` is installed exactly once per context.
+    exposed: Rc<RefCell<Option<JSObject>>>,
 }
 
 impl JSContextService for LxStorageService {
@@ -47,12 +53,16 @@ fn collect_iterator_keys(iterator: &JSObject) -> JSResult<Vec<String>> {
 
 /// The storage module resolves `list` to a JS iterator; `Storage.list` is an
 /// array, so shadow the prototype method on the instance.
-fn install_list_array_shim(ctx: &JSContext, storage: &JSObject) -> JSResult<()> {
-    let inner: JSFunc = storage.get("list")?;
-    let target = storage.clone();
+///
+/// `backing` is a second instance of the same store, deliberately not the
+/// object the shim is installed on: capturing that object would make it
+/// reachable only through its own property, and a Rust closure is opaque to
+/// the JS cycle collector, so the pair could never be reclaimed.
+fn install_list_array_shim(ctx: &JSContext, storage: &JSObject, backing: JSObject) -> JSResult<()> {
+    let inner: JSFunc = backing.get("list")?;
     let shim = JSFunc::new(ctx, move |prefix: Optional<String>| {
         let inner = inner.clone();
-        let target = target.clone();
+        let target = backing.clone();
         async move {
             let pending: Promise = match prefix.0 {
                 Some(prefix) => inner.call(Some(target), (prefix,))?,
@@ -73,7 +83,7 @@ fn get_storage(ctx: JSContext) -> JSResult<JSObject> {
     // If a Storage instance has already been created for this JSContext,
     // return a clone so getStorage() can be called multiple times safely.
     if let Some(existing) = ctx.get_service::<LxStorageService>() {
-        return expose_storage(&ctx, existing.storage.clone());
+        return expose_storage(&ctx, existing);
     }
 
     let lxapp = LxApp::from_ctx(&ctx)?;
@@ -92,15 +102,24 @@ fn get_storage(ctx: JSContext) -> JSResult<JSObject> {
     // - When JSContext is dropped, JSContextService::on_shutdown is invoked
     //   and LxStorageService is dropped, closing the database.
     ctx.set_service::<LxStorageService>(LxStorageService {
-        storage: storage.clone(),
+        storage,
+        exposed: Rc::new(RefCell::new(None)),
     });
+    let service = ctx
+        .get_service::<LxStorageService>()
+        .expect("storage service was inserted above");
 
-    expose_storage(&ctx, storage)
+    expose_storage(&ctx, service)
 }
 
-fn expose_storage(ctx: &JSContext, storage: RongStorage) -> JSResult<JSObject> {
-    let object = JSObject::from_js_value(ctx, storage.into_js_value(ctx))?;
-    install_list_array_shim(ctx, &object)?;
+fn expose_storage(ctx: &JSContext, service: &LxStorageService) -> JSResult<JSObject> {
+    if let Some(existing) = service.exposed.borrow().as_ref() {
+        return Ok(existing.clone());
+    }
+    let object = JSObject::from_js_value(ctx, service.storage.clone().into_js_value(ctx))?;
+    let backing = JSObject::from_js_value(ctx, service.storage.clone().into_js_value(ctx))?;
+    install_list_array_shim(ctx, &object, backing)?;
+    *service.exposed.borrow_mut() = Some(object.clone());
     Ok(object)
 }
 

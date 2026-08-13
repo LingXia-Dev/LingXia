@@ -2,9 +2,12 @@ use crate::i18n::js_error_from_platform_error;
 use crate::i18n::js_internal_error;
 use lingxia_messaging::{CallbackResult, register_handler, remove_callback};
 use lingxia_platform::traits::network::Network;
-use lxapp::{LxApp, info, publish_app_event, register_app_handler, unregister_app_handler, warn};
+use lxapp::{
+    LxApp, info, publish_app_event, register_app_handler, unregister_app_handler_token, warn,
+};
 use rong::{IntoJSObject, JSContext, JSFunc, JSResult, RongJSError};
 use serde_json::{Value, json};
+use std::cell::Cell;
 use std::collections::BTreeSet;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
@@ -210,15 +213,18 @@ fn clear_network_change_callback(ctx: &JSContext) -> JSResult<()> {
 
 /// Subscribes to network changes and returns the unsubscribe fn.
 fn on_network_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
-    register_app_handler(&ctx, NETWORK_CHANGE_EVENT, callback.clone())?;
+    let token = register_app_handler(&ctx, NETWORK_CHANGE_EVENT, callback)?;
     if let Err(err) = ensure_network_change_callback(&ctx) {
-        let _ = unregister_app_handler(&ctx, NETWORK_CHANGE_EVENT, Some(callback));
+        let _ = unregister_app_handler_token(&ctx, NETWORK_CHANGE_EVENT, token);
         return Err(err);
     }
     let off_ctx = ctx.clone();
+    let unsubscribed = Cell::new(false);
     JSFunc::new(&ctx, move || {
-        let remaining =
-            unregister_app_handler(&off_ctx, NETWORK_CHANGE_EVENT, Some(callback.clone()));
+        if unsubscribed.replace(true) {
+            return;
+        }
+        let remaining = unregister_app_handler_token(&off_ctx, NETWORK_CHANGE_EVENT, token);
         if remaining == 0 {
             let _ = clear_network_change_callback(&off_ctx);
         }

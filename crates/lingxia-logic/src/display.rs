@@ -3,9 +3,10 @@
 use crate::i18n::{js_error_from_platform_error, js_invalid_parameter_error};
 use lingxia_platform::traits::ui::UIUpdate;
 use lxapp::{
-    LxApp, OrientationConfig, publish_app_event, register_app_handler, unregister_app_handler,
+    LxApp, OrientationConfig, publish_app_event, register_app_handler, unregister_app_handler_token,
 };
 use rong::{JSContext, JSFunc, JSObject, JSResult};
+use std::cell::Cell;
 
 const DEVICE_ORIENTATION_CHANGE_EVENT: &str = "DeviceOrientationChange";
 const ORIENTATION_PORTRAIT: &str = "portrait";
@@ -72,19 +73,19 @@ fn on_device_orientation_change(ctx: JSContext, callback: JSFunc) -> JSResult<JS
     let value = normalize_orientation_value(current.to_label())
         .ok_or_else(|| js_invalid_parameter_error("Current orientation unavailable"))?;
 
-    register_app_handler(&ctx, DEVICE_ORIENTATION_CHANGE_EVENT, callback.clone())?;
+    let token = register_app_handler(&ctx, DEVICE_ORIENTATION_CHANGE_EVENT, callback.clone())?;
 
     let payload = JSObject::new(&ctx);
     payload.set("value", value)?;
     let _ = callback.call::<_, ()>(None, (payload,));
 
     let off_ctx = ctx.clone();
+    let unsubscribed = Cell::new(false);
     JSFunc::new(&ctx, move || {
-        unregister_app_handler(
-            &off_ctx,
-            DEVICE_ORIENTATION_CHANGE_EVENT,
-            Some(callback.clone()),
-        );
+        if unsubscribed.replace(true) {
+            return;
+        }
+        unregister_app_handler_token(&off_ctx, DEVICE_ORIENTATION_CHANGE_EVENT, token);
     })
 }
 

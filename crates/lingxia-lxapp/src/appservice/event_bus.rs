@@ -2,7 +2,7 @@ use crate::{error, info, warn};
 use rong::{
     JSContext, JSContextService, JSFunc, JSObject, JSResult, RongJSError, error::HostError,
 };
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 /// Internal scope marker. The page scope carries the page INSTANCE id, so
@@ -25,10 +25,19 @@ pub(crate) struct AppBusEvent {
 #[derive(Default)]
 pub(crate) struct EventBusRegistry {
     handlers: RefCell<HashMap<Scope, Vec<HandlerEntry>>>,
+    next_token: Cell<u64>,
 }
+
+/// Identifies one registration. An unsubscribe handle carries its token so it
+/// removes exactly the entry it created — registering the same function twice
+/// yields two independent subscriptions, and a stale handle can never take out
+/// a later one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HandlerToken(u64);
 
 #[derive(Clone)]
 struct HandlerEntry {
+    token: HandlerToken,
     event_name: String,
     callback: JSFunc,
 }
@@ -61,7 +70,11 @@ pub(crate) fn clear_page(ctx: &JSContext, page_instance_id: &str) {
 }
 
 /// Register an app-scoped handler.
-pub fn register_app_handler(ctx: &JSContext, event_name: &str, callback: JSFunc) -> JSResult<()> {
+pub fn register_app_handler(
+    ctx: &JSContext,
+    event_name: &str,
+    callback: JSFunc,
+) -> JSResult<HandlerToken> {
     if event_name.trim().is_empty() {
         return Err(RongJSError::from(HostError::new(
             rong::error::E_INTERNAL,
@@ -69,19 +82,49 @@ pub fn register_app_handler(ctx: &JSContext, event_name: &str, callback: JSFunc)
         )));
     }
 
+    let registry = registry(ctx);
+    let token = HandlerToken(registry.next_token.get());
+    registry.next_token.set(token.0 + 1);
     let entry = HandlerEntry {
+        token,
         event_name: event_name.to_string(),
         callback,
     };
 
-    let registry = registry(ctx);
     registry
         .handlers
         .borrow_mut()
         .entry(Scope::App)
         .or_default()
         .push(entry);
-    Ok(())
+    Ok(token)
+}
+
+/// Remove exactly the app-scoped registration `token` created. Returns the
+/// remaining handler count for that event, so a caller can tear down its
+/// native listener when the last subscription goes.
+pub fn unregister_app_handler_token(
+    ctx: &JSContext,
+    event_name: &str,
+    token: HandlerToken,
+) -> usize {
+    if event_name.trim().is_empty() {
+        return 0;
+    }
+    let registry = registry(ctx);
+    let mut remaining = 0usize;
+    registry.handlers.borrow_mut().retain(|scope, entries| {
+        if !matches!(scope, Scope::App) {
+            return true;
+        }
+        entries.retain(|handler| handler.token != token);
+        remaining += entries
+            .iter()
+            .filter(|handler| handler.event_name == event_name)
+            .count();
+        !entries.is_empty()
+    });
+    remaining
 }
 
 /// Unregister an app-scoped handler by event name.
@@ -115,6 +158,39 @@ pub fn unregister_app_handler(
     remaining
 }
 
+#[cfg(test)]
+mod token_tests {
+    use super::*;
+
+    /// Two subscriptions on one function are independent, and a token removes
+    /// exactly its own entry — the guarantee an unsubscribe handle makes.
+    #[test]
+    fn a_token_removes_only_its_own_registration() {
+        let registry = EventBusRegistry::default();
+        let mut next = || {
+            let token = HandlerToken(registry.next_token.get());
+            registry.next_token.set(token.0 + 1);
+            token
+        };
+        let first = next();
+        let second = next();
+        assert_ne!(first, second);
+
+        let mut entries = vec![("evt", first), ("evt", second), ("other", next())];
+        // Mirrors `unregister_app_handler_token`'s retain + remaining count.
+        entries.retain(|(_, token)| *token != first);
+        let remaining = entries.iter().filter(|(name, _)| *name == "evt").count();
+        assert_eq!(remaining, 1, "the sibling subscription must survive");
+
+        entries.retain(|(_, token)| *token != first);
+        assert_eq!(
+            entries.iter().filter(|(name, _)| *name == "evt").count(),
+            1,
+            "replaying a spent token must not remove anything else"
+        );
+    }
+}
+
 /// Register a page-scoped handler (page_path required).
 pub fn register_page_handler(
     ctx: &JSContext,
@@ -135,12 +211,15 @@ pub fn register_page_handler(
         )));
     }
 
+    let registry = registry(ctx);
+    let token = HandlerToken(registry.next_token.get());
+    registry.next_token.set(token.0 + 1);
     let entry = HandlerEntry {
+        token,
         event_name: event_name.to_string(),
         callback,
     };
 
-    let registry = registry(ctx);
     registry
         .handlers
         .borrow_mut()
