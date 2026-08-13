@@ -634,11 +634,13 @@ impl PageInstance {
         self.inner.state.lock().ok().map(|state| state.clone())
     }
 
+    // `onReady` is deliberately untouched here: it belongs to the rendered
+    // document, not to the logical load. A cached instance that re-enters
+    // without a document reload has nothing new to be ready about.
     fn request_on_load(state: &mut PageState) {
         state.load_requested = true;
         state.on_load_fired = false;
         state.on_show_fired = false;
-        state.on_ready_fired = false;
     }
 
     fn should_reset_lifecycle_on_attach(current_webview_is_same: Option<bool>) -> bool {
@@ -670,7 +672,6 @@ impl PageInstance {
             state.load_requested = false;
             state.on_load_fired = true;
             state.on_show_fired = false;
-            state.on_ready_fired = false;
         }
 
         // Weixin ordering for the first visible load is Load -> Show -> Ready.
@@ -1777,6 +1778,52 @@ mod tests {
         assert!(state.on_load_fired);
         assert!(state.on_show_fired);
         assert!(state.on_ready_fired);
+    }
+
+    #[test]
+    fn reentering_a_cached_page_does_not_refire_ready_without_a_reload() {
+        let mut state = test_page_state();
+        state.bridge_ready = true;
+        state.show_requested = true;
+        state.render_status = PageRenderStatus::Finished;
+        PageInstance::request_on_load(&mut state);
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut Vec::new());
+        assert!(state.on_ready_fired);
+
+        // Re-entry without a document reload: load and show repeat, ready does not.
+        let mut events = Vec::new();
+        state.show_requested = true;
+        PageInstance::request_on_load(&mut state);
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+
+        assert_eq!(
+            events,
+            vec![
+                (PageLifecycleEvent::OnLoad, Some("{}".to_string())),
+                (PageLifecycleEvent::OnShow, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_reset_page_fires_ready_again_for_the_new_document() {
+        let mut state = test_page_state();
+        state.bridge_ready = true;
+        state.show_requested = true;
+        state.render_status = PageRenderStatus::Finished;
+        PageInstance::request_on_load(&mut state);
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut Vec::new());
+
+        // A reset reloads the document, so the next render is ready-worthy.
+        PageInstance::reset_webview_lifecycle_state(&mut state);
+        state.bridge_ready = true;
+        state.show_requested = true;
+        state.render_status = PageRenderStatus::Finished;
+        PageInstance::request_on_load(&mut state);
+        let mut events = Vec::new();
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+
+        assert!(events.contains(&(PageLifecycleEvent::OnReady, None)));
     }
 
     #[test]

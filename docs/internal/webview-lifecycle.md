@@ -496,7 +496,9 @@ Platform hosts decide *when* to discard:
 `dispatch_lifecycle_event()` enforces ordering:
 - `OnLoad` is ignored before render starts.
 - First-load / re-navigation order: `OnLoad` (query-aware) → `OnShow`
-  (visibility) → `OnReady` (after render finished, once per logical load).
+  (visibility) → `OnReady` (after render finished, once per rendered document —
+  a re-navigation onto a cached instance repeats `OnLoad`/`OnShow` but not
+  `OnReady`, because nothing re-rendered).
 - `OnHide` on visibility loss; `OnUnload` on disposal or on leaving the stack.
 
 Browser-profile WebViews only participate in this state machine when their
