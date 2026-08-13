@@ -49,7 +49,7 @@ pub(crate) mod event_bus {
 #[cfg(not(feature = "js-appservice"))]
 mod no_js_runtime {
     use crate::appservice::event_bus::AppBusEvent;
-    use crate::lifecycle::{AppServiceEvent, PageServiceEvent};
+    use crate::lifecycle::{AppServiceEvent, PageLifecycleEvent};
     use crate::{LxAppError, info};
     use std::sync::Arc;
     use tokio::sync::oneshot::Sender;
@@ -133,7 +133,7 @@ mod no_js_runtime {
             _lxapp: Arc<crate::lxapp::LxApp>,
             _path: String,
             _page_instance_id: Option<String>,
-            _event: PageServiceEvent,
+            _event: PageLifecycleEvent,
             _args: Option<String>,
         ) -> Result<(), LxAppError> {
             Ok(())

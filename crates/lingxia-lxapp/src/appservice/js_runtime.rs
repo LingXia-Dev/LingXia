@@ -28,7 +28,7 @@ pub(crate) mod event_bus;
 
 #[path = "page.rs"]
 mod page;
-use crate::lifecycle::PageServiceEvent;
+use crate::lifecycle::PageLifecycleEvent;
 pub use page::PageSvc;
 
 #[path = "plugin.rs"]
@@ -135,7 +135,7 @@ pub(crate) enum ServiceMessage {
         lxapp: Arc<LxApp>,
         path: String,
         page_instance_id: Option<String>,
-        event: PageServiceEvent,
+        event: PageLifecycleEvent,
         args: Option<String>,
     },
     // Native -> JS event dispatch via event bus (e.g., video context)

@@ -137,7 +137,7 @@ pub struct PageState {
     // PageInstance(webview) render status
     render_status: PageRenderStatus,
     // page lifecycle event
-    event: PageLifecycleEvent,
+    event: Option<PageLifecycleEvent>,
     /// Tracks if the UI has requested to show this page. Handles onShow arriving before onLoad.
     show_requested: bool,
     /// Tracks whether the current logical navigation still needs onLoad.
@@ -354,7 +354,7 @@ impl PageInstance {
             (PageConfig::default(), None)
         };
         PageState {
-            event: PageLifecycleEvent::Unknown,
+            event: None,
             render_status: PageRenderStatus::Unstarted,
             show_requested: false,
             load_requested: false,
@@ -648,7 +648,7 @@ impl PageInstance {
     }
 
     fn reset_webview_lifecycle_state(state: &mut PageState) {
-        let is_currently_visible = state.event == PageLifecycleEvent::OnShow;
+        let is_currently_visible = state.event == Some(PageLifecycleEvent::OnShow);
         state.render_status = PageRenderStatus::Unstarted;
         state.show_requested = is_currently_visible;
         state.load_requested = false;
@@ -678,7 +678,7 @@ impl PageInstance {
         if state.on_load_fired && state.show_requested && !state.on_show_fired {
             events_to_fire.push((PageLifecycleEvent::OnShow, None));
             state.on_show_fired = true;
-            state.event = PageLifecycleEvent::OnShow;
+            state.event = Some(PageLifecycleEvent::OnShow);
         }
 
         if state.on_load_fired
@@ -706,9 +706,9 @@ impl PageInstance {
             // PageInstance can be reused after OnUnload without a fresh bridge-ready.
             // Real WebView/document teardown still clears this through reset.
         }
-        if state.event != event {
+        if state.event != Some(event) {
             events_to_fire.push((event, None));
-            state.event = event;
+            state.event = Some(event);
             // Reset on_show_fired when the page is hidden, to allow onShow to fire again on re-entry.
             state.on_show_fired = false;
         }
@@ -753,26 +753,11 @@ impl PageInstance {
                 _ => {}
             }
 
-            let page_event = match event {
-                PageLifecycleEvent::OnLoad => crate::lifecycle::PageServiceEvent::OnLoad,
-                PageLifecycleEvent::OnShow => crate::lifecycle::PageServiceEvent::OnShow,
-                PageLifecycleEvent::OnReady => crate::lifecycle::PageServiceEvent::OnReady,
-                PageLifecycleEvent::OnHide => crate::lifecycle::PageServiceEvent::OnHide,
-                PageLifecycleEvent::OnUnload => crate::lifecycle::PageServiceEvent::OnUnload,
-                PageLifecycleEvent::OnPullDownRefresh => {
-                    crate::lifecycle::PageServiceEvent::OnPullDownRefresh
-                }
-                PageLifecycleEvent::Unknown => {
-                    // Skip unknown
-                    continue;
-                }
-            };
-
             if let Err(e) = lxapp.executor.call_page_service_event(
                 lxapp.clone(),
                 path.clone(),
                 Some(self.instance_id_string()),
-                page_event,
+                event,
                 query,
             ) {
                 error!("Failed to call {}: {}", String::from(event), e)
@@ -945,7 +930,7 @@ impl PageInstance {
         };
         let lifecycle = state
             .as_ref()
-            .map(|state| state.event.as_str())
+            .and_then(|state| state.event.map(|event| event.as_str()))
             .unwrap_or("unknown");
         let ready = state.as_ref().is_some_and(|state| state.on_ready_fired);
         let query = state
@@ -968,7 +953,7 @@ impl PageInstance {
         self.inner
             .state
             .lock()
-            .is_ok_and(|state| state.event == PageLifecycleEvent::OnUnload)
+            .is_ok_and(|state| state.event == Some(PageLifecycleEvent::OnUnload))
     }
 
     pub(crate) fn mark_webview_ready(&self, result: Result<(), String>) {
@@ -1645,7 +1630,7 @@ mod tests {
 
     fn test_page_state() -> PageState {
         PageState {
-            event: PageLifecycleEvent::Unknown,
+            event: None,
             render_status: PageRenderStatus::Unstarted,
             show_requested: false,
             load_requested: false,
@@ -1829,7 +1814,7 @@ mod tests {
     #[test]
     fn reset_webview_lifecycle_state_does_not_keep_stale_hidden_show_request() {
         let mut state = test_page_state();
-        state.event = PageLifecycleEvent::OnHide;
+        state.event = Some(PageLifecycleEvent::OnHide);
         state.show_requested = true;
         state.load_requested = true;
         state.bridge_ready = true;
@@ -1852,7 +1837,7 @@ mod tests {
     #[test]
     fn reset_webview_lifecycle_state_preserves_current_visible_intent() {
         let mut state = test_page_state();
-        state.event = PageLifecycleEvent::OnShow;
+        state.event = Some(PageLifecycleEvent::OnShow);
 
         PageInstance::reset_webview_lifecycle_state(&mut state);
 

@@ -47,7 +47,7 @@ pub use delegate::{LxAppDelegate, LxAppUiEventType};
 pub use error::LxAppError;
 pub use lifecycle::{
     AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,
-    LxAppLifecycleEvent, PageLifecycleEvent, PageServiceEvent,
+    PageLifecycleEvent,
 };
 pub use lingxia_surface;
 pub use lingxia_surface::{FloatDismiss, SurfaceInteraction};

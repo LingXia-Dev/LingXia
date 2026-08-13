@@ -4,7 +4,7 @@ use crate::appservice::js_runtime::{
     lxapp_service_handler, restart_app_svc, shutdown_app_context, terminate_app_svc,
 };
 use crate::lifecycle::AppServiceEvent;
-use crate::lifecycle::PageServiceEvent;
+use crate::lifecycle::PageLifecycleEvent;
 use crate::{LxAppError, error, info};
 
 use rong::{JSContext, Rong, RongJS, TaskHandle, TaskMessage, Worker};
@@ -416,7 +416,7 @@ impl LxAppWorkers {
         lxapp: Arc<crate::lxapp::LxApp>,
         path: String,
         page_instance_id: Option<String>,
-        event: PageServiceEvent,
+        event: PageLifecycleEvent,
         args: Option<String>,
     ) -> Result<(), LxAppError> {
         self.sender.send(ServiceMessage::CallPageSvcEvent {

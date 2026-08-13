@@ -1,4 +1,4 @@
-use crate::PageServiceEvent;
+use crate::PageLifecycleEvent;
 use crate::bridge::{
     BRIDGE_CANCELED, BRIDGE_INTERNAL_ERROR, BRIDGE_METHOD_NOT_FOUND, BRIDGE_TOPIC_NOT_FOUND,
     PageBridge, RpcError, ViewTransport,
@@ -1106,7 +1106,7 @@ impl PageSvc {
     pub(crate) async fn call_page_event(
         &self,
         ctx: &JSContext,
-        event: PageServiceEvent,
+        event: PageLifecycleEvent,
         args: Option<&str>,
     ) -> JSResult<()> {
         if let Some(js_func) = self.functions.get(event.as_str()) {
