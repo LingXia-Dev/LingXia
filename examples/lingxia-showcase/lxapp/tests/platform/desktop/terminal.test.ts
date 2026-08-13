@@ -46,8 +46,7 @@ desktopTerminalTest('publishes and mutates the native nested pane tree without d
   const surfaceId = await app.eval({
     timeoutMs: 20_000,
     script: `
-      const handle = await lx.openSurface({
-        surface: 'terminal',
+      const handle = await lx.shell.openDeclared('terminal', {
         key: ${JSON.stringify(token)},
         as: 'main',
       });
@@ -112,8 +111,7 @@ desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', asy
   const surfaceId = await app.eval({
     timeoutMs: 20_000,
     script: `
-      const handle = await lx.openSurface({
-        surface: 'terminal',
+      const handle = await lx.shell.openDeclared('terminal', {
         key: ${JSON.stringify(token)},
         as: 'aside',
         edge: 'bottom',
@@ -161,8 +159,7 @@ desktopTerminalTest('applies terminal mode to native chrome before terminal inpu
   const terminalId = await app.eval({
     timeoutMs: 20_000,
     script: `
-      const terminal = await lx.openSurface({
-        surface: 'terminal',
+      const terminal = await lx.shell.openDeclared('terminal', {
         key: ${JSON.stringify(token)},
         as: 'main',
       });
@@ -175,8 +172,7 @@ desktopTerminalTest('applies terminal mode to native chrome before terminal inpu
   const settingsId = await app.eval({
     timeoutMs: 60_000,
     script: `
-      const settings = await lx.openSurface({
-        appId: 'app.lingxia.terminal-settings',
+      const settings = await lx.shell.openApp('app.lingxia.terminal-settings', {
         as: 'aside',
         edge: 'right',
       });

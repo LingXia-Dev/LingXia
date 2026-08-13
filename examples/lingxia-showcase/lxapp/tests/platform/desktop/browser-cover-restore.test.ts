@@ -6,7 +6,7 @@ contract(
   {
     id: 'DESKTOP-BROWSER-001',
     title: 'restore rendered home content after closing covering web tabs',
-    covers: ['BrowserDriver.tabs', 'BrowserDriver.close', 'lx.openSurface', 'LxAppDriver.surfaceLayout'],
+    covers: ['BrowserDriver.tabs', 'BrowserDriver.close', 'lx.shell.openBuiltin', 'LxAppDriver.surfaceLayout'],
     layer: 'host',
     levels: ['semantic', 'boundary', 'lifecycle'],
     scope: 'desktop',
@@ -34,11 +34,11 @@ contract(
 
     await app.eval({
       timeoutMs: 20_000,
-      script: `await lx.openSurface({ url: 'lingxia://settings' });`,
+      script: `await lx.shell.openBuiltin('settings');`,
     });
     await app.eval({
       timeoutMs: 20_000,
-      script: `await lx.openSurface({ url: 'lingxia://downloads' });`,
+      script: `await lx.shell.openBuiltin('downloads');`,
     });
 
     const opened = await eventually(

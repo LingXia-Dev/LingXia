@@ -122,21 +122,13 @@ function scanReturnedObjects() {
     const aliases = new Map();
     const methodReturns = new Map();
 
+    // The content source is the function now, so the factory path alone says
+    // which handle comes back — no spec-shape guessing.
     const factorySurfaces = (expression) => {
       const current = unwrapExpression(expression);
       if (!ts.isCallExpression(current)) return null;
       const factory = directLxPath(current.expression);
-      const surfaces = factory ? surfacesByFactory.get(factory) ?? null : null;
-      if (factory !== 'lx.openSurface' || !surfaces || !ts.isObjectLiteralExpression(current.arguments[0])) {
-        return surfaces;
-      }
-      const keys = new Set(current.arguments[0].properties
-        .filter((property) => property.name)
-        .map((property) => property.name.getText(ast).replaceAll(/["']/g, '')));
-      const expected = keys.has('page') || (keys.has('url') && keys.has('as'))
-        ? 'Surface'
-        : 'SurfaceHandle';
-      return surfaces.filter(({ name }) => name === expected);
+      return factory ? surfacesByFactory.get(factory) ?? null : null;
     };
     const inferred = (expression) => {
       const direct = factorySurfaces(expression);
@@ -182,11 +174,11 @@ function scanReturnedObjects() {
         }
         if (ts.isCallExpression(node)) {
           const direct = directLxPath(node.expression);
-          if (direct === 'lx.onSurfaceContext') {
+          if (direct === 'lx.surface.onContext') {
             const callback = node.arguments[0];
             if ((ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) && callback.parameters[0]) {
               aliases.set(callback.parameters[0].name.getText(ast), [
-                objectSurfaces.find(({ name }) => name === 'Surface'),
+                objectSurfaces.find(({ name }) => name === 'PageSurface'),
               ].filter(Boolean));
             }
           }

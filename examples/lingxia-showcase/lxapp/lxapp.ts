@@ -31,8 +31,8 @@ App({
         icon: "public/sidebar-downloads.svg",
         label: "Downloads",
         onActivate: () => {
-          void lx
-            .openSurface({ url: "lingxia://downloads" })
+          void lx.shell
+            .openBuiltin("downloads")
             .catch((error) => console.warn("downloads action failed", error));
         },
       },
@@ -42,8 +42,8 @@ App({
         icon: "public/sidebar-settings.svg",
         label: "Settings",
         onActivate: () => {
-          void lx
-            .openSurface({ url: "lingxia://settings" })
+          void lx.shell
+            .openBuiltin("settings")
             .catch((error) => console.warn("settings action failed", error));
         },
       },
@@ -53,8 +53,8 @@ App({
         icon: "public/activator.svg",
         label: "chat",
         onActivate: () => {
-          void lx
-            .openSurface({ surface: "lingxia-chat" })
+          void lx.surface
+            .openDeclared("lingxia-chat")
             .catch((error) => console.warn("chat action failed", error));
         },
       },
@@ -69,12 +69,8 @@ App({
         icon: "public/sidebar-terminal.svg",
         label: "Terminal Settings",
         onActivate: () => {
-          void lx
-            .openSurface({
-              appId: "app.lingxia.terminal-settings",
-              as: "aside",
-              edge: "right",
-            })
+          void lx.shell
+            .openApp("app.lingxia.terminal-settings", { as: "aside", edge: "right" })
             .catch((error) => console.warn("terminal settings action failed", error));
         },
       });
@@ -84,8 +80,8 @@ App({
         icon: "public/activator.svg",
         label: "Terminal",
         onActivate: () => {
-          void lx
-            .openSurface({ surface: "terminal" })
+          void lx.surface
+            .openDeclared("terminal")
             .catch((error) => console.warn("terminal action failed", error));
         },
       });
@@ -109,8 +105,7 @@ App({
         label: "Feedback",
         onClick: async () => {
           try {
-            await lx.openSurface({
-              page: "feedback",
+            await lx.surface.openPage("feedback", {
               as: "float",
               position: "bottom",
               size: { width: "100%", height: "80%" },

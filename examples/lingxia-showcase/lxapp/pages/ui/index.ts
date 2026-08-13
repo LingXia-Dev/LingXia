@@ -1,5 +1,7 @@
 const app = getApp();
 
+const DEMO_SURFACE_KEY = "surface-demo";
+
 const NAV_TITLE_MAP = {
   navigation: "Navigation Demo",
   toast: "Toast Demo",
@@ -72,8 +74,6 @@ Page({
     chromeError: "",
     appearance: { preference: "auto", resolved: "light" },
   },
-
-  _activeSurface: null,
 
   onLoad: function (options = {}) {
     console.log("UI page onLoad options:", options);
@@ -275,135 +275,51 @@ Page({
   },
 
   openSurfaceDemo: async function (config) {
-    // Eagerly tear down any prior surface tracked in this demo so a stale
-    // reference (e.g., a surface closed by the user via backdrop tap whose
-    // onClose got lost) never prevents reopening. The platform also replaces
-    // any active surface on a new present(), so this is belt-and-suspenders.
-    if (this._activeSurface) {
-      try {
-        await this._activeSurface.close();
-      } catch (error) {
-        console.warn("[surfaceDemo] prior close failed:", error);
-      }
-      this._activeSurface = null;
+    this.setData({ "surfaceDemo.message": "" });
+
+    const cfg = config || {};
+    // The content source picks the function; `as` is a small closed set within
+    // it. float/window target this app's own page, an aside carries external
+    // content, and another lxapp is shell composition.
+    const verb = cfg.verb === "float" || cfg.verb === "window" || cfg.verb === "lxapp"
+      ? cfg.verb
+      : "aside";
+
+    // Ask before offering: a window is a property of the host build, so this
+    // answer is stable and does not need the error path to discover it.
+    if (verb === "window" && !lx.supports({ surface: "window" })) {
+      this.setData({
+        "surfaceDemo.message": "not supported",
+        "surfaceDemo.active": false,
+        "surfaceDemo.visible": false,
+      });
+      lx.showToast({ title: "not supported", icon: "none" });
+      return;
     }
 
-    this.setData({
-      "surfaceDemo.message": "",
-    });
+    const size = {};
+    if (cfg.width) size.width = cfg.width;
+    if (cfg.height) size.height = cfg.height;
 
     try {
-      const cfg = config || {};
-      // `as` picks the form: aside is a multi-tab external-content browser
-      // (https/file) docked beside the main (full-screen on a phone); float is a
-      // popup above the main; window opens a bare desktop window. float/window
-      // target this app's own page — an aside can only be a url.
-      const as =
-        cfg.verb === "float" ? "float" : cfg.verb === "window" ? "window" : "aside";
-      // Ask before offering: a window is a property of the host build, so this
-      // answer is stable and does not need the error path to discover it.
-      if (
-        as === "window" &&
-        !lx.supports({ capability: "surface", value: "window" })
-      ) {
-        this.setData({
-          "surfaceDemo.message": "not supported",
-          "surfaceDemo.active": false,
-          "surfaceDemo.visible": false,
-        });
-        lx.showToast({ title: "not supported", icon: "none" });
-        return;
-      }
-      let spec;
-      if (cfg.verb === "lxapp") {
-        // Open another lxapp docked as an aside (home-app privilege): the
-        // chat app joins the lxapp aside slot without a yaml sidebar entry.
-        spec = { appId: "lingxia-chat", as: "aside", edge: cfg.edge ?? "right" };
-      } else if (as === "aside") {
-        // Multi-tab demo: each click opens the next url as a tab in the one
-        // browser aside (deduped by url). Aside is external content only.
-        const demoUrls = [
-          "https://www.deepseek.com/",
-          "https://cn.bing.com/",
-          "https://opensource.adobe.com/",
-        ];
-        const idx = (this._asideTabIndex || 0) % demoUrls.length;
-        this._asideTabIndex = (this._asideTabIndex || 0) + 1;
-        spec = { url: cfg.url ?? demoUrls[idx], as: "aside", edge: cfg.edge ?? "right" };
-      } else {
-        spec = { page: "surface", as };
-        if (as === "float") spec.position = cfg.position ?? "center";
-      }
-      if (cfg.width || cfg.height) {
-        spec.size = {};
-        if (cfg.width) spec.size.width = cfg.width;
-        if (cfg.height) spec.size.height = cfg.height;
-      }
-      const surface = await lx.openSurface(spec);
-      // Aside tabs accumulate (multi-tab) — only float/window are single, tracked
-      // for the hide/show/close demo controls. On a compact layout an aside
-      // opens in the in-app browser and returns no handle.
-      if (as !== "aside") this._activeSurface = surface;
-
+      const surface = await this._openDemoSurface(verb, cfg, size);
+      // Aside tabs accumulate (multi-tab); only a single float/window drives
+      // the hide/show/close controls below.
+      const single = verb === "float" || verb === "window";
       this.setData({
-        "surfaceDemo.message": surface
-          ? `Opened ${as}: ${surface.id}`
-          : `Opened ${as} (in-app browser)`,
-        // Keep the button enabled for asides so repeated clicks add tabs; the
-        // hide/show/close controls only apply to a single float/window surface.
-        "surfaceDemo.active": as !== "aside",
-        "surfaceDemo.visible": as !== "aside",
+        "surfaceDemo.message": `Opened ${surface.realized}: ${surface.id}`,
+        "surfaceDemo.active": single,
+        "surfaceDemo.visible": single,
       });
-      if (!surface) return;
-      // Dynamic app-surface handles are lightweight: no
-      // messaging or lifecycle events unless the capability declares them.
-      if (typeof surface.onMessage !== "function") return;
-      surface.onMessage((payload) => {
-        // Messages from the surface page no longer auto-close it — that
-        // would defeat the show/hide demo. We just log the payload and let
-        // the user decide whether to hide, show again, or close.
-        const message =
-          payload && typeof payload === "object"
-            ? payload.message || JSON.stringify(payload)
-            : payload;
-        const text = typeof message === "string" ? message : JSON.stringify(message);
-        this.setData({
-          "surfaceDemo.message": `Message: ${text}`,
-        });
-      });
-      // Subscribe to surface-driven visibility transitions. Both opener-side
-      // and page-side toggles flow through these events, so the parent UI
-      // stays in sync even when the surface hides itself via this.surface.hide().
-      surface.onShow((event) => {
-        this.setData({
-          "surfaceDemo.visible": true,
-          "surfaceDemo.message": `Shown ${event.id} (source=${event.source})`,
-        });
-      });
-      surface.onHide((event) => {
-        this.setData({
-          "surfaceDemo.visible": false,
-          "surfaceDemo.message": `Hidden ${event.id} (source=${event.source})`,
-        });
-      });
-      surface.onClose((event) => {
-        this._activeSurface = null;
-        const currentMessage = this.data.surfaceDemo?.message || "";
-        const closeMessage = `Closed ${event.id}: ${event.reason}`;
-        const displayMessage = currentMessage.startsWith("Message:")
-          ? `${currentMessage} (${closeMessage})`
-          : closeMessage;
-        this.setData({
-          "surfaceDemo.message": displayMessage,
-          "surfaceDemo.active": false,
-          "surfaceDemo.visible": false,
-        });
-      });
+      if (surface.kind === "page") {
+        this._observeDemoPageSurface(surface);
+      }
     } catch (error) {
+      // Every rejection carries a code from the exported union.
       const message = surfaceErrorMessage(error);
       console.error("lx.surface open failed:", error);
       this.setData({
-        "surfaceDemo.message": `Failed: ${message}`,
+        "surfaceDemo.message": `Failed (${error?.data?.code ?? "unknown"}): ${message}`,
         "surfaceDemo.active": false,
         "surfaceDemo.visible": false,
       });
@@ -411,9 +327,82 @@ Page({
     }
   },
 
+  _openDemoSurface: function (verb, cfg, size) {
+    if (verb === "lxapp") {
+      // Compose another lxapp into the aside slot — home-lxapp privilege, so
+      // it lives on lx.shell rather than lx.surface.
+      return lx.shell.openApp("lingxia-chat", {
+        as: "aside",
+        edge: cfg.edge ?? "right",
+        key: DEMO_SURFACE_KEY,
+      });
+    }
+    if (verb === "aside") {
+      // Multi-tab demo: each click opens the next url as a tab in the one
+      // browser aside (deduped by url). An aside is external content only.
+      const demoUrls = [
+        "https://www.deepseek.com/",
+        "https://cn.bing.com/",
+        "https://opensource.adobe.com/",
+      ];
+      const idx = (this._asideTabIndex || 0) % demoUrls.length;
+      this._asideTabIndex = (this._asideTabIndex || 0) + 1;
+      return lx.surface.openUrl(cfg.url ?? demoUrls[idx], {
+        as: "aside",
+        edge: cfg.edge ?? "right",
+        size,
+      });
+    }
+    return lx.surface.openPage("surface", {
+      as: verb,
+      key: DEMO_SURFACE_KEY,
+      size,
+      ...(verb === "float" ? { position: cfg.position ?? "center" } : {}),
+    });
+  },
+
+  _observeDemoPageSurface: function (surface) {
+    surface.onMessage((payload) => {
+      // Messages from the surface page no longer auto-close it — that would
+      // defeat the show/hide demo.
+      const message =
+        payload && typeof payload === "object"
+          ? payload.message || JSON.stringify(payload)
+          : payload;
+      const text = typeof message === "string" ? message : JSON.stringify(message);
+      this.setData({ "surfaceDemo.message": `Message: ${text}` });
+    });
+    // Both opener-side and page-side toggles flow through these events, so the
+    // parent UI stays in sync even when the surface hides itself.
+    surface.onShow((event) => {
+      this.setData({
+        "surfaceDemo.visible": true,
+        "surfaceDemo.message": `Shown ${event.id} (source=${event.source})`,
+      });
+    });
+    surface.onHide((event) => {
+      this.setData({
+        "surfaceDemo.visible": false,
+        "surfaceDemo.message": `Hidden ${event.id} (source=${event.source})`,
+      });
+    });
+    surface.onClose((event) => {
+      const currentMessage = this.data.surfaceDemo?.message || "";
+      const closeMessage = `Closed ${event.id}: ${event.reason}`;
+      this.setData({
+        "surfaceDemo.message": currentMessage.startsWith("Message:")
+          ? `${currentMessage} (${closeMessage})`
+          : closeMessage,
+        "surfaceDemo.active": false,
+        "surfaceDemo.visible": false,
+      });
+    });
+  },
+
   showActiveSurface: async function () {
-    const surface = this._activeSurface;
-    if (!surface) {
+    // `lx.surface.get(key)` replaces caching the handle by hand.
+    const surface = lx.surface.get(DEMO_SURFACE_KEY);
+    if (!surface || surface.kind === "tab") {
       return;
     }
     try {
@@ -424,15 +413,13 @@ Page({
       });
     } catch (error) {
       console.warn("surface.show failed:", error);
-      this.setData({
-        "surfaceDemo.message": `Show failed: ${error.message}`,
-      });
+      this.setData({ "surfaceDemo.message": `Show failed: ${error.message}` });
     }
   },
 
   hideActiveSurface: async function () {
-    const surface = this._activeSurface;
-    if (!surface) {
+    const surface = lx.surface.get(DEMO_SURFACE_KEY);
+    if (!surface || surface.kind === "tab") {
       return;
     }
     try {
@@ -443,14 +430,12 @@ Page({
       });
     } catch (error) {
       console.warn("surface.hide failed:", error);
-      this.setData({
-        "surfaceDemo.message": `Hide failed: ${error.message}`,
-      });
+      this.setData({ "surfaceDemo.message": `Hide failed: ${error.message}` });
     }
   },
 
   closeActiveSurface: async function () {
-    const surface = this._activeSurface;
+    const surface = lx.surface.get(DEMO_SURFACE_KEY);
     if (!surface) {
       return;
     }

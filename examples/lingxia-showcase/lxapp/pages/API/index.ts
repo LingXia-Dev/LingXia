@@ -135,9 +135,9 @@ Page({
       if (targets[choice.index] === "external") {
         lx.openExternal(url);
       } else if (targets[choice.index] === "aside") {
-        await lx.openSurface({ url, as: "aside" });
+        await lx.surface.openUrl(url, { as: "aside" });
       } else {
-        await lx.openSurface({ url });
+        await lx.surface.openUrl(url);
       }
     } catch (error) {
       lx.showToast({ title: error.message, icon: "none" });
