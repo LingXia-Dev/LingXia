@@ -19,6 +19,14 @@ pub(crate) fn host_build() -> HostBuild {
 
 /// The native SDKs' view of the same capability registry, encoded as bits.
 pub(crate) fn app_capabilities() -> u32 {
+    // The bits used to be compile-time constants; they now read state recorded
+    // during `init_with_platform`. Every SDK asks after init returns, so this
+    // only fires if a future caller asks earlier — and answering 0 silently
+    // would look like a host that simply has no capabilities.
+    debug_assert!(
+        lingxia_app_context::host_build_recorded(),
+        "app_capabilities() read before set_host_build()"
+    );
     let mut caps = 0;
     if capability::build::browser() {
         caps |= CAP_BROWSER;
