@@ -368,6 +368,17 @@ pub(super) fn search_edit_geometry(panel_id: &str) -> Option<(isize, RECT)> {
     ))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TerminalImageHit {
+    session_id: u64,
+    pub(crate) image_id: u32,
+}
+
+pub(crate) struct TerminalPreviewImage {
+    pub(crate) id: u32,
+    pub(crate) png: Vec<u8>,
+}
+
 pub(crate) fn search_status(session_id: u64) -> (Option<usize>, u64) {
     let grids = session_grids();
     let Some(search) = grids.get(&session_id).map(|state| &state.search) else {
@@ -474,6 +485,60 @@ pub(super) fn session_cell_at(
 ) -> Option<(u64, u16, u16)> {
     selection_point(panel_id, None, client_x, client_y)
         .map(|(session_id, point)| (session_id, point.col, point.row))
+}
+
+/// Image placement under a host-client point, using the renderer's exact
+/// clipped draw order. The session is retained because Kitty image ids are
+/// scoped to one terminal session and can repeat in adjacent panes.
+#[cfg(feature = "shell-chrome")]
+pub(crate) fn image_hit_at(
+    panel_id: &str,
+    client_x: i32,
+    client_y: i32,
+) -> Option<TerminalImageHit> {
+    let cell = super::terminal_gpu::cell_size_exact()?;
+    let body = panel_grids().get(panel_id)?.body?;
+    let pane = super::terminal_panel::active_pane_frames(panel_id, body)
+        .into_iter()
+        .find(|pane| {
+            client_x >= pane.rect.left
+                && client_x < pane.rect.right
+                && client_y >= pane.rect.top
+                && client_y < pane.rect.bottom
+        })?;
+    let grids = session_grids();
+    let state = grids.get(&pane.session_id)?;
+    let frame = state.frame.as_ref()?;
+    let image_id = super::terminal_gpu::image_id_at(
+        frame,
+        &state.images,
+        PaneView {
+            scrollbar: state.scrollbar,
+            exited: state.exited,
+        },
+        pane.rect,
+        cell,
+        (client_x, client_y),
+    )?;
+    Some(TerminalImageHit {
+        session_id: pane.session_id,
+        image_id,
+    })
+}
+
+#[cfg(feature = "shell-chrome")]
+pub(crate) fn preview_image(hit: TerminalImageHit) -> Option<TerminalPreviewImage> {
+    let grids = session_grids();
+    let image = grids
+        .get(&hit.session_id)?
+        .images
+        .images
+        .iter()
+        .find(|image| image.id == hit.image_id)?;
+    Some(TerminalPreviewImage {
+        id: image.id,
+        png: image.png.clone(),
+    })
 }
 
 /// Starts a cell selection in the pane under the pointer.

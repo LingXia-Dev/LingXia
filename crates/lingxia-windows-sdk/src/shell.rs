@@ -55,6 +55,8 @@ pub mod terminal_grid {
 }
 #[cfg(feature = "terminal-runtime")]
 mod terminal_gpu;
+#[cfg(feature = "terminal-runtime")]
+mod terminal_image_preview;
 /// Without the terminal runtime there is no grid to composite, so the panel
 /// painter's call compiles away to "GDI keeps it".
 #[cfg(not(feature = "terminal-runtime"))]
@@ -184,6 +186,18 @@ pub(crate) use terminal_panel::{
     pane_drag_handle_at, pane_hover_rect, scroll_pane_at, update_divider_drag, update_pane_drag,
     update_terminal_selection,
 };
+
+#[cfg(feature = "terminal-runtime")]
+pub(crate) use terminal_grid::{TerminalImageHit, image_hit_at as terminal_image_hit_at};
+#[cfg(feature = "terminal-runtime")]
+pub(crate) use terminal_image_preview::show as show_terminal_image_preview;
+
+#[cfg(feature = "terminal-runtime")]
+pub(crate) fn terminal_preview_image(
+    hit: TerminalImageHit,
+) -> Option<terminal_grid::TerminalPreviewImage> {
+    terminal_grid::preview_image(hit)
+}
 
 /// Registers the Windows SDK default shell.
 ///

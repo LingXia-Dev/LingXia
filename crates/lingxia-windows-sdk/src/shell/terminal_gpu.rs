@@ -167,12 +167,16 @@ pub(super) fn drop_session(session_id: u64) {
 /// Cell size of the font in effect, so the facade can size PTYs and hit-test
 /// without waiting for a frame.
 pub(super) fn cell_size() -> Option<(i32, i32)> {
+    cell_size_exact().map(|(width, height)| (width as i32, height as i32))
+}
+
+pub(super) fn cell_size_exact() -> Option<(f32, f32)> {
     let mut slot = shared_fonts()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let fonts = ensure_fonts(&mut slot).ok()?;
     let metrics = fonts.0.metrics;
-    Some((metrics.cell_width as i32, metrics.line_height as i32))
+    Some((metrics.cell_width, metrics.line_height))
 }
 
 #[derive(Default)]
@@ -683,7 +687,13 @@ impl Surface {
         let background_end = foreground_start.min(pane_quads.len());
         self.append_atlas_batch(&pane_quads[..background_end]);
 
-        let placements = image_draws(frame, images, view, rect, metrics);
+        let placements = image_draws(
+            frame,
+            images,
+            view,
+            rect,
+            (metrics.cell_width, metrics.line_height),
+        );
         for placement in placements.iter().filter(|placement| placement.z_index < 0) {
             self.append_image(session_id, *placement);
         }
@@ -885,8 +895,9 @@ fn image_draws(
     images: &TerminalImageSnapshot,
     view: PaneView,
     rect: RECT,
-    metrics: Metrics,
+    cell: (f32, f32),
 ) -> Vec<ImageDraw> {
+    let (cell_width, line_height) = cell;
     let origin_x = (rect.left + GRID_PADDING) as f32;
     let origin_y = (rect.top + GRID_PADDING) as f32;
     let clip = [
@@ -904,14 +915,12 @@ fn image_draws(
         !placement.virtual_placement && placement.alternate_screen == frame.alternate_screen
     }) {
         let destination = [
-            origin_x
-                + f32::from(placement.col) * metrics.cell_width
-                + f32::from(placement.x_offset),
+            origin_x + f32::from(placement.col) * cell_width + f32::from(placement.x_offset),
             origin_y
-                + (placement.line - viewport_top) as f32 * metrics.line_height
+                + (placement.line - viewport_top) as f32 * line_height
                 + f32::from(placement.y_offset),
-            f32::from(placement.columns) * metrics.cell_width,
-            f32::from(placement.rows) * metrics.line_height,
+            f32::from(placement.columns) * cell_width,
+            f32::from(placement.rows) * line_height,
         ];
         let source = [
             placement.source_x as f32,
@@ -966,10 +975,10 @@ fn image_draws(
             let source_width = prototype.source_width as f32 / f32::from(prototype.columns);
             let source_height = prototype.source_height as f32 / f32::from(prototype.rows);
             let destination = [
-                origin_x + f32::from(col) * metrics.cell_width,
-                origin_y + f32::from(row) * metrics.line_height,
-                metrics.cell_width,
-                metrics.line_height,
+                origin_x + f32::from(col) * cell_width,
+                origin_y + f32::from(row) * line_height,
+                cell_width,
+                line_height,
             ];
             let source = [
                 prototype.source_x as f32 + decoded.image_col as f32 * source_width,
@@ -991,6 +1000,36 @@ fn image_draws(
 
     draws.sort_by_key(|draw| (draw.z_index, draw.image_id, draw.placement_id));
     draws
+}
+
+/// Topmost image placement under a host-client point. Hit-testing consumes
+/// the same clipped draw list as rendering, so scrolling and Unicode
+/// placeholders cannot drift away from what the user sees.
+pub(super) fn image_id_at(
+    frame: &TerminalFrame,
+    images: &TerminalImageSnapshot,
+    view: PaneView,
+    rect: RECT,
+    cell: (f32, f32),
+    point: (i32, i32),
+) -> Option<u32> {
+    image_draws(
+        frame,
+        images,
+        view,
+        rect,
+        (cell.0.max(1.0), cell.1.max(1.0)),
+    )
+    .into_iter()
+    .rev()
+    .find(|draw| {
+        let [left, top, width, height] = draw.destination;
+        (point.0 as f32) >= left
+            && (point.0 as f32) < left + width
+            && (point.1 as f32) >= top
+            && (point.1 as f32) < top + height
+    })
+    .map(|draw| draw.image_id)
 }
 
 fn create_image_texture(device: &ID3D11Device, png: &[u8]) -> Result<ID3D11ShaderResourceView> {
@@ -1871,7 +1910,9 @@ fn drain_debug_messages(device: &ID3D11Device) {
 
 #[cfg(test)]
 mod tests {
-    use super::{SurfaceRegistry, clip_image, pane_controls_visible};
+    use super::{SurfaceRegistry, clip_image, image_id_at, pane_controls_visible};
+    use crate::shell::terminal_grid::PaneView;
+    use lingxia_terminal::{TerminalFrame, TerminalImagePlacement, TerminalImageSnapshot};
     use windows::Win32::Foundation::RECT;
 
     #[test]
@@ -1920,5 +1961,69 @@ mod tests {
     fn image_clipping_rejects_fully_hidden_or_empty_rectangles() {
         assert!(clip_image([0.0, 0.0, 10.0, 10.0], [0.0, 0.0, 10.0, 10.0], [20.0; 4]).is_none());
         assert!(clip_image([0.0; 4], [0.0, 0.0, 10.0, 10.0], [0.0, 0.0, 10.0, 10.0]).is_none());
+    }
+
+    #[test]
+    fn image_hit_test_follows_topmost_clipped_draw() {
+        let images = TerminalImageSnapshot {
+            placements: vec![
+                TerminalImagePlacement {
+                    image_id: 1,
+                    placement_id: 1,
+                    line: 0,
+                    col: 0,
+                    columns: 4,
+                    rows: 2,
+                    x_offset: 0,
+                    y_offset: 0,
+                    source_x: 0,
+                    source_y: 0,
+                    source_width: 40,
+                    source_height: 20,
+                    z_index: 0,
+                    alternate_screen: false,
+                    virtual_placement: false,
+                },
+                TerminalImagePlacement {
+                    image_id: 2,
+                    placement_id: 2,
+                    line: 0,
+                    col: 1,
+                    columns: 2,
+                    rows: 2,
+                    x_offset: 0,
+                    y_offset: 0,
+                    source_x: 0,
+                    source_y: 0,
+                    source_width: 20,
+                    source_height: 20,
+                    z_index: 1,
+                    alternate_screen: false,
+                    virtual_placement: false,
+                },
+            ],
+            ..Default::default()
+        };
+        let rect = RECT {
+            left: 100,
+            top: 50,
+            right: 300,
+            bottom: 200,
+        };
+        let frame = TerminalFrame::default();
+        let view = PaneView::default();
+
+        assert_eq!(
+            image_id_at(&frame, &images, view, rect, (10.0, 20.0), (119, 59)),
+            Some(2)
+        );
+        assert_eq!(
+            image_id_at(&frame, &images, view, rect, (10.0, 20.0), (109, 59)),
+            Some(1)
+        );
+        assert_eq!(
+            image_id_at(&frame, &images, view, rect, (10.0, 20.0), (149, 59)),
+            None
+        );
     }
 }

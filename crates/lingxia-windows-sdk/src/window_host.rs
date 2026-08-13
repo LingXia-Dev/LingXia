@@ -115,7 +115,8 @@ static SIDEBAR_TABBAR_POPUPS: OnceLock<Mutex<HashMap<isize, SidebarTabbarPopup>>
 #[cfg(feature = "shell-chrome")]
 static SHELL_NOTICE_POPUPS: OnceLock<Mutex<HashMap<isize, ShellNoticePopup>>> = OnceLock::new();
 #[cfg(feature = "shell-chrome")]
-static TERMINAL_SELECTION_DRAGS: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
+static TERMINAL_SELECTION_DRAGS: OnceLock<Mutex<HashMap<isize, TerminalSelectionDrag>>> =
+    OnceLock::new();
 #[cfg(feature = "components")]
 static NAV_SNAPSHOT_SLIDES: OnceLock<Mutex<HashMap<isize, NavSnapshotSlide>>> = OnceLock::new();
 const WM_LINGXIA_RUN_CALLBACK: u32 = WindowsAndMessaging::WM_APP + 0x158;
@@ -153,6 +154,16 @@ const OVERLAY_DEFAULT_HEIGHT: i32 = 560;
 const RESIZE_BORDER: i32 = 8;
 const MAIN_WINDOW_MIN_WIDTH: i32 = 480;
 const MAIN_WINDOW_MIN_HEIGHT: i32 = 480;
+
+#[cfg(feature = "shell-chrome")]
+#[derive(Clone)]
+struct TerminalSelectionDrag {
+    panel_id: String,
+    #[cfg(feature = "terminal-runtime")]
+    start: (i32, i32),
+    #[cfg(feature = "terminal-runtime")]
+    pressed_image: Option<crate::shell::TerminalImageHit>,
+}
 
 pub(crate) fn set_default_host_headless(headless: bool) {
     DEFAULT_HOST_HEADLESS.store(headless, Ordering::Release);
@@ -6998,13 +7009,24 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         return true;
     }
     #[cfg(feature = "shell-chrome")]
-    if let Some(panel_id) = TERMINAL_SELECTION_DRAGS
+    if let Some(drag) = TERMINAL_SELECTION_DRAGS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .ok()
         .and_then(|drags| drags.get(&hwnd_handle(hwnd)).cloned())
     {
-        crate::shell::update_terminal_selection(&panel_id, point.0, point.1);
+        #[cfg(feature = "terminal-runtime")]
+        if point != drag.start
+            && let Some(drags) = TERMINAL_SELECTION_DRAGS.get()
+            && let Ok(mut drags) = drags.lock()
+            && let Some(active) = drags.get_mut(&hwnd_handle(hwnd))
+        {
+            #[cfg(feature = "terminal-runtime")]
+            {
+                active.pressed_image = None;
+            }
+        }
+        crate::shell::update_terminal_selection(&drag.panel_id, point.0, point.1);
         return true;
     }
     if update_attached_panel_resize_drag(hwnd, point) {
@@ -7157,18 +7179,25 @@ fn handle_chrome_mouse_wheel(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> bool
 
 #[cfg(feature = "shell-chrome")]
 fn finish_terminal_selection_drag(hwnd: HWND, point: Option<(i32, i32)>) -> bool {
-    let panel_id = TERMINAL_SELECTION_DRAGS
+    let drag = TERMINAL_SELECTION_DRAGS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .remove(&hwnd_handle(hwnd));
-    let Some(panel_id) = panel_id else {
+    let Some(drag) = drag else {
         return false;
     };
     if let Some(point) = point {
-        crate::shell::update_terminal_selection(&panel_id, point.0, point.1);
+        crate::shell::update_terminal_selection(&drag.panel_id, point.0, point.1);
     }
-    crate::shell::end_terminal_selection(&panel_id);
+    crate::shell::end_terminal_selection(&drag.panel_id);
+    #[cfg(feature = "terminal-runtime")]
+    if let (Some(point), Some(pressed)) = (point, drag.pressed_image)
+        && crate::shell::terminal_image_hit_at(&drag.panel_id, point.0, point.1) == Some(pressed)
+        && let Some(image) = crate::shell::terminal_preview_image(pressed)
+    {
+        crate::shell::show_terminal_image_preview(hwnd, image);
+    }
     true
 }
 
@@ -7247,11 +7276,22 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
             }
             #[cfg(feature = "shell-chrome")]
             if id == "terminal" && crate::shell::begin_terminal_selection(&id, point.0, point.1) {
+                #[cfg(feature = "terminal-runtime")]
+                let pressed_image = crate::shell::terminal_image_hit_at(&id, point.0, point.1);
                 TERMINAL_SELECTION_DRAGS
                     .get_or_init(|| Mutex::new(HashMap::new()))
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .insert(hwnd_handle(hwnd), id.clone());
+                    .insert(
+                        hwnd_handle(hwnd),
+                        TerminalSelectionDrag {
+                            panel_id: id.clone(),
+                            #[cfg(feature = "terminal-runtime")]
+                            start: point,
+                            #[cfg(feature = "terminal-runtime")]
+                            pressed_image,
+                        },
+                    );
                 unsafe {
                     let _ = SetCapture(hwnd);
                 }

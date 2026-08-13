@@ -72,10 +72,10 @@ The cross-platform implementation path is:
 
 1. The shared Rust Kitty parser, image store, placement model, limits, pixel
    resize data, and generation snapshot are platform-neutral.
-2. macOS composites the static placements with its Metal-backed terminal view
-   and owns native click preview.
+2. macOS composites the static placements with its Metal-backed terminal view.
 3. Windows composites the same snapshot through D3D11 without a second protocol
-   parser or platform-specific image state.
+   parser or platform-specific image state; both desktop surfaces own their
+   native click preview.
 4. Future iTerm2 and Sixel parsers should be input adapters onto the same image
    store and placement model.
 
