@@ -1384,6 +1384,22 @@ true
     key?: string;
 }"###;
 
+        /// The declared-surface options only the home lxapp may use. Placement
+        /// overrides live here rather than on `lx.surface.openDeclared`, so an
+        /// ordinary lxapp always gets the placement the declaration chose.
+        ///
+        type ShellOpenDeclaredOptions = r###"OpenDeclaredOptions & {
+    /**
+     * Open with a role other than the declaration's. Must be realizable by the
+     * declared provider; a stable root rejects anything but `main`. Prefer this
+     * over opening and then calling `reconfigure`, which would present the
+     * wrong role first.
+     */
+    as?: 'main' | 'aside' | 'float';
+    /** Preferred docking side when the effective role is `aside`. */
+    edge?: SurfaceEdge;
+}"###;
+
         type ShellOpenAppOptions = r###"{
     /** `main` occupies the primary content area; `aside` a companion region. */
     as: 'main' | 'aside';
@@ -1718,9 +1734,10 @@ true
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
      * Open a declared surface with shell privileges — the same declaration
-     * `lx.surface.openDeclared` opens, plus the keyed multi-instance form.
+     * `lx.surface.openDeclared` opens, plus the keyed multi-instance form and
+     * placement overrides.
      */
-    openDeclared(id: string, options?: OpenDeclaredOptions): Promise<DeclaredSurface>;
+    openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface>;
     /** Re-place a live declared surface: change its role or its edge. */
     reconfigure(id: string, patch: ShellSurfacePatch): Promise<void>;
 }"###;

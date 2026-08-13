@@ -478,7 +478,7 @@ async fn shell_open_builtin(ctx: JSContext, page: String) -> JSResult<JSObject> 
 }
 
 /// `lx.shell.openDeclared(id, options?)` — the declared surface, plus the
-/// keyed multi-instance form. Home-lxapp only.
+/// keyed multi-instance form and placement overrides. Home-lxapp only.
 async fn shell_open_declared(
     ctx: JSContext,
     id: String,
@@ -486,7 +486,19 @@ async fn shell_open_declared(
 ) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     require_home_caller(&lxapp, "lx.shell.openDeclared")?;
-    open_declared(ctx, id, options).await
+    let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
+    let key = read_surface_key(&options)?;
+    let spec = JSObject::new(&ctx);
+    spec.set("surface", id)?;
+    if let Some(key) = key.as_deref() {
+        spec.set("key", key)?;
+    }
+    // Overriding the declared placement is the privilege; opening first and
+    // reconfiguring after would present the wrong role for a frame.
+    copy_options(&options, &spec, &["as", "edge"])?;
+    let handle = open_declared_surface_spec(&ctx, &spec).await?;
+    let realized = handle_realized_placement(&handle);
+    finish_handle(&ctx, &handle, "declared", &realized, key, None)
 }
 
 /// `lx.shell.reconfigure(id, patch)` — re-place a live declared surface.
