@@ -18,9 +18,10 @@ export interface PageInstance<TData extends Record<string, unknown> = Record<str
   data: TData;
   route: string;
   /**
-   * Available when this page was opened as a surface via `lx.openSurface(...)`.
+   * Available when this page was opened as a surface via
+   * `lx.surface.openPage(...)`.
    */
-  surface?: Surface;
+  surface?: PageSurface;
   /**
    * Available when this page was opened by `lx.navigateTo(...)`.
    */
@@ -138,18 +139,6 @@ declare global {
      * presence and `lx.supports({ capability: 'terminal' })` always agree.
      */
     readonly terminal?: TerminalApi;
-
-    /**
-     * Open a surface. Browser tabs resolve to `null`, declared surfaces to a
-     * host-managed handle, and page surfaces to a full `Surface`. URL asides
-     * return a `Surface` when docked and `null` in compact browser chrome.
-     * `as: "window"` is desktop-only.
-     */
-    openSurface(spec: OpenUrlTabSpec): Promise<null>;
-    openSurface(spec: OpenDeclaredSurfaceSpec | OpenAppSurfaceSpec): Promise<SurfaceHandle>;
-    openSurface(spec: OpenPageSurfaceSpec): Promise<Surface>;
-    openSurface(spec: OpenUrlAsideSpec): Promise<Surface | null>;
-    openSurface(spec: OpenSurfaceSpec): Promise<Surface | SurfaceHandle | null>;
 
     /** Download to the downloads directory. */
     downloadFile(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
