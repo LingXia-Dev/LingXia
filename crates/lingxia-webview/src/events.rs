@@ -185,6 +185,38 @@ impl NavigationProgress {
     pub fn is_current(&self, id: NavigationId) -> bool {
         self.newest == Some(id)
     }
+
+    /// Folds `event` in and classifies it for a delegate that only acts on the
+    /// newest attempt. Every consumer needs the same rule — a stale terminal
+    /// must never mark a newer load as loaded or failed — so it lives here
+    /// rather than being re-derived per delegate.
+    pub fn classify<'a>(&mut self, event: &'a NavigationEvent) -> NavigationOutcome<'a> {
+        self.apply(event);
+        match event {
+            NavigationEvent::Started { requested_url, .. } => {
+                NavigationOutcome::Started { requested_url }
+            }
+            NavigationEvent::Succeeded { id, final_url } if self.is_current(*id) => {
+                NavigationOutcome::Loaded { final_url }
+            }
+            NavigationEvent::Failed { id, error } if self.is_current(*id) => {
+                NavigationOutcome::Failed { error }
+            }
+            // Cancellation is control flow, and a superseded attempt's terminal
+            // belongs to a document nobody is showing any more.
+            _ => NavigationOutcome::Superseded,
+        }
+    }
+}
+
+/// What one navigation event means to a delegate, once stale attempts have
+/// been filtered out.
+#[derive(Debug, PartialEq, Eq)]
+pub enum NavigationOutcome<'a> {
+    Started { requested_url: &'a str },
+    Loaded { final_url: &'a str },
+    Failed { error: &'a LoadError },
+    Superseded,
 }
 
 /// Fold of `WebViewStateChange` into the current observed state, including
@@ -239,6 +271,44 @@ mod tests {
             id: id(raw),
             final_url: format!("https://example.com/{raw}"),
         }
+    }
+
+    #[test]
+    fn classify_reports_the_current_attempt_only() {
+        let mut progress = NavigationProgress::default();
+        assert_eq!(
+            progress.classify(&started(1)),
+            NavigationOutcome::Started {
+                requested_url: "https://example.com/1",
+            }
+        );
+        assert_eq!(
+            progress.classify(&succeeded(1)),
+            NavigationOutcome::Loaded {
+                final_url: "https://example.com/1",
+            }
+        );
+
+        // A second attempt supersedes the first, so the first's terminal is
+        // no longer authoritative for anything.
+        progress.classify(&started(2));
+        assert_eq!(
+            progress.classify(&succeeded(1)),
+            NavigationOutcome::Superseded
+        );
+    }
+
+    #[test]
+    fn classify_treats_cancellation_as_control_flow() {
+        let mut progress = NavigationProgress::default();
+        progress.classify(&started(1));
+        assert_eq!(
+            progress.classify(&NavigationEvent::Cancelled {
+                id: id(1),
+                reason: NavigationCancellationReason::Superseded,
+            }),
+            NavigationOutcome::Superseded
+        );
     }
 
     #[test]

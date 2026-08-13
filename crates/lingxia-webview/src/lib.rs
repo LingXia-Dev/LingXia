@@ -108,8 +108,9 @@ mod windows;
 // WebViewError and LogLevel are defined above
 pub use error_page::{LoadErrorPage, render_load_error_page};
 pub use events::{
-    NavigationCancellationReason, NavigationEvent, NavigationId, NavigationProgress,
-    ObservedWebViewState, WebViewEventObserver, WebViewObservedEvent, WebViewStateChange,
+    NavigationCancellationReason, NavigationEvent, NavigationId, NavigationOutcome,
+    NavigationProgress, ObservedWebViewState, WebViewEventObserver, WebViewObservedEvent,
+    WebViewStateChange,
 };
 pub use traits::{
     ClearSiteDataOptions, ClearSiteDataResult, ClickOptions, DownloadRequest, FileChooserFile,

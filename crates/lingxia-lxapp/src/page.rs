@@ -22,8 +22,8 @@ use lingxia_platform::traits::app_runtime::{
 };
 use lingxia_webview::runtime::destroy_webview;
 use lingxia_webview::{
-    LoadDataRequest, LogLevel, NavigationPolicy, NewWindowPolicy, WebTag, WebView, WebViewBuilder,
-    WebViewController, WebViewDelegate,
+    LoadDataRequest, LogLevel, NavigationOutcome, NavigationPolicy, NewWindowPolicy, WebTag,
+    WebView, WebViewBuilder, WebViewController, WebViewDelegate,
 };
 use ring::rand::{SecureRandom, SystemRandom};
 
@@ -1475,34 +1475,44 @@ impl PageInstance {
     }
 }
 
+/// Owned form of a `NavigationOutcome`, so the progress lock is released
+/// before the handlers run.
+enum ClassifiedNavigation {
+    Started,
+    Loaded,
+    Failed { description: String, kind: String },
+    Superseded,
+}
+
 impl WebViewDelegate for PageInstance {
     fn on_navigation_event(&self, event: lingxia_webview::NavigationEvent) {
-        let mut progress = self
-            .inner
-            .navigation_progress
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        progress.apply(&event);
-        match &event {
-            lingxia_webview::NavigationEvent::Started { .. } => {
-                drop(progress);
-                self.notify_page_started();
+        let outcome = {
+            let mut progress = self
+                .inner
+                .navigation_progress
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            // Borrowing the event out of the guard would hold the lock across
+            // the handlers below, which re-enter page state.
+            match progress.classify(&event) {
+                NavigationOutcome::Started { .. } => ClassifiedNavigation::Started,
+                NavigationOutcome::Loaded { .. } => ClassifiedNavigation::Loaded,
+                NavigationOutcome::Failed { error } => ClassifiedNavigation::Failed {
+                    description: error.description.clone(),
+                    kind: format!("{:?}", error.kind),
+                },
+                NavigationOutcome::Superseded => ClassifiedNavigation::Superseded,
             }
-            // Only the current attempt's success drives the loaded lifecycle:
-            // a stale terminal must not mark a newer load as ready, and a
-            // failure or cancellation never calls handle_loaded().
-            lingxia_webview::NavigationEvent::Succeeded { id, .. } => {
-                if progress.is_current(*id) {
-                    drop(progress);
-                    self.handle_loaded();
-                }
-            }
-            lingxia_webview::NavigationEvent::Failed { error, .. } => {
-                error!("page load failed: {} ({:?})", error.description, error.kind)
+        };
+        match outcome {
+            ClassifiedNavigation::Started => self.notify_page_started(),
+            ClassifiedNavigation::Loaded => self.handle_loaded(),
+            ClassifiedNavigation::Failed { description, kind } => {
+                error!("page load failed: {} ({})", description, kind)
                     .with_appid(self.inner.appid.clone())
                     .with_path(self.inner.path.clone());
             }
-            lingxia_webview::NavigationEvent::Cancelled { .. } => {}
+            ClassifiedNavigation::Superseded => {}
         }
     }
 
