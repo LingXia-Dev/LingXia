@@ -161,3 +161,37 @@ contract({
   });
   expect(popup.exists).toBe(false);
 });
+
+contract({
+  id: 'PAGE-LIFECYCLE-003',
+  title: 'reject navigateTo onto a route already on the page stack',
+  covers: ['lx.navigateTo'],
+  layer: 'logic',
+  levels: ['failure', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'reject',
+}, async ({ app, defer }) => {
+  defer(async () => {
+    await app.nav.relaunch({ page: 'home' });
+  });
+
+  await app.nav.relaunch({ page: 'home' });
+  await waitForCurrentPage(app, 'home');
+  await app.nav.to({ page: 'lifecycle' });
+  await waitForCurrentPage(app, 'lifecycle');
+
+  // One path is one page instance, so a duplicate entry would leave two stack
+  // slots sharing it — popping either would end the one the other still shows.
+  let rejection = '';
+  try {
+    await app.nav.to({ page: 'lifecycle' });
+  } catch (error) {
+    rejection = String(error);
+  }
+  expect(rejection).toContain('already on the page stack');
+
+  const stack = await app.eval({
+    script: 'return getCurrentPages().map((page) => page.route);',
+  }) as string[];
+  expect(stack.filter((route) => route.includes('/lifecycle/')).length).toBe(1);
+});

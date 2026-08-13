@@ -1229,6 +1229,17 @@ impl PageInstance {
                     info!("PageInstance stack is full, cannot navigate forward.");
                     return Ok(target_page);
                 }
+                // A page instance is keyed by its path, so the same route
+                // cannot be on the stack twice: both entries would share one
+                // instance, and popping either would end the instance the
+                // other still shows. Reject it rather than pretend.
+                if lxapp.get_page_stack().iter().any(|entry| entry == &path) {
+                    return Err(LxAppError::InvalidParameter(format!(
+                        "navigateTo target '{path}' is already on the page stack. \
+                         A page can only appear once; use lx.redirectTo to replace \
+                         the current page, or navigate to a different route."
+                    )));
+                }
             }
             NavigationType::Backward => {
                 return Err(LxAppError::UnsupportedOperation(

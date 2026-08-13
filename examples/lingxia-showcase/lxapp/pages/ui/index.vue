@@ -11,7 +11,10 @@
           <div class="mb-4 text-sm text-gray-600 font-semibold">navigateTo/Back, redirectTo</div>
           <div class="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
             <div data-testid="ui-navigate-to" class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100" @click="demoNavigateTo">
-              <div class="text-sm text-gray-800 font-medium">Navigate to new page</div>
+              <div>
+                <div class="text-sm text-gray-800 font-medium">Navigate to new page</div>
+                <div class="text-xs text-gray-500 mt-0.5">Leave and come back — see what a page keeps and what it resets</div>
+              </div>
               <span class="text-gray-400 text-lg">›</span>
             </div>
             <div data-testid="ui-navigate-back" class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100" @click="demoNavigateBack">
@@ -22,15 +25,8 @@
               <div class="text-sm text-gray-800 font-medium">Open in current page</div>
               <span class="text-gray-400 text-lg">›</span>
             </div>
-            <div data-testid="ui-switch-tab" class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100" @click="demoSwitchTab">
+            <div data-testid="ui-switch-tab" class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer" @click="demoSwitchTab">
               <div class="text-sm text-gray-800 font-medium">Jump to Tab page</div>
-              <span class="text-gray-400 text-lg">›</span>
-            </div>
-            <div data-testid="ui-page-reset" class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer" @click="demoPageReset">
-              <div>
-                <div class="text-sm text-gray-800 font-medium">Leave and come back</div>
-                <div class="text-xs text-gray-500 mt-0.5">See what a page keeps and what it resets</div>
-              </div>
               <span class="text-gray-400 text-lg">›</span>
             </div>
           </div>
@@ -451,7 +447,6 @@ const {
   demoNavigateTo,
   demoNavigateBack,
   demoSwitchTab,
-  demoPageReset,
   demoRedirectTo,
   showToastWithParams,
   hideToast,
