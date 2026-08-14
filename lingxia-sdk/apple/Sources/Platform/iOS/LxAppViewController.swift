@@ -34,6 +34,11 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
     // Store pending navigation state for deferred NavigationBar initialization
     private var pendingNavigationState: (appId: String, path: String)?
+    // The most recently requested navigation target. Retry loops compare
+    // against this, never against the *attached* path — that one only updates
+    // after a successful attach, so a first-resolve miss (WebView still
+    // registering) would strand every retry and leave the container blank.
+    private var pendingNavigationPath: String?
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
     nonisolated(unsafe) private var tabBarObserver: NSObjectProtocol?
 
@@ -370,6 +375,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
     public func handleNavigation(appId: String, path: String, animationType: LxAppAnimation) {
         guard LxAppCore.currentAppId == appId else { return }
 
+        pendingNavigationPath = path
         let currentPath = getCurrentPath()
 
         if let existingWebView = getCurrentWebView(),
@@ -397,6 +403,9 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
             // Show target WebView using shared logic
             attachWebViewToUI(webView: targetWebView, for: appId, path: path)
+            // Pin the target explicitly: the cached current webview can lag
+            // this navigation and must never receive the target's pin.
+            updateWebViewConstraints(for: appId, webView: targetWebView)
         } else {
             retryShowWebView(
                 appId: appId,
@@ -406,9 +415,6 @@ final class LxAppViewController: UIViewController, ObservableObject {
                 remainingAttempts: Self.navigationRetryCount
             )
         }
-
-        // Update WebView constraints if needed
-        updateWebViewConstraints(for: appId)
 
         // Ensure UI elements are properly layered above WebView content
         bringUIElementsToFront()
@@ -428,7 +434,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
             guard let self,
                   LxAppCore.currentAppId == appId,
                   self.currentSessionId == sessionId,
-                  self.getCurrentPath() == path else {
+                  self.pendingNavigationPath == path else {
                 return
             }
 
@@ -462,7 +468,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
             }
 
             self.attachWebViewToUI(webView: targetWebView, for: appId, path: path)
-            self.updateWebViewConstraints(for: appId)
+            self.updateWebViewConstraints(for: appId, webView: targetWebView)
             self.bringUIElementsToFront()
         }
     }
@@ -556,6 +562,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func attachWebViewToUI(webView: WKWebView, for appId: String, path: String) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        }
         // Check if WebView is already properly attached
         if webView.superview == rootContainer && !webView.isHidden {
             // WebView is already attached and visible, just ensure it's configured
@@ -643,9 +651,13 @@ final class LxAppViewController: UIViewController, ObservableObject {
         }
     }
 
-    private func updateWebViewConstraints(for appId: String, topOffset: CGFloat? = nil) {
+    private func updateWebViewConstraints(
+        for appId: String,
+        topOffset: CGFloat? = nil,
+        webView explicitWebView: WKWebView? = nil
+    ) {
         guard LxAppCore.currentAppId == appId,
-              let webView = getCurrentWebView(),
+              let webView = explicitWebView ?? getCurrentWebView(),
               rootContainer != nil else { return }
 
         // Only update constraints if WebView is properly attached to the view hierarchy
@@ -653,11 +665,16 @@ final class LxAppViewController: UIViewController, ObservableObject {
             return
         }
 
-        // Remove old constraint
-        if let oldConstraint = currentWebViewTopConstraint {
-            oldConstraint.isActive = false
-            rootContainer.removeConstraint(oldConstraint)
+        // Re-pin THIS webview's top, touching only its own constraints. The
+        // cached "current" webview can lag a navigation, and the stored top
+        // constraint can belong to the freshly attached page — deactivating
+        // that one collapses the new page to zero height (a blank screen)
+        // while double-pinning the stale one.
+        let existingTopPins = rootContainer.constraints.filter {
+            $0.firstItem === webView && $0.firstAttribute == .top
         }
+        NSLayoutConstraint.deactivate(existingTopPins)
+        existingTopPins.forEach { rootContainer.removeConstraint($0) }
 
         // Use provided topOffset or calculate from current state
         let actualTopOffset = topOffset ?? navigationAreaHeight
