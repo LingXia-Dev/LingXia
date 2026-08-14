@@ -221,13 +221,17 @@ fn on_network_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
     let off_ctx = ctx.clone();
     let unsubscribed = Cell::new(false);
     JSFunc::new(&ctx, move || {
-        if unsubscribed.replace(true) {
+        if unsubscribed.get() {
             return;
         }
         let remaining = unregister_app_handler_token(&off_ctx, NETWORK_CHANGE_EVENT, token);
-        if remaining == 0 {
-            let _ = clear_network_change_callback(&off_ctx);
+        if remaining == 0
+            && let Err(err) = clear_network_change_callback(&off_ctx)
+        {
+            warn!("NetworkChange callback cleanup failed: {}", err);
+            return;
         }
+        unsubscribed.set(true);
     })
 }
 
