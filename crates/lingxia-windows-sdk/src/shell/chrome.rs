@@ -159,6 +159,10 @@ pub(super) const SIDEBAR_TABBAR_POPUP_PADDING: i32 = 8;
 /// Corner radius of the collapsed-rail tabbar popup card; the host masks the
 /// layered popup window to this same rounding.
 pub(crate) const SIDEBAR_TABBAR_POPUP_RADIUS: i32 = 10;
+pub(crate) const SIDEBAR_RAIL_TOOLTIP_RADIUS: i32 = 6;
+const SIDEBAR_RAIL_TOOLTIP_HEIGHT: i32 = 32;
+const SIDEBAR_RAIL_TOOLTIP_GAP: i32 = 6;
+const SIDEBAR_RAIL_TOOLTIP_PADDING: i32 = 12;
 
 /// Edge length of the favicon drawn on a sidebar browser-tab row.
 pub(super) const SIDEBAR_FAVICON_SIZE: i32 = 16;
@@ -249,6 +253,13 @@ pub(crate) struct CollapsedSidebarTabbarPopup {
     pub(crate) anchor: RECT,
     pub(crate) popup: RECT,
     pub(crate) tabbar: WindowsShellTabBarLayout,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CollapsedSidebarTooltip {
+    pub(crate) anchor: RECT,
+    pub(crate) popup: RECT,
+    pub(crate) text: String,
 }
 
 pub(super) fn chrome_command(
@@ -1234,6 +1245,100 @@ pub(crate) fn collapsed_sidebar_tabbar_popup(
     })
 }
 
+pub(crate) fn collapsed_sidebar_tooltip(
+    client: RECT,
+    layout: &WindowsWindowLayout,
+    point: (i32, i32),
+) -> Option<CollapsedSidebarTooltip> {
+    let layout = shell_layout(layout)?;
+    let tabbar = layout.tab_bar.as_ref()?;
+    if !matches!(
+        tabbar.position,
+        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+    ) || !(tabbar.collapsed || tabbar.icon_rail)
+    {
+        return None;
+    }
+    let rects = compute_chrome_rects(client, layout);
+    let tabbar_rect = rects.tab_bar?;
+    let (scroll_offset, _, viewport_bottom) =
+        sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
+    let in_sidebar_viewport = |anchor: RECT| {
+        anchor.top >= tabbar_rect.top + SHELL_TOP_BAR_HEIGHT
+            && anchor.bottom <= viewport_bottom
+            && rect_contains(&anchor, point)
+    };
+
+    let mut hovered = None;
+    for (index, item) in tabbar.auxiliary_items.iter().enumerate() {
+        let anchor = sidebar_rail_item_rect(
+            tabbar_rect,
+            sidebar_auxiliary_rail_index(tabbar, index),
+            scroll_offset,
+        );
+        if in_sidebar_viewport(anchor) {
+            hovered = Some((anchor, item.title.as_str()));
+            break;
+        }
+    }
+    if hovered.is_none() {
+        for (action_id, anchor) in sidebar_header_action_rects(tabbar_rect, tabbar) {
+            if rect_contains(&anchor, point)
+                && let Some(action) = tabbar
+                    .header_actions
+                    .iter()
+                    .find(|action| action.id == action_id)
+            {
+                hovered = Some((anchor, action.label.as_str()));
+                break;
+            }
+        }
+    }
+    if hovered.is_none() {
+        for (action_id, anchor) in footer_action_rects(client, &rects, layout) {
+            if rect_contains(&anchor, point)
+                && let Some(action) = layout
+                    .footer_actions
+                    .iter()
+                    .find(|action| action.id == action_id)
+            {
+                hovered = Some((anchor, action.label.as_str()));
+                break;
+            }
+        }
+    }
+
+    let (anchor, text) = hovered?;
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let text_width = text
+        .chars()
+        .map(|ch| if ch.is_ascii() { 7 } else { 14 })
+        .sum::<i32>();
+    let width = (text_width + SIDEBAR_RAIL_TOOLTIP_PADDING * 2).clamp(72, 240);
+    let height = SIDEBAR_RAIL_TOOLTIP_HEIGHT;
+    let desired_left = match tabbar.position {
+        WindowsShellTabBarPosition::Left => tabbar_rect.right + SIDEBAR_RAIL_TOOLTIP_GAP,
+        WindowsShellTabBarPosition::Right => tabbar_rect.left - SIDEBAR_RAIL_TOOLTIP_GAP - width,
+        WindowsShellTabBarPosition::Bottom => return None,
+    };
+    let left = desired_left.clamp(client.left, (client.right - width).max(client.left));
+    let top = ((anchor.top + anchor.bottom - height) / 2)
+        .clamp(client.top, (client.bottom - height).max(client.top));
+    Some(CollapsedSidebarTooltip {
+        anchor,
+        popup: RECT {
+            left,
+            top,
+            right: left + width,
+            bottom: top + height,
+        },
+        text: text.to_string(),
+    })
+}
+
 pub(crate) fn collapsed_sidebar_tabbar_popup_size(tabbar: &WindowsShellTabBarLayout) -> (i32, i32) {
     let rows = tabbar.items.len().max(1) as i32;
     (
@@ -1321,6 +1426,34 @@ pub(crate) fn paint_collapsed_sidebar_tabbar_popup(
         hdc,
         bounds,
         SIDEBAR_TABBAR_POPUP_RADIUS,
+        shell_palette().divider,
+    );
+}
+
+pub(crate) fn paint_collapsed_sidebar_tooltip(hdc: HDC, text: &str, width: i32, height: i32) {
+    let bounds = normalize_rect(RECT {
+        left: 0,
+        top: 0,
+        right: width,
+        bottom: height,
+    });
+    fill_rect(hdc, bounds, shell_palette().sidebar_background);
+    draw_text(
+        hdc,
+        text,
+        RECT {
+            left: SIDEBAR_RAIL_TOOLTIP_PADDING,
+            top: 0,
+            right: width - SIDEBAR_RAIL_TOOLTIP_PADDING,
+            bottom: height,
+        },
+        shell_palette().text_primary,
+        DT_LEFT,
+    );
+    stroke_round_rect_aa(
+        hdc,
+        bounds,
+        SIDEBAR_RAIL_TOOLTIP_RADIUS,
         shell_palette().divider,
     );
 }
@@ -2459,13 +2592,15 @@ mod scroll_tests {
         ATTACHED_PANEL_HANDLE_SIZE, SHELL_CONTENT_INSET, SHELL_TOP_BAR_HEIGHT, SIDEBAR_ICON_SIZE,
         SIDEBAR_ITEM_HEIGHT, WindowsChromeHit, WindowsChromePanelLayoutInput, WindowsChromeState,
         WindowsPanelPosition, WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout,
-        WindowsShellNavigationBarLayout, WindowsShellTabBarItemLayout, WindowsShellTabBarLayout,
-        WindowsShellTabBarPosition, WindowsShellWindowLayout, chrome_hit_test,
-        chrome_rects_for_state, clamp_sidebar_scroll, collapsed_sidebar_tabbar_click_command,
-        compute_attached_layout, compute_chrome_rects, covering_panel_layout,
+        WindowsShellFooterActionLayout, WindowsShellNavigationBarLayout,
+        WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
+        WindowsShellWindowLayout, chrome_hit_test, chrome_rects_for_state, clamp_sidebar_scroll,
+        collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tooltip, compute_attached_layout,
+        compute_chrome_rects, covering_panel_layout, footer_action_rects,
         layout_for_maximized_native_panel, layout_without_covered_main_chrome,
-        phone_browser_bar_active, phone_browser_bar_rects, rect_height, sidebar_auxiliary_rects,
-        sidebar_caption_contains, sidebar_group_rect, sidebar_top_level_icon_rect,
+        phone_browser_bar_active, phone_browser_bar_rects, rect_height,
+        sidebar_auxiliary_rail_index, sidebar_auxiliary_rects, sidebar_caption_contains,
+        sidebar_group_rect, sidebar_rail_item_rect, sidebar_top_level_icon_rect,
         tabbar_requires_full_repaint, top_bar_controls,
     };
     use lingxia_windows_contract::{
@@ -2547,6 +2682,67 @@ mod scroll_tests {
         let hidden = compute_chrome_rects(client, &layout_for(false, false));
         assert!(hidden.tab_bar.is_none());
         assert_eq!(hidden.content.bottom, 852);
+    }
+
+    #[test]
+    fn compact_rail_exposes_web_tab_and_action_labels_as_tooltips() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 480,
+            bottom: 737,
+        };
+        let mut rail = bottom_tabbar(true, false);
+        rail.position = WindowsShellTabBarPosition::Left;
+        rail.dimension = 184;
+        rail.icon_rail = true;
+        rail.auxiliary_items.push(WindowsShellAuxiliaryItemLayout {
+            id: "web:docs".to_string(),
+            title: "Documentation".to_string(),
+            active: false,
+            pinned: false,
+            closable: true,
+            icon_png: None,
+            icon_path: String::new(),
+        });
+        let layout = WindowsShellWindowLayout {
+            tab_bar: Some(rail.clone()),
+            footer_actions: vec![WindowsShellFooterActionLayout {
+                generation: 1,
+                id: "terminal".to_string(),
+                label: "Terminal".to_string(),
+                icon_path: String::new(),
+                disabled: false,
+            }],
+            ..Default::default()
+        };
+        let window_layout = WindowsWindowLayout::new(layout.clone());
+        let rects = compute_chrome_rects(client, &layout);
+        let rail_rect = rects.tab_bar.unwrap();
+        let web_rect = sidebar_rail_item_rect(rail_rect, sidebar_auxiliary_rail_index(&rail, 0), 0);
+        let web_tooltip = collapsed_sidebar_tooltip(
+            client,
+            &window_layout,
+            (
+                (web_rect.left + web_rect.right) / 2,
+                (web_rect.top + web_rect.bottom) / 2,
+            ),
+        )
+        .unwrap();
+        assert_eq!(web_tooltip.text, "Documentation");
+        assert!(web_tooltip.popup.left > rail_rect.right);
+
+        let action_rect = footer_action_rects(client, &rects, &layout)[0].1;
+        let action_tooltip = collapsed_sidebar_tooltip(
+            client,
+            &window_layout,
+            (
+                (action_rect.left + action_rect.right) / 2,
+                (action_rect.top + action_rect.bottom) / 2,
+            ),
+        )
+        .unwrap();
+        assert_eq!(action_tooltip.text, "Terminal");
     }
 
     #[test]

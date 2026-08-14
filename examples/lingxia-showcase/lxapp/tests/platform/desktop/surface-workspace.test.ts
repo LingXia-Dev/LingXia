@@ -1273,6 +1273,27 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       () => apiNavbarProbePoints(desktop, host!),
       `${platform} compact API navbar baseline`,
     );
+    if (platform === 'windows') {
+      const compactNavbarLeft = await waitForValue(
+        () => apiNavbarLeftEdge(desktop, platform, host!, compactNavbar[0][1]),
+        'Windows compact API navbar remains beside the icon rail',
+      );
+      expect(
+        Math.abs(compactNavbarLeft - railNavbarLeft)
+          <= nativeWindowExtent(platform, host, 20),
+      ).toBeTruthy();
+      const mobileBars = (await desktop.windows()).filter((window) => (
+        window.visible
+        && window.pid === host!.pid
+        && window.id !== host!.id
+        && window.bounds.w > host!.bounds.w / 2
+        && window.bounds.h >= nativeWindowExtent(platform, host!, 40)
+        && window.bounds.h <= nativeWindowExtent(platform, host!, 60)
+        && window.bounds.y >= host!.bounds.y + host!.bounds.h
+          - nativeWindowExtent(platform, host!, 80)
+      ));
+      expect(mobileBars).toEqual([]);
+    }
     if (platform === 'macos') {
       await waitForValue(
         () => visibleCompactApiTabAxNode(desktop, host!),
