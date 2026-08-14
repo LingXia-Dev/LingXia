@@ -1345,7 +1345,13 @@ impl PageInstance {
         match nav_type {
             NavigationType::Replace => {
                 self.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
-                lxapp.schedule_page_reset(self);
+                // Replacing a page with itself never takes it off screen, so
+                // resetting would reload the document under the user — a white
+                // frame on every redirect. The entry re-runs `onLoad` with the
+                // new query against the instance that is already there.
+                if target_page.instance_id_string() != self.instance_id_string() {
+                    lxapp.schedule_page_reset(self);
+                }
             }
             NavigationType::Launch => {}
             _ => {

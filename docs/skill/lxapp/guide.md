@@ -194,6 +194,10 @@ survive in `lx.getStorage()` or in `App({})`.
 the lxapp, keeps its instance and its `data`, and simply gets `onShow` again on
 return. `lx.switchTab` also only hides the page it leaves.
 
+`lx.redirectTo` onto the page you are already on is the one exception: the page
+never leaves the screen, so it keeps its instance and simply gets `onLoad` again
+with the new query.
+
 A route can be on the page stack **once**: one path is one page instance, so
 `lx.navigateTo` onto a page already on the stack is rejected. Navigate back to
 it, or model the destination as a different route.
