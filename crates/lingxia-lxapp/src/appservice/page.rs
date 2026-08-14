@@ -21,6 +21,8 @@ use tokio::sync::{Mutex, oneshot, watch};
 
 const ASYNC_ITERATOR_RETURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
+type LifecycleQueue = Rc<RefCell<std::collections::VecDeque<(PageLifecycleEvent, Option<String>)>>>;
+
 #[js_class(clone)]
 pub struct PageSvc {
     functions: HashMap<String, JSFunc>,
@@ -40,7 +42,7 @@ pub struct PageSvc {
     /// Lifecycle handlers run off the worker pump, but a page's events must
     /// still execute in dispatch order (onLoad → onShow → onReady). Each
     /// event enqueues here and a single drainer runs the queue FIFO.
-    lifecycle_queue: Rc<RefCell<std::collections::VecDeque<(PageLifecycleEvent, Option<String>)>>>,
+    lifecycle_queue: LifecycleQueue,
     lifecycle_pump_running: Rc<Cell<bool>>,
 }
 
