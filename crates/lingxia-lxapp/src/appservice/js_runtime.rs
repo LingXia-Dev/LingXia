@@ -682,24 +682,12 @@ pub(crate) async fn lxapp_service_handler(
                     return;
                 }
 
-                // Prefer page instance identity. Multiple active PageSvc objects can share a path.
+                // Services register under their instance id alone; a path can
+                // have several live instances.
                 let page_svc = with_page_svc_map(ctx, |page_svc_map| {
-                    let mut page_svc_map = page_svc_map.borrow_mut();
-                    let page_svc = match page_instance_id.as_deref() {
-                        Some(id) => page_svc_map.remove(id),
-                        None => page_svc_map.get(&path).cloned(),
-                    };
-
-                    if let Some(page_svc) = page_svc.as_ref() {
-                        let instance_id = page_svc.get_page().instance_id_string();
-                        page_svc_map.remove(instance_id.as_str());
-                        if page_svc_map.get(&path).is_some_and(|candidate| {
-                            candidate.get_page().instance_id_string() == instance_id
-                        }) {
-                            page_svc_map.remove(&path);
-                        }
-                    }
-                    Ok(page_svc)
+                    Ok(page_instance_id
+                        .as_deref()
+                        .and_then(|id| page_svc_map.borrow_mut().remove(id)))
                 })
                 .unwrap_or(None);
 
@@ -745,11 +733,9 @@ pub(crate) async fn lxapp_service_handler(
                 match source {
                     PageSvcSource::Bridge { message } => {
                         let page_svc = with_page_svc_map(ctx, |page_svc_map| {
-                            let page_svc_map = page_svc_map.borrow();
                             Ok(page_instance_id
                                 .as_deref()
-                                .and_then(|id| page_svc_map.get(id).cloned())
-                                .or_else(|| page_svc_map.get(&path).cloned()))
+                                .and_then(|id| page_svc_map.borrow().get(id).cloned()))
                         })
                         .unwrap_or(None);
 
@@ -782,11 +768,9 @@ pub(crate) async fn lxapp_service_handler(
                     }
                     PageSvcSource::Native { name, args } => {
                         let page_svc = with_page_svc_map(ctx, |page_svc_map| {
-                            let page_svc_map = page_svc_map.borrow();
                             Ok(page_instance_id
                                 .as_deref()
-                                .and_then(|id| page_svc_map.get(id).cloned())
-                                .or_else(|| page_svc_map.get(&path).cloned()))
+                                .and_then(|id| page_svc_map.borrow().get(id).cloned()))
                         })
                         .unwrap_or(None);
 
@@ -817,8 +801,7 @@ pub(crate) async fn lxapp_service_handler(
                     let page_svc_map = page_svc_map.borrow();
                     Ok(page_instance_id
                         .as_deref()
-                        .and_then(|id| page_svc_map.get(id).cloned())
-                        .or_else(|| page_svc_map.get(&path).cloned()))
+                        .and_then(|id| page_svc_map.get(id).cloned()))
                 })
                 .unwrap_or(None);
 

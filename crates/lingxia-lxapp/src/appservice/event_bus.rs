@@ -158,6 +158,8 @@ pub fn register_page_handler(
 }
 
 /// Resolve a route path to the current live instance id for that route.
+/// Handlers register from the page's own Logic after its entry pushed it, so
+/// the topmost instance on the route is the registering instance.
 fn resolve_page_instance_id(ctx: &JSContext, page_path: &str) -> Option<String> {
     let lxapp = crate::LxApp::from_ctx(ctx).ok()?;
     lxapp

@@ -169,36 +169,76 @@ contract({
 
 contract({
   id: 'PAGE-LIFECYCLE-003',
-  title: 'reject navigateTo onto a route already on the page stack',
-  covers: ['lx.navigateTo'],
+  title: 'stack two live instances of one route and unwind them independently',
+  covers: ['lx.navigateTo', 'lx.navigateBack'],
   layer: 'logic',
-  levels: ['failure', 'lifecycle'],
+  levels: ['semantic', 'lifecycle'],
   scope: 'portable',
-  expectedOutcome: 'reject',
+  expectedOutcome: 'supported',
 }, async ({ app, defer }) => {
   defer(async () => {
     await app.nav.relaunch({ page: 'home' });
+  });
+
+  const topDemoState = async (): Promise<ResetDemoState | null> => app.eval({
+    script: `
+      const page = getCurrentPages().at(-1);
+      return page && page.route.includes('/lifecycle/')
+        ? {
+            instanceTag: page.data.instanceTag ?? '',
+            previousInstanceTag: page.data.previousInstanceTag ?? '',
+            logicCounter: page.data.logicCounter ?? -1,
+          }
+        : null;
+    `,
+  }) as Promise<ResetDemoState | null>;
+  const waitForTopDemo = () => eventually(topDemoState, (
+    candidate,
+  ) => candidate !== null && candidate.instanceTag !== '', {
+    describe: 'topmost drill-down instance to report its tag',
   });
 
   await app.nav.relaunch({ page: 'home' });
   await waitForCurrentPage(app, 'home');
   await app.nav.to({ page: 'lifecycle' });
   await waitForCurrentPage(app, 'lifecycle');
+  const first = await waitForTopDemo();
+  if (first === null) throw new Error('first drill-down entry left the stack');
 
-  // One path is one page instance, so a duplicate entry would leave two stack
-  // slots sharing it — popping either would end the one the other still shows.
-  let rejection = '';
-  try {
-    await app.nav.to({ page: 'lifecycle' });
-  } catch (error) {
-    rejection = String(error);
-  }
-  expect(rejection).toContain('already on the page stack');
+  // Distinguish the first instance before drilling deeper.
+  await app.page.click({ page: 'lifecycle', css: '[data-testid="lifecycle-bump-logic"]' });
+  await eventually(topDemoState, (
+    candidate,
+  ) => candidate?.logicCounter === 1, { describe: 'first instance counter to reach 1' });
+
+  // Same route again: a second, independent live instance.
+  await app.nav.to({ page: 'lifecycle' });
+  const second = await eventually(topDemoState, (
+    candidate,
+  ) => candidate !== null && candidate.instanceTag !== ''
+    && candidate.instanceTag !== first.instanceTag, {
+    describe: 'second drill-down entry to report its own tag',
+  });
+  if (second === null) throw new Error('second drill-down entry left the stack');
+  expect(second.logicCounter).toBe(0);
 
   const stack = await app.eval({
     script: 'return getCurrentPages().map((page) => page.route);',
   }) as string[];
-  expect(stack.filter((route) => route.includes('/lifecycle/')).length).toBe(1);
+  expect(stack.filter((route) => route.includes('/lifecycle/')).length).toBe(2);
+
+  // Unwinding lands on the first instance with its own state intact.
+  await app.nav.back();
+  const unwound = await eventually(topDemoState, (
+    candidate,
+  ) => candidate !== null && candidate.instanceTag === first.instanceTag, {
+    describe: 'back to land on the first drill-down instance',
+  });
+  if (unwound === null) throw new Error('first instance missing after unwind');
+  expect(unwound.logicCounter).toBe(1);
+
+  await app.nav.back();
+  await waitForCurrentPage(app, 'home');
 });
 
 contract({

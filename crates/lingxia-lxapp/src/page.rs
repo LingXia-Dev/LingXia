@@ -267,10 +267,6 @@ pub struct PageInstance {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PageInstanceId(String);
 
-pub(crate) enum WebTagInstance {
-    PageInstanceId,
-}
-
 impl PageInstanceId {
     pub fn new() -> Self {
         Self(uuid::Uuid::new_v4().to_string())
@@ -422,16 +418,16 @@ impl PageInstance {
         F: Fn(&PageInstance) -> Fut + Send + 'static,
         Fut: std::future::Future<Output = Result<(), String>> + Send + 'static,
     {
-        // AppRuntime presents and navigates stack pages by app, path, and
-        // session. Explicit surface-owned pages opt into per-instance tags.
-        Self::new_with_webtag_instance(appid, path, lxapp, None, setup_callback)
+        Self::new_with_isolation(appid, path, lxapp, false, setup_callback)
     }
 
-    pub(crate) fn new_with_webtag_instance<F, Fut>(
+    /// `isolated` marks surface-owned pages: they never resolve by bare path
+    /// and their dispose lifecycle belongs to the owning surface.
+    pub(crate) fn new_with_isolation<F, Fut>(
         appid: String,
         path: String,
         lxapp: &LxApp,
-        webtag_instance: Option<WebTagInstance>,
+        isolated: bool,
         setup_callback: F,
     ) -> Self
     where
@@ -441,24 +437,18 @@ impl PageInstance {
         // Build page state from LxApp configuration
         let page_state = Self::build_page_state(lxapp, &path);
         let id = PageInstanceId::new();
-        let webtag = webtag_instance
-            .as_ref()
-            .map(|instance| {
-                let instance_id = match instance {
-                    WebTagInstance::PageInstanceId => id.as_str(),
-                };
-                WebTag::new(
-                    &appid,
-                    &format!("{path}#{instance_id}"),
-                    Some(lxapp.session.id),
-                )
-            })
-            .unwrap_or_else(|| WebTag::new(&appid, &path, Some(lxapp.session.id)));
+        // Every WebView-owning page gets a per-instance tag: two instances of
+        // one route never share registry keys, and platform-side state bound
+        // to the tag string dies with its instance.
+        let webtag = WebTag::new(
+            &appid,
+            &format!("{path}#{}", id.as_str()),
+            Some(lxapp.session.id),
+        );
         let bridge_nonce = Self::generate_bridge_nonce();
         let lxapp_arc = lxapp.clone_arc();
         let (ready_tx, ready_rx) = watch::channel(None);
         let (loaded_tx, _) = watch::channel(0u64);
-        let isolated = webtag_instance.is_some();
         let inner = Arc::new(PageInstanceInner {
             navigation_progress: Arc::new(std::sync::Mutex::new(Default::default())),
             reset_transition: Arc::new(std::sync::Mutex::new(())),
@@ -498,6 +488,7 @@ impl PageInstance {
         let session_id_for_new_window = lxapp.session_id();
 
         let session = WebViewBuilder::strict(webtag)
+            .surface_owned(isolated)
             .delegate(Arc::new(page.clone()))
             .on_scheme("lx", move |req| {
                 let page_weak_for_lx = page_weak_for_lx.clone();
@@ -1290,13 +1281,31 @@ impl PageInstance {
         target_page: PageInstance,
         nav_type: NavigationType,
     ) -> Result<PageInstance, LxAppError> {
-        let lxapp = self.owning_lxapp();
-
         // Normalize through LxApp to ensure consistent canonical paths (e.g. plugin routes).
         let target_url =
             crate::append_page_query(target_page.path(), &target_page.automation_state().query)
                 .map_err(LxAppError::InvalidParameter)?;
-        let target_page = lxapp.get_or_create_page(&target_url);
+        self.navigate_to_url(&target_url, nav_type)
+    }
+
+    /// Navigate from this page to a target URL. This is the entry point that
+    /// decides which instance the navigation lands on.
+    pub fn navigate_to_url(
+        &self,
+        target_url: &str,
+        nav_type: NavigationType,
+    ) -> Result<PageInstance, LxAppError> {
+        let lxapp = self.owning_lxapp();
+        lxapp.validate_navigation_entry(target_url, nav_type)?;
+        let target_page = if nav_type == NavigationType::Replace
+            && lxapp.resolve_entry_path(target_url) == self.path()
+        {
+            // Redirecting a page to itself keeps the instance and document;
+            // the entry re-runs onLoad against the updated query.
+            lxapp.get_or_create_page(target_url)
+        } else {
+            lxapp.create_page_for_entry(target_url)
+        };
         self.navigate_to_internal(target_page, nav_type, &lxapp)
     }
 
@@ -1356,7 +1365,21 @@ impl PageInstance {
             NavigationType::Replace => {
                 lxapp.pop_from_page_stack();
             }
-            NavigationType::Forward => {}
+            NavigationType::Forward => {
+                // Backstop for the preflight: only a path-pinned singleton
+                // (tab page) can resolve to an instance already on the stack,
+                // and two slots must never share one instance.
+                if lxapp
+                    .get_page_stack()
+                    .iter()
+                    .any(|id| id == &target_page.instance_id_string())
+                {
+                    return Err(LxAppError::InvalidParameter(format!(
+                        "navigateTo target '{path}' is already on the page stack; \
+                         use lx.switchTab or lx.navigateBack to return to it."
+                    )));
+                }
+            }
             NavigationType::Backward => {
                 return Err(LxAppError::UnsupportedOperation(
                     "should use navigate_back".to_string(),

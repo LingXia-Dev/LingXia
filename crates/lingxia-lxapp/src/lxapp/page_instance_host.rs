@@ -36,19 +36,24 @@ fn navigation_entry_error(
 
 fn validate_navigation_stack(
     stack: &[String],
-    target: &str,
+    pinned_instance: Option<&str>,
+    target_path: &str,
     nav_type: crate::page::NavigationType,
 ) -> Result<(), LxAppError> {
     match nav_type {
-        crate::page::NavigationType::Forward if stack.iter().any(|entry| entry == target) => {
+        // Every forward entry mints its own instance, so the same route may
+        // stack repeatedly. Only a path-pinned singleton (tab page) can
+        // resolve to an instance that is already on the stack.
+        crate::page::NavigationType::Forward
+            if pinned_instance.is_some_and(|id| stack.iter().any(|entry| entry == id)) =>
+        {
             Err(navigation_entry_error(
                 "duplicate_route",
                 nav_type,
-                target,
+                target_path,
                 format!(
-                    "navigateTo target '{target}' is already on the page stack. \
-                     A page can only appear once; use lx.redirectTo to replace \
-                     the current page, or navigate to a different route."
+                    "navigateTo target '{target_path}' is already on the page stack; \
+                     use lx.switchTab or lx.navigateBack to return to it."
                 ),
             ))
         }
@@ -56,23 +61,10 @@ fn validate_navigation_stack(
             Err(navigation_entry_error(
                 "stack_full",
                 nav_type,
-                target,
+                target_path,
                 format!(
-                    "navigateTo cannot open '{target}': the page stack is full \
+                    "navigateTo cannot open '{target_path}': the page stack is full \
                      (capacity: {PAGE_STACK_MAX})."
-                ),
-            ))
-        }
-        crate::page::NavigationType::Replace
-            if stack.iter().rev().skip(1).any(|entry| entry == target) =>
-        {
-            Err(navigation_entry_error(
-                "duplicate_route",
-                nav_type,
-                target,
-                format!(
-                    "redirectTo target '{target}' is already on the page stack. \
-                     A page can only appear once; navigate back to it instead."
                 ),
             ))
         }
@@ -351,11 +343,11 @@ impl LxApp {
     fn create_isolated_page_instance(&self, path: &str) -> PageInstance {
         let appid = self.appid.clone();
         let lxapp_arc = self.clone_arc();
-        let page = PageInstance::new_with_webtag_instance(
+        let page = PageInstance::new_with_isolation(
             appid.clone(),
             path.to_string(),
             self,
-            Some(WebTagInstance::PageInstanceId),
+            true,
             move |page| {
                 let lxapp_arc = lxapp_arc.clone();
                 let page_clone = page.clone();
@@ -569,13 +561,19 @@ impl LxApp {
             Err(_) => return Ok(()),
         };
         let path = resolved.internal_path();
-        validate_navigation_stack(&self.get_page_stack(), &path, nav_type)
+        let pinned = self
+            .pinned_page(&path)
+            .map(|page| page.instance_id_string());
+        validate_navigation_stack(&self.get_page_stack(), pinned.as_deref(), &path, nav_type)
     }
 
-    /// Get existing page or create a new one.
-    /// PageSvc creation + HTML load are handled inside PageInstance::new once WebView is ready.
-    pub fn get_or_create_page(&self, url: &str) -> PageInstance {
-        let resolved = crate::route::resolve_route(self, url).unwrap_or_else(|e| {
+    /// Canonical route path a URL resolves to (query stripped).
+    pub fn resolve_entry_path(&self, url: &str) -> String {
+        self.resolve_entry_route(url).internal_path().to_string()
+    }
+
+    pub(crate) fn resolve_entry_route(&self, url: &str) -> crate::route::ResolvedRoute {
+        crate::route::resolve_route(self, url).unwrap_or_else(|e| {
             error!("Failed to resolve page url '{}': {}", url, e).with_appid(self.appid.clone());
             let (path, query) = crate::startup::split_path_query(url);
             crate::route::ResolvedRoute {
@@ -583,23 +581,15 @@ impl LxApp {
                 query,
                 target: crate::route::RouteTarget::Normal { path },
             }
-        });
+        })
+    }
 
-        let path = resolved.internal_path();
-        // A cached instance serves every URL on its route. Every requested URL
-        // must therefore replace the cached query, including the empty query;
-        // if it only updates on `Some`, a later `/page` navigation incorrectly
-        // inherits state from an earlier `/page?mode=...` visit.
-        let query = resolved.query.unwrap_or_default();
-
-        if let Some(page) = self.get_page(&path) {
-            page.set_query(query);
-            return page;
-        }
-
+    /// Build a fresh, unregistered PageInstance for the path. PageSvc creation
+    /// + HTML load are handled inside PageInstance::new once WebView is ready.
+    fn mint_page_instance(&self, path: &str) -> PageInstance {
         let appid = self.appid.clone();
         let lxapp_arc = self.clone_arc();
-        let candidate = PageInstance::new(appid.clone(), path.to_string(), self, move |page| {
+        PageInstance::new(appid, path.to_string(), self, move |page| {
             let lxapp_arc = lxapp_arc.clone();
             let page_clone = page.clone();
             async move {
@@ -611,7 +601,7 @@ impl LxApp {
                         .create_page_svc_with_ack(
                             lxapp_arc.clone(),
                             page_clone.path(),
-                            None,
+                            Some(page_clone.instance_id_string()),
                             ack_tx,
                         )
                         .map_err(|e| e.to_string())?;
@@ -629,11 +619,42 @@ impl LxApp {
                 }
                 .await;
                 if result.is_err() {
-                    lxapp_arc.remove_registered_page_if_current(&page_clone.path(), &page_clone);
+                    lxapp_arc.remove_failed_page(&page_clone);
                 }
                 result
             }
-        });
+        })
+    }
+
+    /// Pin tab pages as path singletons: switchTab returns to the warm
+    /// instance, so it must stay resolvable while off the stack.
+    fn pin_if_tabbar_page(&self, page: &PageInstance, path: &str) {
+        if self
+            .get_tabbar()
+            .is_some_and(|tabbar| tabbar.is_tabbar_page(path))
+        {
+            self.pin_page_path(page);
+        }
+    }
+
+    /// Get existing page or create a new one. Resolution never mints a
+    /// duplicate for a route that is already live — navigation entry points
+    /// use `create_page_for_entry` for that.
+    pub fn get_or_create_page(&self, url: &str) -> PageInstance {
+        let resolved = self.resolve_entry_route(url);
+        let path = resolved.internal_path();
+        // A cached instance serves every URL on its route. Every requested URL
+        // must therefore replace the cached query, including the empty query;
+        // if it only updates on `Some`, a later `/page` navigation incorrectly
+        // inherits state from an earlier `/page?mode=...` visit.
+        let query = resolved.query.unwrap_or_default();
+
+        if let Some(page) = self.get_page(&path) {
+            page.set_query(query);
+            return page;
+        }
+
+        let candidate = self.mint_page_instance(&path);
 
         // Double-checked under the state lock: a concurrent navigation may
         // have created this route's instance while the candidate was built.
@@ -652,19 +673,47 @@ impl LxApp {
             }
         };
 
-        // Tab pages are path-pinned singletons: switchTab returns to the warm
-        // instance, so it must stay resolvable while off the stack.
-        if self
-            .get_tabbar()
-            .is_some_and(|tabbar| tabbar.is_tabbar_page(&path))
-        {
-            self.pin_page_path(&page);
+        self.pin_if_tabbar_page(&page, &path);
+        self.evict_inactive_pages_if_needed();
+        page.set_query(query);
+        page
+    }
+
+    /// Resolve the instance a navigation entry lands on. Unlike
+    /// `get_or_create_page`, a route whose instances are all on the stack gets
+    /// a fresh instance — two stack entries never share one — which is what
+    /// lets the same route appear on the stack twice.
+    pub fn create_page_for_entry(&self, url: &str) -> PageInstance {
+        let resolved = self.resolve_entry_route(url);
+        let path = resolved.internal_path();
+        let query = resolved.query.unwrap_or_default();
+
+        // Path-pinned singletons (tab pages, headless services) always
+        // re-enter their warm instance.
+        if let Some(page) = self.pinned_page(&path) {
+            page.set_query(query);
+            return page;
         }
 
+        // A parked off-stack instance is the warm re-entry path: adopt the
+        // most recently active one instead of cold-creating a WebView.
+        if let Some(page) = self.most_recent_off_stack_page(&path) {
+            page.set_query(query);
+            return page;
+        }
+
+        let page = self.mint_page_instance(&path);
+        {
+            let state = self.state.lock().unwrap();
+            state
+                .pages_by_id
+                .lock()
+                .unwrap()
+                .insert(page.instance_id_string(), page.clone());
+        }
+        self.pin_if_tabbar_page(&page, &path);
         self.evict_inactive_pages_if_needed();
-
         page.set_query(query);
-
         page
     }
 
@@ -750,7 +799,7 @@ impl LxApp {
                 let _ = cancel.send(());
             }
             crate::view_call::cancel_view_calls_for_page_instances(
-                &[id.clone()],
+                std::slice::from_ref(&id),
                 "PageInstance evicted while waiting for view response",
             );
             state
@@ -1072,13 +1121,6 @@ fn effective_page_instance_lifecycle(
     }
 }
 
-fn disposed_instance_owns_stack_path(
-    canonical_instance_id: Option<&str>,
-    disposed_instance_id: &str,
-) -> bool {
-    canonical_instance_id == Some(disposed_instance_id)
-}
-
 fn normalize_page_path(path: &str) -> &str {
     path.trim_start_matches('/')
 }
@@ -1127,23 +1169,13 @@ fn plugin_page_map_contains(
     })
 }
 
-fn page_is_protected_from_eviction(
-    path: &str,
-    stack_paths: &std::collections::HashSet<String>,
-    is_tabbar_page: bool,
-) -> bool {
-    is_tabbar_page || stack_paths.contains(path)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        PAGE_STACK_MAX, PageInstanceLifecycleState, disposed_instance_owns_stack_path,
-        effective_page_instance_lifecycle, page_is_protected_from_eviction,
+        PAGE_STACK_MAX, PageInstanceLifecycleState, effective_page_instance_lifecycle,
         validate_navigation_stack,
     };
     use crate::NavigationType;
-    use std::collections::HashSet;
 
     #[test]
     fn automation_lifecycle_does_not_report_ready_pages_as_created() {
@@ -1166,41 +1198,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn disposing_isolated_surface_page_keeps_canonical_stack_path() {
-        assert!(disposed_instance_owns_stack_path(
-            Some("stack-instance"),
-            "stack-instance"
-        ));
-        assert!(!disposed_instance_owns_stack_path(
-            Some("stack-instance"),
-            "surface-instance"
-        ));
-        assert!(!disposed_instance_owns_stack_path(None, "surface-instance"));
-    }
-
-    #[test]
-    fn eviction_protects_every_navigation_stack_page() {
-        let stack = HashSet::from(["pages/oldest".to_string(), "pages/current".to_string()]);
-
-        assert!(page_is_protected_from_eviction(
-            "pages/oldest",
-            &stack,
-            false
-        ));
-        assert!(page_is_protected_from_eviction(
-            "pages/current",
-            &stack,
-            false
-        ));
-        assert!(page_is_protected_from_eviction("pages/tab", &stack, true));
-        assert!(!page_is_protected_from_eviction(
-            "pages/unreferenced",
-            &stack,
-            false
-        ));
-    }
-
     fn navigation_reason(error: crate::LxAppError) -> String {
         match error {
             crate::LxAppError::RongJSHost {
@@ -1211,34 +1208,35 @@ mod tests {
     }
 
     #[test]
-    fn navigation_preflight_rejects_duplicate_routes_before_capacity() {
-        let stack = (0..PAGE_STACK_MAX)
-            .map(|index| format!("pages/{index}"))
-            .collect::<Vec<_>>();
+    fn navigation_preflight_rejects_a_pinned_singleton_already_on_the_stack() {
+        let stack = vec!["home-instance".to_string(), "detail-instance".to_string()];
 
-        let error =
-            validate_navigation_stack(&stack, "pages/0", NavigationType::Forward).unwrap_err();
+        let error = validate_navigation_stack(
+            &stack,
+            Some("home-instance"),
+            "pages/home",
+            NavigationType::Forward,
+        )
+        .unwrap_err();
         assert_eq!(navigation_reason(error), "duplicate_route");
+    }
+
+    #[test]
+    fn navigation_preflight_allows_duplicate_routes_for_fresh_instances() {
+        let stack = vec!["detail-1".to_string(), "detail-2".to_string()];
+
+        validate_navigation_stack(&stack, None, "pages/detail", NavigationType::Forward).unwrap();
+        validate_navigation_stack(&stack, None, "pages/detail", NavigationType::Replace).unwrap();
     }
 
     #[test]
     fn navigation_preflight_rejects_a_full_stack() {
         let stack = (0..PAGE_STACK_MAX)
-            .map(|index| format!("pages/{index}"))
+            .map(|index| format!("instance-{index}"))
             .collect::<Vec<_>>();
 
-        let error =
-            validate_navigation_stack(&stack, "pages/new", NavigationType::Forward).unwrap_err();
+        let error = validate_navigation_stack(&stack, None, "pages/new", NavigationType::Forward)
+            .unwrap_err();
         assert_eq!(navigation_reason(error), "stack_full");
-    }
-
-    #[test]
-    fn redirect_preflight_allows_the_current_route_only() {
-        let stack = vec!["pages/home".to_string(), "pages/current".to_string()];
-
-        validate_navigation_stack(&stack, "pages/current", NavigationType::Replace).unwrap();
-        let error =
-            validate_navigation_stack(&stack, "pages/home", NavigationType::Replace).unwrap_err();
-        assert_eq!(navigation_reason(error), "duplicate_route");
     }
 }

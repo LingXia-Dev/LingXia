@@ -150,13 +150,13 @@ async fn navigate_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<JSO
 
     ensure_page_exists_js(&lxapp, &target_url)?;
     // Reject before resolving the target: a rejected navigateTo must not
-    // touch the query or opener of the page already on the stack.
+    // touch the query or opener of a page already on the stack.
     lxapp
         .validate_navigation_entry(&target_url, NavigationType::Forward)
         .map_err(|e| js_error_from_lxapp_error(&e))?;
 
     let page_svc = lxapp
-        .get_or_create_page_in_ctx(&ctx, &target_url)
+        .create_page_for_entry_in_ctx(&ctx, &target_url)
         .await
         .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
     let (opener_port, page_port) = message_port::pair(&ctx)?;
@@ -209,13 +209,22 @@ async fn redirect_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<()>
         ));
     }
 
-    lxapp
-        .validate_navigation_entry(&target_url, NavigationType::Replace)
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
-    let page_svc = lxapp
-        .get_or_create_page_in_ctx(&ctx, &target_url)
-        .await
-        .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
+    // Redirecting the current page to its own route keeps the instance;
+    // any other target resolves like a fresh entry.
+    let redirect_to_self = current_page_path(&lxapp)
+        .ok()
+        .is_some_and(|current| lxapp.resolve_entry_path(&target_url) == current);
+    let page_svc = if redirect_to_self {
+        lxapp
+            .get_or_create_page_in_ctx(&ctx, &target_url)
+            .await
+            .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?
+    } else {
+        lxapp
+            .create_page_for_entry_in_ctx(&ctx, &target_url)
+            .await
+            .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?
+    };
     let _ = page_svc.clear_opener();
 
     navigate_with_url(lxapp.clone(), target_url, NavigationType::Replace, false)

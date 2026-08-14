@@ -27,7 +27,7 @@ use self::page_chrome::{
 use crate::appservice::LxAppWorkers;
 use crate::error::LxAppError;
 use crate::page::config::{OrientationConfig, PageConfig};
-use crate::page::{PageInstance, PageInstanceId, ViewCallOptions, WebTagInstance};
+use crate::page::{PageInstance, PageInstanceId, ViewCallOptions};
 use crate::startup::LxAppStartupOptions;
 use crate::update::UpdateManager;
 use crate::{debug, error, info, warn};
@@ -1100,7 +1100,6 @@ impl LxApp {
     /// is returning to.
     pub(crate) fn schedule_page_reset(&self, page: &PageInstance) {
         let instance_id = page.instance_id_string();
-        let path = page.path().to_string();
         self.cancel_page_reset(&instance_id);
         page.mark_reset_pending();
 
@@ -1138,13 +1137,12 @@ impl LxApp {
             {
                 return;
             }
-            let Some(page) = app.get_page(&path) else {
+            // Resolve by id: a same-path sibling may still be live on the
+            // stack, and its presence must not shield this instance from its
+            // own teardown.
+            let Some(page) = app.get_page_by_instance_id_str(&instance_id) else {
                 return;
             };
-            if page.instance_id_string() != instance_id {
-                // The instance was replaced while the teardown was pending.
-                return;
-            }
             let _transition = page.reset_transition_guard();
             if page.take_reset_pending() {
                 app.teardown_page(&page);
@@ -1245,10 +1243,12 @@ impl LxApp {
         let (done_tx, done_rx) = oneshot::channel::<Result<(), String>>();
         let path = page.path().to_string();
         let (ack_tx, ack_rx) = oneshot::channel::<Result<(), String>>();
-        if let Err(err) =
-            self.executor
-                .create_page_svc_with_ack(self.clone_arc(), path.clone(), None, ack_tx)
-        {
+        if let Err(err) = self.executor.create_page_svc_with_ack(
+            self.clone_arc(),
+            path.clone(),
+            Some(page.instance_id_string()),
+            ack_tx,
+        ) {
             warn!("Failed to recreate page service for {}: {}", path, err)
                 .with_appid(self.appid.clone());
             let _ = done_tx.send(Err(err.to_string()));
@@ -2129,7 +2129,35 @@ impl LxApp {
 
         pages_by_id
             .values()
-            .find(|page| !page.is_isolated() && page.path() == path)
+            .filter(|page| !page.is_isolated() && page.path() == path)
+            .max_by_key(|page| page.get_last_active_time())
+            .cloned()
+    }
+
+    /// The path's pinned singleton instance, when one is registered.
+    pub(crate) fn pinned_page(&self, path: &str) -> Option<PageInstance> {
+        let state = self.state.lock().ok()?;
+        let id = state.path_pins.lock().ok()?.get(path)?.clone();
+        state.pages_by_id.lock().ok()?.get(&id).cloned()
+    }
+
+    /// The most recently active off-stack instance on the route — the warm
+    /// re-entry candidate. Instances currently on the stack are excluded.
+    pub(crate) fn most_recent_off_stack_page(&self, path: &str) -> Option<PageInstance> {
+        let state = self.state.lock().ok()?;
+        let stack_ids: std::collections::HashSet<String> =
+            state.page_stack.lock().ok()?.iter().cloned().collect();
+        state
+            .pages_by_id
+            .lock()
+            .ok()?
+            .values()
+            .filter(|page| {
+                !page.is_isolated()
+                    && page.path() == path
+                    && !stack_ids.contains(&page.instance_id_string())
+            })
+            .max_by_key(|page| page.get_last_active_time())
             .cloned()
     }
 
@@ -2330,7 +2358,7 @@ impl LxApp {
 
     /// Remove a page instance whose setup failed: it never became usable and
     /// must not stay resolvable.
-    fn remove_registered_page_if_current(&self, _path: &str, page: &PageInstance) {
+    fn remove_failed_page(&self, page: &PageInstance) {
         let id = page.instance_id_string();
         if let Ok(state) = self.state.lock() {
             let _ =
@@ -2384,18 +2412,19 @@ impl LxApp {
         self.pin_page_path(&page);
 
         let (ack_tx, ack_rx) = oneshot::channel::<Result<(), String>>();
-        if let Err(err) =
-            self.executor
-                .create_page_svc_with_ack(self.clone_arc(), path.to_string(), None, ack_tx)
-        {
+        if let Err(err) = self.executor.create_page_svc_with_ack(
+            self.clone_arc(),
+            path.to_string(),
+            Some(page.instance_id_string()),
+            ack_tx,
+        ) {
             page.mark_webview_ready(Err(err.to_string()));
-            self.remove_registered_page_if_current(path, &page);
+            self.remove_failed_page(&page);
             return Err(err);
         }
 
         let page_clone = page.clone();
         let lxapp = self.clone_arc();
-        let path = path.to_string();
         crate::executor::spawn(async move {
             let result = match ack_rx.await {
                 Ok(Ok(())) => Ok(()),
@@ -2403,7 +2432,7 @@ impl LxApp {
                 Err(err) => Err(err.to_string()),
             };
             if result.is_err() {
-                lxapp.remove_registered_page_if_current(&path, &page_clone);
+                lxapp.remove_failed_page(&page_clone);
             }
             page_clone.mark_webview_ready(result);
         });

@@ -199,11 +199,14 @@ on top of a tab is dropped from the stack and unloaded like a `navigateBack`.
 never leaves the screen, so it keeps its instance and simply gets `onLoad` again
 with the new query.
 
-A route can be on the page stack **once**: one path is one page instance, so
-`lx.navigateTo` onto a page already on the stack is rejected. Navigate back to
-it, or model the destination as a different route. Navigation rejections carry
-stable metadata in `error.data`: `reason` is `"duplicate_route"` or
-`"stack_full"`, with the attempted `operation` and resolved `target`.
+A route can appear on the page stack more than once: every `lx.navigateTo`
+entry is its own page instance with its own data and document, so drill-down
+flows like `detail?id=1 → detail?id=2` stack naturally and unwind one entry at
+a time. Tab pages are the exception — each tab is a warm singleton, so it can
+hold only one stack slot at a time. Navigation rejections carry stable
+metadata in `error.data`: `reason` is `"duplicate_route"` (a tab page already
+on the stack) or `"stack_full"` (the ten-page limit), with the attempted
+`operation` and resolved `target`.
 
 `lx.navigateBack()` pops one page by default; pass `{ delta }` to pop more. It
 returns a promise like the other navigation APIs, resolving once the revealed
