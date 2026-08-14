@@ -244,3 +244,75 @@ contract({
   expect(count('onReady')).toBe(1);
   expect(count('onShow')).toBe(1);
 });
+
+contract({
+  id: 'PAGE-LIFECYCLE-005',
+  title: 'park a left page instead of re-rendering it off-screen',
+  covers: ['lx.navigateBack'],
+  layer: 'logic',
+  levels: ['semantic', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app, defer }) => {
+  defer(async () => {
+    await app.nav.relaunch({ page: 'home' });
+  });
+
+  await app.nav.relaunch({ page: 'home' });
+  await waitForCurrentPage(app, 'home');
+
+  const first = await enterResetDemo(app);
+  await app.nav.back();
+  await waitForCurrentPage(app, 'home');
+  // Past the teardown delay: the document must now be parked blank. Anything
+  // still rendered here means page code ran off-screen — mount hooks, native
+  // components, media — with nobody on the page.
+  await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
+
+  const parked = await app.page.query({
+    page: 'lifecycle',
+    css: '[data-testid="lifecycle-page"]',
+  });
+  expect(parked.exists).toBe(false);
+
+  // The rebuild belongs to the entry: coming back renders a fresh document.
+  const second = await enterResetDemo(app);
+  expect(second.previousInstanceTag).toBe(first.instanceTag);
+});
+
+contract({
+  id: 'PAGE-LIFECYCLE-006',
+  title: 'unload a pushed page dropped by switchTab',
+  covers: ['lx.switchTab', 'lx.navigateTo'],
+  layer: 'logic',
+  levels: ['semantic', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app, defer }) => {
+  defer(async () => {
+    await app.nav.relaunch({ page: 'home' });
+  });
+
+  await app.nav.relaunch({ page: 'home' });
+  await waitForCurrentPage(app, 'home');
+
+  const first = await enterResetDemo(app);
+  await app.page.click({ page: 'lifecycle', css: '[data-testid="lifecycle-bump-logic"]' });
+  await eventually(resetDemoState.bind(null, app), (
+    candidate,
+  ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });
+
+  // switchTab keeps the tab pages it leaves warm, but a pushed page drops off
+  // the stack for good — that is a departure, and departures end instances.
+  await app.nav.switchTab({ page: 'api' });
+  await waitForCurrentPage(app, 'api');
+  const stack = await app.eval({
+    script: 'return getCurrentPages().map((page) => page.route);',
+  }) as string[];
+  expect(stack.some((route) => route.includes('/lifecycle/'))).toBe(false);
+
+  const second = await enterResetDemo(app);
+  expect(second.instanceTag).not.toBe(first.instanceTag);
+  expect(second.previousInstanceTag).toBe(first.instanceTag);
+  expect(second.logicCounter).toBe(0);
+});

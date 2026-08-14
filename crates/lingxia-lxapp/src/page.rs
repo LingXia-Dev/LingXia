@@ -1317,6 +1317,23 @@ impl PageInstance {
                     lxapp.remove_pages(&stack_paths);
                     target_page = lxapp.get_or_create_page(&target_url);
                 }
+                if nav_type == NavigationType::SwitchTab {
+                    // switchTab only hides the tab pages it leaves, but any
+                    // pushed page leaves the stack for good here and must end
+                    // its instance like every other departure.
+                    for stack_path in lxapp.get_page_stack() {
+                        if lxapp
+                            .get_tabbar()
+                            .is_some_and(|tabbar| tabbar.is_tabbar_page(&stack_path))
+                        {
+                            continue;
+                        }
+                        if let Some(page) = lxapp.get_page(&stack_path) {
+                            page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
+                            lxapp.schedule_page_reset(&page);
+                        }
+                    }
+                }
                 lxapp.clear_page_stack()?;
             }
             NavigationType::Replace => {
@@ -1405,7 +1422,16 @@ impl PageInstance {
             }
             NavigationType::Launch => {}
             _ => {
-                self.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
+                // A non-tab page leaving on a switchTab was already unloaded
+                // with the rest of the stack; hiding it now would be a second
+                // goodbye to an instance that ended.
+                let unloaded_by_tab_switch = nav_type == NavigationType::SwitchTab
+                    && !lxapp
+                        .get_tabbar()
+                        .is_some_and(|tabbar| tabbar.is_tabbar_page(&self.path()));
+                if !unloaded_by_tab_switch {
+                    self.dispatch_lifecycle_event(PageLifecycleEvent::OnHide);
+                }
             }
         }
 

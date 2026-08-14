@@ -182,7 +182,7 @@ Page({
 | `onShow()` | Becoming visible — on entry, and again every time it comes back. |
 | `onReady()` | The page's document has finished rendering. |
 | `onHide()` | Another page covered it, or the lxapp went to the background. |
-| `onUnload()` | The page left the stack (`lx.navigateBack`, `lx.redirectTo`). |
+| `onUnload()` | The page left the stack (`lx.navigateBack`, `lx.redirectTo`, a `lx.switchTab` that drops it). |
 
 **Leaving a page ends that page instance.** After `onUnload`, entering the same
 page again starts a fresh one: `data` is back to what `Page({ data })` declares,
@@ -192,7 +192,8 @@ survive in `lx.getStorage()` or in `App({})`.
 
 `onHide` is not `onUnload`. A page covered by another page, or backgrounded with
 the lxapp, keeps its instance and its `data`, and simply gets `onShow` again on
-return. `lx.switchTab` also only hides the page it leaves.
+return. `lx.switchTab` only hides the tab page it leaves — but any page pushed
+on top of a tab is dropped from the stack and unloaded like a `navigateBack`.
 
 `lx.redirectTo` onto the page you are already on is the one exception: the page
 never leaves the screen, so it keeps its instance and simply gets `onLoad` again
