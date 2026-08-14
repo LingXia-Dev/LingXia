@@ -644,10 +644,10 @@ The aside region is fixed at three slots, grouped by rendering engine:
 
 A compact desktop window remains a desktop shell: its icon rail stays visible,
 the main remains a distinct workspace, and an lxapp tabbar remains projected
-into the rail rather than returning to the bottom. If a browser main no longer
-has room for desktop top chrome, its address and action rows MAY reflow to the
-bottom, but they are constrained to the main workspace and MUST NOT paint,
-hit-test, or reserve space inside the sidebar rail.
+into the rail rather than returning to the bottom. A browser main likewise
+retains its top address toolbar. At narrow widths the address field flexes and
+secondary actions MAY collapse into overflow, but desktop browser chrome MUST
+NOT move to the bottom or paint inside the sidebar rail.
 
 The following rules apply to device-compact hosts (mobile and phone Runner):
 
@@ -967,7 +967,7 @@ As of 2026-08 (PR #202 follow-up design):
 | Shell persistence | Window frame, sidebar mode/width, group collapse, aside geometry, and pins landed; main-session lazy restore and the aside geometry-only policy still to be verified against §8 |
 | `E_SURFACE_CONFLICT` | Error path exists; ownership conflicts such as navigating to an appId already hosted by another live Surface still need full enforcement |
 | Admission | Arbitration module exists; the 45% clamp / slot-cap / overlay-fallback behavior of §3.3 not yet verified end to end |
-| Compact projection | Desktop rail retention and workspace-confined browser reflow landed on Windows/macOS; browser aside/self chrome, group isolation, and browser-owned back/close semantics aligned with §5 on mobile and Runner |
+| Compact projection | Desktop rail and top browser chrome retention landed on Windows/macOS; browser aside/self chrome, group isolation, and browser-owned back/close semantics aligned with §5 on mobile and Runner |
 | Frameless window + `controls:` + writer window controls | Not implemented |
 | Declared page floats; native floats | Parsed but rejected by the CLI pending runtime support |
 | Launch screen (splash, §7.4) | CLI generation and Android/iOS/Harmony runtime halves implemented; iOS device-verified, Android/Harmony pending; campaign download channel and Windows not implemented |

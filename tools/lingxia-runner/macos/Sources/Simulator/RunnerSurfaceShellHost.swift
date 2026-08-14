@@ -240,6 +240,10 @@ final class RunnerSurfaceShellHost {
         // Frameless: no real macOS traffic lights. The toolbar strip above the
         // content carries its own close/minimize dots (like the iPhone simulator).
         RunnerSupport.SurfaceShell.setTrafficLightsVisible(shell, visible: false)
+        RunnerSupport.SurfaceShell.setDeviceCompactProjectionEnabled(
+            shell,
+            enabled: !device.isResizableDesktop
+        )
         window.maxSize = NSSize(
             width: CGFloat.greatestFiniteMagnitude,
             height: CGFloat.greatestFiniteMagnitude

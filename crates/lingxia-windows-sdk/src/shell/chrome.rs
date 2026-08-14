@@ -3004,7 +3004,7 @@ mod scroll_tests {
     }
 
     #[test]
-    fn compact_desktop_browser_uses_bottom_chrome_without_dropping_caption() {
+    fn compact_desktop_browser_keeps_top_chrome_and_icon_rail() {
         let client = RECT {
             left: 0,
             top: 0,
@@ -3053,14 +3053,12 @@ mod scroll_tests {
             ..Default::default()
         };
         let rects = compute_chrome_rects(client, &layout);
-        let phone_bar = rects.phone_bar.unwrap();
 
-        assert!(phone_browser_bar_active(client, &layout));
+        assert!(!phone_browser_bar_active(client, &layout));
+        assert!(rects.phone_bar.is_none());
         assert_eq!(rect_height(&rects.top_bar), SHELL_TOP_BAR_HEIGHT);
-        assert_eq!(rects.content.bottom, phone_bar.top);
-        assert_eq!(phone_bar.left, 56 + SHELL_CONTENT_INSET);
-        assert_eq!(phone_bar.right, client.right - SHELL_CONTENT_INSET);
-        assert_eq!(phone_bar.bottom, client.bottom - SHELL_CONTENT_INSET);
+        assert_eq!(rects.top_bar.left, 56);
+        assert_eq!(rects.content.bottom, client.bottom - SHELL_CONTENT_INSET);
     }
 
     #[test]

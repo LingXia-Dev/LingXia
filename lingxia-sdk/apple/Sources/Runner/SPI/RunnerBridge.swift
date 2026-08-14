@@ -285,6 +285,13 @@ enum RunnerBridge {
         shell.setTopAccessory(view, height: height)
     }
 
+    static func setSurfaceShellDeviceCompactProjectionEnabled(
+        _ shell: LxAppShell,
+        enabled: Bool
+    ) {
+        shell.setDeviceCompactProjectionEnabled(enabled)
+    }
+
     static func setSurfaceShellBrowserPageActionsVisible(
         _ shell: LxAppShell,
         visible: Bool

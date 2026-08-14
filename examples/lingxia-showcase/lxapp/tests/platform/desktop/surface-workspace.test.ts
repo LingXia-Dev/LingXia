@@ -162,78 +162,6 @@ function isApiNavbarBlue(pixel: DesktopPixel): boolean {
     && Math.abs(pixel.b - 246) <= 24;
 }
 
-function pixelDistance(left: DesktopPixel, right: DesktopPixel): number {
-  return Math.abs(left.r - right.r)
-    + Math.abs(left.g - right.g)
-    + Math.abs(left.b - right.b);
-}
-
-async function selectFirstCompactBrowserTab(
-  desktop: DesktopDriver,
-  platform: string,
-  host: DesktopWindowInfo,
-): Promise<void> {
-  const bottom = host.bounds.y + host.bounds.h;
-  const right = host.bounds.x + host.bounds.w;
-  const dimProbe: [number, number] = [
-    host.bounds.x + Math.round(host.bounds.w * 0.5),
-    host.bounds.y + Math.round(host.bounds.h * 0.42),
-  ];
-  const before = await desktop.pixel({ at: dimProbe });
-  const visibleWindowsBefore = platform === 'windows'
-    ? new Set((await desktop.windows())
-      .filter((window) => window.visible)
-      .map((window) => window.id))
-    : undefined;
-
-  // Both desktop skins use the same compact main-browser geometry: the tabs
-  // button is the second trailing action before Dismiss.
-  await ensureHostForeground(desktop, host);
-  await desktop.pointer.click({
-    at: [
-      right - nativeWindowExtent(platform, host, 67),
-      bottom - nativeWindowExtent(platform, host, 31),
-    ],
-  });
-  const windowsSwitcher = platform === 'windows'
-    ? await waitForValue(async () => (
-      (await desktop.windows()).find((window) => (
-        !visibleWindowsBefore!.has(window.id)
-        && window.visible
-        && window.pid === host.pid
-        && window.title === ''
-        && Math.abs(window.bounds.x - host.bounds.x) <= 1
-        && Math.abs(window.bounds.y - host.bounds.y) <= 1
-        && Math.abs(window.bounds.w - host.bounds.w) <= 1
-        && Math.abs(window.bounds.h - host.bounds.h) <= 1
-      ))
-    ), 'windows compact browser creates a physical tab switcher window')
-    : undefined;
-  if (platform !== 'windows') {
-    await waitForValue(async () => {
-      const dimmed = await desktop.pixel({ at: dimProbe });
-      return pixelDistance(before, dimmed) >= 24 ? true : undefined;
-    }, `${platform} compact browser tab switcher backdrop`);
-  }
-
-  // The first 40pt row starts below the sheet title on both implementations.
-  // Use the host center because the macOS sheet starts after the sidebar rail.
-  // Clicking it must activate the first provider tab, not merely dismiss UI.
-  await desktop.pointer.click({
-    at: [
-      host.bounds.x + Math.round(host.bounds.w * 0.5),
-      bottom - nativeWindowExtent(platform, host, 80),
-    ],
-  });
-  if (windowsSwitcher) {
-    await waitForValue(async () => (
-      (await desktop.windows()).some((window) => window.id === windowsSwitcher.id)
-        ? undefined
-        : true
-    ), 'windows compact browser destroys the tab switcher after selection');
-  }
-}
-
 async function apiNavbarProbePoints(
   desktop: DesktopDriver,
   host: DesktopWindowInfo,
@@ -1450,7 +1378,10 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       browserTabId,
       secondaryBrowserTabId,
     ]);
-    await selectFirstCompactBrowserTab(desktop, platform, host);
+    // Desktop compact keeps provider chrome at the top; tab changes continue
+    // through the persistent rail/provider registry rather than a mobile
+    // bottom-sheet switcher.
+    await browser.activate({ tab: browserTabId });
     await waitForValue(async () => {
       const current = await browser.current();
       return current?.tab_id === browserTabId ? current : undefined;

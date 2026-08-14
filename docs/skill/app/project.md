@@ -445,9 +445,9 @@ One lxapp has one live role in a window. Opening it under the other role must mo
 - **Medium**: the sidebar collapses to an icon rail and at most one aside slot is admitted; an explicitly opened slot that cannot preserve the main minimum overlays the content pane.
 - **Narrow desktop**: the icon rail remains and `main` keeps its desktop
   workspace; asides overlay the main when they cannot be admitted beside it.
-  Browser address/actions may reflow to the bottom of that workspace, but never
-  into the rail. A narrow desktop does not restore an lxapp's mobile bottom
-  tabbar.
+  Browser chrome keeps its top address toolbar; it may collapse secondary
+  actions, but never moves to the bottom or into the rail. A narrow desktop does
+  not restore an lxapp's mobile bottom tabbar.
 - **Mobile / phone Runner**: the sidebar disappears, `main` goes full screen,
   and asides overlay the main full screen.
 

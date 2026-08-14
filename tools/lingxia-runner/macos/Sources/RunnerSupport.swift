@@ -229,6 +229,16 @@ enum RunnerSupport {
             LingxiaRunnerSPI.SurfaceShell.setTopAccessory(shell, view: view, height: height)
         }
 
+        static func setDeviceCompactProjectionEnabled(
+            _ shell: LxAppShell,
+            enabled: Bool
+        ) {
+            LingxiaRunnerSPI.SurfaceShell.setDeviceCompactProjectionEnabled(
+                shell,
+                enabled: enabled
+            )
+        }
+
         static func setBrowserPageActionsVisible(_ shell: LxAppShell, visible: Bool) {
             LingxiaRunnerSPI.SurfaceShell.setBrowserPageActionsVisible(shell, visible: visible)
         }

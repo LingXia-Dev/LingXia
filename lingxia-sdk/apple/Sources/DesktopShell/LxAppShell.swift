@@ -207,6 +207,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         case expanded
     }
     private var surfaceSizeClass: ShellSizeClass = .expanded
+    /// True only for a phone-framed Runner host. Desktop window resizing never
+    /// opts into the mobile bottom-browser projection.
+    private var deviceCompactProjectionEnabled = false
     private var isApplyingSurfaceSizeClass = false
     private var mediumSidebarExpandedByUser = false
     private var panelFramePreservationGeneration: UInt = 0
@@ -509,7 +512,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// size-class crossing.
     func applySurfaceLayoutProjection(_ rawValue: String) {
         guard let next = ShellSizeClass(rawValue: rawValue) else { return }
-        browserCoordinator.setCompactProjection(next == .compact)
+        browserCoordinator.setCompactProjection(
+            deviceCompactProjectionEnabled && next == .compact
+        )
         guard next != surfaceSizeClass else { return }
         mediumSidebarExpandedByUser = false
         surfaceSizeClass = next
@@ -1711,6 +1716,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             topAccessoryHeightConstraint?.constant = 0
         }
         window?.contentView?.layoutSubtreeIfNeeded()
+    }
+
+    func setDeviceCompactProjectionEnabled(_ enabled: Bool) {
+        guard deviceCompactProjectionEnabled != enabled else { return }
+        deviceCompactProjectionEnabled = enabled
+        browserCoordinator.setCompactProjection(enabled && surfaceSizeClass == .compact)
     }
 
     func setSidebarHostActionHandler(_ handler: @escaping (UInt64, String) -> Void) {

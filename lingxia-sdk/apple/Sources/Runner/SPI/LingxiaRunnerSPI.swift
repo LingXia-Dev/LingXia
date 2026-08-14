@@ -254,6 +254,13 @@ import WebKit
             RunnerBridge.setSurfaceShellTopAccessory(shell, view: view, height: height)
         }
 
+        public static func setDeviceCompactProjectionEnabled(
+            _ shell: LxAppShell,
+            enabled: Bool
+        ) {
+            RunnerBridge.setSurfaceShellDeviceCompactProjectionEnabled(shell, enabled: enabled)
+        }
+
         public static func setBrowserPageActionsVisible(
             _ shell: LxAppShell,
             visible: Bool

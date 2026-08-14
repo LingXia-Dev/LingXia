@@ -1601,8 +1601,9 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     let tab_bar = build_tab_bar_layout(tab_bar_app, &footer_actions).filter(|tabbar| {
         address_bar.is_none() || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
     });
-    let compact_browser_chrome =
-        address_bar.is_some() && resolved_shell_size_class(Some(shell_app)) == SizeClass::Compact;
+    let compact_browser_chrome = address_bar.is_some()
+        && suppress_window_controls
+        && resolved_shell_size_class(Some(shell_app)) == SizeClass::Compact;
     WindowsShellWindowLayout {
         navigation_bar,
         address_bar,
@@ -1639,13 +1640,15 @@ fn build_self_browser_window_layout(webtag: &WebTag) -> WindowsShellWindowLayout
         address_bar.show_pin = false;
         address_bar.show_page_menu = false;
     }
+    let suppress_window_controls = window
+        .map(device_frame_owns_window_controls)
+        .unwrap_or(false);
     WindowsShellWindowLayout {
         address_bar,
         tab_bar: build_self_browser_tab_bar_layout(),
-        compact_browser_chrome: resolved_shell_size_class(None) == SizeClass::Compact,
-        suppress_window_controls: window
-            .map(device_frame_owns_window_controls)
-            .unwrap_or(false),
+        compact_browser_chrome: suppress_window_controls
+            && resolved_shell_size_class(None) == SizeClass::Compact,
+        suppress_window_controls,
         top_inset: window.map(device_frame_status_bar_height).unwrap_or(0),
         ..Default::default()
     }
