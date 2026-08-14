@@ -147,7 +147,7 @@ Every published package and what to import from each. Don't guess imports from t
 | Launch screen (`splash:`) and the per-launch cover hook | [`./native/splash.md`](./native/splash.md) |
 | iOS/macOS SDK embedding, public startup APIs | [`./app/apple-sdk.md`](./app/apple-sdk.md) |
 | Universal links / app links setup | [`./app/applinks.md`](./app/applinks.md) |
-| File API lifecycle (storage classes, downloadFile, FileManager) | [`./reference/file-lifecycle.md`](./reference/file-lifecycle.md) |
+| File API lifecycle (storage classes, downloadFile, `lx.fs`) | [`./reference/file-lifecycle.md`](./reference/file-lifecycle.md) |
 
 ## See a real layout — scaffold one
 
@@ -177,7 +177,7 @@ Jump straight here when the user reports a concrete failure:
 | A configured `homeAppId` doesn't match a bundle / wrong control app launches | [`./app/project.md`](./app/project.md) → `resources.bundles` |
 | `fetch()` silently fails from an lxapp | [`./lxapp/guide.md`](./lxapp/guide.md) → "Security Policy" (`trustedDomains`) |
 | "Is `fetch` / `setTimeout` / `URL` available in Logic?" | [`./lxapp/lx-api.md`](./lxapp/lx-api.md#standard-web-apis-built-in-globals) — yes, full Rong runtime |
-| Need to read/write files (not just `lx.downloadFile`) | `lx.getFileManager()` — paths & lifecycle in [`./reference/file-lifecycle.md`](./reference/file-lifecycle.md) |
+| Need to read/write files (not just `lx.downloadFile`) | `lx.fs` — paths & lifecycle in [`./reference/file-lifecycle.md`](./reference/file-lifecycle.md) |
 | Surface config rejected (`aside` needs `edge`, one `main`, terminal needs capability) | [`./app/project.md`](./app/project.md#surfaces-adaptive-ui) → Rules |
 | `setData` not reflecting in View | [`./lxapp/bridge.md`](./lxapp/bridge.md) → "How replication works" |
 | Native route returns `BRIDGE_METHOD_NOT_FOUND` | [`./native/development.md`](./native/development.md) → Host Addon registration |

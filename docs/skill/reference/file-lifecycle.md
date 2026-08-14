@@ -1,7 +1,7 @@
 # LingXia File Lifecycle
 
 What an lxapp author needs to know about LingXia-managed files: which storage
-class a returned path belongs to, how `downloadFile`, `getFileManager()`, and
+class a returned path belongs to, how `downloadFile`, `lx.fs`, and
 the media APIs place files, and when the runtime may clean them up. A returned
 path tells you whether the file is temporary, cache-managed, or durable.
 
@@ -80,12 +80,19 @@ failed or canceled download never leaves a partial final file; pausing keeps
 the staging so `resume()` can continue, and identical URLs can download
 concurrently.
 
-### `getFileManager`
+### `lx.fs`
 
-`getFileManager` returns the LingXia-managed file manager.
+`lx.fs` is the LingXia-managed filesystem namespace. `file(path)` creates a
+lazy reference; choose the returned representation with a method, following
+the same model as Web `Blob` and `Rong.file`:
 
 ```ts
-const fs = lx.getFileManager();
+const file = lx.fs.file("notes.json");
+const text = await file.text();            // string, strict UTF-8
+const value = await file.json();           // unknown; validate before use
+const bytes = await file.bytes();           // Uint8Array
+const buffer = await file.arrayBuffer();    // ArrayBuffer
+const encoded = await file.base64();        // string
 ```
 
 Relative paths resolve under userdata. `lx.env.USER_DATA_PATH` and
@@ -95,16 +102,15 @@ Relative paths resolve under userdata. `lx.env.USER_DATA_PATH` and
 ### File Copy And Move
 
 ```ts
-const fs = lx.getFileManager();
-await fs.copyFile({
-  srcPath: result.tempFilePath,
-  destPath: "media/video.mp4",          // relative → lx://userdata/media/video.mp4
-});
+await lx.fs.copy(
+  result.tempFilePath,
+  "media/video.mp4",                    // relative → lx://userdata/media/video.mp4
+);
 
-await fs.rename({
-  oldPath: result.tempFilePath,
-  newPath: `${lx.env.USER_CACHE_PATH}/previews/video.mp4`,
-});
+await lx.fs.rename(
+  result.tempFilePath,
+  `${lx.env.USER_CACHE_PATH}/previews/video.mp4`,
+);
 ```
 
 Rules:
@@ -117,20 +123,25 @@ Rules:
 - existing destination files are not overwritten
 - final writes use a sibling temp file and rename/replace, so failed writes do not leave final partial files
 
-### FileManager writes
+### Managed filesystem writes
 
-`writeFile`, `copyFile`, and `rename` are explicit file management APIs. They
+`write`, `copy`, and `rename` are explicit file management APIs. They
 default to no overwrite and support `overwrite: true` only when requested.
 Overwrite applies to files only; directories are never replaced by file writes.
+
+`write(path, data, options?)` accepts a UTF-8 string, `ArrayBuffer`, or typed
+array. For an existing Base64 payload, pass `encoding: "base64"`; this describes
+how the input string is decoded and does not change the method's return type.
 
 `rename` is move semantics. Moving a temp download into usercache avoids a
 second durable copy and hands the file to cache cleanup.
 
-`readDir` resolves to an async iterator of directory entries with `name`,
+`lx.fs.readDir(path)` resolves to an async iterator of directory entries with `name`,
 `isFile`, `isDirectory`, and `isSymlink`.
 
-`readFile` materializes the complete result in the lxapp logic process and is
-limited to 16 MiB per call. Keep larger media and archive files as `lx://`
+`LxFile.text`, `json`, `base64`, `bytes`, and `arrayBuffer` materialize the
+complete result in the lxapp Logic process and are limited to 16 MiB per call.
+Keep larger media and archive files as `lx://`
 paths and pass those paths to streaming, upload, preview, or native file APIs
 instead of reading the whole file into JavaScript memory.
 
@@ -176,13 +187,13 @@ usercache writes, and app-wide when total storage nears
 that stored it. If cleanup can't make room, the write fails with
 `USERCACHE_QUOTA_EXCEEDED`.
 
-What counts as "recently used": FileManager reads (`readFile`, `readDir`,
-`stat`, `exists`, copy/move *from* usercache) and WebView `lx://usercache`
+What counts as "recently used": `LxFile` content reads, `lx.fs.readDir`,
+`stat`, `exists`, and copy/move *from* usercache, plus WebView `lx://usercache`
 resource loads refresh a file's access time. **Gotcha:** a WebView that keeps
 an asset in its internal resource cache never re-hits the scheme handler, so
 that asset's access time goes stale and it becomes the first LRU candidate
 under pressure. If a long-lived asset must survive, put it in userdata — or
-refresh it explicitly with `fs.stat(path)` / `fs.exists(path)` at session
+refresh it explicitly with `lx.fs.stat(path)` / `lx.fs.exists(path)` at session
 start.
 
 **User data** is never auto-cleaned to satisfy quota. It is deleted only by
@@ -194,7 +205,7 @@ handle in app code — existing data is never silently deleted to make a write
 succeed.
 
 **Physical disk full**: quotas are logical caps — the device can hit `ENOSPC`
-first. FileManager writes and `downloadFile` finalization then evict LRU
+first. `lx.fs` writes and `downloadFile` finalization then evict LRU
 usercache (never userdata) and retry once; if the retry still fails, the IO
 error surfaces to the caller and the lxapp should tell the user.
 
@@ -214,9 +225,9 @@ usercache     -> lx://usercache/<path>
 ## Rules for Developers
 
 - Use temp files for immediate preview, upload, transform, or save flows.
-- Use `fs.writeFile({ filePath: lx.env.USER_CACHE_PATH + "/..." })` for developer-generated regenerable files.
-- Use `fs.copyFile` when a temp file must be copied into userdata or usercache.
-- Use `fs.rename({ oldPath: tempFilePath, newPath: "lx://usercache/..." })` when a temp file should become auto-cleaned cache without a second copy.
+- Use `lx.fs.write(lx.env.USER_CACHE_PATH + "/...", data)` for developer-generated regenerable files.
+- Use `lx.fs.copy(source, destination)` when a temp file must be copied into userdata or usercache.
+- Use `lx.fs.rename(tempFilePath, "lx://usercache/...")` when a temp file should become auto-cleaned cache without a second copy.
 - Use `downloadFile({ filePath })` only for durable userdata destinations.
 - Do not pass `lx://usercache`, host download directories, or native paths to `downloadFile.filePath`.
 - Do not store business-critical references to `tempFilePath`.
