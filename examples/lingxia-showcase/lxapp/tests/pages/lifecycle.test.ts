@@ -225,6 +225,9 @@ contract({
   const second = await enterResetDemo(app);
   expect(second.previousInstanceTag).toBe(first.instanceTag);
 
+  // Wait until every lifecycle event of the entry has landed: `onShow` can
+  // trail `onReady` by a push-animation's length, and counting early would
+  // misread a late event as a missing one.
   const events = await eventually(
     async () => {
       const state = await app.eval({
@@ -235,8 +238,9 @@ contract({
       }) as string[] | null;
       return state;
     },
-    (candidate) => Array.isArray(candidate) && candidate.some((entry) => entry.includes('onReady')),
-    { describe: 'the re-entered page to report its lifecycle' },
+    (candidate) => Array.isArray(candidate)
+      && ['onLoad', 'onShow', 'onReady'].every((name) => candidate.some((entry) => entry.endsWith(name))),
+    { describe: 'the re-entered page to report its full lifecycle' },
   ) ?? [];
 
   const count = (name: string) => events.filter((entry) => entry.endsWith(name)).length;

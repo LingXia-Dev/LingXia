@@ -30,7 +30,7 @@ use crate::page::config::{OrientationConfig, PageConfig};
 use crate::page::{PageInstance, PageInstanceId, ViewCallOptions, WebTagInstance};
 use crate::startup::LxAppStartupOptions;
 use crate::update::UpdateManager;
-use crate::{error, info, warn};
+use crate::{debug, error, info, warn};
 use security::NetworkSecurity;
 
 pub mod config;
@@ -1202,6 +1202,12 @@ impl LxApp {
     /// one, and terminating closes the old service's channels and page event
     /// bus. Nothing is created here — the rebuild belongs to the next entry.
     fn teardown_page(&self, page: &PageInstance) {
+        debug!(
+            "Tearing down left page (instance {})",
+            page.instance_id_string()
+        )
+        .with_appid(self.appid.clone())
+        .with_path(page.path());
         page.prepare_for_service_restart();
         page.park_view();
         if let Err(err) = self.executor.terminate_page_svc(
@@ -1226,6 +1232,12 @@ impl LxApp {
     /// The returned receiver resolves as soon as the service is registered;
     /// the document reload continues independently.
     fn rebuild_page_on_entry(&self, page: &PageInstance) -> oneshot::Receiver<Result<(), String>> {
+        debug!(
+            "Rebuilding page for entry (instance {})",
+            page.instance_id_string()
+        )
+        .with_appid(self.appid.clone())
+        .with_path(page.path());
         let (done_tx, done_rx) = oneshot::channel::<Result<(), String>>();
         let path = page.path().to_string();
         let (ack_tx, ack_rx) = oneshot::channel::<Result<(), String>>();

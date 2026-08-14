@@ -36,6 +36,12 @@ pub struct PageSvc {
 
     // state of PageSvc
     state: Rc<Mutex<PageSvcState>>,
+
+    /// Lifecycle handlers run off the worker pump, but a page's events must
+    /// still execute in dispatch order (onLoad → onShow → onReady). Each
+    /// event enqueues here and a single drainer runs the queue FIFO.
+    lifecycle_queue: Rc<RefCell<std::collections::VecDeque<(PageLifecycleEvent, Option<String>)>>>,
+    lifecycle_pump_running: Rc<Cell<bool>>,
 }
 
 struct PageSvcState {
@@ -688,6 +694,8 @@ impl PageSvc {
                 channels: HashMap::new(),
                 next_channel_token: 0,
             })),
+            lifecycle_queue: Rc::new(RefCell::new(std::collections::VecDeque::new())),
+            lifecycle_pump_running: Rc::new(Cell::new(false)),
         };
 
         page_svc.register_functions(&config, meta_json.0.as_deref())?;
@@ -1101,6 +1109,48 @@ impl PageSvc {
             rong::error::E_INTERNAL,
             format!("No service: {}", func_name),
         )))
+    }
+
+    /// Queue a lifecycle event and run the queue FIFO off the worker pump.
+    ///
+    /// One spawned task per event would let the executor reorder them — an
+    /// `onReady` handler observably ran before the same entry's `onLoad`. The
+    /// queue keeps the pump unblocked while a single drainer preserves the
+    /// dispatch order per page service.
+    pub(crate) fn enqueue_lifecycle_event(
+        &self,
+        ctx: &JSContext,
+        event: PageLifecycleEvent,
+        args: Option<String>,
+    ) {
+        self.lifecycle_queue.borrow_mut().push_back((event, args));
+        if self.lifecycle_pump_running.get() {
+            return;
+        }
+        self.lifecycle_pump_running.set(true);
+        let page_svc = self.clone();
+        super::context_lifecycle::spawn(ctx, move |ctx| async move {
+            loop {
+                let next = page_svc.lifecycle_queue.borrow_mut().pop_front();
+                let Some((event, args)) = next else {
+                    page_svc.lifecycle_pump_running.set(false);
+                    break;
+                };
+                if let Err(e) = page_svc.call_page_event(&ctx, event, args.as_deref()).await {
+                    let error = super::eval_error_from_rong(&ctx, e);
+                    let page = page_svc.get_page();
+                    if page.is_unloaded() {
+                        crate::debug!("PageInstance event '{}' cancelled after unload", event)
+                            .with_appid(page.appid())
+                            .with_path(page.path());
+                    } else {
+                        crate::error!("PageInstance event '{}' failed: {}", event, error)
+                            .with_appid(page.appid())
+                            .with_path(page.path());
+                    }
+                }
+            }
+        });
     }
 
     pub(crate) async fn call_page_event(
