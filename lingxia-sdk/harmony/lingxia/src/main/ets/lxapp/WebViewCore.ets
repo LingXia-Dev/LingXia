@@ -441,6 +441,11 @@ export class WebViewManager {
    * @param webtag - WebView tag
    * @returns true if destroyed successfully, false if not found
    */
+  /// Current native generation registered under the tag ('' when unknown).
+  static getGeneration(webtag: string): string {
+    return WebViewManager.generations.get(webtag) ?? '';
+  }
+
   /// True when a destroy notification refers to an older native generation
   /// than the WebView currently registered under the tag.
   static isStaleDestroy(webtag: string, generation?: string): boolean {

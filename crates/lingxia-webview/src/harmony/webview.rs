@@ -658,18 +658,19 @@ unsafe extern "C" fn get_port_callback(
 
         if let Some(port_type_str) = extract_string_from_bridge_data(type_data) {
             // Ensure ports exist; create on-demand if onPageBegin hasn't run yet
+            // A view asks for its port exactly when it is ready to receive
+            // one. A pair pushed earlier may have been transferred into a
+            // document that was not listening yet (a port transfers once), so
+            // an explicit request always mints a fresh pair — reusing the old
+            // one hands the view a dead channel and the bridge never
+            // handshakes (blank-but-rendered re-entered pages on Harmony).
             match port_type_str.as_str() {
                 "ConsolePort" => {
-                    let need_setup = find_webview(&webtag)
-                        .map(|wv| wv.inner.ports_snapshot().webview_console_port.is_none())
-                        .unwrap_or(true);
-                    if need_setup
-                        && let Err(e) = setup_webmessage_port_for_webtag(
-                            &webtag,
-                            PortType::Console,
-                            on_console_message_received,
-                        )
-                    {
+                    if let Err(e) = setup_webmessage_port_for_webtag(
+                        &webtag,
+                        PortType::Console,
+                        on_console_message_received,
+                    ) {
                         log::error!(
                             "On-demand console port setup failed for {}: {}",
                             webtag.as_str(),
@@ -681,17 +682,14 @@ unsafe extern "C" fn get_port_callback(
                     }
                 }
                 "LingXiaPort" => {
-                    let need_setup = find_webview(&webtag)
-                        .map(|wv| wv.inner.ports_snapshot().webview_native_port.is_none())
-                        .unwrap_or(true);
-
-                    if need_setup
-                        && let Err(e) = setup_webmessage_port_for_webtag(
-                            &webtag,
-                            PortType::Message,
-                            on_web_message_received,
-                        )
-                    {
+                    if let Some(webview) = find_webview(&webtag) {
+                        webview.inner.set_port_ready(false);
+                    }
+                    if let Err(e) = setup_webmessage_port_for_webtag(
+                        &webtag,
+                        PortType::Message,
+                        on_web_message_received,
+                    ) {
                         log::error!(
                             "On-demand message port setup failed for {}: {}",
                             webtag.as_str(),
@@ -1688,14 +1686,28 @@ fn setup_webmessage_port_for_webtag(
         let port2 = *ports.offset(1); // WebView side port
 
         let webview_inner = &webview.inner;
-        webview_inner.with_ports(|ports| match port_type {
-            PortType::Message => {
-                ports.native_port = Some(port1);
-                ports.webview_native_port = Some(port2);
-            }
-            PortType::Console => {
-                ports.console_port = Some(port1);
-                ports.webview_console_port = Some(port2);
+        webview_inner.with_ports(|ports| {
+            // Replace, and close, any previous pair of this type: a pair can
+            // only be transferred to a document once, so a re-setup must never
+            // leave a stale native end behind.
+            let close = port_api_struct.close;
+            match port_type {
+                PortType::Message => {
+                    if let (Some(old), Some(close_fn)) = (ports.native_port.take(), close) {
+                        close_fn(old, webtag_cstr.as_ptr());
+                    }
+                    ports.webview_native_port.take();
+                    ports.native_port = Some(port1);
+                    ports.webview_native_port = Some(port2);
+                }
+                PortType::Console => {
+                    if let (Some(old), Some(close_fn)) = (ports.console_port.take(), close) {
+                        close_fn(old, webtag_cstr.as_ptr());
+                    }
+                    ports.webview_console_port.take();
+                    ports.console_port = Some(port1);
+                    ports.webview_console_port = Some(port2);
+                }
             }
         });
 

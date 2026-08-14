@@ -97,7 +97,8 @@ impl NavigationTracker {
                 // identity (a freed WKNavigation's address reallocated for
                 // the next load). The duplicate-terminal guard must not
                 // swallow the new attempt's completion.
-                self.recent_terminated.retain(|terminated| *terminated != key);
+                self.recent_terminated
+                    .retain(|terminated| *terminated != key);
                 let id = NavigationId::next();
                 self.by_key.insert(key, id);
                 self.active.push(id);

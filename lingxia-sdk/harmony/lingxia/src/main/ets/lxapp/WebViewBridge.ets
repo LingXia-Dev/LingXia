@@ -150,6 +150,10 @@ export function destroyWebViewController(webtag: string, generation?: string): b
   return WebViewManager.destroyWebview(webtag, generation);
 }
 
+export function getWebviewGeneration(webtag: string): string {
+  return CoreWebViewManager.getGeneration(webtag);
+}
+
 export function getWebViewInfo(webtag: string): WebViewInfo | null {
   return WebViewManager.getWebViewInfo(webtag);
 }
