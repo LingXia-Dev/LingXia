@@ -510,28 +510,22 @@ impl LxApp {
             Err(_) => return Ok(()),
         };
         let path = resolved.internal_path();
+        let stack = self.get_page_stack();
         match nav_type {
-            crate::page::NavigationType::Forward => {
-                if self.get_page_stack().iter().any(|entry| entry == &path) {
-                    return Err(LxAppError::InvalidParameter(format!(
-                        "navigateTo target '{path}' is already on the page stack.                          A page can only appear once; use lx.redirectTo to replace                          the current page, or navigate to a different route."
-                    )));
-                }
+            crate::page::NavigationType::Forward if stack.iter().any(|entry| entry == &path) => {
+                Err(LxAppError::InvalidParameter(format!(
+                    "navigateTo target '{path}' is already on the page stack.                      A page can only appear once; use lx.redirectTo to replace                      the current page, or navigate to a different route."
+                )))
             }
-            crate::page::NavigationType::Replace => {
-                let below_top_collision = {
-                    let stack = self.get_page_stack();
-                    stack.iter().rev().skip(1).any(|entry| entry == &path)
-                };
-                if below_top_collision {
-                    return Err(LxAppError::InvalidParameter(format!(
-                        "redirectTo target '{path}' is already on the page stack.                          A page can only appear once; navigate back to it instead."
-                    )));
-                }
+            crate::page::NavigationType::Replace
+                if stack.iter().rev().skip(1).any(|entry| entry == &path) =>
+            {
+                Err(LxAppError::InvalidParameter(format!(
+                    "redirectTo target '{path}' is already on the page stack.                      A page can only appear once; navigate back to it instead."
+                )))
             }
-            _ => {}
+            _ => Ok(()),
         }
-        Ok(())
     }
 
     /// Get existing page or create a new one.
