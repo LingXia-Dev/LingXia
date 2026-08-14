@@ -121,13 +121,14 @@ pub(super) fn draw_phone_browser_bar(
     hdc: HDC,
     state: &WindowsChromeState,
     layout: &WindowsShellWindowLayout,
+    container: RECT,
 ) {
     let Some(address_bar) = layout.address_bar.as_ref() else {
         return;
     };
     let pal = shell_palette();
     let cursor = state.cursor;
-    let rects = phone_browser_bar_rects(state.client, address_bar.aside, address_bar.dismissible);
+    let rects = phone_browser_bar_rects(container, address_bar.aside, address_bar.dismissible);
 
     // The device screen owns the exterior silhouette. Keeping this strip
     // square avoids carving two artificial notches into the WebView seam.

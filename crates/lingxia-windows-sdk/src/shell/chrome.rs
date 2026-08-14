@@ -490,16 +490,20 @@ fn chrome_hover_rect(
     if phone_browser_bar_active(client, layout)
         && let Some(address_bar) = &layout.address_bar
     {
-        let rects = phone_browser_bar_rects(client, address_bar.aside, address_bar.dismissible);
-        if rect_contains(&rects.bar, point) {
+        let phone_rects = phone_browser_bar_rects(
+            rects.phone_bar.unwrap_or(client),
+            address_bar.aside,
+            address_bar.dismissible,
+        );
+        if rect_contains(&phone_rects.bar, point) {
             let buttons = [
-                Some(rects.back),
-                Some(rects.forward),
-                rects.row_reload,
-                rects.address_reload,
-                rects.new_tab,
-                Some(rects.tabs),
-                rects.close,
+                Some(phone_rects.back),
+                Some(phone_rects.forward),
+                phone_rects.row_reload,
+                phone_rects.address_reload,
+                phone_rects.new_tab,
+                Some(phone_rects.tabs),
+                phone_rects.close,
             ];
             for rect in buttons.into_iter().flatten() {
                 if rect_contains(&rect, point) {
@@ -783,19 +787,7 @@ pub(crate) fn shell_chrome_dirty_rects(
         // A phone-width browser paints its address bar (URL, nav state, tab
         // count) in the bottom bar instead of the top band.
         if phone_browser_bar_active(client, new_layout) {
-            push_dirty_rect(
-                &mut dirty,
-                phone_browser_bar_rects(
-                    client,
-                    phone_bar_is_aside(new_layout),
-                    new_layout
-                        .address_bar
-                        .as_ref()
-                        .is_some_and(|address_bar| address_bar.dismissible),
-                )
-                .bar,
-                client,
-            );
+            push_dirty_rect(&mut dirty, new_rects.phone_bar.unwrap_or(client), client);
         }
     }
 
@@ -1015,6 +1007,8 @@ pub(super) struct ChromeRects {
     pub(super) top_bar: RECT,
     pub(super) navigation_bar: Option<RECT>,
     pub(super) tab_bar: Option<RECT>,
+    /// Compact browser chrome, confined to the current content workspace.
+    pub(super) phone_bar: Option<RECT>,
 }
 
 pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayout) -> ChromeRects {
@@ -1113,9 +1107,9 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
 
     // The phone-frame browser chrome docks at the screen's bottom (the macOS
     // RunnerPhoneBrowserSurface layout); the webview ends above it.
-    if phone_browser_bar_active(client, layout) {
+    let phone_bar = if phone_browser_bar_active(client, layout) {
         let bar = phone_browser_bar_rects(
-            client,
+            content,
             phone_bar_is_aside(layout),
             layout
                 .address_bar
@@ -1124,7 +1118,10 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         )
         .bar;
         content.bottom = bar.top.max(content.top);
-    }
+        Some(bar)
+    } else {
+        None
+    };
 
     let workspace = normalize_rect(content);
     let panel = workspace;
@@ -1138,6 +1135,7 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         top_bar,
         navigation_bar: navigation_bar.map(normalize_rect),
         tab_bar: tab_bar.map(normalize_rect),
+        phone_bar,
     }
 }
 
@@ -1900,7 +1898,7 @@ pub(super) fn draw_window_chrome(
     // the lxapp navigation bar above is confined to the main region below it.
     draw_top_bar_controls(hdc, state, &rects, layout);
     if phone_browser_bar_active(state.client, layout) {
-        draw_phone_browser_bar(hdc, state, layout);
+        draw_phone_browser_bar(hdc, state, layout, rects.phone_bar.unwrap_or(client));
     }
     draw_footer_actions(hdc, client, &rects, layout, state.cursor);
     draw_maximized_native_panels(hdc, state);
@@ -1980,41 +1978,45 @@ pub(super) fn chrome_hit_test(
     if phone_browser_bar_active(client, layout)
         && let Some(address_bar) = &layout.address_bar
     {
-        let rects = phone_browser_bar_rects(client, address_bar.aside, address_bar.dismissible);
-        if rect_contains(&rects.bar, point) {
-            if rect_contains(&rects.back, point) {
+        let phone_rects = phone_browser_bar_rects(
+            rects.phone_bar.unwrap_or(client),
+            address_bar.aside,
+            address_bar.dismissible,
+        );
+        if rect_contains(&phone_rects.bar, point) {
+            if rect_contains(&phone_rects.back, point) {
                 return Some(chrome_command(command_id::BROWSER_NAV_BACK, json!({})));
             }
-            if rect_contains(&rects.forward, point) {
+            if rect_contains(&phone_rects.forward, point) {
                 return Some(chrome_command(command_id::BROWSER_NAV_FORWARD, json!({})));
             }
-            if rects
+            if phone_rects
                 .row_reload
-                .or(rects.address_reload)
+                .or(phone_rects.address_reload)
                 .is_some_and(|reload| rect_contains(&reload, point))
             {
                 return Some(chrome_command(command_id::BROWSER_NAV_RELOAD, json!({})));
             }
-            if rects
+            if phone_rects
                 .new_tab
                 .is_some_and(|new_tab| rect_contains(&new_tab, point))
             {
                 return Some(chrome_command(command_id::BROWSER_NEW_TAB, json!({})));
             }
-            if rect_contains(&rects.tabs, point) {
+            if rect_contains(&phone_rects.tabs, point) {
                 return Some(WindowsChromeHit::Command(
                     WindowsChromeCommand::new(command_id::BROWSER_TABS_CYCLE)
                         .with_payload(json!({}))
                         .with_screen_position(),
                 ));
             }
-            if rects
+            if phone_rects
                 .close
                 .is_some_and(|close| rect_contains(&close, point))
             {
                 return Some(chrome_command(command_id::BROWSER_CLOSE, json!({})));
             }
-            if rects
+            if phone_rects
                 .address
                 .is_some_and(|address| rect_contains(&address, point))
             {
@@ -2833,7 +2835,8 @@ mod scroll_tests {
             frame_button_pressed: None,
             cursor: None,
         };
-        let rects = phone_browser_bar_rects(client, true, true);
+        let bar = compute_chrome_rects(client, &layout).phone_bar.unwrap();
+        let rects = phone_browser_bar_rects(bar, true, true);
         let center = |rect: RECT| ((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
 
         assert!(rects.address.is_none());
@@ -2861,6 +2864,35 @@ mod scroll_tests {
             right: 560,
             bottom: 700,
         };
+        let tab_bar = WindowsShellTabBarLayout {
+            visible: true,
+            position: WindowsShellTabBarPosition::Left,
+            dimension: 56,
+            app_name: "App".to_string(),
+            app_icon_path: String::new(),
+            group_id: "app".to_string(),
+            group_target_id: "lxapp:app".to_string(),
+            group_active: false,
+            group_closable: true,
+            group_order_index: 0,
+            color: 0,
+            selected_color: 0,
+            background_color: 0,
+            background_transparent: false,
+            border_color: 0,
+            selected_index: 0,
+            items: Vec::new(),
+            collapsed: true,
+            icon_rail: true,
+            items_api_hidden: false,
+            items_collapsed: false,
+            footer_action_height: 0,
+            main_scroll_offset: 0,
+            footer_action_scroll_row: 0,
+            auxiliary_items: Vec::new(),
+            show_auxiliary_add: false,
+            header_actions: Vec::new(),
+        };
         let layout = WindowsShellWindowLayout {
             address_bar: Some(WindowsShellAddressBarLayout {
                 visible: true,
@@ -2870,16 +2902,18 @@ mod scroll_tests {
             }),
             compact_browser_chrome: true,
             suppress_window_controls: false,
+            tab_bar: Some(tab_bar),
             ..Default::default()
         };
         let rects = compute_chrome_rects(client, &layout);
+        let phone_bar = rects.phone_bar.unwrap();
 
         assert!(phone_browser_bar_active(client, &layout));
         assert_eq!(rect_height(&rects.top_bar), SHELL_TOP_BAR_HEIGHT);
-        assert_eq!(
-            rects.content.bottom,
-            phone_browser_bar_rects(client, false, true).bar.top
-        );
+        assert_eq!(rects.content.bottom, phone_bar.top);
+        assert_eq!(phone_bar.left, 56 + SHELL_CONTENT_INSET);
+        assert_eq!(phone_bar.right, client.right - SHELL_CONTENT_INSET);
+        assert_eq!(phone_bar.bottom, client.bottom - SHELL_CONTENT_INSET);
     }
 
     #[test]
