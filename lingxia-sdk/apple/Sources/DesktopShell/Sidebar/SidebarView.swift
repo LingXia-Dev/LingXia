@@ -60,7 +60,12 @@ private final class SidebarScrollView: NSScrollView {
 private final class SidebarRailButton: NSButton {
     var onHoverChanged: ((Bool) -> Void)?
     var onContextMenuRequested: ((NSEvent, SidebarRailButton) -> Void)?
+    var onCloseRequested: (() -> Void)?
+    var closable = false {
+        didSet { needsDisplay = true }
+    }
     private var trackingArea: NSTrackingArea?
+    private var hovered = false
 
     override var mouseDownCanMoveWindow: Bool { false }
 
@@ -80,11 +85,54 @@ private final class SidebarRailButton: NSButton {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        hovered = true
+        needsDisplay = true
         onHoverChanged?(true)
     }
 
     override func mouseExited(with event: NSEvent) {
+        hovered = false
+        needsDisplay = true
         onHoverChanged?(false)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if closable, closeHitRect.contains(point) {
+            onCloseRequested?()
+            return
+        }
+        super.mouseDown(with: event)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard hovered, closable else { return }
+
+        let indicator = closeHitRect.insetBy(dx: 1.5, dy: 1.5)
+        LxAppHostTheme.surfaceBackground.setFill()
+        NSBezierPath(roundedRect: indicator, xRadius: 6, yRadius: 6).fill()
+
+        let inset: CGFloat = 4
+        let mark = indicator.insetBy(dx: inset, dy: inset)
+        let path = NSBezierPath()
+        path.lineWidth = 1.5
+        path.lineCapStyle = .round
+        path.move(to: NSPoint(x: mark.minX, y: mark.minY))
+        path.line(to: NSPoint(x: mark.maxX, y: mark.maxY))
+        path.move(to: NSPoint(x: mark.minX, y: mark.maxY))
+        path.line(to: NSPoint(x: mark.maxX, y: mark.minY))
+        LxAppHostTheme.foreground.setStroke()
+        path.stroke()
+    }
+
+    private var closeHitRect: NSRect {
+        NSRect(
+            x: bounds.midX - 12,
+            y: bounds.midY - 12,
+            width: 24,
+            height: 24
+        )
     }
 
     override func rightMouseDown(with event: NSEvent) {
@@ -1051,6 +1099,11 @@ class SidebarView: NSView, NSPopoverDelegate {
             )
             btn.action = #selector(railAppClicked(_:))
             if let railButton = btn as? SidebarRailButton {
+                railButton.closable = group.closable && activeRailKey == key
+                railButton.onCloseRequested = { [weak self] in
+                    self?.closeRailTabPopover()
+                    self?.onAppCloseRequested?(group.appId)
+                }
                 railButton.onHoverChanged = { [weak self, weak railButton] hovering in
                     guard let self, let railButton else { return }
                     if hovering && !group.isManagedMain {
@@ -1076,6 +1129,11 @@ class SidebarView: NSView, NSPopoverDelegate {
             )
             btn.action = #selector(railBrowserClicked(_:))
             if let railButton = btn as? SidebarRailButton {
+                railButton.closable = activeRailKey == key
+                railButton.onCloseRequested = { [weak self] in
+                    self?.closeRailTabPopover()
+                    self?.onBrowserTabCloseRequested?(item.id)
+                }
                 railButton.onHoverChanged = { [weak self] hovering in
                     if hovering { self?.closeRailTabPopover() }
                 }

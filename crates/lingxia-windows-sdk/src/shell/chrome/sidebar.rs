@@ -433,6 +433,12 @@ fn draw_sidebar_rail(
         app_icon_rect,
         SIDEBAR_RAIL_ICON_SIZE as u32,
     );
+    if tabbar.group_active
+        && tabbar.group_closable
+        && rect_contains(&app_rect, cursor.unwrap_or((-1, -1)))
+    {
+        draw_sidebar_rail_close(hdc, app_rect);
+    }
 
     for (index, item) in tabbar.auxiliary_items.iter().enumerate() {
         let item_rect = sidebar_rail_item_rect(
@@ -456,6 +462,9 @@ fn draw_sidebar_rail(
         };
         if !drew {
             draw_default_app_icon(hdc, icon_rect);
+        }
+        if item.active && item.closable && rect_contains(&item_rect, cursor.unwrap_or((-1, -1))) {
+            draw_sidebar_rail_close(hdc, item_rect);
         }
     }
 
@@ -483,6 +492,31 @@ fn draw_sidebar_rail(
         shell_palette().text_muted,
         18,
     );
+}
+
+fn draw_sidebar_rail_close(hdc: HDC, item_rect: RECT) {
+    let close_rect = sidebar_rail_close_rect(item_rect);
+    fill_round_rect_aa(hdc, close_rect, 6, shell_palette().control_surface);
+    draw_text(
+        hdc,
+        GLYPH_TAB_CLOSE,
+        close_rect,
+        shell_palette().text_primary,
+        DT_CENTER,
+    );
+}
+
+/// Direct-close target overlaid on a closable collapsed-rail switcher.
+pub(super) fn sidebar_rail_close_rect(item_rect: RECT) -> RECT {
+    const SIZE: i32 = 24;
+    let left = item_rect.left + (rect_width(&item_rect) - SIZE).max(0) / 2;
+    let top = item_rect.top + (rect_height(&item_rect) - SIZE).max(0) / 2;
+    normalize_rect(RECT {
+        left,
+        top,
+        right: left + SIZE,
+        bottom: top + SIZE,
+    })
 }
 
 /// The collapse/expand toggle cell, pinned to the bottom of an icon rail.

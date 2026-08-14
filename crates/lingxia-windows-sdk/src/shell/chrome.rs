@@ -2164,16 +2164,22 @@ pub(super) fn chrome_hit_test(
             if rect_contains(&sidebar_rail_expand_rect(tabbar_rect), point) {
                 return Some(chrome_command(command_id::SIDEBAR_TOGGLE, json!({})));
             }
+            let group_rect = sidebar_rail_item_rect(
+                tabbar_rect,
+                sidebar_group_rail_index(tabbar),
+                scroll_offset,
+            );
             if in_sidebar_viewport
-                && rect_contains(
-                    &sidebar_rail_item_rect(
-                        tabbar_rect,
-                        sidebar_group_rail_index(tabbar),
-                        scroll_offset,
-                    ),
-                    point,
-                )
+                && tabbar.group_active
+                && tabbar.group_closable
+                && rect_contains(&sidebar_rail_close_rect(group_rect), point)
             {
+                return Some(chrome_command(
+                    command_id::BROWSER_TAB_CLOSE,
+                    json!({ "tab_id": tabbar.group_target_id.clone() }),
+                ));
+            }
+            if in_sidebar_viewport && rect_contains(&group_rect, point) {
                 let payload = json!({ "tab_id": tabbar.group_target_id.clone() });
                 return Some(chrome_command_with_context(
                     command_id::BROWSER_TAB_CLICK,
@@ -2183,16 +2189,22 @@ pub(super) fn chrome_hit_test(
                 ));
             }
             for (index, item) in tabbar.auxiliary_items.iter().enumerate() {
+                let item_rect = sidebar_rail_item_rect(
+                    tabbar_rect,
+                    sidebar_auxiliary_rail_index(tabbar, index),
+                    scroll_offset,
+                );
                 if in_sidebar_viewport
-                    && rect_contains(
-                        &sidebar_rail_item_rect(
-                            tabbar_rect,
-                            sidebar_auxiliary_rail_index(tabbar, index),
-                            scroll_offset,
-                        ),
-                        point,
-                    )
+                    && item.active
+                    && item.closable
+                    && rect_contains(&sidebar_rail_close_rect(item_rect), point)
                 {
+                    return Some(chrome_command(
+                        command_id::BROWSER_TAB_CLOSE,
+                        json!({ "tab_id": item.id.clone() }),
+                    ));
+                }
+                if in_sidebar_viewport && rect_contains(&item_rect, point) {
                     let payload = json!({ "tab_id": item.id.clone() });
                     return Some(chrome_command_with_context(
                         command_id::BROWSER_TAB_CLICK,
@@ -2602,8 +2614,8 @@ mod scroll_tests {
         layout_for_maximized_native_panel, layout_without_covered_main_chrome,
         phone_browser_bar_active, phone_browser_bar_rects, rect_height,
         sidebar_auxiliary_rail_index, sidebar_auxiliary_rects, sidebar_caption_contains,
-        sidebar_group_rect, sidebar_rail_item_rect, sidebar_top_level_icon_rect,
-        tabbar_requires_full_repaint, top_bar_controls,
+        sidebar_group_rect, sidebar_rail_close_rect, sidebar_rail_item_rect,
+        sidebar_top_level_icon_rect, tabbar_requires_full_repaint, top_bar_controls,
     };
     use lingxia_windows_contract::{
         WindowsChromeAttachedState, WindowsChromePanel, WindowsHostPanelContent,
@@ -2745,6 +2757,98 @@ mod scroll_tests {
         )
         .unwrap();
         assert_eq!(action_tooltip.text, "Terminal");
+    }
+
+    #[test]
+    fn compact_rail_close_overlay_only_closes_the_current_switcher() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 480,
+            bottom: 737,
+        };
+        let mut rail = bottom_tabbar(true, false);
+        rail.position = WindowsShellTabBarPosition::Left;
+        rail.dimension = 184;
+        rail.icon_rail = true;
+        rail.group_active = true;
+        rail.group_closable = true;
+        rail.auxiliary_items.push(WindowsShellAuxiliaryItemLayout {
+            id: "web:docs".to_string(),
+            title: "Documentation".to_string(),
+            active: false,
+            pinned: false,
+            closable: true,
+            icon_png: None,
+            icon_path: String::new(),
+        });
+        let layout = WindowsShellWindowLayout {
+            tab_bar: Some(rail.clone()),
+            ..Default::default()
+        };
+        let state = WindowsChromeState {
+            hwnd: HWND::default(),
+            client,
+            layout: WindowsWindowLayout::new(layout.clone()),
+            attached: None,
+            frame_button_hover: None,
+            frame_button_pressed: None,
+            cursor: None,
+        };
+        let rail_rect = compute_chrome_rects(client, &layout).tab_bar.unwrap();
+        let center = |rect: RECT| ((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+
+        let group = sidebar_rail_item_rect(rail_rect, super::sidebar_group_rail_index(&rail), 0);
+        let WindowsChromeHit::Command(group_close) =
+            chrome_hit_test(&state, &layout, center(sidebar_rail_close_rect(group))).unwrap()
+        else {
+            panic!("group close badge should produce a command")
+        };
+        assert_eq!(group_close.id, super::command_id::BROWSER_TAB_CLOSE);
+        assert_eq!(group_close.payload["tab_id"], "lxapp:app");
+
+        let mut web_rail = rail;
+        web_rail.group_active = false;
+        web_rail.auxiliary_items[0].active = true;
+        let web_layout = WindowsShellWindowLayout {
+            tab_bar: Some(web_rail.clone()),
+            ..Default::default()
+        };
+        let web_state = WindowsChromeState {
+            layout: WindowsWindowLayout::new(web_layout.clone()),
+            ..state
+        };
+        let web = sidebar_rail_item_rect(rail_rect, sidebar_auxiliary_rail_index(&web_rail, 0), 0);
+        let WindowsChromeHit::Command(web_close) = chrome_hit_test(
+            &web_state,
+            &web_layout,
+            center(sidebar_rail_close_rect(web)),
+        )
+        .unwrap() else {
+            panic!("web close badge should produce a command")
+        };
+        assert_eq!(web_close.id, super::command_id::BROWSER_TAB_CLOSE);
+        assert_eq!(web_close.payload["tab_id"], "web:docs");
+
+        let mut inactive_rail = web_rail;
+        inactive_rail.auxiliary_items[0].active = false;
+        let inactive_layout = WindowsShellWindowLayout {
+            tab_bar: Some(inactive_rail),
+            ..Default::default()
+        };
+        let inactive_state = WindowsChromeState {
+            layout: WindowsWindowLayout::new(inactive_layout.clone()),
+            ..web_state
+        };
+        let WindowsChromeHit::Command(inactive_click) = chrome_hit_test(
+            &inactive_state,
+            &inactive_layout,
+            center(sidebar_rail_close_rect(web)),
+        )
+        .unwrap() else {
+            panic!("inactive switcher should produce a selection command")
+        };
+        assert_eq!(inactive_click.id, super::command_id::BROWSER_TAB_CLICK);
     }
 
     #[test]
