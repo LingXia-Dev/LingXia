@@ -1,31 +1,34 @@
-import type { Lx, LxCapabilityQuery } from "../src/index.js";
+import type {
+  Lx,
+  LxCapabilityFlag,
+  LxCapabilityQuery,
+  LxSurfaceCapability,
+} from "../src/index.js";
 
 declare const lx: Lx;
 
-const canWindow: boolean = lx.supports({ surface: "window" });
-const canAside: boolean = lx.supports({ surface: "aside" });
-const hasTerminal: boolean = lx.supports({ terminal: true });
-const hasAutostart: boolean = lx.supports({ autostart: true });
-const hasNotifications: boolean = lx.supports({ notifications: true });
-const hasBrowser: boolean = lx.supports({ browser: true });
-const hasProxy: boolean = lx.supports({ proxy: true });
-const hasSelfUpdate: boolean = lx.supports({ selfUpdate: true });
-const hasNativeReview: boolean = lx.supports({ nativeFileReview: true });
+const canWindow: boolean = lx.supports({ capability: "surface", value: "window" });
+const canAside: boolean = lx.supports({ capability: "surface", value: "aside" });
+const hasTerminal: boolean = lx.supports({ capability: "terminal" });
+const hasAutostart: boolean = lx.supports({ capability: "autostart" });
+const hasNotifications: boolean = lx.supports({ capability: "notifications" });
+const hasBrowser: boolean = lx.supports({ capability: "browser" });
+const hasProxy: boolean = lx.supports({ capability: "proxy" });
+const hasSelfUpdate: boolean = lx.supports({ capability: "selfUpdate" });
+const hasNativeReview: boolean = lx.supports({ capability: "nativeFileReview" });
 
 // An unknown capability key is a compile error.
 // @ts-expect-error there is no `teleport` capability
-lx.supports({ teleport: true });
+lx.supports({ capability: "teleport" });
 // An invalid option value is a compile error.
 // @ts-expect-error 'popover' is not a surface placement
-lx.supports({ surface: "popover" });
-// The flags are declarations, not toggles.
-// @ts-expect-error a capability flag is always `true`
-lx.supports({ terminal: false });
-
-// Note: a multi-key query cannot be a *type* error without giving every union
-// member `?: never` siblings — the shape this batch exists to delete — so
-// `lx.supports({ terminal: true, browser: true })` is rejected at runtime
-// instead of silently answering whichever key came first.
+lx.supports({ capability: "surface", value: "popover" });
+// @ts-expect-error surface queries require a value
+lx.supports({ capability: "surface" });
+// @ts-expect-error boolean capabilities do not accept surface values
+lx.supports({ capability: "terminal", value: "window" });
+// @ts-expect-error capability queries reject unknown options
+lx.supports({ capability: "browser", extra: true });
 
 // The query is a closed union, so a stringly-typed catalog cannot creep back in.
 // @ts-expect-error canIUse-style dotted strings are not accepted
@@ -33,6 +36,8 @@ lx.supports("surface.window");
 
 declare const query: LxCapabilityQuery;
 const dynamic: boolean = lx.supports(query);
+const flag: LxCapabilityFlag = "terminal";
+const placement: LxSurfaceCapability = "window";
 
 export type CapabilityQueryGate = [
   typeof canWindow,
@@ -45,4 +50,6 @@ export type CapabilityQueryGate = [
   typeof hasSelfUpdate,
   typeof hasNativeReview,
   typeof dynamic,
+  typeof flag,
+  typeof placement,
 ];

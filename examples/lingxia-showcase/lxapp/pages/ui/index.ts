@@ -302,7 +302,10 @@ Page({
         cfg.verb === "float" ? "float" : cfg.verb === "window" ? "window" : "aside";
       // Ask before offering: a window is a property of the host build, so this
       // answer is stable and does not need the error path to discover it.
-      if (as === "window" && !lx.supports({ surface: "window" })) {
+      if (
+        as === "window" &&
+        !lx.supports({ capability: "surface", value: "window" })
+      ) {
         this.setData({
           "surfaceDemo.message": "not supported",
           "surfaceDemo.active": false,

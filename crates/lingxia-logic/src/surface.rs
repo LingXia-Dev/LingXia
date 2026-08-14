@@ -704,7 +704,7 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
                 return Err(surface_error(
                     rong::error::E_NOT_SUPPORTED,
                     "window_unsupported_platform",
-                    "as: 'window' opens a separate desktop window, which this host build cannot do; check lx.supports({ surface: 'window' }) first",
+                    "as: 'window' opens a separate desktop window, which this host build cannot do; check lx.supports({ capability: 'surface', value: 'window' }) first",
                 ));
             }
             #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
@@ -713,7 +713,7 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
                     return Err(surface_error(
                         rong::error::E_NOT_SUPPORTED,
                         "window_unsupported_platform",
-                        "as: 'window' opens a separate desktop window, which this host build cannot do; check lx.supports({ surface: 'window' }) first",
+                        "as: 'window' opens a separate desktop window, which this host build cannot do; check lx.supports({ capability: 'surface', value: 'window' }) first",
                     ));
                 }
                 build_window_options(&ctx, &path_value, size.as_ref())?

@@ -83,13 +83,13 @@ for its exact behavior.
 Ask before you offer, with `lx.supports(query)`:
 
 ```ts
-if (lx.supports({ surface: 'window' })) {
+if (lx.supports({ capability: 'surface', value: 'window' })) {
   // render "Open in new window"
 }
 ```
 
 The catalog is a closed union, so completion enumerates it and a typo is a
-compile error. The answer is live — `{ surface: 'aside' }` changes when a
+compile error. The answer is live — `{ capability: 'surface', value: 'aside' }` changes when a
 desktop window crosses the compact breakpoint, so pair it with
 `lx.onSurfaceContext` rather than caching it. It is an affordance for deciding
 what to render and never replaces handling a rejection: the answer can be stale
@@ -97,7 +97,7 @@ by the time you act on it, and every gated operation still rejects.
 
 A whole namespace that a host may not carry at all stays an optional member —
 `lx.terminal`, `lx.app.autostart`. Presence and `lx.supports()` are answered
-from one registry, so `('terminal' in lx)` and `lx.supports({ terminal: true })`
+from one registry, so `('terminal' in lx)` and `lx.supports({ capability: 'terminal' })`
 can never disagree.
 
 ---
