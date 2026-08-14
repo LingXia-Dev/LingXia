@@ -205,17 +205,17 @@ desktopTerminalTest('applies terminal mode to native chrome before terminal inpu
         const settings = await lx.terminal.settings.get();
         return {
           terminal: typeof lx.terminal?.settings?.get,
-          fileManager: typeof lx.getFileManager,
+          fileSystem: typeof lx.fs,
           systemAppearance: settings.effective.systemAppearance,
         };
       `,
     }) as {
       terminal: string;
-      fileManager: string;
+      fileSystem: string;
       systemAppearance: 'light' | 'dark';
     };
     expect(runtime.terminal).toBe('function');
-    expect(runtime.fileManager).toBe('undefined');
+    expect(runtime.fileSystem).toBe('undefined');
     initial = await terminal.snapshot({ surface: refs.terminal });
     const selectedMode = await page.eval({
       script: `document.querySelector('[data-mode][aria-pressed="true"]')?.dataset.mode`,

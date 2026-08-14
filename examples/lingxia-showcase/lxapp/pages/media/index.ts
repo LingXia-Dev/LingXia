@@ -1077,7 +1077,7 @@ Page({
 
   _getFileSize: async function (path) {
     try {
-      const stat = await lx.getFileManager().stat({ path });
+      const stat = await lx.fs.file(path).stat();
       return stat.size || 0;
     } catch (error) {
       console.warn("Failed to get file size:", error);

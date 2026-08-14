@@ -220,17 +220,17 @@ contract({
   id: 'LOGIC-004',
   title: 'round-trip files under lx user cache',
   covers: [
-    'lx.getFileManager',
+    'lx.fs.file',
+    'lx.fs.mkdir',
+    'lx.fs.write',
     'lx.env.USER_CACHE_PATH',
     'lx.env.USER_DATA_PATH',
-    'FileManager.mkdir',
-    'FileManager.writeFile',
-    'FileManager.readFile',
-    'FileManager.stat',
-    'FileManager.rename',
-    'FileManager.copyFile',
-    'FileManager.exists',
-    'FileManager.remove',
+    'LxFile.text',
+    'LxFile.json',
+    'LxFile.base64',
+    'LxFile.bytes',
+    'LxFile.arrayBuffer',
+    'LxFile.stat',
   ],
   layer: 'logic',
   levels: ['semantic', 'boundary', 'lifecycle'],
@@ -239,40 +239,61 @@ contract({
 }, async ({ app, namespace }) => {
   const result = await app.eval({
     script: `
-      const files = lx.getFileManager();
+      const files = lx.fs;
       const root = lx.env.USER_CACHE_PATH + '/' + ${JSON.stringify(namespace)};
       const dataPathAvailable = typeof lx.env.USER_DATA_PATH === 'string' && lx.env.USER_DATA_PATH.length > 0;
       const source = root + '/source.txt';
       const renamed = root + '/renamed.txt';
       const copied = root + '/copied.txt';
-      await files.mkdir({ path: root, recursive: true });
+      await files.mkdir(root, { recursive: true });
       try {
-        await files.writeFile({ filePath: source, data: 'hello automation' });
-        const text = await files.readFile({ filePath: source, encoding: 'utf8' });
-        const stat = await files.stat({ path: source });
-        await files.rename({ oldPath: source, newPath: renamed });
-        await files.copyFile({ srcPath: renamed, destPath: copied });
+        const payload = JSON.stringify({ hello: 'automation' });
+        await files.write(source, payload);
+        const file = files.file(source);
+        const text = await file.text();
+        const json = await file.json();
+        const bytes = await file.bytes();
+        const buffer = await file.arrayBuffer();
+        const base64 = await file.base64();
+        const stat = await file.stat();
+        await files.rename(source, renamed);
+        await files.copy(renamed, copied);
         return {
-          text: text.data,
+          text,
+          json,
+          byteLength: bytes.byteLength,
+          arrayBufferLength: buffer.byteLength,
+          isUint8Array: bytes instanceof Uint8Array,
+          base64,
           isFile: stat.isFile,
-          renamed: await files.exists({ path: renamed }),
-          copied: await files.exists({ path: copied }),
+          renamed: await files.exists(renamed),
+          copied: await files.exists(copied),
           dataPathAvailable,
         };
       } finally {
-        await files.remove({ path: root, recursive: true });
+        await files.remove(root, { recursive: true });
       }
     `,
     timeoutMs: 15_000,
   }) as {
     text: string;
+    json: { hello: string };
+    byteLength: number;
+    arrayBufferLength: number;
+    isUint8Array: boolean;
+    base64: string;
     isFile: boolean;
     renamed: boolean;
     copied: boolean;
     dataPathAvailable: boolean;
   };
 
-  expect(result.text).toBe('hello automation');
+  expect(result.text).toBe('{"hello":"automation"}');
+  expect(result.json).toEqual({ hello: 'automation' });
+  expect(result.byteLength).toBe(result.text.length);
+  expect(result.arrayBufferLength).toBe(result.text.length);
+  expect(result.isUint8Array).toBeTruthy();
+  expect(result.base64).toBe('eyJoZWxsbyI6ImF1dG9tYXRpb24ifQ==');
   expect(result.isFile).toBeTruthy();
   expect(result.renamed).toBeTruthy();
   expect(result.copied).toBeTruthy();

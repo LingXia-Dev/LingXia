@@ -116,6 +116,35 @@ LX_RETURNED_OBJECT_SURFACES.forEach((surface) => {
     expectedOutcome: 'supported',
   }, async ({ app, defer }) => {
     const fixtureName: string = surface.name;
+    if (fixtureName === 'LxFile') {
+      const result = await app.eval({
+        script: `
+          const target = lx.fs.file('lx://userdata/__shape__/managed-file');
+          const members = ${JSON.stringify(surface.members)};
+          const properties = ${JSON.stringify(surface.properties)};
+          const optionalProperties = ${JSON.stringify(surface.optionalProperties)};
+          return {
+            available: target !== null && typeof target !== 'undefined',
+            missing: target == null
+              ? members
+              : members.filter((name) => (
+                typeof target[name] === 'undefined' && !optionalProperties.includes(name)
+              )),
+            wrongKinds: target == null
+              ? []
+              : members.filter((name) => properties.includes(name)
+                ? target[name] === null
+                  || (typeof target[name] === 'undefined' && !optionalProperties.includes(name))
+                : typeof target[name] !== 'function'),
+          };
+        `,
+      }) as { available: boolean; missing: string[]; wrongKinds: string[] };
+
+      expect(result.available).toBeTruthy();
+      expect(result.missing).toEqual([]);
+      expect(result.wrongKinds).toEqual([]);
+      return;
+    }
     if (fixtureName !== 'VideoContext') {
       throw new Error(`No runtime-safe fixture resolver for ${fixtureName}`);
     }
