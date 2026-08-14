@@ -1,6 +1,6 @@
 use crate::i18n::js_error_from_platform_error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lxapp::{LxApp, register_app_handler, unregister_app_handler};
+use lxapp::{LxApp, register_app_handler, unregister_app_handler, unregister_app_handler_token};
 use rong::{JSContext, JSFunc, JSObject, JSResult};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -78,13 +78,12 @@ fn hide(ctx: JSContext) -> JSResult<()> {
 /// handler is registered, the left-click runs only the handler(s); the tray's
 /// configured surface action is suppressed. Returns an unsubscribe function.
 fn on_click(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
-    register_app_handler(&ctx, "lx.tray.click", handler.clone())?;
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    let token = register_app_handler(&ctx, "lx.tray.click", handler)?;
     if CLICK_HANDLERS.fetch_add(1, Ordering::SeqCst) == 0 {
-        let lxapp = LxApp::from_ctx(&ctx)?;
         let _ = lxapp.runtime.set_tray_click_intercept(true);
     }
     let off_ctx = ctx.clone();
-    let off_handler = handler;
     // Guard against a double `off()`: a second call must not decrement the count
     // again (which would underflow and break future interception).
     let unsubscribed = std::sync::atomic::AtomicBool::new(false);
@@ -92,7 +91,7 @@ fn on_click(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
         if unsubscribed.swap(true, Ordering::SeqCst) {
             return;
         }
-        unregister_app_handler(&off_ctx, "lx.tray.click", Some(off_handler.clone()));
+        unregister_app_handler_token(&off_ctx, "lx.tray.click", token);
         if CLICK_HANDLERS.fetch_sub(1, Ordering::SeqCst) == 1
             && let Ok(lxapp) = LxApp::from_ctx(&off_ctx)
         {

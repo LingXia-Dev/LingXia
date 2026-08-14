@@ -353,14 +353,18 @@ fn on_wifi_connected(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
     let off_ctx = ctx.clone();
     let unsubscribed = Cell::new(false);
     JSFunc::new(&ctx, move || {
-        if unsubscribed.replace(true) {
+        if unsubscribed.get() {
             return;
         }
         info!("onWifiConnected unsubscribe called");
         let remaining = unregister_app_handler_token(&off_ctx, WIFI_CONNECTED_EVENT, token);
-        if remaining == 0 {
-            let _ = clear_wifi_connected_callback(&off_ctx);
+        if remaining == 0
+            && let Err(err) = clear_wifi_connected_callback(&off_ctx)
+        {
+            warn!("WifiConnected callback cleanup failed: {}", err);
+            return;
         }
+        unsubscribed.set(true);
     })
 }
 

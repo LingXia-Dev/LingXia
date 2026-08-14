@@ -117,7 +117,7 @@ pub fn unregister_app_handler_token(
         if !matches!(scope, Scope::App) {
             return true;
         }
-        entries.retain(|handler| handler.token != token);
+        entries.retain(|handler| handler.event_name != event_name || handler.token != token);
         remaining += entries
             .iter()
             .filter(|handler| handler.event_name == event_name)
@@ -156,39 +156,6 @@ pub fn unregister_app_handler(
         !entries.is_empty()
     });
     remaining
-}
-
-#[cfg(test)]
-mod token_tests {
-    use super::*;
-
-    /// Two subscriptions on one function are independent, and a token removes
-    /// exactly its own entry — the guarantee an unsubscribe handle makes.
-    #[test]
-    fn a_token_removes_only_its_own_registration() {
-        let registry = EventBusRegistry::default();
-        let mut next = || {
-            let token = HandlerToken(registry.next_token.get());
-            registry.next_token.set(token.0 + 1);
-            token
-        };
-        let first = next();
-        let second = next();
-        assert_ne!(first, second);
-
-        let mut entries = vec![("evt", first), ("evt", second), ("other", next())];
-        // Mirrors `unregister_app_handler_token`'s retain + remaining count.
-        entries.retain(|(_, token)| *token != first);
-        let remaining = entries.iter().filter(|(name, _)| *name == "evt").count();
-        assert_eq!(remaining, 1, "the sibling subscription must survive");
-
-        entries.retain(|(_, token)| *token != first);
-        assert_eq!(
-            entries.iter().filter(|(name, _)| *name == "evt").count(),
-            1,
-            "replaying a spent token must not remove anything else"
-        );
-    }
 }
 
 /// Register a page-scoped handler (page_path required).
@@ -368,5 +335,45 @@ pub fn publish_page_event(
         false
     } else {
         true
+    }
+}
+
+#[cfg(test)]
+mod token_tests {
+    use super::*;
+    use rong::{JSEngine, RongJS};
+
+    /// Two subscriptions on one function are independent, and a token removes
+    /// exactly its own entry — the guarantee an unsubscribe handle makes.
+    #[test]
+    fn a_token_removes_only_its_own_registration() -> JSResult<()> {
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        let callback = JSFunc::new(&ctx, || {})?;
+        let first = register_app_handler(&ctx, "evt", callback.clone())?;
+        let second = register_app_handler(&ctx, "evt", callback.clone())?;
+        let other = register_app_handler(&ctx, "other", callback)?;
+        assert_ne!(first, second);
+
+        assert_eq!(unregister_app_handler_token(&ctx, "other", first), 1);
+        let evt_count = registry(&ctx)
+            .handlers
+            .borrow()
+            .get(&Scope::App)
+            .into_iter()
+            .flatten()
+            .filter(|entry| entry.event_name == "evt")
+            .count();
+        assert_eq!(evt_count, 2, "an event name mismatch must be inert");
+
+        assert_eq!(
+            unregister_app_handler_token(&ctx, "evt", first),
+            1,
+            "the sibling subscription must survive"
+        );
+        assert_eq!(unregister_app_handler_token(&ctx, "evt", first), 1);
+        assert_eq!(unregister_app_handler_token(&ctx, "evt", second), 0);
+        assert_eq!(unregister_app_handler_token(&ctx, "other", other), 0);
+        Ok(())
     }
 }
