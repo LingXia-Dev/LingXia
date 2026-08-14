@@ -88,6 +88,9 @@ async fn navigate_with_url(
     cancel: &mut HostCancel,
 ) -> Result<(), LxAppError> {
     lxapp.ensure_page_exists(&target_url)?;
+    // Reject before resolving the target so a failed navigation leaves the
+    // stacked page's cached query untouched.
+    lxapp.validate_navigation_entry(&target_url, nav_type)?;
 
     let current_path = current_page_path(&lxapp)?;
     let target_page = lxapp.get_or_create_page(&target_url);

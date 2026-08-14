@@ -687,6 +687,7 @@ pub(crate) async fn lxapp_service_handler(
                 .unwrap_or(None);
 
                 if let Some(page_svc) = page_svc {
+                    page_svc.mark_terminated();
                     page_svc
                         .close_channels(bridge::BRIDGE_CANCELED, "Page terminated")
                         .await;

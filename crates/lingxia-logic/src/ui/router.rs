@@ -141,6 +141,11 @@ async fn navigate_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<JSO
         resolve_page_target(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))?;
 
     ensure_page_exists_js(&lxapp, &target_url)?;
+    // Reject before resolving the target: a rejected navigateTo must not
+    // touch the query or opener of the page already on the stack.
+    lxapp
+        .validate_navigation_entry(&target_url, NavigationType::Forward)
+        .map_err(|e| js_error_from_lxapp_error(&e))?;
 
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &target_url)
@@ -179,6 +184,9 @@ async fn redirect_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<()>
         ));
     }
 
+    lxapp
+        .validate_navigation_entry(&target_url, NavigationType::Replace)
+        .map_err(|e| js_error_from_lxapp_error(&e))?;
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &target_url)
         .await

@@ -497,6 +497,43 @@ impl LxApp {
         Ok(())
     }
 
+    /// Reject a navigation whose stack rules would fail it, BEFORE the entry
+    /// mutates anything — cached query, opener bindings. Mirrors the checks
+    /// in navigate_to_internal, which stay as the backstop.
+    pub fn validate_navigation_entry(
+        &self,
+        url: &str,
+        nav_type: crate::page::NavigationType,
+    ) -> Result<(), LxAppError> {
+        let resolved = match crate::route::resolve_route(self, url) {
+            Ok(resolved) => resolved,
+            Err(_) => return Ok(()),
+        };
+        let path = resolved.internal_path();
+        match nav_type {
+            crate::page::NavigationType::Forward => {
+                if self.get_page_stack().iter().any(|entry| entry == &path) {
+                    return Err(LxAppError::InvalidParameter(format!(
+                        "navigateTo target '{path}' is already on the page stack.                          A page can only appear once; use lx.redirectTo to replace                          the current page, or navigate to a different route."
+                    )));
+                }
+            }
+            crate::page::NavigationType::Replace => {
+                let below_top_collision = {
+                    let stack = self.get_page_stack();
+                    stack.iter().rev().skip(1).any(|entry| entry == &path)
+                };
+                if below_top_collision {
+                    return Err(LxAppError::InvalidParameter(format!(
+                        "redirectTo target '{path}' is already on the page stack.                          A page can only appear once; navigate back to it instead."
+                    )));
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     /// Get existing page or create a new one.
     /// PageSvc creation + HTML load are handled inside PageInstance::new once WebView is ready.
     pub fn get_or_create_page(&self, url: &str) -> PageInstance {

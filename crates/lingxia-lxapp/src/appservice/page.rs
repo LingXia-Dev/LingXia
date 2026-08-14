@@ -44,6 +44,10 @@ pub struct PageSvc {
     /// event enqueues here and a single drainer runs the queue FIFO.
     lifecycle_queue: LifecycleQueue,
     lifecycle_pump_running: Rc<Cell<bool>>,
+    /// Set when TerminatePage retires this service. Queued and in-flight
+    /// lifecycle handlers may resume afterwards; they must not reach the
+    /// (possibly rebuilt) document through the shared PageInstance.
+    terminated: Rc<Cell<bool>>,
 }
 
 struct PageSvcState {
@@ -698,6 +702,7 @@ impl PageSvc {
             })),
             lifecycle_queue: Rc::new(RefCell::new(std::collections::VecDeque::new())),
             lifecycle_pump_running: Rc::new(Cell::new(false)),
+            terminated: Rc::new(Cell::new(false)),
         };
 
         page_svc.register_functions(&config, meta_json.0.as_deref())?;
@@ -723,6 +728,11 @@ impl PageSvc {
 
     #[js_method(rename = "_setData")]
     async fn set_data(&self, ops_json: String, callback: Optional<JSFunc>) -> JSResult<()> {
+        if self.terminated.get() {
+            // A handler that outlived its service must not write into the
+            // document a successor service now owns.
+            return Ok(());
+        }
         let mut state = self.state.lock().await;
         let bridge = self.bridge();
 
@@ -1119,12 +1129,22 @@ impl PageSvc {
     /// `onReady` handler observably ran before the same entry's `onLoad`. The
     /// queue keeps the pump unblocked while a single drainer preserves the
     /// dispatch order per page service.
+    /// Retire the service: queued lifecycle events are dropped and in-flight
+    /// handlers lose their write path back to the page.
+    pub(crate) fn mark_terminated(&self) {
+        self.terminated.set(true);
+        self.lifecycle_queue.borrow_mut().clear();
+    }
+
     pub(crate) fn enqueue_lifecycle_event(
         &self,
         ctx: &JSContext,
         event: PageLifecycleEvent,
         args: Option<String>,
     ) {
+        if self.terminated.get() {
+            return;
+        }
         self.lifecycle_queue.borrow_mut().push_back((event, args));
         if self.lifecycle_pump_running.get() {
             return;
@@ -1133,6 +1153,11 @@ impl PageSvc {
         let page_svc = self.clone();
         super::context_lifecycle::spawn(ctx, move |ctx| async move {
             loop {
+                if page_svc.terminated.get() {
+                    page_svc.lifecycle_queue.borrow_mut().clear();
+                    page_svc.lifecycle_pump_running.set(false);
+                    break;
+                }
                 let next = page_svc.lifecycle_queue.borrow_mut().pop_front();
                 let Some((event, args)) = next else {
                     page_svc.lifecycle_pump_running.set(false);
@@ -1287,16 +1312,12 @@ impl LxApp {
 
         let path = page.path();
 
-        let existing = super::with_page_svc_map(ctx, |page_svc_map| {
-            Ok(page_svc_map.borrow().get(path.as_str()).cloned())
-        })?;
-        if let Some(page_svc) = existing {
-            return Ok(page_svc);
-        }
-
-        // A page that left the stack was torn down with its service; rebuild
-        // it for this entry. Waiting is safe here: in-Logic callers run off
-        // the worker's message pump, so the queued creation still executes.
+        // Settle any owed reset BEFORE consulting the registry: inside the
+        // deferred-teardown window the map still holds the outgoing service,
+        // and handing it out would bind opener ports to a service the flush
+        // is about to terminate. Waiting is safe here: in-Logic callers run
+        // off the worker's message pump, so the queued creation still
+        // executes.
         if let Some(done) = self.flush_page_reset_awaited(&page) {
             match done.await {
                 Ok(Ok(())) => {}
