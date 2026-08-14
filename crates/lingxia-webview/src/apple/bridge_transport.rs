@@ -2,7 +2,7 @@ use crate::webview::WebTag;
 use crate::{SystemPipeReader, WebResourceResponse, WebViewError};
 use std::collections::VecDeque;
 use std::io::Write;
-use std::os::fd::IntoRawFd;
+use std::os::fd::{AsRawFd, IntoRawFd};
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
@@ -280,6 +280,21 @@ impl AppleBridgeTransport {
                 "Failed to create Apple bridge downstream pipe: {e}"
             ))
         })?;
+        // WebKit closes the read end whenever it stops the scheme task (a
+        // navigation replacing the document, webview teardown). The process
+        // hosts a Swift `main`, so Rust never installed its SIGPIPE ignore —
+        // without SO_NOSIGPIPE a late write would kill the whole app instead
+        // of returning the EPIPE the writer loop is built to absorb.
+        unsafe {
+            let one: libc::c_int = 1;
+            libc::setsockopt(
+                write_end.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_NOSIGPIPE,
+                std::ptr::from_ref(&one).cast(),
+                std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+            );
+        }
         let read_fd = read_end.into_raw_fd();
         let reader = unsafe { SystemPipeReader::from_raw_fd(read_fd) };
 
