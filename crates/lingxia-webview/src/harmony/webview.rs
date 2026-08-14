@@ -1178,6 +1178,32 @@ impl WebViewController for WebViewInner {
     }
 
     async fn take_screenshot(&self) -> Result<Vec<u8>, WebViewError> {
+        // A freshly built document races its first paint: ArkWeb rejects
+        // snapshots until the Web component is associated and painted. Both
+        // states are transient, so retry instead of failing the caller.
+        const RETRY_DELAY: Duration = Duration::from_millis(150);
+        const ATTEMPTS: usize = 16;
+        let mut last_err = WebViewError::WebView("screenshot never attempted".to_string());
+        for _ in 0..ATTEMPTS {
+            match self.take_screenshot_once().await {
+                Ok(bytes) => return Ok(bytes),
+                Err(WebViewError::WebView(msg))
+                    if msg.contains("not painted")
+                        || msg.contains("associated with a Web component")
+                        || msg.contains("returned no PixelMap") =>
+                {
+                    last_err = WebViewError::WebView(msg);
+                    tokio::time::sleep(RETRY_DELAY).await;
+                }
+                Err(err) => return Err(err),
+            }
+        }
+        Err(last_err)
+    }
+}
+
+impl WebViewInner {
+    async fn take_screenshot_once(&self) -> Result<Vec<u8>, WebViewError> {
         let request_id = NEXT_SCREENSHOT_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
 

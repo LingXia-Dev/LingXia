@@ -128,6 +128,8 @@ class LxAppActivity : AppCompatActivity() {
         const val EXTRA_PATH = "path"
         const val EXTRA_SESSION_ID = "sessionId"
         internal const val DEFAULT_NAV_BAR_HEIGHT_DP = 44
+        private const val NAVIGATE_WEBVIEW_RETRY_LIMIT = 20
+        private const val NAVIGATE_WEBVIEW_RETRY_DELAY_MS = 100L
 
         /**
          * Update TabBar UI for a specific appId
@@ -1761,7 +1763,8 @@ class LxAppActivity : AppCompatActivity() {
         targetPath: String,
         pageConfig: NavigationBarState? = null,
         isReplace: Boolean = false,
-        isBackNavigation: Boolean = false
+        isBackNavigation: Boolean = false,
+        attempt: Int = 0
     ) {
         try {
             // Get current WebView before changes
@@ -1779,6 +1782,16 @@ class LxAppActivity : AppCompatActivity() {
                     current.sessionId == currentSessionId &&
                     currentPath == normalizedTarget
                 ) {
+                    // A fresh page instance creates its WebView asynchronously,
+                    // so a navigation can land here before the WebView
+                    // registers. Retry while the runtime still targets this
+                    // path; a newer navigation flips the stale check above.
+                    if (attempt < NAVIGATE_WEBVIEW_RETRY_LIMIT) {
+                        rootContainer.postDelayed({
+                            navigateToPage(targetPath, pageConfig, isReplace, isBackNavigation, attempt + 1)
+                        }, NAVIGATE_WEBVIEW_RETRY_DELAY_MS)
+                        return
+                    }
                     LxLog.e(TAG, "Failed to find WebView for current path: $targetPath")
                 } else {
                     Log.d(TAG, "Ignoring stale navigation to $targetPath")

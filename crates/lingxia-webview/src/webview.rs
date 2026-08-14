@@ -242,6 +242,9 @@ pub(crate) struct WebViewCreateOptions {
     pub(crate) download_handler: Option<DownloadHandler>,
     pub(crate) file_chooser_handler: Option<FileChooserHandler>,
     pub(crate) delegate: Option<Arc<dyn WebViewDelegate>>,
+    /// The webview belongs to a surface, not the app's page container; the
+    /// platform shell must not adopt it into stack-page presentation.
+    pub(crate) surface_owned: bool,
 }
 
 impl std::fmt::Debug for WebViewCreateOptions {
@@ -403,6 +406,8 @@ pub(crate) struct EffectiveWebViewCreateOptions {
     pub(crate) has_file_chooser_handler: bool,
     #[serde(default)]
     pub(crate) has_delegate: bool,
+    #[serde(default)]
+    pub(crate) surface_owned: bool,
 }
 
 impl Default for WebViewCreateOptions {
@@ -422,6 +427,7 @@ impl WebViewCreateOptions {
             download_handler: None,
             file_chooser_handler: None,
             delegate: None,
+            surface_owned: false,
         }
     }
 
@@ -435,6 +441,7 @@ impl WebViewCreateOptions {
             download_handler: None,
             file_chooser_handler: None,
             delegate: None,
+            surface_owned: false,
         }
     }
 
@@ -521,6 +528,11 @@ impl WebViewCreateOptions {
         self
     }
 
+    fn surface_owned(mut self, surface_owned: bool) -> Self {
+        self.surface_owned = surface_owned;
+        self
+    }
+
     pub(crate) fn normalize(
         self,
     ) -> Result<(EffectiveWebViewCreateOptions, PendingCallbacks), WebViewError> {
@@ -546,6 +558,7 @@ impl WebViewCreateOptions {
             has_download_handler: self.download_handler.is_some(),
             has_file_chooser_handler: self.file_chooser_handler.is_some(),
             has_delegate: self.delegate.is_some(),
+            surface_owned: self.surface_owned,
         };
         let pending = PendingCallbacks {
             scheme_handlers: self.scheme_handlers,
@@ -612,6 +625,13 @@ impl StrictWebViewBuilder {
     /// Select the website-data lifetime independently of the security profile.
     pub fn data_mode(mut self, data_mode: WebViewDataMode) -> Self {
         self.options = self.options.data_mode(data_mode);
+        self
+    }
+
+    /// Mark the webview as surface-owned so platform shells leave its
+    /// presentation to the surface instead of the page container.
+    pub fn surface_owned(mut self, surface_owned: bool) -> Self {
+        self.options = self.options.surface_owned(surface_owned);
         self
     }
 

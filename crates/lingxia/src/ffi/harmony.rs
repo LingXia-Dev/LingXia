@@ -519,6 +519,33 @@ pub fn get_page_instance_id(appid: String, path: String, session_id: i64) -> Str
     page_instance_id
 }
 
+/// Full webtag of the live page instance a path currently resolves to.
+/// Page webtags are per-instance, so shells must ask the runtime instead of
+/// reconstructing tags from paths.
+#[napi]
+pub fn get_page_webtag(appid: String, path: String, session_id: i64) -> String {
+    if session_id <= 0 {
+        return String::new();
+    }
+    let Some(lxapp_instance) = lxapp::try_get(&appid) else {
+        return String::new();
+    };
+    if lxapp_instance.session_id() != session_id as u64 {
+        return String::new();
+    }
+    let normalized_path = {
+        let path = path.split('?').next().unwrap_or(&path);
+        path.split('#').next().unwrap_or(path)
+    };
+    let resolved_path = lxapp_instance
+        .find_page_path(normalized_path)
+        .unwrap_or_else(|| normalized_path.to_string());
+    lxapp_instance
+        .get_page(&resolved_path)
+        .map(|page| page.webtag().key().to_string())
+        .unwrap_or_default()
+}
+
 #[napi]
 pub fn notify_page_instance_mounted(page_instance_id: String) -> bool {
     lxapp::notify_page_instance_by_id(&page_instance_id, PageInstanceEvent::Mounted).is_ok()

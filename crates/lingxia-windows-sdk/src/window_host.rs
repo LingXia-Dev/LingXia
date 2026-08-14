@@ -8441,7 +8441,13 @@ fn restore_previous_lxapp_after_hide(host: Option<HWND>, hidden: &WebTag) {
     if appid == hidden.extract_appid() && session_id == hidden.session_id().unwrap_or_default() {
         return;
     }
-    let restore = WebTag::new(&appid, &path, Some(session_id));
+    // Page webtags are per-instance; resolve the live instance rather than
+    // reconstructing a tag from the path.
+    let Some(restore) =
+        lxapp::try_get(&appid).and_then(|app| app.get_page(&path).map(|page| page.webtag()))
+    else {
+        return;
+    };
     let Some(restore_handler) = find_webview_handler(&restore) else {
         return;
     };

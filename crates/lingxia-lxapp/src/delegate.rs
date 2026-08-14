@@ -250,6 +250,14 @@ impl LxAppDelegate for LxApp {
     }
 
     fn on_page_show(self: &Arc<Self>, path: String) {
+        // Platform containers may report the path straight off a webview,
+        // which carries `#instance#session` suffixes on per-instance tags.
+        let path = path
+            .split('?')
+            .next()
+            .and_then(|path| path.split('#').next())
+            .unwrap_or(&path)
+            .to_string();
         // Get the existing page - it should already exist when show is called
         let page = match self.get_page(&path) {
             Some(page) => page,
