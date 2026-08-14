@@ -1084,17 +1084,20 @@ impl LxApp {
         }
     }
 
-    /// How long to wait past a back/replace transition before resetting the
+    /// How long to wait past a back/replace transition before tearing down the
     /// page that left. Long enough for the native container's pop animation to
     /// finish, so the outgoing page is never blanked while it is on screen.
     const PAGE_RESET_DELAY: Duration = Duration::from_millis(500);
 
-    /// Schedules the in-place reset of a page that just left the stack.
+    /// Schedules the teardown of a page that just left the stack.
     ///
     /// Leaving a page ends its instance: the next entry must see fresh `data`
     /// and a fresh document, which is what `onLoad` has always promised. The
-    /// WebView itself is retained, so the re-entry is warm — the document
-    /// reboots while it is invisible.
+    /// teardown is deliberately lazy — the Logic service dies and the document
+    /// is parked blank, but nothing is rebuilt until an entry asks for it.
+    /// Rebuilding speculatively would run page code off-screen (view mount
+    /// hooks, native components, media) and queue Logic work for pages nobody
+    /// is returning to.
     pub(crate) fn schedule_page_reset(&self, page: &PageInstance) {
         let instance_id = page.instance_id_string();
         let path = page.path().to_string();
@@ -1131,8 +1134,16 @@ impl LxApp {
             if app.get_page_stack().iter().any(|entry| entry == &path) {
                 return;
             }
-            if let Err(err) = app.reset_page_in_place(&path, &instance_id) {
-                warn!("Failed to reset page {} after leaving: {}", path, err).with_appid(appid);
+            let Some(page) = app.get_page(&path) else {
+                return;
+            };
+            if page.instance_id_string() != instance_id {
+                // The instance was replaced while the teardown was pending.
+                return;
+            }
+            let _transition = page.reset_transition_guard();
+            if page.take_reset_pending() {
+                app.teardown_page(&page);
             }
         }));
     }
@@ -1152,89 +1163,104 @@ impl LxApp {
         }
     }
 
-    /// Completes a pending reset immediately instead of waiting out the delay.
+    /// Settles the reset a page owes at the moment an entry lands on it.
     ///
-    /// Entering a page again inside the delay window must still give the user a
-    /// fresh instance — the deferred reset is an optimization that keeps the
-    /// work off-screen, never a licence to hand back the old one.
+    /// Entering a page again inside the delay window must still give the user
+    /// a fresh instance — the deferred teardown is claimed here if the timer
+    /// has not run, and the rebuild the teardown left owing is started. The
+    /// entry's own `onLoad` is already requested by the caller; the fresh
+    /// document's handshake releases it.
     pub(crate) fn flush_page_reset(&self, page: &PageInstance) {
-        if !page.is_reset_pending() {
-            return;
+        let _ = self.flush_page_reset_awaited(page);
+    }
+
+    /// Like [`Self::flush_page_reset`], but hands back a receiver that
+    /// resolves once the rebuilt Logic service is registered — for in-Logic
+    /// navigation, which must look the target's service up immediately after
+    /// the flush. `None` means no rebuild was owed.
+    pub(crate) fn flush_page_reset_awaited(
+        &self,
+        page: &PageInstance,
+    ) -> Option<oneshot::Receiver<Result<(), String>>> {
+        let _transition = page.reset_transition_guard();
+        if page.take_reset_pending() {
+            self.cancel_page_reset(&page.instance_id_string());
+            self.teardown_page(page);
         }
-        let instance_id = page.instance_id_string();
-        self.cancel_page_reset(&instance_id);
-        let path = page.path().to_string();
-        if let Err(err) = self.reset_page_in_place(&path, &instance_id) {
-            warn!("Failed to reset page {} before re-entry: {}", path, err)
-                .with_appid(self.appid.clone());
+        if page.take_reset_awaiting_entry() {
+            Some(self.rebuild_page_on_entry(page))
+        } else {
+            None
         }
     }
 
-    /// Replaces the page's Logic service and reloads its document, keeping the
-    /// same `PageInstance` and WebView.
+    /// Ends the instance that left the stack, keeping its WebView warm.
     ///
     /// Order matters: cancelling bridge work first drops in-flight view calls
     /// (they would otherwise hang to their 15s timeout against a document that
-    /// is about to be replaced), terminating closes the old service's channels
-    /// and page event bus, and only then is a fresh service created — with
-    /// `None` so it re-registers under both the path and the instance id.
-    fn reset_page_in_place(&self, path: &str, instance_id: &str) -> Result<(), LxAppError> {
-        let Some(page) = self.get_page(path) else {
-            return Ok(());
-        };
-        if page.instance_id_string() != instance_id {
-            // The instance was replaced while the reset was pending.
-            return Ok(());
-        }
-
-        if !page.take_reset_pending() {
-            // Another path already claimed this reset.
-            return Ok(());
-        }
+    /// is about to be replaced), parking swaps the document for an inert blank
+    /// one, and terminating closes the old service's channels and page event
+    /// bus. Nothing is created here — the rebuild belongs to the next entry.
+    fn teardown_page(&self, page: &PageInstance) {
         page.prepare_for_service_restart();
-        self.executor.terminate_page_svc(
+        page.park_view();
+        if let Err(err) = self.executor.terminate_page_svc(
             self.clone_arc(),
-            path.to_string(),
-            Some(instance_id.to_string()),
-        )?;
+            page.path().to_string(),
+            Some(page.instance_id_string()),
+        ) {
+            warn!(
+                "Failed to terminate page service for {}: {}",
+                page.path(),
+                err
+            )
+            .with_appid(self.appid.clone());
+        }
+    }
 
+    /// Rebuilds a torn-down page for the entry now standing on it: a fresh
+    /// Logic service first — created with `None` so it re-registers under
+    /// both the path and the instance id — then the document, so the new
+    /// document's handshake finds the new service.
+    ///
+    /// The returned receiver resolves as soon as the service is registered;
+    /// the document reload continues independently.
+    fn rebuild_page_on_entry(&self, page: &PageInstance) -> oneshot::Receiver<Result<(), String>> {
+        let (done_tx, done_rx) = oneshot::channel::<Result<(), String>>();
+        let path = page.path().to_string();
         let (ack_tx, ack_rx) = oneshot::channel::<Result<(), String>>();
-        self.executor
-            .create_page_svc_with_ack(self.clone_arc(), path.to_string(), None, ack_tx)?;
+        if let Err(err) =
+            self.executor
+                .create_page_svc_with_ack(self.clone_arc(), path.clone(), None, ack_tx)
+        {
+            warn!("Failed to recreate page service for {}: {}", path, err)
+                .with_appid(self.appid.clone());
+            let _ = done_tx.send(Err(err.to_string()));
+            return done_rx;
+        }
 
         let appid = self.appid.clone();
-        let path = path.to_string();
+        let page = page.clone();
         std::mem::drop(crate::executor::spawn(async move {
             match ack_rx.await {
                 Ok(Ok(())) => {
-                    let Some(app) = crate::lxapp::try_get(&appid) else {
-                        return;
-                    };
-                    let Some(page) = app.get_page(&path) else {
-                        return;
-                    };
+                    let _ = done_tx.send(Ok(()));
                     // load_html, not WebView::reload: the document came from
                     // loadHTMLString with a logical base URL, and a reload would
                     // fetch that URL's raw source, losing the bridge config and
                     // nonce.
                     if let Err(err) = page.load_html() {
-                        warn!("Failed to reload {} after reset: {}", path, err).with_appid(appid);
-                        return;
-                    }
-                    // The page is back on the stack, so it was re-entered while
-                    // the reset was in flight and its `onLoad` request went down
-                    // with the old instance. Re-arm it against the fresh one.
-                    if app.get_page_stack().iter().any(|entry| entry == &path) {
-                        page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnLoad);
+                        warn!("Failed to reload {} for re-entry: {}", path, err).with_appid(appid);
                     }
                 }
                 Ok(Err(err)) => {
-                    warn!("Page service reset failed for {}: {}", path, err).with_appid(appid);
+                    warn!("Page service rebuild failed for {}: {}", path, err).with_appid(appid);
+                    let _ = done_tx.send(Err(err));
                 }
                 Err(_) => {}
             }
         }));
-        Ok(())
+        done_rx
     }
 
     fn cancel_all_page_resets(&self) {

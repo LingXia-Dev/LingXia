@@ -10,7 +10,7 @@ use crate::lxapp::{self, LxAppSessionStatus, navbar::NavigationBarState};
 use crate::page::config::{OrientationOverride, PageConfig};
 use crate::plugin;
 use crate::startup::parse_query_string;
-use crate::{LxApp, LxAppError, debug, error, info};
+use crate::{LxApp, LxAppError, debug, error, info, warn};
 use base64::Engine;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -130,6 +130,10 @@ pub(crate) struct PageInstanceInner {
 
     // Canonical attempt-correlation fold over typed navigation events.
     navigation_progress: Arc<std::sync::Mutex<lingxia_webview::NavigationProgress>>,
+
+    // Serializes teardown/rebuild transitions of the owed reset, so the timer
+    // and an entry racing each other cannot interleave terminate/create sends.
+    reset_transition: Arc<std::sync::Mutex<()>>,
 }
 
 /// A page runs on three independent clocks, and conflating them is what let
@@ -154,8 +158,9 @@ enum PageReset {
     None,
     /// The instance ended; its service and document are still the old ones.
     Pending,
-    /// Rebuilt for a future entry. The document is fresh but nobody is on the
-    /// page, so its bridge handshake must not boot a lifecycle of its own.
+    /// Torn down: the service is gone and the document is parked blank. The
+    /// entry that lands on this page owes it a rebuild, and any handshake
+    /// arriving before that entry must not boot a lifecycle of its own.
     AwaitingEntry,
 }
 
@@ -186,6 +191,9 @@ pub struct PageState {
     ready_dispatched: bool,
     /// The reset this page owes after leaving the stack.
     reset: PageReset,
+    /// A parked page holds an inert blank document while nobody is on it;
+    /// its navigation events must not run the render pipeline.
+    parked: bool,
     // Navigation bar state
     pub(crate) navbar_state: NavigationBarState,
     // A malformed page config owns this page's load outcome; it must not
@@ -396,6 +404,7 @@ impl PageInstance {
             requires_bridge_ready: lxapp.logic_enabled(),
             ready_dispatched: false,
             reset: PageReset::None,
+            parked: false,
             navbar_state: page_config.create_navbar_state(),
             config_load_error,
             enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
@@ -448,6 +457,7 @@ impl PageInstance {
         let (loaded_tx, _) = watch::channel(0u64);
         let inner = Arc::new(PageInstanceInner {
             navigation_progress: Arc::new(std::sync::Mutex::new(Default::default())),
+            reset_transition: Arc::new(std::sync::Mutex::new(())),
             id,
             appid: appid.clone(),
             path: path.clone(),
@@ -581,6 +591,7 @@ impl PageInstance {
         let (loaded_tx, _) = watch::channel(0u64);
         let inner = Arc::new(PageInstanceInner {
             navigation_progress: Arc::new(std::sync::Mutex::new(Default::default())),
+            reset_transition: Arc::new(std::sync::Mutex::new(())),
             id,
             appid,
             path,
@@ -636,7 +647,7 @@ impl PageInstance {
         }
     }
 
-    /// Claims the pending reset, if this page still owes one.
+    /// Claims the owed teardown, if this page still owes one.
     pub(crate) fn take_reset_pending(&self) -> bool {
         let Ok(mut state) = self.inner.state.lock() else {
             return false;
@@ -648,11 +659,44 @@ impl PageInstance {
         false
     }
 
-    pub(crate) fn is_reset_pending(&self) -> bool {
+    /// Claims the owed rebuild, if this page was torn down and none ran yet.
+    pub(crate) fn take_reset_awaiting_entry(&self) -> bool {
+        let Ok(mut state) = self.inner.state.lock() else {
+            return false;
+        };
+        if state.reset == PageReset::AwaitingEntry {
+            state.reset = PageReset::None;
+            return true;
+        }
+        false
+    }
+
+    /// Serializes teardown/rebuild transitions across the timer and an entry.
+    pub(crate) fn reset_transition_guard(&self) -> std::sync::MutexGuard<'_, ()> {
         self.inner
-            .state
+            .reset_transition
             .lock()
-            .is_ok_and(|state| state.reset == PageReset::Pending)
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Parks the retained WebView while nobody is on the page: the document
+    /// is replaced with an inert blank one, so no stale DOM (or open popup)
+    /// survives to the next entry and no page code runs off-screen.
+    pub(crate) fn park_view(&self) {
+        if let Ok(mut state) = self.inner.state.lock() {
+            state.parked = true;
+        }
+        // Transparent so the host-owned page background shows through.
+        const PARKED_DOCUMENT: &str = "<!DOCTYPE html><html><head><meta charset=\"utf-8\">\
+             <style>html,body{background:transparent}</style></head><body></body></html>";
+        if let Some(controller) = self.webview_controller()
+            && let Err(err) =
+                controller.load_data(LoadDataRequest::new(PARKED_DOCUMENT, &self.base_url()))
+        {
+            warn!("Failed to park document for {}: {}", self.path(), err)
+                .with_appid(self.appid())
+                .with_path(self.path());
+        }
     }
 
     /// Prepare a retained WebView for a freshly-created PageSvc.
@@ -710,6 +754,7 @@ impl PageInstance {
 
     fn reset_webview_lifecycle_state(state: &mut PageState) {
         let is_currently_visible = state.event == Some(PageLifecycleEvent::OnShow);
+        state.parked = false;
         state.render_status = PageRenderStatus::Unstarted;
         state.visibility = if is_currently_visible {
             Visibility::ShowOwed
@@ -1130,6 +1175,11 @@ impl PageInstance {
 
     /// Load HTML content into this page's WebView
     pub(crate) fn load_html(&self) -> Result<(), LxAppError> {
+        // A real document is coming: its navigation events drive the render
+        // pipeline again.
+        if let Ok(mut state) = self.inner.state.lock() {
+            state.parked = false;
+        }
         let lxapp = self.owning_lxapp();
         let path = self.path();
         let config_load_error = self
@@ -1585,6 +1635,11 @@ enum ClassifiedNavigation {
 
 impl WebViewDelegate for PageInstance {
     fn on_navigation_event(&self, event: lingxia_webview::NavigationEvent) {
+        // A parked document's navigation is bookkeeping, not a page render:
+        // it must not inject scripts or advance the render clock.
+        if self.inner.state.lock().is_ok_and(|state| state.parked) {
+            return;
+        }
         let outcome = {
             let mut progress = self
                 .inner
@@ -1747,6 +1802,7 @@ mod tests {
             requires_bridge_ready: true,
             ready_dispatched: false,
             reset: PageReset::None,
+            parked: false,
             navbar_state: NavigationBarState::default(),
             config_load_error: None,
             enable_pull_down_refresh: false,
@@ -1920,13 +1976,13 @@ mod tests {
     }
 
     #[test]
-    fn a_document_rebuilt_for_a_later_entry_does_not_boot_itself() {
+    fn a_torn_down_page_does_not_boot_from_a_stray_handshake() {
         let mut state = test_page_state();
         state.reset = PageReset::AwaitingEntry;
         state.entry = EntryPhase::Idle;
 
         // The bridge-ready auto-request is what boots surfaces and app-service
-        // restarts; a page rebuilt for an entry that has not happened yet must
+        // restarts; a torn-down page whose rebuild is racing the entry must
         // stay put instead of firing onLoad at nobody.
         assert!(!(state.entry == EntryPhase::Idle && state.reset == PageReset::None));
 
@@ -1934,6 +1990,17 @@ mod tests {
         PageInstance::request_on_load(&mut state);
         assert_eq!(state.reset, PageReset::None);
         assert_eq!(state.entry, EntryPhase::LoadOwed);
+    }
+
+    #[test]
+    fn a_lifecycle_reset_unparks_the_document() {
+        let mut state = test_page_state();
+        state.parked = true;
+
+        // Attaching a different WebView (or preparing for a service restart)
+        // starts a fresh document story; stale parking must not swallow it.
+        PageInstance::reset_webview_lifecycle_state(&mut state);
+        assert!(!state.parked);
     }
 
     #[test]

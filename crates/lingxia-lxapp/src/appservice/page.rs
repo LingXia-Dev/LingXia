@@ -1235,6 +1235,34 @@ impl LxApp {
 
         let path = page.path();
 
+        let existing = super::with_page_svc_map(ctx, |page_svc_map| {
+            Ok(page_svc_map.borrow().get(path.as_str()).cloned())
+        })?;
+        if let Some(page_svc) = existing {
+            return Ok(page_svc);
+        }
+
+        // A page that left the stack was torn down with its service; rebuild
+        // it for this entry. Waiting is safe here: in-Logic callers run off
+        // the worker's message pump, so the queued creation still executes.
+        if let Some(done) = self.flush_page_reset_awaited(&page) {
+            match done.await {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => {
+                    return Err(RongJSError::from(HostError::new(
+                        rong::error::E_INTERNAL,
+                        format!("Failed to rebuild page service: {err}"),
+                    )));
+                }
+                Err(_) => {
+                    return Err(RongJSError::from(HostError::new(
+                        rong::error::E_INTERNAL,
+                        "Page service rebuild was dropped",
+                    )));
+                }
+            }
+        }
+
         super::with_page_svc_map(ctx, |page_svc_map| {
             page_svc_map
                 .borrow()

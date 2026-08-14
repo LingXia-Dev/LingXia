@@ -639,46 +639,64 @@ Disposal is triggered by:
 
 ### Page reset on leaving the stack (distinct from disposal)
 
-Popping a page (`navigate_back`) or replacing it (`redirectTo`) ends that page
-*instance* without destroying its WebView — the view is kept so the next entry
-is warm. `LxApp::schedule_page_reset()` therefore rebuilds what the instance
-owned:
+Popping a page (`navigate_back`), replacing it (`redirectTo` to a different
+page), or dropping it on `switchTab` ends that page *instance* without
+destroying its WebView — the view is kept so the next entry is warm. The reset
+is split in two halves so nothing is rebuilt for a page nobody is returning
+to: rebuilding speculatively would run page code off-screen (view mount hooks,
+native components, media) and queue Logic work behind live traffic on the JS
+worker channel.
 
-1. `prepare_for_service_restart()` — cancel in-flight bridge work and reset the
-   WebView lifecycle state.
-2. `TerminatePage` for the outgoing `PageSvc` (scoped to the instance id).
-3. Create a fresh `PageSvc` for the path, so Logic `data` returns to its
+**Teardown** (`LxApp::teardown_page`, deferred by `PAGE_RESET_DELAY` (500ms)
+so it runs behind the container's pop animation rather than blanking a page
+still on screen):
+
+1. `prepare_for_service_restart()` — cancel in-flight bridge work and reset
+   the WebView lifecycle state.
+2. `park_view()` — swap the document for an inert blank one. No stale DOM or
+   open popup survives, and no page code runs while nobody is on the page; a
+   parked page's navigation events are swallowed before the render pipeline.
+3. `TerminatePage` for the outgoing `PageSvc` (scoped to the instance id).
+
+**Rebuild** (`LxApp::rebuild_page_on_entry`, only from the entry path):
+
+1. Create a fresh `PageSvc` for the path, so Logic `data` returns to its
    declared initial value.
-4. `page.load_html()` — **not** `WebView::reload()`. The document was installed
-   with `loadHTMLString` against a logical base URL; a reload would refetch that
-   URL's raw source and lose the injected bridge config and nonce.
+2. On the creation ack, `page.load_html()` — **not** `WebView::reload()`. The
+   document was installed with `loadHTMLString` against a logical base URL; a
+   reload would refetch that URL's raw source and lose the injected bridge
+   config and nonce. The new document's handshake then releases the entry's
+   already-requested `onLoad`.
 
-The reset is deferred by `PAGE_RESET_DELAY` (500ms) so it runs behind the
-container's pop animation rather than blanking a page still on screen. Entering
-the page again inside that window does not skip the reset: `flush_page_reset()`
-runs it at the top of the `OnLoad` dispatch, *before* `request_on_load`, so the
-entry's `onLoad` is queued against the fresh state. The timer and the flush
-claim the same pending entry, so exactly one of them performs the reset; if an
-entry lands while a reset is already in flight, the reset re-arms `OnLoad`
-itself once the document reloads.
+`flush_page_reset()` settles both halves at the top of the `OnLoad` dispatch,
+*before* `request_on_load`: it claims the teardown if the timer has not run
+(`PageReset::Pending` → `AwaitingEntry`), then claims the rebuild
+(`AwaitingEntry` → `None`). The timer only ever tears down; the claims plus a
+per-page transition lock keep the timer and a racing entry from interleaving
+their terminate/create sends.
 
-The rebuilt document then waits: `PageState.reset` holds `AwaitingEntry` until
-the real entry calls `request_on_load`, which suppresses the bridge-ready
-auto-request in `notify_bridge_ready`. Without that, the fresh document's
-handshake would boot a lifecycle of its own — `onLoad` with the previous
-entry's query, plus `onReady` — to a page nobody is on, leaving the real entry
-with a second `onLoad` and no `onReady`. Pages that handshake while live
-(surfaces, an in-place app-service restart) still boot from there.
+In-Logic navigation (`lx.navigateTo` and friends) needs the target's `PageSvc`
+in the `page_svc_map` *before* the stack moves, so
+`get_or_create_page_in_ctx()` performs the same flush early and awaits the
+service registration (`flush_page_reset_awaited()`). That wait is safe because
+in-Logic handlers run off the worker's message pump — the queued `CreatePage`
+still executes; the later `OnLoad` flush then finds the reset already claimed.
+
+`PageState.reset` holding `AwaitingEntry` also suppresses the bridge-ready
+auto-request in `notify_bridge_ready`, so a handshake racing the entry cannot
+boot a lifecycle of its own — `onLoad` with the previous entry's query, plus
+`onReady` — at a page nobody is on. Pages that handshake while live (surfaces,
+an in-place app-service restart) still boot from there.
 
 The claim is the page's own `PageReset::Pending`, not the timer entry: if the
-page is back on the stack when the timer fires, the reset stays owed and
+page is back on the stack when the timer fires, the teardown stays owed and
 `flush_page_reset()` performs it at the entry instead. That covers both a fast
 re-entry and one that lands between the pop and its `onLoad`.
 
 Pending resets are cancelled by `dispose_page_instance_internal()` and by
 `shutdown_with_options()`. `reLaunch` needs none: it destroys the WebViews and
-removes the instances outright. `switchTab` clears the stack without unloading,
-so tab pages keep their instances — the reset does not apply to them.
+removes the instances outright. `switchTab` keeps the tab pages it leaves warm
+(hide only), but unloads and resets any pushed page it drops from the stack.
 
 ### LRU eviction (distinct from disposal)
 

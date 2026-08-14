@@ -145,11 +145,11 @@ contract({
   ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });
   await waitForViewCounter(app, '1');
 
-  // Leaving ends the instance; the reset lands after the pop transition.
+  // Leaving ends the instance; the teardown lands after the pop transition.
   await app.nav.back();
   await waitForCurrentPage(app, 'home');
-  // Past the deferred-reset delay, so this covers the reset running off-screen
-  // rather than being flushed by a fast re-entry.
+  // Past the deferred-teardown delay, so this covers the timer path rather
+  // than the teardown being flushed by a fast re-entry.
   await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
 
   const second = await enterResetDemo(app);
@@ -218,8 +218,8 @@ contract({
   const first = await enterResetDemo(app);
   await app.nav.back();
   await waitForCurrentPage(app, 'home');
-  // Let the off-screen reset complete: its rebuilt document must not boot a
-  // lifecycle of its own while nobody is on the page.
+  // Let the off-screen teardown complete: the rebuild at re-entry must
+  // deliver exactly one lifecycle, never a second one of its own.
   await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
 
   const second = await enterResetDemo(app);
