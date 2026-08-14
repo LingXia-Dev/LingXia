@@ -1295,10 +1295,9 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       expect(mobileBars).toEqual([]);
     }
     if (platform === 'macos') {
-      await waitForValue(
-        () => visibleCompactApiTabAxNode(desktop, host!),
-        'macOS compact main tab bar baseline',
-      );
+      await waitForValue(async () => (
+        await visibleCompactApiTabAxNode(desktop, host!) ? undefined : true
+      ), 'macOS compact keeps lxapp tab items in the desktop sidebar');
     }
 
     const opened = await app.eval({
@@ -1344,11 +1343,6 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       );
       return pixels.every((pixel) => !isApiNavbarBlue(pixel)) ? true : undefined;
     }, `${platform} compact Chat covers the Home API navbar`);
-    if (platform === 'macos') {
-      await waitForValue(async () => (
-        await visibleCompactApiTabAxNode(desktop, host!) ? undefined : true
-      ), 'macOS compact Chat covers the main tab bar');
-    }
     await typeIntoChatThroughDesktop(`compact-overlay-${platform}`);
 
     host = await resizeHostOnScreen(desktop, host, expandedWidth, testHeight);
