@@ -52,7 +52,7 @@ extension LxAppMedia {
 
         let urls = Array(panel.urls.prefix(selectionLimit))
         guard !urls.isEmpty else {
-            let _ = onCallback(callbackId, false, "2000")
+            let _ = onCallback(callbackId, false, "1000")
             sendDone(callbackId)
             return
         }

@@ -306,14 +306,14 @@ private final class IOSDocumentPickerCoordinator: NSObject, UIDocumentPickerDele
 
         let picked = urls
         if picked.isEmpty {
-            emitPayload(canceled: true, paths: [])
+            let _ = onCallback(callbackId, false, "1000")
             finish()
             return
         }
 
         do {
             let selectedPaths = try picked.map { try registerPickedItem(from: $0) }
-            emitPayload(canceled: selectedPaths.isEmpty, paths: selectedPaths)
+            emitPayload(canceled: false, paths: selectedPaths)
         } catch {
             let _ = onCallback(callbackId, false, "1000")
         }
@@ -967,8 +967,12 @@ enum LxAppFile {
         }
 
         let paths = panel.urls.map(\.path)
+        guard !paths.isEmpty else {
+            let _ = onCallback(callbackId, false, "1000")
+            return false
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: [
-            "canceled": paths.isEmpty,
+            "canceled": false,
             "paths": paths,
         ]),
         let json = String(data: data, encoding: .utf8) else {
@@ -1001,8 +1005,12 @@ enum LxAppFile {
         }
 
         let paths = panel.urls.map(\.path)
+        guard !paths.isEmpty else {
+            let _ = onCallback(callbackId, false, "1000")
+            return false
+        }
         guard let data = try? JSONSerialization.data(withJSONObject: [
-            "canceled": paths.isEmpty,
+            "canceled": false,
             "paths": paths,
         ]),
         let json = String(data: data, encoding: .utf8) else {

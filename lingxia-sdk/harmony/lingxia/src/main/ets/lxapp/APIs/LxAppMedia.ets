@@ -326,7 +326,8 @@ export class LxAppMedia {
             results.push({ uri, fileType, isOriginal: isOriginalPick });
           }
           if (results.length === 0) {
-            onCallback(normalized.callbackId, false, '2000');
+            LxAppMedia.logError('chooseMedia: picker returned entries but none were usable');
+            onCallback(normalized.callbackId, false, '1000');
             return;
           }
           onCallback(normalized.callbackId, true, JSON.stringify(results));
