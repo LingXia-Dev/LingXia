@@ -45,19 +45,22 @@ export class WebViewManager {
     CoreWebViewManager.removeUiCallback(callback);
   }
 
-  static createWebview(webtag: string, optionsToken?: string): boolean {
-    return CoreWebViewManager.createWebview(webtag, optionsToken);
+  static createWebview(webtag: string, optionsToken?: string, generation?: string): boolean {
+    return CoreWebViewManager.createWebview(webtag, optionsToken, generation);
   }
 
   static findWebview(appId: string, path: string): webview.WebviewController | null {
     return CoreWebViewManager.findWebview(appId, path);
   }
 
-  static destroyWebview(webtag: string): boolean {
-    const extracted = extractWebTag(webtag);
-    const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
-    teardownEmbedManager(logicalTag);
-    return CoreWebViewManager.destroyWebview(webtag);
+  static destroyWebview(webtag: string, generation?: string): boolean {
+    // A stale destroy must leave the successor's embed manager alone too.
+    if (!CoreWebViewManager.isStaleDestroy(webtag, generation)) {
+      const extracted = extractWebTag(webtag);
+      const logicalTag = extracted ? toWebTag(extracted.appId, extracted.path) : webtag;
+      teardownEmbedManager(logicalTag);
+    }
+    return CoreWebViewManager.destroyWebview(webtag, generation);
   }
 
   static loadUrl(webtag: string, url: string): boolean {
@@ -135,16 +138,16 @@ export function removeWebViewUiCallback(callback: (action: string, info: WebView
   WebViewManager.removeUiCallback(callback);
 }
 
-export function createWebViewController(webtag: string, optionsToken?: string): boolean {
-  return WebViewManager.createWebview(webtag, optionsToken);
+export function createWebViewController(webtag: string, optionsToken?: string, generation?: string): boolean {
+  return WebViewManager.createWebview(webtag, optionsToken, generation);
 }
 
 export function findWebview(appId: string, path: string): webview.WebviewController | null {
   return WebViewManager.findWebview(appId, path);
 }
 
-export function destroyWebViewController(webtag: string): boolean {
-  return WebViewManager.destroyWebview(webtag);
+export function destroyWebViewController(webtag: string, generation?: string): boolean {
+  return WebViewManager.destroyWebview(webtag, generation);
 }
 
 export function getWebViewInfo(webtag: string): WebViewInfo | null {

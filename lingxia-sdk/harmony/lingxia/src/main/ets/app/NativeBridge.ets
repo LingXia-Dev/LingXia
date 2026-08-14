@@ -211,12 +211,12 @@ class NativeBridge {
     });
 
     // WebView management
-    this.register('createWebViewController', (webtag: string, optionsToken?: string) => {
-      return createWebViewController(webtag, optionsToken);
+    this.register('createWebViewController', (webtag: string, optionsToken?: string, generation?: string) => {
+      return createWebViewController(webtag, optionsToken, generation);
     });
 
-    this.register('destroyWebViewController', (webtag: string) => {
-      return destroyWebViewController(webtag);
+    this.register('destroyWebViewController', (webtag: string, generation?: string) => {
+      return destroyWebViewController(webtag, generation);
     });
 
     // WebView URL loading
