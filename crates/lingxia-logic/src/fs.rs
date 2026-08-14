@@ -565,8 +565,13 @@ async fn choose_file(ctx: JSContext, options: Optional<JSChooseFileOptions>) -> 
     .await
     .map_err(|e| js_error_from_platform_error(&e))?;
 
-    if result.canceled || result.paths.is_empty() {
+    if result.canceled {
         return canceled(&ctx);
+    }
+    if result.paths.is_empty() {
+        return Err(js_internal_error(
+            "chooseFile invalid payload: non-canceled result must include at least one path",
+        ));
     }
 
     let paths = result
@@ -613,9 +618,11 @@ async fn choose_directory(
             "chooseDirectory invalid payload: non-canceled result must include exactly one path",
         ));
     }
-    let Some(path) = result.paths.into_iter().next() else {
-        return canceled(&ctx);
-    };
+    let path = result.paths.into_iter().next().ok_or_else(|| {
+        js_internal_error(
+            "chooseDirectory invalid payload: non-canceled result must include exactly one path",
+        )
+    })?;
 
     let chosen = completed(&ctx)?;
     chosen.set("path", selected_directory_path_to_uri(&lxapp, &path)?)?;

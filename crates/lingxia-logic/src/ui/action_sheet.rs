@@ -1,9 +1,7 @@
 use crate::dismissal::{canceled, completed};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::i18n::js_error_from_platform_error;
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-use crate::i18n::js_internal_error;
-use crate::i18n::{js_invalid_parameter_error, js_service_unavailable_error};
+use crate::i18n::{js_internal_error, js_invalid_parameter_error, js_service_unavailable_error};
 use crate::{I18nKey, i18n::t};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::error::PlatformError;
@@ -28,6 +26,30 @@ struct JSActionSheetOptions {
 struct ViewActionSheetResult {
     #[serde(rename = "tapIndex")]
     tap_index: i64,
+}
+
+fn classify_action_sheet_index(index: i64, item_len: usize) -> Result<Option<usize>, RongJSError> {
+    if index == -1 {
+        return Ok(None);
+    }
+    if index < -1 {
+        return Err(js_internal_error(format!(
+            "ActionSheet callback invalid payload: tapIndex {index} is not a cancellation or item index"
+        )));
+    }
+
+    let index = usize::try_from(index).map_err(|_| {
+        js_internal_error(format!(
+            "ActionSheet callback invalid payload: tapIndex {index} cannot be represented"
+        ))
+    })?;
+    if index >= item_len {
+        return Err(js_internal_error(format!(
+            "ActionSheet callback invalid payload: tapIndex {index} is outside itemList length {item_len}"
+        )));
+    }
+
+    Ok(Some(index))
 }
 
 /// Show action sheet function for JavaScript
@@ -102,18 +124,7 @@ async fn present_action_sheet_webview(
             .await
             .map_err(|e| js_internal_error(format!("WebView action sheet failed: {}", e)))?;
 
-    let index = result.tap_index;
-
-    if index < 0 {
-        return Ok(None);
-    }
-
-    let idx = index as usize;
-    if idx >= item_len {
-        return Ok(None);
-    }
-
-    Ok(Some(idx))
+    classify_action_sheet_index(result.tap_index, item_len)
 }
 
 /// Non-macOS: show action sheet via native platform UI.
@@ -135,20 +146,10 @@ async fn present_action_sheet_native(
         Err(e) => return Err(js_error_from_platform_error(&e)),
     };
 
-    let index = serde_json::from_str::<ViewActionSheetResult>(&data)
-        .map(|result| result.tap_index)
-        .unwrap_or(-1);
-
-    if index < 0 {
-        return Ok(None);
-    }
-
-    let idx = index as usize;
-    if idx >= item_len {
-        return Ok(None);
-    }
-
-    Ok(Some(idx))
+    let result: ViewActionSheetResult = serde_json::from_str(&data).map_err(|error| {
+        js_internal_error(format!("ActionSheet callback invalid payload: {error}"))
+    })?;
+    classify_action_sheet_index(result.tap_index, item_len)
 }
 
 /// Initialize action sheet functions
@@ -163,5 +164,23 @@ rong::js_api! {
             ts_params = "options: ShowActionSheetOptions",
             ts_return = "Promise<ActionSheetResult>"
         ) = show_action_sheet;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::classify_action_sheet_index;
+
+    #[test]
+    fn classifies_only_minus_one_as_canceled() {
+        assert_eq!(classify_action_sheet_index(-1, 2).unwrap(), None);
+        assert!(classify_action_sheet_index(-2, 2).is_err());
+    }
+
+    #[test]
+    fn accepts_only_indexes_within_item_list() {
+        assert_eq!(classify_action_sheet_index(0, 2).unwrap(), Some(0));
+        assert_eq!(classify_action_sheet_index(1, 2).unwrap(), Some(1));
+        assert!(classify_action_sheet_index(2, 2).is_err());
     }
 }
