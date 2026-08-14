@@ -9,8 +9,8 @@ import WebKit
 @MainActor
 enum LxAppSurface {
     /// View a controller-hosted host (the Runner's phone simulator) renders the
-    /// lxapp into. Floats are bounded to it when there is no desktop shell, so they
-    /// don't spill past the device frame. Weak — owned by the host view tree.
+    /// lxapp into. It anchors surfaces to the device host when there is no desktop
+    /// shell. Weak — owned by the host view tree.
     static weak var hostAnchorView: NSView?
     private static let kindWindow: Int32 = 0
     private static let kindPopup: Int32 = 1
@@ -18,6 +18,7 @@ enum LxAppSurface {
     private static let roleMain: Int32 = 0
     private static let roleAside: Int32 = 1
     private static let roleFloat: Int32 = 2
+    private static let positionBottom: Int32 = 1
     private static let contentPage: Int32 = 0
     private static let contentUrl: Int32 = 1
     private static let transientCornerRadius: CGFloat = 12
@@ -349,7 +350,8 @@ enum LxAppSurface {
             )
         }
 
-        let context = surfaceContext(kind: kind)
+        let context = bottomFloatContext(kind: kind, role: role, position: position)
+            ?? surfaceContext(kind: kind)
         if kind != kindWindow && kind != kindPopup {
             LXLog.error("unsupported surface kind=\(kind) id=\(id) app=\(appId)", category: "Surface", appId: appId)
             return false
@@ -1250,6 +1252,38 @@ enum LxAppSurface {
             view = current.superview
         }
         return contextFrame(for: hostAnchorView)
+    }
+
+    /// Bottom sheets in the phone Runner extend through opaque shell chrome.
+    /// Keep the content top edge, but use the device screen's lower edge so the
+    /// sheet and its modal backdrop cover the bottom tab bar.
+    private static func bottomFloatContext(
+        kind: Int32,
+        role: Int32,
+        position: Int32
+    ) -> SurfaceContext? {
+        guard LxAppActiveHost.activeShell == nil,
+              kind == kindPopup,
+              role == roleFloat,
+              position == positionBottom,
+              let content = contextFrame(for: hostAnchorView),
+              let device = phoneDeviceScreenContext()
+        else {
+            return nil
+        }
+
+        let bottom = min(content.frame.minY, device.frame.minY)
+        guard bottom < content.frame.maxY else { return content }
+        return SurfaceContext(
+            frame: NSRect(
+                x: content.frame.minX,
+                y: bottom,
+                width: content.frame.width,
+                height: content.frame.maxY - bottom
+            ),
+            anchorView: device.anchorView,
+            parentWindow: content.parentWindow
+        )
     }
 
     private static func surfaceContext(kind: Int32) -> SurfaceContext {
