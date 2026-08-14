@@ -386,6 +386,9 @@ crammed in the moment the window crosses 840.
   4 dp/pt is measured on the visible background or hover hit-area outline and
   MUST NOT double-count row margins.
 - The icon rail keeps the same 4 dp/pt vertical rhythm.
+- When both Pins and live switchers exist, the collapsed rail centers a
+  **22 dp/pt** low-contrast divider in their existing gap. It adds no empty row
+  and disappears when either section is empty.
 - Larger text or accessibility font sizes grow row height only, never the gap.
 
 ### 4.3 lxapp tabs and the tabbar

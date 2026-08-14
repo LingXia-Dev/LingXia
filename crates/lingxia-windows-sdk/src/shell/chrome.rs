@@ -2615,7 +2615,8 @@ mod scroll_tests {
         phone_browser_bar_active, phone_browser_bar_rects, rect_height,
         sidebar_auxiliary_rail_index, sidebar_auxiliary_rects, sidebar_caption_contains,
         sidebar_group_rect, sidebar_rail_close_rect, sidebar_rail_item_rect,
-        sidebar_top_level_icon_rect, tabbar_requires_full_repaint, top_bar_controls,
+        sidebar_rail_pinned_divider_rect, sidebar_top_level_icon_rect,
+        tabbar_requires_full_repaint, top_bar_controls,
     };
     use lingxia_windows_contract::{
         WindowsChromeAttachedState, WindowsChromePanel, WindowsHostPanelContent,
@@ -2757,6 +2758,48 @@ mod scroll_tests {
         )
         .unwrap();
         assert_eq!(action_tooltip.text, "Terminal");
+    }
+
+    #[test]
+    fn compact_rail_separates_pins_from_open_switchers() {
+        let rail_rect = RECT {
+            left: 0,
+            top: 0,
+            right: 56,
+            bottom: 737,
+        };
+        let mut rail = bottom_tabbar(true, false);
+        rail.position = WindowsShellTabBarPosition::Left;
+        rail.icon_rail = true;
+        rail.auxiliary_items.push(WindowsShellAuxiliaryItemLayout {
+            id: "pin:bookmark:docs".to_string(),
+            title: "Pinned docs".to_string(),
+            active: false,
+            pinned: true,
+            closable: false,
+            icon_png: None,
+            icon_path: String::new(),
+        });
+        rail.auxiliary_items.push(WindowsShellAuxiliaryItemLayout {
+            id: "web:docs".to_string(),
+            title: "Open docs".to_string(),
+            active: false,
+            pinned: false,
+            closable: true,
+            icon_png: None,
+            icon_path: String::new(),
+        });
+
+        let divider = sidebar_rail_pinned_divider_rect(rail_rect, &rail, 0).unwrap();
+        let pin = sidebar_rail_item_rect(rail_rect, 0, 0);
+        let first_open = sidebar_rail_item_rect(rail_rect, 1, 0);
+        assert_eq!(divider.left, 17);
+        assert_eq!(divider.right, 39);
+        assert!(divider.top >= pin.bottom);
+        assert!(divider.bottom <= first_open.top);
+
+        rail.auxiliary_items.remove(0);
+        assert!(sidebar_rail_pinned_divider_rect(rail_rect, &rail, 0).is_none());
     }
 
     #[test]

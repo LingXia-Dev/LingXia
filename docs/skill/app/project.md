@@ -484,7 +484,8 @@ empty-state mode.
 In a collapsed desktop rail, hovering the current switcher replaces its icon
 with a rounded, background-backed close `x` only when that main can be closed.
 Inactive switchers keep their icons and click to select; icon-only switchers and
-footer actions expose their labels through tooltip and accessibility text.
+footer actions expose their labels through tooltip and accessibility text. A
+subtle divider separates Pins from live switchers when both sections exist.
 
 When `homeAppId` is configured, that lxapp remains the trusted control app even
 when the visible desktop main is a URL or native surface. Its Logic worker still

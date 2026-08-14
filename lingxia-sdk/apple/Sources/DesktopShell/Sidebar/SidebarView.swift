@@ -1022,6 +1022,8 @@ class SidebarView: NSView, NSPopoverDelegate {
         }
         railButtons.removeAll()
 
+        var lastPinButton: NSView?
+
         for pin in shellPinItems {
             switch pin.kind {
             case "lxapp":
@@ -1040,6 +1042,7 @@ class SidebarView: NSView, NSPopoverDelegate {
                 button.action = #selector(railPinnedLxappClicked(_:))
                 railStack.addArrangedSubview(button)
                 railButtons[key] = button
+                lastPinButton = button
             case "bookmark":
                 guard let entry = bookmarksSnapshot.entries.first(where: { $0.id == pin.key }) else {
                     continue
@@ -1057,6 +1060,7 @@ class SidebarView: NSView, NSPopoverDelegate {
                 button.action = #selector(railPinnedBookmarkClicked(_:))
                 railStack.addArrangedSubview(button)
                 railButtons[key] = button
+                lastPinButton = button
                 SidebarFaviconLoader.load(urlString: entry.url) { [weak self, weak button] image in
                     guard let self, let button,
                           self.railButtons[key] === button else { return }
@@ -1069,6 +1073,19 @@ class SidebarView: NSView, NSPopoverDelegate {
             default:
                 continue
             }
+        }
+
+        if let lastPinButton,
+           !model.appGroups.isEmpty || !model.browserTabs.isEmpty {
+            let divider = LxAppHostThemeLayerView(role: .separator, alpha: 0.7)
+            divider.translatesAutoresizingMaskIntoConstraints = false
+            railStack.addArrangedSubview(divider)
+            railStack.setCustomSpacing(2.5, after: lastPinButton)
+            railStack.setCustomSpacing(2.5, after: divider)
+            NSLayoutConstraint.activate([
+                divider.widthAnchor.constraint(equalToConstant: 22),
+                divider.heightAnchor.constraint(equalToConstant: 1),
+            ])
         }
 
         for group in model.appGroups {
