@@ -513,9 +513,7 @@ rong::js_api! {
     password?: string;
 }"###;
 
-        type CopyFileOptions = r###"{
-    srcPath: string;
-    destPath: string;
+        type FsCopyOptions = r###"{
     /** Defaults to false. */
     overwrite?: boolean;
 }"###;
@@ -549,7 +547,7 @@ rong::js_api! {
         type DownloadsDownloadOptions = r###"DownloadOptionsBase & {
     /**
      * Optional filename hint for the system Downloads destination.
-     * This is not an app-owned FileManager path.
+     * This is not an app-owned `lx.fs` path.
      */
     filePath?: string;
     /** Save into the user's system Downloads directory. */
@@ -557,15 +555,11 @@ rong::js_api! {
 }"###;
 
         type DownloadsDownloadResult = r###"{
-    /** Native system Downloads path. Do not pass this to `FileManager`. */
+    /** Native system Downloads path. Do not pass this to `lx.fs`. */
     filePath: SystemDownloadsPath;
     tempFilePath?: never;
     mimeType?: string;
     size: number;
-}"###;
-
-        type ExistsOptions = r###"{
-    path: string;
 }"###;
 
         type ExtractVideoThumbnailOptions = r###"{
@@ -752,8 +746,7 @@ rong::js_api! {
 
         type MediaRotation = r###"0 | 90 | 180 | 270"###;
 
-        type MkdirOptions = r###"{
-    path: string;
+        type FsMkdirOptions = r###"{
     recursive?: boolean;
 }"###;
 
@@ -1240,44 +1233,15 @@ rong::js_api! {
     durationMs?: number;
 }"###;
 
-        type ReadBinaryFileOptions = r###"{
-    filePath: string;
-    encoding?: undefined;
-}"###;
-
-        type ReadBinaryFileResult = r###"{
-    data: ArrayBuffer;
-}"###;
-
-        type ReadDirOptions = r###"{
-    path: string;
-}"###;
-
-        type ReadFileOptions = r###"ReadTextFileOptions | ReadBinaryFileOptions"###;
-
-        type ReadFileResult = r###"ReadTextFileResult | ReadBinaryFileResult"###;
-
-        type ReadTextFileOptions = r###"{
-    filePath: string;
-    encoding: 'utf8' | 'base64';
-}"###;
-
-        type ReadTextFileResult = r###"{
-    data: string;
-}"###;
-
         type RedirectToOptions = r###"PageTargetOptions"###;
 
         type ReLaunchOptions = r###"PageTargetOptions"###;
 
-        type RemoveOptions = r###"{
-    path: string;
+        type FsRemoveOptions = r###"{
     recursive?: boolean;
 }"###;
 
-        type RenameOptions = r###"{
-    oldPath: string;
-    newPath: string;
+        type FsRenameOptions = r###"{
     /** Defaults to false. */
     overwrite?: boolean;
 }"###;
@@ -1419,12 +1383,8 @@ true
     position?: 'top' | 'center' | 'bottom';
 }"###;
 
-        type StatOptions = r###"{
-    path: string;
-}"###;
-
         /// Asynchronous persistent key-value storage backed by the lxapp
-        /// database. Use `lx.getFileManager()` for path-based data.
+        /// database. Use `lx.fs` for path-based data.
         ///
         type Storage = r###"{
     /**
@@ -1590,7 +1550,7 @@ true
 
         type SwitchTabOptions = r###"PageTargetOptions"###;
 
-        /// Native system Downloads path. Do not pass this to `FileManager`.
+        /// Native system Downloads path. Do not pass this to `lx.fs`.
         type SystemDownloadsPath = r###"string & {
     readonly [systemDownloadsPathBrand]: 'system-downloads-path';
 }"###;
@@ -1780,19 +1740,11 @@ true
     height?: number;
 }"###;
 
-        type WriteBinaryFileOptions = r###"{
-    filePath: string;
-    data: BinaryFileData;
-    encoding?: never;
-    /** Defaults to false. */
-    overwrite?: boolean;
-}"###;
-
-        type WriteFileOptions = r###"WriteTextFileOptions | WriteBinaryFileOptions"###;
-
-        type WriteTextFileOptions = r###"{
-    filePath: string;
-    data: string;
+        type FsWriteOptions = r###"{
+    /**
+     * How string input is interpreted. Strings are UTF-8 by default; `base64`
+     * decodes the input into raw bytes before writing.
+     */
     encoding?: 'utf8' | 'base64';
     /** Defaults to false. */
     overwrite?: boolean;
@@ -1812,6 +1764,7 @@ true
         // Runtime namespaces are emitted as global interfaces. Re-export their
         // public module types without maintaining a second declaration.
         type AppearanceApi = "globalThis.AppearanceApi";
+        type FileSystemApi = "globalThis.FileSystemApi";
         type HostAppApi = "globalThis.HostAppApi";
         type LxEnv = "globalThis.LxEnv";
         type NavigationBarApi = "globalThis.NavigationBarApi";

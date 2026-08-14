@@ -78,7 +78,7 @@ fn install_list_array_shim(ctx: &JSContext, storage: &JSObject, backing: JSObjec
 
 /// Open this lxapp's asynchronous persistent key-value store. `get` asserts the
 /// value shape at the call site and resolves `undefined` for a missing key. Use
-/// `lx.getFileManager()` instead for path-based data.
+/// `lx.fs` instead for path-based data.
 fn get_storage(ctx: JSContext) -> JSResult<JSObject> {
     // If a Storage instance has already been created for this JSContext,
     // return a clone so getStorage() can be called multiple times safely.
