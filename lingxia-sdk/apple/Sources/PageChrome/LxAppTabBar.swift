@@ -866,20 +866,19 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     }
 
     func setSelectedIndex(_ index: Int, notifyListener: Bool) {
-        let previousIndex = self.selectedIndex
-        // Update local selectedIndex to reflect Rust state
-        selectedIndex = index
-
-        if previousIndex != index {
-            refreshLayout()
-        }
-
         if notifyListener, let callback = onTabSelectedCallback, let config = tabBarConfig {
             let items = config.getItems(appId: appId)
-            if index < items.count {
-                callback(index, items[index].page_path.toString())
-            }
+            guard items.indices.contains(index) else { return }
+            selectedIndex = index
+            callback(index, items[index].page_path.toString())
+            return
         }
+
+        // The binding redraws selection immediately. A Rust state-change
+        // notification refreshes config after a user click; rebuilding the
+        // hosting controller here would replace its root view inside the
+        // SwiftUI Button action and briefly restore the stale Rust selection.
+        selectedIndex = index
     }
 
     func refreshLayout() {

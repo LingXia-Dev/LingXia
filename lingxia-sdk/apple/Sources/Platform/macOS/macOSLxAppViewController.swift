@@ -150,6 +150,17 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         path: String,
         animation: LxAppAnimation = .none
     ) {
+        // A controller-backed host can observe the same committed navigation
+        // after the platform callback already attached it. Keep that repeated
+        // delivery idempotent instead of detaching and constraining the same
+        // WebView again.
+        if animation == .none,
+           activeWebView === webView,
+           webView.superview === webViewContainer {
+            webView.resumeWebView()
+            return
+        }
+
         // Same target webview (navigate to the already-shown page): a container
         // CATransition has no sublayer change to animate, so drive the slide from
         // a snapshot of the current page. Different webview: swap under a

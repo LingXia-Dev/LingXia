@@ -895,17 +895,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             tabManager.selectTab(appId: providerAppId)
         }
 
-        if let tabItem = getTabBarItem(providerAppId, Int32(itemIndex)) {
-            let path = tabItem.page_path.toString()
-            if !path.isEmpty {
-                getViewController(for: providerAppId)?.navigate(
-                    appId: providerAppId,
-                    to: path,
-                    with: .none
-                )
-            }
-        }
-
+        // The runtime event owns page creation and committed navigation. Its
+        // Apple callback attaches the target WebView; navigating optimistically
+        // here would deliver the same switch again through the controller event.
         sidebarView?.setActiveHighlight(appId: appId, pageIndex: itemIndex)
         let _ = onLxappEvent(providerAppId, LxAppEvent.tabBarClick, String(itemIndex))
     }
