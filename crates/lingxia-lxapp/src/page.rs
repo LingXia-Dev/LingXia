@@ -101,6 +101,9 @@ pub(crate) struct PageInstanceInner {
     appid: String,
     path: String,
     webtag: WebTag,
+    /// Surface-owned instance with a per-instance webtag; never resolves by
+    /// bare path.
+    isolated: bool,
 
     // Reference to the WebView (optional, set when WebView is ready)
     webview: Arc<Mutex<Option<Arc<WebView>>>>,
@@ -455,6 +458,7 @@ impl PageInstance {
         let lxapp_arc = lxapp.clone_arc();
         let (ready_tx, ready_rx) = watch::channel(None);
         let (loaded_tx, _) = watch::channel(0u64);
+        let isolated = webtag_instance.is_some();
         let inner = Arc::new(PageInstanceInner {
             navigation_progress: Arc::new(std::sync::Mutex::new(Default::default())),
             reset_transition: Arc::new(std::sync::Mutex::new(())),
@@ -462,6 +466,7 @@ impl PageInstance {
             appid: appid.clone(),
             path: path.clone(),
             webtag: webtag.clone(),
+            isolated,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),
@@ -596,6 +601,7 @@ impl PageInstance {
             appid,
             path,
             webtag,
+            isolated: false,
             last_active_time: Arc::new(Mutex::new(Instant::now())),
             state: Arc::new(Mutex::new(page_state)),
             webview: Arc::new(Mutex::new(None)),
@@ -620,6 +626,12 @@ impl PageInstance {
 
     pub fn instance_id_string(&self) -> String {
         self.inner.id.to_string()
+    }
+
+    /// Surface-owned instance with a per-instance webtag; never resolves by
+    /// bare path.
+    pub(crate) fn is_isolated(&self) -> bool {
+        self.inner.isolated
     }
 
     /// The webview tag identifying this page instance's view (also the
@@ -1314,36 +1326,29 @@ impl PageInstance {
         match nav_type {
             NavigationType::Launch | NavigationType::SwitchTab => {
                 if nav_type == NavigationType::Launch {
-                    let stack_paths = lxapp.get_page_stack();
-                    for stack_path in &stack_paths {
-                        if let Some(page) = lxapp.get_page(stack_path) {
-                            page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
-                            page.detach_webview();
-                        }
-                        destroy_webview(&WebTag::new(
-                            &lxapp.appid,
-                            stack_path,
-                            Some(lxapp.session.id),
-                        ));
+                    let stack_pages = lxapp.get_page_stack_pages();
+                    for page in &stack_pages {
+                        page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
+                        page.detach_webview();
+                        destroy_webview(&page.webtag());
                     }
-                    lxapp.remove_pages(&stack_paths);
+                    let stack_ids: Vec<String> = stack_pages
+                        .iter()
+                        .map(|page| page.instance_id_string())
+                        .collect();
+                    lxapp.remove_pages(&stack_ids);
                     target_page = lxapp.get_or_create_page(&target_url);
                 }
                 if nav_type == NavigationType::SwitchTab {
                     // switchTab only hides the tab pages it leaves, but any
                     // pushed page leaves the stack for good here and must end
                     // its instance like every other departure.
-                    for stack_path in lxapp.get_page_stack() {
-                        if lxapp
-                            .get_tabbar()
-                            .is_some_and(|tabbar| tabbar.is_tabbar_page(&stack_path))
-                        {
+                    for page in lxapp.get_page_stack_pages() {
+                        if page.is_tabbar_page() {
                             continue;
                         }
-                        if let Some(page) = lxapp.get_page(&stack_path) {
-                            page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
-                            lxapp.schedule_page_reset(&page);
-                        }
+                        page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
+                        lxapp.schedule_page_reset(&page);
                     }
                 }
                 lxapp.clear_page_stack()?;
@@ -1374,7 +1379,7 @@ impl PageInstance {
                 t.clear_selected_index();
             });
         }
-        lxapp.push_to_page_stack(&path)?;
+        lxapp.push_to_page_stack(&target_page)?;
 
         // Set navbar state AFTER page creation to avoid being overwritten
         let stack_size = lxapp.get_page_stack_size();
@@ -1452,9 +1457,7 @@ impl PageInstance {
         }
 
         for _ in 0..pages_to_pop {
-            if let Some(path) = lxapp.pop_from_page_stack()
-                && let Some(page) = lxapp.get_page(path.as_str())
-            {
+            if let Some(page) = lxapp.pop_from_page_stack() {
                 page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
                 // `onUnload` means the instance ended. The WebView is retained
                 // for a warm re-entry, so reset the service and the document
@@ -1464,7 +1467,8 @@ impl PageInstance {
             }
         }
 
-        if let Some(path) = lxapp.peek_current_page() {
+        if let Ok(dest) = lxapp.current_page() {
+            let path = dest.path();
             // Forward navigation clears selected_index on detail pages, so
             // Back must restore selection as well as visibility.
             let is_tabbar_page = lxapp
@@ -1473,7 +1477,8 @@ impl PageInstance {
 
             // Update NavBar back button visibility based on the new stack size
             let new_stack_size = lxapp.get_page_stack_size();
-            if let Some(dest_page) = lxapp.get_page(&path) {
+            {
+                let dest_page = dest.clone();
                 let is_initial_route = path == lxapp.config.get_initial_route();
                 let show_home_button = new_stack_size <= 1 && !is_tabbar_page && !is_initial_route;
                 dest_page.get_navbar_state_mut(|navbar| {

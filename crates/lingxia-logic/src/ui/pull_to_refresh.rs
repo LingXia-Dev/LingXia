@@ -10,7 +10,7 @@ use rong::{JSContext, JSResult};
 fn start_pull_down_refresh(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let path = lxapp
-        .peek_current_page()
+        .peek_current_page_path()
         .ok_or_else(|| js_service_unavailable_error("No current page found"))?;
 
     lxapp
@@ -31,7 +31,7 @@ fn start_pull_down_refresh(ctx: JSContext) -> JSResult<()> {
 fn stop_pull_down_refresh(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let path = lxapp
-        .peek_current_page()
+        .peek_current_page_path()
         .ok_or_else(|| js_service_unavailable_error("No current page found"))?;
 
     lxapp

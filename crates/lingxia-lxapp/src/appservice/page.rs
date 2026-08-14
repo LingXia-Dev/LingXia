@@ -1388,13 +1388,15 @@ impl LxApp {
 
 fn get_current_pages(ctx: JSContext) -> JSResult<Vec<JSObject>> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let paths = lxapp.get_page_stack();
+    // Stack entries are instance ids, and every PageSvc registers under its
+    // instance id — each stack slot maps to exactly its own service.
+    let instance_ids = lxapp.get_page_stack();
     let mut pages = Vec::new();
-    for p in paths {
+    for id in instance_ids {
         if let Some(page_obj) = super::with_page_svc_map(&ctx, |page_svc_map| {
             Ok(page_svc_map
                 .borrow()
-                .get(&p)
+                .get(&id)
                 .map(|page_svc| page_svc.this.clone()))
         })? {
             pages.push(page_obj);

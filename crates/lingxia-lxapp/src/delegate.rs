@@ -173,7 +173,7 @@ impl LxAppDelegate for LxApp {
                     }
                 });
             }
-            let _ = self.push_to_page_stack(&resolved_path);
+            let _ = self.push_to_page_stack(&page);
             // Pre-create tab pages (synchronously enqueue); FIFO ordering ensures CreateAppSvc precedes these.
             if let Some(tab_pages) = self.get_tabbar().map(|t| t.get_tabbar_pages()) {
                 for tab_path in tab_pages {
@@ -309,7 +309,7 @@ impl LxApp {
                 .map(|t| t.get_tabbar_pages())
                 .unwrap_or_default();
             if let Some(tab_path) = tab_pages.get(index) {
-                if let Some(current_page_path) = self.peek_current_page() {
+                if let Some(current_page_path) = self.peek_current_page_path() {
                     let current_page = self
                         .get_page(&current_page_path)
                         .unwrap_or_else(|| self.get_or_create_page(&current_page_path));
@@ -445,7 +445,7 @@ impl LxApp {
     fn navigate_to_initial_route(self: &Arc<Self>) -> bool {
         let home_route = self.config.get_initial_route();
         if self
-            .peek_current_page()
+            .peek_current_page_path()
             .is_some_and(|path| path == home_route)
         {
             return true;
@@ -461,7 +461,7 @@ impl LxApp {
             NavigationType::Launch
         };
 
-        if let Some(path) = self.peek_current_page() {
+        if let Some(path) = self.peek_current_page_path() {
             let page = self
                 .get_page(&path)
                 .unwrap_or_else(|| self.get_or_create_page(&path));
@@ -477,7 +477,7 @@ impl LxApp {
 
         match data.as_str() {
             "back" => {
-                if let Some(path) = self.peek_current_page()
+                if let Some(path) = self.peek_current_page_path()
                     && let Some(page) = self.get_page(path.as_str())
                 {
                     let _ = page.navigate_back(1);
@@ -511,7 +511,7 @@ impl LxApp {
             return true;
         }
 
-        if let Some(path) = self.peek_current_page()
+        if let Some(path) = self.peek_current_page_path()
             && let Some(page) = self.get_page(path.as_str())
         {
             let _ = page.navigate_back(1);
@@ -524,7 +524,7 @@ impl LxApp {
     /// data: page path
     fn handle_pull_down_refresh(self: &Arc<Self>, data: String) -> bool {
         let path = if data.is_empty() {
-            match self.peek_current_page() {
+            match self.peek_current_page_path() {
                 Some(p) => p,
                 None => return false,
             }

@@ -21,7 +21,7 @@ struct NavigateBackOptions {
 
 fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
     lxapp
-        .peek_current_page()
+        .peek_current_page_path()
         .ok_or_else(|| LxAppError::Runtime("No current page found".to_string()))
 }
 
@@ -138,7 +138,7 @@ host_api_async!(
 
         // Best-effort wait for the destination page's WebView to be ready, so view callers can
         // await navigation completion and reliably receive errors.
-        if let Some(dest_path) = lxapp.peek_current_page()
+        if let Some(dest_path) = lxapp.peek_current_page_path()
             && let Some(dest_page) = lxapp.get_page(&dest_path)
         {
             await_or_cancel(&mut cancel, async {

@@ -204,7 +204,7 @@ pub fn get_current_lxapp() -> (String, String, u64) {
         && let Some(current_appid) = manager.peek_lxapp_stack()
         && let Some(lxapp) = manager.lxapps.get(&current_appid)
     {
-        let current_path = lxapp.peek_current_page().unwrap_or_default();
+        let current_path = lxapp.peek_current_page_path().unwrap_or_default();
         let current_session = lxapp.session_id();
         info!(
             "Peek {}:{} (session={}) from lxapp stack",

@@ -29,7 +29,7 @@ fn navigate_back_delta(options: Option<NavigateBack>) -> u32 {
 
 fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
     lxapp
-        .peek_current_page()
+        .peek_current_page_path()
         .ok_or_else(|| LxAppError::Runtime("No current page found".to_string()))
 }
 

@@ -269,7 +269,7 @@ pub async fn navigate(
     app.ensure_page_exists(&target_url)
         .map_err(|err| err.to_string())?;
     let target_page = app.get_or_create_page(&target_url);
-    let current_page = match app.peek_current_page() {
+    let current_page = match app.peek_current_page_path() {
         Some(current_path) => app
             .get_page(&current_path)
             .ok_or_else(|| "current page not found".to_string())?,

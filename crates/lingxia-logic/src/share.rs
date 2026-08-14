@@ -94,7 +94,7 @@ fn non_empty(value: Option<String>) -> Option<String> {
 }
 
 fn build_page_share_url(lxapp: &LxApp, page: JSSharePage) -> JSResult<String> {
-    let current_page = lxapp.peek_current_page().ok_or_else(|| {
+    let current_page = lxapp.peek_current_page_path().ok_or_else(|| {
         js_error_from_lxapp_error(&LxAppError::Runtime("No current page found".to_string()))
     })?;
     let page_url = append_query(current_page, page.query.as_ref())

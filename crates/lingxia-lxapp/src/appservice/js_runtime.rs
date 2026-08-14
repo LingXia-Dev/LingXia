@@ -708,7 +708,9 @@ pub(crate) async fn lxapp_service_handler(
                     page_svc
                         .close_channels(bridge::BRIDGE_CANCELED, "Page terminated")
                         .await;
-                    event_bus::clear_page(ctx, &path);
+                    // Instance-scoped: terminating one instance must not clear
+                    // a same-path sibling's subscriptions.
+                    event_bus::clear_page(ctx, &page_svc.get_page().instance_id_string());
 
                     info!("[Worker {}] Removed page", worker_id)
                         .with_appid(lxapp.appid.clone())
