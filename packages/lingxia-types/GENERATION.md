@@ -20,9 +20,9 @@ semantic unions, callbacks, handles, and lifecycle contracts live as TS-only
 `js_api!` metadata in `crates/lingxia-logic/src/public_types.rs`.
 
 Rong typegen cannot yet express generic TS-only declaration names or correlated
-overloads. The minimal generation prelude therefore contains only nine generic
-contracts plus the `openSurface`, `downloadFile`, and `FileManager.readFile`
-overloads. It is generator input, not a second public declaration tree.
+overloads. The minimal generation prelude therefore contains only the generic
+contracts plus the `openSurface` and `downloadFile` overloads. It is generator
+input, not a second public declaration tree.
 
 `check:quality` verifies the complete legacy public-name manifest, critical
 documentation, branded paths, overload resolution, and representative complex

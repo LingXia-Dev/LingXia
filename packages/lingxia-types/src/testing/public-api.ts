@@ -26,10 +26,11 @@ import type {
   AutostartApi,
   CompressVideoTask,
   DownloadTask,
-  FileManager,
+  FileSystemApi,
   HostAppApi,
   HostAppUpdateInfo,
   HostAppUpdateTask,
+  LxFile,
   NavigationBarApi,
   PageMessagePort,
   PreviewMediaHandle,
@@ -63,9 +64,9 @@ export const LX_API_NAMES = [
   'downloadFile',
   'env',
   'extractVideoThumbnail',
+  'fs',
   'getConnectedWifi',
   'getDeviceInfo',
-  'getFileManager',
   'getImageInfo',
   'getLocation',
   'getLxAppInfo',
@@ -142,16 +143,26 @@ const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
 const SHELL_API = ['sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['clear', 'remove', 'replace', 'update'] as const;
 const TRAY_API = ['hide', 'onClick', 'setBadge', 'setIcon', 'setMenu', 'setTitle', 'show'] as const;
-const FILE_MANAGER_API = [
-  'copyFile',
+const FILE_SYSTEM_API = [
+  'copy',
   'exists',
+  'file',
   'mkdir',
   'readDir',
-  'readFile',
   'remove',
   'rename',
   'stat',
-  'writeFile',
+  'write',
+] as const;
+const LX_FILE_API = [
+  'arrayBuffer',
+  'base64',
+  'bytes',
+  'exists',
+  'json',
+  'path',
+  'stat',
+  'text',
 ] as const;
 const STORAGE_API = ['clear', 'delete', 'get', 'info', 'list', 'set'] as const;
 const UPDATE_MANAGER_API = ['applyUpdate', 'onUpdateFailed', 'onUpdateReady'] as const;
@@ -297,6 +308,7 @@ export const LX_RUNTIME_SURFACES = [
       'app',
       'appearance',
       'env',
+      'fs',
       'navigationBar',
       'shell',
       'tabBar',
@@ -393,7 +405,7 @@ export const LX_RUNTIME_SURFACES = [
     members: SHELL_SIDEBAR_ACTIONS_API,
   },
   { name: 'lx.tray', layer: 'logic', expression: 'lx.tray', members: TRAY_API },
-  { name: 'FileManager', layer: 'logic', expression: 'lx.getFileManager()', members: FILE_MANAGER_API },
+  { name: 'lx.fs', layer: 'logic', expression: 'lx.fs', members: FILE_SYSTEM_API },
   { name: 'Storage', layer: 'logic', expression: 'lx.getStorage()', members: STORAGE_API },
   { name: 'UpdateManager', layer: 'logic', expression: 'lx.getUpdateManager()', members: UPDATE_MANAGER_API },
   {
@@ -510,6 +522,14 @@ const SURFACE_API = [
 const PAGE_MESSAGE_PORT_API = ['onMessage', 'postMessage'] as const;
 
 export const LX_RETURNED_OBJECT_SURFACES = [
+  {
+    name: 'LxFile',
+    members: LX_FILE_API,
+    properties: ['path'],
+    optionalProperties: [],
+    fixture: 'runtime-safe',
+    factory: 'lx.fs.file',
+  },
   {
     name: 'VideoContext',
     members: VIDEO_CONTEXT_API,
@@ -633,7 +653,8 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<ShellApi, typeof SHELL_API>>,
   AssertTrue<Exact<ShellApi['sidebarActions'], typeof SHELL_SIDEBAR_ACTIONS_API>>,
   AssertTrue<Exact<TrayApi, typeof TRAY_API>>,
-  AssertTrue<Exact<FileManager, typeof FILE_MANAGER_API>>,
+  AssertTrue<Exact<FileSystemApi, typeof FILE_SYSTEM_API>>,
+  AssertTrue<Exact<LxFile, typeof LX_FILE_API>>,
   AssertTrue<Exact<Storage, typeof STORAGE_API>>,
   AssertTrue<Exact<UpdateManager, typeof UPDATE_MANAGER_API>>,
   AssertTrue<Exact<VideoContext, typeof VIDEO_CONTEXT_API>>,

@@ -108,12 +108,6 @@ export interface DownloadTask<TDownloadResult extends DownloadResult = DownloadR
   wait(): Promise<TDownloadResult>;
 }
 
-export interface FileManager {
-  readFile(options: ReadTextFileOptions): Promise<ReadTextFileResult>;
-  readFile(options: ReadBinaryFileOptions): Promise<ReadBinaryFileResult>;
-  readFile(options: ReadFileOptions): Promise<ReadFileResult>;
-}
-
 declare global {
   // HostAppApi/LxEnv members are emitted from the Rust js_api metadata; these
   // merges only add what Rong cannot express — the cfg-gated autostart member

@@ -111,12 +111,6 @@ export interface DownloadTask<TDownloadResult extends DownloadResult = DownloadR
   wait(): Promise<TDownloadResult>;
 }
 
-export interface FileManager {
-  readFile(options: ReadTextFileOptions): Promise<ReadTextFileResult>;
-  readFile(options: ReadBinaryFileOptions): Promise<ReadBinaryFileResult>;
-  readFile(options: ReadFileOptions): Promise<ReadFileResult>;
-}
-
 declare global {
   // HostAppApi/LxEnv members are emitted from the Rust js_api metadata; these
   // merges only add what Rong cannot express — the cfg-gated autostart member
@@ -479,13 +473,6 @@ export type ConnectWifiOptions = {
     password?: string;
 };
 
-export type CopyFileOptions = {
-    srcPath: string;
-    destPath: string;
-    /** Defaults to false. */
-    overwrite?: boolean;
-};
-
 /** Display and orientation APIs. */
 export type DeviceOrientation = "portrait" | "landscape";
 
@@ -514,7 +501,7 @@ export type DownloadResult = AppDownloadResult | DownloadsDownloadResult;
 export type DownloadsDownloadOptions = DownloadOptionsBase & {
     /**
      * Optional filename hint for the system Downloads destination.
-     * This is not an app-owned FileManager path.
+     * This is not an app-owned `lx.fs` path.
      */
     filePath?: string;
     /** Save into the user's system Downloads directory. */
@@ -522,15 +509,11 @@ export type DownloadsDownloadOptions = DownloadOptionsBase & {
 };
 
 export type DownloadsDownloadResult = {
-    /** Native system Downloads path. Do not pass this to `FileManager`. */
+    /** Native system Downloads path. Do not pass this to `lx.fs`. */
     filePath: SystemDownloadsPath;
     tempFilePath?: never;
     mimeType?: string;
     size: number;
-};
-
-export type ExistsOptions = {
-    path: string;
 };
 
 export type ExtractVideoThumbnailOptions = {
@@ -587,6 +570,36 @@ export type FileDialogFilter = {
     name?: string;
     /** Allowed extensions without dots, e.g. ['pdf', 'txt']. */
     extensions: string[];
+};
+
+export type FileSystemApi = globalThis.FileSystemApi;
+
+export type FsCopyOptions = {
+    /** Defaults to false. */
+    overwrite?: boolean;
+};
+
+export type FsMkdirOptions = {
+    recursive?: boolean;
+};
+
+export type FsRemoveOptions = {
+    recursive?: boolean;
+};
+
+export type FsRenameOptions = {
+    /** Defaults to false. */
+    overwrite?: boolean;
+};
+
+export type FsWriteOptions = {
+    /**
+     * How string input is interpreted. Strings are UTF-8 by default; `base64`
+     * decodes the input into raw bytes before writing.
+     */
+    encoding?: 'utf8' | 'base64';
+    /** Defaults to false. */
+    overwrite?: boolean;
 };
 
 /** Media picker, preview, scan, and file processing APIs. */
@@ -722,11 +735,6 @@ export type MakePhoneCallOptions = {
 export type MediaObjectFit = 'cover' | 'contain' | 'fill' | 'fit';
 
 export type MediaRotation = 0 | 90 | 180 | 270;
-
-export type MkdirOptions = {
-    path: string;
-    recursive?: boolean;
-};
 
 /**
  * Result of `lx.showModal`. `canceled: false` means the user confirmed;
@@ -1243,45 +1251,7 @@ export type PreviewMediaSource = {
 
 export type ReLaunchOptions = PageTargetOptions;
 
-export type ReadBinaryFileOptions = {
-    filePath: string;
-    encoding?: undefined;
-};
-
-export type ReadBinaryFileResult = {
-    data: ArrayBuffer;
-};
-
-export type ReadDirOptions = {
-    path: string;
-};
-
-export type ReadFileOptions = ReadTextFileOptions | ReadBinaryFileOptions;
-
-export type ReadFileResult = ReadTextFileResult | ReadBinaryFileResult;
-
-export type ReadTextFileOptions = {
-    filePath: string;
-    encoding: 'utf8' | 'base64';
-};
-
-export type ReadTextFileResult = {
-    data: string;
-};
-
 export type RedirectToOptions = PageTargetOptions;
-
-export type RemoveOptions = {
-    path: string;
-    recursive?: boolean;
-};
-
-export type RenameOptions = {
-    oldPath: string;
-    newPath: string;
-    /** Defaults to false. */
-    overwrite?: boolean;
-};
 
 export type ResolvedAppearance = 'light' | 'dark';
 
@@ -1501,13 +1471,9 @@ export type ShowToastOptions = {
     position?: 'top' | 'center' | 'bottom';
 };
 
-export type StatOptions = {
-    path: string;
-};
-
 /**
  * Asynchronous persistent key-value storage backed by the lxapp
- * database. Use `lx.getFileManager()` for path-based data.
+ * database. Use `lx.fs` for path-based data.
  */
 export type Storage = {
     /**
@@ -1687,7 +1653,7 @@ export type SurfaceVisibilityEvent = {
 
 export type SwitchTabOptions = PageTargetOptions;
 
-/** Native system Downloads path. Do not pass this to `FileManager`. */
+/** Native system Downloads path. Do not pass this to `lx.fs`. */
 export type SystemDownloadsPath = string & {
     readonly [systemDownloadsPathBrand]: 'system-downloads-path';
 };
@@ -2055,24 +2021,6 @@ export type WindowsTerminalInlineImageStatus = {
     };
 };
 
-export type WriteBinaryFileOptions = {
-    filePath: string;
-    data: BinaryFileData;
-    encoding?: never;
-    /** Defaults to false. */
-    overwrite?: boolean;
-};
-
-export type WriteFileOptions = WriteTextFileOptions | WriteBinaryFileOptions;
-
-export type WriteTextFileOptions = {
-    filePath: string;
-    data: string;
-    encoding?: 'utf8' | 'base64';
-    /** Defaults to false. */
-    overwrite?: boolean;
-};
-
 /** Host app base information. */
 export interface AppBaseInfo {
   /**
@@ -2187,19 +2135,6 @@ export declare class DirEntry {
   readonly isSymlink: boolean;
 }
 
-export declare class FileManager {
-  private constructor();
-  exists(options: ExistsOptions): Promise<boolean>;
-  stat(options: StatOptions): Promise<FileStats>;
-  readDir(options: ReadDirOptions): Promise<AsyncIterableIterator<DirEntry>>;
-  mkdir(options: MkdirOptions): Promise<void>;
-  readFile(options: never): Promise<never>;
-  writeFile(options: WriteFileOptions): Promise<void>;
-  copyFile(options: CopyFileOptions): Promise<void>;
-  rename(options: RenameOptions): Promise<void>;
-  remove(options: RemoveOptions): Promise<void>;
-}
-
 export declare class JSMessagePort {
   constructor();
   static postMessage(payload: any): void;
@@ -2235,10 +2170,57 @@ export declare class JSVideoContext {
   setStreamSource(options: StreamSourceOptions): void;
 }
 
+export declare class LxFile {
+  private constructor();
+  /** The path supplied to `lx.fs.file`. */
+  readonly path: string;
+  /** Read the complete file as strict UTF-8 text. */
+  text(): Promise<string>;
+  /** Read and parse the complete file as JSON. */
+  json(): Promise<unknown>;
+  /** Read the complete file as a Base64 string. */
+  base64(): Promise<string>;
+  /** Read the complete file as bytes. */
+  bytes(): Promise<Uint8Array>;
+  /** Read the complete file as an ArrayBuffer. */
+  arrayBuffer(): Promise<ArrayBuffer>;
+  /** Test whether this managed path currently exists. */
+  exists(): Promise<boolean>;
+  /** Read metadata for this managed path. */
+  stat(): Promise<FileStats>;
+}
+
 declare global {
   interface AppearanceApi {
     get(): AppearanceState;
     set(preference: AppearancePreference): Promise<void>;
+  }
+}
+
+declare global {
+  interface FileSystemApi {
+    /**
+     * Create a lazy reference to a LingXia-managed path.
+     * Relative paths resolve under `lx.env.USER_DATA_PATH`. Creating a reference
+     * does not require the path to exist.
+     */
+    file(path: string): LxFile;
+    /** Test whether a managed path currently exists. */
+    exists(path: string): Promise<boolean>;
+    /** Read metadata for a managed path. */
+    stat(path: string): Promise<FileStats>;
+    /** Iterate the direct children of a managed directory. */
+    readDir(path: string): Promise<AsyncIterableIterator<DirEntry>>;
+    /** Create a managed directory. */
+    mkdir(path: string, options?: FsMkdirOptions): Promise<void>;
+    /** Write UTF-8 text or bytes to a managed file. */
+    write(path: string, data: string | BinaryFileData, options?: FsWriteOptions): Promise<void>;
+    /** Copy a managed file. */
+    copy(source: string, destination: string, options?: FsCopyOptions): Promise<void>;
+    /** Rename or move a managed file or directory. */
+    rename(source: string, destination: string, options?: FsRenameOptions): Promise<void>;
+    /** Remove a managed file or directory. */
+    remove(path: string, options?: FsRemoveOptions): Promise<void>;
   }
 }
 
@@ -2332,7 +2314,7 @@ declare global {
      * picker fails or returns an invalid payload.
      */
     chooseDirectory(options?: ChooseDirectoryOptions): Promise<ChooseDirectoryResult>;
-    getFileManager(): FileManager;
+    readonly fs: FileSystemApi;
     /** Subscribes to key-down events and returns the unsubscribe fn. */
     onKeyDown(callback: KeyEventCallback): () => void;
     /** Subscribes to key-up events and returns the unsubscribe fn. */
@@ -2394,7 +2376,7 @@ declare global {
     /**
      * Open this lxapp's asynchronous persistent key-value store. `get` asserts the
      * value shape at the call site and resolves `undefined` for a missing key. Use
-     * `lx.getFileManager()` instead for path-based data.
+     * `lx.fs` instead for path-based data.
      */
     getStorage(): Storage;
     /**

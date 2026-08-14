@@ -7,9 +7,10 @@ import type {
   DownloadTask,
   DownloadsDownloadOptions,
   DownloadsDownloadResult,
-  FileManager,
+  FileSystemApi,
   HostAppApi,
   Lx,
+  LxFile,
   OpenDeclaredSurfaceSpec,
   OpenAppSurfaceSpec,
   OpenPageSurfaceSpec,
@@ -17,10 +18,6 @@ import type {
   OpenUrlTabSpec,
   PreviewMediaHandle,
   PreviewMediaOptions,
-  ReadBinaryFileOptions,
-  ReadBinaryFileResult,
-  ReadTextFileOptions,
-  ReadTextFileResult,
   Surface,
   SurfaceHandle,
   SystemDownloadsPath,
@@ -39,9 +36,7 @@ declare const urlAside: OpenUrlAsideSpec;
 declare const appDownload: AppDownloadOptions;
 declare const downloadsDownload: DownloadsDownloadOptions;
 declare const previewOptions: PreviewMediaOptions;
-declare const files: FileManager;
-declare const readText: ReadTextFileOptions;
-declare const readBinary: ReadBinaryFileOptions;
+declare const files: FileSystemApi;
 declare const app: HostAppApi;
 declare const videoInfo: VideoInfo;
 
@@ -103,8 +98,11 @@ const asideResult: Promise<Surface | null> = lx.openSurface(urlAside);
 const appDownloadResult: DownloadTask<AppDownloadResult> = lx.downloadFile(appDownload);
 const downloadsResult: DownloadTask<DownloadsDownloadResult> = lx.downloadFile(downloadsDownload);
 const previewResult: PreviewMediaHandle = lx.previewMedia(previewOptions);
-const textResult: Promise<ReadTextFileResult> = files.readFile(readText);
-const binaryResult: Promise<ReadBinaryFileResult> = files.readFile(readBinary);
+const managedFile: LxFile = files.file("lx://userdata/notes.txt");
+const textResult: Promise<string> = managedFile.text();
+const bytesResult: Promise<Uint8Array> = managedFile.bytes();
+const binaryResult: Promise<ArrayBuffer> = managedFile.arrayBuffer();
+const jsonResult: Promise<unknown> = managedFile.json();
 const screenshotResult: Promise<AppScreenshotResult> = app.screenshot();
 const videoSize: number = videoInfo.size;
 const videoPath: string = videoInfo.path;
