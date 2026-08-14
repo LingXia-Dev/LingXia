@@ -43,7 +43,7 @@ const SHAPE_ONLY = [
 const AUTOMATED = [
   { name: 'automation', ownerCaseId: 'AUT-000', requiredLevels: ['boundary'] },
   { name: 'getDeviceInfo', ownerCaseId: 'DEVICE-001', requiredLevels: ['semantic', 'boundary'] },
-  { name: 'getFileManager', ownerCaseId: 'LOGIC-004', requiredLevels: ['semantic', 'boundary', 'lifecycle'] },
+  { name: 'fs', ownerCaseId: 'LOGIC-004', requiredLevels: ['semantic', 'boundary', 'lifecycle'] },
   { name: 'getLxAppInfo', ownerCaseId: 'LOGIC-001', requiredLevels: ['semantic', 'boundary'] },
   { name: 'getNetworkInfo', ownerCaseId: 'DEVICE-002', requiredLevels: ['semantic', 'boundary'] },
   { name: 'getScreenInfo', ownerCaseId: 'DEVICE-001', requiredLevels: ['semantic', 'boundary'] },

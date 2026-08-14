@@ -86,18 +86,15 @@ Page({
     }
 
     try {
-      const files = lx.getFileManager();
       const testFile = "debug/testFile.txt";
-      await files.mkdir({ path: "debug", recursive: true });
-      await files.writeFile({
-        filePath: testFile,
-        data: "Hello, World!",
+      await lx.fs.mkdir("debug", { recursive: true });
+      await lx.fs.write(testFile, "Hello, World!", {
         overwrite: true,
       });
-      const { data } = await files.readFile({ filePath: testFile, encoding: "utf8" });
-      console.log("[Home] FileManager test content:", data);
+      const data = await lx.fs.file(testFile).text();
+      console.log("[Home] managed file test content:", data);
     } catch (error) {
-      console.warn("[Home] FileManager test failed:", error);
+      console.warn("[Home] managed file test failed:", error);
     }
   },
 

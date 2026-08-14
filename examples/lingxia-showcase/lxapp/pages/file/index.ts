@@ -459,9 +459,7 @@ Page({
         fileType || detectFileType(response.url || url),
       );
       const filePath = userDataFilePath(fileName);
-      await lx.getFileManager().writeFile({
-        filePath,
-        data: buffer,
+      await lx.fs.write(filePath, buffer, {
         overwrite: true,
       });
       this.setData({

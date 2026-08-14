@@ -1,17 +1,14 @@
-async function testFileManagerAccess() {
+async function testManagedFileAccess() {
   try {
-    const files = lx.getFileManager();
     const filePath = "debug/app-launch.txt";
-    await files.mkdir({ path: "debug", recursive: true });
-    await files.writeFile({
-      filePath,
-      data: `FileManager test created at ${new Date().toISOString()}`,
+    await lx.fs.mkdir("debug", { recursive: true });
+    await lx.fs.write(filePath, `Managed file test created at ${new Date().toISOString()}`, {
       overwrite: true,
     });
-    const { data } = await files.readFile({ filePath, encoding: "utf8" });
-    console.log("[FileManager Test] Content:", data);
+    const data = await lx.fs.file(filePath).text();
+    console.log("[Managed File Test] Content:", data);
   } catch (error) {
-    console.warn("[FileManager Test] Error:", (error as Error).message);
+    console.warn("[Managed File Test] Error:", (error as Error).message);
   }
 }
 
@@ -154,7 +151,7 @@ App({
       console.warn("Update failed", info);
     });
 
-    testFileManagerAccess();
+    testManagedFileAccess();
 
     try {
       const response = await fetch("https://api64.ipify.org?format=json");
