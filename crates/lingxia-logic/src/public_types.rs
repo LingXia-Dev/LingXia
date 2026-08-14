@@ -395,7 +395,7 @@ rong::js_api! {
      * Treat them as opaque strings and pass them back to LingXia APIs such as
      * `lx.share`.
      */
-    paths: string[];
+    paths: [string, ...string[]];
 } | CanceledResult"###;
 
         type ChooseMediaOptions = r###"{
@@ -411,7 +411,7 @@ rong::js_api! {
         type ChooseMediaResult = r###"{
     canceled: false;
     /** Picked media; always at least one entry. */
-    entries: ChosenMediaEntry[];
+    entries: [ChosenMediaEntry, ...ChosenMediaEntry[]];
 } | CanceledResult"###;
 
         type ChosenMediaEntry = r###"{

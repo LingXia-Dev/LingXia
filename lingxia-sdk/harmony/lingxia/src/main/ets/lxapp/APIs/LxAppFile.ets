@@ -135,8 +135,8 @@ export class LxAppFile {
           paths: paths ?? []
         }));
       })
-      .catch((_error: Object) => {
-        onCallback(id, true, JSON.stringify({ canceled: true, paths: [] }));
+      .catch((rawError: Object) => {
+        reportDocumentPickerFailure(id, 'chooseFile', rawError);
       });
     return true;
   }
@@ -178,11 +178,18 @@ export class LxAppFile {
           paths: paths ?? []
         }));
       })
-      .catch((_error: Object) => {
-        onCallback(id, true, JSON.stringify({ canceled: true, paths: [] }));
+      .catch((rawError: Object) => {
+        reportDocumentPickerFailure(id, 'chooseDirectory', rawError);
       });
     return true;
   }
+}
+
+function reportDocumentPickerFailure(callbackId: string, operation: string, rawError: Object): void {
+  // DocumentViewPicker resolves user cancellation with an empty URI array.
+  const error = rawError as BusinessError;
+  LxLog.e(TAG, `${operation}: DocumentViewPicker failed, code=${error.code}, message=${error.message}`);
+  onCallback(callbackId, false, '1000');
 }
 
 function parseDocumentFilters(filtersJson: string): Array<string> {

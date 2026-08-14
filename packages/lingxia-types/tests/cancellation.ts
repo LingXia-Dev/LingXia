@@ -1,4 +1,4 @@
-import type { Lx } from "../src/index.js";
+import type { ChosenMediaEntry, Lx } from "../src/index.js";
 
 declare const lx: Lx;
 
@@ -24,12 +24,16 @@ async function checkedResultsNarrow(): Promise<string> {
 
   const file = await lx.chooseFile();
   const paths: string[] = file.canceled ? [] : file.paths;
+  const nonEmptyPaths: [string, ...string[]] | null = file.canceled ? null : file.paths;
 
   const directory = await lx.chooseDirectory();
   const directoryPath: string = directory.canceled ? "" : directory.path;
 
   const media = await lx.chooseMedia();
   const first: string = media.canceled ? "" : media.entries[0].tempFilePath;
+  const nonEmptyMedia: [ChosenMediaEntry, ...ChosenMediaEntry[]] | null = media.canceled
+    ? null
+    : media.entries;
 
   const scan = await lx.scanCode();
   const code: string = scan.canceled ? "" : scan.scanResult;
@@ -37,7 +41,16 @@ async function checkedResultsNarrow(): Promise<string> {
   const modal = await lx.showModal({ content: "ok?" });
   const confirmed = !modal.canceled;
 
-  return [index, paths.length, directoryPath, first, code, confirmed].join(",");
+  return [
+    index,
+    paths.length,
+    nonEmptyPaths?.length,
+    directoryPath,
+    first,
+    nonEmptyMedia?.length,
+    code,
+    confirmed,
+  ].join(",");
 }
 
 // The modal outcome is one bit; the mutually exclusive boolean pair is gone.

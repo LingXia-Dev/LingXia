@@ -359,7 +359,7 @@ export type ChooseFileResult = {
      * Treat them as opaque strings and pass them back to LingXia APIs such as
      * `lx.share`.
      */
-    paths: string[];
+    paths: [string, ...string[]];
 } | CanceledResult;
 
 export type ChooseMediaOptions = {
@@ -377,7 +377,7 @@ export type ChooseMediaOptions = {
 export type ChooseMediaResult = {
     canceled: false;
     /** Picked media; always at least one entry. */
-    entries: ChosenMediaEntry[];
+    entries: [ChosenMediaEntry, ...ChosenMediaEntry[]];
 } | CanceledResult;
 
 export type ChosenMediaEntry = {

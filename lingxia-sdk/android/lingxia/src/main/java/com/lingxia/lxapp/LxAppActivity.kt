@@ -98,6 +98,12 @@ internal enum class AnimationType(val value: Int) {
     }
 }
 
+internal sealed class HostFileDialogResult {
+    data class Selected(val paths: List<String>) : HostFileDialogResult()
+    object Canceled : HostFileDialogResult()
+    object Failed : HostFileDialogResult()
+}
+
 /**
  * Simple navigation state tracker
  */
@@ -327,7 +333,7 @@ class LxAppActivity : AppCompatActivity() {
     private var lastReportedSurfaceWidthDp: Int = -1
     private var lastReportedSurfaceHeightDp: Int = -1
     private var pendingFileChooserCallback: ValueCallback<Array<Uri>>? = null
-    private var pendingHostFileDialogCallback: ((List<String>?) -> Unit)? = null
+    private var pendingHostFileDialogCallback: ((HostFileDialogResult) -> Unit)? = null
     private val fileChooserLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -619,8 +625,14 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
-    fun openHostFileDialog(intent: Intent, callback: (List<String>?) -> Unit): Boolean {
-        pendingHostFileDialogCallback?.invoke(null)
+    internal fun openHostFileDialog(
+        intent: Intent,
+        callback: (HostFileDialogResult) -> Unit,
+    ): Boolean {
+        if (pendingHostFileDialogCallback != null) {
+            LxLog.w(TAG, "host file dialog is already open")
+            return false
+        }
         pendingHostFileDialogCallback = callback
         return try {
             hostFileDialogLauncher.launch(intent)
@@ -628,7 +640,6 @@ class LxAppActivity : AppCompatActivity() {
         } catch (error: Throwable) {
             LxLog.e(TAG, "launch host file dialog failed", error)
             pendingHostFileDialogCallback = null
-            callback(null)
             false
         }
     }
@@ -649,9 +660,12 @@ class LxAppActivity : AppCompatActivity() {
         return uris.distinct().takeIf { it.isNotEmpty() }?.toTypedArray()
     }
 
-    private fun resolveHostFileDialogResult(resultCode: Int, data: Intent?): List<String>? {
+    private fun resolveHostFileDialogResult(resultCode: Int, data: Intent?): HostFileDialogResult {
+        if (resultCode == RESULT_CANCELED) {
+            return HostFileDialogResult.Canceled
+        }
         if (resultCode != RESULT_OK) {
-            return emptyList()
+            return HostFileDialogResult.Failed
         }
 
         val values = mutableListOf<String>()
@@ -669,7 +683,12 @@ class LxAppActivity : AppCompatActivity() {
                 }
             }
         }
-        return values.distinct()
+        val paths = values.distinct()
+        return if (paths.isEmpty()) {
+            HostFileDialogResult.Failed
+        } else {
+            HostFileDialogResult.Selected(paths)
+        }
     }
 
     private fun persistDocumentReadPermission(data: Intent, uri: Uri) {
@@ -1388,7 +1407,7 @@ class LxAppActivity : AppCompatActivity() {
         isDestroyed = true
         pendingFileChooserCallback?.onReceiveValue(null)
         pendingFileChooserCallback = null
-        pendingHostFileDialogCallback?.invoke(null)
+        pendingHostFileDialogCallback?.invoke(HostFileDialogResult.Failed)
         pendingHostFileDialogCallback = null
 
         // Destroy native components before pausing WebView
