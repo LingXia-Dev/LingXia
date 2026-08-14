@@ -16,6 +16,7 @@ import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppActivity
+import com.lingxia.lxapp.HostFileDialogResult
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.APIs.document.PdfViewerActivity
 import com.lingxia.lxapp.APIs.document.LingxiaDocumentProvider
@@ -176,12 +177,8 @@ internal object LxAppFile {
             }
         }
 
-        val launched = activity.openHostFileDialog(intent) { paths ->
-            val payload = JSONObject().apply {
-                put("canceled", paths == null || paths.isEmpty())
-                put("paths", JSONArray(paths ?: emptyList<String>()))
-            }
-            NativeApi.onCallback(callbackId, true, payload.toString())
+        val launched = activity.openHostFileDialog(intent) { result ->
+            reportFileDialogResult(callbackId, result)
         }
         if (!launched) {
             NativeApi.onCallback(callbackId, false, "1000")
@@ -228,12 +225,8 @@ internal object LxAppFile {
                     ArrayList(allowedExtensions.toList()),
                 )
             }
-            val launched = hostActivity.openHostFileDialog(intent) { paths: List<String>? ->
-                val payload = JSONObject().apply {
-                    put("canceled", paths.isNullOrEmpty())
-                    put("paths", JSONArray(paths ?: emptyList<String>()))
-                }
-                NativeApi.onCallback(callbackId, true, payload.toString())
+            val launched = hostActivity.openHostFileDialog(intent) { result ->
+                reportFileDialogResult(callbackId, result)
             }
             if (!launched) {
                 NativeApi.onCallback(callbackId, false, "1000")
@@ -280,17 +273,33 @@ internal object LxAppFile {
             title?.takeIf { it.isNotBlank() }?.let { putExtra(Intent.EXTRA_TITLE, it) }
         }
 
-        val launched = activity.openHostFileDialog(intent) { paths ->
-            val payload = JSONObject().apply {
-                put("canceled", paths == null || paths.isEmpty())
-                put("paths", JSONArray(paths ?: emptyList<String>()))
-            }
-            NativeApi.onCallback(callbackId, true, payload.toString())
+        val launched = activity.openHostFileDialog(intent) { result ->
+            reportFileDialogResult(callbackId, result)
         }
         if (!launched) {
             NativeApi.onCallback(callbackId, false, "1000")
         }
         return launched
+    }
+
+    private fun reportFileDialogResult(callbackId: Long, result: HostFileDialogResult) {
+        when (result) {
+            is HostFileDialogResult.Selected -> {
+                val payload = JSONObject().apply {
+                    put("canceled", false)
+                    put("paths", JSONArray(result.paths))
+                }
+                NativeApi.onCallback(callbackId, true, payload.toString())
+            }
+            HostFileDialogResult.Canceled -> {
+                val payload = JSONObject().apply {
+                    put("canceled", true)
+                    put("paths", JSONArray())
+                }
+                NativeApi.onCallback(callbackId, true, payload.toString())
+            }
+            HostFileDialogResult.Failed -> NativeApi.onCallback(callbackId, false, "1000")
+        }
     }
 
     private fun launchInternalPdfViewer(activity: android.app.Activity, file: File, showMenu: Boolean): Boolean {
