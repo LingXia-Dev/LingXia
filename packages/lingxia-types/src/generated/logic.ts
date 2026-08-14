@@ -169,6 +169,10 @@ declare global {
   }
 }
 
+/**
+ * Result of `lx.showActionSheet`. Branch on `canceled` before reading
+ * the selected item index.
+ */
 export type ActionSheetResult = {
     canceled: false;
     /** Index of the tapped item in `itemList`. */
@@ -319,6 +323,10 @@ export type ChooseDirectoryOptions = {
     defaultPath?: string;
 };
 
+/**
+ * Result of `lx.chooseDirectory`. Branch on `canceled` before reading
+ * the selected directory.
+ */
 export type ChooseDirectoryResult = {
     canceled: false;
     /** Native-consumable directory reference (path or URI). */
@@ -339,6 +347,10 @@ export type ChooseFileOptions = {
     defaultPath?: string;
 };
 
+/**
+ * Result of `lx.chooseFile`. Branch on `canceled` before reading the
+ * selected paths.
+ */
 export type ChooseFileResult = {
     canceled: false;
     /**
@@ -358,6 +370,10 @@ export type ChooseMediaOptions = {
     maxDuration?: number;
 };
 
+/**
+ * Result of `lx.chooseMedia`. Branch on `canceled` before reading the
+ * selected entries.
+ */
 export type ChooseMediaResult = {
     canceled: false;
     /** Picked media; always at least one entry. */
@@ -712,7 +728,10 @@ export type MkdirOptions = {
     recursive?: boolean;
 };
 
-/** `canceled: false` means the user confirmed; there is no third outcome. */
+/**
+ * Result of `lx.showModal`. `canceled: false` means the user confirmed;
+ * there is no third resolved outcome. Presentation failures reject.
+ */
 export type ModalResult = {
     canceled: false;
 } | CanceledResult;
@@ -1275,6 +1294,10 @@ export type ScanCodeOptions = {
     scanType?: ('barCode' | 'qrCode' | 'datamatrix' | 'pdf417')[];
 };
 
+/**
+ * Result of `lx.scanCode`. Branch on `canceled` before reading the scan
+ * payload.
+ */
 export type ScanCodeResult = {
     canceled: false;
     scanResult: string;
@@ -2293,7 +2316,19 @@ declare global {
      * `mode: "auto"`.
      */
     openFile(options: OpenFileOptions): Promise<void>;
+    /**
+     * Opens a file picker.
+     * Resolves `{ canceled: true }` only when the user dismisses the picker. A
+     * completed selection resolves `{ canceled: false, paths }` with at least one
+     * path. Rejects when the picker fails or returns an invalid payload.
+     */
     chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
+    /**
+     * Opens a directory picker.
+     * Resolves `{ canceled: true }` only when the user dismisses the picker. A
+     * completed selection resolves `{ canceled: false, path }`. Rejects when the
+     * picker fails or returns an invalid payload.
+     */
     chooseDirectory(options?: ChooseDirectoryOptions): Promise<ChooseDirectoryResult>;
     getFileManager(): FileManager;
     /** Subscribes to key-down events and returns the unsubscribe fn. */
@@ -2305,6 +2340,13 @@ declare global {
     getLxAppInfo(): LxAppInfo;
     getImageInfo(options: GetImageInfoOptions): Promise<ImageInfo>;
     compressImage(options: CompressImageOptions): Promise<CompressImageResult>;
+    /**
+     * Opens the media picker or camera.
+     * Resolves `{ canceled: true }` only when the user dismisses the picker. A
+     * completed selection resolves `{ canceled: false, entries }` with at least one
+     * entry. Rejects when capture or selection fails, or the host returns an invalid
+     * payload.
+     */
     chooseMedia(options?: ChooseMediaOptions): Promise<ChooseMediaResult>;
     /**
      * Synchronously returns a JS handle so listeners can be attached before the
@@ -2326,6 +2368,12 @@ declare global {
     previewMedia(options: PreviewMediaOptions): PreviewMediaHandle;
     saveImageToPhotosAlbum(options: SaveMediaOptions): Promise<void>;
     saveVideoToPhotosAlbum(options: SaveMediaOptions): Promise<void>;
+    /**
+     * Opens the scanner.
+     * Resolves `{ canceled: true }` only when the user dismisses the scanner. A
+     * completed scan resolves `{ canceled: false, scanResult, scanType }`. Rejects
+     * when scanning fails or the host returns an invalid payload.
+     */
     scanCode(options?: ScanCodeOptions): Promise<ScanCodeResult>;
     createVideoContext(componentId: string): VideoContext;
     /**
@@ -2371,10 +2419,21 @@ declare global {
      */
     onSurfaceContext(handler: (context: SurfaceContext) => void): () => void;
     getSystemSetting(): SystemSettingInfo;
-    /** Show action sheet function for JavaScript */
+    /**
+     * Shows a list of actions.
+     * Resolves `{ canceled: false, index }` when the user selects an item; `index`
+     * points into `options.itemList`. Resolves `{ canceled: true }` only when the
+     * user dismisses the sheet. Rejects when presentation fails or the host returns
+     * an invalid selection.
+     */
     showActionSheet(options: ShowActionSheetOptions): Promise<ActionSheetResult>;
     readonly appearance: AppearanceApi;
-    /** Show modal function (async) */
+    /**
+     * Shows a confirmation modal.
+     * Resolves `{ canceled: false }` when the user confirms and `{ canceled: true }`
+     * only when the user dismisses or cancels the modal. Rejects when presentation
+     * fails or the host returns an invalid payload.
+     */
     showModal(options: ShowModalOptions): Promise<ModalResult>;
     /**
      * Replace the current lxapp's complete app-declared More action list (seven

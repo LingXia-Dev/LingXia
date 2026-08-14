@@ -36,6 +36,12 @@ rong::js_api! {
     }
 }
 
+/// Opens the media picker or camera.
+///
+/// Resolves `{ canceled: true }` only when the user dismisses the picker. A
+/// completed selection resolves `{ canceled: false, entries }` with at least one
+/// entry. Rejects when capture or selection fails, or the host returns an invalid
+/// payload.
 async fn choose_media(
     ctx: JSContext,
     options: Optional<JSChooseMediaOptions>,

@@ -29,6 +29,11 @@ rong::js_api! {
     }
 }
 
+/// Opens the scanner.
+///
+/// Resolves `{ canceled: true }` only when the user dismisses the scanner. A
+/// completed scan resolves `{ canceled: false, scanResult, scanType }`. Rejects
+/// when scanning fails or the host returns an invalid payload.
 async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let opts = options.as_ref().cloned().unwrap_or_default();
