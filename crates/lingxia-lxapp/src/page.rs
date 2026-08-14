@@ -147,6 +147,18 @@ enum EntryPhase {
     Loaded,
 }
 
+/// Where a page is in the reset it owes after leaving the stack.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PageReset {
+    /// Nothing owed — the ordinary state of a live page.
+    None,
+    /// The instance ended; its service and document are still the old ones.
+    Pending,
+    /// Rebuilt for a future entry. The document is fresh but nobody is on the
+    /// page, so its bridge handshake must not boot a lifecycle of its own.
+    AwaitingEntry,
+}
+
 /// What the container wants, and whether `onShow` has caught up with it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Visibility {
@@ -172,6 +184,8 @@ pub struct PageState {
     requires_bridge_ready: bool,
     /// Whether the current document has had its `onReady`.
     ready_dispatched: bool,
+    /// The reset this page owes after leaving the stack.
+    reset: PageReset,
     // Navigation bar state
     pub(crate) navbar_state: NavigationBarState,
     // A malformed page config owns this page's load outcome; it must not
@@ -381,6 +395,7 @@ impl PageInstance {
             bridge_ready: false,
             requires_bridge_ready: lxapp.logic_enabled(),
             ready_dispatched: false,
+            reset: PageReset::None,
             navbar_state: page_config.create_navbar_state(),
             config_load_error,
             enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
@@ -614,6 +629,32 @@ impl PageInstance {
         self.inner.bridge.cancel_page_work(self);
     }
 
+    /// Records that this instance ended and owes a reset.
+    pub(crate) fn mark_reset_pending(&self) {
+        if let Ok(mut state) = self.inner.state.lock() {
+            state.reset = PageReset::Pending;
+        }
+    }
+
+    /// Claims the pending reset, if this page still owes one.
+    pub(crate) fn take_reset_pending(&self) -> bool {
+        let Ok(mut state) = self.inner.state.lock() else {
+            return false;
+        };
+        if state.reset == PageReset::Pending {
+            state.reset = PageReset::AwaitingEntry;
+            return true;
+        }
+        false
+    }
+
+    pub(crate) fn is_reset_pending(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .is_ok_and(|state| state.reset == PageReset::Pending)
+    }
+
     /// Prepare a retained WebView for a freshly-created PageSvc.
     ///
     /// An in-place app-service restart keeps the native page instance, so the
@@ -657,6 +698,7 @@ impl PageInstance {
     // has nothing new to be ready about.
     fn request_on_load(state: &mut PageState) {
         state.entry = EntryPhase::LoadOwed;
+        state.reset = PageReset::None;
         if state.visibility == Visibility::Shown {
             state.visibility = Visibility::ShowOwed;
         }
@@ -794,7 +836,13 @@ impl PageInstance {
             }
 
             state.bridge_ready = true;
-            if state.entry == EntryPhase::Idle {
+            // A page whose document was rebuilt for a future entry has no
+            // entry to serve: booting here would deliver `onLoad` (with the
+            // previous entry's query) and `onReady` to nobody, and leave the
+            // real entry with a second `onLoad` and no `onReady`. Pages that
+            // handshake while live — surfaces, an app-service restart — still
+            // boot from here.
+            if state.entry == EntryPhase::Idle && state.reset == PageReset::None {
                 Self::request_on_load(&mut state);
             }
             Self::collect_ready_lifecycle_events(&mut state, &mut events_to_fire);
@@ -1222,6 +1270,22 @@ impl PageInstance {
                 lxapp.clear_page_stack()?;
             }
             NavigationType::Replace => {
+                // Replacing drops the current entry, so the target can only
+                // collide with what remains below it — and a collision means
+                // two stack slots sharing one instance, same as a duplicate
+                // navigateTo.
+                if lxapp
+                    .get_page_stack()
+                    .iter()
+                    .rev()
+                    .skip(1)
+                    .any(|entry| entry == &path)
+                {
+                    return Err(LxAppError::InvalidParameter(format!(
+                        "redirectTo target '{path}' is already on the page stack. \
+                         A page can only appear once; navigate back to it instead."
+                    )));
+                }
                 lxapp.pop_from_page_stack();
             }
             NavigationType::Forward => {
@@ -1676,6 +1740,7 @@ mod tests {
             bridge_ready: false,
             requires_bridge_ready: true,
             ready_dispatched: false,
+            reset: PageReset::None,
             navbar_state: NavigationBarState::default(),
             config_load_error: None,
             enable_pull_down_refresh: false,
@@ -1846,6 +1911,23 @@ mod tests {
         PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
 
         assert!(events.contains(&(PageLifecycleEvent::OnReady, None)));
+    }
+
+    #[test]
+    fn a_document_rebuilt_for_a_later_entry_does_not_boot_itself() {
+        let mut state = test_page_state();
+        state.reset = PageReset::AwaitingEntry;
+        state.entry = EntryPhase::Idle;
+
+        // The bridge-ready auto-request is what boots surfaces and app-service
+        // restarts; a page rebuilt for an entry that has not happened yet must
+        // stay put instead of firing onLoad at nobody.
+        assert!(!(state.entry == EntryPhase::Idle && state.reset == PageReset::None));
+
+        // The real entry clears it and takes over.
+        PageInstance::request_on_load(&mut state);
+        assert_eq!(state.reset, PageReset::None);
+        assert_eq!(state.entry, EntryPhase::LoadOwed);
     }
 
     #[test]

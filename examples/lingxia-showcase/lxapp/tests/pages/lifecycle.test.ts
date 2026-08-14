@@ -148,6 +148,9 @@ contract({
   // Leaving ends the instance; the reset lands after the pop transition.
   await app.nav.back();
   await waitForCurrentPage(app, 'home');
+  // Past the deferred-reset delay, so this covers the reset running off-screen
+  // rather than being flushed by a fast re-entry.
+  await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
 
   const second = await enterResetDemo(app);
   expect(second.instanceTag).not.toBe(first.instanceTag);
@@ -194,4 +197,50 @@ contract({
     script: 'return getCurrentPages().map((page) => page.route);',
   }) as string[];
   expect(stack.filter((route) => route.includes('/lifecycle/')).length).toBe(1);
+});
+
+contract({
+  id: 'PAGE-LIFECYCLE-004',
+  title: 'deliver exactly one onLoad and one onReady to a re-entered page',
+  covers: ['lx.navigateTo', 'lx.navigateBack'],
+  layer: 'logic',
+  levels: ['semantic', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app, defer }) => {
+  defer(async () => {
+    await app.nav.relaunch({ page: 'home' });
+  });
+
+  await app.nav.relaunch({ page: 'home' });
+  await waitForCurrentPage(app, 'home');
+
+  const first = await enterResetDemo(app);
+  await app.nav.back();
+  await waitForCurrentPage(app, 'home');
+  // Let the off-screen reset complete: its rebuilt document must not boot a
+  // lifecycle of its own while nobody is on the page.
+  await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
+
+  const second = await enterResetDemo(app);
+  expect(second.previousInstanceTag).toBe(first.instanceTag);
+
+  const events = await eventually(
+    async () => {
+      const state = await app.eval({
+        script: `
+          const page = getCurrentPages().find((candidate) => candidate.route.includes('/lifecycle/'));
+          return page ? page.data.events ?? [] : null;
+        `,
+      }) as string[] | null;
+      return state;
+    },
+    (candidate) => Array.isArray(candidate) && candidate.some((entry) => entry.includes('onReady')),
+    { describe: 'the re-entered page to report its lifecycle' },
+  ) ?? [];
+
+  const count = (name: string) => events.filter((entry) => entry.endsWith(name)).length;
+  expect(count('onLoad')).toBe(1);
+  expect(count('onReady')).toBe(1);
+  expect(count('onShow')).toBe(1);
 });

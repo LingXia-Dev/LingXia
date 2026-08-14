@@ -1099,6 +1099,7 @@ impl LxApp {
         let instance_id = page.instance_id_string();
         let path = page.path().to_string();
         self.cancel_page_reset(&instance_id);
+        page.mark_reset_pending();
 
         let (tx, rx) = oneshot::channel();
         if let Ok(state) = self.state.lock() {
@@ -1122,10 +1123,12 @@ impl LxApp {
             let Some(app) = crate::lxapp::try_get(&appid) else {
                 return;
             };
-            // A re-entry inside the delay window resets through
-            // `flush_page_reset` instead: both paths claim the same pending
-            // entry, so exactly one of them runs the reset.
-            if !app.cancel_page_reset(&instance_id) {
+            app.cancel_page_reset(&instance_id);
+            // The page can be back on the stack already: a re-entry inside the
+            // delay window, which `flush_page_reset` will service, or an entry
+            // that landed between the pop and its `onLoad`. Either way the
+            // reset stays owed and is claimed there, not here.
+            if app.get_page_stack().iter().any(|entry| entry == &path) {
                 return;
             }
             if let Err(err) = app.reset_page_in_place(&path, &instance_id) {
@@ -1155,10 +1158,11 @@ impl LxApp {
     /// fresh instance — the deferred reset is an optimization that keeps the
     /// work off-screen, never a licence to hand back the old one.
     pub(crate) fn flush_page_reset(&self, page: &PageInstance) {
-        let instance_id = page.instance_id_string();
-        if !self.cancel_page_reset(&instance_id) {
+        if !page.is_reset_pending() {
             return;
         }
+        let instance_id = page.instance_id_string();
+        self.cancel_page_reset(&instance_id);
         let path = page.path().to_string();
         if let Err(err) = self.reset_page_in_place(&path, &instance_id) {
             warn!("Failed to reset page {} before re-entry: {}", path, err)
@@ -1183,6 +1187,10 @@ impl LxApp {
             return Ok(());
         }
 
+        if !page.take_reset_pending() {
+            // Another path already claimed this reset.
+            return Ok(());
+        }
         page.prepare_for_service_restart();
         self.executor.terminate_page_svc(
             self.clone_arc(),

@@ -662,9 +662,23 @@ claim the same pending entry, so exactly one of them performs the reset; if an
 entry lands while a reset is already in flight, the reset re-arms `OnLoad`
 itself once the document reloads.
 
+The rebuilt document then waits: `PageState.reset` holds `AwaitingEntry` until
+the real entry calls `request_on_load`, which suppresses the bridge-ready
+auto-request in `notify_bridge_ready`. Without that, the fresh document's
+handshake would boot a lifecycle of its own — `onLoad` with the previous
+entry's query, plus `onReady` — to a page nobody is on, leaving the real entry
+with a second `onLoad` and no `onReady`. Pages that handshake while live
+(surfaces, an in-place app-service restart) still boot from there.
+
+The claim is the page's own `PageReset::Pending`, not the timer entry: if the
+page is back on the stack when the timer fires, the reset stays owed and
+`flush_page_reset()` performs it at the entry instead. That covers both a fast
+re-entry and one that lands between the pop and its `onLoad`.
+
 Pending resets are cancelled by `dispose_page_instance_internal()` and by
 `shutdown_with_options()`. `reLaunch` needs none: it destroys the WebViews and
-removes the instances outright.
+removes the instances outright. `switchTab` clears the stack without unloading,
+so tab pages keep their instances — the reset does not apply to them.
 
 ### LRU eviction (distinct from disposal)
 

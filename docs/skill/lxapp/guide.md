@@ -192,7 +192,11 @@ survive in `lx.getStorage()` or in `App({})`.
 
 `onHide` is not `onUnload`. A page covered by another page, or backgrounded with
 the lxapp, keeps its instance and its `data`, and simply gets `onShow` again on
-return.
+return. `lx.switchTab` also only hides the page it leaves.
+
+A route can be on the page stack **once**: one path is one page instance, so
+`lx.navigateTo` onto a page already on the stack is rejected. Navigate back to
+it, or model the destination as a different route.
 
 ### Private helpers
 
