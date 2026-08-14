@@ -115,11 +115,11 @@ rong::js_api! {
         /// Launch-at-startup control for the host app.
         ///
         /// Absent (`undefined`) wherever the host cannot register a startup item.
-        /// `lx.supports({ autostart: true })` and the member's presence always
+        /// `lx.supports({ capability: 'autostart' })` and the member's presence always
         /// agree, so either gate works:
         ///
         /// ```ts
-        /// if (lx.supports({ autostart: true })) {
+        /// if (lx.supports({ capability: 'autostart' })) {
         ///   // render the "Launch at startup" toggle
         /// }
         /// ```
@@ -693,7 +693,7 @@ rong::js_api! {
      * The returned task can be awaited directly when progress is not needed, or
      * consumed with `for await...of` to render progress.
      *
-     * Requires `lx.supports({ selfUpdate: true })`. Where the host cannot
+     * Requires `lx.supports({ capability: 'selfUpdate' })`. Where the host cannot
      * install its own update it rejects with an unsupported-operation error;
      * use `version` and `releaseNotes` to guide users to the app marketplace.
      */

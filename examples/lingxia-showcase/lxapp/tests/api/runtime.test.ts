@@ -105,26 +105,40 @@ contract({
 }, async ({ app }) => {
   const result = await app.eval({
     script: `
-      const terminalAgrees = ('terminal' in lx) === lx.supports({ terminal: true });
-      const autostartAgrees = !!lx.app.autostart === lx.supports({ autostart: true });
+      const terminalAgrees = ('terminal' in lx) === lx.supports({ capability: 'terminal' });
+      const autostartAgrees = !!lx.app.autostart === lx.supports({ capability: 'autostart' });
       let rejectedUnknown = false;
       try {
         lx.supports({});
       } catch {
         rejectedUnknown = true;
       }
+      const rejects = (query) => {
+        try {
+          lx.supports(query);
+          return false;
+        } catch {
+          return true;
+        }
+      };
       return {
         terminalAgrees,
         autostartAgrees,
         rejectedUnknown,
+        rejectedMissingSurfaceValue: rejects({ capability: 'surface' }),
+        rejectedFlagValue: rejects({ capability: 'terminal', value: 'window' }),
+        rejectedExtraField: rejects({ capability: 'browser', extra: true }),
         // Placements every host can realize.
-        main: lx.supports({ surface: 'main' }),
-        float: lx.supports({ surface: 'float' }),
+        main: lx.supports({ capability: 'surface', value: 'main' }),
+        float: lx.supports({ capability: 'surface', value: 'float' }),
         // Answers are booleans, never undefined, for every declared capability.
         allBooleans: [
-          { surface: 'window' }, { surface: 'aside' }, { surface: 'tab' },
-          { notifications: true }, { browser: true }, { proxy: true },
-          { selfUpdate: true }, { nativeFileReview: true },
+          { capability: 'surface', value: 'window' },
+          { capability: 'surface', value: 'aside' },
+          { capability: 'surface', value: 'tab' },
+          { capability: 'notifications' }, { capability: 'browser' },
+          { capability: 'proxy' }, { capability: 'selfUpdate' },
+          { capability: 'nativeFileReview' },
         ].every((query) => typeof lx.supports(query) === 'boolean'),
       };
     `,
@@ -132,6 +146,9 @@ contract({
     terminalAgrees: boolean;
     autostartAgrees: boolean;
     rejectedUnknown: boolean;
+    rejectedMissingSurfaceValue: boolean;
+    rejectedFlagValue: boolean;
+    rejectedExtraField: boolean;
     main: boolean;
     float: boolean;
     allBooleans: boolean;
@@ -140,6 +157,9 @@ contract({
   expect(result.terminalAgrees).toBeTruthy();
   expect(result.autostartAgrees).toBeTruthy();
   expect(result.rejectedUnknown).toBeTruthy();
+  expect(result.rejectedMissingSurfaceValue).toBeTruthy();
+  expect(result.rejectedFlagValue).toBeTruthy();
+  expect(result.rejectedExtraField).toBeTruthy();
   expect(result.main).toBeTruthy();
   expect(result.float).toBeTruthy();
   expect(result.allBooleans).toBeTruthy();

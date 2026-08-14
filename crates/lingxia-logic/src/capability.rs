@@ -1,17 +1,17 @@
 //! `lx.supports(query)` — one capability query for every namespace.
 //!
-//! Each capability is declared once below, and both the runtime dispatch and
-//! the `LxCapabilityQuery` union are derived from that declaration. The answer
-//! is read live: `aside` genuinely changes when a desktop window crosses the
-//! compact breakpoint. It is an affordance for building UI, never a substitute
-//! for handling a rejection.
+//! Runtime dispatch is emitted from the registry below, and a test keeps its
+//! generated TypeScript metadata in lockstep. The answer is read live: `aside`
+//! genuinely changes when a desktop window crosses the compact breakpoint. It
+//! is an affordance for building UI, never a substitute for handling a
+//! rejection.
 
-use crate::i18n::js_invalid_parameter_error;
+use crate::i18n::{js_internal_error, js_invalid_parameter_error};
 use lxapp::LxApp;
 use rong::{JSContext, JSObject, JSResult};
 use std::sync::Arc;
 
-/// Placements `{ surface: … }` accepts, in the order they appear in the union.
+/// Values `{ capability: 'surface', value: … }` accepts, in type order.
 const SURFACE_PLACEMENTS: &[&str] = &["main", "aside", "float", "window", "tab"];
 
 /// Declares the boolean capabilities: the JS key, the TS doc line, and the
@@ -77,8 +77,9 @@ fn native_file_review_supported(lxapp: &Arc<LxApp>) -> bool {
     lxapp.runtime.native_review_supported()
 }
 
-/// Answers `{ surface: … }`. Only `aside` is width-dependent; `window` is a
-/// property of the host build and does not flicker as a window is resized.
+/// Answers `{ capability: 'surface', value: … }`. Only `aside` is
+/// width-dependent; `window` is a property of the host build and does not
+/// flicker as a window is resized.
 fn surface_supported(placement: &str, lxapp: &Arc<LxApp>) -> bool {
     if !SURFACE_PLACEMENTS.contains(&placement) {
         return false;
@@ -92,42 +93,82 @@ fn surface_supported(placement: &str, lxapp: &Arc<LxApp>) -> bool {
     }
 }
 
-/// Whether this host can do something, right now.
+/// The Terminal Settings package intentionally gets only `lx.terminal` and
+/// `lx.supports`, not the general Logic API. Do not advertise operations that
+/// are absent from that focused context.
+fn context_exposes_capability(key: &str, terminal_settings: bool) -> bool {
+    !terminal_settings || key == "terminal"
+}
+
+fn has_exact_keys(actual: &[String], expected: &[&str]) -> bool {
+    actual.len() == expected.len()
+        && expected
+            .iter()
+            .all(|expected| actual.iter().any(|actual| actual == expected))
+}
+
+/// Whether this host exposes a capability to this Logic context, right now.
 ///
 /// Synchronous, because the callers are render paths and menu construction. The
 /// answer is live and may be stale by the time you act on it — it is an
 /// affordance for deciding what to render, not a replacement for handling a
-/// rejection. `{ surface: 'aside' }` in particular changes when a desktop
-/// window crosses the compact breakpoint; pair it with `lx.onSurfaceContext`
-/// instead of polling.
+/// rejection. `{ capability: 'surface', value: 'aside' }` in particular changes
+/// when a desktop window crosses the compact breakpoint; pair it with
+/// `lx.onSurfaceContext` instead of polling. A focused Logic context returns
+/// false for APIs it does not expose.
 fn supports(ctx: JSContext, query: JSObject) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    // One question per call: answering the first recognized key of several
-    // would silently ignore the rest, and an unknown key must be as loud as a
-    // typo'd flag rather than a quiet `false`.
-    let asked = query.keys_as::<String>()?;
-    let [key] = asked.as_slice() else {
-        return Err(js_invalid_parameter_error(format!(
-            "lx.supports asks one capability per call: surface, {}",
+    let terminal_settings = terminal_supported(&lxapp);
+    let keys = query.keys_as::<String>()?;
+    let capability = query.get::<_, String>("capability").map_err(|_| {
+        js_invalid_parameter_error(format!(
+            "lx.supports requires a string capability: surface, {}",
             FLAG_KEYS.join(", ")
-        )));
-    };
+        ))
+    })?;
 
-    if key == "surface" {
-        let placement = query.get::<_, String>("surface")?;
+    if capability == "surface" {
+        if !has_exact_keys(&keys, &["capability", "value"]) {
+            return Err(js_invalid_parameter_error(
+                "surface capability query requires exactly `capability` and `value`",
+            ));
+        }
+        let placement = query.get::<_, String>("value").map_err(|_| {
+            js_invalid_parameter_error("surface capability `value` must be a string")
+        })?;
         if !SURFACE_PLACEMENTS.contains(&placement.as_str()) {
             return Err(js_invalid_parameter_error(format!(
                 "unknown surface placement '{placement}'; expected {}",
                 SURFACE_PLACEMENTS.join(", ")
             )));
         }
+        if !context_exposes_capability(&capability, terminal_settings) {
+            return Ok(false);
+        }
         return Ok(surface_supported(&placement, &lxapp));
     }
 
-    flag_supported(key, &lxapp).ok_or_else(|| {
-        js_invalid_parameter_error(format!(
-            "unknown capability '{key}'; expected surface, {}",
+    if !FLAG_KEYS.contains(&capability.as_str()) {
+        return Err(js_invalid_parameter_error(format!(
+            "unknown capability '{capability}'; expected surface, {}",
             FLAG_KEYS.join(", ")
+        )));
+    }
+    if !has_exact_keys(&keys, &["capability"]) {
+        return Err(js_invalid_parameter_error(format!(
+            "capability '{capability}' does not accept additional options"
+        )));
+    }
+    if !context_exposes_capability(&capability, terminal_settings) {
+        return Ok(false);
+    }
+
+    // Membership was checked against FLAG_KEYS above, which is emitted by the
+    // same macro as this dispatch. Keep a hard tripwire instead of converting
+    // any future registry defect into an unsupported answer.
+    flag_supported(&capability, &lxapp).ok_or_else(|| {
+        js_internal_error(format!(
+            "capability registry has no predicate for declared key '{capability}'"
         ))
     })
 }
@@ -140,8 +181,15 @@ rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
 
-        /// One capability question per call. The catalog is a closed union, so
-        /// completion enumerates it and a typo is a compile error.
+        /// Boolean capability names accepted by `lx.supports`.
+        type LxCapabilityFlag = r###"'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'nativeFileReview'"###;
+
+        /// Surface placements accepted by `lx.supports`.
+        type LxSurfaceCapability = r###"'main' | 'aside' | 'float' | 'window' | 'tab'"###;
+
+        /// One capability question per call. The catalog is closed, so
+        /// completion enumerates it and a typo is a type error. `capability`
+        /// is the discriminant; only the `surface` branch accepts a `value`.
         ///
         /// Two surface answers describe an *affordance*, not whether the call
         /// succeeds: `tab` is "the host has an in-app browser" — without it a
@@ -150,14 +198,12 @@ rong::js_api! {
         /// the url through the in-app browser's own chrome. Ask them to decide
         /// what to render, not whether to call.
         ///
-        type LxCapabilityQuery = r###"{ surface: 'main' | 'aside' | 'float' | 'window' | 'tab' }
-  | { terminal: true }
-  | { autostart: true }
-  | { notifications: true }
-  | { browser: true }
-  | { proxy: true }
-  | { selfUpdate: true }
-  | { nativeFileReview: true }"###;
+        type LxCapabilityQuery = r###"{
+    capability: 'surface';
+    value: LxSurfaceCapability;
+} | {
+    capability: LxCapabilityFlag;
+}"###;
 
         fn supports(
             ts_params = "query: LxCapabilityQuery",
@@ -168,32 +214,55 @@ rong::js_api! {
 
 #[cfg(test)]
 mod tests {
-    use super::{FLAG_KEYS, SURFACE_PLACEMENTS};
+    use super::{FLAG_KEYS, SURFACE_PLACEMENTS, context_exposes_capability, has_exact_keys};
 
-    /// `js_api!` needs the union as a string literal, so it cannot be pasted
-    /// from the declarations above. Assert instead that it still matches them,
-    /// so a capability can never be added without appearing in the type.
+    /// `js_api!` needs type metadata as a string literal. Assert that its flag
+    /// and surface catalogs still match the runtime registry.
     #[test]
     fn declared_union_matches_the_registry() {
         let source = include_str!("capability.rs");
-        let declared = source
-            .split("type LxCapabilityQuery = r###\"")
+        let declared_flags = source
+            .split("type LxCapabilityFlag = r###\"")
             .nth(1)
             .and_then(|rest| rest.split("\"###").next())
-            .expect("LxCapabilityQuery literal");
+            .expect("LxCapabilityFlag literal");
 
-        let mut expected = format!(
-            "{{ surface: {} }}",
-            SURFACE_PLACEMENTS
-                .iter()
-                .map(|value| format!("'{value}'"))
-                .collect::<Vec<_>>()
-                .join(" | ")
-        );
-        for key in FLAG_KEYS {
-            expected.push_str(&format!("\n  | {{ {key}: true }}"));
-        }
+        let expected_flags = FLAG_KEYS
+            .iter()
+            .map(|value| format!("'{value}'"))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        assert_eq!(declared_flags, expected_flags);
 
-        assert_eq!(declared, expected);
+        let declared_surfaces = source
+            .split("type LxSurfaceCapability = r###\"")
+            .nth(1)
+            .and_then(|rest| rest.split("\"###").next())
+            .expect("LxSurfaceCapability literal");
+        let expected_surfaces = SURFACE_PLACEMENTS
+            .iter()
+            .map(|value| format!("'{value}'"))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        assert_eq!(declared_surfaces, expected_surfaces);
+    }
+
+    #[test]
+    fn focused_terminal_context_advertises_only_its_registered_api() {
+        assert!(context_exposes_capability("terminal", true));
+        assert!(!context_exposes_capability("surface", true));
+        assert!(!context_exposes_capability("autostart", true));
+        assert!(context_exposes_capability("surface", false));
+    }
+
+    #[test]
+    fn query_shape_requires_only_the_branch_fields() {
+        let surface = vec!["value".to_string(), "capability".to_string()];
+        let flag = vec!["capability".to_string()];
+        let extra = vec!["capability".to_string(), "value".to_string()];
+
+        assert!(has_exact_keys(&surface, &["capability", "value"]));
+        assert!(has_exact_keys(&flag, &["capability"]));
+        assert!(!has_exact_keys(&extra, &["capability"]));
     }
 }

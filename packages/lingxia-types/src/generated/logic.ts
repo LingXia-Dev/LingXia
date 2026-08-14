@@ -131,7 +131,7 @@ declare global {
 
     /**
      * Launch-at-startup control. Absent where the host cannot register a
-     * startup item; its presence and `lx.supports({ autostart: true })` always
+     * startup item; its presence and `lx.supports({ capability: 'autostart' })` always
      * agree, so `lx.app.autostart?.…` and the query are interchangeable.
      */
     autostart?: AutostartApi;
@@ -144,7 +144,7 @@ declare global {
     /**
      * Terminal product settings. Present only in the host-bundled Terminal
      * Settings lxapp when the host declares `capabilities.terminal`; its
-     * presence and `lx.supports({ terminal: true })` always agree.
+     * presence and `lx.supports({ capability: 'terminal' })` always agree.
      */
     readonly terminal?: TerminalApi;
 
@@ -274,10 +274,10 @@ export type AppearancePreference = 'auto' | 'light' | 'dark';
 /**
  * Launch-at-startup control for the host app.
  * Absent (`undefined`) wherever the host cannot register a startup item.
- * `lx.supports({ autostart: true })` and the member's presence always
+ * `lx.supports({ capability: 'autostart' })` and the member's presence always
  * agree, so either gate works:
  * ```ts
- * if (lx.supports({ autostart: true })) {
+ * if (lx.supports({ capability: 'autostart' })) {
  * // render the "Launch at startup" toggle
  * }
  * ```
@@ -659,7 +659,7 @@ export type HostAppUpdateInfo = {
      * The returned task can be awaited directly when progress is not needed, or
      * consumed with `for await...of` to render progress.
      *
-     * Requires `lx.supports({ selfUpdate: true })`. Where the host cannot
+     * Requires `lx.supports({ capability: 'selfUpdate' })`. Where the host cannot
      * install its own update it rejects with an unsupported-operation error;
      * use `version` and `releaseNotes` to guide users to the app marketplace.
      */
@@ -714,9 +714,13 @@ export type LxAppEnvVersion = 'release' | 'preview' | 'develop';
 /** LxApp metadata APIs. */
 export type LxAppReleaseType = 'release' | 'preview' | 'developer';
 
+/** Boolean capability names accepted by `lx.supports`. */
+export type LxCapabilityFlag = 'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'nativeFileReview';
+
 /**
- * One capability question per call. The catalog is a closed union, so
- * completion enumerates it and a typo is a compile error.
+ * One capability question per call. The catalog is closed, so
+ * completion enumerates it and a typo is a type error. `capability`
+ * is the discriminant; only the `surface` branch accepts a `value`.
  * Two surface answers describe an *affordance*, not whether the call
  * succeeds: `tab` is "the host has an in-app browser" — without it a
  * url still opens, in the OS browser instead — and `aside` is "a
@@ -724,16 +728,17 @@ export type LxAppReleaseType = 'release' | 'preview' | 'developer';
  * the url through the in-app browser's own chrome. Ask them to decide
  * what to render, not whether to call.
  */
-export type LxCapabilityQuery = { surface: 'main' | 'aside' | 'float' | 'window' | 'tab' }
-  | { terminal: true }
-  | { autostart: true }
-  | { notifications: true }
-  | { browser: true }
-  | { proxy: true }
-  | { selfUpdate: true }
-  | { nativeFileReview: true };
+export type LxCapabilityQuery = {
+    capability: 'surface';
+    value: LxSurfaceCapability;
+} | {
+    capability: LxCapabilityFlag;
+};
 
 export type LxEnv = globalThis.LxEnv;
+
+/** Surface placements accepted by `lx.supports`. */
+export type LxSurfaceCapability = 'main' | 'aside' | 'float' | 'window' | 'tab';
 
 /** Device action APIs. */
 export type MakePhoneCallOptions = {
@@ -2304,13 +2309,14 @@ declare global {
   interface Lx {
     readonly app: HostAppApi;
     /**
-     * Whether this host can do something, right now.
+     * Whether this host exposes a capability to this Logic context, right now.
      * Synchronous, because the callers are render paths and menu construction. The
      * answer is live and may be stale by the time you act on it — it is an
      * affordance for deciding what to render, not a replacement for handling a
-     * rejection. `{ surface: 'aside' }` in particular changes when a desktop
-     * window crosses the compact breakpoint; pair it with `lx.onSurfaceContext`
-     * instead of polling.
+     * rejection. `{ capability: 'surface', value: 'aside' }` in particular changes
+     * when a desktop window crosses the compact breakpoint; pair it with
+     * `lx.onSurfaceContext` instead of polling. A focused Logic context returns
+     * false for APIs it does not expose.
      */
     supports(query: LxCapabilityQuery): boolean;
     vibrateShort(): boolean;

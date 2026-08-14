@@ -128,7 +128,7 @@ declare global {
 
     /**
      * Launch-at-startup control. Absent where the host cannot register a
-     * startup item; its presence and `lx.supports({ autostart: true })` always
+     * startup item; its presence and `lx.supports({ capability: 'autostart' })` always
      * agree, so `lx.app.autostart?.…` and the query are interchangeable.
      */
     autostart?: AutostartApi;
@@ -141,7 +141,7 @@ declare global {
     /**
      * Terminal product settings. Present only in the host-bundled Terminal
      * Settings lxapp when the host declares `capabilities.terminal`; its
-     * presence and `lx.supports({ terminal: true })` always agree.
+     * presence and `lx.supports({ capability: 'terminal' })` always agree.
      */
     readonly terminal?: TerminalApi;
 
