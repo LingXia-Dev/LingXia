@@ -18,6 +18,8 @@ rong::js_api! {
     canceled: true;
 }"###;
 
+        /// Result of `lx.showActionSheet`. Branch on `canceled` before reading
+        /// the selected item index.
         type ActionSheetResult = r###"{
     canceled: false;
     /** Index of the tapped item in `itemList`. */
@@ -340,6 +342,8 @@ rong::js_api! {
     defaultPath?: string;
 }"###;
 
+        /// Result of `lx.chooseDirectory`. Branch on `canceled` before reading
+        /// the selected directory.
         type ChooseDirectoryResult = r###"{
     canceled: false;
     /** Native-consumable directory reference (path or URI). */
@@ -360,6 +364,8 @@ rong::js_api! {
     defaultPath?: string;
 }"###;
 
+        /// Result of `lx.chooseFile`. Branch on `canceled` before reading the
+        /// selected paths.
         type ChooseFileResult = r###"{
     canceled: false;
     /**
@@ -379,6 +385,8 @@ rong::js_api! {
     maxDuration?: number;
 }"###;
 
+        /// Result of `lx.chooseMedia`. Branch on `canceled` before reading the
+        /// selected entries.
         type ChooseMediaResult = r###"{
     canceled: false;
     /** Picked media; always at least one entry. */
@@ -728,7 +736,8 @@ rong::js_api! {
     recursive?: boolean;
 }"###;
 
-        /// `canceled: false` means the user confirmed; there is no third outcome.
+        /// Result of `lx.showModal`. `canceled: false` means the user confirmed;
+        /// there is no third resolved outcome. Presentation failures reject.
         ///
         type ModalResult = r###"{
     canceled: false;
@@ -1258,6 +1267,8 @@ rong::js_api! {
     scanType?: ('barCode' | 'qrCode' | 'datamatrix' | 'pdf417')[];
 }"###;
 
+        /// Result of `lx.scanCode`. Branch on `canceled` before reading the scan
+        /// payload.
         type ScanCodeResult = r###"{
     canceled: false;
     scanResult: string;

@@ -52,7 +52,11 @@ struct ViewModalResult {
     confirm: bool,
 }
 
-/// Show modal function (async)
+/// Shows a confirmation modal.
+///
+/// Resolves `{ canceled: false }` when the user confirms and `{ canceled: true }`
+/// only when the user dismisses or cancels the modal. Rejects when presentation
+/// fails or the host returns an invalid payload.
 async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 

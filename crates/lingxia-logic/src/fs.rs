@@ -526,6 +526,11 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
     )))
 }
 
+/// Opens a file picker.
+///
+/// Resolves `{ canceled: true }` only when the user dismisses the picker. A
+/// completed selection resolves `{ canceled: false, paths }` with at least one
+/// path. Rejects when the picker fails or returns an invalid payload.
 async fn choose_file(ctx: JSContext, options: Optional<JSChooseFileOptions>) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let opts = options.as_ref().cloned().unwrap_or_default();
@@ -585,6 +590,11 @@ async fn choose_file(ctx: JSContext, options: Optional<JSChooseFileOptions>) -> 
     Ok(chosen)
 }
 
+/// Opens a directory picker.
+///
+/// Resolves `{ canceled: true }` only when the user dismisses the picker. A
+/// completed selection resolves `{ canceled: false, path }`. Rejects when the
+/// picker fails or returns an invalid payload.
 async fn choose_directory(
     ctx: JSContext,
     options: Optional<JSChooseDirectoryOptions>,

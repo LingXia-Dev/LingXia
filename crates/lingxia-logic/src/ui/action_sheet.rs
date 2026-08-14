@@ -52,7 +52,12 @@ fn classify_action_sheet_index(index: i64, item_len: usize) -> Result<Option<usi
     Ok(Some(index))
 }
 
-/// Show action sheet function for JavaScript
+/// Shows a list of actions.
+///
+/// Resolves `{ canceled: false, index }` when the user selects an item; `index`
+/// points into `options.itemList`. Resolves `{ canceled: true }` only when the
+/// user dismisses the sheet. Rejects when presentation fails or the host returns
+/// an invalid selection.
 async fn show_action_sheet(
     ctx: JSContext,
     options: JSActionSheetOptions,
