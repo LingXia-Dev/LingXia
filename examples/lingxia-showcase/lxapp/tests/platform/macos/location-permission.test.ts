@@ -90,7 +90,10 @@ locationTest('handles the macOS location permission sheet when it appears', asyn
   await app.page.waitFor({ page: 'location', css: 'button', state: 'visible' });
   await app.page.click({ page: 'location', css: 'button', index: 0 });
 
-  const deadline = Date.now() + 15_000;
+  // Budget: CoreLocation may only settle via its own ~10s timeout on hosts
+  // with no position fix, and a settled request still holds a 5s window for
+  // a late permission dialog.
+  const deadline = Date.now() + 25_000;
   let requestStarted = false;
   let promptHandled = false;
   let requestSettledAt: number | undefined;
