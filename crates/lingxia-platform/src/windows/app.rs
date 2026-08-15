@@ -6,7 +6,6 @@ use std::sync::{Arc, Mutex};
 
 use lingxia_shell::{ResolvedShellSidebarAction, ShellPin};
 use lingxia_webview::WebTag;
-use lingxia_webview::runtime as webview_runtime;
 
 use super::{file, not_supported, surface, ui_update};
 use crate::AssetFileEntry;
