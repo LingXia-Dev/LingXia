@@ -769,7 +769,10 @@ impl PageSvc {
         drop(state);
 
         if let Err(error) = bridge.send_state_patch(self, None, base_rev, new_rev, ops, ack) {
-            if self.page.is_unloaded() {
+            // A page mid-departure (unloaded, parked, or already retired)
+            // legitimately has no view to write to; the entry rebuild
+            // re-serializes live data, so dropping the ops loses nothing.
+            if self.page.is_unloaded() || self.page.is_parked() || self.terminated.get() {
                 let callback = self.state.lock().await.state_callback.remove(&new_rev);
                 if let Some(callback) = callback {
                     let _ = callback.call::<_, ()>(None, ());

@@ -626,17 +626,15 @@ pub(crate) async fn lxapp_service_handler(
                 )
                 .with_appid(lxapp.appid.clone())
                 .with_path(path.clone());
-                // The page can be disposed between queueing and execution (a
-                // relaunch tearing the stack down races a queued rebuild);
+                // The instance can be disposed between queueing and execution
+                // (a relaunch tearing the stack down races a queued rebuild);
                 // that is churn, not a failure.
-                let target_gone = match page_instance_id.as_deref() {
-                    Some(id) => lxapp.get_page_by_instance_id_str(id).is_none(),
-                    None => lxapp.get_page(&path).is_none(),
-                };
-                if target_gone {
+                if let Some(id) = page_instance_id.as_deref()
+                    && lxapp.get_page_by_instance_id_str(id).is_none()
+                {
                     info!(
-                        "[Worker {}] Skipped CreatePage for disposed page",
-                        worker_id
+                        "[Worker {}] Skipped CreatePage for disposed instance {}",
+                        worker_id, id
                     )
                     .with_appid(lxapp.appid.clone())
                     .with_path(path.clone());
