@@ -28,6 +28,10 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     // otherwise a fast onPullDownRefresh collapses it before the animation is perceptible.
     private let refreshMinVisibleDuration: TimeInterval = 0.8
     private weak var activeWebView: WKWebView?
+    /// Covers a freshly swapped-in webview until its document paints:
+    /// WKWebView's pre-commit frame is white, which reads as a flash.
+    private var loadingPlaceholder: NSView?
+    private var loadingObservation: NSKeyValueObservation?
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
 
@@ -175,6 +179,61 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         MacNativeBridge.attachIfNeeded(to: webView, in: webViewContainer)
         webView.resumeWebView()
         activeWebView = webView
+        coverUntilContentPaints(webView)
+    }
+
+    /// While the incoming webview still loads its document, show the page's
+    /// background color instead of WebKit's white pre-commit frame, and fade
+    /// it away once the load finishes.
+    private func coverUntilContentPaints(_ webView: WKWebView) {
+        loadingObservation?.invalidate()
+        loadingObservation = nil
+        loadingPlaceholder?.removeFromSuperview()
+        loadingPlaceholder = nil
+
+        // A fresh instance may swap in before its document load is even
+        // queued (url == nil), not just mid-load.
+        guard webView.isLoading || webView.url == nil else { return }
+
+        let placeholder = NSView(frame: webViewContainer.bounds)
+        placeholder.autoresizingMask = [.width, .height]
+        WebViewManager.configureOpaquePagePlaceholder(placeholder, appId: appId)
+        webViewContainer.addSubview(placeholder, positioned: .above, relativeTo: webView)
+        loadingPlaceholder = placeholder
+
+        let loadHasStarted = webView.isLoading
+        loadingObservation = webView.observe(\.isLoading, options: [.new]) { [weak self] observed, change in
+            // Reveal on the load FINISHING; the not-yet-started false state
+            // never fires here because KVO only reports changes.
+            guard change.newValue == false else { return }
+            Task { @MainActor [weak self] in
+                self?.revealLoadedContent()
+            }
+            _ = observed
+        }
+        // The load can finish between the check and the observation.
+        if loadHasStarted && !webView.isLoading {
+            revealLoadedContent()
+        }
+        // Never let the cover outlive a load that failed to start or report.
+        let coveredPlaceholder = placeholder
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
+            guard let self, self.loadingPlaceholder === coveredPlaceholder else { return }
+            self.revealLoadedContent()
+        }
+    }
+
+    private func revealLoadedContent() {
+        loadingObservation?.invalidate()
+        loadingObservation = nil
+        guard let placeholder = loadingPlaceholder else { return }
+        loadingPlaceholder = nil
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.15
+            placeholder.animator().alphaValue = 0
+        }, completionHandler: {
+            placeholder.removeFromSuperview()
+        })
     }
 
     /// Slide the container's contents in the navigation direction (mirrors the
