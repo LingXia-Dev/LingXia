@@ -147,10 +147,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     // MARK: - Layout Constants
 
     struct Layout {
-        static let sidebarWidth: CGFloat = 184
+        static let sidebarWidth: CGFloat = 148
         static let sidebarHiddenThreshold: CGFloat = 1
         static let mainWindowMinimumSize = CGSize(width: 480, height: 480)
-        static let toolbarCenterY: CGFloat = 19
+        static let toolbarCenterY: CGFloat = 14
         static let trafficLightClearanceFallback: CGFloat = 80
         static let contentPanelPadding: CGFloat = 6
         static let contentPanelCornerRadius: CGFloat = 10

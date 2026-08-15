@@ -68,8 +68,8 @@ final class BrowserTabCoordinator: NSObject {
     private static let lxappDevToolsRetryDelay: TimeInterval = 0.05
 
     struct Layout {
-        static let toolbarHeight: CGFloat = 38
-        static let toolbarCenterY: CGFloat = 19
+        static let toolbarHeight: CGFloat = 28
+        static let toolbarCenterY: CGFloat = 14
         static let buttonSize: CGFloat = 28
         static let toolbarIconSize: CGFloat = 14
         static let addressBarHeight: CGFloat = 26
