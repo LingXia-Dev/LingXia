@@ -12,8 +12,8 @@
           <div class="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
             <div data-testid="ui-navigate-to" class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100" @click="demoNavigateTo">
               <div>
-                <div class="text-sm text-gray-800 font-medium">Navigate to new page</div>
-                <div class="text-xs text-gray-500 mt-0.5">Leave and come back — see what a page keeps and what it resets</div>
+                <div class="text-sm text-gray-800 font-medium">Push this page again</div>
+                <div class="text-xs text-gray-500 mt-0.5">navigateTo → this route; every entry is a fresh instance, watch the stack grow</div>
               </div>
               <span class="text-gray-400 text-lg">›</span>
             </div>
@@ -22,7 +22,7 @@
               <span class="text-gray-400 text-lg">›</span>
             </div>
             <div data-testid="ui-redirect-to" class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100" @click="demoRedirectTo">
-              <div class="text-sm text-gray-800 font-medium">Open in current page</div>
+              <div class="text-sm text-gray-800 font-medium">Replace this page (redirectTo)</div>
               <span class="text-gray-400 text-lg">›</span>
             </div>
             <div data-testid="ui-switch-tab" class="flex items-center justify-between px-5 py-4 hover:bg-surface-50 cursor-pointer" @click="demoSwitchTab">
@@ -31,26 +31,152 @@
             </div>
           </div>
 
-          <!-- Page Stack Info -->
-          <div class="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-            <div class="px-5 py-4">
-              <div class="flex items-center gap-2 mb-4">
-                <span class="w-1 h-5 bg-blue-500 rounded-full"></span>
-                <div class="text-sm font-semibold text-gray-700">Current Page Stack</div>
-                <span class="ml-auto px-2 py-1 bg-blue-50 text-blue-600 dark:text-blue-400 text-xs font-semibold rounded-full">{{ pageStack.length }}</span>
+          <!-- Page stack (same panel as the Page Stack & Reset demo) -->
+          <div class="mb-5 bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
+            <div class="px-4 py-3 border-b border-line-100 flex items-center justify-between">
+              <div>
+                <h3 class="text-base font-medium text-gray-900">Page stack</h3>
+                <p class="text-xs text-gray-500 mt-0.5">getCurrentPages(), top is where you are</p>
               </div>
-              <div class="space-y-2">
-                <div v-for="(page, index) in pageStack" :key="index" class="flex flex-col gap-2 py-3 px-4 bg-linear-to-r from-surface-50 to-surface rounded-xl border border-line-100">
-                  <div class="flex items-center gap-3">
-                    <span class="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-600 dark:text-blue-400 text-xs font-bold">{{ page.index + 1 }}</span>
-                    <span class="text-sm text-gray-800 font-medium flex-1 truncate">{{ page.route }}</span>
-                  </div>
-                  <div v-if="Object.keys(page.options || {}).length > 0" class="ml-9 text-xs text-gray-500 font-mono bg-surface-50 px-3 py-2 rounded-lg break-all">
-                    {{ JSON.stringify(page.options, null, 2) }}
-                  </div>
+              <span
+                data-testid="ui-page-stack-depth"
+                class="text-xs font-mono font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-950 rounded-full px-2.5 py-1"
+              >
+                {{ pageStack.length }}/10
+              </span>
+            </div>
+            <div class="p-3 space-y-1.5" data-testid="ui-page-stack-list">
+              <div
+                v-for="entry in reversedPageStack"
+                :key="entry.index"
+                :class="[
+                  'flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-mono',
+                  entry.current
+                    ? 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-800'
+                    : 'bg-surface-50 text-gray-600 border border-line-100',
+                ]"
+              >
+                <span class="w-5 text-right opacity-60">{{ entry.index + 1 }}</span>
+                <span class="flex-1 truncate">{{ entry.name }}</span>
+                <span v-if="entry.current" class="text-[10px] font-sans font-medium">you are here</span>
+              </div>
+              <div v-if="pageStack.length === 0" class="text-xs text-gray-400 text-center py-4">No page stack available</div>
+            </div>
+          </div>
+
+          <!-- Instance identity -->
+          <div class="mb-5 bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
+            <div class="px-4 py-3 border-b border-line-100">
+              <h3 class="text-base font-medium text-gray-900">Logic instance</h3>
+              <p class="text-xs text-gray-500 mt-0.5">
+                Push this page again and a new tag appears — every entry is a new Page instance
+              </p>
+            </div>
+            <div class="px-4 py-4 space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-gray-600">This instance</span>
+                <span data-testid="lifecycle-instance-tag" class="text-sm font-mono font-medium text-violet-600 dark:text-violet-400">
+                  #{{ instanceTag || '…' }}
+                </span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-gray-600">Previous instance</span>
+                <span data-testid="lifecycle-previous-tag" class="text-sm font-mono text-gray-500">
+                  #{{ previousInstanceTag || '…' }}
+                </span>
+              </div>
+              <div class="text-[11px] text-gray-400 leading-relaxed pt-1">
+                The previous tag is read back from <code>lx.getStorage()</code>, which is
+                app-scoped and survives the reset.
+              </div>
+            </div>
+          </div>
+
+          <!-- State that resets -->
+          <div class="mb-5 bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
+            <div class="px-4 py-3 border-b border-line-100">
+              <h3 class="text-base font-medium text-gray-900">State that resets</h3>
+              <p class="text-xs text-gray-500 mt-0.5">Dirty all three, leave, come back — everything is fresh</p>
+            </div>
+            <div class="p-4 grid grid-cols-2 gap-3">
+              <button
+                data-testid="lifecycle-bump-logic"
+                @click="bumpLogicCounter"
+                class="flex flex-col items-center justify-center py-4 px-2 bg-violet-50 hover:bg-violet-100 active:bg-violet-200 text-violet-700 dark:text-violet-400 rounded-xl transition-colors"
+              >
+                <span class="text-2xl font-bold" data-testid="lifecycle-logic-counter">{{ logicCounter }}</span>
+                <span class="text-sm font-medium mt-1">Logic +1</span>
+                <span class="text-[10px] opacity-70">this.setData</span>
+              </button>
+              <button
+                data-testid="lifecycle-bump-view"
+                @click="viewCounter += 1"
+                class="flex flex-col items-center justify-center py-4 px-2 bg-cyan-50 hover:bg-cyan-100 active:bg-cyan-200 text-cyan-700 dark:text-cyan-400 rounded-xl transition-colors"
+              >
+                <span class="text-2xl font-bold" data-testid="lifecycle-view-counter">{{ viewCounter }}</span>
+                <span class="text-sm font-medium mt-1">View +1</span>
+                <span class="text-[10px] opacity-70">ref()</span>
+              </button>
+            </div>
+            <div class="px-4 pb-4">
+              <button
+                data-testid="lifecycle-open-popup"
+                @click="popupOpen = true"
+                class="w-full py-2.5 px-4 bg-linear-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 text-white rounded-lg text-sm font-medium transition-all shadow-sm"
+              >
+                Open H5 popup
+              </button>
+            </div>
+          </div>
+
+          <!-- Lifecycle log -->
+          <div class="mb-5 bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
+            <div class="px-4 py-3 border-b border-line-100">
+              <h3 class="text-base font-medium text-gray-900">Lifecycle of this instance</h3>
+              <p class="text-xs text-gray-500 mt-0.5">
+                Stored in <code>data</code>, so it starts over with every entry
+              </p>
+            </div>
+            <div class="p-4">
+              <div v-if="events.length === 0" class="text-xs text-gray-400">No events yet</div>
+              <div v-else class="space-y-2" data-testid="lifecycle-events">
+                <div
+                  v-for="(event, index) in events"
+                  :key="`${event}-${index}`"
+                  class="text-xs font-mono text-gray-700 bg-surface-50 border border-line-100 rounded-lg px-3 py-2"
+                >
+                  {{ event }}
                 </div>
-                <div v-if="pageStack.length === 0" class="text-sm text-gray-500 text-center py-8">No page stack available</div>
               </div>
+              <div class="text-[11px] text-gray-400 leading-relaxed mt-3">
+                Backgrounding the app fires <code>onHide</code> / <code>onShow</code> on the same
+                instance. Only leaving the page fires <code>onUnload</code> and ends it.
+              </div>
+            </div>
+          </div>
+
+          <!-- A plain H5 overlay — the kind that used to still be open on re-entry -->
+          <div
+            v-if="popupOpen"
+            data-testid="lifecycle-popup"
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-8"
+            @click="popupOpen = false"
+          >
+            <div
+              class="bg-surface rounded-2xl shadow-xl px-5 py-6 w-full max-w-xs text-center"
+              @click.stop
+            >
+              <div class="text-base font-semibold text-gray-900">Pure H5 popup</div>
+              <div class="text-xs text-gray-500 mt-2 leading-relaxed">
+                Leave the page with this open. When you come back it is gone, because the
+                document was reloaded behind the scenes.
+              </div>
+              <button
+                class="mt-4 w-full py-2 rounded-lg bg-surface-100 hover:bg-surface-200 text-sm text-gray-700"
+                @click="popupOpen = false"
+              >
+                Close
+              </button>
             </div>
           </div>
         </template>
@@ -448,6 +574,7 @@ const {
   demoNavigateBack,
   demoSwitchTab,
   demoRedirectTo,
+  bumpLogicCounter,
   showToastWithParams,
   hideToast,
   showModalWithParams,
@@ -474,6 +601,16 @@ const {
 
 const currentType = computed(() => data.currentType ?? 'navigation');
 const pageStack = computed(() => data.pageStack ?? []);
+const instanceTag = computed(() => data.instanceTag ?? '');
+const previousInstanceTag = computed(() => data.previousInstanceTag ?? '');
+const logicCounter = computed(() => data.logicCounter ?? 0);
+const events = computed<string[]>(() => data.events ?? []);
+// View-local state: never leaves the WebView, so only a document reload
+// (a fresh instance) clears it.
+const viewCounter = ref(0);
+const popupOpen = ref(false);
+interface UiStackEntry { index: number; name: string; current: boolean }
+const reversedPageStack = computed<UiStackEntry[]>(() => [...pageStack.value].reverse());
 const modalResult = computed(() => data.modalResult ?? null);
 const toastIcon = computed(() => data.toastIcon ?? 'success');
 const toastIconLabel = computed(() => data.toastIconLabel ?? 'Success');

@@ -39,10 +39,21 @@ function isSurfaceNotSupported(error: unknown): boolean {
   );
 }
 
+const LAST_INSTANCE_TAG_KEY = "lifecycle:lastInstanceTag";
+const MAX_EVENTS = 8;
+
+function newInstanceTag() {
+  return Math.random().toString(16).slice(2, 6).toUpperCase();
+}
+
 Page({
   data: {
     currentType: "navigation",
     pageStack: [],
+    instanceTag: "",
+    previousInstanceTag: "",
+    logicCounter: 0,
+    events: [] as string[],
     modalResult: null,
     toastIcon: "success",
     toastIconLabel: "Success",
@@ -88,6 +99,25 @@ Page({
     // Update page stack immediately
     this._updatePageStack();
     this._syncAppearance();
+
+    // Instance identity: a fresh tag per entry proves that leaving ends the
+    // instance. The previous tag is mirrored through app-scoped storage,
+    // which survives the reset.
+    const tag = newInstanceTag();
+    this.setData({ instanceTag: tag });
+    this._record("onLoad");
+    const storage = lx.getStorage();
+    storage
+      .get(LAST_INSTANCE_TAG_KEY)
+      .then((previous) => {
+        this.setData({ previousInstanceTag: (previous as string) || "—" });
+        return storage.set(LAST_INSTANCE_TAG_KEY, tag);
+      })
+      .catch((err) => console.warn("[UI] instance tag storage failed", err));
+  },
+
+  onReady: function () {
+    this._record("onReady");
   },
 
   onShow: function () {
@@ -95,6 +125,28 @@ Page({
     // Update page stack every time page shows
     this._updatePageStack();
     this._syncAppearance();
+    this._record("onShow");
+  },
+
+  onHide: function () {
+    this._record("onHide");
+  },
+
+  onUnload: function () {
+    this._record("onUnload");
+  },
+
+  bumpLogicCounter: function () {
+    this.setData({ logicCounter: this.data.logicCounter + 1 });
+  },
+
+  // The log lives in `data`, so it only ever shows the current instance's
+  // events — hide/show repeat within one instance, unload ends it.
+  _record: function (event: string) {
+    const stamp = new Date().toLocaleTimeString();
+    this.setData({
+      events: [...this.data.events, `${stamp}  ${event}`].slice(-MAX_EVENTS),
+    });
   },
 
   // Appearance is part of Page Chrome: the lxapp picks its own light/dark branch
@@ -122,10 +174,12 @@ Page({
   _updatePageStack: function () {
     try {
       const pages = getCurrentPages();
+      const top = pages.length - 1;
       const pageStack = pages.map((page, index) => ({
-        index: index,
-        route: page.route || "unknown",
-        options: page.options || {},
+        index,
+        name: ((page.route || "unknown").split("pages/")[1] || page.route || "unknown")
+          .replace(/\/index\.\w+$/, ""),
+        current: index === top,
       }));
 
       this.setData({
@@ -140,10 +194,15 @@ Page({
     console.log("UI page onHide");
   },
 
-  // Push a genuinely different page: a route already on the stack is
-  // rejected, because one path is one page instance.
+  // Push THIS page again: every entry is its own instance, so the stack
+  // drills as deep as the 10-entry cap allows.
   demoNavigateTo: async function () {
-    await lx.navigateTo({ page: "lifecycle" });
+    try {
+      await lx.navigateTo({ page: "ui", query: { type: "navigation" } });
+    } catch (err) {
+      lx.showToast({ title: "Page stack is full (10)", icon: "error", duration: 1800 });
+      console.warn("[UI] navigateTo rejected", err);
+    }
   },
 
   demoNavigateBack: async function () {

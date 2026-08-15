@@ -84,7 +84,7 @@ interface ResetDemoState {
 async function resetDemoState(app: LxAppDriver): Promise<ResetDemoState | null> {
   return app.eval({
     script: `
-      const page = getCurrentPages().find((candidate) => candidate.route.includes('/lifecycle/'));
+      const page = getCurrentPages().find((candidate) => candidate.route.includes('/ui/'));
       return page
         ? {
             instanceTag: page.data.instanceTag ?? '',
@@ -97,9 +97,9 @@ async function resetDemoState(app: LxAppDriver): Promise<ResetDemoState | null> 
 }
 
 async function enterResetDemo(app: LxAppDriver): Promise<ResetDemoState> {
-  await app.nav.to({ page: 'lifecycle' });
-  await waitForCurrentPage(app, 'lifecycle');
-  await app.page.waitFor({ page: 'lifecycle', css: '[data-testid="lifecycle-page"]' });
+  await app.nav.to({ page: 'ui' });
+  await waitForCurrentPage(app, 'ui');
+  await app.page.waitFor({ page: 'ui', css: '[data-testid="ui-navigate-to"]' });
   const state = await eventually(resetDemoState.bind(null, app), (
     candidate,
   ) => candidate !== null
@@ -113,7 +113,7 @@ async function enterResetDemo(app: LxAppDriver): Promise<ResetDemoState> {
 
 const waitForViewCounter = (app: LxAppDriver, expected: string) => waitForElementText(
   app,
-  'lifecycle',
+  'ui',
   '[data-testid="lifecycle-view-counter"]',
   (text) => text.trim() === expected,
 );
@@ -138,10 +138,10 @@ contract({
   expect(first.logicCounter).toBe(0);
 
   // Dirty both layers plus the DOM.
-  await app.page.click({ page: 'lifecycle', css: '[data-testid="lifecycle-bump-logic"]' });
-  await app.page.click({ page: 'lifecycle', css: '[data-testid="lifecycle-bump-view"]' });
-  await app.page.click({ page: 'lifecycle', css: '[data-testid="lifecycle-open-popup"]' });
-  await app.page.waitFor({ page: 'lifecycle', css: '[data-testid="lifecycle-popup"]' });
+  await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-logic"]' });
+  await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-view"]' });
+  await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-open-popup"]' });
+  await app.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-popup"]' });
   await eventually(resetDemoState.bind(null, app), (
     candidate,
   ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });
@@ -161,7 +161,7 @@ contract({
   await waitForViewCounter(app, '0');
 
   const popup = await app.page.query({
-    page: 'lifecycle',
+    page: 'ui',
     css: '[data-testid="lifecycle-popup"]',
   });
   expect(popup.exists).toBe(false);
@@ -183,7 +183,7 @@ contract({
   const topDemoState = async (): Promise<ResetDemoState | null> => app.eval({
     script: `
       const page = getCurrentPages().at(-1);
-      return page && page.route.includes('/lifecycle/')
+      return page && page.route.includes('/ui/')
         ? {
             instanceTag: page.data.instanceTag ?? '',
             previousInstanceTag: page.data.previousInstanceTag ?? '',
@@ -200,19 +200,19 @@ contract({
 
   await app.nav.relaunch({ page: 'home' });
   await waitForCurrentPage(app, 'home');
-  await app.nav.to({ page: 'lifecycle' });
-  await waitForCurrentPage(app, 'lifecycle');
+  await app.nav.to({ page: 'ui' });
+  await waitForCurrentPage(app, 'ui');
   const first = await waitForTopDemo();
   if (first === null) throw new Error('first drill-down entry left the stack');
 
   // Distinguish the first instance before drilling deeper.
-  await app.page.click({ page: 'lifecycle', css: '[data-testid="lifecycle-bump-logic"]' });
+  await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-logic"]' });
   await eventually(topDemoState, (
     candidate,
   ) => candidate?.logicCounter === 1, { describe: 'first instance counter to reach 1' });
 
   // Same route again: a second, independent live instance.
-  await app.nav.to({ page: 'lifecycle' });
+  await app.nav.to({ page: 'ui' });
   const second = await eventually(topDemoState, (
     candidate,
   ) => candidate !== null && candidate.instanceTag !== ''
@@ -225,7 +225,7 @@ contract({
   const stack = await app.eval({
     script: 'return getCurrentPages().map((page) => page.route);',
   }) as string[];
-  expect(stack.filter((route) => route.includes('/lifecycle/')).length).toBe(2);
+  expect(stack.filter((route) => route.includes('/ui/')).length).toBe(2);
 
   // Unwinding lands on the first instance with its own state intact.
   await app.nav.back();
@@ -274,7 +274,7 @@ contract({
     async () => {
       const state = await app.eval({
         script: `
-          const page = getCurrentPages().find((candidate) => candidate.route.includes('/lifecycle/'));
+          const page = getCurrentPages().find((candidate) => candidate.route.includes('/ui/'));
           return page ? page.data.events ?? [] : null;
         `,
       }) as string[] | null;
@@ -316,8 +316,8 @@ contract({
   await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
 
   const parked = await app.page.query({
-    page: 'lifecycle',
-    css: '[data-testid="lifecycle-page"]',
+    page: 'ui',
+    css: '[data-testid="ui-navigate-to"]',
   });
   expect(parked.exists).toBe(false);
 
@@ -343,7 +343,7 @@ contract({
   await waitForCurrentPage(app, 'home');
 
   const first = await enterResetDemo(app);
-  await app.page.click({ page: 'lifecycle', css: '[data-testid="lifecycle-bump-logic"]' });
+  await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-logic"]' });
   await eventually(resetDemoState.bind(null, app), (
     candidate,
   ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });
@@ -355,7 +355,7 @@ contract({
   const stack = await app.eval({
     script: 'return getCurrentPages().map((page) => page.route);',
   }) as string[];
-  expect(stack.some((route) => route.includes('/lifecycle/'))).toBe(false);
+  expect(stack.some((route) => route.includes('/ui/'))).toBe(false);
 
   const second = await enterResetDemo(app);
   expect(second.instanceTag).not.toBe(first.instanceTag);
