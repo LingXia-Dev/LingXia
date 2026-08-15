@@ -255,15 +255,27 @@ private final class SidebarPopoverHoverView: NSView {
     }
 }
 
+/// The collapsed rail's hover panel. An icon-only switcher carries no text, so
+/// hovering always names it; when the switcher is an lxapp with a visible
+/// tabBar, the panel also lists its pages — while the sidebar is a rail, this
+/// is the only way to reach them.
 @MainActor
-private final class SidebarRailTabPopoverViewController: NSViewController {
+private final class SidebarRailHoverPopoverViewController: NSViewController {
     private enum Layout {
         static let width: CGFloat = 188
+        static let labelOnlyMinWidth: CGFloat = 72
+        static let labelOnlyMaxWidth: CGFloat = 260
         static let inset: CGFloat = 8
         static let spacing: CGFloat = 2
+        static let titleSpacing: CGFloat = 6
     }
 
-    private let appId: String
+    /// Owns the tabBar data and the item rows.
+    private let providerAppId: String?
+    /// Identifies the switcher to the shell; a managed main's surface id is not
+    /// the lxapp id that provides its pages.
+    private let selectionAppId: String
+    private let label: String
     private let items: [TabBarItem]
     private let selectedIndex: Int
 
@@ -271,8 +283,16 @@ private final class SidebarRailTabPopoverViewController: NSViewController {
     var onDismissRequested: (() -> Void)?
     var onHoverChanged: ((Bool) -> Void)?
 
-    init(appId: String, items: [TabBarItem], selectedIndex: Int) {
-        self.appId = appId
+    init(
+        selectionAppId: String,
+        providerAppId: String?,
+        label: String,
+        items: [TabBarItem],
+        selectedIndex: Int
+    ) {
+        self.selectionAppId = selectionAppId
+        self.providerAppId = providerAppId
+        self.label = label
         self.items = items
         self.selectedIndex = selectedIndex
         super.init(nibName: nil, bundle: nil)
@@ -297,18 +317,32 @@ private final class SidebarRailTabPopoverViewController: NSViewController {
         stack.spacing = Layout.spacing
         rootView.addSubview(stack)
 
+        let titleLabel = NSTextField(labelWithString: label)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.font = .systemFont(ofSize: 12, weight: items.isEmpty ? .regular : .semibold)
+        titleLabel.textColor = items.isEmpty
+            ? LxAppHostTheme.foreground
+            : LxAppHostTheme.mutedForeground
+        // Browser switchers label themselves as "title\nurl"; keep both lines.
+        titleLabel.lineBreakMode = .byTruncatingTail
+        titleLabel.maximumNumberOfLines = 2
+        stack.addArrangedSubview(titleLabel)
+
         for (index, item) in items.enumerated() {
-            let itemView = SidebarItemView(appId: appId, itemIndex: index)
+            let itemView = SidebarItemView(appId: providerAppId ?? selectionAppId, itemIndex: index)
             itemView.translatesAutoresizingMaskIntoConstraints = false
             itemView.configure(item: item)
             itemView.isSelected = (index == selectedIndex)
             itemView.onClick = { [weak self] selectedIndex in
                 guard let self else { return }
-                self.onPageSelected?(self.appId, selectedIndex)
+                self.onPageSelected?(self.selectionAppId, selectedIndex)
                 self.onDismissRequested?()
             }
             stack.addArrangedSubview(itemView)
             itemView.widthAnchor.constraint(equalToConstant: Layout.width - (Layout.inset * 2)).isActive = true
+        }
+        if !items.isEmpty {
+            stack.setCustomSpacing(Layout.titleSpacing, after: titleLabel)
         }
 
         NSLayoutConstraint.activate([
@@ -318,11 +352,20 @@ private final class SidebarRailTabPopoverViewController: NSViewController {
             stack.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -Layout.inset),
         ])
 
+        let titleHeight = titleLabel.intrinsicContentSize.height
         let itemHeight = CGFloat(items.count) * SidebarItemView.Layout.height
-        let spacingHeight = CGFloat(max(0, items.count - 1)) * Layout.spacing
+        let spacingHeight = CGFloat(items.count) * Layout.spacing
+        let width = items.isEmpty
+            ? min(
+                max(titleLabel.intrinsicContentSize.width + Layout.inset * 2, Layout.labelOnlyMinWidth),
+                Layout.labelOnlyMaxWidth
+            )
+            : Layout.width
         preferredContentSize = NSSize(
-            width: Layout.width,
-            height: itemHeight + spacingHeight + (Layout.inset * 2)
+            width: width,
+            height: titleHeight + itemHeight + spacingHeight
+                + (items.isEmpty ? 0 : Layout.titleSpacing - Layout.spacing)
+                + (Layout.inset * 2)
         )
         view = rootView
     }
@@ -529,7 +572,9 @@ class SidebarView: NSView, NSPopoverDelegate {
     private var railButtons: [String: NSButton] = [:]
     private var railTabPopover: NSPopover?
     private weak var railTabPopoverButton: NSButton?
-    private var railTabPopoverAppId: String?
+    /// Identifies which rail icon the hover panel belongs to, so re-entering the
+    /// same icon keeps the open panel instead of rebuilding it.
+    private var railPopoverKey: String?
     private var railTabPopoverDismissTask: Task<Void, Never>?
     private var isRailTabPopoverHovered = false
 
@@ -1144,10 +1189,22 @@ class SidebarView: NSView, NSPopoverDelegate {
                     self?.closeRailTabPopover()
                     self?.onAppCloseRequested?(group.appId)
                 }
+                // Same gate as the expanded group: a managed main only offers
+                // its pages when it actually hosts an lxapp, and the tabBar
+                // belongs to that lxapp, not to the surface.
+                let tabProviderAppId = !group.isManagedMain || group.showsLxappTabBar
+                    ? (group.contentAppId ?? group.appId)
+                    : nil
                 railButton.onHoverChanged = { [weak self, weak railButton] hovering in
                     guard let self, let railButton else { return }
-                    if hovering && !group.isManagedMain {
-                        self.showRailTabPopover(appId: group.appId, relativeTo: railButton)
+                    if hovering {
+                        self.showRailHoverPopover(
+                            key: key,
+                            label: tooltip,
+                            selectionAppId: group.appId,
+                            tabProviderAppId: tabProviderAppId,
+                            relativeTo: railButton
+                        )
                     } else {
                         self.scheduleRailTabPopoverDismiss()
                     }
@@ -1173,9 +1230,6 @@ class SidebarView: NSView, NSPopoverDelegate {
                 railButton.onCloseRequested = { [weak self] in
                     self?.closeRailTabPopover()
                     self?.onBrowserTabCloseRequested?(item.id)
-                }
-                railButton.onHoverChanged = { [weak self] hovering in
-                    if hovering { self?.closeRailTabPopover() }
                 }
                 railButton.onContextMenuRequested = { [weak self] event, button in
                     guard let menu = self?.browserContextMenu(for: item.id) else { return }
@@ -1242,10 +1296,27 @@ class SidebarView: NSView, NSPopoverDelegate {
         btn.wantsLayer = true
         btn.layer?.cornerRadius = 8
         btn.layer?.backgroundColor = NSColor.clear.cgColor
-        btn.toolTip = tooltip
+        // No `toolTip`: the hover panel below is the label, and the system
+        // tooltip would arrive later and repeat it.
         btn.setAccessibilityLabel(tooltip)
         btn.target = self
         btn.identifier = NSUserInterfaceItemIdentifier(key)
+        // Every icon-only switcher names itself on hover; the app-group rows
+        // replace this with a panel that also carries their pages.
+        btn.onHoverChanged = { [weak self, weak btn] hovering in
+            guard let self, let btn else { return }
+            if hovering {
+                self.showRailHoverPopover(
+                    key: key,
+                    label: tooltip,
+                    selectionAppId: key,
+                    tabProviderAppId: nil,
+                    relativeTo: btn
+                )
+            } else {
+                self.scheduleRailTabPopoverDismiss()
+            }
+        }
         if let image {
             let copy = image.copy() as? NSImage ?? image
             copy.size = NSSize(width: Layout.railIconSize, height: Layout.railIconSize)
@@ -1444,29 +1515,43 @@ class SidebarView: NSView, NSPopoverDelegate {
         onBrowserTabCloseTabsBelowRequested?(id)
     }
 
-    private func showRailTabPopover(appId: String, relativeTo button: NSButton) {
-        guard isCompact, !button.isHidden, let tabBar = getTabBar(appId) else {
-            closeRailTabPopover()
-            return
-        }
-        let items = tabBar.getItems(appId: appId)
-        guard !items.isEmpty else {
+    /// Hover affordance for one collapsed-rail icon. `tabProviderAppId` is the
+    /// lxapp whose tabBar the panel should offer, or nil for a switcher that
+    /// only needs its name.
+    private func showRailHoverPopover(
+        key: String,
+        label: String,
+        selectionAppId: String,
+        tabProviderAppId: String?,
+        relativeTo button: NSButton
+    ) {
+        let label = label.isEmpty ? selectionAppId : label
+        guard isCompact, !button.isHidden, button.window != nil else {
             closeRailTabPopover()
             return
         }
 
+        var items: [TabBarItem] = []
+        var selectedIndex = 0
+        if let tabProviderAppId, let tabBar = getTabBar(tabProviderAppId), tabBar.is_visible {
+            items = tabBar.getItems(appId: tabProviderAppId)
+            selectedIndex = Int(tabBar.selected_index)
+        }
+
         railTabPopoverDismissTask?.cancel()
-        if railTabPopoverAppId == appId, railTabPopover?.isShown == true {
+        if railPopoverKey == key, railTabPopover?.isShown == true {
             railTabPopoverButton = button
             return
         }
 
         closeRailTabPopover()
 
-        let content = SidebarRailTabPopoverViewController(
-            appId: appId,
+        let content = SidebarRailHoverPopoverViewController(
+            selectionAppId: selectionAppId,
+            providerAppId: tabProviderAppId,
+            label: label,
             items: items,
-            selectedIndex: Int(tabBar.selected_index)
+            selectedIndex: selectedIndex
         )
         content.onPageSelected = { [weak self] appId, index in
             self?.onAppPageSelected?(appId, index)
@@ -1485,13 +1570,15 @@ class SidebarView: NSView, NSPopoverDelegate {
         }
 
         let popover = NSPopover()
-        popover.behavior = .semitransient
-        popover.animates = true
+        // Hover-owned: our own exit tracking dismisses it. A transient popover
+        // would swallow the click that re-selects the icon it is anchored to.
+        popover.behavior = .applicationDefined
+        popover.animates = false
         popover.contentViewController = content
         popover.delegate = self
 
         railTabPopover = popover
-        railTabPopoverAppId = appId
+        railPopoverKey = key
         railTabPopoverButton = button
         isRailTabPopoverHovered = false
         popover.show(relativeTo: button.bounds.insetBy(dx: -4, dy: -4), of: button, preferredEdge: .maxX)
@@ -1518,7 +1605,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         railTabPopoverDismissTask?.cancel()
         railTabPopoverDismissTask = nil
         isRailTabPopoverHovered = false
-        railTabPopoverAppId = nil
+        railPopoverKey = nil
         railTabPopoverButton = nil
         railTabPopover?.delegate = nil
         railTabPopover?.close()
@@ -1530,7 +1617,7 @@ class SidebarView: NSView, NSPopoverDelegate {
         railTabPopoverDismissTask?.cancel()
         railTabPopoverDismissTask = nil
         isRailTabPopoverHovered = false
-        railTabPopoverAppId = nil
+        railPopoverKey = nil
         railTabPopoverButton = nil
         railTabPopover = nil
     }
