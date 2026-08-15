@@ -350,22 +350,34 @@ enum LxAppSurface {
             )
         }
 
-        let context = bottomFloatContext(kind: kind, role: role, position: position)
-            ?? surfaceContext(kind: kind)
+        let contentContext = surfaceContext(kind: kind)
+        // A bottom sheet only gains reach, not size: it is still measured
+        // against the page's own frame, then its lower edge drops onto the
+        // device screen so the card and its backdrop cover the tab bar.
+        let bottomBleed = bottomFloatContext(kind: kind, role: role, position: position)
+        let context = bottomBleed ?? contentContext
         if kind != kindWindow && kind != kindPopup {
             LXLog.error("unsupported surface kind=\(kind) id=\(id) app=\(appId)", category: "Surface", appId: appId)
             return false
         }
 
-        let surfaceFrame = windowFrame(
+        var surfaceFrame = windowFrame(
             kind: kind,
             width: width,
             height: height,
             widthRatio: widthRatio,
             heightRatio: heightRatio,
             position: position,
-            containerFrame: context.frame
+            containerFrame: contentContext.frame
         )
+        if let bottomBleed, bottomBleed.frame.minY < surfaceFrame.minY {
+            surfaceFrame = NSRect(
+                x: surfaceFrame.minX,
+                y: bottomBleed.frame.minY,
+                width: surfaceFrame.width,
+                height: surfaceFrame.maxY - bottomBleed.frame.minY
+            )
+        }
         let windowFrame = kind == kindPopup ? context.frame : surfaceFrame
         let window: NSWindow? = makeWindow(kind: kind, frame: windowFrame)
         let windowContent = SurfaceContentView(frame: NSRect(origin: .zero, size: windowFrame.size))
@@ -1254,9 +1266,9 @@ enum LxAppSurface {
         return contextFrame(for: hostAnchorView)
     }
 
-    /// Bottom sheets in the phone Runner extend through opaque shell chrome.
-    /// Keep the content top edge, but use the device screen's lower edge so the
-    /// sheet and its modal backdrop cover the bottom tab bar.
+    /// How far a bottom sheet may reach in the phone Runner: down to the device
+    /// screen's lower edge, so the sheet and its modal backdrop cover the bottom
+    /// tab bar. Card sizing still measures against the content frame.
     private static func bottomFloatContext(
         kind: Int32,
         role: Int32,
