@@ -1026,7 +1026,8 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         .filter(|tabbar| {
             tabbar.visible
                 && tabbar.dimension > 0
-                && (!tabbar.items.is_empty()
+                && (!tabbar.group_target_id.trim().is_empty()
+                    || !tabbar.items.is_empty()
                     || !tabbar.auxiliary_items.is_empty()
                     || tabbar.show_auxiliary_add
                     || !tabbar.header_actions.is_empty()
@@ -2883,13 +2884,17 @@ mod scroll_tests {
             layout: WindowsWindowLayout::new(inactive_layout.clone()),
             ..web_state
         };
-        let WindowsChromeHit::Command(inactive_click) = chrome_hit_test(
+        let inactive_hit = chrome_hit_test(
             &inactive_state,
             &inactive_layout,
             center(sidebar_rail_close_rect(web)),
-        )
-        .unwrap() else {
-            panic!("inactive switcher should produce a selection command")
+        );
+        let Some(WindowsChromeHit::CommandWithContext {
+            command: inactive_click,
+            ..
+        }) = inactive_hit
+        else {
+            panic!("inactive switcher should produce a selection command, got {inactive_hit:?}")
         };
         assert_eq!(inactive_click.id, super::command_id::BROWSER_TAB_CLICK);
     }
@@ -3057,7 +3062,7 @@ mod scroll_tests {
         assert!(!phone_browser_bar_active(client, &layout));
         assert!(rects.phone_bar.is_none());
         assert_eq!(rect_height(&rects.top_bar), SHELL_TOP_BAR_HEIGHT);
-        assert_eq!(rects.top_bar.left, 56);
+        assert_eq!(rects.top_bar.left, super::SHELL_SIDEBAR_RAIL_WIDTH);
         assert_eq!(rects.content.bottom, client.bottom - SHELL_CONTENT_INSET);
     }
 
