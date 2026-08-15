@@ -9,6 +9,11 @@ pub(crate) const WM_LINGXIA_COMMAND: u32 = WM_APP + 0x154;
 pub(crate) const WEBVIEW_SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(4);
 const BROWSER_EMULATION_TIMEOUT: Duration = Duration::from_secs(4);
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
+/// Bounds any other synchronous UI command. A healthy WebView UI thread
+/// answers in milliseconds; waiting forever turns one wedged controller into
+/// a permanently blocked caller (page teardown holds a transition guard while
+/// parking the document, so the whole navigation pipeline stalls behind it).
+const UI_COMMAND_TIMEOUT: Duration = Duration::from_secs(10);
 const WEBVIEW_UI_RETIRE_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Default)]
@@ -402,7 +407,7 @@ impl WebViewInner {
         &self,
         command: impl FnOnce(Sender<StdResult<()>>) -> UiCommand,
     ) -> StdResult<()> {
-        self.dispatch_ui(command, None)
+        self.dispatch_ui(command, Some(UI_COMMAND_TIMEOUT))
             .map_err(|err| err.into_webview_error("run synchronous WebView command"))?
     }
 
@@ -414,7 +419,7 @@ impl WebViewInner {
         &self,
         command: impl FnOnce(Sender<StdResult<()>>) -> UiCommand,
     ) -> StdResult<()> {
-        self.dispatch_command_same_thread_safe_with_timeout(command, None)
+        self.dispatch_command_same_thread_safe_with_timeout(command, Some(UI_COMMAND_TIMEOUT))
     }
 
     fn dispatch_command_same_thread_safe_with_timeout(
@@ -569,18 +574,27 @@ impl WebViewInner {
     }
 
     fn dispatch_current_url(&self) -> StdResult<Option<String>> {
-        self.dispatch_ui(|resp| UiCommand::CurrentUrl { resp }, None)
-            .map_err(|err| err.into_webview_error("read current WebView URL"))?
+        self.dispatch_ui(
+            |resp| UiCommand::CurrentUrl { resp },
+            Some(UI_COMMAND_TIMEOUT),
+        )
+        .map_err(|err| err.into_webview_error("read current WebView URL"))?
     }
 
     fn dispatch_list_cookies(&self) -> StdResult<Vec<WebViewCookie>> {
-        self.dispatch_ui(|resp| UiCommand::ListCookies { resp }, None)
-            .map_err(|err| err.into_webview_error("list WebView cookies"))?
+        self.dispatch_ui(
+            |resp| UiCommand::ListCookies { resp },
+            Some(UI_COMMAND_TIMEOUT),
+        )
+        .map_err(|err| err.into_webview_error("list WebView cookies"))?
     }
 
     fn dispatch_network_entries(&self) -> StdResult<NetworkCaptureSnapshot> {
-        self.dispatch_ui(|resp| UiCommand::NetworkEntries { resp }, None)
-            .map_err(|err| err.into_webview_error("read network capture"))?
+        self.dispatch_ui(
+            |resp| UiCommand::NetworkEntries { resp },
+            Some(UI_COMMAND_TIMEOUT),
+        )
+        .map_err(|err| err.into_webview_error("read network capture"))?
     }
 
     /// Invoke a Chrome DevTools Protocol method and return its raw JSON
