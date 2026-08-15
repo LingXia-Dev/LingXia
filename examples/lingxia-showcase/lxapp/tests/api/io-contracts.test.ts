@@ -4,7 +4,7 @@ import { contract } from '../support/contract.js';
 contract({
   id: 'LOGIC-005',
   title: 'reject storage and file operations on invalid inputs',
-  covers: ['Storage.set', 'LxFile.text', 'FileSystemApi.stat'],
+  covers: ['Storage.set', 'LxFile.text', 'lx.fs.stat'],
   layer: 'logic',
   levels: ['failure', 'boundary'],
   scope: 'portable',

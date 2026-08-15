@@ -142,8 +142,13 @@ contract({
   id: 'LOGIC-004',
   title: 'round-trip files under lx user cache',
   covers: [
+    'lx.fs',
+    'lx.fs.copy',
+    'lx.fs.exists',
     'lx.fs.file',
     'lx.fs.mkdir',
+    'lx.fs.remove',
+    'lx.fs.rename',
     'lx.fs.write',
     'lx.env.USER_CACHE_PATH',
     'lx.env.USER_DATA_PATH',
