@@ -476,24 +476,23 @@ impl WebViewInner {
     }
 
     fn wake_ui_thread(&self) {
-        let posted = unsafe {
-            WindowsAndMessaging::PostMessageW(
+        unsafe {
+            let _ = WindowsAndMessaging::PostMessageW(
                 Some(hwnd_from_handle(self.native_view)),
                 WM_LINGXIA_COMMAND,
                 WPARAM::default(),
                 LPARAM::default(),
-            )
-            .is_ok()
-        };
-        if !posted {
-            unsafe {
-                let _ = WindowsAndMessaging::PostThreadMessageW(
-                    self.thread_id,
-                    WM_LINGXIA_COMMAND,
-                    WPARAM::default(),
-                    LPARAM::default(),
-                );
-            }
+            );
+            // A retired surface can destroy and quickly reuse the parent HWND
+            // while another Arc still owns this controller. Posting to that
+            // reused handle succeeds on the wrong queue, so always wake the
+            // recorded owner thread as well.
+            let _ = WindowsAndMessaging::PostThreadMessageW(
+                self.thread_id,
+                WM_LINGXIA_COMMAND,
+                WPARAM::default(),
+                LPARAM::default(),
+            );
         }
     }
 
