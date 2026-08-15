@@ -82,6 +82,16 @@ private final class SidebarRailButton: NSButton {
         )
         addTrackingArea(area)
         trackingArea = area
+        // The rail rebuilds on every selection change, so the button under a
+        // stationary cursor is replaced without ever getting `mouseEntered`.
+        // Seed the state instead of waiting for the pointer to move.
+        if let window, window.isKeyWindow {
+            let inside = bounds.contains(convert(window.mouseLocationOutsideOfEventStream, from: nil))
+            if inside != hovered {
+                hovered = inside
+                needsDisplay = true
+            }
+        }
     }
 
     override func mouseEntered(with event: NSEvent) {
@@ -98,7 +108,9 @@ private final class SidebarRailButton: NSButton {
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if closable, closeHitRect.contains(point) {
+        // Only while the badge is actually painted: an invisible hit target
+        // would close the switcher on what looks like a plain re-select click.
+        if hovered, closable, closeHitRect.contains(point) {
             onCloseRequested?()
             return
         }
@@ -109,11 +121,14 @@ private final class SidebarRailButton: NSButton {
         super.draw(dirtyRect)
         guard hovered, closable else { return }
 
+        // The chip has to fully hide the icon it replaces, so it stays wider
+        // than the rendered icon; anything smaller leaves a ring of favicon
+        // around the cross.
         let indicator = closeHitRect.insetBy(dx: 1.5, dy: 1.5)
         LxAppHostTheme.surfaceBackground.setFill()
         NSBezierPath(roundedRect: indicator, xRadius: 6, yRadius: 6).fill()
 
-        let inset: CGFloat = 4
+        let inset: CGFloat = 7
         let mark = indicator.insetBy(dx: inset, dy: inset)
         let path = NSBezierPath()
         path.lineWidth = 1.5
@@ -127,11 +142,12 @@ private final class SidebarRailButton: NSButton {
     }
 
     private var closeHitRect: NSRect {
-        NSRect(
-            x: bounds.midX - 12,
-            y: bounds.midY - 12,
-            width: 24,
-            height: 24
+        let size = SidebarView.Layout.railCloseBadgeSize
+        return NSRect(
+            x: bounds.midX - size / 2,
+            y: bounds.midY - size / 2,
+            width: size,
+            height: size
         )
     }
 
@@ -419,6 +435,10 @@ class SidebarView: NSView, NSPopoverDelegate {
         static let railButtonSize: CGFloat = 34
         /// Rendered icon size inside a rail button.
         static let railIconSize: CGFloat = 22
+        /// Close chip overlaid on the active rail switcher. Wider than
+        /// `railIconSize` so it covers the icon, narrower than
+        /// `railButtonSize` so the tile edge still re-selects.
+        static let railCloseBadgeSize: CGFloat = railIconSize + 6
         // Reserve only the shared traffic-light / toolbar row; the titlebar offset is
         // already handled by `buttonCenterYFromTop`.
         static let trafficLightsHeight: CGFloat = 38
