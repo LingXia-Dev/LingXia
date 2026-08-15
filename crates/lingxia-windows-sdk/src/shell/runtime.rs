@@ -5615,10 +5615,13 @@ fn non_empty(value: Option<&str>) -> Option<String> {
 #[cfg(feature = "shell-chrome")]
 pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
     let app = lxapp::try_get(appid)?;
-    let path = app
-        .peek_current_page()
-        .unwrap_or_else(|| app.initial_route());
-    let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
+    // Page webtags are per-instance; resolve the live instance instead of
+    // reconstructing a tag from the route.
+    let webtag = app
+        .current_page()
+        .ok()
+        .map(|page| page.webtag())
+        .or_else(|| app.get_page(&app.initial_route()).map(|page| page.webtag()))?;
     match lingxia_windows_contract::webview_window_snapshot(&webtag) {
         Ok(snapshot) => Some(snapshot.window_id as isize),
         Err(err) => {

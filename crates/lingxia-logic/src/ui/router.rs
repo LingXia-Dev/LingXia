@@ -104,18 +104,13 @@ async fn navigate_with_url(
     wait_ready: bool,
 ) -> Result<(), LxAppError> {
     let current_path = current_page_path(&lxapp)?;
-    let target_page = lxapp.get_or_create_page(&target_url);
-
-    if wait_ready && nav_type != NavigationType::Launch {
-        target_page
-            .wait_webview_ready()
-            .await
-            .map_err(LxAppError::WebView)?;
-    }
 
     if let Some(page) = lxapp.get_page(&current_path) {
-        let target_page = page.navigate_to(target_page, nav_type)?;
-        if wait_ready && nav_type == NavigationType::Launch {
+        // Resolution belongs to navigate_to_url: pre-resolving here would
+        // overwrite the query of a same-route instance already on the stack
+        // and wait on the wrong instance's readiness.
+        let target_page = page.navigate_to_url(&target_url, nav_type)?;
+        if wait_ready {
             target_page
                 .wait_webview_ready()
                 .await

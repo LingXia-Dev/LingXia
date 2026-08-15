@@ -118,7 +118,7 @@ pub fn unregister_app_handler(
 /// Register a page-scoped handler (page_path required).
 pub fn register_page_handler(
     ctx: &JSContext,
-    page_path: &str,
+    page_instance_id: &str,
     event_name: &str,
     callback: JSFunc,
 ) -> JSResult<()> {
@@ -128,19 +128,12 @@ pub fn register_page_handler(
             "event_name is required",
         )));
     }
-    if page_path.trim().is_empty() {
+    if page_instance_id.trim().is_empty() {
         return Err(RongJSError::from(HostError::new(
             rong::error::E_INTERNAL,
-            "page_path is required",
+            "page_instance_id is required",
         )));
     }
-
-    let instance_id = resolve_page_instance_id(ctx, page_path).ok_or_else(|| {
-        RongJSError::from(HostError::new(
-            rong::error::E_NOT_FOUND,
-            format!("no live page instance for path {page_path}"),
-        ))
-    })?;
 
     let entry = HandlerEntry {
         event_name: event_name.to_string(),
@@ -151,30 +144,18 @@ pub fn register_page_handler(
     registry
         .handlers
         .borrow_mut()
-        .entry(Scope::PageInstance(instance_id))
+        .entry(Scope::PageInstance(page_instance_id.to_string()))
         .or_default()
         .push(entry);
     Ok(())
 }
 
-/// Resolve a route path to the current live instance id for that route.
-/// Handlers register from the page's own Logic after its entry pushed it, so
-/// the topmost instance on the route is the registering instance.
-fn resolve_page_instance_id(ctx: &JSContext, page_path: &str) -> Option<String> {
-    let lxapp = crate::LxApp::from_ctx(ctx).ok()?;
-    lxapp
-        .get_page(page_path)
-        .map(|page| page.instance_id_string())
-}
-
 /// Unregister page-scoped handlers for a given page + event (removes all matching).
-pub fn unregister_page_handler(ctx: &JSContext, page_path: &str, event_name: &str) {
-    if page_path.trim().is_empty() || event_name.trim().is_empty() {
+pub fn unregister_page_handler(ctx: &JSContext, page_instance_id: &str, event_name: &str) {
+    if page_instance_id.trim().is_empty() || event_name.trim().is_empty() {
         return;
     }
-    let Some(instance_id) = resolve_page_instance_id(ctx, page_path) else {
-        return;
-    };
+    let instance_id = page_instance_id.to_string();
     let registry = registry(ctx);
     registry.handlers.borrow_mut().retain(|scope, entries| {
         if let Scope::PageInstance(id) = scope

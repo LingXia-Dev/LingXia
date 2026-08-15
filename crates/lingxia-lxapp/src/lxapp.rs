@@ -1227,8 +1227,8 @@ impl LxApp {
     }
 
     /// Rebuilds a torn-down page for the entry now standing on it: a fresh
-    /// Logic service first — created with `None` so it re-registers under
-    /// both the path and the instance id — then the document, so the new
+    /// Logic service first — bound to this instance id — then the document,
+    /// so the new
     /// document's handshake finds the new service.
     ///
     /// The returned receiver resolves as soon as the service is registered;
@@ -2365,6 +2365,11 @@ impl LxApp {
                 self.executor
                     .terminate_page_svc(self.clone_arc(), page.path(), Some(id.clone()));
             state.pages_by_id.lock().unwrap().remove(id.as_str());
+            // A failed setup can land after the entry pushed the instance; a
+            // dangling stack slot would wedge current_page() and navigation.
+            if let Ok(mut stack) = state.page_stack.lock() {
+                stack.retain(|entry| entry != &id);
+            }
             if let Ok(mut pins) = state.path_pins.lock() {
                 pins.retain(|_, pinned| pinned != &id);
             }

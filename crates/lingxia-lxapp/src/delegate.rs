@@ -250,19 +250,25 @@ impl LxAppDelegate for LxApp {
     }
 
     fn on_page_show(self: &Arc<Self>, path: String) {
-        // Platform containers may report the path straight off a webview,
-        // which carries `#instance#session` suffixes on per-instance tags.
-        let path = path
+        // Platform containers report either a bare route path or the
+        // webview's tag-derived identity (`path#instance[#session]`). When
+        // the instance segment is present, resolve by it — a route can have
+        // several live instances.
+        let reported = path;
+        let mut segments = reported
             .split('?')
             .next()
-            .and_then(|path| path.split('#').next())
-            .unwrap_or(&path)
-            .to_string();
-        // Get the existing page - it should already exist when show is called
-        let page = match self.get_page(&path) {
+            .unwrap_or(reported.as_str())
+            .split('#');
+        let path = segments.next().unwrap_or(reported.as_str()).to_string();
+        let instance_id = segments.next().filter(|segment| !segment.is_empty());
+        let page = match instance_id
+            .and_then(|id| self.get_page_by_instance_id_str(id))
+            .or_else(|| self.get_page(&path))
+        {
             Some(page) => page,
             None => {
-                error!("PageInstance not found when showing: {}", path)
+                error!("PageInstance not found when showing: {}", reported)
                     .with_appid(self.appid.clone())
                     .with_path(path.clone());
                 return;
