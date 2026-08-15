@@ -10,6 +10,23 @@ pub(crate) const WEBVIEW_SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(4);
 const BROWSER_EMULATION_TIMEOUT: Duration = Duration::from_secs(4);
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
 
+static WEBVIEW_UI_LIFECYCLE_LOCKS: OnceLock<Mutex<HashMap<String, std::sync::Weak<Mutex<()>>>>> =
+    OnceLock::new();
+
+fn webview_ui_lifecycle_lock(webtag_key: &str) -> Arc<Mutex<()>> {
+    let locks = WEBVIEW_UI_LIFECYCLE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut locks = locks
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    locks.retain(|_, lock| lock.strong_count() > 0);
+    if let Some(lock) = locks.get(webtag_key).and_then(std::sync::Weak::upgrade) {
+        return lock;
+    }
+    let lock = Arc::new(Mutex::new(()));
+    locks.insert(webtag_key.to_string(), Arc::downgrade(&lock));
+    lock
+}
+
 pub(crate) enum UiCommand {
     LoadUrl {
         url: String,
@@ -795,6 +812,15 @@ pub(crate) fn run_ui_thread(
     effective_options: EffectiveWebViewCreateOptions,
     startup_tx: Sender<StdResult<WebViewStartup>>,
 ) -> StdResult<()> {
+    // A relaunch can reuse a WebTag as soon as the retired instance leaves the
+    // registry, while its WebView2 UI thread is still closing the controller.
+    // Keep native lifetimes for one tag disjoint: overlapping controllers can
+    // wedge the replacement's message loop and leave it permanently unready.
+    let lifecycle_lock = webview_ui_lifecycle_lock(webtag.key());
+    let _lifecycle_guard = lifecycle_lock
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
     unsafe {
         // OleInitialize = CoInitializeEx(STA) + OLE (clipboard/drag-drop);
         // composition hosting registers the surface window as a drop target.
@@ -1502,8 +1528,23 @@ fn set_content_geometry(
 
 #[cfg(test)]
 mod tests {
-    use super::{UiDispatchError, map_eval_dispatch_error, should_update_parent};
+    use super::{
+        UiDispatchError, map_eval_dispatch_error, should_update_parent, webview_ui_lifecycle_lock,
+    };
     use crate::WebViewScriptError;
+
+    #[test]
+    fn same_tag_ui_lifetimes_share_a_gate() {
+        let first = webview_ui_lifecycle_lock("lifecycle-test:same-tag");
+        let second = webview_ui_lifecycle_lock("lifecycle-test:same-tag");
+        let other = webview_ui_lifecycle_lock("lifecycle-test:other-tag");
+
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+        assert!(!std::sync::Arc::ptr_eq(&first, &other));
+        let _guard = first.lock().unwrap();
+        assert!(second.try_lock().is_err());
+        assert!(other.try_lock().is_ok());
+    }
 
     #[test]
     fn composition_rechecks_a_reused_parent_handle() {

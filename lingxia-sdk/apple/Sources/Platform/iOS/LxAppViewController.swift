@@ -562,8 +562,6 @@ final class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func attachWebViewToUI(webView: WKWebView, for appId: String, path: String) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-        }
         // Check if WebView is already properly attached
         if webView.superview == rootContainer && !webView.isHidden {
             // WebView is already attached and visible, just ensure it's configured
