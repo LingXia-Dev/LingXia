@@ -1,8 +1,9 @@
 use crate::I18nKey;
 use lingxia_platform::error::PlatformError;
 use lxapp::LxAppError;
-use rong::{HostError, RongJSError};
+use rong::{HostError, RongJSError, error::ErrorData};
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 /// Normalize locale string to use hyphens instead of underscores
 ///
@@ -103,6 +104,30 @@ fn host_error_with_business_meta(
     }
 
     HostError::new(host_code, message).with_data(rong::err_data!({ bizCode: (biz_code) }))
+}
+
+fn error_data_from_json(value: &Value) -> ErrorData {
+    match value {
+        Value::Null => ErrorData::Null,
+        Value::Bool(value) => ErrorData::Bool(*value),
+        Value::Number(value) => {
+            if let Some(value) = value.as_i64() {
+                ErrorData::from(value)
+            } else if let Some(value) = value.as_u64() {
+                ErrorData::from(value)
+            } else {
+                ErrorData::from(value.as_f64().unwrap_or_default())
+            }
+        }
+        Value::String(value) => ErrorData::String(value.clone()),
+        Value::Array(values) => ErrorData::Array(values.iter().map(error_data_from_json).collect()),
+        Value::Object(values) => ErrorData::Object(
+            values
+                .iter()
+                .map(|(key, value)| (key.clone(), error_data_from_json(value)))
+                .collect::<BTreeMap<_, _>>(),
+        ),
+    }
 }
 
 pub fn host_error_from_business_code(code: u32) -> HostError {
@@ -217,6 +242,13 @@ pub fn host_error_from_lxapp_error(error: &LxAppError) -> HostError {
     let code = business_code_from_lxapp_error(error);
 
     log::warn!("Mapped LxAppError to business code {}: {}", code, error);
+    if let LxAppError::RongJSHost {
+        data: Some(data), ..
+    } = error
+    {
+        return HostError::new(host_error_kind_for_code(code), err_code_message(code))
+            .with_data(error_data_from_json(data));
+    }
     host_error_with_business_meta(
         host_error_kind_for_code(code),
         err_code_message(code),
@@ -258,4 +290,37 @@ pub fn host_error_from_platform_error(error: &PlatformError) -> HostError {
 
 pub fn js_error_from_platform_error(error: &PlatformError) -> RongJSError {
     host_error_from_platform_error(error).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lxapp_host_errors_keep_structured_navigation_metadata() {
+        let error = LxAppError::RongJSHost {
+            code: "E_INVALID_ARG".to_string(),
+            message: "duplicate route".to_string(),
+            data: Some(serde_json::json!({
+                "bizCode": 1002,
+                "detail": "duplicate route",
+                "reason": "duplicate_route",
+                "operation": "navigateTo",
+                "target": "pages/home",
+            })),
+        };
+
+        let host = host_error_from_lxapp_error(&error);
+        let ErrorData::Object(data) = host.data.unwrap() else {
+            panic!("expected structured error metadata");
+        };
+        assert_eq!(
+            data.get("reason").and_then(ErrorData::as_str),
+            Some("duplicate_route")
+        );
+        assert_eq!(
+            data.get("operation").and_then(ErrorData::as_str),
+            Some("navigateTo")
+        );
+    }
 }

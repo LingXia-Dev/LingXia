@@ -16,7 +16,7 @@ struct PageTargetOptions {
 
 #[derive(Deserialize)]
 struct NavigateBackOptions {
-    delta: u32,
+    delta: Option<u32>,
 }
 
 fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
@@ -134,7 +134,7 @@ host_api_async!(
         let Some(page) = lxapp.get_page(&current_path) else {
             return Err(LxAppError::Runtime("Current page not found".to_string()));
         };
-        page.navigate_back(options.delta)?;
+        page.navigate_back(options.delta.unwrap_or(1))?;
 
         // Best-effort wait for the destination page's WebView to be ready, so view callers can
         // await navigation completion and reliably receive errors.

@@ -201,7 +201,18 @@ with the new query.
 
 A route can be on the page stack **once**: one path is one page instance, so
 `lx.navigateTo` onto a page already on the stack is rejected. Navigate back to
-it, or model the destination as a different route.
+it, or model the destination as a different route. Navigation rejections carry
+stable metadata in `error.data`: `reason` is `"duplicate_route"` or
+`"stack_full"`, with the attempted `operation` and resolved `target`.
+
+`lx.navigateBack()` pops one page by default; pass `{ delta }` to pop more. It
+returns a promise like the other navigation APIs, resolving once the revealed
+page's WebView is ready:
+
+```ts
+await lx.navigateBack();
+await lx.navigateBack({ delta: 2 });
+```
 
 ### Private helpers
 

@@ -1300,6 +1300,9 @@ impl PageInstance {
             crate::append_page_query(path.clone(), &target_page.automation_state().query)
                 .map_err(LxAppError::InvalidParameter)?;
         let mut target_page = target_page;
+        // Public entry points run this before resolving PageSvc/query state;
+        // keep the same preflight here as a backstop for direct native calls.
+        lxapp.validate_navigation_entry(&target_url, nav_type)?;
         let is_tabbar_page = lxapp
             .get_tabbar()
             .is_some_and(|tabbar| tabbar.is_tabbar_page(&path));
@@ -1346,41 +1349,9 @@ impl PageInstance {
                 lxapp.clear_page_stack()?;
             }
             NavigationType::Replace => {
-                // Replacing drops the current entry, so the target can only
-                // collide with what remains below it — and a collision means
-                // two stack slots sharing one instance, same as a duplicate
-                // navigateTo.
-                if lxapp
-                    .get_page_stack()
-                    .iter()
-                    .rev()
-                    .skip(1)
-                    .any(|entry| entry == &path)
-                {
-                    return Err(LxAppError::InvalidParameter(format!(
-                        "redirectTo target '{path}' is already on the page stack. \
-                         A page can only appear once; navigate back to it instead."
-                    )));
-                }
                 lxapp.pop_from_page_stack();
             }
-            NavigationType::Forward => {
-                if lxapp.is_page_stack_full() {
-                    info!("PageInstance stack is full, cannot navigate forward.");
-                    return Ok(target_page);
-                }
-                // A page instance is keyed by its path, so the same route
-                // cannot be on the stack twice: both entries would share one
-                // instance, and popping either would end the instance the
-                // other still shows. Reject it rather than pretend.
-                if lxapp.get_page_stack().iter().any(|entry| entry == &path) {
-                    return Err(LxAppError::InvalidParameter(format!(
-                        "navigateTo target '{path}' is already on the page stack. \
-                         A page can only appear once; use lx.redirectTo to replace \
-                         the current page, or navigate to a different route."
-                    )));
-                }
-            }
+            NavigationType::Forward => {}
             NavigationType::Backward => {
                 return Err(LxAppError::UnsupportedOperation(
                     "should use navigate_back".to_string(),

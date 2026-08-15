@@ -719,8 +719,13 @@ export type MoreAction = {
     onClick: () => void | Promise<void>;
 };
 
+/**
+ * Options for `lx.navigateBack()`. Omit the object or `delta` to pop
+ * one page.
+ */
 export type NavigateBackOptions = {
-    delta: number;
+    /** Number of pages to pop. Defaults to 1. */
+    delta?: number;
 };
 
 /**
@@ -2347,15 +2352,34 @@ declare global {
      * This should be called after the refresh operation is complete.
      */
     stopPullDownRefresh(): void;
-    /** Navigate to a new page (forward navigation) */
+    /**
+     * Push a configured page onto the stack.
+     * A route can appear on the stack only once. The promise rejects with
+     * `data.reason === "duplicate_route"` when the target is already present,
+     * or `data.reason === "stack_full"` when the ten-page limit is reached.
+     */
     navigateTo(options: NavigateToOptions): Promise<PageMessagePort>;
-    /** Navigate back to previous page */
-    navigateBack(options: NavigateBackOptions): void;
-    /** Redirect to a new page (replace current page) */
+    /**
+     * Pop one or more pages and reveal the destination page.
+     * `options` and `options.delta` are optional; both default to one page. The
+     * promise resolves once the destination WebView is ready, so callers can
+     * safely continue with work that targets the revealed page.
+     */
+    navigateBack(options?: NavigateBackOptions): Promise<void>;
+    /**
+     * Replace the current stack entry with a configured page.
+     * Redirecting to the current route keeps its page instance and runs `onLoad`
+     * again with the new query. Redirecting to a route lower in the stack rejects
+     * with `data.reason === "duplicate_route"`.
+     */
     redirectTo(options: RedirectToOptions): Promise<void>;
-    /** Switch to a tab page */
+    /**
+     * Switch to a configured tab page.
+     * The tab page being left is hidden and retained. Non-tab pages pushed above
+     * a tab leave the stack and receive `onUnload`.
+     */
     switchTab(options: SwitchTabOptions): Promise<void>;
-    /** Relaunch to a new page (clear page stack) */
+    /** Clear the page stack and launch a configured page as the new root. */
     reLaunch(options: ReLaunchOptions): Promise<void>;
     readonly shell: ShellApi;
     readonly tabBar: TabBarApi;

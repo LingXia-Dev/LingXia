@@ -49,6 +49,11 @@ const appearanceState: AppearanceState = lx.appearance.get();
 const appearanceSetResult: Promise<void> = lx.appearance.set("dark");
 const navigationUpdateResult: Promise<void> = lx.navigationBar.update({ title: null });
 const tabBarUpdateResult: Promise<void> = lx.tabBar.update({ visibility: "auto" });
+const backDefaultResult: Promise<void> = lx.navigateBack();
+const backEmptyResult: Promise<void> = lx.navigateBack({});
+const backDeltaResult: Promise<void> = lx.navigateBack({ delta: 2 });
+// @ts-expect-error delta must be numeric
+lx.navigateBack({ delta: "2" });
 const urlTabResult: Promise<null> = lx.openSurface(urlTab);
 const declaredResult: Promise<SurfaceHandle> = lx.openSurface(declaredSurface);
 const appResult: Promise<SurfaceHandle> = lx.openSurface(appSurface);
@@ -116,6 +121,9 @@ export type GeneratedQualityGate = [
   typeof appearanceSetResult,
   typeof navigationUpdateResult,
   typeof tabBarUpdateResult,
+  typeof backDefaultResult,
+  typeof backEmptyResult,
+  typeof backDeltaResult,
   typeof urlTabResult,
   typeof declaredResult,
   typeof appResult,

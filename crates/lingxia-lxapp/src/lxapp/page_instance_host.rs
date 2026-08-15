@@ -5,6 +5,81 @@
 
 use super::*;
 
+fn navigation_operation(nav_type: crate::page::NavigationType) -> &'static str {
+    match nav_type {
+        crate::page::NavigationType::Launch => "reLaunch",
+        crate::page::NavigationType::Forward => "navigateTo",
+        crate::page::NavigationType::Backward => "navigateBack",
+        crate::page::NavigationType::Replace => "redirectTo",
+        crate::page::NavigationType::SwitchTab => "switchTab",
+    }
+}
+
+fn navigation_entry_error(
+    reason: &'static str,
+    nav_type: crate::page::NavigationType,
+    target: &str,
+    detail: String,
+) -> LxAppError {
+    LxAppError::RongJSHost {
+        code: "E_INVALID_ARG".to_string(),
+        message: detail.clone(),
+        data: Some(serde_json::json!({
+            "bizCode": 1002,
+            "detail": detail,
+            "reason": reason,
+            "operation": navigation_operation(nav_type),
+            "target": target,
+        })),
+    }
+}
+
+fn validate_navigation_stack(
+    stack: &[String],
+    target: &str,
+    nav_type: crate::page::NavigationType,
+) -> Result<(), LxAppError> {
+    match nav_type {
+        crate::page::NavigationType::Forward if stack.iter().any(|entry| entry == target) => {
+            Err(navigation_entry_error(
+                "duplicate_route",
+                nav_type,
+                target,
+                format!(
+                    "navigateTo target '{target}' is already on the page stack. \
+                     A page can only appear once; use lx.redirectTo to replace \
+                     the current page, or navigate to a different route."
+                ),
+            ))
+        }
+        crate::page::NavigationType::Forward if stack.len() >= PAGE_STACK_MAX => {
+            Err(navigation_entry_error(
+                "stack_full",
+                nav_type,
+                target,
+                format!(
+                    "navigateTo cannot open '{target}': the page stack is full \
+                     (capacity: {PAGE_STACK_MAX})."
+                ),
+            ))
+        }
+        crate::page::NavigationType::Replace
+            if stack.iter().rev().skip(1).any(|entry| entry == target) =>
+        {
+            Err(navigation_entry_error(
+                "duplicate_route",
+                nav_type,
+                target,
+                format!(
+                    "redirectTo target '{target}' is already on the page stack. \
+                     A page can only appear once; navigate back to it instead."
+                ),
+            ))
+        }
+        _ => Ok(()),
+    }
+}
+
 impl LxApp {
     /// Find the actual configured page path that matches the given path.
     /// Returns the path with proper extension if found.
@@ -510,22 +585,7 @@ impl LxApp {
             Err(_) => return Ok(()),
         };
         let path = resolved.internal_path();
-        let stack = self.get_page_stack();
-        match nav_type {
-            crate::page::NavigationType::Forward if stack.iter().any(|entry| entry == &path) => {
-                Err(LxAppError::InvalidParameter(format!(
-                    "navigateTo target '{path}' is already on the page stack.                      A page can only appear once; use lx.redirectTo to replace                      the current page, or navigate to a different route."
-                )))
-            }
-            crate::page::NavigationType::Replace
-                if stack.iter().rev().skip(1).any(|entry| entry == &path) =>
-            {
-                Err(LxAppError::InvalidParameter(format!(
-                    "redirectTo target '{path}' is already on the page stack.                      A page can only appear once; navigate back to it instead."
-                )))
-            }
-            _ => Ok(()),
-        }
+        validate_navigation_stack(&self.get_page_stack(), &path, nav_type)
     }
 
     /// Get existing page or create a new one.
@@ -723,12 +783,6 @@ impl LxApp {
         }
     }
 
-    /// Check if the page stack is considered full
-    /// Returns true when stack size reaches PAGE_STACK_MAX
-    pub(crate) fn is_page_stack_full(&self) -> bool {
-        self.get_page_stack_size() >= PAGE_STACK_MAX
-    }
-
     /// Clear the page navigation stack
     /// This removes all pages from the navigation history
     pub(crate) fn clear_page_stack(&self) -> Result<(), LxAppError> {
@@ -742,9 +796,12 @@ impl LxApp {
         let state = self.state.lock().unwrap();
         let mut stack = state.page_stack.lock().unwrap();
 
-        // If stack is full, do nothing
+        // Navigation preflight normally catches this before any page state is
+        // mutated. Keep the stack primitive strict as a final invariant guard.
         if stack.len() >= PAGE_STACK_MAX {
-            return Ok(());
+            return Err(LxAppError::ResourceExhausted(format!(
+                "Page stack is full (capacity: {PAGE_STACK_MAX})"
+            )));
         }
 
         // Add to the back of the stack (most recent)
@@ -1098,9 +1155,11 @@ fn page_is_protected_from_eviction(
 #[cfg(test)]
 mod tests {
     use super::{
-        PageInstanceLifecycleState, disposed_instance_owns_stack_path,
+        PAGE_STACK_MAX, PageInstanceLifecycleState, disposed_instance_owns_stack_path,
         effective_page_instance_lifecycle, page_is_protected_from_eviction,
+        validate_navigation_stack,
     };
+    use crate::NavigationType;
     use std::collections::HashSet;
 
     #[test]
@@ -1157,5 +1216,46 @@ mod tests {
             &stack,
             false
         ));
+    }
+
+    fn navigation_reason(error: crate::LxAppError) -> String {
+        match error {
+            crate::LxAppError::RongJSHost {
+                data: Some(data), ..
+            } => data["reason"].as_str().unwrap().to_string(),
+            other => panic!("unexpected navigation error: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn navigation_preflight_rejects_duplicate_routes_before_capacity() {
+        let stack = (0..PAGE_STACK_MAX)
+            .map(|index| format!("pages/{index}"))
+            .collect::<Vec<_>>();
+
+        let error =
+            validate_navigation_stack(&stack, "pages/0", NavigationType::Forward).unwrap_err();
+        assert_eq!(navigation_reason(error), "duplicate_route");
+    }
+
+    #[test]
+    fn navigation_preflight_rejects_a_full_stack() {
+        let stack = (0..PAGE_STACK_MAX)
+            .map(|index| format!("pages/{index}"))
+            .collect::<Vec<_>>();
+
+        let error =
+            validate_navigation_stack(&stack, "pages/new", NavigationType::Forward).unwrap_err();
+        assert_eq!(navigation_reason(error), "stack_full");
+    }
+
+    #[test]
+    fn redirect_preflight_allows_the_current_route_only() {
+        let stack = vec!["pages/home".to_string(), "pages/current".to_string()];
+
+        validate_navigation_stack(&stack, "pages/current", NavigationType::Replace).unwrap();
+        let error =
+            validate_navigation_stack(&stack, "pages/home", NavigationType::Replace).unwrap_err();
+        assert_eq!(navigation_reason(error), "duplicate_route");
     }
 }
