@@ -45,7 +45,7 @@ pub(super) fn draw_maximized_native_panels(hdc: HDC, state: &WindowsChromeState)
     };
     for panel in &attached.panels {
         if panel.host_content.is_some() && panel_is_maximized(panel) {
-            draw_native_panel_content(hdc, state.hwnd, state.client, panel);
+            draw_native_panel_content(hdc, state.hwnd, state.client, panel, state.cursor);
         }
     }
 }
@@ -55,11 +55,12 @@ pub(super) fn draw_native_panel_content(
     hwnd: HWND,
     client: RECT,
     panel: &WindowsChromePanel,
+    cursor: Option<(i32, i32)>,
 ) {
     let Some(native) = &panel.host_content else {
         return;
     };
-    draw_terminal_panel_content(hdc, hwnd, client, panel, native);
+    draw_terminal_panel_content(hdc, hwnd, client, panel, native, cursor);
 }
 
 /// Header geometry of one terminal panel tab.
@@ -243,6 +244,7 @@ pub(super) fn draw_terminal_panel_content(
     client: RECT,
     panel: &WindowsChromePanel,
     native: &WindowsHostPanelContent,
+    cursor: Option<(i32, i32)>,
 ) {
     let rect = panel.rect;
     if rect_width(&rect) == 0 || rect_height(&rect) == 0 {
@@ -361,7 +363,19 @@ pub(super) fn draw_terminal_panel_content(
             } else {
                 blend_rgb(chrome.text_muted, chrome.header, 55)
             };
-            draw_text_antialiased(hdc, GLYPH_TAB_CLOSE, close, close_color, DT_CENTER);
+            let size = 12.min(rect_width(&close)).min(rect_height(&close));
+            let icon = normalize_rect(RECT {
+                left: close.left + (rect_width(&close) - size) / 2,
+                top: close.top + (rect_height(&close) - size) / 2,
+                right: close.left + (rect_width(&close) - size) / 2 + size,
+                bottom: close.top + (rect_height(&close) - size) / 2 + size,
+            });
+            crate::draw_windows_design_icon_with_color(
+                hdc,
+                WindowsDesignIcon::CloseX,
+                icon,
+                close_color,
+            );
         }
     }
     if header_rects.tabs.is_empty() {
@@ -427,6 +441,7 @@ pub(super) fn draw_terminal_panel_content(
         &panel.panel_id,
         body,
         [0, 0, SHELL_CONTENT_RADIUS, SHELL_CONTENT_RADIUS],
+        cursor,
     );
 }
 

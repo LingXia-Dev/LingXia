@@ -708,6 +708,7 @@ pub struct TerminalFrame {
     pub cursor: Cursor,
     pub default_fg: u32,
     pub default_bg: u32,
+    pub alternate_screen: bool,
 }
 
 impl TerminalFrame {
@@ -861,6 +862,7 @@ impl VtScreen {
             let (start, end) = match &control {
                 TappedControl::Osc(osc) => (osc.start, osc.end),
                 TappedControl::KittyGraphics { start, end, .. } => (*start, *end),
+                TappedControl::ClearScreen { start, end, .. } => (*start, *end),
             };
             if start < last {
                 // The sequence started in an earlier feed call and its
@@ -1168,6 +1170,7 @@ impl VtScreen {
             cursor,
             default_fg: pack_rgb(default_fg, 0xFF),
             default_bg: pack_rgb(default_bg, 0xFF),
+            alternate_screen: content.mode.contains(TermMode::ALT_SCREEN),
         }))
     }
 
@@ -1354,14 +1357,22 @@ impl VtScreen {
 
     pub fn image_snapshot(&self, since_generation: u64) -> TerminalImageSnapshot {
         let inner = self.inner.lock();
-        if inner.parser.sync_timeout().sync_timeout().is_some() {
+        if inner.parser.sync_timeout().sync_timeout().is_some()
+            || since_generation == inner.published_image_generation
+        {
             TerminalImageSnapshot {
                 changed: false,
                 generation: inner.published_image_generation,
                 ..TerminalImageSnapshot::default()
             }
         } else {
-            inner.graphics.snapshot(since_generation)
+            // Only expose graphics that crossed the same published VT
+            // boundary as the paired frame. Comparing against the live
+            // graphics generation here can incorrectly report `unchanged`
+            // when the host already stored the pre-update generation.
+            inner
+                .graphics
+                .snapshot(inner.published_image_generation.wrapping_sub(1))
         }
     }
 }
@@ -1407,6 +1418,17 @@ impl VtInner {
         match control {
             TappedControl::Osc(osc) => self.record_osc(&osc.body),
             TappedControl::KittyGraphics { body, .. } => self.record_kitty_graphics(&body),
+            TappedControl::ClearScreen {
+                mode, erased_lines, ..
+            } => {
+                let cursor = self.term.grid().cursor.point;
+                if mode == 2
+                    || (mode == 0 && cursor.line.0 == 0 && cursor.column.0 == 0)
+                    || (mode == 3 && erased_lines >= self.term.screen_lines())
+                {
+                    self.graphics.clear_physical_placements();
+                }
+            }
         }
     }
 
@@ -2039,6 +2061,96 @@ mod tests {
         assert_eq!(snapshot.placements[0].col, 1);
         assert!(!snapshot.placements[0].alternate_screen);
         assert_eq!(written.lock().as_slice(), b"\x1b_Gi=9;OK\x1b\\");
+    }
+
+    #[test]
+    fn kitty_snapshot_remains_changed_until_renderer_accepts_generation() {
+        let screen = VtScreen::new_with_options(8, 2, None, None, None);
+        let initial_generation = screen.image_generation();
+
+        screen.feed(b"\x1b_Ga=T,f=32,s=1,v=1,i=9,c=1,r=1,C=1;/wAA/w==\x1b\\");
+
+        let first = screen.image_snapshot(initial_generation);
+        assert!(first.changed);
+        assert_eq!(first.placements.len(), 1);
+        let repeated = screen.image_snapshot(initial_generation);
+        assert!(repeated.changed);
+        assert_eq!(repeated.placements.len(), 1);
+        assert!(!screen.image_snapshot(first.generation).changed);
+    }
+
+    #[test]
+    fn clear_screen_removes_physical_kitty_placements() {
+        let screen = VtScreen::new_with_options(8, 2, None, None, None);
+        screen.resize(8, 2, 8, 16).unwrap();
+        screen.feed(b"\x1b_Ga=T,f=32,s=1,v=1,i=9,c=1,r=1,C=1;/wAA/w==\x1b\\");
+        let before = screen.image_snapshot(0);
+        assert_eq!(before.images.len(), 1);
+        assert_eq!(before.placements.len(), 1);
+
+        screen.feed(b"\x1b[2J");
+
+        let cleared = screen.image_snapshot(before.generation);
+        assert!(cleared.changed);
+        assert_eq!(cleared.images.len(), 1);
+        assert!(cleared.placements.is_empty());
+    }
+
+    #[test]
+    fn home_then_erase_to_end_removes_physical_kitty_placements() {
+        let screen = VtScreen::new_with_options(8, 2, None, None, None);
+        screen.resize(8, 2, 8, 16).unwrap();
+        screen.feed(b"text\x1b_Ga=T,f=32,s=1,v=1,i=9,c=1,r=1,C=1;/wAA/w==\x1b\\");
+        let before = screen.image_snapshot(0);
+
+        screen.feed(b"\x1b[H\x1b[J");
+
+        let cleared = screen.image_snapshot(before.generation);
+        assert!(cleared.changed);
+        assert!(cleared.placements.is_empty());
+    }
+
+    #[test]
+    fn partial_erase_to_end_keeps_physical_kitty_placements() {
+        let screen = VtScreen::new_with_options(8, 2, None, None, None);
+        screen.resize(8, 2, 8, 16).unwrap();
+        screen.feed(b"text\x1b_Ga=T,f=32,s=1,v=1,i=9,c=1,r=1,C=1;/wAA/w==\x1b\\");
+        let before = screen.image_snapshot(0);
+
+        screen.feed(b"\x1b[J");
+
+        let unchanged = screen.image_snapshot(before.generation);
+        assert!(!unchanged.changed);
+        assert_eq!(screen.image_snapshot(0).placements.len(), 1);
+    }
+
+    #[test]
+    fn conpty_console_clear_removes_physical_kitty_placements() {
+        let screen = VtScreen::new_with_options(8, 2, None, None, None);
+        screen.resize(8, 2, 8, 16).unwrap();
+        screen.feed(b"text\x1b_Ga=T,f=32,s=1,v=1,i=9,c=1,r=1,C=1;/wAA/w==\x1b\\");
+        let before = screen.image_snapshot(0);
+
+        screen.feed(b"\x1b[H\x1b[K\r\n\x1b[K\x1b[H\x1b[3J");
+
+        let cleared = screen.image_snapshot(before.generation);
+        assert!(cleared.changed);
+        assert!(cleared.placements.is_empty());
+    }
+
+    #[test]
+    fn clear_screen_preserves_following_kitty_placement() {
+        let screen = VtScreen::new_with_options(8, 2, None, None, None);
+        screen.resize(8, 2, 8, 16).unwrap();
+        screen.feed(
+            b"\x1b_Ga=T,f=32,s=1,v=1,i=9,c=1,r=1,C=1;/wAA/w==\x1b\\\
+              \x1b[2J\
+              \x1b_Ga=T,f=32,s=1,v=1,i=10,c=1,r=1,C=1;/wAA/w==\x1b\\",
+        );
+
+        let snapshot = screen.image_snapshot(0);
+        assert_eq!(snapshot.placements.len(), 1);
+        assert_eq!(snapshot.placements[0].image_id, 10);
     }
 
     #[test]

@@ -1675,6 +1675,8 @@ export type TerminalApi = {
     readonly settings: TerminalSettingsApi;
     readonly colorSchemes: TerminalColorSchemesApi;
     readonly fonts: TerminalFontsApi;
+    /** Windows-only optional inline-image compatibility runtime. */
+    readonly windows?: WindowsTerminalApi;
 };
 
 export type TerminalColorScheme = {
@@ -1987,6 +1989,25 @@ export type WindowSurfaceSize = {
     width?: number;
     /** Initial window height in logical pixels. */
     height?: number;
+};
+
+export type WindowsTerminalApi = {
+    status(): Promise<WindowsTerminalInlineImageStatus>;
+    /** Verify and install the fixed Microsoft ConPTY package from lxapp temp storage. */
+    install(options: { path: string }): Promise<WindowsTerminalInlineImageStatus>;
+    /** Select the installed runtime for new terminal sessions. */
+    setEnabled(options: { enabled: boolean }): Promise<WindowsTerminalInlineImageStatus>;
+};
+
+export type WindowsTerminalInlineImageStatus = {
+    enabled: boolean;
+    installed: boolean;
+    package: {
+        version: string;
+        url: string;
+        sha256: string;
+        bytes: number;
+    };
 };
 
 export type WriteBinaryFileOptions = {

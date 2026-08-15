@@ -152,6 +152,10 @@ pub fn load(app_data_dir: PathBuf, system_is_dark: bool) -> TerminalConfig {
 }
 
 fn load_locked(app_data_dir: PathBuf, system_is_dark: bool) -> TerminalConfig {
+    #[cfg(target_os = "windows")]
+    if let Err(error) = crate::windows::activate(&app_data_dir) {
+        log::warn!("terminal ConPTY configuration could not be applied: {error}");
+    }
     let path = TerminalConfig::path(&app_data_dir);
     let (config, error) = TerminalConfig::load(&app_data_dir);
     if let Some(error) = error {

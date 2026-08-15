@@ -55,6 +55,9 @@ export interface TerminalPaneSnapshot {
     cols: number;
     rows: number;
     generation: number;
+    imageGeneration: number;
+    imageCount: number;
+    imagePlacementCount: number;
     defaultForeground: number;
     defaultBackground: number;
     cursorRow: number;
@@ -114,11 +117,17 @@ export interface TerminalSplitOptions extends TerminalSurfaceRef {
 /** Native terminal automation; available only to trusted dev/test hosts. */
 export interface TerminalDriver {
   snapshot(options: TerminalSurfaceRef): Promise<TerminalWorkspaceSnapshot>;
+  /** Send text to the focused pane, as if typed into its PTY. */
+  input(options: TerminalInputOptions): Promise<TerminalWorkspaceSnapshot>;
   split(options: TerminalSplitOptions): Promise<TerminalWorkspaceSnapshot>;
   /** Open a tab and activate it. Resolves with the snapshot that follows. */
   newTab(options: TerminalSurfaceRef): Promise<TerminalWorkspaceSnapshot>;
   /** Expand to the full content area, or return to the docked size. */
   setMaximized(options: TerminalMaximizeOptions): Promise<TerminalWorkspaceSnapshot>;
+}
+
+export interface TerminalInputOptions extends TerminalSurfaceRef {
+  text: string;
 }
 
 export interface TerminalMaximizeOptions extends TerminalSurfaceRef {

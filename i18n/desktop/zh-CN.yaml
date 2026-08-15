@@ -28,6 +28,7 @@ terminal:
   title: "终端"
   copy: "复制"
   paste: "粘贴"
+  search: "搜索…"
   split_right: "向右拆分"
   split_left: "向左拆分"
   split_down: "向下拆分"

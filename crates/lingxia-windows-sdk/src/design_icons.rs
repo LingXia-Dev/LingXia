@@ -144,6 +144,7 @@ impl WindowsDesignIcon {
             Self::History => include_bytes!("../../../design/icons/svg/icon_history.svg"),
             Self::ClearData => include_bytes!("../../../design/icons/svg/icon_clear_data.svg"),
             Self::PageMenu => include_bytes!("../../../design/icons/svg/icon_page_menu.svg"),
+            Self::CloseX => include_bytes!("../../../design/icons/svg/icon_close_x.svg"),
             _ => return None,
         })
     }

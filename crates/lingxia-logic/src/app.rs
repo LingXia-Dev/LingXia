@@ -104,14 +104,21 @@ fn app_namespace(ctx: &JSContext) -> JSResult<JSObject> {
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     let app = app_namespace(ctx)?;
-    register_app_property(ctx)?;
-    register_app_api(ctx)?;
+    init_base(ctx)?;
+    register_app_controls(ctx)?;
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     autostart::init(ctx, &app)?;
     screenshot::init(ctx)?;
     update::init(ctx)?;
 
     Ok(())
+}
+
+/// Register read-only host identity for every lxapp context, including focused
+/// system apps that intentionally do not receive the broader `lx.*` surface.
+pub(crate) fn init_base(ctx: &JSContext) -> JSResult<()> {
+    register_app_property(ctx)?;
+    register_app_base_api(ctx)
 }
 
 rong::js_api! {
@@ -122,10 +129,16 @@ rong::js_api! {
 }
 
 rong::js_api! {
-    fn register_app_api(ctx) {
+    fn register_app_base_api(ctx) {
         namespace HostAppApi = app_namespace(ctx)?;
         const envVersion: "HostAppEnvVersion" = env_version().as_str();
         fn getBaseInfo = get_app_base_info;
+    }
+}
+
+rong::js_api! {
+    fn register_app_controls(ctx) {
+        namespace HostAppApi = app_namespace(ctx)?;
         fn exit = exit_app;
         fn setBadge(ts_params = "value: string | number | null") = set_app_badge;
     }

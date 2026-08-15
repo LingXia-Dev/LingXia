@@ -19,25 +19,30 @@ use std::sync::{Mutex, MutexGuard, OnceLock};
 
 use lingxia_terminal::{
     ATTR_BOLD, ATTR_DIM, ATTR_HIDDEN, ATTR_INVERSE, ATTR_ITALIC, ATTR_STRIKE, FrameCell,
-    TerminalFrame, TerminalScrollbar,
+    TerminalFrame, TerminalImageSnapshot, TerminalScrollbar, UnicodePlaceholder,
+    decode_unicode_placeholder,
 };
 
 use super::terminal_grid::PaneView;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
-use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP};
+use windows::Win32::Graphics::Direct3D::{
+    D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP, D3D_SRV_DIMENSION_TEXTURE2D,
+};
 use windows::Win32::Graphics::Direct3D11::{
-    D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_CREATE_DEVICE_DEBUG, D3D11_RENDER_TARGET_VIEW_DESC,
-    D3D11_RENDER_TARGET_VIEW_DESC_0, D3D11_RTV_DIMENSION_TEXTURE2D, D3D11_SDK_VERSION,
-    D3D11_TEX2D_RTV, D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext, ID3D11RenderTargetView,
-    ID3D11Texture2D,
+    D3D11_BIND_SHADER_RESOURCE, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_CREATE_DEVICE_DEBUG,
+    D3D11_RENDER_TARGET_VIEW_DESC, D3D11_RENDER_TARGET_VIEW_DESC_0, D3D11_RTV_DIMENSION_TEXTURE2D,
+    D3D11_SDK_VERSION, D3D11_SHADER_RESOURCE_VIEW_DESC, D3D11_SHADER_RESOURCE_VIEW_DESC_0,
+    D3D11_SUBRESOURCE_DATA, D3D11_TEX2D_RTV, D3D11_TEX2D_SRV, D3D11_TEXTURE2D_DESC,
+    D3D11_USAGE_DEFAULT, D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext,
+    ID3D11RenderTargetView, ID3D11ShaderResourceView, ID3D11Texture2D,
 };
 use windows::Win32::Graphics::DirectComposition::{
     DCompositionCreateDevice3, IDCompositionDesktopDevice, IDCompositionRectangleClip,
     IDCompositionTarget, IDCompositionVisual2,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
-    DXGI_ALPHA_MODE_IGNORE, DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
-    DXGI_SAMPLE_DESC,
+    DXGI_ALPHA_MODE_IGNORE, DXGI_FORMAT_B8G8R8A8_TYPELESS, DXGI_FORMAT_B8G8R8A8_UNORM,
+    DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::{
     DXGI_SCALING_STRETCH, DXGI_SWAP_CHAIN_DESC1, DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL,
@@ -54,9 +59,9 @@ use windows::core::{Interface, PCWSTR, Result, w};
 use super::terminal_grid::{
     GRID_DEFAULT_BACKGROUND, GRID_DIM_FOREGROUND_PERCENT, GRID_PADDING, GridPoint,
     PANE_DROP_TARGET_COLOR, SCROLLBAR_MARGIN, SCROLLBAR_MAX_THUMB, SCROLLBAR_MIN_THUMB,
-    SCROLLBAR_WIDTH,
+    SCROLLBAR_WIDTH, SearchHighlight,
 };
-use pipeline::{Pipeline, Quad};
+use pipeline::{DrawBatch, Pipeline, Quad};
 use text::{BOLD, BOLD_ITALIC, Fonts, ITALIC, Metrics, REGULAR};
 
 /// Atlas key namespace for drawn sprites, which have no font style. Chosen
@@ -79,7 +84,13 @@ fn sole_sprite(run: &str) -> Option<u32> {
 }
 
 /// Render a panel's terminal body.
-pub(super) fn present(parent: HWND, panel_id: &str, body: RECT, radii: [i32; 4]) {
+pub(super) fn present(
+    parent: HWND,
+    panel_id: &str,
+    body: RECT,
+    radii: [i32; 4],
+    cursor: Option<(i32, i32)>,
+) {
     register_captures();
     let mut registry = surface_registry();
     if !registry.permits_present(panel_id) {
@@ -95,7 +106,7 @@ pub(super) fn present(parent: HWND, panel_id: &str, body: RECT, radii: [i32; 4])
             }
         },
     };
-    if let Err(error) = surface.present(parent, panel_id, body, radii) {
+    if let Err(error) = surface.present(parent, panel_id, body, radii, cursor) {
         log::error!("terminal GPU present failed: {error}");
         registry.surfaces.remove(panel_id);
     }
@@ -142,15 +153,30 @@ pub(super) fn drop_panel(panel_id: &str) {
     }
 }
 
+/// Release image textures owned by a pane that has left the panel.
+pub(super) fn drop_session(session_id: u64) {
+    let mut registry = surface_registry();
+    for surface in registry.surfaces.values_mut() {
+        surface
+            .images
+            .retain(|(session, _), _| *session != session_id);
+        surface.image_generations.remove(&session_id);
+    }
+}
+
 /// Cell size of the font in effect, so the facade can size PTYs and hit-test
 /// without waiting for a frame.
 pub(super) fn cell_size() -> Option<(i32, i32)> {
+    cell_size_exact().map(|(width, height)| (width as i32, height as i32))
+}
+
+pub(super) fn cell_size_exact() -> Option<(f32, f32)> {
     let mut slot = shared_fonts()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let fonts = ensure_fonts(&mut slot).ok()?;
     let metrics = fonts.0.metrics;
-    Some((metrics.cell_width as i32, metrics.line_height as i32))
+    Some((metrics.cell_width, metrics.line_height))
 }
 
 #[derive(Default)]
@@ -213,6 +239,11 @@ struct Surface {
     bounds: RECT,
     radii: [i32; 4],
     quads: Vec<Quad>,
+    batches: Vec<DrawBatch>,
+    images: HashMap<(u64, u32), CachedImage>,
+    image_generations: HashMap<u64, u64>,
+    close_icon: Option<ID3D11ShaderResourceView>,
+    close_background: Option<ID3D11ShaderResourceView>,
     /// Clear color of the last frame, so a capture reproduces it exactly.
     background: u32,
     /// Offscreen copy of the frame, for screenshots. Built on demand.
@@ -226,6 +257,22 @@ struct Readback {
     staging: ID3D11Texture2D,
     width: u32,
     height: u32,
+}
+
+struct CachedImage {
+    generation: u64,
+    width: u32,
+    height: u32,
+    view: windows::Win32::Graphics::Direct3D11::ID3D11ShaderResourceView,
+}
+
+#[derive(Clone, Copy)]
+struct ImageDraw {
+    image_id: u32,
+    placement_id: u32,
+    z_index: i32,
+    destination: [f32; 4],
+    source: [f32; 4],
 }
 
 // Created and used only on the shell's UI thread; the map that holds it is
@@ -274,13 +321,25 @@ impl Surface {
                 bounds: RECT::default(),
                 radii: [0; 4],
                 quads: Vec::new(),
+                batches: Vec::new(),
+                images: HashMap::new(),
+                image_generations: HashMap::new(),
+                close_icon: None,
+                close_background: None,
                 background: GRID_DEFAULT_BACKGROUND,
                 readback: None,
             })
         }
     }
 
-    fn present(&mut self, parent: HWND, panel_id: &str, body: RECT, radii: [i32; 4]) -> Result<()> {
+    fn present(
+        &mut self,
+        parent: HWND,
+        panel_id: &str,
+        body: RECT,
+        radii: [i32; 4],
+        cursor: Option<(i32, i32)>,
+    ) -> Result<()> {
         let width = (body.right - body.left).max(1);
         let height = (body.bottom - body.top).max(1);
         self.place(parent, body, radii, width, height)?;
@@ -298,6 +357,7 @@ impl Surface {
 
         super::terminal_grid::set_panel_body(panel_id, body);
         self.quads.clear();
+        self.batches.clear();
         let panes = super::terminal_panel::active_pane_frames(panel_id, body);
         let multi = panes.len() > 1;
         let (drag_source, drop_target) = super::terminal_panel::pane_drag_visuals(panel_id, body);
@@ -314,29 +374,43 @@ impl Surface {
             // A pane being dragged reads as lifted by fading like an
             // unfocused one, which is the same treatment for the same reason.
             let dim = (multi && !pane.focused) || drag_source == Some(pane.session_id);
-            let quads = &mut self.quads;
-            let pipeline = &mut self.pipeline;
-            let shaper = &mut fonts.0;
             super::terminal_grid::with_pane(
                 pane.session_id,
                 rect,
                 (metrics.cell_width as i32, metrics.line_height as i32),
-                |frame, view, selection| {
+                |frame, images, view, selection, search| {
                     if pane.focused || !multi {
                         background = frame.default_bg >> 8;
                     }
-                    Builder {
-                        quads,
-                        fonts: shaper,
-                        pipeline,
+                    self.sync_images(pane.session_id, images);
+                    let mut pane_quads = Vec::new();
+                    let foreground_start = Builder {
+                        quads: &mut pane_quads,
+                        fonts: &mut fonts.0,
+                        pipeline: &mut self.pipeline,
                         metrics,
                         cursor: chrome.cursor,
                         selection_background: chrome.selection_background,
                         selection_foreground: chrome.selection_foreground,
                     }
-                    .pane(frame, view, selection, rect, dim);
+                    .pane(frame, view, selection, search, rect, dim);
+                    self.append_pane(
+                        pane.session_id,
+                        frame,
+                        images,
+                        view,
+                        rect,
+                        pane_quads,
+                        foreground_start,
+                        metrics,
+                        dim,
+                    );
                 },
             );
+        }
+
+        if multi {
+            self.append_split_controls(&panes, body, chrome.text_muted, cursor);
         }
 
         if let Some(target) = drop_target {
@@ -346,6 +420,7 @@ impl Surface {
                 right: target.right - body.left,
                 bottom: target.bottom - body.top,
             };
+            let start = self.quads.len();
             let mut builder = Builder {
                 quads: &mut self.quads,
                 fonts: &mut fonts.0,
@@ -356,6 +431,13 @@ impl Surface {
                 selection_foreground: chrome.selection_foreground,
             };
             builder.outline(rect, 2.0, PANE_DROP_TARGET_COLOR);
+            if self.quads.len() > start {
+                self.batches.push(DrawBatch {
+                    range: start..self.quads.len(),
+                    texture: None,
+                    linear: false,
+                });
+            }
         }
 
         self.background = background;
@@ -371,6 +453,7 @@ impl Surface {
             width as f32,
             height as f32,
             &self.quads,
+            &self.batches,
         )?;
         if debug_layer() {
             drain_debug_messages(&self.device);
@@ -470,7 +553,194 @@ impl Surface {
     }
 }
 
+fn pane_controls_visible(rect: RECT, cursor: Option<(i32, i32)>) -> bool {
+    let hover = super::terminal_panel::pane_controls_hover_rect(rect);
+    cursor.is_some_and(|(x, y)| {
+        x >= hover.left && x < hover.right && y >= hover.top && y < hover.bottom
+    })
+}
+
 impl Surface {
+    fn append_split_controls(
+        &mut self,
+        panes: &[super::terminal_panel::PaneFrame],
+        body: RECT,
+        color: u32,
+        cursor: Option<(i32, i32)>,
+    ) {
+        if self.close_icon.is_none() {
+            self.close_icon =
+                create_design_icon_texture(&self.device, crate::WindowsDesignIcon::CloseX, 16).ok();
+        }
+        if self.close_background.is_none() {
+            self.close_background = create_circle_texture(&self.device, 24).ok();
+        }
+        let icon = self.close_icon.clone();
+        let close_background = self.close_background.clone();
+        for pane in panes
+            .iter()
+            .filter(|pane| pane_controls_visible(pane.rect, cursor))
+        {
+            let handle = super::terminal_panel::pane_drag_handle_rect(pane.rect);
+            let center_x = (handle.left + handle.right) as f32 / 2.0 - body.left as f32;
+            let y = (handle.top + handle.bottom) as f32 / 2.0 - body.top as f32;
+            let start = self.quads.len();
+            for offset in [-7.0, 0.0, 7.0] {
+                self.quads.push(solid_quad(
+                    center_x + offset - 1.5,
+                    y - 1.5,
+                    3.0,
+                    3.0,
+                    color,
+                    self.pipeline.solid_uv,
+                ));
+            }
+            self.batches.push(DrawBatch {
+                range: start..self.quads.len(),
+                texture: None,
+                linear: false,
+            });
+            let close = super::terminal_panel::pane_close_button_rect(pane.rect);
+            if let Some(texture) = &close_background {
+                let size = 24.0;
+                let x = (close.left + close.right) as f32 / 2.0 - body.left as f32 - size / 2.0;
+                let y = (close.top + close.bottom) as f32 / 2.0 - body.top as f32 - size / 2.0;
+                let hovered = cursor.is_some_and(|(x, y)| {
+                    x >= close.left && x < close.right && y >= close.top && y < close.bottom
+                });
+                let start = self.quads.len();
+                self.quads.push(Quad {
+                    rect: [x.round(), y.round(), size, size],
+                    color: linear_alpha(color, if hovered { 0.16 } else { 0.09 }),
+                    uv: [0.0, 0.0, 1.0, 1.0],
+                    params: [0.0; 4],
+                });
+                self.batches.push(DrawBatch {
+                    range: start..start + 1,
+                    texture: Some(texture.clone()),
+                    linear: true,
+                });
+            }
+            if let Some(texture) = &icon {
+                let size = 14.0;
+                let x = (close.left + close.right) as f32 / 2.0 - body.left as f32 - size / 2.0;
+                let y = (close.top + close.bottom) as f32 / 2.0 - body.top as f32 - size / 2.0;
+                let start = self.quads.len();
+                self.quads.push(Quad {
+                    rect: [x.round(), y.round(), size, size],
+                    color: linear(color),
+                    uv: [0.0, 0.0, 1.0, 1.0],
+                    params: [0.0; 4],
+                });
+                self.batches.push(DrawBatch {
+                    range: start..start + 1,
+                    texture: Some(texture.clone()),
+                    linear: true,
+                });
+            }
+        }
+    }
+
+    fn sync_images(&mut self, session_id: u64, snapshot: &TerminalImageSnapshot) {
+        if self.image_generations.get(&session_id) == Some(&snapshot.generation) {
+            return;
+        }
+        self.images.retain(|(session, _), _| *session != session_id);
+        for image in &snapshot.images {
+            match create_image_texture(&self.device, &image.png) {
+                Ok(view) => {
+                    self.images.insert(
+                        (session_id, image.id),
+                        CachedImage {
+                            generation: snapshot.generation,
+                            width: image.width,
+                            height: image.height,
+                            view,
+                        },
+                    );
+                }
+                Err(error) => log::warn!(
+                    "terminal image {} for session {} could not be decoded: {}",
+                    image.id,
+                    session_id,
+                    error
+                ),
+            }
+        }
+        self.image_generations
+            .insert(session_id, snapshot.generation);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn append_pane(
+        &mut self,
+        session_id: u64,
+        frame: &TerminalFrame,
+        images: &TerminalImageSnapshot,
+        view: PaneView,
+        rect: RECT,
+        pane_quads: Vec<Quad>,
+        foreground_start: usize,
+        metrics: Metrics,
+        _dim: bool,
+    ) {
+        let background_end = foreground_start.min(pane_quads.len());
+        self.append_atlas_batch(&pane_quads[..background_end]);
+
+        let placements = image_draws(
+            frame,
+            images,
+            view,
+            rect,
+            (metrics.cell_width, metrics.line_height),
+        );
+        for placement in placements.iter().filter(|placement| placement.z_index < 0) {
+            self.append_image(session_id, *placement);
+        }
+
+        self.append_atlas_batch(&pane_quads[background_end..]);
+        for placement in placements.iter().filter(|placement| placement.z_index >= 0) {
+            self.append_image(session_id, *placement);
+        }
+    }
+
+    fn append_atlas_batch(&mut self, quads: &[Quad]) {
+        if quads.is_empty() {
+            return;
+        }
+        let start = self.quads.len();
+        self.quads.extend_from_slice(quads);
+        self.batches.push(DrawBatch {
+            range: start..self.quads.len(),
+            texture: None,
+            linear: false,
+        });
+    }
+
+    fn append_image(&mut self, session_id: u64, placement: ImageDraw) {
+        let Some(image) = self.images.get(&(session_id, placement.image_id)) else {
+            return;
+        };
+        debug_assert_eq!(image.generation, self.image_generations[&session_id]);
+        let start = self.quads.len();
+        self.quads.push(Quad {
+            rect: placement.destination,
+            color: [1.0; 4],
+            uv: [
+                placement.source[0] / image.width as f32,
+                placement.source[1] / image.height as f32,
+                (placement.source[0] + placement.source[2]) / image.width as f32,
+                (placement.source[1] + placement.source[3]) / image.height as f32,
+            ],
+            params: [1.0, 0.0, 0.0, 0.0],
+        });
+        self.batches.push(DrawBatch {
+            range: start..start + 1,
+            texture: Some(image.view.clone()),
+            linear: true,
+        });
+    }
+
     /// Re-draw the last frame into an offscreen target and read it back.
     ///
     /// Re-drawing rather than copying the swapchain: the flip model leaves the
@@ -568,6 +838,7 @@ impl Surface {
                 width as f32,
                 height as f32,
                 &self.quads,
+                &self.batches,
             ),
         )?;
 
@@ -617,6 +888,323 @@ impl Drop for Surface {
             }
         }
     }
+}
+
+fn image_draws(
+    frame: &TerminalFrame,
+    images: &TerminalImageSnapshot,
+    view: PaneView,
+    rect: RECT,
+    cell: (f32, f32),
+) -> Vec<ImageDraw> {
+    let (cell_width, line_height) = cell;
+    let origin_x = (rect.left + GRID_PADDING) as f32;
+    let origin_y = (rect.top + GRID_PADDING) as f32;
+    let clip = [
+        origin_x,
+        origin_y,
+        (rect.right - GRID_PADDING) as f32,
+        (rect.bottom - GRID_PADDING) as f32,
+    ];
+    let viewport_top = view
+        .scrollbar
+        .map_or(0, |scrollbar| scrollbar.offset as i64);
+    let mut draws = Vec::new();
+
+    for placement in images.placements.iter().filter(|placement| {
+        !placement.virtual_placement && placement.alternate_screen == frame.alternate_screen
+    }) {
+        let destination = [
+            origin_x + f32::from(placement.col) * cell_width + f32::from(placement.x_offset),
+            origin_y
+                + (placement.line - viewport_top) as f32 * line_height
+                + f32::from(placement.y_offset),
+            f32::from(placement.columns) * cell_width,
+            f32::from(placement.rows) * line_height,
+        ];
+        let source = [
+            placement.source_x as f32,
+            placement.source_y as f32,
+            placement.source_width as f32,
+            placement.source_height as f32,
+        ];
+        if let Some((destination, source)) = clip_image(destination, source, clip) {
+            draws.push(ImageDraw {
+                image_id: placement.image_id,
+                placement_id: placement.placement_id,
+                z_index: placement.z_index,
+                destination,
+                source,
+            });
+        }
+    }
+
+    for row in 0..frame.rows {
+        let mut previous: Option<UnicodePlaceholder> = None;
+        for col in 0..frame.cols {
+            let Some(cell) = frame
+                .cells
+                .get(usize::from(row) * usize::from(frame.cols) + usize::from(col))
+            else {
+                previous = None;
+                continue;
+            };
+            let cluster = frame.cell_text(cell);
+            if !is_image_placeholder(cluster) {
+                previous = None;
+                continue;
+            }
+            let Some(decoded) =
+                decode_unicode_placeholder(cluster, cell.fg, cell.underline_color, previous)
+            else {
+                continue;
+            };
+            previous = Some(decoded);
+            let Some(prototype) = images.placements.iter().find(|placement| {
+                placement.virtual_placement
+                    && placement.image_id == decoded.image_id
+                    && (decoded.placement_id == 0 || placement.placement_id == decoded.placement_id)
+            }) else {
+                continue;
+            };
+            if decoded.image_row >= usize::from(prototype.rows)
+                || decoded.image_col >= usize::from(prototype.columns)
+            {
+                continue;
+            }
+            let source_width = prototype.source_width as f32 / f32::from(prototype.columns);
+            let source_height = prototype.source_height as f32 / f32::from(prototype.rows);
+            let destination = [
+                origin_x + f32::from(col) * cell_width,
+                origin_y + f32::from(row) * line_height,
+                cell_width,
+                line_height,
+            ];
+            let source = [
+                prototype.source_x as f32 + decoded.image_col as f32 * source_width,
+                prototype.source_y as f32 + decoded.image_row as f32 * source_height,
+                source_width,
+                source_height,
+            ];
+            if let Some((destination, source)) = clip_image(destination, source, clip) {
+                draws.push(ImageDraw {
+                    image_id: decoded.image_id,
+                    placement_id: decoded.placement_id,
+                    z_index: prototype.z_index,
+                    destination,
+                    source,
+                });
+            }
+        }
+    }
+
+    draws.sort_by_key(|draw| (draw.z_index, draw.image_id, draw.placement_id));
+    draws
+}
+
+/// Topmost image placement under a host-client point. Hit-testing consumes
+/// the same clipped draw list as rendering, so scrolling and Unicode
+/// placeholders cannot drift away from what the user sees.
+pub(super) fn image_id_at(
+    frame: &TerminalFrame,
+    images: &TerminalImageSnapshot,
+    view: PaneView,
+    rect: RECT,
+    cell: (f32, f32),
+    point: (i32, i32),
+) -> Option<u32> {
+    image_draws(
+        frame,
+        images,
+        view,
+        rect,
+        (cell.0.max(1.0), cell.1.max(1.0)),
+    )
+    .into_iter()
+    .rev()
+    .find(|draw| {
+        let [left, top, width, height] = draw.destination;
+        (point.0 as f32) >= left
+            && (point.0 as f32) < left + width
+            && (point.1 as f32) >= top
+            && (point.1 as f32) < top + height
+    })
+    .map(|draw| draw.image_id)
+}
+
+fn create_image_texture(device: &ID3D11Device, png: &[u8]) -> Result<ID3D11ShaderResourceView> {
+    use image::ImageReader;
+    use std::io::Cursor;
+
+    let decoded = ImageReader::new(Cursor::new(png))
+        .with_guessed_format()
+        .map_err(|_| windows::core::Error::from_thread())?
+        .decode()
+        .map_err(|_| windows::core::Error::from_thread())?
+        .to_rgba8();
+    let (width, height) = decoded.dimensions();
+    let mut bgra = decoded.into_raw();
+    for pixel in bgra.chunks_exact_mut(4) {
+        pixel.swap(0, 2);
+        let alpha = f32::from(pixel[3]) / 255.0;
+        for channel in &mut pixel[..3] {
+            let encoded = f32::from(*channel) / 255.0;
+            let linear = if encoded <= 0.04045 {
+                encoded / 12.92
+            } else {
+                ((encoded + 0.055) / 1.055).powf(2.4)
+            } * alpha;
+            // Store premultiplied *linear* light encoded through the sRGB
+            // transfer curve. The SRGB shader view decodes it back before
+            // filtering and the premultiplied blend runs in linear space.
+            let encoded = if linear <= 0.0031308 {
+                linear * 12.92
+            } else {
+                1.055 * linear.powf(1.0 / 2.4) - 0.055
+            };
+            *channel = (encoded * 255.0).round().clamp(0.0, 255.0) as u8;
+        }
+    }
+    let desc = D3D11_TEXTURE2D_DESC {
+        Width: width,
+        Height: height,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: DXGI_FORMAT_B8G8R8A8_TYPELESS,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
+        ..Default::default()
+    };
+    let initial = D3D11_SUBRESOURCE_DATA {
+        pSysMem: bgra.as_ptr().cast(),
+        SysMemPitch: width * 4,
+        SysMemSlicePitch: 0,
+    };
+    unsafe {
+        let mut texture = None;
+        device.CreateTexture2D(&desc, Some(&initial), Some(&mut texture))?;
+        let mut view = None;
+        device.CreateShaderResourceView(
+            &texture.ok_or_else(windows::core::Error::from_thread)?,
+            Some(&D3D11_SHADER_RESOURCE_VIEW_DESC {
+                Format: DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
+                ViewDimension: D3D_SRV_DIMENSION_TEXTURE2D,
+                Anonymous: D3D11_SHADER_RESOURCE_VIEW_DESC_0 {
+                    Texture2D: D3D11_TEX2D_SRV {
+                        MostDetailedMip: 0,
+                        MipLevels: 1,
+                    },
+                },
+            }),
+            Some(&mut view),
+        )?;
+        view.ok_or_else(windows::core::Error::from_thread)
+    }
+}
+
+fn create_design_icon_texture(
+    device: &ID3D11Device,
+    icon: crate::WindowsDesignIcon,
+    size: u32,
+) -> Result<ID3D11ShaderResourceView> {
+    let pixels = crate::design_icons::design_icon_argb_premultiplied(icon, size, Some(0xffffff))
+        .ok_or_else(windows::core::Error::from_thread)?;
+    let mut bgra = Vec::with_capacity(pixels.len() * 4);
+    for pixel in pixels.iter().copied() {
+        bgra.extend_from_slice(&[
+            pixel as u8,
+            (pixel >> 8) as u8,
+            (pixel >> 16) as u8,
+            (pixel >> 24) as u8,
+        ]);
+    }
+    create_bgra_texture(device, size, size, &bgra)
+}
+
+fn create_circle_texture(device: &ID3D11Device, size: u32) -> Result<ID3D11ShaderResourceView> {
+    let radius = size as f32 / 2.0;
+    let mut bgra = Vec::with_capacity((size * size * 4) as usize);
+    for y in 0..size {
+        for x in 0..size {
+            let dx = x as f32 + 0.5 - radius;
+            let dy = y as f32 + 0.5 - radius;
+            let coverage = (radius - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
+            let alpha = (coverage * 255.0).round() as u8;
+            bgra.extend_from_slice(&[alpha, alpha, alpha, alpha]);
+        }
+    }
+    create_bgra_texture(device, size, size, &bgra)
+}
+
+fn create_bgra_texture(
+    device: &ID3D11Device,
+    width: u32,
+    height: u32,
+    pixels: &[u8],
+) -> Result<ID3D11ShaderResourceView> {
+    let desc = D3D11_TEXTURE2D_DESC {
+        Width: width,
+        Height: height,
+        MipLevels: 1,
+        ArraySize: 1,
+        Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+        SampleDesc: DXGI_SAMPLE_DESC {
+            Count: 1,
+            Quality: 0,
+        },
+        Usage: D3D11_USAGE_DEFAULT,
+        BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
+        ..Default::default()
+    };
+    let initial = D3D11_SUBRESOURCE_DATA {
+        pSysMem: pixels.as_ptr().cast(),
+        SysMemPitch: width * 4,
+        SysMemSlicePitch: 0,
+    };
+    unsafe {
+        let mut texture = None;
+        device.CreateTexture2D(&desc, Some(&initial), Some(&mut texture))?;
+        let mut view = None;
+        device.CreateShaderResourceView(
+            &texture.ok_or_else(windows::core::Error::from_thread)?,
+            None,
+            Some(&mut view),
+        )?;
+        view.ok_or_else(windows::core::Error::from_thread)
+    }
+}
+
+fn clip_image(
+    mut destination: [f32; 4],
+    mut source: [f32; 4],
+    clip: [f32; 4],
+) -> Option<([f32; 4], [f32; 4])> {
+    if destination[2] <= 0.0 || destination[3] <= 0.0 || source[2] <= 0.0 || source[3] <= 0.0 {
+        return None;
+    }
+    let scale_x = source[2] / destination[2];
+    let scale_y = source[3] / destination[3];
+    let left = (clip[0] - destination[0]).max(0.0).min(destination[2]);
+    let top = (clip[1] - destination[1]).max(0.0).min(destination[3]);
+    let right = (destination[0] + destination[2] - clip[2])
+        .max(0.0)
+        .min(destination[2] - left);
+    let bottom = (destination[1] + destination[3] - clip[3])
+        .max(0.0)
+        .min(destination[3] - top);
+    destination[0] += left;
+    destination[1] += top;
+    destination[2] -= left + right;
+    destination[3] -= top + bottom;
+    source[0] += left * scale_x;
+    source[1] += top * scale_y;
+    source[2] -= (left + right) * scale_x;
+    source[3] -= (top + bottom) * scale_y;
+    (destination[2] > 0.0 && destination[3] > 0.0).then_some((destination, source))
 }
 
 /// Build the fonts from the configuration in effect, rebuilding when it moved.
@@ -683,9 +1271,10 @@ impl Builder<'_> {
         frame: &TerminalFrame,
         view: PaneView,
         selection: Option<(GridPoint, GridPoint)>,
+        search: &[SearchHighlight],
         rect: RECT,
         dim: bool,
-    ) {
+    ) -> usize {
         let origin = (
             (rect.left + GRID_PADDING) as f32,
             (rect.top + GRID_PADDING) as f32,
@@ -743,6 +1332,19 @@ impl Builder<'_> {
             }
         }
 
+        for highlight in search {
+            let color = if highlight.active { 0xd99000 } else { 0xc9a000 };
+            self.solid_alpha(
+                origin.0 + f32::from(highlight.start_col) * self.metrics.cell_width,
+                origin.1 + f32::from(highlight.row) * self.metrics.line_height,
+                f32::from(highlight.end_col - highlight.start_col) * self.metrics.cell_width,
+                self.metrics.line_height,
+                color,
+                if highlight.active { 0.52 } else { 0.25 },
+            );
+        }
+
+        let foreground_start = self.quads.len();
         self.text(frame, origin, background, foreground, selection, dim);
 
         // Only the focused pane paints a cursor: hollow cursors in every split
@@ -773,6 +1375,7 @@ impl Builder<'_> {
         if let Some(scrollbar) = view.scrollbar {
             self.scrollbar(scrollbar, rect, background, foreground);
         }
+        foreground_start
     }
 
     /// Text, run by run: adjacent cells sharing a style shape together, which
@@ -821,7 +1424,14 @@ impl Builder<'_> {
                 style = cell_style;
             }
             let cluster = frame.cell_text(cell);
-            if cell.attrs & ATTR_HIDDEN != 0 || cluster.is_empty() {
+            if is_image_placeholder(cluster) {
+                self.flush(&run, &cell_of, at, columns, style, origin);
+                run.clear();
+                cell_of.clear();
+                columns = 0;
+                at = (row, col.saturating_add(u16::from(cell.columns)));
+                continue;
+            } else if cell.attrs & ATTR_HIDDEN != 0 || cluster.is_empty() {
                 // Concealed text still occupies its columns, so keep the run
                 // aligned rather than closing it.
                 run.push(' ');
@@ -1033,6 +1643,33 @@ impl Builder<'_> {
             params: [0.0; 4],
         });
     }
+
+    fn solid_alpha(&mut self, x: f32, y: f32, width: f32, height: f32, color: u32, alpha: f32) {
+        let mut quad = solid_quad(x, y, width, height, color, self.pipeline.solid_uv);
+        for channel in &mut quad.color[..3] {
+            *channel *= alpha;
+        }
+        quad.color[3] = alpha;
+        self.quads.push(quad);
+    }
+}
+
+fn solid_quad(x: f32, y: f32, width: f32, height: f32, color: u32, uv: [f32; 4]) -> Quad {
+    Quad {
+        rect: [
+            x.round(),
+            y.round(),
+            width.round().max(1.0),
+            height.round().max(1.0),
+        ],
+        color: linear(color),
+        uv,
+        params: [0.0; 4],
+    }
+}
+
+fn is_image_placeholder(cluster: &str) -> bool {
+    cluster.starts_with('\u{10EEEE}')
 }
 
 fn is_selected(
@@ -1106,6 +1743,15 @@ fn linear(color: u32) -> [f32; 4] {
         }
     };
     [channel(16), channel(8), channel(0), 1.0]
+}
+
+fn linear_alpha(color: u32, alpha: f32) -> [f32; 4] {
+    let mut value = linear(color);
+    for channel in &mut value[..3] {
+        *channel *= alpha;
+    }
+    value[3] = alpha;
+    value
 }
 
 fn swapchain_desc(width: u32, height: u32) -> DXGI_SWAP_CHAIN_DESC1 {
@@ -1264,7 +1910,27 @@ fn drain_debug_messages(device: &ID3D11Device) {
 
 #[cfg(test)]
 mod tests {
-    use super::SurfaceRegistry;
+    use super::{SurfaceRegistry, clip_image, image_id_at, pane_controls_visible};
+    use crate::shell::terminal_grid::PaneView;
+    use lingxia_terminal::{TerminalFrame, TerminalImagePlacement, TerminalImageSnapshot};
+    use windows::Win32::Foundation::RECT;
+
+    #[test]
+    fn pane_controls_only_appear_at_the_hovered_pane_top_edge() {
+        let pane = RECT {
+            left: 10,
+            top: 20,
+            right: 110,
+            bottom: 220,
+        };
+        assert!(!pane_controls_visible(pane, None));
+        assert!(!pane_controls_visible(pane, Some((9, 20))));
+        assert!(pane_controls_visible(pane, Some((10, 20))));
+        assert!(pane_controls_visible(pane, Some((109, 51))));
+        assert!(!pane_controls_visible(pane, Some((109, 52))));
+        assert!(!pane_controls_visible(pane, Some((110, 51))));
+        assert!(!pane_controls_visible(pane, Some((109, 219))));
+    }
 
     #[test]
     fn retired_panel_rejects_late_paints_until_explicitly_reopened() {
@@ -1277,5 +1943,87 @@ mod tests {
 
         registry.activate("terminal");
         assert!(registry.permits_present("terminal"));
+    }
+
+    #[test]
+    fn image_clipping_crops_destination_and_source_together() {
+        let clipped = clip_image(
+            [5.0, 10.0, 100.0, 50.0],
+            [20.0, 30.0, 200.0, 100.0],
+            [25.0, 20.0, 85.0, 50.0],
+        )
+        .unwrap();
+        assert_eq!(clipped.0, [25.0, 20.0, 60.0, 30.0]);
+        assert_eq!(clipped.1, [60.0, 50.0, 120.0, 60.0]);
+    }
+
+    #[test]
+    fn image_clipping_rejects_fully_hidden_or_empty_rectangles() {
+        assert!(clip_image([0.0, 0.0, 10.0, 10.0], [0.0, 0.0, 10.0, 10.0], [20.0; 4]).is_none());
+        assert!(clip_image([0.0; 4], [0.0, 0.0, 10.0, 10.0], [0.0, 0.0, 10.0, 10.0]).is_none());
+    }
+
+    #[test]
+    fn image_hit_test_follows_topmost_clipped_draw() {
+        let images = TerminalImageSnapshot {
+            placements: vec![
+                TerminalImagePlacement {
+                    image_id: 1,
+                    placement_id: 1,
+                    line: 0,
+                    col: 0,
+                    columns: 4,
+                    rows: 2,
+                    x_offset: 0,
+                    y_offset: 0,
+                    source_x: 0,
+                    source_y: 0,
+                    source_width: 40,
+                    source_height: 20,
+                    z_index: 0,
+                    alternate_screen: false,
+                    virtual_placement: false,
+                },
+                TerminalImagePlacement {
+                    image_id: 2,
+                    placement_id: 2,
+                    line: 0,
+                    col: 1,
+                    columns: 2,
+                    rows: 2,
+                    x_offset: 0,
+                    y_offset: 0,
+                    source_x: 0,
+                    source_y: 0,
+                    source_width: 20,
+                    source_height: 20,
+                    z_index: 1,
+                    alternate_screen: false,
+                    virtual_placement: false,
+                },
+            ],
+            ..Default::default()
+        };
+        let rect = RECT {
+            left: 100,
+            top: 50,
+            right: 300,
+            bottom: 200,
+        };
+        let frame = TerminalFrame::default();
+        let view = PaneView::default();
+
+        assert_eq!(
+            image_id_at(&frame, &images, view, rect, (10.0, 20.0), (119, 59)),
+            Some(2)
+        );
+        assert_eq!(
+            image_id_at(&frame, &images, view, rect, (10.0, 20.0), (109, 59)),
+            Some(1)
+        );
+        assert_eq!(
+            image_id_at(&frame, &images, view, rect, (10.0, 20.0), (149, 59)),
+            None
+        );
     }
 }

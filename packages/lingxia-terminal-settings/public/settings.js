@@ -11,6 +11,8 @@
   var pendingExternal = null;
   var unsubscribeState = null;
   var toastTimer = null;
+  var windowsInlineImages = null;
+  var installingInlineImages = false;
 
   function byId(id) { return document.getElementById(id); }
   function clone(value) { return JSON.parse(JSON.stringify(value)); }
@@ -22,8 +24,8 @@
     if (!bridge || !bridge.raw || typeof bridge.raw.call !== "function") {
       throw new Error("Terminal Settings Logic bridge is not available");
     }
-    var call = function (name, input) {
-      return bridge.raw.call(name, input).then(function (result) {
+    var call = function (name, input, options) {
+      return bridge.raw.call(name, input, options).then(function (result) {
         if (result && result.ok === true) return result.value;
         var details = result && result.error ? result.error : {};
         var error = new Error(details.message || "Terminal Settings action failed");
@@ -37,7 +39,8 @@
       resetTerminalSettings: function (input) { return call("resetTerminalSettings", input); },
       importTerminalScheme: function (input) { return call("importTerminalScheme", input); },
       previewTerminalScheme: function (input) { return call("previewTerminalScheme", input); },
-      clearTerminalPreview: function () { return call("clearTerminalPreview"); }
+      clearTerminalPreview: function () { return call("clearTerminalPreview"); },
+      setWindowsInlineImages: function (input) { return call("setWindowsInlineImages", input, { timeoutMs: 0 }); }
     };
   }
   function message(error) {
@@ -222,6 +225,9 @@
   }
 
   function acceptLoaded(result) {
+    byId("windows-group").hidden = !result.isWindows;
+    windowsInlineImages = result.windowsInlineImages;
+    renderWindowsInlineImages();
     var hostThemes = result.themes;
     hostThemeNames = new Set(hostThemes.map(function (theme) { return theme.name; }));
     var byName = new Map();
@@ -239,6 +245,46 @@
       var option = document.createElement("option"); option.value = family; option.textContent = family; select.appendChild(option);
     });
     fill(result.snapshot);
+  }
+
+  function formatBytes(bytes) {
+    if (!Number.isFinite(bytes)) return "";
+    return (bytes / (1024 * 1024)).toFixed(bytes >= 1024 * 1024 ? 1 : 2) + " MB";
+  }
+
+  function renderWindowsInlineImages(progress) {
+    var toggle = byId("windows-inline-images");
+    var progressRoot = byId("inline-image-progress");
+    var bar = byId("inline-image-progress-bar");
+    var label = byId("inline-image-progress-label");
+    if (!toggle || byId("windows-group").hidden) return;
+    toggle.checked = Boolean(windowsInlineImages && windowsInlineImages.enabled);
+    toggle.disabled = installingInlineImages;
+    progressRoot.hidden = !installingInlineImages;
+    if (!installingInlineImages) return;
+    var ratio = progress && Number.isFinite(progress.progress) ? progress.progress : null;
+    bar.style.width = ratio === null ? "32%" : Math.max(2, Math.min(100, ratio * 100)) + "%";
+    progressRoot.classList.toggle("indeterminate", ratio === null);
+    var received = progress && formatBytes(progress.downloadedBytes);
+    var total = progress && formatBytes(progress.totalBytes);
+    label.textContent = received && total
+      ? tr("windows.downloadingAmount", { received: received, total: total })
+      : tr("windows.downloading");
+  }
+
+  function setWindowsInlineImages(enabled) {
+    if (installingInlineImages) return;
+    installingInlineImages = true;
+    renderWindowsInlineImages();
+    actions().setWindowsInlineImages({ enabled: enabled }).then(function (status) {
+      windowsInlineImages = status;
+      toast(enabled ? tr("windows.enabled") : tr("windows.disabled"));
+    }).catch(function (error) {
+      toast(tr("windows.failed", { message: message(error) }), true);
+    }).finally(function () {
+      installingInlineImages = false;
+      renderWindowsInlineImages();
+    });
   }
 
   function ensurePackaged(name) {
@@ -334,6 +380,7 @@
     if (!bridge || !bridge.state || typeof bridge.state.subscribe !== "function") return;
     unsubscribeState = bridge.state.subscribe(function (state) {
       acceptExternalSnapshot(state && state.terminalSettingsSnapshot);
+      if (installingInlineImages) renderWindowsInlineImages(state && state.windowsInlineImageProgress);
     });
   }
 
@@ -384,6 +431,9 @@
   }
 
   byId("save").addEventListener("click", save);
+  byId("windows-inline-images").addEventListener("change", function () {
+    setWindowsInlineImages(this.checked);
+  });
   window.addEventListener("pagehide", function () {
     endPreview();
     if (unsubscribeState) unsubscribeState();

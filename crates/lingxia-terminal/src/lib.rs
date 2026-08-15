@@ -27,7 +27,10 @@ pub use alacritty_vt::{
     TerminalEventBatch, TerminalEventKind, TerminalFrame, TerminalProgress, TerminalProgressState,
     TextView as TerminalTextView, UnderlineStyle as TerminalUnderlineStyle,
 };
-pub use kitty::{TerminalImage, TerminalImagePlacement, TerminalImageSnapshot};
+pub use kitty::{
+    TerminalImage, TerminalImagePlacement, TerminalImageSnapshot, UnicodePlaceholder,
+    decode_unicode_placeholder, placeholder_diacritic_index,
+};
 pub use links::{DetectedLink, LinkSource as TerminalLinkSource};
 pub use paste::{PasteRisk as TerminalPasteRisk, classify_paste, classify_paste_json};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
@@ -88,6 +91,16 @@ pub fn backend_status() -> BackendStatus {
 
 pub fn backend_available() -> bool {
     backend_status().available
+}
+
+#[cfg(target_os = "windows")]
+pub fn terminal_set_conpty_path(path: PathBuf) -> Result<(), String> {
+    portable_pty::win::set_conpty_path(path).map_err(|error| format!("{error:?}"))
+}
+
+#[cfg(target_os = "windows")]
+pub fn terminal_clear_conpty_path() {
+    portable_pty::win::clear_conpty_path();
 }
 
 #[derive(Serialize)]
@@ -296,6 +309,28 @@ pub fn terminal_frame_data(id: u64, since_generation: u64) -> Option<TerminalFra
         session.vt.feed(&bytes);
     }
     Some(session.vt.frame(since_generation))
+}
+
+/// Sample a renderer frame and its Kitty image state under one session lock.
+///
+/// In-process hosts should prefer this over separate frame/image calls: a PTY
+/// writer may enqueue output between two calls, while this pair always
+/// describes one published synchronized-update boundary.
+pub fn terminal_render_data(
+    id: u64,
+    since_frame_generation: u64,
+    since_image_generation: u64,
+) -> Option<(TerminalFrameUpdate, TerminalImageSnapshot)> {
+    let session = session(id)?;
+    let mut session = session.lock().ok()?;
+    let bytes = session.drain_bytes();
+    if !bytes.is_empty() {
+        session.vt.feed(&bytes);
+    }
+    Some((
+        session.vt.frame(since_frame_generation),
+        session.vt.image_snapshot(since_image_generation),
+    ))
 }
 
 /// A session's retained frame, described by raw pointers for hosts that
@@ -1026,7 +1061,7 @@ pub struct TerminalKeyEvent {
 /// should leave the originating window message unhandled).
 pub fn encode_key_event(event: TerminalKeyEvent) -> Option<String> {
     if let Some(character) = event.character {
-        return match character as u32 {
+        let mut encoded = match character as u32 {
             0x08 => Some("\u{7f}".to_string()),
             0x09 => Some("\t".to_string()),
             0x0d => Some("\r".to_string()),
@@ -1034,7 +1069,13 @@ pub fn encode_key_event(event: TerminalKeyEvent) -> Option<String> {
             0x01..=0x09 | 0x0b..=0x1a => Some(character.to_string()),
             _ if !character.is_control() => Some(character.to_string()),
             _ => None,
-        };
+        }?;
+        // AltGr reports Ctrl+Alt while producing a translated character;
+        // only a standalone Alt modifier is terminal Meta/ESC.
+        if event.alt && !event.ctrl {
+            encoded.insert(0, '\u{1b}');
+        }
+        return Some(encoded);
     }
 
     let sequence = match event.vk {
@@ -1389,6 +1430,10 @@ impl TerminalSession {
         command.env("COLORTERM", "truecolor");
         command.env("TERM_PROGRAM", "LingXia");
         command.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
+        // Image-capable TUIs commonly use this as the Kitty graphics feature
+        // hint instead of probing the protocol. Keep LingXia's own identity in
+        // TERM_PROGRAM while allowing those clients to enable inline images.
+        command.env("KITTY_WINDOW_ID", "1");
         if std::env::var_os("LANG").is_none() {
             command.env("LANG", "en_US.UTF-8");
         }
@@ -2264,6 +2309,16 @@ mod tests {
     }
 
     #[test]
+    fn encodes_alt_character_as_meta_and_preserves_altgr_text() {
+        let mut alt = char_event('v');
+        alt.alt = true;
+        assert_eq!(encode_key_event(alt).as_deref(), Some("\x1bv"));
+
+        alt.ctrl = true;
+        assert_eq!(encode_key_event(alt).as_deref(), Some("v"));
+    }
+
+    #[test]
     fn encodes_special_characters() {
         assert_eq!(
             encode_key_event(char_event('\u{8}')).as_deref(),
@@ -2908,6 +2963,44 @@ mod tests {
         let snapshot = terminal_snapshot(id);
         terminal_close(id);
         panic!("terminal snapshot did not contain shell output: {snapshot}");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_conpty_preserves_kitty_graphics_apc() {
+        let executable = std::env::current_exe().expect("test executable");
+        let directory = executable.parent().expect("test executable directory");
+        if !directory.join("conpty.dll").is_file() || !directory.join("OpenConsole.exe").is_file() {
+            eprintln!("skipping: redistributable ConPTY sidecar is not staged");
+            return;
+        }
+        let script =
+            "import os;os.write(1,b'\\x1b_Ga=T,f=32,s=1,v=1,i=91,c=2,r=2,C=1;/wAA/w==\\x1b\\\\')";
+        let id = terminal_create_with_spec(
+            80,
+            24,
+            TerminalSessionSpec {
+                program: Some("python.exe".to_string()),
+                args: Some(vec!["-c".to_string(), script.to_string()]),
+                ..TerminalSessionSpec::default()
+            },
+        );
+        assert_ne!(id, 0);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            let (_, images) = terminal_render_data(id, 0, 0).expect("render data");
+            if !images.placements.is_empty() {
+                assert_eq!(images.images.len(), 1);
+                terminal_close(id);
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+
+        let images = terminal_image_snapshot(id, 0);
+        terminal_close(id);
+        panic!("redistributable ConPTY did not preserve Kitty APC: {images}");
     }
 
     #[test]

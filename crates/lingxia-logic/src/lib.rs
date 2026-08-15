@@ -37,6 +37,8 @@ impl LxLogicExtension for LxLogicRuntime {
         // allowed to use instead of registering the full LingXia surface.
         #[cfg(feature = "terminal")]
         if terminal::owns_context(ctx)? {
+            app::init_base(ctx)?;
+            fs::init_download(ctx)?;
             return terminal::init(ctx);
         }
 

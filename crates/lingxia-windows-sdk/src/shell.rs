@@ -55,13 +55,15 @@ pub mod terminal_grid {
 }
 #[cfg(feature = "terminal-runtime")]
 mod terminal_gpu;
+#[cfg(feature = "terminal-runtime")]
+mod terminal_image_preview;
 /// Without the terminal runtime there is no grid to composite, so the panel
 /// painter's call compiles away to "GDI keeps it".
 #[cfg(not(feature = "terminal-runtime"))]
 mod terminal_gpu {
     use windows::Win32::Foundation::{HWND, RECT};
 
-    pub(super) fn present(_: HWND, _: &str, _: RECT, _: [i32; 4]) {}
+    pub(super) fn present(_: HWND, _: &str, _: RECT, _: [i32; 4], _: Option<(i32, i32)>) {}
 }
 mod terminal_panel;
 pub mod text_input;
@@ -179,10 +181,23 @@ pub(crate) fn windows_shell_frame_colors() -> (u32, u32, bool) {
     )
 }
 pub(crate) use terminal_panel::{
-    begin_divider_drag, begin_pane_drag, begin_terminal_selection, divider_orientation_at,
-    end_divider_drag, end_pane_drag, end_terminal_selection, pane_drag_handle_at, scroll_pane_at,
-    update_divider_drag, update_pane_drag, update_terminal_selection,
+    begin_divider_drag, begin_pane_drag, begin_terminal_selection, close_pane_at,
+    divider_orientation_at, end_divider_drag, end_pane_drag, end_terminal_selection,
+    pane_drag_handle_at, pane_hover_rect, scroll_pane_at, update_divider_drag, update_pane_drag,
+    update_terminal_selection,
 };
+
+#[cfg(feature = "terminal-runtime")]
+pub(crate) use terminal_grid::{TerminalImageHit, image_hit_at as terminal_image_hit_at};
+#[cfg(feature = "terminal-runtime")]
+pub(crate) use terminal_image_preview::show as show_terminal_image_preview;
+
+#[cfg(feature = "terminal-runtime")]
+pub(crate) fn terminal_preview_image(
+    hit: TerminalImageHit,
+) -> Option<terminal_grid::TerminalPreviewImage> {
+    terminal_grid::preview_image(hit)
+}
 
 /// Registers the Windows SDK default shell.
 ///

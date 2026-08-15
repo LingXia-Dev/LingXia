@@ -1366,6 +1366,11 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     Ok(())
 }
 
+#[cfg(feature = "terminal")]
+pub(crate) fn init_download(ctx: &JSContext) -> JSResult<()> {
+    download::init(ctx)
+}
+
 rong::js_api! {
     fn register_file_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;

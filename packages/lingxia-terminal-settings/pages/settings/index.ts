@@ -1,5 +1,7 @@
 type TerminalApi = NonNullable<typeof lx.terminal>;
 type TerminalSnapshot = Awaited<ReturnType<TerminalApi['settings']['get']>>;
+type WindowsTerminalApi = NonNullable<TerminalApi['windows']>;
+type WindowsInlineImageStatus = Awaited<ReturnType<WindowsTerminalApi['status']>>;
 
 type UpdateInput = {
   patch: Parameters<TerminalApi['settings']['update']>[0];
@@ -55,8 +57,15 @@ function terminal() {
   return lx.terminal;
 }
 
+function windowsTerminal(): WindowsTerminalApi {
+  const api = terminal().windows;
+  if (!api) throw new Error('Windows terminal compatibility settings are unavailable');
+  return api;
+}
+
 let preview: ReturnType<TerminalApi['colorSchemes']['createPreview']> | null = null;
 let stopSettingsChanges: (() => void) | null = null;
+let conptyDownload: ReturnType<typeof lx.downloadFile> | null = null;
 
 function previewController(): ReturnType<TerminalApi['colorSchemes']['createPreview']> {
   preview ??= terminal().colorSchemes.createPreview();
@@ -66,6 +75,11 @@ function previewController(): ReturnType<TerminalApi['colorSchemes']['createPrev
 Page({
   data: {
     terminalSettingsSnapshot: null as TerminalSnapshot | null,
+    windowsInlineImageProgress: null as {
+      downloadedBytes?: number;
+      totalBytes?: number;
+      progress?: number;
+    } | null,
   },
 
   onLoad() {
@@ -78,12 +92,49 @@ Page({
   loadTerminalSettings() {
     return action(async () => {
       const api = terminal();
-      const [snapshot, themes, fonts] = await Promise.all([
+      const isWindows = lx.app.getBaseInfo().os === 'Windows';
+      const [snapshot, themes, fonts, windowsInlineImages] = await Promise.all([
         api.settings.get(),
         api.colorSchemes.list(),
         api.fonts.list(),
+        isWindows ? windowsTerminal().status() : Promise.resolve(null),
       ]);
-      return { snapshot, themes, fonts };
+      return { snapshot, themes, fonts, isWindows, windowsInlineImages };
+    });
+  },
+
+  setWindowsInlineImages(input: { enabled: boolean }) {
+    return action(async (): Promise<WindowsInlineImageStatus> => {
+      const api = windowsTerminal();
+      if (!input.enabled) {
+        await conptyDownload?.cancel();
+        conptyDownload = null;
+        this.setData({ windowsInlineImageProgress: null });
+        return api.setEnabled({ enabled: false });
+      }
+      const current = await api.status();
+      if (current.installed) return api.setEnabled({ enabled: true });
+
+      const task = lx.downloadFile({ url: current.package.url });
+      conptyDownload = task;
+      try {
+        for await (const event of task) {
+          if (event.kind === 'progress') {
+            this.setData({
+              windowsInlineImageProgress: {
+                downloadedBytes: event.downloadedBytes,
+                totalBytes: event.totalBytes,
+                progress: event.progress,
+              },
+            });
+          }
+        }
+        const result = await task;
+        return await api.install({ path: result.tempFilePath });
+      } finally {
+        if (conptyDownload === task) conptyDownload = null;
+        this.setData({ windowsInlineImageProgress: null });
+      }
     });
   },
 
@@ -115,5 +166,7 @@ Page({
     const controller = preview;
     preview = null;
     await controller?.close();
+    await conptyDownload?.cancel();
+    conptyDownload = null;
   },
 });

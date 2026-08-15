@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use super::chrome::{inset_rect, rect_height, rect_width};
-use lingxia_terminal::{TerminalFrame, TerminalScrollbar};
+use lingxia_terminal::{TerminalFrame, TerminalImageSnapshot, TerminalScrollbar};
 use windows::Win32::Foundation::{HWND, RECT};
 
 /// Inner padding between the terminal card edge and the cell grid.
@@ -54,6 +54,20 @@ pub(super) const SCROLLBAR_MAX_THUMB: i32 = 40;
 pub(super) struct GridPoint {
     pub(super) row: u16,
     pub(super) col: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct SearchHighlight {
+    pub(super) row: u16,
+    pub(super) start_col: u16,
+    pub(super) end_col: u16,
+    pub(super) active: bool,
+}
+
+#[derive(Default)]
+struct GridSearch {
+    matches: Vec<lingxia_terminal::TerminalSearchMatch>,
+    active: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,6 +112,7 @@ pub(super) struct PaneView {
 #[derive(Default)]
 struct SessionGridState {
     frame: Option<TerminalFrame>,
+    images: TerminalImageSnapshot,
     /// Generation of `frame`; handed back to the engine so it can answer
     /// "nothing changed" instead of building a frame nobody needs.
     generation: u64,
@@ -107,6 +122,7 @@ struct SessionGridState {
     scrollbar: Option<TerminalScrollbar>,
     geometry: Option<GridGeometry>,
     selection: Option<GridSelection>,
+    search: GridSearch,
     scrollbar_visible_until: Option<Instant>,
 }
 
@@ -149,13 +165,21 @@ fn panel_grids() -> MutexGuard<'static, HashMap<String, PanelGridState>> {
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
-/// Stores the latest snapshot for `session_id`; the chrome painter renders
-/// it on the next repaint of the host window.
-pub fn set_session_frame(session_id: u64, frame: TerminalFrame) {
+/// Atomically publish whichever parts of a renderer update changed.
+pub fn set_session_render(
+    session_id: u64,
+    frame: Option<TerminalFrame>,
+    images: Option<TerminalImageSnapshot>,
+) {
     let mut grids = session_grids();
     let state = grids.entry(session_id).or_default();
-    state.generation = frame.generation;
-    state.frame = Some(frame);
+    if let Some(frame) = frame {
+        state.generation = frame.generation;
+        state.frame = Some(frame);
+    }
+    if let Some(images) = images {
+        state.images = images;
+    }
 }
 
 /// The parts of a pane that move without the grid changing, so an exit or a
@@ -194,6 +218,13 @@ pub fn session_generation(session_id: u64) -> u64 {
         .unwrap_or(0)
 }
 
+pub fn session_image_generation(session_id: u64) -> u64 {
+    session_grids()
+        .get(&session_id)
+        .map(|state| state.images.generation)
+        .unwrap_or(0)
+}
+
 /// Compact semantic frame state for trusted terminal automation. Keep this in
 /// the frame store so the automation path observes exactly what the renderer
 /// has accepted, without asking the engine for a second copy of the grid.
@@ -205,6 +236,9 @@ pub(super) fn automation_grid_snapshot(session_id: u64) -> Option<serde_json::Va
         "cols": frame.cols,
         "rows": frame.rows,
         "generation": frame.generation,
+        "imageGeneration": grids[&session_id].images.generation,
+        "imageCount": grids[&session_id].images.images.len(),
+        "imagePlacementCount": grids[&session_id].images.placements.len(),
         "defaultForeground": frame.default_fg,
         "defaultBackground": frame.default_bg,
         "cursorRow": frame.cursor.row,
@@ -244,6 +278,8 @@ pub(crate) fn expire_scrollbar(session_id: u64) -> bool {
 /// Drops all stored state for one pane session (snapshot and geometry).
 pub fn clear_session(session_id: u64) {
     session_grids().remove(&session_id);
+    #[cfg(feature = "shell-chrome")]
+    super::terminal_gpu::drop_session(session_id);
     for panel in panel_grids().values_mut() {
         if panel.selection_session == Some(session_id) {
             panel.selection_session = None;
@@ -312,6 +348,43 @@ pub(super) fn panel_snapshot_text(panel_id: &str) -> Option<String> {
 /// client coordinates), used to hit-test pane focus clicks.
 pub(super) fn panel_body_rect(panel_id: &str) -> Option<RECT> {
     panel_grids().get(panel_id)?.body
+}
+
+/// Host window and body-relative placement for the terminal find field.
+pub(super) fn search_edit_geometry(panel_id: &str) -> Option<(isize, RECT)> {
+    let panels = panel_grids();
+    let panel = panels.get(panel_id)?;
+    let hwnd = panel.header.as_ref()?.hwnd;
+    let body = panel.body?;
+    let width = rect_width(&body).clamp(320, 410);
+    Some((
+        hwnd,
+        RECT {
+            left: body.right - width - 12,
+            top: body.top + 10,
+            right: body.right - 12,
+            bottom: (body.top + 56).min(body.bottom),
+        },
+    ))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct TerminalImageHit {
+    session_id: u64,
+    pub(crate) image_id: u32,
+}
+
+pub(crate) struct TerminalPreviewImage {
+    pub(crate) id: u32,
+    pub(crate) png: Vec<u8>,
+}
+
+pub(crate) fn search_status(session_id: u64) -> (Option<usize>, u64) {
+    let grids = session_grids();
+    let Some(search) = grids.get(&session_id).map(|state| &state.search) else {
+        return (None, 0);
+    };
+    (search.active, search.matches.len() as u64)
 }
 
 /// Focused terminal cursor cell in host-window client coordinates. Windows
@@ -414,6 +487,60 @@ pub(super) fn session_cell_at(
         .map(|(session_id, point)| (session_id, point.col, point.row))
 }
 
+/// Image placement under a host-client point, using the renderer's exact
+/// clipped draw order. The session is retained because Kitty image ids are
+/// scoped to one terminal session and can repeat in adjacent panes.
+#[cfg(feature = "shell-chrome")]
+pub(crate) fn image_hit_at(
+    panel_id: &str,
+    client_x: i32,
+    client_y: i32,
+) -> Option<TerminalImageHit> {
+    let cell = super::terminal_gpu::cell_size_exact()?;
+    let body = panel_grids().get(panel_id)?.body?;
+    let pane = super::terminal_panel::active_pane_frames(panel_id, body)
+        .into_iter()
+        .find(|pane| {
+            client_x >= pane.rect.left
+                && client_x < pane.rect.right
+                && client_y >= pane.rect.top
+                && client_y < pane.rect.bottom
+        })?;
+    let grids = session_grids();
+    let state = grids.get(&pane.session_id)?;
+    let frame = state.frame.as_ref()?;
+    let image_id = super::terminal_gpu::image_id_at(
+        frame,
+        &state.images,
+        PaneView {
+            scrollbar: state.scrollbar,
+            exited: state.exited,
+        },
+        pane.rect,
+        cell,
+        (client_x, client_y),
+    )?;
+    Some(TerminalImageHit {
+        session_id: pane.session_id,
+        image_id,
+    })
+}
+
+#[cfg(feature = "shell-chrome")]
+pub(crate) fn preview_image(hit: TerminalImageHit) -> Option<TerminalPreviewImage> {
+    let grids = session_grids();
+    let image = grids
+        .get(&hit.session_id)?
+        .images
+        .images
+        .iter()
+        .find(|image| image.id == hit.image_id)?;
+    Some(TerminalPreviewImage {
+        id: image.id,
+        png: image.png.clone(),
+    })
+}
+
 /// Starts a cell selection in the pane under the pointer.
 #[cfg(feature = "shell-chrome")]
 pub(crate) fn begin_selection_at(panel_id: &str, client_x: i32, client_y: i32) -> bool {
@@ -489,6 +616,81 @@ pub(crate) fn clear_selection(session_id: u64) {
     if let Some(state) = session_grids().get_mut(&session_id) {
         state.selection = None;
     }
+}
+
+pub(crate) fn set_search_results(
+    session_id: u64,
+    results: lingxia_terminal::TerminalSearchResults,
+) -> Option<i64> {
+    let mut grids = session_grids();
+    let search = &mut grids.entry(session_id).or_default().search;
+    search.matches = results.matches;
+    search.active = (!search.matches.is_empty()).then_some(0);
+    search
+        .active
+        .and_then(|index| search.matches.get(index))
+        .map(|found| found.start_line)
+}
+
+pub(crate) fn navigate_search(session_id: u64, delta: i32) -> Option<i64> {
+    let mut grids = session_grids();
+    let search = &mut grids.get_mut(&session_id)?.search;
+    if search.matches.is_empty() {
+        return None;
+    }
+    let active = next_search_index(search.active, search.matches.len(), delta)?;
+    search.active = Some(active);
+    Some(search.matches[active].start_line)
+}
+
+fn next_search_index(current: Option<usize>, count: usize, delta: i32) -> Option<usize> {
+    let count = i32::try_from(count).ok().filter(|count| *count > 0)?;
+    Some((current.unwrap_or(0) as i32 + delta).rem_euclid(count) as usize)
+}
+
+pub(crate) fn clear_search(session_id: u64) {
+    if let Some(state) = session_grids().get_mut(&session_id) {
+        state.search = GridSearch::default();
+    }
+    lingxia_terminal::terminal_search_cancel(session_id);
+}
+
+fn visible_search_highlights(
+    frame: &TerminalFrame,
+    scrollbar: Option<TerminalScrollbar>,
+    search: &GridSearch,
+) -> Vec<SearchHighlight> {
+    let top = scrollbar.map_or(0, |bar| bar.offset as i64);
+    let bottom = top + i64::from(frame.rows);
+    let mut spans = Vec::new();
+    for (index, found) in search.matches.iter().enumerate() {
+        let first = found.start_line.max(top);
+        let last = found.end_line.min(bottom - 1);
+        if first > last {
+            continue;
+        }
+        for line in first..=last {
+            let start_col = if line == found.start_line {
+                found.start_col
+            } else {
+                0
+            };
+            let end_col = if line == found.end_line {
+                found.end_col.min(frame.cols)
+            } else {
+                frame.cols
+            };
+            if end_col > start_col {
+                spans.push(SearchHighlight {
+                    row: (line - top) as u16,
+                    start_col,
+                    end_col,
+                    active: search.active == Some(index),
+                });
+            }
+        }
+    }
+    spans
 }
 
 /// Text covered by the current selection, preserving line boundaries.
@@ -623,9 +825,10 @@ fn grid_size_from_geometry(geometry: GridGeometry) -> Option<(u16, u16)> {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
-    use lingxia_terminal::FrameCell;
+    use lingxia_terminal::{FrameCell, TerminalSearchMatch};
 
     /// A frame is row-major and its clusters live in one blob, so a fixture
     /// places text by index rather than carrying a coordinate per cell.
@@ -649,6 +852,64 @@ mod tests {
             text,
             ..TerminalFrame::default()
         }
+    }
+
+    #[test]
+    fn search_highlights_map_absolute_lines_into_viewport() {
+        let painted = TerminalFrame {
+            cols: 10,
+            rows: 3,
+            ..Default::default()
+        };
+        let search = GridSearch {
+            matches: vec![
+                TerminalSearchMatch {
+                    start_line: 5,
+                    start_col: 2,
+                    end_line: 6,
+                    end_col: 4,
+                },
+                TerminalSearchMatch {
+                    start_line: 9,
+                    start_col: 0,
+                    end_line: 9,
+                    end_col: 2,
+                },
+            ],
+            active: Some(0),
+        };
+        assert_eq!(
+            visible_search_highlights(
+                &painted,
+                Some(TerminalScrollbar {
+                    total: 20,
+                    offset: 5,
+                    len: 3,
+                }),
+                &search,
+            ),
+            vec![
+                SearchHighlight {
+                    row: 0,
+                    start_col: 2,
+                    end_col: 10,
+                    active: true,
+                },
+                SearchHighlight {
+                    row: 1,
+                    start_col: 0,
+                    end_col: 4,
+                    active: true,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn search_navigation_wraps_in_both_directions() {
+        assert_eq!(next_search_index(Some(2), 3, 1), Some(0));
+        assert_eq!(next_search_index(Some(0), 3, -1), Some(2));
+        assert_eq!(next_search_index(None, 0, 1), None);
     }
 
     #[test]
@@ -725,7 +986,13 @@ pub(super) fn with_pane(
     session_id: u64,
     rect: RECT,
     cell: (i32, i32),
-    draw: impl FnOnce(&TerminalFrame, PaneView, Option<(GridPoint, GridPoint)>),
+    draw: impl FnOnce(
+        &TerminalFrame,
+        &TerminalImageSnapshot,
+        PaneView,
+        Option<(GridPoint, GridPoint)>,
+        &[SearchHighlight],
+    ),
 ) {
     let mut grids = session_grids();
     let state = grids.entry(session_id).or_default();
@@ -741,6 +1008,7 @@ pub(super) fn with_pane(
         exited: state.exited,
     };
     if let Some(frame) = state.frame.as_ref() {
-        draw(frame, view, selection);
+        let search = visible_search_highlights(frame, state.scrollbar, &state.search);
+        draw(frame, &state.images, view, selection, &search);
     }
 }

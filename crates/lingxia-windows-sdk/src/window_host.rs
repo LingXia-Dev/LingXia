@@ -115,7 +115,8 @@ static SIDEBAR_TABBAR_POPUPS: OnceLock<Mutex<HashMap<isize, SidebarTabbarPopup>>
 #[cfg(feature = "shell-chrome")]
 static SHELL_NOTICE_POPUPS: OnceLock<Mutex<HashMap<isize, ShellNoticePopup>>> = OnceLock::new();
 #[cfg(feature = "shell-chrome")]
-static TERMINAL_SELECTION_DRAGS: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
+static TERMINAL_SELECTION_DRAGS: OnceLock<Mutex<HashMap<isize, TerminalSelectionDrag>>> =
+    OnceLock::new();
 #[cfg(feature = "components")]
 static NAV_SNAPSHOT_SLIDES: OnceLock<Mutex<HashMap<isize, NavSnapshotSlide>>> = OnceLock::new();
 const WM_LINGXIA_RUN_CALLBACK: u32 = WindowsAndMessaging::WM_APP + 0x158;
@@ -153,6 +154,16 @@ const OVERLAY_DEFAULT_HEIGHT: i32 = 560;
 const RESIZE_BORDER: i32 = 8;
 const MAIN_WINDOW_MIN_WIDTH: i32 = 480;
 const MAIN_WINDOW_MIN_HEIGHT: i32 = 480;
+
+#[cfg(feature = "shell-chrome")]
+#[derive(Clone)]
+struct TerminalSelectionDrag {
+    panel_id: String,
+    #[cfg(feature = "terminal-runtime")]
+    start: (i32, i32),
+    #[cfg(feature = "terminal-runtime")]
+    pressed_image: Option<crate::shell::TerminalImageHit>,
+}
 
 pub(crate) fn set_default_host_headless(headless: bool) {
     DEFAULT_HOST_HEADLESS.store(headless, Ordering::Release);
@@ -6194,6 +6205,36 @@ fn clear_chrome_hover(hwnd: HWND) {
     }
 }
 
+fn sync_chrome_hover(
+    hwnd: HWND,
+    point: (i32, i32),
+    hover_rect: Option<RECT>,
+    from_host: bool,
+) -> bool {
+    let previous = chrome_interaction(hwnd);
+    update_chrome_interaction(hwnd, |state| {
+        state.cursor = Some(point);
+        state.hover_rect = hover_rect;
+    });
+    if previous.hover_rect != hover_rect {
+        for rect in [previous.hover_rect, hover_rect].into_iter().flatten() {
+            invalidate_rect_if_non_empty(hwnd, rect);
+        }
+    }
+    if from_host && hover_rect.is_some() {
+        let mut track = TRACKMOUSEEVENT {
+            cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+            dwFlags: TME_LEAVE,
+            hwndTrack: hwnd,
+            dwHoverTime: 0,
+        };
+        unsafe {
+            let _ = TrackMouseEvent(&mut track);
+        }
+    }
+    previous.hover_rect != hover_rect
+}
+
 /// Invalidates only the caption-button rects; frame-button hover/press
 /// feedback must not repaint the rest of the chrome.
 fn invalidate_frame_buttons(hwnd: HWND) {
@@ -6463,6 +6504,21 @@ fn lparam_screen_point(lparam: LPARAM) -> POINT {
     POINT {
         x: (value & 0xffff) as i16 as i32,
         y: ((value >> 16) & 0xffff) as i16 as i32,
+    }
+}
+
+fn context_menu_client_point(hwnd: HWND, lparam: LPARAM) -> Option<(i32, i32)> {
+    let mut point = if lparam.0 == -1 {
+        let mut cursor = POINT::default();
+        unsafe { WindowsAndMessaging::GetCursorPos(&mut cursor).ok()? };
+        cursor
+    } else {
+        lparam_screen_point(lparam)
+    };
+    unsafe {
+        ScreenToClient(hwnd, &mut point)
+            .as_bool()
+            .then_some((point.x, point.y))
     }
 }
 
@@ -6953,13 +7009,24 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         return true;
     }
     #[cfg(feature = "shell-chrome")]
-    if let Some(panel_id) = TERMINAL_SELECTION_DRAGS
+    if let Some(drag) = TERMINAL_SELECTION_DRAGS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .ok()
         .and_then(|drags| drags.get(&hwnd_handle(hwnd)).cloned())
     {
-        crate::shell::update_terminal_selection(&panel_id, point.0, point.1);
+        #[cfg(feature = "terminal-runtime")]
+        if point != drag.start
+            && let Some(drags) = TERMINAL_SELECTION_DRAGS.get()
+            && let Ok(mut drags) = drags.lock()
+            && let Some(active) = drags.get_mut(&hwnd_handle(hwnd))
+        {
+            #[cfg(feature = "terminal-runtime")]
+            {
+                active.pressed_image = None;
+            }
+        }
+        crate::shell::update_terminal_selection(&drag.panel_id, point.0, point.1);
         return true;
     }
     if update_attached_panel_resize_drag(hwnd, point) {
@@ -6983,7 +7050,16 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         if let Some(WindowsChromeHit::Focusable { id, .. }) = &hit
             && crate::shell::pane_drag_handle_at(id, point.0, point.1)
         {
-            clear_chrome_hover(hwnd);
+            if sync_chrome_hover(
+                hwnd,
+                point,
+                crate::shell::pane_hover_rect(id, point.0, point.1),
+                from_host,
+            ) {
+                unsafe {
+                    let _ = windows::Win32::Graphics::Gdi::UpdateWindow(hwnd);
+                }
+            }
             set_pane_handle_cursor();
             return true;
         }
@@ -7012,18 +7088,16 @@ fn handle_chrome_mouse_move(hwnd: HWND, point: (i32, i32), from_host: bool) -> b
         (Some(renderer), Some(state)) => renderer.hover_rect(state, point),
         _ => None,
     };
-    let previous = chrome_interaction(hwnd);
-    update_chrome_interaction(hwnd, |state| {
-        state.cursor = Some(point);
-        state.hover_rect = hover_rect;
-    });
-    if previous.hover_rect != hover_rect {
-        for rect in [previous.hover_rect, hover_rect].into_iter().flatten() {
-            invalidate_rect_if_non_empty(hwnd, rect);
+    let hover_changed = sync_chrome_hover(hwnd, point, hover_rect, from_host);
+    if hover_changed && matches!(&hit, Some(WindowsChromeHit::Focusable { .. })) {
+        // Native terminal grids are DirectComposition children updated from
+        // this paint pass, so flush their reveal boundary synchronously.
+        unsafe {
+            let _ = windows::Win32::Graphics::Gdi::UpdateWindow(hwnd);
         }
     }
 
-    if from_host && (hover.is_some() || hover_rect.is_some()) {
+    if from_host && hover.is_some() && hover_rect.is_none() {
         // WM_MOUSELEAVE clears highlights when the cursor exits the window
         // or moves onto the webview child.
         let mut track = TRACKMOUSEEVENT {
@@ -7105,18 +7179,25 @@ fn handle_chrome_mouse_wheel(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> bool
 
 #[cfg(feature = "shell-chrome")]
 fn finish_terminal_selection_drag(hwnd: HWND, point: Option<(i32, i32)>) -> bool {
-    let panel_id = TERMINAL_SELECTION_DRAGS
+    let drag = TERMINAL_SELECTION_DRAGS
         .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .remove(&hwnd_handle(hwnd));
-    let Some(panel_id) = panel_id else {
+    let Some(drag) = drag else {
         return false;
     };
     if let Some(point) = point {
-        crate::shell::update_terminal_selection(&panel_id, point.0, point.1);
+        crate::shell::update_terminal_selection(&drag.panel_id, point.0, point.1);
     }
-    crate::shell::end_terminal_selection(&panel_id);
+    crate::shell::end_terminal_selection(&drag.panel_id);
+    #[cfg(feature = "terminal-runtime")]
+    if let (Some(point), Some(pressed)) = (point, drag.pressed_image)
+        && crate::shell::terminal_image_hit_at(&drag.panel_id, point.0, point.1) == Some(pressed)
+        && let Some(image) = crate::shell::terminal_preview_image(pressed)
+    {
+        crate::shell::show_terminal_image_preview(hwnd, image);
+    }
     true
 }
 
@@ -7155,6 +7236,12 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
             id, click_command, ..
         } => {
             #[cfg(feature = "shell-chrome")]
+            if crate::shell::close_pane_at(&id, point.0, point.1) {
+                focus_host_panel(&id);
+                focus_host_window(hwnd);
+                return true;
+            }
+            #[cfg(feature = "shell-chrome")]
             if crate::shell::pane_drag_handle_at(&id, point.0, point.1) {
                 PENDING_PANE_DRAGS
                     .get_or_init(|| Mutex::new(HashMap::new()))
@@ -7189,11 +7276,22 @@ fn handle_chrome_left_down(hwnd: HWND, point: (i32, i32)) -> bool {
             }
             #[cfg(feature = "shell-chrome")]
             if id == "terminal" && crate::shell::begin_terminal_selection(&id, point.0, point.1) {
+                #[cfg(feature = "terminal-runtime")]
+                let pressed_image = crate::shell::terminal_image_hit_at(&id, point.0, point.1);
                 TERMINAL_SELECTION_DRAGS
                     .get_or_init(|| Mutex::new(HashMap::new()))
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner)
-                    .insert(hwnd_handle(hwnd), id.clone());
+                    .insert(
+                        hwnd_handle(hwnd),
+                        TerminalSelectionDrag {
+                            panel_id: id.clone(),
+                            #[cfg(feature = "terminal-runtime")]
+                            start: point,
+                            #[cfg(feature = "terminal-runtime")]
+                            pressed_image,
+                        },
+                    );
                 unsafe {
                     let _ = SetCapture(hwnd);
                 }
@@ -8845,6 +8943,16 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
+            WindowsAndMessaging::WM_CTLCOLOREDIT => {
+                #[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
+                if let Some(result) = crate::shell::text_input::control_color(
+                    HWND(lparam.0 as *mut _),
+                    HDC(wparam.0 as *mut _),
+                ) {
+                    return result;
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
             WindowsAndMessaging::WM_NCCALCSIZE => {
                 if let Some(result) = custom_shell_nc_calc_size(hwnd, wparam, lparam) {
                     return result;
@@ -8997,6 +9105,16 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
+            WindowsAndMessaging::WM_CONTEXTMENU => {
+                if windows_chrome_renderer().is_some()
+                    && !is_native_framed_window(hwnd)
+                    && context_menu_client_point(hwnd, lparam)
+                        .is_some_and(|point| handle_chrome_right_up(hwnd, point))
+                {
+                    return LRESULT(0);
+                }
+                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
             WindowsAndMessaging::WM_DESTROY => {
                 #[cfg(feature = "shell-chrome")]
                 destroy_transparent_tabbar_overlay(hwnd);
@@ -9050,9 +9168,11 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 let _ = sync_terminal_ime_position(hwnd);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
-            WindowsAndMessaging::WM_CHAR => {
+            WindowsAndMessaging::WM_CHAR | WindowsAndMessaging::WM_SYSCHAR => {
                 #[cfg(feature = "shell-chrome")]
-                if take_suppressed_escape_char(hwnd, wparam.0) {
+                if msg == WindowsAndMessaging::WM_CHAR
+                    && take_suppressed_escape_char(hwnd, wparam.0)
+                {
                     return LRESULT(0);
                 }
                 if handle_host_panel_key_message(msg, wparam) {
@@ -9061,6 +9181,13 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_KEYDOWN => {
+                #[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
+                if wparam.0 == usize::from(VK_ESCAPE.0)
+                    && crate::shell::text_input::close_search_edit(hwnd)
+                {
+                    suppress_next_escape_char(hwnd);
+                    return LRESULT(0);
+                }
                 #[cfg(feature = "shell-chrome")]
                 if wparam.0 == usize::from(VK_ESCAPE.0) && cancel_pane_drag(hwnd, true) {
                     suppress_next_escape_char(hwnd);
@@ -9337,7 +9464,10 @@ fn handle_host_panel_key_message(msg: u32, wparam: WPARAM) -> bool {
     let Some(handler) = host_panel_input_handler(&panel_id) else {
         return false;
     };
-    let character = if msg == WindowsAndMessaging::WM_CHAR {
+    let character = if matches!(
+        msg,
+        WindowsAndMessaging::WM_CHAR | WindowsAndMessaging::WM_SYSCHAR
+    ) {
         char::from_u32(wparam.0 as u32)
     } else {
         None

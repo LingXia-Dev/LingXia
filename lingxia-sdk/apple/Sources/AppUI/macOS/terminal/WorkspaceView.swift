@@ -410,6 +410,7 @@ private struct LingXiaTerminalAutomationCommand: Decodable {
     struct Params: Decodable {
         var direction: String?
         var maximized: Bool?
+        var text: String?
     }
 
     let id: UInt64
@@ -1068,6 +1069,22 @@ final class LingXiaTerminalWorkspaceView: NSView {
                 layoutSubtreeIfNeeded()
                 let snapshot = automationSnapshotJSON()
                 _ = terminalAutomationPublishSnapshot(surfaceID, snapshot)
+                _ = terminalAutomationCompleteCommand(command.id, true, snapshot)
+            case "input":
+                guard let text = command.params.text else {
+                    _ = terminalAutomationCompleteCommand(command.id, false, "input requires text")
+                    continue
+                }
+                guard let tab = activeTab(), let activePane = activePane(in: tab) else {
+                    _ = terminalAutomationCompleteCommand(
+                        command.id,
+                        false,
+                        "terminal surface has no active pane"
+                    )
+                    continue
+                }
+                activePane.sendInput(text)
+                let snapshot = automationSnapshotJSON()
                 _ = terminalAutomationCompleteCommand(command.id, true, snapshot)
             default:
                 _ = terminalAutomationCompleteCommand(
