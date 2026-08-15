@@ -1097,13 +1097,16 @@ class SidebarView: NSView, NSPopoverDelegate {
 
         if let lastPinButton,
            !model.appGroups.isEmpty || !model.browserTabs.isEmpty {
-            let divider = LxAppHostThemeLayerView(role: .separator, alpha: 0.7)
+            // A grouping hairline, not a rule: narrower than the icons it
+            // separates, at the separator color's own alpha, and given more air
+            // than the 6pt icon rhythm so the gap does the grouping.
+            let divider = LxAppHostThemeLayerView(role: .separator, alpha: nil)
             divider.translatesAutoresizingMaskIntoConstraints = false
             railStack.addArrangedSubview(divider)
-            railStack.setCustomSpacing(2.5, after: lastPinButton)
-            railStack.setCustomSpacing(2.5, after: divider)
+            railStack.setCustomSpacing(5, after: lastPinButton)
+            railStack.setCustomSpacing(5, after: divider)
             NSLayoutConstraint.activate([
-                divider.widthAnchor.constraint(equalToConstant: 22),
+                divider.widthAnchor.constraint(equalToConstant: 18),
                 divider.heightAnchor.constraint(equalToConstant: 1),
             ])
         }
