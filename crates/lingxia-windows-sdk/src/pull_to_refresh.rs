@@ -23,7 +23,7 @@ fn handle_pull_to_refresh(appid: String, path: String, refreshing: bool) -> bool
         return !refreshing;
     };
     let target_path = if path.trim().is_empty() {
-        app.peek_current_page().unwrap_or_default()
+        app.peek_current_page_path().unwrap_or_default()
     } else {
         path
     };

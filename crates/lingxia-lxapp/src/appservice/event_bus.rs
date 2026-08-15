@@ -5,7 +5,8 @@ use rong::{
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-/// Internal scope marker.
+/// Internal scope marker. The page scope carries the page INSTANCE id, so
+/// one instance's teardown can never clear a same-path sibling's handlers.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum Scope {
     App,
@@ -47,14 +48,14 @@ pub(crate) fn init(ctx: &JSContext) {
     registry(ctx);
 }
 
-/// Remove all handler registrations for a page (e.g., on unload).
-pub(crate) fn clear_page(ctx: &JSContext, page_path: &str) {
+/// Remove all handler registrations for a page instance (e.g., on unload).
+pub(crate) fn clear_page(ctx: &JSContext, page_instance_id: &str) {
     let registry = registry(ctx);
     registry
         .handlers
         .borrow_mut()
         .retain(|scope, _| match scope {
-            Scope::PageInstance(path) => path != page_path,
+            Scope::PageInstance(id) => id != page_instance_id,
             _ => true,
         });
 }
@@ -117,7 +118,7 @@ pub fn unregister_app_handler(
 /// Register a page-scoped handler (page_path required).
 pub fn register_page_handler(
     ctx: &JSContext,
-    page_path: &str,
+    page_instance_id: &str,
     event_name: &str,
     callback: JSFunc,
 ) -> JSResult<()> {
@@ -127,10 +128,10 @@ pub fn register_page_handler(
             "event_name is required",
         )));
     }
-    if page_path.trim().is_empty() {
+    if page_instance_id.trim().is_empty() {
         return Err(RongJSError::from(HostError::new(
             rong::error::E_INTERNAL,
-            "page_path is required",
+            "page_instance_id is required",
         )));
     }
 
@@ -143,21 +144,22 @@ pub fn register_page_handler(
     registry
         .handlers
         .borrow_mut()
-        .entry(Scope::PageInstance(page_path.to_string()))
+        .entry(Scope::PageInstance(page_instance_id.to_string()))
         .or_default()
         .push(entry);
     Ok(())
 }
 
 /// Unregister page-scoped handlers for a given page + event (removes all matching).
-pub fn unregister_page_handler(ctx: &JSContext, page_path: &str, event_name: &str) {
-    if page_path.trim().is_empty() || event_name.trim().is_empty() {
+pub fn unregister_page_handler(ctx: &JSContext, page_instance_id: &str, event_name: &str) {
+    if page_instance_id.trim().is_empty() || event_name.trim().is_empty() {
         return;
     }
+    let instance_id = page_instance_id.to_string();
     let registry = registry(ctx);
     registry.handlers.borrow_mut().retain(|scope, entries| {
-        if let Scope::PageInstance(path) = scope
-            && path == page_path
+        if let Scope::PageInstance(id) = scope
+            && id == &instance_id
         {
             entries.retain(|h| h.event_name != event_name);
             return !entries.is_empty();
@@ -265,8 +267,19 @@ pub fn publish_page_event(
         return false;
     };
 
+    let Some(instance_id) = lxapp
+        .get_page(page_path)
+        .map(|page| page.instance_id_string())
+    else {
+        warn!(
+            "publish_page_event: no live page instance for {}",
+            page_path
+        );
+        return false;
+    };
+
     let event = AppBusEvent {
-        scope: Scope::PageInstance(page_path.to_string()),
+        scope: Scope::PageInstance(instance_id),
         event_name: event_name.to_string(),
         payload_json,
     };

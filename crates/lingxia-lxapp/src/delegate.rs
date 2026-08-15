@@ -173,7 +173,7 @@ impl LxAppDelegate for LxApp {
                     }
                 });
             }
-            let _ = self.push_to_page_stack(&resolved_path);
+            let _ = self.push_to_page_stack(&page);
             // Pre-create tab pages (synchronously enqueue); FIFO ordering ensures CreateAppSvc precedes these.
             if let Some(tab_pages) = self.get_tabbar().map(|t| t.get_tabbar_pages()) {
                 for tab_path in tab_pages {
@@ -250,11 +250,25 @@ impl LxAppDelegate for LxApp {
     }
 
     fn on_page_show(self: &Arc<Self>, path: String) {
-        // Get the existing page - it should already exist when show is called
-        let page = match self.get_page(&path) {
+        // Platform containers report either a bare route path or the
+        // webview's tag-derived identity (`path#instance[#session]`). When
+        // the instance segment is present, resolve by it — a route can have
+        // several live instances.
+        let reported = path;
+        let mut segments = reported
+            .split('?')
+            .next()
+            .unwrap_or(reported.as_str())
+            .split('#');
+        let path = segments.next().unwrap_or(reported.as_str()).to_string();
+        let instance_id = segments.next().filter(|segment| !segment.is_empty());
+        let page = match instance_id
+            .and_then(|id| self.get_page_by_instance_id_str(id))
+            .or_else(|| self.get_page(&path))
+        {
             Some(page) => page,
             None => {
-                error!("PageInstance not found when showing: {}", path)
+                error!("PageInstance not found when showing: {}", reported)
                     .with_appid(self.appid.clone())
                     .with_path(path.clone());
                 return;
@@ -309,7 +323,7 @@ impl LxApp {
                 .map(|t| t.get_tabbar_pages())
                 .unwrap_or_default();
             if let Some(tab_path) = tab_pages.get(index) {
-                if let Some(current_page_path) = self.peek_current_page() {
+                if let Some(current_page_path) = self.peek_current_page_path() {
                     let current_page = self
                         .get_page(&current_page_path)
                         .unwrap_or_else(|| self.get_or_create_page(&current_page_path));
@@ -445,7 +459,7 @@ impl LxApp {
     fn navigate_to_initial_route(self: &Arc<Self>) -> bool {
         let home_route = self.config.get_initial_route();
         if self
-            .peek_current_page()
+            .peek_current_page_path()
             .is_some_and(|path| path == home_route)
         {
             return true;
@@ -461,7 +475,7 @@ impl LxApp {
             NavigationType::Launch
         };
 
-        if let Some(path) = self.peek_current_page() {
+        if let Some(path) = self.peek_current_page_path() {
             let page = self
                 .get_page(&path)
                 .unwrap_or_else(|| self.get_or_create_page(&path));
@@ -477,7 +491,7 @@ impl LxApp {
 
         match data.as_str() {
             "back" => {
-                if let Some(path) = self.peek_current_page()
+                if let Some(path) = self.peek_current_page_path()
                     && let Some(page) = self.get_page(path.as_str())
                 {
                     let _ = page.navigate_back(1);
@@ -511,7 +525,7 @@ impl LxApp {
             return true;
         }
 
-        if let Some(path) = self.peek_current_page()
+        if let Some(path) = self.peek_current_page_path()
             && let Some(page) = self.get_page(path.as_str())
         {
             let _ = page.navigate_back(1);
@@ -524,7 +538,7 @@ impl LxApp {
     /// data: page path
     fn handle_pull_down_refresh(self: &Arc<Self>, data: String) -> bool {
         let path = if data.is_empty() {
-            match self.peek_current_page() {
+            match self.peek_current_page_path() {
                 Some(p) => p,
                 None => return false,
             }

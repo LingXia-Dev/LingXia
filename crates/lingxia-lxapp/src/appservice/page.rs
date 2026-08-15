@@ -44,6 +44,7 @@ pub struct PageSvc {
     /// event enqueues here and a single drainer runs the queue FIFO.
     lifecycle_queue: LifecycleQueue,
     lifecycle_pump_running: Rc<Cell<bool>>,
+
     /// Set when TerminatePage retires this service. Queued and in-flight
     /// lifecycle handlers may resume afterwards; they must not reach the
     /// (possibly rebuilt) document through the shared PageInstance.
@@ -666,24 +667,26 @@ impl PageSvc {
     ) -> JSResult<JSObject> {
         let lxapp = LxApp::from_ctx(&ctx)?;
 
-        let scoped_page_instance_id = page_instance_id
+        // A path can have several live instances, so the service is always
+        // bound to an explicit instance id.
+        let page = page_instance_id
             .0
             .as_deref()
-            .filter(|id| !id.trim().is_empty());
-        let page = match scoped_page_instance_id {
-            Some(id) => lxapp.get_page_by_instance_id_str(id).ok_or_else(|| {
+            .filter(|id| !id.trim().is_empty())
+            .ok_or_else(|| {
                 RongJSError::from(HostError::new(
-                    rong::error::E_NOT_FOUND,
-                    format!("PageInstance not found: {}", id),
+                    rong::error::E_INTERNAL,
+                    format!("PageSvc for '{}' created without an instance id", path),
                 ))
-            })?,
-            None => lxapp.get_page(&path).ok_or_else(|| {
-                RongJSError::from(HostError::new(
-                    rong::error::E_NOT_FOUND,
-                    format!("PageInstance not found: {}", path),
-                ))
-            })?,
-        };
+            })
+            .and_then(|id| {
+                lxapp.get_page_by_instance_id_str(id).ok_or_else(|| {
+                    RongJSError::from(HostError::new(
+                        rong::error::E_NOT_FOUND,
+                        format!("PageInstance not found: {}", id),
+                    ))
+                })
+            })?;
 
         // Cache capabilities
         let mut page_svc = PageSvc {
@@ -715,11 +718,9 @@ impl PageSvc {
         page_svc.this = instance.clone();
         let page_instance_id = page_svc.page.instance_id_string();
         super::with_page_svc_map(&ctx, |page_svc_map| {
-            let mut page_svc_map = page_svc_map.borrow_mut();
-            if scoped_page_instance_id.is_none() {
-                page_svc_map.insert(path, page_svc.clone());
-            }
-            page_svc_map.insert(page_instance_id, page_svc.clone());
+            page_svc_map
+                .borrow_mut()
+                .insert(page_instance_id, page_svc.clone());
             Ok(())
         })?;
 
@@ -1308,12 +1309,30 @@ impl PageSvc {
 impl LxApp {
     pub async fn get_or_create_page_in_ctx(&self, ctx: &JSContext, url: &str) -> JSResult<PageSvc> {
         let page = self.get_or_create_page(url);
+        self.ensure_page_svc_in_ctx(ctx, page).await
+    }
 
+    /// Resolve the instance a navigation entry will land on (see
+    /// `create_page_for_entry`) and return its service.
+    pub async fn create_page_for_entry_in_ctx(
+        &self,
+        ctx: &JSContext,
+        url: &str,
+    ) -> JSResult<PageSvc> {
+        let page = self.create_page_for_entry(url);
+        self.ensure_page_svc_in_ctx(ctx, page).await
+    }
+
+    async fn ensure_page_svc_in_ctx(
+        &self,
+        ctx: &JSContext,
+        page: PageInstance,
+    ) -> JSResult<PageSvc> {
         page.wait_webview_ready()
             .await
             .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e)))?;
 
-        let path = page.path();
+        let instance_id = page.instance_id_string();
 
         // Settle any owed reset BEFORE consulting the registry: inside the
         // deferred-teardown window the map still holds the outgoing service,
@@ -1342,7 +1361,7 @@ impl LxApp {
         super::with_page_svc_map(ctx, |page_svc_map| {
             page_svc_map
                 .borrow()
-                .get(path.as_str())
+                .get(&instance_id)
                 .cloned()
                 .ok_or_else(|| {
                     RongJSError::from(HostError::new(
@@ -1388,13 +1407,15 @@ impl LxApp {
 
 fn get_current_pages(ctx: JSContext) -> JSResult<Vec<JSObject>> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let paths = lxapp.get_page_stack();
+    // Stack entries are instance ids, and every PageSvc registers under its
+    // instance id — each stack slot maps to exactly its own service.
+    let instance_ids = lxapp.get_page_stack();
     let mut pages = Vec::new();
-    for p in paths {
+    for id in instance_ids {
         if let Some(page_obj) = super::with_page_svc_map(&ctx, |page_svc_map| {
             Ok(page_svc_map
                 .borrow()
-                .get(&p)
+                .get(&id)
                 .map(|page_svc| page_svc.this.clone()))
         })? {
             pages.push(page_obj);

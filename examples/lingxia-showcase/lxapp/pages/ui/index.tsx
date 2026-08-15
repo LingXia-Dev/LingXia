@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLxPage } from '@lingxia/react';
+import { PageStackCard } from '../../shared/components/page-stack';
 import '../../tailwind.css';
 
 // Parse a surface size input. Blank means "let the Host pick the default size";
@@ -33,6 +34,7 @@ export default function UIPage() {
     demoNavigateBack,
     demoSwitchTab,
     demoRedirectTo,
+    bumpLogicCounter,
     showToastWithParams,
     hideToast,
     showModalWithParams,
@@ -59,6 +61,10 @@ export default function UIPage() {
   const {
     currentType = 'navigation',
     pageStack = [],
+    instanceTag = '',
+    previousInstanceTag = '',
+    logicCounter = 0,
+    events = [],
     modalResult = null,
     toastIcon = 'success',
     toastIconLabel = 'Success',
@@ -70,6 +76,11 @@ export default function UIPage() {
     chromeError = '',
     appearance = { preference: 'auto', resolved: 'light' },
   } = data;
+
+  // View-local state: never leaves the WebView, so only a document reload
+  // (a fresh instance) clears it.
+  const [viewCounter, setViewCounter] = React.useState(0);
+  const [popupOpen, setPopupOpen] = React.useState(false);
 
   const toastIconDisplay = React.useMemo(() => {
     const match = toastIconOptions.find((option) => option.value === toastIcon);
@@ -144,8 +155,8 @@ export default function UIPage() {
             onClick={demoNavigateTo}
           >
             <div>
-              <div className="text-sm text-gray-800 font-medium">Navigate to new page</div>
-              <div className="text-xs text-gray-500 mt-0.5">Leave and come back — see what a page keeps and what it resets</div>
+              <div className="text-sm text-gray-800 font-medium">Push this page again</div>
+              <div className="text-xs text-gray-500 mt-0.5">navigateTo → this route; every entry is a fresh instance, watch the stack grow</div>
             </div>
             <span className="text-gray-400 text-lg">›</span>
           </div>
@@ -162,7 +173,7 @@ export default function UIPage() {
             className="flex items-center justify-between px-5 py-4 hover:bg-linear-to-r hover:from-blue-50/50 hover:to-transparent cursor-pointer border-b border-line-100 transition-all active:scale-[0.99]"
             onClick={demoRedirectTo}
           >
-            <div className="text-sm text-gray-800 font-medium">Open in current page</div>
+            <div className="text-sm text-gray-800 font-medium">Replace this page (redirectTo)</div>
             <span className="text-gray-400 text-lg">›</span>
           </div>
           <div
@@ -608,37 +619,136 @@ export default function UIPage() {
           </>
         )}
 
-        {/* Page Stack Info - Only show for navigation */}
+        {/* Page stack + instance lifecycle - Only show for navigation */}
         {currentType === 'navigation' && (
-          <div className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden">
-            <div className="px-5 py-4">
-              <div className="flex items-center gap-2 mb-4">
-                <span className="w-1 h-5 bg-blue-500 rounded-full"></span>
-                <div className="text-sm font-semibold text-gray-700">Current Page Stack</div>
-                <span className="ml-auto px-2 py-1 bg-blue-50 text-blue-600 dark:text-blue-400 text-xs font-semibold rounded-full">
-                  {pageStack.length}
-                </span>
+          <div className="mb-5 space-y-4">
+            <PageStackCard
+              stack={pageStack}
+              badge={`${pageStack.length}/10`}
+              testId="ui-page-stack"
+            />
+
+            {/* Instance identity */}
+            <div className="bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
+              <div className="px-4 py-3 border-b border-line-100">
+                <h3 className="text-base font-medium text-gray-900">Logic instance</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Push this page again and a new tag appears — every entry is a new Page instance
+                </p>
               </div>
-              <div className="space-y-2">
-                {pageStack.map((page, index) => (
-                  <div key={index} className="flex flex-col gap-2 py-3 px-4 bg-linear-to-r from-surface-50 to-surface rounded-xl border border-line-100">
-                    <div className="flex items-center gap-3">
-                      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-600 dark:text-blue-400 text-xs font-bold">
-                        {page.index + 1}
-                      </span>
-                      <span className="text-sm text-gray-800 font-medium flex-1 truncate">{page.route}</span>
-                    </div>
-                    {Object.keys(page.options).length > 0 && (
-                      <div className="ml-9 text-xs text-gray-500 font-mono bg-surface-50 px-3 py-2 rounded-lg break-all">
-                        {JSON.stringify(page.options, null, 2)}
+              <div className="px-4 py-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">This instance</span>
+                  <span data-testid="lifecycle-instance-tag" className="text-sm font-mono font-medium text-violet-600 dark:text-violet-400">
+                    #{instanceTag || '…'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600">Previous instance</span>
+                  <span data-testid="lifecycle-previous-tag" className="text-sm font-mono text-gray-500">
+                    #{previousInstanceTag || '…'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-gray-400 leading-relaxed pt-1">
+                  The previous tag is read back from <code>lx.getStorage()</code>, which is
+                  app-scoped and survives the reset.
+                </div>
+              </div>
+            </div>
+
+            {/* State that resets */}
+            <div className="bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
+              <div className="px-4 py-3 border-b border-line-100">
+                <h3 className="text-base font-medium text-gray-900">State that resets</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Dirty all three, leave, come back — everything is fresh
+                </p>
+              </div>
+              <div className="p-4 grid grid-cols-2 gap-3">
+                <button
+                  data-testid="lifecycle-bump-logic"
+                  onClick={bumpLogicCounter}
+                  className="flex flex-col items-center justify-center py-4 px-2 bg-violet-50 hover:bg-violet-100 active:bg-violet-200 text-violet-700 dark:text-violet-400 rounded-xl transition-colors"
+                >
+                  <span className="text-2xl font-bold" data-testid="lifecycle-logic-counter">{logicCounter}</span>
+                  <span className="text-sm font-medium mt-1">Logic +1</span>
+                  <span className="text-[10px] opacity-70">this.setData</span>
+                </button>
+                <button
+                  data-testid="lifecycle-bump-view"
+                  onClick={() => setViewCounter(count => count + 1)}
+                  className="flex flex-col items-center justify-center py-4 px-2 bg-cyan-50 hover:bg-cyan-100 active:bg-cyan-200 text-cyan-700 dark:text-cyan-400 rounded-xl transition-colors"
+                >
+                  <span className="text-2xl font-bold" data-testid="lifecycle-view-counter">{viewCounter}</span>
+                  <span className="text-sm font-medium mt-1">View +1</span>
+                  <span className="text-[10px] opacity-70">useState</span>
+                </button>
+              </div>
+              <div className="px-4 pb-4">
+                <button
+                  data-testid="lifecycle-open-popup"
+                  onClick={() => setPopupOpen(true)}
+                  className="w-full py-2.5 px-4 bg-linear-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 text-white rounded-lg text-sm font-medium transition-all shadow-sm"
+                >
+                  Open H5 popup
+                </button>
+              </div>
+            </div>
+
+            {/* Lifecycle log */}
+            <div className="bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
+              <div className="px-4 py-3 border-b border-line-100">
+                <h3 className="text-base font-medium text-gray-900">Lifecycle of this instance</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Stored in <code>data</code>, so it starts over with every entry
+                </p>
+              </div>
+              <div className="p-4">
+                {events.length === 0 ? (
+                  <div className="text-xs text-gray-400">No events yet</div>
+                ) : (
+                  <div className="space-y-2" data-testid="lifecycle-events">
+                    {events.map((event: string, index: number) => (
+                      <div
+                        key={`${event}-${index}`}
+                        className="text-xs font-mono text-gray-700 bg-surface-50 border border-line-100 rounded-lg px-3 py-2"
+                      >
+                        {event}
                       </div>
-                    )}
+                    ))}
                   </div>
-                ))}
-                {pageStack.length === 0 && (
-                  <div className="text-sm text-gray-500 text-center py-8">No page stack available</div>
                 )}
+                <div className="text-[11px] text-gray-400 leading-relaxed mt-3">
+                  Backgrounding the app fires <code>onHide</code> / <code>onShow</code> on the same
+                  instance. Only leaving the page fires <code>onUnload</code> and ends it.
+                </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* A plain H5 overlay — the kind that used to still be open on re-entry */}
+        {popupOpen && (
+          <div
+            data-testid="lifecycle-popup"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-8"
+            onClick={() => setPopupOpen(false)}
+          >
+            <div
+              className="bg-surface rounded-2xl shadow-xl px-5 py-6 w-full max-w-xs text-center"
+              onClick={event => event.stopPropagation()}
+            >
+              <div className="text-base font-semibold text-gray-900">Pure H5 popup</div>
+              <div className="text-xs text-gray-500 mt-2 leading-relaxed">
+                Leave the page with this open. When you come back it is gone, because the
+                document was reloaded behind the scenes.
+              </div>
+              <button
+                className="mt-4 w-full py-2 rounded-lg bg-surface-100 hover:bg-surface-200 text-sm text-gray-700"
+                onClick={() => setPopupOpen(false)}
+              >
+                Close
+              </button>
             </div>
           </div>
         )}

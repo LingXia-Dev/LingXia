@@ -592,7 +592,7 @@ export struct LxAppContainer {
 
     switch (action) {
       case 'create':
-        if (this.isActiveSurfaceWebView(info.webtag)) {
+        if (this.isActiveSurfaceWebView(info)) {
           hilog.info(DOMAIN, TAG, `Surface WebView is owned by SurfaceManager: ${info.webtag}`);
           break;
         }
@@ -609,7 +609,7 @@ export struct LxAppContainer {
         }
         break;
       case 'destroy':
-        if (this.isActiveSurfaceWebView(info.webtag) && this.webViewComponents.get(info.webtag) === undefined) {
+        if (this.isActiveSurfaceWebView(info) && this.webViewComponents.get(info.webtag) === undefined) {
           hilog.info(DOMAIN, TAG, `Surface WebView destroyed outside container: ${info.webtag}`);
           break;
         }
@@ -1593,12 +1593,14 @@ export struct LxAppContainer {
     return this.getLogicalWebTag(webTag) === this.getLogicalWebTag(this.presentationOverlayWebTag);
   }
 
-	  private isActiveSurfaceWebView(webTag: string): boolean {
-    if (LxAppSurface.isSurfacePageWebView(this.appId, webTag)) {
+  private isActiveSurfaceWebView(info: WebViewInfo): boolean {
+    // Surface ownership is declared at creation; every page webview carries a
+    // per-instance tag, so the tag shape says nothing about who presents it.
+    if (info.effectiveOptions.surfaceOwned) {
       return true;
     }
-	    return this.isIsolatedPageInstanceWebView(webTag);
-	  }
+    return LxAppSurface.isSurfacePageWebView(this.appId, info.webtag);
+  }
 
   private reportSurfaceViewport(widthVp: number, heightVp: number): void {
     if (!Number.isFinite(widthVp) || !Number.isFinite(heightVp) || widthVp <= 0 || heightVp <= 0) {
@@ -1633,41 +1635,6 @@ export struct LxAppContainer {
     } catch (error) {
       hilog.warn(DOMAIN, TAG, `setSurfaceWidth failed appId=${this.appId}: ${error}`);
     }
-  }
-
-  private isIsolatedPageInstanceWebView(webTag: string): boolean {
-    const extracted = extractWebTag(webTag);
-    if (!extracted || extracted.appId !== this.appId) {
-      return false;
-    }
-    const logicalPrefix = `${toWebTag(extracted.appId, extracted.path)}#`;
-    if (!webTag.startsWith(logicalPrefix)) {
-      return false;
-    }
-    const suffix = webTag.substring(logicalPrefix.length);
-    const sessionSeparator = suffix.indexOf('#');
-    if (sessionSeparator <= 0) {
-      return false;
-    }
-    const pageInstanceId = suffix.substring(0, sessionSeparator);
-    return this.looksLikePageInstanceId(pageInstanceId);
-  }
-
-  private looksLikePageInstanceId(value: string): boolean {
-    if (value.length < 32 || value.length > 36) {
-      return false;
-    }
-    for (let i = 0; i < value.length; i++) {
-      const code = value.charCodeAt(i);
-      const isDigit = code >= 48 && code <= 57;
-      const isLowerHex = code >= 97 && code <= 102;
-      const isUpperHex = code >= 65 && code <= 70;
-      const isDash = code === 45;
-      if (!isDigit && !isLowerHex && !isUpperHex && !isDash) {
-        return false;
-      }
-    }
-    return true;
   }
 
   private getRenderVisibility(webTag: string): Visibility {

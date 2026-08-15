@@ -21,6 +21,9 @@ contract({
     describe: 'UI navigateTo to push a second page instance',
   });
 
+  // The push created a fresh instance of this same route; wait for its
+  // document before driving the next control.
+  await app.page.waitFor({ page: 'ui', css: '[data-testid="ui-navigate-back"]', state: 'visible' });
   await app.page.click({ page: 'ui', css: '[data-testid="ui-navigate-back"]' });
   await eventually(() => app.nav.stack(), (stack) => stack.length === 1, {
     describe: 'UI navigateBack to pop the page instance',

@@ -626,17 +626,15 @@ pub(crate) async fn lxapp_service_handler(
                 )
                 .with_appid(lxapp.appid.clone())
                 .with_path(path.clone());
-                // The page can be disposed between queueing and execution (a
-                // relaunch tearing the stack down races a queued rebuild);
+                // The instance can be disposed between queueing and execution
+                // (a relaunch tearing the stack down races a queued rebuild);
                 // that is churn, not a failure.
-                let target_gone = match page_instance_id.as_deref() {
-                    Some(id) => lxapp.get_page_by_instance_id_str(id).is_none(),
-                    None => lxapp.get_page(&path).is_none(),
-                };
-                if target_gone {
+                if let Some(id) = page_instance_id.as_deref()
+                    && lxapp.get_page_by_instance_id_str(id).is_none()
+                {
                     info!(
-                        "[Worker {}] Skipped CreatePage for disposed page",
-                        worker_id
+                        "[Worker {}] Skipped CreatePage for disposed instance {}",
+                        worker_id, id
                     )
                     .with_appid(lxapp.appid.clone())
                     .with_path(path.clone());
@@ -647,9 +645,23 @@ pub(crate) async fn lxapp_service_handler(
                     Ok(()) => Ok(()),
                     Err(e) => {
                         let msg = e.to_string();
-                        error!("[Worker {}] create_in_ctx failed: {}", worker_id, e)
+                        // The instance can also be disposed DURING creation
+                        // (the preflight raced the disposal) — still churn.
+                        let disposed_during_create = page_instance_id
+                            .as_deref()
+                            .is_some_and(|id| lxapp.get_page_by_instance_id_str(id).is_none());
+                        if disposed_during_create {
+                            info!(
+                                "[Worker {}] Dropped CreatePage for instance disposed mid-create: {}",
+                                worker_id, msg
+                            )
                             .with_appid(lxapp.appid.clone())
                             .with_path(&path);
+                        } else {
+                            error!("[Worker {}] create_in_ctx failed: {}", worker_id, e)
+                                .with_appid(lxapp.appid.clone())
+                                .with_path(&path);
+                        }
                         Err(msg)
                     }
                 }
@@ -682,24 +694,12 @@ pub(crate) async fn lxapp_service_handler(
                     return;
                 }
 
-                // Prefer page instance identity. Multiple active PageSvc objects can share a path.
+                // Services register under their instance id alone; a path can
+                // have several live instances.
                 let page_svc = with_page_svc_map(ctx, |page_svc_map| {
-                    let mut page_svc_map = page_svc_map.borrow_mut();
-                    let page_svc = match page_instance_id.as_deref() {
-                        Some(id) => page_svc_map.remove(id),
-                        None => page_svc_map.get(&path).cloned(),
-                    };
-
-                    if let Some(page_svc) = page_svc.as_ref() {
-                        let instance_id = page_svc.get_page().instance_id_string();
-                        page_svc_map.remove(instance_id.as_str());
-                        if page_svc_map.get(&path).is_some_and(|candidate| {
-                            candidate.get_page().instance_id_string() == instance_id
-                        }) {
-                            page_svc_map.remove(&path);
-                        }
-                    }
-                    Ok(page_svc)
+                    Ok(page_instance_id
+                        .as_deref()
+                        .and_then(|id| page_svc_map.borrow_mut().remove(id)))
                 })
                 .unwrap_or(None);
 
@@ -708,7 +708,9 @@ pub(crate) async fn lxapp_service_handler(
                     page_svc
                         .close_channels(bridge::BRIDGE_CANCELED, "Page terminated")
                         .await;
-                    event_bus::clear_page(ctx, &path);
+                    // Instance-scoped: terminating one instance must not clear
+                    // a same-path sibling's subscriptions.
+                    event_bus::clear_page(ctx, &page_svc.get_page().instance_id_string());
 
                     info!("[Worker {}] Removed page", worker_id)
                         .with_appid(lxapp.appid.clone())
@@ -743,11 +745,9 @@ pub(crate) async fn lxapp_service_handler(
                 match source {
                     PageSvcSource::Bridge { message } => {
                         let page_svc = with_page_svc_map(ctx, |page_svc_map| {
-                            let page_svc_map = page_svc_map.borrow();
                             Ok(page_instance_id
                                 .as_deref()
-                                .and_then(|id| page_svc_map.get(id).cloned())
-                                .or_else(|| page_svc_map.get(&path).cloned()))
+                                .and_then(|id| page_svc_map.borrow().get(id).cloned()))
                         })
                         .unwrap_or(None);
 
@@ -780,11 +780,9 @@ pub(crate) async fn lxapp_service_handler(
                     }
                     PageSvcSource::Native { name, args } => {
                         let page_svc = with_page_svc_map(ctx, |page_svc_map| {
-                            let page_svc_map = page_svc_map.borrow();
                             Ok(page_instance_id
                                 .as_deref()
-                                .and_then(|id| page_svc_map.get(id).cloned())
-                                .or_else(|| page_svc_map.get(&path).cloned()))
+                                .and_then(|id| page_svc_map.borrow().get(id).cloned()))
                         })
                         .unwrap_or(None);
 
@@ -815,8 +813,7 @@ pub(crate) async fn lxapp_service_handler(
                     let page_svc_map = page_svc_map.borrow();
                     Ok(page_instance_id
                         .as_deref()
-                        .and_then(|id| page_svc_map.get(id).cloned())
-                        .or_else(|| page_svc_map.get(&path).cloned()))
+                        .and_then(|id| page_svc_map.get(id).cloned()))
                 })
                 .unwrap_or(None);
 

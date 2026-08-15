@@ -62,7 +62,7 @@ fn set_device_orientation(ctx: JSContext, orientation: String) -> JSResult<bool>
 
 fn on_device_orientation_change(ctx: JSContext, callback: JSFunc) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let current_path = lxapp.peek_current_page().unwrap_or_default();
+    let current_path = lxapp.peek_current_page_path().unwrap_or_default();
     let current = if current_path.is_empty() {
         lxapp.get_app_orientation()
     } else {

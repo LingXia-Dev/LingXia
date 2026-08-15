@@ -416,6 +416,7 @@ impl AppRuntime for Platform {
         appid: String,
         _title: String,
         path: String,
+        _webtag: String,
         session_id: u64,
         _open_mode: LxAppOpenMode,
         _panel_id: String,
@@ -480,6 +481,7 @@ impl AppRuntime for Platform {
         &self,
         appid: String,
         path: String,
+        _webtag: String,
         animation_type: crate::traits::app_runtime::AnimationType,
     ) -> Result<(), PlatformError> {
         let bridge_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)

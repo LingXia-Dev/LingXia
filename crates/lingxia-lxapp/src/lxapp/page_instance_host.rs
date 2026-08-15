@@ -36,19 +36,24 @@ fn navigation_entry_error(
 
 fn validate_navigation_stack(
     stack: &[String],
-    target: &str,
+    pinned_instance: Option<&str>,
+    target_path: &str,
     nav_type: crate::page::NavigationType,
 ) -> Result<(), LxAppError> {
     match nav_type {
-        crate::page::NavigationType::Forward if stack.iter().any(|entry| entry == target) => {
+        // Every forward entry mints its own instance, so the same route may
+        // stack repeatedly. Only a path-pinned singleton (tab page) can
+        // resolve to an instance that is already on the stack.
+        crate::page::NavigationType::Forward
+            if pinned_instance.is_some_and(|id| stack.iter().any(|entry| entry == id)) =>
+        {
             Err(navigation_entry_error(
                 "duplicate_route",
                 nav_type,
-                target,
+                target_path,
                 format!(
-                    "navigateTo target '{target}' is already on the page stack. \
-                     A page can only appear once; use lx.redirectTo to replace \
-                     the current page, or navigate to a different route."
+                    "navigateTo target '{target_path}' is already on the page stack; \
+                     use lx.switchTab or lx.navigateBack to return to it."
                 ),
             ))
         }
@@ -56,23 +61,10 @@ fn validate_navigation_stack(
             Err(navigation_entry_error(
                 "stack_full",
                 nav_type,
-                target,
+                target_path,
                 format!(
-                    "navigateTo cannot open '{target}': the page stack is full \
+                    "navigateTo cannot open '{target_path}': the page stack is full \
                      (capacity: {PAGE_STACK_MAX})."
-                ),
-            ))
-        }
-        crate::page::NavigationType::Replace
-            if stack.iter().rev().skip(1).any(|entry| entry == target) =>
-        {
-            Err(navigation_entry_error(
-                "duplicate_route",
-                nav_type,
-                target,
-                format!(
-                    "redirectTo target '{target}' is already on the page stack. \
-                     A page can only appear once; navigate back to it instead."
                 ),
             ))
         }
@@ -351,11 +343,11 @@ impl LxApp {
     fn create_isolated_page_instance(&self, path: &str) -> PageInstance {
         let appid = self.appid.clone();
         let lxapp_arc = self.clone_arc();
-        let page = PageInstance::new_with_webtag_instance(
+        let page = PageInstance::new_with_isolation(
             appid.clone(),
             path.to_string(),
             self,
-            Some(WebTagInstance::PageInstanceId),
+            true,
             move |page| {
                 let lxapp_arc = lxapp_arc.clone();
                 let page_clone = page.clone();
@@ -517,41 +509,25 @@ impl LxApp {
             "PageInstance disposed while waiting for view response",
         );
 
-        let mut owns_canonical_path = false;
         if let Ok(mut state) = self.state.lock() {
-            let mut pages = state.pages.lock().unwrap();
-            let canonical_instance_id = pages
-                .get(&path)
-                .map(|existing| existing.instance_id_string());
-            let remove_stack_path =
-                disposed_instance_owns_stack_path(canonical_instance_id.as_deref(), id.as_str());
-            owns_canonical_path = remove_stack_path;
-            if remove_stack_path {
-                pages.remove(&path);
-            }
             state.pages_by_id.lock().unwrap().remove(id.as_str());
             state
                 .page_instance_runtime
                 .lock()
                 .unwrap()
                 .remove(id.as_str());
-            if remove_stack_path {
-                state
-                    .page_stack
-                    .lock()
-                    .unwrap()
-                    .retain(|stack_path| stack_path != &path);
+            state
+                .page_stack
+                .lock()
+                .unwrap()
+                .retain(|entry| entry != id.as_str());
+            if let Ok(mut pins) = state.path_pins.lock() {
+                pins.retain(|_, pinned| pinned != id.as_str());
             }
-            drop(pages);
             state.page_chrome_layouts.remove(id.as_str());
         }
 
-        // Page service disposal is asynchronous. A same-route relaunch may
-        // already have installed a newer PageInstance under this path, so an
-        // old instance must not destroy the replacement WebView by tag.
-        if owns_canonical_path {
-            destroy_webview(&page.webtag());
-        }
+        destroy_webview(&page.webtag());
 
         if let Err(e) =
             self.executor
@@ -585,13 +561,19 @@ impl LxApp {
             Err(_) => return Ok(()),
         };
         let path = resolved.internal_path();
-        validate_navigation_stack(&self.get_page_stack(), &path, nav_type)
+        let pinned = self
+            .pinned_page(&path)
+            .map(|page| page.instance_id_string());
+        validate_navigation_stack(&self.get_page_stack(), pinned.as_deref(), &path, nav_type)
     }
 
-    /// Get existing page or create a new one.
-    /// PageSvc creation + HTML load are handled inside PageInstance::new once WebView is ready.
-    pub fn get_or_create_page(&self, url: &str) -> PageInstance {
-        let resolved = crate::route::resolve_route(self, url).unwrap_or_else(|e| {
+    /// Canonical route path a URL resolves to (query stripped).
+    pub fn resolve_entry_path(&self, url: &str) -> String {
+        self.resolve_entry_route(url).internal_path().to_string()
+    }
+
+    pub(crate) fn resolve_entry_route(&self, url: &str) -> crate::route::ResolvedRoute {
+        crate::route::resolve_route(self, url).unwrap_or_else(|e| {
             error!("Failed to resolve page url '{}': {}", url, e).with_appid(self.appid.clone());
             let (path, query) = crate::startup::split_path_query(url);
             crate::route::ResolvedRoute {
@@ -599,24 +581,15 @@ impl LxApp {
                 query,
                 target: crate::route::RouteTarget::Normal { path },
             }
-        });
+        })
+    }
 
-        let path = resolved.internal_path();
-        // Page instances are keyed by path, not URL. Every requested URL must
-        // therefore replace the cached query, including the empty query; if
-        // it only updates on `Some`, a later `/page` navigation incorrectly
-        // inherits state from an earlier `/page?mode=...` visit.
-        let query = resolved.query.unwrap_or_default();
-
-        let _creation_guard = self.page_creation_lock.lock().unwrap();
-        if let Some(page) = self.get_page(&path) {
-            page.set_query(query);
-            return page;
-        }
-
+    /// Build a fresh, unregistered PageInstance for the path. PageSvc creation
+    /// + HTML load are handled inside PageInstance::new once WebView is ready.
+    fn mint_page_instance(&self, path: &str) -> PageInstance {
         let appid = self.appid.clone();
         let lxapp_arc = self.clone_arc();
-        let candidate = PageInstance::new(appid.clone(), path.to_string(), self, move |page| {
+        PageInstance::new(appid, path.to_string(), self, move |page| {
             let lxapp_arc = lxapp_arc.clone();
             let page_clone = page.clone();
             async move {
@@ -628,7 +601,7 @@ impl LxApp {
                         .create_page_svc_with_ack(
                             lxapp_arc.clone(),
                             page_clone.path(),
-                            None,
+                            Some(page_clone.instance_id_string()),
                             ack_tx,
                         )
                         .map_err(|e| e.to_string())?;
@@ -646,34 +619,101 @@ impl LxApp {
                 }
                 .await;
                 if result.is_err() {
-                    lxapp_arc.remove_registered_page_if_current(&page_clone.path(), &page_clone);
+                    lxapp_arc.remove_failed_page(&page_clone);
                 }
                 result
             }
-        });
+        })
+    }
 
+    /// Pin tab pages as path singletons: switchTab returns to the warm
+    /// instance, so it must stay resolvable while off the stack.
+    fn pin_if_tabbar_page(&self, page: &PageInstance, path: &str) {
+        if self
+            .get_tabbar()
+            .is_some_and(|tabbar| tabbar.is_tabbar_page(path))
+        {
+            self.pin_page_path(page);
+        }
+    }
+
+    /// Get existing page or create a new one. Resolution never mints a
+    /// duplicate for a route that is already live — navigation entry points
+    /// use `create_page_for_entry` for that.
+    pub fn get_or_create_page(&self, url: &str) -> PageInstance {
+        let resolved = self.resolve_entry_route(url);
+        let path = resolved.internal_path();
+        // A cached instance serves every URL on its route. Every requested URL
+        // must therefore replace the cached query, including the empty query;
+        // if it only updates on `Some`, a later `/page` navigation incorrectly
+        // inherits state from an earlier `/page?mode=...` visit.
+        let query = resolved.query.unwrap_or_default();
+
+        if let Some(page) = self.get_page(&path) {
+            page.set_query(query);
+            return page;
+        }
+
+        let candidate = self.mint_page_instance(&path);
+
+        // Double-checked under the state lock: a concurrent navigation may
+        // have created this route's instance while the candidate was built.
         let page = {
             let state = self.state.lock().unwrap();
-            let mut pages = state.pages.lock().unwrap();
-
-            if let Some(page) = pages.get(&path) {
-                page.clone()
+            let mut pages_by_id = state.pages_by_id.lock().unwrap();
+            let existing = pages_by_id
+                .values()
+                .find(|page| !page.is_isolated() && page.path() == path)
+                .cloned();
+            if let Some(page) = existing {
+                page
             } else {
-                state
-                    .pages_by_id
-                    .lock()
-                    .unwrap()
-                    .insert(candidate.instance_id_string(), candidate.clone());
-                pages.insert(path.clone(), candidate.clone());
+                pages_by_id.insert(candidate.instance_id_string(), candidate.clone());
                 candidate
             }
         };
-        drop(_creation_guard);
 
+        self.pin_if_tabbar_page(&page, &path);
         self.evict_inactive_pages_if_needed();
-
         page.set_query(query);
+        page
+    }
 
+    /// Resolve the instance a navigation entry lands on. Unlike
+    /// `get_or_create_page`, a route whose instances are all on the stack gets
+    /// a fresh instance — two stack entries never share one — which is what
+    /// lets the same route appear on the stack twice.
+    pub fn create_page_for_entry(&self, url: &str) -> PageInstance {
+        let resolved = self.resolve_entry_route(url);
+        let path = resolved.internal_path();
+        let query = resolved.query.unwrap_or_default();
+
+        // Path-pinned singletons (tab pages, headless services) always
+        // re-enter their warm instance.
+        if let Some(page) = self.pinned_page(&path) {
+            page.set_query(query);
+            return page;
+        }
+
+        // A parked off-stack instance is the warm re-entry path: adopt the
+        // most recently active one instead of cold-creating a WebView.
+        if let Some(page) = self.most_recent_off_stack_page(&path) {
+            page.set_query(query);
+            return page;
+        }
+
+        let page = self.mint_page_instance(&path);
+        {
+            let state = self.state.lock().unwrap();
+            state
+                .pages_by_id
+                .lock()
+                .unwrap()
+                .insert(page.instance_id_string(), page.clone());
+        }
+        self.pin_if_tabbar_page(&page, &path);
+        self.evict_inactive_pages_if_needed();
+        page.set_query(query);
         page
     }
 
@@ -681,7 +721,14 @@ impl LxApp {
     /// Evict when page count exceeds: tabbar_items + PAGE_STACK_MAX
     fn should_evict_pages(&self) -> bool {
         let state = self.state.lock().unwrap();
-        let page_count = state.pages.lock().unwrap().len();
+        // Isolated surface pages have their own lifecycle and budget.
+        let page_count = state
+            .pages_by_id
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|page| !page.is_isolated())
+            .count();
 
         let max_allowed = if let Some(ref tabbar) = state.tabbar {
             tabbar.items.len() + PAGE_STACK_MAX
@@ -699,87 +746,69 @@ impl LxApp {
         }
 
         let state = self.state.lock().unwrap();
-        let mut pages = state.pages.lock().unwrap();
+        let mut pages_by_id = state.pages_by_id.lock().unwrap();
 
-        let stack_paths = state
-            .page_stack
-            .lock()
-            .unwrap()
-            .iter()
-            .cloned()
-            .collect::<std::collections::HashSet<_>>();
+        let protected_ids: std::collections::HashSet<String> = {
+            let mut protected = state
+                .page_stack
+                .lock()
+                .unwrap()
+                .iter()
+                .cloned()
+                .collect::<std::collections::HashSet<_>>();
+            if let Ok(pins) = state.path_pins.lock() {
+                protected.extend(pins.values().cloned());
+            }
+            protected
+        };
 
         let mut oldest_time: Option<Instant> = None;
-        let mut oldest_path: Option<String> = None;
-        let mut oldest_page_instance_id: Option<String> = None;
+        let mut oldest_id: Option<String> = None;
 
-        for (path, page) in pages.iter() {
-            let is_tabbar_page = page.is_tabbar_page();
-            if page_is_protected_from_eviction(path, &stack_paths, is_tabbar_page) {
-                if is_tabbar_page {
-                    info!("Skipping tabbar page for eviction: {}", path)
-                        .with_appid(self.appid.clone());
-                }
+        for (id, page) in pages_by_id.iter() {
+            // Isolated surface pages have their own dispose lifecycle.
+            if page.is_isolated() || protected_ids.contains(id) {
                 continue;
             }
-
             if let Some(last_active) = page.get_last_active_time()
                 && oldest_time.is_none_or(|old| last_active < old)
             {
                 oldest_time = Some(last_active);
-                oldest_path = Some(path.clone());
-                oldest_page_instance_id = Some(page.instance_id_string());
+                oldest_id = Some(id.clone());
             }
         }
 
-        // Remove the oldest page
-        if let Some(path) = oldest_path.clone() {
-            if let Some(page) = pages.get(&path) {
-                page.cancel_bridge_work();
-            }
-            // First, ask AppService to remove the PageSvc for this path (object-identity safe)
+        if let Some(id) = oldest_id
+            && let Some(removed_page) = pages_by_id.remove(&id)
+        {
+            removed_page.cancel_bridge_work();
             let _ = self
                 .executor
-                .terminate_page_svc(
-                    self.clone_arc(),
-                    path.clone(),
-                    oldest_page_instance_id.clone(),
-                )
+                .terminate_page_svc(self.clone_arc(), removed_page.path(), Some(id.clone()))
                 .map_err(|e| {
                     warn!("Failed to request page termination: {}", e)
                         .with_appid(self.appid.clone())
-                        .with_path(path.clone())
+                        .with_path(removed_page.path())
                 });
-
-            // Then remove from native registry
-            if let Some(removed_page) = pages.remove(&path) {
-                if let Some(cancel) = state
-                    .page_instance_dispose_timers
-                    .lock()
-                    .unwrap()
-                    .remove(removed_page.instance_id().as_str())
-                {
-                    let _ = cancel.send(());
-                }
-                crate::view_call::cancel_view_calls_for_page_instances(
-                    &[removed_page.instance_id_string()],
-                    "PageInstance evicted while waiting for view response",
-                );
-                state
-                    .pages_by_id
-                    .lock()
-                    .unwrap()
-                    .remove(removed_page.instance_id().as_str());
-                state
-                    .page_instance_runtime
-                    .lock()
-                    .unwrap()
-                    .remove(removed_page.instance_id().as_str());
-                destroy_webview(&removed_page.webtag());
-                info!("Evicted inactive page: {}", path).with_appid(self.appid.clone());
-            } else {
-                warn!("Failed to evict page (not found): {}", path).with_appid(self.appid.clone());
+            if let Some(cancel) = state
+                .page_instance_dispose_timers
+                .lock()
+                .unwrap()
+                .remove(id.as_str())
+            {
+                let _ = cancel.send(());
             }
+            crate::view_call::cancel_view_calls_for_page_instances(
+                std::slice::from_ref(&id),
+                "PageInstance evicted while waiting for view response",
+            );
+            state
+                .page_instance_runtime
+                .lock()
+                .unwrap()
+                .remove(id.as_str());
+            destroy_webview(&removed_page.webtag());
+            info!("Evicted inactive page: {}", removed_page.path()).with_appid(self.appid.clone());
         }
     }
 
@@ -791,8 +820,8 @@ impl LxApp {
         Ok(())
     }
 
-    /// Add a page to the navigation stack.
-    pub(crate) fn push_to_page_stack(&self, path: &str) -> Result<(), LxAppError> {
+    /// Push a page instance onto the navigation stack.
+    pub(crate) fn push_to_page_stack(&self, page: &PageInstance) -> Result<(), LxAppError> {
         let state = self.state.lock().unwrap();
         let mut stack = state.page_stack.lock().unwrap();
 
@@ -805,75 +834,54 @@ impl LxApp {
         }
 
         // Add to the back of the stack (most recent)
-        stack.push_back(path.to_string());
+        stack.push_back(page.instance_id_string());
 
         Ok(())
     }
 
-    /// Remove the most recent page from the navigation stack
-    /// Returns the path of the removed page, or None if stack is empty
-    pub(crate) fn pop_from_page_stack(&self) -> Option<String> {
+    /// Remove the most recent entry from the navigation stack and return its
+    /// instance, when it is still alive.
+    pub(crate) fn pop_from_page_stack(&self) -> Option<PageInstance> {
         let state = self.state.lock().unwrap();
-        state.page_stack.lock().unwrap().pop_back()
+        let id = state.page_stack.lock().unwrap().pop_back()?;
+        state.pages_by_id.lock().unwrap().get(&id).cloned()
     }
 
-    /// Remove specific pages from the page map and terminate their PageSvc.
-    pub fn remove_pages(&self, paths: &[String]) {
-        let page_instances = {
-            let state = self.state.lock().unwrap();
-            let pages = state.pages.lock().unwrap();
-            paths
-                .iter()
-                .filter_map(|path| {
-                    pages
-                        .get(path)
-                        .map(|page| (path.clone(), page.instance_id_string()))
-                })
-                .collect::<Vec<_>>()
-        };
-        let page_instance_ids = page_instances
-            .iter()
-            .map(|(_, id)| id.clone())
-            .collect::<Vec<_>>();
+    /// Remove specific page instances and terminate their PageSvc.
+    pub fn remove_pages(&self, instance_ids: &[String]) {
         crate::view_call::cancel_view_calls_for_page_instances(
-            &page_instance_ids,
+            instance_ids,
             "PageInstance removed while waiting for view response",
         );
 
-        let lxapp = self.clone_arc();
-        for (path, page_instance_id) in &page_instances {
-            let _ = self
-                .executor
-                .terminate_page_svc(lxapp.clone(), path.clone(), Some(page_instance_id.clone()))
-                .map_err(|e| {
-                    warn!("Failed to request page termination: {}", e)
-                        .with_appid(self.appid.clone())
-                        .with_path(path.clone())
-                });
-        }
-
         if let Ok(state) = self.state.lock() {
-            let mut pages = state.pages.lock().unwrap();
-            for path in paths {
-                if let Some(page) = pages.remove(path) {
+            let mut pages_by_id = state.pages_by_id.lock().unwrap();
+            for id in instance_ids {
+                if let Some(page) = pages_by_id.remove(id) {
+                    let _ = self
+                        .executor
+                        .terminate_page_svc(self.clone_arc(), page.path(), Some(id.clone()))
+                        .map_err(|e| {
+                            warn!("Failed to request page termination: {}", e)
+                                .with_appid(self.appid.clone())
+                                .with_path(page.path())
+                        });
                     if let Some(cancel) = state
                         .page_instance_dispose_timers
                         .lock()
                         .unwrap()
-                        .remove(page.instance_id().as_str())
+                        .remove(id.as_str())
                     {
                         let _ = cancel.send(());
                     }
                     state
-                        .pages_by_id
-                        .lock()
-                        .unwrap()
-                        .remove(page.instance_id().as_str());
-                    state
                         .page_instance_runtime
                         .lock()
                         .unwrap()
-                        .remove(page.instance_id().as_str());
+                        .remove(id.as_str());
+                    if let Ok(mut pins) = state.path_pins.lock() {
+                        pins.retain(|_, pinned| pinned != id);
+                    }
                 }
             }
         }
@@ -884,8 +892,7 @@ impl LxApp {
         self.state.lock().unwrap().page_stack.lock().unwrap().len()
     }
 
-    /// Get a copy of the current page stack
-    /// Returns a vector of page paths in stack order (oldest to newest)
+    /// Instance ids on the navigation stack, oldest → newest.
     pub fn get_page_stack(&self) -> Vec<String> {
         self.state
             .lock()
@@ -898,9 +905,33 @@ impl LxApp {
             .collect()
     }
 
-    /// Peek at the current page path without removing it from the stack
-    /// Returns None if the stack is empty
+    /// Live instances on the navigation stack, oldest → newest.
+    pub fn get_page_stack_pages(&self) -> Vec<PageInstance> {
+        let state = self.state.lock().unwrap();
+        let pages_by_id = state.pages_by_id.lock().unwrap();
+        state
+            .page_stack
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|id| pages_by_id.get(id).cloned())
+            .collect()
+    }
+
+    /// Peek at the current page's instance id without removing it.
+    /// Route path of the current page (stack top), when non-empty. The stack
+    /// itself stores instance ids; every external caller wants the route.
     pub fn peek_current_page(&self) -> Option<String> {
+        self.peek_current_page_path()
+    }
+
+    /// Route path of the current page, when the stack is non-empty.
+    pub fn peek_current_page_path(&self) -> Option<String> {
+        self.current_page().ok().map(|page| page.path())
+    }
+
+    /// Instance id at the top of the navigation stack.
+    fn peek_current_instance_id(&self) -> Option<String> {
         self.state
             .lock()
             .unwrap()
@@ -911,12 +942,21 @@ impl LxApp {
             .cloned()
     }
 
+    /// Route paths on the navigation stack, oldest → newest.
+    pub fn get_page_stack_paths(&self) -> Vec<String> {
+        self.get_page_stack_pages()
+            .iter()
+            .map(|page| page.path())
+            .collect()
+    }
+
     /// Return the current visible page or an error when the page stack is empty.
     pub fn current_page(&self) -> Result<PageInstance, LxAppError> {
-        let path = self
-            .peek_current_page()
+        let id = self
+            .peek_current_instance_id()
             .ok_or_else(|| LxAppError::WebView("No current page".to_string()))?;
-        self.require_page(&path)
+        self.get_page_by_instance_id_str(&id)
+            .ok_or_else(|| LxAppError::WebView("Current page instance not found".to_string()))
     }
 
     /// Return a page by path or an error when that page is not currently alive.
@@ -951,9 +991,8 @@ impl LxApp {
 
         let stack_instances = stack
             .iter()
-            .filter_map(|path| self.get_page(path))
             .enumerate()
-            .map(|(index, page)| (page.instance_id_string(), index))
+            .map(|(index, instance_id)| (instance_id.clone(), index))
             .collect::<HashMap<_, _>>();
         let current_id = stack_instances
             .iter()
@@ -1089,13 +1128,6 @@ fn effective_page_instance_lifecycle(
     }
 }
 
-fn disposed_instance_owns_stack_path(
-    canonical_instance_id: Option<&str>,
-    disposed_instance_id: &str,
-) -> bool {
-    canonical_instance_id == Some(disposed_instance_id)
-}
-
 fn normalize_page_path(path: &str) -> &str {
     path.trim_start_matches('/')
 }
@@ -1144,23 +1176,13 @@ fn plugin_page_map_contains(
     })
 }
 
-fn page_is_protected_from_eviction(
-    path: &str,
-    stack_paths: &std::collections::HashSet<String>,
-    is_tabbar_page: bool,
-) -> bool {
-    is_tabbar_page || stack_paths.contains(path)
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
-        PAGE_STACK_MAX, PageInstanceLifecycleState, disposed_instance_owns_stack_path,
-        effective_page_instance_lifecycle, page_is_protected_from_eviction,
+        PAGE_STACK_MAX, PageInstanceLifecycleState, effective_page_instance_lifecycle,
         validate_navigation_stack,
     };
     use crate::NavigationType;
-    use std::collections::HashSet;
 
     #[test]
     fn automation_lifecycle_does_not_report_ready_pages_as_created() {
@@ -1183,41 +1205,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn disposing_isolated_surface_page_keeps_canonical_stack_path() {
-        assert!(disposed_instance_owns_stack_path(
-            Some("stack-instance"),
-            "stack-instance"
-        ));
-        assert!(!disposed_instance_owns_stack_path(
-            Some("stack-instance"),
-            "surface-instance"
-        ));
-        assert!(!disposed_instance_owns_stack_path(None, "surface-instance"));
-    }
-
-    #[test]
-    fn eviction_protects_every_navigation_stack_page() {
-        let stack = HashSet::from(["pages/oldest".to_string(), "pages/current".to_string()]);
-
-        assert!(page_is_protected_from_eviction(
-            "pages/oldest",
-            &stack,
-            false
-        ));
-        assert!(page_is_protected_from_eviction(
-            "pages/current",
-            &stack,
-            false
-        ));
-        assert!(page_is_protected_from_eviction("pages/tab", &stack, true));
-        assert!(!page_is_protected_from_eviction(
-            "pages/unreferenced",
-            &stack,
-            false
-        ));
-    }
-
     fn navigation_reason(error: crate::LxAppError) -> String {
         match error {
             crate::LxAppError::RongJSHost {
@@ -1228,34 +1215,35 @@ mod tests {
     }
 
     #[test]
-    fn navigation_preflight_rejects_duplicate_routes_before_capacity() {
-        let stack = (0..PAGE_STACK_MAX)
-            .map(|index| format!("pages/{index}"))
-            .collect::<Vec<_>>();
+    fn navigation_preflight_rejects_a_pinned_singleton_already_on_the_stack() {
+        let stack = vec!["home-instance".to_string(), "detail-instance".to_string()];
 
-        let error =
-            validate_navigation_stack(&stack, "pages/0", NavigationType::Forward).unwrap_err();
+        let error = validate_navigation_stack(
+            &stack,
+            Some("home-instance"),
+            "pages/home",
+            NavigationType::Forward,
+        )
+        .unwrap_err();
         assert_eq!(navigation_reason(error), "duplicate_route");
+    }
+
+    #[test]
+    fn navigation_preflight_allows_duplicate_routes_for_fresh_instances() {
+        let stack = vec!["detail-1".to_string(), "detail-2".to_string()];
+
+        validate_navigation_stack(&stack, None, "pages/detail", NavigationType::Forward).unwrap();
+        validate_navigation_stack(&stack, None, "pages/detail", NavigationType::Replace).unwrap();
     }
 
     #[test]
     fn navigation_preflight_rejects_a_full_stack() {
         let stack = (0..PAGE_STACK_MAX)
-            .map(|index| format!("pages/{index}"))
+            .map(|index| format!("instance-{index}"))
             .collect::<Vec<_>>();
 
-        let error =
-            validate_navigation_stack(&stack, "pages/new", NavigationType::Forward).unwrap_err();
+        let error = validate_navigation_stack(&stack, None, "pages/new", NavigationType::Forward)
+            .unwrap_err();
         assert_eq!(navigation_reason(error), "stack_full");
-    }
-
-    #[test]
-    fn redirect_preflight_allows_the_current_route_only() {
-        let stack = vec!["pages/home".to_string(), "pages/current".to_string()];
-
-        validate_navigation_stack(&stack, "pages/current", NavigationType::Replace).unwrap();
-        let error =
-            validate_navigation_stack(&stack, "pages/home", NavigationType::Replace).unwrap_err();
-        assert_eq!(navigation_reason(error), "duplicate_route");
     }
 }

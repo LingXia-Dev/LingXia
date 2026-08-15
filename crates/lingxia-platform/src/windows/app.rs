@@ -6,7 +6,6 @@ use std::sync::{Arc, Mutex};
 
 use lingxia_shell::{ResolvedShellSidebarAction, ShellPin};
 use lingxia_webview::WebTag;
-use lingxia_webview::runtime as webview_runtime;
 
 use super::{file, not_supported, surface, ui_update};
 use crate::AssetFileEntry;
@@ -422,12 +421,15 @@ impl AppRuntime for Platform {
         &self,
         appid: String,
         title: String,
-        path: String,
-        session_id: u64,
+        _path: String,
+        webtag: String,
+        _session_id: u64,
         open_mode: LxAppOpenMode,
         panel_id: String,
     ) -> Result<(), PlatformError> {
-        let webtag = WebTag::new(&appid, &path, Some(session_id));
+        // Page webtags are per-instance; the runtime hands us the exact tag
+        // instead of a route to reconstruct.
+        let webtag = WebTag::from(webtag.as_str());
         if !matches!(open_mode, LxAppOpenMode::Panel) {
             ui_update::sync_windows_ui(&appid);
         }
@@ -530,14 +532,13 @@ impl AppRuntime for Platform {
     fn navigate(
         &self,
         appid: String,
-        path: String,
+        _path: String,
+        webtag: String,
         animation_type: AnimationType,
     ) -> Result<(), PlatformError> {
-        let session_id = webview_runtime::list_webviews()
-            .into_iter()
-            .find(|tag| tag.extract_appid() == appid)
-            .and_then(|tag| tag.session_id());
-        let webtag = WebTag::new(&appid, &path, session_id);
+        // Page webtags are per-instance; the runtime hands us the exact
+        // destination tag instead of a route to reconstruct.
+        let webtag = WebTag::from(webtag.as_str());
         ui_update::sync_windows_ui(&appid);
         surface::navigate_webtag_window(webtag, self.product_name.clone(), animation_type);
         Ok(())

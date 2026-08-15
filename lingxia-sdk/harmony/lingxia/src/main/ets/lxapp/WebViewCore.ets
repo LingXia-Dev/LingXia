@@ -4,6 +4,8 @@ import { image } from '@kit.ImageKit';
 import { util } from '@kit.ArkTS';
 import { BusinessError } from '@kit.BasicServicesKit';
 import {
+  getLxappSessionId,
+  getPageWebtag,
   onDownloadStart as hostOnDownloadStart,
   onLoadError as hostOnLoadError,
   onNavigationPolicy as hostOnNavigationPolicy,
@@ -41,6 +43,7 @@ export interface EffectiveWebViewCreateOptions {
   dataMode: string;
   hasDownloadHandler: boolean;
   hasFileChooserHandler: boolean;
+  surfaceOwned: boolean;
 }
 
 export interface WebViewDownloadRequest {
@@ -77,6 +80,7 @@ interface RawOptionsToken {
   data_mode?: string;
   has_download_handler?: boolean;
   has_file_chooser_handler?: boolean;
+  surface_owned?: boolean;
 }
 
 const PROFILE_STRICT_DEFAULT = 'strict_default';
@@ -88,7 +92,8 @@ const STRICT_DEFAULT_OPTIONS: EffectiveWebViewCreateOptions = {
   profile: PROFILE_STRICT_DEFAULT,
   dataMode: DATA_MODE_PROFILE_DEFAULT,
   hasDownloadHandler: false,
-  hasFileChooserHandler: false
+  hasFileChooserHandler: false,
+  surfaceOwned: false
 };
 
 let hostHooks: WebViewHostHooks = {};
@@ -147,7 +152,8 @@ function strictDefaultOptions(): EffectiveWebViewCreateOptions {
     profile: STRICT_DEFAULT_OPTIONS.profile,
     dataMode: STRICT_DEFAULT_OPTIONS.dataMode,
     hasDownloadHandler: STRICT_DEFAULT_OPTIONS.hasDownloadHandler,
-    hasFileChooserHandler: STRICT_DEFAULT_OPTIONS.hasFileChooserHandler
+    hasFileChooserHandler: STRICT_DEFAULT_OPTIONS.hasFileChooserHandler,
+    surfaceOwned: STRICT_DEFAULT_OPTIONS.surfaceOwned
   };
 }
 
@@ -204,6 +210,7 @@ function normalizeDecodedOptions(raw: Object): EffectiveWebViewCreateOptions {
 
   normalized.hasDownloadHandler = data.has_download_handler === true;
   normalized.hasFileChooserHandler = data.has_file_chooser_handler === true;
+  normalized.surfaceOwned = data.surface_owned === true;
 
   return normalized;
 }
@@ -227,7 +234,8 @@ function optionsEqual(a: EffectiveWebViewCreateOptions, b: EffectiveWebViewCreat
   return a.profile === b.profile
     && a.dataMode === b.dataMode
     && a.hasDownloadHandler === b.hasDownloadHandler
-    && a.hasFileChooserHandler === b.hasFileChooserHandler;
+    && a.hasFileChooserHandler === b.hasFileChooserHandler
+    && a.surfaceOwned === b.surfaceOwned;
 }
 
 function notifyControllerCreated(webtag: string): void {
@@ -413,7 +421,25 @@ export class WebViewManager {
   static findWebview(appId: string, path: string): webview.WebviewController | null {
     const logicalTag = toWebTag(appId, path); // appId:path
 
-    // Prefer exact match first
+    // Page webtags are per-instance and a route can have several live
+    // instances, so ask the runtime which instance the path resolves to.
+    try {
+      const sessionId: number = getLxappSessionId(appId);
+      if (sessionId > 0) {
+        const resolvedTag: string = getPageWebtag(appId, path, sessionId);
+        if (resolvedTag.length > 0) {
+          const resolved = WebViewManager.controllers.get(resolvedTag);
+          if (resolved) {
+            hilog.info(DOMAIN, TAG, `Found existing WebView (resolved): ${resolvedTag}`);
+            return resolved;
+          }
+        }
+      }
+    } catch (error) {
+      hilog.warn(DOMAIN, TAG, `findWebview runtime resolution failed for ${logicalTag}: ${error}`);
+    }
+
+    // Exact match (browser tabs and other path-tagged webviews)
     const direct = WebViewManager.controllers.get(logicalTag);
     if (direct) {
       hilog.info(DOMAIN, TAG, `Found existing WebView (direct): ${logicalTag}`);
@@ -789,7 +815,8 @@ export interface WebTagParts {
 
 /**
  * Extract appId and path from webtag
- * @param webtag - WebView tag in format "appId:path" or "appId:path#instance"
+ * @param webtag - WebView tag in format "appId:path#instance#session"
+ *   (instance and session segments optional)
  * @returns Object with appId, path, and optional sessionId, or null if invalid format
  */
 export function extractWebTag(webtag: string): WebTagParts | null {
@@ -799,10 +826,13 @@ export function extractWebTag(webtag: string): WebTagParts | null {
   }
 
   const appId = webtag.substring(0, separatorIndex);
-  let pathWithInstance = webtag.substring(separatorIndex + 1);
-  const hashIndex = pathWithInstance.indexOf('#');
-  const path = hashIndex === -1 ? pathWithInstance : pathWithInstance.substring(0, hashIndex);
-  const sessionId = hashIndex === -1 ? undefined : pathWithInstance.substring(hashIndex + 1) || undefined;
+  const pathWithSuffix = webtag.substring(separatorIndex + 1);
+  const hashIndex = pathWithSuffix.indexOf('#');
+  const path = hashIndex === -1 ? pathWithSuffix : pathWithSuffix.substring(0, hashIndex);
+  // The session is always the LAST segment; anything between the path and it
+  // is the page-instance id.
+  const lastHashIndex = pathWithSuffix.lastIndexOf('#');
+  const sessionId = lastHashIndex === -1 ? undefined : pathWithSuffix.substring(lastHashIndex + 1) || undefined;
   return { appId: appId, path: path, sessionId: sessionId };
 }
 

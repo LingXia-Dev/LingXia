@@ -1409,8 +1409,9 @@ fn sync_app_shell_layout(appid: &str) {
     let Some(app) = lxapp::try_get(appid) else {
         return;
     };
-    if let Some(path) = app.peek_current_page().filter(|path| !path.is_empty()) {
-        let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
+    if let Some(path) = app.peek_current_page().filter(|path| !path.is_empty())
+        && let Some(webtag) = app.get_page(&path).map(|page| page.webtag())
+    {
         let is_active_content = active_host_window_webtag_key().as_deref() == Some(webtag.key());
         let layout = build_window_layout(&app, &path);
         #[cfg(feature = "browser-runtime")]
@@ -1792,7 +1793,11 @@ fn prime_tabbar_selection(app: &LxApp, selected_index: usize) {
         if let Some(tabbar_layout) = layout.tab_bar.as_mut() {
             tabbar_layout.selected_index = selected_index;
         }
-        let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
+        // Page webtags are per-instance; resolve the live instance instead of
+        // reconstructing a tag from the path.
+        let Some(webtag) = app.get_page(&path).map(|page| page.webtag()) else {
+            continue;
+        };
         set_webview_chrome_event_handler(&webtag, handler.clone());
         let _ = set_webview_window_layout(&webtag, WindowsWindowLayout::new(layout));
     }
@@ -3785,7 +3790,11 @@ fn present_current_lxapp_main(app: &LxApp) -> bool {
     if path.is_empty() {
         return false;
     }
-    let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
+    // Page webtags are per-instance; resolve the live instance instead of
+    // reconstructing a tag from the route.
+    let Some(webtag) = app.get_page(&path).map(|page| page.webtag()) else {
+        return false;
+    };
     log::debug!(
         "presenting current Windows lxapp main appid={} path={} webtag={}",
         app.appid,
@@ -5606,10 +5615,13 @@ fn non_empty(value: Option<&str>) -> Option<String> {
 #[cfg(feature = "shell-chrome")]
 pub(super) fn owner_window_handle(appid: &str) -> Option<isize> {
     let app = lxapp::try_get(appid)?;
-    let path = app
-        .peek_current_page()
-        .unwrap_or_else(|| app.initial_route());
-    let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
+    // Page webtags are per-instance; resolve the live instance instead of
+    // reconstructing a tag from the route.
+    let webtag = app
+        .current_page()
+        .ok()
+        .map(|page| page.webtag())
+        .or_else(|| app.get_page(&app.initial_route()).map(|page| page.webtag()))?;
     match lingxia_windows_contract::webview_window_snapshot(&webtag) {
         Ok(snapshot) => Some(snapshot.window_id as isize),
         Err(err) => {

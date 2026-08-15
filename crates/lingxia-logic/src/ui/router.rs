@@ -29,7 +29,7 @@ fn navigate_back_delta(options: Option<NavigateBack>) -> u32 {
 
 fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
     lxapp
-        .peek_current_page()
+        .peek_current_page_path()
         .ok_or_else(|| LxAppError::Runtime("No current page found".to_string()))
 }
 
@@ -104,18 +104,13 @@ async fn navigate_with_url(
     wait_ready: bool,
 ) -> Result<(), LxAppError> {
     let current_path = current_page_path(&lxapp)?;
-    let target_page = lxapp.get_or_create_page(&target_url);
-
-    if wait_ready && nav_type != NavigationType::Launch {
-        target_page
-            .wait_webview_ready()
-            .await
-            .map_err(LxAppError::WebView)?;
-    }
 
     if let Some(page) = lxapp.get_page(&current_path) {
-        let target_page = page.navigate_to(target_page, nav_type)?;
-        if wait_ready && nav_type == NavigationType::Launch {
+        // Resolution belongs to navigate_to_url: pre-resolving here would
+        // overwrite the query of a same-route instance already on the stack
+        // and wait on the wrong instance's readiness.
+        let target_page = page.navigate_to_url(&target_url, nav_type)?;
+        if wait_ready {
             target_page
                 .wait_webview_ready()
                 .await
@@ -150,13 +145,13 @@ async fn navigate_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<JSO
 
     ensure_page_exists_js(&lxapp, &target_url)?;
     // Reject before resolving the target: a rejected navigateTo must not
-    // touch the query or opener of the page already on the stack.
+    // touch the query or opener of a page already on the stack.
     lxapp
         .validate_navigation_entry(&target_url, NavigationType::Forward)
         .map_err(|e| js_error_from_lxapp_error(&e))?;
 
     let page_svc = lxapp
-        .get_or_create_page_in_ctx(&ctx, &target_url)
+        .create_page_for_entry_in_ctx(&ctx, &target_url)
         .await
         .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
     let (opener_port, page_port) = message_port::pair(&ctx)?;
@@ -209,13 +204,22 @@ async fn redirect_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<()>
         ));
     }
 
-    lxapp
-        .validate_navigation_entry(&target_url, NavigationType::Replace)
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
-    let page_svc = lxapp
-        .get_or_create_page_in_ctx(&ctx, &target_url)
-        .await
-        .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?;
+    // Redirecting the current page to its own route keeps the instance;
+    // any other target resolves like a fresh entry.
+    let redirect_to_self = current_page_path(&lxapp)
+        .ok()
+        .is_some_and(|current| lxapp.resolve_entry_path(&target_url) == current);
+    let page_svc = if redirect_to_self {
+        lxapp
+            .get_or_create_page_in_ctx(&ctx, &target_url)
+            .await
+            .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?
+    } else {
+        lxapp
+            .create_page_for_entry_in_ctx(&ctx, &target_url)
+            .await
+            .map_err(|e| js_internal_error(format!("Failed to ensure target page svc: {}", e)))?
+    };
     let _ = page_svc.clear_opener();
 
     navigate_with_url(lxapp.clone(), target_url, NavigationType::Replace, false)

@@ -1085,7 +1085,10 @@ pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
             if let Some(page) = browser.get_page(&tab_path) {
                 page.detach_webview();
             }
-            browser.remove_pages(std::slice::from_ref(&tab_path));
+            // remove_pages takes instance ids; resolve the tab page's live instance.
+            if let Some(page) = browser.get_page(&tab_path) {
+                browser.remove_pages(std::slice::from_ref(&page.instance_id_string()));
+            }
         }
         browser_destroy_webview(&tab_path, tab.session_id);
     }
@@ -1169,7 +1172,10 @@ pub(crate) fn discard_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
         if let Some(page) = browser.get_page(&tab_path) {
             page.detach_webview();
         }
-        browser.remove_pages(std::slice::from_ref(&tab_path));
+        // remove_pages takes instance ids; resolve the tab page's live instance.
+        if let Some(page) = browser.get_page(&tab_path) {
+            browser.remove_pages(std::slice::from_ref(&page.instance_id_string()));
+        }
     }
     browser_destroy_webview(&tab_path, tab.session_id);
 

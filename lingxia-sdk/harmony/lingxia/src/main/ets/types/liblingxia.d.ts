@@ -337,6 +337,8 @@ declare module 'liblingxia.so' {
    * Returns empty string when not available.
    */
   export function getPageInstanceId(appid: string, path: string, session_id: number): string;
+  /** Full webtag of the live page instance a path currently resolves to ('' when none). */
+  export function getPageWebtag(appid: string, path: string, session_id: number): string;
 
   export function notifyPageInstanceMounted(page_instance_id: string): boolean;
 

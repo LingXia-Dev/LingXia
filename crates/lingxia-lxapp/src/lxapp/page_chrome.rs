@@ -574,11 +574,11 @@ impl LxApp {
         let current_id = current.instance_id_string();
         let others: Vec<PageInstance> = {
             let state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-            let pages = state
-                .pages
+            let pages_by_id = state
+                .pages_by_id
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
-            pages
+            pages_by_id
                 .values()
                 .filter(|page| page.instance_id_string() != current_id)
                 .cloned()
