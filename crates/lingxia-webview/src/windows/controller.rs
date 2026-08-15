@@ -9,22 +9,86 @@ pub(crate) const WM_LINGXIA_COMMAND: u32 = WM_APP + 0x154;
 pub(crate) const WEBVIEW_SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(4);
 const BROWSER_EMULATION_TIMEOUT: Duration = Duration::from_secs(4);
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
+const WEBVIEW_UI_RETIRE_TIMEOUT: Duration = Duration::from_secs(2);
 
-static WEBVIEW_UI_LIFECYCLE_LOCKS: OnceLock<Mutex<HashMap<String, std::sync::Weak<Mutex<()>>>>> =
-    OnceLock::new();
+#[derive(Default)]
+struct WebViewUiLifecycleState {
+    next_generation: u64,
+    active_generation: Option<u64>,
+}
 
-fn webview_ui_lifecycle_lock(webtag_key: &str) -> Arc<Mutex<()>> {
-    let locks = WEBVIEW_UI_LIFECYCLE_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut locks = locks
+#[derive(Default)]
+struct WebViewUiLifecycleGate {
+    state: Mutex<WebViewUiLifecycleState>,
+    idle: std::sync::Condvar,
+}
+
+struct WebViewUiLifecycleGuard {
+    gate: Arc<WebViewUiLifecycleGate>,
+    generation: u64,
+}
+
+impl Drop for WebViewUiLifecycleGuard {
+    fn drop(&mut self) {
+        let mut state = self
+            .gate
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.active_generation == Some(self.generation) {
+            state.active_generation = None;
+            self.gate.idle.notify_all();
+        }
+    }
+}
+
+static WEBVIEW_UI_LIFECYCLE_GATES: OnceLock<
+    Mutex<HashMap<String, std::sync::Weak<WebViewUiLifecycleGate>>>,
+> = OnceLock::new();
+
+fn webview_ui_lifecycle_gate(webtag_key: &str) -> Arc<WebViewUiLifecycleGate> {
+    let gates = WEBVIEW_UI_LIFECYCLE_GATES.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut gates = gates
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    locks.retain(|_, lock| lock.strong_count() > 0);
-    if let Some(lock) = locks.get(webtag_key).and_then(std::sync::Weak::upgrade) {
-        return lock;
+    gates.retain(|_, gate| gate.strong_count() > 0);
+    if let Some(gate) = gates.get(webtag_key).and_then(std::sync::Weak::upgrade) {
+        return gate;
     }
-    let lock = Arc::new(Mutex::new(()));
-    locks.insert(webtag_key.to_string(), Arc::downgrade(&lock));
-    lock
+    let gate = Arc::new(WebViewUiLifecycleGate::default());
+    gates.insert(webtag_key.to_string(), Arc::downgrade(&gate));
+    gate
+}
+
+fn enter_webview_ui_lifecycle(webtag_key: &str, timeout: Duration) -> WebViewUiLifecycleGuard {
+    let gate = webview_ui_lifecycle_gate(webtag_key);
+    let deadline = std::time::Instant::now() + timeout;
+    let mut state = gate
+        .state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    while state.active_generation.is_some() {
+        let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else {
+            break;
+        };
+        let (next_state, waited) = gate
+            .idle
+            .wait_timeout(state, remaining)
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state = next_state;
+        if waited.timed_out() && state.active_generation.is_some() {
+            log::warn!(
+                "Windows WebView UI teardown for {webtag_key} exceeded {:?}; starting the replacement generation",
+                timeout
+            );
+            break;
+        }
+    }
+    state.next_generation = state.next_generation.wrapping_add(1).max(1);
+    let generation = state.next_generation;
+    state.active_generation = Some(generation);
+    drop(state);
+    WebViewUiLifecycleGuard { gate, generation }
 }
 
 pub(crate) enum UiCommand {
@@ -817,12 +881,10 @@ pub(crate) fn run_ui_thread(
 ) -> StdResult<()> {
     // A relaunch can reuse a WebTag as soon as the retired instance leaves the
     // registry, while its WebView2 UI thread is still closing the controller.
-    // Keep native lifetimes for one tag disjoint: overlapping controllers can
-    // wedge the replacement's message loop and leave it permanently unready.
-    let lifecycle_lock = webview_ui_lifecycle_lock(webtag.key());
-    let _lifecycle_guard = lifecycle_lock
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    // Prefer disjoint native lifetimes because overlapping controllers can
+    // wedge the replacement. A stuck WebView2 Close must not wedge every later
+    // generation too, so the lifecycle gate permits a bounded takeover.
+    let _lifecycle_guard = enter_webview_ui_lifecycle(webtag.key(), WEBVIEW_UI_RETIRE_TIMEOUT);
 
     unsafe {
         // OleInitialize = CoInitializeEx(STA) + OLE (clipboard/drag-drop);
@@ -1532,8 +1594,8 @@ fn set_content_geometry(
 #[cfg(test)]
 mod tests {
     use super::{
-        UiCommand, UiDispatchError, WebViewInner, map_eval_dispatch_error, should_update_parent,
-        webview_ui_lifecycle_lock,
+        UiCommand, UiDispatchError, WebViewInner, enter_webview_ui_lifecycle,
+        map_eval_dispatch_error, should_update_parent, webview_ui_lifecycle_gate,
     };
     use crate::{WebTag, WebViewScriptError};
     use std::sync::{Mutex, mpsc};
@@ -1557,15 +1619,31 @@ mod tests {
 
     #[test]
     fn same_tag_ui_lifetimes_share_a_gate() {
-        let first = webview_ui_lifecycle_lock("lifecycle-test:same-tag");
-        let second = webview_ui_lifecycle_lock("lifecycle-test:same-tag");
-        let other = webview_ui_lifecycle_lock("lifecycle-test:other-tag");
+        let first = webview_ui_lifecycle_gate("lifecycle-test:same-tag");
+        let second = webview_ui_lifecycle_gate("lifecycle-test:same-tag");
+        let other = webview_ui_lifecycle_gate("lifecycle-test:other-tag");
 
         assert!(std::sync::Arc::ptr_eq(&first, &second));
         assert!(!std::sync::Arc::ptr_eq(&first, &other));
-        let _guard = first.lock().unwrap();
-        assert!(second.try_lock().is_err());
-        assert!(other.try_lock().is_ok());
+    }
+
+    #[test]
+    fn timed_out_ui_lifecycle_hands_ownership_to_the_new_generation() {
+        let first = enter_webview_ui_lifecycle(
+            "lifecycle-test:bounded-takeover",
+            std::time::Duration::ZERO,
+        );
+        let second = enter_webview_ui_lifecycle(
+            "lifecycle-test:bounded-takeover",
+            std::time::Duration::ZERO,
+        );
+        let gate = webview_ui_lifecycle_gate("lifecycle-test:bounded-takeover");
+
+        assert_eq!(gate.state.lock().unwrap().active_generation, Some(2));
+        drop(first);
+        assert_eq!(gate.state.lock().unwrap().active_generation, Some(2));
+        drop(second);
+        assert_eq!(gate.state.lock().unwrap().active_generation, None);
     }
 
     #[test]
