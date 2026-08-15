@@ -341,6 +341,7 @@ impl AppRuntime for Platform {
         _appid: String,
         _title: String,
         _path: String,
+        _webtag: String,
         _session_id: u64,
         _open_mode: LxAppOpenMode,
         _panel_id: String,

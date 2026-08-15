@@ -2544,6 +2544,7 @@ impl LxApp {
             self.appid.clone(),
             title,
             startup_options.path.clone(),
+            page.webtag().key().to_string(),
             self.session.id,
             startup_options.open_mode,
             startup_options.panel_id.clone(),

@@ -421,12 +421,15 @@ impl AppRuntime for Platform {
         &self,
         appid: String,
         title: String,
-        path: String,
-        session_id: u64,
+        _path: String,
+        webtag: String,
+        _session_id: u64,
         open_mode: LxAppOpenMode,
         panel_id: String,
     ) -> Result<(), PlatformError> {
-        let webtag = WebTag::new(&appid, &path, Some(session_id));
+        // Page webtags are per-instance; the runtime hands us the exact tag
+        // instead of a route to reconstruct.
+        let webtag = WebTag::from(webtag.as_str());
         if !matches!(open_mode, LxAppOpenMode::Panel) {
             ui_update::sync_windows_ui(&appid);
         }
