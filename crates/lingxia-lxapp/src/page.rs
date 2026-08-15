@@ -682,6 +682,15 @@ impl PageInstance {
     /// Parks the retained WebView while nobody is on the page: the document
     /// is replaced with an inert blank one, so no stale DOM (or open popup)
     /// survives to the next entry and no page code runs off-screen.
+    /// True while the page holds the inert parked document.
+    pub(crate) fn is_parked(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .map(|state| state.parked)
+            .unwrap_or(false)
+    }
+
     pub(crate) fn park_view(&self) {
         if let Ok(mut state) = self.inner.state.lock() {
             state.parked = true;
