@@ -1269,15 +1269,26 @@ pub(crate) fn collapsed_sidebar_tooltip(
     };
 
     let mut hovered = None;
-    for (index, item) in tabbar.auxiliary_items.iter().enumerate() {
-        let anchor = sidebar_rail_item_rect(
-            tabbar_rect,
-            sidebar_auxiliary_rail_index(tabbar, index),
-            scroll_offset,
-        );
+    // The group switcher names itself only when it has no page popup to show;
+    // otherwise both would fire on the same anchor.
+    if tabbar.items.is_empty() {
+        let anchor =
+            sidebar_rail_item_rect(tabbar_rect, sidebar_group_rail_index(tabbar), scroll_offset);
         if in_sidebar_viewport(anchor) {
-            hovered = Some((anchor, item.title.as_str()));
-            break;
+            hovered = Some((anchor, tabbar.app_name.as_str()));
+        }
+    }
+    if hovered.is_none() {
+        for (index, item) in tabbar.auxiliary_items.iter().enumerate() {
+            let anchor = sidebar_rail_item_rect(
+                tabbar_rect,
+                sidebar_auxiliary_rail_index(tabbar, index),
+                scroll_offset,
+            );
+            if in_sidebar_viewport(anchor) {
+                hovered = Some((anchor, item.title.as_str()));
+                break;
+            }
         }
     }
     if hovered.is_none() {
