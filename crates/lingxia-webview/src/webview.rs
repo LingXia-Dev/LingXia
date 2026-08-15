@@ -2428,7 +2428,10 @@ pub(crate) fn destroy_webview_if_matches(webtag: &WebTag, expected: &Arc<WebView
     };
     if let Some(webview) = removed {
         #[cfg(target_os = "windows")]
-        let _ = webview.inner.set_content_visible(false);
+        {
+            let _ = webview.inner.set_content_visible(false);
+            webview.inner.request_shutdown();
+        }
         webview.remove_delegate();
         true
     } else {
@@ -2461,7 +2464,13 @@ pub(crate) fn destroy_webview(webtag: &WebTag) {
         // synchronously while it is still callable so a closed browser tab or
         // surface cannot leave its last composed frame over the replacement.
         #[cfg(target_os = "windows")]
-        let _ = webview.inner.set_content_visible(false);
+        {
+            let _ = webview.inner.set_content_visible(false);
+            // Other owners can keep the retired Arc alive after it leaves the
+            // registry. Stop its native thread now so a same-tag replacement
+            // can safely begin instead of waiting for the final Arc to drop.
+            webview.inner.request_shutdown();
+        }
         webview.remove_delegate();
     }
     clear_pending_callbacks(webtag);

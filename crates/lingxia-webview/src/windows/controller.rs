@@ -775,6 +775,11 @@ impl WebViewController for WebViewInner {
 }
 
 impl WebViewInner {
+    pub(crate) fn request_shutdown(&self) {
+        let _ = self.command_tx.send(UiCommand::Shutdown);
+        self.wake_ui_thread();
+    }
+
     pub(crate) fn clear_profile_data(
         &self,
         kind: super::data_store::BrowsingDataKind,
@@ -790,8 +795,7 @@ impl WebViewInner {
 
 impl Drop for WebViewInner {
     fn drop(&mut self) {
-        let _ = self.command_tx.send(UiCommand::Shutdown);
-        self.wake_ui_thread();
+        self.request_shutdown();
         // Never block on the UI thread's exit: the dropping thread may itself
         // own windows (another webview's UI thread running a layout callback),
         // and the dying thread's WebView2 teardown can message those windows
@@ -1529,9 +1533,28 @@ fn set_content_geometry(
 #[cfg(test)]
 mod tests {
     use super::{
-        UiDispatchError, map_eval_dispatch_error, should_update_parent, webview_ui_lifecycle_lock,
+        UiCommand, UiDispatchError, WebViewInner, map_eval_dispatch_error, should_update_parent,
+        webview_ui_lifecycle_lock,
     };
-    use crate::WebViewScriptError;
+    use crate::{WebTag, WebViewScriptError};
+    use std::sync::{Mutex, mpsc};
+
+    #[test]
+    fn retired_webview_requests_shutdown_before_final_drop() {
+        let (command_tx, command_rx) = mpsc::channel();
+        let inner = WebViewInner {
+            command_tx,
+            thread_id: 0,
+            join_handle: Mutex::new(None),
+            webtag: WebTag::new("lifecycle-test", "home", Some(1)),
+            native_view: 0,
+            composition_hosted: false,
+        };
+
+        inner.request_shutdown();
+
+        assert!(matches!(command_rx.recv().unwrap(), UiCommand::Shutdown));
+    }
 
     #[test]
     fn same_tag_ui_lifetimes_share_a_gate() {
