@@ -129,6 +129,7 @@ Page({
   },
 
   onHide: function () {
+    console.log("UI page onHide");
     this._record("onHide");
   },
 
@@ -188,10 +189,6 @@ Page({
     } catch (error) {
       console.error("Failed to get current pages:", error);
     }
-  },
-
-  onHide: function () {
-    console.log("UI page onHide");
   },
 
   // Push THIS page again: every entry is its own instance, so the stack

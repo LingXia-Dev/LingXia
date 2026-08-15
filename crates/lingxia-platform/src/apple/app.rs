@@ -279,6 +279,7 @@ impl AppRuntime for Platform {
         &self,
         appid: String,
         path: String,
+        _webtag: String,
         animation_type: crate::traits::app_runtime::AnimationType,
     ) -> Result<(), PlatformError> {
         if ffi::navigate(&appid, &path, animation_type as i32) {

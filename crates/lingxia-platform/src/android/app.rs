@@ -480,6 +480,7 @@ impl AppRuntime for Platform {
         &self,
         appid: String,
         path: String,
+        _webtag: String,
         animation_type: crate::traits::app_runtime::AnimationType,
     ) -> Result<(), PlatformError> {
         let bridge_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)

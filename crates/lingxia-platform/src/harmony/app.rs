@@ -546,6 +546,7 @@ impl AppRuntime for Platform {
         &self,
         appid: String,
         path: String,
+        _webtag: String,
         animation_type: crate::traits::app_runtime::AnimationType,
     ) -> Result<(), PlatformError> {
         let anim_type_int = animation_type as i32;

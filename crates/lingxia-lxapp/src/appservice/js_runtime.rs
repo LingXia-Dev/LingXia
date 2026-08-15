@@ -645,9 +645,23 @@ pub(crate) async fn lxapp_service_handler(
                     Ok(()) => Ok(()),
                     Err(e) => {
                         let msg = e.to_string();
-                        error!("[Worker {}] create_in_ctx failed: {}", worker_id, e)
+                        // The instance can also be disposed DURING creation
+                        // (the preflight raced the disposal) — still churn.
+                        let disposed_during_create = page_instance_id
+                            .as_deref()
+                            .is_some_and(|id| lxapp.get_page_by_instance_id_str(id).is_none());
+                        if disposed_during_create {
+                            info!(
+                                "[Worker {}] Dropped CreatePage for instance disposed mid-create: {}",
+                                worker_id, msg
+                            )
                             .with_appid(lxapp.appid.clone())
                             .with_path(&path);
+                        } else {
+                            error!("[Worker {}] create_in_ctx failed: {}", worker_id, e)
+                                .with_appid(lxapp.appid.clone())
+                                .with_path(&path);
+                        }
                         Err(msg)
                     }
                 }

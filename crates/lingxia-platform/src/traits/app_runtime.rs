@@ -227,10 +227,15 @@ pub trait AppRuntime:
     }
 
     /// Navigates within the given LxApp using an animation.
+    /// `webtag` is the destination page instance's full webview tag; page
+    /// tags are per-instance, so shells must not reconstruct them from the
+    /// route. Platforms whose containers resolve through the runtime by path
+    /// may ignore it.
     fn navigate(
         &self,
         appid: String,
         path: String,
+        webtag: String,
         animation_type: AnimationType,
     ) -> Result<(), PlatformError>;
 

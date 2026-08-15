@@ -3790,7 +3790,11 @@ fn present_current_lxapp_main(app: &LxApp) -> bool {
     if path.is_empty() {
         return false;
     }
-    let webtag = WebTag::new(&app.appid, &path, Some(app.session_id()));
+    // Page webtags are per-instance; resolve the live instance instead of
+    // reconstructing a tag from the route.
+    let Some(webtag) = app.get_page(&path).map(|page| page.webtag()) else {
+        return false;
+    };
     log::debug!(
         "presenting current Windows lxapp main appid={} path={} webtag={}",
         app.appid,

@@ -530,14 +530,13 @@ impl AppRuntime for Platform {
     fn navigate(
         &self,
         appid: String,
-        path: String,
+        _path: String,
+        webtag: String,
         animation_type: AnimationType,
     ) -> Result<(), PlatformError> {
-        let session_id = webview_runtime::list_webviews()
-            .into_iter()
-            .find(|tag| tag.extract_appid() == appid)
-            .and_then(|tag| tag.session_id());
-        let webtag = WebTag::new(&appid, &path, session_id);
+        // Page webtags are per-instance; the runtime hands us the exact
+        // destination tag instead of a route to reconstruct.
+        let webtag = WebTag::from(webtag.as_str());
         ui_update::sync_windows_ui(&appid);
         surface::navigate_webtag_window(webtag, self.product_name.clone(), animation_type);
         Ok(())

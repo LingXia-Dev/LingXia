@@ -919,7 +919,19 @@ impl LxApp {
     }
 
     /// Peek at the current page's instance id without removing it.
+    /// Route path of the current page (stack top), when non-empty. The stack
+    /// itself stores instance ids; every external caller wants the route.
     pub fn peek_current_page(&self) -> Option<String> {
+        self.peek_current_page_path()
+    }
+
+    /// Route path of the current page, when the stack is non-empty.
+    pub fn peek_current_page_path(&self) -> Option<String> {
+        self.current_page().ok().map(|page| page.path())
+    }
+
+    /// Instance id at the top of the navigation stack.
+    fn peek_current_instance_id(&self) -> Option<String> {
         self.state
             .lock()
             .unwrap()
@@ -928,11 +940,6 @@ impl LxApp {
             .unwrap()
             .back()
             .cloned()
-    }
-
-    /// Route path of the current page, when the stack is non-empty.
-    pub fn peek_current_page_path(&self) -> Option<String> {
-        self.current_page().ok().map(|page| page.path())
     }
 
     /// Route paths on the navigation stack, oldest → newest.
@@ -946,7 +953,7 @@ impl LxApp {
     /// Return the current visible page or an error when the page stack is empty.
     pub fn current_page(&self) -> Result<PageInstance, LxAppError> {
         let id = self
-            .peek_current_page()
+            .peek_current_instance_id()
             .ok_or_else(|| LxAppError::WebView("No current page".to_string()))?;
         self.get_page_by_instance_id_str(&id)
             .ok_or_else(|| LxAppError::WebView("Current page instance not found".to_string()))

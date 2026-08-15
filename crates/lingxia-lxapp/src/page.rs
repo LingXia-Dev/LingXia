@@ -1450,7 +1450,12 @@ impl PageInstance {
 
         // 6. Perform the native navigation
         (*lxapp.runtime)
-            .navigate(self.appid(), path, nav_type.to_animation())
+            .navigate(
+                self.appid(),
+                path,
+                target_page.webtag().key().to_string(),
+                nav_type.to_animation(),
+            )
             .map_err(LxAppError::from)?;
 
         lxapp.sync_host_ui();
@@ -1514,6 +1519,7 @@ impl PageInstance {
             (*lxapp.runtime).navigate(
                 self.appid(),
                 path.clone(),
+                dest.webtag().key().to_string(),
                 NavigationType::Backward.to_animation(),
             )?;
             // Reveal lifecycle for the destination. Platforms with native
@@ -1521,10 +1527,8 @@ impl PageInstance {
             // from the container when the page surfaces; the windowed
             // runtime has no such callback, and `dispatch_lifecycle_event`
             // de-dupes when both paths fire.
-            if let Some(dest_page) = lxapp.get_page(&path) {
-                dest_page.dispatch_lifecycle_event(PageLifecycleEvent::OnShow);
-                dest_page.mark_active();
-            }
+            dest.dispatch_lifecycle_event(PageLifecycleEvent::OnShow);
+            dest.mark_active();
             lxapp.sync_host_ui();
             Ok(())
         } else {

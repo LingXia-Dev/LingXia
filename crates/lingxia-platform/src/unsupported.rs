@@ -360,6 +360,7 @@ impl AppRuntime for Platform {
         &self,
         _appid: String,
         _path: String,
+        _webtag: String,
         _animation_type: AnimationType,
     ) -> Result<(), PlatformError> {
         not_supported("navigate")
