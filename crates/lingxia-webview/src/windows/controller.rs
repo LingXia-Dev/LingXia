@@ -9,6 +9,87 @@ pub(crate) const WM_LINGXIA_COMMAND: u32 = WM_APP + 0x154;
 pub(crate) const WEBVIEW_SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(4);
 const BROWSER_EMULATION_TIMEOUT: Duration = Duration::from_secs(4);
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
+const WEBVIEW_UI_RETIRE_TIMEOUT: Duration = Duration::from_secs(2);
+
+#[derive(Default)]
+struct WebViewUiLifecycleState {
+    next_generation: u64,
+    active_generation: Option<u64>,
+}
+
+#[derive(Default)]
+struct WebViewUiLifecycleGate {
+    state: Mutex<WebViewUiLifecycleState>,
+    idle: std::sync::Condvar,
+}
+
+struct WebViewUiLifecycleGuard {
+    gate: Arc<WebViewUiLifecycleGate>,
+    generation: u64,
+}
+
+impl Drop for WebViewUiLifecycleGuard {
+    fn drop(&mut self) {
+        let mut state = self
+            .gate
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if state.active_generation == Some(self.generation) {
+            state.active_generation = None;
+            self.gate.idle.notify_all();
+        }
+    }
+}
+
+static WEBVIEW_UI_LIFECYCLE_GATES: OnceLock<
+    Mutex<HashMap<String, std::sync::Weak<WebViewUiLifecycleGate>>>,
+> = OnceLock::new();
+
+fn webview_ui_lifecycle_gate(webtag_key: &str) -> Arc<WebViewUiLifecycleGate> {
+    let gates = WEBVIEW_UI_LIFECYCLE_GATES.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut gates = gates
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    gates.retain(|_, gate| gate.strong_count() > 0);
+    if let Some(gate) = gates.get(webtag_key).and_then(std::sync::Weak::upgrade) {
+        return gate;
+    }
+    let gate = Arc::new(WebViewUiLifecycleGate::default());
+    gates.insert(webtag_key.to_string(), Arc::downgrade(&gate));
+    gate
+}
+
+fn enter_webview_ui_lifecycle(webtag_key: &str, timeout: Duration) -> WebViewUiLifecycleGuard {
+    let gate = webview_ui_lifecycle_gate(webtag_key);
+    let deadline = std::time::Instant::now() + timeout;
+    let mut state = gate
+        .state
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    while state.active_generation.is_some() {
+        let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else {
+            break;
+        };
+        let (next_state, waited) = gate
+            .idle
+            .wait_timeout(state, remaining)
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state = next_state;
+        if waited.timed_out() && state.active_generation.is_some() {
+            log::warn!(
+                "Windows WebView UI teardown for {webtag_key} exceeded {:?}; starting the replacement generation",
+                timeout
+            );
+            break;
+        }
+    }
+    state.next_generation = state.next_generation.wrapping_add(1).max(1);
+    let generation = state.next_generation;
+    state.active_generation = Some(generation);
+    drop(state);
+    WebViewUiLifecycleGuard { gate, generation }
+}
 
 pub(crate) enum UiCommand {
     LoadUrl {
@@ -459,24 +540,23 @@ impl WebViewInner {
     }
 
     fn wake_ui_thread(&self) {
-        let posted = unsafe {
-            WindowsAndMessaging::PostMessageW(
+        unsafe {
+            let _ = WindowsAndMessaging::PostMessageW(
                 Some(hwnd_from_handle(self.native_view)),
                 WM_LINGXIA_COMMAND,
                 WPARAM::default(),
                 LPARAM::default(),
-            )
-            .is_ok()
-        };
-        if !posted {
-            unsafe {
-                let _ = WindowsAndMessaging::PostThreadMessageW(
-                    self.thread_id,
-                    WM_LINGXIA_COMMAND,
-                    WPARAM::default(),
-                    LPARAM::default(),
-                );
-            }
+            );
+            // A retired surface can destroy and quickly reuse the parent HWND
+            // while another Arc still owns this controller. Posting to that
+            // reused handle succeeds on the wrong queue, so always wake the
+            // recorded owner thread as well.
+            let _ = WindowsAndMessaging::PostThreadMessageW(
+                self.thread_id,
+                WM_LINGXIA_COMMAND,
+                WPARAM::default(),
+                LPARAM::default(),
+            );
         }
     }
 
@@ -758,6 +838,11 @@ impl WebViewController for WebViewInner {
 }
 
 impl WebViewInner {
+    pub(crate) fn request_shutdown(&self) {
+        let _ = self.command_tx.send(UiCommand::Shutdown);
+        self.wake_ui_thread();
+    }
+
     pub(crate) fn clear_profile_data(
         &self,
         kind: super::data_store::BrowsingDataKind,
@@ -773,8 +858,7 @@ impl WebViewInner {
 
 impl Drop for WebViewInner {
     fn drop(&mut self) {
-        let _ = self.command_tx.send(UiCommand::Shutdown);
-        self.wake_ui_thread();
+        self.request_shutdown();
         // Never block on the UI thread's exit: the dropping thread may itself
         // own windows (another webview's UI thread running a layout callback),
         // and the dying thread's WebView2 teardown can message those windows
@@ -795,6 +879,13 @@ pub(crate) fn run_ui_thread(
     effective_options: EffectiveWebViewCreateOptions,
     startup_tx: Sender<StdResult<WebViewStartup>>,
 ) -> StdResult<()> {
+    // A relaunch can reuse a WebTag as soon as the retired instance leaves the
+    // registry, while its WebView2 UI thread is still closing the controller.
+    // Prefer disjoint native lifetimes because overlapping controllers can
+    // wedge the replacement. A stuck WebView2 Close must not wedge every later
+    // generation too, so the lifecycle gate permits a bounded takeover.
+    let _lifecycle_guard = enter_webview_ui_lifecycle(webtag.key(), WEBVIEW_UI_RETIRE_TIMEOUT);
+
     unsafe {
         // OleInitialize = CoInitializeEx(STA) + OLE (clipboard/drag-drop);
         // composition hosting registers the surface window as a drop target.
@@ -1502,8 +1593,58 @@ fn set_content_geometry(
 
 #[cfg(test)]
 mod tests {
-    use super::{UiDispatchError, map_eval_dispatch_error, should_update_parent};
-    use crate::WebViewScriptError;
+    use super::{
+        UiCommand, UiDispatchError, WebViewInner, enter_webview_ui_lifecycle,
+        map_eval_dispatch_error, should_update_parent, webview_ui_lifecycle_gate,
+    };
+    use crate::{WebTag, WebViewScriptError};
+    use std::sync::{Mutex, mpsc};
+
+    #[test]
+    fn retired_webview_requests_shutdown_before_final_drop() {
+        let (command_tx, command_rx) = mpsc::channel();
+        let inner = WebViewInner {
+            command_tx,
+            thread_id: 0,
+            join_handle: Mutex::new(None),
+            webtag: WebTag::new("lifecycle-test", "home", Some(1)),
+            native_view: 0,
+            composition_hosted: false,
+        };
+
+        inner.request_shutdown();
+
+        assert!(matches!(command_rx.recv().unwrap(), UiCommand::Shutdown));
+    }
+
+    #[test]
+    fn same_tag_ui_lifetimes_share_a_gate() {
+        let first = webview_ui_lifecycle_gate("lifecycle-test:same-tag");
+        let second = webview_ui_lifecycle_gate("lifecycle-test:same-tag");
+        let other = webview_ui_lifecycle_gate("lifecycle-test:other-tag");
+
+        assert!(std::sync::Arc::ptr_eq(&first, &second));
+        assert!(!std::sync::Arc::ptr_eq(&first, &other));
+    }
+
+    #[test]
+    fn timed_out_ui_lifecycle_hands_ownership_to_the_new_generation() {
+        let first = enter_webview_ui_lifecycle(
+            "lifecycle-test:bounded-takeover",
+            std::time::Duration::ZERO,
+        );
+        let second = enter_webview_ui_lifecycle(
+            "lifecycle-test:bounded-takeover",
+            std::time::Duration::ZERO,
+        );
+        let gate = webview_ui_lifecycle_gate("lifecycle-test:bounded-takeover");
+
+        assert_eq!(gate.state.lock().unwrap().active_generation, Some(2));
+        drop(first);
+        assert_eq!(gate.state.lock().unwrap().active_generation, Some(2));
+        drop(second);
+        assert_eq!(gate.state.lock().unwrap().active_generation, None);
+    }
 
     #[test]
     fn composition_rechecks_a_reused_parent_handle() {

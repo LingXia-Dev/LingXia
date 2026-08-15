@@ -496,8 +496,18 @@ Platform hosts decide *when* to discard:
 `dispatch_lifecycle_event()` enforces ordering:
 - `OnLoad` is ignored before render starts.
 - First-load / re-navigation order: `OnLoad` (query-aware) → `OnShow`
-  (visibility) → `OnReady` (after render finished, once per logical load).
-- `OnHide` on visibility loss; `OnUnload` on disposal.
+  (visibility) → `OnReady` (after render finished, once per rendered document —
+  a re-navigation onto a cached instance repeats `OnLoad`/`OnShow` but not
+  `OnReady`, because nothing re-rendered).
+- `OnHide` on visibility loss; `OnUnload` on disposal or on leaving the stack.
+
+`PageState` keeps these on three separate clocks, because they advance
+independently: `EntryPhase` (`Idle`/`LoadOwed`/`Loaded`) owes one `onLoad` per
+logical entry, `Visibility` (`Hidden`/`ShowOwed`/`Shown`) owes `onShow`/`onHide`
+per flip, and `ready_dispatched` owes one `onReady` per rendered document and is
+cleared only by `reset_webview_lifecycle_state`. `onUnload` cancels a *pending*
+entry but leaves a *delivered* one alone, so a reused instance does not
+re-request `onLoad` off the back of its existing bridge.
 
 Browser-profile WebViews only participate in this state machine when their
 delegate resolves to a bound headless `Page`. External-URL tabs and URL-target
@@ -626,6 +636,67 @@ Disposal is triggered by:
 - `PageInstanceEvent::Hidden` with a dispose TTL — timer-based, reason
   `Reclaimed` (used by surfaces).
 - `PageInstanceEvent::Disposed { reason }` — explicit.
+
+### Page reset on leaving the stack (distinct from disposal)
+
+Popping a page (`navigate_back`), replacing it (`redirectTo` to a different
+page), or dropping it on `switchTab` ends that page *instance* without
+destroying its WebView — the view is kept so the next entry is warm. The reset
+is split in two halves so nothing is rebuilt for a page nobody is returning
+to: rebuilding speculatively would run page code off-screen (view mount hooks,
+native components, media) and queue Logic work behind live traffic on the JS
+worker channel.
+
+**Teardown** (`LxApp::teardown_page`, deferred by `PAGE_RESET_DELAY` (500ms)
+so it runs behind the container's pop animation rather than blanking a page
+still on screen):
+
+1. `prepare_for_service_restart()` — cancel in-flight bridge work and reset
+   the WebView lifecycle state.
+2. `park_view()` — swap the document for an inert blank one. No stale DOM or
+   open popup survives, and no page code runs while nobody is on the page; a
+   parked page's navigation events are swallowed before the render pipeline.
+3. `TerminatePage` for the outgoing `PageSvc` (scoped to the instance id).
+
+**Rebuild** (`LxApp::rebuild_page_on_entry`, only from the entry path):
+
+1. Create a fresh `PageSvc` for the path, so Logic `data` returns to its
+   declared initial value.
+2. On the creation ack, `page.load_html()` — **not** `WebView::reload()`. The
+   document was installed with `loadHTMLString` against a logical base URL; a
+   reload would refetch that URL's raw source and lose the injected bridge
+   config and nonce. The new document's handshake then releases the entry's
+   already-requested `onLoad`.
+
+`flush_page_reset()` settles both halves at the top of the `OnLoad` dispatch,
+*before* `request_on_load`: it claims the teardown if the timer has not run
+(`PageReset::Pending` → `AwaitingEntry`), then claims the rebuild
+(`AwaitingEntry` → `None`). The timer only ever tears down; the claims plus a
+per-page transition lock keep the timer and a racing entry from interleaving
+their terminate/create sends.
+
+In-Logic navigation (`lx.navigateTo` and friends) needs the target's `PageSvc`
+in the `page_svc_map` *before* the stack moves, so
+`get_or_create_page_in_ctx()` performs the same flush early and awaits the
+service registration (`flush_page_reset_awaited()`). That wait is safe because
+in-Logic handlers run off the worker's message pump — the queued `CreatePage`
+still executes; the later `OnLoad` flush then finds the reset already claimed.
+
+`PageState.reset` holding `AwaitingEntry` also suppresses the bridge-ready
+auto-request in `notify_bridge_ready`, so a handshake racing the entry cannot
+boot a lifecycle of its own — `onLoad` with the previous entry's query, plus
+`onReady` — at a page nobody is on. Pages that handshake while live (surfaces,
+an in-place app-service restart) still boot from there.
+
+The claim is the page's own `PageReset::Pending`, not the timer entry: if the
+page is back on the stack when the timer fires, the teardown stays owed and
+`flush_page_reset()` performs it at the entry instead. That covers both a fast
+re-entry and one that lands between the pop and its `onLoad`.
+
+Pending resets are cancelled by `dispose_page_instance_internal()` and by
+`shutdown_with_options()`. `reLaunch` needs none: it destroys the WebViews and
+removes the instances outright. `switchTab` keeps the tab pages it leaves warm
+(hide only), but unloads and resets any pushed page it drops from the stack.
 
 ### LRU eviction (distinct from disposal)
 

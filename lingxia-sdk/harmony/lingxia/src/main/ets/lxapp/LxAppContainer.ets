@@ -15,7 +15,8 @@ import {
   WebViewInfo,
   getAllWebViewInfos,
   pauseWebViewComponents,
-  resumeWebViewComponents
+  resumeWebViewComponents,
+  getWebviewGeneration
 } from './WebViewBridge';
 import { LingXiaWebView } from './LingXiaWebView';
 import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } from './NavigationBar';
@@ -49,6 +50,12 @@ const TAG = 'LingXia.Container';
 interface RenderableWebEntry {
   webTag: string;
   controller: webview.WebviewController;
+  // Native creation generation: part of the ForEach key so a same-tag
+  // successor rebuilds the Web component. ArkUI would otherwise reuse the
+  // component, whose Web keeps its original (destroyed) controller bound and
+  // whose one-shot onAppear ack never fires for the new controller — the
+  // runtime then waits forever and the page stays webview-less.
+  generation: string;
 }
 
 @Component
@@ -982,7 +989,7 @@ export struct LxAppContainer {
       // Render all WebView components so they can be associated with controllers
       ForEach(this.getRenderableWebEntries(), (entry: RenderableWebEntry) => {
         this.buildWebViewComponent(entry.webTag, entry.controller)
-      }, (entry: RenderableWebEntry) => entry.webTag)
+      }, (entry: RenderableWebEntry) => `${entry.webTag}@${entry.generation}`)
       // Overlay mask on top
       if (this.shouldRenderOverlayMask()) {
         Column()
@@ -1843,7 +1850,7 @@ export struct LxAppContainer {
       // navigateTo. Inactive pages are parked offscreen, never unmounted —
       // remounting binds the controller to a fresh empty browser (src '')
       // that the runtime won't reload.
-      entries.push({ webTag: tag, controller: controller });
+      entries.push({ webTag: tag, controller: controller, generation: getWebviewGeneration(tag) });
     });
     return entries;
   }

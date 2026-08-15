@@ -28,7 +28,7 @@ pub(crate) mod event_bus;
 
 #[path = "page.rs"]
 mod page;
-use crate::lifecycle::PageServiceEvent;
+use crate::lifecycle::PageLifecycleEvent;
 pub use page::PageSvc;
 
 #[path = "plugin.rs"]
@@ -135,7 +135,7 @@ pub(crate) enum ServiceMessage {
         lxapp: Arc<LxApp>,
         path: String,
         page_instance_id: Option<String>,
-        event: PageServiceEvent,
+        event: PageLifecycleEvent,
         args: Option<String>,
     },
     // Native -> JS event dispatch via event bus (e.g., video context)
@@ -244,7 +244,7 @@ fn js_value_to_json_string(value: JSValue) -> Result<String, LxAppError> {
     Ok("null".to_string())
 }
 
-fn eval_error_from_rong(ctx: &JSContext, error: RongJSError) -> LxAppError {
+pub(crate) fn eval_error_from_rong(ctx: &JSContext, error: RongJSError) -> LxAppError {
     if let Some(thrown) = error.thrown_value(ctx) {
         if thrown.is_string() {
             let value: Result<String, RongJSError> = thrown.into_value().try_into();
@@ -620,6 +620,29 @@ pub(crate) async fn lxapp_service_handler(
                     let _ = ack_tx.send(Ok(()));
                     return;
                 }
+                debug!(
+                    "[Worker {}] Creating page svc (instance {:?})",
+                    worker_id, page_instance_id
+                )
+                .with_appid(lxapp.appid.clone())
+                .with_path(path.clone());
+                // The page can be disposed between queueing and execution (a
+                // relaunch tearing the stack down races a queued rebuild);
+                // that is churn, not a failure.
+                let target_gone = match page_instance_id.as_deref() {
+                    Some(id) => lxapp.get_page_by_instance_id_str(id).is_none(),
+                    None => lxapp.get_page(&path).is_none(),
+                };
+                if target_gone {
+                    info!(
+                        "[Worker {}] Skipped CreatePage for disposed page",
+                        worker_id
+                    )
+                    .with_appid(lxapp.appid.clone())
+                    .with_path(path.clone());
+                    let _ = ack_tx.send(Err("page instance disposed".to_string()));
+                    return;
+                }
                 match PageSvc::create_in_ctx(ctx, &path, page_instance_id.as_deref()).await {
                     Ok(()) => Ok(()),
                     Err(e) => {
@@ -681,6 +704,7 @@ pub(crate) async fn lxapp_service_handler(
                 .unwrap_or(None);
 
                 if let Some(page_svc) = page_svc {
+                    page_svc.mark_terminated();
                     page_svc
                         .close_channels(bridge::BRIDGE_CANCELED, "Page terminated")
                         .await;
@@ -797,30 +821,17 @@ pub(crate) async fn lxapp_service_handler(
                 .unwrap_or(None);
 
                 if let Some(page_svc) = page_svc {
-                    // Keep user lifecycle handlers off the worker pump, but retain
-                    // their JSContext until an async handler has actually settled.
-                    let appid = lxapp.appid.clone();
-                    context_lifecycle::spawn(ctx, move |ctx| async move {
-                        if let Err(e) = page_svc.call_page_event(&ctx, event, args.as_deref()).await
-                        {
-                            let error = eval_error_from_rong(&ctx, e);
-                            if page_svc.get_page().is_unloaded() {
-                                debug!(
-                                    "[Worker {}] PageInstance event '{}' cancelled after unload",
-                                    worker_id, event
-                                )
-                                .with_appid(appid)
-                                .with_path(path);
-                            } else {
-                                error!(
-                                    "[Worker {}] PageInstance event '{}' failed: {}",
-                                    worker_id, event, error
-                                )
-                                .with_appid(appid)
-                                .with_path(path);
-                            }
-                        }
-                    });
+                    debug!(
+                        "[Worker {}] page event '{}' → instance {}",
+                        worker_id,
+                        event,
+                        page_svc.get_page().instance_id_string()
+                    )
+                    .with_appid(lxapp.appid.clone())
+                    .with_path(path.clone());
+                    // Keeps user lifecycle handlers off the worker pump while
+                    // preserving per-page dispatch order.
+                    page_svc.enqueue_lifecycle_event(ctx, event, args);
                 } else {
                     info!(
                         "[Worker {}] Dropping page event: page service not loaded",

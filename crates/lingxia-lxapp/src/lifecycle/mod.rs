@@ -72,83 +72,9 @@ impl fmt::Display for AppServiceEvent {
     }
 }
 
-// App-level lifecycle events used by app lifecycle helpers.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum LxAppLifecycleEvent {
-    OnLaunch,
-    OnShow,
-    OnHide,
-}
-
-impl LxAppLifecycleEvent {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            LxAppLifecycleEvent::OnLaunch => "onLaunch",
-            LxAppLifecycleEvent::OnShow => "onShow",
-            LxAppLifecycleEvent::OnHide => "onHide",
-        }
-    }
-
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "onLaunch" => Some(LxAppLifecycleEvent::OnLaunch),
-            "onShow" => Some(LxAppLifecycleEvent::OnShow),
-            "onHide" => Some(LxAppLifecycleEvent::OnHide),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for LxAppLifecycleEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-// PageInstance-level service events
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum PageServiceEvent {
-    OnLoad,
-    OnShow,
-    OnReady,
-    OnHide,
-    OnUnload,
-    OnPullDownRefresh,
-}
-
-impl PageServiceEvent {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            PageServiceEvent::OnLoad => "onLoad",
-            PageServiceEvent::OnShow => "onShow",
-            PageServiceEvent::OnReady => "onReady",
-            PageServiceEvent::OnHide => "onHide",
-            PageServiceEvent::OnUnload => "onUnload",
-            PageServiceEvent::OnPullDownRefresh => "onPullDownRefresh",
-        }
-    }
-
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "onLoad" => Some(PageServiceEvent::OnLoad),
-            "onShow" => Some(PageServiceEvent::OnShow),
-            "onReady" => Some(PageServiceEvent::OnReady),
-            "onHide" => Some(PageServiceEvent::OnHide),
-            "onUnload" => Some(PageServiceEvent::OnUnload),
-            "onPullDownRefresh" => Some(PageServiceEvent::OnPullDownRefresh),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for PageServiceEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}
-
-// PageInstance lifecycle events (internal state machine and logging)
-#[derive(Copy, Clone, PartialEq, Debug)]
+// Page lifecycle events, both for the PageInstance state machine and for the
+// Logic handler they are delivered to.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum PageLifecycleEvent {
     OnLoad,
     OnReady,
@@ -156,7 +82,6 @@ pub enum PageLifecycleEvent {
     OnHide,
     OnUnload,
     OnPullDownRefresh,
-    Unknown,
 }
 
 impl PageLifecycleEvent {
@@ -168,8 +93,13 @@ impl PageLifecycleEvent {
             PageLifecycleEvent::OnHide => "onHide",
             PageLifecycleEvent::OnUnload => "onUnload",
             PageLifecycleEvent::OnPullDownRefresh => "onPullDownRefresh",
-            PageLifecycleEvent::Unknown => "unknown",
         }
+    }
+}
+
+impl fmt::Display for PageLifecycleEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 

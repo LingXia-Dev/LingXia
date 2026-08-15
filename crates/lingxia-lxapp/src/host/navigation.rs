@@ -16,7 +16,7 @@ struct PageTargetOptions {
 
 #[derive(Deserialize)]
 struct NavigateBackOptions {
-    delta: u32,
+    delta: Option<u32>,
 }
 
 fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
@@ -88,6 +88,9 @@ async fn navigate_with_url(
     cancel: &mut HostCancel,
 ) -> Result<(), LxAppError> {
     lxapp.ensure_page_exists(&target_url)?;
+    // Reject before resolving the target so a failed navigation leaves the
+    // stacked page's cached query untouched.
+    lxapp.validate_navigation_entry(&target_url, nav_type)?;
 
     let current_path = current_page_path(&lxapp)?;
     let target_page = lxapp.get_or_create_page(&target_url);
@@ -131,7 +134,7 @@ host_api_async!(
         let Some(page) = lxapp.get_page(&current_path) else {
             return Err(LxAppError::Runtime("Current page not found".to_string()));
         };
-        page.navigate_back(options.delta)?;
+        page.navigate_back(options.delta.unwrap_or(1))?;
 
         // Best-effort wait for the destination page's WebView to be ready, so view callers can
         // await navigation completion and reliably receive errors.

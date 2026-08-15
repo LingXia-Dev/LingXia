@@ -93,6 +93,12 @@ impl NavigationTracker {
                     // Redirect restart with the same native id: same attempt.
                     return out;
                 }
+                // A terminated key that starts again is a reused native
+                // identity (a freed WKNavigation's address reallocated for
+                // the next load). The duplicate-terminal guard must not
+                // swallow the new attempt's completion.
+                self.recent_terminated
+                    .retain(|terminated| *terminated != key);
                 let id = NavigationId::next();
                 self.by_key.insert(key, id);
                 self.active.push(id);
@@ -553,6 +559,56 @@ mod tests {
         assert_eq!(
             *events.lock().unwrap(),
             vec!["started:https://a/", "succeeded:https://b/"]
+        );
+    }
+
+    #[test]
+    fn a_reused_native_key_terminates_its_new_attempt() {
+        let webtag = tag("key-reuse");
+        let events = capture(&webtag);
+        // First attempt completes; its key lands in the duplicate guard.
+        submit(
+            &webtag,
+            NativeSignal::NavigationStarted {
+                key: Some(9),
+                url: "https://first/".into(),
+            },
+        );
+        submit(
+            &webtag,
+            NativeSignal::NavigationFinished {
+                key: Some(9),
+                result: NativeNavigationResult::Succeeded {
+                    final_url: "https://first/".into(),
+                },
+            },
+        );
+        // The freed native object's address is reused for the next load; the
+        // new attempt's terminal must be delivered, not dropped as duplicate.
+        submit(
+            &webtag,
+            NativeSignal::NavigationStarted {
+                key: Some(9),
+                url: "https://second/".into(),
+            },
+        );
+        submit(
+            &webtag,
+            NativeSignal::NavigationFinished {
+                key: Some(9),
+                result: NativeNavigationResult::Succeeded {
+                    final_url: "https://second/".into(),
+                },
+            },
+        );
+        assert_eq!(
+            *events.lock().unwrap(),
+            vec![
+                "started:https://first/",
+                "succeeded:https://first/",
+                "started:https://second/",
+                "succeeded:https://second/",
+            ]
         );
     }
 

@@ -174,6 +174,46 @@ Page({
 | `onShow()` | Lifecycle — page becomes visible (including back-navigation). |
 | `lx.*` | Global platform APIs (e.g. `lx.navigationBar.update()`, `lx.createVideoContext()`). |
 
+### Page lifecycle
+
+| Hook | When it fires |
+| --- | --- |
+| `onLoad(options)` | Entering the page. `options` carries the query params. |
+| `onShow()` | Becoming visible — on entry, and again every time it comes back. |
+| `onReady()` | The page's document has finished rendering. |
+| `onHide()` | Another page covered it, or the lxapp went to the background. |
+| `onUnload()` | The page left the stack (`lx.navigateBack`, `lx.redirectTo`, a `lx.switchTab` that drops it). |
+
+**Leaving a page ends that page instance.** After `onUnload`, entering the same
+page again starts a fresh one: `data` is back to what `Page({ data })` declares,
+and the View is a newly rendered document — a dialog left open, a scroll
+position, or anything else the page accumulated is gone. Put whatever must
+survive in `lx.getStorage()` or in `App({})`.
+
+`onHide` is not `onUnload`. A page covered by another page, or backgrounded with
+the lxapp, keeps its instance and its `data`, and simply gets `onShow` again on
+return. `lx.switchTab` only hides the tab page it leaves — but any page pushed
+on top of a tab is dropped from the stack and unloaded like a `navigateBack`.
+
+`lx.redirectTo` onto the page you are already on is the one exception: the page
+never leaves the screen, so it keeps its instance and simply gets `onLoad` again
+with the new query.
+
+A route can be on the page stack **once**: one path is one page instance, so
+`lx.navigateTo` onto a page already on the stack is rejected. Navigate back to
+it, or model the destination as a different route. Navigation rejections carry
+stable metadata in `error.data`: `reason` is `"duplicate_route"` or
+`"stack_full"`, with the attempted `operation` and resolved `target`.
+
+`lx.navigateBack()` pops one page by default; pass `{ delta }` to pop more. It
+returns a promise like the other navigation APIs, resolving once the revealed
+page's WebView is ready:
+
+```ts
+await lx.navigateBack();
+await lx.navigateBack({ delta: 2 });
+```
+
 ### Private helpers
 
 Functions starting with `_` are private — they are **not** exposed to the View. Use them for internal logic:

@@ -43,12 +43,14 @@ objc2-foundation = { version = "0.3", features = ["NSDictionary", "NSHTTPCookie"
 block2 = "0.6"
 # GCD dispatch for main thread operations
 dispatch2 = "0.3"
+# SO_NOSIGPIPE on the bridge downstream socket (Swift-hosted processes
+# never get Rust's process-wide SIGPIPE ignore)
+libc = "0.2"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-app-kit = { version = "0.3", default-features = false, features = ["NSEvent", "NSGraphicsContext", "NSResponder", "NSView", "NSWindow", "objc2-core-graphics"] }
 objc2-core-foundation = "0.3"
 objc2-core-graphics = { version = "0.3", default-features = false, features = ["CGBase", "CGEvent", "CGEventSource", "CGEventTypes", "CGGeometry", "CGRemoteOperation", "libc", "objc2"] }
-libc = "0.2"
 
 [target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
 base64 = { workspace = true }

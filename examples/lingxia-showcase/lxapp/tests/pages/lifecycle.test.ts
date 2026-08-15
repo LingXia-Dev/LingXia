@@ -1,6 +1,6 @@
 import { expect } from '@rongjs/test';
 import type { LxAppDriver } from 'lingxia-types/automation';
-import { waitForCurrentPage } from '../helpers/page.js';
+import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 import { contract, eventually } from '../support/contract.js';
 
 interface SurfaceLifecycleState {
@@ -73,4 +73,252 @@ contract({
     { showCount, hideCount },
   ) => showCount === 2 && hideCount === 1);
   expect(reshown.lastLifecycle).toBe('onShow (#2)');
+});
+
+interface ResetDemoState {
+  instanceTag: string;
+  previousInstanceTag: string;
+  logicCounter: number;
+}
+
+async function resetDemoState(app: LxAppDriver): Promise<ResetDemoState | null> {
+  return app.eval({
+    script: `
+      const page = getCurrentPages().find((candidate) => candidate.route.includes('/lifecycle/'));
+      return page
+        ? {
+            instanceTag: page.data.instanceTag ?? '',
+            previousInstanceTag: page.data.previousInstanceTag ?? '',
+            logicCounter: page.data.logicCounter ?? -1,
+          }
+        : null;
+    `,
+  }) as Promise<ResetDemoState | null>;
+}
+
+async function enterResetDemo(app: LxAppDriver): Promise<ResetDemoState> {
+  await app.nav.to({ page: 'lifecycle' });
+  await waitForCurrentPage(app, 'lifecycle');
+  await app.page.waitFor({ page: 'lifecycle', css: '[data-testid="lifecycle-page"]' });
+  const state = await eventually(resetDemoState.bind(null, app), (
+    candidate,
+  ) => candidate !== null
+    && candidate.instanceTag !== ''
+    && candidate.previousInstanceTag !== '', {
+    describe: 'page reset demo to report its current and stored instance tags',
+  });
+  if (state === null) throw new Error('Page reset demo left the stack while loading');
+  return state;
+}
+
+const waitForViewCounter = (app: LxAppDriver, expected: string) => waitForElementText(
+  app,
+  'lifecycle',
+  '[data-testid="lifecycle-view-counter"]',
+  (text) => text.trim() === expected,
+);
+
+contract({
+  id: 'PAGE-LIFECYCLE-002',
+  title: 'reset logic data and the rendered document when a page is re-entered',
+  covers: ['lx.navigateTo', 'lx.navigateBack'],
+  layer: 'logic',
+  levels: ['semantic', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app, defer }) => {
+  defer(async () => {
+    await app.nav.relaunch({ page: 'home' });
+  });
+
+  await app.nav.relaunch({ page: 'home' });
+  await waitForCurrentPage(app, 'home');
+
+  const first = await enterResetDemo(app);
+  expect(first.logicCounter).toBe(0);
+
+  // Dirty both layers plus the DOM.
+  await app.page.click({ page: 'lifecycle', css: '[data-testid="lifecycle-bump-logic"]' });
+  await app.page.click({ page: 'lifecycle', css: '[data-testid="lifecycle-bump-view"]' });
+  await app.page.click({ page: 'lifecycle', css: '[data-testid="lifecycle-open-popup"]' });
+  await app.page.waitFor({ page: 'lifecycle', css: '[data-testid="lifecycle-popup"]' });
+  await eventually(resetDemoState.bind(null, app), (
+    candidate,
+  ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });
+  await waitForViewCounter(app, '1');
+
+  // Leaving ends the instance; the teardown lands after the pop transition.
+  await app.nav.back();
+  await waitForCurrentPage(app, 'home');
+  // Past the deferred-teardown delay, so this covers the timer path rather
+  // than the teardown being flushed by a fast re-entry.
+  await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
+
+  const second = await enterResetDemo(app);
+  expect(second.instanceTag).not.toBe(first.instanceTag);
+  expect(second.previousInstanceTag).toBe(first.instanceTag);
+  expect(second.logicCounter).toBe(0);
+  await waitForViewCounter(app, '0');
+
+  const popup = await app.page.query({
+    page: 'lifecycle',
+    css: '[data-testid="lifecycle-popup"]',
+  });
+  expect(popup.exists).toBe(false);
+});
+
+contract({
+  id: 'PAGE-LIFECYCLE-003',
+  title: 'reject navigateTo onto a route already on the page stack',
+  covers: ['lx.navigateTo'],
+  layer: 'logic',
+  levels: ['failure', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'reject',
+}, async ({ app, defer }) => {
+  defer(async () => {
+    await app.nav.relaunch({ page: 'home' });
+  });
+
+  await app.nav.relaunch({ page: 'home' });
+  await waitForCurrentPage(app, 'home');
+  await app.nav.to({ page: 'lifecycle' });
+  await waitForCurrentPage(app, 'lifecycle');
+
+  // One path is one page instance, so a duplicate entry would leave two stack
+  // slots sharing it — popping either would end the one the other still shows.
+  let rejection = '';
+  try {
+    await app.nav.to({ page: 'lifecycle' });
+  } catch (error) {
+    rejection = String(error);
+  }
+  expect(rejection).toContain('already on the page stack');
+
+  const stack = await app.eval({
+    script: 'return getCurrentPages().map((page) => page.route);',
+  }) as string[];
+  expect(stack.filter((route) => route.includes('/lifecycle/')).length).toBe(1);
+});
+
+contract({
+  id: 'PAGE-LIFECYCLE-004',
+  title: 'deliver exactly one onLoad and one onReady to a re-entered page',
+  covers: ['lx.navigateTo', 'lx.navigateBack'],
+  layer: 'logic',
+  levels: ['semantic', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app, defer }) => {
+  defer(async () => {
+    await app.nav.relaunch({ page: 'home' });
+  });
+
+  await app.nav.relaunch({ page: 'home' });
+  await waitForCurrentPage(app, 'home');
+
+  const first = await enterResetDemo(app);
+  await app.nav.back();
+  await waitForCurrentPage(app, 'home');
+  // Let the off-screen teardown complete: the rebuild at re-entry must
+  // deliver exactly one lifecycle, never a second one of its own.
+  await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
+
+  const second = await enterResetDemo(app);
+  expect(second.previousInstanceTag).toBe(first.instanceTag);
+
+  // Wait until every lifecycle event of the entry has landed: `onShow` can
+  // trail `onReady` by a push-animation's length, and counting early would
+  // misread a late event as a missing one.
+  const events = await eventually(
+    async () => {
+      const state = await app.eval({
+        script: `
+          const page = getCurrentPages().find((candidate) => candidate.route.includes('/lifecycle/'));
+          return page ? page.data.events ?? [] : null;
+        `,
+      }) as string[] | null;
+      return state;
+    },
+    (candidate) => Array.isArray(candidate)
+      && ['onLoad', 'onShow', 'onReady'].every((name) => candidate.some((entry) => entry.endsWith(name))),
+    { describe: 'the re-entered page to report its full lifecycle' },
+  ) ?? [];
+
+  const count = (name: string) => events.filter((entry) => entry.endsWith(name)).length;
+  expect(count('onLoad')).toBe(1);
+  expect(count('onReady')).toBe(1);
+  expect(count('onShow')).toBe(1);
+});
+
+contract({
+  id: 'PAGE-LIFECYCLE-005',
+  title: 'park a left page instead of re-rendering it off-screen',
+  covers: ['lx.navigateBack'],
+  layer: 'logic',
+  levels: ['semantic', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app, defer }) => {
+  defer(async () => {
+    await app.nav.relaunch({ page: 'home' });
+  });
+
+  await app.nav.relaunch({ page: 'home' });
+  await waitForCurrentPage(app, 'home');
+
+  const first = await enterResetDemo(app);
+  await app.nav.back();
+  await waitForCurrentPage(app, 'home');
+  // Past the teardown delay: the document must now be parked blank. Anything
+  // still rendered here means page code ran off-screen — mount hooks, native
+  // components, media — with nobody on the page.
+  await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
+
+  const parked = await app.page.query({
+    page: 'lifecycle',
+    css: '[data-testid="lifecycle-page"]',
+  });
+  expect(parked.exists).toBe(false);
+
+  // The rebuild belongs to the entry: coming back renders a fresh document.
+  const second = await enterResetDemo(app);
+  expect(second.previousInstanceTag).toBe(first.instanceTag);
+});
+
+contract({
+  id: 'PAGE-LIFECYCLE-006',
+  title: 'unload a pushed page dropped by switchTab',
+  covers: ['lx.switchTab', 'lx.navigateTo'],
+  layer: 'logic',
+  levels: ['semantic', 'lifecycle'],
+  scope: 'portable',
+  expectedOutcome: 'supported',
+}, async ({ app, defer }) => {
+  defer(async () => {
+    await app.nav.relaunch({ page: 'home' });
+  });
+
+  await app.nav.relaunch({ page: 'home' });
+  await waitForCurrentPage(app, 'home');
+
+  const first = await enterResetDemo(app);
+  await app.page.click({ page: 'lifecycle', css: '[data-testid="lifecycle-bump-logic"]' });
+  await eventually(resetDemoState.bind(null, app), (
+    candidate,
+  ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });
+
+  // switchTab keeps the tab pages it leaves warm, but a pushed page drops off
+  // the stack for good — that is a departure, and departures end instances.
+  await app.nav.switchTab({ page: 'api' });
+  await waitForCurrentPage(app, 'api');
+  const stack = await app.eval({
+    script: 'return getCurrentPages().map((page) => page.route);',
+  }) as string[];
+  expect(stack.some((route) => route.includes('/lifecycle/'))).toBe(false);
+
+  const second = await enterResetDemo(app);
+  expect(second.instanceTag).not.toBe(first.instanceTag);
+  expect(second.previousInstanceTag).toBe(first.instanceTag);
+  expect(second.logicCounter).toBe(0);
 });

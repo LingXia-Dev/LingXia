@@ -308,6 +308,11 @@ struct WebMessagePorts {
 
 pub struct WebViewInner {
     pub(crate) webtag: WebTag,
+    /// Monotonic creation token. Create/destroy travel to ArkTS on separate
+    /// ThreadSafe channels with no cross-channel ordering, and webtags repeat
+    /// across generations — ArkTS uses this to drop a stale destroy instead
+    /// of tearing down the successor registered under the same tag.
+    native_generation: String,
     /// ArkWeb-facing tag for controller operations (may include `#session` suffix).
     ark_webtag: Mutex<String>,
     ports: Mutex<WebMessagePorts>,
@@ -653,18 +658,19 @@ unsafe extern "C" fn get_port_callback(
 
         if let Some(port_type_str) = extract_string_from_bridge_data(type_data) {
             // Ensure ports exist; create on-demand if onPageBegin hasn't run yet
+            // A view asks for its port exactly when it is ready to receive
+            // one. A pair pushed earlier may have been transferred into a
+            // document that was not listening yet (a port transfers once), so
+            // an explicit request always mints a fresh pair — reusing the old
+            // one hands the view a dead channel and the bridge never
+            // handshakes (blank-but-rendered re-entered pages on Harmony).
             match port_type_str.as_str() {
                 "ConsolePort" => {
-                    let need_setup = find_webview(&webtag)
-                        .map(|wv| wv.inner.ports_snapshot().webview_console_port.is_none())
-                        .unwrap_or(true);
-                    if need_setup
-                        && let Err(e) = setup_webmessage_port_for_webtag(
-                            &webtag,
-                            PortType::Console,
-                            on_console_message_received,
-                        )
-                    {
+                    if let Err(e) = setup_webmessage_port_for_webtag(
+                        &webtag,
+                        PortType::Console,
+                        on_console_message_received,
+                    ) {
                         log::error!(
                             "On-demand console port setup failed for {}: {}",
                             webtag.as_str(),
@@ -676,17 +682,14 @@ unsafe extern "C" fn get_port_callback(
                     }
                 }
                 "LingXiaPort" => {
-                    let need_setup = find_webview(&webtag)
-                        .map(|wv| wv.inner.ports_snapshot().webview_native_port.is_none())
-                        .unwrap_or(true);
-
-                    if need_setup
-                        && let Err(e) = setup_webmessage_port_for_webtag(
-                            &webtag,
-                            PortType::Message,
-                            on_web_message_received,
-                        )
-                    {
+                    if let Some(webview) = find_webview(&webtag) {
+                        webview.inner.set_port_ready(false);
+                    }
+                    if let Err(e) = setup_webmessage_port_for_webtag(
+                        &webtag,
+                        PortType::Message,
+                        on_web_message_received,
+                    ) {
                         log::error!(
                             "On-demand message port setup failed for {}: {}",
                             webtag.as_str(),
@@ -783,9 +786,17 @@ impl WebViewInner {
             }
         };
 
+        static NATIVE_GENERATION: std::sync::atomic::AtomicU64 =
+            std::sync::atomic::AtomicU64::new(0);
+        let native_generation = NATIVE_GENERATION
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            .wrapping_add(1)
+            .to_string();
+
         // Create WebView instance, storing the sender
         let webview_inner = WebViewInner {
             webtag: webtag.clone(),
+            native_generation: native_generation.clone(),
             ark_webtag: Mutex::new(webtag.as_str().to_string()),
             ports: Mutex::new(WebMessagePorts::default()),
             port_ready_signal: (Mutex::new(false), Condvar::new()),
@@ -805,9 +816,14 @@ impl WebViewInner {
         // Call ArkTS to create the WebView controller via TSFN (no callback path).
         // ArkTS will notify native through onWebviewControllerCreated(webtag)
         // once the ArkUI Web component is actually attached (onAppear).
+        log::info!(
+            "Requesting WebView controller {} (generation {})",
+            webtag.as_str(),
+            native_generation
+        );
         if let Err(e) = call_arkts(
             "createWebViewController",
-            &[webtag.as_str(), &options_token],
+            &[webtag.as_str(), &options_token, &native_generation],
         ) {
             log::error!("Failed to call createWebViewController: {}", e);
             if let Some(webview) = find_webview(&webtag)
@@ -1391,8 +1407,18 @@ impl Drop for WebViewInner {
         // Free proxy allocations
         self.cleanup_proxy_allocs();
 
-        // Ask ArkTS to destroy the controller; ArkTS will notify native via onWebviewControllerDestroyed
-        if let Err(e) = call_arkts("destroyWebViewController", &[self.webtag.as_str()]) {
+        // Ask ArkTS to destroy the controller; ArkTS will notify native via
+        // onWebviewControllerDestroyed. The generation lets ArkTS drop this
+        // if a newer WebView already re-claimed the same tag.
+        log::info!(
+            "Releasing WebView controller {} (generation {})",
+            self.webtag.as_str(),
+            self.native_generation
+        );
+        if let Err(e) = call_arkts(
+            "destroyWebViewController",
+            &[self.webtag.as_str(), &self.native_generation],
+        ) {
             log::error!("Failed to destroy WebView controller: {:?}", e);
         }
         log::info!(
@@ -1660,14 +1686,28 @@ fn setup_webmessage_port_for_webtag(
         let port2 = *ports.offset(1); // WebView side port
 
         let webview_inner = &webview.inner;
-        webview_inner.with_ports(|ports| match port_type {
-            PortType::Message => {
-                ports.native_port = Some(port1);
-                ports.webview_native_port = Some(port2);
-            }
-            PortType::Console => {
-                ports.console_port = Some(port1);
-                ports.webview_console_port = Some(port2);
+        webview_inner.with_ports(|ports| {
+            // Replace, and close, any previous pair of this type: a pair can
+            // only be transferred to a document once, so a re-setup must never
+            // leave a stale native end behind.
+            let close = port_api_struct.close;
+            match port_type {
+                PortType::Message => {
+                    if let (Some(old), Some(close_fn)) = (ports.native_port.take(), close) {
+                        close_fn(old, webtag_cstr.as_ptr());
+                    }
+                    ports.webview_native_port.take();
+                    ports.native_port = Some(port1);
+                    ports.webview_native_port = Some(port2);
+                }
+                PortType::Console => {
+                    if let (Some(old), Some(close_fn)) = (ports.console_port.take(), close) {
+                        close_fn(old, webtag_cstr.as_ptr());
+                    }
+                    ports.webview_console_port.take();
+                    ports.console_port = Some(port1);
+                    ports.webview_console_port = Some(port2);
+                }
             }
         });
 

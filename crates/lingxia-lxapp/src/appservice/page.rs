@@ -1,4 +1,4 @@
-use crate::PageServiceEvent;
+use crate::PageLifecycleEvent;
 use crate::bridge::{
     BRIDGE_CANCELED, BRIDGE_INTERNAL_ERROR, BRIDGE_METHOD_NOT_FOUND, BRIDGE_TOPIC_NOT_FOUND,
     PageBridge, RpcError, ViewTransport,
@@ -21,6 +21,8 @@ use tokio::sync::{Mutex, oneshot, watch};
 
 const ASYNC_ITERATOR_RETURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
+type LifecycleQueue = Rc<RefCell<std::collections::VecDeque<(PageLifecycleEvent, Option<String>)>>>;
+
 #[js_class(clone)]
 pub struct PageSvc {
     functions: HashMap<String, JSFunc>,
@@ -36,6 +38,16 @@ pub struct PageSvc {
 
     // state of PageSvc
     state: Rc<Mutex<PageSvcState>>,
+
+    /// Lifecycle handlers run off the worker pump, but a page's events must
+    /// still execute in dispatch order (onLoad → onShow → onReady). Each
+    /// event enqueues here and a single drainer runs the queue FIFO.
+    lifecycle_queue: LifecycleQueue,
+    lifecycle_pump_running: Rc<Cell<bool>>,
+    /// Set when TerminatePage retires this service. Queued and in-flight
+    /// lifecycle handlers may resume afterwards; they must not reach the
+    /// (possibly rebuilt) document through the shared PageInstance.
+    terminated: Rc<Cell<bool>>,
 }
 
 struct PageSvcState {
@@ -688,6 +700,9 @@ impl PageSvc {
                 channels: HashMap::new(),
                 next_channel_token: 0,
             })),
+            lifecycle_queue: Rc::new(RefCell::new(std::collections::VecDeque::new())),
+            lifecycle_pump_running: Rc::new(Cell::new(false)),
+            terminated: Rc::new(Cell::new(false)),
         };
 
         page_svc.register_functions(&config, meta_json.0.as_deref())?;
@@ -713,6 +728,11 @@ impl PageSvc {
 
     #[js_method(rename = "_setData")]
     async fn set_data(&self, ops_json: String, callback: Optional<JSFunc>) -> JSResult<()> {
+        if self.terminated.get() {
+            // A handler that outlived its service must not write into the
+            // document a successor service now owns.
+            return Ok(());
+        }
         let mut state = self.state.lock().await;
         let bridge = self.bridge();
 
@@ -748,7 +768,10 @@ impl PageSvc {
         drop(state);
 
         if let Err(error) = bridge.send_state_patch(self, None, base_rev, new_rev, ops, ack) {
-            if self.page.is_unloaded() {
+            // A page mid-departure (unloaded, parked, or already retired)
+            // legitimately has no view to write to; the entry rebuild
+            // re-serializes live data, so dropping the ops loses nothing.
+            if self.page.is_unloaded() || self.page.is_parked() || self.terminated.get() {
                 let callback = self.state.lock().await.state_callback.remove(&new_rev);
                 if let Some(callback) = callback {
                     let _ = callback.call::<_, ()>(None, ());
@@ -1103,10 +1126,67 @@ impl PageSvc {
         )))
     }
 
+    /// Queue a lifecycle event and run the queue FIFO off the worker pump.
+    ///
+    /// One spawned task per event would let the executor reorder them — an
+    /// `onReady` handler observably ran before the same entry's `onLoad`. The
+    /// queue keeps the pump unblocked while a single drainer preserves the
+    /// dispatch order per page service.
+    /// Retire the service: queued lifecycle events are dropped and in-flight
+    /// handlers lose their write path back to the page.
+    pub(crate) fn mark_terminated(&self) {
+        self.terminated.set(true);
+        self.lifecycle_queue.borrow_mut().clear();
+    }
+
+    pub(crate) fn enqueue_lifecycle_event(
+        &self,
+        ctx: &JSContext,
+        event: PageLifecycleEvent,
+        args: Option<String>,
+    ) {
+        if self.terminated.get() {
+            return;
+        }
+        self.lifecycle_queue.borrow_mut().push_back((event, args));
+        if self.lifecycle_pump_running.get() {
+            return;
+        }
+        self.lifecycle_pump_running.set(true);
+        let page_svc = self.clone();
+        super::context_lifecycle::spawn(ctx, move |ctx| async move {
+            loop {
+                if page_svc.terminated.get() {
+                    page_svc.lifecycle_queue.borrow_mut().clear();
+                    page_svc.lifecycle_pump_running.set(false);
+                    break;
+                }
+                let next = page_svc.lifecycle_queue.borrow_mut().pop_front();
+                let Some((event, args)) = next else {
+                    page_svc.lifecycle_pump_running.set(false);
+                    break;
+                };
+                if let Err(e) = page_svc.call_page_event(&ctx, event, args.as_deref()).await {
+                    let error = super::eval_error_from_rong(&ctx, e);
+                    let page = page_svc.get_page();
+                    if page.is_unloaded() {
+                        crate::debug!("PageInstance event '{}' cancelled after unload", event)
+                            .with_appid(page.appid())
+                            .with_path(page.path());
+                    } else {
+                        crate::error!("PageInstance event '{}' failed: {}", event, error)
+                            .with_appid(page.appid())
+                            .with_path(page.path());
+                    }
+                }
+            }
+        });
+    }
+
     pub(crate) async fn call_page_event(
         &self,
         ctx: &JSContext,
-        event: PageServiceEvent,
+        event: PageLifecycleEvent,
         args: Option<&str>,
     ) -> JSResult<()> {
         if let Some(js_func) = self.functions.get(event.as_str()) {
@@ -1234,6 +1314,30 @@ impl LxApp {
             .map_err(|e| RongJSError::from(HostError::new(rong::error::E_INTERNAL, e)))?;
 
         let path = page.path();
+
+        // Settle any owed reset BEFORE consulting the registry: inside the
+        // deferred-teardown window the map still holds the outgoing service,
+        // and handing it out would bind opener ports to a service the flush
+        // is about to terminate. Waiting is safe here: in-Logic callers run
+        // off the worker's message pump, so the queued creation still
+        // executes.
+        if let Some(done) = self.flush_page_reset_awaited(&page) {
+            match done.await {
+                Ok(Ok(())) => {}
+                Ok(Err(err)) => {
+                    return Err(RongJSError::from(HostError::new(
+                        rong::error::E_INTERNAL,
+                        format!("Failed to rebuild page service: {err}"),
+                    )));
+                }
+                Err(_) => {
+                    return Err(RongJSError::from(HostError::new(
+                        rong::error::E_INTERNAL,
+                        "Page service rebuild was dropped",
+                    )));
+                }
+            }
+        }
 
         super::with_page_svc_map(ctx, |page_svc_map| {
             page_svc_map

@@ -3,7 +3,7 @@ use crate::i18n::{
 };
 use crate::message_port;
 use lxapp::{LxApp, LxAppError, NavigationType, startup};
-use rong::{FromJSObject, JSContext, JSObject, JSResult};
+use rong::{FromJSObject, JSContext, JSObject, JSResult, function::Optional};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -20,7 +20,11 @@ struct PageTargetOptions {
 #[derive(FromJSObject)]
 #[ts_skip]
 struct NavigateBack {
-    delta: u32,
+    delta: Option<u32>,
+}
+
+fn navigate_back_delta(options: Option<NavigateBack>) -> u32 {
+    options.and_then(|options| options.delta).unwrap_or(1)
 }
 
 fn current_page_path(lxapp: &LxApp) -> Result<String, LxAppError> {
@@ -134,13 +138,22 @@ fn navigate_back_impl(lxapp: &LxApp, delta: u32) -> Result<(), LxAppError> {
     }
 }
 
-/// Navigate to a new page (forward navigation)
+/// Push a configured page onto the stack.
+///
+/// A route can appear on the stack only once. The promise rejects with
+/// `data.reason === "duplicate_route"` when the target is already present,
+/// or `data.reason === "stack_full"` when the ten-page limit is reached.
 async fn navigate_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let target_url =
         resolve_page_target(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))?;
 
     ensure_page_exists_js(&lxapp, &target_url)?;
+    // Reject before resolving the target: a rejected navigateTo must not
+    // touch the query or opener of the page already on the stack.
+    lxapp
+        .validate_navigation_entry(&target_url, NavigationType::Forward)
+        .map_err(|e| js_error_from_lxapp_error(&e))?;
 
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &target_url)
@@ -158,14 +171,31 @@ async fn navigate_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<JSO
     Ok(opener_port)
 }
 
-/// Navigate back to previous page
-fn navigate_back(ctx: JSContext, options: NavigateBack) -> JSResult<()> {
+/// Pop one or more pages and reveal the destination page.
+///
+/// `options` and `options.delta` are optional; both default to one page. The
+/// promise resolves once the destination WebView is ready, so callers can
+/// safely continue with work that targets the revealed page.
+async fn navigate_back(ctx: JSContext, options: Optional<NavigateBack>) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    let delta = navigate_back_delta(options.0);
 
-    navigate_back_impl(&lxapp, options.delta).map_err(|e| js_error_from_lxapp_error(&e))
+    navigate_back_impl(&lxapp, delta).map_err(|e| js_error_from_lxapp_error(&e))?;
+    if let Some(path) = lxapp.peek_current_page()
+        && let Some(page) = lxapp.get_page(&path)
+    {
+        page.wait_webview_ready()
+            .await
+            .map_err(|error| js_error_from_lxapp_error(&LxAppError::WebView(error)))?;
+    }
+    Ok(())
 }
 
-/// Redirect to a new page (replace current page)
+/// Replace the current stack entry with a configured page.
+///
+/// Redirecting to the current route keeps its page instance and runs `onLoad`
+/// again with the new query. Redirecting to a route lower in the stack rejects
+/// with `data.reason === "duplicate_route"`.
 async fn redirect_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let target_url =
@@ -179,6 +209,9 @@ async fn redirect_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<()>
         ));
     }
 
+    lxapp
+        .validate_navigation_entry(&target_url, NavigationType::Replace)
+        .map_err(|e| js_error_from_lxapp_error(&e))?;
     let page_svc = lxapp
         .get_or_create_page_in_ctx(&ctx, &target_url)
         .await
@@ -190,7 +223,10 @@ async fn redirect_to(ctx: JSContext, options: PageTargetOptions) -> JSResult<()>
         .map_err(|e| js_error_from_lxapp_error(&e))
 }
 
-/// Switch to a tab page
+/// Switch to a configured tab page.
+///
+/// The tab page being left is hidden and retained. Non-tab pages pushed above
+/// a tab leave the stack and receive `onUnload`.
 async fn switch_tab(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let target_url =
@@ -209,7 +245,7 @@ async fn switch_tab(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> 
         .map_err(|e| js_error_from_lxapp_error(&e))
 }
 
-/// Relaunch to a new page (clear page stack)
+/// Clear the page stack and launch a configured page as the new root.
 async fn re_launch(ctx: JSContext, options: PageTargetOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let target_url =
@@ -239,7 +275,10 @@ rong::js_api! {
             ts_params = "options: NavigateToOptions",
             ts_return = "Promise<PageMessagePort>"
         ) = navigate_to;
-        fn navigateBack(ts_params = "options: NavigateBackOptions") = navigate_back;
+        fn navigateBack(
+            ts_params = "options?: NavigateBackOptions",
+            ts_return = "Promise<void>"
+        ) = navigate_back;
         fn redirectTo(ts_params = "options: RedirectToOptions") = redirect_to;
         fn switchTab(ts_params = "options: SwitchTabOptions") = switch_tab;
         fn reLaunch(ts_params = "options: ReLaunchOptions") = re_launch;
@@ -272,5 +311,15 @@ mod tests {
 
         let error = configured_page_name(&options).unwrap_err().to_string();
         assert!(error.contains("page must be a non-empty configured page name"));
+    }
+
+    #[test]
+    fn navigate_back_defaults_to_one_page() {
+        assert_eq!(navigate_back_delta(None), 1);
+        assert_eq!(navigate_back_delta(Some(NavigateBack { delta: None })), 1);
+        assert_eq!(
+            navigate_back_delta(Some(NavigateBack { delta: Some(3) })),
+            3
+        );
     }
 }

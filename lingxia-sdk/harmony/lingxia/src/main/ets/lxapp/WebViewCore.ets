@@ -272,6 +272,12 @@ export class WebViewManager {
   // Map to store WebView controllers by appId:path
   private static controllers: Map<string, webview.WebviewController> = new Map();
 
+  // Native creation generation per webtag. Create/destroy arrive from native
+  // on separate ThreadSafe channels with no cross-channel ordering, and tags
+  // repeat across generations — a stale destroy must not tear down the
+  // successor registered under the same tag.
+  private static generations: Map<string, string> = new Map();
+
   // Engine UA captured before the first override for each controller.
   private static defaultUserAgents: Map<string, string> = new Map();
 
@@ -311,23 +317,49 @@ export class WebViewManager {
    * @param webtag - WebView tag
    * @returns true if created successfully, false if already exists or creation failed
    */
-  static createWebview(webtag: string, optionsToken?: string): boolean {
+  static createWebview(webtag: string, optionsToken?: string, generation?: string): boolean {
     const logicalTag = webtag;
     const effectiveOptions = decodeOptionsToken(optionsToken);
 
     // Check if already exists for this logical page
     if (WebViewManager.controllers.has(logicalTag)) {
-      const existingInfo = WebViewManager.webViewInfos.get(logicalTag);
-      if (existingInfo && optionsEqual(existingInfo.effectiveOptions, effectiveOptions)) {
-        hilog.info(DOMAIN, TAG, `Reuse existing WebView for logical tag: ${logicalTag}`);
-        return true;
+      const staleGeneration = WebViewManager.generations.get(logicalTag);
+      if (generation !== undefined && staleGeneration !== generation) {
+        // A newer native generation claims this tag: the old entry's destroy
+        // is still in flight on its own channel. Replace it outright —
+        // reusing the doomed controller leaves the new page dead once the
+        // stale destroy lands.
+        hilog.info(
+          DOMAIN,
+          TAG,
+          `Replacing stale WebView generation ${staleGeneration} -> ${generation} for ${logicalTag}`
+        );
+        const staleInfo = WebViewManager.webViewInfos.get(logicalTag);
+        WebViewManager.controllers.delete(logicalTag);
+        WebViewManager.defaultUserAgents.delete(logicalTag);
+        WebViewManager.webViewInfos.delete(logicalTag);
+        if (staleInfo) {
+          WebViewManager.uiCallbacks.forEach(callback => {
+            try {
+              callback('destroy', staleInfo);
+            } catch (error) {
+              hilog.error(DOMAIN, TAG, `UI callback error: ${error}`);
+            }
+          });
+        }
+      } else {
+        const existingInfo = WebViewManager.webViewInfos.get(logicalTag);
+        if (existingInfo && optionsEqual(existingInfo.effectiveOptions, effectiveOptions)) {
+          hilog.info(DOMAIN, TAG, `Reuse existing WebView for logical tag: ${logicalTag}`);
+          return true;
+        }
+        hilog.error(
+          DOMAIN,
+          TAG,
+          `WebView options conflict for logical tag=${logicalTag}, reject recreate`
+        );
+        return false;
       }
-      hilog.error(
-        DOMAIN,
-        TAG,
-        `WebView options conflict for logical tag=${logicalTag}, reject recreate`
-      );
-      return false;
     }
 
     // Create new WebView
@@ -336,6 +368,9 @@ export class WebViewManager {
 
       // Store in map
       WebViewManager.controllers.set(logicalTag, controller);
+      if (generation !== undefined) {
+        WebViewManager.generations.set(logicalTag, generation);
+      }
 
       // Create WebView info
       const webViewInfo: WebViewInfo = {
@@ -406,8 +441,34 @@ export class WebViewManager {
    * @param webtag - WebView tag
    * @returns true if destroyed successfully, false if not found
    */
-  static destroyWebview(webtag: string): boolean {
+  /// Current native generation registered under the tag ('' when unknown).
+  static getGeneration(webtag: string): string {
+    return WebViewManager.generations.get(webtag) ?? '';
+  }
+
+  /// True when a destroy notification refers to an older native generation
+  /// than the WebView currently registered under the tag.
+  static isStaleDestroy(webtag: string, generation?: string): boolean {
+    const currentGeneration = WebViewManager.generations.get(webtag);
+    return generation !== undefined
+      && currentGeneration !== undefined
+      && currentGeneration !== generation;
+  }
+
+  static destroyWebview(webtag: string, generation?: string): boolean {
     const logicalTag = webtag;
+
+    // A destroy that lost the race against its tag's successor is stale:
+    // acting on it would tear down the live replacement.
+    const currentGeneration = WebViewManager.generations.get(logicalTag);
+    if (generation !== undefined && currentGeneration !== undefined && currentGeneration !== generation) {
+      hilog.info(
+        DOMAIN,
+        TAG,
+        `Ignoring stale destroy for ${logicalTag}: generation ${generation}, current ${currentGeneration}`
+      );
+      return true;
+    }
 
     const controller = WebViewManager.controllers.get(logicalTag);
     const webViewInfo = WebViewManager.webViewInfos.get(logicalTag);
@@ -420,6 +481,7 @@ export class WebViewManager {
     WebViewManager.controllers.delete(logicalTag);
     WebViewManager.defaultUserAgents.delete(logicalTag);
     WebViewManager.webViewInfos.delete(logicalTag);
+    WebViewManager.generations.delete(logicalTag);
     WebViewManager.uiCallbacks.forEach(callback => {
       try {
         callback('destroy', webViewInfo);

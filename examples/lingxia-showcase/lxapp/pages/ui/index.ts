@@ -140,11 +140,10 @@ Page({
     console.log("UI page onHide");
   },
 
+  // Push a genuinely different page: a route already on the stack is
+  // rejected, because one path is one page instance.
   demoNavigateTo: async function () {
-    await lx.navigateTo({
-      page: "ui",
-      query: { type: "navigation" },
-    });
+    await lx.navigateTo({ page: "lifecycle" });
   },
 
   demoNavigateBack: async function () {

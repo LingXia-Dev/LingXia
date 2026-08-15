@@ -720,8 +720,11 @@ rong::js_api! {
     cancel: boolean;
 }"###;
 
+        /// Options for `lx.navigateBack()`. Omit the object or `delta` to pop
+        /// one page.
         type NavigateBackOptions = r###"{
-    delta: number;
+    /** Number of pages to pop. Defaults to 1. */
+    delta?: number;
 }"###;
 
         /// Navigate to another lxapp inside the current App Surface. JavaScript
