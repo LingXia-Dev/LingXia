@@ -102,8 +102,10 @@ async function enterResetDemo(app: LxAppDriver): Promise<ResetDemoState> {
   await app.page.waitFor({ page: 'lifecycle', css: '[data-testid="lifecycle-page"]' });
   const state = await eventually(resetDemoState.bind(null, app), (
     candidate,
-  ) => candidate !== null && candidate.instanceTag !== '', {
-    describe: 'page reset demo to report its instance tag',
+  ) => candidate !== null
+    && candidate.instanceTag !== ''
+    && candidate.previousInstanceTag !== '', {
+    describe: 'page reset demo to report its current and stored instance tags',
   });
   if (state === null) throw new Error('Page reset demo left the stack while loading');
   return state;
