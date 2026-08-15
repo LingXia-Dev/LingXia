@@ -613,7 +613,7 @@ class SidebarView: NSView {
         static let iconAxis: CGFloat =
             SidebarGroupView.Layout.groupInset + SidebarGroupView.Layout.headerHPadding + 9
 
-        static let expandedWidth: CGFloat = 184
+        static let expandedWidth: CGFloat = 148
         static let maxWidth: CGFloat = 400
         static let fullyHiddenThreshold: CGFloat = 1
         /// Minimum width of the collapsed icon-only rail. The effective width
@@ -631,8 +631,9 @@ class SidebarView: NSView {
         /// `railButtonSize` so the tile edge still re-selects.
         static let railCloseBadgeSize: CGFloat = railIconSize + 6
         // Reserve only the shared traffic-light / toolbar row; the titlebar offset is
-        // already handled by `buttonCenterYFromTop`.
-        static let trafficLightsHeight: CGFloat = 38
+        // already handled by `buttonCenterYFromTop`. 28pt matches the standard
+        // macOS titlebar row height.
+        static let trafficLightsHeight: CGFloat = 28
         static let actionButtonSize: CGFloat = 28
         static let resizeHandleWidth: CGFloat = 5
         /// Bottom dock height — tall enough for one row of icon buttons plus breathing room.
@@ -642,7 +643,7 @@ class SidebarView: NSView {
         /// Rendered glyph size inside footer icon buttons.
         static let footerIconSize: CGFloat = 16
         /// Shared outer inset for the sidebar action flow. Windows uses the same
-        /// 6pt margin, leaving 172pt of flow width in the standard 184pt rail.
+        /// 6pt margin, leaving 136pt of flow width in the standard 148pt rail.
         static let footerInset: CGFloat = 6
         /// iconAxis − row internal padding (7) − half icon (9): footer button
         /// icons center on the shared first-column axis. Horizontal only —
@@ -1005,7 +1006,7 @@ class SidebarView: NSView {
         panelScroll.hasVerticalScroller = true
         panelScroll.autohidesScrollers = true
         // Keep the scrollbar out of the flow width. A legacy scroller reserves
-        // enough space to force Terminal + Ping onto separate rows at 184pt.
+        // enough space to force Terminal + Ping onto separate rows at compact widths.
         panelScroll.scrollerStyle = .overlay
         panelScroll.verticalScrollElasticity = .none
         let panelDoc = FlippedClipView()

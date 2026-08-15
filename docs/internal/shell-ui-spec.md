@@ -285,15 +285,15 @@ Default desktop size tokens:
 
 | Token | Default |
 |---|---:|
-| Expanded sidebar width | 184 dp/pt |
+| Expanded sidebar width | 148 pt (macOS) / 184 dp (Windows) |
 | Icon rail width | platform-native (clears system chrome) |
 | Main minimum width | 360 dp/pt |
 | Left/right aside minimum / default width | 240 / 320 dp/pt |
 | Top/bottom aside minimum / default height | 180 / 280 dp/pt |
 
-The expanded sidebar defaults to 184 on both desktop platforms; macOS MAY keep
-it user-resizable. Expanded content geometry — not compact-rail width — is the
-cross-platform parity boundary.
+The expanded sidebar defaults to 148pt on macOS and 184dp on Windows; both keep
+it user-resizable. Expanded content geometry — not the exact width or compact-rail
+width — is the cross-platform parity boundary.
 
 Arbitration order is fixed:
 
@@ -961,7 +961,7 @@ As of 2026-08 (PR #202 follow-up design):
 | Aside slot model, unified slot tab chrome | Landed and live-verified (dual-tab lxapp slot, shared tab metrics, strip visible at n=1, no "+"/"···") |
 | Sidebar actions + pins | `lx.shell.sidebarActions` drives header/footer snapshots on Windows/macOS; accessibility activation is not yet automated |
 | Sidebar action footer overflow scrolling (5-row cap) | Landed on Windows/macOS |
-| Sidebar/tabbar parity | 184 width, 36/4 and 30/2/1 rhythm, two-level selection, style mapping landed on both platforms |
+| Sidebar/tabbar parity | 148 (macOS) / 184 (Windows) width, 36/4 and 30/2/1 rhythm, two-level selection, style mapping landed on both platforms |
 | Main surface switcher | Shared ordered/root/capability snapshot plus macOS and Windows projections landed; Windows public-API automation live-verifies switching, keyed reuse, role migration, root protection, and close cleanup |
 | `lx.tabBar.update({ visibility })` ↔ group collapse | Landed |
 | Shell persistence | Window frame, sidebar mode/width, group collapse, aside geometry, and pins landed; main-session lazy restore and the aside geometry-only policy still to be verified against §8 |

@@ -16,7 +16,7 @@ class LxAppWindow: NSWindow {
             applyTrafficLightVisibility()
         }
     }
-    var trafficLightCenterYFromTop: CGFloat = 19 {
+    var trafficLightCenterYFromTop: CGFloat = 14 {
         didSet {
             guard abs(oldValue - trafficLightCenterYFromTop) > 0.5 else { return }
             adjustTrafficLightPositions()
