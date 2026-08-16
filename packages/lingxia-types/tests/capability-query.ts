@@ -15,7 +15,6 @@ const hasNotifications: boolean = lx.supports({ capability: "notifications" });
 const hasBrowser: boolean = lx.supports({ capability: "browser" });
 const hasProxy: boolean = lx.supports({ capability: "proxy" });
 const hasSelfUpdate: boolean = lx.supports({ capability: "selfUpdate" });
-const hasNativeReview: boolean = lx.supports({ capability: "nativeFileReview" });
 
 // An unknown capability key is a compile error.
 // @ts-expect-error there is no `teleport` capability
@@ -48,7 +47,6 @@ export type CapabilityQueryGate = [
   typeof hasBrowser,
   typeof hasProxy,
   typeof hasSelfUpdate,
-  typeof hasNativeReview,
   typeof dynamic,
   typeof flag,
   typeof placement,

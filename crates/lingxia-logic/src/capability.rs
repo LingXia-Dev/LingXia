@@ -38,7 +38,6 @@ flag_capabilities! {
     "browser" => |_: &Arc<LxApp>| lingxia_app_context::capability::browser();
     "proxy" => |_: &Arc<LxApp>| lingxia_app_context::capability::proxy();
     "selfUpdate" => |lxapp: &Arc<LxApp>| self_update_supported(lxapp);
-    "nativeFileReview" => |lxapp: &Arc<LxApp>| native_file_review_supported(lxapp);
     "process" => |lxapp: &Arc<LxApp>| lxapp.process_supported();
     "appUse" => |_: &Arc<LxApp>| lingxia_app_context::capability::app_use();
     "computerUse" => |_: &Arc<LxApp>| lingxia_app_context::capability::computer_use();
@@ -76,28 +75,20 @@ fn self_update_supported(lxapp: &Arc<LxApp>) -> bool {
     lxapp.runtime.self_update_supported()
 }
 
-/// Whether a file preview surface exists at all. Deliberately coarser than the
-/// other flags: it does not promise any particular file opens, and individual
-/// types still reject, so it decides whether to offer "preview" as an option
-/// rather than whether a given path will work.
-fn native_file_review_supported(lxapp: &Arc<LxApp>) -> bool {
-    use lingxia_platform::traits::file::FileService;
-    lxapp.runtime.native_review_supported()
-}
-
 /// Answers `{ capability: 'surface', value: … }`. Only `aside` is
 /// width-dependent; `window` is a property of the host build and does not
 /// flicker as a window is resized.
 fn surface_supported(placement: &str, lxapp: &Arc<LxApp>) -> bool {
-    if !SURFACE_PLACEMENTS.contains(&placement) {
-        return false;
-    }
     match placement {
+        // Every host can put content in the main region or float it over one.
+        "main" | "float" => true,
         "tab" => lingxia_app_context::capability::browser(),
         "aside" => crate::surface::aside_dock_available(lxapp),
         "window" => crate::surface::window_placement_available(),
-        // `main` and `float` are the always-available placements.
-        _ => true,
+        // The caller rejects anything outside `SURFACE_PLACEMENTS` before
+        // reaching here. Answering false keeps an unlisted placement
+        // unadvertised rather than advertising it by falling through.
+        _ => false,
     }
 }
 
@@ -106,6 +97,14 @@ fn surface_supported(placement: &str, lxapp: &Arc<LxApp>) -> bool {
 /// what is actually callable there.
 fn context_exposes_capability(key: &str, terminal_settings: bool) -> bool {
     !terminal_settings || key == "terminal"
+}
+
+/// The catalog as an error message renders it. One spelling, so a caller who
+/// hits two different rejections does not see the same list two ways.
+fn capability_catalog() -> String {
+    let mut names = vec!["surface"];
+    names.extend_from_slice(FLAG_KEYS);
+    names.join(", ")
 }
 
 fn has_exact_keys(actual: &[String], expected: &[&str]) -> bool {
@@ -133,15 +132,15 @@ fn supports(ctx: JSContext, query: JSValue) -> JSResult<bool> {
     // reports.
     let Some(query) = query.into_object() else {
         return Err(js_invalid_parameter_error(format!(
-            "lx.supports requires a query object: {{ capability: 'surface' | {} }}",
-            FLAG_KEYS.join(" | ")
+            "lx.supports requires a query object with a capability: {}",
+            capability_catalog()
         )));
     };
     let keys = query.keys_as::<String>()?;
     let capability = query.get::<_, String>("capability").map_err(|_| {
         js_invalid_parameter_error(format!(
-            "lx.supports requires a string capability: surface, {}",
-            FLAG_KEYS.join(", ")
+            "lx.supports requires a string capability: {}",
+            capability_catalog()
         ))
     })?;
 
@@ -168,8 +167,8 @@ fn supports(ctx: JSContext, query: JSValue) -> JSResult<bool> {
 
     if !FLAG_KEYS.contains(&capability.as_str()) {
         return Err(js_invalid_parameter_error(format!(
-            "unknown capability '{capability}'; expected surface, {}",
-            FLAG_KEYS.join(", ")
+            "unknown capability '{capability}'; expected {}",
+            capability_catalog()
         )));
     }
     if !has_exact_keys(&keys, &["capability"]) {
@@ -200,7 +199,7 @@ rong::js_api! {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
 
         /// Boolean capability names accepted by `lx.supports`.
-        type LxCapabilityFlag = r###"'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'nativeFileReview' | 'process' | 'appUse' | 'computerUse' | 'browserUse'"###;
+        type LxCapabilityFlag = r###"'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse'"###;
 
         /// Surface placements accepted by `lx.supports`.
         type LxSurfaceCapability = r###"'main' | 'aside' | 'float' | 'window' | 'tab'"###;
@@ -214,9 +213,7 @@ rong::js_api! {
         /// url still opens, in the OS browser instead — and `aside` is "a
         /// docked region exists right now", while a compact layout still opens
         /// the url through the in-app browser's own chrome. Ask them to decide
-        /// what to render, not whether to call. `nativeFileReview` is coarse in
-        /// the same way: it says a preview surface exists, not that any given
-        /// file opens in it.
+        /// what to render, not whether to call.
         ///
         type LxCapabilityQuery = r###"{
     capability: 'surface';
