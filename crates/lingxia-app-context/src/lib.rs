@@ -559,6 +559,14 @@ pub fn browser_enabled() -> bool {
         .unwrap_or(false)
 }
 
+pub fn proxy_enabled() -> bool {
+    APP_CONFIG
+        .get()
+        .and_then(|config| config.capabilities.as_ref())
+        .map(|capabilities| capabilities.proxy)
+        .unwrap_or(false)
+}
+
 pub fn autostart_enabled() -> bool {
     APP_CONFIG
         .get()
@@ -645,9 +653,11 @@ pub mod capability {
         build::terminal() && super::terminal_enabled()
     }
 
-    /// Browser proxy configuration.
+    /// The in-app browser's HTTP proxy. `capabilities.proxy` declares it and
+    /// `capabilities.browser` is its prerequisite — a proxy with nothing to
+    /// proxy is not a capability — so both have to be on.
     pub fn proxy() -> bool {
-        build::proxy() && super::browser_enabled()
+        build::proxy() && super::proxy_enabled() && super::browser_enabled()
     }
 }
 
