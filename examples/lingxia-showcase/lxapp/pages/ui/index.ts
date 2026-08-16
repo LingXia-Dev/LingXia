@@ -289,7 +289,7 @@ Page({
 
     // Ask before offering: a window is a property of the host build, so this
     // answer is stable and does not need the error path to discover it.
-    if (verb === "window" && !lx.supports({ surface: "window" })) {
+    if (verb === "window" && !lx.supports({ capability: "surface", value: "window" })) {
       this.setData({
         "surfaceDemo.message": "not supported",
         "surfaceDemo.active": false,
@@ -360,7 +360,7 @@ Page({
       // Edge-to-edge when the host build can keep the system controls; the
       // page lays out under the runtime's drag strip via the page-chrome
       // top inset, so it never has to opt in to stay movable.
-      const chrome = lx.supports({ surface: "window", chrome: "full" })
+      const chrome = lx.supports({ capability: "surface", value: "window", chrome: "full" })
         ? ("full" as const)
         : ("system" as const);
       return lx.surface.openPage("surface", {

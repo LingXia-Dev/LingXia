@@ -96,14 +96,14 @@ async function edgeToEdgeWindow(): Promise<"window" | "float"> {
   });
   return win.realized;
 }
-const fullChromeOffered: boolean = lx.supports({ surface: "window", chrome: "full" });
+const fullChromeOffered: boolean = lx.supports({ capability: "surface", value: "window", chrome: "full" });
 // @ts-expect-error 'frameless' is not a window chrome
-lx.supports({ surface: "window", chrome: "frameless" });
+lx.supports({ capability: "surface", value: "window", chrome: "frameless" });
 // @ts-expect-error chrome only qualifies a window
-lx.supports({ surface: "float", chrome: "full" });
+lx.supports({ capability: "surface", value: "float", chrome: "full" });
 
 // Capability answers are not surface members; `lx.supports` owns them.
-const windowOffered: boolean = lx.supports({ surface: "window" });
+const windowOffered: boolean = lx.supports({ capability: "surface", value: "window" });
 // @ts-expect-error capability queries do not live on lx.surface
 lx.surface.can;
 // @ts-expect-error capability queries do not live on lx.surface

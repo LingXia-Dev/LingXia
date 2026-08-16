@@ -757,8 +757,11 @@ export type LxCapabilityFlag = 'terminal' | 'autostart' | 'notifications' | 'bro
  */
 export type LxCapabilityQuery = {
     capability: 'surface';
-    value: LxSurfaceCapability;
+    value: 'window';
     chrome?: WindowChrome;
+} | {
+    capability: 'surface';
+    value: Exclude<LxSurfaceCapability, 'window'>;
 } | {
     capability: LxCapabilityFlag;
 };
