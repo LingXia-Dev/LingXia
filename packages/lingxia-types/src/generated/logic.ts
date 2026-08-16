@@ -309,8 +309,9 @@ export type BuiltinShellPage = 'settings' | 'downloads';
 
 /**
  * A host builtin page such as settings or downloads. The shell owns
- * its lifetime and its visibility, so this handle reports identity
- * only — there is no `show` / `hide` / `close` to call.
+ * its lifetime and its visibility, so this handle reports identity:
+ * there is no `show` / `hide`, and the inherited `close()` rejects
+ * with `unsupported_placement`.
  */
 export type BuiltinSurface = SurfaceBase & {
     readonly kind: 'builtin';
@@ -1465,8 +1466,11 @@ export type SurfaceApi = {
      */
     openDeclared(id: string): Promise<DeclaredSurface>;
     /**
-     * The live handle for a surface this lxapp opened, by `key` or by `id`.
-     * Removes the need to cache handles in order to reuse or close them.
+     * The live handle for a surface this lxapp opened **with a `key`**, found
+     * by that key or by its `id`. Removes the need to cache handles in order
+     * to reuse or close them. A surface opened without a `key` is not
+     * addressable — nothing else refers to a runtime-assigned id, so nothing
+     * registers it. A key you chose wins over an id it happens to spell.
      */
     get(keyOrId: string): AnySurface | undefined;
     /**
@@ -1483,7 +1487,11 @@ export type SurfaceBase = {
     readonly id: string;
     /** The caller-supplied identity, when this surface was opened with one. */
     readonly key?: string;
-    /** The placement the host produced, which an ordered preference may narrow. */
+    /**
+     * The placement the host produced, which an ordered preference may narrow.
+     * Live rather than a snapshot: `lx.shell.reconfigure` updates it on the
+     * handle you already hold.
+     */
     readonly realized: SurfacePlacement;
     /** True until `close()` fires; afterwards the page instance is torn down. */
     readonly alive: boolean;
@@ -2586,8 +2594,11 @@ declare global {
      */
     openDeclared(id: string): Promise<DeclaredSurface>;
     /**
-     * `lx.surface.get(keyOrId)` — the live handle for a surface this lxapp
-     * opened, so no caller has to cache one in order to reuse or close it.
+     * `lx.surface.get(keyOrId)` — the live handle for a surface this lxapp opened
+     * **with a `key`**, so no caller has to cache one in order to reuse or close
+     * it. An unkeyed surface is not addressable: nothing registers it, because
+     * holding one for the session costs its closures and its message port and
+     * nobody can look up a uuid they never chose.
      * A `key` you chose wins over a runtime-assigned `id`, so a key that happens
      * to spell another surface's id still finds yours.
      */

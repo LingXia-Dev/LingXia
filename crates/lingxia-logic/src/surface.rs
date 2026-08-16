@@ -450,7 +450,22 @@ async fn open_url(ctx: JSContext, url: String, options: Optional<JSObject>) -> J
 
 /// `lx.surface.openDeclared(id, options?)` — a surface the host declared in
 /// `lingxia.yaml`, opened with the declaration's own presentation.
-async fn open_declared(ctx: JSContext, id: String) -> JSResult<JSObject> {
+async fn open_declared(
+    ctx: JSContext,
+    id: String,
+    options: Optional<JSObject>,
+) -> JSResult<JSObject> {
+    // Every override this could carry — `key`, `as`, `edge` — mutates shared
+    // shell composition, so it lives on `lx.shell.openDeclared` behind the home
+    // privilege. Taking one silently would open a surface nobody asked for.
+    if let Some(options) = options.0.as_ref()
+        && !options.keys_as::<String>()?.is_empty()
+    {
+        return Err(surface_error(
+            SurfaceErrorCode::InvalidArg,
+            "lx.surface.openDeclared takes no options; use lx.shell.openDeclared to set key, as, or edge",
+        ));
+    }
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
     let handle = open_declared_surface_spec(&ctx, &spec).await?;
@@ -458,8 +473,11 @@ async fn open_declared(ctx: JSContext, id: String) -> JSResult<JSObject> {
     finish_handle(&ctx, &handle, "declared", &realized, None, None)
 }
 
-/// `lx.surface.get(keyOrId)` — the live handle for a surface this lxapp
-/// opened, so no caller has to cache one in order to reuse or close it.
+/// `lx.surface.get(keyOrId)` — the live handle for a surface this lxapp opened
+/// **with a `key`**, so no caller has to cache one in order to reuse or close
+/// it. An unkeyed surface is not addressable: nothing registers it, because
+/// holding one for the session costs its closures and its message port and
+/// nobody can look up a uuid they never chose.
 ///
 /// A `key` you chose wins over a runtime-assigned `id`, so a key that happens
 /// to spell another surface's id still finds yours.
@@ -574,7 +592,12 @@ async fn shell_reconfigure(ctx: JSContext, id: String, patch: JSObject) -> JSRes
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
     copy_options(&patch, &spec, &["as", "edge"])?;
-    open_declared_surface_spec(&ctx, &spec).await?;
+    let handle = open_declared_surface_spec(&ctx, &spec).await?;
+    // `openDeclared` hands back a cached object and stamps `realized` once, so
+    // without this the handle the caller still holds reports the placement it
+    // had before this call.
+    let realized = handle_realized_placement(&handle);
+    handle.set("realized", realized)?;
     Ok(())
 }
 
@@ -593,7 +616,15 @@ fn resolve_placement(
             if let Some(list) = value.clone().into_object().filter(|obj| obj.is_array()) {
                 let length = list.get::<_, u32>("length").unwrap_or(0);
                 (0..length)
-                    .map(|index| list.get::<_, String>(index.to_string().as_str()))
+                    .map(|index| {
+                        list.get::<_, String>(index.to_string().as_str())
+                            .map_err(|_| {
+                                surface_error(
+                                    SurfaceErrorCode::InvalidArg,
+                                    "every entry of as must be a placement name",
+                                )
+                            })
+                    })
                     .collect::<JSResult<Vec<_>>>()?
             } else {
                 vec![value.to_rust::<String>().map_err(|_| {
@@ -634,7 +665,7 @@ fn resolve_placement(
     Err(surface_error(
         SurfaceErrorCode::UnsupportedPlacement,
         format!(
-            "this host build cannot realize {}; check lx.supports({{ surface: … }}) first",
+            "this host build cannot realize {}; check lx.supports({{ capability: 'surface', value: … }}) first",
             requested.join(" or ")
         ),
     ))
@@ -729,6 +760,21 @@ fn finish_handle(
     if let Some(scope) = scope {
         handle.set("scope", scope)?;
     }
+    // The page-side twin is the same surface seen from inside, and page code
+    // narrows it on `kind`. Stamp it here or `this.surface.kind` reads
+    // undefined for the one caller that cannot reach the opener's handle.
+    // Clone the peer out first — never hold the class borrow across a set().
+    let peer = handle
+        .borrow::<JSSurface>()
+        .ok()
+        .and_then(|inner| inner.peer.borrow().clone());
+    if let Some(peer) = peer {
+        peer.set("kind", kind)?;
+        peer.set("realized", realized)?;
+        if let Some(key) = key.as_deref() {
+            peer.set("key", key)?;
+        }
+    }
     // Only a keyed surface is registered. Registering every generated id kept
     // a strong reference — with its closures, message port, and emitter — for
     // the whole session, and nobody can look up a uuid they never chose.
@@ -759,7 +805,12 @@ fn browser_tab_handle(
                 let show: JSResult<JSFunc> = show_handle.get("show");
                 let target = show_handle.clone();
                 Promise::from_future(&ctx, None, async move {
-                    show?.call::<_, JSValue>(Some(target), ())?;
+                    // `show` is itself async: awaiting its promise is what
+                    // makes `await activate()` mean "it is forward now", and
+                    // what turns a failed show into this call's rejection
+                    // instead of an unhandled one.
+                    let pending: Promise = show?.call(Some(target), ())?;
+                    let _: JSValue = pending.into_future().await?;
                     Ok(())
                 })
             })?,
@@ -777,18 +828,23 @@ fn browser_tab_handle(
     finish_handle(ctx, &handle, "tab", realized, key, Some("group"))
 }
 
-/// `close` / `activate` / `onClose` for a handle whose content the browser
-/// chrome owns. The group's lifetime belongs to that chrome, so these reject
-/// with a code rather than pretending to control it.
-fn attach_browser_group_methods(ctx: &JSContext, handle: &JSObject) -> JSResult<()> {
-    for owned_by_chrome in ["close", "activate"] {
+/// Lifetime methods for a handle that does not own its content. `reason` names
+/// the owner, so the rejection points at the field or the concept the caller
+/// can actually branch on rather than at a member this shape may not carry.
+fn attach_unowned_lifetime_methods(
+    ctx: &JSContext,
+    handle: &JSObject,
+    methods: &[&str],
+    reason: &'static str,
+) -> JSResult<()> {
+    for owned_elsewhere in methods {
         handle.set(
-            owned_by_chrome,
-            JSFunc::new(ctx, |ctx: JSContext| {
+            *owned_elsewhere,
+            JSFunc::new(ctx, move |ctx: JSContext| {
                 Promise::from_future(&ctx, None, async move {
                     Err::<(), _>(surface_error(
                         SurfaceErrorCode::UnsupportedPlacement,
-                        "the browser chrome owns this group; check `scope` before calling",
+                        reason,
                     ))
                 })
             })?,
@@ -797,21 +853,36 @@ fn attach_browser_group_methods(ctx: &JSContext, handle: &JSObject) -> JSResult<
     handle.set(
         "onClose",
         JSFunc::new(ctx, |ctx: JSContext, _handler: JSFunc| {
-            // The chrome owns this group's lifetime and reports no close event.
+            // The owner does not publish a close event, so there is nothing to
+            // subscribe to; the unsubscribe fn keeps the signature honest.
             JSFunc::new(&ctx, || {})
         })?,
     )?;
     Ok(())
 }
 
-/// A `BuiltinSurface` for a host product page. The browser owns its lifetime,
+fn attach_browser_group_methods(ctx: &JSContext, handle: &JSObject) -> JSResult<()> {
+    attach_unowned_lifetime_methods(
+        ctx,
+        handle,
+        &["close", "activate"],
+        "the browser chrome owns this group; check `scope` before calling",
+    )
+}
+
+/// A `BuiltinSurface` for a host product page. The shell owns its lifetime,
 /// so the handle reports identity and leaves control to the shell.
 fn builtin_surface_handle(ctx: &JSContext, page: &str) -> JSResult<JSObject> {
     let handle = JSObject::new(ctx);
     handle.set("id", format!("builtin:{page}"))?;
     handle.set("alive", true)?;
     handle.set("visible", true)?;
-    attach_browser_group_methods(ctx, &handle)?;
+    attach_unowned_lifetime_methods(
+        ctx,
+        &handle,
+        &["close"],
+        "the shell owns this builtin page; it closes with the shell",
+    )?;
     finish_handle(ctx, &handle, "builtin", "main", None, None)
 }
 

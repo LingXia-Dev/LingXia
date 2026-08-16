@@ -1260,7 +1260,11 @@ true
     readonly id: string;
     /** The caller-supplied identity, when this surface was opened with one. */
     readonly key?: string;
-    /** The placement the host produced, which an ordered preference may narrow. */
+    /**
+     * The placement the host produced, which an ordered preference may narrow.
+     * Live rather than a snapshot: `lx.shell.reconfigure` updates it on the
+     * handle you already hold.
+     */
     readonly realized: SurfacePlacement;
     /** True until `close()` fires; afterwards the page instance is torn down. */
     readonly alive: boolean;
@@ -1328,8 +1332,9 @@ true
 }"###;
 
         /// A host builtin page such as settings or downloads. The shell owns
-        /// its lifetime and its visibility, so this handle reports identity
-        /// only — there is no `show` / `hide` / `close` to call.
+        /// its lifetime and its visibility, so this handle reports identity:
+        /// there is no `show` / `hide`, and the inherited `close()` rejects
+        /// with `unsupported_placement`.
         ///
         type BuiltinSurface = r###"SurfaceBase & {
     readonly kind: 'builtin';
@@ -1477,8 +1482,11 @@ true
      */
     openDeclared(id: string): Promise<DeclaredSurface>;
     /**
-     * The live handle for a surface this lxapp opened, by `key` or by `id`.
-     * Removes the need to cache handles in order to reuse or close them.
+     * The live handle for a surface this lxapp opened **with a `key`**, found
+     * by that key or by its `id`. Removes the need to cache handles in order
+     * to reuse or close them. A surface opened without a `key` is not
+     * addressable — nothing else refers to a runtime-assigned id, so nothing
+     * registers it. A key you chose wins over an id it happens to spell.
      */
     get(keyOrId: string): AnySurface | undefined;
     /**

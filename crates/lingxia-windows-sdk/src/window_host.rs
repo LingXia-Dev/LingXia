@@ -90,6 +90,7 @@ thread_local! {
     static HOST_LAYOUT_BATCH_FOCUS_PENDING: Cell<bool> = const { Cell::new(false) };
 }
 static NATIVE_FRAMED_WINDOWS: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
+static FULL_CHROME_WINDOWS: OnceLock<Mutex<HashSet<isize>>> = OnceLock::new();
 #[cfg(feature = "shell-chrome")]
 static HOST_CHROME_SNAPSHOTS: OnceLock<Mutex<HashMap<isize, HostChromeSnapshot>>> = OnceLock::new();
 static CHROME_INTERACTIONS: OnceLock<Mutex<HashMap<isize, ChromeInteraction>>> = OnceLock::new();
@@ -5305,10 +5306,10 @@ fn prefer_visible_workspace(candidate: Option<HWND>) -> Option<HWND> {
 }
 
 /// True for windows that are legitimately their own top-level presentation
-/// (native-framed windows, device-framed simulators) rather than the shared
-/// shell workspace.
+/// (native-framed windows, `chrome: 'full'` page windows, device-framed
+/// simulators) rather than the shared shell workspace.
 fn is_separate_shell_window(hwnd: HWND) -> bool {
-    if is_native_framed_window(hwnd) {
+    if is_native_framed_window(hwnd) || is_full_chrome_window(hwnd) {
         return true;
     }
     #[cfg(feature = "device-frame")]
@@ -5907,6 +5908,36 @@ fn clear_native_framed_window(hwnd: HWND) {
     {
         windows.remove(&hwnd_handle(hwnd));
     }
+    set_full_chrome_window(hwnd, false);
+}
+
+/// A `chrome: 'full'` window stays out of the native-framed set so the custom
+/// caption renderer keeps answering its hit tests, but it is still its own
+/// top-level presentation — this is what tells the workspace invariant apart
+/// from "a duplicate shell host that should be hidden".
+fn set_full_chrome_window(hwnd: HWND, full: bool) {
+    let windows = FULL_CHROME_WINDOWS.get_or_init(|| Mutex::new(HashSet::new()));
+    if let Ok(mut windows) = windows.lock() {
+        if full {
+            windows.insert(hwnd_handle(hwnd));
+        } else {
+            windows.remove(&hwnd_handle(hwnd));
+        }
+    }
+}
+
+fn is_full_chrome_window(hwnd: HWND) -> bool {
+    FULL_CHROME_WINDOWS
+        .get()
+        .and_then(|windows| windows.lock().ok())
+        .is_some_and(|windows| windows.contains(&hwnd_handle(hwnd)))
+}
+
+/// The shared drag-strip height in this window's physical pixels. The page is
+/// told the logical value, so the two only agree once this is scaled.
+fn full_chrome_drag_strip_pixels(hwnd: HWND) -> i32 {
+    let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) }.max(96) as f64;
+    (lingxia_platform::traits::ui::WindowChrome::FULL_DRAG_STRIP_HEIGHT * dpi / 96.0).round() as i32
 }
 
 fn apply_native_window_frame(hwnd: HWND) -> StdResult<()> {
@@ -6591,6 +6622,14 @@ fn hit_test_window(hwnd: HWND, lparam: LPARAM) -> LRESULT {
     let point_tuple = (point.x, point.y);
     if let Some(hit) = resize_hit_test(hwnd, point_tuple) {
         return hit;
+    }
+
+    // A `chrome: 'full'` page window has no shell layout, so the renderer below
+    // answers nothing for it and the whole client area would read HTCLIENT —
+    // an undraggable window. The runtime already reserves this strip and
+    // publishes its height to the page as `topInset`; own the drag here.
+    if is_full_chrome_window(hwnd) && point.y < full_chrome_drag_strip_pixels(hwnd) {
+        return LRESULT(WindowsAndMessaging::HTCAPTION as isize);
     }
 
     match chrome_hit_for_window(hwnd, point_tuple) {
@@ -7679,8 +7718,10 @@ pub fn show_webview_window_with_chrome(
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
     let hwnd = hwnd_from_handle(handler.native_view().window);
     // A full-chrome window keeps the custom caption renderer, so it must not
-    // join the native-framed set that renderer skips.
+    // join the native-framed set that renderer skips — but it is still its own
+    // top-level window, which the full-chrome set is what records.
     set_native_framed_window(hwnd, !full_chrome);
+    set_full_chrome_window(hwnd, full_chrome);
     if full_chrome {
         apply_full_chrome_window_frame(hwnd)?;
     } else {

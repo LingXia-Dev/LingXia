@@ -2,7 +2,10 @@ import { surfaceErrorCode } from "lingxia-types/error";
 
 const app = getApp();
 
-const DEMO_SURFACE_KEY = "surface-demo";
+// One key names one live surface, so the page demo and the composed-lxapp demo
+// cannot share one — `lx.surface.get` would hand back whichever ran last.
+const DEMO_PAGE_SURFACE_KEY = "surface-demo-page";
+const DEMO_APP_SURFACE_KEY = "surface-demo-app";
 
 const NAV_TITLE_MAP = {
   navigation: "Navigation Demo",
@@ -330,14 +333,28 @@ Page({
     }
   },
 
-  _openDemoSurface: function (verb, cfg, size) {
+  // A key is an identity, not a slot: every open mints a fresh surface, so
+  // reusing a key without closing first leaves the old one on screen with
+  // nothing pointing at it.
+  _releaseDemoSurfaceKey: async function (key) {
+    const existing = lx.surface.get(key);
+    if (!existing) return;
+    try {
+      await existing.close();
+    } catch (error) {
+      console.warn("surface.close before reopen failed:", error);
+    }
+  },
+
+  _openDemoSurface: async function (verb, cfg, size) {
     if (verb === "lxapp") {
       // Compose another lxapp into the aside slot — home-lxapp privilege, so
       // it lives on lx.shell rather than lx.surface.
+      await this._releaseDemoSurfaceKey(DEMO_APP_SURFACE_KEY);
       return lx.shell.openApp("lingxia-chat", {
         as: "aside",
         edge: cfg.edge ?? "right",
-        key: DEMO_SURFACE_KEY,
+        key: DEMO_APP_SURFACE_KEY,
       });
     }
     if (verb === "aside") {
@@ -356,6 +373,7 @@ Page({
         size,
       });
     }
+    await this._releaseDemoSurfaceKey(DEMO_PAGE_SURFACE_KEY);
     if (verb === "window") {
       // Edge-to-edge when the host build can keep the system controls; the
       // page lays out under the runtime's drag strip via the page-chrome
@@ -366,14 +384,14 @@ Page({
       return lx.surface.openPage("surface", {
         as: "window",
         chrome,
-        key: DEMO_SURFACE_KEY,
+        key: DEMO_PAGE_SURFACE_KEY,
         size,
       });
     }
     return lx.surface.openPage("surface", {
       as: "float",
       position: cfg.position ?? "center",
-      key: DEMO_SURFACE_KEY,
+      key: DEMO_PAGE_SURFACE_KEY,
       size,
     });
   },
@@ -418,7 +436,7 @@ Page({
 
   showActiveSurface: async function () {
     // `lx.surface.get(key)` replaces caching the handle by hand.
-    const surface = lx.surface.get(DEMO_SURFACE_KEY);
+    const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
     if (!surface || surface.kind === "tab") {
       return;
     }
@@ -435,7 +453,7 @@ Page({
   },
 
   hideActiveSurface: async function () {
-    const surface = lx.surface.get(DEMO_SURFACE_KEY);
+    const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
     if (!surface || surface.kind === "tab") {
       return;
     }
@@ -452,7 +470,7 @@ Page({
   },
 
   closeActiveSurface: async function () {
-    const surface = lx.surface.get(DEMO_SURFACE_KEY);
+    const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
     if (!surface) {
       return;
     }
