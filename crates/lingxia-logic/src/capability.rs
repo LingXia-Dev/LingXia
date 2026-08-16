@@ -82,16 +82,11 @@ fn self_update_supported(lxapp: &Arc<LxApp>) -> bool {
 /// `chrome`. Only `aside` is width-dependent; `window` is a property of the
 /// host build and does not flicker as a window is resized.
 fn surface_supported(placement: &str, chrome: Option<&str>, lxapp: &Arc<LxApp>) -> bool {
-    if let Some(chrome) = chrome {
-        // `chrome` qualifies a window and nothing else. The caller has already
-        // rejected an unknown decoration, so this only has to refuse the
-        // decoration being asked about the wrong placement.
-        if placement != "window" {
-            return false;
-        }
-        if chrome == "full" && !crate::surface::window_full_chrome_available() {
-            return false;
-        }
+    if let Some(chrome) = chrome
+        && chrome == "full"
+        && !crate::surface::window_full_chrome_available()
+    {
+        return false;
     }
     match placement {
         // Every host can put content in the main region or float it over one.
@@ -170,14 +165,6 @@ fn supports(ctx: JSContext, query: JSValue) -> JSResult<bool> {
                 "surface capability query requires `capability` and `value`, and accepts only `chrome` besides",
             ));
         }
-        if let Some(chrome) = chrome.as_deref()
-            && !WINDOW_CHROMES.contains(&chrome)
-        {
-            return Err(js_invalid_parameter_error(format!(
-                "unknown window chrome '{chrome}'; expected {}",
-                WINDOW_CHROMES.join(", ")
-            )));
-        }
         let placement = query.get::<_, String>("value").map_err(|_| {
             js_invalid_parameter_error("surface capability `value` must be a string")
         })?;
@@ -186,6 +173,20 @@ fn supports(ctx: JSContext, query: JSValue) -> JSResult<bool> {
                 "unknown surface placement '{placement}'; expected {}",
                 SURFACE_PLACEMENTS.join(", ")
             )));
+        }
+        if let Some(chrome) = chrome.as_deref() {
+            if !WINDOW_CHROMES.contains(&chrome) {
+                return Err(js_invalid_parameter_error(format!(
+                    "unknown window chrome '{chrome}'; expected {}",
+                    WINDOW_CHROMES.join(", ")
+                )));
+            }
+            // The type says the same thing; an untyped caller hears it here.
+            if placement != "window" {
+                return Err(js_invalid_parameter_error(
+                    "`chrome` qualifies `value: 'window'` and no other placement",
+                ));
+            }
         }
         if !context_exposes_capability(&capability, terminal_settings) {
             return Ok(false);
@@ -248,8 +249,11 @@ rong::js_api! {
         ///
         type LxCapabilityQuery = r###"{
     capability: 'surface';
-    value: LxSurfaceCapability;
+    value: 'window';
     chrome?: WindowChrome;
+} | {
+    capability: 'surface';
+    value: Exclude<LxSurfaceCapability, 'window'>;
 } | {
     capability: LxCapabilityFlag;
 }"###;
