@@ -2245,7 +2245,7 @@ declare global {
     /** Create a managed directory. */
     mkdir(path: string, options?: FsMkdirOptions): Promise<void>;
     /** Write UTF-8 text or bytes to a managed file. */
-    write(path: string, data: string | BinaryFileData, options?: FsWriteOptions): Promise<void>;
+    write(path: string, data: string, options?: FsWriteOptions): Promise<void>;
     /** Copy a managed file. */
     copy(source: string, destination: string, options?: FsCopyOptions): Promise<void>;
     /** Rename or move a managed file or directory. */

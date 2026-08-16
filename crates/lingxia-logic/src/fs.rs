@@ -1399,8 +1399,10 @@ rong::js_api! {
             ts_return = "Promise<DirEntry[]>"
         ) = fs_read_dir;
         fn mkdir(ts_params = "path: string, options?: FsMkdirOptions") = fs_mkdir;
+        // Text only here; the byte overload is merged in `lingxia-types`, where
+        // a second signature can express that bytes take no `encoding`.
         fn write(
-            ts_params = "path: string, data: string | BinaryFileData, options?: FsWriteOptions"
+            ts_params = "path: string, data: string, options?: FsWriteOptions"
         ) = fs_write;
         fn copy(
             ts_params = "source: string, destination: string, options?: FsCopyOptions"

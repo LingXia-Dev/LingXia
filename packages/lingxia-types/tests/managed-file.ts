@@ -16,8 +16,14 @@ async function representationsHaveConcreteTypes(): Promise<number> {
 async function writesUseWebDataTypes(): Promise<void> {
   await lx.fs.write("notes.txt", "hello");
   await lx.fs.write("bytes.bin", new Uint8Array([1, 2, 3]));
+  await lx.fs.write("bytes.bin", new Uint8Array([1, 2, 3]).buffer, { overwrite: true });
   await lx.fs.write("encoded.bin", "AQID", { encoding: "base64" });
 }
+
+// `encoding` says how to read a string, so pairing it with bytes is a mistake
+// the runtime rejects — the byte overload is what makes it a compile error.
+// @ts-expect-error encoding has no meaning for binary data
+void lx.fs.write("bytes.bin", new Uint8Array([1, 2, 3]), { encoding: "base64" });
 
 // @ts-expect-error the manager factory was replaced by the lx.fs namespace
 lx.getFileManager;
