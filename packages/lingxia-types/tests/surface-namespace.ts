@@ -138,3 +138,13 @@ export type SurfaceNamespaceGate = [
   typeof windowOffered,
   typeof unsubscribeContext,
 ];
+
+// `as` decides which options exist: a float anchors, a window is decorated.
+lx.surface.openPage("settings", { as: "float", position: "center" });
+lx.surface.openPage("settings", { as: "window", chrome: "full" });
+// @ts-expect-error a window does not anchor
+lx.surface.openPage("settings", { as: "window", position: "center" });
+// @ts-expect-error a float carries no window decoration
+lx.surface.openPage("settings", { as: "float", chrome: "full" });
+// An ordered preference cannot know which it will be, so both stay open.
+lx.surface.openPage("settings", { as: ["window", "float"], chrome: "full", position: "center" });

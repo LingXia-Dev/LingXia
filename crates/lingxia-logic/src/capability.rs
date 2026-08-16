@@ -130,7 +130,7 @@ fn has_exact_keys(actual: &[String], expected: &[&str]) -> bool {
 /// deciding what to render, not a replacement for handling a rejection.
 /// `{ capability: 'surface', value: 'aside' }` in particular changes when a
 /// desktop window crosses the compact breakpoint; pair it with
-/// `lx.onSurfaceContext` instead of polling. The answer is per runtime context:
+/// `lx.surface.onContext` instead of polling. The answer is per runtime context:
 /// a context that does not expose an API reports false for it.
 fn supports(ctx: JSContext, query: JSValue) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
