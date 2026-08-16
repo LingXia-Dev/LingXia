@@ -217,6 +217,38 @@ await lx.navigateBack();
 await lx.navigateBack({ delta: 2 });
 ```
 
+### What resets, what survives
+
+Leaving a page ends its instance: `data` and the rendered document come back
+fresh on the next entry. **Module-level variables do not reset.** A page's
+logic file is a JavaScript module, evaluated once per app session; everything
+declared outside `Page({})` lives in module scope, survives every page
+entry and exit, and is shared by ALL live instances of that route at the same
+time — with duplicate routes, two stacked `detail` pages read and write the
+same module variable.
+
+```ts
+let hits = 0;          // module scope: shared by every instance, never resets
+
+Page({
+  data: { count: 0 },  // instance scope: fresh on every entry
+  onLoad() {
+    hits += 1;         // counts entries across ALL instances
+  },
+});
+```
+
+Pick the container by lifetime:
+
+| State | Container | Lifetime |
+| --- | --- | --- |
+| Belongs to one entry (form input, counters, request handles, timers) | `data` / `this.xxx` | The page instance — fresh per entry |
+| Shared by every instance of the route (constants, memo caches, a singleton connection) | Module scope (outside `Page({})`) | The app's Logic runtime — until the lxapp restarts |
+| Must survive restarts | `lx.getStorage()` | Persistent |
+
+Never keep per-entry state (request sequence numbers, timer handles,
+in-flight flags) in module scope: it silently couples same-route instances.
+
 ### Private helpers
 
 Functions starting with `_` are private — they are **not** exposed to the View. Use them for internal logic:

@@ -35,6 +35,7 @@ export default function UIPage() {
     demoSwitchTab,
     demoRedirectTo,
     bumpLogicCounter,
+    bumpModuleCounter,
     showToastWithParams,
     hideToast,
     showModalWithParams,
@@ -64,6 +65,7 @@ export default function UIPage() {
     instanceTag = '',
     previousInstanceTag = '',
     logicCounter = 0,
+    moduleCounter = 0,
     events = [],
     modalResult = null,
     toastIcon = 'success',
@@ -659,12 +661,12 @@ export default function UIPage() {
             {/* State that resets */}
             <div className="bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
               <div className="px-4 py-3 border-b border-line-100">
-                <h3 className="text-base font-medium text-gray-900">State that resets</h3>
+                <h3 className="text-base font-medium text-gray-900">State that resets — and state that doesn't</h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Dirty all three, leave, come back — everything is fresh
+                  Logic and View reset per entry; the module counter is shared by every instance and never resets
                 </p>
               </div>
-              <div className="p-4 grid grid-cols-2 gap-3">
+              <div className="p-4 grid grid-cols-3 gap-3">
                 <button
                   data-testid="lifecycle-bump-logic"
                   onClick={bumpLogicCounter}
@@ -682,6 +684,15 @@ export default function UIPage() {
                   <span className="text-2xl font-bold" data-testid="lifecycle-view-counter">{viewCounter}</span>
                   <span className="text-sm font-medium mt-1">View +1</span>
                   <span className="text-[10px] opacity-70">useState</span>
+                </button>
+                <button
+                  data-testid="lifecycle-bump-module"
+                  onClick={bumpModuleCounter}
+                  className="flex flex-col items-center justify-center py-4 px-2 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 text-amber-700 dark:text-amber-400 rounded-xl transition-colors"
+                >
+                  <span className="text-2xl font-bold" data-testid="lifecycle-module-counter">{moduleCounter}</span>
+                  <span className="text-sm font-medium mt-1">Module +1</span>
+                  <span className="text-[10px] opacity-70">module scope</span>
                 </button>
               </div>
               <div className="px-4 pb-4">

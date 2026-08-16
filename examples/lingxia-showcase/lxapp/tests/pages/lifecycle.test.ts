@@ -79,6 +79,7 @@ interface ResetDemoState {
   instanceTag: string;
   previousInstanceTag: string;
   logicCounter: number;
+  moduleCounter: number;
 }
 
 async function resetDemoState(app: LxAppDriver): Promise<ResetDemoState | null> {
@@ -90,6 +91,7 @@ async function resetDemoState(app: LxAppDriver): Promise<ResetDemoState | null> 
             instanceTag: page.data.instanceTag ?? '',
             previousInstanceTag: page.data.previousInstanceTag ?? '',
             logicCounter: page.data.logicCounter ?? -1,
+            moduleCounter: page.data.moduleCounter ?? -1,
           }
         : null;
     `,
@@ -137,9 +139,12 @@ contract({
   const first = await enterResetDemo(app);
   expect(first.logicCounter).toBe(0);
 
-  // Dirty both layers plus the DOM.
+  // Dirty both layers plus the DOM, and the module-scoped counter that
+  // must NOT reset.
+  const moduleBase = first.moduleCounter;
   await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-logic"]' });
   await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-view"]' });
+  await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-module"]' });
   await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-open-popup"]' });
   await app.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-popup"]' });
   await eventually(resetDemoState.bind(null, app), (
@@ -158,6 +163,8 @@ contract({
   expect(second.instanceTag).not.toBe(first.instanceTag);
   expect(second.previousInstanceTag).toBe(first.instanceTag);
   expect(second.logicCounter).toBe(0);
+  // Module scope survives the instance: the fresh entry sees the bump.
+  expect(second.moduleCounter).toBe(moduleBase + 1);
   await waitForViewCounter(app, '0');
 
   const popup = await app.page.query({
@@ -188,6 +195,7 @@ contract({
             instanceTag: page.data.instanceTag ?? '',
             previousInstanceTag: page.data.previousInstanceTag ?? '',
             logicCounter: page.data.logicCounter ?? -1,
+            moduleCounter: page.data.moduleCounter ?? -1,
           }
         : null;
     `,

@@ -42,6 +42,11 @@ function isSurfaceNotSupported(error: unknown): boolean {
 const LAST_INSTANCE_TAG_KEY = "lifecycle:lastInstanceTag";
 const MAX_EVENTS = 8;
 
+// Module scope: evaluated once per app session, shared by every live
+// instance of this route, and never reset by leaving the page. The value in
+// `data` below is only a display mirror of this variable.
+let moduleCounter = 0;
+
 function newInstanceTag() {
   return Math.random().toString(16).slice(2, 6).toUpperCase();
 }
@@ -53,6 +58,7 @@ Page({
     instanceTag: "",
     previousInstanceTag: "",
     logicCounter: 0,
+    moduleCounter: 0,
     events: [] as string[],
     modalResult: null,
     toastIcon: "success",
@@ -104,7 +110,7 @@ Page({
     // instance. The previous tag is mirrored through app-scoped storage,
     // which survives the reset.
     const tag = newInstanceTag();
-    this.setData({ instanceTag: tag });
+    this.setData({ instanceTag: tag, moduleCounter });
     this._record("onLoad");
     const storage = lx.getStorage();
     storage
@@ -139,6 +145,11 @@ Page({
 
   bumpLogicCounter: function () {
     this.setData({ logicCounter: this.data.logicCounter + 1 });
+  },
+
+  bumpModuleCounter: function () {
+    moduleCounter += 1;
+    this.setData({ moduleCounter });
   },
 
   // The log lives in `data`, so it only ever shows the current instance's

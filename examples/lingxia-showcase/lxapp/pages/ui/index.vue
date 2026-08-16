@@ -95,10 +95,10 @@
           <!-- State that resets -->
           <div class="mb-5 bg-surface rounded-xl shadow-sm border border-line-100 overflow-hidden">
             <div class="px-4 py-3 border-b border-line-100">
-              <h3 class="text-base font-medium text-gray-900">State that resets</h3>
-              <p class="text-xs text-gray-500 mt-0.5">Dirty all three, leave, come back — everything is fresh</p>
+              <h3 class="text-base font-medium text-gray-900">State that resets — and state that doesn't</h3>
+              <p class="text-xs text-gray-500 mt-0.5">Logic and View reset per entry; the module counter is shared by every instance and never resets</p>
             </div>
-            <div class="p-4 grid grid-cols-2 gap-3">
+            <div class="p-4 grid grid-cols-3 gap-3">
               <button
                 data-testid="lifecycle-bump-logic"
                 @click="bumpLogicCounter"
@@ -116,6 +116,15 @@
                 <span class="text-2xl font-bold" data-testid="lifecycle-view-counter">{{ viewCounter }}</span>
                 <span class="text-sm font-medium mt-1">View +1</span>
                 <span class="text-[10px] opacity-70">ref()</span>
+              </button>
+              <button
+                data-testid="lifecycle-bump-module"
+                @click="bumpModuleCounter"
+                class="flex flex-col items-center justify-center py-4 px-2 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 text-amber-700 dark:text-amber-400 rounded-xl transition-colors"
+              >
+                <span class="text-2xl font-bold" data-testid="lifecycle-module-counter">{{ moduleCounter }}</span>
+                <span class="text-sm font-medium mt-1">Module +1</span>
+                <span class="text-[10px] opacity-70">module scope</span>
               </button>
             </div>
             <div class="px-4 pb-4">
@@ -575,6 +584,7 @@ const {
   demoSwitchTab,
   demoRedirectTo,
   bumpLogicCounter,
+  bumpModuleCounter,
   showToastWithParams,
   hideToast,
   showModalWithParams,
@@ -604,6 +614,7 @@ const pageStack = computed(() => data.pageStack ?? []);
 const instanceTag = computed(() => data.instanceTag ?? '');
 const previousInstanceTag = computed(() => data.previousInstanceTag ?? '');
 const logicCounter = computed(() => data.logicCounter ?? 0);
+const moduleCounter = computed(() => data.moduleCounter ?? 0);
 const events = computed<string[]>(() => data.events ?? []);
 // View-local state: never leaves the WebView, so only a document reload
 // (a fresh instance) clears it.
