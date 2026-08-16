@@ -5,10 +5,20 @@ import CLingXiaRustAPI
 
 /// NSWindow class for LxApp Tab mode
 class LxAppWindow: NSWindow {
-    /// Leading inset chosen so the close button's center sits on the sidebar's
-    /// first-column icon axis (SidebarView.Layout.iconAxis); the button is 14pt.
-    private static let trafficLightLeading: CGFloat = SidebarView.Layout.iconAxis - 7
-    private static let trafficLightCenterSpacing: CGFloat = 19
+    /// The cluster is what the collapsed rail has to be wide enough to contain,
+    /// so it is packed tighter than the system default (7pt inset, 20pt pitch)
+    /// rather than aligned to the sidebar's text-icon axis — that alignment cost
+    /// 9pt of rail width for a correspondence nobody reads. 14pt buttons at
+    /// 5/23/41 end at 55pt, which is what sizes the rail.
+    private static let trafficLightLeading: CGFloat = 5
+    private static let trafficLightCenterSpacing: CGFloat = 18
+    private static let trafficLightButtonWidth: CGFloat = 14
+    /// Right edge of the cluster, from the window's leading edge. The rail is
+    /// sized from this constant rather than from the live button frames: we set
+    /// those frames ourselves, and reading them back races the pass that
+    /// applies them — the rail would size itself against AppKit's defaults.
+    static let trafficLightClusterWidth: CGFloat =
+        trafficLightLeading + 2 * trafficLightCenterSpacing + trafficLightButtonWidth
     nonisolated(unsafe) private var titlebarObserver: Any?
     private var lastTrafficLightContainerHeight: CGFloat?
     var trafficLightsHidden: Bool = false {
@@ -88,6 +98,20 @@ class LxAppWindow: NSWindow {
             || abs((lastTrafficLightContainerHeight ?? 0) - height) > 0.5 else {
             return
         }
+        adjustTrafficLightPositions()
+    }
+
+    /// Re-pack the buttons in the same pass that resizes the window. A live
+    /// resize re-lays the titlebar on every tick; reacting to that from a
+    /// notification lands a frame late, so the buttons visibly snap back to
+    /// AppKit's defaults and out again while the user drags.
+    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        super.setFrame(frameRect, display: flag)
+        adjustTrafficLightPositions()
+    }
+
+    override func becomeKey() {
+        super.becomeKey()
         adjustTrafficLightPositions()
     }
 

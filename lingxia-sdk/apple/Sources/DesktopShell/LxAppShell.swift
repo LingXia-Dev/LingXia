@@ -151,7 +151,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         static let sidebarHiddenThreshold: CGFloat = 1
         static let mainWindowMinimumSize = CGSize(width: 480, height: 480)
         static let toolbarCenterY: CGFloat = 14
-        static let trafficLightClearanceFallback: CGFloat = 80
+        /// Breathing room the rail leaves after the traffic lights.
+        static let trafficLightTrailingGap: CGFloat = 6
         static let contentPanelPadding: CGFloat = 6
         static let contentPanelCornerRadius: CGFloat = 10
         static let sidebarRevealButtonSize = CGSize(width: 20, height: 28)
@@ -902,23 +903,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         let _ = onLxappEvent(providerAppId, LxAppEvent.tabBarClick, String(itemIndex))
     }
 
+    /// How far the sidebar must reach to hold the window controls: the cluster
+    /// we lay out ourselves, plus a fixed gap after it.
     private func currentTrafficLightClearance() -> CGFloat {
-        guard let window = self.window,
-              let contentView = window.contentView else {
-            return Layout.trafficLightClearanceFallback
-        }
-        if (window as? LxAppWindow)?.trafficLightsHidden == true {
+        guard let window = self.window as? LxAppWindow, !window.trafficLightsHidden else {
             return SidebarView.Layout.railWidth
         }
-
-        var maxX: CGFloat = 0
-        for type: NSWindow.ButtonType in [.closeButton, .miniaturizeButton, .zoomButton] {
-            guard let button = window.standardWindowButton(type), !button.isHidden else { continue }
-            let frameInContent = contentView.convert(button.bounds, from: button)
-            maxX = max(maxX, frameInContent.maxX)
-        }
-
-        return maxX <= 0 ? Layout.trafficLightClearanceFallback : ceil(maxX + 12)
+        return LxAppWindow.trafficLightClusterWidth + Layout.trafficLightTrailingGap
     }
 
     /// Leading inset for the content card: the sidebar width, or — when the
