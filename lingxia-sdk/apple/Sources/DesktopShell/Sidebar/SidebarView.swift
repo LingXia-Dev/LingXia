@@ -619,13 +619,13 @@ class SidebarView: NSView {
         /// Minimum width of the collapsed icon-only rail. The effective width
         /// grows to clear the macOS traffic lights when they're wider (see
         /// `effectiveRailWidth`).
-        static let railWidth: CGFloat = 60
+        static let railWidth: CGFloat = 56
         /// Drag-end below this snaps to the icon rail; at/above it the sidebar expands.
         static let railExpandThreshold: CGFloat = 128
         /// Square icon button in the rail.
-        static let railButtonSize: CGFloat = 34
+        static let railButtonSize: CGFloat = 32
         /// Rendered icon size inside a rail button.
-        static let railIconSize: CGFloat = 22
+        static let railIconSize: CGFloat = 20
         /// Close chip overlaid on the active rail switcher. Wider than
         /// `railIconSize` so it covers the icon, narrower than
         /// `railButtonSize` so the tile edge still re-selects.
@@ -704,8 +704,12 @@ class SidebarView: NSView {
     /// layout; the rail hugs the traffic lights with only a small gap to the
     /// webview edge.
     private var effectiveRailWidth: CGFloat {
+        // The provider already reports where the rail has to end to hold the
+        // window controls. Nothing is added on top of it here: the column used
+        // to carry that padding twice, which is what left it wider than the
+        // cluster it exists to hold.
         let clearance = trafficLightClearanceProvider?() ?? Layout.railWidth
-        return max(Layout.railWidth, clearance - 8)
+        return max(Layout.railWidth, clearance)
     }
     var compactWidth: CGFloat {
         effectiveRailWidth
