@@ -136,8 +136,9 @@ how the input string is decoded and does not change the method's return type.
 `rename` is move semantics. Moving a temp download into usercache avoids a
 second durable copy and hands the file to cache cleanup.
 
-`lx.fs.readDir(path)` resolves to an async iterator of directory entries with `name`,
-`isFile`, `isDirectory`, and `isSymlink`.
+`lx.fs.readDir(path)` resolves to an array of directory entries with `name`,
+`isFile`, `isDirectory`, and `isSymlink`, so it filters and maps like any other
+list.
 
 `LxFile.text`, `json`, `base64`, `bytes`, and `arrayBuffer` materialize the
 complete result in the lxapp Logic process and are limited to 16 MiB per call.
