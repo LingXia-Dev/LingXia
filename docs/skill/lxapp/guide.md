@@ -309,6 +309,41 @@ LingXia routes component events two ways automatically — a **Logic short path*
 View function. You never choose: use framework-native syntax (`onX` in React,
 `@event` in Vue) and the system routes for you.
 
+### Subscribing to `lx.*` events
+
+Every `lx.on*` subscription returns its own unsubscribe function — that returned
+closure is the *only* way to cancel it, so a page that subscribes must keep it
+and call it. There is no `lx.off*` counterpart: a call that cancelled by
+callback could only match by identity, which silently took out another module's
+handler registered with the same function.
+
+```ts
+Page({
+  data: { online: true },
+
+  onLoad() {
+    this._offNetwork = lx.onNetworkChange((info) => {
+      this.setData({ online: info.isConnected });
+    });
+  },
+
+  onUnload() {
+    this._offNetwork?.();
+    this._offNetwork = null;
+  },
+});
+```
+
+Unsubscribe in `onUnload`, and keep the closure on the page instance rather than
+in `data` — `data` crosses the bridge and a function cannot. A route can be open
+more than once, so a subscription left behind is leaked once per page instance,
+not once per app. Calling the returned function twice is safe.
+
+The same shape covers `onNetworkChange`, `onWifiConnected`,
+`onDeviceOrientationChange`, `onKeyDown`, `onKeyUp`, `onSurfaceContext`,
+`onUpdateReady`, `onUpdateFailed`, and the surface handle's `onMessage` /
+`onShow` / `onHide` / `onClose`.
+
 ### Native component events
 
 LingXia ships native-backed components (`LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator`) from `@lingxia/react` and `@lingxia/vue` (HTML views use the raw `<lx-*>` tags); text input is a plain `<input>` / `<textarea>`. Handlers use standard framework-native syntax:
@@ -641,6 +676,7 @@ removed configuration fields with the complete field path and its replacement.
 - Mutating `App({}).globalData` and expecting page views to re-render — `globalData` is not reactive. Propagate to a page's `data` via `setData`.
 - Calling `lx.navigateTo` / `lx.redirectTo` on a tab page — rejected by the runtime. Use `lx.switchTab` for tab-page entry; `navigateBack` for non-tab stack pops.
 - Treating the tab bar as a host UI surface — it is an lxapp-internal feature declared in `lxapp.json`, orthogonal to top-level `surfaces:` in `lingxia.yaml`.
+- Dropping the function an `lx.on*` call returns — it is the only handle that cancels the subscription, and the same route can be open more than once, so the leak multiplies per page instance.
 
 ---
 

@@ -1574,8 +1574,10 @@ true
         ///
         type UpdateManager = r###"{
     applyUpdate(): void;
-    onUpdateReady(callback: (info: UpdateReadyInfo) => void): void;
-    onUpdateFailed(callback: (info: UpdateFailedInfo) => void): void;
+    /** Subscribes to a ready update and returns the unsubscribe fn. */
+    onUpdateReady(callback: (info: UpdateReadyInfo) => void): () => void;
+    /** Subscribes to a failed update and returns the unsubscribe fn. */
+    onUpdateFailed(callback: (info: UpdateFailedInfo) => void): () => void;
 }"###;
 
         type UpdateReadyInfo = r###"{
