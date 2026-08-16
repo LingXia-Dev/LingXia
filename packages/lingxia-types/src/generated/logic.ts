@@ -715,7 +715,7 @@ export type LxAppEnvVersion = 'release' | 'preview' | 'develop';
 export type LxAppReleaseType = 'release' | 'preview' | 'developer';
 
 /** Boolean capability names accepted by `lx.supports`. */
-export type LxCapabilityFlag = 'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'nativeFileReview';
+export type LxCapabilityFlag = 'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'nativeFileReview' | 'process' | 'appUse' | 'computerUse' | 'browserUse';
 
 /**
  * One capability question per call. The catalog is closed, so
@@ -726,7 +726,9 @@ export type LxCapabilityFlag = 'terminal' | 'autostart' | 'notifications' | 'bro
  * url still opens, in the OS browser instead — and `aside` is "a
  * docked region exists right now", while a compact layout still opens
  * the url through the in-app browser's own chrome. Ask them to decide
- * what to render, not whether to call.
+ * what to render, not whether to call. `nativeFileReview` is coarse in
+ * the same way: it says a preview surface exists, not that any given
+ * file opens in it.
  */
 export type LxCapabilityQuery = {
     capability: 'surface';
