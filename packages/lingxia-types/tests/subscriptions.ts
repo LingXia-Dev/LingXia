@@ -8,6 +8,12 @@ const unsubscribeOrientation: () => void = lx.onDeviceOrientationChange(() => {}
 const unsubscribeKeyDown: () => void = lx.onKeyDown(() => {});
 const unsubscribeKeyUp: () => void = lx.onKeyUp(() => {});
 
+// The update manager's callbacks are single-slot rather than a listener list,
+// but they hand back the same handle — the idiom holds across the whole surface.
+const updates = lx.getUpdateManager();
+const unsubscribeUpdateReady: () => void = updates.onUpdateReady(() => {});
+const unsubscribeUpdateFailed: () => void = updates.onUpdateFailed(() => {});
+
 // No lx member can remove a listener it did not register.
 // @ts-expect-error offNetworkChange no longer exists
 lx.offNetworkChange;
@@ -26,4 +32,6 @@ export type SubscriptionGate = [
   typeof unsubscribeOrientation,
   typeof unsubscribeKeyDown,
   typeof unsubscribeKeyUp,
+  typeof unsubscribeUpdateReady,
+  typeof unsubscribeUpdateFailed,
 ];

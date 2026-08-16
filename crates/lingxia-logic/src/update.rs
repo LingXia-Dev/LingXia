@@ -7,12 +7,23 @@ use rong::{
 use std::cell::RefCell;
 use std::sync::Arc;
 
+/// Identifies one `onUpdateReady`/`onUpdateFailed` registration. These are
+/// single-slot callbacks — subscribing again replaces the previous one — so an
+/// unsubscribe handle carries its token and clears the slot only while it still
+/// holds its own callback. Without it a stale handle would silently drop a
+/// later subscriber's.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct UpdateSlotToken(u64);
+
 #[derive(Default)]
 struct UpdateManagerState {
     manager: Option<JSObject>,
     lxappid: Option<String>,
     on_ready: Option<JSFunc>,
+    ready_token: UpdateSlotToken,
     on_failed: Option<JSFunc>,
+    failed_token: UpdateSlotToken,
+    next_token: u64,
     pending_ready: Option<JSObject>,
     pending_failed: Option<JSObject>,
     handlers_registered: bool,
@@ -31,6 +42,17 @@ fn update_registry(ctx: &JSContext) -> &UpdateManagerRegistry {
     }
     ctx.get_service::<UpdateManagerRegistry>()
         .expect("update manager registry was inserted above")
+}
+
+/// Hands out the next slot token. Zero stays reserved for "no subscriber", so
+/// a cleared slot never matches a live handle.
+fn claim_slot_token(ctx: &JSContext) -> UpdateSlotToken {
+    let mut token = UpdateSlotToken::default();
+    with_update_state(ctx, |state| {
+        state.next_token += 1;
+        token = UpdateSlotToken(state.next_token);
+    });
+    token
 }
 
 fn with_update_state(ctx: &JSContext, update: impl FnOnce(&mut UpdateManagerState)) {
@@ -169,10 +191,15 @@ impl JSUpdateManager {
         lxapp.restart().map_err(|e| js_error_from_lxapp_error(&e))
     }
 
+    /// Subscribes to a ready update and returns the unsubscribe fn.
     #[js_method(rename = "onUpdateReady")]
-    fn on_update_ready(&mut self, ctx: JSContext, cb: JSFunc) -> JSResult<()> {
+    fn on_update_ready(&mut self, ctx: JSContext, cb: JSFunc) -> JSResult<JSFunc> {
         self.on_ready = Some(cb.clone());
-        with_update_state(&ctx, |state| state.on_ready = Some(cb));
+        let token = claim_slot_token(&ctx);
+        with_update_state(&ctx, |state| {
+            state.ready_token = token;
+            state.on_ready = Some(cb);
+        });
         if let Some(payload) = take_pending_ready(&ctx)
             && let Some(ready_cb) = self.on_ready.as_ref()
             && ready_cb.call::<_, ()>(None, (payload.clone(),)).is_err()
@@ -180,13 +207,26 @@ impl JSUpdateManager {
             warn!("Flushing pending UpdateReady failed; keeping event pending");
             with_update_state(&ctx, |state| state.pending_ready = Some(payload));
         }
-        Ok(())
+        let off_ctx = ctx.clone();
+        JSFunc::new(&ctx, move || {
+            with_update_state(&off_ctx, |state| {
+                if state.ready_token == token {
+                    state.on_ready = None;
+                    state.ready_token = UpdateSlotToken::default();
+                }
+            });
+        })
     }
 
+    /// Subscribes to a failed update and returns the unsubscribe fn.
     #[js_method(rename = "onUpdateFailed")]
-    fn on_update_failed(&mut self, ctx: JSContext, cb: JSFunc) -> JSResult<()> {
+    fn on_update_failed(&mut self, ctx: JSContext, cb: JSFunc) -> JSResult<JSFunc> {
         self.on_failed = Some(cb.clone());
-        with_update_state(&ctx, |state| state.on_failed = Some(cb));
+        let token = claim_slot_token(&ctx);
+        with_update_state(&ctx, |state| {
+            state.failed_token = token;
+            state.on_failed = Some(cb);
+        });
         if let Some(payload) = take_pending_failed(&ctx)
             && let Some(failed_cb) = self.on_failed.as_ref()
             && failed_cb.call::<_, ()>(None, (payload.clone(),)).is_err()
@@ -194,7 +234,15 @@ impl JSUpdateManager {
             warn!("Flushing pending UpdateFailed failed; keeping event pending");
             with_update_state(&ctx, |state| state.pending_failed = Some(payload));
         }
-        Ok(())
+        let off_ctx = ctx.clone();
+        JSFunc::new(&ctx, move || {
+            with_update_state(&off_ctx, |state| {
+                if state.failed_token == token {
+                    state.on_failed = None;
+                    state.failed_token = UpdateSlotToken::default();
+                }
+            });
+        })
     }
 
     #[js_method(gc_mark)]
@@ -243,9 +291,13 @@ fn get_update_manager(ctx: JSContext) -> JSResult<JSObject> {
     with_update_state(&ctx, |state| {
         state.lxappid = Some(current_appid);
         state.manager = Some(instance.clone());
-        // Drop callbacks/pending payload from any previous app binding.
+        // Drop callbacks/pending payload from any previous app binding. The
+        // tokens go with them, so a handle from the old binding cannot match
+        // and clear a subscriber the new one installs.
         state.on_ready = None;
+        state.ready_token = UpdateSlotToken::default();
         state.on_failed = None;
+        state.failed_token = UpdateSlotToken::default();
         state.pending_ready = None;
         state.pending_failed = None;
     });
