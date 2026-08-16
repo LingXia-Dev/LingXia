@@ -421,6 +421,9 @@ fn draw_sidebar_rail(
             viewport_bottom,
         );
     }
+    if let Some(divider) = sidebar_rail_pinned_divider_rect(rect, tabbar, scroll_offset) {
+        fill_rect(hdc, divider, shell_palette().divider);
+    }
     let app_rect = sidebar_rail_item_rect(rect, sidebar_group_rail_index(tabbar), scroll_offset);
     if tabbar.group_active {
         fill_round_rect_aa(hdc, app_rect, 6, shell_palette().selection_background);
@@ -433,6 +436,12 @@ fn draw_sidebar_rail(
         app_icon_rect,
         SIDEBAR_RAIL_ICON_SIZE as u32,
     );
+    if tabbar.group_active
+        && tabbar.group_closable
+        && rect_contains(&app_rect, cursor.unwrap_or((-1, -1)))
+    {
+        draw_sidebar_rail_close(hdc, app_rect);
+    }
 
     for (index, item) in tabbar.auxiliary_items.iter().enumerate() {
         let item_rect = sidebar_rail_item_rect(
@@ -456,6 +465,9 @@ fn draw_sidebar_rail(
         };
         if !drew {
             draw_default_app_icon(hdc, icon_rect);
+        }
+        if item.active && item.closable && rect_contains(&item_rect, cursor.unwrap_or((-1, -1))) {
+            draw_sidebar_rail_close(hdc, item_rect);
         }
     }
 
@@ -483,6 +495,57 @@ fn draw_sidebar_rail(
         shell_palette().text_muted,
         18,
     );
+}
+
+fn draw_sidebar_rail_close(hdc: HDC, item_rect: RECT) {
+    let close_rect = sidebar_rail_close_rect(item_rect);
+    fill_round_rect_aa(hdc, close_rect, 6, shell_palette().control_surface);
+    draw_text(
+        hdc,
+        GLYPH_TAB_CLOSE,
+        close_rect,
+        shell_palette().text_primary,
+        DT_CENTER,
+    );
+}
+
+/// Direct-close target overlaid on a closable collapsed-rail switcher.
+pub(super) fn sidebar_rail_close_rect(item_rect: RECT) -> RECT {
+    const SIZE: i32 = 24;
+    let left = item_rect.left + (rect_width(&item_rect) - SIZE).max(0) / 2;
+    let top = item_rect.top + (rect_height(&item_rect) - SIZE).max(0) / 2;
+    normalize_rect(RECT {
+        left,
+        top,
+        right: left + SIZE,
+        bottom: top + SIZE,
+    })
+}
+
+/// Separator between user-owned pins and live workspace switchers.
+pub(super) fn sidebar_rail_pinned_divider_rect(
+    rect: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+    scroll_offset: i32,
+) -> Option<RECT> {
+    let pinned = sidebar_pinned_count(tabbar);
+    let has_open_items = !tabbar.group_target_id.trim().is_empty()
+        || tabbar.auxiliary_items.len().saturating_sub(pinned) > 0;
+    if pinned == 0 || !has_open_items {
+        return None;
+    }
+
+    let last_pin = sidebar_rail_item_rect(rect, pinned - 1, scroll_offset);
+    let first_open = sidebar_rail_item_rect(rect, pinned, scroll_offset);
+    let width = 22.min(rect_width(&rect));
+    let left = rect.left + (rect_width(&rect) - width).max(0) / 2;
+    let top = (last_pin.bottom + first_open.top) / 2;
+    Some(normalize_rect(RECT {
+        left,
+        top,
+        right: left + width,
+        bottom: top + 1,
+    }))
 }
 
 /// The collapse/expand toggle cell, pinned to the bottom of an icon rail.

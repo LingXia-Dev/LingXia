@@ -85,10 +85,11 @@ pub(crate) use chrome::{
     phone_tab_switcher_hit, phone_tab_switcher_layout,
 };
 pub(crate) use chrome::{
-    SIDEBAR_TABBAR_POPUP_RADIUS, bottom_tabbar_rect, collapsed_sidebar_tabbar_click_command,
-    collapsed_sidebar_tabbar_popup, collapsed_sidebar_tabbar_popup_hit,
-    paint_collapsed_sidebar_tabbar_popup, paint_transparent_tabbar_overlay,
-    transparent_tabbar_overlay_rect,
+    SIDEBAR_RAIL_TOOLTIP_RADIUS, SIDEBAR_TABBAR_POPUP_RADIUS, bottom_tabbar_rect,
+    collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tabbar_popup,
+    collapsed_sidebar_tabbar_popup_hit, collapsed_sidebar_tooltip,
+    paint_collapsed_sidebar_tabbar_popup, paint_collapsed_sidebar_tooltip,
+    paint_transparent_tabbar_overlay, transparent_tabbar_overlay_rect,
 };
 
 pub(crate) use chrome::{workspace_corner_radii, workspace_silhouette_rect};

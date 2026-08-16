@@ -266,13 +266,18 @@ Shell and content use the same width breakpoints, but with different scopes:
 
 ### 3.2 Degradation matrix
 
-| Region | expanded | medium | compact |
-|---|---|---|---|
-| sidebar | full | icon rail | hidden |
-| main | main area | main area | full screen |
-| aside | up to 3 visible slots | up to 1 visible slot | full-screen overlay |
-| float | popover / overlay | popover / overlay | bottom sheet / popover |
-| standalone window | supported | supported | rejected |
+Window size class and host form are independent inputs. Resizing a desktop
+window into the compact class MUST NOT turn its navigation into a mobile
+projection. Mobile and phone Runner hosts use the device-compact column because
+of their host form, not merely because their width is below 600.
+
+| Region | expanded desktop | medium desktop | compact desktop | device compact |
+|---|---|---|---|---|
+| sidebar | full | icon rail | icon rail | hidden |
+| main | main area | main area | main area | full screen |
+| aside | up to 3 visible slots | up to 1 visible slot | full-screen overlay over main | full-screen overlay |
+| float | popover / overlay | popover / overlay | popover / overlay | bottom sheet / popover |
+| standalone window | supported | supported | supported | rejected |
 
 ### 3.3 Sizing and admission
 
@@ -365,6 +370,13 @@ crammed in the moment the window crosses 840.
 - `SurfaceId` is the only switcher identity. An lxapp appId, terminal session id,
   URL, or browser workspace tab id is provider metadata and MUST NOT be used as
   a substitute for the Surface id.
+- A collapsed desktop rail preserves the same switcher identities and order; it
+  never substitutes the active lxapp's mobile bottom tabbar. Every icon-only
+  switcher and footer action exposes its label as tooltip/accessibility text.
+- Hovering the current switcher replaces its icon with a **24 dp/pt** rounded
+  surface containing a close `x` when and only when that item is closable.
+  Clicking this overlay closes the item. Inactive and non-closable switcher
+  icons stay intact; their primary click continues to select the item.
 
 #### Uniform spacing
 
@@ -374,6 +386,9 @@ crammed in the moment the window crosses 840.
   4 dp/pt is measured on the visible background or hover hit-area outline and
   MUST NOT double-count row margins.
 - The icon rail keeps the same 4 dp/pt vertical rhythm.
+- When both Pins and live switchers exist, the collapsed rail centers a
+  **22 dp/pt** low-contrast divider in their existing gap. It adds no empty row
+  and disappears when either section is empty.
 - Larger text or accessibility font sizes grow row height only, never the gap.
 
 ### 4.3 lxapp tabs and the tabbar
@@ -563,8 +578,8 @@ Compact rail:
   expand control; actions
   MUST NOT overlap it or run off-window. Rail width MAY stay platform-specific
   for system-chrome clearance.
-- In compact shells sidebar actions do not render, but declarations still validate
-  and reappear if the same process returns to a wider form.
+- In device-compact projections sidebar actions do not render, but declarations
+  still validate and reappear if the same process returns to a desktop form.
 
 ### 4.6 Aside slots
 
@@ -625,10 +640,19 @@ The aside region is fixed at three slots, grouped by rendering engine:
 
 ---
 
-## 5. Compact projection
+## 5. Compact projections
+
+A compact desktop window remains a desktop shell: its icon rail stays visible,
+the main remains a distinct workspace, and an lxapp tabbar remains projected
+into the rail rather than returning to the bottom. A browser main likewise
+retains its top address toolbar. At narrow widths the address field flexes and
+secondary actions MAY collapse into overflow, but desktop browser chrome MUST
+NOT move to the bottom or paint inside the sidebar rail.
+
+The following rules apply to device-compact hosts (mobile and phone Runner):
 
 - Main is full screen; the active lxapp's tabbar returns to the bottom.
-- A compact browser main uses the same provider chrome on Windows and macOS:
+- A device-compact browser main uses the same provider chrome on Windows and macOS:
   an editable address row above an action row with page Back/Forward, Reload,
   user New Tab, browser-workspace tab switcher/count, and Dismiss when an
   lxapp main can be restored. The desktop top address bar and sidebar MUST NOT
@@ -943,7 +967,7 @@ As of 2026-08 (PR #202 follow-up design):
 | Shell persistence | Window frame, sidebar mode/width, group collapse, aside geometry, and pins landed; main-session lazy restore and the aside geometry-only policy still to be verified against §8 |
 | `E_SURFACE_CONFLICT` | Error path exists; ownership conflicts such as navigating to an appId already hosted by another live Surface still need full enforcement |
 | Admission | Arbitration module exists; the 45% clamp / slot-cap / overlay-fallback behavior of §3.3 not yet verified end to end |
-| Compact projection | Browser aside/self chrome, group isolation, and browser-owned back/close semantics aligned with §5 on mobile and Runner |
+| Compact projection | Desktop rail and top browser chrome retention landed on Windows/macOS; browser aside/self chrome, group isolation, and browser-owned back/close semantics aligned with §5 on mobile and Runner |
 | Frameless window + `controls:` + writer window controls | Not implemented |
 | Declared page floats; native floats | Parsed but rejected by the CLI pending runtime support |
 | Launch screen (splash, §7.4) | CLI generation and Android/iOS/Harmony runtime halves implemented; iOS device-verified, Android/Harmony pending; campaign download channel and Windows not implemented |

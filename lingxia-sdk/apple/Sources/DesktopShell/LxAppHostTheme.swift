@@ -111,9 +111,12 @@ enum LxAppHostTheme {
 @MainActor
 final class LxAppHostThemeLayerView: NSView {
     private let role: LxAppHostThemeRole
-    private let alpha: CGFloat
+    private let alpha: CGFloat?
 
-    init(role: LxAppHostThemeRole, alpha: CGFloat = 1) {
+    /// `alpha: nil` keeps the role color's own alpha, so a platform hairline
+    /// (`separatorColor` is a low-alpha tint) stays a hairline instead of being
+    /// forced up to a solid line.
+    init(role: LxAppHostThemeRole, alpha: CGFloat? = 1) {
         self.role = role
         self.alpha = alpha
         super.init(frame: .zero)
@@ -137,10 +140,8 @@ final class LxAppHostThemeLayerView: NSView {
 
     private func updateThemeColor() {
         effectiveAppearance.performAsCurrentDrawingAppearance {
-            layer?.backgroundColor = LxAppHostTheme.resolved(
-                role,
-                for: effectiveAppearance
-            ).withAlphaComponent(alpha).cgColor
+            let color = LxAppHostTheme.resolved(role, for: effectiveAppearance)
+            layer?.backgroundColor = alpha.map(color.withAlphaComponent)?.cgColor ?? color.cgColor
         }
     }
 }

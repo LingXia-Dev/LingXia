@@ -188,7 +188,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var cardTrailingConstraint: NSLayoutConstraint?
     private var cardBottomConstraint: NSLayoutConstraint?
     private var cardTopConstraint: NSLayoutConstraint?
-    private var workspaceBottomConstraint: NSLayoutConstraint?
     /// Optional full-width strip above all shell content (sidebar + card). Used by
     /// the runner to mount a device-selector toolbar like the iPhone simulator's;
     /// height 0 by default, so the shipping desktop product is unaffected.
@@ -208,12 +207,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         case expanded
     }
     private var surfaceSizeClass: ShellSizeClass = .expanded
+    /// True only for a phone-framed Runner host. Desktop window resizing never
+    /// opts into the mobile bottom-browser projection.
+    private var deviceCompactProjectionEnabled = false
     private var isApplyingSurfaceSizeClass = false
     private var mediumSidebarExpandedByUser = false
-    private var compactCoveringAsideActive = false
     private var panelFramePreservationGeneration: UInt = 0
-    private var compactTabBar: LingXiaTabBar?
-    private var compactTabBarHeightConstraint: NSLayoutConstraint?
     private let sidebarRevealButton = NSButton()
     private var currentViewController: macOSLxAppViewController?
     private var viewControllers: [String: macOSLxAppViewController] = [:]
@@ -511,33 +510,22 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// and medium preserve the icon rail so workspace switching never becomes
     /// unreachable; medium still honors an explicit user reveal until the next
     /// size-class crossing.
-    func applySurfaceLayoutProjection(_ rawValue: String, coveringAside: Bool) {
+    func applySurfaceLayoutProjection(_ rawValue: String) {
         guard let next = ShellSizeClass(rawValue: rawValue) else { return }
-        browserCoordinator.setCompactProjection(next == .compact)
-        let sizeClassChanged = next != surfaceSizeClass
-        let coveringAsideChanged = coveringAside != compactCoveringAsideActive
-        guard sizeClassChanged || coveringAsideChanged else {
-            refreshCompactTabBar()
-            return
-        }
-        if sizeClassChanged {
-            mediumSidebarExpandedByUser = false
-        }
+        browserCoordinator.setCompactProjection(
+            deviceCompactProjectionEnabled && next == .compact
+        )
+        guard next != surfaceSizeClass else { return }
+        mediumSidebarExpandedByUser = false
         surfaceSizeClass = next
-        compactCoveringAsideActive = coveringAside
         isApplyingSurfaceSizeClass = true
-        if sizeClassChanged {
-            applyEffectiveSidebarProjection()
-        }
-        refreshCompactTabBar()
+        applyEffectiveSidebarProjection()
         isApplyingSurfaceSizeClass = false
 
         // Sidebar width participates in physical aside admission. Re-report
         // once after the adaptive projection changes it; the repeated plan has
         // the same size class and therefore terminates here without recursion.
-        if sizeClassChanged {
-            reportSurfaceWidth()
-        }
+        reportSurfaceWidth()
     }
 
     // MARK: - Sidebar Interface Setup
@@ -694,7 +682,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         let cardTop = shadowWrapper.topAnchor.constraint(equalTo: topAccessoryContainer.bottomAnchor, constant: p)
         cardTopConstraint = cardTop
         let workspaceBottom = workspaceRoot.bottomAnchor.constraint(equalTo: right.bottomAnchor)
-        workspaceBottomConstraint = workspaceBottom
 
         // Full-width accessory strip above everything (height 0 unless a host sets
         // one). Added last so it sits on top in z-order.
@@ -839,7 +826,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 if let activeAppId = self.tabManager.activeTab?.appId, activeAppId == appId {
                     self.sidebarView?.setActiveHighlight(appId: appId)
                 }
-                self.refreshCompactTabBar()
                 self.reconcileSidebarAutoHide()
             }
         }
@@ -909,17 +895,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             tabManager.selectTab(appId: providerAppId)
         }
 
-        if let tabItem = getTabBarItem(providerAppId, Int32(itemIndex)) {
-            let path = tabItem.page_path.toString()
-            if !path.isEmpty {
-                getViewController(for: providerAppId)?.navigate(
-                    appId: providerAppId,
-                    to: path,
-                    with: .none
-                )
-            }
-        }
-
+        // The runtime event owns page creation and committed navigation. Its
+        // Apple callback attaches the target WebView; navigating optimistically
+        // here would deliver the same switch again through the controller event.
         sidebarView?.setActiveHighlight(appId: appId, pageIndex: itemIndex)
         let _ = onLxappEvent(providerAppId, LxAppEvent.tabBarClick, String(itemIndex))
     }
@@ -983,64 +961,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             animated: false
         )
         refreshSidebarVisibilityUI()
-    }
-
-    private func refreshCompactTabBar() {
-        guard surfaceSizeClass == .compact,
-              !compactCoveringAsideActive,
-              let appId = currentViewController?.appId,
-              let config = getTabBar(appId),
-              config.items_count > 0,
-              config.is_visible,
-              let contentPanelView else {
-            hideCompactTabBar()
-            return
-        }
-
-        let tabBar: LingXiaTabBar
-        if let existing = compactTabBar {
-            tabBar = existing
-        } else {
-            let created = LingXiaTabBar()
-            created.translatesAutoresizingMaskIntoConstraints = false
-            created.setOnTabSelectedListener { [weak self] index, _ in
-                guard let self, let activeAppId = self.currentViewController?.appId else { return }
-                self.handleSidebarPageSelection(appId: activeAppId, itemIndex: index)
-            }
-            contentPanelView.addSubview(
-                created,
-                positioned: .above,
-                relativeTo: workspaceManager.rootView
-            )
-            let height = created.heightAnchor.constraint(equalToConstant: 0)
-            compactTabBarHeightConstraint = height
-            NSLayoutConstraint.activate([
-                created.leadingAnchor.constraint(equalTo: contentPanelView.leadingAnchor),
-                created.trailingAnchor.constraint(equalTo: contentPanelView.trailingAnchor),
-                created.bottomAnchor.constraint(equalTo: contentPanelView.bottomAnchor),
-                height,
-            ])
-            compactTabBar = created
-            tabBar = created
-        }
-
-        tabBar.initialize(config: config, appId: appId)
-        tabBar.setSelectedIndex(Int(config.selected_index), notifyListener: false)
-        let height = config.dimensionPoints
-        compactTabBarHeightConstraint?.constant = height
-        workspaceBottomConstraint?.constant = TabBarHelper.isTransparent(config.background_color)
-            ? 0
-            : -height
-        tabBar.isHidden = false
-        tabBar.alphaValue = 1
-        contentPanelView.layoutSubtreeIfNeeded()
-    }
-
-    private func hideCompactTabBar() {
-        compactTabBar?.isHidden = true
-        compactTabBar?.alphaValue = 0
-        compactTabBarHeightConstraint?.constant = 0
-        workspaceBottomConstraint?.constant = 0
     }
 
     private func hideSidebar() {
@@ -1408,7 +1328,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             browserCoordinator.deactivate()
             detachManagedMain()
             attachLxAppToMain(viewController)
-            refreshCompactTabBar()
         case .browser:
             // The browser view is attached by BrowserTabCoordinator.showBrowserView;
             // here we only detach the lxapp and drop its nav toolbar so the
@@ -1418,7 +1337,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             detachManagedMain()
             navigationToolbar?.forceHide(true)
             navigationToolbar?.isHidden = true
-            hideCompactTabBar()
         case .native(let view):
             browserCoordinator.deactivate()
             detachCurrentLxApp()
@@ -1434,7 +1352,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 view.trailingAnchor.constraint(equalTo: workspaceManager.contentContainer.trailingAnchor),
                 view.bottomAnchor.constraint(equalTo: workspaceManager.contentContainer.bottomAnchor),
             ])
-            hideCompactTabBar()
         }
     }
 
@@ -1791,6 +1708,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             topAccessoryHeightConstraint?.constant = 0
         }
         window?.contentView?.layoutSubtreeIfNeeded()
+    }
+
+    func setDeviceCompactProjectionEnabled(_ enabled: Bool) {
+        guard deviceCompactProjectionEnabled != enabled else { return }
+        deviceCompactProjectionEnabled = enabled
+        browserCoordinator.setCompactProjection(enabled && surfaceSizeClass == .compact)
     }
 
     func setSidebarHostActionHandler(_ handler: @escaping (UInt64, String) -> Void) {

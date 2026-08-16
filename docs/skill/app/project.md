@@ -443,7 +443,13 @@ One lxapp has one live role in a window. Opening it under the other role must mo
 
 - **Wide**: full sidebar (pins, main tabs, activators) with up to three docked asides beside the main.
 - **Medium**: the sidebar collapses to an icon rail and at most one aside slot is admitted; an explicitly opened slot that cannot preserve the main minimum overlays the content pane.
-- **Narrow** (and mobile): the sidebar disappears, `main` goes full screen, and asides overlay the main full screen.
+- **Narrow desktop**: the icon rail remains and `main` keeps its desktop
+  workspace; asides overlay the main when they cannot be admitted beside it.
+  Browser chrome keeps its top address toolbar; it may collapse secondary
+  actions, but never moves to the bottom or into the rail. A narrow desktop does
+  not restore an lxapp's mobile bottom tabbar.
+- **Mobile / phone Runner**: the sidebar disappears, `main` goes full screen,
+  and asides overlay the main full screen.
 
 Asides group into per-engine slots (lxapp / browser / native), each with its own tab strip; switching tabs hides and shows content, and only an explicit close destroys it.
 When admission reprojects an aside as an overlay, it covers the main content pane inside the same host window; it is not a second workspace window and never enters the main switcher.
@@ -474,6 +480,12 @@ workspace may be closed or restarted through its provider-backed sidebar menu
 but cannot be renamed. Closing an active non-root main selects another
 remaining main, so the product Host never enters a synthetic zero-main or
 empty-state mode.
+
+In a collapsed desktop rail, hovering the current switcher replaces its icon
+with a rounded, background-backed close `x` only when that main can be closed.
+Inactive switchers keep their icons and click to select; icon-only switchers and
+footer actions expose their labels through tooltip and accessibility text. A
+subtle divider separates Pins from live switchers when both sections exist.
 
 When `homeAppId` is configured, that lxapp remains the trusted control app even
 when the visible desktop main is a URL or native surface. Its Logic worker still

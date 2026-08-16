@@ -318,13 +318,20 @@ struct TransparentTabbarOverlay {
 }
 
 #[cfg(feature = "shell-chrome")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SidebarPopupContent {
+    Tabbar(Box<crate::shell::WindowsShellTabBarLayout>),
+    Tooltip(String),
+}
+
+#[cfg(feature = "shell-chrome")]
 #[derive(Debug, Clone)]
 struct SidebarTabbarPopup {
     window: isize,
     owner: isize,
     anchor: RECT,
     rect: RECT,
-    tabbar: crate::shell::WindowsShellTabBarLayout,
+    content: SidebarPopupContent,
 }
 
 #[derive(Debug, Clone)]
@@ -3345,30 +3352,44 @@ fn sync_sidebar_tabbar_popup(hwnd: HWND, point: (i32, i32)) {
         }
     }
     let layout = current_window_layout(&webtag_key);
-    let Some(popup) = crate::shell::collapsed_sidebar_tabbar_popup(client, &layout, point) else {
+    let (popup_bounds, anchor_bounds, content) = if let Some(popup) =
+        crate::shell::collapsed_sidebar_tabbar_popup(client, &layout, point)
+    {
+        (
+            popup.popup,
+            popup.anchor,
+            SidebarPopupContent::Tabbar(Box::new(popup.tabbar)),
+        )
+    } else if let Some(tooltip) = crate::shell::collapsed_sidebar_tooltip(client, &layout, point) {
+        (
+            tooltip.popup,
+            tooltip.anchor,
+            SidebarPopupContent::Tooltip(tooltip.text),
+        )
+    } else {
         maybe_destroy_sidebar_tabbar_popup(hwnd);
         return;
     };
 
     let mut origin = POINT {
-        x: popup.popup.left,
-        y: popup.popup.top,
+        x: popup_bounds.left,
+        y: popup_bounds.top,
     };
     let mut anchor_left_top = POINT {
-        x: popup.anchor.left,
-        y: popup.anchor.top,
+        x: anchor_bounds.left,
+        y: anchor_bounds.top,
     };
     let mut anchor_right_bottom = POINT {
-        x: popup.anchor.right,
-        y: popup.anchor.bottom,
+        x: anchor_bounds.right,
+        y: anchor_bounds.bottom,
     };
     unsafe {
         let _ = windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut origin);
         let _ = windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut anchor_left_top);
         let _ = windows::Win32::Graphics::Gdi::ClientToScreen(hwnd, &mut anchor_right_bottom);
     }
-    let width = popup.popup.right - popup.popup.left;
-    let height = popup.popup.bottom - popup.popup.top;
+    let width = popup_bounds.right - popup_bounds.left;
+    let height = popup_bounds.bottom - popup_bounds.top;
     let popup_rect = RECT {
         left: origin.x,
         top: origin.y,
@@ -3387,7 +3408,7 @@ fn sync_sidebar_tabbar_popup(hwnd: HWND, point: (i32, i32)) {
         && is_window_handle_valid(existing.window)
         && existing.rect == popup_rect
         && existing.anchor == anchor
-        && existing.tabbar == popup.tabbar
+        && existing.content == content
     {
         return;
     }
@@ -3406,7 +3427,7 @@ fn sync_sidebar_tabbar_popup(hwnd: HWND, point: (i32, i32)) {
                 owner: hwnd_handle(hwnd),
                 anchor,
                 rect: popup_rect,
-                tabbar: popup.tabbar.clone(),
+                content: content.clone(),
             },
         );
     }
@@ -3428,19 +3449,14 @@ fn sync_sidebar_tabbar_popup(hwnd: HWND, point: (i32, i32)) {
             None,
         );
     }
-    upload_sidebar_tabbar_popup(popup_window, &popup.tabbar, width, height);
+    upload_sidebar_tabbar_popup(popup_window, &content, width, height);
 }
 
 /// Uploads the collapsed-rail tabbar popup as a per-pixel-alpha layered
 /// window. The rounded shape comes from an anti-aliased alpha mask -
 /// `SetWindowRgn`'s aliased clip leaves stair-stepped corner edges.
 #[cfg(feature = "shell-chrome")]
-fn upload_sidebar_tabbar_popup(
-    hwnd: HWND,
-    tabbar: &crate::shell::WindowsShellTabBarLayout,
-    width: i32,
-    height: i32,
-) {
+fn upload_sidebar_tabbar_popup(hwnd: HWND, content: &SidebarPopupContent, width: i32, height: i32) {
     if width <= 0 || height <= 0 {
         return;
     }
@@ -3480,14 +3496,24 @@ fn upload_sidebar_tabbar_popup(
             return;
         }
         let old_bitmap = SelectObject(dc, HGDIOBJ(bitmap.0));
-        crate::shell::paint_collapsed_sidebar_tabbar_popup(dc, tabbar, width, height);
+        match content {
+            SidebarPopupContent::Tabbar(tabbar) => {
+                crate::shell::paint_collapsed_sidebar_tabbar_popup(dc, tabbar, width, height);
+            }
+            SidebarPopupContent::Tooltip(text) => {
+                crate::shell::paint_collapsed_sidebar_tooltip(dc, text, width, height);
+            }
+        }
         let pixel_count = (width * height) as usize;
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), pixel_count);
         apply_rounded_alpha_mask(
             pixels,
             width,
             height,
-            crate::shell::SIDEBAR_TABBAR_POPUP_RADIUS,
+            match content {
+                SidebarPopupContent::Tabbar(_) => crate::shell::SIDEBAR_TABBAR_POPUP_RADIUS,
+                SidebarPopupContent::Tooltip(_) => crate::shell::SIDEBAR_RAIL_TOOLTIP_RADIUS,
+            },
         );
         let size = SIZE {
             cx: width,
@@ -4436,22 +4462,24 @@ unsafe extern "system" fn sidebar_tabbar_popup_proc(
         }
         WindowsAndMessaging::WM_LBUTTONUP => {
             if let Some(popup) = sidebar_tabbar_popup_for_window(hwnd) {
-                let point = lparam_client_point(lparam);
-                if let Some(index) =
-                    crate::shell::collapsed_sidebar_tabbar_popup_hit(&popup.tabbar, point)
-                    && let Some(webtag_key) =
-                        active_webtag_key_for_window(hwnd_from_handle(popup.owner))
-                {
-                    let command = crate::shell::collapsed_sidebar_tabbar_click_command(
-                        &popup.tabbar.group_id,
-                        index,
-                    );
-                    invoke_chrome_command(
-                        &webtag_key,
-                        hwnd_from_handle(popup.owner),
-                        (0, 0),
-                        command,
-                    );
+                if let SidebarPopupContent::Tabbar(tabbar) = &popup.content {
+                    let point = lparam_client_point(lparam);
+                    if let Some(index) =
+                        crate::shell::collapsed_sidebar_tabbar_popup_hit(tabbar, point)
+                        && let Some(webtag_key) =
+                            active_webtag_key_for_window(hwnd_from_handle(popup.owner))
+                    {
+                        let command = crate::shell::collapsed_sidebar_tabbar_click_command(
+                            &tabbar.group_id,
+                            index,
+                        );
+                        invoke_chrome_command(
+                            &webtag_key,
+                            hwnd_from_handle(popup.owner),
+                            (0, 0),
+                            command,
+                        );
+                    }
                 }
                 destroy_sidebar_tabbar_popup(hwnd_from_handle(popup.owner));
             }
@@ -4485,7 +4513,7 @@ fn paint_sidebar_tabbar_popup(hwnd: HWND) {
     }
     let width = popup.rect.right - popup.rect.left;
     let height = popup.rect.bottom - popup.rect.top;
-    upload_sidebar_tabbar_popup(hwnd, &popup.tabbar, width, height);
+    upload_sidebar_tabbar_popup(hwnd, &popup.content, width, height);
 }
 
 #[cfg(feature = "shell-chrome")]

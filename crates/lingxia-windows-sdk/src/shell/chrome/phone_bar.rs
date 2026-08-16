@@ -1,6 +1,6 @@
-//! Compact browser chrome: the bottom browser bar and tab-switcher sheet used
-//! by both ordinary desktop windows and device-framed browser surfaces. The
-//! historical `phone_*` identifiers remain internal implementation names.
+//! Device-compact browser chrome: the bottom browser bar and tab-switcher sheet
+//! used by phone-framed browser surfaces. The historical `phone_*` identifiers
+//! remain internal implementation names.
 
 use super::*;
 
@@ -19,7 +19,7 @@ const PHONE_ADDRESS_HEIGHT: i32 = 34;
 /// surface graph owns breakpoints and hysteresis; window chrome only projects
 /// that resolved state.
 pub(super) fn phone_browser_bar_active(_client: RECT, layout: &WindowsShellWindowLayout) -> bool {
-    layout.compact_browser_chrome && address_bar_visible(layout)
+    layout.compact_browser_chrome && layout.suppress_window_controls && address_bar_visible(layout)
 }
 
 pub(super) fn phone_bar_is_aside(layout: &WindowsShellWindowLayout) -> bool {
@@ -121,13 +121,14 @@ pub(super) fn draw_phone_browser_bar(
     hdc: HDC,
     state: &WindowsChromeState,
     layout: &WindowsShellWindowLayout,
+    container: RECT,
 ) {
     let Some(address_bar) = layout.address_bar.as_ref() else {
         return;
     };
     let pal = shell_palette();
     let cursor = state.cursor;
-    let rects = phone_browser_bar_rects(state.client, address_bar.aside, address_bar.dismissible);
+    let rects = phone_browser_bar_rects(container, address_bar.aside, address_bar.dismissible);
 
     // The device screen owns the exterior silhouette. Keeping this strip
     // square avoids carving two artificial notches into the WebView seam.
