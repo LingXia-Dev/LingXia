@@ -125,6 +125,15 @@ pub enum WindowChrome {
     Full = 1,
 }
 
+impl WindowChrome {
+    /// Logical height of the drag strip `Full` reserves across the top. One
+    /// number for every consumer: the runtime publishes it to the page as the
+    /// page-chrome `topInset`, and each platform reserves the same band —
+    /// macOS lays out a strip view, Windows hit-tests it as caption. Logical,
+    /// so a Windows hit test must scale it by the window's DPI.
+    pub const FULL_DRAG_STRIP_HEIGHT: f64 = 28.0;
+}
+
 #[derive(Debug, Clone)]
 pub struct SurfaceRequest {
     pub id: String,

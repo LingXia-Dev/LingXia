@@ -49,7 +49,8 @@ header {
 ```
 
 `chrome` defaults to `'system'`, which is the standard title bar. Ask
-`lx.supports({ surface: 'window', chrome: 'full' })` before offering it.
+`lx.supports({ capability: 'surface', value: 'window', chrome: 'full' })`
+before offering it.
 
 ## Subscribe in Logic
 

@@ -2682,10 +2682,11 @@ fn validate_surface_interaction(
 
 pub(crate) type SurfaceRecords = HashMap<String, SurfaceRecord>;
 
-/// Matches `LxAppSurface.fullChromeDragStripHeight` on macOS and the Windows
-/// caption height: one strip height, published to the page as a chrome inset.
+/// One strip height for every platform, published to the page as a chrome
+/// inset. Mirrored by `LxAppSurface.fullChromeDragStripHeight` on macOS, which
+/// cannot read a Rust constant.
 pub(crate) fn full_chrome_drag_strip_height() -> f64 {
-    28.0
+    WindowChrome::FULL_DRAG_STRIP_HEIGHT
 }
 
 /// Map a core-arbitrated role (+ resolved edge) back to the platform present
