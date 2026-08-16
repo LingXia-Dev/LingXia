@@ -3,7 +3,7 @@
 //! Only the selected capability surface is compiled, and calls report the
 //! target limitation explicitly.
 
-#[cfg(any(feature = "process", feature = "window"))]
+#[cfg(any(feature = "input", feature = "process", feature = "window"))]
 use crate::error::{Error, Result};
 #[cfg(any(
     feature = "ax",
@@ -29,7 +29,7 @@ use crate::model::{LaunchResult, QuitTarget};
 #[cfg(feature = "input")]
 use crate::model::{Modifier, MouseButton};
 
-#[cfg(any(feature = "process", feature = "window"))]
+#[cfg(any(feature = "input", feature = "process", feature = "window"))]
 fn unsupported<T>() -> Result<T> {
     Err(Error::Unsupported(format!(
         "desktop device I/O is not implemented for {}",
