@@ -655,11 +655,6 @@ pub mod capability {
         build::notifications() && super::notifications_enabled()
     }
 
-    /// The terminal product surface and `lx.terminal`.
-    pub fn terminal() -> bool {
-        build::terminal() && super::terminal_enabled()
-    }
-
     /// Driving this product's own windows and its command line. `computerUse`
     /// already contains it, so it answers for both — the same rule the local
     /// control surface enforces.
@@ -682,12 +677,6 @@ pub mod capability {
         super::capabilities_config()
             .map(|capabilities| capabilities.browser_use)
             .unwrap_or(false)
-    }
-
-    /// The host half of process access. The lxapp must also be the home app and
-    /// declare the `process` privilege, which only it can answer.
-    pub fn process() -> bool {
-        super::process_enabled()
     }
 
     /// The in-app browser's HTTP proxy. `capabilities.proxy` declares it and
