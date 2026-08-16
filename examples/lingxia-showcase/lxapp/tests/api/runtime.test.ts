@@ -141,7 +141,7 @@ contract({
           { capability: 'surface', value: 'tab' },
           { capability: 'notifications' }, { capability: 'browser' },
           { capability: 'proxy' }, { capability: 'selfUpdate' },
-          { capability: 'nativeFileReview' }, { capability: 'process' },
+          { capability: 'process' },
           { capability: 'appUse' }, { capability: 'computerUse' },
           { capability: 'browserUse' },
         ].every((query) => typeof lx.supports(query) === 'boolean'),
