@@ -1,3 +1,4 @@
+import { USER_DISMISSED_CODE } from '../LxAppDismissal';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../../app/LxLog';
 import { i18n } from '@kit.LocalizationKit';
@@ -211,7 +212,7 @@ export struct DatePickerManager {
         localCallback(false, JSON.stringify(result));
         LxAppDatePicker.localCallbacks.delete(this.callbackId);
       } else {
-        onCallback(this.callbackId, false, '2000');
+        onCallback(this.callbackId, false, USER_DISMISSED_CODE);
       }
     } catch (err) {
       LxLog.e(TAG, `onCancel callback failed: ${err}`);

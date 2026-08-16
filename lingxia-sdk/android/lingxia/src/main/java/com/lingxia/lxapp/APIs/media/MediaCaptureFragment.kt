@@ -1,5 +1,7 @@
 package com.lingxia.lxapp.APIs.media
 
+import com.lingxia.lxapp.LxAppDismissal
+
 import android.Manifest
 import android.content.Context
 import android.animation.ValueAnimator
@@ -797,7 +799,7 @@ internal class MediaCaptureFragment : Fragment() {
         timerText?.text = "00:00"
         finishButton?.visibility = View.GONE
         updateFinishButtonEnabled(false)
-        NativeApi.onCallback(callbackId, false, "2000")
+        NativeApi.onCallback(callbackId, false, LxAppDismissal.USER_DISMISSED)
         NativeApi.onCallback(
             callbackId,
             true,

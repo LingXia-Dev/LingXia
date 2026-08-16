@@ -1,3 +1,4 @@
+import { USER_DISMISSED_CODE } from '../LxAppDismissal';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../../app/LxLog';
 import { onCallback } from 'liblingxia.so';
@@ -236,7 +237,7 @@ export struct PickerManager {
         localCallback(false, JSON.stringify(result));
         LxAppPicker.localCallbacks.delete(this.callbackId);
       } else {
-        onCallback(this.callbackId, false, '2000');
+        onCallback(this.callbackId, false, USER_DISMISSED_CODE);
       }
     } catch (err) {
       LxLog.e(TAG, `onCancel callback failed: ${err}`);

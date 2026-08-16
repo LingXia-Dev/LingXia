@@ -5,6 +5,15 @@
 
 use rong::{JSContext, JSObject, JSResult};
 
+/// The business code every platform reports when the user dismissed the UI
+/// rather than when anything failed. It is the whole contract behind this
+/// module: an adapter that sends it for a real failure turns a crash into
+/// "the user said no", silently and in the direction that keeps going. Kept
+/// named on both sides of the boundary so the two uses stay greppable — see
+/// `LxAppDismissal.userDismissedCode` (Apple), `LxAppDismissal.USER_DISMISSED`
+/// (Android), and `USER_DISMISSED_CODE` (Harmony).
+pub(crate) const USER_DISMISSED: u32 = 2000;
+
 /// `{ canceled: true }` — the user dismissed the operation.
 pub(crate) fn canceled(ctx: &JSContext) -> JSResult<JSObject> {
     let result = JSObject::new(ctx);

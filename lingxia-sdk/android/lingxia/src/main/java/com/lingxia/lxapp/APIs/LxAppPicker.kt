@@ -1,5 +1,7 @@
 package com.lingxia.lxapp.APIs
 
+import com.lingxia.lxapp.LxAppDismissal
+
 import android.app.Activity
 import android.content.Context
 import android.graphics.Color
@@ -490,10 +492,10 @@ internal object LxAppPicker {
     private fun sendPickerResultCancel(callbackId: Long) {
         // Check for local callback first (native components)
         localCallbacks[callbackId]?.let { callback ->
-            callback(false, "2000")
+            callback(false, LxAppDismissal.USER_DISMISSED)
             return
         }
-        NativeApi.onCallback(callbackId, false, "2000")
+        NativeApi.onCallback(callbackId, false, LxAppDismissal.USER_DISMISSED)
     }
 
     private fun sendPickerResultConfirm(callbackId: Long) {

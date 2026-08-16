@@ -1,5 +1,7 @@
 package com.lingxia.lxapp.APIs
 
+import com.lingxia.lxapp.LxAppDismissal
+
 import android.app.Activity
 import android.content.Context
 import android.graphics.Color
@@ -236,7 +238,7 @@ internal object LxAppActionSheet {
     }
 
     private fun sendActionSheetCancel(callbackId: Long) {
-        NativeApi.onCallback(callbackId, false, "2000")
+        NativeApi.onCallback(callbackId, false, LxAppDismissal.USER_DISMISSED)
     }
 
     private fun sendActionSheetError(callbackId: Long, code: Int) {

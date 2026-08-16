@@ -23,7 +23,7 @@ struct JSSharePage {
 #[derive(IntoJSObject)]
 #[ts_skip]
 struct JSShareResult {
-    completed: Option<bool>,
+    outcome: String,
 }
 
 async fn share(ctx: JSContext, options: JSValue) -> JSResult<JSShareResult> {
@@ -306,8 +306,16 @@ fn is_platform_file_reference(path: &str) -> bool {
 
 impl From<PlatformShareResult> for JSShareResult {
     fn from(value: PlatformShareResult) -> Self {
+        // The platform layer is already three-state; say so at the boundary
+        // instead of collapsing "we cannot tell" into a missing flag that
+        // every call site reads as "not shared".
         Self {
-            completed: value.completed,
+            outcome: match value.completed {
+                Some(true) => "completed",
+                Some(false) => "dismissed",
+                None => "unknown",
+            }
+            .to_string(),
         }
     }
 }

@@ -1363,10 +1363,12 @@ true
 
         type ShareResult = r###"{
     /**
-     * Best-effort completion flag. Some platforms can only confirm that the
-     * system share UI was opened or closed.
+     * What the share sheet reported. Not part of the `canceled` family: some
+     * platforms only observe that the system UI opened and closed, so the
+     * unknown case is stated rather than hidden in a missing boolean that
+     * every call site would read as "not shared".
      */
-    completed?: boolean;
+    outcome: 'completed' | 'dismissed' | 'unknown';
 }"###;
 
         type ShareTextBaseOptions = r###"ShareTitleOptions & {

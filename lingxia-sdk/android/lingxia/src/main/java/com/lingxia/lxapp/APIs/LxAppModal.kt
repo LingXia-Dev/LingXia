@@ -1,5 +1,7 @@
 package com.lingxia.lxapp.APIs
 
+import com.lingxia.lxapp.LxAppDismissal
+
 import android.app.Activity
 import android.content.Context
 import android.graphics.Color
@@ -247,7 +249,7 @@ internal object LxAppModal {
                     isPrimary = false,
                     onClick = {
                         // Call callback with cancel result (user cancelled = error 2000)
-                        NativeApi.onCallback(callbackId, false, "2000")
+                        NativeApi.onCallback(callbackId, false, LxAppDismissal.USER_DISMISSED)
                         hideModalInternal()
                     }
                 )

@@ -1,5 +1,7 @@
 package com.lingxia.lxapp.APIs
 
+import com.lingxia.lxapp.LxAppDismissal
+
 import android.app.Activity
 import android.content.Context
 import android.graphics.Color
@@ -593,10 +595,10 @@ internal object LxAppDatePicker {
     private fun sendPickerResultCancel(callbackId: Long) {
         val localCallback = LxAppPicker.localCallbacks[callbackId]
         if (localCallback != null) {
-            localCallback(false, "2000")
+            localCallback(false, LxAppDismissal.USER_DISMISSED)
             return
         }
-        com.lingxia.app.NativeApi.onCallback(callbackId, false, "2000")
+        com.lingxia.app.NativeApi.onCallback(callbackId, false, LxAppDismissal.USER_DISMISSED)
     }
 
     private fun sendPickerResultConfirm(callbackId: Long) {

@@ -1,3 +1,5 @@
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+use crate::dismissal::USER_DISMISSED;
 use crate::dismissal::{canceled, completed};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::i18n::js_error_from_platform_error;
@@ -125,7 +127,7 @@ async fn present_modal_native(
                 .map_err(|e| js_internal_error(format!("Modal callback invalid payload: {}", e)))?;
             Ok(result.confirm)
         }
-        Err(PlatformError::BusinessError(2000)) => Ok(false),
+        Err(PlatformError::BusinessError(USER_DISMISSED)) => Ok(false),
         Err(e) => Err(js_error_from_platform_error(&e)),
     }
 }

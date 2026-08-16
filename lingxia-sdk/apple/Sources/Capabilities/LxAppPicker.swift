@@ -100,10 +100,10 @@ class LxAppPicker {
     internal static func sendPickerResultCancel(callback_id: UInt64) {
         Task { @MainActor in
             if let localCallback = localCallbacks[callback_id] {
-                localCallback(false, "2000")
+                localCallback(false, LxAppDismissal.userDismissedCode)
                 return
             }
-            _ = onCallback(callback_id, false, "2000")
+            _ = onCallback(callback_id, false, LxAppDismissal.userDismissedCode)
         }
     }
 

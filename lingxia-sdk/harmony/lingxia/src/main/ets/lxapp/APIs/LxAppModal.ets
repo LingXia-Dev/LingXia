@@ -1,3 +1,4 @@
+import { USER_DISMISSED_CODE } from '../LxAppDismissal';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { onCallback } from 'liblingxia.so';
 import { LxAppContainer } from '../LxAppContainer';
@@ -255,7 +256,7 @@ export struct ModalManager {
     hilog.info(DOMAIN, TAG, 'Modal cancelled');
 
     // Call callback with cancel result (user cancelled = error 2000)
-    onCallback(this.callbackId, false, '2000');
+    onCallback(this.callbackId, false, USER_DISMISSED_CODE);
 
     this.hideModal();
   }

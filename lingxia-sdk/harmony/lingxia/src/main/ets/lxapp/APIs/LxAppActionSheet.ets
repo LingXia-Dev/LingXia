@@ -1,3 +1,4 @@
+import { USER_DISMISSED_CODE } from '../LxAppDismissal';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../../app/LxLog';
 import { onCallback } from 'liblingxia.so';
@@ -188,7 +189,7 @@ export struct ActionSheetManager {
 
   private handleCancel(): void {
     // User cancelled = error 2000
-    onCallback(this.callbackId, false, '2000');
+    onCallback(this.callbackId, false, USER_DISMISSED_CODE);
 
     this.hideActionSheet();
   }
