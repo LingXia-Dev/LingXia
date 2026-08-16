@@ -2310,13 +2310,13 @@ declare global {
     readonly app: HostAppApi;
     /**
      * Whether this host exposes a capability to this Logic context, right now.
-     * Synchronous, because the callers are render paths and menu construction. The
-     * answer is live and may be stale by the time you act on it — it is an
-     * affordance for deciding what to render, not a replacement for handling a
-     * rejection. `{ capability: 'surface', value: 'aside' }` in particular changes
-     * when a desktop window crosses the compact breakpoint; pair it with
-     * `lx.onSurfaceContext` instead of polling. A focused Logic context returns
-     * false for APIs it does not expose.
+     * Synchronous, because it is meant to be called from render paths. The answer
+     * is live and may be stale by the time you act on it — it is an affordance for
+     * deciding what to render, not a replacement for handling a rejection.
+     * `{ capability: 'surface', value: 'aside' }` in particular changes when a
+     * desktop window crosses the compact breakpoint; pair it with
+     * `lx.onSurfaceContext` instead of polling. The answer is per runtime context:
+     * a context that does not expose an API reports false for it.
      */
     supports(query: LxCapabilityQuery): boolean;
     vibrateShort(): boolean;

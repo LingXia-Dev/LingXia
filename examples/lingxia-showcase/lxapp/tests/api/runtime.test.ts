@@ -128,6 +128,9 @@ contract({
         rejectedMissingSurfaceValue: rejects({ capability: 'surface' }),
         rejectedFlagValue: rejects({ capability: 'terminal', value: 'window' }),
         rejectedExtraField: rejects({ capability: 'browser', extra: true }),
+        // Untyped callers can pass anything; a non-object has to reject the
+        // same way a malformed one does, not through argument conversion.
+        rejectedNonObject: ['surface.window', null, 42, undefined].every(rejects),
         // Placements every host can realize.
         main: lx.supports({ capability: 'surface', value: 'main' }),
         float: lx.supports({ capability: 'surface', value: 'float' }),
@@ -146,6 +149,7 @@ contract({
     terminalAgrees: boolean;
     autostartAgrees: boolean;
     rejectedUnknown: boolean;
+    rejectedNonObject: boolean;
     rejectedMissingSurfaceValue: boolean;
     rejectedFlagValue: boolean;
     rejectedExtraField: boolean;
@@ -157,6 +161,7 @@ contract({
   expect(result.terminalAgrees).toBeTruthy();
   expect(result.autostartAgrees).toBeTruthy();
   expect(result.rejectedUnknown).toBeTruthy();
+  expect(result.rejectedNonObject).toBeTruthy();
   expect(result.rejectedMissingSurfaceValue).toBeTruthy();
   expect(result.rejectedFlagValue).toBeTruthy();
   expect(result.rejectedExtraField).toBeTruthy();

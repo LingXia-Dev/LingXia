@@ -8,7 +8,7 @@
 
 use crate::i18n::{js_internal_error, js_invalid_parameter_error};
 use lxapp::LxApp;
-use rong::{JSContext, JSObject, JSResult};
+use rong::{JSContext, JSResult, JSValue};
 use std::sync::Arc;
 
 /// Values `{ capability: 'surface', value: … }` accepts, in type order.
@@ -93,9 +93,9 @@ fn surface_supported(placement: &str, lxapp: &Arc<LxApp>) -> bool {
     }
 }
 
-/// The Terminal Settings package intentionally gets only `lx.terminal` and
-/// `lx.supports`, not the general Logic API. Do not advertise operations that
-/// are absent from that focused context.
+/// A focused runtime context registers only part of the Logic surface. It must
+/// not advertise the operations it left out, or the query would disagree with
+/// what is actually callable there.
 fn context_exposes_capability(key: &str, terminal_settings: bool) -> bool {
     !terminal_settings || key == "terminal"
 }
@@ -109,16 +109,26 @@ fn has_exact_keys(actual: &[String], expected: &[&str]) -> bool {
 
 /// Whether this host exposes a capability to this Logic context, right now.
 ///
-/// Synchronous, because the callers are render paths and menu construction. The
-/// answer is live and may be stale by the time you act on it — it is an
-/// affordance for deciding what to render, not a replacement for handling a
-/// rejection. `{ capability: 'surface', value: 'aside' }` in particular changes
-/// when a desktop window crosses the compact breakpoint; pair it with
-/// `lx.onSurfaceContext` instead of polling. A focused Logic context returns
-/// false for APIs it does not expose.
-fn supports(ctx: JSContext, query: JSObject) -> JSResult<bool> {
+/// Synchronous, because it is meant to be called from render paths. The answer
+/// is live and may be stale by the time you act on it — it is an affordance for
+/// deciding what to render, not a replacement for handling a rejection.
+/// `{ capability: 'surface', value: 'aside' }` in particular changes when a
+/// desktop window crosses the compact breakpoint; pair it with
+/// `lx.onSurfaceContext` instead of polling. The answer is per runtime context:
+/// a context that does not expose an API reports false for it.
+fn supports(ctx: JSContext, query: JSValue) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let terminal_settings = terminal_supported(&lxapp);
+    // Taken as a value, not a `JSObject`: an untyped caller passing a string or
+    // null would otherwise be rejected by argument conversion, with a shape
+    // that does not match the invalid-parameter errors every other bad query
+    // reports.
+    let Some(query) = query.into_object() else {
+        return Err(js_invalid_parameter_error(format!(
+            "lx.supports requires a query object: {{ capability: 'surface' | {} }}",
+            FLAG_KEYS.join(" | ")
+        )));
+    };
     let keys = query.keys_as::<String>()?;
     let capability = query.get::<_, String>("capability").map_err(|_| {
         js_invalid_parameter_error(format!(
