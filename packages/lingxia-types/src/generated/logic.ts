@@ -873,18 +873,36 @@ export type OpenFileOptions = {
     showMenu?: boolean;
 };
 
-export type OpenPageOptions = {
-    /**
-     * A single value is a strict requirement and rejects when the host cannot
-     * realize it. An ordered array is a preference list: the first placement
-     * the host can realize wins, and `realized` reports which. Defaults to
-     * `'float'`.
-     */
-    as?: 'float' | 'window' | readonly ('float' | 'window')[];
-    /** Window decoration. Rejected with any float-only placement. */
-    chrome?: WindowChrome;
-    /** Where a float anchors. Rejected when the realized placement is a window. */
+/**
+ * `as` picks the shape. A float anchors and carries no decoration; a
+ * window is decorated and does not anchor. The runtime rejects the
+ * wrong pairing either way, so the type says it first — except with an
+ * ordered preference, where the realized placement is not known up
+ * front and both stay open.
+ */
+export type OpenPageOptions = (OpenPageShared & {
+    /** The default. Rejects when the host cannot float. */
+    as?: 'float';
+    /** Where the float anchors. */
     position?: SurfaceFloatPosition;
+    chrome?: never;
+}) | (OpenPageShared & {
+    /** A separate desktop window. Rejects when the host cannot make one. */
+    as: 'window';
+    /** Window decoration. */
+    chrome?: WindowChrome;
+    position?: never;
+}) | (OpenPageShared & {
+    /**
+     * An ordered preference: the first placement the host can realize wins,
+     * and `realized` reports which.
+     */
+    as: readonly ('float' | 'window')[];
+    chrome?: WindowChrome;
+    position?: SurfaceFloatPosition;
+});
+
+export type OpenPageShared = {
     /**
      * A float accepts a percentage; a window is in logical pixels and ignores
      * one. Both live here rather than in two option types, because `as` may be
@@ -893,11 +911,7 @@ export type OpenPageOptions = {
     size?: OverlaySurfaceSize;
     interaction?: SurfaceInteraction;
     query?: Record<string, unknown>;
-    /**
-     * Caller-owned identity for `lx.surface.get(key)`. It names *this handle*
-     * for later lookup; it is not the native instance key that
-     * `lx.shell.openDeclared` accepts.
-     */
+    /** Caller-owned identity, for `lx.surface.get(key)` later. */
     key?: string;
 };
 
@@ -1283,9 +1297,11 @@ export type ShellOpenAppOptions = {
  */
 export type ShellOpenDeclaredOptions = {
     /**
-     * Stable caller-owned identity for an additional native declaration
-     * instance. 1 to 128 UTF-8 bytes. Declarations without instantiable
-     * native providers reject it with `capability_missing`.
+     * Caller-owned identity, for `lx.surface.get(key)` later — the same key
+     * every opener takes. It carries one extra power here: a declaration can
+     * be opened more than once, and the key is which instance you mean, so a
+     * new key creates one. 1 to 128 UTF-8 bytes. Declarations without
+     * instantiable native providers reject it with `capability_missing`.
      */
     key?: string;
     /**
@@ -1486,7 +1502,7 @@ export type SurfaceBase = {
 
 /**
  * Surfaces (docked asides, floats, windows, browser tabs, declared surfaces)
- * and the desktop tray — the types behind `lx.openSurface`, `lx.onSurfaceContext`,
+ * and the desktop tray — the types behind `lx.surface`, `lx.shell`,
  * and `lx.tray`.
  */
 export type SurfaceCloseReason = 'user' | 'programmatic' | 'owner_closed' | 'app_closed' | 'failed'
@@ -1503,7 +1519,7 @@ export type SurfaceClosedEvent = {
 };
 
 /**
- * The current surface viewport context, delivered to `lx.onSurfaceContext()`
+ * The current surface viewport context, delivered to `lx.surface.onContext()`
  * so an lxapp can self-adapt (e.g. switch column count by `sizeClass`).
  */
 export type SurfaceContext = {
@@ -1528,6 +1544,7 @@ export type SurfaceEdge = 'left' | 'right' | 'top' | 'bottom';
  * with every other `lx` rejection — so read it with
  * `surfaceErrorCode(error)` and never parse the message.
  * ```ts
+ * import { surfaceErrorCode } from 'lingxia-types/error';
  * catch (error) {
  * if (surfaceErrorCode(error) === 'unsupported_placement') { … }
  * }
@@ -2279,7 +2296,7 @@ declare global {
      * deciding what to render, not a replacement for handling a rejection.
      * `{ capability: 'surface', value: 'aside' }` in particular changes when a
      * desktop window crosses the compact breakpoint; pair it with
-     * `lx.onSurfaceContext` instead of polling. The answer is per runtime context:
+     * `lx.surface.onContext` instead of polling. The answer is per runtime context:
      * a context that does not expose an API reports false for it.
      */
     supports(query: LxCapabilityQuery): boolean;
@@ -2571,10 +2588,12 @@ declare global {
     /**
      * `lx.surface.get(keyOrId)` — the live handle for a surface this lxapp
      * opened, so no caller has to cache one in order to reuse or close it.
+     * A `key` you chose wins over a runtime-assigned `id`, so a key that happens
+     * to spell another surface's id still finds yours.
      */
     get(keyOrId: string): AnySurface | undefined;
     /**
-     * `lx.onSurfaceContext(handler)` — register a JS callback (scoped to this
+     * `lx.surface.onContext(handler)` — register a JS callback (scoped to this
      * lxapp's JS context), invoke it immediately, then again whenever that
      * presentation's actual viewport changes. Returns an unsubscribe fn.
      */

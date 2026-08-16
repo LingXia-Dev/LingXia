@@ -285,7 +285,7 @@ fn shell_namespace(ctx: &JSContext) -> JSResult<JSObject> {
 /// Event name on the per-app bus carrying `{ sizeClass, width, height }`.
 const SURFACE_CONTEXT_EVENT: &str = "SurfaceContextChange";
 
-/// `lx.onSurfaceContext(handler)` — register a JS callback (scoped to this
+/// `lx.surface.onContext(handler)` — register a JS callback (scoped to this
 /// lxapp's JS context), invoke it immediately, then again whenever that
 /// presentation's actual viewport changes. Returns an unsubscribe fn.
 fn surface_on_change(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
@@ -460,11 +460,15 @@ async fn open_declared(ctx: JSContext, id: String) -> JSResult<JSObject> {
 
 /// `lx.surface.get(keyOrId)` — the live handle for a surface this lxapp
 /// opened, so no caller has to cache one in order to reuse or close it.
+///
+/// A `key` you chose wins over a runtime-assigned `id`, so a key that happens
+/// to spell another surface's id still finds yours.
 fn get_surface(ctx: JSContext, key_or_id: String) -> JSResult<JSValue> {
     let registry = surface_registry(&ctx)?;
     // Drop anything already closed, so a dead handle is never handed back and
     // the registry cannot grow across a session of opens and closes.
-    let mut found = None;
+    let mut by_id = None;
+    let mut by_key = None;
     for entry_key in registry.keys_as::<String>()? {
         let Ok(handle) = registry.get::<_, JSObject>(entry_key.as_str()) else {
             continue;
@@ -473,13 +477,20 @@ fn get_surface(ctx: JSContext, key_or_id: String) -> JSResult<JSValue> {
             let _ = registry.delete(entry_key.as_str());
             continue;
         }
-        let matches_id = handle
+        if entry_key == key_or_id {
+            by_key = Some(handle);
+        } else if handle
             .get::<_, String>("id")
-            .is_ok_and(|id| id == key_or_id);
-        if entry_key == key_or_id || matches_id {
-            found = Some(handle);
+            .is_ok_and(|id| id == key_or_id)
+        {
+            by_id = Some(handle);
         }
     }
+    // A caller-chosen key wins over a runtime-assigned id. Both can name a
+    // surface and nothing stops one lxapp's key from spelling another
+    // surface's id, so the tie has to resolve the same way every time — and
+    // the name the caller chose is the one they meant.
+    let found = by_key.or(by_id);
     Ok(found.map_or_else(|| JSValue::undefined(&ctx), JSObject::into_js_value))
 }
 
@@ -825,7 +836,7 @@ fn require_home_caller(lxapp: &LxApp, key: &str) -> JSResult<()> {
     ))
 }
 
-/// `{ appId, as, page?, ... }` branch of `lx.openSurface`. Opens another lxapp
+/// Backs `lx.shell.openApp`. Opens another lxapp
 /// by appId and optional configured page name. The target version is prepared
 /// through the same update path as app navigation, then composed independently
 /// from any YAML declaration. Dynamic composition supports main/aside only;
@@ -1102,7 +1113,7 @@ fn read_validated_edge(spec: &JSObject) -> JSResult<Option<String>> {
     Ok(edge.map(|edge| edge.trim().to_string()))
 }
 
-/// `{ page, as, position?, size?, query? }` branch of `lx.openSurface`.
+/// Backs `lx.surface.openPage`.
 /// Resolves the page name to a path, maps `as` to the underlying open path
 /// (overlay aside/float, or a standalone window on desktop), and returns the
 /// surface handle.
@@ -1188,7 +1199,7 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     open_surface(ctx, options).await
 }
 
-/// `{ url, as?, edge? }` branch of `lx.openSurface`. Without `as`, the url opens
+/// Backs `lx.surface.openUrl`. Without `as`, the url opens
 /// as a full in-app browser tab in the main content (host-owned chrome, no
 /// handle), in contrast to `lx.openExternal` which hands off to the OS browser.
 /// With `as: 'aside'` the url is docked beside the main as a closable browser
