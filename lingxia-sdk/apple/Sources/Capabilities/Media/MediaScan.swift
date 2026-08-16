@@ -452,7 +452,7 @@ final class ScanCodeViewController: UIViewController {
         hasReported = true
         stopScanLineAnimation()
         stopSession()
-        let _ = onCallback(callbackId, false, "2000")
+        let _ = onCallback(callbackId, false, LxAppDismissal.userDismissedCode)
         dismiss(animated: true)
     }
 

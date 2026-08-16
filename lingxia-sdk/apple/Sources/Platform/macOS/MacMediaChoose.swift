@@ -45,14 +45,14 @@ extension LxAppMedia {
         configureOpenPanelTypes(panel, mode: mode)
 
         guard panel.runModal() == .OK else {
-            let _ = onCallback(callbackId, false, "2000")
+            let _ = onCallback(callbackId, false, LxAppDismissal.userDismissedCode)
             sendDone(callbackId)
             return
         }
 
         let urls = Array(panel.urls.prefix(selectionLimit))
         guard !urls.isEmpty else {
-            let _ = onCallback(callbackId, false, "1000")
+            let _ = onCallback(callbackId, false, LxAppDismissal.failureCode)
             sendDone(callbackId)
             return
         }
@@ -61,7 +61,7 @@ extension LxAppMedia {
         guard !items.isEmpty,
               let data = try? JSONSerialization.data(withJSONObject: items, options: []),
               let json = String(data: data, encoding: .utf8) else {
-            let _ = onCallback(callbackId, false, "1000")
+            let _ = onCallback(callbackId, false, LxAppDismissal.failureCode)
             sendDone(callbackId)
             return
         }

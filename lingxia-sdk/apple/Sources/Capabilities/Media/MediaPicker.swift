@@ -643,7 +643,7 @@ final class MediaPickerViewController: UIViewController, UICollectionViewDataSou
             handler([])
         } else {
             // Use callback ID for Rust FFI
-            let _ = onCallback(callbackId, false, "2000")
+            let _ = onCallback(callbackId, false, LxAppDismissal.userDismissedCode)
         }
         dismiss(animated: true)
     }

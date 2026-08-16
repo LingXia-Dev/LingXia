@@ -98,7 +98,7 @@ extension LxAppMedia {
                     ) { result in
                         switch result {
                         case .cancelled:
-                            let _ = onCallback(callbackId, false, "2000")
+                            let _ = onCallback(callbackId, false, LxAppDismissal.userDismissedCode)
                             sendDone(callbackId)
                         case .failure(_):
                             let _ = onCallback(callbackId, false, "1001")
@@ -135,7 +135,7 @@ extension LxAppMedia {
             let photoController = PhotoCaptureViewController(initialCameraPosition: initialPosition) { result in
                 switch result {
                 case .cancelled:
-                    let _ = onCallback(callbackId, false, "2000")
+                    let _ = onCallback(callbackId, false, LxAppDismissal.userDismissedCode)
                     sendDone(callbackId)
                 case .failure(_):
                     let _ = onCallback(callbackId, false, "1001")

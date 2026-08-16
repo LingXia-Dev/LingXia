@@ -3,7 +3,7 @@ mod parser;
 mod source_picker;
 mod types;
 
-use crate::dismissal::{canceled, completed};
+use crate::dismissal::{USER_DISMISSED, canceled, completed};
 #[cfg(not(target_os = "macos"))]
 use crate::i18n::js_invalid_parameter_error;
 use crate::i18n::{js_error_from_platform_error, js_internal_error};
@@ -108,7 +108,7 @@ async fn choose_media(
         Ok(data) => data,
         // Business code 2000 is the platform's "user dismissed the picker";
         // every other platform error stays a rejection.
-        Err(PlatformError::BusinessError(2000)) => return canceled(&ctx),
+        Err(PlatformError::BusinessError(USER_DISMISSED)) => return canceled(&ctx),
         Err(err) => return Err(js_error_from_platform_error(&err)),
     };
 

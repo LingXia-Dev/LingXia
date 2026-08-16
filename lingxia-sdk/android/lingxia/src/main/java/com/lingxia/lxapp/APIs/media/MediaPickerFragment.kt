@@ -1,5 +1,7 @@
 package com.lingxia.lxapp.APIs.media
 
+import com.lingxia.lxapp.LxAppDismissal
+
 import android.Manifest
 import android.content.ContentUris
 import android.content.Context
@@ -1384,7 +1386,7 @@ internal class MediaPickerFragment : Fragment() {
             return
         }
         try {
-            NativeApi.onCallback(callbackId, false, "2000")
+            NativeApi.onCallback(callbackId, false, LxAppDismissal.USER_DISMISSED)
         } catch (_: Exception) { }
     }
 

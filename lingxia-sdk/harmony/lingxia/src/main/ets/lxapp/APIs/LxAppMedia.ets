@@ -1,3 +1,4 @@
+import { USER_DISMISSED_CODE } from '../LxAppDismissal';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../../app/LxLog';
 import { MediaPreviewOverlayManager, MediaPreviewItem, MediaPreviewPageParams } from './media/MediaPreviewOverlay';
@@ -307,7 +308,7 @@ export class LxAppMedia {
           const isOriginalPick: boolean = (res && (res as photoAccessHelper.PhotoSelectResult).isOriginalPhoto === true);
 
           if (!pickerItems || pickerItems.length === 0) {
-            onCallback(normalized.callbackId, false, '2000');
+            onCallback(normalized.callbackId, false, USER_DISMISSED_CODE);
             return;
           }
 

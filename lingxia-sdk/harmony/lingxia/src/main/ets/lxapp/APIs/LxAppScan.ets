@@ -1,3 +1,4 @@
+import { USER_DISMISSED_CODE } from '../LxAppDismissal';
 import { LxLog } from '../../app/LxLog';
 import { scanBarcode, scanCore } from '@kit.ScanKit';
 import { Lingxia } from '../../app/Lingxia';
@@ -97,7 +98,7 @@ export class LxAppScan {
       const error = err as BusinessError;
       // Handle cancel case
       if (error.code === scanCore.ScanErrorCode.SCAN_SERVICE_CANCELED) {
-        onCallback(String(options.callbackId), false, '2000');
+        onCallback(String(options.callbackId), false, USER_DISMISSED_CODE);
       } else {
         const message = error.message || (err instanceof Error ? err.message : `${err}`);
         LxLog.e(TAG, `startScan failed: ${message}`);

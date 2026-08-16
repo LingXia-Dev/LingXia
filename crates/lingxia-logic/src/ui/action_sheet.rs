@@ -1,3 +1,5 @@
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+use crate::dismissal::USER_DISMISSED;
 use crate::dismissal::{canceled, completed};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::i18n::js_error_from_platform_error;
@@ -28,11 +30,16 @@ struct ViewActionSheetResult {
     tap_index: i64,
 }
 
+/// The desktop path never sees business code 2000: it goes through the WebView,
+/// which reports dismissal as this index instead. Two spellings of one contract,
+/// so both are named.
+const DISMISSED_TAP_INDEX: i64 = -1;
+
 fn classify_action_sheet_index(index: i64, item_len: usize) -> Result<Option<usize>, RongJSError> {
-    if index == -1 {
+    if index == DISMISSED_TAP_INDEX {
         return Ok(None);
     }
-    if index < -1 {
+    if index < DISMISSED_TAP_INDEX {
         return Err(js_internal_error(format!(
             "ActionSheet callback invalid payload: tapIndex {index} is not a cancellation or item index"
         )));
@@ -147,7 +154,7 @@ async fn present_action_sheet_native(
         .await
     {
         Ok(data) => data,
-        Err(PlatformError::BusinessError(2000)) => return Ok(None),
+        Err(PlatformError::BusinessError(USER_DISMISSED)) => return Ok(None),
         Err(e) => return Err(js_error_from_platform_error(&e)),
     };
 

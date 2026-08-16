@@ -14,7 +14,7 @@ class LxAppModal {
     /// A dismissal is business code 2000; everything that merely *failed* —
     /// no presenter, serialization — reports the generic failure code, so
     /// `canceled: true` on the JS side can only ever mean the user said no.
-    private static let modalFailureCode = "1000"
+    private static let modalFailureCode = LxAppDismissal.failureCode
 
 
     private final class CallbackOnce {
@@ -144,7 +144,7 @@ class LxAppModal {
     if showCancel {
         let cancelAction = UIAlertAction(title: cancelText, style: .cancel) { _ in
             // User cancelled = error 2000
-            callback.send(success: false, payload: "2000")
+            callback.send(success: false, payload: LxAppDismissal.userDismissedCode)
         }
         alert.addAction(cancelAction)
     }
@@ -182,7 +182,7 @@ class LxAppModal {
         }
 
         guard alert.runModal() == .alertFirstButtonReturn else {
-            _ = onCallback(callback_id, false, "2000")
+            _ = onCallback(callback_id, false, LxAppDismissal.userDismissedCode)
             return
         }
 

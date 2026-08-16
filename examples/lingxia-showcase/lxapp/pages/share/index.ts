@@ -16,7 +16,12 @@ Page({
       this.setData({ statusText: "Opening system share sheet..." });
       const result = await lx.share(options);
       this.setData({
-        statusText: result.completed === false ? "Share canceled" : "Share opened",
+        statusText:
+          result.outcome === "dismissed"
+            ? "Share canceled"
+            : result.outcome === "completed"
+              ? "Shared"
+              : "Share opened",
       });
     } catch (error) {
       const message = error?.message || "share failed";

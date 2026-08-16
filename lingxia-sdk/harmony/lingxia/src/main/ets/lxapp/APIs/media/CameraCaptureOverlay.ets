@@ -1,3 +1,4 @@
+import { USER_DISMISSED_CODE } from '../../LxAppDismissal';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { onCallback, cameraInit, cameraRelease, cameraSwitchFacing, cameraSetFlashMode, cameraTakePhoto, cameraStartPhotoWithSurface, cameraStartVideoWithSurface, cameraVideoOutputStart, cameraVideoOutputStopAndRelease, getCurrentLxapp, getLxAppInfo, type LxAppInfo, type CurrentLxApp } from 'liblingxia.so';
 import { image } from '@kit.ImageKit';
@@ -695,7 +696,7 @@ export struct CameraCaptureOverlay {
           await this.waitFileStable(resPath, 6, 100);
           setTimeout(() => { this.enterPreviewMode(resPath, 'video'); }, 200);
       } else {
-          onCallback(cb, false, '2000');
+          onCallback(cb, false, USER_DISMISSED_CODE);
           CameraCaptureOverlayManager.hide();
           await NativeCameraBridge.release().catch(() => {});
         }
@@ -710,7 +711,7 @@ export struct CameraCaptureOverlay {
 
   private cancel(): void {
     const cb = this.options?.callbackId || '';
-    if (cb) { onCallback(cb, false, '2000'); }
+    if (cb) { onCallback(cb, false, USER_DISMISSED_CODE); }
     this.clearLongPressTimer();
     this.stopRecordingTimer();
     this.captureProgress = 0;

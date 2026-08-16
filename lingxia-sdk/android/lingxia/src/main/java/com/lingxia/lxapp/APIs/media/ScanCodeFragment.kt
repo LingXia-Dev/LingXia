@@ -1,5 +1,7 @@
 package com.lingxia.lxapp.APIs.media
 
+import com.lingxia.lxapp.LxAppDismissal
+
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
@@ -539,7 +541,7 @@ internal class ScanCodeFragment : Fragment() {
             return
         }
         hasReportedResult = true
-        NativeApi.onCallback(callbackId, false, "2000")
+        NativeApi.onCallback(callbackId, false, LxAppDismissal.USER_DISMISSED)
         safeClose()
     }
 
