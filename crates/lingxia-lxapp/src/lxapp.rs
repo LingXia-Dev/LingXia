@@ -928,6 +928,20 @@ impl LxApp {
         )
     }
 
+    /// Whether `lx.process` is actually reachable from this lxapp — the answer
+    /// `lx.supports` reports, so the query and the module's presence cannot
+    /// disagree. False wherever the feature is not compiled in.
+    pub fn process_supported(&self) -> bool {
+        #[cfg(feature = "process")]
+        {
+            self.process_access_enabled()
+        }
+        #[cfg(not(feature = "process"))]
+        {
+            false
+        }
+    }
+
     #[cfg(feature = "process")]
     pub(crate) fn process_access_enabled(&self) -> bool {
         if !self.is_home_lxapp || !lingxia_app_context::process_enabled() {

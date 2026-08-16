@@ -559,6 +559,13 @@ pub fn browser_enabled() -> bool {
         .unwrap_or(false)
 }
 
+/// The declared capability block, when this product shipped one.
+fn capabilities_config() -> Option<&'static CapabilitiesConfig> {
+    APP_CONFIG
+        .get()
+        .and_then(|config| config.capabilities.as_ref())
+}
+
 pub fn proxy_enabled() -> bool {
     APP_CONFIG
         .get()
@@ -651,6 +658,36 @@ pub mod capability {
     /// The terminal product surface and `lx.terminal`.
     pub fn terminal() -> bool {
         build::terminal() && super::terminal_enabled()
+    }
+
+    /// Driving this product's own windows and its command line. `computerUse`
+    /// already contains it, so it answers for both — the same rule the local
+    /// control surface enforces.
+    pub fn app_use() -> bool {
+        super::capabilities_config()
+            .map(|capabilities| capabilities.app_use_effective())
+            .unwrap_or(false)
+    }
+
+    /// Driving the whole machine: screenshots, synthetic input, the a11y tree.
+    pub fn computer_use() -> bool {
+        super::capabilities_config()
+            .map(|capabilities| capabilities.computer_use)
+            .unwrap_or(false)
+    }
+
+    /// Driving the in-app browser's tabs. Reported as declared, matching what
+    /// the local control surface actually gates on.
+    pub fn browser_use() -> bool {
+        super::capabilities_config()
+            .map(|capabilities| capabilities.browser_use)
+            .unwrap_or(false)
+    }
+
+    /// The host half of process access. The lxapp must also be the home app and
+    /// declare the `process` privilege, which only it can answer.
+    pub fn process() -> bool {
+        super::process_enabled()
     }
 
     /// The in-app browser's HTTP proxy. `capabilities.proxy` declares it and
