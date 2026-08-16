@@ -5,6 +5,7 @@ use rong::{
     js_method,
 };
 use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 /// Identifies one `onUpdateReady`/`onUpdateFailed` registration. These are
@@ -31,7 +32,11 @@ struct UpdateManagerState {
 
 #[derive(Default)]
 struct UpdateManagerRegistry {
-    state: RefCell<UpdateManagerState>,
+    /// Shared so an unsubscribe handle can reach the slot without carrying a
+    /// `JSContext` clone. Cloning a context bumps its lifecycle-owner count, and
+    /// the handle lives *inside* that context — the pair would keep each other
+    /// alive and the context would never shut down.
+    state: Rc<RefCell<UpdateManagerState>>,
 }
 
 impl JSContextService for UpdateManagerRegistry {}
@@ -207,14 +212,13 @@ impl JSUpdateManager {
             warn!("Flushing pending UpdateReady failed; keeping event pending");
             with_update_state(&ctx, |state| state.pending_ready = Some(payload));
         }
-        let off_ctx = ctx.clone();
+        let slot = update_registry(&ctx).state.clone();
         JSFunc::new(&ctx, move || {
-            with_update_state(&off_ctx, |state| {
-                if state.ready_token == token {
-                    state.on_ready = None;
-                    state.ready_token = UpdateSlotToken::default();
-                }
-            });
+            let mut state = slot.borrow_mut();
+            if state.ready_token == token {
+                state.on_ready = None;
+                state.ready_token = UpdateSlotToken::default();
+            }
         })
     }
 
@@ -234,14 +238,13 @@ impl JSUpdateManager {
             warn!("Flushing pending UpdateFailed failed; keeping event pending");
             with_update_state(&ctx, |state| state.pending_failed = Some(payload));
         }
-        let off_ctx = ctx.clone();
+        let slot = update_registry(&ctx).state.clone();
         JSFunc::new(&ctx, move || {
-            with_update_state(&off_ctx, |state| {
-                if state.failed_token == token {
-                    state.on_failed = None;
-                    state.failed_token = UpdateSlotToken::default();
-                }
-            });
+            let mut state = slot.borrow_mut();
+            if state.failed_token == token {
+                state.on_failed = None;
+                state.failed_token = UpdateSlotToken::default();
+            }
         })
     }
 
