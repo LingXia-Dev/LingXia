@@ -4,21 +4,18 @@ use crate::i18n::{
     js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
 };
 use base64::{Engine as _, engine::general_purpose};
-use futures::Stream;
 use lingxia_service::file::{
     ChooseDirectoryRequest, ChooseFileRequest, FileDialogFilter, OpenFileRequest,
 };
 use lxapp::LxApp;
 use rong::{
-    AnyJSTypedArray, Class, FromJSObject, HostError, IntoJSAsyncIteratorExt, IntoJSObject,
-    JSArrayBuffer, JSContext, JSObject, JSResult, JSTypedArray, JSValue, JsonToJSValue,
-    RongJSError, function::Optional, js_class, js_method,
+    AnyJSTypedArray, Class, FromJSObject, HostError, IntoJSObject, JSArrayBuffer, JSContext,
+    JSObject, JSResult, JSTypedArray, JSValue, JsonToJSValue, function::Optional, js_class,
+    js_method,
 };
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::pin::Pin;
 use std::sync::{Arc, Weak};
-use std::task::{Context, Poll};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::fs as tokio_fs;
 
@@ -315,76 +312,6 @@ impl JSDirEntry {
     #[js_method(getter, rename = "isSymlink")]
     fn is_symlink(&self) -> bool {
         self.is_symlink
-    }
-}
-
-type FileTypeFuture =
-    Pin<Box<dyn futures::Future<Output = Result<std::fs::FileType, std::io::Error>> + Send>>;
-
-struct DirEntryStream {
-    entries: tokio_fs::ReadDir,
-    current_entry: Option<tokio_fs::DirEntry>,
-    current_file_type_fut: Option<FileTypeFuture>,
-}
-
-impl DirEntryStream {
-    fn new(entries: tokio_fs::ReadDir) -> Self {
-        Self {
-            entries,
-            current_entry: None,
-            current_file_type_fut: None,
-        }
-    }
-}
-
-impl Stream for DirEntryStream {
-    type Item = Result<JSDirEntry, RongJSError>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let this = self.get_mut();
-
-        if let Some(file_type_fut) = this.current_file_type_fut.as_mut() {
-            match file_type_fut.as_mut().poll(cx) {
-                Poll::Ready(Ok(file_type)) => {
-                    this.current_file_type_fut.take();
-                    if let Some(entry) = this.current_entry.take() {
-                        let name = entry.file_name().to_string_lossy().into_owned();
-                        return Poll::Ready(Some(Ok(JSDirEntry {
-                            name,
-                            is_directory: file_type.is_dir(),
-                            is_symlink: file_type.is_symlink(),
-                        })));
-                    }
-                }
-                Poll::Ready(Err(err)) => {
-                    this.current_file_type_fut.take();
-                    this.current_entry.take();
-                    return Poll::Ready(Some(Err(js_internal_error(format!(
-                        "readDir file type failed: {err}"
-                    )))));
-                }
-                Poll::Pending => return Poll::Pending,
-            }
-        }
-
-        match this.entries.poll_next_entry(cx) {
-            Poll::Ready(Ok(Some(entry))) => {
-                let path = entry.path();
-                this.current_entry = Some(entry);
-                this.current_file_type_fut = Some(Box::pin(async move {
-                    tokio_fs::symlink_metadata(path)
-                        .await
-                        .map(|metadata| metadata.file_type())
-                }));
-                cx.waker().wake_by_ref();
-                Poll::Pending
-            }
-            Poll::Ready(Ok(None)) => Poll::Ready(None),
-            Poll::Ready(Err(err)) => Poll::Ready(Some(Err(js_internal_error(format!(
-                "readDir entry failed: {err}"
-            ))))),
-            Poll::Pending => Poll::Pending,
-        }
     }
 }
 
@@ -1074,7 +1001,10 @@ impl JSLxFile {
         })
     }
 
-    /// Read and parse the complete file as JSON.
+    /// Read and parse the complete file as JSON. Stays `unknown`: a class
+    /// method cannot carry a type parameter through the binding, so unlike
+    /// `lx.getStorage().get<T>()` the assertion is spelled `as` at the call
+    /// site rather than passed in.
     #[js_method(ts_return = "Promise<unknown>")]
     async fn json(&self, ctx: JSContext) -> JSResult<JSValue> {
         let lxapp = self.lxapp()?;
@@ -1197,8 +1127,8 @@ async fn fs_stat(ctx: JSContext, path: String) -> JSResult<FileStats> {
     Ok(file_stats(metadata))
 }
 
-/// Iterate the direct children of a managed directory.
-async fn fs_read_dir(ctx: JSContext, path: String) -> JSResult<JSObject> {
+/// The direct children of a managed directory.
+async fn fs_read_dir(ctx: JSContext, path: String) -> JSResult<Vec<JSDirEntry>> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let path = resolve_readable_path(&lxapp, &path, "fs.readDir", "path")?;
     ensure_no_symlink_ancestors(&lxapp, &path, "fs.readDir", "path")?;
@@ -1208,10 +1138,26 @@ async fn fs_read_dir(ctx: JSContext, path: String) -> JSResult<JSObject> {
         ));
     }
     mark_usercache_access(&path);
-    let entries = tokio_fs::read_dir(&path.path)
+    let mut entries = tokio_fs::read_dir(&path.path)
         .await
         .map_err(|err| js_internal_error(format!("fs.readDir failed: {err}")))?;
-    DirEntryStream::new(entries).to_js_async_iter(&ctx)
+    let mut children = Vec::new();
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|err| js_internal_error(format!("fs.readDir entry failed: {err}")))?
+    {
+        let file_type = tokio_fs::symlink_metadata(entry.path())
+            .await
+            .map(|metadata| metadata.file_type())
+            .map_err(|err| js_internal_error(format!("fs.readDir file type failed: {err}")))?;
+        children.push(JSDirEntry {
+            name: entry.file_name().to_string_lossy().into_owned(),
+            is_directory: file_type.is_dir(),
+            is_symlink: file_type.is_symlink(),
+        });
+    }
+    Ok(children)
 }
 
 /// Create a managed directory.
@@ -1450,7 +1396,7 @@ rong::js_api! {
         fn stat(ts_params = "path: string") = fs_stat;
         fn readDir(
             ts_params = "path: string",
-            ts_return = "Promise<AsyncIterableIterator<DirEntry>>"
+            ts_return = "Promise<DirEntry[]>"
         ) = fs_read_dir;
         fn mkdir(ts_params = "path: string, options?: FsMkdirOptions") = fs_mkdir;
         fn write(

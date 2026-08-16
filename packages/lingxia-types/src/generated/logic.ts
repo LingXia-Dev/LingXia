@@ -2176,7 +2176,12 @@ export declare class LxFile {
   readonly path: string;
   /** Read the complete file as strict UTF-8 text. */
   text(): Promise<string>;
-  /** Read and parse the complete file as JSON. */
+  /**
+   * Read and parse the complete file as JSON. Stays `unknown`: a class
+   * method cannot carry a type parameter through the binding, so unlike
+   * `lx.getStorage().get<T>()` the assertion is spelled `as` at the call
+   * site rather than passed in.
+   */
   json(): Promise<unknown>;
   /** Read the complete file as a Base64 string. */
   base64(): Promise<string>;
@@ -2209,8 +2214,8 @@ declare global {
     exists(path: string): Promise<boolean>;
     /** Read metadata for a managed path. */
     stat(path: string): Promise<FileStats>;
-    /** Iterate the direct children of a managed directory. */
-    readDir(path: string): Promise<AsyncIterableIterator<DirEntry>>;
+    /** The direct children of a managed directory. */
+    readDir(path: string): Promise<DirEntry[]>;
     /** Create a managed directory. */
     mkdir(path: string, options?: FsMkdirOptions): Promise<void>;
     /** Write UTF-8 text or bytes to a managed file. */
