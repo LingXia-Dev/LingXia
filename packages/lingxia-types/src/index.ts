@@ -15,6 +15,8 @@ import './generated/logic';
 import type {
   AppConfig,
   AppInstance,
+  BinaryFileData,
+  FsWriteOptions,
   PageConfig,
   PageInstance,
 } from './generated/logic';
@@ -23,6 +25,20 @@ import type { Automation } from './automation';
 export type Lx = globalThis.Lx;
 
 declare global {
+  interface FileSystemApi {
+    /**
+     * Write bytes to a managed file. `encoding` describes how to read a
+     * *string*, so it has no meaning here and the runtime rejects it — this
+     * overload is what makes that a compile error instead. The generated
+     * signature above covers the string case.
+     */
+    write(
+      path: string,
+      data: BinaryFileData,
+      options?: Omit<FsWriteOptions, 'encoding'>
+    ): Promise<void>;
+  }
+
   interface Lx {
     /**
      * In-process UI/runtime automation.
