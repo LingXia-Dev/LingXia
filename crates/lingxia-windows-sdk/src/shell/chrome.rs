@@ -158,6 +158,7 @@ pub(super) const SIDEBAR_TABBAR_POPUP_WIDTH: i32 = 220;
 pub(super) const SIDEBAR_TABBAR_POPUP_PADDING: i32 = 8;
 /// Corner radius of the collapsed-rail tabbar popup card; the host masks the
 /// layered popup window to this same rounding.
+const SIDEBAR_TABBAR_POPUP_TITLE_HEIGHT: i32 = 22;
 pub(crate) const SIDEBAR_TABBAR_POPUP_RADIUS: i32 = 10;
 pub(crate) const SIDEBAR_RAIL_TOOLTIP_RADIUS: i32 = 6;
 const SIDEBAR_RAIL_TOOLTIP_HEIGHT: i32 = 32;
@@ -1349,11 +1350,22 @@ pub(crate) fn collapsed_sidebar_tooltip(
     })
 }
 
+/// Title band above the popup rows. The rail suppresses the group tooltip once
+/// there are pages to show, so this panel is where the switcher names itself.
+fn collapsed_sidebar_popup_title_height(tabbar: &WindowsShellTabBarLayout) -> i32 {
+    if tabbar.app_name.trim().is_empty() {
+        0
+    } else {
+        SIDEBAR_TABBAR_POPUP_TITLE_HEIGHT
+    }
+}
+
 pub(crate) fn collapsed_sidebar_tabbar_popup_size(tabbar: &WindowsShellTabBarLayout) -> (i32, i32) {
     let rows = tabbar.items.len().max(1) as i32;
     (
         SIDEBAR_TABBAR_POPUP_WIDTH,
         SIDEBAR_TABBAR_POPUP_PADDING * 2
+            + collapsed_sidebar_popup_title_height(tabbar)
             + rows * SIDEBAR_CHILD_ITEM_HEIGHT
             + (rows - 1).max(0) * SIDEBAR_CHILD_ITEM_GAP,
     )
@@ -1372,7 +1384,7 @@ pub(crate) fn collapsed_sidebar_tabbar_popup_hit(
         right: SIDEBAR_TABBAR_POPUP_WIDTH,
         bottom: collapsed_sidebar_tabbar_popup_size(&popup_tabbar).1,
     });
-    let item_bounds = collapsed_sidebar_tabbar_popup_item_bounds(bounds);
+    let item_bounds = collapsed_sidebar_tabbar_popup_item_bounds(bounds, &popup_tabbar);
     (0..popup_tabbar.items.len()).find(|&index| {
         rect_contains(
             &sidebar_item_rect(item_bounds, &popup_tabbar, index, 0),
@@ -1425,9 +1437,24 @@ pub(crate) fn paint_collapsed_sidebar_tabbar_popup(
     // The host alpha-masks the layered popup to the rounded shape; fill the
     // full bounds and draw only the hairline outline here.
     fill_rect(hdc, bounds, shell_palette().sidebar_background);
+    let title_height = collapsed_sidebar_popup_title_height(&popup_tabbar);
+    if title_height > 0 {
+        draw_text(
+            hdc,
+            &popup_tabbar.app_name,
+            RECT {
+                left: bounds.left + SIDEBAR_TABBAR_POPUP_PADDING,
+                top: bounds.top + SIDEBAR_TABBAR_POPUP_PADDING,
+                right: bounds.right - SIDEBAR_TABBAR_POPUP_PADDING,
+                bottom: bounds.top + SIDEBAR_TABBAR_POPUP_PADDING + title_height,
+            },
+            shell_palette().text_muted,
+            DT_LEFT,
+        );
+    }
     draw_sidebar_items(
         hdc,
-        collapsed_sidebar_tabbar_popup_item_bounds(bounds),
+        collapsed_sidebar_tabbar_popup_item_bounds(bounds, &popup_tabbar),
         &popup_tabbar,
         None,
         0,
@@ -1468,12 +1495,17 @@ pub(crate) fn paint_collapsed_sidebar_tooltip(hdc: HDC, text: &str, width: i32, 
     );
 }
 
-fn collapsed_sidebar_tabbar_popup_item_bounds(bounds: RECT) -> RECT {
+fn collapsed_sidebar_tabbar_popup_item_bounds(
+    bounds: RECT,
+    tabbar: &WindowsShellTabBarLayout,
+) -> RECT {
     normalize_rect(RECT {
         left: bounds.left,
         // `sidebar_item_rect` adds the normal shell/header/group offsets.
-        // Cancel them so the popup's first child starts at its own padding.
-        top: bounds.top + SIDEBAR_TABBAR_POPUP_PADDING
+        // Cancel them so the popup's first child starts below the title band.
+        top: bounds.top
+            + SIDEBAR_TABBAR_POPUP_PADDING
+            + collapsed_sidebar_popup_title_height(tabbar)
             - SHELL_TOP_BAR_HEIGHT
             - SIDEBAR_ITEM_HEIGHT
             - SIDEBAR_PARENT_CHILD_GAP,
@@ -2616,17 +2648,20 @@ pub(crate) fn workspace_silhouette_rect(
 mod scroll_tests {
     use super::{
         ATTACHED_PANEL_HANDLE_SIZE, SHELL_CONTENT_INSET, SHELL_TOP_BAR_HEIGHT, SIDEBAR_ICON_SIZE,
-        SIDEBAR_ITEM_HEIGHT, WindowsChromeHit, WindowsChromePanelLayoutInput, WindowsChromeState,
-        WindowsPanelPosition, WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout,
+        SIDEBAR_ITEM_HEIGHT, SIDEBAR_TABBAR_POPUP_PADDING, SIDEBAR_TABBAR_POPUP_WIDTH,
+        WindowsChromeHit, WindowsChromePanelLayoutInput, WindowsChromeState, WindowsPanelPosition,
+        WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout,
         WindowsShellFooterActionLayout, WindowsShellNavigationBarLayout,
         WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
         WindowsShellWindowLayout, chrome_hit_test, chrome_rects_for_state, clamp_sidebar_scroll,
-        collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tooltip, compute_attached_layout,
+        collapsed_sidebar_popup_tabbar, collapsed_sidebar_tabbar_click_command,
+        collapsed_sidebar_tabbar_popup_hit, collapsed_sidebar_tabbar_popup_item_bounds,
+        collapsed_sidebar_tabbar_popup_size, collapsed_sidebar_tooltip, compute_attached_layout,
         compute_chrome_rects, covering_panel_layout, footer_action_rects,
         layout_for_maximized_native_panel, layout_without_covered_main_chrome,
         phone_browser_bar_active, phone_browser_bar_rects, rect_height,
         sidebar_auxiliary_rail_index, sidebar_auxiliary_rects, sidebar_caption_contains,
-        sidebar_group_rect, sidebar_rail_close_rect, sidebar_rail_item_rect,
+        sidebar_group_rect, sidebar_item_rect, sidebar_rail_close_rect, sidebar_rail_item_rect,
         sidebar_rail_pinned_divider_rect, sidebar_top_level_icon_rect,
         tabbar_requires_full_repaint, top_bar_controls,
     };
@@ -2770,6 +2805,54 @@ mod scroll_tests {
         )
         .unwrap();
         assert_eq!(action_tooltip.text, "Terminal");
+    }
+
+    #[test]
+    fn collapsed_rail_page_popup_reserves_a_title_band_above_its_rows() {
+        let mut rail = bottom_tabbar(true, false);
+        rail.position = WindowsShellTabBarPosition::Left;
+        rail.icon_rail = true;
+
+        let mut untitled = rail.clone();
+        untitled.app_name = String::new();
+
+        let first_row = |tabbar: &WindowsShellTabBarLayout| {
+            let (width, height) = collapsed_sidebar_tabbar_popup_size(tabbar);
+            let bounds = RECT {
+                left: 0,
+                top: 0,
+                right: width,
+                bottom: height,
+            };
+            let popup_tabbar = collapsed_sidebar_popup_tabbar(tabbar, SIDEBAR_TABBAR_POPUP_WIDTH);
+            let rect = sidebar_item_rect(
+                collapsed_sidebar_tabbar_popup_item_bounds(bounds, &popup_tabbar),
+                &popup_tabbar,
+                0,
+                0,
+            );
+            (height, rect)
+        };
+
+        let (titled_height, titled_row) = first_row(&rail);
+        let (untitled_height, untitled_row) = first_row(&untitled);
+        // The band grows the panel and pushes the rows down by the same amount,
+        // so the last row still lands inside the padded box.
+        assert_eq!(titled_height - untitled_height, 22);
+        assert_eq!(titled_row.top - untitled_row.top, 22);
+        assert!(titled_row.bottom <= titled_height - SIDEBAR_TABBAR_POPUP_PADDING);
+        // Paint and hit-test share `..._item_bounds`, so the shift must reach
+        // both: hit-testing the drawn row still resolves to that row.
+        assert_eq!(
+            collapsed_sidebar_tabbar_popup_hit(
+                &rail,
+                (
+                    (titled_row.left + titled_row.right) / 2,
+                    (titled_row.top + titled_row.bottom) / 2,
+                ),
+            ),
+            Some(0)
+        );
     }
 
     #[test]
