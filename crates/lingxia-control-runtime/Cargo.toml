@@ -18,19 +18,9 @@ browser = ["dep:lingxia-browser", "lingxia/browser-runtime"]
 # Automating the machine, not just this app. Derived from
 # `capabilities.computerUse`; separate from `local-control` because it is what
 # makes the product ask for Accessibility and Screen Recording.
-computer-use = [
-    "dep:lingxia-device-io",
-    "lingxia-device-io/app",
-    "lingxia-device-io/ax",
-    "lingxia-device-io/clipboard",
-    "lingxia-device-io/diagnostics",
-    "lingxia-device-io/input",
-    "lingxia-device-io/process",
-    "lingxia-device-io/snapshot",
-    "lingxia-device-io/supervision",
-    "lingxia-device-io/window",
-    "lingxia-device-io/wire",
-]
+# The host answers every desktop method, so it takes the whole capability set
+# rather than a hand-copied list that a new capability would silently miss.
+computer-use = ["dep:lingxia-device-io", "lingxia-device-io/full"]
 # Session test runner (`lxdev test`). Development hosts only: production
 # builds omit it, so the session.test.* methods are absent rather than
 # permission-gated. Desktop I/O is deliberately not implied; a host that

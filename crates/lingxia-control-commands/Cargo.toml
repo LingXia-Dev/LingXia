@@ -8,8 +8,14 @@ repository.workspace = true
 
 [features]
 default = []
-desktop = [
-    "dep:lingxia-device-io",
+# The `computer` command table and the DTOs it sends. A product stops here:
+# `Backend::App` forwards every verb to the running host, so the product binary
+# needs the vocabulary, not an implementation it can never reach.
+desktop = ["dep:lingxia-device-io", "lingxia-device-io/wire"]
+# `Backend::Local` — run the verbs in this process. Only `lxdev` does that;
+# host supervision stays out because a development tool is not a product host.
+desktop-local = [
+    "desktop",
     "lingxia-device-io/app",
     "lingxia-device-io/ax",
     "lingxia-device-io/clipboard",
@@ -18,8 +24,13 @@ desktop = [
     "lingxia-device-io/process",
     "lingxia-device-io/snapshot",
     "lingxia-device-io/window",
-    "lingxia-device-io/wire",
 ]
+
+# The example is a product mount, so it needs the `computer` command table.
+# Without this, `--all-targets` on the default feature set fails to build it.
+[[example]]
+name = "product"
+required-features = ["desktop"]
 
 [dependencies]
 lingxia-device-io = { workspace = true, optional = true }

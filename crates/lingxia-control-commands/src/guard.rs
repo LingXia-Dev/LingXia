@@ -8,6 +8,12 @@
 #[cfg(feature = "desktop")]
 use lingxia_device_io as device_io;
 
+/// The failure vocabulary as it arrives over the transport.
+///
+/// `lingxia-device-io` owns this contract, but the browser, app, and skills
+/// namespaces answer with the same codes and are built without it, so their
+/// decoder cannot reach the enum. A test pins the two together whenever the
+/// `desktop` feature makes both visible at once.
 const ENCODED_EXIT_CODES: [(&str, i32); 9] = [
     ("usage", 2),
     ("not_found", 3),
@@ -19,6 +25,15 @@ const ENCODED_EXIT_CODES: [(&str, i32); 9] = [
     ("stale", 9),
     ("failed", 10),
 ];
+
+/// Exit status for a refusal this crate raised itself, read out of the same
+/// table the transport path uses rather than written again as a literal.
+fn exit_code_for(slug: &str) -> i32 {
+    ENCODED_EXIT_CODES
+        .iter()
+        .find_map(|&(known, exit_code)| (known == slug).then_some(exit_code))
+        .unwrap_or(10)
+}
 
 /// A local command was refused because its explicit safety acknowledgement
 /// was missing. This error belongs to the command surface, not device I/O.
@@ -92,8 +107,12 @@ pub(crate) fn decode_failure(error: &anyhow::Error) -> device_io::Error {
         return device_io::Error::from_code(local.code(), local.to_string());
     }
     let text = error.to_string();
-    if let Some((slug, message, _)) = encoded_failure(&text) {
-        let code = device_io::ErrorCode::parse(slug).expect("known encoded device-I/O error code");
+    // A slug this table knows but the enum does not is a drift bug, not a
+    // reason to abort the process mid-command: fall through and report the
+    // failure rather than panicking on the error path.
+    if let Some((slug, message, _)) = encoded_failure(&text)
+        && let Some(code) = device_io::ErrorCode::parse(slug)
+    {
         return device_io::Error::from_code(code, message);
     }
     // The control socket's own refusals do not come from the desktop backend
@@ -109,7 +128,7 @@ pub(crate) fn decode_failure(error: &anyhow::Error) -> device_io::Error {
 /// The documented exit status for a failure that crossed the transport.
 pub fn exit_code(error: &anyhow::Error) -> i32 {
     if error.downcast_ref::<GuardError>().is_some() {
-        return 6;
+        return exit_code_for("permission");
     }
     #[cfg(feature = "desktop")]
     if let Some(local) = error.downcast_ref::<device_io::Error>() {
@@ -118,8 +137,11 @@ pub fn exit_code(error: &anyhow::Error) -> i32 {
     let text = error.to_string();
     encoded_failure(&text)
         .map(|(_, _, exit_code)| exit_code)
-        .or_else(|| text.contains("(not_declared): ").then_some(6))
-        .unwrap_or(10)
+        .or_else(|| {
+            text.contains("(not_declared): ")
+                .then(|| exit_code_for("permission"))
+        })
+        .unwrap_or_else(|| exit_code_for("failed"))
 }
 
 fn encoded_failure(text: &str) -> Option<(&'static str, &str, i32)> {
@@ -166,5 +188,23 @@ mod tests {
     fn a_local_device_error_keeps_its_exit_code() {
         let missing: anyhow::Error = device_io::Error::NotFound("no such window".into()).into();
         assert_eq!(exit_code(&missing), 3);
+    }
+
+    /// The transport decoder cannot see the enum in a build without device
+    /// I/O, so it carries its own copy of the vocabulary. Whenever both are
+    /// present, they have to agree — otherwise a code added to the enum would
+    /// reach this crate as a bare string and exit 10.
+    #[cfg(feature = "desktop")]
+    #[test]
+    fn the_decoder_table_matches_the_device_io_taxonomy() {
+        let owned: Vec<(&str, i32)> = device_io::ErrorCode::ALL
+            .into_iter()
+            .map(|code| (code.as_str(), code.exit_code()))
+            .collect();
+        assert_eq!(
+            ENCODED_EXIT_CODES.as_slice(),
+            owned.as_slice(),
+            "lingxia-device-io owns this contract; update ENCODED_EXIT_CODES to match"
+        );
     }
 }
