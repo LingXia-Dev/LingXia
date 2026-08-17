@@ -27,9 +27,10 @@ process = ["lingxia/process", "standard"]
 # Dev builds always enable `devtools`; ride automation in so `lingxia dev`
 # sessions get lx.automation() by default (still privilege-gated per lxapp.json).
 control = ["dep:lingxia-control-runtime", "lingxia/devtool", "lingxia-control-runtime/local-control", "lingxia/product-cli"]
-# Keep the product command and in-process automation facade aligned with the
-# host runtime provider selected by computerUse.
-computer-use = ["control", "lingxia/computer-use", "lingxia/desktop-automation", "lingxia-control-runtime/computer-use"]
+# `lingxia/computer-use` carries both halves of the SDK side (the `computer`
+# subcommand and the in-process automation driver); the runtime provider is the
+# host end that answers them.
+computer-use = ["control", "lingxia/computer-use", "lingxia-control-runtime/computer-use"]
 # Derived from `capabilities.browserUse`. Without it the browser methods are
 # not linked and every browser command answers "feature unavailable".
 browser-use = ["control", "lingxia-control-runtime/browser"]
