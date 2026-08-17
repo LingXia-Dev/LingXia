@@ -1,5 +1,8 @@
 <template>
-  <div class="min-h-screen bg-surface-100 text-gray-900 flex flex-col items-center px-4 py-6">
+  <div
+    data-testid="surface-page"
+    class="min-h-screen bg-surface-100 text-gray-900 flex flex-col items-center px-4 py-6"
+  >
     <div class="w-full max-w-md space-y-6">
       <header>
         <h1 class="text-lg font-semibold tracking-wide text-gray-900">Surface Page</h1>

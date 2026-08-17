@@ -141,6 +141,7 @@ const TERMINAL_FONTS_API = ['list'] as const;
 const TERMINAL_PREVIEW_API = ['clear', 'close', 'show'] as const;
 const WINDOWS_TERMINAL_API = ['install', 'setEnabled', 'status'] as const;
 const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
+const SURFACE_NAMESPACE_API = ['get', 'onContext', 'openDeclared', 'openPage', 'openUrl'] as const;
 const SHELL_API = ['openApp', 'openBuiltin', 'openDeclared', 'reconfigure', 'sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['clear', 'remove', 'replace', 'update'] as const;
 const TRAY_API = ['hide', 'onClick', 'setBadge', 'setIcon', 'setMenu', 'setTitle', 'show'] as const;
@@ -394,6 +395,12 @@ export const LX_RUNTIME_SURFACES = [
     properties: ENV_API,
   },
   {
+    name: 'lx.surface',
+    layer: 'logic',
+    expression: 'lx.surface',
+    members: SURFACE_NAMESPACE_API,
+  },
+  {
     name: 'lx.shell',
     layer: 'logic',
     expression: 'lx.shell',
@@ -493,7 +500,6 @@ const COMPRESS_VIDEO_TASK_API = ['cancel', 'catch', 'finally', 'next', 'return',
 const HOST_UPDATE_INFO_API = ['apply', 'isForceUpdate', 'releaseNotes', 'size', 'version'] as const;
 const HOST_UPDATE_TASK_API = ['catch', 'finally', 'next', 'return', 'then', 'wait'] as const;
 const PREVIEW_MEDIA_API = ['completed', 'current', 'onChange', 'presented'] as const;
-const SURFACE_NAMESPACE_API = ['get', 'onContext', 'openDeclared', 'openPage', 'openUrl'] as const;
 const PAGE_SURFACE_API = [
   'alive',
   'close',

@@ -31,7 +31,10 @@ export default function SurfacePage() {
   }, [message, logSurfaceMessage, closeSelf]);
 
   return (
-    <div className="min-h-screen bg-surface-100 text-gray-900 flex flex-col items-center px-4 py-6">
+    <div
+      data-testid="surface-page"
+      className="min-h-screen bg-surface-100 text-gray-900 flex flex-col items-center px-4 py-6"
+    >
       <div className="w-full max-w-md space-y-6">
         <header>
           <h1 className="text-lg font-semibold tracking-wide text-gray-900">Surface Page</h1>
