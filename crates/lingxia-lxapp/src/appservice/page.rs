@@ -1382,7 +1382,6 @@ impl LxApp {
         path: &str,
         page_instance_id: &str,
     ) -> JSResult<()> {
-        PageSvc::create_in_ctx(ctx, path, Some(page_instance_id)).await?;
         let page = self
             .get_page_by_instance_id_str(page_instance_id)
             .ok_or_else(|| {
@@ -1391,6 +1390,14 @@ impl LxApp {
                     format!("PageInstance not found: {page_instance_id}"),
                 ))
             })?;
+        // A scene-owned surface reuses the canonical instance at that path,
+        // whose setup creates the service through the worker ack and waits for
+        // nothing. Creating it here too would register a second service for
+        // the same instance and orphan the bindings of the first.
+        if !page.is_isolated() {
+            return Ok(());
+        }
+        PageSvc::create_in_ctx(ctx, path, Some(page_instance_id)).await?;
         page.mark_page_svc_ready();
         Ok(())
     }

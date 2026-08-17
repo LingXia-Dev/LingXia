@@ -36,6 +36,13 @@ use tokio::sync::watch;
 /// For per-app scripts, use [`LxApp::add_page_script`] instead.
 static GLOBAL_PAGE_SCRIPTS: OnceLock<Mutex<Vec<Arc<str>>>> = OnceLock::new();
 
+/// How long an isolated page's setup waits for its opener to create the
+/// PageSvc. The opener does that in the same turn it awaits this page, so
+/// exceeding this means nobody is coming — an isolated instance created
+/// outside `lx.surface`. Fail loudly instead of leaving the page parked at
+/// `about:blank` with no diagnostic.
+const PAGE_SVC_READY_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Register a script to inject on every page load across all LxApps.
 ///
 /// Call at app startup, before any pages are created.
@@ -1111,12 +1118,23 @@ impl PageInstance {
             return Ok(());
         }
         let mut rx = rx;
-        while rx.changed().await.is_ok() {
-            if *rx.borrow() {
-                return Ok(());
+        let marked = async {
+            while rx.changed().await.is_ok() {
+                if *rx.borrow() {
+                    return Ok(());
+                }
             }
-        }
-        Err("page svc ready channel closed before the opener created it".to_string())
+            Err("page svc ready channel closed before the opener created it".to_string())
+        };
+        tokio::time::timeout(PAGE_SVC_READY_TIMEOUT, marked)
+            .await
+            .unwrap_or_else(|_| {
+                Err(format!(
+                    "no opener created this isolated page's Logic service within {}s; \
+                     an isolated instance must be opened through lx.surface",
+                    PAGE_SVC_READY_TIMEOUT.as_secs()
+                ))
+            })
     }
 
     /// Notify that the page's WebView started loading (mirrors WebViewDelegate::on_page_started).
