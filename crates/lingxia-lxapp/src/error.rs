@@ -9,8 +9,9 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
 pub enum LxAppError {
-    /// Error when performing web operations
-    #[error("WebView error: {0}")]
+    /// Error when performing web operations. The inner string already names
+    /// the WebView source (`WebViewError` displays as `WebView error: …`).
+    #[error("{0}")]
     WebView(String),
 
     #[error("{0} not found")]
