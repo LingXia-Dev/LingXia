@@ -192,12 +192,15 @@ fn remove_autostart_run_entry(name: &str) -> Result<(), PlatformError> {
 /// Process-wide interceptor for [`AppRuntime::open_url`] requests. Returns
 /// `Some` when the request was handled (e.g. routed into an in-app browser
 /// tab); `None` falls back to the OS shell handler.
-type WindowsOpenUrlHandler = Arc<dyn Fn(&OpenUrlRequest) -> Option<OpenUrlResult> + Send + Sync>;
+type WindowsOpenUrlHandler =
+    Arc<dyn Fn(&OpenUrlRequest) -> Result<Option<OpenUrlResult>, PlatformError> + Send + Sync>;
 static WINDOWS_OPEN_URL_HANDLER: Mutex<Option<WindowsOpenUrlHandler>> = Mutex::new(None);
 type WindowsBrowserTabHandler = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 static WINDOWS_CLOSE_BROWSER_TAB_HANDLER: Mutex<Option<WindowsBrowserTabHandler>> =
     Mutex::new(None);
-static WINDOWS_ACTIVATE_BROWSER_TAB_HANDLER: Mutex<Option<WindowsBrowserTabHandler>> =
+type WindowsActivateBrowserTabHandler =
+    Arc<dyn Fn(String) -> crate::traits::ui::ManagedSurfaceFuture + Send + Sync>;
+static WINDOWS_ACTIVATE_BROWSER_TAB_HANDLER: Mutex<Option<WindowsActivateBrowserTabHandler>> =
     Mutex::new(None);
 
 /// Registers the open-url interceptor. Product shells (the `lingxia`
@@ -210,11 +213,16 @@ pub fn set_windows_open_url_handler(handler: WindowsOpenUrlHandler) {
     }
 }
 
-fn invoke_windows_open_url_handler(req: &OpenUrlRequest) -> Option<OpenUrlResult> {
-    let handler = WINDOWS_OPEN_URL_HANDLER
+fn invoke_windows_open_url_handler(
+    req: &OpenUrlRequest,
+) -> Result<Option<OpenUrlResult>, PlatformError> {
+    let Some(handler) = WINDOWS_OPEN_URL_HANDLER
         .lock()
         .ok()
-        .and_then(|slot| slot.clone())?;
+        .and_then(|slot| slot.clone())
+    else {
+        return Ok(None);
+    };
     handler(req)
 }
 
@@ -226,9 +234,22 @@ pub fn set_windows_close_browser_tab_handler(handler: WindowsBrowserTabHandler) 
 }
 
 /// Registers the activate-tab interceptor used by [`AppRuntime::activate_browser_tab`].
-pub fn set_windows_activate_browser_tab_handler(handler: WindowsBrowserTabHandler) {
+pub fn set_windows_activate_browser_tab_handler(handler: WindowsActivateBrowserTabHandler) {
     if let Ok(mut slot) = WINDOWS_ACTIVATE_BROWSER_TAB_HANDLER.lock() {
         *slot = Some(handler);
+    }
+}
+
+fn invoke_windows_activate_browser_tab_handler(
+    tab_id: String,
+) -> crate::traits::ui::ManagedSurfaceFuture {
+    let handler = WINDOWS_ACTIVATE_BROWSER_TAB_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone());
+    match handler {
+        Some(handler) => handler(tab_id),
+        None => Box::pin(async { Err(PlatformError::NotSupported("browser tab".to_string())) }),
     }
 }
 
@@ -574,7 +595,7 @@ impl AppRuntime for Platform {
     fn open_url(&self, req: OpenUrlRequest) -> Result<OpenUrlResult, PlatformError> {
         // In-app targets (browser tabs) are owned by the registered product
         // shell handler; only unhandled requests reach the OS shell.
-        if let Some(result) = invoke_windows_open_url_handler(&req) {
+        if let Some(result) = invoke_windows_open_url_handler(&req)? {
             return Ok(result);
         }
         // Sync trait method: launch without waiting so the executor never blocks.
@@ -590,12 +611,8 @@ impl AppRuntime for Platform {
         }
     }
 
-    fn activate_browser_tab(&self, tab_id: &str) -> Result<(), PlatformError> {
-        if invoke_windows_browser_tab_handler(&WINDOWS_ACTIVATE_BROWSER_TAB_HANDLER, tab_id) {
-            Ok(())
-        } else {
-            Err(PlatformError::NotSupported("browser tab".to_string()))
-        }
+    fn activate_browser_tab(&self, tab_id: String) -> crate::traits::ui::ManagedSurfaceFuture {
+        invoke_windows_activate_browser_tab_handler(tab_id)
     }
 }
 

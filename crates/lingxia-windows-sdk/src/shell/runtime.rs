@@ -24,7 +24,7 @@ use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::app_runtime::{
     AppRuntime, BuiltinBrowserPage, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
 };
-use lingxia_platform::traits::ui::ManagedSurfaceCompletion;
+use lingxia_platform::traits::ui::{ManagedSurfaceCompletion, ManagedSurfaceFuture};
 use lingxia_shell::{
     ResolvedShellSidebarAction, ShellPin, ShellPinTarget, SidebarActionIntent,
     SidebarActionPlacement,
@@ -1238,19 +1238,21 @@ fn current_sidebar_width(group_appid: &str) -> f64 {
 /// for explicit external targets or when no shell/browser is available.
 fn handle_open_url_request(
     req: &OpenUrlRequest,
-) -> Option<lingxia_platform::traits::app_runtime::OpenUrlResult> {
+) -> Result<Option<lingxia_platform::traits::app_runtime::OpenUrlResult>, PlatformError> {
     match req.target {
-        OpenUrlTarget::External => None,
+        OpenUrlTarget::External => Ok(None),
         // In-app targets are routed into the internal browser; without the
         // browser engine there is nowhere in-app to open them, so defer to the
         // OS handler.
         #[cfg(not(feature = "browser-runtime"))]
         OpenUrlTarget::SelfTarget | OpenUrlTarget::NewBrowserTab | OpenUrlTarget::AsideBrowser => {
-            None
+            Ok(None)
         }
         #[cfg(feature = "browser-runtime")]
         OpenUrlTarget::SelfTarget | OpenUrlTarget::NewBrowserTab | OpenUrlTarget::AsideBrowser => {
-            let owner_appid = shell_owner_appid()?;
+            let Some(owner_appid) = shell_owner_appid() else {
+                return Ok(None);
+            };
             // Presentation policy: requests from the presented browser tab
             // (or from a non-browser surface such as an lxapp page) present
             // the new tab; background browser tabs only add a sidebar row.
@@ -1261,18 +1263,20 @@ fn handle_open_url_request(
             let aside = req.target == OpenUrlTarget::AsideBrowser;
             let url = req.url.clone();
             if req.want_tab_id {
+                let owner_session_id = lxapp::try_get(&owner_appid)
+                    .map(|owner| owner.session_id())
+                    .ok_or_else(|| {
+                        PlatformError::Platform(format!(
+                            "shell owner app is not active: {owner_appid}"
+                        ))
+                    })?;
                 // JS is waiting for an identity; create on this thread (the
                 // Logic executor, not a WebView UI thread) so close() can
                 // address the tab immediately.
                 let opened = if aside {
-                    lingxia_browser::open_aside_for_app(
-                        &owner_appid,
-                        req.owner_session_id,
-                        &url,
-                        None,
-                    )
+                    lingxia_browser::open_aside_for_app(&owner_appid, owner_session_id, &url, None)
                 } else {
-                    lingxia_browser::open_for_app(&owner_appid, req.owner_session_id, &url, None)
+                    lingxia_browser::open_for_app(&owner_appid, owner_session_id, &url, None)
                 };
                 return match opened {
                     Ok(tab_id) => {
@@ -1281,14 +1285,13 @@ fn handle_open_url_request(
                         } else {
                             sync_shell_layout(&owner_appid);
                         }
-                        Some(lingxia_platform::traits::app_runtime::OpenUrlResult {
+                        Ok(Some(lingxia_platform::traits::app_runtime::OpenUrlResult {
                             tab_id: Some(tab_id),
-                        })
+                        }))
                     }
-                    Err(err) => {
-                        log::error!("failed to open browser tab for {url}: {err}");
-                        None
-                    }
+                    Err(err) => Err(PlatformError::Platform(format!(
+                        "failed to open browser tab for {url}: {err}"
+                    ))),
                 };
             }
             // May be called on a webview UI thread (NewWindowRequested);
@@ -1296,7 +1299,9 @@ fn handle_open_url_request(
             std::mem::drop(lingxia::task::spawn(async move {
                 open_browser_tab_for_open_url(&owner_appid, &url, present, aside);
             }));
-            Some(lingxia_platform::traits::app_runtime::OpenUrlResult { tab_id: None })
+            Ok(Some(lingxia_platform::traits::app_runtime::OpenUrlResult {
+                tab_id: None,
+            }))
         }
     }
 }
@@ -1321,20 +1326,33 @@ fn handle_close_browser_tab(tab_id: &str) -> bool {
     }
 }
 
-fn handle_activate_browser_tab(tab_id: &str) -> bool {
-    let Some(owner_appid) = shell_owner_appid() else {
-        return false;
-    };
-    #[cfg(feature = "browser-runtime")]
-    {
-        present_browser_tab_when_ready(&owner_appid, tab_id.to_string());
-        true
-    }
-    #[cfg(not(feature = "browser-runtime"))]
-    {
-        let _ = (owner_appid, tab_id);
-        false
-    }
+fn handle_activate_browser_tab(tab_id: String) -> ManagedSurfaceFuture {
+    Box::pin(async move {
+        let owner_appid = shell_owner_appid()
+            .ok_or_else(|| PlatformError::NotSupported("browser tab".to_string()))?;
+        #[cfg(feature = "browser-runtime")]
+        {
+            let (sender, receiver) = tokio::sync::oneshot::channel();
+            let completion = Box::new(move |result| {
+                let _ = sender.send(result);
+            });
+            present_browser_tab_when_ready_inner(
+                &owner_appid,
+                tab_id,
+                false,
+                None,
+                Some(completion),
+            );
+            receiver.await.map_err(|_| {
+                PlatformError::Platform("browser presentation was cancelled".to_string())
+            })?
+        }
+        #[cfg(not(feature = "browser-runtime"))]
+        {
+            let _ = (owner_appid, tab_id);
+            Err(PlatformError::NotSupported("browser tab".to_string()))
+        }
+    })
 }
 
 /// Opens `url` as a new in-app browser tab owned by the shell app and, when

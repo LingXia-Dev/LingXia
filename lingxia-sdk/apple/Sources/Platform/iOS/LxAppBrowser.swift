@@ -89,9 +89,10 @@ final class LxAppBrowser: NSObject {
 
     /// Close a tab and select a neighbor in its group; exit when that group is
     /// empty.
-    static func closeTab(tabId: String) {
+    @discardableResult
+    static func closeTab(tabId: String) -> Bool {
         let normalizedTabId = normalizeTabId(tabId)
-        guard let index = openTabIds.firstIndex(of: normalizedTabId) else { return }
+        guard let index = openTabIds.firstIndex(of: normalizedTabId) else { return false }
         let closingAside = isAside(tabId: normalizedTabId)
         let groupIndex = tabIds(aside: closingAside).firstIndex(of: normalizedTabId) ?? 0
 
@@ -101,13 +102,13 @@ final class LxAppBrowser: NSObject {
         interactedTabIds.remove(normalizedTabId)
 
         let wasActive = activeTabId == normalizedTabId
-        if !wasActive { return }
+        if !wasActive { return true }
 
         let remaining = tabIds(aside: closingAside)
         if remaining.isEmpty {
             activeTabId = nil
             exitBrowser()
-            return
+            return true
         }
 
         let neighborIndex = min(groupIndex, remaining.count - 1)
@@ -115,6 +116,7 @@ final class LxAppBrowser: NSObject {
         activeTabId = neighbor
         browserTabActivate(neighbor)
         currentController?.displayActiveTab()
+        return true
     }
 
     @objc public static func dismiss() {

@@ -8,9 +8,9 @@ use lingxia_platform::traits::app_runtime::{
 use lingxia_platform::traits::ui::WindowChrome;
 use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{
-    LxApp, LxAppError, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget,
-    app_handler_unsub, publish_app_event, register_app_handler, try_get,
-    unregister_app_handler_token,
+    AppHandlerUnsub, BROWSER_TAB_CLOSED_EVENT, LxApp, LxAppError, PageQueryInput,
+    PageSurfaceRequest, PageSurfaceTarget, PageTarget, app_handler_unsub, publish_app_event,
+    register_app_handler, try_get, unregister_app_handler_token,
 };
 use rong::{
     Class, HostError, IntoJSObject, JSContext, JSContextService, JSFunc, JSObject, JSResult,
@@ -23,6 +23,7 @@ use serde_json::Value;
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
@@ -877,6 +878,28 @@ fn attach_browser_group_methods(ctx: &JSContext, handle: &JSObject) -> JSResult<
 }
 
 /// A `TabSurface` that owns exactly the tab `open_url` named.
+fn finish_owned_browser_tab_close(
+    target: &JSObject,
+    handlers: &Rc<RefCell<Vec<JSFunc>>>,
+    registry_key: Option<&str>,
+    reason: &str,
+) -> JSResult<()> {
+    if let Some(key) = registry_key {
+        let _ = surface_registry(&target.context())?.delete(key);
+    }
+    if !target.get::<_, bool>("alive").unwrap_or(false) {
+        return Ok(());
+    }
+    target.set("alive", false)?;
+    target.set("visible", false)?;
+    let event = JSObject::new(&target.context());
+    event.set("reason", reason)?;
+    for handler in handlers.borrow().clone() {
+        let _ = handler.call::<_, ()>(None, (event.clone(),));
+    }
+    Ok(())
+}
+
 fn owned_browser_tab_handle(
     ctx: &JSContext,
     tab_id: String,
@@ -887,17 +910,40 @@ fn owned_browser_tab_handle(
     handle.set("id", tab_id.as_str())?;
     handle.set("alive", true)?;
     handle.set("visible", true)?;
+    let close_handlers = Rc::new(RefCell::new(Vec::<JSFunc>::new()));
+    let native_unsub = Rc::new(RefCell::new(None::<AppHandlerUnsub>));
     let close_id = tab_id.clone();
+    let close_handlers_for_close = close_handlers.clone();
+    let native_unsub_for_close = native_unsub.clone();
+    let close_key = key.clone();
     handle.set(
         "close",
-        JSFunc::new(ctx, move |ctx: JSContext| {
+        JSFunc::new(ctx, move |this: This<JSObject>| {
+            let target = (*this).clone();
+            let ctx = target.context();
             let lxapp = LxApp::from_ctx(&ctx)?;
             let tab_id = close_id.clone();
+            let already_closed = !target.get::<_, bool>("alive").unwrap_or(false);
+            let handlers = close_handlers_for_close.clone();
+            let native_unsub = native_unsub_for_close.clone();
+            let registry_key = close_key.clone();
             Promise::from_future(&ctx, None, async move {
+                if already_closed {
+                    return Ok(());
+                }
                 lxapp
                     .runtime
                     .close_browser_tab(&tab_id)
                     .map_err(|err| surface_error(SurfaceErrorCode::Failed, err))?;
+                finish_owned_browser_tab_close(
+                    &target,
+                    &handlers,
+                    registry_key.as_deref(),
+                    "programmatic",
+                )?;
+                if let Some(off) = native_unsub.borrow_mut().take() {
+                    off.unsubscribe();
+                }
                 Ok(())
             })
         })?,
@@ -911,18 +957,55 @@ fn owned_browser_tab_handle(
             Promise::from_future(&ctx, None, async move {
                 lxapp
                     .runtime
-                    .activate_browser_tab(&tab_id)
+                    .activate_browser_tab(tab_id)
+                    .await
                     .map_err(|err| surface_error(SurfaceErrorCode::Failed, err))?;
                 Ok(())
             })
         })?,
     )?;
+    let close_handlers_for_on_close = close_handlers.clone();
     handle.set(
         "onClose",
-        JSFunc::new(ctx, |ctx: JSContext, _handler: JSFunc| {
-            JSFunc::new(&ctx, || {})
+        JSFunc::new(ctx, move |ctx: JSContext, handler: JSFunc| {
+            close_handlers_for_on_close
+                .borrow_mut()
+                .push(handler.clone());
+            let handlers = close_handlers_for_on_close.clone();
+            let unsubscribed = Cell::new(false);
+            JSFunc::new(&ctx, move || {
+                if unsubscribed.replace(true) {
+                    return;
+                }
+                handlers.borrow_mut().retain(|entry| *entry != handler);
+            })
         })?,
     )?;
+    let watched_id = tab_id;
+    let watched_handle = handle.clone();
+    let watched_handlers = close_handlers;
+    let watched_unsub = native_unsub.clone();
+    let watched_key = key.clone();
+    let native_handler = JSFunc::new(ctx, move |payload: JSObject| {
+        if payload.get::<_, String>("id").unwrap_or_default() != watched_id {
+            return Ok(());
+        }
+        finish_owned_browser_tab_close(
+            &watched_handle,
+            &watched_handlers,
+            watched_key.as_deref(),
+            payload
+                .get::<_, String>("reason")
+                .as_deref()
+                .unwrap_or("user"),
+        )?;
+        if let Some(off) = watched_unsub.borrow_mut().take() {
+            off.unsubscribe();
+        }
+        Ok(())
+    })?;
+    let token = register_app_handler(ctx, BROWSER_TAB_CLOSED_EVENT, native_handler)?;
+    *native_unsub.borrow_mut() = Some(app_handler_unsub(ctx, BROWSER_TAB_CLOSED_EVENT, token));
     finish_handle(ctx, &handle, "tab", realized, key, Some("tab"))
 }
 

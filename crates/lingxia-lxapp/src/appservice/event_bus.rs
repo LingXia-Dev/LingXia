@@ -6,6 +6,8 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
+pub const BROWSER_TAB_CLOSED_EVENT: &str = "__lingxiaBrowserTabClosed";
+
 /// Internal scope marker. The page scope carries the page INSTANCE id, so
 /// one instance's teardown can never clear a same-path sibling's handlers.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

@@ -14,10 +14,25 @@ import ServiceManagement
 
 private let lxAppFFILog = OSLog(subsystem: "LingXia", category: "LxAppFFI")
 
-/// Last in-app tab id produced by `openUrl`. Taken by Rust immediately after
-/// a successful open so the JS handle can own that tab.
+/// In-app tab id produced by `openUrl`, scoped to the calling Rust thread.
+/// `AppRuntime` is callable concurrently, so a process-wide slot could let one
+/// request take another request's tab id.
 private enum OpenedUrlTabSlot {
-    nonisolated(unsafe) static var lastId = ""
+    private static let key = "app.lingxia.opened-url-tab-id"
+
+    static func clear() {
+        Thread.current.threadDictionary.removeObject(forKey: key)
+    }
+
+    static func store(_ tabId: String) {
+        Thread.current.threadDictionary[key] = tabId
+    }
+
+    static func take() -> String {
+        let tabId = Thread.current.threadDictionary[key] as? String ?? ""
+        clear()
+        return tabId
+    }
 }
 
 /// FFI callbacks dispatched from Rust via the generated bridge.
@@ -669,7 +684,7 @@ extension LxApp {
         url: RustStr,
         target: Int32
     ) -> Bool {
-        OpenedUrlTabSlot.lastId = ""
+        OpenedUrlTabSlot.clear()
         let ownerAppId = owner_appid.toString()
         let urlString = url.toString()
         let openTarget = OpenURLTarget(rawValue: target) ?? .external
@@ -731,7 +746,7 @@ extension LxApp {
         }
         let tabId = openedTab.toString()
         guard !tabId.isEmpty else { return false }
-        OpenedUrlTabSlot.lastId = tabId
+        OpenedUrlTabSlot.store(tabId)
 
         #if os(macOS)
         return executeOnMain { macOSLxApp.presentInternalBrowserTab(tabId: tabId) }
@@ -743,15 +758,17 @@ extension LxApp {
     }
 
     nonisolated static func takeOpenedUrlTabId() -> String {
-        let tabId = OpenedUrlTabSlot.lastId
-        OpenedUrlTabSlot.lastId = ""
-        return tabId
+        OpenedUrlTabSlot.take()
     }
 
     nonisolated static func closeBrowserTab(tab_id: RustStr) -> Bool {
         let tabId = tab_id.toString()
         guard !tabId.isEmpty else { return false }
+        #if os(iOS)
+        return executeOnMain { LxAppBrowser.closeTab(tabId: tabId) }
+        #else
         return executeOnMain { browserTabClose(tabId) }
+        #endif
     }
 
     nonisolated static func activateBrowserTab(tab_id: RustStr) -> Bool {

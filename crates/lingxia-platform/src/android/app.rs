@@ -588,26 +588,28 @@ impl AppRuntime for Platform {
         .map_err(|e| PlatformError::Platform(format!("Failed to close_browser_tab: {}", e)))
     }
 
-    fn activate_browser_tab(&self, tab_id: &str) -> Result<(), PlatformError> {
-        let host_class: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
-            .map_err(|e| PlatformError::Platform(e.to_string()))?;
-        with_env(|env| -> Result<(), PlatformError> {
-            let tab_jstring = env.new_string(tab_id)?;
-            let result = env.call_static_method(
-                host_class,
-                jni_str!("activateBrowserTab"),
-                jni_sig!("(Ljava/lang/String;)Z"),
-                &[JValue::Object(&tab_jstring)],
-            )?;
-            if result.z()? {
-                Ok(())
-            } else {
-                Err(PlatformError::Platform(format!(
-                    "Failed to activate browser tab: {tab_id}"
-                )))
-            }
+    fn activate_browser_tab(&self, tab_id: String) -> crate::traits::ui::ManagedSurfaceFuture {
+        Box::pin(async move {
+            let host_class: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
+                .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            with_env(|env| -> Result<(), PlatformError> {
+                let tab_jstring = env.new_string(&tab_id)?;
+                let result = env.call_static_method(
+                    host_class,
+                    jni_str!("activateBrowserTab"),
+                    jni_sig!("(Ljava/lang/String;)Z"),
+                    &[JValue::Object(&tab_jstring)],
+                )?;
+                if result.z()? {
+                    Ok(())
+                } else {
+                    Err(PlatformError::Platform(format!(
+                        "Failed to activate browser tab: {tab_id}"
+                    )))
+                }
+            })
+            .map_err(|e| PlatformError::Platform(format!("Failed to activate_browser_tab: {}", e)))
         })
-        .map_err(|e| PlatformError::Platform(format!("Failed to activate_browser_tab: {}", e)))
     }
 }
 
