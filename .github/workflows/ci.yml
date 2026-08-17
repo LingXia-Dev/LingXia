@@ -470,9 +470,9 @@ jobs:
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.i18n == 'true' }}
     name: Windows Target
     runs-on: windows-latest
-    # The build itself takes ~25 min; the rust-cache save of the target dir on a
-    # key change can add 5+ min, so 30 min timed out during the post-job save.
-    timeout-minutes: 45
+    # The full Windows gates can take ~40 min; the rust-cache post-job save of
+    # the target dir can add 5+ min, so leave enough room for cache finalization.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
