@@ -41,7 +41,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_TOOLCHAIN: "1.95.0"
+  RUST_TOOLCHAIN: "1.97.1"
   CHECKOUT_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && github.ref_name || github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:

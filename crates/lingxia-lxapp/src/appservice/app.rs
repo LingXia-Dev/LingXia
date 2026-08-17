@@ -34,7 +34,7 @@ impl LxAppSvc {
     where
         F: FnMut(&JSValue),
     {
-        for (_, func) in self.event_handlers.iter() {
+        for func in self.event_handlers.values() {
             mark_fn(func.as_js_value());
         }
         mark_fn(self.this.as_js_value());
