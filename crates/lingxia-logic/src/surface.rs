@@ -2070,16 +2070,25 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
                 .get_page_by_instance_id_str(page_instance_id)
                 .map(|page| page.path())
         });
-        if let Some(page_path) = page_path {
-            lxapp
-                .prepare_isolated_page_svc(&ctx, &page_path, page_instance_id)
-                .await
-                .map_err(|err| {
-                    unregister_closed_sender(&surface_id);
-                    let _ = lxapp.close_surface(&surface_id, "failed");
-                    surface_error(SurfaceErrorCode::Failed, err)
-                })?;
-        }
+        // An isolated page's setup waits for the service created below, so a
+        // path we cannot resolve has to fail the open here. Skipping would
+        // hand back a surface whose page never mounts.
+        let Some(page_path) = page_path else {
+            unregister_closed_sender(&surface_id);
+            let _ = lxapp.close_surface(&surface_id, "failed");
+            return Err(surface_error(
+                SurfaceErrorCode::Failed,
+                format!("surface page instance has no page path: {page_instance_id}"),
+            ));
+        };
+        lxapp
+            .prepare_isolated_page_svc(&ctx, &page_path, page_instance_id)
+            .await
+            .map_err(|err| {
+                unregister_closed_sender(&surface_id);
+                let _ = lxapp.close_surface(&surface_id, "failed");
+                surface_error(SurfaceErrorCode::Failed, err)
+            })?;
     }
     // Windows: the platform presents the surface's page-instance webview before
     // it mounts, so it never receives a visibility transition of its own. Try

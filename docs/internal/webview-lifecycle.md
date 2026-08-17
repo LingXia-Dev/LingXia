@@ -263,7 +263,9 @@ readiness (`mark_webview_ready()` / `wait_webview_ready()` live in
 3. **Wired to owner**:
    - LxApp page: `PageInstance` stores the `Arc<WebView>`, delegate is the
      `PageInstance`, setup callback creates `PageSvc` and loads HTML.
-   - Surface (page target): same, but the instance is isolated.
+   - Surface (page target): same, but the instance is isolated and the setup
+     callback *waits* for the `PageSvc` instead of creating it — see
+     [Surface WebView](#surface-webview).
    - Surface (URL target): no Rust WebView; the platform receives the URL.
    - Browser tab: browser runtime stores tab state, delegate is
      `BrowserTabDelegate`, the pending URL or internal page is loaded.
@@ -336,6 +338,22 @@ Surfaces are secondary presentation targets (overlays, windows) opened via
    records **two** ids: `owner_page_instance_id` (who opened it) and
    `content_page_instance_id` (the page hosted *inside* it, for page targets).
 4. The platform `SurfacePresenter` presents the native overlay/window UI.
+
+An isolated page's `PageSvc` is created by the **opener**, not by the setup
+callback: `prepare_isolated_page_svc()` runs `__LX_CREATE_PAGE__` on the JS
+worker the opener is already on, then `mark_page_svc_ready()`. Setup awaits
+that flag (`wait_page_svc_ready()`) before `load_html()`. The inverted order
+is load-bearing — the opener is *inside* a JS call awaiting this page, so a
+`CreatePage` posted from setup would queue behind that wait and
+`lx.surface.openPage` would never settle. The wait is bounded: an isolated
+instance created outside `lx.surface` fails its setup instead of parking at
+`about:blank` forever.
+
+Setup then sends `PageInstanceEvent::Mounted` and publishes the page's chrome
+(`publish_realized_page_chrome()`), which an isolated instance needs because it
+is never `current_page()` and so never picked up by `sync_host_ui` — that
+publication is what carries a `chrome: 'full'` window's drag-strip `topInset`
+to the page.
 
 ### Closing
 
@@ -828,10 +846,12 @@ sequenceDiagram
   JS->>LxApp: lx.surface.open({ kind, path, ... })
   LxApp->>PI: create_isolated_page_instance()
   PI->>Core: WebViewBuilder::strict(tag).create()
-  Core-->>PI: oneshot Ok(webview)
-  PI->>PI: attach_webview + create PageSvc + load_html
   LxApp->>Platform: present_surface(request)
   Platform-->>LxApp: surface presented
+  JS->>PI: prepare_isolated_page_svc → create PageSvc + mark_page_svc_ready
+  Core-->>PI: oneshot Ok(webview)
+  PI->>PI: attach_webview + wait_page_svc_ready + load_html
+  PI->>LxApp: Mounted + publish_realized_page_chrome
   LxApp-->>JS: Surface { id, kind, close(), postMessage(), onShow/onHide, ... }
 
   Note over JS,Platform: ... later, surface is dismissed ...
