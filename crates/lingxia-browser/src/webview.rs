@@ -489,6 +489,7 @@ pub(crate) fn browser_create_webview(
                         owner_session_id: owner_session_for_nav,
                         url: url.to_string(),
                         target: OpenUrlTarget::External,
+                        want_tab_id: false,
                     });
                     NavigationPolicy::Cancel
                 }
@@ -544,6 +545,7 @@ pub(crate) fn browser_create_webview(
                 owner_session_id: owner_session_for_new_window,
                 url: normalized,
                 target,
+                want_tab_id: false,
             });
             NewWindowPolicy::Cancel
         })

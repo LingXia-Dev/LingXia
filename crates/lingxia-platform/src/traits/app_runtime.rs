@@ -63,6 +63,17 @@ pub struct OpenUrlRequest {
     pub owner_session_id: u64,
     pub url: String,
     pub target: OpenUrlTarget,
+    /// When true, the host should create the in-app tab before returning and
+    /// report its id. Fire-and-forget callers (new-window, navigation) leave
+    /// this false so the work can hop off a WebView UI thread.
+    pub want_tab_id: bool,
+}
+
+/// Outcome of [`AppRuntime::open_url`]. `tab_id` is set when the host named
+/// the tab it opened; `None` means the browser chrome owns the strip.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OpenUrlResult {
+    pub tab_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -245,7 +256,19 @@ pub trait AppRuntime:
     ) -> Result<(), PlatformError>;
 
     /// Opens the given URL according to the host policy for the requested target.
-    fn open_url(&self, req: OpenUrlRequest) -> Result<(), PlatformError>;
+    fn open_url(&self, req: OpenUrlRequest) -> Result<OpenUrlResult, PlatformError>;
+
+    /// Close a tab previously named by [`Self::open_url`]. Platforms that
+    /// cannot name tabs leave this unimplemented — the JS handle then reports
+    /// `scope: 'group'` and never calls it.
+    fn close_browser_tab(&self, _tab_id: &str) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported("browser tab".to_string()))
+    }
+
+    /// Bring a tab previously named by [`Self::open_url`] to the front.
+    fn activate_browser_tab(&self, _tab_id: &str) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported("browser tab".to_string()))
+    }
 
     fn open_builtin_browser_page(&self, _page: BuiltinBrowserPage) -> Result<(), PlatformError> {
         Err(PlatformError::NotSupported(

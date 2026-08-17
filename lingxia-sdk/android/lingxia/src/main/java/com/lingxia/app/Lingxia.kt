@@ -225,14 +225,14 @@ object Lingxia {
         return true
     }
 
-    /** JNI entry: open an arbitrary URI. */
+    /** JNI entry: open an arbitrary URI. Returns the in-app tab id when one was named. */
     @JvmStatic
     fun launchWithUrl(
         uri: String,
         target: String = "external",
         ownerAppId: String = "",
         ownerSessionId: Long = 0L
-    ) {
+    ): String {
         Log.d(TAG, "launchWithUrl called with URI: $uri, target: $target")
         // Mobile uses a single in-app browser experience: "self",
         // "new_browser_tab" and "aside" all open there; an aside tab carries
@@ -242,46 +242,50 @@ object Lingxia {
         if (inAppBrowserTarget && (capabilities and CAP_BROWSER) != 0) {
             val activity = LxApp.getCurrentActivity()
             if (activity != null) {
+                val current = NativeApi.getCurrentLxApp()
+                val fallbackOwnerAppId = current?.appId ?: activity.getAppId()
+                val resolvedOwnerAppId = ownerAppId.takeIf { it.isNotBlank() } ?: fallbackOwnerAppId
+                val resolvedOwnerSessionId = when {
+                    ownerSessionId > 0L -> ownerSessionId
+                    current != null &&
+                        current.appId == resolvedOwnerAppId &&
+                        current.sessionId > 0L -> current.sessionId
+                    resolvedOwnerAppId.isNotBlank() -> NativeApi.getLxAppSessionId(resolvedOwnerAppId)
+                    else -> 0L
+                }
+                if (resolvedOwnerAppId.isBlank() || resolvedOwnerSessionId <= 0L) {
+                    Log.w(
+                        TAG,
+                        "launchWithUrl target=in_app: invalid owner appId=$resolvedOwnerAppId session=$resolvedOwnerSessionId"
+                    )
+                    activity.runOnUiThread {
+                        if (!launchExternalUrl(activity, uri, 0)) {
+                            Log.w(TAG, "No external handler for URL: $uri")
+                        }
+                    }
+                    return ""
+                }
+                val tabId = if (isAside) {
+                    NativeApi.openAsideBrowserTab(resolvedOwnerAppId, resolvedOwnerSessionId, uri)
+                } else {
+                    NativeApi.openBrowserTab(resolvedOwnerAppId, resolvedOwnerSessionId, uri)
+                }
+                if (tabId.isNullOrBlank()) {
+                    Log.w(
+                        TAG,
+                        "launchWithUrl target=in_app: openBrowserTab failed appId=$resolvedOwnerAppId session=$resolvedOwnerSessionId"
+                    )
+                    activity.runOnUiThread {
+                        if (!launchExternalUrl(activity, uri, 0)) {
+                            Log.w(TAG, "No external handler for URL: $uri")
+                        }
+                    }
+                    return ""
+                }
                 activity.runOnUiThread {
-                    val current = NativeApi.getCurrentLxApp()
-                    val fallbackOwnerAppId = current?.appId ?: activity.getAppId()
-                    val resolvedOwnerAppId = ownerAppId.takeIf { it.isNotBlank() } ?: fallbackOwnerAppId
-                    val resolvedOwnerSessionId = when {
-                        ownerSessionId > 0L -> ownerSessionId
-                        current != null &&
-                            current.appId == resolvedOwnerAppId &&
-                            current.sessionId > 0L -> current.sessionId
-                        resolvedOwnerAppId.isNotBlank() -> NativeApi.getLxAppSessionId(resolvedOwnerAppId)
-                        else -> 0L
-                    }
-                    if (resolvedOwnerAppId.isBlank() || resolvedOwnerSessionId <= 0L) {
-                        Log.w(
-                            TAG,
-                            "launchWithUrl target=in_app: invalid owner appId=$resolvedOwnerAppId session=$resolvedOwnerSessionId"
-                        )
-                        if (!launchExternalUrl(activity, uri, 0)) {
-                            Log.w(TAG, "No external handler for URL: $uri")
-                        }
-                        return@runOnUiThread
-                    }
-                    val tabId = if (isAside) {
-                        NativeApi.openAsideBrowserTab(resolvedOwnerAppId, resolvedOwnerSessionId, uri)
-                    } else {
-                        NativeApi.openBrowserTab(resolvedOwnerAppId, resolvedOwnerSessionId, uri)
-                    }
-                    if (tabId.isNullOrBlank()) {
-                        Log.w(
-                            TAG,
-                            "launchWithUrl target=in_app: openBrowserTab failed appId=$resolvedOwnerAppId session=$resolvedOwnerSessionId"
-                        )
-                        if (!launchExternalUrl(activity, uri, 0)) {
-                            Log.w(TAG, "No external handler for URL: $uri")
-                        }
-                        return@runOnUiThread
-                    }
                     LxAppBrowser.show(activity, tabId, uri)
                 }
-                return
+                return tabId
             }
             Log.w(TAG, "launchWithUrl target=in_app: no current activity")
         }
@@ -295,15 +299,35 @@ object Lingxia {
                     Log.w(TAG, "No external handler for URL: $uri")
                 }
             }
-            return
+            return ""
         }
         val ctx = appContext ?: run {
             Log.w(TAG, "launchWithUrl: Lingxia not initialized")
-            return
+            return ""
         }
         if (!launchExternalUrl(ctx, uri, 0)) {
             Log.w(TAG, "No external handler for URL: $uri")
         }
+        return ""
+    }
+
+    /** JNI entry: close a tab previously named by [launchWithUrl]. */
+    @JvmStatic
+    fun closeBrowserTab(tabId: String): Boolean {
+        if (tabId.isBlank()) return false
+        return NativeApi.browserTabClose(tabId)
+    }
+
+    /** JNI entry: present a tab previously named by [launchWithUrl]. */
+    @JvmStatic
+    fun activateBrowserTab(tabId: String): Boolean {
+        if (tabId.isBlank()) return false
+        val activity = LxApp.getCurrentActivity() ?: return false
+        activity.runOnUiThread {
+            LxAppBrowser.show(activity, tabId)
+        }
+        NativeApi.browserTabActivate(tabId)
+        return true
     }
 
     private fun launchExternalUrl(context: Context, uri: String, depth: Int): Boolean {

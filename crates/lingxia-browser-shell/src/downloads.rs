@@ -247,7 +247,9 @@ async fn reveal_download_route(
                     owner_session_id: app.session_id(),
                     url: file_url_for(&fallback_dir),
                     target: OpenUrlTarget::External,
+                    want_tab_id: false,
                 })
+                .map(|_| ())
                 .map_err(|e| map_platform_error("downloads.reveal", e)),
             Err(e) => Err(map_platform_error("downloads.reveal", e)),
         }

@@ -566,7 +566,7 @@ impl AppRuntime for Platform {
     fn open_url(
         &self,
         req: crate::traits::app_runtime::OpenUrlRequest,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<crate::traits::app_runtime::OpenUrlResult, PlatformError> {
         let target_str = match req.target {
             crate::traits::app_runtime::OpenUrlTarget::SelfTarget => "self",
             crate::traits::app_runtime::OpenUrlTarget::NewBrowserTab => "new_browser_tab",
@@ -578,7 +578,10 @@ impl AppRuntime for Platform {
             "launchWithUrl",
             &[&req.url, target_str, &req.owner_appid, &owner_session],
         )
-        .map_err(|e| PlatformError::Platform(format!("Failed to open url: {}", e)))
+        .map_err(|e| PlatformError::Platform(format!("Failed to open url: {}", e)))?;
+        // ArkTS `call_arkts` is fire-and-forget for the return value, so this
+        // host cannot name the tab. The JS handle reports `scope: 'group'`.
+        Ok(crate::traits::app_runtime::OpenUrlResult { tab_id: None })
     }
 }
 

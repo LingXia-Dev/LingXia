@@ -296,18 +296,41 @@ impl AppRuntime for Platform {
     fn open_url(
         &self,
         req: crate::traits::app_runtime::OpenUrlRequest,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<crate::traits::app_runtime::OpenUrlResult, PlatformError> {
         if ffi::open_url(
             &req.owner_appid,
             req.owner_session_id,
             &req.url,
             req.target as i32,
         ) {
-            Ok(())
+            let tab_id = ffi::take_opened_url_tab_id();
+            Ok(crate::traits::app_runtime::OpenUrlResult {
+                tab_id: (!tab_id.is_empty()).then_some(tab_id),
+            })
         } else {
             Err(PlatformError::Platform(format!(
                 "Failed to open URL: owner_appid={}, owner_session_id={}, url={}, target={:?}",
                 req.owner_appid, req.owner_session_id, req.url, req.target
+            )))
+        }
+    }
+
+    fn close_browser_tab(&self, tab_id: &str) -> Result<(), PlatformError> {
+        if ffi::close_browser_tab(tab_id) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to close browser tab: {tab_id}"
+            )))
+        }
+    }
+
+    fn activate_browser_tab(&self, tab_id: &str) -> Result<(), PlatformError> {
+        if ffi::activate_browser_tab(tab_id) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(format!(
+                "Failed to activate browser tab: {tab_id}"
             )))
         }
     }
