@@ -21,6 +21,13 @@ use tokio::sync::{Mutex, oneshot, watch};
 
 const ASYNC_ITERATOR_RETURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
+fn is_teardown_view_error(error: &LxAppError) -> bool {
+    let message = error.to_string();
+    message.contains("WebView not ready")
+        || message.contains("WebView UI thread did not reply")
+        || message.contains("timed out waiting on channel")
+}
+
 type LifecycleQueue = Rc<RefCell<std::collections::VecDeque<(PageLifecycleEvent, Option<String>)>>>;
 
 #[js_class(clone)]
@@ -729,9 +736,10 @@ impl PageSvc {
 
     #[js_method(rename = "_setData")]
     async fn set_data(&self, ops_json: String, callback: Optional<JSFunc>) -> JSResult<()> {
-        if self.terminated.get() {
-            // A handler that outlived its service must not write into the
-            // document a successor service now owns.
+        if self.terminated.get() || !self.page.accepts_view_state_patches() {
+            // A handler that outlived its service, or a same-route relaunch
+            // that has already parked/reset this document, must not write
+            // into the view a successor service now owns.
             return Ok(());
         }
         let mut state = self.state.lock().await;
@@ -769,10 +777,14 @@ impl PageSvc {
         drop(state);
 
         if let Err(error) = bridge.send_state_patch(self, None, base_rev, new_rev, ops, ack) {
-            // A page mid-departure (unloaded, parked, or already retired)
-            // legitimately has no view to write to; the entry rebuild
-            // re-serializes live data, so dropping the ops loses nothing.
-            if self.page.is_unloaded() || self.page.is_parked() || self.terminated.get() {
+            // Mid-departure, or the WebView UI thread already gone while the
+            // page flags have not flipped yet (same-route relaunch). The
+            // entry rebuild re-serializes live data, so dropping the ops
+            // loses nothing.
+            if self.terminated.get()
+                || !self.page.accepts_view_state_patches()
+                || is_teardown_view_error(&error)
+            {
                 let callback = self.state.lock().await.state_callback.remove(&new_rev);
                 if let Some(callback) = callback {
                     let _ = callback.call::<_, ()>(None, ());
@@ -1138,6 +1150,9 @@ impl PageSvc {
     pub(crate) fn mark_terminated(&self) {
         self.terminated.set(true);
         self.lifecycle_queue.borrow_mut().clear();
+        if let Ok(cancel) = self.this.get::<_, JSFunc>("_cancelPendingSetData") {
+            let _ = cancel.call::<_, ()>(Some(self.this.clone()), ());
+        }
     }
 
     pub(crate) fn enqueue_lifecycle_event(

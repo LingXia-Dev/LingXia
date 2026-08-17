@@ -223,6 +223,15 @@ pub struct PageState {
     pub(crate) query: serde_json::Value,
 }
 
+impl PageState {
+    fn accepts_view_state_patches(&self) -> bool {
+        self.bridge_ready
+            && !self.parked
+            && self.reset == PageReset::None
+            && self.event != Some(PageLifecycleEvent::OnUnload)
+    }
+}
+
 /// Automation-facing readiness snapshot for a page instance.
 #[derive(Clone, Debug, Serialize)]
 pub struct PageAutomationState {
@@ -713,6 +722,23 @@ impl PageInstance {
             .lock()
             .map(|state| state.parked)
             .unwrap_or(false)
+    }
+
+    /// Whether Logic may still push `setData` into this document.
+    ///
+    /// Handshake `ready` is kept across a warm-webview restart, so it cannot
+    /// answer this. Same-route relaunch parks and rebuilds the document
+    /// while the old service is still flushing a 16ms debounce — that is the
+    /// setData / teardown race. Drop the patch: `this.data` already has it
+    /// and the next snapshot reserializes live state.
+    pub(crate) fn accepts_view_state_patches(&self) -> bool {
+        if self.is_parked() || self.is_unloaded() {
+            return false;
+        }
+        self.inner
+            .state
+            .lock()
+            .is_ok_and(|state| state.accepts_view_state_patches())
     }
 
     pub(crate) fn park_view(&self) {
@@ -1916,6 +1942,28 @@ mod tests {
             orientation_override: OrientationOverride::default(),
             query: serde_json::json!({}),
         }
+    }
+
+    #[test]
+    fn view_state_patches_drop_once_the_document_is_departing() {
+        let mut state = test_page_state();
+        assert!(!state.accepts_view_state_patches());
+
+        state.bridge_ready = true;
+        assert!(state.accepts_view_state_patches());
+
+        state.parked = true;
+        assert!(!state.accepts_view_state_patches());
+        state.parked = false;
+
+        state.reset = PageReset::Pending;
+        assert!(!state.accepts_view_state_patches());
+        state.reset = PageReset::AwaitingEntry;
+        assert!(!state.accepts_view_state_patches());
+        state.reset = PageReset::None;
+
+        state.event = Some(PageLifecycleEvent::OnUnload);
+        assert!(!state.accepts_view_state_patches());
     }
 
     #[test]

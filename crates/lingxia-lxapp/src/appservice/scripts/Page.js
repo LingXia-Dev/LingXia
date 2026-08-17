@@ -33,9 +33,22 @@
     const pendingBaseState = new Map();
     const pendingOps = new Map();
     let pendingCallbacks = [];
+    let disposed = false;
     const DEBOUNCE_WAIT = 16;
 
+    pageSvc._cancelPendingSetData = function () {
+      disposed = true;
+      clearTimeout(updateTimer);
+      updateTimer = null;
+      pendingBaseState.clear();
+      pendingOps.clear();
+      pendingCallbacks = [];
+    };
+
     pageSvc.setData = function (updates, callback) {
+      if (disposed) {
+        return;
+      }
       if (!updates || typeof updates !== "object") {
         throw new Error("setData: Invalid updates");
       }
@@ -57,6 +70,9 @@
 
       clearTimeout(updateTimer);
       updateTimer = setTimeout(() => {
+        if (disposed) {
+          return;
+        }
         const ops = Array.from(pendingOps.values()).map(toJsonPatchOp);
         const callbacks = pendingCallbacks;
 
