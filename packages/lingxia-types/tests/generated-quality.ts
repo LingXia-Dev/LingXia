@@ -32,6 +32,9 @@ const appearanceState: AppearanceState = lx.appearance.get();
 const appearanceSetResult: Promise<void> = lx.appearance.set("dark");
 const navigationUpdateResult: Promise<void> = lx.navigationBar.update({ title: null });
 const tabBarUpdateResult: Promise<void> = lx.tabBar.update({ visibility: "auto" });
+const forcedTabBarUpdateResult: Promise<void> = lx.tabBar.update({ visibility: "visible" });
+// @ts-expect-error visible is TabBar-only; homeButton remains auto/hidden
+lx.navigationBar.update({ homeButton: "visible" });
 const backDefaultResult: Promise<void> = lx.navigateBack();
 const backEmptyResult: Promise<void> = lx.navigateBack({});
 const backDeltaResult: Promise<void> = lx.navigateBack({ delta: 2 });
@@ -71,6 +74,7 @@ export type GeneratedQualityGate = [
   typeof appearanceSetResult,
   typeof navigationUpdateResult,
   typeof tabBarUpdateResult,
+  typeof forcedTabBarUpdateResult,
   typeof backDefaultResult,
   typeof backEmptyResult,
   typeof backDeltaResult,

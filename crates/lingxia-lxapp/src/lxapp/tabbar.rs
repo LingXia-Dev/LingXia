@@ -1,5 +1,5 @@
 use super::page_chrome::{
-    PageChromeColor, PatchField, TabBarPresentation, ValuePatchField, VisibilityPreference,
+    PageChromeColor, PatchField, TabBarPresentation, TabBarVisibilityPreference, ValuePatchField,
 };
 use crate::LxApp;
 use lingxia_app_context::ThemeStyle;
@@ -84,7 +84,7 @@ pub struct TabBarItemPatch {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TabBarPatch {
     #[serde(default)]
-    pub visibility: ValuePatchField<VisibilityPreference>,
+    pub visibility: ValuePatchField<TabBarVisibilityPreference>,
     #[serde(default)]
     pub style: PatchField<TabBarRuntimeStylePatch>,
     #[serde(default)]
@@ -159,7 +159,7 @@ pub struct TabBar {
     pub items: Vec<TabBarItem>,
 
     #[serde(skip)]
-    pub visibility: VisibilityPreference,
+    pub visibility: TabBarVisibilityPreference,
     #[serde(skip)]
     pub route_visible: bool,
     #[serde(skip)]
@@ -205,7 +205,7 @@ impl TabBar {
 
     pub(crate) fn with_absolute_paths(&self, base_path: &Path) -> Self {
         let mut result = self.clone();
-        result.visibility = VisibilityPreference::Auto;
+        result.visibility = TabBarVisibilityPreference::Auto;
         result.route_visible = true;
         result.selected_index = 0;
         result.runtime_style = TabBarRuntimeStyle::default();
@@ -222,11 +222,15 @@ impl TabBar {
     }
 
     pub fn is_effectively_visible(&self) -> bool {
-        self.visibility == VisibilityPreference::Auto && self.route_visible
+        match self.visibility {
+            TabBarVisibilityPreference::Auto => self.route_visible,
+            TabBarVisibilityPreference::Visible => true,
+            TabBarVisibilityPreference::Hidden => false,
+        }
     }
 
     pub fn is_desktop_group_visible(&self) -> bool {
-        self.visibility == VisibilityPreference::Auto
+        self.visibility != TabBarVisibilityPreference::Hidden
     }
 
     pub fn set_visible(&mut self, visible: bool) {
@@ -235,13 +239,13 @@ impl TabBar {
 
     pub fn set_api_hidden(&mut self, hidden: bool) {
         self.visibility = if hidden {
-            VisibilityPreference::Hidden
+            TabBarVisibilityPreference::Hidden
         } else {
-            VisibilityPreference::Auto
+            TabBarVisibilityPreference::Auto
         };
     }
 
-    pub fn set_visibility(&mut self, visibility: VisibilityPreference) {
+    pub fn set_visibility(&mut self, visibility: TabBarVisibilityPreference) {
         self.visibility = visibility;
     }
 
@@ -715,7 +719,27 @@ mod patch_tests {
                 .apply_patch_transactionally(&patch, |value, _| Ok(value.to_string()))
                 .is_err()
         );
-        assert_eq!(state.visibility, VisibilityPreference::Auto);
+        assert_eq!(state.visibility, TabBarVisibilityPreference::Auto);
+    }
+
+    #[test]
+    fn visibility_preference_can_force_an_off_route_tabbar_visible() {
+        let mut state = tabbar();
+        state.set_visible(false);
+        assert!(!state.is_effectively_visible());
+
+        state.set_visibility(TabBarVisibilityPreference::Visible);
+        assert!(state.is_effectively_visible());
+        assert!(state.is_desktop_group_visible());
+
+        state.set_visibility(TabBarVisibilityPreference::Hidden);
+        assert!(!state.is_effectively_visible());
+        assert!(!state.is_desktop_group_visible());
+
+        state.set_visible(true);
+        assert!(!state.is_effectively_visible());
+        state.set_visibility(TabBarVisibilityPreference::Auto);
+        assert!(state.is_effectively_visible());
     }
 
     #[test]

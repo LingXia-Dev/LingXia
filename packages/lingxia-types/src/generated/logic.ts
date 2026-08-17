@@ -1714,7 +1714,7 @@ export type TabBarItemPatch = {
 };
 
 export type TabBarPatch = {
-    visibility?: VisibilityPreference;
+    visibility?: TabBarVisibilityPreference;
     style?: TabBarStylePatch | null;
     items?: readonly TabBarItemPatch[];
 };
@@ -1723,6 +1723,8 @@ export type TabBarStylePatch = {
     foregroundColor?: string | null;
     selectedForegroundColor?: string | null;
 };
+
+export type TabBarVisibilityPreference = 'auto' | 'visible' | 'hidden';
 
 /** External content in the in-app browser. */
 export type TabSurface = SurfaceBase & {

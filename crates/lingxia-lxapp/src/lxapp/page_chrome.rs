@@ -73,6 +73,15 @@ pub enum VisibilityPreference {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+pub enum TabBarVisibilityPreference {
+    #[default]
+    Auto,
+    Visible,
+    Hidden,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum TabBarPresentation {
     #[default]
     Standard,

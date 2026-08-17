@@ -313,6 +313,7 @@ rong::js_api! {
         type AppearancePreference = r###"'auto' | 'light' | 'dark'"###;
         type ResolvedAppearance = r###"'light' | 'dark'"###;
         type VisibilityPreference = r###"'auto' | 'hidden'"###;
+        type TabBarVisibilityPreference = r###"'auto' | 'visible' | 'hidden'"###;
 
         type NavigationBarStylePatch = r###"{
     backgroundColor?: string | null;
@@ -341,7 +342,7 @@ rong::js_api! {
 }"###;
 
         type TabBarPatch = r###"{
-    visibility?: VisibilityPreference;
+    visibility?: TabBarVisibilityPreference;
     style?: TabBarStylePatch | null;
     items?: readonly TabBarItemPatch[];
 }"###;
