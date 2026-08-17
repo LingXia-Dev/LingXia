@@ -753,10 +753,11 @@ pub(crate) async fn lxapp_service_handler(
 
                         if let Some(page_svc) = page_svc {
                             if let Err(e) = handle_bridge_source(&page_svc, message).await {
-                                if page_svc.get_page().document_is_departing() {
+                                let page = page_svc.get_page();
+                                if page.document_is_departing() || page.webview().is_none() {
                                     debug!(
-                                        "[Worker {}] Dropping bridge response after page unload",
-                                        worker_id
+                                        "[Worker {}] Dropping bridge response for departed page: {}",
+                                        worker_id, e
                                     )
                                     .with_appid(lxapp.appid.clone())
                                     .with_path(path.clone());
