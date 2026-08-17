@@ -90,7 +90,7 @@ pub(crate) fn call_view(
     if let Err(e) = controller.post_message(&json) {
         // Remove pending entry on send failure
         reg.pending.lock().unwrap().remove(&id);
-        return Err(LxAppError::WebView(e.to_string()));
+        return Err(LxAppError::from(e));
     }
 
     Ok(PendingViewCall { id, rx })

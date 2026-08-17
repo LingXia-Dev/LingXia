@@ -1,4 +1,5 @@
 use lingxia_platform::PlatformError;
+use lingxia_webview::WebViewError;
 #[cfg(feature = "js-appservice")]
 use rong::RongJSError;
 #[cfg(feature = "js-appservice")]
@@ -9,9 +10,8 @@ use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
 pub enum LxAppError {
-    /// Error when performing web operations. The inner string already names
-    /// the WebView source (`WebViewError` displays as `WebView error: …`).
-    #[error("{0}")]
+    /// Error when performing web operations.
+    #[error("WebView error: {0}")]
     WebView(String),
 
     #[error("{0} not found")]
@@ -117,6 +117,15 @@ impl From<PlatformError> for LxAppError {
     }
 }
 
+impl From<WebViewError> for LxAppError {
+    fn from(error: WebViewError) -> Self {
+        match error {
+            WebViewError::WebView(detail) => LxAppError::WebView(detail),
+            other => LxAppError::WebView(other.to_string()),
+        }
+    }
+}
+
 impl From<lingxia_update::UpdateError> for LxAppError {
     fn from(error: lingxia_update::UpdateError) -> Self {
         match error {
@@ -164,5 +173,33 @@ fn error_data_to_json(data: &ErrorData) -> Value {
                 .map(|(k, v)| (k.clone(), error_data_to_json(v)))
                 .collect(),
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::LxAppError;
+    use lingxia_webview::WebViewError;
+
+    #[test]
+    fn raw_webview_errors_keep_the_source_label() {
+        assert_eq!(
+            LxAppError::WebView("WebView not ready".to_string()).to_string(),
+            "WebView error: WebView not ready"
+        );
+    }
+
+    #[test]
+    fn typed_webview_errors_have_one_source_label() {
+        let error = LxAppError::from(WebViewError::WebView("creation failed".to_string()));
+        assert_eq!(error.to_string(), "WebView error: creation failed");
+
+        let error = LxAppError::from(WebViewError::InvalidCreateOptions(
+            "missing tag".to_string(),
+        ));
+        assert_eq!(
+            error.to_string(),
+            "WebView error: Invalid WebView create options: missing tag"
+        );
     }
 }

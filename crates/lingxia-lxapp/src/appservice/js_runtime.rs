@@ -753,7 +753,7 @@ pub(crate) async fn lxapp_service_handler(
 
                         if let Some(page_svc) = page_svc {
                             if let Err(e) = handle_bridge_source(&page_svc, message).await {
-                                if page_svc.get_page().is_unloaded() {
+                                if page_svc.get_page().document_is_departing() {
                                     debug!(
                                         "[Worker {}] Dropping bridge response after page unload",
                                         worker_id

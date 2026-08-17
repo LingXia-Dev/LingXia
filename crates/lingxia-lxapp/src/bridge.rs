@@ -104,7 +104,7 @@ impl ViewTransport for PageInstance {
         if let Some(controller) = self.webview_controller() {
             controller
                 .post_message(&message_json)
-                .map_err(|e| LxAppError::WebView(e.to_string()))
+                .map_err(LxAppError::from)
         } else {
             Err(LxAppError::WebView("WebView not ready".to_string()))
         }

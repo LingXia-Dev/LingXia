@@ -410,9 +410,7 @@ pub(crate) async fn browser_attach_tab_page(
     let url_to_load = page_url
         .map(|u| u.to_string())
         .unwrap_or_else(|| format!("{}://newtab", LINGXIA_SCHEME));
-    webview
-        .load_url(&url_to_load)
-        .map_err(|e| LxAppError::WebView(e.to_string()))
+    webview.load_url(&url_to_load).map_err(LxAppError::from)
 }
 
 // ---------------------------------------------------------------------------

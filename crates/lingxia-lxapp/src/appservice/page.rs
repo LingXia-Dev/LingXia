@@ -21,13 +21,6 @@ use tokio::sync::{Mutex, oneshot, watch};
 
 const ASYNC_ITERATOR_RETURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
-fn is_teardown_view_error(error: &LxAppError) -> bool {
-    let message = error.to_string();
-    message.contains("WebView not ready")
-        || message.contains("WebView UI thread did not reply")
-        || message.contains("timed out waiting on channel")
-}
-
 type LifecycleQueue = Rc<RefCell<std::collections::VecDeque<(PageLifecycleEvent, Option<String>)>>>;
 
 #[js_class(clone)]
@@ -263,7 +256,7 @@ impl ViewTransport for PageSvc {
         if let Some(controller) = self.page.webview_controller() {
             controller
                 .post_message(&message_json)
-                .map_err(|e| LxAppError::WebView(e.to_string()))
+                .map_err(LxAppError::from)
         } else {
             Err(LxAppError::WebView("WebView not ready".to_string()))
         }
@@ -736,10 +729,14 @@ impl PageSvc {
 
     #[js_method(rename = "_setData")]
     async fn set_data(&self, ops_json: String, callback: Optional<JSFunc>) -> JSResult<()> {
-        if self.terminated.get() || !self.page.accepts_view_state_patches() {
+        let callback = callback.0;
+        if self.terminated.get() || self.page.document_is_departing() {
             // A handler that outlived its service, or a same-route relaunch
             // that has already parked/reset this document, must not write
             // into the view a successor service now owns.
+            if let Some(callback) = callback {
+                let _ = callback.call::<_, ()>(None, ());
+            }
             return Ok(());
         }
         let mut state = self.state.lock().await;
@@ -750,7 +747,7 @@ impl PageSvc {
             // bridge-ready snapshot serializes live data, so dropping the ops
             // loses nothing; erroring here would discard them permanently.
             drop(state);
-            if let Some(callback) = callback.0 {
+            if let Some(callback) = callback {
                 let _ = callback.call::<_, ()>(None, ());
             }
             return Ok(());
@@ -767,7 +764,7 @@ impl PageSvc {
             RongJSError::from(HostError::new(rong::error::E_INTERNAL, e.to_string()))
         })?;
 
-        let ack = if let Some(cb) = callback.0 {
+        let ack = if let Some(cb) = callback {
             state.state_callback.insert(new_rev, cb);
             Some(true)
         } else {
@@ -776,28 +773,32 @@ impl PageSvc {
 
         drop(state);
 
-        if let Err(error) = bridge.send_state_patch(self, None, base_rev, new_rev, ops, ack) {
-            // Mid-departure, or the WebView UI thread already gone while the
-            // page flags have not flipped yet (same-route relaunch). The
-            // entry rebuild re-serializes live data, so dropping the ops
-            // loses nothing.
-            if self.terminated.get()
-                || !self.page.accepts_view_state_patches()
-                || is_teardown_view_error(&error)
-            {
+        let send_result = {
+            let _transition = self.page.reset_transition_guard();
+            if self.terminated.get() || !self.page.accepts_view_state_patches() {
+                None
+            } else {
+                Some(bridge.send_state_patch(self, None, base_rev, new_rev, ops, ack))
+            }
+        };
+
+        match send_result {
+            None => {
                 let callback = self.state.lock().await.state_callback.remove(&new_rev);
                 if let Some(callback) = callback {
                     let _ = callback.call::<_, ()>(None, ());
                 }
-                return Ok(());
+                Ok(())
             }
-            return Err(RongJSError::from(HostError::new(
-                rong::error::E_INTERNAL,
-                error.to_string(),
-            )));
+            Some(Ok(())) => Ok(()),
+            Some(Err(error)) => {
+                self.state.lock().await.state_callback.remove(&new_rev);
+                Err(RongJSError::from(HostError::new(
+                    rong::error::E_INTERNAL,
+                    error.to_string(),
+                )))
+            }
         }
-
-        Ok(())
     }
 
     pub fn get_event_emitter(&self) -> EventEmitter {
@@ -1185,7 +1186,7 @@ impl PageSvc {
                 if let Err(e) = page_svc.call_page_event(&ctx, event, args.as_deref()).await {
                     let error = super::eval_error_from_rong(&ctx, e);
                     let page = page_svc.get_page();
-                    if page.is_unloaded() {
+                    if page.document_is_departing() {
                         crate::debug!("PageInstance event '{}' cancelled after unload", event)
                             .with_appid(page.appid())
                             .with_path(page.path());

@@ -1115,7 +1115,10 @@ impl LxApp {
     pub(crate) fn schedule_page_reset(&self, page: &PageInstance) {
         let instance_id = page.instance_id_string();
         self.cancel_page_reset(&instance_id);
-        page.mark_reset_pending();
+        {
+            let _transition = page.reset_transition_guard();
+            page.mark_reset_pending();
+        }
 
         let (tx, rx) = oneshot::channel();
         if let Ok(state) = self.state.lock() {
@@ -2285,7 +2288,7 @@ impl LxApp {
             .webview()
             .ok_or_else(|| LxAppError::WebView("page WebView is not ready".to_string()))?
             .reload()
-            .map_err(|err| LxAppError::WebView(err.to_string()))
+            .map_err(LxAppError::from)
     }
 
     /// In-place restart: recreate the JS app service, rebuild the live page
@@ -2333,7 +2336,10 @@ impl LxApp {
         };
         let mut pending = Vec::with_capacity(pages.len());
         for page in pages {
-            page.prepare_for_service_restart();
+            {
+                let _transition = page.reset_transition_guard();
+                page.prepare_for_service_restart();
+            }
             let (ack_tx, ack_rx) = oneshot::channel::<Result<(), String>>();
             self.executor.create_page_svc_with_ack(
                 self.clone_arc(),
