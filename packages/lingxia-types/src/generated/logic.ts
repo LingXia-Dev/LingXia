@@ -151,8 +151,32 @@ declare global {
     downloadFile<TDestination extends DownloadDestination = "app">(
       options: DownloadOptions<TDestination>,
     ): DownloadTask<DownloadResultForDestination<TDestination>>;
+
+    /**
+     * Open this lxapp's store with every key's shape pinned on the handle.
+     * `get` / `set` / `has` / `delete` then share that schema instead of
+     * repeating `get<T>()` at each call site.
+     */
+    getStorage<S extends StorageSchema>(): TypedStorage<S>;
   }
 }
+
+/** A map of storage keys to stored value shapes. */
+export type StorageSchema = Record<string, unknown>;
+
+/**
+ * Schema-typed view of the same store `lx.getStorage()` returns.
+ * Runtime is identical; only the key/value types are pinned.
+ */
+export type TypedStorage<S extends object> = {
+  get<K extends Extract<keyof S, string>>(key: K): Promise<S[K] | undefined>;
+  has(key: Extract<keyof S, string>): Promise<boolean>;
+  set<K extends Extract<keyof S, string>>(key: K, value: S[K]): Promise<void>;
+  delete(key: Extract<keyof S, string>): Promise<void>;
+  clear(): Promise<void>;
+  list(prefix?: string): Promise<Array<Extract<keyof S, string>>>;
+  info(): Promise<StorageInfo>;
+};
 
 /**
  * Result of `lx.showActionSheet`. Branch on `canceled` before reading
@@ -1420,6 +1444,10 @@ export type ShowToastOptions = {
 /**
  * Asynchronous persistent key-value storage backed by the lxapp
  * database. Use `lx.fs` for path-based data.
+ *
+ * `get<T>()` is an unchecked assertion at the call site. Pin every
+ * key's shape once with `lx.getStorage<Schema>()` — that returns a
+ * `TypedStorage<Schema>` instead of this untyped handle.
  */
 export type Storage = {
     /**

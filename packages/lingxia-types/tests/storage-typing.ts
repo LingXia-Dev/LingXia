@@ -1,5 +1,6 @@
-import type { Storage } from "../src/index.js";
+import type { Lx, Storage, TypedStorage } from "../src/index.js";
 
+declare const lx: Lx;
 declare const store: Storage;
 
 interface Draft {
@@ -24,8 +25,31 @@ async function listResolvesAnArray(): Promise<number> {
   return keys.filter((key) => key.length > 0).length;
 }
 
+type TodoSchema = {
+  "todo:todos": Draft[];
+  "todo:filter": string;
+};
+
+declare const typed: TypedStorage<TodoSchema>;
+
+async function schemaPinsKeysAndValues(): Promise<Draft[] | undefined> {
+  const todos = await typed.get("todo:todos");
+  await typed.set("todo:filter", "open");
+  // @ts-expect-error schema keys are closed
+  await typed.get("draft");
+  // @ts-expect-error value must match the schema
+  await typed.set("todo:filter", 1);
+  return todos;
+}
+
+async function getStorageAcceptsASchema(): Promise<TypedStorage<TodoSchema>> {
+  return lx.getStorage<TodoSchema>();
+}
+
 export type StorageTypingGate = [
   typeof assertedValueRequiresAbsenceCheck,
   typeof unannotatedValueStaysUnknown,
   typeof listResolvesAnArray,
+  typeof schemaPinsKeysAndValues,
+  typeof getStorageAcceptsASchema,
 ];

@@ -1161,6 +1161,10 @@ true
         /// Asynchronous persistent key-value storage backed by the lxapp
         /// database. Use `lx.fs` for path-based data.
         ///
+        /// `get<T>()` is an unchecked assertion at the call site. Pin every
+        /// key's shape once with `lx.getStorage<Schema>()` — that returns a
+        /// `TypedStorage<Schema>` instead of this untyped handle.
+        ///
         type Storage = r###"{
     /**
      * Reads a stored value. `T` is an unchecked assertion about the stored
