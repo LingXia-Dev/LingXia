@@ -544,9 +544,31 @@ export interface LxAppRuntimeInfo {
   pages_count: number;
   page_entries: LxAppPageEntry[];
   page_stack: string[];
+  tab_bar: LxAppRuntimeTabBarInfo | null;
   lxapp_dir: string;
   data_dir: string;
   cache_dir: string;
+}
+
+/** Runtime TabBar state exposed for deterministic host-level assertions. */
+export interface LxAppRuntimeTabBarInfo {
+  presentation: 'standard' | 'immersive';
+  visibility: 'auto' | 'visible' | 'hidden';
+  route_visible: boolean;
+  effective_visible: boolean;
+  selected_index: number;
+  runtime_style: {
+    foreground_color: string | null;
+    selected_foreground_color: string | null;
+  };
+  items: Array<{
+    index: number;
+    text: string | null;
+    icon_path: string | null;
+    selected_icon_path: string | null;
+    badge: string | null;
+    red_dot: boolean;
+  }>;
 }
 
 /** Selects a running lxapp by id; defaults to the current app. */

@@ -23,6 +23,7 @@ use uuid::Uuid;
 use self::navbar::NavigationBarState;
 use self::page_chrome::{
     AppearancePreference, EffectivePageChromeLayout, LxAppAppearanceState, ResolvedAppearance,
+    TabBarPresentation, TabBarVisibilityPreference,
 };
 use crate::appservice::LxAppWorkers;
 use crate::error::LxAppError;
@@ -679,9 +680,37 @@ pub struct LxAppRuntimeInfo {
     pub pages_count: usize,
     pub page_entries: Vec<LxAppRuntimePageInfo>,
     pub page_stack: Vec<String>,
+    pub tab_bar: Option<LxAppRuntimeTabBarInfo>,
     pub lxapp_dir: String,
     pub data_dir: String,
     pub cache_dir: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LxAppRuntimeTabBarInfo {
+    pub presentation: TabBarPresentation,
+    pub visibility: TabBarVisibilityPreference,
+    pub route_visible: bool,
+    pub effective_visible: bool,
+    pub selected_index: i32,
+    pub runtime_style: LxAppRuntimeTabBarStyleInfo,
+    pub items: Vec<LxAppRuntimeTabBarItemInfo>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LxAppRuntimeTabBarStyleInfo {
+    pub foreground_color: Option<String>,
+    pub selected_foreground_color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LxAppRuntimeTabBarItemInfo {
+    pub index: usize,
+    pub text: Option<String>,
+    pub icon_path: Option<String>,
+    pub selected_icon_path: Option<String>,
+    pub badge: Option<String>,
+    pub red_dot: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -967,6 +996,36 @@ impl LxApp {
     pub fn runtime_info(&self) -> LxAppRuntimeInfo {
         let info = self.get_lxapp_info();
         let page_entries = self.page_entries();
+        let tab_bar = self.get_tabbar().map(|tabbar| LxAppRuntimeTabBarInfo {
+            presentation: tabbar.presentation,
+            visibility: tabbar.visibility,
+            route_visible: tabbar.route_visible,
+            effective_visible: tabbar.is_effectively_visible(),
+            selected_index: tabbar.selected_index,
+            runtime_style: LxAppRuntimeTabBarStyleInfo {
+                foreground_color: tabbar
+                    .runtime_style
+                    .foreground_color
+                    .map(|color| color.to_string()),
+                selected_foreground_color: tabbar
+                    .runtime_style
+                    .selected_foreground_color
+                    .map(|color| color.to_string()),
+            },
+            items: tabbar
+                .items
+                .into_iter()
+                .enumerate()
+                .map(|(index, item)| LxAppRuntimeTabBarItemInfo {
+                    index,
+                    text: item.text,
+                    icon_path: item.icon_path,
+                    selected_icon_path: item.selected_icon_path,
+                    badge: item.badge,
+                    red_dot: item.has_red_dot,
+                })
+                .collect(),
+        });
         // On the navigation stack = open from the user's perspective. A
         // capsule-closed app keeps its "opened" session (stateful hide) but
         // leaves the stack, so hosts must read `in_stack` — not `status` —
@@ -988,6 +1047,7 @@ impl LxApp {
             pages_count: page_entries.len(),
             page_entries,
             page_stack: self.get_page_stack_paths(),
+            tab_bar,
             lxapp_dir: self.lxapp_dir.to_string_lossy().into_owned(),
             data_dir: self.user_data_dir.to_string_lossy().into_owned(),
             cache_dir: self.user_cache_dir.to_string_lossy().into_owned(),
