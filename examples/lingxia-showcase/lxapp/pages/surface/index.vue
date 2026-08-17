@@ -23,7 +23,9 @@
         <div class="grid grid-cols-2 gap-2 text-sm">
           <div class="bg-surface-50 rounded-md px-3 py-2">
             <div class="text-xs text-gray-500">onShow</div>
-            <div class="font-mono text-base text-gray-900">{{ showCount }}</div>
+            <div data-testid="surface-show-count" class="font-mono text-base text-gray-900">
+              {{ showCount }}
+            </div>
           </div>
           <div class="bg-surface-50 rounded-md px-3 py-2">
             <div class="text-xs text-gray-500">onHide</div>

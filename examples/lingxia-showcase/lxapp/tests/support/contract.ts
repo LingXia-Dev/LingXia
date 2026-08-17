@@ -47,6 +47,14 @@ export interface ContractContext {
   defer(cleanup: () => void | Promise<void>): void;
 }
 
+export interface ContractOptions {
+  /**
+   * Register the case as skipped. The metadata is still declared, so coverage
+   * ownership stays intact for the audit, but nothing runs.
+   */
+  skip?: boolean;
+}
+
 export interface EventuallyOptions<T> {
   timeoutMs?: number;
   intervalMs?: number;
@@ -112,9 +120,13 @@ async function attachFailureScreenshots(app: LxAppDriver, id: string): Promise<v
 export function contract(
   meta: ContractMeta,
   run: (context: ContractContext) => void | Promise<void>,
+  options: ContractOptions = {},
 ): void {
   contracts.push(meta);
-  test(`${meta.id} | ${meta.title}`, async () => {
+  // Skipping at registration keeps the case out of the pass count. A body that
+  // returns early instead would report a green case that asserted nothing.
+  const register = options.skip ? test.skip : test;
+  register(`${meta.id} | ${meta.title}`, async () => {
     const cleanup: Array<() => void | Promise<void>> = [];
     const app = showcaseApp();
     const namespace = `${meta.id.replace(/[^a-zA-Z0-9]+/g, '-')}-${Date.now()}-${sequence++}`;
