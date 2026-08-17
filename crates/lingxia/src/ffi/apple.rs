@@ -2066,7 +2066,8 @@ pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
             dimension: 64,
             items_count: tabbar.items.len() as i32,
             is_visible: tabbar.is_effectively_visible(),
-            is_api_hidden: tabbar.visibility == lxapp::page_chrome::VisibilityPreference::Hidden,
+            is_api_hidden: tabbar.visibility
+                == lxapp::page_chrome::TabBarVisibilityPreference::Hidden,
             selected_index: tabbar.selected_index,
             styled_mask: (tabbar
                 .runtime_style

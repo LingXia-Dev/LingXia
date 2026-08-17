@@ -321,7 +321,7 @@ transactional mutation:
 
 ```ts
 interface TabBarUpdate {
-  visibility?: 'auto' | 'hidden'
+  visibility?: 'auto' | 'visible' | 'hidden'
   layout?: Partial<TabBarLayout>
   style?: Partial<TabBarStyle>
   items?: Array<{
@@ -344,7 +344,8 @@ await lx.tabBar.update(patch)
 The update MUST be validated and committed atomically. One call produces at
 most one chrome revision and one platform layout transaction. `badge: null`
 removes a badge. `visibility: "auto"` allows navigation to derive effective
-visibility; `visibility: "hidden"` explicitly suppresses it.
+visibility; `visibility: "visible"` explicitly reveals it on any route, and
+`visibility: "hidden"` explicitly suppresses it.
 
 Navigation remains a separate concern. `switchTab` continues to select and
 navigate to a tab item; `tabBar.update` does not navigate.

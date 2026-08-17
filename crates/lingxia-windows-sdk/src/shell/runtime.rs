@@ -2223,7 +2223,7 @@ fn build_tab_bar_layout(
     });
     let items_api_hidden = desktop_sidebar
         && tabbar.as_ref().is_some_and(|tabbar| {
-            tabbar.visibility == lxapp::page_chrome::VisibilityPreference::Hidden
+            tabbar.visibility == lxapp::page_chrome::TabBarVisibilityPreference::Hidden
         });
     Some(WindowsShellTabBarLayout {
         // Mobile navigation may flip `is_visible` on detail pages. Desktop
