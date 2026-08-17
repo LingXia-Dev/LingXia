@@ -70,7 +70,7 @@ export default {
     { "api": "lx.switchTab", "mode": "automated", "owner": "UI-NAV-001" },
     { "api": "lx.redirectTo", "mode": "automated", "owner": "UI-NAV-001" },
     { "api": "lx.hideToast", "mode": "external-ui", "owner": "page:ui" },
-    { "api": "lx.tabBar.update", "mode": "external-ui", "owner": "page:ui" },
+    { "api": "lx.tabBar.update", "mode": "automated", "owner": "UI-TABBAR-001" },
     { "api": "lx.createVideoContext", "mode": "automated", "owner": "NATIVE-VIDEO-001" },
     { "api": "lx.onWifiConnected", "mode": "external-fixture", "owner": "android-wifi-fixture" },
     { "api": "lx.startWifi", "mode": "external-fixture", "owner": "android-wifi-fixture" },
