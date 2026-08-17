@@ -188,7 +188,12 @@ public final class LxAppHostView: LxAppPlatformView {
     ///
     /// The host view takes ownership of layout. The WKWebView is added
     /// as a subview and resized to fill bounds.
-    public func attach(_ wv: WKWebView, appId: String? = nil, path: String? = nil) {
+    public func attach(
+        _ wv: WKWebView,
+        appId: String? = nil,
+        path: String? = nil,
+        reportsPageShow: Bool = true
+    ) {
         clearEventObservers()
         self.webView?.removeFromSuperview()
         WebViewManager.configureWebViewTransparency(wv, transparent: false)
@@ -208,7 +213,7 @@ public final class LxAppHostView: LxAppPlatformView {
             self.mountedSession = session
         }
 
-        WebViewManager.attachWebViewToContainer(wv, container: self)
+        WebViewManager.attachWebViewToContainer(wv, container: self, reportsPageShow: reportsPageShow)
         setupEventObservers(for: wv)
         emit(.didChangeTitle(wv.title))
         emit(.didUpdateCanGoBack(canGoBack))
@@ -240,7 +245,16 @@ public final class LxAppHostView: LxAppPlatformView {
             for _ in 0..<Self.mountRetryCount {
                 if let webView = WebViewManager.findWebView(pageInstanceId: pageInstanceId) {
                     mountedSession = session
-                    attach(webView, appId: session.appId, path: session.path)
+                    // The caller named the instance, so its lifecycle travels
+                    // the instance channel below. Reporting the bare route on
+                    // top of that is unaddressable for a surface-isolated
+                    // instance, which never resolves by path.
+                    attach(
+                        webView,
+                        appId: session.appId,
+                        path: session.path,
+                        reportsPageShow: false
+                    )
                     _ = notifyPageInstanceMounted(pageInstanceId)
                     if notifyVisibleOnMount {
                         _ = notifyPageInstanceVisible(pageInstanceId)

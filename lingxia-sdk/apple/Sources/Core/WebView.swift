@@ -202,7 +202,16 @@ final class WebViewManager {
     }
 
     /// Shared WebView attachment logic
-    static func attachWebViewToContainer(_ webView: WKWebView, container: PlatformView, constraints: [NSLayoutConstraint]? = nil) {
+    ///
+    /// `reportsPageShow` drives the path-keyed show report. Pass false when the
+    /// caller drives the page instance channel itself: that channel names the
+    /// instance, and a bare route cannot name an isolated one.
+    static func attachWebViewToContainer(
+        _ webView: WKWebView,
+        container: PlatformView,
+        constraints: [NSLayoutConstraint]? = nil,
+        reportsPageShow: Bool = true
+    ) {
         // Remove from previous parent if any
         webView.removeFromSuperview()
 
@@ -234,7 +243,7 @@ final class WebViewManager {
         webView.resumeWebView()
 
         // Trigger onPageShow when WebView is attached and visible
-        if let appId = webView.appId, let path = webView.currentPath {
+        if reportsPageShow, let appId = webView.appId, let path = webView.currentPath {
             lingxia.onPageShow(appId, path)
         }
     }

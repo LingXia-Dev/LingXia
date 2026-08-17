@@ -2148,6 +2148,22 @@ impl LxApp {
             .cloned()
     }
 
+    /// Whether the route has a live surface-isolated instance. Those never
+    /// resolve by bare path, so a path-keyed report naming one is unaddressable
+    /// rather than wrong — the owning surface drives that instance through
+    /// `notify_page_instance`.
+    pub(crate) fn has_isolated_page(&self, path: &str) -> bool {
+        let Ok(state) = self.state.lock() else {
+            return false;
+        };
+        let Ok(pages_by_id) = state.pages_by_id.lock() else {
+            return false;
+        };
+        pages_by_id
+            .values()
+            .any(|page| page.is_isolated() && page.path() == path)
+    }
+
     /// The path's pinned singleton instance, when one is registered.
     pub(crate) fn pinned_page(&self, path: &str) -> Option<PageInstance> {
         let state = self.state.lock().ok()?;

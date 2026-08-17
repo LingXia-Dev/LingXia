@@ -3,7 +3,7 @@ use crate::lifecycle::AppServiceEvent;
 use crate::lxapp::LxAppSessionStatus;
 use crate::page::NavigationType;
 use crate::update::UpdateManager;
-use crate::{LxApp, error, info, lxapp, warn};
+use crate::{LxApp, debug, error, info, lxapp, warn};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::pull_to_refresh::PullToRefresh;
 use lingxia_platform::traits::ui::UIUpdate;
@@ -267,6 +267,16 @@ impl LxAppDelegate for LxApp {
             .or_else(|| self.get_page(&path))
         {
             Some(page) => page,
+            None if instance_id.is_none() && self.has_isolated_page(&path) => {
+                // A surface's page container reports the bare route it was
+                // asked to present, which cannot name the isolated instance it
+                // actually holds. Its visibility already arrives through
+                // `notify_page_instance`, so there is nothing to do here.
+                debug!("Path-keyed show for an isolated instance: {}", reported)
+                    .with_appid(self.appid.clone())
+                    .with_path(path.clone());
+                return;
+            }
             None => {
                 error!("PageInstance not found when showing: {}", reported)
                     .with_appid(self.appid.clone())
