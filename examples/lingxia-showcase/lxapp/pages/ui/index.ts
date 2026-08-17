@@ -579,7 +579,7 @@ Page({
 
   revealTabBar: function () {
     return this._runChromeUpdate("Tab bar update", () =>
-      lx.tabBar.update({ visibility: "auto" }),
+      lx.tabBar.update({ visibility: "visible" }),
     );
   },
 
