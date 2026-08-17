@@ -37,7 +37,15 @@ terminal-runtime = [
 # The product's executable doubling as its own command line. Derived from the
 # `*Use` capabilities; clap only appears in a product that ships one.
 product-cli = ["dep:lingxia-control-commands"]
-computer-use = ["product-cli", "lingxia-control-commands/desktop"]
+# One product capability, one feature. `computerUse` means both halves — the
+# `computer` subcommand and the in-process `lx.automation().desktop` driver —
+# so enabling one and forgetting the other would build a host that answers a
+# capability it only half has, and say so only at the first call.
+computer-use = [
+    "product-cli",
+    "lingxia-control-commands/desktop",
+    "desktop-automation",
+]
 webview-input = ["lingxia-webview/webview-input"]
 
 [dependencies]

@@ -88,21 +88,26 @@ impl Error {
 
     /// Process exit code per the command contract.
     pub fn exit_code(&self) -> i32 {
-        match self {
-            Error::Usage(_) => 2,
-            Error::NotFound(_) => 3,
-            Error::Ambiguous(_) => 4,
-            Error::Timeout(_) => 5,
-            Error::Permission(_) => 6,
-            Error::Unsupported(_) => 7,
-            Error::Unavailable(_) => 8,
-            Error::Stale(_) => 9,
-            Error::Failed(_) => 10,
-        }
+        self.code().exit_code()
     }
 }
 
 impl ErrorCode {
+    /// Every code, in exit-status order. Anything that needs the whole
+    /// vocabulary — a decoder, a doc table, a consumer that mirrors it —
+    /// iterates this rather than writing the list out again.
+    pub const ALL: [ErrorCode; 9] = [
+        ErrorCode::Usage,
+        ErrorCode::NotFound,
+        ErrorCode::Ambiguous,
+        ErrorCode::Timeout,
+        ErrorCode::Permission,
+        ErrorCode::Unsupported,
+        ErrorCode::Unavailable,
+        ErrorCode::Stale,
+        ErrorCode::Failed,
+    ];
+
     pub fn as_str(self) -> &'static str {
         match self {
             ErrorCode::Usage => "usage",
@@ -117,19 +122,26 @@ impl ErrorCode {
         }
     }
 
+    /// Process exit status for this code. The slug and the status are one
+    /// contract, so they are decided in one place.
+    pub const fn exit_code(self) -> i32 {
+        match self {
+            ErrorCode::Usage => 2,
+            ErrorCode::NotFound => 3,
+            ErrorCode::Ambiguous => 4,
+            ErrorCode::Timeout => 5,
+            ErrorCode::Permission => 6,
+            ErrorCode::Unsupported => 7,
+            ErrorCode::Unavailable => 8,
+            ErrorCode::Stale => 9,
+            ErrorCode::Failed => 10,
+        }
+    }
+
     pub fn parse(value: &str) -> Option<Self> {
-        Some(match value {
-            "usage" => ErrorCode::Usage,
-            "not_found" => ErrorCode::NotFound,
-            "ambiguous" => ErrorCode::Ambiguous,
-            "timeout" => ErrorCode::Timeout,
-            "permission" => ErrorCode::Permission,
-            "unsupported" => ErrorCode::Unsupported,
-            "unavailable" => ErrorCode::Unavailable,
-            "stale" => ErrorCode::Stale,
-            "failed" => ErrorCode::Failed,
-            _ => return None,
-        })
+        ErrorCode::ALL
+            .into_iter()
+            .find(|code| code.as_str() == value)
     }
 }
 
@@ -148,5 +160,27 @@ mod tests {
         assert_eq!(Error::Unavailable("".into()).exit_code(), 8);
         assert_eq!(Error::Stale("".into()).exit_code(), 9);
         assert_eq!(Error::Failed("".into()).exit_code(), 10);
+    }
+
+    /// `ALL` is what every consumer iterates instead of retyping the list, so
+    /// a code added to the enum and forgotten here would silently narrow the
+    /// vocabulary they see rather than failing to compile.
+    #[test]
+    fn all_covers_every_code() {
+        for code in ErrorCode::ALL {
+            assert_eq!(
+                ErrorCode::parse(code.as_str()),
+                Some(code),
+                "{} must round-trip through parse",
+                code.as_str()
+            );
+            assert_eq!(Error::from_code(code, "").code(), code);
+        }
+        // A code missing from ALL cannot round-trip, and the exit statuses are
+        // consecutive, so their sum pins both the membership and the mapping.
+        assert_eq!(
+            ErrorCode::ALL.map(ErrorCode::exit_code),
+            [2, 3, 4, 5, 6, 7, 8, 9, 10]
+        );
     }
 }

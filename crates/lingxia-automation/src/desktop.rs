@@ -9,7 +9,7 @@
 //! logic thread responsive.
 
 use crate::resolve::json_to_js;
-use lingxia_device_io as cu;
+use lingxia_device_io as device_io;
 use rong::{
     Class, FromJSObject, HostError, JSContext, JSObject, JSResult, JSValue, function::Optional,
     js_class, js_method,
@@ -27,40 +27,40 @@ fn illegal_ctor() -> rong::RongJSError {
 
 /// Map the backend error taxonomy to stable JS error codes
 /// (`E_DESKTOP_NOT_FOUND`, `E_DESKTOP_TIMEOUT`, ...).
-fn desktop_err(err: cu::Error) -> rong::RongJSError {
+fn desktop_err(err: device_io::Error) -> rong::RongJSError {
     let code = match err.code() {
-        cu::ErrorCode::Usage => "E_DESKTOP_USAGE",
-        cu::ErrorCode::NotFound => "E_DESKTOP_NOT_FOUND",
-        cu::ErrorCode::Ambiguous => "E_DESKTOP_AMBIGUOUS",
-        cu::ErrorCode::Timeout => "E_DESKTOP_TIMEOUT",
-        cu::ErrorCode::Permission => "E_DESKTOP_PERMISSION",
-        cu::ErrorCode::Unsupported => "E_DESKTOP_UNSUPPORTED",
-        cu::ErrorCode::Unavailable => "E_DESKTOP_UNAVAILABLE",
-        cu::ErrorCode::Stale => "E_DESKTOP_STALE",
-        cu::ErrorCode::Failed => "E_DESKTOP_FAILED",
+        device_io::ErrorCode::Usage => "E_DESKTOP_USAGE",
+        device_io::ErrorCode::NotFound => "E_DESKTOP_NOT_FOUND",
+        device_io::ErrorCode::Ambiguous => "E_DESKTOP_AMBIGUOUS",
+        device_io::ErrorCode::Timeout => "E_DESKTOP_TIMEOUT",
+        device_io::ErrorCode::Permission => "E_DESKTOP_PERMISSION",
+        device_io::ErrorCode::Unsupported => "E_DESKTOP_UNSUPPORTED",
+        device_io::ErrorCode::Unavailable => "E_DESKTOP_UNAVAILABLE",
+        device_io::ErrorCode::Stale => "E_DESKTOP_STALE",
+        device_io::ErrorCode::Failed => "E_DESKTOP_FAILED",
     };
     HostError::new(code, err.to_string()).into()
 }
 
 fn usage(msg: impl Into<String>) -> rong::RongJSError {
-    desktop_err(cu::Error::Usage(msg.into()))
+    desktop_err(device_io::Error::Usage(msg.into()))
 }
 
 /// Run a blocking backend call off the JS logic thread.
 async fn blocking<T, F>(f: F) -> JSResult<T>
 where
     T: Send + 'static,
-    F: FnOnce() -> cu::Result<T> + Send + 'static,
+    F: FnOnce() -> device_io::Result<T> + Send + 'static,
 {
     tokio::task::spawn_blocking(f)
         .await
-        .map_err(|err| desktop_err(cu::Error::Failed(err.to_string())))?
+        .map_err(|err| desktop_err(device_io::Error::Failed(err.to_string())))?
         .map_err(desktop_err)
 }
 
 fn to_js<T: serde::Serialize>(ctx: &JSContext, value: &T) -> JSResult<JSValue> {
     let json = serde_json::to_value(value)
-        .map_err(|err| desktop_err(cu::Error::Failed(err.to_string())))?;
+        .map_err(|err| desktop_err(device_io::Error::Failed(err.to_string())))?;
     json_to_js(ctx, &json)
 }
 
@@ -76,34 +76,36 @@ fn point(at: &[f64], flag: &str) -> JSResult<(i32, i32)> {
 fn window_target(
     window: &Option<String>,
     match_query: &Option<String>,
-) -> JSResult<cu::WindowTarget> {
+) -> JSResult<device_io::WindowTarget> {
     match (window, match_query) {
-        (Some(id), None) => Ok(cu::WindowTarget::Id(id.clone())),
-        (None, Some(q)) => Ok(cu::WindowTarget::Match(cu::WindowQuery::parse(q))),
+        (Some(id), None) => Ok(device_io::WindowTarget::Id(id.clone())),
+        (None, Some(q)) => Ok(device_io::WindowTarget::Match(
+            device_io::WindowQuery::parse(q),
+        )),
         (None, None) => Err(usage("pass window (id) or match (query)")),
         (Some(_), Some(_)) => Err(usage("pass only one of window / match")),
     }
 }
 
-fn mouse_button(raw: &Option<String>) -> JSResult<cu::MouseButton> {
+fn mouse_button(raw: &Option<String>) -> JSResult<device_io::MouseButton> {
     match raw.as_deref().map(str::trim) {
-        None | Some("") | Some("left") => Ok(cu::MouseButton::Left),
-        Some("right") => Ok(cu::MouseButton::Right),
-        Some("middle") => Ok(cu::MouseButton::Middle),
+        None | Some("") | Some("left") => Ok(device_io::MouseButton::Left),
+        Some("right") => Ok(device_io::MouseButton::Right),
+        Some("middle") => Ok(device_io::MouseButton::Middle),
         Some(other) => Err(usage(format!(
             "unknown button '{other}' (expected left | right | middle)"
         ))),
     }
 }
 
-fn modifiers(raw: &Option<Vec<String>>) -> JSResult<Vec<cu::Modifier>> {
+fn modifiers(raw: &Option<Vec<String>>) -> JSResult<Vec<device_io::Modifier>> {
     raw.iter()
         .flatten()
         .map(|value| match value.trim() {
-            "ctrl" => Ok(cu::Modifier::Ctrl),
-            "shift" => Ok(cu::Modifier::Shift),
-            "alt" => Ok(cu::Modifier::Alt),
-            "meta" => Ok(cu::Modifier::Meta),
+            "ctrl" => Ok(device_io::Modifier::Ctrl),
+            "shift" => Ok(device_io::Modifier::Shift),
+            "alt" => Ok(device_io::Modifier::Alt),
+            "meta" => Ok(device_io::Modifier::Meta),
             other => Err(usage(format!(
                 "unknown modifier '{other}' (expected ctrl | shift | alt | meta)"
             ))),
@@ -113,12 +115,14 @@ fn modifiers(raw: &Option<Vec<String>>) -> JSResult<Vec<cu::Modifier>> {
 
 /// Resolve the optional background-input target: an explicit `pid`, or a
 /// `window` id mapped to its owning process. `None` = foreground input.
-fn input_target(pid: Option<u32>, window: Option<String>) -> cu::Result<Option<u32>> {
+fn input_target(pid: Option<u32>, window: Option<String>) -> device_io::Result<Option<u32>> {
     if let Some(pid) = pid {
         return Ok(Some(pid));
     }
     match window {
-        Some(id) => Ok(Some(cu::window::status(&cu::WindowTarget::Id(id))?.pid)),
+        Some(id) => Ok(Some(
+            device_io::window::status(&device_io::WindowTarget::Id(id))?.pid,
+        )),
         None => Ok(None),
     }
 }
@@ -141,7 +145,7 @@ fn pointer_click_count(count: Option<u32>) -> JSResult<u32> {
     Ok(count)
 }
 
-fn capture_to_js(ctx: &JSContext, capture: &cu::Capture) -> JSResult<JSValue> {
+fn capture_to_js(ctx: &JSContext, capture: &device_io::Capture) -> JSResult<JSValue> {
     use base64::{Engine as _, engine::general_purpose};
     json_to_js(
         ctx,
@@ -214,7 +218,7 @@ impl JSDesktopDriver {
     /// Backend, capability, and permission report (`lxdev desktop doctor`).
     #[js_method]
     async fn doctor(&self, ctx: JSContext) -> JSResult<JSValue> {
-        let doctor = blocking(|| Ok(cu::doctor())).await?;
+        let doctor = blocking(|| Ok(device_io::doctor())).await?;
         to_js(&ctx, &doctor)
     }
 
@@ -229,9 +233,9 @@ impl JSDesktopDriver {
         let request = options.0.unwrap_or_default().request.unwrap_or(false);
         let permissions = blocking(move || {
             Ok(if request {
-                cu::request_permissions()
+                device_io::request_permissions()
             } else {
-                cu::permissions()
+                device_io::permissions()
             })
         })
         .await?;
@@ -241,7 +245,7 @@ impl JSDesktopDriver {
     /// Enumerate monitors (backend-native desktop coordinates).
     #[js_method]
     async fn displays(&self, ctx: JSContext) -> JSResult<JSValue> {
-        let displays = blocking(cu::displays).await?;
+        let displays = blocking(device_io::displays).await?;
         to_js(&ctx, &displays)
     }
 
@@ -253,9 +257,9 @@ impl JSDesktopDriver {
         let query = options
             .match_query
             .as_deref()
-            .map(cu::WindowQuery::parse)
+            .map(device_io::WindowQuery::parse)
             .unwrap_or_default();
-        let windows = blocking(move || cu::windows(&query)).await?;
+        let windows = blocking(move || device_io::windows(&query)).await?;
         to_js(&ctx, &windows)
     }
 
@@ -268,11 +272,11 @@ impl JSDesktopDriver {
     ) -> JSResult<JSValue> {
         let options = options.0.unwrap_or_default();
         let target = match (&options.display, &options.window, &options.region) {
-            (None, None, None) => cu::CaptureTarget::Screen,
-            (Some(index), None, None) => cu::CaptureTarget::Display(*index),
-            (None, Some(id), None) => cu::CaptureTarget::Window(id.clone()),
+            (None, None, None) => device_io::CaptureTarget::Screen,
+            (Some(index), None, None) => device_io::CaptureTarget::Display(*index),
+            (None, Some(id), None) => device_io::CaptureTarget::Window(id.clone()),
             (None, None, Some(region)) => match region.as_slice() {
-                [x, y, w, h] => cu::CaptureTarget::Region {
+                [x, y, w, h] => device_io::CaptureTarget::Region {
                     x: x.round() as i32,
                     y: y.round() as i32,
                     w: w.round() as i32,
@@ -282,7 +286,7 @@ impl JSDesktopDriver {
             },
             _ => return Err(usage("pass only one of display / window / region")),
         };
-        let capture = blocking(move || cu::capture::snapshot(target)).await?;
+        let capture = blocking(move || device_io::capture::snapshot(target)).await?;
         capture_to_js(&ctx, &capture)
     }
 
@@ -290,7 +294,7 @@ impl JSDesktopDriver {
     #[js_method]
     async fn pixel(&self, ctx: JSContext, options: AtOpt) -> JSResult<JSValue> {
         let (x, y) = point(&options.at, "at")?;
-        let pixel = blocking(move || cu::capture::pixel(x, y)).await?;
+        let pixel = blocking(move || device_io::capture::pixel(x, y)).await?;
         to_js(&ctx, &pixel)
     }
 
@@ -305,12 +309,13 @@ impl JSDesktopDriver {
         let no_ax = options.no_ax.unwrap_or(false);
         let depth = options.depth;
         let (info, shot, ax) = blocking(move || {
-            let info = cu::window::status(&cu::WindowTarget::Id(window.clone()))?;
-            let shot = cu::capture::snapshot(cu::CaptureTarget::Window(window.clone())).ok();
+            let info = device_io::window::status(&device_io::WindowTarget::Id(window.clone()))?;
+            let shot =
+                device_io::capture::snapshot(device_io::CaptureTarget::Window(window.clone())).ok();
             let ax = if no_ax {
                 None
             } else {
-                cu::ax::tree(&window, depth, None).ok()
+                device_io::ax::tree(&window, depth, None).ok()
             };
             Ok((info, shot, ax))
         })
@@ -436,56 +441,56 @@ impl JSDesktopWindow {
     #[js_method]
     async fn status(&self, ctx: JSContext, options: WindowSel) -> JSResult<JSValue> {
         let target = window_target(&options.window, &options.match_query)?;
-        let window = blocking(move || cu::window::status(&target)).await?;
+        let window = blocking(move || device_io::window::status(&target)).await?;
         to_js(&ctx, &window)
     }
     /// Focus (activate + raise) a window.
     #[js_method]
     async fn focus(&self, ctx: JSContext, options: WindowSel) -> JSResult<JSValue> {
         let target = window_target(&options.window, &options.match_query)?;
-        let window = blocking(move || cu::window::focus(&target)).await?;
+        let window = blocking(move || device_io::window::focus(&target)).await?;
         to_js(&ctx, &window)
     }
     /// Activate a window's app.
     #[js_method]
     async fn activate(&self, ctx: JSContext, options: WindowSel) -> JSResult<JSValue> {
         let target = window_target(&options.window, &options.match_query)?;
-        let window = blocking(move || cu::window::activate(&target)).await?;
+        let window = blocking(move || device_io::window::activate(&target)).await?;
         to_js(&ctx, &window)
     }
     /// Raise a window without focusing it.
     #[js_method(rename = "raise")]
     async fn raise_window(&self, ctx: JSContext, options: WindowSel) -> JSResult<JSValue> {
         let target = window_target(&options.window, &options.match_query)?;
-        let window = blocking(move || cu::window::raise(&target)).await?;
+        let window = blocking(move || device_io::window::raise(&target)).await?;
         to_js(&ctx, &window)
     }
     /// Minimize a window.
     #[js_method]
     async fn minimize(&self, ctx: JSContext, options: WindowSel) -> JSResult<JSValue> {
         let target = window_target(&options.window, &options.match_query)?;
-        let window = blocking(move || cu::window::minimize(&target)).await?;
+        let window = blocking(move || device_io::window::minimize(&target)).await?;
         to_js(&ctx, &window)
     }
     /// Maximize a window.
     #[js_method]
     async fn maximize(&self, ctx: JSContext, options: WindowSel) -> JSResult<JSValue> {
         let target = window_target(&options.window, &options.match_query)?;
-        let window = blocking(move || cu::window::maximize(&target)).await?;
+        let window = blocking(move || device_io::window::maximize(&target)).await?;
         to_js(&ctx, &window)
     }
     /// Restore a minimized/maximized window.
     #[js_method]
     async fn restore(&self, ctx: JSContext, options: WindowSel) -> JSResult<JSValue> {
         let target = window_target(&options.window, &options.match_query)?;
-        let window = blocking(move || cu::window::restore(&target)).await?;
+        let window = blocking(move || device_io::window::restore(&target)).await?;
         to_js(&ctx, &window)
     }
     /// Close a window (destructive).
     #[js_method]
     async fn close(&self, ctx: JSContext, options: WindowSel) -> JSResult<JSValue> {
         let target = window_target(&options.window, &options.match_query)?;
-        let window = blocking(move || cu::window::close(&target)).await?;
+        let window = blocking(move || device_io::window::close(&target)).await?;
         to_js(&ctx, &window)
     }
 
@@ -494,7 +499,7 @@ impl JSDesktopWindow {
     async fn move_to(&self, ctx: JSContext, options: WindowMove) -> JSResult<JSValue> {
         let target = window_target(&options.window, &options.match_query)?;
         let (x, y) = point(&options.to, "to")?;
-        let window = blocking(move || cu::window::move_to(&target, x, y)).await?;
+        let window = blocking(move || device_io::window::move_to(&target, x, y)).await?;
         to_js(&ctx, &window)
     }
 
@@ -507,7 +512,7 @@ impl JSDesktopWindow {
     ) -> JSResult<JSValue> {
         let target = window_target(&options.window, &options.match_query)?;
         let window =
-            blocking(move || cu::window::move_to_display(&target, &options.display)).await?;
+            blocking(move || device_io::window::move_to_display(&target, &options.display)).await?;
         to_js(&ctx, &window)
     }
 
@@ -516,7 +521,7 @@ impl JSDesktopWindow {
     async fn resize(&self, ctx: JSContext, options: WindowResize) -> JSResult<JSValue> {
         let target = window_target(&options.window, &options.match_query)?;
         let (w, h) = (options.width.round() as i32, options.height.round() as i32);
-        let window = blocking(move || cu::window::resize(&target, w, h)).await?;
+        let window = blocking(move || device_io::window::resize(&target, w, h)).await?;
         to_js(&ctx, &window)
     }
 
@@ -529,7 +534,7 @@ impl JSDesktopWindow {
     ) -> JSResult<JSValue> {
         let target = window_target(&options.window, &options.match_query)?;
         let on = options.on;
-        let window = blocking(move || cu::window::set_always_on_top(&target, on)).await?;
+        let window = blocking(move || device_io::window::set_always_on_top(&target, on)).await?;
         to_js(&ctx, &window)
     }
 }
@@ -601,7 +606,7 @@ impl JSDesktopPointer {
         let (x, y) = point(&o.at, "at")?;
         let ack = blocking(move || {
             let target = input_target(o.pid, o.window)?;
-            cu::input::pointer_move(x, y, target)
+            device_io::input::pointer_move(x, y, target)
         })
         .await?;
         to_js(&ctx, &ack)
@@ -613,7 +618,7 @@ impl JSDesktopPointer {
         let button = mouse_button(&o.button)?;
         let ack = blocking(move || {
             let target = input_target(o.pid, o.window)?;
-            cu::input::pointer_down(x, y, button, target)
+            device_io::input::pointer_down(x, y, button, target)
         })
         .await?;
         to_js(&ctx, &ack)
@@ -625,7 +630,7 @@ impl JSDesktopPointer {
         let button = mouse_button(&o.button)?;
         let ack = blocking(move || {
             let target = input_target(o.pid, o.window)?;
-            cu::input::pointer_up(x, y, button, target)
+            device_io::input::pointer_up(x, y, button, target)
         })
         .await?;
         to_js(&ctx, &ack)
@@ -638,7 +643,7 @@ impl JSDesktopPointer {
         let count = pointer_click_count(o.count)?;
         let ack = blocking(move || {
             let target = input_target(o.pid, o.window)?;
-            cu::input::pointer_click(x, y, button, count, target)
+            device_io::input::pointer_click(x, y, button, count, target)
         })
         .await?;
         to_js(&ctx, &ack)
@@ -651,7 +656,7 @@ impl JSDesktopPointer {
         let button = mouse_button(&o.button)?;
         let ack = blocking(move || {
             let target = input_target(o.pid, o.window)?;
-            cu::input::pointer_drag(fx, fy, tx, ty, button, target)
+            device_io::input::pointer_drag(fx, fy, tx, ty, button, target)
         })
         .await?;
         to_js(&ctx, &ack)
@@ -667,7 +672,7 @@ impl JSDesktopPointer {
         );
         let ack = blocking(move || {
             let target = input_target(o.pid, o.window)?;
-            cu::input::pointer_scroll(x, y, dx, dy, target)
+            device_io::input::pointer_scroll(x, y, dx, dy, target)
         })
         .await?;
         to_js(&ctx, &ack)
@@ -719,7 +724,7 @@ impl JSDesktopKey {
     async fn key_type(&self, ctx: JSContext, o: DesktopKeyType) -> JSResult<JSValue> {
         let ack = blocking(move || {
             let target = input_target(o.pid, o.window)?;
-            cu::input::key_type(&o.text, target)
+            device_io::input::key_type(&o.text, target)
         })
         .await?;
         to_js(&ctx, &ack)
@@ -731,7 +736,7 @@ impl JSDesktopKey {
         let mods = modifiers(&o.modifiers)?;
         let ack = blocking(move || {
             let target = input_target(o.pid, o.window)?;
-            cu::input::key_press(&o.key, &mods, target)
+            device_io::input::key_press(&o.key, &mods, target)
         })
         .await?;
         to_js(&ctx, &ack)
@@ -741,7 +746,7 @@ impl JSDesktopKey {
     async fn down(&self, ctx: JSContext, o: DesktopKeyName) -> JSResult<JSValue> {
         let ack = blocking(move || {
             let target = input_target(o.pid, o.window)?;
-            cu::input::key_down(&o.key, target)
+            device_io::input::key_down(&o.key, target)
         })
         .await?;
         to_js(&ctx, &ack)
@@ -751,7 +756,7 @@ impl JSDesktopKey {
     async fn up(&self, ctx: JSContext, o: DesktopKeyName) -> JSResult<JSValue> {
         let ack = blocking(move || {
             let target = input_target(o.pid, o.window)?;
-            cu::input::key_up(&o.key, target)
+            device_io::input::key_up(&o.key, target)
         })
         .await?;
         to_js(&ctx, &ack)
@@ -783,26 +788,26 @@ impl JSDesktopClipboard {
 
     #[js_method]
     async fn get(&self, ctx: JSContext) -> JSResult<JSValue> {
-        let clipboard = blocking(cu::clipboard::get).await?;
+        let clipboard = blocking(device_io::clipboard::get).await?;
         to_js(&ctx, &clipboard)
     }
 
     #[js_method]
     async fn set(&self, ctx: JSContext, options: ClipboardSet) -> JSResult<JSValue> {
-        let ack = blocking(move || cu::clipboard::set(&options.text)).await?;
+        let ack = blocking(move || device_io::clipboard::set(&options.text)).await?;
         to_js(&ctx, &ack)
     }
 
     #[js_method]
     async fn clear(&self, ctx: JSContext) -> JSResult<JSValue> {
-        let ack = blocking(cu::clipboard::clear).await?;
+        let ack = blocking(device_io::clipboard::clear).await?;
         to_js(&ctx, &ack)
     }
 
     /// Paste into the focused control (Ctrl/Cmd+V).
     #[js_method]
     async fn paste(&self, ctx: JSContext) -> JSResult<JSValue> {
-        let ack = blocking(cu::clipboard::paste).await?;
+        let ack = blocking(device_io::clipboard::paste).await?;
         to_js(&ctx, &ack)
     }
 }
@@ -861,70 +866,72 @@ impl JSDesktopAx {
     /// Dump a window's accessibility tree (read-only).
     #[js_method]
     async fn tree(&self, ctx: JSContext, options: AxTreeOpt) -> JSResult<JSValue> {
-        let tree =
-            blocking(move || cu::ax::tree(&options.window, options.depth, options.max_nodes))
-                .await?;
+        let tree = blocking(move || {
+            device_io::ax::tree(&options.window, options.depth, options.max_nodes)
+        })
+        .await?;
         to_js(&ctx, &tree)
     }
 
     /// Find matching nodes (read-only).
     #[js_method]
     async fn query(&self, ctx: JSContext, options: AxQueryOpt) -> JSResult<JSValue> {
-        let q = cu::AxQuery::parse(&options.match_query);
+        let q = device_io::AxQuery::parse(&options.match_query);
         let all = options.all.unwrap_or(false);
         let index = options.index;
-        let nodes = blocking(move || cu::ax::query(&options.window, &q, all, index)).await?;
+        let nodes = blocking(move || device_io::ax::query(&options.window, &q, all, index)).await?;
         to_js(&ctx, &nodes)
     }
 
     /// Atomically match exactly one node and invoke it.
     #[js_method]
     async fn invoke(&self, ctx: JSContext, options: AxSelOpt) -> JSResult<JSValue> {
-        let q = cu::AxQuery::parse(&options.match_query);
-        let ack = blocking(move || cu::ax::invoke(&options.window, &q)).await?;
+        let q = device_io::AxQuery::parse(&options.match_query);
+        let ack = blocking(move || device_io::ax::invoke(&options.window, &q)).await?;
         to_js(&ctx, &ack)
     }
     /// Give an element keyboard focus.
     #[js_method]
     async fn focus(&self, ctx: JSContext, options: AxSelOpt) -> JSResult<JSValue> {
-        let q = cu::AxQuery::parse(&options.match_query);
-        let ack = blocking(move || cu::ax::focus(&options.window, &q)).await?;
+        let q = device_io::AxQuery::parse(&options.match_query);
+        let ack = blocking(move || device_io::ax::focus(&options.window, &q)).await?;
         to_js(&ctx, &ack)
     }
     /// Select an item (list/tab/tree item).
     #[js_method]
     async fn select(&self, ctx: JSContext, options: AxSelOpt) -> JSResult<JSValue> {
-        let q = cu::AxQuery::parse(&options.match_query);
-        let ack = blocking(move || cu::ax::select(&options.window, &q)).await?;
+        let q = device_io::AxQuery::parse(&options.match_query);
+        let ack = blocking(move || device_io::ax::select(&options.window, &q)).await?;
         to_js(&ctx, &ack)
     }
     /// Expand an expandable element.
     #[js_method]
     async fn expand(&self, ctx: JSContext, options: AxSelOpt) -> JSResult<JSValue> {
-        let q = cu::AxQuery::parse(&options.match_query);
-        let ack = blocking(move || cu::ax::expand(&options.window, &q)).await?;
+        let q = device_io::AxQuery::parse(&options.match_query);
+        let ack = blocking(move || device_io::ax::expand(&options.window, &q)).await?;
         to_js(&ctx, &ack)
     }
     /// Collapse an expandable element.
     #[js_method]
     async fn collapse(&self, ctx: JSContext, options: AxSelOpt) -> JSResult<JSValue> {
-        let q = cu::AxQuery::parse(&options.match_query);
-        let ack = blocking(move || cu::ax::collapse(&options.window, &q)).await?;
+        let q = device_io::AxQuery::parse(&options.match_query);
+        let ack = blocking(move || device_io::ax::collapse(&options.window, &q)).await?;
         to_js(&ctx, &ack)
     }
     /// Scroll an element into view.
     #[js_method(rename = "scrollIntoView")]
     async fn scroll_into_view(&self, ctx: JSContext, options: AxSelOpt) -> JSResult<JSValue> {
-        let q = cu::AxQuery::parse(&options.match_query);
-        let ack = blocking(move || cu::ax::scroll_into_view(&options.window, &q)).await?;
+        let q = device_io::AxQuery::parse(&options.match_query);
+        let ack = blocking(move || device_io::ax::scroll_into_view(&options.window, &q)).await?;
         to_js(&ctx, &ack)
     }
 
     /// Replace an editable element's value.
     #[js_method(rename = "setValue")]
     async fn set_value(&self, ctx: JSContext, options: AxSetValueOpt) -> JSResult<JSValue> {
-        let q = cu::AxQuery::parse(&options.match_query);
-        let ack = blocking(move || cu::ax::set_value(&options.window, &q, &options.value)).await?;
+        let q = device_io::AxQuery::parse(&options.match_query);
+        let ack =
+            blocking(move || device_io::ax::set_value(&options.window, &q, &options.value)).await?;
         to_js(&ctx, &ack)
     }
 
@@ -932,7 +939,7 @@ impl JSDesktopAx {
     #[js_method(rename = "hitTest")]
     async fn hit_test(&self, ctx: JSContext, options: AtOpt) -> JSResult<JSValue> {
         let (x, y) = point(&options.at, "at")?;
-        let node = blocking(move || cu::ax::hit_test(x, y)).await?;
+        let node = blocking(move || device_io::ax::hit_test(x, y)).await?;
         to_js(&ctx, &node)
     }
 }
@@ -995,8 +1002,8 @@ impl JSDesktopWait {
         match options.state.as_deref() {
             None | Some("visible") => {
                 let window = blocking(move || {
-                    let query = cu::WindowQuery::parse(&match_query);
-                    cu::wait_window(&query, Some(true), timeout_ms)
+                    let query = device_io::WindowQuery::parse(&match_query);
+                    device_io::wait_window(&query, Some(true), timeout_ms)
                 })
                 .await?;
                 to_js(&ctx, &window)
@@ -1007,14 +1014,14 @@ impl JSDesktopWait {
             // one-shot `wait_window(visible=false)` rejects outright).
             Some("hidden") => {
                 let ok = blocking(move || {
-                    let query = cu::WindowQuery::parse(&match_query);
+                    let query = device_io::WindowQuery::parse(&match_query);
                     let deadline = Instant::now() + Duration::from_millis(timeout_ms);
                     loop {
-                        if cu::windows(&query)?.is_empty() {
+                        if device_io::windows(&query)?.is_empty() {
                             return Ok(true);
                         }
                         if Instant::now() >= deadline {
-                            return Err(cu::Error::Timeout(
+                            return Err(device_io::Error::Timeout(
                                 "timed out waiting for window to become hidden".into(),
                             ));
                         }
@@ -1036,8 +1043,8 @@ impl JSDesktopWait {
         let state = options.state.unwrap_or_else(|| "exists".to_string());
         let timeout_ms = desktop_timeout_ms(options.timeout_ms);
         let ack = blocking(move || {
-            let q = cu::AxQuery::parse(&options.match_query);
-            cu::ax::wait(&options.window, &q, &state, timeout_ms)
+            let q = device_io::AxQuery::parse(&options.match_query);
+            device_io::ax::wait(&options.window, &q, &state, timeout_ms)
         })
         .await?;
         to_js(&ctx, &ack)
@@ -1049,9 +1056,10 @@ impl JSDesktopWait {
         let (x, y) = point(&options.at, "at")?;
         let tolerance = options.tolerance.unwrap_or(0);
         let timeout_ms = desktop_timeout_ms(options.timeout_ms);
-        let pixel =
-            blocking(move || cu::capture::wait_pixel(x, y, &options.color, tolerance, timeout_ms))
-                .await?;
+        let pixel = blocking(move || {
+            device_io::capture::wait_pixel(x, y, &options.color, tolerance, timeout_ms)
+        })
+        .await?;
         to_js(&ctx, &pixel)
     }
 }
@@ -1101,7 +1109,7 @@ impl JSDesktopApp {
     async fn launch(&self, ctx: JSContext, options: AppLaunchOpt) -> JSResult<JSValue> {
         let timeout_ms = desktop_timeout_ms(options.timeout_ms);
         let result = blocking(move || {
-            cu::app::launch(
+            device_io::app::launch(
                 &options.app,
                 options.args.as_deref().unwrap_or(&[]),
                 options.wait_window.as_deref(),
@@ -1116,13 +1124,13 @@ impl JSDesktopApp {
     #[js_method]
     async fn quit(&self, ctx: JSContext, options: AppQuitOpt) -> JSResult<JSValue> {
         let target = match (&options.match_query, &options.pid, &options.window) {
-            (Some(q), None, None) => cu::QuitTarget::Match(cu::WindowQuery::parse(q)),
-            (None, Some(pid), None) => cu::QuitTarget::Pid(*pid),
-            (None, None, Some(id)) => cu::QuitTarget::Window(id.clone()),
+            (Some(q), None, None) => device_io::QuitTarget::Match(device_io::WindowQuery::parse(q)),
+            (None, Some(pid), None) => device_io::QuitTarget::Pid(*pid),
+            (None, None, Some(id)) => device_io::QuitTarget::Window(id.clone()),
             _ => return Err(usage("pass exactly one of match / pid / window")),
         };
         let force = options.force.unwrap_or(false);
-        let ack = blocking(move || cu::app::quit(target, force)).await?;
+        let ack = blocking(move || device_io::app::quit(target, force)).await?;
         to_js(&ctx, &ack)
     }
 }
@@ -1181,7 +1189,8 @@ impl JSDesktopProcess {
     #[js_method]
     async fn list(&self, ctx: JSContext, options: Optional<ProcessListOpt>) -> JSResult<JSValue> {
         let options = options.0.unwrap_or_default();
-        let processes = blocking(move || cu::process::list(options.filter.as_deref())).await?;
+        let processes =
+            blocking(move || device_io::process::list(options.filter.as_deref())).await?;
         to_js(&ctx, &processes)
     }
 
@@ -1189,7 +1198,7 @@ impl JSDesktopProcess {
     #[js_method]
     async fn kill(&self, ctx: JSContext, options: ProcessKillOpt) -> JSResult<JSValue> {
         let force = options.force.unwrap_or(false);
-        let ack = blocking(move || cu::process::kill(options.pid, force)).await?;
+        let ack = blocking(move || device_io::process::kill(options.pid, force)).await?;
         to_js(&ctx, &ack)
     }
 }

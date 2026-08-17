@@ -75,6 +75,38 @@ cargo tree -e features -p lingxia-control-commands --no-default-features \
 assert_lacks "$scratch/control-commands" "lingxia-device-io" \
   "base control commands must not depend on device I/O"
 
+# The command table forwards to the host; only `lxdev` runs the verbs itself.
+# A product that takes the client must not link a backend it cannot reach.
+cargo tree -e features -p lingxia-control-commands --no-default-features \
+  --features desktop > "$scratch/desktop-client"
+cargo tree -e features -p lingxia-control-commands --no-default-features \
+  --features desktop -i lingxia-device-io > "$scratch/desktop-client-features"
+assert_has "$scratch/desktop-client-features" 'lingxia-device-io feature "wire"' \
+  "the desktop command client must include transport DTOs"
+for capability in app ax clipboard diagnostics input process snapshot window; do
+  assert_lacks "$scratch/desktop-client-features" \
+    "lingxia-device-io feature \"$capability\"" \
+    "the desktop command client must not include the $capability implementation"
+done
+assert_lacks "$scratch/desktop-client" "objc2 v" \
+  "the desktop command client must not link macOS device bindings"
+
+cargo tree -e features -p lingxia-control-commands --no-default-features \
+  --features desktop-local -i lingxia-device-io > "$scratch/desktop-local-features"
+assert_has "$scratch/desktop-local-features" 'lingxia-device-io feature "input"' \
+  "desktop-local must include the synthetic input implementation"
+assert_lacks "$scratch/desktop-local-features" 'lingxia-device-io feature "supervision"' \
+  "desktop-local is a development mount and must not take host supervision"
+
+# `computerUse` is one declared capability, so one SDK feature has to carry
+# both halves — the product command and the in-process automation driver.
+# Splitting them across two features people enable by hand is how a host ends
+# up answering a capability it only half has.
+cargo tree -e features -p lingxia --no-default-features --features computer-use \
+  -i lingxia-device-io > "$scratch/product-computer-use"
+assert_has "$scratch/product-computer-use" 'lingxia-device-io feature "input"' \
+  "lingxia/computer-use must bring the in-process desktop automation driver"
+
 cargo tree -e features -p lingxia-devtools-cli > "$scratch/lxdev"
 cargo tree -e features -p lingxia-devtools-cli -i lingxia-device-io \
   > "$scratch/lxdev-features"

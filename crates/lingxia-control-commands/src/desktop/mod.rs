@@ -4,7 +4,7 @@ pub use backend::Backend;
 
 use crate::guard::desktop_gate as gate;
 use clap::{Args, Subcommand};
-use lingxia_device_io as cu;
+use lingxia_device_io as device_io;
 use serde::Serialize;
 
 #[derive(Args, Clone)]
@@ -35,14 +35,16 @@ pub struct WindowSel {
 }
 
 impl WindowSel {
-    fn target(&self) -> cu::Result<cu::WindowTarget> {
+    fn target(&self) -> device_io::Result<device_io::WindowTarget> {
         match (&self.window, &self.match_query) {
-            (Some(id), None) => Ok(cu::WindowTarget::Id(id.clone())),
-            (None, Some(q)) => Ok(cu::WindowTarget::Match(cu::WindowQuery::parse(q))),
-            (None, None) => Err(cu::Error::Usage(
+            (Some(id), None) => Ok(device_io::WindowTarget::Id(id.clone())),
+            (None, Some(q)) => Ok(device_io::WindowTarget::Match(
+                device_io::WindowQuery::parse(q),
+            )),
+            (None, None) => Err(device_io::Error::Usage(
                 "pass --window <id> or --match <query>".into(),
             )),
-            (Some(_), Some(_)) => Err(cu::Error::Usage(
+            (Some(_), Some(_)) => Err(device_io::Error::Usage(
                 "pass only one of --window / --match".into(),
             )),
         }
@@ -439,12 +441,12 @@ pub enum CliButton {
     Middle,
 }
 
-impl From<CliButton> for cu::MouseButton {
+impl From<CliButton> for device_io::MouseButton {
     fn from(b: CliButton) -> Self {
         match b {
-            CliButton::Left => cu::MouseButton::Left,
-            CliButton::Right => cu::MouseButton::Right,
-            CliButton::Middle => cu::MouseButton::Middle,
+            CliButton::Left => device_io::MouseButton::Left,
+            CliButton::Right => device_io::MouseButton::Right,
+            CliButton::Middle => device_io::MouseButton::Middle,
         }
     }
 }
@@ -457,13 +459,13 @@ pub enum CliModifier {
     Meta,
 }
 
-impl From<CliModifier> for cu::Modifier {
+impl From<CliModifier> for device_io::Modifier {
     fn from(m: CliModifier) -> Self {
         match m {
-            CliModifier::Ctrl => cu::Modifier::Ctrl,
-            CliModifier::Shift => cu::Modifier::Shift,
-            CliModifier::Alt => cu::Modifier::Alt,
-            CliModifier::Meta => cu::Modifier::Meta,
+            CliModifier::Ctrl => device_io::Modifier::Ctrl,
+            CliModifier::Shift => device_io::Modifier::Shift,
+            CliModifier::Alt => device_io::Modifier::Alt,
+            CliModifier::Meta => device_io::Modifier::Meta,
         }
     }
 }
@@ -646,7 +648,7 @@ pub fn execute(backend: &Backend, options: DesktopOptions) -> i32 {
                 // change what this tool is allowed to do afterwards. Reading
                 // the current grants does not.
                 if let Err(error) = gate(allow_control, false, allow_destructive) {
-                    return finish::<cu::Permissions>(json, Err(error), print_permissions);
+                    return finish::<device_io::Permissions>(json, Err(error), print_permissions);
                 }
             }
             let perms = if request {
@@ -660,7 +662,7 @@ pub fn execute(backend: &Backend, options: DesktopOptions) -> i32 {
         DesktopCommand::Windows { match_query, json } => {
             let query = match_query
                 .as_deref()
-                .map(cu::WindowQuery::parse)
+                .map(device_io::WindowQuery::parse)
                 .unwrap_or_default();
             finish(json, backend.windows(&query), print_windows)
         }
@@ -693,7 +695,7 @@ pub fn execute(backend: &Backend, options: DesktopOptions) -> i32 {
             .and_then(|()| resolve_target(backend, pid, window))
         {
             Ok(t) => run_pointer(backend, action, t, allow_control, allow_destructive),
-            Err(e) => finish::<cu::Ack>(action.json(), Err(e), print_ack),
+            Err(e) => finish::<device_io::Ack>(action.json(), Err(e), print_ack),
         },
         DesktopCommand::Key {
             window,
@@ -703,7 +705,7 @@ pub fn execute(backend: &Backend, options: DesktopOptions) -> i32 {
             .and_then(|()| resolve_target(backend, pid, window))
         {
             Ok(t) => run_key(backend, action, t, allow_control, allow_destructive),
-            Err(e) => finish::<cu::Ack>(action.json(), Err(e), print_ack),
+            Err(e) => finish::<device_io::Ack>(action.json(), Err(e), print_ack),
         },
         DesktopCommand::Clipboard { action } => {
             run_clipboard(backend, action, allow_control, allow_destructive)
@@ -741,7 +743,7 @@ fn run_app(
         } => {
             let r = gate(allow_control, false, allow_destructive)
                 .and_then(|_| backend.app_launch(&app, &args, wait_window.as_deref(), timeout_ms));
-            finish(json, r, |lr: &cu::LaunchResult| {
+            finish(json, r, |lr: &device_io::LaunchResult| {
                 let win = lr
                     .window
                     .as_ref()
@@ -764,10 +766,12 @@ fn run_app(
             json,
         } => {
             let target = match (match_query, pid, window) {
-                (Some(q), None, None) => Ok(cu::QuitTarget::Match(cu::WindowQuery::parse(&q))),
-                (None, Some(p), None) => Ok(cu::QuitTarget::Pid(p)),
-                (None, None, Some(w)) => Ok(cu::QuitTarget::Window(w)),
-                _ => Err(cu::Error::Usage(
+                (Some(q), None, None) => Ok(device_io::QuitTarget::Match(
+                    device_io::WindowQuery::parse(&q),
+                )),
+                (None, Some(p), None) => Ok(device_io::QuitTarget::Pid(p)),
+                (None, None, Some(w)) => Ok(device_io::QuitTarget::Window(w)),
+                _ => Err(device_io::Error::Usage(
                     "pass exactly one of --match / --pid / --window".into(),
                 )),
             };
@@ -803,12 +807,12 @@ fn run_process(
 
 fn run_snapshot(backend: &Backend, window: String, no_ax: bool, depth: Option<u32>) -> i32 {
     use base64::Engine as _;
-    let target = cu::WindowTarget::Id(window.clone());
+    let target = device_io::WindowTarget::Id(window.clone());
     let info = match backend.window_status(&target) {
         Ok(w) => w,
         Err(e) => return finish::<()>(true, Err(e), |_| {}),
     };
-    let shot = match backend.screenshot(cu::CaptureTarget::Window(window.clone())) {
+    let shot = match backend.screenshot(device_io::CaptureTarget::Window(window.clone())) {
         Ok(shot) => shot,
         Err(e) => return finish::<()>(true, Err(e), |_| {}),
     };
@@ -863,7 +867,7 @@ fn run_ax(
             index,
             json,
         } => {
-            let q = cu::AxQuery::parse(&match_query);
+            let q = device_io::AxQuery::parse(&match_query);
             finish(
                 json,
                 backend.ax_query(&window, &q, all, index),
@@ -875,7 +879,7 @@ fn run_ax(
             match_query,
             json,
         } => {
-            let q = cu::AxQuery::parse(&match_query);
+            let q = device_io::AxQuery::parse(&match_query);
             let r = gate(allow_control, false, allow_destructive)
                 .and_then(|_| backend.ax_invoke(&window, &q));
             finish(json, r, print_ack)
@@ -914,9 +918,9 @@ fn ax_act(
     sel: AxSel,
     allow_control: bool,
     allow_destructive: bool,
-    op: impl Fn(&str, &cu::AxQuery) -> cu::Result<cu::Ack>,
+    op: impl Fn(&str, &device_io::AxQuery) -> device_io::Result<device_io::Ack>,
 ) -> i32 {
-    let q = cu::AxQuery::parse(&sel.match_query);
+    let q = device_io::AxQuery::parse(&sel.match_query);
     let r = gate(allow_control, false, allow_destructive).and_then(|_| op(&sel.window, &q));
     finish(sel.json, r, print_ack)
 }
@@ -929,7 +933,7 @@ fn run_wait(backend: &Backend, action: WaitAction) -> i32 {
             timeout_ms,
             json,
         } => {
-            let q = cu::WindowQuery::parse(&match_query);
+            let q = device_io::WindowQuery::parse(&match_query);
             match state {
                 Some(WindowVisibility::Hidden) => {
                     finish(json, wait_window_hidden(backend, &q, timeout_ms), |r| {
@@ -950,7 +954,7 @@ fn run_wait(backend: &Backend, action: WaitAction) -> i32 {
             timeout_ms,
             json,
         } => {
-            let q = cu::AxQuery::parse(&match_query);
+            let q = device_io::AxQuery::parse(&match_query);
             finish(
                 json,
                 backend.ax_wait(&window, &q, state.as_str(), timeout_ms),
@@ -979,9 +983,9 @@ fn run_wait(backend: &Backend, action: WaitAction) -> i32 {
 
 fn wait_window_hidden(
     backend: &Backend,
-    query: &cu::WindowQuery,
+    query: &device_io::WindowQuery,
     timeout_ms: u64,
-) -> cu::Result<WaitWindowHidden> {
+) -> device_io::Result<WaitWindowHidden> {
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
     loop {
         let visible = backend.windows(query)?;
@@ -993,7 +997,7 @@ fn wait_window_hidden(
             });
         }
         if std::time::Instant::now() >= deadline {
-            return Err(cu::Error::Timeout(
+            return Err(device_io::Error::Timeout(
                 "timed out waiting for window to become hidden".into(),
             ));
         }
@@ -1001,7 +1005,7 @@ fn wait_window_hidden(
     }
 }
 
-fn print_ax_node_line(n: &cu::AxNode) {
+fn print_ax_node_line(n: &device_io::AxNode) {
     let value = n
         .value
         .as_deref()
@@ -1021,7 +1025,7 @@ fn print_ax_node_line(n: &cu::AxNode) {
     );
 }
 
-fn print_ax_tree(n: &cu::AxNode, indent: usize) {
+fn print_ax_tree(n: &device_io::AxNode, indent: usize) {
     print!("{}", "  ".repeat(indent));
     print_ax_node_line(n);
     for c in &n.children {
@@ -1029,7 +1033,7 @@ fn print_ax_tree(n: &cu::AxNode, indent: usize) {
     }
 }
 
-fn print_ax_nodes(nodes: &Vec<cu::AxNode>) {
+fn print_ax_nodes(nodes: &Vec<device_io::AxNode>) {
     if nodes.is_empty() {
         println!("No matching nodes.");
         return;
@@ -1067,14 +1071,14 @@ fn run_clipboard(
     }
 }
 
-fn print_clipboard(c: &cu::Clipboard) {
+fn print_clipboard(c: &device_io::Clipboard) {
     match &c.text {
         Some(t) => println!("{t}"),
         None => println!("(clipboard has no text)"),
     }
 }
 
-fn print_ack(a: &cu::Ack) {
+fn print_ack(a: &device_io::Ack) {
     println!("ok: {}", a.action);
 }
 
@@ -1089,12 +1093,14 @@ fn resolve_target(
     backend: &Backend,
     pid: Option<u32>,
     window: Option<String>,
-) -> cu::Result<InputTarget> {
+) -> device_io::Result<InputTarget> {
     match (pid, window) {
-        (Some(_), Some(_)) => Err(cu::Error::Usage("pass only one of --window / --pid".into())),
+        (Some(_), Some(_)) => Err(device_io::Error::Usage(
+            "pass only one of --window / --pid".into(),
+        )),
         #[cfg(target_os = "windows")]
         (None, Some(id)) => {
-            let window = backend.window_activate(&cu::WindowTarget::Id(id))?;
+            let window = backend.window_activate(&device_io::WindowTarget::Id(id))?;
             Ok(InputTarget {
                 delivery_pid: None,
                 window_id: Some(window.id),
@@ -1102,19 +1108,19 @@ fn resolve_target(
         }
         #[cfg(target_os = "windows")]
         (Some(pid), None) => {
-            let windows = backend.windows(&cu::WindowQuery::parse(&format!("pid:{pid}")))?;
+            let windows = backend.windows(&device_io::WindowQuery::parse(&format!("pid:{pid}")))?;
             match windows.as_slice() {
-                [] => Err(cu::Error::NotFound(format!(
+                [] => Err(device_io::Error::NotFound(format!(
                     "no visible window found for pid {pid}"
                 ))),
                 [window] => {
-                    backend.window_activate(&cu::WindowTarget::Id(window.id.clone()))?;
+                    backend.window_activate(&device_io::WindowTarget::Id(window.id.clone()))?;
                     Ok(InputTarget {
                         delivery_pid: None,
                         window_id: Some(window.id.clone()),
                     })
                 }
-                _ => Err(cu::Error::Ambiguous(format!(
+                _ => Err(device_io::Error::Ambiguous(format!(
                     "pid {pid} has {} visible windows; pass --window <id>",
                     windows.len()
                 ))),
@@ -1122,7 +1128,7 @@ fn resolve_target(
         }
         #[cfg(not(target_os = "windows"))]
         (None, Some(id)) => {
-            let window = backend.window_status(&cu::WindowTarget::Id(id))?;
+            let window = backend.window_status(&device_io::WindowTarget::Id(id))?;
             Ok(InputTarget {
                 delivery_pid: Some(window.pid),
                 window_id: Some(window.id),
@@ -1220,7 +1226,7 @@ fn run_key(
             modifier,
             json,
         } => {
-            let mods: Vec<cu::Modifier> = modifier.into_iter().map(Into::into).collect();
+            let mods: Vec<device_io::Modifier> = modifier.into_iter().map(Into::into).collect();
             (
                 json,
                 g.and_then(|_| backend.key_press(&key, &mods, delivery_pid, window_id)),
@@ -1251,7 +1257,7 @@ fn run_window(
         allow_control: bool,
         destructive: bool,
         allow_destructive: bool,
-        op: impl Fn(&cu::WindowTarget) -> cu::Result<cu::Window>,
+        op: impl Fn(&device_io::WindowTarget) -> device_io::Result<device_io::Window>,
     ) -> i32 {
         let json = sel.json;
         let result = gate(allow_control, destructive, allow_destructive)
@@ -1306,7 +1312,9 @@ fn run_window(
                         let (x, y) = parse_pair(xy)?;
                         backend.window_move(&t, x, y)
                     }
-                    (None, None) => Err(cu::Error::Usage("pass --to X,Y or --display <id>".into())),
+                    (None, None) => Err(device_io::Error::Usage(
+                        "pass --to X,Y or --display <id>".into(),
+                    )),
                 });
             finish(json, result, print_window_one)
         }
@@ -1323,7 +1331,7 @@ fn run_window(
     }
 }
 
-fn print_window_one(w: &cu::Window) {
+fn print_window_one(w: &device_io::Window) {
     println!(
         "{}  pid {}  {}  {},{} {}x{}  {}{}",
         w.id,
@@ -1345,17 +1353,17 @@ fn print_window_one(w: &cu::Window) {
 }
 
 /// `X,Y` -> (i32, i32).
-fn parse_pair(s: &str) -> cu::Result<(i32, i32)> {
+fn parse_pair(s: &str) -> device_io::Result<(i32, i32)> {
     let (a, b) = s
         .split_once(',')
-        .ok_or_else(|| cu::Error::Usage(format!("expected X,Y, got '{s}'")))?;
+        .ok_or_else(|| device_io::Error::Usage(format!("expected X,Y, got '{s}'")))?;
     Ok((
         a.trim()
             .parse()
-            .map_err(|_| cu::Error::Usage(format!("invalid X in '{s}'")))?,
+            .map_err(|_| device_io::Error::Usage(format!("invalid X in '{s}'")))?,
         b.trim()
             .parse()
-            .map_err(|_| cu::Error::Usage(format!("invalid Y in '{s}'")))?,
+            .map_err(|_| device_io::Error::Usage(format!("invalid Y in '{s}'")))?,
     ))
 }
 
@@ -1371,23 +1379,23 @@ fn run_screenshot(
     if selectors > 1 {
         return finish::<()>(
             json,
-            Err(cu::Error::Usage(
+            Err(device_io::Error::Usage(
                 "pass at most one of --display / --window / --region".into(),
             )),
             |_| {},
         );
     }
     let target = if let Some(n) = display {
-        cu::CaptureTarget::Display(n)
+        device_io::CaptureTarget::Display(n)
     } else if let Some(id) = window {
-        cu::CaptureTarget::Window(id)
+        device_io::CaptureTarget::Window(id)
     } else if let Some(r) = region {
         match parse_region(&r) {
             Ok(t) => t,
             Err(e) => return finish::<()>(json, Err(e), |_| {}),
         }
     } else {
-        cu::CaptureTarget::Screen
+        device_io::CaptureTarget::Screen
     };
 
     let capture = match backend.screenshot(target) {
@@ -1429,16 +1437,18 @@ fn run_screenshot(
     }
 }
 
-fn parse_region(s: &str) -> cu::Result<cu::CaptureTarget> {
+fn parse_region(s: &str) -> device_io::Result<device_io::CaptureTarget> {
     let parts: Vec<&str> = s.split(',').map(str::trim).collect();
     if parts.len() != 4 {
-        return Err(cu::Error::Usage(format!("expected X,Y,W,H, got '{s}'")));
+        return Err(device_io::Error::Usage(format!(
+            "expected X,Y,W,H, got '{s}'"
+        )));
     }
     let n = |v: &str| {
         v.parse::<i32>()
-            .map_err(|_| cu::Error::Usage(format!("invalid number in region '{s}'")))
+            .map_err(|_| device_io::Error::Usage(format!("invalid number in region '{s}'")))
     };
-    Ok(cu::CaptureTarget::Region {
+    Ok(device_io::CaptureTarget::Region {
         x: n(parts[0])?,
         y: n(parts[1])?,
         w: n(parts[2])?,
@@ -1456,7 +1466,7 @@ fn screenshot_coordinate_space() -> &'static str {
     "desktop_pixels"
 }
 
-fn print_pixel(p: &cu::Pixel) {
+fn print_pixel(p: &device_io::Pixel) {
     println!(
         "#{}  rgb({},{},{})  at {},{}",
         p.hex, p.r, p.g, p.b, p.x, p.y
@@ -1465,7 +1475,7 @@ fn print_pixel(p: &cu::Pixel) {
 
 /// Emit the result and exit with the contract's exit code. `desktop` commands
 /// run locally (no dev session), so they own their process exit directly.
-fn finish<T: Serialize>(json: bool, result: cu::Result<T>, human: impl Fn(&T)) -> i32 {
+fn finish<T: Serialize>(json: bool, result: device_io::Result<T>, human: impl Fn(&T)) -> i32 {
     match result {
         Ok(value) => {
             if json {
@@ -1506,7 +1516,7 @@ fn yn(b: bool) -> &'static str {
     if b { "yes" } else { "no" }
 }
 
-fn print_doctor(d: &cu::Doctor) {
+fn print_doctor(d: &device_io::Doctor) {
     println!("backend    {}", d.backend);
     println!("os         {} {}", d.os, d.os_version);
     let c = &d.capabilities;
@@ -1525,13 +1535,13 @@ fn print_doctor(d: &cu::Doctor) {
     print_permission_lines(&d.permissions);
 }
 
-fn print_permission_lines(p: &cu::Permissions) {
+fn print_permission_lines(p: &device_io::Permissions) {
     println!("  accessibility       {}", yn(p.accessibility));
     println!("  screen recording    {}", yn(p.screen_recording));
     println!("  input               {}", yn(p.input));
 }
 
-fn print_permissions(p: &cu::Permissions) {
+fn print_permissions(p: &device_io::Permissions) {
     println!("permissions:");
     print_permission_lines(p);
     if !(p.accessibility && p.screen_recording && p.input) {
@@ -1541,7 +1551,7 @@ fn print_permissions(p: &cu::Permissions) {
     }
 }
 
-fn print_displays(displays: &Vec<cu::Display>) {
+fn print_displays(displays: &Vec<device_io::Display>) {
     if displays.is_empty() {
         println!("No displays reported.");
         return;
@@ -1565,7 +1575,7 @@ fn print_displays(displays: &Vec<cu::Display>) {
     }
 }
 
-fn print_windows(windows: &Vec<cu::Window>) {
+fn print_windows(windows: &Vec<device_io::Window>) {
     if windows.is_empty() {
         println!("No matching windows.");
         return;

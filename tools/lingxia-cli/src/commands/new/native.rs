@@ -260,8 +260,11 @@ mod tests {
         assert!(source.contains("log::warn!"));
     }
 
+    /// One declared capability must not need two SDK features kept in sync by
+    /// hand: forgetting the second builds a host whose `computer` commands work
+    /// while `lx.automation().desktop` throws at the first call.
     #[test]
-    fn computer_use_template_composes_every_public_surface_explicitly() {
+    fn computer_use_template_takes_one_sdk_feature_and_the_host_provider() {
         let manifest = include_str!("../../../templates/native/Cargo.toml.template");
         let computer_use = manifest
             .lines()
@@ -269,7 +272,10 @@ mod tests {
             .expect("native template must define its computer-use feature");
 
         assert!(computer_use.contains("lingxia/computer-use"));
-        assert!(computer_use.contains("lingxia/desktop-automation"));
         assert!(computer_use.contains("lingxia-control-runtime/computer-use"));
+        assert!(
+            !computer_use.contains("desktop-automation"),
+            "lingxia/computer-use already implies it; naming both invites one to drift"
+        );
     }
 }

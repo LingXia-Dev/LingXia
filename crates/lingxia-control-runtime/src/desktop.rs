@@ -11,7 +11,7 @@
 
 use lingxia_control_protocol::ControlResponse;
 use lingxia_control_protocol::methods::desktop as method;
-use lingxia_device_io as cu;
+use lingxia_device_io as device_io;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 
@@ -38,7 +38,7 @@ pub fn handle(id: String, name: &str, params: Option<Value>) -> Option<ControlRe
             activity_target.as_ref(),
         )
     {
-        cu::supervision::note_activity(acted);
+        device_io::supervision::note_activity(acted);
     }
     Some(match outcome {
         Ok(result) => ControlResponse::success(id, result),
@@ -87,13 +87,13 @@ fn input_delivery(_params: &Value) -> Option<InputDelivery> {
 struct WindowSnapshot {
     id: String,
     focused: bool,
-    bounds: cu::Rect,
+    bounds: device_io::Rect,
     #[cfg(any(target_os = "macos", test))]
     display_id: String,
 }
 
-impl From<cu::Window> for WindowSnapshot {
-    fn from(window: cu::Window) -> Self {
+impl From<device_io::Window> for WindowSnapshot {
+    fn from(window: device_io::Window) -> Self {
         Self {
             id: window.id,
             focused: window.focused,
@@ -202,12 +202,12 @@ fn pre_actuation_target(name: &str, params: Option<&Value>) -> Option<ActivityTa
         name,
         params,
         |id| {
-            cu::window::status(&cu::WindowTarget::Id(id.to_string()))
+            device_io::window::status(&device_io::WindowTarget::Id(id.to_string()))
                 .ok()
                 .map(Into::into)
         },
         |pid| {
-            cu::windows(&cu::WindowQuery::by_pid(pid))
+            device_io::windows(&device_io::WindowQuery::by_pid(pid))
                 .ok()
                 .map(|windows| windows.into_iter().map(WindowSnapshot::from).collect())
         },
@@ -217,12 +217,12 @@ fn pre_actuation_target(name: &str, params: Option<&Value>) -> Option<ActivityTa
 
 #[cfg(target_os = "windows")]
 fn actual_pointer_window(x: i32, y: i32) -> Option<WindowSnapshot> {
-    cu::input_window_at_point(x, y).map(Into::into)
+    device_io::input_window_at_point(x, y).map(Into::into)
 }
 
 #[cfg(target_os = "macos")]
 fn actual_pointer_window(x: i32, y: i32) -> Option<WindowSnapshot> {
-    cu::windows(&cu::WindowQuery::default())
+    device_io::windows(&device_io::WindowQuery::default())
         .ok()?
         .into_iter()
         .find(|window| {
@@ -282,7 +282,7 @@ fn pre_actuation_target_with_status(
     }
 }
 
-fn rect_center(rect: cu::Rect) -> Option<(i32, i32)> {
+fn rect_center(rect: device_io::Rect) -> Option<(i32, i32)> {
     let x = i64::from(rect.x) + i64::from(rect.w) / 2;
     let y = i64::from(rect.y) + i64::from(rect.h) / 2;
     Some((i32::try_from(x).ok()?, i32::try_from(y).ok()?))
@@ -292,7 +292,7 @@ fn result_window(result: Option<&Value>) -> Option<(String, (i32, i32))> {
     let value = result?;
     let id = value.get("id")?.as_str()?.to_string();
     let bounds = value.get("bounds")?;
-    let rect = cu::Rect {
+    let rect = device_io::Rect {
         x: i32::try_from(bounds.get("x")?.as_i64()?).ok()?,
         y: i32::try_from(bounds.get("y")?.as_i64()?).ok()?,
         w: i32::try_from(bounds.get("w")?.as_i64()?).ok()?,
@@ -306,7 +306,7 @@ fn actuation(
     params: Option<&Value>,
     result: Option<&Value>,
     activity_target: Option<&ActivityTarget>,
-) -> Option<cu::Acted> {
+) -> Option<device_io::Acted> {
     const ACTUATES: &[&str] = &[
         "desktop.pointer.",
         "desktop.key.",
@@ -344,7 +344,7 @@ fn actuation(
     // all, and they still change the machine — clipboard clear and paste are
     // both in that shape.
     let Some(params) = params else {
-        return Some(cu::Acted::Somewhere);
+        return Some(device_io::Acted::Somewhere);
     };
     // Prefer the window the command *resolved*, not the one it was asked for.
     // `window focus --match process:Edge` names a query, and answering "no
@@ -376,12 +376,12 @@ fn actuation(
     let point = pointer_point(name, params);
 
     Some(match (point, window) {
-        (Some((x, y)), Some((id, _))) => cu::Acted::AtWindow { x, y, id },
-        (Some((x, y)), None) => cu::Acted::At { x, y },
-        (None, Some((id, (x, y)))) => cu::Acted::WindowWithFallback { id, x, y },
+        (Some((x, y)), Some((id, _))) => device_io::Acted::AtWindow { x, y, id },
+        (Some((x, y)), None) => device_io::Acted::At { x, y },
+        (None, Some((id, (x, y)))) => device_io::Acted::WindowWithFallback { id, x, y },
         (None, None) => match display {
-            Some((x, y)) => cu::Acted::Display { x, y },
-            None => cu::Acted::Somewhere,
+            Some((x, y)) => device_io::Acted::Display { x, y },
+            None => device_io::Acted::Somewhere,
         },
     })
 }
@@ -396,7 +396,7 @@ struct Failure {
 /// `lingxia-device-io` uses for exactly that.
 fn usage(message: impl Into<String>) -> Failure {
     Failure {
-        code: cu::ErrorCode::Usage.as_str(),
+        code: device_io::ErrorCode::Usage.as_str(),
         message: message.into(),
     }
 }
@@ -405,31 +405,35 @@ type Answer = Result<Option<Value>, Failure>;
 
 fn dispatch(name: &str, params: Option<Value>) -> Answer {
     match name {
-        method::DOCTOR => encode(cu::doctor()),
-        method::PERMISSIONS => encode(cu::permissions()),
+        method::DOCTOR => encode(device_io::doctor()),
+        method::PERMISSIONS => encode(device_io::permissions()),
         // Prompting is a foreground act — macOS shows the dialog against the
         // app, which is the point of answering it here.
-        method::REQUEST_PERMISSIONS => encode(cu::request_permissions()),
-        method::DISPLAYS => report(cu::displays()),
+        method::REQUEST_PERMISSIONS => encode(device_io::request_permissions()),
+        method::DISPLAYS => report(device_io::displays()),
         method::WINDOWS => {
-            let args: cu::wire::Windows = decode(params)?;
-            report(cu::windows(&args.query))
+            let args: device_io::wire::Windows = decode(params)?;
+            report(device_io::windows(&args.query))
         }
         method::SCREENSHOT => {
-            let args: cu::wire::Screenshot = decode(params)?;
-            report(cu::capture::snapshot(args.target))
+            let args: device_io::wire::Screenshot = decode(params)?;
+            report(device_io::capture::snapshot(args.target))
         }
         method::PIXEL => {
-            let args: cu::wire::Point = decode(params)?;
-            report(cu::capture::pixel(args.x, args.y))
+            let args: device_io::wire::Point = decode(params)?;
+            report(device_io::capture::pixel(args.x, args.y))
         }
         method::WAIT_WINDOW => {
-            let args: cu::wire::WaitWindow = decode(params)?;
-            report(cu::wait_window(&args.query, args.visible, args.timeout_ms))
+            let args: device_io::wire::WaitWindow = decode(params)?;
+            report(device_io::wait_window(
+                &args.query,
+                args.visible,
+                args.timeout_ms,
+            ))
         }
         method::WAIT_PIXEL => {
-            let args: cu::wire::WaitPixel = decode(params)?;
-            report(cu::capture::wait_pixel(
+            let args: device_io::wire::WaitPixel = decode(params)?;
+            report(device_io::capture::wait_pixel(
                 args.x,
                 args.y,
                 &args.hex,
@@ -438,38 +442,45 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
             ))
         }
 
-        method::window::STATUS => window(params, cu::window::status),
-        method::window::FOCUS => window(params, cu::window::focus),
-        method::window::ACTIVATE => window(params, cu::window::activate),
-        method::window::RAISE => window(params, cu::window::raise),
-        method::window::MINIMIZE => window(params, cu::window::minimize),
-        method::window::RESTORE => window(params, cu::window::restore),
-        method::window::MAXIMIZE => window(params, cu::window::maximize),
-        method::window::CLOSE => window(params, cu::window::close),
+        method::window::STATUS => window(params, device_io::window::status),
+        method::window::FOCUS => window(params, device_io::window::focus),
+        method::window::ACTIVATE => window(params, device_io::window::activate),
+        method::window::RAISE => window(params, device_io::window::raise),
+        method::window::MINIMIZE => window(params, device_io::window::minimize),
+        method::window::RESTORE => window(params, device_io::window::restore),
+        method::window::MAXIMIZE => window(params, device_io::window::maximize),
+        method::window::CLOSE => window(params, device_io::window::close),
         method::window::MOVE => {
-            let args: cu::wire::WindowMove = decode(params)?;
-            report(cu::window::move_to(&args.target, args.x, args.y))
+            let args: device_io::wire::WindowMove = decode(params)?;
+            report(device_io::window::move_to(&args.target, args.x, args.y))
         }
         method::window::MOVE_DISPLAY => {
-            let args: cu::wire::WindowMoveDisplay = decode(params)?;
-            report(cu::window::move_to_display(&args.target, &args.display_id))
+            let args: device_io::wire::WindowMoveDisplay = decode(params)?;
+            report(device_io::window::move_to_display(
+                &args.target,
+                &args.display_id,
+            ))
         }
         method::window::RESIZE => {
-            let args: cu::wire::WindowResize = decode(params)?;
-            report(cu::window::resize(&args.target, args.width, args.height))
+            let args: device_io::wire::WindowResize = decode(params)?;
+            report(device_io::window::resize(
+                &args.target,
+                args.width,
+                args.height,
+            ))
         }
         method::window::SET_ALWAYS_ON_TOP => {
-            let args: cu::wire::WindowAlwaysOnTop = decode(params)?;
-            report(cu::window::set_always_on_top(&args.target, args.on))
+            let args: device_io::wire::WindowAlwaysOnTop = decode(params)?;
+            report(device_io::window::set_always_on_top(&args.target, args.on))
         }
 
         method::pointer::MOVE => {
-            let args: cu::wire::PointerMove = decode(params)?;
-            report(cu::input::pointer_move(args.x, args.y, args.target))
+            let args: device_io::wire::PointerMove = decode(params)?;
+            report(device_io::input::pointer_move(args.x, args.y, args.target))
         }
         method::pointer::DOWN => {
-            let args: cu::wire::PointerButton = decode(params)?;
-            report(cu::input::pointer_down(
+            let args: device_io::wire::PointerButton = decode(params)?;
+            report(device_io::input::pointer_down(
                 args.x,
                 args.y,
                 args.button,
@@ -477,8 +488,8 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
             ))
         }
         method::pointer::UP => {
-            let args: cu::wire::PointerButton = decode(params)?;
-            report(cu::input::pointer_up(
+            let args: device_io::wire::PointerButton = decode(params)?;
+            report(device_io::input::pointer_up(
                 args.x,
                 args.y,
                 args.button,
@@ -486,8 +497,8 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
             ))
         }
         method::pointer::CLICK => {
-            let args: cu::wire::PointerClick = decode(params)?;
-            report(cu::input::pointer_click(
+            let args: device_io::wire::PointerClick = decode(params)?;
+            report(device_io::input::pointer_click(
                 args.x,
                 args.y,
                 args.button,
@@ -496,8 +507,8 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
             ))
         }
         method::pointer::SCROLL => {
-            let args: cu::wire::PointerScroll = decode(params)?;
-            report(cu::input::pointer_scroll(
+            let args: device_io::wire::PointerScroll = decode(params)?;
+            report(device_io::input::pointer_scroll(
                 args.x,
                 args.y,
                 args.dx,
@@ -506,8 +517,8 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
             ))
         }
         method::pointer::DRAG => {
-            let args: cu::wire::PointerDrag = decode(params)?;
-            report(cu::input::pointer_drag(
+            let args: device_io::wire::PointerDrag = decode(params)?;
+            report(device_io::input::pointer_drag(
                 args.from_x,
                 args.from_y,
                 args.to_x,
@@ -518,20 +529,20 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
         }
 
         method::key::TYPE => {
-            let args: cu::wire::KeyText = decode(params)?;
-            report(cu::input::key_type(&args.text, args.target))
+            let args: device_io::wire::KeyText = decode(params)?;
+            report(device_io::input::key_type(&args.text, args.target))
         }
         method::key::DOWN => {
-            let args: cu::wire::KeyName = decode(params)?;
-            report(cu::input::key_down(&args.name, args.target))
+            let args: device_io::wire::KeyName = decode(params)?;
+            report(device_io::input::key_down(&args.name, args.target))
         }
         method::key::UP => {
-            let args: cu::wire::KeyName = decode(params)?;
-            report(cu::input::key_up(&args.name, args.target))
+            let args: device_io::wire::KeyName = decode(params)?;
+            report(device_io::input::key_up(&args.name, args.target))
         }
         method::key::PRESS => {
-            let args: cu::wire::KeyPress = decode(params)?;
-            report(cu::input::key_press(
+            let args: device_io::wire::KeyPress = decode(params)?;
+            report(device_io::input::key_press(
                 &args.name,
                 &args.modifiers,
                 args.target,
@@ -539,35 +550,43 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
         }
 
         method::ax::TREE => {
-            let args: cu::wire::AxTree = decode(params)?;
-            report(cu::ax::tree(&args.window_id, args.depth, args.max_nodes))
+            let args: device_io::wire::AxTree = decode(params)?;
+            report(device_io::ax::tree(
+                &args.window_id,
+                args.depth,
+                args.max_nodes,
+            ))
         }
         method::ax::HIT_TEST => {
-            let args: cu::wire::Point = decode(params)?;
-            report(cu::ax::hit_test(args.x, args.y))
+            let args: device_io::wire::Point = decode(params)?;
+            report(device_io::ax::hit_test(args.x, args.y))
         }
         method::ax::QUERY => {
-            let args: cu::wire::AxSearch = decode(params)?;
-            report(cu::ax::query(
+            let args: device_io::wire::AxSearch = decode(params)?;
+            report(device_io::ax::query(
                 &args.window_id,
                 &args.query,
                 args.all,
                 args.index,
             ))
         }
-        method::ax::INVOKE => ax(params, cu::ax::invoke),
-        method::ax::FOCUS => ax(params, cu::ax::focus),
-        method::ax::SELECT => ax(params, cu::ax::select),
-        method::ax::EXPAND => ax(params, cu::ax::expand),
-        method::ax::COLLAPSE => ax(params, cu::ax::collapse),
-        method::ax::SCROLL_INTO_VIEW => ax(params, cu::ax::scroll_into_view),
+        method::ax::INVOKE => ax(params, device_io::ax::invoke),
+        method::ax::FOCUS => ax(params, device_io::ax::focus),
+        method::ax::SELECT => ax(params, device_io::ax::select),
+        method::ax::EXPAND => ax(params, device_io::ax::expand),
+        method::ax::COLLAPSE => ax(params, device_io::ax::collapse),
+        method::ax::SCROLL_INTO_VIEW => ax(params, device_io::ax::scroll_into_view),
         method::ax::SET_VALUE => {
-            let args: cu::wire::AxSetValue = decode(params)?;
-            report(cu::ax::set_value(&args.window_id, &args.query, &args.value))
+            let args: device_io::wire::AxSetValue = decode(params)?;
+            report(device_io::ax::set_value(
+                &args.window_id,
+                &args.query,
+                &args.value,
+            ))
         }
         method::ax::WAIT => {
-            let args: cu::wire::AxWait = decode(params)?;
-            report(cu::ax::wait(
+            let args: device_io::wire::AxWait = decode(params)?;
+            report(device_io::ax::wait(
                 &args.window_id,
                 &args.query,
                 &args.state,
@@ -575,17 +594,17 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
             ))
         }
 
-        method::clipboard::GET => report(cu::clipboard::get()),
-        method::clipboard::CLEAR => report(cu::clipboard::clear()),
-        method::clipboard::PASTE => report(cu::clipboard::paste()),
+        method::clipboard::GET => report(device_io::clipboard::get()),
+        method::clipboard::CLEAR => report(device_io::clipboard::clear()),
+        method::clipboard::PASTE => report(device_io::clipboard::paste()),
         method::clipboard::SET => {
-            let args: cu::wire::ClipboardSet = decode(params)?;
-            report(cu::clipboard::set(&args.text))
+            let args: device_io::wire::ClipboardSet = decode(params)?;
+            report(device_io::clipboard::set(&args.text))
         }
 
         method::app::LAUNCH => {
-            let args: cu::wire::AppLaunch = decode(params)?;
-            report(cu::app::launch(
+            let args: device_io::wire::AppLaunch = decode(params)?;
+            report(device_io::app::launch(
                 &args.app,
                 &args.args,
                 args.wait_window.as_deref(),
@@ -593,17 +612,17 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
             ))
         }
         method::app::QUIT => {
-            let args: cu::wire::AppQuit = decode(params)?;
-            report(cu::app::quit(args.target, args.force))
+            let args: device_io::wire::AppQuit = decode(params)?;
+            report(device_io::app::quit(args.target, args.force))
         }
 
         method::process::LIST => {
-            let args: cu::wire::ProcessList = decode(params)?;
-            report(cu::process::list(args.filter.as_deref()))
+            let args: device_io::wire::ProcessList = decode(params)?;
+            report(device_io::process::list(args.filter.as_deref()))
         }
         method::process::KILL => {
-            let args: cu::wire::ProcessKill = decode(params)?;
-            report(cu::process::kill(args.pid, args.force))
+            let args: device_io::wire::ProcessKill = decode(params)?;
+            report(device_io::process::kill(args.pid, args.force))
         }
 
         other => Err(usage(format!("unknown desktop method: {other}"))),
@@ -613,15 +632,18 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
 /// The window commands that differ only in which verb they call.
 fn window(
     params: Option<Value>,
-    action: fn(&cu::WindowTarget) -> cu::Result<cu::Window>,
+    action: fn(&device_io::WindowTarget) -> device_io::Result<device_io::Window>,
 ) -> Answer {
-    let args: cu::wire::WindowAction = decode(params)?;
+    let args: device_io::wire::WindowAction = decode(params)?;
     report(action(&args.target))
 }
 
 /// The accessibility commands that act on one matched node.
-fn ax(params: Option<Value>, action: fn(&str, &cu::AxQuery) -> cu::Result<cu::Ack>) -> Answer {
-    let args: cu::wire::AxAction = decode(params)?;
+fn ax(
+    params: Option<Value>,
+    action: fn(&str, &device_io::AxQuery) -> device_io::Result<device_io::Ack>,
+) -> Answer {
+    let args: device_io::wire::AxAction = decode(params)?;
     report(action(&args.window_id, &args.query))
 }
 
@@ -629,7 +651,7 @@ fn decode<T: DeserializeOwned>(params: Option<Value>) -> Result<T, Failure> {
     serde_json::from_value(params.unwrap_or(Value::Null)).map_err(|error| usage(error.to_string()))
 }
 
-fn report<T: Serialize>(result: cu::Result<T>) -> Answer {
+fn report<T: Serialize>(result: device_io::Result<T>) -> Answer {
     match result {
         Ok(value) => encode(value),
         Err(error) => Err(Failure {
@@ -657,7 +679,7 @@ mod tests {
         let mistyped = handle("1".into(), "desktop.windos", None)
             .expect("a desktop-prefixed name belongs to this namespace");
         let error = mistyped.error.expect("an unknown method is an error");
-        assert_eq!(error.code, cu::ErrorCode::Usage.as_str());
+        assert_eq!(error.code, device_io::ErrorCode::Usage.as_str());
         assert!(error.message.contains("desktop.windos"));
 
         assert!(
@@ -733,7 +755,10 @@ mod tests {
             None,
             None,
         );
-        assert!(matches!(global, Some(cu::Acted::At { x: 40, y: 90 })));
+        assert!(matches!(
+            global,
+            Some(device_io::Acted::At { x: 40, y: 90 })
+        ));
 
         // `target` on input is a process id, not a window, and it does not
         // change the space the coordinates are in. Treating it as a window
@@ -744,14 +769,17 @@ mod tests {
             None,
             None,
         );
-        assert!(matches!(delivered, Some(cu::Acted::At { x: 40, y: 90 })));
+        assert!(matches!(
+            delivered,
+            Some(device_io::Acted::At { x: 40, y: 90 })
+        ));
 
         // Product input keeps delivery pid and viewer window separate. The
         // point remains a marker while the viewer follows the window.
         let target = ActivityTarget::Window(WindowSnapshot {
             id: "0x7f".into(),
             focused: true,
-            bounds: cu::Rect {
+            bounds: device_io::Rect {
                 x: 0,
                 y: 0,
                 w: 800,
@@ -772,7 +800,7 @@ mod tests {
         );
         assert!(matches!(
             targeted,
-            Some(cu::Acted::AtWindow { x: 40, y: 90, ref id }) if id == "0x7f"
+            Some(device_io::Acted::AtWindow { x: 40, y: 90, ref id }) if id == "0x7f"
         ));
 
         // A drag ends where it ends; that is the point worth marking.
@@ -782,7 +810,7 @@ mod tests {
             None,
             None,
         );
-        assert!(matches!(drag, Some(cu::Acted::At { x: 30, y: 40 })));
+        assert!(matches!(drag, Some(device_io::Acted::At { x: 30, y: 40 })));
 
         // A window command names a window and no point inside it.
         let window = actuation(
@@ -794,7 +822,7 @@ mod tests {
             })),
             None,
         );
-        let Some(cu::Acted::WindowWithFallback { id, x, y }) = window else {
+        let Some(device_io::Acted::WindowWithFallback { id, x, y }) = window else {
             panic!("a window command names its window");
         };
         assert_eq!(id, "0x7f");
@@ -814,14 +842,14 @@ mod tests {
             })),
             None,
         );
-        let Some(cu::Acted::WindowWithFallback { id, x, y }) = matched else {
+        let Some(device_io::Acted::WindowWithFallback { id, x, y }) = matched else {
             panic!("the resolved window and its fallback display must be retained");
         };
         assert_eq!(id, "0x2600");
         assert_eq!((x, y), (500, 500));
     }
 
-    fn snapshot(id: &str, focused: bool, bounds: cu::Rect) -> WindowSnapshot {
+    fn snapshot(id: &str, focused: bool, bounds: device_io::Rect) -> WindowSnapshot {
         WindowSnapshot {
             id: id.into(),
             focused,
@@ -832,7 +860,7 @@ mod tests {
 
     #[test]
     fn client_window_metadata_must_match_the_real_input_destination() {
-        let bounds = cu::Rect {
+        let bounds = device_io::Rect {
             x: 100,
             y: 200,
             w: 800,
@@ -854,7 +882,7 @@ mod tests {
         let base = snapshot(
             "base",
             true,
-            cu::Rect {
+            device_io::Rect {
                 x: 100,
                 y: 200,
                 w: 800,
@@ -864,7 +892,7 @@ mod tests {
         let popup = snapshot(
             "popup",
             false,
-            cu::Rect {
+            device_io::Rect {
                 x: 300,
                 y: 300,
                 w: 300,
@@ -892,7 +920,7 @@ mod tests {
                 None,
                 Some(&ActivityTarget::Window(target)),
             ),
-            Some(cu::Acted::AtWindow {
+            Some(device_io::Acted::AtWindow {
                 x: 400,
                 y: 400,
                 ref id
@@ -916,7 +944,7 @@ mod tests {
     fn foreground_pointer_without_a_hit_uses_its_global_point() {
         let params = serde_json::json!({"x": 40, "y": 90, "window_id": "base"});
         let acted = actuation(method::pointer::CLICK, Some(&params), None, None);
-        assert!(matches!(acted, Some(cu::Acted::At { x: 40, y: 90 })));
+        assert!(matches!(acted, Some(device_io::Acted::At { x: 40, y: 90 })));
     }
 
     #[test]
@@ -930,7 +958,7 @@ mod tests {
         let source = snapshot(
             "source",
             true,
-            cu::Rect {
+            device_io::Rect {
                 x: 100,
                 y: 100,
                 w: 500,
@@ -949,7 +977,7 @@ mod tests {
         );
         assert!(matches!(
             actuation(method::pointer::DRAG, Some(&params), None, target.as_ref()),
-            Some(cu::Acted::AtWindow {
+            Some(device_io::Acted::AtWindow {
                 x: 900,
                 y: 700,
                 ref id
@@ -975,7 +1003,7 @@ mod tests {
             assert!(target.is_none());
             assert!(matches!(
                 actuation(name, Some(&params), None, target.as_ref()),
-                Some(cu::Acted::At { x: 900, y: 700 })
+                Some(device_io::Acted::At { x: 900, y: 700 })
             ));
         };
         for name in [method::pointer::MOVE, method::pointer::UP] {
@@ -990,7 +1018,7 @@ mod tests {
         let first = snapshot(
             "first",
             false,
-            cu::Rect {
+            device_io::Rect {
                 x: 100,
                 y: 100,
                 w: 700,
@@ -1000,7 +1028,7 @@ mod tests {
         let second = snapshot(
             "second",
             false,
-            cu::Rect {
+            device_io::Rect {
                 x: 900,
                 y: 100,
                 w: 700,
@@ -1026,7 +1054,7 @@ mod tests {
         let second_display = snapshot(
             "second",
             false,
-            cu::Rect {
+            device_io::Rect {
                 x: 2100,
                 y: 100,
                 w: 700,
@@ -1060,7 +1088,7 @@ mod tests {
         );
         assert!(matches!(
             moved,
-            Some(cu::Acted::WindowWithFallback {
+            Some(device_io::Acted::WindowWithFallback {
                 ref id,
                 x: 2300,
                 y: 300
@@ -1073,7 +1101,7 @@ mod tests {
         let target = ActivityTarget::Window(snapshot(
             "0x42",
             true,
-            cu::Rect {
+            device_io::Rect {
                 x: 1920,
                 y: 100,
                 w: 800,
@@ -1093,7 +1121,7 @@ mod tests {
             let acted = actuation(name, Some(&params), None, Some(&target));
             assert!(matches!(
                 acted,
-                Some(cu::Acted::WindowWithFallback {
+                Some(device_io::Acted::WindowWithFallback {
                     ref id,
                     x: 2320,
                     y: 400
