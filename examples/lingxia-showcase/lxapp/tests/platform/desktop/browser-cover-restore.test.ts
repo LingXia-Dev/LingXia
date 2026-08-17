@@ -6,7 +6,14 @@ contract(
   {
     id: 'DESKTOP-BROWSER-001',
     title: 'restore rendered home content after closing covering web tabs',
-    covers: ['BrowserDriver.tabs', 'BrowserDriver.close', 'lx.shell.openBuiltin', 'LxAppDriver.surfaceLayout'],
+    covers: [
+      'BrowserDriver.tabs',
+      'BrowserDriver.close',
+      'lx.shell',
+      'lx.shell.openBuiltin',
+      'lx.surface',
+      'LxAppDriver.surfaceLayout',
+    ],
     layer: 'host',
     levels: ['semantic', 'boundary', 'lifecycle'],
     scope: 'desktop',
