@@ -22,7 +22,6 @@ interface OpenedWindow {
 interface SurfacePageSnapshot {
   text: string;
   topInset: number;
-  query: string;
   showCount: number;
 }
 
@@ -92,14 +91,12 @@ async function waitForSurfacePage(
     () => app.page.eval({
       page: 'surface',
       script: `(() => {
-        const root = document.querySelector('[data-testid="surface-page"]');
         const layout = window.lxPageChrome && window.lxPageChrome.layout;
-        const show = document.querySelector('[data-testid="surface-page"] .font-mono');
+        const show = document.querySelector('[data-testid="surface-show-count"]');
         return {
           text: document.body ? document.body.innerText : '',
           topInset: layout ? layout.topInset : -1,
-          query: root ? (root.innerText || '') : '',
-          showCount: Number((show && show.textContent) || 0),
+          showCount: Number((show && show.textContent.trim()) || 0),
         };
       })()`,
     }) as Promise<SurfacePageSnapshot>,
@@ -108,6 +105,7 @@ async function waitForSurfacePage(
       && snapshot.text.includes('Surface Page')
       && snapshot.text.includes(fixture)
       && snapshot.topInset === expectedTopInset
+      && snapshot.showCount >= 1
     ),
     {
       timeoutMs: 10_000,
@@ -121,6 +119,9 @@ function newSurfaceWindow(
   after: DesktopWindowInfo[],
 ): DesktopWindowInfo | undefined {
   const known = new Set(before.map((window) => window.id));
+  const requestedSizeDistance = (window: DesktopWindowInfo): number => (
+    Math.abs(window.bounds.w - 480) + Math.abs(window.bounds.h - 640)
+  );
   return after
     .filter((window) => (
       window.visible
@@ -130,9 +131,10 @@ function newSurfaceWindow(
       && window.bounds.w >= 400
       && window.bounds.h >= 400
     ))
+    // The surface window was just presented with activate: true, so it is the
+    // frontmost of any new window; size proximity only breaks ties.
     .sort((left, right) => (
-      Math.abs(left.bounds.w - 480) + Math.abs(left.bounds.h - 640)
-      - (Math.abs(right.bounds.w - 480) + Math.abs(right.bounds.h - 640))
+      left.z - right.z || requestedSizeDistance(left) - requestedSizeDistance(right)
     ))[0];
 }
 
@@ -149,9 +151,6 @@ contract({
   scope: 'desktop',
   expectedOutcome: 'supported',
 }, async ({ app, namespace, defer }) => {
-  // Gated desktop jobs already cover layout; this case needs a free host window.
-  if (selectedGate) return;
-
   const platform = await desktopPlatform();
   const desktop = lx.automation().desktop;
   const fullOffered = await app.eval({
@@ -180,6 +179,9 @@ contract({
     );
     expect(page.text).toContain('Surface Page');
     expect(page.topInset).toBe(chrome === 'full' ? FULL_DRAG_STRIP_HEIGHT : 0);
+    // Presenting a window drives exactly one visibility transition, however
+    // many times the platform and the opener report it.
+    expect(page.showCount).toBe(1);
 
     const window = await eventually(
       () => desktop.windows(),
@@ -211,9 +213,14 @@ contract({
   }
   expect(system.topInset).toBe(0);
   expect(full.topInset).toBe(FULL_DRAG_STRIP_HEIGHT);
+  // Both windows belong to this host process; a stranger's window matching the
+  // size filter would not.
+  expect(full.window.pid).toBe(system.window.pid);
   if (platform === 'windows') {
     // Full chrome has no system title bar, so the same requested content
     // size yields a shorter outer frame than system chrome.
     expect(full.window.bounds.h < system.window.bounds.h).toBeTruthy();
   }
-});
+// Gated desktop jobs pin the host window into a fixed layout; this case needs a
+// free one, so it belongs to the ungated run.
+}, { skip: Boolean(selectedGate) });
