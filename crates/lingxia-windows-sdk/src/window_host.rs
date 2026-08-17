@@ -5949,20 +5949,23 @@ fn apply_native_window_frame(hwnd: HWND) -> StdResult<()> {
 /// `chrome: 'full'` — the page runs to the window edge while the system keeps
 /// minimize, maximize, restore, and resize.
 ///
-/// This is the shell window's own style: `WS_POPUP` with no `WS_CAPTION`, so
-/// there is no title bar eating a strip of the window, plus `WS_SIZEBOX` for
-/// corner resize and the min/max boxes so the system menu and the taskbar
-/// keep working. The window is *not* registered as native-framed, which is
-/// what lets the custom chrome renderer answer `HTMAXBUTTON` from
-/// `WM_NCHITTEST` — that answer is what keeps Windows 11 snap layouts on a
-/// caption we draw ourselves.
+/// Same bits as a resizable shell window (`WS_POPUP`, no `WS_CAPTION`). The
+/// window is *not* registered as native-framed, which is what lets the custom
+/// chrome renderer answer `HTMAXBUTTON` from `WM_NCHITTEST` — that answer is
+/// what keeps Windows 11 snap layouts on a caption we draw ourselves.
+///
+/// Do not add `WS_SIZEBOX`. The shell already documents why: DWM then owns an
+/// 8px strip inside every edge, and `apply_window_style` would have to send
+/// `SWP_FRAMECHANGED` after WebView2 has attached. That rebuilds the DComp
+/// tree from a non-UI thread while custom `WM_NCCALCSIZE` runs, and the UI
+/// thread never answers again — `openPage` hangs, the window stays
+/// `about:blank`, later evals wedge.
+fn full_chrome_window_style() -> WINDOW_STYLE {
+    shell_window_style(false)
+}
+
 fn apply_full_chrome_window_frame(hwnd: HWND) -> StdResult<()> {
-    apply_window_style(
-        hwnd,
-        WINDOW_STYLE(
-            WS_POPUP.0 | WS_SIZEBOX.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0,
-        ),
-    )?;
+    apply_window_style(hwnd, full_chrome_window_style())?;
     apply_native_window_dressing(hwnd);
     Ok(())
 }
@@ -10316,8 +10319,8 @@ mod tests {
         ChromeBackBuffer, ContentBounds, MAIN_WINDOW_MIN_HEIGHT, MAIN_WINDOW_MIN_WIDTH,
         WindowResizeDrag, WindowResizeEdge, WindowsFrameButton, clear_webtag_content_bounds,
         default_host_parent_window, frame_button_from_non_client_hit, frame_button_non_client_hit,
-        registered_host_keeps_message_loop, resized_window_rect, same_window_generation,
-        shell_window_style, webtag_content_bounds_changed,
+        full_chrome_window_style, registered_host_keeps_message_loop, resized_window_rect,
+        same_window_generation, shell_window_style, webtag_content_bounds_changed,
     };
     #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
     use super::{device_frame_surface_corner_radii, per_corner_region_row_span};
@@ -10361,6 +10364,20 @@ mod tests {
             };
             assert!(buffer.release());
         }
+    }
+
+    #[test]
+    fn full_chrome_frame_matches_shell_so_present_does_not_restyle() {
+        assert_eq!(
+            full_chrome_window_style().0,
+            shell_window_style(false).0,
+            "a restyle after WebView2 attach sends FRAMECHANGED and deadlocks the UI thread"
+        );
+        assert_eq!(
+            full_chrome_window_style().0 & WindowsAndMessaging::WS_SIZEBOX.0,
+            0,
+            "WS_SIZEBOX is what made chrome:full a style change on a shell-created HWND"
+        );
     }
 
     #[test]

@@ -1372,6 +1372,29 @@ impl LxApp {
         })
     }
 
+    /// Create the isolated page's Logic service on the current JS worker
+    /// *before* awaiting WebView setup. Setup itself waits for this so it
+    /// never posts CreatePage onto the same worker (that wait deadlocks
+    /// `lx.surface.openPage` on Windows).
+    pub async fn prepare_isolated_page_svc(
+        &self,
+        ctx: &JSContext,
+        path: &str,
+        page_instance_id: &str,
+    ) -> JSResult<()> {
+        PageSvc::create_in_ctx(ctx, path, Some(page_instance_id)).await?;
+        let page = self
+            .get_page_by_instance_id_str(page_instance_id)
+            .ok_or_else(|| {
+                RongJSError::from(HostError::new(
+                    rong::error::E_NOT_FOUND,
+                    format!("PageInstance not found: {page_instance_id}"),
+                ))
+            })?;
+        page.mark_page_svc_ready();
+        Ok(())
+    }
+
     pub async fn get_page_in_ctx_by_instance_id(
         &self,
         ctx: &JSContext,

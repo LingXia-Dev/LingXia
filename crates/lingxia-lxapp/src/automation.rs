@@ -129,6 +129,19 @@ fn active_runtime_page_by_path<'a>(
                 .filter(|page| page_paths_match(&page.path, path) && page.stack_index.is_some())
                 .max_by_key(|page| page.stack_index)
         })
+        // A window/float page is isolated: not on the nav stack and never
+        // "current". Without this, `page: 'surface'` cannot drive a page that
+        // `lx.surface.openPage(..., { as: 'window' })` just opened.
+        .or_else(|| {
+            pages
+                .iter()
+                .filter(|page| {
+                    page_paths_match(&page.path, path)
+                        && page.stack_index.is_none()
+                        && page.state.webview_ready
+                })
+                .max_by_key(|page| page.instance_id.as_str())
+        })
 }
 
 fn page_path_key(path: &str) -> String {
@@ -619,5 +632,19 @@ mod tests {
         let selected = active_runtime_page_by_path(&pages, "pages/device/index.vue").unwrap();
 
         assert_eq!(selected.instance_id, "upper");
+    }
+
+    #[test]
+    fn active_page_resolution_finds_an_off_stack_window_instance() {
+        let pages = vec![runtime_page(
+            "window-surface",
+            "pages/surface/index.tsx",
+            false,
+            None,
+        )];
+
+        let selected = active_runtime_page_by_path(&pages, "pages/surface/index.tsx").unwrap();
+
+        assert_eq!(selected.instance_id, "window-surface");
     }
 }
