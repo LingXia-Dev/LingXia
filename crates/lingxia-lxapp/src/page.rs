@@ -224,11 +224,14 @@ pub struct PageState {
 }
 
 impl PageState {
+    fn document_is_departing(&self) -> bool {
+        self.parked
+            || self.reset != PageReset::None
+            || self.event == Some(PageLifecycleEvent::OnUnload)
+    }
+
     fn accepts_view_state_patches(&self) -> bool {
-        self.bridge_ready
-            && !self.parked
-            && self.reset == PageReset::None
-            && self.event != Some(PageLifecycleEvent::OnUnload)
+        self.bridge_ready && !self.document_is_departing()
     }
 }
 
@@ -583,8 +586,12 @@ impl PageInstance {
                     page_for_task.mark_webview_ready(result);
                 }
                 Err(e) => {
-                    if page_for_task.is_unloaded() {
-                        info!("Cancelled WebView creation for unloaded page: {}", e)
+                    let still_registered = page_for_task
+                        .owning_lxapp()
+                        .get_page_by_instance_id(&page_for_task.instance_id())
+                        .is_some();
+                    if page_for_task.document_is_departing() || !still_registered {
+                        debug!("Cancelled WebView creation for departed page: {}", e)
                             .with_appid(appid_clone)
                             .with_path(path_clone);
                     } else {
@@ -715,15 +722,6 @@ impl PageInstance {
     /// Parks the retained WebView while nobody is on the page: the document
     /// is replaced with an inert blank one, so no stale DOM (or open popup)
     /// survives to the next entry and no page code runs off-screen.
-    /// True while the page holds the inert parked document.
-    pub(crate) fn is_parked(&self) -> bool {
-        self.inner
-            .state
-            .lock()
-            .map(|state| state.parked)
-            .unwrap_or(false)
-    }
-
     /// Whether Logic may still push `setData` into this document.
     ///
     /// Handshake `ready` is kept across a warm-webview restart, so it cannot
@@ -732,13 +730,17 @@ impl PageInstance {
     /// setData / teardown race. Drop the patch: `this.data` already has it
     /// and the next snapshot reserializes live state.
     pub(crate) fn accepts_view_state_patches(&self) -> bool {
-        if self.is_parked() || self.is_unloaded() {
-            return false;
-        }
         self.inner
             .state
             .lock()
             .is_ok_and(|state| state.accepts_view_state_patches())
+    }
+
+    pub(crate) fn document_is_departing(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .is_ok_and(|state| state.document_is_departing())
     }
 
     pub(crate) fn park_view(&self) {
@@ -813,6 +815,7 @@ impl PageInstance {
 
     fn reset_webview_lifecycle_state(state: &mut PageState) {
         let is_currently_visible = state.event == Some(PageLifecycleEvent::OnShow);
+        state.event = None;
         state.parked = false;
         state.render_status = PageRenderStatus::Unstarted;
         state.visibility = if is_currently_visible {
@@ -987,6 +990,12 @@ impl PageInstance {
         // - onReady fires once for each logical navigation after render has finished
         // - onShow fires each time the page becomes visible (after a hide), without query
 
+        // Serialize the departure marker with Logic-to-View patch delivery.
+        // Once this guard is acquired, an old service can no longer pass its
+        // final acceptance check while this document is being retired.
+        let _reset_transition =
+            (event == PageLifecycleEvent::OnUnload).then(|| self.reset_transition_guard());
+
         if Self::lifecycle_cancels_bridge_work(event) {
             self.cancel_bridge_work();
         }
@@ -1117,13 +1126,6 @@ impl PageInstance {
             ready,
             query,
         }
-    }
-
-    pub(crate) fn is_unloaded(&self) -> bool {
-        self.inner
-            .state
-            .lock()
-            .is_ok_and(|state| state.event == Some(PageLifecycleEvent::OnUnload))
     }
 
     pub(crate) fn mark_webview_ready(&self, result: Result<(), String>) {
@@ -1313,7 +1315,7 @@ impl PageInstance {
         if let Some(controller) = self.webview_controller() {
             controller
                 .load_data(LoadDataRequest::new(&html_string, &base_url))
-                .map_err(|e| LxAppError::WebView(e.to_string()))
+                .map_err(LxAppError::from)
         } else {
             Err(LxAppError::WebView("WebView not ready".to_string()))
         }
@@ -1817,7 +1819,7 @@ impl WebViewDelegate for PageInstance {
         match IncomingMessage::from_json_str(&msg) {
             Ok(incoming) => {
                 if let Err(e) = self.bridge().handle_incoming(self, Arc::new(incoming)) {
-                    if self.is_unloaded() || self.webview().is_none() {
+                    if self.document_is_departing() || self.webview().is_none() {
                         debug!("Dropping view message after page unload")
                             .with_appid(self.inner.appid.clone())
                             .with_path(self.inner.path.clone());
@@ -1964,6 +1966,20 @@ mod tests {
 
         state.event = Some(PageLifecycleEvent::OnUnload);
         assert!(!state.accepts_view_state_patches());
+    }
+
+    #[test]
+    fn rebuilding_clears_the_departed_document_event() {
+        let mut state = test_page_state();
+        state.event = Some(PageLifecycleEvent::OnUnload);
+        state.reset = PageReset::AwaitingEntry;
+        state.parked = true;
+
+        PageInstance::reset_webview_lifecycle_state(&mut state);
+        state.reset = PageReset::None;
+
+        assert_eq!(state.event, None);
+        assert!(!state.document_is_departing());
     }
 
     #[test]

@@ -333,7 +333,7 @@ impl LxApp {
         if let Some(webview) = page.webview() {
             webview
                 .exec_js(&publication_script(&layout, appearance))
-                .map_err(|error| LxAppError::WebView(error.to_string()))?;
+                .map_err(LxAppError::from)?;
         }
         Ok(())
     }

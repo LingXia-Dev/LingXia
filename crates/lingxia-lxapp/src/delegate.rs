@@ -278,9 +278,12 @@ impl LxAppDelegate for LxApp {
                 return;
             }
             None => {
-                error!("PageInstance not found when showing: {}", reported)
-                    .with_appid(self.appid.clone())
-                    .with_path(path.clone());
+                debug!(
+                    "Dropping show callback for departed PageInstance: {}",
+                    reported
+                )
+                .with_appid(self.appid.clone())
+                .with_path(path.clone());
                 return;
             }
         };

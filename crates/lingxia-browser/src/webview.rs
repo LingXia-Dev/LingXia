@@ -707,9 +707,7 @@ pub(crate) fn browser_find_webview(
 
 pub(crate) fn browser_load_url(path: &str, session_id: u64, url: &str) -> Result<(), LxAppError> {
     let webview = browser_find_webview(path, session_id)?;
-    webview
-        .load_url(url)
-        .map_err(|e| LxAppError::WebView(e.to_string()))
+    webview.load_url(url).map_err(LxAppError::from)
 }
 
 pub(crate) fn browser_destroy_webview(path: &str, session_id: u64) {
