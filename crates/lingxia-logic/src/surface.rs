@@ -2064,13 +2064,30 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         move_closed_senders(&requested_surface_id, &surface_id);
     }
     let surface_id_for_closed = surface_id.clone();
+    if let Some(page_instance_id) = opened_surface.page_instance_id.as_deref() {
+        let page_path = opened_surface.page_path.clone().or_else(|| {
+            lxapp
+                .get_page_by_instance_id_str(page_instance_id)
+                .map(|page| page.path())
+        });
+        if let Some(page_path) = page_path {
+            lxapp
+                .prepare_isolated_page_svc(&ctx, &page_path, page_instance_id)
+                .await
+                .map_err(|err| {
+                    unregister_closed_sender(&surface_id);
+                    let _ = lxapp.close_surface(&surface_id, "failed");
+                    surface_error(SurfaceErrorCode::Failed, err)
+                })?;
+        }
+    }
     // Windows: the platform presents the surface's page-instance webview before
-    // it mounts, so it never receives a visibility transition of its own. Mark
-    // it visible here, before waiting on the page — an overlay carries a
-    // dispose timer, and a page that is still "hidden" while its webview is
-    // being created can be reclaimed mid-wait. The surface then closes, nothing
-    // ever reports the page ready, and the open never settles. Other platforms
-    // drive this from their native presenter.
+    // it mounts, so it never receives a visibility transition of its own. Try
+    // here for overlays that carry a dispose timer — a page still "hidden"
+    // while its webview is being created can be reclaimed mid-wait. This is a
+    // no-op until Mounted (`visible before mounted is not allowed`); the
+    // presenter retries, and the notify after wait_webview_ready below is the
+    // deterministic one. Other platforms drive this from their native presenter.
     #[cfg(target_os = "windows")]
     if let Some(page_instance_id) = opened_surface.page_instance_id.as_deref() {
         let _ =
@@ -2089,6 +2106,13 @@ async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         ),
         None => None,
     };
+    // The page is mounted now. A Visible that raced ahead of Mounted is
+    // ignored; this one is what fires onShow and cancels the dispose timer.
+    #[cfg(target_os = "windows")]
+    if let Some(page_instance_id) = opened_surface.page_instance_id.as_deref() {
+        let _ =
+            lxapp::notify_page_instance_by_id(page_instance_id, lxapp::PageInstanceEvent::Visible);
+    }
     let (opener_port, page_port) = crate::message_port::pair(&ctx)?;
     let surface = Class::lookup::<JSSurface>(&ctx)?.instance(JSSurface {
         id: opened_surface.id.clone(),

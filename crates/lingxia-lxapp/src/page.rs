@@ -122,6 +122,12 @@ pub(crate) struct PageInstanceInner {
     webview_ready_tx: watch::Sender<Option<Result<(), String>>>,
     webview_ready_rx: WebviewReadyReceiver,
 
+    // Isolated surface pages: the opener creates PageSvc on the JS worker
+    // before awaiting this page. Setup must not post CreatePage onto that
+    // same worker or openPage deadlocks.
+    page_svc_ready_tx: watch::Sender<bool>,
+    page_svc_ready_rx: Arc<Mutex<watch::Receiver<bool>>>,
+
     // Runtime-owned scripts installed at the earliest page-start callback.
     document_start_scripts: Vec<Arc<str>>,
 
@@ -448,6 +454,7 @@ impl PageInstance {
         let bridge_nonce = Self::generate_bridge_nonce();
         let lxapp_arc = lxapp.clone_arc();
         let (ready_tx, ready_rx) = watch::channel(None);
+        let (page_svc_ready_tx, page_svc_ready_rx) = watch::channel(false);
         let (loaded_tx, _) = watch::channel(0u64);
         let inner = Arc::new(PageInstanceInner {
             navigation_progress: Arc::new(std::sync::Mutex::new(Default::default())),
@@ -464,6 +471,8 @@ impl PageInstance {
             bridge: PageBridge::new(lxapp_arc.clone(), lxapp_arc.executor.clone()),
             webview_ready_tx: ready_tx,
             webview_ready_rx: Arc::new(Mutex::new(ready_rx)),
+            page_svc_ready_tx,
+            page_svc_ready_rx: Arc::new(Mutex::new(page_svc_ready_rx)),
             document_start_scripts: lxapp.document_start_scripts_snapshot(),
             page_scripts: lxapp.page_scripts_snapshot(),
             loaded_tx,
@@ -584,6 +593,7 @@ impl PageInstance {
         let webtag = WebTag::new(&appid, &path, Some(lxapp.session.id));
         let lxapp_arc = lxapp.clone_arc();
         let (ready_tx, ready_rx) = watch::channel(None);
+        let (page_svc_ready_tx, page_svc_ready_rx) = watch::channel(false);
         let (loaded_tx, _) = watch::channel(0u64);
         let inner = Arc::new(PageInstanceInner {
             navigation_progress: Arc::new(std::sync::Mutex::new(Default::default())),
@@ -600,6 +610,8 @@ impl PageInstance {
             bridge: PageBridge::new(lxapp_arc.clone(), lxapp_arc.executor.clone()),
             webview_ready_tx: ready_tx,
             webview_ready_rx: Arc::new(Mutex::new(ready_rx)),
+            page_svc_ready_tx,
+            page_svc_ready_rx: Arc::new(Mutex::new(page_svc_ready_rx)),
             document_start_scripts: lxapp.document_start_scripts_snapshot(),
             page_scripts: lxapp.page_scripts_snapshot(),
             loaded_tx,
@@ -1084,6 +1096,29 @@ impl PageInstance {
         let _ = self.inner.webview_ready_tx.send(Some(result));
     }
 
+    pub(crate) fn mark_page_svc_ready(&self) {
+        let _ = self.inner.page_svc_ready_tx.send(true);
+    }
+
+    pub(crate) async fn wait_page_svc_ready(&self) -> Result<(), String> {
+        let rx = self
+            .inner
+            .page_svc_ready_rx
+            .lock()
+            .map(|r| r.clone())
+            .map_err(|_| "page svc ready receiver poisoned".to_string())?;
+        if *rx.borrow() {
+            return Ok(());
+        }
+        let mut rx = rx;
+        while rx.changed().await.is_ok() {
+            if *rx.borrow() {
+                return Ok(());
+            }
+        }
+        Err("page svc ready channel closed before the opener created it".to_string())
+    }
+
     /// Notify that the page's WebView started loading (mirrors WebViewDelegate::on_page_started).
     /// Used by external delegates to forward events to a shared page.
     pub fn notify_page_started(&self) {
@@ -1136,6 +1171,20 @@ impl PageInstance {
                         .with_appid(self.inner.appid.clone())
                         .with_path(self.inner.path.clone());
                 }
+            }
+        }
+
+        if self.inner.isolated {
+            let lxapp = self.owning_lxapp();
+            let revision = lxapp.next_page_chrome_revision();
+            let appearance = lxapp.appearance_state().resolved;
+            if let Err(err) = lxapp
+                .publish_realized_page_chrome(self, revision, appearance)
+                .await
+            {
+                crate::warn!("Failed to publish isolated page chrome: {}", err)
+                    .with_appid(self.inner.appid.clone())
+                    .with_path(self.inner.path.clone());
             }
         }
 

@@ -352,29 +352,30 @@ impl LxApp {
                 let lxapp_arc = lxapp_arc.clone();
                 let page_clone = page.clone();
                 async move {
-                    let (ack_tx, ack_rx) = oneshot::channel::<Result<(), String>>();
-                    if let Err(e) = lxapp_arc.executor.create_page_svc_with_ack(
-                        lxapp_arc.clone(),
-                        page_clone.path(),
-                        Some(page_clone.instance_id_string()),
-                        ack_tx,
-                    ) {
-                        return Err(e.to_string());
-                    }
-
-                    ack_rx
-                        .await
-                        .map_err(|e| {
-                            format!("PageInstance service creation channel closed: {}", e)
-                        })?
-                        .map_err(|e| format!("PageInstance service creation failed: {}", e))?;
+                    // The opener creates PageSvc on the JS worker (the same
+                    // worker that is awaiting this page). Posting CreatePage
+                    // from here would sit behind that wait forever.
+                    page_clone.wait_page_svc_ready().await?;
 
                     page_clone
                         .load_html()
                         .map_err(|e| format!("Failed to load HTML for page: {}", e))?;
                     lxapp_arc
                         .notify_page_instance(&page_clone.instance_id(), PageInstanceEvent::Mounted)
-                        .map_err(|e| format!("Failed to mount page instance: {}", e))
+                        .map_err(|e| format!("Failed to mount page instance: {}", e))?;
+                    // Isolated pages are never `current_page()`, so sync_host_ui
+                    // would leave chrome:full's drag-strip inset at 0.
+                    let revision = lxapp_arc.next_page_chrome_revision();
+                    let appearance = lxapp_arc.appearance_state().resolved;
+                    if let Err(err) = lxapp_arc
+                        .publish_realized_page_chrome(&page_clone, revision, appearance)
+                        .await
+                    {
+                        warn!("Failed to publish isolated page chrome: {}", err)
+                            .with_appid(lxapp_arc.appid.clone())
+                            .with_path(page_clone.path());
+                    }
+                    Ok(())
                 }
             },
         );
