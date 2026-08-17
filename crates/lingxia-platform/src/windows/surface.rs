@@ -1416,7 +1416,7 @@ pub(super) fn hide_surface(_app_id: &str, id: &str) -> Result<(), PlatformError>
 
 fn present_surface_when_ready(webtag: WebTag, id: String, target: PresentationTarget) {
     if find_webview_handler(&webtag).is_some() {
-        present_surface_with_handler(&webtag, &id, target);
+        present_surface_when_painted(webtag, id, target);
         return;
     }
     // The surface's page-instance webview is created asynchronously; poll for
@@ -1431,13 +1431,76 @@ fn present_surface_when_ready(webtag: WebTag, id: String, target: PresentationTa
                     return;
                 }
                 if find_webview_handler(&webtag).is_some() {
-                    present_surface_with_handler(&webtag, &id, target);
+                    present_surface_when_painted(webtag, id, target);
                     return;
                 }
                 thread::sleep(Duration::from_millis(50));
             }
             log::error!("Timed out waiting for surface WebView {}", webtag.key());
         });
+}
+
+/// Reveal budget for a float whose document is still loading.
+const FLOAT_FIRST_CONTENT_TIMEOUT: Duration = Duration::from_secs(3);
+const FLOAT_FIRST_CONTENT_POLL: Duration = Duration::from_millis(50);
+
+/// A float owns a window that was created hidden, and presenting it is what
+/// reveals it — so a WebView2 controller that exists but has not painted yet
+/// puts the bare (black) window on screen for as long as the document takes
+/// to load, which for remote content is hundreds of milliseconds. Every other
+/// role presents into a host window that already shows content.
+///
+/// Only URL floats wait: a page float's instance is reclaimed unless the
+/// present marks it visible, so holding one back could close the surface
+/// instead of revealing it. Local page content also paints in the same frame.
+fn present_surface_when_painted(webtag: WebTag, id: String, target: PresentationTarget) {
+    let waits_for_content =
+        surface_entry(&id).is_some_and(|entry| entry.role == SurfaceRole::Float && entry.is_web);
+    if !waits_for_content {
+        present_surface_with_handler(&webtag, &id, target);
+        return;
+    }
+    let waited_webtag = webtag.clone();
+    let waited_id = id.clone();
+    let task = crate::rt::spawn(async move {
+        let deadline = Instant::now() + FLOAT_FIRST_CONTENT_TIMEOUT;
+        while !float_first_content_ready(&waited_webtag).await {
+            if surface_entry(&waited_id).is_none() {
+                return;
+            }
+            if Instant::now() >= deadline {
+                // Never strand a slow document invisible: show its loading
+                // state instead, matching the browser presentation policy.
+                log::warn!(
+                    "float surface {waited_id} had no first-content signal before presentation; \
+                     revealing it anyway"
+                );
+                break;
+            }
+            tokio::time::sleep(FLOAT_FIRST_CONTENT_POLL).await;
+        }
+        present_surface_with_handler(&waited_webtag, &waited_id, target);
+    });
+    if task.is_none() {
+        present_surface_with_handler(&webtag, &id, target);
+    }
+}
+
+async fn float_first_content_ready(webtag: &WebTag) -> bool {
+    const FIRST_CONTENT_SCRIPT: &str = r#"
+        (() => document.readyState !== "loading"
+            && !!document.body
+            && document.body.childElementCount > 0)()
+    "#;
+    let Some(webview) = webview_runtime::find_webview(webtag) else {
+        return false;
+    };
+    webview
+        .evaluate_javascript(FIRST_CONTENT_SCRIPT)
+        .await
+        .ok()
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
 }
 
 fn present_surface_with_handler(webtag: &WebTag, id: &str, target: PresentationTarget) {
