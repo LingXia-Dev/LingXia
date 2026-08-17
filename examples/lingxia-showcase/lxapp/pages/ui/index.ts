@@ -1,6 +1,17 @@
-import { surfaceErrorCode } from "lingxia-types/error";
-
 const app = getApp();
+
+// `lingxia-types` supplies declarations to Logic; importing its runtime helper
+// here would leave an external module in the concatenated Logic bundle.
+const SURFACE_ERROR_CODES: readonly SurfaceErrorCode[] = [
+  "unsupported_placement",
+  "denied",
+  "not_declared",
+  "invalid_arg",
+  "already_open_other_role",
+  "closed",
+  "capability_missing",
+  "failed",
+];
 
 // One key names one live surface, so the page demo and the composed-lxapp demo
 // cannot share one — `lx.surface.get` would hand back whichever ran last.
@@ -21,6 +32,15 @@ const NAV_TITLE_MAP = {
 function surfaceErrorObject(error: unknown): Record<string, unknown> | null {
   return typeof error === "object" && error !== null
     ? (error as Record<string, unknown>)
+    : null;
+}
+
+function surfaceErrorCode(error: unknown): SurfaceErrorCode | null {
+  const root = surfaceErrorObject(error);
+  const data = surfaceErrorObject(root?.data);
+  const code = data?.code;
+  return typeof code === "string" && SURFACE_ERROR_CODES.includes(code as SurfaceErrorCode)
+    ? (code as SurfaceErrorCode)
     : null;
 }
 

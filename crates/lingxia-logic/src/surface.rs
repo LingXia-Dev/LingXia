@@ -2042,21 +2042,23 @@ fn open_url_in_browser(
 
 async fn open_surface(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let mut request = parse_surface_options(&lxapp, &options)?;
+    let (mut request, chrome) = parse_surface_options(&lxapp, &options)?;
     request.id = format!("surface-{}", Uuid::new_v4().simple());
     let requested_surface_id = request.id.clone();
 
     let (closed_tx, closed_rx) = oneshot::channel::<JSSurfaceClosed>();
     register_closed_sender(requested_surface_id.clone(), closed_tx);
-    let opened_surface = lxapp.open_surface(request).map_err(|err| {
-        unregister_closed_sender(&requested_surface_id);
-        match err {
-            LxAppError::UnsupportedOperation(detail) => {
-                surface_error(SurfaceErrorCode::UnsupportedPlacement, detail)
+    let opened_surface = lxapp
+        .open_surface_with_chrome(request, chrome)
+        .map_err(|err| {
+            unregister_closed_sender(&requested_surface_id);
+            match err {
+                LxAppError::UnsupportedOperation(detail) => {
+                    surface_error(SurfaceErrorCode::UnsupportedPlacement, detail)
+                }
+                other => surface_error(SurfaceErrorCode::Failed, other),
             }
-            other => surface_error(SurfaceErrorCode::Failed, other),
-        }
-    })?;
+        })?;
     let surface_id = opened_surface.id.clone();
     if surface_id != requested_surface_id {
         move_closed_senders(&requested_surface_id, &surface_id);
@@ -2563,7 +2565,10 @@ fn unregister_closed_sender(id: &str) {
     }
 }
 
-fn parse_surface_options(lxapp: &LxApp, options: &JSValue) -> JSResult<PageSurfaceRequest> {
+fn parse_surface_options(
+    lxapp: &LxApp,
+    options: &JSValue,
+) -> JSResult<(PageSurfaceRequest, WindowChrome)> {
     let Some(obj) = options.clone().into_object() else {
         return Err(surface_error(
             SurfaceErrorCode::InvalidArg,
@@ -2588,20 +2593,23 @@ fn parse_surface_options(lxapp: &LxApp, options: &JSValue) -> JSResult<PageSurfa
         },
     };
 
-    Ok(PageSurfaceRequest {
-        id: String::new(),
-        target,
-        query,
-        kind,
-        width,
-        height,
-        width_ratio,
-        height_ratio,
-        position,
-        role,
-        interaction,
-        chrome: parse_window_chrome(&obj)?,
-    })
+    let chrome = parse_window_chrome(&obj)?;
+    Ok((
+        PageSurfaceRequest {
+            id: String::new(),
+            target,
+            query,
+            kind,
+            width,
+            height,
+            width_ratio,
+            height_ratio,
+            position,
+            role,
+            interaction,
+        },
+        chrome,
+    ))
 }
 
 /// `chrome` is a window property; a float has no decoration to configure.

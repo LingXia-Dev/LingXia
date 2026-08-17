@@ -1099,8 +1099,6 @@ pub struct PageSurfaceRequest {
     pub role: lingxia_surface::Role,
     /// Overrides the interaction preset selected by the opening API.
     pub interaction: Option<lingxia_surface::SurfaceInteraction>,
-    /// Window decoration. Only `SurfaceKind::Window` reads it.
-    pub chrome: WindowChrome,
 }
 
 #[derive(Debug, Clone)]
@@ -1352,12 +1350,26 @@ pub(crate) struct SurfaceRecord {
 
 impl LxApp {
     pub fn open_surface(&self, request: PageSurfaceRequest) -> Result<PageSurface, LxAppError> {
-        self.open_surface_with_web_data(request, false, false)
+        self.open_surface_with_chrome(request, WindowChrome::default())
+    }
+
+    /// Opens a surface with explicit window decoration.
+    ///
+    /// Decoration stays outside [`PageSurfaceRequest`] so provider crates that
+    /// construct that public request remain source-compatible.
+    #[doc(hidden)]
+    pub fn open_surface_with_chrome(
+        &self,
+        request: PageSurfaceRequest,
+        chrome: WindowChrome,
+    ) -> Result<PageSurface, LxAppError> {
+        self.open_surface_with_web_data(request, chrome, false, false)
     }
 
     fn open_surface_with_web_data(
         &self,
         request: PageSurfaceRequest,
+        chrome: WindowChrome,
         ephemeral_web_data: bool,
         url_callback: bool,
     ) -> Result<PageSurface, LxAppError> {
@@ -1389,7 +1401,7 @@ impl LxApp {
         // chrome). It is NOT part of the main window's adaptive layout, so it
         // must bypass the per-window surface graph / reconciler entirely.
         if request.kind == SurfaceKind::Window {
-            return self.open_window_surface(id, request, interaction);
+            return self.open_window_surface(id, request, interaction, chrome);
         }
 
         let owner_page_instance_id = self.current_page().ok().map(|page| page.instance_id());
@@ -1484,7 +1496,7 @@ impl LxApp {
                 role: present_role,
                 position: present_position,
                 presentation: surface_presentation(present_kind, present_role, overlay).to_string(),
-                chrome: request.chrome,
+                chrome,
             });
         }
 
@@ -1492,7 +1504,7 @@ impl LxApp {
             state.surfaces.lock().unwrap().insert(
                 id.clone(),
                 SurfaceRecord {
-                    chrome: request.chrome,
+                    chrome,
                     owner_page_instance_id: owner_pid.clone(),
                     content_page_instance_id,
                     content,
@@ -1520,7 +1532,7 @@ impl LxApp {
             position: present_position,
             role: present_role.into(),
             interaction,
-            chrome: request.chrome,
+            chrome,
             ephemeral_web_data,
             url_callback,
         });
@@ -1563,7 +1575,7 @@ impl LxApp {
             role: present_role,
             position: present_position,
             presentation: surface_presentation(present_kind, present_role, overlay).to_string(),
-            chrome: request.chrome,
+            chrome,
         })
     }
 
@@ -1579,6 +1591,7 @@ impl LxApp {
         id: String,
         request: PageSurfaceRequest,
         interaction: lingxia_surface::SurfaceInteraction,
+        chrome: WindowChrome,
     ) -> Result<PageSurface, LxAppError> {
         let owner_page_instance_id = self.current_page().ok().map(|page| page.instance_id());
         let owner = owner_page_instance_id
@@ -1620,7 +1633,7 @@ impl LxApp {
             state.surfaces.lock().unwrap().insert(
                 id.clone(),
                 SurfaceRecord {
-                    chrome: request.chrome,
+                    chrome,
                     owner_page_instance_id: owner_pid,
                     content_page_instance_id,
                     content,
@@ -1650,7 +1663,7 @@ impl LxApp {
             position: SurfacePosition::Center,
             role: PlatformSurfaceRole::Main,
             interaction,
-            chrome: request.chrome,
+            chrome,
             // Window surfaces host this lxapp's own pages, never external web.
             ephemeral_web_data: false,
             url_callback: false,
@@ -1674,7 +1687,7 @@ impl LxApp {
             role: lingxia_surface::Role::Main,
             position: SurfacePosition::Center,
             presentation: "window".to_string(),
-            chrome: request.chrome,
+            chrome,
         })
     }
 
@@ -1756,7 +1769,8 @@ impl LxApp {
         // through WebView cookies, so every handoff surface gets an ephemeral
         // web session: logout is real, and a new login can pick a different
         // account instead of silently reusing a prior SSO cookie.
-        let surface = self.open_surface_with_web_data(request, true, true)?;
+        let surface =
+            self.open_surface_with_web_data(request, WindowChrome::default(), true, true)?;
         Ok(UrlCallbackSurface {
             appid: self.appid.clone(),
             surface,

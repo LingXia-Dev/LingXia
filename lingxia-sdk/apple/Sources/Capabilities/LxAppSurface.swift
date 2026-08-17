@@ -1767,8 +1767,11 @@ enum LxAppSurface {
         dismissOnOutside: Bool,
         modal: Bool,
         ephemeralWebData: Bool,
-        urlCallback: Bool
+        urlCallback: Bool,
+        chrome: Int32
     ) -> Bool {
+        // Mobile surfaces have no configurable desktop window decoration.
+        _ = chrome
         // A phone has no side-by-side room, so the core promotes an aside to a
         // main and presents it as a window (kind Window); an aside that survives
         // the arbitration (kind Overlay, role Aside) is likewise shown

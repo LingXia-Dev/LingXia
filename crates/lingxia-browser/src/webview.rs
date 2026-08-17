@@ -534,7 +534,6 @@ pub(crate) fn browser_create_webview(
                         position: lxapp::SurfacePosition::Right,
                         role: lxapp::lingxia_surface::Role::Aside,
                         interaction: None,
-                        chrome: Default::default(),
                     };
                     let _ = owner.open_surface(request);
                 });
