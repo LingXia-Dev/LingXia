@@ -552,10 +552,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getNavigationBarState<'a>(
         };
 
         // Get navigation bar state from page
-        let nav_state = lxapp
-            .get_page(&path)
-            .and_then(|page| page.get_navbar_state())
-            .unwrap_or_default();
+        let nav_state = lxapp.get_navbar_state(&path);
 
         // Find the NavigationBarState class
         let nav_bar_class =
