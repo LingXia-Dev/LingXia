@@ -42,7 +42,7 @@ pub use appservice::event_bus::{
     AppHandlerUnsub, HandlerToken, app_handler_unsub, register_app_handler, register_page_handler,
     unregister_app_handler, unregister_app_handler_token, unregister_page_handler,
 };
-pub use appservice::event_bus::{publish_app_event, publish_page_event};
+pub use appservice::event_bus::{BROWSER_TAB_CLOSED_EVENT, publish_app_event, publish_page_event};
 pub use cache::touch_access_time;
 pub use delegate::{LxAppDelegate, LxAppUiEventType};
 pub use error::LxAppError;

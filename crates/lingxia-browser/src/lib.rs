@@ -149,7 +149,18 @@ pub fn tab_is_standalone(tab_id: &str) -> bool {
 }
 
 pub fn close(tab_id: &str) -> Result<(), LxAppError> {
-    tabs::close_browser_tab(tab_id)
+    let owner_appid = tabs::tab_owner_appid(tab_id);
+    tabs::close_browser_tab(tab_id)?;
+    if let Some(owner_appid) = owner_appid {
+        let payload = serde_json::json!({
+            "id": tab_id,
+            "reason": "user",
+        })
+        .to_string();
+        let _ =
+            lxapp::publish_app_event(&owner_appid, lxapp::BROWSER_TAB_CLOSED_EVENT, Some(payload));
+    }
+    Ok(())
 }
 
 /// Retire browser tabs owned by previous sessions of an lxapp.

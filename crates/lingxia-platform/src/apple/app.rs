@@ -325,14 +325,16 @@ impl AppRuntime for Platform {
         }
     }
 
-    fn activate_browser_tab(&self, tab_id: &str) -> Result<(), PlatformError> {
-        if ffi::activate_browser_tab(tab_id) {
-            Ok(())
-        } else {
-            Err(PlatformError::Platform(format!(
-                "Failed to activate browser tab: {tab_id}"
-            )))
-        }
+    fn activate_browser_tab(&self, tab_id: String) -> crate::traits::ui::ManagedSurfaceFuture {
+        Box::pin(async move {
+            if ffi::activate_browser_tab(&tab_id) {
+                Ok(())
+            } else {
+                Err(PlatformError::Platform(format!(
+                    "Failed to activate browser tab: {tab_id}"
+                )))
+            }
+        })
     }
 
     fn open_builtin_browser_page(

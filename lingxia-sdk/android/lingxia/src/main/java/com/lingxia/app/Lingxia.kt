@@ -18,6 +18,8 @@ import com.lingxia.lxapp.LxAppBrowser
 import com.lingxia.lxapp.SplashOverlay
 import com.lingxia.lxapp.APIs.media.ScanCodeFragment
 import java.net.URISyntaxException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -323,11 +325,24 @@ object Lingxia {
     fun activateBrowserTab(tabId: String): Boolean {
         if (tabId.isBlank()) return false
         val activity = LxApp.getCurrentActivity() ?: return false
-        activity.runOnUiThread {
-            LxAppBrowser.show(activity, tabId)
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            return LxAppBrowser.show(activity, tabId)
         }
-        NativeApi.browserTabActivate(tabId)
-        return true
+        val shown = AtomicBoolean(false)
+        val latch = CountDownLatch(1)
+        activity.runOnUiThread {
+            try {
+                shown.set(LxAppBrowser.show(activity, tabId))
+            } finally {
+                latch.countDown()
+            }
+        }
+        return try {
+            latch.await(1, TimeUnit.SECONDS) && shown.get()
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+            false
+        }
     }
 
     private fun launchExternalUrl(context: Context, uri: String, depth: Int): Boolean {
