@@ -109,7 +109,16 @@ function Test-BenignWindowsSessionError {
   param([string]$Message)
   # setData already landed in this.data. These WebView races recover on the
   # next snapshot and have been failing otherwise-green Windows CI.
-  $Message -match 'Error in setData:.*(WebView not ready|WebView UI thread did not reply|timed out waiting on channel)'
+  if ($Message -match 'Error in setData:.*(WebView not ready|WebView UI thread did not reply|timed out waiting on channel)') {
+    return $true
+  }
+  # WebView2 status 9 is CONNECTION_ABORTED, which is also how it reports
+  # Chromium's ERR_ABORTED: navigating away cancels the outgoing page's own
+  # load, and the failure lands after its onUnload. Only status 14 short
+  # circuits to Cancelled in windows_load_error_kind, so this arrives as an
+  # error-level log. A load that genuinely fails still fails the test that
+  # navigated there.
+  $Message -match 'page load failed: WebView2 web error status 9 \(Network\)'
 }
 
 function Get-UnexpectedWindowsSessionErrors {
