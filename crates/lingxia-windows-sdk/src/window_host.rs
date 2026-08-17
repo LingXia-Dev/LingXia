@@ -5960,12 +5960,19 @@ fn apply_native_window_frame(hwnd: HWND) -> StdResult<()> {
 /// tree from a non-UI thread while custom `WM_NCCALCSIZE` runs, and the UI
 /// thread never answers again — `openPage` hangs, the window stays
 /// `about:blank`, later evals wedge.
-fn full_chrome_window_style() -> WINDOW_STYLE {
-    shell_window_style(false)
+///
+/// `device_framed` is threaded through for the same reason: the HWND was born
+/// with `shell_window_style(window_is_device_framed(hwnd))`, and any bit that
+/// disagrees with it here is a restyle after attach.
+fn full_chrome_window_style(device_framed: bool) -> WINDOW_STYLE {
+    shell_window_style(device_framed)
 }
 
 fn apply_full_chrome_window_frame(hwnd: HWND) -> StdResult<()> {
-    apply_window_style(hwnd, full_chrome_window_style())?;
+    apply_window_style(
+        hwnd,
+        full_chrome_window_style(window_is_device_framed(hwnd)),
+    )?;
     apply_native_window_dressing(hwnd);
     Ok(())
 }
@@ -10368,15 +10375,22 @@ mod tests {
 
     #[test]
     fn full_chrome_frame_matches_shell_so_present_does_not_restyle() {
+        for device_framed in [false, true] {
+            assert_eq!(
+                full_chrome_window_style(device_framed).0,
+                shell_window_style(device_framed).0,
+                "a restyle after WebView2 attach sends FRAMECHANGED and deadlocks the UI thread"
+            );
+            assert_eq!(
+                full_chrome_window_style(device_framed).0 & WindowsAndMessaging::WS_SIZEBOX.0,
+                0,
+                "WS_SIZEBOX is what made chrome:full a style change on a shell-created HWND"
+            );
+        }
         assert_eq!(
-            full_chrome_window_style().0,
-            shell_window_style(false).0,
-            "a restyle after WebView2 attach sends FRAMECHANGED and deadlocks the UI thread"
-        );
-        assert_eq!(
-            full_chrome_window_style().0 & WindowsAndMessaging::WS_SIZEBOX.0,
+            full_chrome_window_style(true).0 & WindowsAndMessaging::WS_MAXIMIZEBOX.0,
             0,
-            "WS_SIZEBOX is what made chrome:full a style change on a shell-created HWND"
+            "a device frame is fixed-size: full chrome must not hand it a maximize box"
         );
     }
 
