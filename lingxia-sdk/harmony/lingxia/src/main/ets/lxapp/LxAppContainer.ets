@@ -131,6 +131,13 @@ export struct LxAppContainer {
   private lastReportedSurfaceWidthVp: number = 0;
   private lastReportedSurfaceHeightVp: number = 0;
   private lastReportedShellWidthVp: number = 0;
+  // Raw web-area (Refresh) size in vp, kept so the surface viewport can be
+  // re-reported when navbar visibility changes without an area change.
+  private webAreaWidthVp: number = 0;
+  private webAreaHeightVp: number = 0;
+  // Per-page navbar visibility; navigationStyle is static page config, so a
+  // small cache avoids an FFI query per layout pass.
+  private navbarShownByPath: Map<string, boolean> = new Map();
 
   /**
    * Trigger onPageShow if WebView hasn't triggered it yet
@@ -200,6 +207,7 @@ export struct LxAppContainer {
     addWebViewUiCallback(this.webViewUiCallback);
 
     this.pageConfig = getNavigationBarState(this.appId, this.path);
+    this.navbarShownByPath.set(this.path, this.pageConfig?.showNavbar === true);
     hilog.info(DOMAIN, TAG, `Initial navbar state for ${this.appId}:${this.path}: showNavbar=${this.pageConfig?.showNavbar}, showBack=${this.pageConfig?.showBackButton}, showHome=${this.pageConfig?.showHomeButton}, bgColor=0x${this.pageConfig?.navigationBarBackgroundColor?.toString(16)}, textStyle=${this.pageConfig?.navigationBarTextStyle}`);
     this.applyStatusBarContentColor();
 
@@ -452,9 +460,11 @@ export struct LxAppContainer {
     if (container) {
       // Use current path from container
       container.pageConfig = getNavigationBarState(appId, container.path);
+      container.navbarShownByPath.set(container.path, container.pageConfig?.showNavbar === true);
       // Force UI update by incrementing refresh key
       container.navbarRefreshKey++;
       container.applyStatusBarContentColor();
+      container.reportCurrentPageViewport();
       return true;
     }
     return false;
@@ -1012,7 +1022,10 @@ export struct LxAppContainer {
    */
   @Builder
   RefreshHeaderBuilder() {
+    // The container no longer reserves the navbar area, so the pull header
+    // must clear the current page's navbar itself.
     RefreshHeader({ isRefreshing: this.isRefreshing })
+      .margin({ top: this.getCurrentNavTop() } as Margin)
   }
 
   /**
@@ -1036,12 +1049,13 @@ export struct LxAppContainer {
     .pullDownRatio(this.enablePullDownRefresh ? 1 : 0) // Disable pull effect if not enabled
     .width('100%')
     .height('100%')
-    .padding(this.getContainerPadding())
+    // No shared navbar padding here: each webview wrapper reserves its own
+    // page's inset (getWrapperPadding), so navigating between pages with
+    // different navbar visibility never resizes ArkWeb surfaces.
     .onAreaChange((_, newValue) => {
-      this.reportSurfaceViewport(
-        Number(newValue.width) || 0,
-        Number(newValue.height) || 0
-      );
+      this.webAreaWidthVp = Number(newValue.width) || 0;
+      this.webAreaHeightVp = Number(newValue.height) || 0;
+      this.reportCurrentPageViewport();
     })
     .hitTestBehavior(HitTestMode.Transparent)
     .zIndex(this.shouldRenderOverlayMask() ? 10004 : 0)
@@ -1116,25 +1130,67 @@ export struct LxAppContainer {
     }
   }
 
+  /** Navbar inset of the page currently on screen (vp). */
+  private getCurrentNavTop(): number {
+    // Fullscreen video removes all chrome reservations.
+    if (this.hasFullscreenTarget()) {
+      return 0;
+    }
+    return this.pageConfig?.showNavbar === true ? this.getNavigationBarHeight() : 0;
+  }
+
+  /** Navbar inset owned by the page rendered under webTag (0 for custom navigation). */
+  private getPageNavTop(webTag: string): number {
+    if (this.hasFullscreenTarget()) {
+      return 0;
+    }
+    const extracted = extractWebTag(webTag);
+    const path = extracted ? extracted.path : this.path;
+    return this.isNavbarShownForPage(path) ? this.getNavigationBarHeight() : 0;
+  }
+
+  private isNavbarShownForPage(path: string): boolean {
+    const cached: boolean | undefined = this.navbarShownByPath.get(path);
+    if (cached !== undefined) {
+      return cached;
+    }
+    let shown: boolean = false;
+    try {
+      const state: NavigationBarState | null = getNavigationBarState(this.appId, path);
+      shown = state?.showNavbar === true;
+    } catch (_error) {
+      // Unknown page (e.g. surface-only tag): fall back to the current page.
+      shown = this.pageConfig?.showNavbar === true;
+    }
+    this.navbarShownByPath.set(path, shown);
+    return shown;
+  }
+
   /**
-   * Reserve TabBar space on the container (not inside the Web content):
-   * - Only reserve it when the TabBar is opaque to avoid white gaps while the bar is transparent.
+   * Each webview wrapper reserves ITS OWN page's navbar inset instead of the
+   * shared container reserving the current page's. A shared reservation
+   * resized every ArkWeb surface on the same frame a tab switch revealed a
+   * page with different navbar visibility, and the engine repaints at the new
+   * size a frame late — flashing a blank band (≈ navbar height) right above
+   * an opaque tabbar. Per-wrapper insets keep every surface at its final size
+   * while parked, so switching only translates, never resizes.
+   * Overlay webviews follow the current page so presentation geometry keeps
+   * matching the on-screen chrome.
    */
-  private getWebViewAreaPadding(): Padding {
-    // Reserve exactly the navbar's rendered height (real status bar inset +
-    // content); a constant here drifts from the bar and opens a visible gap.
-    const showNavbar = this.pageConfig?.showNavbar === true;
-    const top = showNavbar ? this.getNavigationBarHeight() : 0;
+  private getWrapperPadding(webTag: string): Padding {
+    // Touch navbarRefreshKey so ArkUI re-evaluates this attribute when navbar
+    // state is refreshed at runtime (the per-page cache itself is not @State).
+    void this.navbarRefreshKey;
+    const top = this.isOverlayWebView(webTag) ? this.getCurrentNavTop() : this.getPageNavTop(webTag);
     return { top: top, bottom: 0, left: 0, right: 0 } as Padding;
   }
 
-  private getContainerPadding(): Padding {
-    // Remove padding only when fullscreen is active; presentation overlay should not
-    // affect the underlying layout to avoid content shifting on open/close.
-    if (this.hasFullscreenTarget()) {
-      return { top: 0, bottom: 0, left: 0, right: 0 } as Padding;
+  /** Report the current page's content viewport (web area minus its navbar). */
+  private reportCurrentPageViewport(): void {
+    if (this.webAreaWidthVp <= 0 || this.webAreaHeightVp <= 0) {
+      return;
     }
-    return this.getWebViewAreaPadding();
+    this.reportSurfaceViewport(this.webAreaWidthVp, this.webAreaHeightVp - this.getCurrentNavTop());
   }
 
   private getWebBottomPadding(): number {
@@ -1170,7 +1226,11 @@ export struct LxAppContainer {
    */
   private loadNavbarState(path: string): void {
     this.pageConfig = getNavigationBarState(this.appId, path);
+    this.navbarShownByPath.set(path, this.pageConfig?.showNavbar === true);
     this.applyStatusBarContentColor();
+    // The web area no longer resizes with navbar visibility, so the surface
+    // viewport must be re-reported explicitly on page changes.
+    this.reportCurrentPageViewport();
   }
 
   /** Keep status bar glyphs legible against native chrome or custom content. */
@@ -1466,6 +1526,7 @@ export struct LxAppContainer {
     }
     .width('100%')
     .height('100%')
+    .padding(this.getWrapperPadding(webTag))
     .justifyContent(this.getWrapperJustify(webTag))
     .alignItems(this.getWrapperAlign(webTag))
     .hitTestBehavior(HitTestMode.Transparent)
