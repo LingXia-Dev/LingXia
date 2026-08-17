@@ -957,6 +957,7 @@ export default function UIPage() {
               <div className="p-4 space-y-4">
                 <div className="flex space-x-3">
                   <button
+                    data-testid="tabbar-show"
                     onClick={async () => {
                       const result = await revealTabBar();
                       console.log('Show TabBar:', result);
@@ -968,6 +969,7 @@ export default function UIPage() {
                     Show TabBar
                   </button>
                   <button
+                    data-testid="tabbar-hide"
                     onClick={async () => {
                       const result = await concealTabBar();
                       console.log('Hide TabBar:', result);

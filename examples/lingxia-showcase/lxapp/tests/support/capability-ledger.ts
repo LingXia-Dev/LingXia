@@ -34,7 +34,6 @@ const SHAPE_ONLY = [
   'appearance',
   'env',
   'navigationBar',
-  'tabBar',
   'terminal',
   'tray',
 ] as const satisfies readonly LxApiName[];
@@ -72,6 +71,7 @@ const AUTOMATED = [
   { name: 'navigateBack', ownerCaseId: 'UI-NAV-001', requiredLevels: ['semantic', 'boundary', 'lifecycle'] },
   { name: 'redirectTo', ownerCaseId: 'UI-NAV-001', requiredLevels: ['semantic', 'boundary', 'lifecycle'] },
   { name: 'switchTab', ownerCaseId: 'UI-NAV-001', requiredLevels: ['semantic', 'boundary', 'lifecycle'] },
+  { name: 'tabBar', ownerCaseId: 'UI-TABBAR-001', requiredLevels: ['semantic', 'boundary', 'lifecycle'] },
   { name: 'startPullDownRefresh', ownerCaseId: 'PULL-001', requiredLevels: ['semantic', 'lifecycle'] },
   { name: 'stopPullDownRefresh', ownerCaseId: 'PULL-001', requiredLevels: ['semantic', 'lifecycle'] },
 ] as const satisfies ReadonlyArray<{
