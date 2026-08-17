@@ -536,6 +536,7 @@ impl PageInstance {
                                 owner_session_id: session_id_for_nav,
                                 url: url.to_string(),
                                 target: OpenUrlTarget::External,
+                                want_tab_id: false,
                             });
                         }
                         NavigationPolicy::Cancel
@@ -548,6 +549,7 @@ impl PageInstance {
                     owner_session_id: session_id_for_new_window,
                     url: url.to_string(),
                     target: OpenUrlTarget::SelfTarget,
+                    want_tab_id: false,
                 });
                 NewWindowPolicy::Cancel
             })

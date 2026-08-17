@@ -70,6 +70,7 @@ fn open_url_impl(lxapp: &LxApp, options: &OpenUrlOptions) -> Result<(), LxAppErr
             owner_session_id: lxapp.session_id(),
             url: options.url.clone(),
             target,
+            want_tab_id: false,
         })
         .map_err(|e| map_platform_error("openUrl", e))?;
     Ok(())

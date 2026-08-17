@@ -1086,6 +1086,10 @@ pub(super) fn install() {
     // lxapp openURL with self/new_browser_tab) inside the app as browser
     // tabs; unhandled requests fall back to the OS shell handler.
     lingxia_platform::set_windows_open_url_handler(Arc::new(handle_open_url_request));
+    lingxia_platform::set_windows_close_browser_tab_handler(Arc::new(handle_close_browser_tab));
+    lingxia_platform::set_windows_activate_browser_tab_handler(Arc::new(
+        handle_activate_browser_tab,
+    ));
     lingxia_platform::set_windows_managed_surface_visible_handler(Arc::new(
         set_managed_surface_visible_for_api,
     ));
@@ -1230,23 +1234,23 @@ fn current_sidebar_width(group_appid: &str) -> f64 {
 }
 
 /// Routes `open_url` requests with in-app targets into the internal
-/// browser. Returns `false` (let the platform open the system handler)
+/// browser. Returns `None` (let the platform open the system handler)
 /// for explicit external targets or when no shell/browser is available.
-fn handle_open_url_request(req: &OpenUrlRequest) -> bool {
+fn handle_open_url_request(
+    req: &OpenUrlRequest,
+) -> Option<lingxia_platform::traits::app_runtime::OpenUrlResult> {
     match req.target {
-        OpenUrlTarget::External => false,
+        OpenUrlTarget::External => None,
         // In-app targets are routed into the internal browser; without the
         // browser engine there is nowhere in-app to open them, so defer to the
         // OS handler.
         #[cfg(not(feature = "browser-runtime"))]
         OpenUrlTarget::SelfTarget | OpenUrlTarget::NewBrowserTab | OpenUrlTarget::AsideBrowser => {
-            false
+            None
         }
         #[cfg(feature = "browser-runtime")]
         OpenUrlTarget::SelfTarget | OpenUrlTarget::NewBrowserTab | OpenUrlTarget::AsideBrowser => {
-            let Some(owner_appid) = shell_owner_appid() else {
-                return false;
-            };
+            let owner_appid = shell_owner_appid()?;
             // Presentation policy: requests from the presented browser tab
             // (or from a non-browser surface such as an lxapp page) present
             // the new tab; background browser tabs only add a sidebar row.
@@ -1256,13 +1260,80 @@ fn handle_open_url_request(req: &OpenUrlRequest) -> bool {
             // in-app browser (no address bar while the tab is active).
             let aside = req.target == OpenUrlTarget::AsideBrowser;
             let url = req.url.clone();
+            if req.want_tab_id {
+                // JS is waiting for an identity; create on this thread (the
+                // Logic executor, not a WebView UI thread) so close() can
+                // address the tab immediately.
+                let opened = if aside {
+                    lingxia_browser::open_aside_for_app(
+                        &owner_appid,
+                        req.owner_session_id,
+                        &url,
+                        None,
+                    )
+                } else {
+                    lingxia_browser::open_for_app(&owner_appid, req.owner_session_id, &url, None)
+                };
+                return match opened {
+                    Ok(tab_id) => {
+                        if present {
+                            present_browser_tab_when_ready(&owner_appid, tab_id.clone());
+                        } else {
+                            sync_shell_layout(&owner_appid);
+                        }
+                        Some(lingxia_platform::traits::app_runtime::OpenUrlResult {
+                            tab_id: Some(tab_id),
+                        })
+                    }
+                    Err(err) => {
+                        log::error!("failed to open browser tab for {url}: {err}");
+                        None
+                    }
+                };
+            }
             // May be called on a webview UI thread (NewWindowRequested);
             // hop onto the executor before touching tab/window state.
             std::mem::drop(lingxia::task::spawn(async move {
                 open_browser_tab_for_open_url(&owner_appid, &url, present, aside);
             }));
-            true
+            Some(lingxia_platform::traits::app_runtime::OpenUrlResult { tab_id: None })
         }
+    }
+}
+
+fn handle_close_browser_tab(tab_id: &str) -> bool {
+    let Some(owner_appid) = shell_owner_appid() else {
+        return false;
+    };
+    #[cfg(feature = "browser-runtime")]
+    {
+        if lingxia_browser::tab_is_aside(tab_id) {
+            handle_compact_browser_tab_close(&owner_appid, tab_id);
+        } else {
+            handle_browser_tab_close(&owner_appid, tab_id);
+        }
+        true
+    }
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = (owner_appid, tab_id);
+        false
+    }
+}
+
+fn handle_activate_browser_tab(tab_id: &str) -> bool {
+    let Some(owner_appid) = shell_owner_appid() else {
+        return false;
+    };
+    #[cfg(feature = "browser-runtime")]
+    {
+        present_browser_tab_when_ready(&owner_appid, tab_id.to_string());
+        true
+    }
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = (owner_appid, tab_id);
+        false
     }
 }
 
@@ -5869,6 +5940,7 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
                         owner_session_id: app.session_id(),
                         url: url.clone(),
                         target: OpenUrlTarget::External,
+                        want_tab_id: false,
                     });
                 }
             }

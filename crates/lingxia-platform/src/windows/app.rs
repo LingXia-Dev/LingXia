@@ -11,7 +11,7 @@ use super::{file, not_supported, surface, ui_update};
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::{
-    AnimationType, AppRuntime, BuiltinBrowserPage, LxAppOpenMode, OpenUrlRequest,
+    AnimationType, AppRuntime, BuiltinBrowserPage, LxAppOpenMode, OpenUrlRequest, OpenUrlResult,
 };
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
@@ -190,10 +190,15 @@ fn remove_autostart_run_entry(name: &str) -> Result<(), PlatformError> {
 }
 
 /// Process-wide interceptor for [`AppRuntime::open_url`] requests. Returns
-/// `true` when the request was handled (e.g. routed into an in-app browser
-/// tab); `false` falls back to the OS shell handler.
-type WindowsOpenUrlHandler = Arc<dyn Fn(&OpenUrlRequest) -> bool + Send + Sync>;
+/// `Some` when the request was handled (e.g. routed into an in-app browser
+/// tab); `None` falls back to the OS shell handler.
+type WindowsOpenUrlHandler = Arc<dyn Fn(&OpenUrlRequest) -> Option<OpenUrlResult> + Send + Sync>;
 static WINDOWS_OPEN_URL_HANDLER: Mutex<Option<WindowsOpenUrlHandler>> = Mutex::new(None);
+type WindowsBrowserTabHandler = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+static WINDOWS_CLOSE_BROWSER_TAB_HANDLER: Mutex<Option<WindowsBrowserTabHandler>> =
+    Mutex::new(None);
+static WINDOWS_ACTIVATE_BROWSER_TAB_HANDLER: Mutex<Option<WindowsBrowserTabHandler>> =
+    Mutex::new(None);
 
 /// Registers the open-url interceptor. Product shells (the `lingxia`
 /// facade) use this to keep in-app targets (`SelfTarget`,
@@ -205,12 +210,34 @@ pub fn set_windows_open_url_handler(handler: WindowsOpenUrlHandler) {
     }
 }
 
-fn invoke_windows_open_url_handler(req: &OpenUrlRequest) -> bool {
+fn invoke_windows_open_url_handler(req: &OpenUrlRequest) -> Option<OpenUrlResult> {
     let handler = WINDOWS_OPEN_URL_HANDLER
         .lock()
         .ok()
-        .and_then(|slot| slot.clone());
-    handler.map(|handler| handler(req)).unwrap_or(false)
+        .and_then(|slot| slot.clone())?;
+    handler(req)
+}
+
+/// Registers the close-tab interceptor used by [`AppRuntime::close_browser_tab`].
+pub fn set_windows_close_browser_tab_handler(handler: WindowsBrowserTabHandler) {
+    if let Ok(mut slot) = WINDOWS_CLOSE_BROWSER_TAB_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+/// Registers the activate-tab interceptor used by [`AppRuntime::activate_browser_tab`].
+pub fn set_windows_activate_browser_tab_handler(handler: WindowsBrowserTabHandler) {
+    if let Ok(mut slot) = WINDOWS_ACTIVATE_BROWSER_TAB_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+fn invoke_windows_browser_tab_handler(
+    slot: &Mutex<Option<WindowsBrowserTabHandler>>,
+    tab_id: &str,
+) -> bool {
+    let handler = slot.lock().ok().and_then(|slot| slot.clone());
+    handler.map(|handler| handler(tab_id)).unwrap_or(false)
 }
 
 /// Process-wide handler that pushes the JS-registered tray menu spec
@@ -544,14 +571,31 @@ impl AppRuntime for Platform {
         Ok(())
     }
 
-    fn open_url(&self, req: OpenUrlRequest) -> Result<(), PlatformError> {
+    fn open_url(&self, req: OpenUrlRequest) -> Result<OpenUrlResult, PlatformError> {
         // In-app targets (browser tabs) are owned by the registered product
         // shell handler; only unhandled requests reach the OS shell.
-        if invoke_windows_open_url_handler(&req) {
-            return Ok(());
+        if let Some(result) = invoke_windows_open_url_handler(&req) {
+            return Ok(result);
         }
         // Sync trait method: launch without waiting so the executor never blocks.
-        file::open_with_shell_detached(&req.url)
+        file::open_with_shell_detached(&req.url)?;
+        Ok(OpenUrlResult::default())
+    }
+
+    fn close_browser_tab(&self, tab_id: &str) -> Result<(), PlatformError> {
+        if invoke_windows_browser_tab_handler(&WINDOWS_CLOSE_BROWSER_TAB_HANDLER, tab_id) {
+            Ok(())
+        } else {
+            Err(PlatformError::NotSupported("browser tab".to_string()))
+        }
+    }
+
+    fn activate_browser_tab(&self, tab_id: &str) -> Result<(), PlatformError> {
+        if invoke_windows_browser_tab_handler(&WINDOWS_ACTIVATE_BROWSER_TAB_HANDLER, tab_id) {
+            Ok(())
+        } else {
+            Err(PlatformError::NotSupported("browser tab".to_string()))
+        }
     }
 }
 

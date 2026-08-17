@@ -14,6 +14,12 @@ import ServiceManagement
 
 private let lxAppFFILog = OSLog(subsystem: "LingXia", category: "LxAppFFI")
 
+/// Last in-app tab id produced by `openUrl`. Taken by Rust immediately after
+/// a successful open so the JS handle can own that tab.
+private enum OpenedUrlTabSlot {
+    nonisolated(unsafe) static var lastId = ""
+}
+
 /// FFI callbacks dispatched from Rust via the generated bridge.
 extension LxApp {
 
@@ -663,6 +669,7 @@ extension LxApp {
         url: RustStr,
         target: Int32
     ) -> Bool {
+        OpenedUrlTabSlot.lastId = ""
         let ownerAppId = owner_appid.toString()
         let urlString = url.toString()
         let openTarget = OpenURLTarget(rawValue: target) ?? .external
@@ -724,7 +731,32 @@ extension LxApp {
         }
         let tabId = openedTab.toString()
         guard !tabId.isEmpty else { return false }
+        OpenedUrlTabSlot.lastId = tabId
 
+        #if os(macOS)
+        return executeOnMain { macOSLxApp.presentInternalBrowserTab(tabId: tabId) }
+        #elseif os(iOS)
+        return executeOnMain { LxAppBrowser.show(tabId: tabId) }
+        #else
+        return false
+        #endif
+    }
+
+    nonisolated static func takeOpenedUrlTabId() -> String {
+        let tabId = OpenedUrlTabSlot.lastId
+        OpenedUrlTabSlot.lastId = ""
+        return tabId
+    }
+
+    nonisolated static func closeBrowserTab(tab_id: RustStr) -> Bool {
+        let tabId = tab_id.toString()
+        guard !tabId.isEmpty else { return false }
+        return executeOnMain { browserTabClose(tabId) }
+    }
+
+    nonisolated static func activateBrowserTab(tab_id: RustStr) -> Bool {
+        let tabId = tab_id.toString()
+        guard !tabId.isEmpty else { return false }
         #if os(macOS)
         return executeOnMain { macOSLxApp.presentInternalBrowserTab(tabId: tabId) }
         #elseif os(iOS)

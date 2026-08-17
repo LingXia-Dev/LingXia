@@ -5,7 +5,9 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::error::PlatformError;
-use crate::traits::app_runtime::{AnimationType, AppRuntime, LxAppOpenMode, OpenUrlRequest};
+use crate::traits::app_runtime::{
+    AnimationType, AppRuntime, LxAppOpenMode, OpenUrlRequest, OpenUrlResult,
+};
 use crate::traits::device::{Device, DeviceHardware};
 use crate::traits::file::{
     ChooseDirectoryRequest, ChooseFileRequest, FileDialogResult, FileService, OpenFileRequest,
@@ -367,7 +369,7 @@ impl AppRuntime for Platform {
         not_supported("navigate")
     }
 
-    fn open_url(&self, _req: OpenUrlRequest) -> Result<(), PlatformError> {
+    fn open_url(&self, _req: OpenUrlRequest) -> Result<OpenUrlResult, PlatformError> {
         not_supported("open_url")
     }
 }

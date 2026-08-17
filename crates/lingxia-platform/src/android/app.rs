@@ -521,7 +521,7 @@ impl AppRuntime for Platform {
     fn open_url(
         &self,
         req: crate::traits::app_runtime::OpenUrlRequest,
-    ) -> Result<(), PlatformError> {
+    ) -> Result<crate::traits::app_runtime::OpenUrlResult, PlatformError> {
         let host_class: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
             .map_err(|e| PlatformError::Platform(e.to_string()))?;
 
@@ -532,14 +532,17 @@ impl AppRuntime for Platform {
             _ => "external",
         };
 
-        with_env(|env| -> Result<(), PlatformError> {
-            let url_jstring = env.new_string(req.url)?;
-            let target_jstring = env.new_string(target_str)?;
-            let owner_appid_jstring = env.new_string(req.owner_appid)?;
-            env.call_static_method(
+        with_env(
+            |env| -> Result<crate::traits::app_runtime::OpenUrlResult, PlatformError> {
+                let url_jstring = env.new_string(req.url)?;
+                let target_jstring = env.new_string(target_str)?;
+                let owner_appid_jstring = env.new_string(req.owner_appid)?;
+                let result = env.call_static_method(
                 host_class,
                 jni_str!("launchWithUrl"),
-                jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V"),
+                jni_sig!(
+                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)Ljava/lang/String;"
+                ),
                 &[
                     JValue::Object(&url_jstring),
                     JValue::Object(&target_jstring),
@@ -547,9 +550,64 @@ impl AppRuntime for Platform {
                     JValue::Long(req.owner_session_id as i64),
                 ],
             )?;
-            Ok(())
-        })
+                let tab_obj = result.l()?;
+                if tab_obj.is_null() {
+                    return Ok(crate::traits::app_runtime::OpenUrlResult { tab_id: None });
+                }
+                let tab_jstring = unsafe { JString::from_raw(env, tab_obj.into_raw() as _) };
+                let tab_id = tab_jstring
+                    .try_to_string(env)
+                    .map_err(|e| PlatformError::Platform(e.to_string()))?;
+                Ok(crate::traits::app_runtime::OpenUrlResult {
+                    tab_id: (!tab_id.is_empty()).then_some(tab_id),
+                })
+            },
+        )
         .map_err(|e| PlatformError::Platform(format!("Failed to open_url: {}", e)))
+    }
+
+    fn close_browser_tab(&self, tab_id: &str) -> Result<(), PlatformError> {
+        let host_class: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        with_env(|env| -> Result<(), PlatformError> {
+            let tab_jstring = env.new_string(tab_id)?;
+            let result = env.call_static_method(
+                host_class,
+                jni_str!("closeBrowserTab"),
+                jni_sig!("(Ljava/lang/String;)Z"),
+                &[JValue::Object(&tab_jstring)],
+            )?;
+            if result.z()? {
+                Ok(())
+            } else {
+                Err(PlatformError::Platform(format!(
+                    "Failed to close browser tab: {tab_id}"
+                )))
+            }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to close_browser_tab: {}", e)))
+    }
+
+    fn activate_browser_tab(&self, tab_id: &str) -> Result<(), PlatformError> {
+        let host_class: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        with_env(|env| -> Result<(), PlatformError> {
+            let tab_jstring = env.new_string(tab_id)?;
+            let result = env.call_static_method(
+                host_class,
+                jni_str!("activateBrowserTab"),
+                jni_sig!("(Ljava/lang/String;)Z"),
+                &[JValue::Object(&tab_jstring)],
+            )?;
+            if result.z()? {
+                Ok(())
+            } else {
+                Err(PlatformError::Platform(format!(
+                    "Failed to activate browser tab: {tab_id}"
+                )))
+            }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to activate_browser_tab: {}", e)))
     }
 }
 

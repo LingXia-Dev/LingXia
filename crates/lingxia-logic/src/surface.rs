@@ -797,6 +797,11 @@ fn browser_tab_handle(
     key: Option<String>,
 ) -> JSResult<JSObject> {
     if let Some(handle) = opened.clone().into_object() {
+        if let Ok(tab_id) = handle.get::<_, String>("tabId")
+            && !tab_id.is_empty()
+        {
+            return owned_browser_tab_handle(ctx, tab_id, realized, key);
+        }
         // A docked aside owns its surface, so `activate` is "bring it
         // forward" — the type promises the method on every TabSurface.
         let show_handle = handle.clone();
@@ -869,6 +874,56 @@ fn attach_browser_group_methods(ctx: &JSContext, handle: &JSObject) -> JSResult<
         &["close", "activate"],
         "the browser chrome owns this group; check `scope` before calling",
     )
+}
+
+/// A `TabSurface` that owns exactly the tab `open_url` named.
+fn owned_browser_tab_handle(
+    ctx: &JSContext,
+    tab_id: String,
+    realized: &str,
+    key: Option<String>,
+) -> JSResult<JSObject> {
+    let handle = JSObject::new(ctx);
+    handle.set("id", tab_id.as_str())?;
+    handle.set("alive", true)?;
+    handle.set("visible", true)?;
+    let close_id = tab_id.clone();
+    handle.set(
+        "close",
+        JSFunc::new(ctx, move |ctx: JSContext| {
+            let lxapp = LxApp::from_ctx(&ctx)?;
+            let tab_id = close_id.clone();
+            Promise::from_future(&ctx, None, async move {
+                lxapp
+                    .runtime
+                    .close_browser_tab(&tab_id)
+                    .map_err(|err| surface_error(SurfaceErrorCode::Failed, err))?;
+                Ok(())
+            })
+        })?,
+    )?;
+    let activate_id = tab_id.clone();
+    handle.set(
+        "activate",
+        JSFunc::new(ctx, move |ctx: JSContext| {
+            let lxapp = LxApp::from_ctx(&ctx)?;
+            let tab_id = activate_id.clone();
+            Promise::from_future(&ctx, None, async move {
+                lxapp
+                    .runtime
+                    .activate_browser_tab(&tab_id)
+                    .map_err(|err| surface_error(SurfaceErrorCode::Failed, err))?;
+                Ok(())
+            })
+        })?,
+    )?;
+    handle.set(
+        "onClose",
+        JSFunc::new(ctx, |ctx: JSContext, _handler: JSFunc| {
+            JSFunc::new(&ctx, || {})
+        })?,
+    )?;
+    finish_handle(ctx, &handle, "tab", realized, key, Some("tab"))
 }
 
 /// A `BuiltinSurface` for a host product page. The shell owns its lifetime,
@@ -1374,8 +1429,10 @@ fn open_external(ctx: JSContext, url: String) -> JSResult<()> {
             owner_session_id: lxapp.session_id(),
             url,
             target: OpenUrlTarget::External,
+            want_tab_id: false,
         })
-        .map_err(|err| surface_error(SurfaceErrorCode::Failed, err))
+        .map_err(|err| surface_error(SurfaceErrorCode::Failed, err))?;
+    Ok(())
 }
 
 /// Handle for a live lxapp presentation. Hide preserves the claimed region;
@@ -2016,8 +2073,8 @@ fn url_aside_uses_compact_browser(lxapp: &LxApp) -> bool {
 }
 
 /// Open a URL as an in-app browser tab; `aside` selects compact aside chrome.
-/// Returns null because compact browser tabs are owned by browser chrome rather
-/// than the generic surface presenter.
+/// Returns `{ tabId }` when the host named the tab, otherwise null so the
+/// handle reports `scope: 'group'`.
 fn open_url_in_browser(
     ctx: &JSContext,
     lxapp: &LxApp,
@@ -2025,7 +2082,7 @@ fn open_url_in_browser(
     aside: bool,
 ) -> JSResult<JSValue> {
     let url = lxapp_url(lxapp, raw_url)?;
-    lxapp
+    let opened = lxapp
         .runtime
         .open_url(OpenUrlRequest {
             owner_appid: lxapp.appid.clone(),
@@ -2036,8 +2093,14 @@ fn open_url_in_browser(
             } else {
                 OpenUrlTarget::SelfTarget
             },
+            want_tab_id: true,
         })
         .map_err(|err| surface_error(SurfaceErrorCode::Failed, err))?;
+    if let Some(tab_id) = opened.tab_id.filter(|id| !id.is_empty()) {
+        let named = JSObject::new(ctx);
+        named.set("tabId", tab_id)?;
+        return Ok(named.into_js_value());
+    }
     Ok(JSValue::null(ctx))
 }
 
