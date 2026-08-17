@@ -884,8 +884,18 @@ fn finish_owned_browser_tab_close(
     registry_key: Option<&str>,
     reason: &str,
 ) -> JSResult<()> {
+    // Only evict the entry if it is still this handle. A tab closed in the
+    // browser reports asynchronously, and the lxapp may already have reopened
+    // the same key — dropping that newer entry would strand a live surface
+    // with nothing left to address it.
     if let Some(key) = registry_key {
-        let _ = surface_registry(&target.context())?.delete(key);
+        let registry = surface_registry(&target.context())?;
+        if registry
+            .get::<_, JSObject>(key)
+            .is_ok_and(|entry| entry == *target)
+        {
+            let _ = registry.delete(key);
+        }
     }
     if !target.get::<_, bool>("alive").unwrap_or(false) {
         return Ok(());
@@ -951,10 +961,20 @@ fn owned_browser_tab_handle(
     let activate_id = tab_id.clone();
     handle.set(
         "activate",
-        JSFunc::new(ctx, move |ctx: JSContext| {
+        JSFunc::new(ctx, move |ctx: JSContext, this: This<JSObject>| {
             let lxapp = LxApp::from_ctx(&ctx)?;
             let tab_id = activate_id.clone();
+            // `close` is documented idempotent, but bringing a tab forward
+            // after it is gone is a different answer: say `closed` rather than
+            // letting the platform report a generic failure for a dead id.
+            let alive = this.get::<_, bool>("alive").unwrap_or(false);
             Promise::from_future(&ctx, None, async move {
+                if !alive {
+                    return Err(surface_error(
+                        SurfaceErrorCode::Closed,
+                        "this tab is closed",
+                    ));
+                }
                 lxapp
                     .runtime
                     .activate_browser_tab(tab_id)

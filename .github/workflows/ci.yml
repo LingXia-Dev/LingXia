@@ -347,8 +347,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Pin the action, not @master — that ref can change between two runs
-      # of the same commit. SHA is dtolnay/rust-toolchain@master as of 2026-08-05.
+      # Pin the action, not @master — that ref can change between two runs of
+      # the same commit. This SHA is what @master resolved to on 2026-08-16, so
+      # pinning it is a no-op today and a guarantee tomorrow.
       - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}

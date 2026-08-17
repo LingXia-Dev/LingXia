@@ -174,12 +174,18 @@ type StorageEntry<S extends object> = {
 /**
  * Schema-typed view of the same store `lx.getStorage()` returns.
  * Runtime is identical; only the key/value types are pinned.
+ *
+ * The schema constrains what this handle writes and reads, not what the store
+ * contains: a previous app version, or another code path holding the untyped
+ * handle, can have written keys outside it. That is why `list` still resolves
+ * plain strings — narrowing it to the schema's keys would be the same
+ * unchecked assertion this type exists to remove from `get<T>()`.
  */
 export type TypedStorage<S extends object> = {
   get<K extends StorageKey<S>>(key: K): Promise<S[K] | undefined>;
   set(...entry: StorageEntry<S>): Promise<void>;
   delete(key: StorageKey<S>): Promise<void>;
   clear(): Promise<void>;
-  list(prefix?: string): Promise<Array<StorageKey<S>>>;
+  list(prefix?: string): Promise<string[]>;
   info(): Promise<StorageInfo>;
 };

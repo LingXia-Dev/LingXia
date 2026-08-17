@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 
+use super::PlatformFuture;
 use super::device::{Device, DeviceHardware};
 use super::file::FileService;
 use super::location::Location;
@@ -12,7 +13,7 @@ use super::media_runtime::MediaRuntime;
 use super::network::Network;
 use super::secure_store::SecureStore;
 use super::share::ShareService;
-use super::ui::{ManagedSurfaceFuture, SurfacePresenter, UIUpdate, UserFeedback};
+use super::ui::{SurfacePresenter, UIUpdate, UserFeedback};
 use super::update::UpdateService;
 use super::wifi::Wifi;
 
@@ -266,7 +267,7 @@ pub trait AppRuntime:
     }
 
     /// Bring a tab previously named by [`Self::open_url`] to the front.
-    fn activate_browser_tab(&self, _tab_id: String) -> ManagedSurfaceFuture {
+    fn activate_browser_tab(&self, _tab_id: String) -> PlatformFuture {
         Box::pin(async { Err(PlatformError::NotSupported("browser tab".to_string())) })
     }
 

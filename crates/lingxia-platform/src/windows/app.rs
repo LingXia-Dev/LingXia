@@ -199,7 +199,7 @@ type WindowsBrowserTabHandler = Arc<dyn Fn(&str) -> bool + Send + Sync>;
 static WINDOWS_CLOSE_BROWSER_TAB_HANDLER: Mutex<Option<WindowsBrowserTabHandler>> =
     Mutex::new(None);
 type WindowsActivateBrowserTabHandler =
-    Arc<dyn Fn(String) -> crate::traits::ui::ManagedSurfaceFuture + Send + Sync>;
+    Arc<dyn Fn(String) -> crate::traits::PlatformFuture + Send + Sync>;
 static WINDOWS_ACTIVATE_BROWSER_TAB_HANDLER: Mutex<Option<WindowsActivateBrowserTabHandler>> =
     Mutex::new(None);
 
@@ -240,9 +240,7 @@ pub fn set_windows_activate_browser_tab_handler(handler: WindowsActivateBrowserT
     }
 }
 
-fn invoke_windows_activate_browser_tab_handler(
-    tab_id: String,
-) -> crate::traits::ui::ManagedSurfaceFuture {
+fn invoke_windows_activate_browser_tab_handler(tab_id: String) -> crate::traits::PlatformFuture {
     let handler = WINDOWS_ACTIVATE_BROWSER_TAB_HANDLER
         .lock()
         .ok()
@@ -253,11 +251,11 @@ fn invoke_windows_activate_browser_tab_handler(
     }
 }
 
-fn invoke_windows_browser_tab_handler(
-    slot: &Mutex<Option<WindowsBrowserTabHandler>>,
-    tab_id: &str,
-) -> bool {
-    let handler = slot.lock().ok().and_then(|slot| slot.clone());
+fn invoke_windows_close_browser_tab_handler(tab_id: &str) -> bool {
+    let handler = WINDOWS_CLOSE_BROWSER_TAB_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone());
     handler.map(|handler| handler(tab_id)).unwrap_or(false)
 }
 
@@ -604,14 +602,14 @@ impl AppRuntime for Platform {
     }
 
     fn close_browser_tab(&self, tab_id: &str) -> Result<(), PlatformError> {
-        if invoke_windows_browser_tab_handler(&WINDOWS_CLOSE_BROWSER_TAB_HANDLER, tab_id) {
+        if invoke_windows_close_browser_tab_handler(tab_id) {
             Ok(())
         } else {
             Err(PlatformError::NotSupported("browser tab".to_string()))
         }
     }
 
-    fn activate_browser_tab(&self, tab_id: String) -> crate::traits::ui::ManagedSurfaceFuture {
+    fn activate_browser_tab(&self, tab_id: String) -> crate::traits::PlatformFuture {
         invoke_windows_activate_browser_tab_handler(tab_id)
     }
 }
@@ -651,14 +649,14 @@ impl crate::traits::ui::SurfacePresenter for Platform {
     fn ensure_managed_surface_provider(
         &self,
         request: crate::traits::ui::ManagedSurfaceProviderRequest,
-    ) -> crate::traits::ui::ManagedSurfaceFuture {
+    ) -> crate::traits::PlatformFuture {
         surface::ensure_managed_surface_provider(request)
     }
 
     fn destroy_managed_surface_provider(
         &self,
         request: crate::traits::ui::ManagedSurfaceProviderDestroyRequest,
-    ) -> crate::traits::ui::ManagedSurfaceFuture {
+    ) -> crate::traits::PlatformFuture {
         surface::destroy_managed_surface_provider(request)
     }
 }

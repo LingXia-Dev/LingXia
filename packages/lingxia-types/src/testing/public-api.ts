@@ -166,7 +166,7 @@ const LX_FILE_API = [
   'stat',
   'text',
 ] as const;
-const STORAGE_API = ['clear', 'delete', 'get', 'has', 'info', 'list', 'set'] as const;
+const STORAGE_API = ['clear', 'delete', 'get', 'info', 'list', 'set'] as const;
 const UPDATE_MANAGER_API = ['applyUpdate', 'onUpdateFailed', 'onUpdateReady'] as const;
 const VIDEO_CONTEXT_API = [
   'exitFullScreen',
