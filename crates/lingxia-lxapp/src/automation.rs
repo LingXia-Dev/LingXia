@@ -131,7 +131,11 @@ fn active_runtime_page_by_path<'a>(
         })
         // A window/float page is isolated: not on the nav stack and never
         // "current". Without this, `page: 'surface'` cannot drive a page that
-        // `lx.surface.openPage(..., { as: 'window' })` just opened.
+        // `lx.surface.openPage(..., { as: 'window' })` just opened. Only a
+        // page-owned instance qualifies — that owner is what makes an instance
+        // isolated — and only while it is mounted or visible, so a torn-down
+        // or hidden instance can never stand in for a live one. Instance ids
+        // are random, so they only break ties, after a visible page has won.
         .or_else(|| {
             pages
                 .iter()
@@ -139,8 +143,10 @@ fn active_runtime_page_by_path<'a>(
                     page_paths_match(&page.path, path)
                         && page.stack_index.is_none()
                         && page.state.webview_ready
+                        && matches!(page.owner, crate::PageOwner::Page(_))
+                        && matches!(page.lifecycle.as_str(), "visible" | "mounted")
                 })
-                .max_by_key(|page| page.instance_id.as_str())
+                .max_by_key(|page| (page.lifecycle == "visible", page.instance_id.as_str()))
         })
 }
 
@@ -634,17 +640,56 @@ mod tests {
         assert_eq!(selected.instance_id, "upper");
     }
 
+    /// An isolated surface instance: page-owned, off the nav stack, never
+    /// "current" — what `lx.surface.openPage(..., { as: 'window' })` leaves
+    /// behind.
+    fn surface_runtime_page(
+        instance_id: &str,
+        path: &str,
+        lifecycle: &str,
+    ) -> crate::PageInstanceRuntimeInfo {
+        let mut page = runtime_page(instance_id, path, false, None);
+        page.owner = crate::PageOwner::Page(crate::PageInstanceId::new());
+        page.lifecycle = lifecycle.to_string();
+        page
+    }
+
     #[test]
     fn active_page_resolution_finds_an_off_stack_window_instance() {
-        let pages = vec![runtime_page(
+        let pages = vec![surface_runtime_page(
             "window-surface",
             "pages/surface/index.tsx",
-            false,
-            None,
+            "visible",
         )];
 
         let selected = active_runtime_page_by_path(&pages, "pages/surface/index.tsx").unwrap();
 
         assert_eq!(selected.instance_id, "window-surface");
+    }
+
+    #[test]
+    fn active_page_resolution_prefers_the_visible_window_instance() {
+        let pages = vec![
+            surface_runtime_page("mounted-window", "pages/surface/index.tsx", "mounted"),
+            surface_runtime_page("visible-window", "pages/surface/index.tsx", "visible"),
+        ];
+
+        let selected = active_runtime_page_by_path(&pages, "pages/surface/index.tsx").unwrap();
+
+        assert_eq!(selected.instance_id, "visible-window");
+    }
+
+    #[test]
+    fn active_page_resolution_skips_off_stack_instances_that_cannot_be_driven() {
+        let pages = vec![
+            // Closed surface: still recorded, no longer presentable.
+            surface_runtime_page("disposed-window", "pages/surface/index.tsx", "disposed"),
+            // Hidden float: alive, but not the active page at this path.
+            surface_runtime_page("hidden-window", "pages/surface/index.tsx", "hidden"),
+            // Off-stack main instance, e.g. mid navigation reset.
+            runtime_page("host-owned", "pages/surface/index.tsx", false, None),
+        ];
+
+        assert!(active_runtime_page_by_path(&pages, "pages/surface/index.tsx").is_none());
     }
 }
