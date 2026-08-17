@@ -2629,19 +2629,16 @@ fn parse_surface_options(
 
     let chrome = parse_window_chrome(&obj)?;
     Ok((
-        PageSurfaceRequest {
-            id: String::new(),
-            target,
-            query,
-            kind,
-            width,
-            height,
-            width_ratio,
-            height_ratio,
-            position,
-            role,
-            interaction,
-        },
+        PageSurfaceRequest::new(String::new(), target)
+            .query(query)
+            .kind(kind)
+            .width(width)
+            .height(height)
+            .width_ratio(width_ratio)
+            .height_ratio(height_ratio)
+            .position(position)
+            .role(role)
+            .interaction(interaction),
         chrome,
     ))
 }
