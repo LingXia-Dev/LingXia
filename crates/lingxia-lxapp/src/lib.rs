@@ -39,8 +39,8 @@ pub const SDK_RUNTIME_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub use appservice::PageSvc;
 #[cfg(feature = "js-appservice")]
 pub use appservice::event_bus::{
-    HandlerToken, register_app_handler, register_page_handler, unregister_app_handler,
-    unregister_app_handler_token, unregister_page_handler,
+    AppHandlerUnsub, HandlerToken, app_handler_unsub, register_app_handler, register_page_handler,
+    unregister_app_handler, unregister_app_handler_token, unregister_page_handler,
 };
 pub use appservice::event_bus::{publish_app_event, publish_page_event};
 pub use cache::touch_access_time;

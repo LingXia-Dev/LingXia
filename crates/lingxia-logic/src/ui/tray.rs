@@ -1,6 +1,6 @@
 use crate::i18n::js_error_from_platform_error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lxapp::{LxApp, register_app_handler, unregister_app_handler, unregister_app_handler_token};
+use lxapp::{LxApp, app_handler_unsub, register_app_handler, unregister_app_handler};
 use rong::{JSContext, JSFunc, JSObject, JSResult};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -83,7 +83,8 @@ fn on_click(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
     if CLICK_HANDLERS.fetch_add(1, Ordering::SeqCst) == 0 {
         let _ = lxapp.runtime.set_tray_click_intercept(true);
     }
-    let off_ctx = ctx.clone();
+    let off = app_handler_unsub(&ctx, "lx.tray.click", token);
+    let runtime = lxapp.runtime.clone();
     // Guard against a double `off()`: a second call must not decrement the count
     // again (which would underflow and break future interception).
     let unsubscribed = std::sync::atomic::AtomicBool::new(false);
@@ -91,11 +92,9 @@ fn on_click(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
         if unsubscribed.swap(true, Ordering::SeqCst) {
             return;
         }
-        unregister_app_handler_token(&off_ctx, "lx.tray.click", token);
-        if CLICK_HANDLERS.fetch_sub(1, Ordering::SeqCst) == 1
-            && let Ok(lxapp) = LxApp::from_ctx(&off_ctx)
-        {
-            let _ = lxapp.runtime.set_tray_click_intercept(false);
+        off.unsubscribe();
+        if CLICK_HANDLERS.fetch_sub(1, Ordering::SeqCst) == 1 {
+            let _ = runtime.set_tray_click_intercept(false);
         }
     })
 }

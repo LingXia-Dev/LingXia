@@ -9,7 +9,8 @@ use lingxia_platform::traits::ui::WindowChrome;
 use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 use lxapp::{
     LxApp, LxAppError, PageQueryInput, PageSurfaceRequest, PageSurfaceTarget, PageTarget,
-    publish_app_event, register_app_handler, try_get, unregister_app_handler_token,
+    app_handler_unsub, publish_app_event, register_app_handler, try_get,
+    unregister_app_handler_token,
 };
 use rong::{
     Class, HostError, IntoJSObject, JSContext, JSContextService, JSFunc, JSObject, JSResult,
@@ -297,13 +298,13 @@ fn surface_on_change(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
         unregister_app_handler_token(&ctx, SURFACE_CONTEXT_EVENT, token);
         return Err(err);
     }
-    let off_ctx = ctx.clone();
+    let off = app_handler_unsub(&ctx, SURFACE_CONTEXT_EVENT, token);
     let unsubscribed = Cell::new(false);
     JSFunc::new(&ctx, move || {
         if unsubscribed.replace(true) {
             return;
         }
-        unregister_app_handler_token(&off_ctx, SURFACE_CONTEXT_EVENT, token);
+        off.unsubscribe();
     })
 }
 

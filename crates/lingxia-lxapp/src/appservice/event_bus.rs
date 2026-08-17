@@ -4,6 +4,7 @@ use rong::{
 };
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::rc::{Rc, Weak};
 
 /// Internal scope marker. The page scope carries the page INSTANCE id, so
 /// one instance's teardown can never clear a same-path sibling's handlers.
@@ -22,10 +23,70 @@ pub(crate) struct AppBusEvent {
 }
 
 /// Handler registrations owned by one AppService context.
+///
+/// The map is `Rc` so an unsubscribe handle can reach it without cloning the
+/// `JSContext`. A context captured inside a JS-held Rust closure is opaque to
+/// the cycle collector — the pair keep each other alive. A weak handle also
+/// makes a late `off()` after shutdown a no-op instead of touching a dead
+/// context.
 #[derive(Default)]
 pub(crate) struct EventBusRegistry {
-    handlers: RefCell<HashMap<Scope, Vec<HandlerEntry>>>,
+    handlers: Rc<RefCell<HashMap<Scope, Vec<HandlerEntry>>>>,
     next_token: Cell<u64>,
+}
+
+/// Unsubscribe handle that does not retain a `JSContext`.
+#[derive(Clone)]
+pub struct AppHandlerUnsub {
+    handlers: Weak<RefCell<HashMap<Scope, Vec<HandlerEntry>>>>,
+    event_name: String,
+    token: HandlerToken,
+}
+
+impl AppHandlerUnsub {
+    /// Remove this registration. Safe after context shutdown (no-op).
+    pub fn unsubscribe(&self) -> usize {
+        let Some(handlers) = self.handlers.upgrade() else {
+            return 0;
+        };
+        unregister_app_token(&handlers, &self.event_name, self.token)
+    }
+}
+
+/// Build an unsubscribe handle for `token` that does not capture `ctx`.
+pub fn app_handler_unsub(
+    ctx: &JSContext,
+    event_name: impl Into<String>,
+    token: HandlerToken,
+) -> AppHandlerUnsub {
+    AppHandlerUnsub {
+        handlers: Rc::downgrade(&registry(ctx).handlers),
+        event_name: event_name.into(),
+        token,
+    }
+}
+
+fn unregister_app_token(
+    handlers: &RefCell<HashMap<Scope, Vec<HandlerEntry>>>,
+    event_name: &str,
+    token: HandlerToken,
+) -> usize {
+    if event_name.trim().is_empty() {
+        return 0;
+    }
+    let mut remaining = 0usize;
+    handlers.borrow_mut().retain(|scope, entries| {
+        if !matches!(scope, Scope::App) {
+            return true;
+        }
+        entries.retain(|handler| handler.event_name != event_name || handler.token != token);
+        remaining += entries
+            .iter()
+            .filter(|handler| handler.event_name == event_name)
+            .count();
+        !entries.is_empty()
+    });
+    remaining
 }
 
 /// Identifies one registration. An unsubscribe handle carries its token so it
@@ -108,23 +169,7 @@ pub fn unregister_app_handler_token(
     event_name: &str,
     token: HandlerToken,
 ) -> usize {
-    if event_name.trim().is_empty() {
-        return 0;
-    }
-    let registry = registry(ctx);
-    let mut remaining = 0usize;
-    registry.handlers.borrow_mut().retain(|scope, entries| {
-        if !matches!(scope, Scope::App) {
-            return true;
-        }
-        entries.retain(|handler| handler.event_name != event_name || handler.token != token);
-        remaining += entries
-            .iter()
-            .filter(|handler| handler.event_name == event_name)
-            .count();
-        !entries.is_empty()
-    });
-    remaining
+    unregister_app_token(&registry(ctx).handlers, event_name, token)
 }
 
 /// Unregister an app-scoped handler by event name.
@@ -374,6 +419,20 @@ mod token_tests {
         assert_eq!(unregister_app_handler_token(&ctx, "evt", first), 1);
         assert_eq!(unregister_app_handler_token(&ctx, "evt", second), 0);
         assert_eq!(unregister_app_handler_token(&ctx, "other", other), 0);
+        Ok(())
+    }
+
+    /// An unsubscribe handle reaches the registry through the shared map, not
+    /// a captured context — the cycle #246 is about.
+    #[test]
+    fn an_unsub_handle_does_not_need_the_context() -> JSResult<()> {
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        let callback = JSFunc::new(&ctx, || {})?;
+        let token = register_app_handler(&ctx, "evt", callback)?;
+        let off = app_handler_unsub(&ctx, "evt", token);
+        assert_eq!(off.unsubscribe(), 0);
+        assert_eq!(off.unsubscribe(), 0, "a second call is inert");
         Ok(())
     }
 }
