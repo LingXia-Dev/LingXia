@@ -671,12 +671,14 @@ pub mod capability {
             .unwrap_or(false)
     }
 
-    /// Driving the in-app browser's tabs. Reported as declared, matching what
-    /// the local control surface actually gates on.
+    /// Driving the in-app browser's tabs. `capabilities.browser` is the
+    /// prerequisite — there is nothing to drive without the engine — so both
+    /// have to be on. The declared flag alone would let `lx.supports` lie.
     pub fn browser_use() -> bool {
-        super::capabilities_config()
-            .map(|capabilities| capabilities.browser_use)
-            .unwrap_or(false)
+        browser()
+            && super::capabilities_config()
+                .map(|capabilities| capabilities.browser_use)
+                .unwrap_or(false)
     }
 
     /// The in-app browser's HTTP proxy. `capabilities.proxy` declares it and
