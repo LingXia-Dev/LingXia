@@ -325,7 +325,7 @@ impl AppRuntime for Platform {
         }
     }
 
-    fn activate_browser_tab(&self, tab_id: String) -> crate::traits::ui::ManagedSurfaceFuture {
+    fn activate_browser_tab(&self, tab_id: String) -> crate::traits::PlatformFuture {
         Box::pin(async move {
             if ffi::activate_browser_tab(&tab_id) {
                 Ok(())

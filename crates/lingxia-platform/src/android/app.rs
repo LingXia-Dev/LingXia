@@ -588,7 +588,7 @@ impl AppRuntime for Platform {
         .map_err(|e| PlatformError::Platform(format!("Failed to close_browser_tab: {}", e)))
     }
 
-    fn activate_browser_tab(&self, tab_id: String) -> crate::traits::ui::ManagedSurfaceFuture {
+    fn activate_browser_tab(&self, tab_id: String) -> crate::traits::PlatformFuture {
         Box::pin(async move {
             let host_class: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
                 .map_err(|e| PlatformError::Platform(e.to_string()))?;

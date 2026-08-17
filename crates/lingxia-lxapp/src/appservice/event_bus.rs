@@ -424,8 +424,9 @@ mod token_tests {
         Ok(())
     }
 
-    /// An unsubscribe handle reaches the registry through the shared map, not
-    /// a captured context — the cycle #246 is about.
+    /// The handle removes its registration without being handed a context.
+    /// (That it cannot form the #246 cycle is a property of the type — it
+    /// holds a `Weak` to the map, not a `JSContext` — not of this test.)
     #[test]
     fn an_unsub_handle_does_not_need_the_context() -> JSResult<()> {
         let runtime = RongJS::runtime();

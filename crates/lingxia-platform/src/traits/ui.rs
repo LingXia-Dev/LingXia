@@ -1,5 +1,4 @@
 use std::future::Future;
-use std::pin::Pin;
 
 use lingxia_surface::LayoutPresentationPlan;
 
@@ -168,8 +167,7 @@ pub struct SurfaceRequest {
 /// future directly. `SurfacePresenter` exposes only `ManagedSurfaceFuture`.
 pub type ManagedSurfaceCompletion = Box<dyn FnOnce(Result<(), PlatformError>) + Send + 'static>;
 
-pub type ManagedSurfaceFuture =
-    Pin<Box<dyn Future<Output = Result<(), PlatformError>> + Send + 'static>>;
+pub type ManagedSurfaceFuture = crate::traits::PlatformFuture;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ManagedSurfaceProvider {
