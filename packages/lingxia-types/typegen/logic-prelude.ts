@@ -158,18 +158,28 @@ declare global {
   }
 }
 
-/** A map of storage keys to stored value shapes. */
-export type StorageSchema = Record<string, unknown>;
+/**
+ * A map of storage keys to stored value shapes.
+ *
+ * `object` deliberately accepts both type aliases and interfaces. Requiring a
+ * string index signature would reject ordinary interface-based schemas.
+ */
+export type StorageSchema = object;
+
+type StorageKey<S extends object> = Extract<keyof S, string>;
+type StorageEntry<S extends object> = {
+  [K in StorageKey<S>]: [key: K, value: S[K]];
+}[StorageKey<S>];
 
 /**
  * Schema-typed view of the same store `lx.getStorage()` returns.
  * Runtime is identical; only the key/value types are pinned.
  */
 export type TypedStorage<S extends object> = {
-  get<K extends Extract<keyof S, string>>(key: K): Promise<S[K] | undefined>;
-  set<K extends Extract<keyof S, string>>(key: K, value: S[K]): Promise<void>;
-  delete(key: Extract<keyof S, string>): Promise<void>;
+  get<K extends StorageKey<S>>(key: K): Promise<S[K] | undefined>;
+  set(...entry: StorageEntry<S>): Promise<void>;
+  delete(key: StorageKey<S>): Promise<void>;
   clear(): Promise<void>;
-  list(prefix?: string): Promise<Array<Extract<keyof S, string>>>;
+  list(prefix?: string): Promise<Array<StorageKey<S>>>;
   info(): Promise<StorageInfo>;
 };

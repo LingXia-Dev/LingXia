@@ -1,6 +1,6 @@
 use crate::i18n::js_service_unavailable_error;
 use lxapp::LxApp;
-use rong::function::Optional;
+use rong::function::{Optional, This};
 use rong::{
     FromJSValue, IntoJSValue, JSContext, JSContextService, JSFunc, JSObject, JSResult, Promise,
 };
@@ -54,24 +54,25 @@ fn collect_iterator_keys(iterator: &JSObject) -> JSResult<Vec<String>> {
 /// The storage module resolves `list` to a JS iterator; `Storage.list` is an
 /// array, so shadow the prototype method on the instance.
 ///
-/// `backing` is a second instance of the same store, deliberately not the
-/// object the shim is installed on: capturing that object would make it
-/// reachable only through its own property, and a Rust closure is opaque to
-/// the JS cycle collector, so the pair could never be reclaimed.
-fn install_list_array_shim(ctx: &JSContext, storage: &JSObject, backing: JSObject) -> JSResult<()> {
-    let inner: JSFunc = backing.get("list")?;
-    let shim = JSFunc::new(ctx, move |prefix: Optional<String>| {
-        let inner = inner.clone();
-        let target = backing.clone();
-        async move {
-            let pending: Promise = match prefix.0 {
-                Some(prefix) => inner.call(Some(target), (prefix,))?,
-                None => inner.call(Some(target), ())?,
-            };
-            let iterator: JSObject = pending.into_future().await?;
-            collect_iterator_keys(&iterator)
-        }
-    })?;
+/// Resolve `this` at invocation time rather than capturing `storage`: a Rust
+/// closure is opaque to the JS cycle collector, so capturing the object that
+/// owns the closure would keep both alive forever.
+fn install_list_array_shim(ctx: &JSContext, storage: &JSObject, inner: JSFunc) -> JSResult<()> {
+    let shim = JSFunc::new(
+        ctx,
+        move |this: This<JSObject>, prefix: Optional<String>| {
+            let inner = inner.clone();
+            let target = (*this).clone();
+            async move {
+                let pending: Promise = match prefix.0 {
+                    Some(prefix) => inner.call(Some(target), (prefix,))?,
+                    None => inner.call(Some(target), ())?,
+                };
+                let iterator: JSObject = pending.into_future().await?;
+                collect_iterator_keys(&iterator)
+            }
+        },
+    )?;
     storage.set("list", shim)?;
     Ok(())
 }
@@ -117,8 +118,8 @@ fn expose_storage(ctx: &JSContext, service: &LxStorageService) -> JSResult<JSObj
         return Ok(existing.clone());
     }
     let object = JSObject::from_js_value(ctx, service.storage.clone().into_js_value(ctx))?;
-    let backing = JSObject::from_js_value(ctx, service.storage.clone().into_js_value(ctx))?;
-    install_list_array_shim(ctx, &object, backing)?;
+    let native_list: JSFunc = object.get("list")?;
+    install_list_array_shim(ctx, &object, native_list)?;
     *service.exposed.borrow_mut() = Some(object.clone());
     Ok(object)
 }

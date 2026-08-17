@@ -25,10 +25,10 @@ async function listResolvesAnArray(): Promise<number> {
   return keys.filter((key) => key.length > 0).length;
 }
 
-type TodoSchema = {
+interface TodoSchema {
   "todo:todos": Draft[];
   "todo:filter": string;
-};
+}
 
 declare const typed: TypedStorage<TodoSchema>;
 
@@ -42,8 +42,22 @@ async function schemaPinsKeysAndValues(): Promise<Draft[] | undefined> {
   return todos;
 }
 
+declare const unionKey: keyof TodoSchema;
+declare const unionValue: TodoSchema[keyof TodoSchema];
+
+async function schemaKeepsUnionKeysCorrelated(): Promise<void> {
+  // @ts-expect-error independently unioned keys and values are not correlated
+  await typed.set(unionKey, unionValue);
+}
+
 async function getStorageAcceptsASchema(): Promise<TypedStorage<TodoSchema>> {
   return lx.getStorage<TodoSchema>();
+}
+
+async function getStorageWithoutASchemaStaysUntyped(): Promise<void> {
+  const untyped = lx.getStorage();
+  await untyped.get<Draft>("draft");
+  await untyped.set("outside:any-schema", 1);
 }
 
 export type StorageTypingGate = [
@@ -51,5 +65,7 @@ export type StorageTypingGate = [
   typeof unannotatedValueStaysUnknown,
   typeof listResolvesAnArray,
   typeof schemaPinsKeysAndValues,
+  typeof schemaKeepsUnionKeysCorrelated,
   typeof getStorageAcceptsASchema,
+  typeof getStorageWithoutASchemaStaysUntyped,
 ];
