@@ -1181,7 +1181,7 @@ fn plugin_page_map_contains(
 mod tests {
     use super::{
         PAGE_STACK_MAX, PageInstanceLifecycleState, effective_page_instance_lifecycle,
-        validate_navigation_stack,
+        find_matching_page_path, validate_navigation_stack,
     };
     use crate::NavigationType;
 
@@ -1203,6 +1203,16 @@ mod tests {
         assert_eq!(
             effective_page_instance_lifecycle(None, false, "onReady", true),
             "mounted"
+        );
+    }
+
+    #[test]
+    fn host_webview_source_extension_resolves_to_the_configured_page() {
+        let pages = vec!["pages/home/index".to_string()];
+
+        assert_eq!(
+            find_matching_page_path(&pages, "pages/home/index.tsx"),
+            Some("pages/home/index")
         );
     }
 
