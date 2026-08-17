@@ -1101,6 +1101,75 @@ pub struct PageSurfaceRequest {
     pub interaction: Option<lingxia_surface::SurfaceInteraction>,
 }
 
+impl PageSurfaceRequest {
+    /// Required identity and content. Optional fields start unset; a float
+    /// overlay is the honest default for a sheet that did not pick a shape.
+    /// There is no `Default` — an empty id is not a request.
+    pub fn new(id: impl Into<String>, target: PageSurfaceTarget) -> Self {
+        Self {
+            id: id.into(),
+            target,
+            query: None,
+            kind: SurfaceKind::Overlay,
+            width: None,
+            height: None,
+            width_ratio: None,
+            height_ratio: None,
+            position: SurfacePosition::Center,
+            role: lingxia_surface::Role::Float,
+            interaction: None,
+        }
+    }
+
+    pub fn query(mut self, query: impl Into<Option<PageQueryInput>>) -> Self {
+        self.query = query.into();
+        self
+    }
+
+    pub fn kind(mut self, kind: SurfaceKind) -> Self {
+        self.kind = kind;
+        self
+    }
+
+    pub fn width(mut self, width: impl Into<Option<f64>>) -> Self {
+        self.width = width.into();
+        self
+    }
+
+    pub fn height(mut self, height: impl Into<Option<f64>>) -> Self {
+        self.height = height.into();
+        self
+    }
+
+    pub fn width_ratio(mut self, width_ratio: impl Into<Option<f64>>) -> Self {
+        self.width_ratio = width_ratio.into();
+        self
+    }
+
+    pub fn height_ratio(mut self, height_ratio: impl Into<Option<f64>>) -> Self {
+        self.height_ratio = height_ratio.into();
+        self
+    }
+
+    pub fn position(mut self, position: SurfacePosition) -> Self {
+        self.position = position;
+        self
+    }
+
+    pub fn role(mut self, role: lingxia_surface::Role) -> Self {
+        self.role = role;
+        self
+    }
+
+    pub fn interaction(
+        mut self,
+        interaction: impl Into<Option<lingxia_surface::SurfaceInteraction>>,
+    ) -> Self {
+        self.interaction = interaction.into();
+        self
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum PageSurfaceTarget {
     Page(PageTarget),

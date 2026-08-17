@@ -519,22 +519,15 @@ pub(crate) fn browser_create_webview(
                     };
                     static NEW_WINDOW_SEQ: std::sync::atomic::AtomicU64 =
                         std::sync::atomic::AtomicU64::new(1);
-                    let request = lxapp::PageSurfaceRequest {
-                        id: format!(
+                    let request = lxapp::PageSurfaceRequest::new(
+                        format!(
                             "surface-aside-newwin-{}",
                             NEW_WINDOW_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
                         ),
-                        target: lxapp::PageSurfaceTarget::Url(normalized),
-                        query: None,
-                        kind: lxapp::SurfaceKind::Overlay,
-                        width: None,
-                        height: None,
-                        width_ratio: None,
-                        height_ratio: None,
-                        position: lxapp::SurfacePosition::Right,
-                        role: lxapp::lingxia_surface::Role::Aside,
-                        interaction: None,
-                    };
+                        lxapp::PageSurfaceTarget::Url(normalized),
+                    )
+                    .position(lxapp::SurfacePosition::Right)
+                    .role(lxapp::lingxia_surface::Role::Aside);
                     let _ = owner.open_surface(request);
                 });
                 return NewWindowPolicy::Cancel;
