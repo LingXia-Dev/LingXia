@@ -5271,6 +5271,20 @@ fn host_window_owner_is_live(hwnd: HWND) -> bool {
         .is_some_and(|owner| hwnd_from_handle(owner.native_view().window) == hwnd)
 }
 
+/// True when `hwnd` claims a webtag whose content is now presented somewhere
+/// else: the parent window a page's WebView was created under, left behind
+/// when the controller moved into the workspace host. It keeps its chrome and
+/// its device frame but has nothing to paint, so once visible it is an empty
+/// duplicate of the app — a second taskbar button that stacks over the real
+/// window and swallows its clicks. A window still hosting its own webtag
+/// (a native-framed or `chrome: 'full'` page window, or one whose controller
+/// has not been marshalled yet) is not parked.
+fn window_is_parked_page_parent(hwnd: HWND) -> bool {
+    active_webtag_key_for_window(hwnd)
+        .and_then(|key| window_handle_for_key(&key))
+        .is_some_and(|presented| presented != hwnd)
+}
+
 fn focused_registered_host_window_except(excluded: Option<HWND>) -> Option<HWND> {
     let focused = unsafe { WindowsAndMessaging::GetForegroundWindow() };
     if focused.0.is_null() {
@@ -5324,7 +5338,12 @@ fn is_separate_shell_window(hwnd: HWND) -> bool {
 /// hidden. Real separate windows (native-framed, device-framed) stay.
 fn hide_other_workspace_windows(host: HWND) {
     for hwnd in registered_host_windows() {
-        if hwnd == host || !is_window_visible(hwnd) || is_separate_shell_window(hwnd) {
+        if hwnd == host || !is_window_visible(hwnd) {
+            continue;
+        }
+        // A parked page parent is never a legitimate separate window, however
+        // it is framed: whatever revealed it, converge it away here.
+        if is_separate_shell_window(hwnd) && !window_is_parked_page_parent(hwnd) {
             continue;
         }
         log::info!("hiding duplicate shell workspace window {:?}", hwnd.0);
@@ -9548,7 +9567,13 @@ fn invoke_close_handler(webtag_key: &str) -> bool {
 
 fn invoke_button_close_handler(webtag_key: &str) -> bool {
     let handler = webview_close_handler(webtag_key);
-    let owner = floating_overlay_owner(webtag_key).map(hwnd_handle);
+    // Focus goes back to an owner the user can still see; keep a minimized
+    // one (SW_RESTORE brings it back). A hidden owner must stay hidden:
+    // SW_SHOW would flash a parked page parent — an empty device-framed
+    // duplicate at its stale position — until the next present converges it.
+    let owner = floating_overlay_owner(webtag_key)
+        .filter(|owner| is_window_visible(*owner))
+        .map(hwnd_handle);
     if let Some(handler) = handler {
         let key = webtag_key.to_string();
         let _ = std::thread::Builder::new()
@@ -9835,6 +9860,14 @@ fn restore_primary_window_frame(hwnd: HWND) {
     if DEFAULT_HOST_HEADLESS.load(Ordering::Acquire) {
         return;
     }
+    // A simulated device's window is sized by its frame spec, not by the
+    // user. Restoring a persisted shell frame here — min-clamped to
+    // MAIN_WINDOW_MIN_WIDTH — stretches the screen past the bezel and
+    // strands the capsule chrome outside the device.
+    #[cfg(feature = "device-frame")]
+    if crate::device_frame::window_has_device_frame(hwnd_handle(hwnd)) {
+        return;
+    }
     let Some(rect) = persisted_window_rect() else {
         return;
     };
@@ -9870,6 +9903,13 @@ fn persist_primary_window_frame(hwnd: HWND) {
         || !is_window_visible(hwnd)
         || stored_primary_host_window().is_some_and(|primary| primary != hwnd)
     {
+        return;
+    }
+    // The simulator's frame-spec size is not a user-chosen shell size; saving
+    // it would feed the min-width clamp a phone-sized rect on the next
+    // restore.
+    #[cfg(feature = "device-frame")]
+    if crate::device_frame::window_has_device_frame(hwnd_handle(hwnd)) {
         return;
     }
 

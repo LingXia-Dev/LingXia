@@ -817,7 +817,7 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     // window visible/active before revealing the companion frame. Otherwise the
     // layered frame can appear first, leaving a transparent phone shell until
     // the user clicks the taskbar icon and Windows activates the content window.
-    foreground_content_window(content);
+    foreground_framed_content_window(content);
     if sync_host_layout {
         request_host_window_layout(content);
     }
@@ -984,6 +984,17 @@ fn restack_frame_below_content(content: HWND) {
         return;
     };
     if !is_window_handle_valid(frame) {
+        return;
+    }
+    // A hidden content window still receives z-order-only SetWindowPos calls
+    // (presentation restacks parked page parents while converging a group).
+    // Its bezel is hidden with it; SWP_SHOWWINDOW here would flash the black
+    // frame at the parked window's stale position until the next full sync.
+    let content_shown = unsafe {
+        WindowsAndMessaging::IsWindowVisible(content).as_bool()
+            && !WindowsAndMessaging::IsIconic(content).as_bool()
+    };
+    if !content_shown {
         return;
     }
     unsafe {
@@ -1165,6 +1176,23 @@ fn request_host_window_layout(hwnd: HWND) {
     });
 }
 
+/// Framing a window must never be what puts it on screen. Every page's WebView
+/// is created under its own parent window, and that window is left hidden once
+/// the controller moves into the workspace host — revealing it here surfaces an
+/// empty duplicate of the app, with its own taskbar button, that stacks over
+/// the real window and swallows its clicks. Presenting is what shows a window;
+/// this only raises one the user can already see (the device-switch case), and
+/// `sync_device_frame_for_content` reveals the bezel once the content shows.
+///
+/// The check stays on Win32 state: this runs on the window thread, which
+/// callers wait on while holding the host registries, so reading them here
+/// would stall every WebView command behind a five-second marshal timeout.
+fn foreground_framed_content_window(hwnd: HWND) {
+    if unsafe { WindowsAndMessaging::IsWindowVisible(hwnd).as_bool() } {
+        foreground_content_window(hwnd);
+    }
+}
+
 fn foreground_content_window(hwnd: HWND) {
     clear_last_sync_rect(hwnd_handle(hwnd));
     unsafe {
@@ -1188,7 +1216,7 @@ fn schedule_startup_frame_resync(handle: isize) {
                         if !is_window_handle_valid(handle) {
                             return;
                         }
-                        foreground_content_window(hwnd);
+                        foreground_framed_content_window(hwnd);
                         request_host_window_layout(hwnd);
                         sync_device_frame_for_content(hwnd);
                     }),
