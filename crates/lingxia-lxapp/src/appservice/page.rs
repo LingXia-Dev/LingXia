@@ -810,16 +810,16 @@ impl PageSvc {
     where
         F: FnMut(&JSValue),
     {
-        for (_, func) in self.functions.iter() {
+        for func in self.functions.values() {
             mark_fn(func.as_js_value());
         }
         mark_fn(self.this.as_js_value());
 
         if let Ok(state) = self.state.try_lock() {
-            for (_, func) in state.callback.iter() {
+            for func in state.callback.values() {
                 mark_fn(func.as_js_value());
             }
-            for (_, func) in state.state_callback.iter() {
+            for func in state.state_callback.values() {
                 mark_fn(func.as_js_value());
             }
             for channel in state.channels.values() {

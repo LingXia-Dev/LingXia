@@ -25,7 +25,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  RUST_TOOLCHAIN: "1.95.0"
+  RUST_TOOLCHAIN: "1.97.1"
 
 jobs:
   # Footgun guard: this executor is dispatched by "Release / 2. Publish
