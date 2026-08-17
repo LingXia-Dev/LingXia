@@ -148,5 +148,28 @@ declare global {
     downloadFile<TDestination extends DownloadDestination = "app">(
       options: DownloadOptions<TDestination>,
     ): DownloadTask<DownloadResultForDestination<TDestination>>;
+
+    /**
+     * Open this lxapp's store with every key's shape pinned on the handle.
+     * `get` / `set` / `delete` then share that schema instead of
+     * repeating `get<T>()` at each call site.
+     */
+    getStorage<S extends StorageSchema>(): TypedStorage<S>;
   }
 }
+
+/** A map of storage keys to stored value shapes. */
+export type StorageSchema = Record<string, unknown>;
+
+/**
+ * Schema-typed view of the same store `lx.getStorage()` returns.
+ * Runtime is identical; only the key/value types are pinned.
+ */
+export type TypedStorage<S extends object> = {
+  get<K extends Extract<keyof S, string>>(key: K): Promise<S[K] | undefined>;
+  set<K extends Extract<keyof S, string>>(key: K, value: S[K]): Promise<void>;
+  delete(key: Extract<keyof S, string>): Promise<void>;
+  clear(): Promise<void>;
+  list(prefix?: string): Promise<Array<Extract<keyof S, string>>>;
+  info(): Promise<StorageInfo>;
+};

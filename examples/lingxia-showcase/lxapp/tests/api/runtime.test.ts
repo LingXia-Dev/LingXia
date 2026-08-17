@@ -175,7 +175,7 @@ contract({
 contract({
   id: 'LOGIC-003',
   title: 'round-trip isolated key-value storage',
-  covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.list', 'Storage.delete'],
+  covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'],
   layer: 'logic',
   levels: ['semantic', 'boundary', 'lifecycle'],
   scope: 'portable',
@@ -191,7 +191,7 @@ contract({
       try {
         await storage.set(key, { ok: true, count: 2 });
         value = await storage.get(key);
-        present = (await storage.list()).includes(key);
+        present = await storage.has(key);
       } finally {
         await storage.delete(key);
       }
