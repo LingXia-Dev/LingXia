@@ -224,7 +224,9 @@ function verdictOf(report: JsonReport): { label: string; detail: string; tone: s
   if (broken > 0) {
     return {
       label: "Failed",
-      detail: `${broken} spec${broken === 1 ? "" : "s"} did not hold their contract.`,
+      detail: broken === 1
+        ? "1 spec did not hold its contract."
+        : `${broken} specs did not hold their contract.`,
       tone: "tone-fail",
     };
   }
@@ -876,6 +878,7 @@ table.assertions th, table.assertions td { text-align:left; vertical-align:top; 
   border-bottom:1px solid var(--line); }
 table.assertions th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
 table.assertions td { font-family:var(--mono); word-break:break-word; }
+table.assertions td:first-child, table.assertions td:nth-child(2) { white-space:nowrap; word-break:normal; }
 table.assertions td.pass { color:var(--pass); } table.assertions td.fail { color:var(--fail); }
 .row-fail { background:var(--fail-soft); }
 .empty { color:var(--muted); margin:8px 0; }
