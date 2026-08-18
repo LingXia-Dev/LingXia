@@ -6,11 +6,15 @@
   "keywords": ["lingxia", "miniapp", "html"],
   "author": "",
   "license": "MIT",
+  "scripts": {
+    "test": "node -e \"console.error('Start a session first: lingxia dev --background\\nThen run: lxdev test tests/'); process.exit(2)\""
+  },
   "dependencies": {
     "@lingxia/html": "{{LINGXIA_FRAMEWORK_RANGE}}"
   },
   "devDependencies": {
     "@lingxia/types": "{{LINGXIA_FRAMEWORK_RANGE}}",
+    "@lingxia/test": "{{LINGXIA_FRAMEWORK_RANGE}}",
     "typescript": "^5.9.3",
     "vite": "^8.0.0"
   }

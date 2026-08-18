@@ -17,16 +17,17 @@ export default function HomePage() {
         <div className="form">
           <input
             className="input"
+            data-testid="home-name"
             value={name}
             placeholder="Enter your name"
             onChange={e => setName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && submit()}
           />
-          <button className="btn" onClick={submit} disabled={!name.trim()}>
+          <button className="btn" data-testid="home-greet" onClick={submit} disabled={!name.trim()}>
             Say Hello
           </button>
         </div>
-        {data.greeting && <p className="greeting">{data.greeting}</p>}
+        {data.greeting && <p className="greeting" data-testid="home-greeting">{data.greeting}</p>}
         <LxNavigator url="https://www.lingxia.app" className="link">
           lingxia.app →
         </LxNavigator>

@@ -6,7 +6,7 @@ import { native } from '@lingxia/native';
 <template>
   <main class="page">
     <section class="card">
-      <h1>Hello, LingXia</h1>
+      <h1 data-testid="home-title">Hello, LingXia</h1>
       <p>Rust native APIs are available from the generated <code>native</code> module.</p>
     </section>
   </main>
