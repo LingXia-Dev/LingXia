@@ -22,6 +22,11 @@ pub fn package_dist(project: &Project) -> Result<PathBuf> {
         ));
     }
 
+    // Packaging is the distribution boundary, and a `dist/` can reach it
+    // without this CLI having built it — an older CLI, or an edit made after
+    // the build. Audit what is actually about to ship.
+    crate::lxapp::media::audit_output_media(&project.output_dir)?;
+
     let default_name = match project.kind {
         crate::lxapp::project::ProjectKind::LxApp => "lingxia-app",
         crate::lxapp::project::ProjectKind::LxPlugin => "lingxia-plugin",
