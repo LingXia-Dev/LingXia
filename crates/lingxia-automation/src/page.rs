@@ -301,9 +301,9 @@ impl JSPageDriver {
         // Reject a page name that isn't in the config up front, so a typo'd
         // `page` can't satisfy `gone` below.
         if !auto::page_name_known(&app, options.page.as_deref()) {
-            return Err(auto_err(format!(
-                "unknown page name: {}",
-                options.page.as_deref().unwrap_or_default()
+            return Err(auto_err(auto::unknown_page_name(
+                &app,
+                options.page.as_deref().unwrap_or_default(),
             )));
         }
         let timeout = Duration::from_millis(

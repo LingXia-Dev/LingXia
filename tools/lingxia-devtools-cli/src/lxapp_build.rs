@@ -3,6 +3,8 @@ use anyhow::Result;
 use clap::Args;
 use lingxia_control_protocol::methods;
 use serde_json::{Value, json};
+use std::collections::BTreeSet;
+use std::path::Path;
 
 /// Rebuild the lxapp front-end bundle for the selected session's project, then
 /// reload the running lxapp so the new bundle is live — the session is already
@@ -53,7 +55,7 @@ pub fn run(
     Ok(())
 }
 
-pub fn execute(ws_url: &str, options: &ReloadOptions) -> Result<()> {
+pub fn execute(project_root: &Path, ws_url: &str, options: &ReloadOptions) -> Result<()> {
     let appid = resolve_target(ws_url, &options.app)?;
     run(
         ws_url,
@@ -86,8 +88,77 @@ pub fn execute(ws_url: &str, options: &ReloadOptions) -> Result<()> {
             None if options.build_only => println!("✓ lxapp bundle rebuilt{suffix}"),
             None => println!("✓ lxapp bundle rebuilt{suffix} (no running lxapp to reload)"),
         }
+        if let Some(appid) = reloaded.as_deref() {
+            report_page_registry_drift(project_root, ws_url, appid);
+        }
     }
     Ok(())
+}
+
+/// The session builds its page registry when it starts, so a page added to
+/// `lxapp.json` afterwards is invisible to a reload. Saying nothing leaves the
+/// next `nav` answering `unknown page name` for a page the file clearly
+/// declares — the build succeeded, so the edit looks applied.
+fn report_page_registry_drift(project_root: &Path, ws_url: &str, appid: &str) {
+    let Some(declared) = manifest_page_names(project_root, appid) else {
+        return;
+    };
+    let Some(running) = session_page_names(ws_url, appid) else {
+        return;
+    };
+    let added: Vec<&str> = declared.difference(&running).map(String::as_str).collect();
+    let removed: Vec<&str> = running.difference(&declared).map(String::as_str).collect();
+    if added.is_empty() && removed.is_empty() {
+        return;
+    }
+    let mut parts = Vec::new();
+    if !added.is_empty() {
+        parts.push(format!("added {}", added.join(", ")));
+    }
+    if !removed.is_empty() {
+        parts.push(format!("removed {}", removed.join(", ")));
+    }
+    eprintln!(
+        "warning: lxapp.json declares a different page list than this session is running ({}). \
+Restart `lingxia dev` to apply it; a reload only rebuilds the bundle.",
+        parts.join("; ")
+    );
+}
+
+/// Page names from the project's own manifest, and only when it is the lxapp
+/// that was reloaded — a host project reloads bundles declared elsewhere.
+fn manifest_page_names(project_root: &Path, appid: &str) -> Option<BTreeSet<String>> {
+    let manifest: Value =
+        serde_json::from_str(&std::fs::read_to_string(project_root.join("lxapp.json")).ok()?)
+            .ok()?;
+    if manifest.get("appId").and_then(Value::as_str) != Some(appid) {
+        return None;
+    }
+    Some(
+        manifest
+            .get("pages")?
+            .as_array()?
+            .iter()
+            .filter_map(|page| page.get("name")?.as_str().map(ToOwned::to_owned))
+            .collect(),
+    )
+}
+
+fn session_page_names(ws_url: &str, appid: &str) -> Option<BTreeSet<String>> {
+    let pages = client::execute_command(
+        ws_url,
+        methods::lxapp::PAGES,
+        Some(json!({ "appid": appid })),
+    )
+    .ok()??;
+    Some(
+        pages
+            .get("pages")?
+            .as_array()?
+            .iter()
+            .filter_map(|page| page.get("name")?.as_str().map(ToOwned::to_owned))
+            .collect(),
+    )
 }
 
 /// Resolve `app` before building so the orchestrator can rebuild the matching
