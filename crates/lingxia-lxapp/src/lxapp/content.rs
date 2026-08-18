@@ -8,14 +8,6 @@ impl LxApp {
     /// settles on UTF-8 while it is still sniffing for an encoding.
     const CHARSET_META: &'static str = r#"<meta charset="utf-8" />"#;
 
-    fn trusted_domains_snapshot(&self) -> Vec<String> {
-        self.state
-            .lock()
-            .unwrap()
-            .network_security
-            .domains_snapshot()
-    }
-
     /// Generate processed HTML content for a page
     ///
     /// This reads the HTML file. If it cannot be read, returns a 404 page.
@@ -138,7 +130,7 @@ impl LxApp {
     }
 
     fn content_security_policy(&self) -> String {
-        build_content_security_policy(&self.trusted_domains_snapshot())
+        build_content_security_policy()
     }
 
     fn inject_bridge_config(&self, html_data: &[u8], bridge_nonce: Option<&str>) -> Vec<u8> {
@@ -211,7 +203,7 @@ impl LxApp {
     }
 }
 
-fn build_content_security_policy(_trusted_domains: &[String]) -> String {
+fn build_content_security_policy() -> String {
     [
         "default-src 'self' lx: lingxia:".to_string(),
         // Images are passive, non-executing content: restricting their
@@ -221,12 +213,12 @@ fn build_content_security_policy(_trusted_domains: &[String]) -> String {
         // predeclare in trustedDomains. All https images are therefore
         // allowed; network *requests* (fetch) remain gated by
         // security.network.trustedDomains in the Logic runtime.
+        // no media-src: View media is rejected by lingxia build; leftovers use default-src.
         "img-src 'self' lx: lingxia: data: blob: https:".to_string(),
         build_connect_src_policy(),
         "script-src 'self' lx: lingxia: 'unsafe-inline'".to_string(),
         "style-src 'self' lx: lingxia: 'unsafe-inline'".to_string(),
         "font-src 'self' lx: lingxia: data:".to_string(),
-        "media-src 'none'".to_string(),
         "worker-src 'none'".to_string(),
         "child-src 'none'".to_string(),
         "frame-src 'none'".to_string(),
@@ -373,36 +365,29 @@ mod tests {
 
     #[test]
     fn csp_allows_all_https_images() {
-        let csp = build_content_security_policy(&[
-            "cdn.example.com".to_string(),
-            "*.img.example.com".to_string(),
-        ]);
+        let csp = build_content_security_policy();
 
-        // Images are passive content: https: is always allowed regardless of
-        // trustedDomains (which continue to gate fetch in the Logic runtime).
+        // Images are passive content: https: is always allowed. Fetch stays
+        // gated by trustedDomains in the Logic runtime, not by CSP.
         assert!(csp.contains("img-src 'self' lx: lingxia: data: blob: https:"));
-        assert!(!csp.contains("https://cdn.example.com"));
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         assert!(csp.contains("connect-src lx-apple:"));
         #[cfg(not(any(target_os = "ios", target_os = "macos")))]
         assert!(csp.contains("connect-src 'none'"));
-        assert!(csp.contains("media-src 'none'"));
         assert!(csp.contains("frame-src 'none'"));
+        assert!(csp.contains("object-src 'none'"));
+        assert!(csp.contains("child-src 'none'"));
+        assert!(csp.contains("worker-src 'none'"));
+        assert!(csp.contains("base-uri 'none'"));
+        assert!(csp.contains("form-action 'none'"));
         assert!(!csp.contains("default-src 'self' lx: data:"));
     }
 
     #[test]
-    fn csp_wildcard_trusted_domain_allows_https_images() {
-        let csp = build_content_security_policy(&["*".to_string()]);
-
-        assert!(csp.contains("img-src 'self' lx: lingxia: data: blob: https:"));
-        assert!(!csp.contains("https://*"));
-    }
-
-    #[test]
-    fn csp_without_trusted_domains_still_allows_https_images() {
-        let csp = build_content_security_policy(&[]);
-        assert!(csp.contains("img-src 'self' lx: lingxia: data: blob: https:"));
+    fn csp_does_not_set_media_src() {
+        let csp = build_content_security_policy();
+        assert!(!csp.contains("media-src"));
+        assert!(csp.contains("default-src 'self' lx: lingxia:"));
     }
 
     #[test]
