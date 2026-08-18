@@ -20,7 +20,7 @@ use crate::model::ProcessInfo;
 use crate::model::{AxNode, AxQuery};
 #[cfg(feature = "diagnostics")]
 use crate::model::{Capabilities, Doctor, Permissions};
-#[cfg(feature = "snapshot")]
+#[cfg(any(feature = "snapshot", feature = "desktop-capture-engine"))]
 use crate::model::{Capture, CaptureTarget, Pixel};
 #[cfg(feature = "window")]
 use crate::model::{Display, Window, WindowQuery, WindowTarget};
@@ -65,6 +65,11 @@ pub fn displays() -> Result<Vec<Display>> {
 
 #[cfg(feature = "window")]
 pub fn windows(_query: &WindowQuery) -> Result<Vec<Window>> {
+    unsupported()
+}
+
+#[cfg(feature = "desktop-capture-engine")]
+pub fn capture_frame(_target: &CaptureTarget) -> Result<crate::engine::EngineFrame> {
     unsupported()
 }
 

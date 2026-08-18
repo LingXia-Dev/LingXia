@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Windows uses physical pixels. macOS uses global display points and reports
 /// each display/window scale so callers can convert to backing pixels.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Rect {
     pub x: i32,
     pub y: i32,

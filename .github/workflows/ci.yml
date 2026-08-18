@@ -524,6 +524,12 @@ jobs:
         shell: bash
         run: cargo test -p lingxia-device-io --features full --lib
 
+      - name: Test capture pipeline and desktop geometry
+        shell: bash
+        run: |
+          cargo test -p lingxia-media --no-default-features --features capture --lib
+          cargo test -p lingxia-device-io --no-default-features --features realtime-capture-provider --lib geometry
+
       # Linear in the number of features, not 2^N. The cargo-tree script below
       # already asserts the capability graph; this only type-checks each public
       # feature plus `full` on the real Windows backend.

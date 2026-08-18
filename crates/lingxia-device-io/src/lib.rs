@@ -11,10 +11,7 @@ pub mod model;
 #[cfg(feature = "wire")]
 pub mod wire;
 
-#[cfg(all(
-    feature = "supervision",
-    any(target_os = "macos", target_os = "windows")
-))]
+#[cfg(feature = "supervision")]
 mod supervision_state;
 
 pub use error::{Error, ErrorCode, Result};
@@ -118,14 +115,34 @@ pub mod window {
     };
 }
 
-/// Sessionless, one-shot visual capture.
-///
-/// This facade is deliberately separate from persistent/realtime media
-/// capture. It owns no session and captures only visual desktop content.
-#[cfg(feature = "snapshot")]
+/// Sessionless, one-shot visual capture and the optional desktop realtime
+/// adapter. Snapshot stays visual-only and never enables the capture contract.
+#[cfg(any(feature = "snapshot", feature = "realtime-capture-provider"))]
 pub mod capture {
+    #[cfg(feature = "snapshot")]
     pub use crate::backend::{pixel, screenshot as snapshot, wait_pixel};
+
+    #[cfg(feature = "realtime-capture-provider")]
+    pub use crate::geometry::{identity_geometry, map_normalized_pointer};
+
+    #[cfg(all(
+        feature = "realtime-capture-provider",
+        any(target_os = "windows", target_os = "macos")
+    ))]
+    pub use crate::realtime::DesktopRealtimeProvider;
 }
+
+#[cfg(feature = "desktop-capture-engine")]
+mod engine;
+
+#[cfg(feature = "realtime-capture-provider")]
+mod geometry;
+
+#[cfg(all(
+    feature = "realtime-capture-provider",
+    any(target_os = "windows", target_os = "macos")
+))]
+mod realtime;
 
 #[cfg(all(feature = "native", target_os = "windows"))]
 #[path = "win/mod.rs"]

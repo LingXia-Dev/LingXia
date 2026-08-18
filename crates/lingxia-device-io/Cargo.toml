@@ -26,7 +26,18 @@ clipboard = ["input"]
 diagnostics = ["native"]
 input = ["native"]
 process = ["native"]
-snapshot = ["window", "dep:image", "dep:log"]
+# Shared sessionless visual engine. Implementation feature; enable snapshot
+# or realtime-capture-provider rather than this name directly.
+desktop-capture-engine = ["window", "dep:log"]
+snapshot = ["desktop-capture-engine", "dep:image"]
+# Desktop adapter for the platform capture contract. Snapshot must not
+# enable this, and this must not enable system-audio or microphone code.
+realtime-capture-provider = [
+    "desktop-capture-engine",
+    "dep:image",
+    "dep:lingxia-platform",
+    "lingxia-platform/capture-contract",
+]
 supervision = ["snapshot", "dep:lingxia-app-context"]
 window = ["native"]
 wire = []
@@ -53,6 +64,7 @@ base64 = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true, optional = true }
 lingxia-app-context = { workspace = true, optional = true }
+lingxia-platform = { workspace = true, optional = true }
 image = { version = "0.25", optional = true, default-features = false, features = ["png"] }
 
 [dev-dependencies]
