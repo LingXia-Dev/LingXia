@@ -1,6 +1,6 @@
 use super::{
-    ViewUsageAudit, analyze_script_bindings, ensure_no_direct_lx_usage, ensure_used_actions_exist,
-    line_number_for_offset,
+    ViewUsageAudit, analyze_script_bindings, downstream_action_usage, ensure_no_direct_lx_usage,
+    ensure_used_actions_exist, line_number_for_offset,
 };
 use crate::lxapp::framework::PageAction;
 use crate::lxapp::project::Project;
@@ -17,10 +17,10 @@ struct VueTemplateExpression {
 }
 
 #[derive(Debug, Clone)]
-struct VueSfcSections {
-    script: String,
-    script_source_type: SourceType,
-    template: String,
+pub(super) struct VueSfcSections {
+    pub(super) script: String,
+    pub(super) script_source_type: SourceType,
+    pub(super) template: String,
 }
 
 pub(super) fn validate_vue_bindings(
@@ -31,7 +31,7 @@ pub(super) fn validate_vue_bindings(
     let source_path = project.root.join(page_path);
     let source = fs::read_to_string(&source_path)
         .with_context(|| format!("Failed to read {}", source_path.display()))?;
-    let sections = extract_vue_sfc_sections(&source);
+    let sections = sfc_sections(&source);
     let defined_actions = actions
         .iter()
         .map(|action| action.name.as_str())
@@ -47,9 +47,16 @@ pub(super) fn validate_vue_bindings(
     )?;
 
     let mut used_actions = script_analyzer.used_actions.clone();
+    let mut actions_escaped = script_analyzer.actions_escaped;
     mark_channel_topic_actions(&sections.script, actions, &mut used_actions);
     for expression in extract_vue_template_expressions(&sections.template) {
         let raw = expression.raw.trim();
+        if is_identifier_name(raw) && script_analyzer.action_object_aliases.contains(raw) {
+            // `:actions="actions"` hands the whole object to a child component,
+            // which is then where the wiring lives.
+            actions_escaped = true;
+            continue;
+        }
         if is_identifier_name(raw) && defined_actions.contains(raw) {
             used_actions.insert(raw.to_string());
             continue;
@@ -82,10 +89,42 @@ pub(super) fn validate_vue_bindings(
             );
         }
         used_actions.extend(template_analyzer.used_actions);
+        // In an SFC the object is handed to a child from the template, so the
+        // template is where the escape shows up.
+        actions_escaped |= template_analyzer.actions_escaped;
     }
 
     ensure_used_actions_exist(page_path, actions, &used_actions)?;
-    Ok(ViewUsageAudit { used_actions })
+    let mut unused_reportable = true;
+    if actions_escaped {
+        let (downstream, complete) = downstream_action_usage(project, &source_path);
+        used_actions.extend(downstream);
+        unused_reportable = complete;
+    }
+    Ok(ViewUsageAudit {
+        used_actions,
+        unused_reportable,
+    })
+}
+
+/// Action names a child template reads through an `actions` object, used when
+/// following the components a page composition root renders.
+pub(super) fn template_action_names(template: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for expression in extract_vue_template_expressions(template) {
+        let Ok(analyzer) = analyze_script_bindings(
+            &expression.source,
+            SourceType::ts(),
+            Some((
+                std::collections::HashSet::from(["actions".to_string()]),
+                std::collections::HashMap::new(),
+            )),
+        ) else {
+            continue;
+        };
+        names.extend(analyzer.used_actions);
+    }
+    names
 }
 
 fn mark_channel_topic_actions(
@@ -105,7 +144,7 @@ fn mark_channel_topic_actions(
     }
 }
 
-fn extract_vue_sfc_sections(source: &str) -> VueSfcSections {
+pub(super) fn sfc_sections(source: &str) -> VueSfcSections {
     let mut script = String::new();
     let mut script_source_type = SourceType::ts();
     let mut cursor = 0;
