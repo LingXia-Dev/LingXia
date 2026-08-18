@@ -2,6 +2,7 @@ use crate::dismissal::{canceled, completed};
 use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_lxapp_error,
     js_error_from_platform_error, js_internal_error, js_invalid_parameter_error,
+    js_resource_not_found_error,
 };
 use base64::{Engine as _, engine::general_purpose};
 use lingxia_service::file::{
@@ -796,8 +797,23 @@ fn ensure_no_symlink_ancestors(
 }
 
 fn symlink_metadata(managed: &ManagedPath, api_name: &'static str) -> JSResult<std::fs::Metadata> {
-    std::fs::symlink_metadata(&managed.path)
-        .map_err(|err| js_internal_error(format!("{api_name} stat failed: {err}")))
+    std::fs::symlink_metadata(&managed.path).map_err(|err| filesystem_error(err, api_name))
+}
+
+/// "Does this file exist?" is the most common question asked of the filesystem
+/// and its answer is not an internal error. Map the outcomes a caller can act
+/// on; keep `E_INTERNAL` for the ones that really are our fault.
+fn filesystem_error(err: std::io::Error, api_name: &'static str) -> rong::RongJSError {
+    match err.kind() {
+        std::io::ErrorKind::NotFound => {
+            js_resource_not_found_error(format!("{api_name}: no such file or directory"))
+        }
+        // 3000-range business codes surface as E_PERMISSION_DENIED.
+        std::io::ErrorKind::PermissionDenied => {
+            js_error_from_business_code_with_detail(3000, format!("{api_name}: permission denied"))
+        }
+        _ => js_internal_error(format!("{api_name} failed: {err}")),
+    }
 }
 
 fn mark_usercache_access(path: &ManagedPath) {
@@ -954,13 +970,12 @@ fn ensure_read_file_size(size: u64, api_name: &'static str) -> JSResult<()> {
 
 fn read_file_bytes(path: &Path, expected_size: u64, api_name: &'static str) -> JSResult<Vec<u8>> {
     ensure_read_file_size(expected_size, api_name)?;
-    let file = std::fs::File::open(path)
-        .map_err(|err| js_internal_error(format!("{api_name} failed: {err}")))?;
+    let file = std::fs::File::open(path).map_err(|err| filesystem_error(err, api_name))?;
     let mut reader = file.take(READ_FILE_MAX_BYTES + 1);
     let mut bytes = Vec::with_capacity(expected_size as usize);
     reader
         .read_to_end(&mut bytes)
-        .map_err(|err| js_internal_error(format!("{api_name} failed: {err}")))?;
+        .map_err(|err| filesystem_error(err, api_name))?;
     ensure_read_file_size(bytes.len() as u64, api_name)?;
     Ok(bytes)
 }
