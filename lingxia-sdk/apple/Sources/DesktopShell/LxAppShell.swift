@@ -783,16 +783,26 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     private func setupNotificationObservers() {
-        // Automation mutated a window frame directly. Like a user drag, that
-        // supersedes any delayed panel-layout frame restoration — restoring
-        // the pre-panel frame afterwards would fight the requested geometry.
+        // Automation is about to mutate a window frame directly. Like a user
+        // drag, that supersedes any delayed panel-layout frame restoration —
+        // restoring the pre-panel frame afterwards would fight the requested
+        // geometry. The notice is posted on the main queue ahead of the frame
+        // write, so the bump has to be synchronous with delivery: hopping
+        // through a Task would let a restoration already due run first and
+        // still read the stale generation.
         automationWindowMutationObserver = NotificationCenter.default.addObserver(
             forName: Notification.Name("LingXiaAutomationWindowMutation"),
             object: nil,
-            queue: .main
+            queue: nil
         ) { [weak self] _ in
-            Task { @MainActor in
-                self?.panelFramePreservationGeneration &+= 1
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    self?.panelFramePreservationGeneration &+= 1
+                }
+            } else {
+                Task { @MainActor in
+                    self?.panelFramePreservationGeneration &+= 1
+                }
             }
         }
         sidebarRefreshObserver = NotificationCenter.default.addObserver(
