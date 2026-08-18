@@ -47,9 +47,10 @@ object MediaProjectionCapture {
         val projection = manager.getMediaProjection(pending.first, pending.second) ?: return null
         projection.registerCallback(
             object : MediaProjection.Callback() {
+                // Consent lives on this side until a capture session exists to
+                // notify; a start after this point must collect a fresh result.
                 override fun onStop() {
                     activeProjection.compareAndSet(projection, null)
-                    nativeOnProjectionStopped()
                 }
             },
             null,
@@ -78,7 +79,4 @@ object MediaProjectionCapture {
         }
         return types
     }
-
-    @JvmStatic
-    private external fun nativeOnProjectionStopped()
 }

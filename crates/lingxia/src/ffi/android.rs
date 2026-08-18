@@ -1620,12 +1620,3 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_shouldEnableWebViewDebuggi
 ) -> jboolean {
     crate::should_enable_webview_debugging()
 }
-
-#[cfg(feature = "android-capture")]
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_app_MediaProjectionCapture_nativeOnProjectionStopped(
-    _env: EnvUnowned,
-    _class: JClass,
-) {
-    lingxia_platform::capture::android::on_projection_stopped(0);
-}
