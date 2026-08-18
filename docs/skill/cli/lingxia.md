@@ -93,6 +93,9 @@ ABIs / macOS arch. When a host project has `lingxia.yaml`, `build` additionally
 prepares configured host assets; lxapp builds generate the Native client when
 `lxapp.config.ts` declares `native`.
 
+`build` also enforces the View/Logic boundary — see
+[LxApp → Build](../lxapp/guide.md#build).
+
 Flags: `lingxia build --help`. Platform signing setup: [Distribution → App signing](./distribution.md#app-signing).
 
 ### `lingxia clean`
