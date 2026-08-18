@@ -839,14 +839,6 @@ jobs:
           }
           bash -n scripts/automation/run-macos-showcase.sh
           if ($LASTEXITCODE -ne 0) { throw 'Could not parse macOS automation runner.' }
-          foreach ($script in @(
-            'scripts/ci/cli-fingerprint.sh',
-            'scripts/ci/cli-inputs-changed.sh',
-            'scripts/ci/resolve-cli.sh'
-          )) {
-            bash -n $script
-            if ($LASTEXITCODE -ne 0) { throw "Could not parse $script." }
-          }
 
   showcase-automation:
     needs: changes
@@ -878,10 +870,6 @@ jobs:
 
       - uses: ./.github/actions/bootstrap-apple-sdk
         if: runner.os == 'macOS'
-
-      - uses: ./.github/actions/resolve-cli
-        with:
-          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
 
       - name: Install showcase test dependencies
         working-directory: examples/lingxia-showcase/lxapp
