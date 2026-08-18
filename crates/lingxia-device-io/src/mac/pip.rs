@@ -822,14 +822,22 @@ fn refresh_loop(generation: u64) {
         let Some(watch) = watch else { return };
 
         if idle {
-            if state().session.is_some() {
+            // Read it out first: an `if` condition's guard outlives the
+            // branch, and sleeping under this lock stalls every main-queue
+            // hop that needs it.
+            let in_session = state().session.is_some();
+            if in_session {
                 // Disclosure stays up for the whole session. Resting would
                 // clear the target and end this loop, leaving the panel on
                 // screen showing a frame from before the lull.
                 std::thread::sleep(interval);
                 continue;
             }
-            if let Some(epoch) = state().activity.rest(generation, epoch) {
+            // Rest, then hide, in two statements: `put_away` hops to the
+            // main queue and takes this lock there, so holding the guard
+            // across the call through an `if let` scrutinee deadlocks.
+            let rested = state().activity.rest(generation, epoch);
+            if let Some(epoch) = rested {
                 put_away(epoch);
             }
             return;
