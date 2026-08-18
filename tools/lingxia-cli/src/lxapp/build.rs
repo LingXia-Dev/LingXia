@@ -112,6 +112,8 @@ fn run_with_context(args: &[String], cwd: &Path, dev_session: bool) -> Result<()
         view_duration,
     );
 
+    crate::lxapp::audit_output_media(&project.output_dir)?;
+
     if options.release {
         crate::lxapp::hardening::harden_release_output(&project)?;
     }
