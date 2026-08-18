@@ -53,9 +53,16 @@ while queue:
 for package_id in seen:
     directory = os.path.dirname(packages[package_id]["manifest_path"])
     if directory.startswith(root):
-        print(os.path.relpath(directory, root))
+        # git and the fingerprint list both speak forward slashes.
+        print(os.path.relpath(directory, root).replace(os.sep, "/"))
 ' | sort)
-  missing=$(comm -23 <(printf '%s\n' "$linked") <(bash "$script_dir/cli-fingerprint.sh" --paths | sort))
+  # `comm` needs both sides in the same collation, which differs between the
+  # runners; match by line instead so the check cannot depend on sort order.
+  # `grep -v` exits 1 when nothing is missing, which is the passing case.
+  missing=$(
+    grep -Fxv -f <(bash "$script_dir/cli-fingerprint.sh" --paths | tr -d '\r') \
+      <<<"$(tr -d '\r' <<<"$linked")" || true
+  )
   [[ -z "$missing" ]] || fail "linked crates absent from the fingerprint: $(tr '\n' ' ' <<<"$missing")"
 fi
 
