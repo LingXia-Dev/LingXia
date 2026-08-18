@@ -1,25 +1,19 @@
 # lingxia-media
 
-Shared media playback abstractions for LingXia.
+Shared media playback and realtime-capture abstractions for LingXia.
 
-## What it provides
+## Features
 
-- `StreamProvider` and `StreamSession` traits
-- `FrameSink` for pushing decoded audio/video frames into platform decoders
-- Global provider registration/lookup helpers
-- Stream seek callback registration
+- `playback` (default): `StreamProvider` / `StreamSession` / `FrameSink`
+- `capture`: multi-track realtime pipeline over an explicit `CaptureProviderSet`
 
-## Primary module
+`capture` depends on `lingxia-platform/capture-contract` and must not depend on
+`lingxia-device-io`. Enabling the contract never enables a concrete native
+provider.
 
-- `playback`: runtime-neutral video/audio streaming interfaces used by higher-level
-  playback integrations
+## Modules
 
-Playback is the default Cargo feature. Consumers that do not use playback can
-set `default-features = false`, keeping its platform decoder dependency out of
-their resolved feature graph.
+- `playback`: runtime-neutral video/audio streaming interfaces
+- `capture`: authorization-aware multi-track capture, generations, backpressure
 
-## Notes
-
-This crate defines playback contracts. Device capture and other input concerns
-belong to device I/O; concrete playback, decoder, and platform implementations
-live in platform/runtime crates.
+Consumers that do not use playback can set `default-features = false`.
