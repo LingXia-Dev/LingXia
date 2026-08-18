@@ -8,6 +8,11 @@ repository.workspace = true
 keywords = ["lingxia", "platform", "lxapp", "cross-platform"]
 categories = ["api-bindings"]
 
+[features]
+# Traits and value types only. Enabling this never constructs a native
+# capture stack or an always-unsupported placeholder.
+capture-contract = []
+
 [dependencies]
 thiserror = { workspace = true }
 log = { workspace = true }
