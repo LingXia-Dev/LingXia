@@ -5,5 +5,9 @@
   "description": "LingXia in-repo library workspace: links and builds the @lingxia/* packages for local development. Living under packages/ (not the repo root) keeps the example apps in examples/ as standalone installs, untouched by this workspace.",
   "workspaces": [
     "*"
-  ]
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm test --workspaces --if-present"
+  }
 }
