@@ -531,6 +531,20 @@ jobs:
         shell: bash
         run: cargo hack check -p lingxia-device-io --each-feature --no-dev-deps
 
+      # A desktop host that declares computerUse + mediaCapture builds
+      # device-io with `full` and `realtime-capture-provider`. --each-feature
+      # never compiles that union, and no workspace member enables the
+      # realtime provider. Skip until the feature exists so this gate can
+      # merge ahead of the capture pipeline.
+      - name: Check Windows device-io product union
+        shell: bash
+        run: |
+          if grep -q '^realtime-capture-provider' crates/lingxia-device-io/Cargo.toml; then
+            cargo check -p lingxia-device-io --features full,realtime-capture-provider
+          else
+            echo "realtime-capture-provider is not in this tree; skipping product-union check"
+          fi
+
       - name: Verify device-io feature boundaries
         shell: bash
         run: bash scripts/ci/check-device-io-features.sh
