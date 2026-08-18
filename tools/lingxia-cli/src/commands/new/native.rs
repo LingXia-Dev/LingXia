@@ -104,7 +104,7 @@ fn create_root_gitignore(config: &ProjectConfig) -> Result<()> {
 
 pub(super) fn create_rust_library(
     config: &ProjectConfig,
-    versions: &LingXiaVersions,
+    _versions: &LingXiaVersions,
     app_service: AppServiceMode,
 ) -> Result<()> {
     let project_root = &config.target_dir;
@@ -143,7 +143,7 @@ pub(super) fn create_rust_library(
 
     vars.insert(
         "LINGXIA_VERSION".to_string(),
-        versions.lingxia_crate.clone(),
+        crate::versions::cargo_compat_req(),
     );
     vars.insert(
         "HOST_DEFAULT_FEATURES".to_string(),

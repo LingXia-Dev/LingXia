@@ -22,6 +22,12 @@ CRATES=(
   "lingxia-media"
   "lingxia-service"
 
+  # Terminal backend has no workspace deps; config sits on app-context +
+  # terminal. Both must precede lingxia-logic / lingxia, which take them as
+  # optional `terminal` / `terminal-runtime` features.
+  "lingxia-terminal"
+  "lingxia-terminal-config"
+
   # Core runtime crates.
   "lingxia-lxapp"
   "lingxia-logic"
@@ -33,7 +39,6 @@ CRATES=(
   "lingxia-browser"
   "lingxia-automation"
   "lingxia-browser-shell"
-  "lingxia-terminal"
 
   # Control protocol is consumed by SDK/tools and by lingxia-control-runtime.
   "lingxia-control-protocol"

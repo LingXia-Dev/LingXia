@@ -34,6 +34,7 @@ With --component all (default), this updates:
   - example native host LingXia crate dependency versions
   - example native host Cargo.lock LingXia package versions
   - package versions under packages/*
+  - @lingxia/browser-shell-webui (crates/lingxia-browser-shell/webui)
   - the @lingxia/skill manifest version (kept in lockstep with its package.json)
   - internal @lingxia/* package dependency versions in published package.json files
 EOF
@@ -172,11 +173,8 @@ if component == "all":
     for key in [
         "bridge-version",
         "polyfills-version",
-        "types-version",
         "rust-crate-version",
         "sdk-version",
-        "browser-shell-webui-version",
-        "resource-bundle-version",
     ]:
         pattern = rf'(^\s*{re.escape(key)}\s*=\s*")[^"]+(")'
         text, changed = re.subn(pattern, rf'\g<1>{version}\2', text, count=1, flags=re.MULTILINE)
@@ -220,6 +218,13 @@ function rewriteLingxiaRange(spec, version) {
   const match = spec.match(/^(\^|~|>=|<=|>|<|=)?\s*\d+\.\d+\.\d+$/);
   if (match) {
     const prefix = match[1] ?? "";
+    // Internal npm deps stay on the minor line so a package that was not
+    // republished on this patch still satisfies dependents. Normalize legacy
+    // caret ranges because ^1.2.0 would also admit later minor releases.
+    if (prefix === "^" || prefix === "~") {
+      const [major, minor] = version.split(".");
+      return `~${major}.${minor}.0`;
+    }
     return `${prefix}${version}`;
   }
 
@@ -407,6 +412,8 @@ update_example_host_lock
 while IFS= read -r package_json; do
   update_package_json "$package_json"
 done < <(find "$ROOT_DIR/packages" -mindepth 2 -maxdepth 2 -name package.json | sort)
+# Lives next to the crate, not under packages/, so the glob above misses it.
+update_package_json "$ROOT_DIR/crates/lingxia-browser-shell/webui/package.json"
 update_root_lock
 
 if [[ "$DRY_RUN" -eq 1 ]]; then

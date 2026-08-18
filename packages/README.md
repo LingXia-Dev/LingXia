@@ -8,6 +8,7 @@
 - `lingxia-html`: Public HTML package for lxapp pages.
 - `lingxia-page-runtime`: Shared implementation package behind the public framework packages.
 - `lingxia-terminal-settings`: SDK-owned settings app for the desktop terminal.
+- `@lingxia/browser-shell-webui` lives next to its crate at `crates/lingxia-browser-shell/webui` (not in this workspace). It is still released by `scripts/release/npm.sh`.
 - `lingxia-types`: Shared TypeScript type definitions for lxapp logic code and runtime contracts.
 - `lingxia-skill`: Agent skill (plain markdown, Anthropic Skills layout) for the LingXia framework. Installs via `npx @lingxia/skill install` so any AI coding tool — Claude Code, Claude Agent SDK, OpenAI Codex, Cursor — can build on LingXia. Content is synced from `docs/skill/` at publish time.
 
@@ -32,6 +33,7 @@ scripts/release/npm.sh --package vue --publish
 scripts/release/npm.sh --package html --publish
 scripts/release/npm.sh --package page-runtime --publish
 scripts/release/npm.sh --package terminal-settings --publish
+scripts/release/npm.sh --package browser-shell-webui --publish
 scripts/release/npm.sh --package types --publish
 scripts/release/npm.sh --package skill --publish
 ```

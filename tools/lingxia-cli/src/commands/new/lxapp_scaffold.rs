@@ -17,7 +17,6 @@ pub(super) fn create_lxapp_from_template(
     app_service: AppServiceMode,
     versions: &LingXiaVersions,
     lingxia_bridge_version: &str,
-    lingxia_types_version: &str,
     template_override: Option<&Path>,
 ) -> Result<()> {
     if target_dir.exists() {
@@ -55,7 +54,6 @@ pub(super) fn create_lxapp_from_template(
         product_name,
         versions,
         lingxia_bridge_version,
-        lingxia_types_version,
     )?;
 
     fs::create_dir_all(target_dir)?;
@@ -114,7 +112,6 @@ pub(super) fn build_framework_vars(
     product_name: &str,
     versions: &LingXiaVersions,
     lingxia_bridge_version: &str,
-    lingxia_types_version: &str,
 ) -> Result<HashMap<String, String>> {
     let fw = framework.to_lowercase();
     let slug = slugify(project_name);
@@ -131,17 +128,12 @@ pub(super) fn build_framework_vars(
         "LINGXIA_BRIDGE_VERSION".to_string(),
         lingxia_bridge_version.to_string(),
     );
-    vars.insert(
-        "LINGXIA_TYPES_VERSION".to_string(),
-        lingxia_types_version.to_string(),
-    );
-    // Framework packages (@lingxia/react|vue|html) track the base runtime's
-    // major.minor but may lag at an older patch — an unchanged framework
-    // package is not republished on a base patch bump. Pin scaffolds to a
-    // minor-floor caret (^M.m.0) so any patch within the minor still resolves.
+    // One range for every @lingxia/* the scaffold writes. The CLI does not
+    // pin react/vue/html/types individually; npm install takes the latest
+    // published patch on this major.minor.
     vars.insert(
         "LINGXIA_FRAMEWORK_RANGE".to_string(),
-        framework_caret_range(lingxia_bridge_version),
+        crate::versions::minor_tilde_range(lingxia_bridge_version),
     );
 
     let (
@@ -228,7 +220,6 @@ pub(super) fn create_lxapp_project(
     app_service: AppServiceMode,
     versions: &LingXiaVersions,
     lingxia_bridge_version: &str,
-    lingxia_types_version: &str,
 ) -> Result<LxAppInfo> {
     let lxapp_dir_name = lxapp_dir_name.trim();
     let lxapp_dir = config.target_dir.join(lxapp_dir_name);
@@ -245,7 +236,6 @@ pub(super) fn create_lxapp_project(
         app_service,
         versions,
         lingxia_bridge_version,
-        lingxia_types_version,
         None,
     )?;
     Ok(LxAppInfo {
@@ -288,16 +278,6 @@ fn remove_dir_if_exists(path: &Path) -> Result<()> {
         fs::remove_dir_all(path)?;
     }
     Ok(())
-}
-
-/// Build a minor-floor caret range (`^M.m.0`) from a full semver version.
-/// Used to pin scaffolded framework deps to the base runtime's major.minor
-/// while tolerating an older framework patch.
-fn framework_caret_range(version: &str) -> String {
-    let mut parts = version.split('.');
-    let major = parts.next().unwrap_or("0");
-    let minor = parts.next().unwrap_or("0");
-    format!("^{major}.{minor}.0")
 }
 
 pub(super) fn slugify(value: &str) -> String {
@@ -362,7 +342,7 @@ mod tests {
 
         fs::write(
             lxapp.join("package.json"),
-            r#"{"name":"{{APP_PACKAGE_NAME}}","dependencies":{"{{FRAMEWORK_PKG}}":"{{LINGXIA_FRAMEWORK_RANGE}}","@lingxia/types":"^{{LINGXIA_TYPES_VERSION}}",{{FRAMEWORK_RUNTIME_DEPS}}},"devDependencies":{{{FRAMEWORK_DEV_DEPS_PREFIX}}{{FRAMEWORK_VITE_DEV_DEPS}}"typescript":"^5"}}"#,
+            r#"{"name":"{{APP_PACKAGE_NAME}}","dependencies":{"{{FRAMEWORK_PKG}}":"{{LINGXIA_FRAMEWORK_RANGE}}","@lingxia/types":"{{LINGXIA_FRAMEWORK_RANGE}}",{{FRAMEWORK_RUNTIME_DEPS}}},"devDependencies":{{{FRAMEWORK_DEV_DEPS_PREFIX}}{{FRAMEWORK_VITE_DEV_DEPS}}"typescript":"^5"}}"#,
         ).unwrap();
         fs::write(
             lxapp.join("lxapp.json"),
@@ -454,7 +434,6 @@ mod tests {
             "My App",
             &dummy_versions(),
             "0.4.0",
-            "0.4.0",
         )
         .unwrap();
 
@@ -497,7 +476,6 @@ mod tests {
             "My App",
             &dummy_versions(),
             "0.4.0",
-            "0.3.0",
         )
         .unwrap();
         assert_eq!(vars["FRAMEWORK"], "react");
@@ -523,7 +501,6 @@ mod tests {
             "My App",
             &dummy_versions(),
             "0.4.0",
-            "0.3.0",
         )
         .unwrap();
         assert_eq!(vars["FRAMEWORK"], "vue");
@@ -548,7 +525,6 @@ mod tests {
             "My App",
             &dummy_versions(),
             "0.2.0",
-            "0.3.0",
         )
         .unwrap();
 
@@ -596,34 +572,17 @@ mod tests {
 
     #[test]
     fn unknown_framework_returns_error() {
-        let result =
-            build_framework_vars("svelte", "x", "x", "X", &dummy_versions(), "0.1.0", "0.1.0");
+        let result = build_framework_vars("svelte", "x", "x", "X", &dummy_versions(), "0.1.0");
         assert!(result.is_err());
     }
 
     #[test]
     fn version_vars_are_passed_through() {
-        let vars = build_framework_vars(
-            "react",
-            "app",
-            "app",
-            "App",
-            &dummy_versions(),
-            "1.2.3",
-            "4.5.6",
-        )
-        .unwrap();
+        let vars =
+            build_framework_vars("react", "app", "app", "App", &dummy_versions(), "1.2.3").unwrap();
         assert_eq!(vars["LINGXIA_BRIDGE_VERSION"], "1.2.3");
-        assert_eq!(vars["LINGXIA_TYPES_VERSION"], "4.5.6");
-        // Framework dep pins to the minor floor so an older framework patch resolves.
-        assert_eq!(vars["LINGXIA_FRAMEWORK_RANGE"], "^1.2.0");
-    }
-
-    #[test]
-    fn framework_caret_range_uses_minor_floor() {
-        assert_eq!(framework_caret_range("0.9.7"), "^0.9.0");
-        assert_eq!(framework_caret_range("1.2.3"), "^1.2.0");
-        assert_eq!(framework_caret_range("0.9"), "^0.9.0");
+        // One range for framework + types; npm install takes the latest patch.
+        assert_eq!(vars["LINGXIA_FRAMEWORK_RANGE"], "~1.2.0");
     }
 
     // --- scaffold output: React ---

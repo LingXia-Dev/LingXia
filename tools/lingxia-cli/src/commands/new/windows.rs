@@ -35,7 +35,7 @@ pub(super) fn create_windows_project(
     vars.insert("WINDOWS_EXECUTABLE_NAME".to_string(), config.name.clone());
     vars.insert(
         "LINGXIA_VERSION".to_string(),
-        versions.lingxia_crate.clone(),
+        crate::versions::cargo_compat_req(),
     );
     vars.insert(
         "LINGXIA_WINDOWS_SDK_GIT_REF".to_string(),

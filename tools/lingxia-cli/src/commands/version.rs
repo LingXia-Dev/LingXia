@@ -30,7 +30,6 @@ pub(crate) fn render(verbose: bool) -> String {
     ));
     output.push_str(&format!("runner: {}\n", env!("CARGO_PKG_VERSION")));
     output.push_str(&format!("bridge: {}\n", env!("LINGXIA_BRIDGE_VERSION")));
-    output.push_str(&format!("types: {}\n", env!("LINGXIA_TYPES_VERSION")));
     output.push_str(&format!("rong: {}\n", env!("LINGXIA_RONG_VERSION")));
     output
 }
@@ -86,7 +85,6 @@ mod tests {
             "lingxia-crate:",
             "runner:",
             "bridge:",
-            "types:",
             "rong:",
         ] {
             assert!(
@@ -97,6 +95,7 @@ mod tests {
         for internal in [
             "release:",
             "polyfills:",
+            "types:",
             "browser-shell-webui:",
             "resource-bundle:",
         ] {

@@ -48,6 +48,17 @@ struct UpdateStatus {
     latest_skill_version: Option<String>,
 }
 
+/// Best-effort: if GitHub has a newer CLI than this binary, return
+/// `(current, latest)`. Used by `lingxia new` so a stale `~/.local/bin`
+/// copy does not silently scaffold the previous line.
+pub fn newer_released_cli() -> Option<(String, String)> {
+    let status = load_update_status(false).ok()?;
+    status.update_available.then_some((
+        status.current_version.to_string(),
+        status.latest_version.to_string(),
+    ))
+}
+
 pub fn maybe_auto_update() {
     notify_deferred_update_failure();
 

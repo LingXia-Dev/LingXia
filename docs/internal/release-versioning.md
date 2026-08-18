@@ -24,6 +24,9 @@ Not all npm packages may drift from the workspace. They split into three tiers:
   (`tools/lingxia-cli/build.rs` `include_bytes!`s their `dist/` output and
   **panics if the package.json version ≠ the CLI's pinned
   `package.metadata.lingxia.{bridge,polyfills}-version`**).
+- `@lingxia/types` is on the same line but is **not** embedded. `lingxia new`
+  writes the minor-floor tilde (`~M.m.0`) so `npm install` takes the latest
+  published patch after a release, without a per-package pin in the CLI.
 - `@lingxia/bridge` (JS) must speak the same bridge wire protocol (`v:2`) as the
   native `lingxia-lxapp` bridge — it is the JS half of the runtime.
 - **Release only via `--component all`**, at the workspace version, together with
@@ -37,17 +40,17 @@ Not all npm packages may drift from the workspace. They split into three tiers:
 - Imported by an lxapp and bundled into the lxapp's own dist. They speak the
   bridge protocol (via `@lingxia/bridge`), so their **major.minor must match the
   base runtime**; patch may drift.
-- Internal `@lingxia/*` deps are caret ranges (`^0.x.y`). Patch-release a single
+- Internal `@lingxia/*` deps are tilde ranges (`~0.x.y`). Patch-release a single
   one with `--component npm:<package>`; move major.minor with `--component all`.
 - **Unchanged framework packages are not republished.** During `--component all`,
   `version.sh` skips bumping a framework/tool package whose source is identical
   to its last `lingxia-<pkg>-v*` release tag — it keeps its current version, so
   `npm.sh` sees it already published and skips it. Base-runtime packages always
   bump in lockstep. (No prior tag → bumped, the safe default.)
-- Because a framework package may lag the base by a patch, scaffolds pin the
-  framework dep to a **minor-floor caret** (`^M.m.0`, see
-  `lxapp_scaffold.rs::framework_caret_range`) rather than the exact base version,
-  so `npm install` resolves any patch within the minor.
+- Because a framework package may lag the base by a patch, both scaffolds and
+  internal `@lingxia/*` dependencies use a **minor-floor tilde** (`~M.m.0`,
+  `versions::minor_tilde_range`) rather than the exact workspace patch, so
+  `npm install` still resolves a package that was not republished.
 
 ### Tier 3 — standalone tools (independent)
 `@lingxia/skill`
@@ -63,8 +66,13 @@ require a base bump and must never be regressed by one. So the CLI keeps its
 **own version line**:
 
 - **major.minor mirrors the workspace** — CLI `0.9.x` means "the CLI for base
-  runtime 0.9". Its embedded `package.metadata.lingxia.*-version` always equals
-  the workspace version.
+  runtime 0.9". Metadata only names what the binary embeds or downloads by
+  exact asset name (`bridge`, `polyfills`, `rong`, `rust-crate`, `sdk`). It
+  does **not** pin `@lingxia/react|vue|html|types`, browser-shell-webui, or
+  terminal-settings. Those resolve to `~M.m.0` (npm and crates.io) at
+  `lingxia new` or first fetch, so a published patch is picked up without
+  rebuilding the CLI. A new **minor** still needs a new CLI — `lingxia new`
+  warns when GitHub has a newer one.
 - **patch is independent.** `--component all X` advances the CLI to
   `X.major.X.minor.(currentCliPatch+1)` on the same minor, or `X.major.X.minor.0`
   on a new minor — it reads the current CLI version and rolls forward, never

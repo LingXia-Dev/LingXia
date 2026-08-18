@@ -127,7 +127,7 @@ current_cli_target() {
 }
 
 doctor() {
-  local ws_v cli_v cli_asset cli_runner_tag sdk_tag bridge_v polyfills_v elements_v react_v vue_v html_v page_runtime_v terminal_settings_v types_v skill_v cli_target
+  local ws_v cli_v cli_asset cli_runner_tag sdk_tag bridge_v polyfills_v elements_v react_v vue_v html_v page_runtime_v terminal_settings_v browser_shell_webui_v types_v skill_v cli_target
   ws_v="$(workspace_version)"
   cli_v="$(cli_version)"
   if cli_target="$(current_cli_target 2>/dev/null)"; then
@@ -145,6 +145,7 @@ doctor() {
   html_v="$(node -p "require('$ROOT_DIR/packages/lingxia-html/package.json').version" 2>/dev/null || echo "N/A")"
   page_runtime_v="$(node -p "require('$ROOT_DIR/packages/lingxia-page-runtime/package.json').version" 2>/dev/null || echo "N/A")"
   terminal_settings_v="$(node -p "require('$ROOT_DIR/packages/lingxia-terminal-settings/package.json').version" 2>/dev/null || echo "N/A")"
+  browser_shell_webui_v="$(node -p "require('$ROOT_DIR/crates/lingxia-browser-shell/webui/package.json').version" 2>/dev/null || echo "N/A")"
   types_v="$(node -p "require('$ROOT_DIR/packages/lingxia-types/package.json').version" 2>/dev/null || echo "N/A")"
   skill_v="$(node -p "require('$ROOT_DIR/packages/lingxia-skill/package.json').version" 2>/dev/null || echo "N/A")"
 
@@ -164,6 +165,7 @@ NPM vue version:        $vue_v
 NPM html version:       $html_v
 NPM page-runtime version: $page_runtime_v
 NPM terminal-settings version: $terminal_settings_v
+NPM browser-shell-webui version: $browser_shell_webui_v
 NPM types version:      $types_v
 NPM skill version:      $skill_v
 GitHub release repo:    $GH_REPO

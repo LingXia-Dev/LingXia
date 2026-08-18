@@ -208,12 +208,13 @@ fn resolve_resource_bundle_source(
         .as_deref()
         .map(str::trim)
         .filter(|version| !version.is_empty())
-        .unwrap_or(env!("LINGXIA_RESOURCE_BUNDLE_VERSION"));
+        .map(str::to_string)
+        .unwrap_or_else(crate::versions::npm_compat_range);
     Ok(ResourceBundleSource {
         bundle_dir: resolve_lxapp_package(
             project_root,
             package,
-            version,
+            &version,
             "resource-lxapp",
             &format!("resources.bundles[{}]", bundle.app_id),
         )?,
