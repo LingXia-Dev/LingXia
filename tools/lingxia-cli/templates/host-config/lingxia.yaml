@@ -100,12 +100,10 @@ capabilities:
   # appUse: true
   # computerUse: true  # implies appUse
   # browserUse: true   # requires browser: true
-  # Realtime screen / system-audio / microphone capture. Independent of
-  # computerUse. Omit this key for no provider, services, or entitlements.
+  # Realtime screen capture. Independent of computerUse. Omit this key for
+  # no provider, services, or entitlements.
   # mediaCapture:
   #   visual: true
-  #   systemAudio: false
-  #   microphone: false
 
 {{RESOURCES_SECTION}}
 # When capabilities.terminal is true, ship the published settings lxapp.
