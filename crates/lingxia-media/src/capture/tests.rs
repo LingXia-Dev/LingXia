@@ -9,6 +9,7 @@ struct MockProvider {
     id: &'static str,
     capabilities: CaptureCapabilities,
     start_result: Mutex<StartBehavior>,
+    starts: Mutex<Vec<ProviderCaptureRequest>>,
     events: Mutex<Option<Arc<dyn ProviderEventSink>>>,
     session: Arc<MockSession>,
 }
@@ -44,6 +45,7 @@ impl MockProvider {
             id: "mock-visual",
             capabilities: CaptureCapabilities::visual_only(),
             start_result: Mutex::new(StartBehavior::Ok),
+            starts: Mutex::new(Vec::new()),
             events: Mutex::new(None),
             session: Arc::new(MockSession::default()),
         })
@@ -59,6 +61,7 @@ impl MockProvider {
                 }],
             },
             start_result: Mutex::new(StartBehavior::Ok),
+            starts: Mutex::new(Vec::new()),
             events: Mutex::new(None),
             session: Arc::new(MockSession::default()),
         })
@@ -80,6 +83,7 @@ impl MockProvider {
                 ],
             },
             start_result: Mutex::new(StartBehavior::Ok),
+            starts: Mutex::new(Vec::new()),
             events: Mutex::new(None),
             session: Arc::new(MockSession::default()),
         })
@@ -103,9 +107,10 @@ impl MediaCaptureProvider for MockProvider {
 
     fn start(
         &self,
-        _request: ProviderCaptureRequest,
+        request: ProviderCaptureRequest,
         events: Arc<dyn ProviderEventSink>,
     ) -> CaptureFuture<Result<Box<dyn ProviderCaptureSession>, CaptureError>> {
+        self.starts.lock().unwrap().push(request);
         *self.events.lock().unwrap() = Some(events);
         let result = match &*self.start_result.lock().unwrap() {
             StartBehavior::Ok => {
@@ -615,6 +620,61 @@ fn video_overflow_requests_a_keyframe_and_audio_overflow_is_explicit() {
             }
         )),
         "audio overflow must be an explicit discontinuity: {events:?}"
+    );
+    pipeline.stop();
+}
+
+#[test]
+fn tracks_from_different_sets_start_separate_sessions() {
+    let provider = MockProvider::audio_and_visual();
+    let request = CaptureRequest {
+        tracks: vec![
+            TrackRequest {
+                kind: TrackKind::Visual,
+                required: true,
+                visual: Some(VisualTrackConfig {
+                    target: VisualTarget::Screen,
+                    max_size: None,
+                    fps: None,
+                    bitrate_kbps: None,
+                    codec: None,
+                }),
+                audio: None,
+            },
+            TrackRequest {
+                kind: TrackKind::SystemAudio,
+                required: true,
+                visual: None,
+                audio: None,
+            },
+            TrackRequest {
+                kind: TrackKind::Microphone,
+                required: true,
+                visual: None,
+                audio: None,
+            },
+        ],
+        authorization: None,
+    };
+    let pipeline = Pipeline::start(
+        CaptureProviderSet::new([Arc::clone(&provider) as _]),
+        request,
+    )
+    .unwrap();
+    let kinds: Vec<Vec<TrackKind>> = provider
+        .starts
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|start| start.tracks.iter().map(|track| track.kind).collect())
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![
+            vec![TrackKind::Visual, TrackKind::SystemAudio],
+            vec![TrackKind::Microphone],
+        ],
+        "tracks must be started per capability set, one native session each"
     );
     pipeline.stop();
 }
