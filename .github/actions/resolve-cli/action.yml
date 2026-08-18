@@ -1,0 +1,27 @@
+name: Resolve lingxia + lxdev
+description: >
+  Restore cached CLI binaries keyed by the CLI fingerprint, or install a
+  matching GitHub Release, or cargo-build from this checkout. Writes
+  lingxia/lxdev into target/debug so existing job paths keep working.
+
+inputs:
+  fingerprint:
+    description: Output of scripts/ci/cli-fingerprint.sh for this tree
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v4
+      with:
+        path: |
+          target/debug/lingxia
+          target/debug/lxdev
+          target/debug/lingxia.exe
+          target/debug/lxdev.exe
+          target/debug/.lingxia-cli-fingerprint
+        key: cli-bins-${{ runner.os }}-${{ inputs.fingerprint }}
+
+    - name: Resolve lingxia and lxdev
+      shell: bash
+      run: bash scripts/ci/resolve-cli.sh --dest target/debug
