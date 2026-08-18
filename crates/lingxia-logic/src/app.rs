@@ -6,7 +6,7 @@ use lingxia_app_context::{app_config, env_version, home_app_id};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
 use lxapp::{DISPLAY_LANGUAGE_CHANGE_EVENT, register_app_handler, unregister_app_handler_token};
-use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult};
+use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue};
 use std::cell::Cell;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -70,12 +70,32 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
 /// This targets the dock on macOS, taskbar on Windows, and home/launcher icon
 /// on mobile. Null or an empty string clears it. Unsupported platforms treat
 /// the call as a no-op.
-fn set_app_badge(ctx: JSContext, text: Option<String>) -> JSResult<()> {
+fn set_app_badge(ctx: JSContext, value: JSValue) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    let text = badge_text(value, "lx.app.setBadge")?;
     lxapp
         .runtime
-        .set_app_badge(text.as_deref().unwrap_or(""))
+        .set_app_badge(&text)
         .map_err(|e| js_error_from_platform_error(&e))
+}
+
+/// A badge is `string | number | null`. Coercing anything else would paint
+/// `[object Object]` on the dock, so reject it at the boundary instead.
+pub(crate) fn badge_text(value: JSValue, api: &str) -> JSResult<String> {
+    if value.is_undefined() || value.is_null() {
+        return Ok(String::new());
+    }
+    if value.is_string() || value.is_number() {
+        return value.to_rust::<String>();
+    }
+    Err(rong::HostError::new(
+        rong::error::E_INVALID_ARG,
+        format!(
+            "{api} value must be a string, a number, or null (received {})",
+            value.type_of()
+        ),
+    )
+    .into())
 }
 
 /// Guard for host-app-level APIs (`checkUpdate`, `screenshot`, `autostart`):
