@@ -155,18 +155,22 @@ fn capture_screen_frame(x: i32, y: i32, w: i32, h: i32) -> Result<crate::engine:
 fn capture_window_frame(id: &str) -> Result<crate::engine::EngineFrame> {
     let hwnd = parse_hwnd(id)?;
     match super::wgc::capture_window(hwnd) {
-        Ok(rgba) => {
-            let source = window_source(hwnd, id)?;
-            return Ok(crate::engine::EngineFrame {
-                width: rgba.width,
-                height: rgba.height,
-                rgba: rgba.pixels,
-                source,
-                scale: 1.0,
-                backend: "wgc",
-                occlusion_independent: true,
-            });
-        }
+        // The rect is read after the capture, so a window that closes in
+        // between must not cost us a frame we already hold.
+        Ok(rgba) => match window_source(hwnd, id) {
+            Ok(source) => {
+                return Ok(crate::engine::EngineFrame {
+                    width: rgba.width,
+                    height: rgba.height,
+                    rgba: rgba.pixels,
+                    source,
+                    scale: 1.0,
+                    backend: "wgc",
+                    occlusion_independent: true,
+                });
+            }
+            Err(e) => log::debug!("wgc frame has no window rect, falling back: {e}"),
+        },
         Err(e) => log::debug!("wgc capture failed, falling back to PrintWindow: {e}"),
     }
     capture_window_printwindow(id, hwnd)

@@ -12,7 +12,9 @@
 
 use super::{displays, parse_window_id};
 use crate::error::{Error, Result};
-use crate::model::{Capture, CaptureTarget, Pixel};
+use crate::model::CaptureTarget;
+#[cfg(feature = "snapshot")]
+use crate::model::{Capture, Pixel};
 use objc2_core_foundation::CGRect;
 use objc2_core_graphics::{
     CGColorSpace, CGContext, CGDisplayCreateImage, CGImage, CGImageAlphaInfo,
@@ -230,6 +232,7 @@ fn display_id_at(index: usize) -> Result<objc2_core_graphics::CGDirectDisplayID>
         .ok_or_else(|| Error::NotFound(format!("no display index {index}")))
 }
 
+#[cfg(feature = "snapshot")]
 pub fn pixel(x: i32, y: i32) -> Result<Pixel> {
     let rect = CGRect::new(
         objc2_core_foundation::CGPoint::new(x as f64, y as f64),
@@ -256,6 +259,7 @@ pub fn pixel(x: i32, y: i32) -> Result<Pixel> {
 
 /// Poll a pixel until it matches `hex` within `tolerance` per channel, or time
 /// out (exit 5).
+#[cfg(feature = "snapshot")]
 pub fn wait_pixel(x: i32, y: i32, hex: &str, tolerance: u8, timeout_ms: u64) -> Result<Pixel> {
     let want = parse_hex(hex)?;
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
@@ -272,6 +276,7 @@ pub fn wait_pixel(x: i32, y: i32, hex: &str, tolerance: u8, timeout_ms: u64) -> 
     }
 }
 
+#[cfg(feature = "snapshot")]
 fn parse_hex(hex: &str) -> Result<(u8, u8, u8)> {
     let h = hex.trim_start_matches('#');
     if h.len() != 6 {
