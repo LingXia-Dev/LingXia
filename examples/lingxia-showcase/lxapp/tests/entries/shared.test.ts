@@ -12,6 +12,7 @@ import '../api/runtime.test.js';
 import '../api/navigation.test.js';
 import '../api/io-contracts.test.js';
 import '../api/host-app.test.js';
+import '../api/argument-contracts.test.js';
 import '../pages/bridge-repro.test.js';
 import '../pages/stream.test.js';
 import '../pages/channel.test.js';
