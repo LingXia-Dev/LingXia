@@ -3,6 +3,8 @@ export const PACKAGE_NAME = "@lingxia/test";
 
 export const DEFAULT_ACTION_TIMEOUT_MS = 5_000;
 export const DEFAULT_SPEC_TIMEOUT_MS = 30_000;
+/** Per-spec cap on recorded actions, so a loop cannot bloat the report. */
+export const MAX_ACTIONS = 300;
 /** Ceiling for an inherited eval budget, so one call cannot eat a long spec. */
 export const MAX_EVAL_BUDGET_MS = 30_000;
 /** Cleanup budget after a spec timed out — the app may be wedged, so bail fast. */

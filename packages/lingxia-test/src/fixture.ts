@@ -6,7 +6,7 @@ import {
   pushAssertionSilence,
   setAssertionSink,
 } from "./expect.js";
-import { formatValue } from "./format.js";
+import { formatValue, truncate } from "./format.js";
 import { encodeAttachPayload, remapStack, type ResolvedHost } from "./host.js";
 import { rememberInline } from "./report.js";
 import { callerLocation, displayLocation, parseFrames } from "./ids.js";
@@ -38,6 +38,7 @@ import {
   DEFAULT_ACTION_TIMEOUT_MS,
   DEFAULT_POLL_INTERVAL_MS,
   DEFAULT_SPEC_TIMEOUT_MS,
+  MAX_ACTIONS,
   MAX_EVAL_BUDGET_MS,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
@@ -58,6 +59,8 @@ export class LiveFixture implements Fixture {
   readonly defers: Array<() => void | Promise<void>> = [];
   aborted = false;
   abortError: Error | null = null;
+  private actionSilence = 0;
+  private actionCount = 0;
   cleanupUntil = 0;
   cleanupActive = false;
   lastStepPath: string | undefined;
@@ -263,6 +266,82 @@ export class LiveFixture implements Fixture {
     this.cleanupActive = false;
   }
 
+  /**
+   * Record a driver call so a spec that never calls `t.step` still leaves a
+   * trace of what it did. Retry loops silence themselves: a five-second poll
+   * would otherwise bury the report in a hundred identical rows.
+   */
+  async act<T>(name: string, detail: string, op: () => T | Promise<T>): Promise<T> {
+    if (this.actionSilence > 0 || this.actionCount >= MAX_ACTIONS) return this.guard(op);
+    const parent = this.stepStack[this.stepStack.length - 1];
+    const siblings = parent ? parent.steps : this.steps;
+    // A hand-rolled poll calls the same driver over and over. Collapse the run
+    // into one row so the trace reads as what happened, not as a stutter.
+    const previous = siblings[siblings.length - 1];
+    if (
+      previous?.kind === "action" &&
+      previous.status === "passed" &&
+      previous.name === name &&
+      previous.detail === detail
+    ) {
+      const started = Date.now();
+      try {
+        const result = await this.guard(op);
+        previous.repeat = (previous.repeat ?? 1) + 1;
+        previous.duration_ms += Date.now() - started;
+        return result;
+      } catch (error) {
+        // A failure is its own row: it is the one attempt worth reading.
+        const failed: StepRecord = {
+          name,
+          detail,
+          kind: "action",
+          path: previous.path,
+          status: error instanceof TimeoutError ? "timeout" : "failed",
+          duration_ms: Date.now() - started,
+          steps: [],
+          attachments: [],
+          assertions: [],
+          error: toReportError(error, previous.path),
+        };
+        siblings.push(failed);
+        throw error;
+      }
+    }
+    this.actionCount += 1;
+    const record: StepRecord = {
+      name,
+      detail,
+      kind: "action",
+      path: [...this.stepStack.map((step) => step.name), name].join(" > "),
+      status: "passed",
+      duration_ms: 0,
+      steps: [],
+      attachments: [],
+      assertions: [],
+    };
+    siblings.push(record);
+    const started = Date.now();
+    try {
+      const result = await this.guard(op);
+      record.duration_ms = Date.now() - started;
+      return result;
+    } catch (error) {
+      record.duration_ms = Date.now() - started;
+      record.status = error instanceof TimeoutError ? "timeout" : "failed";
+      record.error = toReportError(error, record.path);
+      throw error;
+    }
+  }
+
+  silenceActions(): void {
+    this.actionSilence += 1;
+  }
+
+  resumeActions(): void {
+    this.actionSilence = Math.max(0, this.actionSilence - 1);
+  }
+
   async guard<T>(op: () => T | Promise<T>): Promise<T> {
     this.assertRunnable();
     const result = await op();
@@ -303,11 +382,12 @@ export class LiveFixture implements Fixture {
     const page = this.wrapPage(driver.page);
     return {
       page,
-      nav: guardObject(driver.nav, (fn) => this.guard(fn)),
-      info: () => this.guard(() => driver.info()),
-      pages: () => this.guard(() => driver.pages()),
-      surfaceLayout: () => this.guard(() => driver.surfaceLayout()),
-      eval: (options) => this.guard(() => driver.eval(this.withEvalBudget(options))),
+      nav: guardObject(driver.nav, this, "nav."),
+      info: () => this.act("app.info", "", () => driver.info()),
+      pages: () => this.act("app.pages", "", () => driver.pages()),
+      surfaceLayout: () => this.act("app.surfaceLayout", "", () => driver.surfaceLayout()),
+      eval: (options) =>
+        this.act("app.eval", summarise(options), () => driver.eval(this.withEvalBudget(options))),
     } as TestApp;
   }
 
@@ -332,20 +412,28 @@ export class LiveFixture implements Fixture {
     // would write straight through to the real driver — `page.eval` would then
     // call itself forever.
     const overrides: Record<string, unknown> = {
-      testId: (id: string) =>
-        new PageLocator(page as unknown as PageLike, (fn) => this.guard(fn), testIdSelector(id), location()),
-      css: (selector: string) =>
-        new PageLocator(page as unknown as PageLike, (fn) => this.guard(fn), selector, location()),
+      testId: (id: string) => this.locator(page, testIdSelector(id), location()),
+      css: (selector: string) => this.locator(page, selector, location()),
       eval: (options: { script: string; timeoutMs?: number }) =>
-        this.guard(() => page.eval(this.withEvalBudget(options))),
+        this.act("page.eval", summarise(options), () => page.eval(this.withEvalBudget(options))),
     };
-    const guarded = guardObject(page, (fn) => this.guard(fn), Object.keys(overrides));
+    const guarded = guardObject(page, this, "page.", Object.keys(overrides));
     return new Proxy(guarded, {
       get(target, prop, receiver) {
         if (typeof prop === "string" && prop in overrides) return overrides[prop];
         return Reflect.get(target, prop, receiver);
       },
     }) as unknown as TestPage;
+  }
+
+  private locator(page: PageDriver, selector: string, location: SourceLocation): Locator {
+    return new PageLocator(
+      page as unknown as PageLike,
+      (fn) => this.guard(fn),
+      <T,>(verb: string, detail: string, op: () => Promise<T>) => this.act(verb, detail, op),
+      selector,
+      location,
+    );
   }
 
   private locatorMatchers(locator: Locator, inverted: boolean): LocatorMatchers {
@@ -406,6 +494,7 @@ export class LiveFixture implements Fixture {
       let lastResolved: LocatorResolve | undefined;
       let lastError: unknown;
       pushAssertionSilence();
+      this.silenceActions();
       try {
         while (Date.now() - started < timeout) {
           try {
@@ -428,6 +517,7 @@ export class LiveFixture implements Fixture {
         }
       } finally {
         popAssertionSilence();
+        this.resumeActions();
       }
       const duration = Date.now() - started;
       throw this.retryFailure({
@@ -458,6 +548,7 @@ export class LiveFixture implements Fixture {
       let lastActual: unknown;
       let lastError: unknown;
       pushAssertionSilence();
+      this.silenceActions();
       try {
         while (Date.now() - started < timeout) {
           try {
@@ -480,6 +571,7 @@ export class LiveFixture implements Fixture {
         }
       } finally {
         popAssertionSilence();
+        this.resumeActions();
       }
       throw this.retryFailure({
         matcher: inverted ? `not.${matcher}` : matcher,
@@ -580,7 +672,8 @@ function matchLocator(
 
 function guardObject<T extends object>(
   target: T,
-  wrap: <R>(fn: () => R | Promise<R>) => Promise<R>,
+  fixture: LiveFixture,
+  path: string,
   skip: PropertyKey[] = [],
 ): T {
   const cache = new Map<PropertyKey, unknown>();
@@ -590,18 +683,35 @@ function guardObject<T extends object>(
       if (cache.has(prop)) return cache.get(prop);
       const value = Reflect.get(obj, prop, receiver);
       if (typeof value === "function") {
-        const bound = (...args: unknown[]) => wrap(() => value.apply(obj, args));
+        const name = `${path}${String(prop)}`;
+        const bound = (...args: unknown[]) =>
+          fixture.act(name, summarise(args[0]), () => value.apply(obj, args));
         cache.set(prop, bound);
         return bound;
       }
       if (value && typeof value === "object") {
-        const nested = guardObject(value as object, wrap);
+        const nested = guardObject(value as object, fixture, `${path}${String(prop)}.`);
         cache.set(prop, nested);
         return nested;
       }
       return value;
     },
   }) as T;
+}
+
+/** The one detail worth showing beside an action: what it acted on. */
+function summarise(input: unknown): string {
+  if (input === undefined || input === null) return "";
+  if (typeof input === "string") return truncate(input, 80);
+  if (typeof input !== "object") return String(input);
+  const record = input as Record<string, unknown>;
+  for (const key of ["css", "page", "script", "url", "text", "id", "name"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.length > 0) {
+      return truncate(key === "script" ? value.replace(/\s+/g, " ").trim() : value, 80);
+    }
+  }
+  return truncate(formatValue(input), 80);
 }
 
 /** Text and JSON preview in the report; anything else is named, not embedded. */

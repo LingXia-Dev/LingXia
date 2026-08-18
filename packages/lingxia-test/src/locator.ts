@@ -29,6 +29,8 @@ export interface PageLike {
 }
 
 export type Guard = <T>(op: () => T | Promise<T>) => Promise<T>;
+/** Records one locator action in the report's trace. */
+export type Record = <T>(verb: string, detail: string, op: () => Promise<T>) => Promise<T>;
 
 export interface LocatorResolve {
   count: number;
@@ -51,6 +53,7 @@ export class PageLocator implements Locator {
   constructor(
     private readonly page: PageLike,
     private readonly guard: Guard,
+    private readonly record: Record,
     selector: string,
     private readonly location: SourceLocation,
   ) {
@@ -155,7 +158,9 @@ export class PageLocator implements Locator {
     while (true) {
       last = await this.resolve();
       if (last.kind === "unique") {
-        await this.guard(() => run(this.selector, last!.index));
+        await this.record(`page.${verb}`, this.selector, () =>
+          this.guard(() => run(this.selector, last!.index)),
+        );
         return;
       }
       if (Date.now() - started >= timeout) break;
