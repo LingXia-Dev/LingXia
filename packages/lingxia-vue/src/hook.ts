@@ -13,7 +13,7 @@ import type {
   LxBridgeError,
   LxStream,
 } from "@lingxia/bridge";
-import { getDisplayLanguage } from "@lingxia/bridge";
+import { getDisplayLanguage, subscribeDisplayLanguage } from "@lingxia/bridge";
 import {
   getMethodKey,
   invokeMethod,
@@ -367,7 +367,16 @@ export function usePlatform(): LxPlatform {
   return readPlatform();
 }
 
-/** Effective product language selected by the host. */
-export function useDisplayLanguage(): string {
-  return getDisplayLanguage();
+/** Effective product language selected by the host; follows a change. */
+export function useDisplayLanguage(): Readonly<Ref<string>> {
+  const language = shallowRef(getDisplayLanguage());
+  if (!getCurrentInstance()) {
+    console.warn("useDisplayLanguage() must be called during component setup");
+    return language;
+  }
+  const unsubscribe = subscribeDisplayLanguage(() => {
+    language.value = getDisplayLanguage();
+  });
+  onUnmounted(unsubscribe);
+  return language;
 }

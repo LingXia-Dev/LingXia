@@ -70,6 +70,11 @@ pub fn execute(project_root: &Path, ws_url: &str, options: &ReloadOptions) -> Re
         reload_target(ws_url, appid.as_deref())?
     };
 
+    // Computed for both output modes: a scripted caller reading `--json` needs
+    // the same signal a person reading the warning gets.
+    let drift = reloaded
+        .as_deref()
+        .and_then(|appid| page_registry_drift(project_root, ws_url, appid));
     if options.json {
         println!(
             "{}",
@@ -77,6 +82,7 @@ pub fn execute(project_root: &Path, ws_url: &str, options: &ReloadOptions) -> Re
                 "ok": true,
                 "release": options.release,
                 "reloaded": reloaded,
+                "manifest_drift": drift,
             })
         );
     } else {
@@ -88,8 +94,11 @@ pub fn execute(project_root: &Path, ws_url: &str, options: &ReloadOptions) -> Re
             None if options.build_only => println!("✓ lxapp bundle rebuilt{suffix}"),
             None => println!("✓ lxapp bundle rebuilt{suffix} (no running lxapp to reload)"),
         }
-        if let Some(appid) = reloaded.as_deref() {
-            report_page_registry_drift(project_root, ws_url, appid);
+        if let Some(drift) = drift {
+            eprintln!(
+                "warning: lxapp.json declares a different page list than this session is \
+running ({drift}). Restart `lingxia dev` to apply it; a reload only rebuilds the bundle."
+            );
         }
     }
     Ok(())
@@ -99,18 +108,11 @@ pub fn execute(project_root: &Path, ws_url: &str, options: &ReloadOptions) -> Re
 /// `lxapp.json` afterwards is invisible to a reload. Saying nothing leaves the
 /// next `nav` answering `unknown page name` for a page the file clearly
 /// declares — the build succeeded, so the edit looks applied.
-fn report_page_registry_drift(project_root: &Path, ws_url: &str, appid: &str) {
-    let Some(declared) = manifest_page_names(project_root, appid) else {
-        return;
-    };
-    let Some(running) = session_page_names(ws_url, appid) else {
-        return;
-    };
+fn page_registry_drift(project_root: &Path, ws_url: &str, appid: &str) -> Option<String> {
+    let declared = manifest_page_names(project_root, appid)?;
+    let running = session_page_names(ws_url, appid)?;
     let added: Vec<&str> = declared.difference(&running).map(String::as_str).collect();
     let removed: Vec<&str> = running.difference(&declared).map(String::as_str).collect();
-    if added.is_empty() && removed.is_empty() {
-        return;
-    }
     let mut parts = Vec::new();
     if !added.is_empty() {
         parts.push(format!("added {}", added.join(", ")));
@@ -118,22 +120,18 @@ fn report_page_registry_drift(project_root: &Path, ws_url: &str, appid: &str) {
     if !removed.is_empty() {
         parts.push(format!("removed {}", removed.join(", ")));
     }
-    eprintln!(
-        "warning: lxapp.json declares a different page list than this session is running ({}). \
-Restart `lingxia dev` to apply it; a reload only rebuilds the bundle.",
-        parts.join("; ")
-    );
+    (!parts.is_empty()).then(|| parts.join("; "))
 }
 
-/// Page names from the project's own manifest, and only when it is the lxapp
-/// that was reloaded — a host project reloads bundles declared elsewhere.
+/// Page names declared for the lxapp that was reloaded.
+///
+/// A standalone lxapp keeps its manifest at the project root; a host app
+/// declares bundles in `lingxia.yaml` and each one carries its own manifest,
+/// so the host shape has to be resolved through that list — it is the shape a
+/// page is most often added in.
 fn manifest_page_names(project_root: &Path, appid: &str) -> Option<BTreeSet<String>> {
-    let manifest: Value =
-        serde_json::from_str(&std::fs::read_to_string(project_root.join("lxapp.json")).ok()?)
-            .ok()?;
-    if manifest.get("appId").and_then(Value::as_str) != Some(appid) {
-        return None;
-    }
+    let manifest = read_manifest(&project_root.join("lxapp.json"), appid)
+        .or_else(|| bundled_manifest(project_root, appid))?;
     Some(
         manifest
             .get("pages")?
@@ -142,6 +140,31 @@ fn manifest_page_names(project_root: &Path, appid: &str) -> Option<BTreeSet<Stri
             .filter_map(|page| page.get("name")?.as_str().map(ToOwned::to_owned))
             .collect(),
     )
+}
+
+fn read_manifest(path: &Path, appid: &str) -> Option<Value> {
+    let manifest: Value = serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
+    (manifest.get("appId").and_then(Value::as_str) == Some(appid)).then_some(manifest)
+}
+
+/// Walk `lingxia.yaml`'s `resources.bundles` for the lxapp with this appid.
+/// Read as lines rather than parsed: the CLI owns the schema, and this only
+/// needs the `path` that sits beside a matching `appId`.
+fn bundled_manifest(project_root: &Path, appid: &str) -> Option<Value> {
+    let yaml = std::fs::read_to_string(project_root.join("lingxia.yaml")).ok()?;
+    let mut matched = false;
+    for line in yaml.lines() {
+        let trimmed = line.trim_start_matches(['-', ' ']).trim();
+        if let Some(value) = trimmed.strip_prefix("appId:") {
+            matched = value.trim().trim_matches(['"', '\'']) == appid;
+        } else if let Some(value) = trimmed.strip_prefix("path:")
+            && matched
+        {
+            let path = value.trim().trim_matches(['"', '\'']);
+            return read_manifest(&project_root.join(path).join("lxapp.json"), appid);
+        }
+    }
+    None
 }
 
 fn session_page_names(ws_url: &str, appid: &str) -> Option<BTreeSet<String>> {

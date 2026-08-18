@@ -61,14 +61,21 @@ fn publish_display_language(language: &str) {
     let quoted = serde_json::to_string(language).unwrap_or_else(|_| "\"en-US\"".to_string());
     let script = format!("var f = globalThis.__lingxiaApplyDisplayLanguage; if (f) f({quoted});");
     use lingxia_webview::WebViewController;
-    for entry in manager.lxapps.iter() {
-        for page in entry.value().live_page_instances() {
+    // Collect first: `publish_app_event` looks the appid up in this same map,
+    // and a re-entrant read while a writer is queued deadlocks the caller.
+    let apps: Vec<(String, Arc<LxApp>)> = manager
+        .lxapps
+        .iter()
+        .map(|entry| (entry.key().clone(), entry.value().clone()))
+        .collect();
+    for (appid, app) in apps {
+        for page in app.live_page_instances() {
             if let Some(webview) = page.webview() {
                 let _ = webview.exec_js(&script);
             }
         }
         crate::appservice::event_bus::publish_app_event(
-            entry.key(),
+            &appid,
             crate::DISPLAY_LANGUAGE_CHANGE_EVENT,
             Some(quoted.clone()),
         );

@@ -17,4 +17,5 @@ export type {
 } from "@lingxia/page-runtime";
 export {
   getDisplayLanguage,
+  subscribeDisplayLanguage,
 } from "@lingxia/bridge";

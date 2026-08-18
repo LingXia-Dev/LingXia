@@ -906,7 +906,6 @@ impl LxApp {
             .collect()
     }
 
-    /// Live instances on the navigation stack, oldest → newest.
     /// Every live page instance, including surface-owned pages that are not on
     /// the navigation stack. App-wide state has to reach all of them.
     pub fn live_page_instances(&self) -> Vec<PageInstance> {
@@ -919,6 +918,7 @@ impl LxApp {
         pages.values().cloned().collect()
     }
 
+    /// Live instances on the navigation stack, oldest → newest.
     pub fn get_page_stack_pages(&self) -> Vec<PageInstance> {
         let state = self.state.lock().unwrap();
         let pages_by_id = state.pages_by_id.lock().unwrap();

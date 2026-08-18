@@ -145,6 +145,8 @@ declare global {
     __LX_BRIDGE_CFG?: BridgeConfig;
     /** Host push for a display language changed while the page is open. */
     __lingxiaApplyDisplayLanguage?: (language: string) => void;
+    /** Shared by every copy of the bridge module in this document. */
+    __lxDisplayLanguage?: { value: string; listeners: Set<() => void> };
     __LX_BRIDGE_INIT_STATE?: 'initializing' | 'initialized';
     __LX_RUNTIME_CONFIG?: RuntimeConfig;
     __pageBridge?: { __names: string[]; [key: string]: unknown };

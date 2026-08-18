@@ -97,8 +97,6 @@ pub fn resolve_webview(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Arc<
         .ok_or_else(|| "page WebView is not ready".to_string())
 }
 
-/// Whether the configured page name exists in the app's manifest at all
-/// (regardless of runtime state). `None`/"current" counts as known.
 /// A page name the session does not know, with the names it does know.
 ///
 /// The page registry is built once when the session starts, so a name that is
@@ -120,6 +118,8 @@ pub fn unknown_page_name(app: &Arc<LxApp>, page_name: &str) -> String {
     )
 }
 
+/// Whether the configured page name exists in the app's manifest at all
+/// (regardless of runtime state). `None`/"current" counts as known.
 pub fn page_name_known(app: &Arc<LxApp>, page_name: Option<&str>) -> bool {
     match page_name.map(str::trim).filter(|value| !value.is_empty()) {
         None => true,
