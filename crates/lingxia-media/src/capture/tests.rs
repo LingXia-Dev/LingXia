@@ -713,3 +713,231 @@ fn wall_clock_is_metadata_only() {
     assert!(second.monotonic_nanos >= first.monotonic_nanos);
     assert!(first.wall_unix_nanos.is_some());
 }
+
+#[test]
+fn a_sustained_stream_is_delivered_without_a_lull() {
+    let provider = MockProvider::visual();
+    let pipeline = Pipeline::start(
+        CaptureProviderSet::new([Arc::clone(&provider) as _]),
+        visual_request(),
+    )
+    .unwrap();
+    let rx = pipeline.subscribe();
+    provider.emit(configured(TrackId(1), 1));
+    provider.emit(ProviderEvent::VisualGeometry {
+        track_id: TrackId(1),
+        geometry: geometry(1),
+    });
+
+    // Faster than the flush interval, and never idle: the pump must not wait
+    // for a quiet moment to hand these on.
+    let emitter = thread::spawn({
+        let provider = Arc::clone(&provider);
+        move || {
+            for sequence in 0..30u64 {
+                provider.emit(ProviderEvent::EncodedPacket(packet(
+                    1,
+                    1,
+                    sequence,
+                    sequence == 0,
+                )));
+                // 60fps: faster than the flush interval, so the old
+                // drain-on-timeout pump never reached a timeout.
+                thread::sleep(Duration::from_millis(16));
+            }
+        }
+    });
+
+    let events = collect_until(
+        &rx,
+        |event| matches!(event, CaptureEvent::EncodedPacket(packet) if packet.sequence >= 25),
+    );
+    emitter.join().unwrap();
+
+    let delivered = events
+        .iter()
+        .filter(|event| matches!(event, CaptureEvent::EncodedPacket(_)))
+        .count();
+    assert!(
+        delivered >= 20,
+        "sustained stream must keep flowing, saw {delivered} packets"
+    );
+}
+
+#[test]
+fn video_overflow_reports_the_gap_even_without_a_keyframe() {
+    let provider = MockProvider::visual();
+    let pipeline = Pipeline::start(
+        CaptureProviderSet::new([Arc::clone(&provider) as _]),
+        visual_request(),
+    )
+    .unwrap();
+    let rx = pipeline.subscribe();
+    provider.emit(configured(TrackId(1), 1));
+    provider.emit(ProviderEvent::VisualGeometry {
+        track_id: TrackId(1),
+        geometry: geometry(1),
+    });
+
+    // One keyframe then a burst of deltas: the queue overflows on a packet
+    // that cannot be kept, so the consumer has to be told it lost the backlog.
+    for sequence in 0..12u64 {
+        provider.emit(ProviderEvent::EncodedPacket(packet(
+            1,
+            1,
+            sequence,
+            sequence == 0,
+        )));
+    }
+
+    let events = collect_until(&rx, |event| {
+        matches!(
+            event,
+            CaptureEvent::Discontinuity {
+                reason: DiscontinuityReason::Overflow,
+                ..
+            }
+        )
+    });
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            CaptureEvent::Discontinuity {
+                reason: DiscontinuityReason::Overflow,
+                ..
+            }
+        )),
+        "a dropped video backlog must surface as an Overflow discontinuity"
+    );
+}
+
+#[test]
+fn revoked_authorization_stops_the_provider_session() {
+    let provider = MockProvider::visual();
+    let pipeline = Pipeline::start(
+        CaptureProviderSet::new([Arc::clone(&provider) as _]),
+        visual_request(),
+    )
+    .unwrap();
+    let rx = pipeline.subscribe();
+    provider.emit(ProviderEvent::AuthorizationRevoked {
+        track: TrackKind::Visual,
+    });
+    let _ = collect_until(&rx, |event| {
+        matches!(
+            event,
+            CaptureEvent::State(PipelineState::AuthorizationRevoked)
+        )
+    });
+
+    assert!(
+        provider.session.stopped.load(Ordering::SeqCst),
+        "capture must stop when the user withdraws authorization"
+    );
+}
+
+#[test]
+fn a_failed_required_start_leaves_authorizing_for_failed() {
+    let provider = MockProvider::visual();
+    *provider.start_result.lock().unwrap() =
+        StartBehavior::AuthorizationRequired(TrackKind::Visual);
+    let pipeline = Pipeline::start(
+        CaptureProviderSet::new([Arc::clone(&provider) as _]),
+        visual_request(),
+    )
+    .unwrap();
+    assert_eq!(pipeline.state(), PipelineState::Authorizing);
+
+    *provider.start_result.lock().unwrap() = StartBehavior::Fail(CaptureError::Denied {
+        track: TrackKind::Visual,
+    });
+    let error = pipeline
+        .provide_authorization(CaptureAuthorization {
+            kind: AuthorizationKind::AndroidMediaProjection,
+            payload: vec![1],
+        })
+        .unwrap_err();
+
+    assert_eq!(
+        error,
+        CaptureError::Denied {
+            track: TrackKind::Visual
+        }
+    );
+    assert_eq!(
+        pipeline.state(),
+        PipelineState::Failed,
+        "a required track that cannot start must not leave the pipeline authorizing"
+    );
+}
+
+#[test]
+fn two_sessions_reusing_a_provider_track_id_stay_distinct() {
+    let visual = MockProvider::visual();
+    let microphone = MockProvider::microphone();
+    let request = CaptureRequest {
+        tracks: vec![
+            TrackRequest {
+                kind: TrackKind::Visual,
+                required: true,
+                visual: Some(VisualTrackConfig {
+                    target: VisualTarget::Screen,
+                    max_size: None,
+                    fps: None,
+                    bitrate_kbps: None,
+                    codec: Some(VideoCodec::Png),
+                }),
+                audio: None,
+            },
+            TrackRequest {
+                kind: TrackKind::Microphone,
+                required: true,
+                visual: None,
+                audio: None,
+            },
+        ],
+        authorization: None,
+    };
+    let pipeline = Pipeline::start(
+        CaptureProviderSet::new([Arc::clone(&visual) as _, Arc::clone(&microphone) as _]),
+        request,
+    )
+    .unwrap();
+    let rx = pipeline.subscribe();
+
+    // Both providers number their own tracks from 1.
+    visual.emit(configured(TrackId(1), 1));
+    microphone.emit(ProviderEvent::TrackConfigured {
+        track_id: TrackId(1),
+        kind: TrackKind::Microphone,
+        format_generation: 1,
+        video_codec: None,
+        audio_codec: Some(AudioCodec::Opus),
+        sample_rate: Some(48_000),
+        channels: Some(1),
+        size: None,
+    });
+
+    let events = collect_until(&rx, |event| {
+        matches!(
+            event,
+            CaptureEvent::TrackConfigured {
+                kind: TrackKind::Microphone,
+                ..
+            }
+        )
+    });
+    let configured: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            CaptureEvent::TrackConfigured { track_id, kind, .. } => Some((*track_id, *kind)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(configured.len(), 2, "both tracks must be reported");
+    assert_ne!(
+        configured[0].0, configured[1].0,
+        "tracks from different sessions must not share an id"
+    );
+    assert_ne!(configured[0].1, configured[1].1);
+}
