@@ -118,6 +118,8 @@ jobs:
               - 'crates/lingxia-logic/**'
             automation_types:
               - 'packages/lingxia-types/**'
+              - 'packages/lingxia-test/**'
+              - 'examples/lingxia-showcase/lxapp/tests/**'
             # Runtime paths exercised by the Showcase end-to-end contracts on
             # both desktop JS engines. Platform-only implementations are
             # filtered separately so they do not fan out to the other OS.
