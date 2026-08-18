@@ -66,8 +66,11 @@ export function renderHtml(report: JsonReport): string {
   const verdict = verdictOf(report);
 
   const subject = meta.subject;
+  // The report is about the app, not about the tool that ran it.
+  const appName = subject?.app_name || subject?.appid || "";
+  const documentTitle = appName ? `${appName} test report` : "lxapp test report";
   const chips = [
-    ...(subject?.appid ? [chip("lxapp", subject.appid)] : []),
+    ...(subject?.appid && subject.appid !== appName ? [chip("id", subject.appid)] : []),
     ...(subject?.version ? [chip("version", subject.version)] : []),
     ...(subject?.release_type ? [chip("build", subject.release_type)] : []),
     chip("platform", meta.platform || args.platform || "—"),
@@ -90,7 +93,7 @@ export function renderHtml(report: JsonReport): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>lxdev test report</title>
+<title>${escapeHtml(documentTitle)}</title>
 <style>${STYLE}</style>
 </head>
 <body>
@@ -98,7 +101,7 @@ export function renderHtml(report: JsonReport): string {
 <main>
   <header class="hero ${verdict.tone}">
     <div class="hero-text">
-      <p class="eyebrow">lxdev test report</p>
+      <p class="eyebrow">${escapeHtml(appName || "lxapp")} &middot; test report</p>
       <h1><span class="verdict">${escapeHtml(verdict.label)}</span></h1>
       <p class="lede">${escapeHtml(verdict.detail)}</p>
       <div class="chips">${chips}</div>

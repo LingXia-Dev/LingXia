@@ -200,3 +200,50 @@ test("the coverage panel measures the run against the published lx surface", asy
   assert.match(html, /class="cover cover-shape"[^>]*>lx\.getLocation</);
   assert.match(html, /class="cover cover-pending"[^>]*>lx\.share</);
 });
+
+test("the report is named after the app under test", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+  globalThis.lx.automation().lxapp().info = async () => ({
+    appid: "acme-notes",
+    app_name: "Acme Notes",
+    version: "2.1.0",
+    release_type: "developer",
+    pages_count: 4,
+  });
+
+  spec("passes", async () => {
+    expect(1).toBe(1);
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  assert.deepEqual(report.meta.subject, {
+    appid: "acme-notes",
+    app_name: "Acme Notes",
+    version: "2.1.0",
+    release_type: "developer",
+    pages: 4,
+  });
+
+  const html = decodeAttachment(attachments, "report.html");
+  assert.match(html, /<title>Acme Notes test report<\/title>/);
+  assert.match(html, /class="eyebrow">Acme Notes/);
+  assert.doesNotMatch(html, /<title>lxdev test report<\/title>/);
+});
+
+test("an unreachable app still produces a titled report", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+  globalThis.lx.automation().lxapp().info = async () => {
+    throw new Error("app is not up");
+  };
+
+  spec("passes", async () => {
+    expect(1).toBe(1);
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const html = decodeAttachment(attachments, "report.html");
+  assert.match(html, /<title>lxapp test report<\/title>/);
+});
