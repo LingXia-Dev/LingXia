@@ -822,11 +822,14 @@ fn refresh_loop(generation: u64) {
         let Some(watch) = watch else { return };
 
         if idle {
-            let session = state().session;
-            let epoch = state().activity.rest(generation, epoch);
-            if session.is_none()
-                && let Some(epoch) = epoch
-            {
+            if state().session.is_some() {
+                // Disclosure stays up for the whole session. Resting would
+                // clear the target and end this loop, leaving the panel on
+                // screen showing a frame from before the lull.
+                std::thread::sleep(interval);
+                continue;
+            }
+            if let Some(epoch) = state().activity.rest(generation, epoch) {
                 put_away(epoch);
             }
             return;
@@ -1034,6 +1037,7 @@ mod tests {
     fn hiding_a_retained_panel_keeps_its_windowserver_identity() {
         let mut state = State {
             activity: ActivityState::new(),
+            session: None,
             corner: Corner::BottomRight,
             mode: Some(ViewerMode::Full),
             window_number: 73,
@@ -1049,6 +1053,7 @@ mod tests {
     fn an_old_move_worker_cannot_reposition_a_new_target() {
         let mut state = State {
             activity: ActivityState::new(),
+            session: None,
             corner: Corner::BottomRight,
             mode: None,
             window_number: 0,

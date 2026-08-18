@@ -6,12 +6,27 @@
 
 use crate::error::{Error, Result};
 use crate::model::Acted;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub use crate::supervision_state::SessionKind;
 
 static NEXT_GUARD: AtomicU64 = AtomicU64::new(1);
-static ACTIVE: AtomicU64 = AtomicU64::new(0);
+
+/// The one disclosed session, and how many guards hold it. A product can watch
+/// and control at once; both halves join the same session rather than the
+/// second silently invalidating the first.
+struct ActiveSession {
+    id: u64,
+    holders: usize,
+    kind: SessionKind,
+}
+
+static ACTIVE: Mutex<Option<ActiveSession>> = Mutex::new(None);
+
+fn active() -> std::sync::MutexGuard<'static, Option<ActiveSession>> {
+    ACTIVE.lock().unwrap_or_else(|error| error.into_inner())
+}
 
 /// RAII hold on persistent session disclosure.
 ///
@@ -23,11 +38,38 @@ pub struct SupervisionGuard {
 }
 
 impl SupervisionGuard {
-    /// Begin persistent disclosure for an observed or controlled session.
+    /// Begin persistent disclosure for an observed or controlled session, or
+    /// join the one already running.
     pub fn begin(kind: SessionKind) -> Result<Self> {
-        let id = NEXT_GUARD.fetch_add(1, Ordering::Relaxed);
-        ACTIVE.store(id, Ordering::SeqCst);
-        begin_native(kind);
+        let (id, kind, announce) = {
+            let mut active = active();
+            match active.as_mut() {
+                Some(session) => {
+                    session.holders += 1;
+                    // Control outranks observation: a session that can act on
+                    // the machine has to say so, never the other way round.
+                    let upgrade =
+                        kind == SessionKind::Control && session.kind == SessionKind::Observation;
+                    if upgrade {
+                        session.kind = kind;
+                    }
+                    (session.id, session.kind, upgrade)
+                }
+                None => {
+                    let id = NEXT_GUARD.fetch_add(1, Ordering::Relaxed);
+                    *active = Some(ActiveSession {
+                        id,
+                        holders: 1,
+                        kind,
+                    });
+                    (id, kind, true)
+                }
+            }
+        };
+        // Outside the lock: the platform viewer takes its own.
+        if announce {
+            begin_native(kind);
+        }
         Ok(Self { id, kind })
     }
 
@@ -36,7 +78,9 @@ impl SupervisionGuard {
     }
 
     pub fn is_current(&self) -> bool {
-        ACTIVE.load(Ordering::SeqCst) == self.id
+        active()
+            .as_ref()
+            .is_some_and(|session| session.id == self.id)
     }
 
     /// Controlled input must go through this facade so it cannot outlive
@@ -56,10 +100,21 @@ impl SupervisionGuard {
 
 impl Drop for SupervisionGuard {
     fn drop(&mut self) {
-        if ACTIVE
-            .compare_exchange(self.id, 0, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
-        {
+        let ended = {
+            let mut active = active();
+            match active.as_mut() {
+                Some(session) if session.id == self.id => {
+                    session.holders = session.holders.saturating_sub(1);
+                    let last = session.holders == 0;
+                    if last {
+                        *active = None;
+                    }
+                    last
+                }
+                _ => false,
+            }
+        };
+        if ended {
             end_native();
         }
     }
@@ -201,6 +256,34 @@ mod tests {
         drop(guard);
         let next = SupervisionGuard::begin(SessionKind::Control).unwrap();
         assert!(next.is_current());
+        next.end();
+    }
+
+    #[test]
+    fn a_second_session_joins_instead_of_replacing_the_first() {
+        let watcher = SupervisionGuard::begin(SessionKind::Observation).unwrap();
+        let controller = SupervisionGuard::begin(SessionKind::Control).unwrap();
+
+        assert!(
+            watcher.is_current(),
+            "a second session must not invalidate the guard already held"
+        );
+        assert!(controller.is_current());
+        assert_eq!(
+            controller.kind(),
+            SessionKind::Control,
+            "control must outrank observation on the shared session"
+        );
+
+        drop(controller);
+        assert!(
+            watcher.is_current(),
+            "disclosure belongs to the last holder, not the first to leave"
+        );
+        drop(watcher);
+
+        let next = SupervisionGuard::begin(SessionKind::Observation).unwrap();
+        assert_eq!(next.kind(), SessionKind::Observation);
         next.end();
     }
 }
