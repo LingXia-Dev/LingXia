@@ -1,9 +1,10 @@
 use anyhow::{Context, Result, bail};
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Argument, Expression};
+use oxc_ast::ast::{Argument, Expression, ImportDeclarationSpecifier, ModuleExportName, Statement};
 use oxc_ast_visit::{Visit, walk};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -202,13 +203,20 @@ fn scan_javascript(
     let allocator = Allocator::default();
     let source_type = SourceType::mjs();
     let parsed = Parser::new(&allocator, source, source_type).parse();
+    let factory_locals = collect_factory_locals(&parsed.program);
     let mut visitor = MediaVisitor {
         path,
         base_offset,
         line_source,
         findings,
+        factory_locals: &factory_locals,
     };
     visitor.visit_program(&parsed.program);
+}
+
+struct FactoryOrigin {
+    imported: Option<String>,
+    source: String,
 }
 
 struct MediaVisitor<'a, 'b> {
@@ -216,6 +224,7 @@ struct MediaVisitor<'a, 'b> {
     base_offset: usize,
     line_source: &'a str,
     findings: &'b mut Vec<Finding>,
+    factory_locals: &'a HashMap<String, FactoryOrigin>,
 }
 
 impl MediaVisitor<'_, '_> {
@@ -239,7 +248,11 @@ impl MediaVisitor<'_, '_> {
 
 impl<'a> Visit<'a> for MediaVisitor<'_, '_> {
     fn visit_call_expression(&mut self, it: &oxc_ast::ast::CallExpression<'a>) {
-        if let Some(kind) = factory_media_kind(unwrap_expression(&it.callee), &it.arguments) {
+        if let Some(kind) = factory_media_kind(
+            unwrap_expression(&it.callee),
+            &it.arguments,
+            self.factory_locals,
+        ) {
             self.push(it.span.start as usize, kind);
         }
         walk::walk_call_expression(self, it);
@@ -270,15 +283,129 @@ impl<'a> Visit<'a> for MediaVisitor<'_, '_> {
     }
 }
 
-fn factory_media_kind(callee: &Expression<'_>, arguments: &[Argument<'_>]) -> Option<MediaKind> {
-    let name = callee_leaf_name(callee)?;
-    let kind = element_factory_kind(name)?;
-    let arg_index = match kind {
-        ElementFactory::TagFirst => 0,
-        ElementFactory::TagSecond => 1,
+fn factory_media_kind(
+    callee: &Expression<'_>,
+    arguments: &[Argument<'_>],
+    factory_locals: &HashMap<String, FactoryOrigin>,
+) -> Option<MediaKind> {
+    if let Some(kind) = callee_factory_kind(callee, factory_locals) {
+        let arg_index = match kind {
+            ElementFactory::TagFirst => 0,
+            ElementFactory::TagSecond => 1,
+        };
+        return media_element_kind(string_argument(arguments.get(arg_index)?)?);
+    }
+    minified_jsx_media_kind(callee, arguments)
+}
+
+fn callee_factory_kind(
+    callee: &Expression<'_>,
+    factory_locals: &HashMap<String, FactoryOrigin>,
+) -> Option<ElementFactory> {
+    if let Some(name) = callee_leaf_name(callee)
+        && let Some(kind) = element_factory_kind(name)
+    {
+        return Some(kind);
+    }
+
+    let Expression::Identifier(identifier) = callee else {
+        return None;
     };
-    let tag = string_argument(arguments.get(arg_index)?)?;
-    media_element_kind(tag)
+    let origin = factory_locals.get(identifier.name.as_str())?;
+    if origin
+        .imported
+        .as_deref()
+        .and_then(element_factory_kind)
+        .is_some()
+        || is_factory_module(&origin.source)
+    {
+        return Some(ElementFactory::TagFirst);
+    }
+    None
+}
+
+fn minified_jsx_media_kind(
+    callee: &Expression<'_>,
+    arguments: &[Argument<'_>],
+) -> Option<MediaKind> {
+    let Expression::Identifier(_) = callee else {
+        return None;
+    };
+    if arguments.len() < 2 || !is_props_argument(&arguments[1]) {
+        return None;
+    }
+    media_element_kind(string_argument(arguments.first()?)?)
+}
+
+fn is_props_argument(argument: &Argument<'_>) -> bool {
+    match argument {
+        Argument::ObjectExpression(_) | Argument::NullLiteral(_) => true,
+        Argument::Identifier(identifier) => identifier.name == "undefined",
+        _ => false,
+    }
+}
+
+fn collect_factory_locals(program: &oxc_ast::ast::Program<'_>) -> HashMap<String, FactoryOrigin> {
+    let mut locals = HashMap::new();
+    for statement in &program.body {
+        let Statement::ImportDeclaration(declaration) = statement else {
+            continue;
+        };
+        let source = declaration.source.value.as_str();
+        let Some(specifiers) = &declaration.specifiers else {
+            continue;
+        };
+        for specifier in specifiers {
+            match specifier {
+                ImportDeclarationSpecifier::ImportSpecifier(spec) => {
+                    locals.insert(
+                        spec.local.name.as_str().to_string(),
+                        FactoryOrigin {
+                            imported: export_name(&spec.imported),
+                            source: source.to_string(),
+                        },
+                    );
+                }
+                ImportDeclarationSpecifier::ImportDefaultSpecifier(spec) => {
+                    locals.insert(
+                        spec.local.name.as_str().to_string(),
+                        FactoryOrigin {
+                            imported: Some("default".to_string()),
+                            source: source.to_string(),
+                        },
+                    );
+                }
+                ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => {}
+            }
+        }
+    }
+    locals
+}
+
+fn export_name(name: &ModuleExportName<'_>) -> Option<String> {
+    match name {
+        ModuleExportName::IdentifierName(identifier) => Some(identifier.name.as_str().to_string()),
+        ModuleExportName::IdentifierReference(identifier) => {
+            Some(identifier.name.as_str().to_string())
+        }
+        ModuleExportName::StringLiteral(literal) => Some(literal.value.as_str().to_string()),
+    }
+}
+
+fn is_factory_module(source: &str) -> bool {
+    let source = source.replace('\\', "/").to_ascii_lowercase();
+    const MARKERS: &[&str] = &[
+        "react/jsx-runtime",
+        "react/jsx-dev-runtime",
+        "react-runtime",
+        "preact/jsx-runtime",
+        "preact/compat",
+        "vue-runtime",
+        "@vue/runtime",
+        "solid-js/jsx-runtime",
+    ];
+    MARKERS.iter().any(|marker| source.contains(marker))
+        || matches!(source.as_str(), "react" | "vue" | "preact" | "solid-js")
 }
 
 #[derive(Clone, Copy)]
@@ -527,6 +654,50 @@ mod tests {
         assert!(err.contains("pages/home/view.js:2:"), "{err}");
         assert!(err.contains("`<video>`"), "{err}");
         assert!(err.contains("<lx-video>"), "{err}");
+    }
+
+    #[test]
+    fn rejects_minified_jsx_and_vite_runtime_chunks() {
+        let renamed = audit_one(
+            "view.js",
+            "import { jsx as e } from 'react/jsx-runtime';\ne(\"video\", { src: \"./a.mp4\" });\n",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(renamed.contains("`<video>`"), "{renamed}");
+
+        let chunk = audit_one(
+            "pages/home/home.js",
+            "import { A as e } from '../../assets/react-runtime-a1b2c3.js';\ne(\"video\", { src: \"./a.mp4\" });\n",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(chunk.contains("`<video>`"), "{chunk}");
+
+        let one_arg = audit_one(
+            "pages/home/home.js",
+            "import { A as e } from '../../assets/react-runtime-a1b2c3.js';\ne(\"video\");\n",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(one_arg.contains("`<video>`"), "{one_arg}");
+
+        let inlined = audit_one(
+            "assets/page-abc.js",
+            "function e(t,n){return t}\ne(\"audio\",{src:\"./beep.mp3\"});\n",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(inlined.contains("`<audio>`"), "{inlined}");
+    }
+
+    #[test]
+    fn allows_one_arg_helper_named_video() {
+        audit_one(
+            "view.js",
+            "export const label = t => t;\nlabel(\"video\");\n",
+        )
+        .unwrap();
     }
 
     #[test]
