@@ -2323,6 +2323,14 @@ declare global {
     readonly envVersion: HostAppEnvVersion;
     getBaseInfo(): AppBaseInfo;
     /**
+     * Follow the host's effective display language.
+     * `getBaseInfo().displayLanguage` answers what it is now; this answers when it
+     * changes. Logic needs both because the strings it hands to native chrome —
+     * navigation bar titles, tab bar labels, modal and action-sheet text — are the
+     * app's own, and nothing re-renders them on its behalf.
+     */
+    onDisplayLanguageChange(callback: (language: string) => void): () => void;
+    /**
      * Exit the host app immediately without a confirmation dialog.
      * If the user should confirm first, call `lx.showModal(...)` and invoke this
      * only after confirmation.

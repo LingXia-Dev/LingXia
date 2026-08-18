@@ -126,6 +126,7 @@ const HOST_APP_API = [
   'envVersion',
   'exit',
   'getBaseInfo',
+  'onDisplayLanguageChange',
   'screenshot',
   'setBadge',
 ] as const;

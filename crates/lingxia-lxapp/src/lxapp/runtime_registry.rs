@@ -44,23 +44,22 @@ static DISPLAY_LANGUAGE: Mutex<Option<String>> = Mutex::new(None);
 pub fn set_display_language(language: Option<String>) {
     let normalized = language.filter(|value| !value.trim().is_empty());
     *DISPLAY_LANGUAGE.lock().unwrap_or_else(|e| e.into_inner()) = normalized;
-    publish_display_language_to_pages(&get_display_language());
+    publish_display_language(&get_display_language());
 }
 
-/// Push the language into every open page document.
+/// Push the language to both halves of every running lxapp.
 ///
-/// The native chrome reads `get_display_language` live, but a page WebView
-/// only ever received the value its bootstrap was written with — so without
-/// this a language switch relabels the chrome and leaves the content it frames
-/// in the previous language until the page is recreated.
-fn publish_display_language_to_pages(language: &str) {
+/// The native chrome reads `get_display_language` live, but a page WebView only
+/// ever received the value its bootstrap was written with, and Logic only ever
+/// read it on demand — so without this a language switch relabels the chrome
+/// and leaves the content it frames, plus every title the app set itself, in
+/// the previous language until the page is recreated.
+fn publish_display_language(language: &str) {
     let Some(manager) = get_lxapps_manager() else {
         return;
     };
-    let script = format!(
-        "var f = globalThis.__lingxiaApplyDisplayLanguage; if (f) f({});",
-        serde_json::to_string(language).unwrap_or_else(|_| "\"en-US\"".to_string())
-    );
+    let quoted = serde_json::to_string(language).unwrap_or_else(|_| "\"en-US\"".to_string());
+    let script = format!("var f = globalThis.__lingxiaApplyDisplayLanguage; if (f) f({quoted});");
     use lingxia_webview::WebViewController;
     for entry in manager.lxapps.iter() {
         for page in entry.value().live_page_instances() {
@@ -68,6 +67,11 @@ fn publish_display_language_to_pages(language: &str) {
                 let _ = webview.exec_js(&script);
             }
         }
+        crate::appservice::event_bus::publish_app_event(
+            entry.key(),
+            crate::DISPLAY_LANGUAGE_CHANGE_EVENT,
+            Some(quoted.clone()),
+        );
     }
 }
 
