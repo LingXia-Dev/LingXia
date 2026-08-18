@@ -49,6 +49,9 @@ jobs:
       automation: ${{ steps.compute.outputs.automation }}
       automation_matrix: ${{ steps.compute.outputs.automation_matrix }}
       automation_types: ${{ steps.compute.outputs.automation_types }}
+      cli_build: ${{ steps.compute.outputs.cli_build }}
+      cli_matrix: ${{ steps.compute.outputs.cli_matrix }}
+      rust_test: ${{ steps.compute.outputs.rust_test }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -188,11 +191,23 @@ jobs:
               - 'scripts/ci/automation-matrix.sh'
               - 'scripts/ci/test-automation-matrix.sh'
               - 'scripts/automation/**'
+            # Runner.app packaging — not the rust crate (Clippy already
+            # type-checks lingxia-runner-lib). Apple FFI/SDK changes can break
+            # the Swift package even when runner sources did not move.
+            runner_src:
+              - 'tools/lingxia-runner/**'
+              - 'scripts/release/runner.sh'
+              - 'crates/lingxia/src/ffi/apple.rs'
+              - 'crates/lingxia-platform/src/apple/**'
+              - 'crates/lingxia-webview/src/apple/**'
             ci:
               - '.github/**'
-      - name: Test automation matrix selection
+              - 'scripts/ci/**'
+      - name: Test matrix selection
         shell: bash
-        run: bash scripts/ci/test-automation-matrix.sh
+        run: |
+          bash scripts/ci/test-automation-matrix.sh
+          bash scripts/ci/test-cli-matrix.sh
       - id: compute
         shell: bash
         env:
@@ -224,6 +239,7 @@ jobs:
           AUTOMATION_VUE: ${{ steps.filter.outputs.automation_vue }}
           AUTOMATION_SHOWCASE: ${{ steps.filter.outputs.automation_showcase }}
           AUTOMATION_CI: ${{ steps.filter.outputs.automation_ci }}
+          RUNNER_SRC: ${{ steps.filter.outputs.runner_src }}
           FOCUS: ${{ github.event_name == 'workflow_dispatch' && inputs.focus || 'auto' }}
           IS_MAIN_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           # A release/* PR (from Prepare Release PR) only touches Cargo.toml /
@@ -248,8 +264,13 @@ jobs:
           ios=$(any "$rel" "$ex_base" "$APPLE" "$EX_IOS")
           macos=$(any "$rel" "$ex_base" "$APPLE" "$EX_MACOS")
           android=$(any "$rel" "$ex_base" "$ANDROID" "$EX_ANDROID")
-          # macOS runner = the apple SDK + the rust runtime/CLI.
-          runner=$(any "$rel" "$rust" "$APPLE")
+          # Runner.app packaging is its own product. Clippy already type-checks
+          # lingxia-runner-lib, and example-macos / sdk-apple already compile the
+          # Apple SDK the Runner consumes. Rebuild the .app only when the
+          # packaging surface or Apple FFI/SDK changed, plus main/release so the
+          # script cannot rot. Hosted macOS has ~5 slots; a rust-wide fan-out
+          # here queues automation behind a 25-min notarized package.
+          runner=$(any "$rel" "$IS_MAIN_PUSH" "$APPLE" "$RUNNER_SRC")
           # The platform SDKs embed the web runtime (bridge/polyfills) + i18n +
           # the core rust crates, so fan those signals in too.
           sdk_base=$(any "$WEB_RT" "$I18N" "$CORE_RUST")
@@ -321,6 +342,19 @@ jobs:
           if [[ "$FOCUS" != "auto" ]]; then
             automation_types=true
           fi
+
+          cli_cross=$(any "$rel" "$IS_MAIN_PUSH")
+          cli_outputs=$(RUST="$rust" CROSS="$cli_cross" bash scripts/ci/cli-matrix.sh)
+          cli_build=$(sed -n 's/^cli_build=//p' <<<"$cli_outputs")
+          cli_matrix=$(sed -n 's/^cli_matrix=//p' <<<"$cli_outputs")
+
+          # Workspace tests are advisory (timing-sensitive) and occupy a macOS
+          # slot. Run them on main/release, not on every rust PR — they were
+          # routinely queued 30–50 min behind the other macOS jobs.
+          rust_test=false
+          if [[ "$rust" == "true" ]]; then
+            rust_test=$(any "$rel" "$IS_MAIN_PUSH")
+          fi
           {
             echo "rust=$rust"
             echo "i18n=$i18n"
@@ -335,6 +369,9 @@ jobs:
             echo "automation=$automation"
             echo "automation_matrix=$automation_matrix"
             echo "automation_types=$automation_types"
+            echo "cli_build=$cli_build"
+            echo "cli_matrix=$cli_matrix"
+            echo "rust_test=$rust_test"
           } >> "$GITHUB_OUTPUT"
 
   # ---- Gating jobs (required via ci-success) ----
@@ -358,16 +395,15 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
-  # The runtime crates (e.g. lingxia-webview) only have android / apple / ohos /
-  # windows backends — there is no plain-linux-gnu host backend — so the
-  # workspace-wide check runs on macOS, the project's real desktop host.
-  # Android and Windows backends are checked separately by the
-  # *-target jobs below (their cfg-gated code never compiles on macOS).
+  # i18n + CLI compile on Linux (the linux-x64 CLI job already ships this
+  # binary). Keep this off macOS so it does not take a hosted slot away from
+  # Clippy / example / automation. Workspace-wide typecheck stays on the
+  # macOS Clippy job — runtime crates have no plain-linux-gnu host backend.
   rust-check:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.i18n == 'true' }}
     name: Check
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -376,26 +412,19 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
-      # Shared with the Clippy and Test jobs so the three macOS Rust jobs reuse
-      # one compiled-dependency cache instead of three.
       - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: macos-rust
+          prefix-key: rust-check-linux
 
       # lingxia-cli build.rs (run by the i18n gate) embeds the bridge/polyfills
       # JS runtime.
       - uses: ./.github/actions/build-web-runtime
 
-      # The full `cargo check --workspace` is covered by the Clippy job on the
-      # same macOS runner (clippy is a superset of check), so this job runs only
-      # targeted required checks plus the strict i18n generation gate.
+      # The full `cargo check --workspace` is covered by the macOS Clippy job
+      # (clippy is a superset of check), so this job runs only the i18n
+      # generation gate and the crates it needs.
       - name: Check i18n-related crates explicitly
         run: cargo check -p lingxia-logic -p lingxia-cli
-
-      # Keep external-app OAuth redirects gated even though the full workspace
-      # test job remains advisory for unrelated environment-sensitive tests.
-      - name: Test browser navigation policy
-        run: cargo test -p lingxia-browser policy::tests
 
       # Byte-compares the committed Rust + TS outputs against a fresh
       # regeneration and fails on drift — catches "edited yaml but forgot to
@@ -423,8 +452,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: rust-android
-
-      - uses: taiki-e/install-action@cargo-hack
 
       # The runtime has no Linux host backend, but its published crate must
       # still compile on the registry's default Linux verification target.
@@ -454,11 +481,6 @@ jobs:
       - name: Check Rust compiles for Android target
         run: cargo check --target aarch64-linux-android -p lingxia --lib
 
-      # Android selects stub.rs today. Keep every public capability combination
-      # compiling without pretending that this adds an Android implementation.
-      - name: Check device-io feature powerset on stub target
-        run: cargo hack check -p lingxia-device-io --feature-powerset --exclude-features full,native --no-dev-deps --target aarch64-linux-android
-
   # The Windows host stack (lingxia-windows-sdk / -contract / -build and the Windows
   # backends of lingxia-platform / lingxia-webview / lingxia-shell) is
   # cfg(target_os = "windows"), so the macOS clippy job never compiles it (and
@@ -470,9 +492,9 @@ jobs:
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.i18n == 'true' }}
     name: Windows Target
     runs-on: windows-latest
-    # The full Windows gates can take ~40 min; the rust-cache post-job save of
-    # the target dir can add 5+ min, so leave enough room for cache finalization.
-    timeout-minutes: 60
+    # Feature checks are linear (`--each-feature`); cache save of the target
+    # dir can still add a few minutes after the compile steps.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -502,9 +524,12 @@ jobs:
         shell: bash
         run: cargo test -p lingxia-device-io --features full --lib
 
-      - name: Check Windows device-io feature powerset
+      # Linear in the number of features, not 2^N. The cargo-tree script below
+      # already asserts the capability graph; this only type-checks each public
+      # feature plus `full` on the real Windows backend.
+      - name: Check Windows device-io features
         shell: bash
-        run: cargo hack check -p lingxia-device-io --feature-powerset --exclude-features full,native --no-dev-deps
+        run: cargo hack check -p lingxia-device-io --each-feature --no-dev-deps
 
       - name: Verify device-io feature boundaries
         shell: bash
@@ -538,34 +563,13 @@ jobs:
 
   cli:
     needs: changes
-    if: ${{ needs.changes.outputs.rust == 'true' }}
+    if: ${{ needs.changes.outputs.cli_build == 'true' }}
     name: ${{ matrix.platform }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: linux-x64
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            exe: ""
-          - platform: linux-arm64
-            os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            exe: ""
-          - platform: darwin-arm64
-            os: macos-latest
-            target: aarch64-apple-darwin
-            exe: ""
-          - platform: darwin-x64
-            os: macos-latest
-            target: x86_64-apple-darwin
-            exe: ""
-          - platform: windows-x64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            exe: ".exe"
+      matrix: ${{ fromJSON(needs.changes.outputs.cli_matrix) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -595,7 +599,8 @@ jobs:
           path: target/${{ matrix.target }}/release/lingxia${{ matrix.exe }}
           if-no-files-found: error
 
-  # Runs on macOS for the same reason as the workspace check.
+  # Workspace-wide lint lives on macOS: runtime crates have no plain-linux-gnu
+  # host backend. Android / Windows backends are covered by the *-target jobs.
   rust-clippy:
     needs: changes
     if: ${{ needs.changes.outputs.rust == 'true' }}
@@ -613,8 +618,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           shared-key: macos-rust
-
-      - uses: taiki-e/install-action@cargo-hack
 
       # lingxia-cli build.rs embeds the bridge/polyfills JS runtime.
       - uses: ./.github/actions/build-web-runtime
@@ -635,8 +638,10 @@ jobs:
       - name: Clippy (lingxia automation feature)
         run: cargo clippy -p lingxia --features automation -- -D warnings -A clippy::let_underscore_future
 
-      - name: Check macOS device-io feature powerset
-        run: cargo hack check -p lingxia-device-io --feature-powerset --exclude-features full,native --no-dev-deps
+      # Keep external-app OAuth redirects gated. Lives here (not rust-check)
+      # because lingxia-browser pulls the desktop webview/platform stack.
+      - name: Test browser navigation policy
+        run: cargo test -p lingxia-browser policy::tests
 
       - name: Test macOS activity viewer against WindowServer
         run: cargo run -p lingxia-device-io --features supervision --example pip_viewer
@@ -675,9 +680,10 @@ jobs:
       #   APPLE_CREDENTIALS_JSON_BASE64    base64 -i ~/.lingxia/apple/credentials.json
       #   APPLE_DEVELOPER_ID_JSON_BASE64   base64 -i ~/.lingxia/apple/developer-id.json
       # (the latter is produced by `lingxia auth apple import-developer-id`).
-      # Without the secrets (forks / PRs / unset) the CLI leaves the app ad-hoc
-      # signed and the build still succeeds.
+      # PRs only need an ad-hoc package to prove runner.sh still links. Signing
+      # + notarize stay on main (and the release-cli executor).
       - name: Restore Apple credential store (if secrets present)
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         env:
           CREDS_B64: ${{ secrets.APPLE_CREDENTIALS_JSON_BASE64 }}
           DEVID_B64: ${{ secrets.APPLE_DEVELOPER_ID_JSON_BASE64 }}
@@ -702,12 +708,12 @@ jobs:
           provider-cloud-git: ${{ secrets.LINGXIA_PROVIDER_CLOUD_GIT }}
 
       - name: Build macOS Runner (arm64)
-        # Notarization here is a build check, not a release: if Apple's service
-        # stalls, the bounded wait warns and continues with a signed (un-stapled)
-        # app instead of hanging until the job timeout. Release builds omit this.
-        # The short wait keeps build + wait well under the 45-min job timeout.
+        # Notarization is a main-branch build check, not a PR gate or a release:
+        # if Apple's service stalls, the bounded wait warns and continues with a
+        # signed (un-stapled) app. Release builds omit this and go through
+        # release-cli.yml. PRs stay ad-hoc (no credential store above).
         env:
-          LINGXIA_NOTARIZE_BEST_EFFORT: "1"
+          LINGXIA_NOTARIZE_BEST_EFFORT: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && '1' || '' }}
           LINGXIA_NOTARIZE_WAIT_TIMEOUT: "10m"
         run: bash scripts/release/runner.sh --macos-arch arm64 --out dist/runner-release
 
@@ -973,9 +979,10 @@ jobs:
   # ---- Advisory (runs + visible, NOT in ci-success.needs) ----
   # rust-test stays advisory: it has pre-existing environment/timing-dependent
   # tests (lingxia-transfer wall-clock ordering, live-shell terminal sessions).
+  # PR gates skip it so it cannot occupy a macOS slot behind Clippy / examples.
   rust-test:
     needs: changes
-    if: ${{ needs.changes.outputs.rust == 'true' }}
+    if: ${{ needs.changes.outputs.rust_test == 'true' }}
     name: Test
     runs-on: macos-latest
     timeout-minutes: 30
