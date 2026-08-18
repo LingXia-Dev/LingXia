@@ -131,6 +131,12 @@ export interface AssertionRecord {
 export interface StepRecord {
   name: string;
   path: string;
+  /** `step` is authored with `t.step`; `action` is a recorded driver call. */
+  kind?: "step" | "action";
+  /** Short argument summary for an action — a selector, a page, a script head. */
+  detail?: string;
+  /** Identical consecutive actions collapse into one row with a count. */
+  repeat?: number;
   status: StepStatus;
   duration_ms: number;
   error?: ReportError;
@@ -193,6 +199,8 @@ export interface RunMeta {
   platform?: string;
   framework?: string;
   subject?: RunSubject;
+  /** The suite opted into measuring the whole published `lx` surface. */
+  surface_coverage?: boolean;
 }
 
 export interface JsonReport {

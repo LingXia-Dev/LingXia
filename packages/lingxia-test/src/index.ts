@@ -1,4 +1,4 @@
-export { spec, expect, run, reset } from "./runtime.js";
+export { spec, expect, run, reset, trackPublicSurface } from "./runtime.js";
 export { AssertionError, logAssertion, setAssertionSink } from "./expect.js";
 export { TimeoutError } from "./fixture.js";
 export { renderJUnit } from "./junit.js";

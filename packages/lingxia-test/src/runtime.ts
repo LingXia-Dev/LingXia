@@ -52,6 +52,17 @@ const specs: RegisteredSpec[] = [];
 const hooks: Hook[] = [];
 const fileCounts = new Map<string, number>();
 let forceRelaunchNext = false;
+let trackSurface = false;
+
+/**
+ * Measure this run against the whole public `lx` surface, not just the tags
+ * the suite declares. For a conformance suite — one that intends to cover
+ * every published capability — call this once from the entry. An ordinary
+ * lxapp should not: it would read as failing to cover an API it never claimed.
+ */
+function trackPublicSurface(): void {
+  trackSurface = true;
+}
 
 function parseArgs(
   optionsOrBody: SpecOptions | SpecBody,
@@ -394,6 +405,7 @@ async function run(): Promise<ProtocolReport> {
       platform: host.args.platform,
       framework: host.args.framework,
       subject,
+      surface_coverage: trackSurface,
     },
     partial: false,
     filtered: Boolean(grep) || hasOnly,
@@ -519,6 +531,7 @@ function encodeScreenshot(shot: unknown): { mimeType: string; base64: string } |
 function reset(): void {
   specs.length = 0;
   hooks.length = 0;
+  trackSurface = false;
   fileCounts.clear();
   forceRelaunchNext = false;
   clearInline();
@@ -540,5 +553,5 @@ if (!globalThis.__LINGXIA_TEST__) {
   });
 }
 
-export { spec, expect, run, reset, resolvedId };
+export { spec, expect, run, reset, resolvedId, trackPublicSurface };
 export type { SpecOptions, SpecBody, Fixture };

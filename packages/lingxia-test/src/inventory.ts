@@ -19,6 +19,17 @@ export const LAYER_TITLE: Record<CapabilityLayer, string> = {
   automation: "Automation drivers",
 };
 
+/**
+ * The layers a coverage report is about. The automation drivers are the
+ * harness — how a suite tests — not the cross-platform API an lxapp calls, so
+ * they are deliberately not measured as product coverage.
+ */
+export const MEASURED_LAYERS: readonly CapabilityLayer[] = ["logic", "object"];
+
+export function isMeasured(layer: CapabilityLayer): boolean {
+  return MEASURED_LAYERS.includes(layer);
+}
+
 function build(): Capability[] {
   const out: Capability[] = [];
   for (const surface of LX_RUNTIME_SURFACES) {

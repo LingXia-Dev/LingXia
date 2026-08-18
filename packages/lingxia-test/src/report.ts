@@ -10,6 +10,7 @@ import {
   CAPABILITY_INDEX,
   LAYER_TITLE,
   PUBLIC_CAPABILITIES,
+  isMeasured,
   type CapabilityLayer,
 } from "./inventory.js";
 import { PACKAGE_NAME, VERSION } from "./version.js";
@@ -68,13 +69,16 @@ export function renderHtml(report: JsonReport): string {
   const subject = meta.subject;
   // The report is about the app, not about the tool that ran it.
   const appName = subject?.app_name || subject?.appid || "";
-  const documentTitle = appName ? `${appName} test report` : "lxapp test report";
+  const target = meta.platform || args.platform || "";
+  const renderer = meta.framework || args.framework || "";
+  // The subject line answers "what was tested, and where" before anything else.
+  const subjectLine = [appName || "lxapp", target, renderer].filter(Boolean).join(" &middot; ");
+  const documentTitle =
+    `${appName || "lxapp"}${target ? ` on ${target}` : ""} test report`;
   const chips = [
     ...(subject?.appid && subject.appid !== appName ? [chip("id", subject.appid)] : []),
     ...(subject?.version ? [chip("version", subject.version)] : []),
     ...(subject?.release_type ? [chip("build", subject.release_type)] : []),
-    chip("platform", meta.platform || args.platform || "—"),
-    chip("framework", meta.framework || args.framework || "—"),
     chip("started", meta.started_at ? meta.started_at.replace("T", " ").replace(/\.\d+Z$/, "Z") : "—"),
     chip("duration", formatDuration(report.duration_ms)),
     chip("runner", `${PACKAGE_NAME} ${VERSION}`),
@@ -100,8 +104,9 @@ export function renderHtml(report: JsonReport): string {
 <a class="skip-link" href="#results">Skip to results</a>
 <main>
   <header class="hero ${verdict.tone}">
+    <button type="button" id="theme" class="theme-toggle" title="Switch between light and dark">Theme</button>
     <div class="hero-text">
-      <p class="eyebrow">${escapeHtml(appName || "lxapp")} &middot; test report</p>
+      <p class="eyebrow">${subjectLine}</p>
       <h1><span class="verdict">${escapeHtml(verdict.label)}</span></h1>
       <p class="lede">${escapeHtml(verdict.detail)}</p>
       <div class="chips">${chips}</div>
@@ -114,7 +119,9 @@ export function renderHtml(report: JsonReport): string {
     ${metric("specs", String(report.total), "registered and selected")}
     ${metric("assertions", String(stats.assertions), `${stats.failedAssertions} failed`)}
     ${metric("steps", String(stats.steps), "recorded")}
-    ${metric("lx API", percent(stats.logicBehaviour, stats.logicTotal), `${stats.logicBehaviour}/${stats.logicTotal} Logic capabilities behaviour-proven`)}
+    ${stats.surface
+      ? metric("lx API", percent(stats.logicBehaviour, stats.logicTotal), `${stats.logicBehaviour}/${stats.logicTotal} Logic capabilities behaviour-proven`)
+      : metric("capabilities", String(stats.provenTags), `of ${stats.declaredTags} declared tags proven`)}
   </section>
 
   ${renderBar(report)}
@@ -130,7 +137,6 @@ export function renderHtml(report: JsonReport): string {
     <div class="actions">
       <button type="button" id="expand">Expand all</button>
       <button type="button" id="collapse">Collapse all</button>
-      <button type="button" id="theme" aria-label="Toggle colour theme">Theme</button>
     </div>
   </div>
 
@@ -189,6 +195,9 @@ function collectStats(report: JsonReport): {
   steps: number;
   logicBehaviour: number;
   logicTotal: number;
+  provenTags: number;
+  declaredTags: number;
+  surface: boolean;
 } {
   let assertions = 0;
   let failedAssertions = 0;
@@ -199,13 +208,18 @@ function collectStats(report: JsonReport): {
     failedAssertions += flat.filter((entry) => !entry.passed).length;
     steps += countSteps(item.steps);
   }
-  const logic = coverageTotals(collectCovers(report), "logic");
+  const surface = report.meta?.surface_coverage === true;
+  const states = collectCovers(report, surface);
+  const logic = coverageTotals(states, "logic");
   return {
     assertions,
     failedAssertions,
     steps,
     logicBehaviour: logic.behaviour,
     logicTotal: logic.total,
+    provenTags: [...states.values()].filter((state) => state.behaviour).length,
+    declaredTags: states.size,
+    surface,
   };
 }
 
@@ -305,7 +319,7 @@ function emptyState(): CoverState {
   return { behaviour: false, shape: false, specs: [], declared: false };
 }
 
-function collectCovers(report: JsonReport): Map<string, CoverState> {
+function collectCovers(report: JsonReport, seedSurface: boolean): Map<string, CoverState> {
   const states = new Map<string, CoverState>();
   const touch = (name: string): CoverState => {
     let state = states.get(name);
@@ -315,12 +329,22 @@ function collectCovers(report: JsonReport): Map<string, CoverState> {
     }
     return state;
   };
-  for (const capability of PUBLIC_CAPABILITIES) touch(capability.name);
+  // Seeding the published surface turns every untested capability into a
+  // visible hole. That is what a conformance suite wants and what an ordinary
+  // lxapp does not: it never claimed the rest of the API.
+  if (seedSurface) {
+    for (const capability of PUBLIC_CAPABILITIES) {
+      if (isMeasured(capability.layer)) touch(capability.name);
+    }
+  }
   for (const item of report.cases) {
     const proven = item.status === "passed" || item.status === "xfail";
     for (const tag of item.covers) {
       const shapeOnly = tag.startsWith("shape:");
       const name = shapeOnly ? tag.slice("shape:".length) : tag;
+      // A harness-driver tag is not product coverage; keep it out of the panel.
+      const capability = CAPABILITY_INDEX.get(name);
+      if (capability && !isMeasured(capability.layer)) continue;
       const state = touch(name);
       state.declared = true;
       if (!state.specs.includes(item.id)) state.specs.push(item.id);
@@ -368,7 +392,7 @@ function coverageTotals(states: Map<string, CoverState>, layer: CapabilityLayer)
   let shape = 0;
   let total = 0;
   for (const capability of PUBLIC_CAPABILITIES) {
-    if (capability.layer !== layer) continue;
+    if (capability.layer !== layer || !isMeasured(capability.layer)) continue;
     total += 1;
     const state = states.get(capability.name);
     if (!state) continue;
@@ -383,24 +407,37 @@ function percent(part: number, whole: number): string {
 }
 
 function renderCoverage(report: JsonReport): string {
-  const states = collectCovers(report);
+  const surface = report.meta?.surface_coverage === true;
+  const states = collectCovers(report, surface);
+  if (states.size === 0) return "";
   const groups = groupCovers(states);
-  const sections = (["logic", "object", "automation", "custom"] as const)
-    .map((layer) => renderCoverageSection(layer, groups.filter((group) => group.layer === layer), states))
+  const sections = (["logic", "object", "custom"] as const)
+    .map((layer) => renderCoverageSection(
+      layer,
+      groups.filter((group) => group.layer === layer),
+      states,
+      surface,
+    ))
     .filter(Boolean)
     .join("");
   if (sections.length === 0) return "";
   const logic = coverageTotals(states, "logic");
-  return `<details class="panel" open>
-    <summary><span class="panel-title">lx API coverage</span>
+  const declared = [...states.values()];
+  const proven = declared.filter((state) => state.behaviour).length;
+  const heading = surface
+    ? `<span class="panel-title">lx API coverage</span>
       <span class="panel-sub">${logic.behaviour}/${logic.total} Logic capabilities behaviour-proven
-      (${percent(logic.behaviour, logic.total)}), ${percent(logic.shape, logic.total)} shape-proven</span></summary>
+      (${percent(logic.behaviour, logic.total)}), ${percent(logic.shape, logic.total)} shape-proven</span>`
+    : `<span class="panel-title">Capability coverage</span>
+      <span class="panel-sub">${proven}/${declared.length} declared capabilities proven by a passing spec</span>`;
+  return `<details class="panel" open>
+    <summary>${heading}</summary>
     <div class="panel-body">
       <ul class="legend">
         <li><span class="cover cover-ok">behaviour</span> a passing spec asserted it</li>
         <li><span class="cover cover-shape">shape</span> proven only to exist</li>
         <li><span class="cover cover-pending">declared</span> claimed by a pending or failing spec</li>
-        <li><span class="cover cover-none">uncovered</span> no spec at all</li>
+        ${surface ? `<li><span class="cover cover-none">uncovered</span> no spec at all</li>` : ""}
       </ul>
       ${sections}
     </div>
@@ -411,15 +448,19 @@ function renderCoverageSection(
   layer: CapabilityLayer | "custom",
   groups: CoverGroup[],
   states: Map<string, CoverState>,
+  surface: boolean,
 ): string {
   if (groups.length === 0) return "";
   const title = layer === "custom" ? "Project tags" : LAYER_TITLE[layer];
+  const rows = groups.reduce((sum, group) => sum + group.rows.length, 0);
   const head = layer === "custom"
-    ? `${groups.reduce((sum, group) => sum + group.rows.length, 0)} tags outside the published surface`
-    : (() => {
-        const totals = coverageTotals(states, layer);
-        return `${totals.behaviour}/${totals.total} behaviour &middot; ${totals.shape}/${totals.total} shape`;
-      })();
+    ? `${rows} tags outside the published surface`
+    : surface
+      ? (() => {
+          const totals = coverageTotals(states, layer);
+          return `${totals.behaviour}/${totals.total} behaviour &middot; ${totals.shape}/${totals.total} shape`;
+        })()
+      : `${groups.reduce((sum, group) => sum + group.behaviour, 0)}/${rows} behaviour`;
   const body = groups.map((group) => {
     const chips = group.rows.map(({ name, state }) => {
       const klass = state.behaviour
@@ -592,10 +633,18 @@ function renderSteps(steps: StepRecord[]): string {
   const items = steps.map((step) => {
     const err = step.error ? `<pre class="message">${escapeHtml(step.error.message)}</pre>` : "";
     const width = Math.max(2, Math.round((step.duration_ms / total) * 100));
-    return `<li class="step">
+    const action = step.kind === "action";
+    const label = action
+      ? `<code class="action-name">${escapeHtml(step.name)}</code>${
+          step.detail ? ` <span class="action-detail">${escapeHtml(step.detail)}</span>` : ""
+        }${step.repeat ? ` <span class="repeat">&times;${step.repeat}</span>` : ""}`
+      : `<span class="step-name">${escapeHtml(step.name)}</span>`;
+    const badge = action && step.status === "passed"
+      ? ""
+      : `<span class="badge sm ${tone(step.status)}">${escapeHtml(step.status)}</span>`;
+    return `<li class="step${action ? " action" : ""}">
       <div class="step-head">
-        <span class="badge sm ${tone(step.status)}">${escapeHtml(step.status)}</span>
-        <span class="step-name">${escapeHtml(step.name)}</span>
+        ${badge}${label}
         <span class="step-time">${step.duration_ms}ms</span>
         <span class="step-bar"><span style="width:${width}%"></span></span>
       </div>
@@ -738,7 +787,7 @@ a { color:var(--accent); }
 .skip-link { position:absolute; left:-9999px; }
 .skip-link:focus { left:8px; top:8px; background:var(--panel); padding:8px 12px; border-radius:8px; }
 
-.hero { display:flex; gap:24px; align-items:center; justify-content:space-between; flex-wrap:wrap;
+.hero { position:relative; display:flex; gap:24px; align-items:center; justify-content:space-between; flex-wrap:wrap;
   background:var(--panel); border:1px solid var(--line); border-left:6px solid var(--muted);
   border-radius:14px; padding:22px 24px; box-shadow:var(--shadow); }
 .hero.tone-pass { border-left-color:var(--pass); }
@@ -759,6 +808,10 @@ h1 { margin:2px 0 4px; font-size:30px; line-height:1.15; letter-spacing:-.02em; 
 .flag { font-size:11px; text-transform:uppercase; letter-spacing:.08em; padding:3px 9px;
   border-radius:999px; background:var(--skip-soft); color:var(--skip); border:1px solid var(--line); }
 
+.theme-toggle { position:absolute; top:12px; right:14px; padding:4px 10px; font:inherit;
+  font-size:12px; color:var(--muted); background:transparent; border:1px solid var(--line);
+  border-radius:999px; cursor:pointer; }
+.theme-toggle:hover { color:var(--ink); border-color:var(--accent); }
 .donut { display:flex; align-items:center; gap:14px; }
 .donut svg { flex:none; }
 .donut-track { fill:none; stroke:var(--line); stroke-width:12; }
@@ -871,7 +924,12 @@ pre.message { background:var(--panel); border:1px solid var(--line); border-radi
 .steps .steps { margin:6px 0 0 18px; padding-left:10px; border-left:1px solid var(--line); }
 .step { margin:6px 0; }
 .step-head { display:flex; gap:8px; align-items:center; }
-.step-name { flex:0 1 auto; }
+.step-name { flex:0 1 auto; font-weight:500; }
+.step.action > .step-head { font-size:12.5px; color:var(--muted); }
+.action-name { font-family:var(--mono); color:var(--ink); }
+.action-detail { font-family:var(--mono); overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; max-width:46ch; }
+.repeat { font-size:11px; padding:1px 6px; border-radius:999px; border:1px solid var(--line); }
 .step-time { color:var(--muted); font-family:var(--mono); font-size:12px; }
 .step-bar { flex:1; height:4px; background:var(--line); border-radius:999px; overflow:hidden; min-width:40px; }
 .step-bar span { display:block; height:100%; background:var(--accent); opacity:.55; }

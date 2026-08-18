@@ -1,4 +1,11 @@
+import { trackPublicSurface } from '@lingxia/test';
 import '../setup.js';
+
+// The Showcase is LingXia's conformance suite: it intends to reach every
+// published capability, so the report measures the whole surface and shows
+// what it has not reached. An ordinary lxapp leaves this off.
+trackPublicSurface();
+
 import '../api/automation.test.js';
 import '../api/surface.test.js';
 import '../api/runtime.test.js';
