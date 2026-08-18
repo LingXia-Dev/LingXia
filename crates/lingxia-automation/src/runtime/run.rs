@@ -1,11 +1,13 @@
 //! Per-run shared state: the state machine, event buffer, and limits.
 
 use super::protocol::*;
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
+
+const LOG_RING_CAP: usize = 200;
 
 /// State shared between host callers and the run task on the automation
 /// worker. All mutation happens under one mutex; JS-side callbacks
@@ -21,6 +23,7 @@ pub(crate) struct RunShared {
     /// deterministically rather than by racing the clock.
     preemption_requested: AtomicBool,
     inner: Mutex<RunInner>,
+    log_ring: Mutex<VecDeque<String>>,
 }
 
 struct RunInner {
@@ -45,6 +48,7 @@ impl RunShared {
             timeout,
             cancel_tx,
             preemption_requested: AtomicBool::new(false),
+            log_ring: Mutex::new(VecDeque::new()),
             inner: Mutex::new(RunInner {
                 state: AutomationRunState::Running,
                 events: Vec::new(),
@@ -106,12 +110,29 @@ impl RunShared {
             truncate_utf8(&mut message, MAX_CONSOLE_EVENT_BYTES);
             message.push_str("… [truncated]");
         }
+        let line = format!("[{level}] {message}");
         let payload = AutomationEventPayload::Console {
             level: level.to_string(),
             message,
         };
         inner.push_retained_event(payload);
         inner.evict_if_needed();
+        drop(inner);
+        let mut ring = self.log_ring.lock().unwrap();
+        if ring.len() == LOG_RING_CAP {
+            ring.pop_front();
+        }
+        ring.push_back(line);
+    }
+
+    pub fn log_ring_text(&self) -> String {
+        self.log_ring
+            .lock()
+            .unwrap()
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     pub fn push_event(&self, value: serde_json::Value) {

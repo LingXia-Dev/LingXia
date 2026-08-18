@@ -4,7 +4,7 @@
 
 use crate::client::execute_command;
 use crate::project::SessionInfo;
-use crate::test_bundle::{MappedPosition, TestBundle, bundle_test_entry};
+use crate::test_bundle::{MappedPosition, TestBundle, bundle_test_path, find_project_root};
 use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -23,25 +23,36 @@ use std::time::Duration;
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
 /// After a cancel is sent, wait this long for the terminal state.
 const CANCEL_GRACE: Duration = Duration::from_secs(10);
+const WATCHDOG_GRACE: Duration = Duration::from_secs(5);
+const DEFAULT_CASE_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_ARTIFACT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_ARTIFACT_BASE64_BYTES: usize = MAX_ARTIFACT_BYTES.div_ceil(3) * 4;
 
-#[derive(Args)]
-#[command(
-    after_long_help = "The entry must import test APIs from @rongjs/test.\n\
-Example: lxdev test tests/home.test.ts --arg locale=en"
-)]
-pub struct TestOptions {
-    /// Test entry (.js/.ts and .mjs/.mts ESM variants)
-    entry: PathBuf,
+pub const NO_SESSION_HINT: &str = "No live dev session found. Start one with `lingxia dev --background`, then re-run `lxdev test`.";
 
-    /// Overall registration and case timeout in seconds
+#[derive(Args)]
+#[command(after_long_help = "Pass a file or a directory of *.test.ts files.\n\
+Import spec from @lingxia/test (or test from @rongjs/test).\n\
+Example: lxdev test tests/ --grep home")]
+pub struct TestOptions {
+    /// Test entry file, or a directory of `*.test.ts` files
+    pub entry: PathBuf,
+
+    /// Overall registration timeout in seconds
     #[arg(long, default_value_t = 60, value_parser = clap::value_parser!(u64).range(1..=3600))]
     timeout: u64,
 
     /// Key=value string exposed as test.args (repeatable)
     #[arg(long = "arg", value_name = "KEY=VALUE", value_parser = parse_key_value)]
     args: Vec<(String, String)>,
+
+    /// Run only specs whose title or id matches this regex
+    #[arg(long, value_name = "PATTERN")]
+    pub grep: Option<String>,
+
+    /// Fail if any spec.only is registered
+    #[arg(long)]
+    pub forbid_only: bool,
 
     /// Directory receiving attached artifacts
     /// (default: test-results/lxdev/<run-id>)
@@ -77,8 +88,30 @@ where
 
 /// Owns process exit: the run state is the exit code, not an `Err`.
 pub fn execute(info: &SessionInfo, options: TestOptions) -> Result<()> {
+    execute_inner(info, options).map_err(|err| {
+        if looks_unreachable(&err) {
+            anyhow!(NO_SESSION_HINT)
+        } else {
+            err
+        }
+    })
+}
+
+pub fn looks_unreachable(err: &anyhow::Error) -> bool {
+    let text = format!("{err:#}").to_lowercase();
+    text.contains("no live dev session")
+        || text.contains("websocket")
+        || text.contains("connection refused")
+        || text.contains("failed to connect")
+        || text.contains("os error 10061")
+        || text.contains("10054")
+        || text.contains("broken pipe")
+}
+
+fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     let machine = options.json || options.pretty;
-    let bundle = bundle_test_entry(&options.entry)?;
+    warn_package_version(&options.entry, machine);
+    let bundle = bundle_test_path(&options.entry)?;
     if !machine {
         eprintln!(
             "{} bundled {} ({})",
@@ -88,6 +121,14 @@ pub fn execute(info: &SessionInfo, options: TestOptions) -> Result<()> {
         );
     }
 
+    let mut args = options.args.iter().cloned().collect::<HashMap<_, _>>();
+    if let Some(grep) = &options.grep {
+        args.insert("grep".to_string(), grep.clone());
+    }
+    if options.forbid_only {
+        args.insert("forbidOnly".to_string(), "1".to_string());
+    }
+
     let start: TestStartResponse = execute_typed(
         &info.ws_url,
         methods::session::test::START,
@@ -95,7 +136,7 @@ pub fn execute(info: &SessionInfo, options: TestOptions) -> Result<()> {
             source: bundle.code.clone(),
             source_name: Some(bundle.bundle_name.clone()),
             timeout_ms: Some(options.timeout * 1000),
-            args: options.args.iter().cloned().collect::<HashMap<_, _>>(),
+            args,
         },
     )?;
     let run_id = start.run_id;
@@ -133,14 +174,54 @@ pub fn execute(info: &SessionInfo, options: TestOptions) -> Result<()> {
         &interrupts,
         Duration::from_secs(options.timeout),
     )?;
+    if outcome.partial && !machine {
+        print_partial_summary(&outcome.streamed);
+    }
     report(&outcome, &bundle, &run_id, &output_dir, &options);
 
     let exit_code = match outcome.state {
-        TestRunState::Passed => 0,
+        TestRunState::Passed if !outcome.partial => 0,
         TestRunState::Cancelled if interrupts.load(Ordering::SeqCst) > 0 => 130,
         _ => 1,
     };
     std::process::exit(exit_code);
+}
+
+fn warn_package_version(entry: &Path, machine: bool) {
+    let root = find_project_root(entry);
+    let package_json = root
+        .join("node_modules")
+        .join("@lingxia")
+        .join("test")
+        .join("package.json");
+    let Ok(text) = std::fs::read_to_string(&package_json) else {
+        return;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return;
+    };
+    let Some(version) = value.get("version").and_then(|item| item.as_str()) else {
+        return;
+    };
+    if version == env!("CARGO_PKG_VERSION") {
+        return;
+    }
+    if !machine {
+        eprintln!(
+            "{} @lingxia/test@{version} does not match lxdev {}; use matching package and CLI versions.",
+            "warning".yellow(),
+            env!("CARGO_PKG_VERSION")
+        );
+    }
+}
+
+struct StreamedCase {
+    name: String,
+    full_name: String,
+    status: Option<TestCaseStatus>,
+    duration_ms: u64,
+    covers: Vec<String>,
+    steps: Vec<serde_json::Value>,
 }
 
 struct Outcome {
@@ -148,6 +229,8 @@ struct Outcome {
     result: Option<TestRunResult>,
     console: Vec<(String, String)>,
     artifacts: Vec<(String, PathBuf, usize)>,
+    partial: bool,
+    streamed: Vec<StreamedCase>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -162,8 +245,11 @@ fn poll_until_terminal(
     let mut after_seq = 0u64;
     let mut console = Vec::new();
     let mut artifacts = Vec::new();
+    let mut streamed = Vec::new();
     let mut cancel_sent = false;
     let mut cancel_deadline: Option<std::time::Instant> = None;
+    let mut last_event_at = std::time::Instant::now();
+    let mut case_budget = run_timeout;
     // The runtime enforces the deadline; this client-side bound only guards
     // against a vanished session.
     let poll_deadline = std::time::Instant::now() + run_timeout + Duration::from_secs(30);
@@ -196,6 +282,7 @@ fn poll_until_terminal(
 
         for event in &poll.events {
             after_seq = after_seq.max(event.seq);
+            last_event_at = std::time::Instant::now();
             match &event.payload {
                 TestEventPayload::Console { level, message } => {
                     if !machine {
@@ -220,7 +307,24 @@ fn poll_until_terminal(
                     }
                     artifacts.push((name.clone(), path, bytes));
                 }
-                TestEventPayload::CaseStarted { .. } => {}
+                TestEventPayload::CaseStarted {
+                    name,
+                    full_name,
+                    timeout_ms,
+                    covers,
+                } => {
+                    case_budget = timeout_ms
+                        .map(Duration::from_millis)
+                        .unwrap_or(DEFAULT_CASE_TIMEOUT);
+                    streamed.push(StreamedCase {
+                        name: name.clone(),
+                        full_name: full_name.clone(),
+                        status: None,
+                        duration_ms: 0,
+                        covers: covers.clone(),
+                        steps: Vec::new(),
+                    });
+                }
                 TestEventPayload::CaseFinished {
                     name,
                     full_name,
@@ -228,8 +332,40 @@ fn poll_until_terminal(
                     duration_ms,
                     error,
                 } => {
+                    if let Some(current) = streamed.last_mut() {
+                        current.status = Some(*status);
+                        current.duration_ms = *duration_ms;
+                    }
                     if !machine {
                         print_case_finished(name, full_name, *status, *duration_ms, error.as_ref());
+                    }
+                }
+                TestEventPayload::StepStarted { name, path } => {
+                    if !machine {
+                        eprintln!("{} {path}", "▸".dimmed());
+                    }
+                    if let Some(current) = streamed.last_mut() {
+                        current.steps.push(json!({
+                            "name": name,
+                            "path": path,
+                            "status": "running",
+                        }));
+                    }
+                }
+                TestEventPayload::StepFinished {
+                    name,
+                    path,
+                    status,
+                    duration_ms,
+                    ..
+                } => {
+                    if let Some(current) = streamed.last_mut() {
+                        current.steps.push(json!({
+                            "name": name,
+                            "path": path,
+                            "status": status,
+                            "duration_ms": duration_ms,
+                        }));
                     }
                 }
             }
@@ -241,6 +377,35 @@ fn poll_until_terminal(
                 result: poll.result,
                 console,
                 artifacts,
+                partial: false,
+                streamed,
+            });
+        }
+        if last_event_at.elapsed() > case_budget + WATCHDOG_GRACE {
+            let _ = execute_typed::<_, TestCancelResponse>(
+                &info.ws_url,
+                methods::session::test::CANCEL,
+                &TestCancelArgs {
+                    run_id: run_id.to_string(),
+                    reason: Some("hang_watchdog".to_string()),
+                },
+            );
+            write_partial_report(output_dir, run_id, &streamed)?;
+            if !machine {
+                eprintln!(
+                    "{} no test event for {:.1}s; wrote partial report.json",
+                    "✗ timed out".red().bold(),
+                    last_event_at.elapsed().as_secs_f64()
+                );
+                print_partial_summary(&streamed);
+            }
+            return Ok(Outcome {
+                state: TestRunState::TimedOut,
+                result: None,
+                console,
+                artifacts,
+                partial: true,
+                streamed,
             });
         }
         if let Some(deadline) = cancel_deadline
@@ -479,6 +644,63 @@ fn print_console(level: &str, message: &str) {
     println!("{tag} {message}");
 }
 
+fn write_partial_report(output_dir: &Path, run_id: &str, streamed: &[StreamedCase]) -> Result<()> {
+    std::fs::create_dir_all(output_dir)
+        .with_context(|| format!("failed to create {}", output_dir.display()))?;
+    let cases = streamed
+        .iter()
+        .map(|case| {
+            json!({
+                "name": case.name,
+                "full_name": case.full_name,
+                "status": case.status.map(|status| match status {
+                    TestCaseStatus::Passed => "passed",
+                    TestCaseStatus::Failed => "failed",
+                    TestCaseStatus::Skipped => "skipped",
+                }),
+                "duration_ms": case.duration_ms,
+                "covers": case.covers,
+                "steps": case.steps,
+            })
+        })
+        .collect::<Vec<_>>();
+    let envelope = json!({
+        "framework": { "name": "lxdev", "version": env!("CARGO_PKG_VERSION") },
+        "partial": true,
+        "run_id": run_id,
+        "total": cases.len(),
+        "cases": cases,
+    });
+    let path = output_dir.join("report.json");
+    std::fs::write(&path, serde_json::to_vec_pretty(&envelope)?)
+        .with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(())
+}
+
+fn print_partial_summary(streamed: &[StreamedCase]) {
+    eprintln!(
+        "{} partial: {} case event(s) streamed, no HTML on this path",
+        "test".cyan(),
+        streamed.len()
+    );
+    for case in streamed {
+        let status = case
+            .status
+            .map(|status| match status {
+                TestCaseStatus::Passed => "passed",
+                TestCaseStatus::Failed => "failed",
+                TestCaseStatus::Skipped => "skipped",
+            })
+            .unwrap_or("running");
+        eprintln!("  {status} {}", case.full_name);
+        for step in &case.steps {
+            if let Some(path) = step.get("path").and_then(|value| value.as_str()) {
+                eprintln!("    step {path}");
+            }
+        }
+    }
+}
+
 /// The runtime already validated the name; re-validate before touching the
 /// filesystem so an older or hostile host cannot escape the output directory.
 fn write_artifact(output_dir: &Path, name: &str, base64: &str) -> Result<(PathBuf, usize)> {
@@ -549,5 +771,37 @@ mod tests {
     #[test]
     fn artifact_decoded_size_is_revalidated() {
         assert!(decode_artifact("a.bin", "AAAA", 2).is_err());
+    }
+
+    #[test]
+    fn no_session_hint_points_at_background_dev() {
+        assert!(NO_SESSION_HINT.contains("lingxia dev --background"));
+        assert!(looks_unreachable(&anyhow!(
+            "No live dev session found. Run `lingxia dev` first."
+        )));
+        assert!(looks_unreachable(&anyhow!("WebSocket handshake failed")));
+        assert!(!looks_unreachable(&anyhow!("duplicate spec id")));
+    }
+
+    #[test]
+    fn partial_report_is_json_without_html() {
+        let dir = tempfile::tempdir().unwrap();
+        write_partial_report(
+            dir.path(),
+            "run-1",
+            &[StreamedCase {
+                name: "home".into(),
+                full_name: "home".into(),
+                status: Some(TestCaseStatus::Passed),
+                duration_ms: 10,
+                covers: vec!["lx.app".into()],
+                steps: vec![json!({ "name": "greet", "path": "greet", "status": "passed" })],
+            }],
+        )
+        .unwrap();
+        let text = std::fs::read_to_string(dir.path().join("report.json")).unwrap();
+        assert!(text.contains("\"partial\": true"));
+        assert!(text.contains("lx.app"));
+        assert!(!dir.path().join("report.html").exists());
     }
 }
