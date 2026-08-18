@@ -34,6 +34,15 @@ fn main() {
     // looks like inside a real product too.
     app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
 
+    // The harness runs off the main thread while AppKit owns it. A panic
+    // there would otherwise leave `app.run()` spinning until something else
+    // kills the process; fail the run instead.
+    let report = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        report(info);
+        std::process::exit(1);
+    }));
+
     std::thread::spawn(move || {
         match mode.as_str() {
             "circle" => circle(hold),

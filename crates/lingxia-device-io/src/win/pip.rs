@@ -634,7 +634,10 @@ fn tick() {
         return;
     };
     if idle {
-        if state().session.is_none() {
+        // Read it out first: `stop_if_current` takes this lock, and an `if`
+        // condition's guard is still alive inside the branch.
+        let in_session = state().session.is_some();
+        if !in_session {
             stop_if_current(generation, epoch);
         }
         return;
