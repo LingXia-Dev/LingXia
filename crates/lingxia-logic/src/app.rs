@@ -5,7 +5,9 @@ use crate::i18n::{
 use lingxia_app_context::{app_config, env_version, home_app_id};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
-use rong::{IntoJSObject, JSContext, JSObject, JSResult};
+use lxapp::{DISPLAY_LANGUAGE_CHANGE_EVENT, register_app_handler, unregister_app_handler_token};
+use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult};
+use std::cell::Cell;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod autostart;
@@ -128,11 +130,37 @@ rong::js_api! {
     }
 }
 
+/// Follow the host's effective display language.
+///
+/// `getBaseInfo().displayLanguage` answers what it is now; this answers when it
+/// changes. Logic needs both because the strings it hands to native chrome —
+/// navigation bar titles, tab bar labels, modal and action-sheet text — are the
+/// app's own, and nothing re-renders them on its behalf.
+fn on_display_language_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
+    // Invoke immediately with the current value, like every other `on*`
+    // subscription, so a caller never needs a separate read to get started.
+    let _ = callback.call::<_, ()>(None, (lxapp::get_display_language(),));
+    let token = register_app_handler(&ctx, DISPLAY_LANGUAGE_CHANGE_EVENT, callback)?;
+    let off_ctx = ctx.clone();
+    let unsubscribed = Cell::new(false);
+    JSFunc::new(&ctx, move || {
+        if unsubscribed.get() {
+            return;
+        }
+        unregister_app_handler_token(&off_ctx, DISPLAY_LANGUAGE_CHANGE_EVENT, token);
+        unsubscribed.set(true);
+    })
+}
+
 rong::js_api! {
     fn register_app_base_api(ctx) {
         namespace HostAppApi = app_namespace(ctx)?;
         const envVersion: "HostAppEnvVersion" = env_version().as_str();
         fn getBaseInfo = get_app_base_info;
+        fn onDisplayLanguageChange(
+            ts_params = "callback: (language: string) => void",
+            ts_return = "() => void"
+        ) = on_display_language_change;
     }
 }
 

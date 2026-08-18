@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
 pub const BROWSER_TAB_CLOSED_EVENT: &str = "__lingxiaBrowserTabClosed";
+/// App-scoped event carrying the host's effective display language.
+pub const DISPLAY_LANGUAGE_CHANGE_EVENT: &str = "DisplayLanguageChange";
 
 /// Internal scope marker. The page scope carries the page INSTANCE id, so
 /// one instance's teardown can never clear a same-path sibling's handlers.
