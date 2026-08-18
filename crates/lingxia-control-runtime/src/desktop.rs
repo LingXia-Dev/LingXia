@@ -25,14 +25,35 @@ fn session() -> std::sync::MutexGuard<'static, Option<device_io::supervision::Su
     SESSION.lock().unwrap_or_else(|error| error.into_inner())
 }
 
-fn ensure_session() {
+fn ensure_session(kind: device_io::supervision::SessionKind) {
+    use device_io::supervision::{SessionKind, SupervisionGuard};
     let mut slot = session();
-    if slot.is_none() {
-        *slot = device_io::supervision::SupervisionGuard::begin(
-            device_io::supervision::SessionKind::Control,
-        )
-        .ok();
+    let upgrade = slot.as_ref().is_some_and(|guard| {
+        guard.kind() == SessionKind::Observation && kind == SessionKind::Control
+    });
+    if slot.is_some() && !upgrade {
+        return;
     }
+    // On an upgrade the new guard joins the live session before the old one is
+    // dropped here, so disclosure is relabelled rather than torn down.
+    *slot = SupervisionGuard::begin(kind).ok();
+}
+
+/// The disclosure a method needs: control for anything that changes the
+/// machine, observation for a read of it, and none at all for a name this
+/// namespace does not implement. A typo must not put a panel on screen saying
+/// the caller is controlling the machine.
+fn session_kind_for(name: &str) -> Option<device_io::supervision::SessionKind> {
+    // Capability introspection neither changes the machine nor looks at it.
+    const NO_SESSION: &[&str] = &[method::DOCTOR, method::PERMISSIONS];
+    if !method::ALL.contains(&name) || NO_SESSION.contains(&name) {
+        return None;
+    }
+    Some(if changes_machine(name) {
+        device_io::supervision::SessionKind::Control
+    } else {
+        device_io::supervision::SessionKind::Observation
+    })
 }
 
 /// Trusted host lifecycle: the local-control endpoint has gone away.
@@ -44,7 +65,7 @@ pub fn end_session() {
 fn report_guarded<T: Serialize>(
     run: impl FnOnce(&device_io::supervision::GuardedInput<'_>) -> device_io::Result<T>,
 ) -> Answer {
-    ensure_session();
+    ensure_session(device_io::supervision::SessionKind::Control);
     let slot = session();
     let Some(guard) = slot.as_ref() else {
         return Err(Failure {
@@ -65,7 +86,9 @@ pub fn handle(id: String, name: &str, params: Option<Value>) -> Option<ControlRe
     if !name.starts_with("desktop.") {
         return None;
     }
-    ensure_session();
+    if let Some(kind) = session_kind_for(name) {
+        ensure_session(kind);
+    }
     // Input and accessibility commands can make their target disappear. Keep
     // a server-resolved snapshot from immediately before dispatch both to bind
     // untrusted viewer metadata to the real destination and to remember which
@@ -345,12 +368,8 @@ fn result_window(result: Option<&Value>) -> Option<(String, (i32, i32))> {
     Some((id, rect_center(rect)?))
 }
 
-fn actuation(
-    name: &str,
-    params: Option<&Value>,
-    result: Option<&Value>,
-    activity_target: Option<&ActivityTarget>,
-) -> Option<device_io::Acted> {
+/// Whether a method changes the machine, by name alone.
+fn changes_machine(name: &str) -> bool {
     const ACTUATES: &[&str] = &[
         "desktop.pointer.",
         "desktop.key.",
@@ -379,8 +398,16 @@ fn actuation(
             // nobody watching.
             | "desktop.permissions.request"
     );
-    if READS.contains(&name) || (!named && !ACTUATES.iter().any(|prefix| name.starts_with(prefix)))
-    {
+    !READS.contains(&name) && (named || ACTUATES.iter().any(|prefix| name.starts_with(prefix)))
+}
+
+fn actuation(
+    name: &str,
+    params: Option<&Value>,
+    result: Option<&Value>,
+    activity_target: Option<&ActivityTarget>,
+) -> Option<device_io::Acted> {
+    if !changes_machine(name) {
         return None;
     }
 
@@ -767,6 +794,59 @@ mod tests {
                 "{name} changes the machine even with no parameters"
             );
         }
+    }
+
+    /// Persistent disclosure names what the caller is doing. A read must not
+    /// put "controls this machine" on screen, and a name this namespace does
+    /// not implement must not put anything there at all.
+    #[test]
+    fn disclosure_matches_what_the_method_does() {
+        use device_io::supervision::SessionKind;
+
+        for name in [
+            "desktop.screenshot",
+            "desktop.windows",
+            "desktop.displays",
+            "desktop.pixel",
+            "desktop.clipboard.get",
+            "desktop.window.status",
+            "desktop.ax.tree",
+            "desktop.ax.query",
+        ] {
+            assert_eq!(
+                session_kind_for(name),
+                Some(SessionKind::Observation),
+                "{name} only looks at the machine"
+            );
+        }
+
+        for name in [
+            "desktop.pointer.click",
+            "desktop.key.type",
+            "desktop.window.close",
+            "desktop.ax.invoke",
+            "desktop.app.launch",
+            "desktop.clipboard.set",
+            "desktop.permissions.request",
+        ] {
+            assert_eq!(
+                session_kind_for(name),
+                Some(SessionKind::Control),
+                "{name} drives the machine"
+            );
+        }
+
+        for name in ["desktop.windos", "desktop.bogus", "desktop."] {
+            assert_eq!(
+                session_kind_for(name),
+                None,
+                "{name} is not a method and must not open disclosure"
+            );
+        }
+
+        // Asking what the machine allows is neither watching nor driving it.
+        assert_eq!(session_kind_for("desktop.doctor"), None);
+        assert_eq!(session_kind_for("desktop.permissions"), None);
     }
 
     /// Input targeting controls delivery but never changes the global
