@@ -1244,6 +1244,11 @@ jobs:
           npm run test:types --workspace @lingxia/types
           npm run build --workspaces --if-present
 
+      # The test SDK grades every other suite, so its own specs gate here.
+      - name: Test (@lingxia/test)
+        working-directory: packages
+        run: npm test --workspace @lingxia/test
+
   npm-skill:
     needs: changes
     if: ${{ needs.changes.outputs.npm == 'true' }}
