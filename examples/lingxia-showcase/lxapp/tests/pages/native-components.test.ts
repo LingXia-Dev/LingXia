@@ -1,16 +1,16 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, spec, type Fixture } from '@lingxia/test';
 import {
   currentPageOrNull,
   waitForCurrentPage,
   waitForCurrentPageVisible,
   waitForElementText,
 } from '../helpers/page.js';
-import { bindFixture, hostAttach } from '../helpers/poll.js';
+import { attachShot, bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-async function attachWindow(name: string): Promise<void> {
+async function attachWindow(t: Fixture, name: string): Promise<void> {
   const screenshot = await lx.automation().lxapps.screenshot();
-  await hostAttach(name, { mimeType: 'image/png', base64: screenshot.base64 });
+  await attachShot(t, name, { mimeType: 'image/png', base64: screenshot.base64 });
 }
 
 spec("hide the native video overlay before the next page becomes interactive", { id: "NATIVE-VIDEO-001", covers: ['lx.createVideoContext', 'VideoContext.pause', 'NavDriver.to', 'NavDriver.back'], app: SHOWCASE_APP_ID }, async (t) => {
@@ -35,7 +35,7 @@ spec("hide the native video overlay before the next page becomes interactive", {
   // The shape fixture loads no media, and only Apple emits a pause event
   // without a playing transition; just exercise the pause command itself.
   await app.page.click({ page: 'video', css: '[data-testid="video-pause"]' });
-  await attachWindow('native-video-active.png');
+  await attachWindow(t, 'native-video-active.png');
 
   const hiddenAt = Date.now();
   await app.nav.back();
@@ -52,5 +52,5 @@ spec("hide the native video overlay before the next page becomes interactive", {
     5_000,
   )).toContain(name);
   expect(Date.now() - hiddenAt < 5_000).toBeTruthy();
-  await attachWindow('native-video-hidden.png');
+  await attachWindow(t, 'native-video-hidden.png');
 });

@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, spec, type Fixture } from '@lingxia/test';
 import type {
   AutomationShellPin,
   BrowserDriver,
@@ -12,7 +12,7 @@ import type {
 } from 'lingxia-types/automation';
 import { showcaseApp } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
-import { hostAttach } from '../../helpers/poll.js';
+import { attachShot } from '../../helpers/poll.js';
 
 interface VisibilityEvent {
   id: string;
@@ -564,13 +564,14 @@ async function rootEdgeMarkerSamples(
 }
 
 async function attachDesktopFailure(
+  t: Fixture,
   name: string,
   desktop: DesktopDriver,
   host: DesktopWindowInfo,
 ): Promise<void> {
   try {
     const screenshot = await desktop.screenshot({ window: host.id });
-    await hostAttach(`${name}.png`, {
+    await attachShot(t, `${name}.png`, {
       mimeType: 'image/png',
       base64: screenshot.base64,
     });
@@ -1477,7 +1478,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       `${platform} lxapp physically restored after closing browser main`,
     );
   } catch (error) {
-    await attachDesktopFailure(`surface-compact-${platform}-failure`, desktop, host);
+    await attachDesktopFailure(t, `surface-compact-${platform}-failure`, desktop, host);
     const diagnostics = await surfaceFailureDiagnostics(app, desktop, host);
     throw new Error(`${String(error)}; diagnostics: ${diagnostics}`);
   } finally {
@@ -1498,7 +1499,7 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
   id: 'DESKTOP-CHAT-DOCK-001',
   timeout: DESKTOP_CASE_MS,
   covers: ['lx.shell.openApp', 'LxAppDriver.surfaceLayout'],
-}, async () => {
+}, async (t) => {
   const app = await desktopApp();
   const automation = lx.automation();
   const desktop = automation.desktop;
@@ -1741,7 +1742,7 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       () => desktop.windows(),
     );
   } catch (error) {
-    await attachDesktopFailure('surface-overlay-failure', desktop, host);
+    await attachDesktopFailure(t, 'surface-overlay-failure', desktop, host);
     const diagnostics = await surfaceFailureDiagnostics(app, desktop, host);
     throw new Error(`${String(error)}; diagnostics: ${diagnostics}`);
   } finally {
@@ -2165,7 +2166,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
   id: 'DESKTOP-PINNED-001',
   timeout: DESKTOP_CASE_MS,
   covers: ['lx.surface.openDeclared', 'LxAppDriver.surfaceLayout'],
-}, async () => {
+}, async (t) => {
   const app = await desktopApp();
   const automation = lx.automation();
   const desktop = automation.desktop;
@@ -2684,7 +2685,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
         : undefined;
     }, 'live Chat workspace remains after its Pin is removed');
   } catch (error) {
-    await attachDesktopFailure('surface-pin-failure', desktop, host);
+    await attachDesktopFailure(t, 'surface-pin-failure', desktop, host);
     const diagnostics = await surfaceFailureDiagnostics(app, desktop, host);
     throw new Error(`${String(error)}; diagnostics: ${diagnostics}`);
   } finally {

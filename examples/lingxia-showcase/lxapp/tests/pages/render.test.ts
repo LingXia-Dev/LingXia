@@ -2,7 +2,7 @@ import { expect, spec } from '@lingxia/test';
 import type { LxAppDriver } from 'lingxia-types/automation';
 import { showcaseApp } from '../helpers/app.js';
 import { waitForCurrentPage } from '../helpers/page.js';
-import { eventually, hostAttach } from '../helpers/poll.js';
+import { attachShot, eventually } from '../helpers/poll.js';
 import {
   SHOWCASE_PAGE_EXPECTATIONS,
   SHOWCASE_PAGE_TITLES,
@@ -75,7 +75,7 @@ spec('page manifest matches the running lxapp', async () => {
 });
 
 for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
-  spec(`renders showcase feature: ${expectation.page}`, async () => {
+  spec(`renders showcase feature: ${expectation.page}`, async (t) => {
     const app = showcaseApp();
     try {
       const landed = await app.nav.relaunch({ page: expectation.page });
@@ -109,7 +109,7 @@ for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
     } catch (error) {
       try {
         const screenshot = await app.page.screenshot({ page: expectation.page });
-        await hostAttach(`page-${expectation.page}.png`, {
+        await attachShot(t, `page-${expectation.page}.png`, {
           mimeType: 'image/png',
           base64: screenshot.base64,
         });

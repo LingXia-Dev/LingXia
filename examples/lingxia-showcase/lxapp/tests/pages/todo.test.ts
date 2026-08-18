@@ -1,7 +1,7 @@
 import { expect, spec } from '@lingxia/test';
 import type { LxAppDriver } from 'lingxia-types/automation';
 import { waitForElementAttribute } from '../helpers/page.js';
-import { bindFixture, eventually, hostAttach } from '../helpers/poll.js';
+import { attachShot, bindFixture, eventually } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 async function waitForTodo(app: LxAppDriver, text: string, present: boolean): Promise<number> {
@@ -104,7 +104,7 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
     await waitForStoredCompleted(app, text, false);
 
     const screenshot = await app.page.screenshot({ page: 'todo' });
-    await hostAttach('todo-page.png', {
+    await attachShot(t, 'todo-page.png', {
       mimeType: 'image/png',
       base64: screenshot.base64,
     });
@@ -120,7 +120,7 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
   } catch (error) {
     try {
       const screenshot = await app.page.screenshot({ page: 'todo' });
-      await hostAttach('todo-page-failure.png', {
+      await attachShot(t, 'todo-page-failure.png', {
         mimeType: 'image/png',
         base64: screenshot.base64,
       });

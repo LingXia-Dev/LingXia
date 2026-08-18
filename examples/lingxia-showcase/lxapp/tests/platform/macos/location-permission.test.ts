@@ -1,5 +1,5 @@
 import { spec } from '@lingxia/test';
-import { hostAttach } from '../../helpers/poll.js';
+import { attachShot } from '../../helpers/poll.js';
 import type {
   DesktopAxNode,
   DesktopDriver,
@@ -80,7 +80,7 @@ const targetPlatform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Re
 const locationTest = targetPlatform && targetPlatform !== 'macos' ? spec.skip : spec;
 const promptAppearanceGraceMs = 5_000;
 
-locationTest('handles the macOS location permission sheet when it appears', async () => {
+locationTest('handles the macOS location permission sheet when it appears', async (t) => {
   const auto = lx.automation();
   const app = auto.lxapp();
   if (await runtimePlatform(app) !== 'macos') return;
@@ -104,7 +104,7 @@ locationTest('handles the macOS location permission sheet when it appears', asyn
       console.info(`Detected the macOS location permission dialog (${prompt.id})`);
       if (doctor.capabilities.screenshot && permissions.screen_recording) {
         const screenshot = await auto.desktop.screenshot({ window: prompt.id });
-        await hostAttach('macos-location-permission.png', {
+        await attachShot(t, 'macos-location-permission.png', {
           mimeType: 'image/png',
           base64: screenshot.base64,
         });

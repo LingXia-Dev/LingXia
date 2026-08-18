@@ -105,13 +105,14 @@ export function specNamespace(id: string): string {
   return `${id.replace(/[^a-zA-Z0-9]+/g, '-')}-${Date.now()}-${sequence}`;
 }
 
-export async function hostAttach(
+/** Attach through the fixture so the artifact is embedded in the HTML report;
+ *  a raw host attach only lands on disk and never reaches a reader. */
+export async function attachShot(
+  t: Fixture,
   name: string,
   artifact: { mimeType: string; base64: string },
 ): Promise<void> {
-  const host = globalThis.__LINGXIA_AUTOMATION_HOST__;
-  if (!host?.attach) return;
-  await host.attach(`attachments/${name}`, artifact);
+  await t.attach(name, artifact);
 }
 
 export function bindFixture(t: Fixture, id: string): {
