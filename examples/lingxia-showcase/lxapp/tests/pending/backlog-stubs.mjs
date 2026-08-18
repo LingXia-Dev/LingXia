@@ -3,6 +3,13 @@
  *  `automated` in logic-api-coverage.mjs. */
 export default [
   {
+    id: "PEND-UPDATE-INFO-001",
+    title: "HostAppUpdateInfo fields from a real staged host update",
+    mode: "external-fixture",
+    covers: ["HostAppUpdateInfo.isForceUpdate"],
+    reason: "needs a cloud provider serving a staged host build to populate the info",
+  },
+  {
     id: "PEND-SHARE-001",
     title: "share text, page, and files through the OS share sheet",
     mode: "external-ui",
@@ -71,13 +78,6 @@ export default [
     mode: "external-ui",
     covers: ["lx.openFile", "lx.chooseFile"],
     reason: "OS file picker and viewer stay external-ui",
-  },
-  {
-    id: "PEND-SIDEBAR-001",
-    title: "shell sidebarActions replace, update, remove, and clear",
-    mode: "external-ui",
-    covers: ["lx.shell.sidebarActions.replace"],
-    reason: "home-only sidebar chrome has no in-app testid surface",
   },
   {
     id: "PEND-VIDEO-FS-001",
@@ -168,25 +168,6 @@ export default [
       "CompressVideoTask.cancel",
     ],
     reason: "needs a checked-in media fixture larger than the shape check",
-  },
-  {
-    id: "PEND-AUTOSTART-001",
-    title: "app.autostart isEnabled and setEnabled",
-    mode: "external-fixture",
-    covers: ["lx.app.autostart"],
-    reason: "desktop autostart mutates the OS login item; isolated fixture only",
-  },
-  {
-    id: "PEND-UPDATE-001",
-    title: "getUpdateManager callbacks and HostAppUpdateInfo",
-    mode: "external-fixture",
-    covers: [
-      "lx.getUpdateManager",
-      "UpdateManager.onUpdateReady",
-      "UpdateManager.onUpdateFailed",
-      "HostAppUpdateInfo.isForceUpdate",
-    ],
-    reason: "signed update channel is not available in the local Showcase",
   },
   {
     id: "PEND-VIDEO-EVT-001",
