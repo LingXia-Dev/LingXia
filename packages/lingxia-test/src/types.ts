@@ -177,12 +177,22 @@ export interface CaseRecord {
   reason?: string;
 }
 
+/** The app under test, so a report identifies its own subject. */
+export interface RunSubject {
+  appid?: string;
+  app_name?: string;
+  version?: string;
+  release_type?: string;
+  pages?: number;
+}
+
 export interface RunMeta {
   started_at: string;
   duration_ms: number;
   args: Record<string, string>;
   platform?: string;
   framework?: string;
+  subject?: RunSubject;
 }
 
 export interface JsonReport {

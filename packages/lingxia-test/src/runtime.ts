@@ -11,6 +11,7 @@ import type {
   JsonReport,
   LingxiaTestController,
   ProtocolReport,
+  RunSubject,
   SpecBody,
   SpecOptions,
   SpecStatus,
@@ -195,6 +196,7 @@ async function run(): Promise<ProtocolReport> {
     }
   });
 
+  const subject = await describeSubject();
   const cases: CaseRecord[] = [];
   forceRelaunchNext = false;
 
@@ -391,6 +393,7 @@ async function run(): Promise<ProtocolReport> {
       args: { ...host.args },
       platform: host.args.platform,
       framework: host.args.framework,
+      subject,
     },
     partial: false,
     filtered: Boolean(grep) || hasOnly,
@@ -443,6 +446,26 @@ async function finishCase(
         ? record.error
         : undefined,
   });
+}
+
+/** Best-effort: a run against an unreachable app still reports its cases. */
+async function describeSubject(): Promise<RunSubject | undefined> {
+  try {
+    const info = (await pinApp().info()) as unknown as Record<string, unknown>;
+    return {
+      appid: asText(info.appid),
+      app_name: asText(info.app_name),
+      version: asText(info.version),
+      release_type: asText(info.release_type),
+      pages: typeof info.pages_count === "number" ? info.pages_count : undefined,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function asText(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 async function captureForensics(fixture: LiveFixture): Promise<void> {

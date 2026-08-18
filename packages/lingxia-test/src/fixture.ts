@@ -236,7 +236,11 @@ export class LiveFixture implements Fixture {
     const path = `attachments/${this.specId}/${name}`;
     await this.host.attach(path, payload);
     if (payload.mimeType.startsWith("image/")) {
-      rememberInline(this.specId, name, `data:${payload.mimeType};base64,${payload.base64}`);
+      rememberInline(this.specId, name, {
+        dataUrl: `data:${payload.mimeType};base64,${payload.base64}`,
+      });
+    } else if (isPreviewable(payload.mimeType)) {
+      rememberInline(this.specId, name, { text: previewText(data, payload) });
     }
     const ref: AttachmentRef = { name, path, mimeType: payload.mimeType };
     const current = this.stepStack[this.stepStack.length - 1];
@@ -598,6 +602,32 @@ function guardObject<T extends object>(
       return value;
     },
   }) as T;
+}
+
+/** Text and JSON preview in the report; anything else is named, not embedded. */
+function isPreviewable(mimeType: string): boolean {
+  return mimeType.startsWith("text/") || mimeType.startsWith("application/json");
+}
+
+const MAX_PREVIEW_CHARS = 20_000;
+
+function previewText(data: unknown, payload: { mimeType: string }): string {
+  const raw = typeof data === "string"
+    ? data
+    : payload.mimeType.startsWith("application/json")
+      ? safeJson(data)
+      : String(data);
+  return raw.length > MAX_PREVIEW_CHARS
+    ? `${raw.slice(0, MAX_PREVIEW_CHARS)}\n… truncated, open the file for the rest`
+    : raw;
+}
+
+function safeJson(data: unknown): string {
+  try {
+    return JSON.stringify(data, null, 2) ?? String(data);
+  } catch {
+    return String(data);
+  }
 }
 
 export function toReportError(error: unknown, step?: string): {

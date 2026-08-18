@@ -65,7 +65,11 @@ export function renderHtml(report: JsonReport): string {
   const stats = collectStats(report);
   const verdict = verdictOf(report);
 
+  const subject = meta.subject;
   const chips = [
+    ...(subject?.appid ? [chip("lxapp", subject.appid)] : []),
+    ...(subject?.version ? [chip("version", subject.version)] : []),
+    ...(subject?.release_type ? [chip("build", subject.release_type)] : []),
     chip("platform", meta.platform || args.platform || "—"),
     chip("framework", meta.framework || args.framework || "—"),
     chip("started", meta.started_at ? meta.started_at.replace("T", " ").replace(/\.\d+Z$/, "Z") : "—"),
@@ -387,12 +391,12 @@ function renderCoverage(report: JsonReport): string {
       <span class="panel-sub">${logic.behaviour}/${logic.total} Logic capabilities behaviour-proven
       (${percent(logic.behaviour, logic.total)}), ${percent(logic.shape, logic.total)} shape-proven</span></summary>
     <div class="panel-body">
-      <p class="legend">
-        <span class="cover cover-ok">behaviour</span> a passing spec asserted it &middot;
-        <span class="cover cover-shape">shape</span> only proven to exist &middot;
-        <span class="cover cover-pending">declared</span> claimed by a pending or failing spec &middot;
-        <span class="cover cover-none">uncovered</span> no spec at all
-      </p>
+      <ul class="legend">
+        <li><span class="cover cover-ok">behaviour</span> a passing spec asserted it</li>
+        <li><span class="cover cover-shape">shape</span> proven only to exist</li>
+        <li><span class="cover cover-pending">declared</span> claimed by a pending or failing spec</li>
+        <li><span class="cover cover-none">uncovered</span> no spec at all</li>
+      </ul>
       ${sections}
     </div>
   </details>`;
@@ -489,18 +493,8 @@ function renderCase(item: CaseRecord, suiteName: string): string {
       ? `<p class="empty">Pending: registered as a known hole, no assertions run.</p>`
       : `<p class="empty">No assertion was recorded for this spec.</p>`
     : "";
-  const shots = item.attachments
-    .filter((attachment) => attachment.mimeType.startsWith("image/"))
-    .map((attachment) => {
-      const data = inlineFromAttachments(attachment.name, item);
-      return data
-        ? `<figure class="shot"><img alt="${escapeHtml(attachment.name)}" src="${data}"><figcaption>${escapeHtml(attachment.name)}</figcaption></figure>`
-        : "";
-    })
-    .join("");
-  const files = item.attachments.length > 0
-    ? `<div class="attachments"><b>artifacts</b> ${item.attachments.map((attachment) => escapeHtml(attachment.path)).join(" &middot; ")}</div>`
-    : "";
+  const shots = renderAttachments(item);
+  const files = "";
   const search = [
     item.id,
     item.title,
@@ -535,6 +529,33 @@ function renderCase(item: CaseRecord, suiteName: string): string {
       ${files}
     </div>
   </details>`;
+}
+
+/**
+ * An artifact the reader cannot open from the report is an artifact they will
+ * not look at, so images inline and text/JSON preview in place. Everything
+ * else names the path the CLI wrote it to.
+ */
+function renderAttachments(item: CaseRecord): string {
+  if (item.attachments.length === 0) return "";
+  const blocks = item.attachments.map((attachment) => {
+    const inlined = inlineFromAttachments(attachment.name, item);
+    if (inlined?.dataUrl) {
+      return `<figure class="shot">
+        <img alt="${escapeHtml(attachment.name)}" src="${inlined.dataUrl}" loading="lazy">
+        <figcaption>${escapeHtml(attachment.name)} &middot; ${escapeHtml(attachment.path)}</figcaption>
+      </figure>`;
+    }
+    if (inlined?.text !== undefined) {
+      const open = attachment.name === "logs.txt" ? "" : "";
+      return `<details class="artifact"${open}>
+        <summary>${escapeHtml(attachment.name)} <span class="path">${escapeHtml(attachment.path)}</span></summary>
+        <pre>${escapeHtml(inlined.text)}</pre>
+      </details>`;
+    }
+    return `<div class="artifact-path"><b>${escapeHtml(attachment.name)}</b> ${escapeHtml(attachment.path)}</div>`;
+  });
+  return `<div class="artifacts"><h4>artifacts</h4>${blocks.join("")}</div>`;
 }
 
 function renderError(item: CaseRecord): string {
@@ -626,22 +647,29 @@ export function formatDuration(ms: number): string {
   return `${minutes}m ${seconds}s`;
 }
 
-const inlineStore = new Map<string, Map<string, string>>();
+interface Inlined {
+  /** `data:` URL for an image. */
+  dataUrl?: string;
+  /** Decoded text for a text/JSON attachment. */
+  text?: string;
+}
 
-export function rememberInline(specId: string, name: string, dataUrl: string): void {
+const inlineStore = new Map<string, Map<string, Inlined>>();
+
+export function rememberInline(specId: string, name: string, payload: Inlined): void {
   let bucket = inlineStore.get(specId);
   if (!bucket) {
     bucket = new Map();
     inlineStore.set(specId, bucket);
   }
-  bucket.set(name, dataUrl);
+  bucket.set(name, payload);
 }
 
 export function clearInline(): void {
   inlineStore.clear();
 }
 
-function inlineFromAttachments(name: string, item: CaseRecord): string | undefined {
+function inlineFromAttachments(name: string, item: CaseRecord): Inlined | undefined {
   return inlineStore.get(item.id)?.get(name);
 }
 
@@ -778,7 +806,9 @@ h1 { margin:2px 0 4px; font-size:30px; line-height:1.15; letter-spacing:-.02em; 
 .cover-shape { background:transparent; color:var(--pass); border-style:dashed; }
 .cover-pending { background:var(--skip-soft); color:var(--skip); }
 .cover-none { color:var(--muted); opacity:.6; }
-.legend { margin:0 0 14px; color:var(--muted); font-size:12px; display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.legend { margin:0 0 14px; padding:0; list-style:none; color:var(--muted); font-size:12px;
+  display:flex; gap:6px 18px; flex-wrap:wrap; }
+.legend li { display:flex; gap:6px; align-items:center; white-space:nowrap; }
 .cover-section { margin:0 0 18px; }
 .cover-section-head { font-size:13px; margin:0 0 8px; display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; }
 .cover-section-head small { color:var(--muted); font-weight:400; }
@@ -852,8 +882,14 @@ table.assertions td.pass { color:var(--pass); } table.assertions td.fail { color
 .shot { margin:10px 0 0; }
 .shot img { max-width:100%; border-radius:8px; border:1px solid var(--line); display:block; }
 .shot figcaption { color:var(--muted); font-size:11px; margin-top:4px; font-family:var(--mono); }
-.attachments { margin-top:10px; color:var(--muted); font-size:11px; font-family:var(--mono); word-break:break-all; }
-.attachments b { font-family:inherit; text-transform:uppercase; letter-spacing:.06em; }
+.artifacts { margin-top:12px; }
+.artifacts h4 { margin:0 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.artifact { border:1px solid var(--line); border-radius:8px; margin:0 0 6px; background:var(--bg); }
+.artifact > summary { cursor:pointer; padding:7px 10px; font-family:var(--mono); font-size:12px; }
+.artifact .path { color:var(--muted); font-size:11px; }
+.artifact pre { padding:0 10px 10px; max-height:340px; overflow:auto; font-size:12px; }
+.artifact-path { color:var(--muted); font-size:11px; font-family:var(--mono); word-break:break-all; margin:0 0 4px; }
+.artifact-path b { font-family:inherit; }
 .no-match { text-align:center; color:var(--muted); padding:32px 0; }
 footer { margin-top:32px; color:var(--muted); font-size:12px; text-align:center; }
 @media print {
