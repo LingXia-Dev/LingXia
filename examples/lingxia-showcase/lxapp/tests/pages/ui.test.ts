@@ -1,7 +1,7 @@
 import { expect, spec } from '@lingxia/test';
 import type { LxAppRuntimeTabBarInfo } from 'lingxia-types/automation';
 import { waitForElementAttribute, waitForCurrentPage } from '../helpers/page.js';
-import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
+import { bindFixture, evalCaught, eventually, specNamespace } from '../helpers/poll.js';
 import { showcaseApp, SHOWCASE_APP_ID } from '../helpers/app.js';
 
 spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", covers: ['lx.navigateTo', 'lx.navigateBack', 'lx.redirectTo', 'lx.switchTab'], app: SHOWCASE_APP_ID }, async (t) => {
@@ -33,7 +33,7 @@ spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
   expect((await app.nav.stack()).map(({ name }) => name)).toEqual(['home']);
 });
 
-spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", { id: "UI-TABBAR-001", covers: ['lx.tabBar', 'lx.tabBar.update'], app: SHOWCASE_APP_ID }, async (t) => {
+spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", { id: "UI-TABBAR-001", covers: ['lx.tabBar', 'lx.tabBar.update'], app: SHOWCASE_APP_ID, timeout: 60_000 }, async (t) => {
   const { app, defer } = bindFixture(t, "UI-TABBAR-001");
 
   const tabBar = async (): Promise<LxAppRuntimeTabBarInfo> => {
@@ -119,20 +119,12 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
     'TabBar style, text, and badge update',
   );
 
-  let invalidRejected = false;
-  try {
-    await app.eval({
-      script: `
-        await lx.tabBar.update({
-          visibility: 'hidden',
-          items: [{ index: 99, text: 'Invalid' }],
-        });
-      `,
-    });
-  } catch {
-    invalidRejected = true;
-  }
-  expect(invalidRejected).toBeTruthy();
+  const invalid = await evalCaught(
+    app,
+    `await lx.tabBar.update({ visibility: 'hidden', items: [{ index: 99, text: 'Invalid' }] });`,
+  );
+  expect(invalid.ok).toBeFalsy();
+  expect(invalid.code).toBe('E_INVALID_ARG');
   expect(await tabBar()).toEqual(styled);
 
   await app.eval({
@@ -190,10 +182,13 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
       });
     `,
   });
-  // Android refreshes the complete native page-chrome revision. A WebView
-  // source path such as index.tsx must still resolve to this custom-navbar
-  // page instead of falling back to a visible default NavigationBar.
-  await new Promise<void>((resolve) => setTimeout(resolve, 500));
+  await waitForTabBar(
+    (state) => (
+      state.runtime_style.foreground_color === '#203040'
+      && state.runtime_style.selected_foreground_color === '#506070'
+    ),
+    'home tabBar style after chrome refresh',
+  );
   const viewportAfterChromeRefresh = await readHomeViewportHeight();
   expect(viewportAfterChromeRefresh).toBe(viewportBeforeChromeRefresh);
 });

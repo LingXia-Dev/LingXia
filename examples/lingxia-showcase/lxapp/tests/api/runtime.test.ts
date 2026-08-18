@@ -1,5 +1,6 @@
 import { expect, spec } from '@lingxia/test';
-import { bindFixture, specNamespace } from '../helpers/poll.js';
+import { bindFixture, evalCaught } from '../helpers/poll.js';
+import { waitForCurrentPage } from '../helpers/page.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 spec("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: [
@@ -274,4 +275,142 @@ spec("round-trip files under lx user cache", { id: "LOGIC-004", covers: [
   expect(result.renamed).toBeTruthy();
   expect(result.copied).toBeTruthy();
   expect(result.dataPathAvailable).toBeTruthy();
+});
+
+spec("clear, prefix-list, missing vs null, and persist storage across reLaunch", {
+  id: "LOGIC-007",
+  covers: ['Storage.clear', 'Storage.list', 'Storage.get', 'Storage.set', 'lx.reLaunch'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app, namespace, defer } = bindFixture(t, "LOGIC-007");
+  const persistKey = `${namespace}-persist`;
+  defer(async () => {
+    await app.eval({
+      script: `
+        const storage = lx.getStorage();
+        const keys = await storage.list(${JSON.stringify(namespace)});
+        for (const key of keys) await storage.delete(key);
+      `,
+    }).catch(() => undefined);
+  });
+
+  const first = await app.eval({
+    script: `
+      const storage = lx.getStorage();
+      const ns = ${JSON.stringify(namespace)};
+      await storage.set(ns + '-a', 1);
+      await storage.set(ns + '-b', 2);
+      await storage.set(ns + '-null', null);
+      const prefixed = (await storage.list(ns)).sort();
+      const storedNull = await storage.get(ns + '-null');
+      const missing = await storage.get(ns + '-missing');
+      const listedNull = prefixed.includes(ns + '-null');
+      const listedMissing = prefixed.includes(ns + '-missing');
+      await storage.set(${JSON.stringify(persistKey)}, { kept: true });
+      await storage.clear();
+      const afterClear = await storage.list(ns);
+      const persistGone = await storage.get(${JSON.stringify(persistKey)});
+      await storage.set(${JSON.stringify(persistKey)}, { kept: true });
+      return { prefixed, storedNull, missing, listedNull, listedMissing, afterClear, persistGone };
+    `,
+  }) as {
+    prefixed: string[];
+    storedNull: unknown;
+    missing: unknown;
+    listedNull: boolean;
+    listedMissing: boolean;
+    afterClear: string[];
+    persistGone: unknown;
+  };
+
+  expect(first.prefixed).toEqual([`${namespace}-a`, `${namespace}-b`, `${namespace}-null`].sort());
+  expect(first.storedNull).toBe(null);
+  expect(first.listedNull).toBeTruthy();
+  expect(first.listedMissing).toBeFalsy();
+  expect(first.missing == null).toBeTruthy();
+  expect(first.afterClear).toEqual([]);
+  expect(first.persistGone == null).toBeTruthy();
+
+  await app.nav.relaunch({ page: 'home' });
+  await waitForCurrentPage(app, 'home', 30_000);
+  const persisted = await app.eval({
+    script: `return await lx.getStorage().get(${JSON.stringify(persistKey)});`,
+  });
+  expect(persisted).toEqual({ kept: true });
+
+  const oversized = await evalCaught(
+    app,
+    `await lx.getStorage().set(${JSON.stringify(namespace)} + '-big', 'x'.repeat(5 * 1024 * 1024 + 1));`,
+  );
+  expect(oversized.ok).toBeFalsy();
+  expect(oversized.code).toBe('E_OUT_OF_RANGE');
+  const leftover = await app.eval({
+    script: `return await lx.getStorage().get(${JSON.stringify(namespace)} + '-big');`,
+  });
+  expect(leftover == null).toBeTruthy();
+});
+
+spec("read directories, LxFile.exists/path, and deny escaped paths", {
+  id: "LOGIC-008",
+  covers: ['lx.fs.readDir', 'lx.fs.stat', 'LxFile.exists', 'LxFile.path'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app, namespace } = bindFixture(t, "LOGIC-008");
+
+  const result = await app.eval({
+    script: `
+      const files = lx.fs;
+      const root = lx.env.USER_CACHE_PATH + '/' + ${JSON.stringify(namespace)};
+      const child = root + '/child.txt';
+      await files.mkdir(root, { recursive: true });
+      try {
+        await files.write(child, 'hi');
+        let overwriteRejected = false;
+        try {
+          await files.write(child, 'nope');
+        } catch {
+          overwriteRejected = true;
+        }
+        await files.write(child, 'overwritten', { overwrite: true });
+        const entries = await files.readDir(root);
+        const file = files.file(child);
+        const exists = await file.exists();
+        const text = await file.text();
+        const stat = await files.stat(root);
+        return {
+          names: entries.map((entry) => entry.name).sort(),
+          childIsFile: entries.some((entry) => entry.name === 'child.txt' && entry.isFile),
+          exists,
+          path: file.path,
+          text,
+          dirStat: stat.isDirectory,
+          overwriteRejected,
+        };
+      } finally {
+        await files.remove(root, { recursive: true });
+      }
+    `,
+  }) as {
+    names: string[];
+    childIsFile: boolean;
+    exists: boolean;
+    path: string;
+    text: string;
+    dirStat: boolean;
+    overwriteRejected: boolean;
+  };
+
+  expect(result.childIsFile).toBeTruthy();
+  expect(result.exists).toBeTruthy();
+  expect(result.path).toContain(namespace);
+  expect(result.text).toBe('overwritten');
+  expect(result.dirStat).toBeTruthy();
+  expect(result.overwriteRejected).toBeTruthy();
+
+  const escaped = await evalCaught(app, `await lx.fs.stat('../secret');`);
+  expect(escaped.ok).toBeFalsy();
+  expect(escaped.code).toBe('E_INVALID_ARG');
+  const absolute = await evalCaught(app, `await lx.fs.stat('C:/Windows/System32');`);
+  expect(absolute.ok).toBeFalsy();
+  expect(absolute.code).toBe('E_INVALID_ARG');
 });

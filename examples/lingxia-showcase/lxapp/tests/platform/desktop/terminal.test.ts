@@ -40,7 +40,11 @@ async function waitForSave(page: PageDriver, enabled: boolean): Promise<void> {
   }, enabled ? 'dirty Terminal Settings' : 'applied Terminal Settings');
 }
 
-desktopTerminalTest('publishes and mutates the native nested pane tree without deferred layout', async () => {
+desktopTerminalTest('publishes and mutates the native nested pane tree without deferred layout', {
+  id: 'DESKTOP-TERMINAL-001',
+  timeout: 90_000,
+  covers: ['lx.shell.openDeclared', 'lx.terminal'],
+}, async () => {
   const app = showcaseApp();
   const token = `automation-terminal-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const surfaceId = await app.eval({
@@ -103,7 +107,11 @@ desktopTerminalTest('publishes and mutates the native nested pane tree without d
   }
 });
 
-desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', async () => {
+desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', {
+  id: 'DESKTOP-TERMINAL-002',
+  timeout: 90_000,
+  covers: ['lx.shell.openDeclared'],
+}, async () => {
   const app = showcaseApp();
   const token = `automation-terminal-tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   // An aside is the shape that can be maximized: `main` already fills the
@@ -150,7 +158,11 @@ desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', asy
   }
 });
 
-desktopTerminalTest('applies terminal mode to native chrome before terminal input', async () => {
+desktopTerminalTest('applies terminal mode to native chrome before terminal input', {
+  id: 'DESKTOP-TERMINAL-003',
+  timeout: 90_000,
+  covers: ['lx.shell.openDeclared', 'lx.shell.openApp'],
+}, async () => {
   const app = showcaseApp();
   const token = `automation-terminal-theme-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   // One surface per eval. Opening both in a single script reports only that

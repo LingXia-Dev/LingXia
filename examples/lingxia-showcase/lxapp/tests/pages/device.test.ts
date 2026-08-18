@@ -70,7 +70,7 @@ spec("render device and screen API results after real UI actions", { id: "DEVICE
   expect(Number(screen.screenInfo?.width) > 0).toBeTruthy();
 });
 
-spec("keep network query and listener behavior equivalent across renderers", { id: "DEVICE-002", covers: ['lx.getNetworkInfo', 'lx.onNetworkChange'], app: SHOWCASE_APP_ID }, async (t) => {
+spec("keep network query and listener behavior equivalent across renderers", { id: "DEVICE-002", covers: ['lx.getNetworkInfo'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "DEVICE-002");
 
 
@@ -116,27 +116,40 @@ spec("keep network query and listener behavior equivalent across renderers", { i
   );
 });
 
-spec('publishes every device mode in the rendered API menu', async () => {
+spec('publishes every device mode in the rendered API menu', {
+  timeout: 60_000,
+}, async () => {
   const app = showcaseApp();
   await app.nav.relaunch({ page: 'api' });
-  await app.page.waitFor({ page: 'api', css: '[data-testid="api-device-section"]' });
-  await app.page.click({ page: 'api', css: '[data-testid="api-device-section"]' });
-
-  const text = await app.page.eval({
+  await app.page.waitFor({
     page: 'api',
-    script: 'document.body.innerText',
-  }) as string;
-  for (const label of [
-    'Device Info',
-    'Screen Info',
-    'Vibration',
-    'Phone Call',
-    'Device Orientation',
-    'Network Type',
-    'Local IP Address',
-    'Network Status Listener',
-    'WiFi',
-  ]) {
-    expect(text).toContain(label);
-  }
+    css: '[data-testid="api-device-section"]',
+    state: 'visible',
+  });
+  await app.page.click({ page: 'api', css: '[data-testid="api-device-section"]' });
+  await app.page.waitFor({
+    page: 'api',
+    css: '[data-testid="api-device-section"]',
+    state: 'visible',
+  });
+
+  const text = await eventually(
+    () => app.page.eval({
+      page: 'api',
+      script: 'document.body.innerText',
+    }) as Promise<string>,
+    (body) => [
+      'Device Info',
+      'Screen Info',
+      'Vibration',
+      'Phone Call',
+      'Device Orientation',
+      'Network Type',
+      'Local IP Address',
+      'Network Status Listener',
+      'WiFi',
+    ].every((label) => body.includes(label)),
+    { describe: 'API page device-mode labels', timeoutMs: 15_000 },
+  );
+  expect(text.includes('Device Info')).toBeTruthy();
 });

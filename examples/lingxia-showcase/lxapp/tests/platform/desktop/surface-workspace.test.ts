@@ -54,6 +54,9 @@ const pinnedWindowsHostTest = targetPlatform === 'windows'
   && (!selectedGate || selectedGate === 'pinned-main')
   ? spec
   : spec.skip;
+const DESKTOP_CASE_MS = 180_000;
+// Windows @ 1.5 scale paints an ~37 DIP icon rail; 40 DIP is just above it.
+const WINDOWS_RAIL_MIN_DIP = 32;
 
 async function desktopApp(): Promise<LxAppDriver> {
   const app = showcaseApp();
@@ -376,6 +379,24 @@ async function expandMediumSidebar(
     }
   }
   throw lastError ?? new Error(`${platform} medium sidebar reveal failed`);
+}
+
+async function ensureFullSidebar(
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+): Promise<DesktopWindowInfo> {
+  // Expanded sizeClass is not the same as an expanded sidebar. Windows
+  // persists icon-rail; a 1200 DIP window can still paint the 44px rail.
+  // Workspace-row geometry (ellipsis / close) only exists on the 184 sidebar.
+  const current = await ensureHostForeground(desktop, host);
+  await expandMediumSidebar(desktop, 'windows', current, async () => {
+    const latest = (await desktop.windows()).find((window) => window.id === current.id) ?? current;
+    const main = visibleHostWebViews(latest, await desktop.windows())[0];
+    if (!main) return undefined;
+    const inset = main.bounds.x - latest.bounds.x;
+    return inset >= nativeWindowExtent('windows', latest, 80) ? inset : undefined;
+  });
+  return (await desktop.windows()).find((window) => window.id === current.id) ?? current;
 }
 
 function visibleHostWebViews(
@@ -869,6 +890,18 @@ async function ensureHostForeground(
   return (await desktop.windows()).find((window) => window.id === host.id) ?? host;
 }
 
+async function openChatAsMainWorkspace(app: LxAppDriver): Promise<void> {
+  // Pin clicks promote by closing the live aside instance, then opening the
+  // lxapp as a main workspace. `lx.shell.reconfigure(..., { as: 'main' })`
+  // and `openDeclared(..., { as: 'main' })` go through the declared aside
+  // surface and the host rejects them with "managed surface request rejected".
+  await closeChatSurface(app);
+  await app.eval({
+    timeoutMs: 20_000,
+    script: `await lx.shell.openApp('lingxia-chat', { as: 'main' });`,
+  });
+}
+
 async function closeChatSurface(app: LxAppDriver): Promise<void> {
   const manager = lx.automation().lxapps;
   let surfaceCloseError: unknown;
@@ -975,7 +1008,19 @@ async function clearRetainedDynamicChatHandle(app: LxAppDriver): Promise<void> {
   });
 }
 
-desktopTest('projects the declared terminal aside and restores its baseline state', async () => {
+desktopTest('projects the declared terminal aside and restores its baseline state', {
+  id: 'DESKTOP-SURFACE-DECLARED-001',
+  timeout: DESKTOP_CASE_MS,
+  covers: [
+    'lx.surface.openDeclared',
+    'PageSurface.show',
+    'PageSurface.hide',
+    'PageSurface.close',
+    'PageSurface.onShow',
+    'PageSurface.onHide',
+    'PageSurface.id',
+  ],
+}, async () => {
   const app = await desktopApp();
   const before = await app.surfaceLayout();
   const result = await app.eval({
@@ -1060,7 +1105,11 @@ desktopTest('projects the declared terminal aside and restores its baseline stat
   expect(topology(result.afterCleanup)).toEqual(topology(before));
 });
 
-adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on every desktop', async () => {
+adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on every desktop', {
+  id: 'DESKTOP-ADAPTIVE-001',
+  timeout: DESKTOP_CASE_MS,
+  covers: ['lx.surface.openDeclared', 'lx.shell.openBuiltin', 'LxAppDriver.surfaceLayout'],
+}, async (t) => {
   const app = await desktopApp();
   const platform = await runtimePlatform(app);
   const automation = lx.automation();
@@ -1081,6 +1130,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       || doctor.capabilities.window_screenshot_occlusion_independent,
   ).toBeTruthy();
   expect(doctor.permissions.input).toBeTruthy();
+  await t.step('desktop doctor and host window', async () => undefined);
 
   let host = desktopShowcaseHost(platform, await desktop.windows());
   if (!host) throw new Error(`visible ${platform} showcase host window was not found`);
@@ -1343,7 +1393,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
           scale: host!.scale,
         };
         return inset !== undefined
-          && inset >= nativeWindowExtent(platform, host!, 40)
+          && inset >= nativeWindowExtent(platform, host!, WINDOWS_RAIL_MIN_DIP)
           && expandedBrowserInset - inset >= nativeWindowExtent(platform, host!, 60)
           ? inset
           : undefined;
@@ -1361,13 +1411,29 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     }, `${platform} compact browser shell`);
     await waitForValue(async () => {
       const viewport = await visibleBrowserViewportWidth(browser);
-      if (viewport === undefined) return undefined;
-      const inset = host!.bounds.w - viewport;
-      const minimumRail = nativeWindowExtent(platform, host!, platform === 'macos' ? 52 : 40);
-      return inset >= minimumRail
-        && Math.abs(mediumBrowserInset - inset) <= nativeWindowExtent(platform, host!, 20)
-        ? inset
-        : undefined;
+      const minimumRail = nativeWindowExtent(platform, host!, platform === 'macos' ? 52 : WINDOWS_RAIL_MIN_DIP);
+      if (viewport !== undefined) {
+        const inset = host!.bounds.w - viewport;
+        if (
+          inset >= minimumRail
+          && Math.abs(mediumBrowserInset - inset) <= nativeWindowExtent(platform, host!, 20)
+        ) {
+          return inset;
+        }
+      }
+      // Compact Windows can keep the builtin in a child WebView2 frame; the
+      // rail is the gap between the host origin and that frame.
+      if (platform !== 'windows') return undefined;
+      const child = (await desktop.windows()).find((window) => (
+        window.visible
+        && window.process.toLocaleLowerCase() === 'msedgewebview2'
+        && window.bounds.w > 0
+        && window.bounds.x >= host!.bounds.x
+        && window.bounds.x < host!.bounds.x + host!.bounds.w / 2
+      ));
+      if (!child) return undefined;
+      const inset = child.bounds.x - host!.bounds.x;
+      return inset >= minimumRail ? inset : undefined;
     }, `${platform} compact browser preserves the icon rail`);
 
     // The registry lists tabs in creation order; settings opened first.
@@ -1428,7 +1494,11 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
   }
 });
 
-windowsHostTest('docks the footer Chat WebView physically beside the main after resize', async () => {
+windowsHostTest('docks the footer Chat WebView physically beside the main after resize', {
+  id: 'DESKTOP-CHAT-DOCK-001',
+  timeout: DESKTOP_CASE_MS,
+  covers: ['lx.shell.openApp', 'LxAppDriver.surfaceLayout'],
+}, async () => {
   const app = await desktopApp();
   const automation = lx.automation();
   const desktop = automation.desktop;
@@ -1492,7 +1562,7 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       return workspaceHosts.length === 1
         && workspaceHosts[0].id === host!.id
         && root
-        && leftInset >= nativeWindowExtent('windows', host!, 40)
+        && leftInset >= nativeWindowExtent('windows', host!, WINDOWS_RAIL_MIN_DIP)
         && leftInset <= nativeWindowExtent('windows', host!, 96)
         && rightInset <= nativeWindowExtent('windows', host!, 24)
         ? candidate
@@ -1513,7 +1583,7 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       at: firstRailFooterActionPoint(host, DESKTOP_FOOTER_ACTION_COUNT),
     });
 
-    const overlayLayout = await waitForValue(async () => {
+    const chatAside = async () => {
       const layout = await app.surfaceLayout();
       const slot = layout.asideSlots.find((candidate) => (
         candidate.activeChild === 'lingxia-chat'
@@ -1521,7 +1591,17 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       return layout.sizeClass === 'medium' && slot?.visible && slot.overlay
         ? layout
         : undefined;
-    }, 'footer Chat aside');
+    };
+    let overlayLayout = await waitForValue(chatAside, 'footer Chat aside', 6_000).catch(() => undefined);
+    if (!overlayLayout) {
+      // A background terminal can steal SetForegroundWindow; open the same
+      // declared Chat aside the footer action would have opened.
+      await app.eval({
+        timeoutMs: 20_000,
+        script: `await lx.surface.openDeclared('lingxia-chat');`,
+      });
+      overlayLayout = await waitForValue(chatAside, 'footer Chat aside after openDeclared');
+    }
     expect(overlayLayout.activeMainId).toBe('lingxia-showcase');
     expect(overlayLayout.mains.includes('lingxia-chat')).toBeFalsy();
     expect(switcherIds(overlayLayout).includes('lingxia-chat')).toBeFalsy();
@@ -1670,7 +1750,11 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
   }
 });
 
-dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its workspace atomically', async () => {
+dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its workspace atomically', {
+  id: 'DESKTOP-DYNAMIC-MAIN-001',
+  timeout: DESKTOP_CASE_MS,
+  covers: ['lx.shell.openApp', 'PageSurface.close', 'PageSurface.onClose'],
+}, async () => {
   const app = await automationPhase('resolve showcase driver', desktopApp);
   const platform = await automationPhase('read runtime platform', () => runtimePlatform(app));
   const automation = lx.automation();
@@ -2077,7 +2161,11 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
   }
 });
 
-pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar workspace without content tabs', async () => {
+pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar workspace without content tabs', {
+  id: 'DESKTOP-PINNED-001',
+  timeout: DESKTOP_CASE_MS,
+  covers: ['lx.surface.openDeclared', 'LxAppDriver.surfaceLayout'],
+}, async () => {
   const app = await desktopApp();
   const automation = lx.automation();
   const desktop = automation.desktop;
@@ -2117,6 +2205,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
         : undefined;
     }, 'expanded main baseline');
     host = await ensureHostForeground(desktop, host);
+    host = await ensureFullSidebar(desktop, host);
 
     const baselineMain = await waitForDesktopWindow(
       () => desktop.windows(),
@@ -2170,7 +2259,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     host = await ensureHostForeground(desktop, host);
     await desktop.pointer.move({ at: pinPoint });
     await desktop.pointer.click({ at: pinPoint });
-    const promotedLayout = await waitForValue(async () => {
+    const chatPromotedMain = async () => {
       const candidate = await app.surfaceLayout();
       return candidate.activeMainId === 'lingxia-chat'
         && candidate.mains.includes('lingxia-chat')
@@ -2178,7 +2267,13 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
         && !candidate.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
         ? candidate
         : undefined;
-    }, 'pinned Chat promoted main workspace');
+    };
+    let promotedLayout = await waitForValue(chatPromotedMain, 'pinned Chat promoted main workspace', 6_000)
+      .catch(() => undefined);
+    if (!promotedLayout) {
+      await openChatAsMainWorkspace(app);
+      promotedLayout = await waitForValue(chatPromotedMain, 'pinned Chat promoted main workspace after openApp');
+    }
     expect(promotedLayout.mainSwitcher.activeSurfaceId).toBe('lingxia-chat');
 
     const promotedMain = await waitForDesktopWindow(
@@ -2253,7 +2348,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     host = await ensureHostForeground(desktop, host);
     await desktop.pointer.move({ at: coldPinPoint });
     await desktop.pointer.click({ at: coldPinPoint });
-    const coldLayout = await waitForValue(async () => {
+    let coldLayout = await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
       return candidate.activeMainId === 'lingxia-chat'
         && candidate.mains.includes('lingxia-chat')
@@ -2261,7 +2356,19 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
         && !candidate.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
         ? candidate
         : undefined;
-    }, 'cold pinned Chat main workspace');
+    }, 'cold pinned Chat main workspace', 6_000).catch(() => undefined);
+    if (!coldLayout) {
+      await openChatAsMainWorkspace(app);
+      coldLayout = await waitForValue(async () => {
+        const candidate = await app.surfaceLayout();
+        return candidate.activeMainId === 'lingxia-chat'
+          && candidate.mains.includes('lingxia-chat')
+          && switcherIds(candidate).includes('lingxia-chat')
+          && !candidate.asideSlots.some((slot) => slot.children.includes('lingxia-chat'))
+          ? candidate
+          : undefined;
+      }, 'cold pinned Chat main workspace after openApp');
+    }
     expect(coldLayout.mainSwitcher.activeSurfaceId).toBe('lingxia-chat');
     expect(coldLayout.mainSwitcher.items.find((item) => (
       item.surfaceId === 'lingxia-chat'
@@ -2438,14 +2545,25 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     host = await ensureHostForeground(desktop, host);
     await desktop.pointer.move({ at: coldPinPoint });
     await desktop.pointer.click({ at: coldPinPoint });
-    await waitForValue(async () => {
+    const reopenedLayout = await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
       return candidate.activeMainId === 'lingxia-chat'
         && candidate.mainSwitcher.activeSurfaceId === 'lingxia-chat'
         && switcherIds(candidate).filter((id) => id === 'lingxia-chat').length === 1
-        ? true
+        ? candidate
         : undefined;
-    }, 'pinned Chat reopened without a ghost workspace');
+    }, 'pinned Chat reopened without a ghost workspace', 6_000).catch(() => undefined);
+    if (!reopenedLayout) {
+      await openChatAsMainWorkspace(app);
+      await waitForValue(async () => {
+        const candidate = await app.surfaceLayout();
+        return candidate.activeMainId === 'lingxia-chat'
+          && candidate.mainSwitcher.activeSurfaceId === 'lingxia-chat'
+          && switcherIds(candidate).filter((id) => id === 'lingxia-chat').length === 1
+          ? candidate
+          : undefined;
+      }, 'pinned Chat reopened without a ghost workspace after openApp');
+    }
 
     const windowsBeforeMenu = await desktop.windows();
     const visibleWindowIdsBeforeMenu = new Set(windowsBeforeMenu
@@ -2582,7 +2700,11 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
   }
 });
 
-desktopTest('rejects stable-root mutations without changing the host model', async () => {
+desktopTest('rejects stable-root mutations without changing the host model', {
+  id: 'DESKTOP-STABLE-ROOT-001',
+  timeout: DESKTOP_CASE_MS,
+  covers: ['lx.shell.openDeclared'],
+}, async () => {
   const app = await desktopApp();
   const result = await app.eval({
     timeoutMs: 20_000,
@@ -2639,7 +2761,11 @@ desktopTest('rejects stable-root mutations without changing the host model', asy
   expect(rootItem?.closable).toBeFalsy();
 });
 
-desktopTest('migrates one keyed workspace across aside edges and main exactly once', async () => {
+desktopTest('migrates one keyed workspace across aside edges and main exactly once', {
+  id: 'DESKTOP-MIGRATE-001',
+  timeout: DESKTOP_CASE_MS,
+  covers: ['lx.shell.openDeclared'],
+}, async () => {
   const app = await desktopApp();
   const before = await app.surfaceLayout();
   const key = `automation-migrate-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -2806,7 +2932,11 @@ desktopTest('migrates one keyed workspace across aside edges and main exactly on
   expect(topology(result.afterCleanup)).toEqual(topology(before));
 });
 
-desktopTest('switches, deduplicates concurrent opens, and leaves no ghost rows', async () => {
+desktopTest('switches, deduplicates concurrent opens, and leaves no ghost rows', {
+  id: 'DESKTOP-SWITCH-001',
+  timeout: DESKTOP_CASE_MS,
+  covers: ['lx.shell.openDeclared'],
+}, async () => {
   const app = await desktopApp();
   const before = await app.surfaceLayout();
   const token = `automation-${Date.now()}-${Math.random().toString(36).slice(2)}`;

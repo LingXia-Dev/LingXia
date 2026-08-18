@@ -115,7 +115,7 @@ const waitForViewCounter = (app: LxAppDriver, expected: string) => waitForElemen
   (text) => text.trim() === expected,
 );
 
-spec("reset logic data and the rendered document when a page is re-entered", { id: "PAGE-LIFECYCLE-002", covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID }, async (t) => {
+spec("reset logic data and the rendered document when a page is re-entered", { id: "PAGE-LIFECYCLE-002", covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID, timeout: 45_000 }, async (t) => {
   const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-002");
 
   defer(async () => {
@@ -131,11 +131,16 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
   // Dirty both layers plus the DOM, and the module-scoped counter that
   // must NOT reset.
   const moduleBase = first.moduleCounter;
+  await app.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-open-popup"]', state: 'attached' });
+  await app.page.eval({
+    page: 'ui',
+    script: `document.querySelector('[data-testid="lifecycle-open-popup"]')?.scrollIntoView({ block: 'center' })`,
+  });
   await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-logic"]' });
   await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-view"]' });
   await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-module"]' });
   await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-open-popup"]' });
-  await app.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-popup"]' });
+  await app.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-popup"]', state: 'visible' });
   await eventually(resetDemoState.bind(null, app), (
     candidate,
   ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });

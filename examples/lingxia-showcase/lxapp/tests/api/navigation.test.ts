@@ -1,7 +1,7 @@
 import type { LxAppDriver, PageInfo } from 'lingxia-types/automation';
 import { currentPageOrNull, waitForElementAttribute } from '../helpers/page.js';
 import { expect, spec } from '@lingxia/test';
-import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
+import { bindFixture, evalCaught, eventually, relaunchFromLogic, specNamespace } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 async function waitForCurrent(app: LxAppDriver, name: string): Promise<PageInfo> {
@@ -76,3 +76,56 @@ spec("preserve stack, query, redirect, back, and tab semantics", { id: "NAV-001"
   expect(defaultMode).toBe('device');
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['device']);
 });
+
+spec("reLaunch from Logic and reject invalid navigation", {
+  id: "NAV-LOGIC-001",
+  covers: ['lx.reLaunch', 'lx.navigateTo', 'lx.navigateBack', 'lx.redirectTo', 'lx.switchTab'],
+  app: SHOWCASE_APP_ID,
+  timeout: 90_000,
+}, async (t) => {
+  const { app } = bindFixture(t, "NAV-LOGIC-001");
+
+  await t.step('lx.reLaunch replaces the stack', async () => {
+    await app.nav.relaunch({ page: 'home' });
+    await waitForCurrent(app, 'home');
+    await relaunchFromLogic(app, 'device', { type: 'screen' });
+    await waitForCurrent(app, 'device');
+    expect((await app.nav.stack()).map((page) => page.name)).toEqual(['device']);
+  });
+
+  await t.step('unknown page rejects', async () => {
+    const rejected = await evalCaught(app, `await lx.navigateTo({ page: 'does-not-exist' });`);
+    expect(rejected.ok).toBeFalsy();
+    expect(rejected.code).toBe('E_NOT_FOUND');
+    expect((await app.nav.stack()).map((page) => page.name)).toEqual(['device']);
+  });
+
+  await t.step('navigateTo a tab already on the stack is duplicate_route', async () => {
+    await relaunchFromLogic(app, 'home');
+    await waitForCurrent(app, 'home');
+    const rejected = await evalCaught(app, `await lx.navigateTo({ page: 'home' });`);
+    expect(rejected.ok).toBeFalsy();
+    expect(rejected.code).toBe('E_INVALID_ARG');
+    const reason = (rejected.data as { reason?: string } | undefined)?.reason;
+    expect(reason).toBe('duplicate_route');
+  });
+
+  await t.step('navigateBack at root is a no-op', async () => {
+    const before = (await app.nav.stack()).map((page) => page.name);
+    const result = await evalCaught(app, `await lx.navigateBack({ delta: 1 });`);
+    expect(result.ok).toBeTruthy();
+    expect((await app.nav.stack()).map((page) => page.name)).toEqual(before);
+  });
+
+  await t.step('redirectTo the current route keeps stack length 1', async () => {
+    await app.nav.relaunch({ page: 'ui', query: { type: 'navigation' } });
+    await waitForCurrent(app, 'ui');
+    await app.eval({
+      script: `void lx.redirectTo({ page: 'ui', query: { type: 'navbar' } }); return 'scheduled';`,
+    });
+    await waitForCurrent(app, 'ui');
+    expect((await app.nav.stack()).map((page) => page.name)).toEqual(['ui']);
+  });
+});
+
+

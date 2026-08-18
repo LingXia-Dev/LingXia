@@ -19,6 +19,7 @@
     "test:automation:android:react": "lxdev test tests/entries/android.test.ts --arg platform=android --arg framework=react --forbid-only",
     "test:automation:android:vue": "lxdev test tests/entries/android.test.ts --arg platform=android --arg framework=vue --forbid-only",
     "test:automation:logic-coverage": "node tests/scripts/check-logic-api-coverage.mjs",
+    "test:automation:backlog-stubs": "node tests/scripts/check-backlog-stubs.mjs",
     "test:automation:covers": "node tests/scripts/check-covers.mjs",
     "test:automation:types": "npm run test:automation:logic-coverage && tsc -p tests/tsconfig.json"
   },

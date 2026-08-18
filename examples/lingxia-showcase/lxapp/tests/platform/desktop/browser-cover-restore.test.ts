@@ -8,7 +8,6 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
       'BrowserDriver.close',
       'lx.shell',
       'lx.shell.openBuiltin',
-      'lx.surface',
       'LxAppDriver.surfaceLayout',
     ], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, defer } = bindFixture(t, "DESKTOP-BROWSER-001");

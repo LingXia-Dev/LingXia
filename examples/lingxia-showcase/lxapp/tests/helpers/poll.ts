@@ -42,6 +42,45 @@ export async function eventually<T>(
   throw new Error(`Timed out waiting for ${options.describe}; last observed: ${observed}`);
 }
 
+export type CaughtEval = {
+  ok: boolean;
+  value?: unknown;
+  code?: unknown;
+  message?: string;
+  data?: unknown;
+};
+
+/** Run Logic and return `{ ok, code, data }` instead of throwing across eval. */
+/** Schedule `lx.reLaunch` without awaiting the torn-down eval context. */
+export async function relaunchFromLogic(
+  app: LxAppDriver,
+  page: string,
+  query?: Record<string, string>,
+): Promise<void> {
+  const queryLiteral = query === undefined ? '' : `, query: ${JSON.stringify(query)}`;
+  await app.eval({
+    script: `void lx.reLaunch({ page: ${JSON.stringify(page)}${queryLiteral} }); return 'scheduled';`,
+  });
+}
+
+export async function evalCaught(app: LxAppDriver, body: string): Promise<CaughtEval> {
+  return app.eval({
+    script: `
+      try {
+        const value = await (async () => { ${body} })();
+        return { ok: true, value };
+      } catch (error) {
+        return {
+          ok: false,
+          code: error && error.code,
+          message: String(error && error.message || error),
+          data: error && error.data,
+        };
+      }
+    `,
+  }) as Promise<CaughtEval>;
+}
+
 export async function expectReject(
   operation: () => Promise<unknown>,
   expected: { code?: string; message?: string | RegExp },

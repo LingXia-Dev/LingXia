@@ -145,6 +145,9 @@ windowTest('open a page window with system chrome and with full chrome', {
     'lx.surface.openPage',
     'lx.surface.get',
     'lx.supports',
+    'PageSurface.kind',
+    'PageSurface.realized',
+    'PageSurface.id',
   ],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
