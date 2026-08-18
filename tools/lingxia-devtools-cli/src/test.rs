@@ -55,7 +55,7 @@ pub struct TestOptions {
     pub forbid_only: bool,
 
     /// Directory receiving attached artifacts
-    /// (default: test-results/lxdev/<run-id>)
+    /// (default: test-results/<run-id>)
     #[arg(long, value_name = "PATH")]
     output_dir: Option<PathBuf>,
 
@@ -152,7 +152,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     let output_dir = options
         .output_dir
         .clone()
-        .unwrap_or_else(|| PathBuf::from("test-results/lxdev").join(&run_id));
+        .unwrap_or_else(|| PathBuf::from("test-results").join(&run_id));
 
     // First Ctrl-C requests a cooperative cancel; the second exits immediately.
     let interrupts = Arc::new(AtomicUsize::new(0));

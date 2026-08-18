@@ -2,7 +2,7 @@ import { spec } from '@lingxia/test'
 
 // lingxia dev --background
 // lxdev test tests/
-// open test-results/lxdev/<run>/report.html
+// open test-results/<run>/report.html
 
 spec('home greets by name', async (t) => {
   await t.app.nav.relaunch({ page: 'home' })
