@@ -218,12 +218,11 @@ function rewriteLingxiaRange(spec, version) {
   const match = spec.match(/^(\^|~|>=|<=|>|<|=)?\s*\d+\.\d+\.\d+$/);
   if (match) {
     const prefix = match[1] ?? "";
-    // Internal npm deps stay on the minor line so a package that was not
-    // republished on this patch still satisfies dependents. Normalize legacy
+    // Internal npm deps track the patch being published: a later patch on the
+    // same minor still satisfies them, an older one must not. Normalize legacy
     // caret ranges because ^1.2.0 would also admit later minor releases.
     if (prefix === "^" || prefix === "~") {
-      const [major, minor] = version.split(".");
-      return `~${major}.${minor}.0`;
+      return `~${version}`;
     }
     return `${prefix}${version}`;
   }
@@ -242,11 +241,31 @@ if (rewriteDeps) {
   }
 }
 
+// A committed lockfile mirrors the manifest's own version and root deps; npm.sh
+// installs such a package with `npm ci`, which fails once the two drift.
+const lockPath = path.replace(/package\.json$/, "package-lock.json");
+const lock = fs.existsSync(lockPath) ? JSON.parse(fs.readFileSync(lockPath, "utf8")) : null;
+if (lock) {
+  lock.version = version;
+  const root = lock.packages && lock.packages[""];
+  if (root) {
+    root.version = version;
+    for (const section of sections) {
+      if (root[section] && pkg[section]) root[section] = pkg[section];
+    }
+  }
+}
+
 if (dryRun) {
   console.log(`would update ${path}`);
+  if (lock) console.log(`would update ${lockPath}`);
 } else {
   fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
   console.log(`updated ${path}`);
+  if (lock) {
+    fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n");
+    console.log(`updated ${lockPath}`);
+  }
 }
 NODE
 

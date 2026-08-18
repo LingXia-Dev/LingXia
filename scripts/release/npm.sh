@@ -43,6 +43,10 @@ if [[ "$PUBLISH" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
   DRY_RUN=1
 fi
 
+# Tier 1, then framework in dep order (bridge → elements/page-runtime → html/react/vue),
+# then prebuilt lxapps and the standalone skill.
+ALL_TARGETS=("bridge" "polyfills" "types" "elements" "page-runtime" "html" "react" "vue" "terminal-settings" "browser-shell-webui" "skill")
+
 case "$PACKAGE_SET" in
   bridge) targets=("bridge") ;;
   elements) targets=("elements") ;;
@@ -55,9 +59,7 @@ case "$PACKAGE_SET" in
   browser-shell-webui) targets=("browser-shell-webui") ;;
   types) targets=("types") ;;
   skill) targets=("skill") ;;
-  # Tier 1, then framework in dep order (bridge → elements/page-runtime → html/react/vue),
-  # then prebuilt lxapps and the standalone skill.
-  all) targets=("bridge" "polyfills" "types" "elements" "page-runtime" "html" "react" "vue" "terminal-settings" "browser-shell-webui" "skill") ;;
+  all) targets=("${ALL_TARGETS[@]}") ;;
   *) echo "Unknown package set: $PACKAGE_SET" >&2; exit 2 ;;
 esac
 
@@ -79,39 +81,42 @@ pkg_dir() {
 }
 
 verify_package_inventory() {
-  local missing=()
-  local dir name
-  for dir in "$ROOT_DIR"/packages/lingxia-*/; do
+  local unmapped=() unreleased=()
+  local dir name target
+  for dir in "$ROOT_DIR"/packages/lingxia-*/ "$ROOT_DIR/crates/lingxia-browser-shell/webui/"; do
     [[ -f "${dir}package.json" ]] || continue
     name="$(node -p "require('${dir}package.json').name")"
-    if ! pkg_dir_for_name "$name" >/dev/null; then
-      missing+=("$name")
+    if ! target="$(pkg_target_for_name "$name")"; then
+      unmapped+=("$name")
+    elif ! printf '%s\n' "${ALL_TARGETS[@]}" | grep -qx "$target"; then
+      unreleased+=("$name")
     fi
   done
-  name="$(node -p "require('$ROOT_DIR/crates/lingxia-browser-shell/webui/package.json').name")"
-  if ! pkg_dir_for_name "$name" >/dev/null; then
-    missing+=("$name")
+  if [[ "${#unmapped[@]}" -gt 0 ]]; then
+    echo "Workspace package(s) missing from the npm release inventory: ${unmapped[*]}" >&2
+    echo "Add each package to pkg_dir / pkg_target_for_name." >&2
+    exit 1
   fi
-  if [[ "${#missing[@]}" -gt 0 ]]; then
-    echo "Workspace package(s) missing from the npm release inventory: ${missing[*]}" >&2
-    echo "Add each package to pkg_dir / the --package all list." >&2
+  if [[ "${#unreleased[@]}" -gt 0 ]]; then
+    echo "Workspace package(s) missing from the --package all list: ${unreleased[*]}" >&2
+    echo "Add each package to ALL_TARGETS in dependency order." >&2
     exit 1
   fi
 }
 
-pkg_dir_for_name() {
+pkg_target_for_name() {
   case "$1" in
-    @lingxia/bridge) pkg_dir bridge ;;
-    @lingxia/polyfills) pkg_dir polyfills ;;
-    @lingxia/types) pkg_dir types ;;
-    @lingxia/elements) pkg_dir elements ;;
-    @lingxia/page-runtime) pkg_dir page-runtime ;;
-    @lingxia/html) pkg_dir html ;;
-    @lingxia/react) pkg_dir react ;;
-    @lingxia/vue) pkg_dir vue ;;
-    @lingxia/terminal-settings) pkg_dir terminal-settings ;;
-    @lingxia/browser-shell-webui) pkg_dir browser-shell-webui ;;
-    @lingxia/skill) pkg_dir skill ;;
+    @lingxia/bridge) echo "bridge" ;;
+    @lingxia/polyfills) echo "polyfills" ;;
+    @lingxia/types) echo "types" ;;
+    @lingxia/elements) echo "elements" ;;
+    @lingxia/page-runtime) echo "page-runtime" ;;
+    @lingxia/html) echo "html" ;;
+    @lingxia/react) echo "react" ;;
+    @lingxia/vue) echo "vue" ;;
+    @lingxia/terminal-settings) echo "terminal-settings" ;;
+    @lingxia/browser-shell-webui) echo "browser-shell-webui" ;;
+    @lingxia/skill) echo "skill" ;;
     *) return 1 ;;
   esac
 }
