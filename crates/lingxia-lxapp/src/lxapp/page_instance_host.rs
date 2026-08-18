@@ -856,6 +856,15 @@ impl LxApp {
         );
 
         if let Ok(state) = self.state.lock() {
+            // Drop the ids from the stack in the same critical section. A
+            // caller that reads the stack head while it still names a removed
+            // instance cannot resolve it, and the callers here only clear the
+            // stack afterwards, in a lock acquisition of their own.
+            state
+                .page_stack
+                .lock()
+                .unwrap()
+                .retain(|entry| !instance_ids.iter().any(|id| id == entry));
             let mut pages_by_id = state.pages_by_id.lock().unwrap();
             for id in instance_ids {
                 if let Some(page) = pages_by_id.remove(id) {
@@ -943,18 +952,6 @@ impl LxApp {
         self.current_page().ok().map(|page| page.path())
     }
 
-    /// Instance id at the top of the navigation stack.
-    fn peek_current_instance_id(&self) -> Option<String> {
-        self.state
-            .lock()
-            .unwrap()
-            .page_stack
-            .lock()
-            .unwrap()
-            .back()
-            .cloned()
-    }
-
     /// Route paths on the navigation stack, oldest → newest.
     pub fn get_page_stack_paths(&self) -> Vec<String> {
         self.get_page_stack_pages()
@@ -964,12 +961,26 @@ impl LxApp {
     }
 
     /// Return the current visible page or an error when the page stack is empty.
+    ///
+    /// The stack head and the instance map are read under one lock: reading
+    /// them separately let a concurrent teardown land in between, so a caller
+    /// saw an id the map had already dropped.
     pub fn current_page(&self) -> Result<PageInstance, LxAppError> {
-        let id = self
-            .peek_current_instance_id()
+        let state = self.state.lock().unwrap();
+        let id = state
+            .page_stack
+            .lock()
+            .unwrap()
+            .back()
+            .cloned()
             .ok_or_else(|| LxAppError::WebView("No current page".to_string()))?;
-        self.get_page_by_instance_id_str(&id)
-            .ok_or_else(|| LxAppError::WebView("Current page instance not found".to_string()))
+        state
+            .pages_by_id
+            .lock()
+            .unwrap()
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| LxAppError::WebView(format!("Current page instance not found: {id}")))
     }
 
     /// Return a page by path or an error when that page is not currently alive.
