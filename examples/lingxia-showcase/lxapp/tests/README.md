@@ -5,6 +5,10 @@ Showcase. A passing suite must show that a public capability is present, works
 through its real boundary, reports failures predictably, and leaves no state
 behind.
 
+Gaps against that bar live in [coverage-backlog.md](./coverage-backlog.md):
+implement in waves, then review again. Do not treat a `SHAPE-*` case or a
+ledger row as done.
+
 ## Suite boundaries
 
 | Entry | Purpose | Run on |
