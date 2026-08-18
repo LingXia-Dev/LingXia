@@ -20,7 +20,8 @@
     "build": "tsc -p tsconfig.json",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "npm run build && node --test --test-concurrency=1 --test-reporter spec tests/clock.test.mjs tests/waiting.test.mjs tests/report.test.mjs tests/stacks.test.mjs",
-    "prepublishOnly": "npm run clean && npm run build"
+    "prepublishOnly": "npm run clean && npm run build",
+    "prebuild": "npm run build --workspace @lingxia/types --if-present"
   },
   "dependencies": {
     "@lingxia/types": "^0.11.2"
