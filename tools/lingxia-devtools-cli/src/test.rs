@@ -136,7 +136,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
             source: bundle.code.clone(),
             source_name: Some(bundle.bundle_name.clone()),
             timeout_ms: Some(options.timeout * 1000),
-            args,
+            args: args.clone(),
         },
     )?;
     let run_id = start.run_id;
@@ -173,6 +173,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         machine,
         &interrupts,
         Duration::from_secs(options.timeout),
+        &args,
     )?;
     if outcome.partial && !machine {
         print_partial_summary(&outcome.streamed);
@@ -241,7 +242,10 @@ fn poll_until_terminal(
     machine: bool,
     interrupts: &AtomicUsize,
     run_timeout: Duration,
+    args: &HashMap<String, String>,
 ) -> Result<Outcome> {
+    let run_started_at = chrono::Utc::now().to_rfc3339();
+    let run_started = std::time::Instant::now();
     let mut after_seq = 0u64;
     let mut console = Vec::new();
     let mut artifacts = Vec::new();
@@ -390,7 +394,14 @@ fn poll_until_terminal(
                     reason: Some("hang_watchdog".to_string()),
                 },
             );
-            write_partial_report(output_dir, run_id, &streamed)?;
+            write_partial_report(
+                output_dir,
+                run_id,
+                args,
+                &run_started_at,
+                run_started.elapsed().as_millis() as u64,
+                &streamed,
+            )?;
             if !machine {
                 eprintln!(
                     "{} no test event for {:.1}s; wrote partial report.json",
@@ -535,6 +546,47 @@ fn report(
             print_error_causes(&error.causes, bundle, 1);
         }
     }
+    print_artifact_index(output_dir, &outcome.artifacts);
+}
+
+/// The report is the deliverable, so name it last and name it absolutely —
+/// a run-scoped directory is otherwise hard to find in scrollback.
+fn print_artifact_index(output_dir: &Path, artifacts: &[(String, PathBuf, usize)]) {
+    let mut named = artifacts
+        .iter()
+        .filter(|(name, _, _)| matches!(name.as_str(), "report.html" | "report.json" | "junit.xml"))
+        .collect::<Vec<_>>();
+    if named.is_empty() {
+        return;
+    }
+    named.sort_by_key(|(name, _, _)| match name.as_str() {
+        "report.html" => 0,
+        "report.json" => 1,
+        _ => 2,
+    });
+    let absolute = |path: &Path| {
+        std::fs::canonicalize(path).unwrap_or_else(|_| {
+            std::env::current_dir()
+                .map(|cwd| cwd.join(path))
+                .unwrap_or_else(|_| path.to_path_buf())
+        })
+    };
+    for (name, path, _) in named {
+        eprintln!(
+            "{} {}",
+            format!("{name:>11}").cyan(),
+            absolute(path).display()
+        );
+    }
+    let others = artifacts.len().saturating_sub(3);
+    if others > 0 {
+        eprintln!(
+            "{} {} more artifact(s) under {}",
+            "artifacts".cyan(),
+            others,
+            absolute(output_dir).display()
+        );
+    }
 }
 
 fn report_value(report: &TestReport, bundle: &TestBundle) -> serde_json::Value {
@@ -644,31 +696,77 @@ fn print_console(level: &str, message: &str) {
     println!("{tag} {message}");
 }
 
-fn write_partial_report(output_dir: &Path, run_id: &str, streamed: &[StreamedCase]) -> Result<()> {
+/// A hung run never reaches the in-runtime reporter, so the client writes the
+/// report itself. It keeps `@lingxia/test`'s `report.json` shape so the same
+/// consumers parse both paths; only `partial` tells them apart.
+fn write_partial_report(
+    output_dir: &Path,
+    run_id: &str,
+    args: &HashMap<String, String>,
+    started_at: &str,
+    duration_ms: u64,
+    streamed: &[StreamedCase],
+) -> Result<()> {
     std::fs::create_dir_all(output_dir)
         .with_context(|| format!("failed to create {}", output_dir.display()))?;
     let cases = streamed
         .iter()
         .map(|case| {
+            // A case with no finish event was still running when the watchdog
+            // fired; the report grades it as the timeout it is.
+            let status = match case.status {
+                Some(TestCaseStatus::Passed) => "passed",
+                Some(TestCaseStatus::Failed) => "failed",
+                Some(TestCaseStatus::Skipped) => "skipped",
+                None => "timeout",
+            };
             json!({
+                "id": case.full_name,
+                "title": case.name,
                 "name": case.name,
                 "full_name": case.full_name,
-                "status": case.status.map(|status| match status {
-                    TestCaseStatus::Passed => "passed",
-                    TestCaseStatus::Failed => "failed",
-                    TestCaseStatus::Skipped => "skipped",
-                }),
+                "suite": "lxdev (partial run)",
+                "status": status,
                 "duration_ms": case.duration_ms,
                 "covers": case.covers,
                 "steps": case.steps,
+                "assertions": [],
+                "attachments": [],
+                "timeout_ms": 0,
+                "error": (status == "timeout").then(|| json!({
+                    "name": "TimeoutError",
+                    "message": "no test event before the lxdev hang watchdog fired",
+                })),
             })
         })
         .collect::<Vec<_>>();
+    let count = |wanted: &str| {
+        cases
+            .iter()
+            .filter(|case| case.get("status").and_then(|value| value.as_str()) == Some(wanted))
+            .count()
+    };
     let envelope = json!({
         "framework": { "name": "lxdev", "version": env!("CARGO_PKG_VERSION") },
+        "meta": {
+            "started_at": started_at,
+            "duration_ms": duration_ms,
+            "args": args,
+            "platform": args.get("platform"),
+            "framework": args.get("framework"),
+            "run_id": run_id,
+        },
         "partial": true,
+        "filtered": args.contains_key("grep"),
         "run_id": run_id,
         "total": cases.len(),
+        "passed": count("passed"),
+        "failed": count("failed"),
+        "skipped": count("skipped"),
+        "xfail": 0,
+        "xpass": 0,
+        "timeout": count("timeout"),
+        "duration_ms": duration_ms,
         "cases": cases,
     });
     let path = output_dir.join("report.json");
@@ -789,6 +887,9 @@ mod tests {
         write_partial_report(
             dir.path(),
             "run-1",
+            &HashMap::new(),
+            "2026-01-01T00:00:00Z",
+            1234,
             &[StreamedCase {
                 name: "home".into(),
                 full_name: "home".into(),
@@ -800,8 +901,22 @@ mod tests {
         )
         .unwrap();
         let text = std::fs::read_to_string(dir.path().join("report.json")).unwrap();
-        assert!(text.contains("\"partial\": true"));
-        assert!(text.contains("lx.app"));
+        let value: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["partial"], serde_json::json!(true));
+        assert_eq!(value["total"], serde_json::json!(1));
+        assert_eq!(value["passed"], serde_json::json!(1));
+        assert_eq!(value["cases"][0]["covers"][0], serde_json::json!("lx.app"));
+        // Same shape as the in-runtime reporter so one parser reads both paths.
+        for key in [
+            "meta",
+            "filtered",
+            "failed",
+            "skipped",
+            "timeout",
+            "duration_ms",
+        ] {
+            assert!(value.get(key).is_some(), "partial report is missing {key}");
+        }
         assert!(!dir.path().join("report.html").exists());
     }
 }
