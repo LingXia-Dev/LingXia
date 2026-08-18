@@ -1,4 +1,11 @@
-import { AssertionError, applyMatcher, expect as immediateExpect } from "./expect.js";
+import {
+  AssertionError,
+  applyMatcher,
+  expect as immediateExpect,
+  popAssertionSilence,
+  pushAssertionSilence,
+  setAssertionSink,
+} from "./expect.js";
 import { formatValue } from "./format.js";
 import { encodeAttachPayload, remapStack, type ResolvedHost } from "./host.js";
 import { rememberInline } from "./report.js";
@@ -16,6 +23,7 @@ import type {
   ExpectOptions,
   Fixture,
   FixtureExpect,
+  AssertionRecord,
   Locator,
   LocatorMatchers,
   RejectExpected,
@@ -43,6 +51,7 @@ export class LiveFixture implements Fixture {
   readonly apps: Apps;
   readonly args: Record<string, string>;
   readonly steps: StepRecord[] = [];
+  readonly assertions: AssertionRecord[] = [];
   readonly attachments: AttachmentRef[] = [];
   readonly defers: Array<() => void | Promise<void>> = [];
   aborted = false;
@@ -63,6 +72,7 @@ export class LiveFixture implements Fixture {
   ) {
     this.rawApp = rawApp;
     this.args = args;
+    setAssertionSink((entry) => this.noteAssertion(entry));
     this.apps = {
       lxapp: (appId: string) => this.wrapApp(this.automation.lxapp(appId)),
     };
@@ -85,6 +95,7 @@ export class LiveFixture implements Fixture {
         duration_ms: 0,
         steps: [],
         attachments: [],
+        assertions: [],
       };
       const parent = this.stepStack[this.stepStack.length - 1];
       (parent ? parent.steps : this.steps).push(record);
@@ -148,6 +159,12 @@ export class LiveFixture implements Fixture {
         received = error;
       }
       if (!didThrow) {
+        this.noteAssertion({
+          matcher: "reject",
+          expected: formatValue(expected),
+          actual: "resolved",
+          passed: false,
+        });
         throw new AssertionError(
           "reject",
           undefined,
@@ -163,6 +180,12 @@ export class LiveFixture implements Fixture {
       }
       const record = received as { code?: unknown; message?: unknown };
       if (expected.code !== undefined && record.code !== expected.code) {
+        this.noteAssertion({
+          matcher: "reject",
+          expected: formatValue(expected.code),
+          actual: formatValue(record.code),
+          passed: false,
+        });
         throw new AssertionError(
           "reject",
           record.code,
@@ -182,6 +205,12 @@ export class LiveFixture implements Fixture {
       if (expected.message instanceof RegExp) {
         immediateExpect(String(record.message)).toMatch(expected.message);
       }
+      this.noteAssertion({
+        matcher: "reject",
+        expected: formatValue(expected),
+        actual: formatValue({ code: record.code, message: record.message }),
+        passed: true,
+      });
       return received;
     });
   }
@@ -237,6 +266,15 @@ export class LiveFixture implements Fixture {
   currentStepPath(): string | undefined {
     const current = this.stepStack[this.stepStack.length - 1];
     return current?.path ?? this.lastStepPath;
+  }
+
+  noteAssertion(entry: { matcher: string; expected: string; actual: string; passed: boolean }): void {
+    const record: AssertionRecord = {
+      ...entry,
+      step: this.currentStepPath(),
+    };
+    const current = this.stepStack[this.stepStack.length - 1];
+    (current ? current.assertions : this.assertions).push(record);
   }
 
   private assertRunnable(): void {
@@ -349,18 +387,29 @@ export class LiveFixture implements Fixture {
       const started = Date.now();
       let lastResolved: LocatorResolve | undefined;
       let lastError: unknown;
-      while (Date.now() - started < timeout) {
-        try {
-          lastResolved = await resolveLocator(locator);
-          matchLocator(locator, lastResolved, matcher, expected, inverted);
-          return;
-        } catch (error) {
-          if (error instanceof TimeoutError || this.aborted) throw error;
-          lastError = error;
+      pushAssertionSilence();
+      try {
+        while (Date.now() - started < timeout) {
+          try {
+            lastResolved = await resolveLocator(locator);
+            matchLocator(locator, lastResolved, matcher, expected, inverted);
+            this.noteAssertion({
+              matcher: inverted ? `not.${matcher}` : matcher,
+              expected: formatValue(expected),
+              actual: formatValue(locatorActual(matcher, lastResolved)),
+              passed: true,
+            });
+            return;
+          } catch (error) {
+            if (error instanceof TimeoutError || this.aborted) throw error;
+            lastError = error;
+          }
+          if (Date.now() - started >= timeout) break;
+          await sleep(interval);
+          if (this.aborted && this.abortError) throw this.abortError;
         }
-        if (Date.now() - started >= timeout) break;
-        await sleep(interval);
-        if (this.aborted && this.abortError) throw this.abortError;
+      } finally {
+        popAssertionSilence();
       }
       const duration = Date.now() - started;
       throw this.retryFailure({
@@ -390,18 +439,29 @@ export class LiveFixture implements Fixture {
       const started = Date.now();
       let lastActual: unknown;
       let lastError: unknown;
-      while (Date.now() - started < timeout) {
-        try {
-          lastActual = await read();
-          applyMatcher(matcher, lastActual, expected, inverted);
-          return;
-        } catch (error) {
-          if (error instanceof TimeoutError || this.aborted) throw error;
-          lastError = error;
+      pushAssertionSilence();
+      try {
+        while (Date.now() - started < timeout) {
+          try {
+            lastActual = await read();
+            applyMatcher(matcher, lastActual, expected, inverted);
+            this.noteAssertion({
+              matcher: inverted ? `not.${matcher}` : matcher,
+              expected: formatValue(expected),
+              actual: formatValue(lastActual),
+              passed: true,
+            });
+            return;
+          } catch (error) {
+            if (error instanceof TimeoutError || this.aborted) throw error;
+            lastError = error;
+          }
+          if (Date.now() - started >= timeout) break;
+          await sleep(interval);
+          if (this.aborted && this.abortError) throw this.abortError;
         }
-        if (Date.now() - started >= timeout) break;
-        await sleep(interval);
-        if (this.aborted && this.abortError) throw this.abortError;
+      } finally {
+        popAssertionSilence();
       }
       throw this.retryFailure({
         matcher: inverted ? `not.${matcher}` : matcher,
@@ -440,6 +500,12 @@ export class LiveFixture implements Fixture {
       this.stepPathLine(),
       last && last !== `Expected: ${formatValue(input.expected)}` ? last : undefined,
     ].filter((line): line is string => Boolean(line));
+    this.noteAssertion({
+      matcher: input.matcher,
+      expected: formatValue(input.expected),
+      actual: formatValue(input.actual),
+      passed: false,
+    });
     return new AssertionError(input.matcher, input.actual, input.expected, lines.join("\n"));
   }
 }

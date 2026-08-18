@@ -66,6 +66,8 @@ test("nests t.step in report.json and emits covers on case_started", async () =>
   assert.equal(steps[0].name, "outer");
   assert.equal(steps[0].steps[0].name, "inner");
   assert.equal(steps[0].steps[0].path, "outer > inner");
+  assert.equal(steps[0].steps[0].assertions[0].matcher, "toBe");
+  assert.equal(steps[0].steps[0].assertions[0].passed, true);
   assert.deepEqual(report.cases[0].covers, ["lx.tabBar.update"]);
   assert.equal(report.cases[0].id, "UI-TABBAR-001");
 });

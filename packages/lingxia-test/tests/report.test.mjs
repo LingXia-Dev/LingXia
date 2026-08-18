@@ -82,6 +82,63 @@ test("omits the log tail when the host has no ring", async () => {
   assert.ok(!names.includes("logs.txt"));
 });
 
+test("report json and html include run metadata, steps, expected/actual, and no mojibake", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world, {
+    args: { platform: "windows", framework: "react" },
+  });
+
+  spec("steps and a matcher failure", { id: "UNIT-REPORT-001", covers: ["lx.demo"] }, async (t) => {
+    await t.step("record a passing step", async () => {
+      expect(1).toBe(1);
+    });
+    expect(1).toBe(2);
+  });
+  spec.skip("pending backlog hole", {
+    id: "PEND-UNIT-001",
+    covers: ["lx.share"],
+    reason: "OS share sheet cannot be driven without a device-lab helper",
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 1);
+  assert.equal(protocol.skipped, 1);
+
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  assert.equal(report.meta.platform, "windows");
+  assert.equal(report.meta.framework, "react");
+  assert.equal(report.meta.args.platform, "windows");
+  assert.ok(typeof report.meta.started_at === "string" && report.meta.started_at.includes("T"));
+  assert.equal(report.cases[0].id, "UNIT-REPORT-001");
+  assert.equal(report.cases[0].steps.length, 1);
+  assert.equal(report.cases[0].error.expected, "2");
+  assert.equal(report.cases[0].error.actual, "1");
+  const passingAssert = report.cases[0].steps[0].assertions.find((item) => item.passed);
+  assert.ok(passingAssert);
+  assert.equal(passingAssert.matcher, "toBe");
+  assert.equal(passingAssert.expected, "1");
+  assert.equal(passingAssert.actual, "1");
+  const failingAssert = report.cases[0].assertions.find((item) => !item.passed);
+  assert.ok(failingAssert);
+  assert.equal(failingAssert.expected, "2");
+  assert.equal(failingAssert.actual, "1");
+  assert.equal(report.cases[1].status, "skipped");
+  assert.match(report.cases[1].reason, /device-lab/);
+
+  const html = decodeAttachment(attachments, "report.html");
+  assert.match(html, /<meta charset="utf-8">/);
+  assert.match(html, /windows/);
+  assert.match(html, /react/);
+  assert.match(html, /UNIT-REPORT-001/);
+  assert.match(html, /record a passing step/);
+  assert.match(html, /<th>expected<\/th>/);
+  assert.match(html, /<th>actual<\/th>/);
+  assert.match(html, /device-lab helper/);
+  assert.match(html, /&middot;/);
+  assert.doesNotMatch(html, /Â·/);
+  assert.doesNotMatch(html, /\u00B7/);
+});
+
 test("t.expect.poll retries an arbitrary read", async () => {
   const world = createWorld();
   installFakeHost(world);

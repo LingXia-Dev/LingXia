@@ -1,4 +1,4 @@
-import { AssertionError, expect } from "./expect.js";
+import { AssertionError, expect, setAssertionSink } from "./expect.js";
 import { LiveFixture, TimeoutError, protocolStatus, toReportError } from "./fixture.js";
 import { attachText, resolveHost, warnVersionSkew } from "./host.js";
 import { callerLocation, fileStem, slugTitle } from "./ids.js";
@@ -32,6 +32,7 @@ interface RegisteredSpec {
   fresh: boolean;
   app?: string;
   forensics: boolean;
+  reason?: string;
   annotation: Annotation;
   body: SpecBody;
   file: string;
@@ -77,6 +78,7 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     fresh: options.fresh === true,
     app: options.app,
     forensics: options.forensics !== false,
+    reason: options.reason,
     annotation,
     body,
     file,
@@ -188,8 +190,10 @@ async function run(): Promise<ProtocolReport> {
       duration_ms: 0,
       covers: [...item.covers],
       steps: [],
+      assertions: [],
       attachments: [],
       timeout_ms: timeout,
+      reason: item.reason,
     };
     await host.emit({
       type: "case_started",
@@ -330,7 +334,9 @@ async function run(): Promise<ProtocolReport> {
     record.status = status;
     record.duration_ms = Date.now() - caseStarted;
     record.steps = fixture.steps;
+    record.assertions = fixture.assertions;
     record.attachments = fixture.attachments;
+    setAssertionSink();
     if (error && status !== "xfail") {
       record.error = toReportError(error, fixture.currentStepPath());
     } else if (status === "xfail" && error) {
@@ -341,11 +347,19 @@ async function run(): Promise<ProtocolReport> {
   }
 
   const counts = countStatuses(cases);
+  const duration_ms = Date.now() - started;
   const json: JsonReport = {
     framework: { name: PACKAGE_NAME, version: VERSION },
+    meta: {
+      started_at: new Date(started).toISOString(),
+      duration_ms,
+      args: { ...host.args },
+      platform: host.args.platform,
+      framework: host.args.framework,
+    },
     partial: false,
     filtered: Boolean(grep) || hasOnly,
-    duration_ms: Date.now() - started,
+    duration_ms,
     ...counts,
     cases,
   };
@@ -449,6 +463,7 @@ function reset(): void {
   fileCounts.clear();
   forceRelaunchNext = false;
   clearInline();
+  setAssertionSink();
 }
 
 const controller: LingxiaTestController = {

@@ -1,6 +1,35 @@
 import { formatValue } from "./format.js";
 import type { Matchers } from "./types.js";
 
+export interface LoggedAssertion {
+  matcher: string;
+  expected: string;
+  actual: string;
+  passed: boolean;
+}
+
+type AssertionSink = (entry: LoggedAssertion) => void;
+
+let assertionSink: AssertionSink | undefined;
+let assertionSilence = 0;
+
+export function setAssertionSink(sink?: AssertionSink): void {
+  assertionSink = sink;
+}
+
+export function pushAssertionSilence(): void {
+  assertionSilence += 1;
+}
+
+export function popAssertionSilence(): void {
+  assertionSilence = Math.max(0, assertionSilence - 1);
+}
+
+export function logAssertion(entry: LoggedAssertion): void {
+  if (assertionSilence > 0 || !assertionSink) return;
+  assertionSink(entry);
+}
+
 export class AssertionError extends Error {
   override readonly name = "AssertionError";
   readonly matcher: string;
@@ -90,6 +119,24 @@ function message(
   return lines.join("\n");
 }
 
+function settle(
+  matcher: string,
+  actual: unknown,
+  expected: unknown,
+  inverted: boolean,
+  pass: boolean,
+  extra?: string,
+): void {
+  const ok = pass !== inverted;
+  logAssertion({
+    matcher: inverted ? `not.${matcher}` : matcher,
+    expected: inverted ? `not ${formatValue(expected)}` : formatValue(expected),
+    actual: formatValue(actual),
+    passed: ok,
+  });
+  if (!ok) fail(matcher, actual, expected, inverted, extra);
+}
+
 function fail(
   matcher: string,
   actual: unknown,
@@ -111,44 +158,37 @@ function createMatchers<T>(actual: T, inverted: boolean): Matchers<T> {
       return createMatchers(actual, !inverted);
     },
     toBe(expected: unknown) {
-      const pass = Object.is(actual, expected);
-      if (pass === inverted) fail("toBe", actual, expected, inverted);
+      settle("toBe", actual, expected, inverted, Object.is(actual, expected));
     },
     toEqual(expected: unknown) {
-      const pass = isEqual(actual, expected);
-      if (pass === inverted) fail("toEqual", actual, expected, inverted);
+      settle("toEqual", actual, expected, inverted, isEqual(actual, expected));
     },
     toContain(expected: unknown) {
-      const pass = contains(actual, expected);
-      if (pass === inverted) fail("toContain", actual, expected, inverted);
+      settle("toContain", actual, expected, inverted, contains(actual, expected));
     },
     toMatch(expected: string | RegExp) {
-      const pass = matches(actual, expected);
-      if (pass === inverted) fail("toMatch", actual, expected, inverted);
+      settle("toMatch", actual, expected, inverted, matches(actual, expected));
     },
     toBeTruthy() {
-      const pass = Boolean(actual);
-      if (pass === inverted) fail("toBeTruthy", actual, true, inverted);
+      settle("toBeTruthy", actual, true, inverted, Boolean(actual));
     },
     toBeFalsy() {
-      const pass = !actual;
-      if (pass === inverted) fail("toBeFalsy", actual, false, inverted);
+      settle("toBeFalsy", actual, false, inverted, !actual);
     },
     toBeDefined() {
-      const pass = actual !== undefined;
-      if (pass === inverted) fail("toBeDefined", actual, undefined, inverted);
+      settle("toBeDefined", actual, undefined, inverted, actual !== undefined);
     },
     toBeUndefined() {
-      const pass = actual === undefined;
-      if (pass === inverted) fail("toBeUndefined", actual, undefined, inverted);
+      settle("toBeUndefined", actual, undefined, inverted, actual === undefined);
     },
     toBeInstanceOf(expected: Function) {
       const pass = actual instanceof (expected as new (...args: never[]) => unknown);
-      if (pass === inverted) fail("toBeInstanceOf", actual, expected, inverted);
+      settle("toBeInstanceOf", actual, expected, inverted, pass);
     },
     toThrow(expected?: unknown) {
       if (typeof actual !== "function") {
-        fail("toThrow", actual, expected, inverted, "received value must be a function");
+        settle("toThrow", actual, expected, inverted, false, "received value must be a function");
+        return;
       }
       let thrown: unknown;
       let didThrow = false;
@@ -166,7 +206,7 @@ function createMatchers<T>(actual: T, inverted: boolean): Matchers<T> {
         else if (typeof expected === "function") pass = thrown instanceof expected;
         else pass = isEqual(thrown, expected);
       }
-      if (pass === inverted) fail("toThrow", thrown, expected, inverted);
+      settle("toThrow", thrown, expected, inverted, pass);
     },
   };
   return self;

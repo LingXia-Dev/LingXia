@@ -23,6 +23,8 @@ export interface SpecOptions {
   app?: string;
   /** Skip auto-attached failure forensics (only when capture itself would wedge). */
   forensics?: boolean;
+  /** Why a skip/fixme spec is registered. Shown in the HTML/JSON report. */
+  reason?: string;
 }
 
 export type SpecBody = (t: Fixture) => void | Promise<void>;
@@ -118,6 +120,14 @@ export interface SourceLocation {
   column: number;
 }
 
+export interface AssertionRecord {
+  matcher: string;
+  expected: string;
+  actual: string;
+  passed: boolean;
+  step?: string;
+}
+
 export interface StepRecord {
   name: string;
   path: string;
@@ -126,6 +136,7 @@ export interface StepRecord {
   error?: ReportError;
   steps: StepRecord[];
   attachments: AttachmentRef[];
+  assertions: AssertionRecord[];
 }
 
 export interface AttachmentRef {
@@ -154,13 +165,24 @@ export interface CaseRecord {
   duration_ms: number;
   covers: string[];
   steps: StepRecord[];
+  assertions: AssertionRecord[];
   attachments: AttachmentRef[];
   error?: ReportError;
   timeout_ms: number;
+  reason?: string;
+}
+
+export interface RunMeta {
+  started_at: string;
+  duration_ms: number;
+  args: Record<string, string>;
+  platform?: string;
+  framework?: string;
 }
 
 export interface JsonReport {
   framework: { name: string; version: string };
+  meta: RunMeta;
   partial: boolean;
   filtered: boolean;
   total: number;

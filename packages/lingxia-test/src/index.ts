@@ -1,5 +1,5 @@
 export { spec, expect, run, reset } from "./runtime.js";
-export { AssertionError } from "./expect.js";
+export { AssertionError, logAssertion, setAssertionSink } from "./expect.js";
 export { TimeoutError } from "./fixture.js";
 export {
   VERSION,
@@ -9,12 +9,14 @@ export {
 } from "./version.js";
 export type {
   Apps,
+  AssertionRecord,
   AttachmentRef,
   CaseRecord,
   ExpectOptions,
   Fixture,
   FixtureExpect,
   JsonReport,
+  RunMeta,
   LingxiaTestController,
   Locator,
   LocatorMatchers,
