@@ -244,6 +244,14 @@ fn end_native() {
 mod tests {
     use super::*;
 
+    /// Disclosure is one process-global session, so tests that begin one have
+    /// to take turns or they join each other's.
+    static SERIAL: Mutex<()> = Mutex::new(());
+
+    fn exclusive() -> std::sync::MutexGuard<'static, ()> {
+        SERIAL.lock().unwrap_or_else(|error| error.into_inner())
+    }
+
     #[test]
     fn remote_dismiss_is_rejected() {
         assert!(matches!(dismiss_remote(), Err(Error::Permission(_))));
@@ -251,6 +259,7 @@ mod tests {
 
     #[test]
     fn dropping_the_guard_clears_the_active_session() {
+        let _serial = exclusive();
         let guard = SupervisionGuard::begin(SessionKind::Observation).unwrap();
         assert!(guard.is_current());
         drop(guard);
@@ -261,6 +270,7 @@ mod tests {
 
     #[test]
     fn a_second_session_joins_instead_of_replacing_the_first() {
+        let _serial = exclusive();
         let watcher = SupervisionGuard::begin(SessionKind::Observation).unwrap();
         let controller = SupervisionGuard::begin(SessionKind::Control).unwrap();
 
