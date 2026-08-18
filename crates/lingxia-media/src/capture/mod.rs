@@ -370,10 +370,12 @@ impl Pipeline {
             ));
         }
 
+        // Constructed directly in the steady state: flipping to Running after
+        // the worker starts could overwrite a Failed the worker already set.
         let initial = if authorizing {
             PipelineState::Authorizing
         } else {
-            PipelineState::Starting
+            PipelineState::Running
         };
         let inner = Arc::new(Mutex::new(Inner {
             state: initial,
@@ -394,10 +396,6 @@ impl Pipeline {
             .map_err(|error| CaptureError::Failed {
                 reason: format!("could not start capture worker: {error}"),
             })?;
-
-        if !authorizing {
-            lock(&inner).set_state(PipelineState::Running);
-        }
 
         Ok(Self {
             inner,
@@ -582,12 +580,15 @@ fn assign_providers(
         let caps = provider.capabilities();
         let mut sets = caps.combinations.clone();
         sets.sort_by_key(|set| std::cmp::Reverse(set.tracks.len()));
-        let mut taken = Vec::new();
+        // One assignment per matched set: a `TrackSet` is what the provider
+        // can start together on one native session, so tracks from different
+        // sets must become separate sessions.
         for set in sets {
             let remaining_kinds: Vec<_> = remaining.iter().map(|track| track.kind).collect();
             if !set.tracks.iter().all(|kind| remaining_kinds.contains(kind)) {
                 continue;
             }
+            let mut taken = Vec::new();
             remaining.retain(|track| {
                 if set.tracks.contains(&track.kind) {
                     taken.push(track.clone());
@@ -596,12 +597,12 @@ fn assign_providers(
                     true
                 }
             });
-        }
-        if !taken.is_empty() {
-            assignments.push(Assignment {
-                provider: Arc::clone(provider),
-                tracks: taken,
-            });
+            if !taken.is_empty() {
+                assignments.push(Assignment {
+                    provider: Arc::clone(provider),
+                    tracks: taken,
+                });
+            }
         }
     }
 
