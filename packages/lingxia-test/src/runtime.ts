@@ -2,6 +2,7 @@ import { AssertionError, expect, setAssertionSink } from "./expect.js";
 import { LiveFixture, TimeoutError, protocolStatus, toReportError } from "./fixture.js";
 import { attachText, resolveHost, warnVersionSkew } from "./host.js";
 import { captureFrames, fileStem, resolveOrigin, slugTitle, type StackFrame } from "./ids.js";
+import { renderJUnit } from "./junit.js";
 import { clearInline, countStatuses, renderHtml } from "./report.js";
 import type { SpecApi } from "./spec-api.js";
 import type {
@@ -399,6 +400,7 @@ async function run(): Promise<ProtocolReport> {
 
   await attachText(host, "report.json", JSON.stringify(json, null, 2), "application/json");
   await attachText(host, "report.html", renderHtml(json), "text/html; charset=utf-8");
+  await attachText(host, "junit.xml", renderJUnit(json), "application/xml; charset=utf-8");
 
   const protocol: ProtocolReport = {
     total: cases.length,

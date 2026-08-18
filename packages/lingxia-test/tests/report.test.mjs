@@ -152,3 +152,51 @@ test("t.expect.poll retries an arbitrary read", async () => {
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.passed, 1);
 });
+
+test("attaches a CI-ingestible junit.xml alongside the HTML report", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world, { args: { platform: "macos" } });
+
+  spec("passes", { id: "JUNIT-OK", covers: ["lx.getStorage"] }, async () => {
+    expect(1).toBe(1);
+  });
+  spec("breaks", { id: "JUNIT-BAD" }, async () => {
+    expect("left").toBe("right");
+  });
+  spec.skip("pending", { id: "JUNIT-PEND", reason: "OS dialog" });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const xml = decodeAttachment(attachments, "junit.xml");
+
+  assert.match(xml, /^<\?xml version="1\.0" encoding="UTF-8"\?>/);
+  assert.match(xml, /<testsuites [^>]*tests="3"[^>]*failures="1"[^>]*skipped="1"/);
+  assert.match(xml, /<testcase name="passes"/);
+  assert.match(xml, /<failure message="[^"]*" type="AssertionError">/);
+  assert.match(xml, /<skipped message="OS dialog"\/>/);
+  assert.match(xml, /<property name="covers" value="lx.getStorage"\/>/);
+  // A failure message spanning lines must not break the attribute.
+  assert.doesNotMatch(xml, /message="[^"]*\n/);
+});
+
+test("the coverage panel measures the run against the published lx surface", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+
+  spec("proves storage behaviour", { id: "COV-1", covers: ["lx.getStorage"] }, async () => {
+    expect(1).toBe(1);
+  });
+  spec("only proves a member exists", { id: "COV-2", covers: ["shape:lx.getLocation"] }, async () => {
+    expect(1).toBe(1);
+  });
+  spec.skip("pending hole", { id: "COV-3", covers: ["lx.share"], reason: "OS share sheet" });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const html = decodeAttachment(attachments, "report.html");
+
+  assert.match(html, /lx API coverage/);
+  // A capability nobody wrote a spec for still has to appear as a hole.
+  assert.match(html, /class="cover cover-none"[^>]*>lx\.vibrateShort</);
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.getStorage</);
+  assert.match(html, /class="cover cover-shape"[^>]*>lx\.getLocation</);
+  assert.match(html, /class="cover cover-pending"[^>]*>lx\.share</);
+});
