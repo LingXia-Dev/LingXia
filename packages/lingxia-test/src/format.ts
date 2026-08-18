@@ -96,23 +96,42 @@ export function formatValue(value: unknown): string {
   }
 }
 
-export function utf8ToBase64(text: string): string {
-  const bytes = new TextEncoder().encode(text);
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/**
+ * Encode bytes without `btoa`. The Logic runtime's `btoa` UTF-8-encodes its
+ * argument instead of reading it as a latin-1 byte string, which
+ * double-encodes every non-ASCII character in the report. Owning the encoder
+ * keeps the artifacts byte-exact on every engine.
+ */
+export function bytesToBase64(bytes: Uint8Array): string {
+  let out = "";
+  const remainder = bytes.length % 3;
+  const end = bytes.length - remainder;
+  for (let i = 0; i < end; i += 3) {
+    const chunk = (bytes[i]! << 16) | (bytes[i + 1]! << 8) | bytes[i + 2]!;
+    out += BASE64_ALPHABET[(chunk >> 18) & 63];
+    out += BASE64_ALPHABET[(chunk >> 12) & 63];
+    out += BASE64_ALPHABET[(chunk >> 6) & 63];
+    out += BASE64_ALPHABET[chunk & 63];
   }
-  return btoa(binary);
+  if (remainder === 1) {
+    const chunk = bytes[end]! << 16;
+    out += BASE64_ALPHABET[(chunk >> 18) & 63];
+    out += BASE64_ALPHABET[(chunk >> 12) & 63];
+    out += "==";
+  } else if (remainder === 2) {
+    const chunk = (bytes[end]! << 16) | (bytes[end + 1]! << 8);
+    out += BASE64_ALPHABET[(chunk >> 18) & 63];
+    out += BASE64_ALPHABET[(chunk >> 12) & 63];
+    out += BASE64_ALPHABET[(chunk >> 6) & 63];
+    out += "=";
+  }
+  return out;
 }
 
-export function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
+export function utf8ToBase64(text: string): string {
+  return bytesToBase64(new TextEncoder().encode(text));
 }
 
 export function escapeHtml(text: string): string {
