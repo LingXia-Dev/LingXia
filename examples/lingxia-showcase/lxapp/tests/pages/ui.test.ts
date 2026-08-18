@@ -43,7 +43,7 @@ contract({
 contract({
   id: 'UI-TABBAR-001',
   title: 'apply TabBar visibility, style, item, icon, badge, and red-dot updates',
-  covers: ['lx.tabBar.update'],
+  covers: ['lx.tabBar', 'lx.tabBar.update'],
   layer: 'logic',
   levels: ['semantic', 'boundary', 'lifecycle'],
   scope: 'portable',
