@@ -183,9 +183,11 @@ contract({
     'automatic visibility after entering a tab route',
   );
 
+  // Keep this an expression: Windows page eval runs the raw script through
+  // ExecuteScript, where a top-level `return` is a syntax error.
   const readHomeViewportHeight = () => app.page.eval({
     page: 'home',
-    script: 'return window.innerHeight;',
+    script: 'window.innerHeight',
   }) as Promise<number>;
   const viewportBeforeChromeRefresh = await eventually(
     readHomeViewportHeight,
