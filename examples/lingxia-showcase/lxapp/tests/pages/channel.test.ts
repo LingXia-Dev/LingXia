@@ -1,4 +1,4 @@
-import { expect, test } from '@rongjs/test';
+import { expect, spec } from '@lingxia/test';
 import { showcaseApp } from '../helpers/app.js';
 import { waitForElementText } from '../helpers/page.js';
 
@@ -8,7 +8,7 @@ const waitForText = (
   predicate: (text: string) => boolean,
 ) => waitForElementText(app, 'channel', css, predicate, 30_000);
 
-test('receives channel ticks, switches symbols, and reconnects', async () => {
+spec('receives channel ticks, switches symbols, and reconnects', async () => {
   const app = showcaseApp();
   await app.nav.relaunch({ page: 'channel' });
   await app.page.waitFor({ page: 'channel', css: '[data-testid="channel-page"]' });

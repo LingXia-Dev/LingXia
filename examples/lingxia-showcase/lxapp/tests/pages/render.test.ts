@@ -1,8 +1,8 @@
-import { expect, test } from '@rongjs/test';
+import { expect, spec } from '@lingxia/test';
 import type { LxAppDriver } from 'lingxia-types/automation';
 import { showcaseApp } from '../helpers/app.js';
 import { waitForCurrentPage } from '../helpers/page.js';
-import { eventually } from '../support/contract.js';
+import { eventually, hostAttach } from '../helpers/poll.js';
 import {
   SHOWCASE_PAGE_EXPECTATIONS,
   SHOWCASE_PAGE_TITLES,
@@ -61,13 +61,12 @@ async function waitForRenderedFeature(
       describe: `rendered page '${page}' with title '${expectedTitle}' and text ${JSON.stringify(expectedTexts)}`,
       retryIf: isTransientPageReadinessError,
       timeoutMs: 30_000,
-    },
-  );
+    });
   if (state === null) throw new Error(`page eval stayed null while rendering '${page}'`);
   return state;
 }
 
-test('page manifest matches the running lxapp', async () => {
+spec('page manifest matches the running lxapp', async () => {
   const pages = await showcaseApp().pages();
   expect(pages.map((page) => page.name)).toEqual([...SHOWCASE_PAGES]);
   expect(pages.every((page) => (
@@ -76,7 +75,7 @@ test('page manifest matches the running lxapp', async () => {
 });
 
 for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
-  test(`renders showcase feature: ${expectation.page}`, async () => {
+  spec(`renders showcase feature: ${expectation.page}`, async () => {
     const app = showcaseApp();
     try {
       const landed = await app.nav.relaunch({ page: expectation.page });
@@ -110,7 +109,7 @@ for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
     } catch (error) {
       try {
         const screenshot = await app.page.screenshot({ page: expectation.page });
-        await test.attach?.(`page-${expectation.page}.png`, {
+        await hostAttach(`page-${expectation.page}.png`, {
           mimeType: 'image/png',
           base64: screenshot.base64,
         });

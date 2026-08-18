@@ -46,27 +46,22 @@ dialog. Do not fake those dialogs from page JavaScript.
 
 ## Case authoring rules
 
-New contract cases use the thin helper in `support/contract.ts`:
+New cases use `spec` from `@lingxia/test`:
 
-- assign a stable domain ID and list the public members in `covers`;
-- use the case `namespace` for storage keys, files, surfaces, and other mutable
-  fixtures;
-- register cleanup immediately with `defer`; cleanup runs LIFO even after an
-  assertion failure;
+- assign a stable domain ID and list public members in `{ covers }` on the spec;
+- use `bindFixture(t, id)` for a unique `namespace` and `t.defer` cleanup;
 - assert an observable public result, not a private host field;
-- use `PageDriver.waitFor` or `eventually`; fixed sleeps are permitted only for
-  a documented physical stabilization interval;
-- retry only an expected transient readiness error. `eventually` propagates
-  other exceptions unless `retryIf` explicitly classifies them;
-- use stable `data-testid` selectors for page behavior;
-- for rejected operations, assert the error code/message and unchanged state;
+- use `t.expect` / `t.expect.poll` (or `PageDriver.waitFor`); fixed sleeps are
+  permitted only for a documented physical stabilization interval;
+- use stable `data-testid` selectors (`page.testId('…')`) for page behavior;
+- for rejected operations, use `t.reject` and assert unchanged state;
 - keep one primary behavior per case so the report identifies the broken
   contract;
 - never catch and discard an error merely to make a platform pass.
 
-The helper adds the stable ID to the report, captures page/window screenshots
-on failure, and attaches `contract-coverage.json`. It intentionally does not
-wrap navigation, pages, or platform drivers in a large DSL.
+Failure forensics (screenshot + route/state) are attached by `@lingxia/test`.
+The covers gate (`tests/scripts/check-covers.mjs`) only refreshes from a full
+unfiltered passing `report.json`.
 
 ## Cross-platform policy
 

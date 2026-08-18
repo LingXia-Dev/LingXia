@@ -1,16 +1,10 @@
-import { contract, eventually } from '../../support/contract.js';
+import { spec, expect } from '@lingxia/test';
+import { bindFixture, eventually, specNamespace } from '../../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 
-contract(
-  {
-    id: 'WINDOWS-NAV-001',
-    title: 'leave no native overlay window after page navigation',
-    covers: ['NavDriver.relaunch', 'NavDriver.to', 'NavDriver.back', 'DesktopDriver.windows'],
-    layer: 'native',
-    levels: ['boundary', 'lifecycle'],
-    scope: 'windows',
-    expectedOutcome: 'supported',
-  },
-  async ({ app }) => {
+spec("leave no native overlay window after page navigation", { id: "WINDOWS-NAV-001", covers: ['NavDriver.relaunch', 'NavDriver.to', 'NavDriver.back', 'DesktopDriver.windows'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "WINDOWS-NAV-001");
+
     const desktop = lx.automation().desktop;
     const host = (await desktop.windows()).find((window) => (
       window.visible
@@ -41,7 +35,5 @@ contract(
       {
         describe: 'navigation-created native overlays to close',
         timeoutMs: 3_000,
-      },
-    );
-  },
-);
+      });
+  });

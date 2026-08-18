@@ -1,19 +1,12 @@
-import { expect, test } from '@rongjs/test';
+import { expect, spec } from '@lingxia/test';
 import type { LxAppRuntimeTabBarInfo } from 'lingxia-types/automation';
-import { showcaseApp } from '../helpers/app.js';
-import { waitForElementAttribute } from '../helpers/page.js';
-import { waitForCurrentPage } from '../helpers/page.js';
-import { contract, eventually } from '../support/contract.js';
+import { waitForElementAttribute, waitForCurrentPage } from '../helpers/page.js';
+import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
+import { showcaseApp, SHOWCASE_APP_ID } from '../helpers/app.js';
 
-contract({
-  id: 'UI-NAV-001',
-  title: 'run navigation APIs from the rendered UI controls',
-  covers: ['lx.navigateTo', 'lx.navigateBack', 'lx.redirectTo', 'lx.switchTab'],
-  layer: 'logic',
-  levels: ['semantic', 'boundary', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app }) => {
+spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", covers: ['lx.navigateTo', 'lx.navigateBack', 'lx.redirectTo', 'lx.switchTab'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "UI-NAV-001");
+
   await app.nav.relaunch({ page: 'ui', query: { type: 'navigation' } });
   await app.page.waitFor({ page: 'ui', css: '[data-testid="ui-navigate-to"]', state: 'visible' });
 
@@ -40,15 +33,9 @@ contract({
   expect((await app.nav.stack()).map(({ name }) => name)).toEqual(['home']);
 });
 
-contract({
-  id: 'UI-TABBAR-001',
-  title: 'apply TabBar visibility, style, item, icon, badge, and red-dot updates',
-  covers: ['lx.tabBar', 'lx.tabBar.update'],
-  layer: 'logic',
-  levels: ['semantic', 'boundary', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app, defer }) => {
+spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", { id: "UI-TABBAR-001", covers: ['lx.tabBar', 'lx.tabBar.update'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, defer } = bindFixture(t, "UI-TABBAR-001");
+
   const tabBar = async (): Promise<LxAppRuntimeTabBarInfo> => {
     const state = (await app.info()).tab_bar;
     if (state === null) throw new Error('showcase TabBar is not declared');
@@ -192,8 +179,7 @@ contract({
   const viewportBeforeChromeRefresh = await eventually(
     readHomeViewportHeight,
     (height) => height > 0,
-    { describe: 'home WebView to expose a non-zero viewport' },
-  );
+    { describe: 'home WebView to expose a non-zero viewport' });
   await app.eval({
     script: `
       await lx.tabBar.update({
@@ -212,7 +198,7 @@ contract({
   expect(viewportAfterChromeRefresh).toBe(viewportBeforeChromeRefresh);
 });
 
-test('rejects invalid native-surface dimensions before opening a host surface', async () => {
+spec('rejects invalid native-surface dimensions before opening a host surface', async () => {
   const app = showcaseApp();
   await app.nav.relaunch({ page: 'ui', query: { type: 'surface' } });
   await app.page.waitFor({ page: 'ui', css: '[data-testid="open-surface"]' });

@@ -1,27 +1,21 @@
-import { expect, test } from '@rongjs/test';
+import { expect, spec } from '@lingxia/test';
 import {
   currentPageOrNull,
   waitForCurrentPage,
   waitForCurrentPageVisible,
   waitForElementText,
 } from '../helpers/page.js';
-import { contract } from '../support/contract.js';
+import { bindFixture, hostAttach } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 async function attachWindow(name: string): Promise<void> {
-  if (!test.attach) return;
   const screenshot = await lx.automation().lxapps.screenshot();
-  await test.attach(name, { mimeType: 'image/png', base64: screenshot.base64 });
+  await hostAttach(name, { mimeType: 'image/png', base64: screenshot.base64 });
 }
 
-contract({
-  id: 'NATIVE-VIDEO-001',
-  title: 'hide the native video overlay before the next page becomes interactive',
-  covers: ['lx.createVideoContext', 'VideoContext.pause', 'NavDriver.to', 'NavDriver.back'],
-  layer: 'native',
-  levels: ['semantic', 'boundary', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app, namespace, defer }) => {
+spec("hide the native video overlay before the next page becomes interactive", { id: "NATIVE-VIDEO-001", covers: ['lx.createVideoContext', 'VideoContext.pause', 'NavDriver.to', 'NavDriver.back'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, namespace, defer } = bindFixture(t, "NATIVE-VIDEO-001");
+
   const current = await currentPageOrNull(app);
   if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');

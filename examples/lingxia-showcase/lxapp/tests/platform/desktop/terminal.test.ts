@@ -1,4 +1,4 @@
-import { expect, test } from '@rongjs/test';
+import { expect, spec } from '@lingxia/test';
 import type {
   PageDriver,
   TerminalPaneSnapshot,
@@ -7,11 +7,11 @@ import type {
 } from 'lingxia-types/automation';
 import { showcaseApp } from '../../helpers/app.js';
 
-const targetPlatform = (test.args as Record<string, string>).platform?.toLocaleLowerCase();
+const targetPlatform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLocaleLowerCase();
 const desktopTerminalTest =
   !targetPlatform || targetPlatform === 'macos' || targetPlatform === 'windows'
-    ? test
-    : test.skip;
+    ? spec
+    : spec.skip;
 
 function leaves(tree: TerminalPaneTree | undefined): TerminalPaneSnapshot[] {
   if (!tree) return [];
@@ -253,8 +253,7 @@ desktopTerminalTest('applies terminal mode to native chrome before terminal inpu
           const current = await lx.terminal.settings.get();
           await lx.terminal.settings.update(
             ${JSON.stringify(initial.config)},
-            { ifRevision: current.revision },
-          );
+            { ifRevision: current.revision });
         `,
       });
     }

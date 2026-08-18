@@ -1,20 +1,17 @@
-import { expect } from '@rongjs/test';
 import type { LxAppDriver, PageInfo } from 'lingxia-types/automation';
 import { currentPageOrNull, waitForElementAttribute } from '../helpers/page.js';
-import { contract, eventually } from '../support/contract.js';
+import { expect, spec } from '@lingxia/test';
+import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 async function waitForCurrent(app: LxAppDriver, name: string): Promise<PageInfo> {
   return eventually(
     () => app.nav.current(),
     (current) => current.name === name && current.ready,
-    { describe: `current page '${name}' to become ready`, timeoutMs: 30_000 },
-  );
+    { describe: `current page '${name}' to become ready`, timeoutMs: 30_000 });
 }
 
-contract({
-  id: 'NAV-001',
-  title: 'preserve stack, query, redirect, back, and tab semantics',
-  covers: [
+spec("preserve stack, query, redirect, back, and tab semantics", { id: "NAV-001", covers: [
     'NavDriver.relaunch',
     'NavDriver.to',
     'NavDriver.current',
@@ -22,12 +19,9 @@ contract({
     'NavDriver.back',
     'NavDriver.redirect',
     'NavDriver.switchTab',
-  ],
-  layer: 'view',
-  levels: ['semantic', 'boundary', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app }) => {
+  ], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "NAV-001");
+
   const initial = await currentPageOrNull(app);
   if (initial?.name !== 'home') await app.nav.relaunch({ page: 'home' });
   await waitForCurrent(app, 'home');

@@ -1,4 +1,4 @@
-import { expect, test } from '@rongjs/test';
+import { expect, spec } from '@lingxia/test';
 import type {
   AutomationShellPin,
   BrowserDriver,
@@ -12,6 +12,7 @@ import type {
 } from 'lingxia-types/automation';
 import { showcaseApp } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
+import { hostAttach } from '../../helpers/poll.js';
 
 interface VisibilityEvent {
   id: string;
@@ -35,24 +36,24 @@ interface RetainedAppSurfaceState {
   }>;
 }
 
-const testArgs = test.args as Record<string, string>;
+const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const targetPlatform = testArgs.platform?.toLocaleLowerCase();
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
 const desktopCapableTest = targetPlatform && !['macos', 'windows'].includes(targetPlatform)
-  ? test.skip
-  : test;
-const desktopTest = selectedGate ? test.skip : desktopCapableTest;
+  ? spec.skip
+  : spec;
+const desktopTest = selectedGate ? spec.skip : desktopCapableTest;
 const adaptiveDesktopTest = !selectedGate || selectedGate === 'adaptive-compact'
   ? desktopCapableTest
-  : test.skip;
+  : spec.skip;
 const dynamicMainDesktopTest = !selectedGate || selectedGate === 'dynamic-main'
   ? desktopCapableTest
-  : test.skip;
-const windowsHostTest = targetPlatform === 'windows' && !selectedGate ? test : test.skip;
+  : spec.skip;
+const windowsHostTest = targetPlatform === 'windows' && !selectedGate ? spec : spec.skip;
 const pinnedWindowsHostTest = targetPlatform === 'windows'
   && (!selectedGate || selectedGate === 'pinned-main')
-  ? test
-  : test.skip;
+  ? spec
+  : spec.skip;
 
 async function desktopApp(): Promise<LxAppDriver> {
   const app = showcaseApp();
@@ -548,7 +549,7 @@ async function attachDesktopFailure(
 ): Promise<void> {
   try {
     const screenshot = await desktop.screenshot({ window: host.id });
-    await test.attach?.(`${name}.png`, {
+    await hostAttach(`${name}.png`, {
       mimeType: 'image/png',
       base64: screenshot.base64,
     });
@@ -1181,8 +1182,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
           && edge - railNavbarLeft >= nativeWindowExtent(platform, host!, 80)
           ? edge
           : undefined;
-      },
-    );
+      });
     expect(expandedSidebarNavbarLeft > railNavbarLeft).toBeTruthy();
     expect((await app.surfaceLayout()).sizeClass).toBe('medium');
 

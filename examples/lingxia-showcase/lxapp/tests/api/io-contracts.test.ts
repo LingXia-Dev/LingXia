@@ -1,15 +1,10 @@
-import { expect } from '@rongjs/test';
-import { contract } from '../support/contract.js';
+import { expect, spec } from '@lingxia/test';
+import { bindFixture, specNamespace } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-contract({
-  id: 'LOGIC-005',
-  title: 'reject storage and file operations on invalid inputs',
-  covers: ['Storage.set', 'LxFile.text', 'lx.fs.stat'],
-  layer: 'logic',
-  levels: ['failure', 'boundary'],
-  scope: 'portable',
-  expectedOutcome: 'reject',
-}, async ({ app, namespace }) => {
+spec("reject storage and file operations on invalid inputs", { id: "LOGIC-005", covers: ['Storage.set', 'LxFile.text', 'lx.fs.stat'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, namespace } = bindFixture(t, "LOGIC-005");
+
   const result = await app.eval({
     script: `
       const files = lx.fs;
@@ -41,15 +36,9 @@ contract({
   expect(result.oversizedValue).toBeTruthy();
 });
 
-contract({
-  id: 'MEDIA-INFO-001',
-  title: 'read image info from managed storage and reject a missing image',
-  covers: ['lx.getImageInfo'],
-  layer: 'logic',
-  levels: ['semantic', 'failure'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app, namespace }) => {
+spec("read image info from managed storage and reject a missing image", { id: "MEDIA-INFO-001", covers: ['lx.getImageInfo'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, namespace } = bindFixture(t, "MEDIA-INFO-001");
+
   const result = await app.eval({
     script: `
       const files = lx.fs;

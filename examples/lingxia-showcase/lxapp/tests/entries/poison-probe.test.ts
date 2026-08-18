@@ -2,10 +2,10 @@
 // at driver pace using only pages that exist on the branch base, then checks
 // whether `home` still boots — reproduces the Harmony post-navigation
 // bridge-poisoning without the lifecycle fixtures.
-import { expect, test } from '@rongjs/test';
+import { expect, spec } from '@lingxia/test';
 import { showcaseApp } from '../helpers/app.js';
 
-test('relaunch/push/pop churn leaves home bootable', async () => {
+spec('relaunch/push/pop churn leaves home bootable', async () => {
   const app = showcaseApp();
   for (let i = 0; i < 6; i += 1) {
     await app.nav.relaunch({ page: 'home' });

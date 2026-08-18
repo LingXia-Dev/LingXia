@@ -1,7 +1,7 @@
-import { expect } from '@rongjs/test';
+import { expect, spec } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPageVisible } from '../helpers/page.js';
-import { contract, eventually } from '../support/contract.js';
+import { bindFixture, eventually } from '../helpers/poll.js';
 import { LX_RETURNED_OBJECT_SURFACES, LX_RUNTIME_SURFACES } from './manifest.js';
 
 function automationSurface(name: string): unknown {
@@ -50,18 +50,24 @@ function inspectSurface(
   };
 }
 
-LX_RUNTIME_SURFACES.forEach((surface) => {
-  contract({
-    id: `SHAPE-${surface.name.replace(/[^a-zA-Z0-9]+/g, '-').toLocaleUpperCase()}`,
-    title: `publish every ${surface.name} member`,
-    covers: surface.members.map((member) => `shape:${surface.name}.${member}`),
-    layer: surface.layer,
-    levels: ['shape'],
-    scope: 'portable',
-    expectedOutcome: 'optional' in surface && surface.optional
-      ? 'supported-or-absent'
-      : 'supported',
-  }, async ({ app }) => {
+const SHAPE_COVERS = [
+  ...LX_RUNTIME_SURFACES.flatMap((surface) =>
+    surface.members.map((member) => `shape:${surface.name}.${member}`),
+  ),
+  ...LX_RETURNED_OBJECT_SURFACES
+    .filter((surface) => surface.fixture === 'runtime-safe')
+    .flatMap((surface) => surface.members.map((member) => `shape:${surface.name}.${member}`)),
+];
+
+spec('publish every public runtime and returned-object member', {
+  id: 'SHAPE-RUNTIME',
+  covers: SHAPE_COVERS,
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app, defer } = bindFixture(t, 'SHAPE-RUNTIME');
+  const failures: string[] = [];
+
+  for (const surface of LX_RUNTIME_SURFACES) {
     const propertyNames = 'properties' in surface ? surface.properties : [];
     const optionalMembers: readonly string[] = 'optionalMembers' in surface
       ? surface.optionalMembers
@@ -96,25 +102,14 @@ LX_RUNTIME_SURFACES.forEach((surface) => {
         `,
       }) as { available: boolean; missing: string[]; wrongKinds: string[] };
 
-    if ('optional' in surface && surface.optional && !result.available) return;
-    expect(result.available).toBeTruthy();
-    expect(result.missing).toEqual([]);
-    expect(result.wrongKinds).toEqual([]);
-  });
-});
+    if ('optional' in surface && surface.optional && !result.available) continue;
+    if (!result.available || result.missing.length > 0 || result.wrongKinds.length > 0) {
+      failures.push(`${surface.name}: available=${result.available} missing=${result.missing.join(',')} wrong=${result.wrongKinds.join(',')}`);
+    }
+  }
 
-LX_RETURNED_OBJECT_SURFACES.forEach((surface) => {
-  if (surface.fixture !== 'runtime-safe') return;
-
-  contract({
-    id: `SHAPE-${surface.name.replace(/[^a-zA-Z0-9]+/g, '-').toLocaleUpperCase()}`,
-    title: `publish every ${surface.name} member on a real runtime instance`,
-    covers: surface.members.map((member) => `shape:${surface.name}.${member}`),
-    layer: 'logic',
-    levels: ['shape'],
-    scope: 'portable',
-    expectedOutcome: 'supported',
-  }, async ({ app, defer }) => {
+  for (const surface of LX_RETURNED_OBJECT_SURFACES) {
+    if (surface.fixture !== 'runtime-safe') continue;
     const fixtureName: string = surface.name;
     if (fixtureName === 'LxFile') {
       const result = await app.eval({
@@ -140,10 +135,10 @@ LX_RETURNED_OBJECT_SURFACES.forEach((surface) => {
         `,
       }) as { available: boolean; missing: string[]; wrongKinds: string[] };
 
-      expect(result.available).toBeTruthy();
-      expect(result.missing).toEqual([]);
-      expect(result.wrongKinds).toEqual([]);
-      return;
+      if (!result.available || result.missing.length > 0 || result.wrongKinds.length > 0) {
+        failures.push(`LxFile: available=${result.available} missing=${result.missing.join(',')} wrong=${result.wrongKinds.join(',')}`);
+      }
+      continue;
     }
     if (fixtureName !== 'VideoContext') {
       throw new Error(`No runtime-safe fixture resolver for ${fixtureName}`);
@@ -179,8 +174,7 @@ LX_RETURNED_OBJECT_SURFACES.forEach((surface) => {
         previousRect = rect;
         return stableRectSamples >= 2;
       },
-      { timeoutMs: 5_000, describe: 'native video fixture layout to settle' },
-    );
+      { timeoutMs: 5_000, describe: 'native video fixture layout to settle' });
     const result = await app.eval({
       script: `
         const target = lx.createVideoContext('lx-video-shape-fixture');
@@ -204,8 +198,10 @@ LX_RETURNED_OBJECT_SURFACES.forEach((surface) => {
       `,
     }) as { available: boolean; missing: string[]; wrongKinds: string[] };
 
-    expect(result.available).toBeTruthy();
-    expect(result.missing).toEqual([]);
-    expect(result.wrongKinds).toEqual([]);
-  });
+    if (!result.available || result.missing.length > 0 || result.wrongKinds.length > 0) {
+      failures.push(`VideoContext: available=${result.available} missing=${result.missing.join(',')} wrong=${result.wrongKinds.join(',')}`);
+    }
+  }
+
+  expect(failures).toEqual([]);
 });

@@ -1,10 +1,8 @@
-import { expect } from '@rongjs/test';
-import { contract } from '../support/contract.js';
+import { expect, spec } from '@lingxia/test';
+import { bindFixture, specNamespace } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-contract({
-  id: 'LOGIC-001',
-  title: 'read core app, device, screen, network, and system state',
-  covers: [
+spec("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: [
     'lx.getLxAppInfo',
     'lx.getDeviceInfo',
     'lx.getScreenInfo',
@@ -12,12 +10,9 @@ contract({
     'lx.getSystemSetting',
     'lx.app.getBaseInfo',
     'lx.app.envVersion',
-  ],
-  layer: 'logic',
-  levels: ['semantic', 'boundary'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app }) => {
+  ], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "LOGIC-001");
+
   const result = await app.eval({
     script: `
       const app = lx.getLxAppInfo();
@@ -55,21 +50,15 @@ contract({
   expect(['developer', 'preview', 'release']).toContain(result.envVersion);
 });
 
-contract({
-  id: 'LOGIC-002',
-  title: 'register and remove portable runtime listeners',
-  covers: [
+spec("register and remove portable runtime listeners", { id: "LOGIC-002", covers: [
     'lx.onNetworkChange',
     'lx.onDeviceOrientationChange',
     'lx.onKeyDown',
     'lx.onKeyUp',
     'lx.onWifiConnected',
-  ],
-  layer: 'logic',
-  levels: ['semantic', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app }) => {
+  ], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "LOGIC-002");
+
   const result = await app.eval({
     script: `
       const callback = () => {};
@@ -94,15 +83,9 @@ contract({
   expect(result).toBeTruthy();
 });
 
-contract({
-  id: 'LOGIC-006',
-  title: 'answer capability questions consistently with the optional members',
-  covers: ['lx.supports'],
-  layer: 'logic',
-  levels: ['semantic', 'boundary'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app }) => {
+spec("answer capability questions consistently with the optional members", { id: "LOGIC-006", covers: ['lx.supports'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "LOGIC-006");
+
   const result = await app.eval({
     script: `
       const terminalAgrees = ('terminal' in lx) === lx.supports({ capability: 'terminal' });
@@ -172,15 +155,9 @@ contract({
   expect(result.allBooleans).toBeTruthy();
 });
 
-contract({
-  id: 'LOGIC-003',
-  title: 'round-trip isolated key-value storage',
-  covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.list', 'Storage.delete'],
-  layer: 'logic',
-  levels: ['semantic', 'boundary', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app, namespace }) => {
+spec("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, namespace } = bindFixture(t, "LOGIC-003");
+
   const result = await app.eval({
     script: `
       const storage = lx.getStorage();
@@ -216,10 +193,7 @@ contract({
   expect(result.sizeRestored).toBeTruthy();
 });
 
-contract({
-  id: 'LOGIC-004',
-  title: 'round-trip files under lx user cache',
-  covers: [
+spec("round-trip files under lx user cache", { id: "LOGIC-004", covers: [
     'lx.fs',
     'lx.fs.copy',
     'lx.fs.exists',
@@ -236,12 +210,9 @@ contract({
     'LxFile.bytes',
     'LxFile.arrayBuffer',
     'LxFile.stat',
-  ],
-  layer: 'logic',
-  levels: ['semantic', 'boundary', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app, namespace }) => {
+  ], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, namespace } = bindFixture(t, "LOGIC-004");
+
   const result = await app.eval({
     script: `
       const files = lx.fs;

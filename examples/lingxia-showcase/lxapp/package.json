@@ -11,14 +11,15 @@
   "license": "MIT",
   "scripts": {
     "test:automation": "npm run test:automation:portable",
-    "test:automation:portable": "lxdev test tests/all.test.ts",
-    "test:automation:windows:react": "lxdev test tests/entries/windows.test.ts --arg platform=windows --arg framework=react",
-    "test:automation:windows:vue": "lxdev test tests/entries/windows.test.ts --arg platform=windows --arg framework=vue",
-    "test:automation:macos:react": "lxdev test tests/entries/macos.test.ts --arg platform=macos --arg framework=react",
-    "test:automation:macos:vue": "lxdev test tests/entries/macos.test.ts --arg platform=macos --arg framework=vue",
-    "test:automation:android:react": "lxdev test tests/entries/android.test.ts --arg platform=android --arg framework=react",
-    "test:automation:android:vue": "lxdev test tests/entries/android.test.ts --arg platform=android --arg framework=vue",
+    "test:automation:portable": "lxdev test tests/all.test.ts --forbid-only",
+    "test:automation:windows:react": "lxdev test tests/entries/windows.test.ts --arg platform=windows --arg framework=react --forbid-only",
+    "test:automation:windows:vue": "lxdev test tests/entries/windows.test.ts --arg platform=windows --arg framework=vue --forbid-only",
+    "test:automation:macos:react": "lxdev test tests/entries/macos.test.ts --arg platform=macos --arg framework=react --forbid-only",
+    "test:automation:macos:vue": "lxdev test tests/entries/macos.test.ts --arg platform=macos --arg framework=vue --forbid-only",
+    "test:automation:android:react": "lxdev test tests/entries/android.test.ts --arg platform=android --arg framework=react --forbid-only",
+    "test:automation:android:vue": "lxdev test tests/entries/android.test.ts --arg platform=android --arg framework=vue --forbid-only",
     "test:automation:logic-coverage": "node tests/scripts/check-logic-api-coverage.mjs",
+    "test:automation:covers": "node tests/scripts/check-covers.mjs",
     "test:automation:types": "npm run test:automation:logic-coverage && tsc -p tests/tsconfig.json"
   },
   "dependencies": {
@@ -38,7 +39,7 @@
     "vue": "^3.5.40"
   },
   "devDependencies": {
-    "@rongjs/test": "^0.6.0",
+    "@lingxia/test": "file:../../../packages/lingxia-test",
     "@types/lodash-es": "^4.17.12",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",

@@ -1,8 +1,8 @@
-import { expect, test } from '@rongjs/test';
+import { expect, spec } from '@lingxia/test';
 import type { LxAppDriver } from 'lingxia-types/automation';
-import { showcaseApp } from '../helpers/app.js';
 import { waitForElementText } from '../helpers/page.js';
-import { contract, eventually } from '../support/contract.js';
+import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
+import { showcaseApp, SHOWCASE_APP_ID } from '../helpers/app.js';
 
 interface DevicePageState {
   deviceInfo: { osName?: string } | null;
@@ -40,15 +40,9 @@ async function waitForState(
   });
 }
 
-contract({
-  id: 'DEVICE-001',
-  title: 'render device and screen API results after real UI actions',
-  covers: ['lx.getDeviceInfo', 'lx.getScreenInfo'],
-  layer: 'logic',
-  levels: ['semantic', 'boundary'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app }) => {
+spec("render device and screen API results after real UI actions", { id: "DEVICE-001", covers: ['lx.getDeviceInfo', 'lx.getScreenInfo'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "DEVICE-001");
+
 
   await app.nav.relaunch({ page: 'device', query: { type: 'device' } });
   await app.page.waitFor({ page: 'device', css: '[data-testid="device-get-info"]' });
@@ -76,15 +70,9 @@ contract({
   expect(Number(screen.screenInfo?.width) > 0).toBeTruthy();
 });
 
-contract({
-  id: 'DEVICE-002',
-  title: 'keep network query and listener behavior equivalent across renderers',
-  covers: ['lx.getNetworkInfo', 'lx.onNetworkChange'],
-  layer: 'logic',
-  levels: ['semantic', 'boundary', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app }) => {
+spec("keep network query and listener behavior equivalent across renderers", { id: "DEVICE-002", covers: ['lx.getNetworkInfo', 'lx.onNetworkChange'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "DEVICE-002");
+
 
   for (const type of ['networkType', 'localIP'] as const) {
     await app.nav.relaunch({ page: 'device', query: { type } });
@@ -128,7 +116,7 @@ contract({
   );
 });
 
-test('publishes every device mode in the rendered API menu', async () => {
+spec('publishes every device mode in the rendered API menu', async () => {
   const app = showcaseApp();
   await app.nav.relaunch({ page: 'api' });
   await app.page.waitFor({ page: 'api', css: '[data-testid="api-device-section"]' });
