@@ -21,8 +21,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo 'Building automation CLIs from the current checkout...'
-(cd "$repo_root" && cargo build -p lingxia-cli -p lingxia-devtools-cli)
+echo 'Resolving automation CLIs (cache / matching release / cargo build)...'
+bash "$repo_root/scripts/ci/resolve-cli.sh" --dest "$repo_root/target/debug"
 (cd "$showcase_root" && "$lingxia" doctor --platform macos)
 
 for framework_index in "${!frameworks[@]}"; do

@@ -33,6 +33,8 @@ assert_case() {
 }
 
 assert_case skipped false "{\"include\":[$linux_x64]}"
+assert_case "rust but cli inputs unchanged" false "{\"include\":[$linux_x64]}" \
+  RUST=true CLI_INPUTS_CHANGED=false
 assert_case pr true \
   "{\"include\":[$linux_x64,$linux_arm64,$darwin_arm64,$windows_x64]}" \
   RUST=true

@@ -51,6 +51,7 @@ jobs:
       automation_types: ${{ steps.compute.outputs.automation_types }}
       cli_build: ${{ steps.compute.outputs.cli_build }}
       cli_matrix: ${{ steps.compute.outputs.cli_matrix }}
+      cli_fingerprint: ${{ steps.compute.outputs.cli_fingerprint }}
       rust_test: ${{ steps.compute.outputs.rust_test }}
     steps:
       - uses: actions/checkout@v4
@@ -208,6 +209,7 @@ jobs:
         run: |
           bash scripts/ci/test-automation-matrix.sh
           bash scripts/ci/test-cli-matrix.sh
+          bash scripts/ci/test-cli-fingerprint.sh
       - id: compute
         shell: bash
         env:
@@ -249,6 +251,7 @@ jobs:
           # ref_name covers workflow_dispatch runs explicitly launched on the
           # release branch by the prepare-release workflow.
           IS_RELEASE: ${{ startsWith(github.head_ref, 'release/') || startsWith(github.ref_name, 'release/') }}
+          EVENT_BEFORE: ${{ github.event.before }}
         run: |
           set -euo pipefail
           any() { for v in "$@"; do [ "$v" = "true" ] && { echo true; return; }; done; echo false; }
@@ -343,8 +346,19 @@ jobs:
             automation_types=true
           fi
 
+          git fetch --depth=1 origin main
+          cli_base=origin/main
+          if [[ "${GITHUB_EVENT_NAME:-}" == "push" && -n "${EVENT_BEFORE:-}" && "$EVENT_BEFORE" != "0000000000000000000000000000000000000000" ]]; then
+            if git fetch --depth=1 origin "$EVENT_BEFORE" && git cat-file -e "$EVENT_BEFORE^{commit}"; then
+              cli_base=$EVENT_BEFORE
+            fi
+          fi
+          cli_fingerprint=$(bash scripts/ci/cli-fingerprint.sh HEAD)
+          cli_inputs_changed=$(bash scripts/ci/cli-inputs-changed.sh "$cli_base" HEAD)
+
           cli_cross=$(any "$rel" "$IS_MAIN_PUSH")
-          cli_outputs=$(RUST="$rust" CROSS="$cli_cross" bash scripts/ci/cli-matrix.sh)
+          cli_outputs=$(RUST="$rust" CROSS="$cli_cross" CLI_INPUTS_CHANGED="$cli_inputs_changed" \
+            bash scripts/ci/cli-matrix.sh)
           cli_build=$(sed -n 's/^cli_build=//p' <<<"$cli_outputs")
           cli_matrix=$(sed -n 's/^cli_matrix=//p' <<<"$cli_outputs")
 
@@ -371,6 +385,7 @@ jobs:
             echo "automation_types=$automation_types"
             echo "cli_build=$cli_build"
             echo "cli_matrix=$cli_matrix"
+            echo "cli_fingerprint=$cli_fingerprint"
             echo "rust_test=$rust_test"
           } >> "$GITHUB_OUTPUT"
 
@@ -774,9 +789,12 @@ jobs:
         with:
           gitea-token: ${{ secrets.GITEA_TOKEN }}
           provider-cloud-git: ${{ secrets.LINGXIA_PROVIDER_CLOUD_GIT }}
+      - uses: ./.github/actions/resolve-cli
+        with:
+          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
       - name: Build macOS example app
         working-directory: examples/lingxia-showcase
-        run: cargo run -p lingxia-cli -- build --platform macos --framework react
+        run: ../../target/debug/lingxia build --platform macos --framework react
       - name: Upload macOS app
         uses: actions/upload-artifact@v4
         with:
@@ -821,6 +839,14 @@ jobs:
           }
           bash -n scripts/automation/run-macos-showcase.sh
           if ($LASTEXITCODE -ne 0) { throw 'Could not parse macOS automation runner.' }
+          foreach ($script in @(
+            'scripts/ci/cli-fingerprint.sh',
+            'scripts/ci/cli-inputs-changed.sh',
+            'scripts/ci/resolve-cli.sh'
+          )) {
+            bash -n $script
+            if ($LASTEXITCODE -ne 0) { throw "Could not parse $script." }
+          }
 
   showcase-automation:
     needs: changes
@@ -852,6 +878,10 @@ jobs:
 
       - uses: ./.github/actions/bootstrap-apple-sdk
         if: runner.os == 'macOS'
+
+      - uses: ./.github/actions/resolve-cli
+        with:
+          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
 
       - name: Install showcase test dependencies
         working-directory: examples/lingxia-showcase/lxapp
@@ -948,9 +978,12 @@ jobs:
           prefix-key: example-ios
       - uses: ./.github/actions/build-web-packages
       - uses: ./.github/actions/bootstrap-apple-sdk
+      - uses: ./.github/actions/resolve-cli
+        with:
+          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
       - name: Build iOS example app
         working-directory: examples/lingxia-showcase
-        run: cargo run -p lingxia-cli -- build --platform ios --framework react
+        run: ../../target/debug/lingxia build --platform ios --framework react
       - name: Upload iOS app
         uses: actions/upload-artifact@v4
         with:
@@ -983,13 +1016,16 @@ jobs:
       - uses: ./.github/actions/bootstrap-android-sdk
       - name: Expose Android NDK to lingxia build
         run: echo "ANDROID_NDK_HOME=${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_ROOT}" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/resolve-cli
+        with:
+          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
       - name: Build Android example app
         working-directory: examples/lingxia-showcase
         # Release build so CI exercises the release signing config (it falls back
         # to debug-signing here since no keystore is configured — see the
         # build.gradle.kts signing block). Use --env release --release locally
         # with a keystore for a Play-ready artifact.
-        run: cargo run -p lingxia-cli -- build --platform android --framework react --release
+        run: ../../target/debug/lingxia build --platform android --framework react --release
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -1156,9 +1192,13 @@ jobs:
       # Generate the gitignored Harmony SDK resources a clean checkout lacks.
       - uses: ./.github/actions/bootstrap-harmony-sdk
 
+      - uses: ./.github/actions/resolve-cli
+        with:
+          fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
+
       - name: Build Harmony example (native only)
         working-directory: examples/lingxia-showcase
-        run: cargo run -p lingxia-cli -- build --platform harmony --framework react --native-only
+        run: ../../target/debug/lingxia build --platform harmony --framework react --native-only
 
       - name: Upload native library
         if: always()

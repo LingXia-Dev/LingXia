@@ -19,6 +19,14 @@ if ! is_true "${RUST:-false}"; then
   exit 0
 fi
 
+# rust=true covers any crate. The 4-platform CLI smoke only needs to run when
+# inputs baked into the lingxia/lxdev binaries actually changed.
+if ! is_true "${CLI_INPUTS_CHANGED:-true}"; then
+  echo "cli_build=false"
+  echo "cli_matrix={\"include\":[$linux_x64]}"
+  exit 0
+fi
+
 echo "cli_build=true"
 if is_true "${CROSS:-false}"; then
   echo "cli_matrix={\"include\":[$linux_x64,$linux_arm64,$darwin_arm64,$darwin_x64,$windows_x64]}"
