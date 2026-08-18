@@ -481,8 +481,8 @@
             </div>
             <div class="p-4 space-y-4">
               <div class="flex space-x-3">
-                <button @click="revealTabBar()" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Show TabBar</button>
-                <button @click="concealTabBar()" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Hide TabBar</button>
+                <button data-testid="tabbar-show" @click="revealTabBar()" class="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Show TabBar</button>
+                <button data-testid="tabbar-hide" @click="concealTabBar()" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Hide TabBar</button>
               </div>
               <div class="pt-2 border-t border-line-100">
                 <label class="block text-sm font-medium text-gray-700 mb-2">Update Tab 1 Text</label>
