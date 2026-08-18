@@ -251,7 +251,10 @@ in-flight flags) in module scope: it silently couples same-route instances.
 
 ### Private helpers
 
-Functions starting with `_` are private — they are **not** exposed to the View. Use them for internal logic:
+The leading `_` is the whole rule: a method starting with `_` stays private,
+and **every** other method becomes a public action the View can call. Nothing
+else is special — a name like `onCheckout` reads as a lifecycle hook but is an
+ordinary action, so name actions for what they do:
 
 ```ts
 Page({
@@ -261,7 +264,7 @@ Page({
     return items.reduce((sum, item) => sum + item.price, 0);
   },
 
-  onCheckout: function (params) {
+  checkout: function (params) {
     const total = this._calculateTotal(params?.items || []);
     this.setData({ total });
   },
@@ -278,7 +281,7 @@ function calculateTotal(items: Item[]): number { … }
 
 Page<PageData>({
   data: { total: 0 },
-  onCheckout(params) {
+  checkout(params) {
     this.setData({ total: calculateTotal(params?.items ?? []) });
   },
 });
