@@ -9,7 +9,7 @@ usage() {
 Release LingXia npm packages.
 
 Usage:
-  scripts/release/npm.sh [--package bridge|elements|react|vue|html|page-runtime|polyfills|terminal-settings|browser-shell-webui|types|skill|all] [--publish] [--dry-run]
+  scripts/release/npm.sh [--package bridge|elements|react|vue|html|page-runtime|polyfills|terminal-settings|browser-shell-webui|types|test|skill|all] [--publish] [--dry-run]
 
 Options:
   --package <name>  Package set to process (default: all)
@@ -45,7 +45,7 @@ fi
 
 # Tier 1, then framework in dep order (bridge → elements/page-runtime → html/react/vue),
 # then prebuilt lxapps and the standalone skill.
-ALL_TARGETS=("bridge" "polyfills" "types" "elements" "page-runtime" "html" "react" "vue" "terminal-settings" "browser-shell-webui" "skill")
+ALL_TARGETS=("bridge" "polyfills" "types" "test" "elements" "page-runtime" "html" "react" "vue" "terminal-settings" "browser-shell-webui" "skill")
 
 case "$PACKAGE_SET" in
   bridge) targets=("bridge") ;;
@@ -58,6 +58,7 @@ case "$PACKAGE_SET" in
   terminal-settings) targets=("terminal-settings") ;;
   browser-shell-webui) targets=("browser-shell-webui") ;;
   types) targets=("types") ;;
+  test) targets=("test") ;;
   skill) targets=("skill") ;;
   all) targets=("${ALL_TARGETS[@]}") ;;
   *) echo "Unknown package set: $PACKAGE_SET" >&2; exit 2 ;;
@@ -75,6 +76,7 @@ pkg_dir() {
     terminal-settings) echo "$ROOT_DIR/packages/lingxia-terminal-settings" ;;
     browser-shell-webui) echo "$ROOT_DIR/crates/lingxia-browser-shell/webui" ;;
     types) echo "$ROOT_DIR/packages/lingxia-types" ;;
+    test) echo "$ROOT_DIR/packages/lingxia-test" ;;
     skill) echo "$ROOT_DIR/packages/lingxia-skill" ;;
     *) return 1 ;;
   esac
@@ -109,6 +111,7 @@ pkg_target_for_name() {
     @lingxia/bridge) echo "bridge" ;;
     @lingxia/polyfills) echo "polyfills" ;;
     @lingxia/types) echo "types" ;;
+    @lingxia/test) echo "test" ;;
     @lingxia/elements) echo "elements" ;;
     @lingxia/page-runtime) echo "page-runtime" ;;
     @lingxia/html) echo "html" ;;
@@ -131,6 +134,7 @@ const dirOf = {
   bridge: "packages/lingxia-bridge",
   polyfills: "packages/lingxia-polyfills",
   types: "packages/lingxia-types",
+  test: "packages/lingxia-test",
   elements: "packages/lingxia-elements",
   "page-runtime": "packages/lingxia-page-runtime",
   html: "packages/lingxia-html",
