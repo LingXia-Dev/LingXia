@@ -7,11 +7,15 @@ use crate::error::{Error, Result};
 use crate::model::CaptureTarget;
 #[cfg(feature = "snapshot")]
 use crate::model::{Capture, Pixel};
-use windows::Win32::Foundation::{COLORREF, RECT};
+#[cfg(feature = "snapshot")]
+use windows::Win32::Foundation::COLORREF;
+use windows::Win32::Foundation::RECT;
+#[cfg(feature = "snapshot")]
+use windows::Win32::Graphics::Gdi::GetPixel;
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC,
-    DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetDIBits, GetPixel, HBITMAP, HDC, ReleaseDC,
-    SRCCOPY, SelectObject,
+    DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetDIBits, HBITMAP, HDC, ReleaseDC, SRCCOPY,
+    SelectObject,
 };
 use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
 use windows::Win32::UI::WindowsAndMessaging::{
