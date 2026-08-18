@@ -18,10 +18,54 @@ use serde_json::Value;
 /// This namespace answers with its own error codes rather than the generic
 /// `request_failed`, because `lingxia-device-io` codes are a contract:
 /// callers branch on them and a client turns them into its exit status.
+static SESSION: std::sync::Mutex<Option<device_io::supervision::SupervisionGuard>> =
+    std::sync::Mutex::new(None);
+
+fn session() -> std::sync::MutexGuard<'static, Option<device_io::supervision::SupervisionGuard>> {
+    SESSION.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+fn ensure_session() {
+    let mut slot = session();
+    if slot.is_none() {
+        *slot = device_io::supervision::SupervisionGuard::begin(
+            device_io::supervision::SessionKind::Control,
+        )
+        .ok();
+    }
+}
+
+/// Trusted host lifecycle: the local-control endpoint has gone away.
+#[cfg(feature = "local-control")]
+pub fn end_session() {
+    *session() = None;
+}
+
+fn report_guarded<T: Serialize>(
+    run: impl FnOnce(&device_io::supervision::GuardedInput<'_>) -> device_io::Result<T>,
+) -> Answer {
+    ensure_session();
+    let slot = session();
+    let Some(guard) = slot.as_ref() else {
+        return Err(Failure {
+            code: device_io::ErrorCode::Unavailable.as_str(),
+            message: "supervision session is not active".into(),
+        });
+    };
+    match guard.input() {
+        Ok(input) => report(run(&input)),
+        Err(error) => Err(Failure {
+            code: error.code().as_str(),
+            message: error.to_string(),
+        }),
+    }
+}
+
 pub fn handle(id: String, name: &str, params: Option<Value>) -> Option<ControlResponse> {
     if !name.starts_with("desktop.") {
         return None;
     }
+    ensure_session();
     // Input and accessibility commands can make their target disappear. Keep
     // a server-resolved snapshot from immediately before dispatch both to bind
     // untrusted viewer metadata to the real destination and to remember which
@@ -476,77 +520,57 @@ fn dispatch(name: &str, params: Option<Value>) -> Answer {
 
         method::pointer::MOVE => {
             let args: device_io::wire::PointerMove = decode(params)?;
-            report(device_io::input::pointer_move(args.x, args.y, args.target))
+            report_guarded(|input| input.pointer_move(args.x, args.y, args.target))
         }
         method::pointer::DOWN => {
             let args: device_io::wire::PointerButton = decode(params)?;
-            report(device_io::input::pointer_down(
-                args.x,
-                args.y,
-                args.button,
-                args.target,
-            ))
+            report_guarded(|input| input.pointer_down(args.x, args.y, args.button, args.target))
         }
         method::pointer::UP => {
             let args: device_io::wire::PointerButton = decode(params)?;
-            report(device_io::input::pointer_up(
-                args.x,
-                args.y,
-                args.button,
-                args.target,
-            ))
+            report_guarded(|input| input.pointer_up(args.x, args.y, args.button, args.target))
         }
         method::pointer::CLICK => {
             let args: device_io::wire::PointerClick = decode(params)?;
-            report(device_io::input::pointer_click(
-                args.x,
-                args.y,
-                args.button,
-                args.count,
-                args.target,
-            ))
+            report_guarded(|input| {
+                input.pointer_click(args.x, args.y, args.button, args.count, args.target)
+            })
         }
         method::pointer::SCROLL => {
             let args: device_io::wire::PointerScroll = decode(params)?;
-            report(device_io::input::pointer_scroll(
-                args.x,
-                args.y,
-                args.dx,
-                args.dy,
-                args.target,
-            ))
+            report_guarded(|input| {
+                input.pointer_scroll(args.x, args.y, args.dx, args.dy, args.target)
+            })
         }
         method::pointer::DRAG => {
             let args: device_io::wire::PointerDrag = decode(params)?;
-            report(device_io::input::pointer_drag(
-                args.from_x,
-                args.from_y,
-                args.to_x,
-                args.to_y,
-                args.button,
-                args.target,
-            ))
+            report_guarded(|input| {
+                input.pointer_drag(
+                    args.from_x,
+                    args.from_y,
+                    args.to_x,
+                    args.to_y,
+                    args.button,
+                    args.target,
+                )
+            })
         }
 
         method::key::TYPE => {
             let args: device_io::wire::KeyText = decode(params)?;
-            report(device_io::input::key_type(&args.text, args.target))
+            report_guarded(|input| input.key_type(&args.text, args.target))
         }
         method::key::DOWN => {
             let args: device_io::wire::KeyName = decode(params)?;
-            report(device_io::input::key_down(&args.name, args.target))
+            report_guarded(|input| input.key_down(&args.name, args.target))
         }
         method::key::UP => {
             let args: device_io::wire::KeyName = decode(params)?;
-            report(device_io::input::key_up(&args.name, args.target))
+            report_guarded(|input| input.key_up(&args.name, args.target))
         }
         method::key::PRESS => {
             let args: device_io::wire::KeyPress = decode(params)?;
-            report(device_io::input::key_press(
-                &args.name,
-                &args.modifiers,
-                args.target,
-            ))
+            report_guarded(|input| input.key_press(&args.name, &args.modifiers, args.target))
         }
 
         method::ax::TREE => {

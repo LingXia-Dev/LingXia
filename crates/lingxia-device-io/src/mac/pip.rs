@@ -44,7 +44,7 @@ use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
 use crate::error::{Error, Result};
 use crate::model::{Acted, WindowTarget};
-use crate::supervision_state::{ActivityState, ActivityTarget, Transition};
+use crate::supervision_state::{ActivityState, ActivityTarget, SessionKind, Transition};
 
 /// Which corner it sits in. It is placed rather than dragged: it ignores the
 /// mouse so it can never swallow a click meant for what is underneath, and a
@@ -87,6 +87,7 @@ const IDLE_REST: Duration = Duration::from_secs(12);
 
 struct State {
     activity: ActivityState,
+    session: Option<SessionKind>,
     corner: Corner,
     mode: Option<ViewerMode>,
     /// The panel's own window number, so the capture can leave it out. Zero
@@ -99,6 +100,7 @@ struct State {
 
 static STATE: Mutex<State> = Mutex::new(State {
     activity: ActivityState::new(),
+    session: None,
     corner: Corner::BottomRight,
     mode: None,
     window_number: 0,
@@ -249,15 +251,38 @@ fn put_away(epoch: u64) {
     });
 }
 
-/// Put the viewer away for the rest of the run, at a person's request.
-///
-/// The panel ignores the mouse so it can never swallow a click meant for what
-/// is underneath it, which also means it cannot be closed by clicking one. The
-/// affordance therefore has to come from the product — a menu item, a settings
-/// switch, a shortcut — and this is what it calls. Without one, nothing a
-/// person does can dismiss it.
+/// Trusted-host hold for persistent disclosure. Not a remote dismiss path.
+pub fn begin_session(kind: SessionKind) {
+    let should_open = {
+        let mut state = state();
+        let first = state.session.is_none();
+        state.session = Some(kind);
+        first && state.activity.target.is_none()
+    };
+    if should_open {
+        note_activity(Acted::Somewhere);
+    }
+}
+
+pub fn end_session() {
+    let hide = {
+        let mut state = state();
+        state.session = None;
+        state.activity.target.is_none()
+    };
+    if hide {
+        let epoch = state().activity.epoch;
+        put_away(epoch);
+    }
+}
+
+/// Put the activity preview away at a person's request. Persistent
+/// disclosure stays until the host ends the session.
 pub fn dismiss() {
     let epoch = state().activity.dismiss();
+    if state().session.is_some() {
+        return;
+    }
     put_away(epoch);
 }
 
@@ -406,7 +431,8 @@ fn presentation(watch: &ActivityTarget) -> Result<(CGRect, ViewerMode, String)> 
             )
         }
     };
-    let label = crate::supervision_state::control_label(&controller_identity(), &target);
+    let kind = state().session.unwrap_or(SessionKind::Control);
+    let label = kind.label(&controller_identity(), &target);
     Ok((rect, mode, label))
 }
 
@@ -796,8 +822,11 @@ fn refresh_loop(generation: u64) {
         let Some(watch) = watch else { return };
 
         if idle {
+            let session = state().session;
             let epoch = state().activity.rest(generation, epoch);
-            if let Some(epoch) = epoch {
+            if session.is_none()
+                && let Some(epoch) = epoch
+            {
                 put_away(epoch);
             }
             return;

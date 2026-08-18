@@ -117,3 +117,9 @@ input.
 The activity indicator is not an agent command. It ignores mouse input so it
 cannot block the underlying target. A product that offers a human dismiss
 control calls the host-side viewer API; an agent must never hide or dismiss it.
+
+An observed or controlled product session also keeps a persistent disclosure
+visible for the whole session, including read-only periods. The activity
+preview may auto-hide; disclosure does not. Only local UI or trusted host
+lifecycle can end it. Ordinary snapshot and capture APIs do not turn
+supervision on.

@@ -4,6 +4,25 @@ pub(crate) fn control_label(controller: &str, target: &str) -> String {
     format!("{controller} controls {target}")
 }
 
+pub(crate) fn observation_label(controller: &str, target: &str) -> String {
+    format!("{controller} is observing {target}")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionKind {
+    Observation,
+    Control,
+}
+
+impl SessionKind {
+    pub(crate) fn label(self, controller: &str, target: &str) -> String {
+        match self {
+            Self::Observation => observation_label(controller, target),
+            Self::Control => control_label(controller, target),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ActivityTarget {
     Display(usize),
@@ -266,6 +285,18 @@ mod tests {
         assert_eq!(state.last_activity, Some(latest));
         assert_eq!(state.target, Some(latest_target));
         assert_eq!(state.marker, Some((20, 30, latest)));
+    }
+
+    #[test]
+    fn session_label_distinguishes_observation_from_control() {
+        assert_eq!(
+            SessionKind::Observation.label("LingXia", "Notes"),
+            "LingXia is observing Notes"
+        );
+        assert_eq!(
+            SessionKind::Control.label("LingXia", "Notes"),
+            "LingXia controls Notes"
+        );
     }
 
     #[test]
