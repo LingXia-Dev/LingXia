@@ -488,7 +488,7 @@ Pins are the user's quick entries for lxapps and websites.
   gesture. Removing the Pin MUST NOT remove a live workspace row. If the same lxapp is live as an aside,
   the host closes that one-region presentation and reopens it as main; the Pin
   does not inherit the app's declared aside default. Sidebar actions and
-  `lx.openSurface({ surface: ... })` continue to honor the declared role.
+  `lx.surface.openDeclared(id)` continue to honor the declared role.
 - A main opened from a Pin MUST occupy the exact same host content rectangle as
   the stable root main. No edge or pixel of the previously active main may
   remain exposed behind it. A page's native navigation bar may reserve space
@@ -520,8 +520,8 @@ Declaration model (owned by the single runtime writer, §7.2):
   Hosts may tint it to match shell theme and disabled state.
 - Hosts do not infer target metadata, open lxapps, toggle providers, or render
   fallback glyphs. A callback explicitly opens a declared Surface with
-  `lx.openSurface({ surface: ... })`, a dynamic business app with
-  `lx.openSurface({ appId: ..., as: ... })`, or performs app navigation with
+  `lx.shell.openDeclared(id, options?)`, a dynamic business app with
+  `lx.shell.openApp(appId, { as, ... })`, or performs app navigation with
   `lx.navigateToApp({ appId: ... })`.
 - The declaration is a **full-generation atomic replace**: the shell validates
   the complete generation before touching handlers or chrome — a
@@ -762,9 +762,12 @@ semantics every language surface MUST share.
 
 ### 7.1 Opening surfaces
 
-- An open spec has exactly one selector: `surface`, `appId`, `page`, or `url`.
-  Provider kinds such as YAML `lxapp` and `native` are not JS selectors.
-- `lx.openSurface({ surface, key?, as? })` opens a YAML declaration. Without
+- The selector is the method, not a field: `openDeclared` takes a declaration
+  id, `openApp` an appId, `openPage` a page name, `openUrl` a URL. Provider
+  kinds such as YAML `lxapp` and `native` are not JS selectors. Composition —
+  choosing `as`, or opening another lxapp — lives on `lx.shell`; an lxapp's own
+  presentations live on `lx.surface`.
+- `lx.shell.openDeclared(id, { key?, as? })` opens a YAML declaration. Without
   `key` it addresses the declaration's default instance. A non-empty `key`
   selects or creates an additional instance only when that declaration admits
   multiple instances; currently this is supported by instantiable native
@@ -780,7 +783,7 @@ semantics every language surface MUST share.
   'aside' }` opens/reuses a distinct workspace in the native aside slot. The
   same keyed workspace may later migrate to main without losing PTYs, cwd, or
   running processes.
-- `lx.openSurface({ appId, as, page?, query?, envVersion?, targetVersion?,
+- `lx.shell.openApp(appId, { as, page?, query?, envVersion?, targetVersion?,
   edge? })` creates or focuses a dynamic business-app Surface and
   does not require a YAML declaration. `as` is required because the caller is
   creating shell composition rather than using declaration defaults; it is
@@ -797,9 +800,9 @@ semantics every language surface MUST share.
   or replacing startup parameters. A live main/aside role change currently
   fails with `E_SURFACE_CONFLICT`; close it before reopening in the other role.
   It returns a lifecycle handle and, when main, owns an independent switcher item.
-- `lx.openSurface({ page, ... })` opens the caller's own page as a float or
-  standalone window. `lx.openSurface({ url, ... })` opens browser content; a
-  URL without `as` becomes a main browser tab.
+- `lx.surface.openPage(page, options?)` opens the caller's own page as a float
+  or standalone window. `lx.surface.openUrl(url, options?)` opens browser
+  content; a URL without `as` becomes a main browser tab.
 - Runtime floats default to centered, non-modal, tap-outside dismissal;
   compact ignores position and presents a bottom sheet. A float without a size
   hint uses 480×360 dp/pt clamped to 90% of the container; a standalone window
@@ -825,8 +828,8 @@ semantics every language surface MUST share.
 | Operation | Changes | Main switcher item | Back behavior | Result |
 |---|---|---|---|---|
 | `lx.navigateToApp({ appId, ... })` | Pushes an app onto the current lxapp Surface's app-navigation stack | Reuses the current item | `lx.navigateBackApp()` pops to the previous app | `Promise<void>` |
-| `lx.openSurface({ appId, as: 'main', ... })` | Creates/focuses a dynamic app-owned Surface | Own independent item | Closing destroys that Surface and its app stack | `SurfaceHandle` |
-| `lx.openSurface({ surface, as: 'main' })` where the declaration contains an lxapp | Creates/focuses that host-declared Surface | Own declaration-backed item | Closing destroys the live Surface; reopening uses declaration defaults | `SurfaceHandle` |
+| `lx.shell.openApp(appId, { as: 'main', ... })` | Creates/focuses a dynamic app-owned Surface | Own independent item | Closing destroys that Surface and its app stack | `AppSurface` |
+| `lx.shell.openDeclared(id, { as: 'main' })` where the declaration contains an lxapp | Creates/focuses that host-declared Surface | Own declaration-backed item | Closing destroys the live Surface; reopening uses declaration defaults | `DeclaredSurface` |
 
 Therefore a declared lxapp Surface opened as main is still different from
 `navigateToApp`: the former is a parallel shell workspace with its own runtime
