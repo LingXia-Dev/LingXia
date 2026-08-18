@@ -120,7 +120,18 @@ Native picker — modal column/date/time selection the web platform can't render
 
 ## `LxVideo`
 
-Native video player with quality/rate switching, fullscreen, and live mode. The
+Video is native-owned. Fullscreen, PiP, background audio, lockscreen controls,
+audio focus, and hardware decode are system integrations a WebView cannot do
+uniformly, so an lxapp View must not play media itself. Use `<lx-video>`
+(React/Vue: `LxVideo`). Live or pushed streams stay native-side via
+`lx.createVideoContext(id).setStreamSource(...)` — they never cross into the
+WebView. `<video>`, `video.srcObject = stream`, `<audio>`, and `new Audio()`
+are outside the contract; `lingxia build` rejects them in the **built bundle**
+(so a tag inside a third-party component is caught too). Audio playback is not
+available yet; `lx.audio` is planned as a Logic API, not an `<lx-audio>`
+component.
+
+Native player with quality/rate switching, fullscreen, and live mode. The
 full attribute list (`src`, `poster`, `objectFit`, `controls`, `qualities`,
 `playbackRates`, …) is the exported `LxVideoAttributes` from `@lingxia/elements`;
 remote `src` must be under `security.network.trustedDomains`. Two pieces of
