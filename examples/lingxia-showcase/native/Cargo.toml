@@ -31,6 +31,15 @@ control = ["dep:lingxia-control-runtime", "lingxia/devtool", "lingxia-control-ru
 # subcommand and the in-process automation driver); the runtime provider is the
 # host end that answers them.
 computer-use = ["control", "lingxia/computer-use", "lingxia-control-runtime/computer-use"]
+realtime-capture = ["lingxia/realtime-capture"]
+desktop-realtime-capture = [
+    "realtime-capture",
+    "dep:lingxia-device-io",
+    "lingxia-device-io/realtime-capture-provider",
+]
+android-capture = ["realtime-capture", "lingxia/android-capture"]
+apple-capture = ["realtime-capture", "lingxia/apple-capture"]
+harmony-capture = ["realtime-capture", "lingxia/harmony-capture"]
 # Derived from `capabilities.browserUse`. Without it the browser methods are
 # not linked and every browser command answers "feature unavailable".
 browser-use = ["control", "lingxia-control-runtime/browser"]
@@ -44,6 +53,7 @@ cloud = []
 [dependencies]
 lingxia = { version = "0.11.2", default-features = false }
 lingxia-control-runtime = { version = "0.11.2", optional = true, default-features = false }
+lingxia-device-io = { version = "0.11.2", optional = true, default-features = false }
 rong = { version = "0.6.0", default-features = false }
 log = "0.4.29"
 
@@ -69,6 +79,7 @@ lingxia-app-context = { path = "../../../crates/lingxia-app-context" }
 lingxia-browser = { path = "../../../crates/lingxia-browser" }
 lingxia-control-runtime = { path = "../../../crates/lingxia-control-runtime" }
 lingxia-control-protocol = { path = "../../../crates/lingxia-control-protocol" }
+lingxia-device-io = { path = "../../../crates/lingxia-device-io" }
 lingxia-log = { path = "../../../crates/lingxia-log" }
 lingxia-logic = { path = "../../../crates/lingxia-logic" }
 lingxia-lxapp = { path = "../../../crates/lingxia-lxapp" }

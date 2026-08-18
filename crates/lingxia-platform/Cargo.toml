@@ -12,6 +12,13 @@ categories = ["api-bindings"]
 # Traits and value types only. Enabling this never constructs a native
 # capture stack or an always-unsupported placeholder.
 capture-contract = []
+# Concrete Android MediaProjection provider. Selected by the host, not by
+# the contract feature.
+android-capture-provider = ["capture-contract"]
+# Apple (iOS/macOS) native provider, constructed after the Swift bridge is ready.
+apple-capture-provider = ["capture-contract"]
+# HarmonyOS native provider, constructed after the N-API bridge is ready.
+harmony-capture-provider = ["capture-contract"]
 
 [dependencies]
 thiserror = { workspace = true }

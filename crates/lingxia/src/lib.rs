@@ -62,6 +62,11 @@ impl RuntimeInfo {
     }
 }
 
+/// Explicitly installed realtime capture providers. Only compiled when the
+/// host declared capture; the contract is never an `AppRuntime` supertrait.
+#[cfg(feature = "realtime-capture")]
+pub mod capture;
+
 /// Isolated host-owned automation programs for trusted Agent-style products.
 #[cfg(feature = "automation-runtime")]
 pub mod automation_runtime {

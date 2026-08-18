@@ -45,6 +45,7 @@ flag_capabilities! {
     "appUse" => |_: &Arc<LxApp>| lingxia_app_context::capability::app_use();
     "computerUse" => |_: &Arc<LxApp>| lingxia_app_context::capability::computer_use();
     "browserUse" => |_: &Arc<LxApp>| lingxia_app_context::capability::browser_use();
+    "mediaCapture" => |_: &Arc<LxApp>| lingxia_app_context::capability::media_capture();
 }
 
 /// `lx.terminal`'s presence check, so the two can never disagree.
@@ -228,7 +229,7 @@ rong::js_api! {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
 
         /// Boolean capability names accepted by `lx.supports`.
-        type LxCapabilityFlag = r###"'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse'"###;
+        type LxCapabilityFlag = r###"'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture'"###;
 
         /// Surface placements accepted by `lx.supports`.
         type LxSurfaceCapability = r###"'main' | 'aside' | 'float' | 'window' | 'tab'"###;
