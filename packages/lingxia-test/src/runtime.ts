@@ -1,7 +1,7 @@
 import { AssertionError, expect, setAssertionSink } from "./expect.js";
 import { LiveFixture, TimeoutError, protocolStatus, toReportError } from "./fixture.js";
 import { attachText, resolveHost, warnVersionSkew } from "./host.js";
-import { callerLocation, fileStem, slugTitle } from "./ids.js";
+import { captureFrames, fileStem, resolveOrigin, slugTitle, type StackFrame } from "./ids.js";
 import { clearInline, countStatuses, renderHtml } from "./report.js";
 import type { SpecApi } from "./spec-api.js";
 import type {
@@ -36,6 +36,7 @@ interface RegisteredSpec {
   annotation: Annotation;
   body: SpecBody;
   file: string;
+  frames: StackFrame[];
   indexInFile: number;
 }
 
@@ -67,7 +68,10 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     throw new TypeError("spec() requires a non-empty title");
   }
   const { options, body } = parseArgs(optionsOrBody, maybeBody);
-  const file = callerLocation().file;
+  // The bundle map is installed after the modules run, so keep the raw frames
+  // and resolve the authored file when the run starts.
+  const frames = captureFrames();
+  const file = frames[0]?.file ?? "unknown";
   const indexInFile = (fileCounts.get(file) ?? 0) + 1;
   fileCounts.set(file, indexInFile);
   specs.push({
@@ -82,6 +86,7 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     annotation,
     body,
     file,
+    frames,
     indexInFile,
   });
 }
@@ -109,16 +114,29 @@ const spec: SpecApi = Object.assign(
     },
     beforeEach(fn: SpecBody): void {
       if (typeof fn !== "function") throw new TypeError("spec.beforeEach() requires a function");
-      hooks.push({ file: callerLocation().file, fn });
+      hooks.push({ file: captureFrames()[0]?.file ?? "unknown", fn });
     },
   },
 );
+
+function sourceOf(item: RegisteredSpec): { file: string; line: number } {
+  const origin = resolveOrigin(item.frames);
+  return { file: origin.file, line: origin.line };
+}
 
 function resolvedId(item: RegisteredSpec): string {
   if (item.id && item.id.length > 0) return item.id;
   const slug = slugTitle(item.title);
   if (slug) return slug;
-  return `${fileStem(item.file)}-${item.indexInFile}`;
+  return `${fileStem(sourceOf(item).file)}-${item.indexInFile}`;
+}
+
+/** Report group: the authored file path, trimmed to the project-relative part. */
+function suiteOf(file: string): string {
+  const normalized = file.replace(/\\/g, "/").replace(/^lxdev-test:\/\//, "");
+  const trimmed = normalized.replace(/^\.\//, "");
+  const cut = trimmed.lastIndexOf("/tests/");
+  return cut >= 0 ? trimmed.slice(cut + 1) : trimmed;
 }
 
 function automationRoot() {
@@ -181,11 +199,15 @@ async function run(): Promise<ProtocolReport> {
   for (const item of selected) {
     const id = resolvedId(item);
     const timeout = item.timeout;
+    const source = sourceOf(item);
     const record: CaseRecord = {
       id,
       title: item.title,
       name: item.title,
       full_name: item.id ? `${item.id} | ${item.title}` : item.title,
+      file: source.file,
+      line: source.line,
+      suite: suiteOf(source.file),
       status: "passed",
       duration_ms: 0,
       covers: [...item.covers],

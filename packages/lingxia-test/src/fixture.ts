@@ -9,7 +9,7 @@ import {
 import { formatValue } from "./format.js";
 import { encodeAttachPayload, remapStack, type ResolvedHost } from "./host.js";
 import { rememberInline } from "./report.js";
-import { callerLocation, displayLocation } from "./ids.js";
+import { callerLocation, displayLocation, parseFrames } from "./ids.js";
 import {
   PageLocator,
   sleep,
@@ -623,12 +623,8 @@ export function toReportError(error: unknown, step?: string): {
 }
 
 function firstLocation(stack: string | undefined): string | undefined {
-  if (!stack) return undefined;
-  for (const line of stack.split("\n")) {
-    const match = line.match(/\((.+):(\d+):(\d+)\)/) ?? line.match(/at (.+):(\d+):(\d+)/);
-    if (match) return `${match[1]}:${match[2]}:${match[3]}`;
-  }
-  return undefined;
+  const frame = parseFrames(stack)[0];
+  return frame ? `${frame.file}:${frame.line}:${frame.column}` : undefined;
 }
 
 export function protocolStatus(status: SpecStatus): "passed" | "failed" | "skipped" {

@@ -105,15 +105,42 @@ function guessMime(name: string | undefined): string {
 
 export function remapStack(stack: string | undefined): string | undefined {
   if (!stack) return undefined;
-  const map = globalThis.__LINGXIA_TEST_SOURCE_MAP__;
-  if (!map || typeof map !== "object") return stack;
+  const map = bundleMap();
+  if (!map) return stack;
   // The CLI injects the bundle map so we can rewrite lxdev-test:// frames.
   // A missing or unusable map falls back to the bundled locations.
   try {
-    return remapWithMap(stack, map as SourceMapJson);
+    return remapWithMap(stack, map);
   } catch {
     return stack;
   }
+}
+
+/**
+ * Bundled specs all register from one synthetic file, so the report would
+ * group every case together. Mapping the registration frame back through the
+ * bundle map restores the authored file.
+ */
+export function remapPosition(
+  file: string,
+  line: number,
+  column: number,
+): { file: string; line: number; column: number } {
+  const map = bundleMap();
+  if (!map) return { file, line, column };
+  try {
+    const table = buildTable(map);
+    const mapped = lookup(table, map, line - 1, column - 1);
+    return mapped ?? { file, line, column };
+  } catch {
+    return { file, line, column };
+  }
+}
+
+function bundleMap(): SourceMapJson | undefined {
+  const map = globalThis.__LINGXIA_TEST_SOURCE_MAP__;
+  if (!map || typeof map !== "object") return undefined;
+  return map as SourceMapJson;
 }
 
 interface SourceMapJson {
@@ -145,15 +172,24 @@ function decodeVlq(segment: string): number[] {
   return values;
 }
 
-function remapWithMap(stack: string, map: SourceMapJson): string {
-  if (!map.mappings || !map.sources) return stack;
-  const lines = map.mappings.split(";");
-  const table: Array<{ col: number; source: number; srcLine: number; srcCol: number }[]> = [];
+interface MapEntry {
+  col: number;
+  source: number;
+  srcLine: number;
+  srcCol: number;
+}
+
+const tableCache = new WeakMap<SourceMapJson, MapEntry[][]>();
+
+function buildTable(map: SourceMapJson): MapEntry[][] {
+  const cached = tableCache.get(map);
+  if (cached) return cached;
+  const table: MapEntry[][] = [];
   let source = 0;
   let srcLine = 0;
   let srcCol = 0;
-  for (const line of lines) {
-    const entries: { col: number; source: number; srcLine: number; srcCol: number }[] = [];
+  for (const line of (map.mappings ?? "").split(";")) {
+    const entries: MapEntry[] = [];
     let col = 0;
     if (line.length > 0) {
       for (const segment of line.split(",")) {
@@ -168,21 +204,38 @@ function remapWithMap(stack: string, map: SourceMapJson): string {
     }
     table.push(entries);
   }
+  tableCache.set(map, table);
+  return table;
+}
 
+function lookup(
+  table: MapEntry[][],
+  map: SourceMapJson,
+  line: number,
+  column: number,
+): { file: string; line: number; column: number } | undefined {
+  const entries = table[line];
+  if (!entries || entries.length === 0) return undefined;
+  let chosen = entries[0]!;
+  for (const entry of entries) {
+    if (entry.col <= column) chosen = entry;
+    else break;
+  }
+  return {
+    file: map.sources?.[chosen.source] ?? "unknown",
+    line: chosen.srcLine + 1,
+    column: chosen.srcCol + 1,
+  };
+}
+
+function remapWithMap(stack: string, map: SourceMapJson): string {
+  if (!map.mappings || !map.sources) return stack;
+  const table = buildTable(map);
   return stack.replace(
     /(lxdev-test:\/\/[^:\s]+):(\d+):(\d+)/g,
     (match, _file: string, lineText: string, colText: string) => {
-      const line = Number(lineText) - 1;
-      const column = Number(colText) - 1;
-      const entries = table[line];
-      if (!entries || entries.length === 0) return match;
-      let chosen = entries[0]!;
-      for (const entry of entries) {
-        if (entry.col <= column) chosen = entry;
-        else break;
-      }
-      const sourcePath = map.sources?.[chosen.source] ?? "unknown";
-      return `${sourcePath}:${chosen.srcLine + 1}:${chosen.srcCol + 1}`;
+      const mapped = lookup(table, map, Number(lineText) - 1, Number(colText) - 1);
+      return mapped ? `${mapped.file}:${mapped.line}:${mapped.column}` : match;
     },
   );
 }

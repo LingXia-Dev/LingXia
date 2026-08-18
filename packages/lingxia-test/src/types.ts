@@ -161,6 +161,11 @@ export interface CaseRecord {
   title: string;
   name: string;
   full_name: string;
+  /** Source file the spec was registered from, remapped through the bundle map. */
+  file?: string;
+  line?: number;
+  /** Display group in the report — the spec file's path inside the project. */
+  suite?: string;
   status: SpecStatus;
   duration_ms: number;
   covers: string[];

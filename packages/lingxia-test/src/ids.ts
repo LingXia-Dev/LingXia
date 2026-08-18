@@ -1,3 +1,11 @@
+import { remapPosition } from "./host.js";
+
+export interface StackFrame {
+  file: string;
+  line: number;
+  column: number;
+}
+
 export function isAsciiTitle(title: string): boolean {
   for (let i = 0; i < title.length; i += 1) {
     if (title.charCodeAt(i) > 0x7f) return false;
@@ -20,28 +28,63 @@ export function fileStem(file: string): string {
   return base.replace(/\.(test\.)?(ts|mts|js|mjs)$/i, "") || "spec";
 }
 
-export function callerLocation(): { file: string; line: number; column: number } {
-  const stack = new Error().stack ?? "";
-  for (const raw of stack.split("\n").slice(2)) {
-    if (
-      /lingxia-test[/\\](dist|src)[/\\]/.test(raw) ||
-      raw.includes("node:") ||
-      raw.includes("node_modules")
-    ) {
-      continue;
-    }
+/**
+ * V8 writes `at name (file:line:col)`; JavaScriptCore (macOS/iOS) and ArkJS
+ * write `name@file:line:col`. A report that only understands V8 shows
+ * `unknown:0:0` for every location on those hosts, so parse both.
+ */
+export function parseFrames(stack: string | undefined): StackFrame[] {
+  if (!stack) return [];
+  const frames: StackFrame[] = [];
+  for (const raw of stack.split("\n")) {
+    const line = raw.trim();
+    if (line.length === 0 || line.endsWith("[native code]")) continue;
     const match =
-      raw.match(/\((.+):(\d+):(\d+)\)/) ??
-      raw.match(/at (file:\/\/.+):(\d+):(\d+)/) ??
-      raw.match(/at (.+):(\d+):(\d+)/);
+      line.match(/^at\s+.*\((.+):(\d+):(\d+)\)$/) ??
+      line.match(/^at\s+(.+):(\d+):(\d+)$/) ??
+      line.match(/^.*?@(.+):(\d+):(\d+)$/);
     if (!match) continue;
-    return {
-      file: stripFileUrl(match[1]!),
-      line: Number(match[2]),
-      column: Number(match[3]),
-    };
+    const file = stripFileUrl(match[1]!);
+    if (file.length === 0 || file === "native") continue;
+    frames.push({ file, line: Number(match[2]), column: Number(match[3]) });
   }
-  return { file: "unknown", line: 0, column: 0 };
+  return frames;
+}
+
+const UNKNOWN: StackFrame = { file: "unknown", line: 0, column: 0 };
+
+/** `@lingxia/test`'s own frames are never the interesting caller. */
+function isFrameworkFrame(file: string): boolean {
+  const normalized = file.replace(/\\/g, "/");
+  return (
+    /(^|\/)lingxia-test\/(dist|src)\//.test(normalized) ||
+    normalized.includes("node_modules/@lingxia/test/") ||
+    normalized.startsWith("node:")
+  );
+}
+
+/**
+ * The first authored frame, remapped through the bundle source map when the
+ * CLI installed one. Bundled runs put the framework and the spec in one file,
+ * so only the mapped path can tell them apart.
+ */
+export function resolveOrigin(frames: StackFrame[]): StackFrame {
+  let firstMapped: StackFrame | undefined;
+  for (const frame of frames) {
+    const mapped = remapPosition(frame.file, frame.line, frame.column);
+    if (!firstMapped) firstMapped = mapped;
+    if (!isFrameworkFrame(mapped.file)) return mapped;
+  }
+  return firstMapped ?? frames[0] ?? UNKNOWN;
+}
+
+export function callerLocation(): StackFrame {
+  return resolveOrigin(parseFrames(new Error().stack));
+}
+
+/** Raw frames for a location that can only be resolved once the map exists. */
+export function captureFrames(): StackFrame[] {
+  return parseFrames(new Error().stack);
 }
 
 export function stripFileUrl(path: string): string {
