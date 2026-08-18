@@ -143,6 +143,10 @@ struct Shared {
     stop: AtomicBool,
     suspended: AtomicBool,
     keyframe: AtomicBool,
+    /// Set by reconfigure. The worker owns `geometry_generation`; this asks it
+    /// to open a new generation and re-announce geometry even when the source
+    /// rectangle did not move, so packets never carry an unannounced value.
+    refresh_geometry: AtomicBool,
     format_generation: AtomicU64,
     geometry_generation: AtomicU64,
     target: Mutex<CaptureTarget>,
@@ -165,6 +169,7 @@ impl DesktopSession {
             stop: AtomicBool::new(false),
             suspended: AtomicBool::new(false),
             keyframe: AtomicBool::new(true),
+            refresh_geometry: AtomicBool::new(false),
             format_generation: AtomicU64::new(1),
             geometry_generation: AtomicU64::new(1),
             target: Mutex::new(target),
@@ -199,9 +204,7 @@ impl ProviderCaptureSession for DesktopSession {
             self.shared
                 .period_ms
                 .store(u64::from(1000 / fps.max(1)), Ordering::SeqCst);
-            self.shared
-                .geometry_generation
-                .fetch_add(1, Ordering::SeqCst);
+            self.shared.refresh_geometry.store(true, Ordering::SeqCst);
             self.shared.keyframe.store(true, Ordering::SeqCst);
             Ok(())
         })();
@@ -277,7 +280,8 @@ fn run_loop(events: Arc<dyn ProviderEventSink>, clock: Instant, shared: Arc<Shar
                         }),
                     });
                 }
-                if last_source != Some(frame.source) {
+                let refresh = shared.refresh_geometry.swap(false, Ordering::SeqCst);
+                if refresh || last_source != Some(frame.source) {
                     if last_source.is_some() {
                         shared.geometry_generation.fetch_add(1, Ordering::SeqCst);
                     }

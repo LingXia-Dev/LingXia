@@ -86,7 +86,7 @@ fn inverse_output_transform(
     let cy = f64::from(output_h) / 2.0;
     let dx = x - cx;
     let dy = y - cy;
-    let rot = ((rotation_degrees % 360) + 360) % 360;
+    let rot = rotation_degrees.rem_euclid(360);
     let (dx, dy) = match rot {
         90 => (dy, -dx),
         180 => (-dx, -dy),

@@ -10,9 +10,15 @@ pub(crate) struct EngineFrame {
     pub width: u32,
     pub height: u32,
     pub rgba: Vec<u8>,
+    /// Global source rect and scale feed realtime geometry; snapshot ignores
+    /// them, and the stub backend constructs no frame at all.
+    #[cfg_attr(not(feature = "realtime-capture-provider"), allow(dead_code))]
     pub source: Rect,
+    #[cfg_attr(not(feature = "realtime-capture-provider"), allow(dead_code))]
     pub scale: f64,
+    #[cfg_attr(not(feature = "snapshot"), allow(dead_code))]
     pub backend: &'static str,
+    #[cfg_attr(not(feature = "snapshot"), allow(dead_code))]
     pub occlusion_independent: bool,
 }
 
