@@ -771,6 +771,7 @@ removed configuration fields with the complete field path and its replacement.
 - Calling `lx.navigateTo` / `lx.redirectTo` on a tab page — rejected by the runtime. Use `lx.switchTab` for tab-page entry; `navigateBack` for non-tab stack pops.
 - Treating the tab bar as a host UI surface — it is an lxapp-internal feature declared in `lxapp.json`, orthogonal to top-level `surfaces:` in `lingxia.yaml`.
 - Dropping the function an `lx.on*` call returns — it is the only handle that cancels the subscription, and the same route can be open more than once, so the leak multiplies per page instance.
+- Using `<video>`, `<audio>`, `video.srcObject`, or `new Audio()` — video is native-owned (`<lx-video>` / `lx.createVideoContext(id).setStreamSource(...)`); audio is not available yet (`lx.audio` is planned). `lingxia build` rejects the Web tags in the built bundle.
 
 ---
 
