@@ -1561,6 +1561,13 @@ impl LingXiaConfig {
         requested && matches!(platform, "macos" | "windows")
     }
 
+    pub fn media_capture_enabled(&self) -> bool {
+        self.capabilities
+            .as_ref()
+            .map(|capabilities| capabilities.media_capture_enabled())
+            .unwrap_or(false)
+    }
+
     /// Driving the in-app browser. The handlers live behind their own devtool
     /// feature, so a product that declared `browserUse` and did not get it
     /// would answer every browser command with "feature unavailable" — a
@@ -1608,6 +1615,15 @@ impl LingXiaConfig {
         }
         if self.computer_use_enabled(platform) {
             features.push("computer-use".to_string());
+        }
+        if self.media_capture_enabled() {
+            match platform {
+                "macos" | "windows" => features.push("desktop-realtime-capture".to_string()),
+                "android" => features.push("android-capture".to_string()),
+                "ios" => features.push("apple-capture".to_string()),
+                "harmony" => features.push("harmony-capture".to_string()),
+                _ => {}
+            }
         }
         if self.browser_use_enabled(platform) {
             features.push("browser-use".to_string());

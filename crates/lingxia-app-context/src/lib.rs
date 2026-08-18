@@ -256,6 +256,33 @@ pub struct CapabilitiesConfig {
     /// Extends it to the in-app browser. Requires `browser`.
     #[serde(default)]
     pub browser_use: bool,
+    /// Realtime visual / system-audio / microphone capture. Independent of
+    /// `computerUse`. Omit the key, or leave every track false, for no
+    /// provider, services, or entitlements.
+    #[serde(default, skip_serializing_if = "MediaCaptureConfig::is_empty")]
+    pub media_capture: MediaCaptureConfig,
+}
+
+/// Declared realtime-capture tracks. Each track is independently optional.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MediaCaptureConfig {
+    #[serde(default)]
+    pub visual: bool,
+    #[serde(default)]
+    pub system_audio: bool,
+    #[serde(default)]
+    pub microphone: bool,
+}
+
+impl MediaCaptureConfig {
+    pub fn is_enabled(&self) -> bool {
+        self.visual || self.system_audio || self.microphone
+    }
+
+    pub fn is_empty(&self) -> bool {
+        !self.is_enabled()
+    }
 }
 
 impl CapabilitiesConfig {
@@ -279,6 +306,10 @@ impl CapabilitiesConfig {
     /// window, and "open pages, don't touch my chrome" is a real choice.
     pub fn app_use_effective(&self) -> bool {
         self.app_use || self.computer_use
+    }
+
+    pub fn media_capture_enabled(&self) -> bool {
+        self.media_capture.is_enabled()
     }
 }
 
@@ -679,6 +710,13 @@ pub mod capability {
             && super::capabilities_config()
                 .map(|capabilities| capabilities.browser_use)
                 .unwrap_or(false)
+    }
+
+    /// Realtime capture tracks declared by the host.
+    pub fn media_capture() -> bool {
+        super::capabilities_config()
+            .map(|capabilities| capabilities.media_capture_enabled())
+            .unwrap_or(false)
     }
 
     /// The in-app browser's HTTP proxy. `capabilities.proxy` declares it and

@@ -46,6 +46,12 @@ computer-use = [
     "lingxia-control-commands/desktop",
     "desktop-automation",
 ]
+# Realtime capture pipeline. Does not construct a desktop or mobile provider;
+# hosts that declared capture enable the matching provider feature as well.
+realtime-capture = ["lingxia-media/capture"]
+android-capture = ["realtime-capture", "lingxia-platform/android-capture-provider"]
+apple-capture = ["realtime-capture", "lingxia-platform/apple-capture-provider"]
+harmony-capture = ["realtime-capture", "lingxia-platform/harmony-capture-provider"]
 webview-input = ["lingxia-webview/webview-input"]
 
 [dependencies]

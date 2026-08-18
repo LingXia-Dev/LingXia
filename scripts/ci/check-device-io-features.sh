@@ -183,3 +183,24 @@ cargo tree -e features -p lingxia-device-io --no-default-features \
   > "$scratch/realtime-provider-platform"
 assert_has "$scratch/realtime-provider-platform" 'lingxia-platform feature "capture-contract"' \
   "the desktop realtime adapter must take the capture contract"
+assert_lacks "$scratch/realtime-provider" "android-capture-provider" \
+  "enabling the desktop adapter must not enable a mobile provider"
+
+cargo tree -e features -p lingxia --no-default-features --features realtime-capture \
+  > "$scratch/lingxia-capture"
+assert_has "$scratch/lingxia-capture" "lingxia-media" \
+  "lingxia/realtime-capture must include the capture pipeline"
+assert_lacks "$scratch/lingxia-capture" "lingxia-device-io" \
+  "lingxia/realtime-capture must not construct the desktop provider"
+
+cargo tree -e features -p lingxia --no-default-features --features android-capture \
+  -i lingxia-platform > "$scratch/android-capture-platform"
+assert_has "$scratch/android-capture-platform" 'lingxia-platform feature "android-capture-provider"' \
+  "a mobile capture host must select the Android provider"
+assert_lacks "$scratch/android-capture-platform" 'lingxia-platform feature "apple-capture-provider"' \
+  "enabling the Android provider must not enable the Apple provider"
+
+cargo tree -e features -p lingxia-platform --features capture-contract \
+  > "$scratch/contract-only"
+assert_lacks "$scratch/contract-only" "android-capture-provider" \
+  "enabling the capture contract must not enable a concrete native provider"

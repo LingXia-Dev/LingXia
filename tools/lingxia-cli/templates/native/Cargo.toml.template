@@ -24,6 +24,18 @@ control = ["dep:lingxia-control-runtime", "dep:log", "lingxia/devtool", "lingxia
 # subcommand and the in-process automation driver); the runtime provider is the
 # host end that answers them.
 computer-use = ["control", "lingxia/computer-use", "lingxia-control-runtime/computer-use"]
+# Declared by capabilities.mediaCapture. Desktop injects the device-io
+# adapter; mobile injects the selected native provider. Enabling the
+# contract never constructs a provider by itself.
+realtime-capture = ["lingxia/realtime-capture"]
+desktop-realtime-capture = [
+    "realtime-capture",
+    "dep:lingxia-device-io",
+    "lingxia-device-io/realtime-capture-provider",
+]
+android-capture = ["realtime-capture", "lingxia/android-capture"]
+apple-capture = ["realtime-capture", "lingxia/apple-capture"]
+harmony-capture = ["realtime-capture", "lingxia/harmony-capture"]
 # Derived from `capabilities.browserUse`. Without it the browser handlers are
 # not linked and every browser command answers "feature unavailable".
 browser-use = ["control", "lingxia-control-runtime/browser"]
@@ -34,6 +46,7 @@ cloud = []  # activated by `--with-provider cloud`
 [dependencies]
 lingxia = { version = "{{LINGXIA_VERSION}}", default-features = false, features = {{LINGXIA_DEP_FEATURES}} }
 lingxia-control-runtime = { version = "{{LINGXIA_VERSION}}", optional = true, default-features = false }
+lingxia-device-io = { version = "{{LINGXIA_VERSION}}", optional = true, default-features = false }
 log = { version = "0.4", optional = true }
 
 [build-dependencies]

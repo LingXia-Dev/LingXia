@@ -332,3 +332,15 @@ pub trait ProviderCaptureSession: Send + Sync {
 pub trait ProviderEventSink: Send + Sync {
     fn emit(&self, event: ProviderEvent);
 }
+
+#[cfg(all(feature = "android-capture-provider", target_os = "android"))]
+pub mod android;
+
+#[cfg(all(
+    feature = "apple-capture-provider",
+    any(target_os = "ios", target_os = "macos")
+))]
+pub mod apple;
+
+#[cfg(all(feature = "harmony-capture-provider", target_env = "ohos"))]
+pub mod harmony;

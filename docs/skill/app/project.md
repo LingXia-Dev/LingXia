@@ -286,6 +286,7 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 - `appUse` — lets a command line or agent skill on the same machine drive this product's own windows (screenshot, window list, mouse, keyboard), and turns the product's executable into its own command line. macOS/Windows. The local socket this needs is derived, not declared — which IPC carries it is plumbing. Declaring it ships the ability, not the decision: the endpoint stays closed until the user turns it on, the same way `autostart` works.
 - `computerUse` — extends that to the machine, and implies `appUse` because it already contains it (an agent that can drive any window can drive this product's): screenshots of any window, synthetic input, the accessibility tree. Named for what the user grants, because they will be asked — macOS prompts for Accessibility and Screen Recording, and the entry in System Settings is this product. Commands run inside the app rather than in the calling process, so that grant stays attached to the product no matter which terminal invoked it.
 - `browserUse` — extends it to the in-app browser. Requires `browser`.
+- `mediaCapture` — realtime visual / system-audio / microphone capture for a product session. Independent of `computerUse`. Declare only the tracks this product needs; a host that omits the key constructs no provider and receives no capture-specific services, permissions, or entitlements. Snapshot (`lxdev desktop screenshot`, `computerUse` screenshots) stays visual-only and does not enable this.
 
 ---
 
