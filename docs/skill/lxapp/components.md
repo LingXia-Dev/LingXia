@@ -120,18 +120,16 @@ Native picker — modal column/date/time selection the web platform can't render
 
 ## `LxVideo`
 
-Video is native-owned. A page `<video>` opens a second decode-and-surface stack
-that does not share z-order, clip, fullscreen, or lifecycle with `<lx-video>`.
-Use `<lx-video>` (React/Vue: `LxVideo`). Live or pushed streams stay native-side
-via `lx.createVideoContext(id).setStreamSource(...)` — they never cross into the
-WebView. `<video>`, `video.srcObject = stream`, `<audio>`, and `new Audio()`
-are outside the contract; `lingxia build` rejects them in the **built bundle**
-(including minified `jsx("video")` / Vite runtime chunks, and a tag inside a
-third-party component). Audio playback is not available yet; `lx.audio` is
-planned as a Logic API, not an `<lx-audio>` component.
+Native video player with quality/rate switching, fullscreen, and live mode.
 
-Native player with quality/rate switching, fullscreen, and live mode. The
-full attribute list (`src`, `poster`, `objectFit`, `controls`, `qualities`,
+Video is native-owned: a page `<video>` opens a second decode-and-surface stack
+that shares no z-order, clip, fullscreen, or lifecycle with this one. `<video>`,
+`<audio>`, and `new Audio()` are rejected by `lingxia build`; `video.srcObject`
+is outside the contract as well. Live or pushed streams stay native-side through
+`lx.createVideoContext(id).setStreamSource(...)`. Audio playback is not
+available yet.
+
+The full attribute list (`src`, `poster`, `objectFit`, `controls`, `qualities`,
 `playbackRates`, …) is the exported `LxVideoAttributes` from `@lingxia/elements`;
 remote `src` must be under `security.network.trustedDomains`. Two pieces of
 behavior are doc-only: event reshaping and imperative control.
