@@ -268,6 +268,22 @@ Page({
 });
 ```
 
+TypeScript types the page config with an index signature, so a method you add
+yourself is `unknown` on `this` — calling `this._calculateTotal(...)` compiles
+in JavaScript but not under `strict` TypeScript. Give shared behavior a
+module-level function that takes the instance instead:
+
+```ts
+function calculateTotal(items: Item[]): number { … }
+
+Page<PageData>({
+  data: { total: 0 },
+  onCheckout(params) {
+    this.setData({ total: calculateTotal(params?.items ?? []) });
+  },
+});
+```
+
 ---
 
 ## View Layer
