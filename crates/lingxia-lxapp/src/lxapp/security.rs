@@ -60,12 +60,6 @@ impl NetworkSecurity {
             self.trusted_domains.insert(domain);
         }
     }
-
-    pub(crate) fn domains_snapshot(&self) -> Vec<String> {
-        let mut domains: Vec<String> = self.trusted_domains.iter().cloned().collect();
-        domains.sort();
-        domains
-    }
 }
 
 /// Returns whether an address is suitable for untrusted lxapp network access.
