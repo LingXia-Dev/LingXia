@@ -542,20 +542,22 @@ function renderAttachments(item: CaseRecord): string {
   if (item.attachments.length === 0) return "";
   const blocks = item.attachments.map((attachment) => {
     const inlined = inlineFromAttachments(attachment.name, item);
+    // The path is relative to the report, so the link opens the real file
+    // whenever the report is read from the directory the CLI wrote it to.
+    const link = `<a class="path" href="${escapeHtml(attachment.path)}">${escapeHtml(attachment.path)}</a>`;
     if (inlined?.dataUrl) {
       return `<figure class="shot">
         <img alt="${escapeHtml(attachment.name)}" src="${inlined.dataUrl}" loading="lazy">
-        <figcaption>${escapeHtml(attachment.name)} &middot; ${escapeHtml(attachment.path)}</figcaption>
+        <figcaption>${escapeHtml(attachment.name)} &middot; ${link}</figcaption>
       </figure>`;
     }
     if (inlined?.text !== undefined) {
-      const open = attachment.name === "logs.txt" ? "" : "";
-      return `<details class="artifact"${open}>
-        <summary>${escapeHtml(attachment.name)} <span class="path">${escapeHtml(attachment.path)}</span></summary>
+      return `<details class="artifact">
+        <summary>${escapeHtml(attachment.name)} ${link}</summary>
         <pre>${escapeHtml(inlined.text)}</pre>
       </details>`;
     }
-    return `<div class="artifact-path"><b>${escapeHtml(attachment.name)}</b> ${escapeHtml(attachment.path)}</div>`;
+    return `<div class="artifact-path"><b>${escapeHtml(attachment.name)}</b> ${link}</div>`;
   });
   return `<div class="artifacts"><h4>artifacts</h4>${blocks.join("")}</div>`;
 }
@@ -889,7 +891,7 @@ table.assertions td.pass { color:var(--pass); } table.assertions td.fail { color
 .artifacts h4 { margin:0 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
 .artifact { border:1px solid var(--line); border-radius:8px; margin:0 0 6px; background:var(--bg); }
 .artifact > summary { cursor:pointer; padding:7px 10px; font-family:var(--mono); font-size:12px; }
-.artifact .path { color:var(--muted); font-size:11px; }
+.artifact .path, .shot .path { color:var(--muted); font-size:11px; }
 .artifact pre { padding:0 10px 10px; max-height:340px; overflow:auto; font-size:12px; }
 .artifact-path { color:var(--muted); font-size:11px; font-family:var(--mono); word-break:break-all; margin:0 0 4px; }
 .artifact-path b { font-family:inherit; }
