@@ -38,12 +38,15 @@ pub(super) fn resolve_browser_shell_webui_dir(
     {
         let version = webui
             .and_then(|webui| webui.version.as_deref())
-            .unwrap_or(env!("LINGXIA_BROWSER_SHELL_WEBUI_VERSION"));
+            .map(str::trim)
+            .filter(|version| !version.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(crate::versions::npm_compat_range);
         return Ok(BrowserShellWebUiSource {
             bundle_dir: resolve_lxapp_package(
                 project_root,
                 package,
-                version,
+                &version,
                 "browser-shell-webui",
                 "browser.webui",
             )?,
@@ -51,12 +54,13 @@ pub(super) fn resolve_browser_shell_webui_dir(
         });
     }
 
-    // Fall back to the SDK's default npm package, pinned to the SDK package set.
+    // Latest published package on this CLI's major.minor line.
+    let version = crate::versions::npm_compat_range();
     Ok(BrowserShellWebUiSource {
         bundle_dir: resolve_lxapp_package(
             project_root,
             DEFAULT_PACKAGE,
-            env!("LINGXIA_BROWSER_SHELL_WEBUI_VERSION"),
+            &version,
             "browser-shell-webui",
             "browser.webui",
         )
@@ -64,7 +68,7 @@ pub(super) fn resolve_browser_shell_webui_dir(
             format!(
                 "Failed to resolve default browser webui package {}@{}. Set `browser.webui.path` to point at a local checkout, or `browser.webui.package`/`version` to pin a fork.",
                 DEFAULT_PACKAGE,
-                env!("LINGXIA_BROWSER_SHELL_WEBUI_VERSION")
+                version
             )
         })?,
         build: false,

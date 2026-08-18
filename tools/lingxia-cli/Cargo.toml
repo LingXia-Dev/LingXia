@@ -15,14 +15,14 @@ edition.workspace = true
 build = "build.rs"
 
 [package.metadata.lingxia]
+# Only what this binary embeds or downloads by exact name. Published
+# @lingxia/* app packages resolve to the rust-crate-version major.minor
+# line at use time — do not add per-package pins here.
 bridge-version = "0.11.2"
 polyfills-version = "0.11.2"
-types-version = "0.11.2"
 rong-version = "0.5.2"
 rust-crate-version = "0.11.2"
 sdk-version = "0.11.2"
-browser-shell-webui-version = "0.11.2"
-resource-bundle-version = "0.11.2"
 
 [[bin]]
 name = "lingxia"

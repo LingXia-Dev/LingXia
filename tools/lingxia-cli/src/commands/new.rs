@@ -71,15 +71,23 @@ pub fn execute(
 
     let versions = current_versions();
     let scaffold_versions = runtime::current_scaffold_versions();
+    let npm_range = crate::versions::npm_compat_range();
     println!(
-        "  {} SDK: {}, Rong: {}, LingXia crate: {}, Bridge: {}, Types: {}",
+        "  {} Line {}  (SDK {}, Rong {})  npm/crates {}",
         "✓".green(),
+        versions.lingxia_crate.cyan(),
         versions.sdk.cyan(),
         versions.rong.cyan(),
-        versions.lingxia_crate.cyan(),
-        scaffold_versions.bridge.cyan(),
-        scaffold_versions.types.cyan(),
+        npm_range.cyan(),
     );
+    if let Some((current, latest)) = crate::update::newer_released_cli() {
+        println!(
+            "  {} CLI {} is behind {}. Reinstall the CLI so `lingxia new` scaffolds the current line.",
+            "!".yellow(),
+            current.yellow(),
+            latest.green(),
+        );
+    }
     println!();
 
     let project_type = if template.is_some() && project_type.is_none() {
@@ -157,7 +165,6 @@ pub fn execute(
             AppServiceMode::Enabled,
             &versions,
             &scaffold_versions.bridge,
-            &scaffold_versions.types,
             user_template.as_deref(),
         )?;
         if let Some(provider) = provider.as_ref() {
@@ -258,7 +265,6 @@ pub fn execute(
             app_service,
             &versions,
             &scaffold_versions.bridge,
-            &scaffold_versions.types,
         )?)
     } else {
         None

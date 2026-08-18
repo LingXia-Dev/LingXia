@@ -10,7 +10,7 @@
     "@lingxia/html": "{{LINGXIA_FRAMEWORK_RANGE}}"
   },
   "devDependencies": {
-    "@lingxia/types": "^{{LINGXIA_TYPES_VERSION}}",
+    "@lingxia/types": "{{LINGXIA_FRAMEWORK_RANGE}}",
     "typescript": "^5.9.3",
     "vite": "^8.0.0"
   }

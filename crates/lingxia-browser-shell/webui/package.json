@@ -1,14 +1,24 @@
 {
   "name": "@lingxia/browser-shell-webui",
-  "version": "0.5.1",
+  "version": "0.11.2",
   "private": false,
   "description": "Prebuilt LingXia browser shell webui lxapp bundle",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LingXia-Dev/LingXia.git",
+    "directory": "crates/lingxia-browser-shell/webui"
+  },
   "files": [
     "dist",
     "lxapp.json"
   ],
+  "scripts": {
+    "build": "cargo run -p lingxia-cli -- build --release",
+    "prepublishOnly": "npm run build"
+  },
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "license": "MIT"
 }

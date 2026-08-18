@@ -13,12 +13,9 @@ const WINDOWS_DESIGN_ICON_PNG_SIZE: u32 = 64;
 struct ComponentVersions {
     bridge: String,
     polyfills: String,
-    types: String,
     rong: String,
     rust_crate: String,
     sdk: String,
-    browser_shell_webui: String,
-    resource_bundle: String,
 }
 
 fn main() {
@@ -230,12 +227,9 @@ fn read_component_versions(manifest: &Path) -> Result<ComponentVersions, String>
     Ok(ComponentVersions {
         bridge: get("bridge-version")?,
         polyfills: get("polyfills-version")?,
-        types: get("types-version")?,
         rong: get("rong-version")?,
         rust_crate: get("rust-crate-version")?,
         sdk: get("sdk-version")?,
-        browser_shell_webui: get("browser-shell-webui-version")?,
-        resource_bundle: get("resource-bundle-version")?,
     })
 }
 
@@ -245,21 +239,12 @@ fn emit_component_version_env(versions: &ComponentVersions) {
         "cargo:rustc-env=LINGXIA_POLYFILLS_VERSION={}",
         versions.polyfills
     );
-    println!("cargo:rustc-env=LINGXIA_TYPES_VERSION={}", versions.types);
     println!("cargo:rustc-env=LINGXIA_RONG_VERSION={}", versions.rong);
     println!(
         "cargo:rustc-env=LINGXIA_RUST_CRATE_VERSION={}",
         versions.rust_crate
     );
     println!("cargo:rustc-env=LINGXIA_SDK_VERSION={}", versions.sdk);
-    println!(
-        "cargo:rustc-env=LINGXIA_BROWSER_SHELL_WEBUI_VERSION={}",
-        versions.browser_shell_webui
-    );
-    println!(
-        "cargo:rustc-env=LINGXIA_RESOURCE_BUNDLE_VERSION={}",
-        versions.resource_bundle
-    );
 }
 
 fn emit_build_metadata_env(repo_root: &Path) {

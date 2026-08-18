@@ -8,7 +8,7 @@
   "license": "MIT",
   "dependencies": {
     "{{FRAMEWORK_PKG}}": "{{LINGXIA_FRAMEWORK_RANGE}}",
-    "@lingxia/types": "^{{LINGXIA_TYPES_VERSION}}",
+    "@lingxia/types": "{{LINGXIA_FRAMEWORK_RANGE}}",
     {{FRAMEWORK_RUNTIME_DEPS}}
   },
   "devDependencies": {

@@ -102,6 +102,13 @@ capabilities:
   # browserUse: true   # requires browser: true
 
 {{RESOURCES_SECTION}}
+# When capabilities.terminal is true, ship the published settings lxapp.
+# Merge this entry into an existing resources.bundles list if you already have one.
+# resources:
+#   bundles:
+#     - type: lxapp
+#       appId: app.lingxia.terminal-settings
+#       package: '@lingxia/terminal-settings'
 
 # Optional launch screen. Paths are relative to the host project root and
 # image/mark must be PNG files. `background` is required when splash is set.
@@ -117,11 +124,11 @@ capabilities:
 
 # Optional: override the SDK's default in-app browser webui (used only when
 # capabilities.browser is true). Omit to use the npm-published default
-# `@lingxia/browser-shell-webui`.
+# `@lingxia/browser-shell-webui` on this CLI's major.minor line.
 # browser:
 #   webui:
 #     package: '@lingxia/browser-shell-webui'
-#     version: '0.5.1'
+#     # version: omitted — CLI resolves the latest compatible patch
 
 {{SHELL_SECTION}}
 {{APP_LINKS_SECTION}}
