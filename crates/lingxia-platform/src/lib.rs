@@ -31,6 +31,10 @@ pub struct ScreenInfo {
 pub(crate) mod rt;
 pub mod traits;
 
+/// Independent realtime capture contract. Not an `AppRuntime` supertrait.
+#[cfg(feature = "capture-contract")]
+pub mod capture;
+
 #[cfg(target_os = "android")]
 mod android;
 
