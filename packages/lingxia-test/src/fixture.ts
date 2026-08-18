@@ -37,6 +37,8 @@ import type {
 import {
   DEFAULT_ACTION_TIMEOUT_MS,
   DEFAULT_POLL_INTERVAL_MS,
+  DEFAULT_SPEC_TIMEOUT_MS,
+  MAX_EVAL_BUDGET_MS,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
 import type { LxAppDriver, PageDriver } from "@lingxia/types/automation";
@@ -69,6 +71,7 @@ export class LiveFixture implements Fixture {
     private readonly host: ResolvedHost,
     args: Record<string, string>,
     private readonly automation: { lxapp: { (): LxAppDriver; (id: string): LxAppDriver } },
+    private readonly specBudgetMs: number = DEFAULT_SPEC_TIMEOUT_MS,
   ) {
     this.rawApp = rawApp;
     this.args = args;
@@ -300,8 +303,20 @@ export class LiveFixture implements Fixture {
       info: () => this.guard(() => driver.info()),
       pages: () => this.guard(() => driver.pages()),
       surfaceLayout: () => this.guard(() => driver.surfaceLayout()),
-      eval: (options) => this.guard(() => driver.eval(options)),
+      eval: (options) => this.guard(() => driver.eval(this.withEvalBudget(options))),
     } as TestApp;
+  }
+
+  /**
+   * The driver's own eval default is a flat few seconds, so a call that runs
+   * long under load fails a spec that still had most of its budget left. An
+   * eval inherits the spec's budget unless the spec pins its own.
+   */
+  private withEvalBudget<T extends { timeoutMs?: number }>(options: T): T {
+    if (options && typeof options === "object" && options.timeoutMs === undefined) {
+      return { ...options, timeoutMs: Math.min(this.specBudgetMs, MAX_EVAL_BUDGET_MS) };
+    }
+    return options;
   }
 
   private wrapPage(page: PageDriver): TestPage {
@@ -309,22 +324,24 @@ export class LiveFixture implements Fixture {
       const frame = callerLocation();
       return { source: frame.file, line: frame.line, column: frame.column };
     };
-    const locators = {
+    // Every override lives in the proxy's `get` trap. Assigning onto the proxy
+    // would write straight through to the real driver — `page.eval` would then
+    // call itself forever.
+    const overrides: Record<string, unknown> = {
       testId: (id: string) =>
         new PageLocator(page as unknown as PageLike, (fn) => this.guard(fn), testIdSelector(id), location()),
       css: (selector: string) =>
         new PageLocator(page as unknown as PageLike, (fn) => this.guard(fn), selector, location()),
+      eval: (options: { script: string; timeoutMs?: number }) =>
+        this.guard(() => page.eval(this.withEvalBudget(options))),
     };
-    const wrapped = guardObject(page, (fn) => this.guard(fn), ["testId", "css"]) as TestPage;
-    wrapped.testId = locators.testId;
-    wrapped.css = locators.css;
-    return new Proxy(wrapped, {
+    const guarded = guardObject(page, (fn) => this.guard(fn), Object.keys(overrides));
+    return new Proxy(guarded, {
       get(target, prop, receiver) {
-        if (prop === "testId") return locators.testId;
-        if (prop === "css") return locators.css;
+        if (typeof prop === "string" && prop in overrides) return overrides[prop];
         return Reflect.get(target, prop, receiver);
       },
-    }) as TestPage;
+    }) as unknown as TestPage;
   }
 
   private locatorMatchers(locator: Locator, inverted: boolean): LocatorMatchers {

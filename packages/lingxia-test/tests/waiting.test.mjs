@@ -138,3 +138,56 @@ test("locator re-resolves across mutations", async () => {
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.passed, 1, decodeAttachment(attachments, "report.json"));
 });
+
+test("an eval inherits the spec budget unless the caller pins its own", async () => {
+  const world = createWorld();
+  installFakeHost(world);
+  const seen = [];
+  const driver = globalThis.lx.automation().lxapp();
+  const inner = driver.eval.bind(driver);
+  driver.eval = (options) => {
+    seen.push(options.timeoutMs);
+    return inner(options);
+  };
+
+  spec("inherits", { timeout: 12_000 }, async (t) => {
+    await t.app.eval({ script: "1" });
+  });
+  spec("caps at the eval ceiling", { timeout: 600_000 }, async (t) => {
+    await t.app.eval({ script: "1" });
+  });
+  spec("honours an explicit budget", async (t) => {
+    await t.app.eval({ script: "1", timeoutMs: 250 });
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0);
+  assert.deepEqual(seen, [12_000, 30_000, 250]);
+});
+
+test("wrapping the page driver never writes back onto the driver", async () => {
+  const world = createWorld();
+  installFakeHost(world);
+  const driver = globalThis.lx.automation().lxapp();
+  const original = { eval: driver.page.eval, testId: driver.page.testId, css: driver.page.css };
+  const budgets = [];
+  driver.page.eval = (options) => {
+    budgets.push(options.timeoutMs);
+    return Promise.resolve("ok");
+  };
+  const wrappedOriginal = driver.page.eval;
+
+  spec("uses the page driver", { timeout: 9_000 }, async (t) => {
+    // Recursion here would blow the stack instead of failing an assertion.
+    const value = await t.app.page.eval({ script: "1" });
+    assert.equal(value, "ok");
+    assert.ok(typeof t.app.page.testId("x").click === "function");
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, JSON.stringify(protocol.cases[0]?.error));
+  assert.deepEqual(budgets, [9_000]);
+  assert.equal(driver.page.eval, wrappedOriginal, "the driver's own eval was replaced");
+  assert.equal(driver.page.testId, original.testId);
+  assert.equal(driver.page.css, original.css);
+});

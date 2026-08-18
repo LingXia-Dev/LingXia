@@ -242,6 +242,7 @@ async function run(): Promise<ProtocolReport> {
       host,
       host.args,
       automationRoot(),
+      timeout,
     );
 
     let status: SpecStatus = "passed";
