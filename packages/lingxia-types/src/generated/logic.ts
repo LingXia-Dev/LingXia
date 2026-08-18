@@ -780,7 +780,7 @@ export type LxAppEnvVersion = 'release' | 'preview' | 'develop';
 export type LxAppReleaseType = 'release' | 'preview' | 'developer';
 
 /** Boolean capability names accepted by `lx.supports`. */
-export type LxCapabilityFlag = 'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse';
+export type LxCapabilityFlag = 'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
 
 /**
  * One capability question per call. The catalog is closed, so
