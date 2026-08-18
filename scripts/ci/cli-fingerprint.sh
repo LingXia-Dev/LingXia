@@ -10,17 +10,25 @@ set -euo pipefail
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd "$script_dir/../.." && pwd)
 
-# First-party sources compiled into the two bins, plus the lockfile so a
-# third-party bump that relinks them is visible.
+# First-party sources compiled into the two bins, plus the lockfiles so a
+# third-party bump that relinks them — or rebuilds the embedded JS — is visible.
+# Kept in step with the workspace closure of the two bin crates by
+# test-cli-fingerprint.sh, which fails when a linked crate is missing here.
 CLI_FINGERPRINT_PATHS=(
   tools/lingxia-cli
   tools/lingxia-devtools-cli
+  crates/lingxia-app-context
+  crates/lingxia-control-commands
+  crates/lingxia-control-protocol
+  crates/lingxia-device-io
+  crates/lingxia-log
+  crates/lingxia-provider
+  crates/lingxia-settings
   packages/lingxia-bridge
   packages/lingxia-polyfills
-  crates/lingxia-control-protocol
-  crates/lingxia-control-commands
-  crates/lingxia-app-context
   Cargo.lock
+  packages/package.json
+  packages/package-lock.json
 )
 
 if [[ "${1:-}" == "--paths" ]]; then

@@ -27,4 +27,36 @@ again=$(bash "$script_dir/cli-fingerprint.sh" HEAD)
 unchanged=$(bash "$script_dir/cli-inputs-changed.sh" HEAD HEAD)
 [[ "$unchanged" == "false" ]] || fail "HEAD vs HEAD must be unchanged"
 
+# A workspace crate that links into either binary but is not fingerprinted would
+# let a change to it reuse a stale CLI. cargo answers this with features and
+# target gates applied; without cargo the case is skipped (a fingerprint has to
+# stay computable for any git ref, so the list itself stays hand-written).
+if command -v cargo >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
+  linked=$(cargo metadata --format-version 1 | python3 -c '
+import json, os, sys
+
+metadata = json.load(sys.stdin)
+root = metadata["workspace_root"]
+packages = {package["id"]: package for package in metadata["packages"]}
+by_name = {package["name"]: package["id"] for package in metadata["packages"]}
+nodes = {node["id"]: node for node in metadata["resolve"]["nodes"]}
+
+seen = set()
+queue = [by_name["lingxia-cli"], by_name["lingxia-devtools-cli"]]
+while queue:
+    package_id = queue.pop()
+    if package_id in seen:
+        continue
+    seen.add(package_id)
+    queue.extend(dependency["pkg"] for dependency in nodes[package_id]["deps"])
+
+for package_id in seen:
+    directory = os.path.dirname(packages[package_id]["manifest_path"])
+    if directory.startswith(root):
+        print(os.path.relpath(directory, root))
+' | sort)
+  missing=$(comm -23 <(printf '%s\n' "$linked") <(bash "$script_dir/cli-fingerprint.sh" --paths | sort))
+  [[ -z "$missing" ]] || fail "linked crates absent from the fingerprint: $(tr '\n' ' ' <<<"$missing")"
+fi
+
 echo "cli fingerprint cases passed"
