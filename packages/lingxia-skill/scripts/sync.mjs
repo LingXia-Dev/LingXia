@@ -28,6 +28,31 @@ async function exists(p) {
   }
 }
 
+/**
+ * The description is the only input to the skill-loading decision, so it has to
+ * name what identifies a LingXia project — its manifest. Excluding other
+ * runtimes one by one is a list nobody finishes or maintains, and it is only
+ * ever needed when a shape like `Page({})` is treated as evidence.
+ */
+async function checkTriggerDiscipline(skillPath) {
+  const description = (await readFile(skillPath, "utf8")).split("---")[1] ?? "";
+  const problems = [];
+  if (!description.includes("lxapp.json")) {
+    problems.push("description must trigger on `lxapp.json`");
+  }
+  const named = ["tarojs", "uni-app", "dcloudio", "remax", "wx."].filter((name) =>
+    description.toLowerCase().includes(name)
+  );
+  if (named.length > 0) {
+    problems.push(
+      `description names other frameworks (${named.join(", ")}); match on the manifest instead`
+    );
+  }
+  if (problems.length > 0) {
+    throw new Error(`[sync] SKILL.md trigger discipline:\n  - ${problems.join("\n  - ")}`);
+  }
+}
+
 async function main() {
   if (!(await exists(source))) {
     // Running outside the monorepo (e.g. inside an installed @lingxia/skill
@@ -37,6 +62,8 @@ async function main() {
     );
     return;
   }
+
+  await checkTriggerDiscipline(join(source, "SKILL.md"));
 
   if (await exists(target)) {
     await rm(target, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 ---
 name: lingxia
-description: Build apps on the LingXia cross-platform framework — standalone lxapps (page-based mini-apps with a View+Logic split), native host apps (Android/iOS/macOS/Harmony/Windows shells embedding an lxapp), and Rust native extensions. TRIGGER when the project has `lxapp.json` or `lingxia.yaml`, on the `lingxia` or `lxdev` CLIs, `#[lingxia::native]`, `HostAddon`, `useLxPage`, or when the user names LingXia or an lxapp. A bare `Page({})` is NOT a trigger: several mini-program runtimes share that shape, and the manifest file is what identifies this one — match on the file, never on the code shape, so no list of other frameworks has to be maintained here. **Always read §"Step 0" before generating any file.**
+description: Build apps on the LingXia cross-platform framework — standalone lxapps (page-based mini-apps with a View+Logic split), native host apps (Android/iOS/macOS/Harmony/Windows shells embedding an lxapp), and Rust native extensions. TRIGGER on `lxapp.json`, `lingxia.yaml`, the `lingxia` / `lxdev` CLIs, `#[lingxia::native]`, `HostAddon`, `useLxPage`, or the user naming LingXia. Not on `Page({})` alone — other runtimes share it. **Always read §"Step 0" before generating any file.**
 license: MIT
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash(lingxia:*), Bash(lxdev:*), Bash(npm:*), Bash(npx:*), Bash(test:*), Bash(ls:*), Bash(cat:*), Bash(cargo:*)
 ---
@@ -24,7 +24,13 @@ test -f lingxia.yaml   && echo "host-app"
 test -f lxapp.json     && echo "lxapp"
 ```
 
-If none match, you're about to scaffold a new project — continue to 0b. If one matches, jump to the fast-path for that shape.
+If one matches, jump to the fast-path for that shape.
+
+If none matches you are in an empty directory or in **someone else's project**;
+the manifest above is what tells those apart. Scaffold only into an empty
+directory, or one the user asked you to initialise — otherwise say so and stop.
+Deleting `lxapp.json` afterwards does not undo it: pages, config, and
+dependencies are written too.
 
 ### 0b. Pick the shape (ask the user or infer)
 
