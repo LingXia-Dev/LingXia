@@ -61,6 +61,9 @@ export class LiveFixture implements Fixture {
   abortError: Error | null = null;
   private actionSilence = 0;
   private actionCount = 0;
+  /** Actions still in flight, so an abort can mark them instead of leaving
+   *  them at their optimistic default. */
+  private readonly openActions = new Set<StepRecord>();
   cleanupUntil = 0;
   cleanupActive = false;
   lastStepPath: string | undefined;
@@ -255,6 +258,11 @@ export class LiveFixture implements Fixture {
     this.aborted = true;
     this.abortError = reason;
     this.failurePhase = "timeout";
+    for (const record of this.openActions) {
+      record.status = "timeout";
+      record.error = toReportError(reason, record.path);
+    }
+    this.openActions.clear();
   }
 
   allowCleanup(budgetMs = WEDGED_DEFER_BUDGET_MS): void {
@@ -272,7 +280,17 @@ export class LiveFixture implements Fixture {
    * would otherwise bury the report in a hundred identical rows.
    */
   async act<T>(name: string, detail: string, op: () => T | Promise<T>): Promise<T> {
-    if (this.actionSilence > 0 || this.actionCount >= MAX_ACTIONS) return this.guard(op);
+    if (this.actionSilence > 0) return this.guard(op);
+    // Past the cap, keep recording failures: the action that finally breaks is
+    // the one row worth having, and dropping it leaves nothing pointing at it.
+    if (this.actionCount >= MAX_ACTIONS) {
+      try {
+        return await this.guard(op);
+      } catch (error) {
+        this.recordFailedAction(name, detail, error, 0);
+        throw error;
+      }
+    }
     const parent = this.stepStack[this.stepStack.length - 1];
     const siblings = parent ? parent.steps : this.steps;
     // A hand-rolled poll calls the same driver over and over. Collapse the run
@@ -322,16 +340,44 @@ export class LiveFixture implements Fixture {
     };
     siblings.push(record);
     const started = Date.now();
+    // A spec timeout abandons the in-flight call: `run()` stops awaiting the
+    // body, so a record left at its optimistic default would serialise as an
+    // instant success — the hung call rendered as the fastest one in the trace.
+    this.openActions.add(record);
     try {
       const result = await this.guard(op);
       record.duration_ms = Date.now() - started;
+      this.openActions.delete(record);
       return result;
     } catch (error) {
       record.duration_ms = Date.now() - started;
       record.status = error instanceof TimeoutError ? "timeout" : "failed";
       record.error = toReportError(error, record.path);
+      this.openActions.delete(record);
       throw error;
     }
+  }
+
+  private recordFailedAction(
+    name: string,
+    detail: string,
+    error: unknown,
+    duration: number,
+  ): void {
+    const parent = this.stepStack[this.stepStack.length - 1];
+    const path = [...this.stepStack.map((step) => step.name), name].join(" > ");
+    (parent ? parent.steps : this.steps).push({
+      name,
+      detail,
+      kind: "action",
+      path,
+      status: error instanceof TimeoutError ? "timeout" : "failed",
+      duration_ms: duration,
+      steps: [],
+      attachments: [],
+      assertions: [],
+      error: toReportError(error, path),
+    });
   }
 
   silenceActions(): void {

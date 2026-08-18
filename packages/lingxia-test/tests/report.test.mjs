@@ -365,3 +365,48 @@ test("a hand-rolled poll collapses into one row with a count", async () => {
   const html = decodeAttachment(attachments, "report.html");
   assert.match(html, /nav\.current<\/code>.*?&times;6/s);
 });
+
+test("an app name cannot inject markup into the report", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world, { args: { platform: "<b>win</b>" } });
+  globalThis.lx.automation().lxapp().info = async () => ({
+    appid: "evil",
+    app_name: 'Cats & Dogs <img src=x onerror=alert(1)>',
+    version: "1.0.0",
+    release_type: "developer",
+    pages_count: 1,
+  });
+
+  spec("passes", async () => {
+    expect(1).toBe(1);
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const html = decodeAttachment(attachments, "report.html");
+
+  assert.doesNotMatch(html, /<img src=x/);
+  assert.doesNotMatch(html, /<b>win<\/b>/);
+  assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+});
+
+test("a spec timeout marks the action that never returned", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+  const driver = globalThis.lx.automation().lxapp();
+  driver.eval = () => new Promise(() => {});
+
+  spec("hangs in a driver call", { id: "HANG-1", timeout: 120 }, async (t) => {
+    await t.app.eval({ script: "return 1;" });
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.cases[0].status, "failed");
+
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  const action = report.cases[0].steps[0];
+  assert.equal(action.name, "app.eval");
+  // A hung call rendered as an instant success is the one thing the trace
+  // exists to prevent.
+  assert.equal(action.status, "timeout");
+  assert.ok(action.error, "the abandoned action needs its error");
+});

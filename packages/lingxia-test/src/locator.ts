@@ -30,7 +30,7 @@ export interface PageLike {
 
 export type Guard = <T>(op: () => T | Promise<T>) => Promise<T>;
 /** Records one locator action in the report's trace. */
-export type Record = <T>(verb: string, detail: string, op: () => Promise<T>) => Promise<T>;
+export type ActionRecorder = <T>(verb: string, detail: string, op: () => Promise<T>) => Promise<T>;
 
 export interface LocatorResolve {
   count: number;
@@ -53,7 +53,7 @@ export class PageLocator implements Locator {
   constructor(
     private readonly page: PageLike,
     private readonly guard: Guard,
-    private readonly record: Record,
+    private readonly record: ActionRecorder,
     selector: string,
     private readonly location: SourceLocation,
   ) {

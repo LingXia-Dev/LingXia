@@ -72,7 +72,10 @@ export function renderHtml(report: JsonReport): string {
   const target = meta.platform || args.platform || "";
   const renderer = meta.framework || args.framework || "";
   // The subject line answers "what was tested, and where" before anything else.
-  const subjectLine = [appName || "lxapp", target, renderer].filter(Boolean).join(" &middot; ");
+  const subjectLine = [appName || "lxapp", target, renderer]
+    .filter(Boolean)
+    .map(escapeHtml)
+    .join(" &middot; ");
   const documentTitle =
     `${appName || "lxapp"}${target ? ` on ${target}` : ""} test report`;
   const chips = [
