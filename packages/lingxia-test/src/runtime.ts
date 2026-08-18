@@ -15,10 +15,11 @@ import type {
   SpecStatus,
 } from "./types.js";
 import {
-  DEFAULT_DEFER_BUDGET_MS,
   DEFAULT_SPEC_TIMEOUT_MS,
+  MAX_DEFER_BUDGET_MS,
   PACKAGE_NAME,
   VERSION,
+  WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
 import type { LxAppDriver } from "@lingxia/types/automation";
 
@@ -283,7 +284,7 @@ async function run(): Promise<ProtocolReport> {
         await Promise.race([
           bodyResult,
           new Promise<void>((resolve) => {
-            setTimeout(resolve, DEFAULT_DEFER_BUDGET_MS);
+            setTimeout(resolve, WEDGED_DEFER_BUDGET_MS);
           }),
         ]);
       } else if (!winner.ok) {
@@ -317,7 +318,17 @@ async function run(): Promise<ProtocolReport> {
 
     phase = "defer";
     const deferErrors: unknown[] = [];
-    if (fixture.defers.length > 0) fixture.allowCleanup();
+    // A wedged app must not stall the run, but a healthy one deserves the time
+    // its cleanup actually needs — a relaunch plus a page wait routinely
+    // outruns the post-timeout budget, and a cut-short cleanup leaks the
+    // fixture's state into every spec that follows.
+    if (fixture.defers.length > 0) {
+      fixture.allowCleanup(
+        status === "timeout"
+          ? WEDGED_DEFER_BUDGET_MS
+          : Math.min(item.timeout, MAX_DEFER_BUDGET_MS),
+      );
+    }
     for (let index = fixture.defers.length - 1; index >= 0; index -= 1) {
       try {
         await fixture.defers[index]!();

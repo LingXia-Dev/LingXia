@@ -36,8 +36,8 @@ import type {
 } from "./types.js";
 import {
   DEFAULT_ACTION_TIMEOUT_MS,
-  DEFAULT_DEFER_BUDGET_MS,
   DEFAULT_POLL_INTERVAL_MS,
+  WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
 import type { LxAppDriver, PageDriver } from "@lingxia/types/automation";
 
@@ -247,7 +247,7 @@ export class LiveFixture implements Fixture {
     this.failurePhase = "timeout";
   }
 
-  allowCleanup(budgetMs = DEFAULT_DEFER_BUDGET_MS): void {
+  allowCleanup(budgetMs = WEDGED_DEFER_BUDGET_MS): void {
     this.cleanupUntil = Date.now() + budgetMs;
     this.cleanupActive = true;
   }
@@ -328,23 +328,20 @@ export class LiveFixture implements Fixture {
   }
 
   private locatorMatchers(locator: Locator, inverted: boolean): LocatorMatchers {
-    const self: LocatorMatchers = {
-      get not() {
-        return self && undefined as unknown as LocatorMatchers;
-      },
-      toBeVisible: (options) =>
+    const self = {
+      toBeVisible: (options: ExpectOptions | undefined) =>
         this.retryLocator(locator, "toBeVisible", inverted, options, inverted ? "not visible" : "visible"),
-      toHaveText: (expected, options) =>
+      toHaveText: (expected: string | RegExp, options?: ExpectOptions) =>
         this.retryLocator(locator, "toHaveText", inverted, options, expected),
-      toHaveCount: (expected, options) =>
+      toHaveCount: (expected: number, options?: ExpectOptions) =>
         this.retryLocator(locator, "toHaveCount", inverted, options, expected),
-      toHaveValue: (expected, options) =>
+      toHaveValue: (expected: string | RegExp, options?: ExpectOptions) =>
         this.retryLocator(locator, "toHaveValue", inverted, options, expected),
     };
     Object.defineProperty(self, "not", {
       get: () => this.locatorMatchers(locator, !inverted),
     });
-    return self;
+    return self as LocatorMatchers;
   }
 
   private pollMatchers<T>(

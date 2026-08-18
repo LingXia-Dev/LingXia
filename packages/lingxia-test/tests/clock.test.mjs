@@ -161,3 +161,32 @@ test("duplicate spec ids fail before any case runs", async () => {
   await assert.rejects(() => globalThis.__LINGXIA_TEST__.run(), /Duplicate spec id/);
   assert.deepEqual(ran, []);
 });
+
+test("cleanup gets the spec's budget, and only a wedged spec gets the short one", async () => {
+  const world = createWorld();
+  installFakeHost(world);
+  const cleaned = [];
+
+  spec("slow cleanup on a healthy spec", { timeout: 20_000 }, async (t) => {
+    t.defer(async () => {
+      // Longer than the 2s post-timeout budget; a healthy spec must still finish.
+      await new Promise((resolve) => setTimeout(resolve, 2_600));
+      await t.app.eval({ script: "1" });
+      cleaned.push("healthy");
+    });
+  });
+
+  spec("wedged spec bails out of cleanup", { timeout: 60 }, async (t) => {
+    t.defer(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2_600));
+      await t.app.eval({ script: "1" });
+      cleaned.push("wedged");
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.deepEqual(cleaned, ["healthy"]);
+  assert.equal(protocol.cases[0].status, "passed");
+  assert.equal(protocol.cases[1].status, "failed");
+});
