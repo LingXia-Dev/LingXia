@@ -113,6 +113,10 @@ The CLI passes the canonical output path through `LINGXIA_NATIVE_CLIENT_OUT` dur
 - `lingxia build` builds page assets and runtime artifacts into `dist/`.
 - `lingxia build --release --package` produces package archive for publish.
 
+The build enforces the View/Logic boundary: a View reaching for `lx.*`, or
+calling an action `Page({})` never defined, fails it. Everything else it reports
+is a warning — the artifact is written, the code is still wrong.
+
 ---
 
 ## Page Architecture
