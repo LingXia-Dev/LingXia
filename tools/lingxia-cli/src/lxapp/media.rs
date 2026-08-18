@@ -1,6 +1,8 @@
 use anyhow::{Context, Result, bail};
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Argument, Expression, ImportDeclarationSpecifier, ModuleExportName, Statement};
+use oxc_ast::ast::{
+    Argument, BindingPattern, Expression, ImportDeclarationSpecifier, ModuleExportName, Statement,
+};
 use oxc_ast_visit::{Visit, walk};
 use oxc_parser::Parser;
 use oxc_span::SourceType;
@@ -16,28 +18,43 @@ use std::path::{Path, PathBuf};
 /// third-party component is caught the same way as authored markup.
 pub(crate) fn audit_output_media(output_dir: &Path) -> Result<()> {
     let mut findings = Vec::new();
+    let mut unscannable = Vec::new();
     for path in collect_files(output_dir)? {
         let rel = relative_path(output_dir, &path);
         match extension(&path).as_deref() {
             Some("html" | "htm") => {
                 let source = fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;
-                scan_html(&rel, &source, &mut findings);
+                scan_html(&rel, &source, &mut findings, &mut unscannable);
             }
             Some("js" | "mjs" | "cjs") => {
                 let source = fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;
-                scan_javascript(&rel, &source, 0, &source, &mut findings);
+                scan_javascript(&rel, &source, 0, &source, &mut findings, &mut unscannable);
             }
             Some("tsx" | "vue" | "ts") => {
                 let source = fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read {}", path.display()))?;
                 if is_html_document(&source) {
-                    scan_html(&rel, &source, &mut findings);
+                    scan_html(&rel, &source, &mut findings, &mut unscannable);
                 }
             }
             _ => {}
         }
+    }
+
+    if !unscannable.is_empty() {
+        unscannable.sort();
+        unscannable.dedup();
+        eprintln!(
+            "warning: media audit could not parse {} bundle file(s); they were not checked:\n{}",
+            unscannable.len(),
+            unscannable
+                .iter()
+                .map(|path| format!("  {path}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
     }
 
     if findings.is_empty() {
@@ -92,7 +109,7 @@ struct Finding {
     kind: MediaKind,
 }
 
-fn scan_html(path: &str, source: &str, findings: &mut Vec<Finding>) {
+fn scan_html(path: &str, source: &str, findings: &mut Vec<Finding>, unscannable: &mut Vec<String>) {
     let bytes = source.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -141,13 +158,22 @@ fn scan_html(path: &str, source: &str, findings: &mut Vec<Finding>) {
                 }),
                 "script" => {
                     if let Some(content) = script_body(source, name_start) {
-                        scan_javascript(path, content.body, content.start, source, findings);
+                        scan_javascript(
+                            path,
+                            content.body,
+                            content.start,
+                            source,
+                            findings,
+                            unscannable,
+                        );
                         i = content.end;
                         continue;
                     }
                 }
                 "style" => {
-                    if let Some(end) = find_closing_tag(source, name_start, "style") {
+                    // `<style/>` closes itself; skipping to the next `</style>`
+                    // would step over everything between the two.
+                    if let Some(end) = style_body_end(source, name_start) {
                         i = end;
                         continue;
                     }
@@ -182,6 +208,16 @@ fn script_body(source: &str, name_start: usize) -> Option<ScriptBody<'_>> {
     })
 }
 
+/// End of a `<style>` element's body, or `None` when it is self-closing.
+fn style_body_end(source: &str, name_start: usize) -> Option<usize> {
+    let rel_gt = source[name_start..].find('>')?;
+    let open_end = name_start + rel_gt;
+    if source[..open_end].trim_end().ends_with('/') {
+        return None;
+    }
+    find_closing_tag(source, open_end + 1, "style")
+}
+
 fn find_closing_tag(source: &str, from: usize, name: &str) -> Option<usize> {
     let needle = format!("</{name}");
     let rel = find_ignore_ascii_case(&source[from..], &needle)?;
@@ -195,14 +231,43 @@ fn scan_javascript(
     base_offset: usize,
     line_source: &str,
     findings: &mut Vec<Finding>,
+    unscannable: &mut Vec<String>,
 ) {
     if source.trim().is_empty() {
         return;
     }
 
     let allocator = Allocator::default();
-    let source_type = SourceType::mjs();
+    // `.cjs` and a classic inline `<script>` are scripts, not modules; parsing
+    // them as modules fails on `with`, on a bare `return`, and on the sloppy
+    // syntax a legacy chunk is allowed to use.
+    let source_type = if path.ends_with(".cjs") {
+        SourceType::cjs()
+    } else {
+        SourceType::mjs()
+    };
     let parsed = Parser::new(&allocator, source, source_type).parse();
+    if !parsed.diagnostics.is_empty() {
+        // Retry as the other goal before giving up: a chunk's extension does
+        // not always match how it was written.
+        let fallback = Parser::new(&allocator, source, SourceType::cjs()).parse();
+        if fallback.diagnostics.is_empty() {
+            let factory_locals = collect_factory_locals(&fallback.program);
+            let mut visitor = MediaVisitor {
+                path,
+                base_offset,
+                line_source,
+                findings,
+                factory_locals: &factory_locals,
+            };
+            visitor.visit_program(&fallback.program);
+            return;
+        }
+        // Say so rather than pass: a file this scan could not read is not a
+        // file it cleared.
+        unscannable.push(path.to_string());
+        return;
+    }
     let factory_locals = collect_factory_locals(&parsed.program);
     let mut visitor = MediaVisitor {
         path,
@@ -236,6 +301,30 @@ impl MediaVisitor<'_, '_> {
         });
     }
 
+    /// Markup handed to an HTML sink, whether written inline or built up.
+    fn scan_markup_expression(&mut self, expression: &Expression<'_>) {
+        match unwrap_expression(expression) {
+            Expression::StringLiteral(literal) => {
+                self.scan_markup_string(literal.value.as_str(), literal.span.start as usize);
+            }
+            Expression::TemplateLiteral(literal) => {
+                for quasi in &literal.quasis {
+                    let text = quasi
+                        .value
+                        .cooked
+                        .as_deref()
+                        .unwrap_or(quasi.value.raw.as_str());
+                    self.scan_markup_string(text, quasi.span.start as usize);
+                }
+            }
+            Expression::BinaryExpression(binary) => {
+                self.scan_markup_expression(&binary.left);
+                self.scan_markup_expression(&binary.right);
+            }
+            _ => {}
+        }
+    }
+
     fn scan_markup_string(&mut self, value: &str, literal_start: usize) {
         // Report the literal's span, not a cooked-relative offset: those
         // two coordinate spaces diverge as soon as the string has escapes
@@ -265,21 +354,25 @@ impl<'a> Visit<'a> for MediaVisitor<'_, '_> {
         walk::walk_new_expression(self, it);
     }
 
-    fn visit_string_literal(&mut self, it: &oxc_ast::ast::StringLiteral<'a>) {
-        self.scan_markup_string(it.value.as_str(), it.span.start as usize);
-        walk::walk_string_literal(self, it);
+    /// A string is only markup when something parses it as markup. Scanning
+    /// every literal flags an error message, a doc comment, or a sanitizer
+    /// allowlist that merely names the tag — in a dependency the developer
+    /// cannot edit.
+    fn visit_assignment_expression(&mut self, it: &oxc_ast::ast::AssignmentExpression<'a>) {
+        if let Some(property) = assignment_target_property(&it.left)
+            && matches!(property, "innerHTML" | "outerHTML")
+        {
+            self.scan_markup_expression(&it.right);
+        }
+        walk::walk_assignment_expression(self, it);
     }
 
-    fn visit_template_literal(&mut self, it: &oxc_ast::ast::TemplateLiteral<'a>) {
-        for quasi in &it.quasis {
-            let text = quasi
-                .value
-                .cooked
-                .as_deref()
-                .unwrap_or(quasi.value.raw.as_str());
-            self.scan_markup_string(text, quasi.span.start as usize);
+    fn visit_object_property(&mut self, it: &oxc_ast::ast::ObjectProperty<'a>) {
+        // React's escape hatch: `dangerouslySetInnerHTML: { __html: ... }`.
+        if it.key.static_name().as_deref() == Some("__html") {
+            self.scan_markup_expression(&it.value);
         }
-        walk::walk_template_literal(self, it);
+        walk::walk_object_property(self, it);
     }
 }
 
@@ -295,7 +388,7 @@ fn factory_media_kind(
         };
         return media_element_kind(string_argument(arguments.get(arg_index)?)?);
     }
-    minified_jsx_media_kind(callee, arguments)
+    None
 }
 
 fn callee_factory_kind(
@@ -324,29 +417,41 @@ fn callee_factory_kind(
     None
 }
 
-fn minified_jsx_media_kind(
-    callee: &Expression<'_>,
-    arguments: &[Argument<'_>],
-) -> Option<MediaKind> {
-    let Expression::Identifier(_) = callee else {
-        return None;
-    };
-    if arguments.len() < 2 || !is_props_argument(&arguments[1]) {
-        return None;
-    }
-    media_element_kind(string_argument(arguments.first()?)?)
+/// Locals that hold a JSX factory, by where they came from.
+///
+/// A bundler renames the factory to a single letter, so the call site alone
+/// says nothing — `e("video", {…})` and `t("video", {count})` are the same
+/// shape. Only provenance separates them, so every alias is traced back to an
+/// import or to another name already known to hold a factory.
+struct FactoryCollector {
+    locals: HashMap<String, FactoryOrigin>,
 }
 
-fn is_props_argument(argument: &Argument<'_>) -> bool {
-    match argument {
-        Argument::ObjectExpression(_) | Argument::NullLiteral(_) => true,
-        Argument::Identifier(identifier) => identifier.name == "undefined",
-        _ => false,
+impl<'a> Visit<'a> for FactoryCollector {
+    fn visit_variable_declarator(&mut self, it: &oxc_ast::ast::VariableDeclarator<'a>) {
+        if let Some(init) = &it.init
+            && let BindingPattern::BindingIdentifier(id) = &it.id
+            && let Some(name) = callee_leaf_name(unwrap_expression(init))
+            && element_factory_kind(name).is_some()
+        {
+            self.locals.insert(
+                id.name.as_str().to_string(),
+                FactoryOrigin {
+                    imported: Some(name.to_string()),
+                    source: String::new(),
+                },
+            );
+        }
+        walk::walk_variable_declarator(self, it);
     }
 }
 
 fn collect_factory_locals(program: &oxc_ast::ast::Program<'_>) -> HashMap<String, FactoryOrigin> {
-    let mut locals = HashMap::new();
+    let mut collector = FactoryCollector {
+        locals: HashMap::new(),
+    };
+    collector.visit_program(program);
+    let mut locals = collector.locals;
     for statement in &program.body {
         let Statement::ImportDeclaration(declaration) = statement else {
             continue;
@@ -496,11 +601,35 @@ fn html_media_tag_offsets(source: &str) -> Vec<(usize, MediaKind)> {
 fn unwrap_expression<'a>(expression: &'a Expression<'a>) -> &'a Expression<'a> {
     match expression {
         Expression::ParenthesizedExpression(expr) => unwrap_expression(&expr.expression),
+        // `(0, ns.jsx)(...)` — what esbuild and Rollup emit for a namespace
+        // call. The callee is the last element, not the sequence.
+        Expression::SequenceExpression(expr) => match expr.expressions.last() {
+            Some(last) => unwrap_expression(last),
+            None => expression,
+        },
         Expression::TSAsExpression(expr) => unwrap_expression(&expr.expression),
         Expression::TSSatisfiesExpression(expr) => unwrap_expression(&expr.expression),
         Expression::TSTypeAssertion(expr) => unwrap_expression(&expr.expression),
         Expression::TSNonNullExpression(expr) => unwrap_expression(&expr.expression),
         _ => expression,
+    }
+}
+
+/// The property name an assignment writes to, for `a.b = …` and `a["b"] = …`.
+fn assignment_target_property<'a>(
+    target: &'a oxc_ast::ast::AssignmentTarget<'a>,
+) -> Option<&'a str> {
+    match target {
+        oxc_ast::ast::AssignmentTarget::StaticMemberExpression(member) => {
+            Some(member.property.name.as_str())
+        }
+        oxc_ast::ast::AssignmentTarget::ComputedMemberExpression(member) => {
+            match unwrap_expression(&member.expression) {
+                Expression::StringLiteral(literal) => Some(literal.value.as_str()),
+                _ => None,
+            }
+        }
+        _ => None,
     }
 }
 
@@ -600,6 +729,91 @@ mod tests {
         audit_output_media(temp.path())
     }
 
+    /// A call is a factory call because of where its callee came from, never
+    /// because the arguments line up. `t("video", { count })` is an i18n key.
+    #[test]
+    fn leaves_calls_that_only_look_like_a_factory_alone() {
+        audit_one(
+            "assets/app.js",
+            concat!(
+                "const label = t(\"video\", { count: 2 });\n",
+                "track(\"video\", null);\n",
+                "inject(\"audio\", undefined);\n",
+            ),
+        )
+        .expect("a string argument is not a factory call");
+    }
+
+    /// The scan covers vendor chunks, so a string that merely names the tag —
+    /// an error message, a sanitizer allowlist — must not fail the build.
+    #[test]
+    fn leaves_strings_that_are_never_parsed_as_markup_alone() {
+        audit_one(
+            "assets/vendor.js",
+            concat!(
+                "const msg = \"expected <video> element\";\n",
+                "const allow = [\"<video\", \"<audio\"];\n",
+            ),
+        )
+        .expect("a string is only markup when something parses it as markup");
+    }
+
+    #[test]
+    fn rejects_markup_assigned_to_an_html_sink() {
+        let err = audit_one(
+            "assets/app.js",
+            "el.innerHTML = \"<video src=x></video>\";\n",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("assets/app.js:1:"), "{err}");
+    }
+
+    /// `(0, ns.jsx)(...)` is what esbuild and Rollup emit for a namespace call.
+    #[test]
+    fn rejects_a_sequence_wrapped_factory_call() {
+        let err = audit_one(
+            "assets/chunk.js",
+            concat!(
+                "var m = require(\"react/jsx-runtime\");\n",
+                "export const B = () => (0, m.jsx)(\"video\", { src: \"./b.mp4\" });\n",
+            ),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("assets/chunk.js:2:"), "{err}");
+    }
+
+    /// Minification renames the factory to a local, so the alias is traced
+    /// back to the import rather than guessed from the call.
+    #[test]
+    fn rejects_a_factory_reached_through_a_local_alias() {
+        let err = audit_one(
+            "assets/min.js",
+            concat!(
+                "import * as m from \"react/jsx-runtime\";\n",
+                "var e = m.jsx;\n",
+                "export const C = () => e(\"video\", { src: \"./c.mp4\" });\n",
+            ),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("assets/min.js:3:"), "{err}");
+    }
+
+    /// `<style/>` closes itself; skipping to the next `</style>` would step
+    /// over everything between the two.
+    #[test]
+    fn rejects_video_after_a_self_closing_style() {
+        let err = audit_one(
+            "pages/home/index.html",
+            "<style/>\n<video src=\"x\"></video>\n<style>.a{}</style>\n",
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("pages/home/index.html:2:"), "{err}");
+    }
+
     #[test]
     fn rejects_html_video_with_file_line_and_replacement() {
         let err = audit_one(
@@ -682,13 +896,16 @@ mod tests {
         .to_string();
         assert!(one_arg.contains("`<video>`"), "{one_arg}");
 
-        let inlined = audit_one(
+        // A factory the bundler inlined as a local function carries no
+        // provenance, and its call is indistinguishable from `t("audio", {…})`
+        // — an i18n key, an analytics event. Matching it would fail builds
+        // over a dependency's string, so this one is a known gap rather than
+        // a guess.
+        audit_one(
             "assets/page-abc.js",
             "function e(t,n){return t}\ne(\"audio\",{src:\"./beep.mp3\"});\n",
         )
-        .unwrap_err()
-        .to_string();
-        assert!(inlined.contains("`<audio>`"), "{inlined}");
+        .expect("an inlined factory has no provenance to match on");
     }
 
     #[test]
