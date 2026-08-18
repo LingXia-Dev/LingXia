@@ -31,7 +31,7 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
 
 use crate::model::{Acted, Rect, WindowTarget};
-use crate::supervision_state::{ActivityState, ActivityTarget, Transition};
+use crate::supervision_state::{ActivityState, ActivityTarget, SessionKind, Transition};
 
 const FPS: u32 = 8;
 const IDLE_REST: Duration = Duration::from_secs(12);
@@ -62,12 +62,14 @@ enum ViewerMode {
 
 struct State {
     activity: ActivityState,
+    session: Option<SessionKind>,
     corner: Corner,
     panel: Option<Rect>,
 }
 
 static STATE: Mutex<State> = Mutex::new(State {
     activity: ActivityState::new(),
+    session: None,
     corner: Corner::BottomRight,
     panel: None,
 });
@@ -204,8 +206,46 @@ pub fn note_activity(acted: Acted) {
     }
 }
 
+pub fn begin_session(kind: SessionKind) {
+    let should_open = {
+        let mut state = state();
+        let first = state.session.is_none();
+        state.session = Some(kind);
+        first && state.activity.target.is_none()
+    };
+    if should_open {
+        note_activity(Acted::Somewhere);
+    }
+}
+
+pub fn end_session() {
+    let (epoch, hide) = {
+        let mut state = state();
+        state.session = None;
+        let epoch = state.activity.epoch;
+        (epoch, state.activity.target.is_none())
+    };
+    if hide {
+        let ui = UI
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .and_then(|slot| match slot {
+                UiSlot::Ready(ui) => Some(ui),
+                UiSlot::Starting(_) => None,
+            });
+        if let Some(ui) = ui {
+            unsafe {
+                let _ = PostThreadMessageW(ui.id, WM_PIP_HIDE, WPARAM(epoch as usize), LPARAM(0));
+            }
+        }
+    }
+}
+
 pub fn dismiss() {
     let epoch = state().activity.dismiss();
+    if state().session.is_some() {
+        return;
+    }
     let ui = UI
         .lock()
         .unwrap_or_else(|error| error.into_inner())
@@ -543,7 +583,7 @@ fn preserve_window_target(
 
 fn apply_hide(epoch: u64) {
     let guard = state();
-    if guard.activity.epoch != epoch || guard.activity.target.is_some() {
+    if guard.session.is_some() || guard.activity.epoch != epoch || guard.activity.target.is_some() {
         return;
     }
     drop(guard);
@@ -579,6 +619,9 @@ fn tick() {
         )
     };
     let Some(target) = target else {
+        if state().session.is_some() {
+            return;
+        }
         VIEWER.with_borrow_mut(|slot| {
             if let Some(viewer) = slot.as_mut() {
                 unsafe {
@@ -591,7 +634,9 @@ fn tick() {
         return;
     };
     if idle {
-        stop_if_current(generation, epoch);
+        if state().session.is_none() {
+            stop_if_current(generation, epoch);
+        }
         return;
     }
 
@@ -974,7 +1019,8 @@ fn identity_label(target: &ActivityTarget) -> String {
             .map(|identity| trim_executable_suffix(&identity).to_string())
             .unwrap_or_else(|| "Window".into()),
     };
-    crate::supervision_state::control_label(&controller_identity(), &target)
+    let kind = state().session.unwrap_or(SessionKind::Control);
+    kind.label(&controller_identity(), &target)
 }
 
 fn controller_identity() -> String {

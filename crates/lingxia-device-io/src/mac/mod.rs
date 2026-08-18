@@ -92,7 +92,10 @@ pub use input::{
     pointer_scroll, pointer_up,
 };
 #[cfg(feature = "supervision")]
-pub use pip::{dismiss as pip_dismiss, note_activity as pip_note_activity};
+pub use pip::{
+    begin_session as pip_begin_session, dismiss as pip_dismiss, end_session as pip_end_session,
+    note_activity as pip_note_activity,
+};
 #[cfg(feature = "app")]
 pub use process::{app_launch, app_quit};
 #[cfg(feature = "process")]

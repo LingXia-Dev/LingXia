@@ -82,26 +82,13 @@ pub mod input {
     };
 }
 
-/// The current desktop activity supervision viewer.
+/// Persistent session disclosure and the transient activity preview.
 ///
-/// Not a command surface. It exists so a person can watch their own machine
-/// being driven, and an agent that could switch it off would be able to work
-/// unobserved — which is the one thing it is for. So the host tells it what
-/// happened and it decides the rest: when to appear, what to follow, when to
-/// leave. The only control belongs to the person in front of the screen.
-///
-/// Implemented on macOS and Windows; elsewhere this is a no-op.
+/// The Cargo feature only compiles the mechanism. A product session must hold
+/// [`supervision::SupervisionGuard`] for its lifetime; a remote caller cannot
+/// dismiss disclosure. Ordinary snapshot/capture does not take this feature.
 #[cfg(feature = "supervision")]
-pub mod supervision {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    pub use crate::backend::{pip_dismiss as dismiss, pip_note_activity as note_activity};
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    pub fn note_activity(_acted: crate::model::Acted) {}
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    pub fn dismiss() {}
-}
+pub mod supervision;
 
 /// Window management (`desktop window ...`). All mutating.
 #[cfg(feature = "window")]

@@ -529,6 +529,7 @@ jobs:
         run: |
           cargo test -p lingxia-media --no-default-features --features capture --lib
           cargo test -p lingxia-device-io --no-default-features --features realtime-capture-provider --lib geometry
+          cargo test -p lingxia-device-io --features supervision --lib supervision
 
       # Linear in the number of features, not 2^N. The cargo-tree script below
       # already asserts the capability graph; this only type-checks each public

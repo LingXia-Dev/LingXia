@@ -136,6 +136,8 @@ pub fn set_enabled(enabled: bool) -> std::io::Result<()> {
             Ok(())
         }
         false => {
+            #[cfg(feature = "computer-use")]
+            crate::desktop::end_session();
             if let Some(mut existing) = running.take() {
                 let _ = stop_accepting(&mut existing);
             }
