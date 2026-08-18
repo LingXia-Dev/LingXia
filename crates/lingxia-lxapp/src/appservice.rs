@@ -16,6 +16,7 @@ pub(crate) use js_worker_pool::LxAppWorkers;
 #[cfg(not(feature = "js-appservice"))]
 pub(crate) mod event_bus {
     pub const BROWSER_TAB_CLOSED_EVENT: &str = "__lingxiaBrowserTabClosed";
+    pub const DISPLAY_LANGUAGE_CHANGE_EVENT: &str = "DisplayLanguageChange";
 
     #[derive(Clone, Debug)]
     pub(crate) enum Scope {
