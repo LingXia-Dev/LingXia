@@ -78,3 +78,19 @@ test('rejects a body that is not multipart', async () => {
   });
   assert.equal(response.status, 415);
 });
+
+test('stops writing when the client aborts mid-stream', async () => {
+  const controller = new AbortController();
+  const started = Date.now();
+  // 20 chunks x 60ms is 1.2s if the handler ignores the abort.
+  const request = fetch(`${base}/slow?size=20480&chunks=20&delayMs=60`, {
+    signal: controller.signal,
+  }).then(async (response) => {
+    for await (const _chunk of response.body) controller.abort();
+  });
+
+  await assert.rejects(request, (error) => error.name === 'AbortError');
+  // The handler must let go too, or `server.close()` waits on it.
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.ok(Date.now() - started < 1000, 'the handler kept streaming after the abort');
+});

@@ -831,6 +831,12 @@ jobs:
         working-directory: examples/lingxia-showcase/lxapp
         run: npm run test:automation:types
 
+      # No spec can reach the HTTP fixture yet, so its own specs are the only
+      # thing standing between it and a silent regression.
+      - name: Test showcase test harness
+        working-directory: examples/lingxia-showcase/lxapp
+        run: npm run test:harness
+
       - name: Parse automation runners
         shell: pwsh
         run: |

@@ -9,6 +9,7 @@
 //   node tests/harness/http-fixture.mjs --port 0 --print-base
 //   lxdev test tests/ --arg httpBase=http://127.0.0.1:<port>
 import { createServer } from 'node:http';
+import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
 
 /** Deterministic bytes, so a spec can assert an exact size and digest. */
@@ -96,7 +97,11 @@ export function createFixtureServer() {
           'content-length': payload.length,
         });
         for (let offset = 0; offset < size; offset += step) {
-          if (response.writableEnded) return;
+          // `writableEnded` only flips after end(); a client that aborts
+          // mid-stream sets `destroyed`, and without this the handler keeps
+          // sleeping through every remaining chunk — which is precisely the
+          // cancel case this route exists to serve.
+          if (response.destroyed) return;
           response.write(payload.subarray(offset, Math.min(offset + step, size)));
           await sleep(delay);
         }
@@ -157,7 +162,9 @@ export function createFixtureServer() {
   });
 }
 
-const invokedDirectly = import.meta.url === `file://${process.argv[1]}`;
+// argv[1] is a raw path; import.meta.url is percent-encoded.
+const invokedDirectly =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (invokedDirectly) {
   const portFlag = process.argv.indexOf('--port');
   const port = portFlag === -1 ? 0 : Number(process.argv[portFlag + 1]);
