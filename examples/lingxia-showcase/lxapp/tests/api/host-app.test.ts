@@ -197,6 +197,7 @@ spec('show, label, and retract the host tray item', {
     'lx.tray.setTitle',
     'lx.tray.setBadge',
     'lx.tray.setMenu',
+    'lx.tray.setIcon',
     'lx.tray.onClick',
   ],
   app: SHOWCASE_APP_ID,
@@ -210,6 +211,7 @@ spec('show, label, and retract the host tray item', {
     script: `
       lx.tray.show();
       lx.tray.setTitle('LX');
+      lx.tray.setIcon('public/showcase-icon.svg');
       lx.tray.setBadge('3');
       lx.tray.setMenu([
         { label: 'Open Showcase', onClick: () => {} },
@@ -322,4 +324,27 @@ spec('reject shell surface reconfigure for an id the shell never realized', {
   expect(result.ok).toBeFalsy();
   expect(typeof result.code).toBe('string');
   expect(String(result.code).length > 0).toBeTruthy();
+});
+
+spec('subscribe to and release the surface context listener', {
+  id: 'HOSTAPP-SURFACE-CTX-001',
+  covers: ['lx.surface', 'lx.surface.onContext'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-SURFACE-CTX-001');
+
+  const result = await app.eval({
+    script: `
+      const first = lx.surface.onContext(() => {});
+      const second = lx.surface.onContext(() => {});
+      first();
+      second();
+      // Releasing twice must stay inert rather than throwing.
+      first();
+      return { kinds: [typeof first, typeof second], distinct: first !== second };
+    `,
+  }) as { kinds: string[]; distinct: boolean };
+
+  expect(result.kinds).toEqual(['function', 'function']);
+  expect(result.distinct).toBeTruthy();
 });
