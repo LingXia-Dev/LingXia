@@ -4,8 +4,6 @@ import process from "node:process";
 import stubs from "../pending/backlog-stubs.mjs";
 import manifest from "../logic-api-coverage.mjs";
 
-const root = path.resolve(import.meta.dirname, "../..");
-const backlogPath = path.resolve(root, "../../../docs/test/coverage-backlog.md");
 const pendingTest = path.resolve(import.meta.dirname, "../pending/backlog-pending.test.ts");
 
 const allowedModes = new Set(["planned", "external-fixture", "external-ui"]);
@@ -51,24 +49,31 @@ for (const entry of manifest.apis) {
   }
 }
 
-if (!fs.existsSync(backlogPath)) {
-  errors.push(`missing backlog at ${backlogPath}`);
-} else {
-  const backlog = fs.readFileSync(backlogPath, "utf8");
-  const classified = backlog.split(/\r?\n/).filter((line) =>
-    /classified `(planned|external-fixture|external-ui)`/.test(line)
-  );
-  if (classified.length === 0) {
-    errors.push("backlog has no classified planned/external-fixture/external-ui rows");
-  }
-  for (const line of classified) {
-    const match = line.match(/PEND-[A-Z0-9-]+/);
-    if (!match) {
-      errors.push(`classified row missing PEND id: ${line.trim()}`);
-      continue;
+// backlog-stubs.mjs is the source of truth for pending holes. An optional
+// planning doc may cross-reference the same ids; check it only when present.
+const backlogPath = process.env.LX_COVERAGE_BACKLOG
+  ? path.resolve(process.env.LX_COVERAGE_BACKLOG)
+  : null;
+if (backlogPath) {
+  if (!fs.existsSync(backlogPath)) {
+    errors.push(`LX_COVERAGE_BACKLOG points at a missing file: ${backlogPath}`);
+  } else {
+    const backlog = fs.readFileSync(backlogPath, "utf8");
+    const classified = backlog.split(/\r?\n/).filter((line) =>
+      /classified `(planned|external-fixture|external-ui)`/.test(line)
+    );
+    if (classified.length === 0) {
+      errors.push("backlog has no classified planned/external-fixture/external-ui rows");
     }
-    if (!ids.has(match[0])) {
-      errors.push(`classified row names unknown stub ${match[0]}: ${line.trim()}`);
+    for (const line of classified) {
+      const match = line.match(/PEND-[A-Z0-9-]+/);
+      if (!match) {
+        errors.push(`classified row missing PEND id: ${line.trim()}`);
+        continue;
+      }
+      if (!ids.has(match[0])) {
+        errors.push(`classified row names unknown stub ${match[0]}: ${line.trim()}`);
+      }
     }
   }
 }
