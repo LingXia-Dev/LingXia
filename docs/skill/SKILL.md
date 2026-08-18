@@ -1,6 +1,6 @@
 ---
 name: lingxia
-description: Build apps on the LingXia cross-platform framework — standalone lxapps (page-based mini-apps with a View+Logic split), native host apps (Android/iOS/macOS/Harmony/Windows shells embedding an lxapp), and Rust native extensions. TRIGGER on the `lingxia` CLI, `lxdev`, `lxapp`, `lingxia.yaml`, `lxapp.json`, `#[lingxia::native]`, `HostAddon`, `useLxPage`, or an lxapp-flavored `Page({})`. SKIP if the project imports `@tarojs/*`, `wx.*`, `uni-app`, `@dcloudio/*`, or `@remax/*` — those share the `Page({})` shape but are different runtimes. **Always read §"Step 0" before generating any file.**
+description: Build apps on the LingXia cross-platform framework — standalone lxapps (page-based mini-apps with a View+Logic split), native host apps (Android/iOS/macOS/Harmony/Windows shells embedding an lxapp), and Rust native extensions. TRIGGER when the project has `lxapp.json` or `lingxia.yaml`, on the `lingxia` or `lxdev` CLIs, `#[lingxia::native]`, `HostAddon`, `useLxPage`, or when the user names LingXia or an lxapp. A bare `Page({})` is NOT a trigger: several mini-program runtimes share that shape, and the manifest file is what identifies this one — match on the file, never on the code shape, so no list of other frameworks has to be maintained here. **Always read §"Step 0" before generating any file.**
 license: MIT
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash(lingxia:*), Bash(lxdev:*), Bash(npm:*), Bash(npx:*), Bash(test:*), Bash(ls:*), Bash(cat:*), Bash(cargo:*)
 ---
