@@ -59,11 +59,8 @@ function Stop-IdleAutomationBrokers {
 }
 
 function Install-AutomationTools {
-  Write-Host 'Resolving automation CLIs (cache / matching release / cargo build)...'
-  Invoke-Checked 'bash' @(
-    (Join-Path $repoRoot 'scripts\ci\resolve-cli.sh'),
-    '--dest', (Join-Path $repoRoot 'target\debug')
-  )
+  Write-Host 'Building automation CLIs from the current checkout...'
+  Invoke-Checked 'cargo' @('build', '-p', 'lingxia-cli', '-p', 'lingxia-devtools-cli')
   New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
 
   $builtLingXia = Join-Path $repoRoot 'target\debug\lingxia.exe'
