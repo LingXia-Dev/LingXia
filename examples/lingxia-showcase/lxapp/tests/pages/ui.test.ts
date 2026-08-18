@@ -116,13 +116,16 @@ contract({
       });
     `,
   });
+  // The runtime resolves relative icon paths against the package directory
+  // with native separators, so Windows reports them with backslashes.
+  const assetPath = (value: string | null | undefined) => (value ?? '').replace(/\\/g, '/');
   const styled = await waitForTabBar(
     (state) => (
       state.runtime_style.foreground_color === '#102030'
       && state.runtime_style.selected_foreground_color === '#405060'
       && state.items[1]?.text === 'Automation'
-      && state.items[1]?.icon_path?.endsWith('/public/home.png') === true
-      && state.items[1]?.selected_icon_path?.endsWith('/public/home_selected.png') === true
+      && assetPath(state.items[1]?.icon_path).endsWith('/public/home.png')
+      && assetPath(state.items[1]?.selected_icon_path).endsWith('/public/home_selected.png')
       && state.items[1]?.badge === '7'
       && state.items[1]?.red_dot === false
     ),
