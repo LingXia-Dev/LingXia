@@ -3,6 +3,7 @@ mod bundle;
 mod framework;
 mod hardening;
 mod logic;
+mod media;
 mod options;
 mod package;
 mod project;
@@ -14,6 +15,7 @@ use std::path::Path;
 
 pub(crate) use bundle::is_built_bundle_dir;
 pub(crate) use framework::ProjectFramework;
+pub(crate) use media::audit_output_media;
 pub(crate) use project::Project;
 pub(crate) use view::native_client_output_path;
 pub(crate) use view::view_target_from_dir;
