@@ -21,8 +21,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@lingxia/bridge": "~0.11.0",
-    "@lingxia/page-runtime": "~0.11.0"
+    "@lingxia/bridge": "~0.11.2",
+    "@lingxia/page-runtime": "~0.11.2"
   },
   "devDependencies": {
     "@lingxia/bridge": "file:../lingxia-bridge",

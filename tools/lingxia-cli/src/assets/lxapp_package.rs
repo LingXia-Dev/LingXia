@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow};
+use colored::Colorize;
 use flate2::read::GzDecoder;
-use semver::Version;
+use semver::{Version, VersionReq};
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -35,14 +36,13 @@ pub(super) fn resolve_lxapp_package(
         return Err(anyhow!("{config_key}.version must not be empty"));
     }
 
-    let version = resolve_npm_version(package, version, config_key)?;
-
-    let package_dir = project_root
+    let cache_root = project_root
         .join(".lingxia")
         .join(cache_kind)
-        .join(sanitize_package_name(package))
-        .join(&version)
-        .join("package");
+        .join(sanitize_package_name(package));
+    let version = resolve_npm_version(project_root, &cache_root, package, version, config_key)?;
+
+    let package_dir = cache_root.join(&version).join("package");
     if package_dir.join("lxapp.json").exists() {
         return Ok(package_dir);
     }
@@ -122,25 +122,68 @@ pub(super) fn resolve_lxapp_package(
 
 /// Exact versions stay as written. Ranges (`~0.11.0`) resolve to the latest
 /// published match so a published patch is picked up without a CLI rebuild.
-fn resolve_npm_version(package: &str, spec: &str, config_key: &str) -> Result<String> {
+/// When the registry is unreachable the newest matching cached version wins, so
+/// an offline build of an already-fetched package still succeeds.
+fn resolve_npm_version(
+    project_root: &Path,
+    cache_root: &Path,
+    package: &str,
+    spec: &str,
+    config_key: &str,
+) -> Result<String> {
     if Version::parse(spec).is_ok() {
         return Ok(spec.to_string());
     }
 
     let package_spec = format!("{package}@{spec}");
+    match npm_view_version(project_root, &package_spec, config_key) {
+        Ok(version) => Ok(version),
+        Err(err) => match cached_version_matching(cache_root, spec) {
+            Some(version) => {
+                eprintln!(
+                    "{}: {package_spec} is unresolvable right now, using cached {version}\n  {err:#}",
+                    "warning".yellow().bold()
+                );
+                Ok(version)
+            }
+            None => Err(err),
+        },
+    }
+}
+
+fn npm_view_version(project_root: &Path, package_spec: &str, config_key: &str) -> Result<String> {
     let output = Command::new(crate::npm::command())
-        .args(["view", &package_spec, "version", "--json"])
+        .args(["view", package_spec, "version", "--json"])
+        // npm reads .npmrc upward from the cwd, so registry and auth must be
+        // resolved against the project — same as the npm pack above.
+        .current_dir(project_root)
         .output()
         .with_context(|| format!("Failed to run npm view {package_spec}"))?;
     if !output.status.success() {
         return Err(anyhow!(
-            "npm view {package_spec} failed with status {}\nstdout:\n{}\nstderr:\n{}\nSet {config_key}.version to pin an exact published version.",
+            "npm view {package_spec} failed with status {} (no published version matches, or the registry is unreachable)\nstdout:\n{}\nstderr:\n{}\nSet {config_key}.version to pin an exact published version.",
             output.status,
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         ));
     }
-    latest_npm_version(&output.stdout, &package_spec)
+    latest_npm_version(&output.stdout, package_spec)
+}
+
+/// Newest fully unpacked `<cache_root>/<version>/package` satisfying `spec`.
+fn cached_version_matching(cache_root: &Path, spec: &str) -> Option<String> {
+    let req = VersionReq::parse(spec).ok()?;
+    fs::read_dir(cache_root)
+        .ok()?
+        .flatten()
+        .filter(|entry| entry.path().join("package/lxapp.json").exists())
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let parsed = Version::parse(&name).ok()?;
+            req.matches(&parsed).then_some((parsed, name))
+        })
+        .max_by(|(left, _), (right, _)| left.cmp(right))
+        .map(|(_, name)| name)
 }
 
 fn latest_npm_version(output: &[u8], package_spec: &str) -> Result<String> {
@@ -163,7 +206,7 @@ fn latest_npm_version(output: &[u8], package_spec: &str) -> Result<String> {
         .into_iter()
         .max_by(|(left, _), (right, _)| left.cmp(right))
         .map(|(_, version)| version)
-        .ok_or_else(|| anyhow!("npm view {package_spec} returned no matching versions"))
+        .ok_or_else(|| anyhow!("npm view {package_spec} returned an empty version list"))
 }
 
 fn sanitize_package_name(package: &str) -> String {
@@ -181,7 +224,8 @@ fn sanitize_package_name(package: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::latest_npm_version;
+    use super::{cached_version_matching, latest_npm_version};
+    use std::fs;
 
     #[test]
     fn npm_view_single_version_is_accepted() {
@@ -201,5 +245,23 @@ mod tests {
             .unwrap(),
             "0.11.3"
         );
+    }
+
+    #[test]
+    fn cached_fallback_picks_the_newest_unpacked_match() {
+        let cache_root = tempfile::tempdir().unwrap();
+        for version in ["0.10.9", "0.11.0", "0.11.1", "0.12.0"] {
+            let dir = cache_root.path().join(version).join("package");
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("lxapp.json"), "{}").unwrap();
+        }
+        // Present in the cache but never finished unpacking.
+        fs::create_dir_all(cache_root.path().join("0.11.2").join("package")).unwrap();
+
+        assert_eq!(
+            cached_version_matching(cache_root.path(), "~0.11.0").as_deref(),
+            Some("0.11.1")
+        );
+        assert_eq!(cached_version_matching(cache_root.path(), "~0.13.0"), None);
     }
 }

@@ -7,7 +7,8 @@
 //!
 //! What is not: `@lingxia/react|vue|html|types`, browser-shell-webui, or
 //! terminal-settings. Those resolve to the latest published patch on this
-//! line (`~M.m.0`) at `lingxia new` / first fetch.
+//! line (`~M.m.0`) at `lingxia new` / first fetch. Scaffolded crate deps use
+//! the same idea with the base patch as the floor (`~M.m.P`).
 
 /// LingXia component versions used in project templates
 #[derive(Debug, Clone)]
@@ -34,10 +35,12 @@ pub fn npm_compat_range() -> String {
     minor_tilde_range(env!("LINGXIA_RUST_CRATE_VERSION"))
 }
 
-/// Cargo requirement that tracks this CLI's major.minor (`~0.11.0`).
-/// crates.io then supplies the latest published patch.
+/// Cargo requirement floored at this CLI's base patch (`~0.11.2`).
+/// crates.io then supplies the latest published patch. Unlike npm, the whole
+/// crate workspace publishes in lockstep, so nothing can lag the base — and the
+/// floor keeps the crates from resolving older than the SDK zip they pair with.
 pub fn cargo_compat_req() -> String {
-    minor_tilde_range(env!("LINGXIA_RUST_CRATE_VERSION"))
+    format!("~{}", env!("LINGXIA_RUST_CRATE_VERSION"))
 }
 
 /// `~M.m.0` from a full semver. Used by scaffolds so an older framework
@@ -78,10 +81,10 @@ mod tests {
     }
 
     #[test]
-    fn cargo_compat_req_tracks_major_minor() {
+    fn cargo_compat_req_floors_at_the_base_patch() {
         assert_eq!(
             cargo_compat_req(),
-            minor_tilde_range(env!("LINGXIA_RUST_CRATE_VERSION"))
+            format!("~{}", env!("LINGXIA_RUST_CRATE_VERSION"))
         );
     }
 }
