@@ -120,7 +120,7 @@ function resolvedId(item: RegisteredSpec): string {
 }
 
 function automationRoot() {
-  const lx = globalThis.lx;
+  const lx = (globalThis as { lx?: { automation?: () => { lxapp: { (): LxAppDriver; (id: string): LxAppDriver } } } }).lx;
   if (!lx || typeof lx.automation !== "function") {
     throw new Error("lx.automation() is not available in this runtime");
   }

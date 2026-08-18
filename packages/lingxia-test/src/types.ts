@@ -204,7 +204,7 @@ export interface LingxiaTestController {
 }
 
 export interface AutomationHost {
-  args?: Record<string, string> | unknown;
+  args?: Record<string, string>;
   attach?: (
     name: string,
     artifact: { mimeType: string; base64: string },
@@ -225,15 +225,4 @@ declare global {
   var __LINGXIA_TEST_SOURCE_MAP__: unknown;
   // eslint-disable-next-line no-var
   var __LINGXIA_CLI_VERSION__: string | undefined;
-  // eslint-disable-next-line no-var
-  var lx:
-    | {
-        automation: () => {
-          lxapp: {
-            (): LxAppDriver;
-            (appid: string): LxAppDriver;
-          };
-        };
-      }
-    | undefined;
 }
