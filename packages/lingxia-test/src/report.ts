@@ -669,31 +669,35 @@ export function countStatuses(
 /* ------------------------------------------------------------------ */
 
 const STYLE = `
+/* Light is the base palette; dark redefines only tokens, once for the
+   un-stamped system default and once for an explicit toggle. Every component
+   below reads tokens, so no colour is ever defined only inside a guard. */
 :root {
   color-scheme: light dark;
-  --bg:#f6f7f9; --panel:#ffffff; --ink:#131a22; --muted:#5d6b7a; --line:#e3e8ee;
-  --pass:#12805c; --fail:#c02626; --skip:#8a6d1f; --accent:#2d5bd7;
-  --pass-soft:#e6f6ef; --fail-soft:#fdeaea; --skip-soft:#fdf3dc;
+  --bg:#f5f6f8; --panel:#ffffff; --ink:#161b22; --muted:#5a6572; --line:#dfe4ea;
+  --pass:#0f7a53; --fail:#b8202a; --skip:#8a6207; --accent:#3352c9;
+  --pass-soft:#e6f4ee; --fail-soft:#fceceb; --skip-soft:#fbf2dd;
   --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  /* The report opens from disk in CI and must never fetch a font. */
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
 }
-:root[data-theme="dark"], :root:not([data-theme="light"]) {
-  --bg:#0d1117; --panel:#161b22; --ink:#e6edf3; --muted:#8b949e; --line:#232c37;
-  --pass:#3fb950; --fail:#f85149; --skip:#d29922; --accent:#6c9bff;
-  --pass-soft:#10281a; --fail-soft:#2d1416; --skip-soft:#2a2110;
-  --shadow:0 1px 2px rgba(0,0,0,.4);
-}
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg:#f6f7f9; --panel:#ffffff; --ink:#131a22; --muted:#5d6b7a; --line:#e3e8ee;
-    --pass:#12805c; --fail:#c02626; --skip:#8a6d1f; --accent:#2d5bd7;
-    --pass-soft:#e6f6ef; --fail-soft:#fdeaea; --skip-soft:#fdf3dc;
-    --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:#0f1216; --panel:#171b21; --ink:#e4e8ee; --muted:#8d97a4; --line:#262c34;
+    --pass:#49c07d; --fail:#f06a68; --skip:#d3a03a; --accent:#7a9bff;
+    --pass-soft:#122318; --fail-soft:#2a1517; --skip-soft:#272013;
+    --shadow:0 1px 2px rgba(0,0,0,.45);
   }
 }
+:root[data-theme="dark"] {
+  --bg:#0f1216; --panel:#171b21; --ink:#e4e8ee; --muted:#8d97a4; --line:#262c34;
+  --pass:#49c07d; --fail:#f06a68; --skip:#d3a03a; --accent:#7a9bff;
+  --pass-soft:#122318; --fail-soft:#2a1517; --skip-soft:#272013;
+  --shadow:0 1px 2px rgba(0,0,0,.45);
+}
 * { box-sizing: border-box; }
-body { margin:0; background:var(--bg); color:var(--ink);
-  font:14px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+body { margin:0; background:var(--bg); color:var(--ink); font:14px/1.55 var(--sans); }
 main { max-width:1180px; margin:0 auto; padding:28px 20px 72px; }
 a { color:var(--accent); }
 .skip-link { position:absolute; left:-9999px; }
@@ -707,7 +711,7 @@ a { color:var(--accent); }
 .hero.tone-warn { border-left-color:var(--skip); }
 .hero-text { min-width:min(100%,320px); flex:1; }
 .eyebrow { margin:0; font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); }
-h1 { margin:2px 0 4px; font-size:30px; line-height:1.15; letter-spacing:-.02em; }
+h1 { margin:2px 0 4px; font-size:30px; line-height:1.15; letter-spacing:-.02em; text-wrap:balance; }
 .tone-pass .verdict { color:var(--pass); }
 .tone-fail .verdict { color:var(--fail); }
 .tone-warn .verdict { color:var(--skip); }
@@ -727,13 +731,13 @@ h1 { margin:2px 0 4px; font-size:30px; line-height:1.15; letter-spacing:-.02em; 
 .tone-fail .donut-value { stroke:var(--fail); }
 .tone-warn .donut-value { stroke:var(--skip); }
 .donut-label { display:flex; flex-direction:column; }
-.donut-label strong { font-size:26px; letter-spacing:-.02em; }
+.donut-label strong { font-size:26px; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
 .donut-label span { font-size:12px; color:var(--muted); }
 
 .metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin:16px 0 0; }
 .metric { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px; box-shadow:var(--shadow); }
 .metric dt { font-size:11px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); }
-.metric dd { margin:2px 0 0; font-size:24px; font-weight:600; letter-spacing:-.02em; }
+.metric dd { margin:2px 0 0; font-size:24px; font-weight:600; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
 .metric small { color:var(--muted); }
 
 .bar { display:flex; height:8px; border-radius:999px; overflow:hidden; margin:18px 0 6px; background:var(--line); }
@@ -753,6 +757,8 @@ h1 { margin:2px 0 4px; font-size:30px; line-height:1.15; letter-spacing:-.02em; 
 .actions button { padding:6px 12px; border-radius:10px; border:1px solid var(--line);
   background:var(--panel); color:var(--muted); font:inherit; font-size:13px; cursor:pointer; }
 .actions button:hover, .pill:hover { border-color:var(--accent); }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+@media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 
 .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px;
   margin:0 0 14px; box-shadow:var(--shadow); }
@@ -795,7 +801,7 @@ td.spark span { display:block; height:6px; border-radius:999px; background:var(-
 .case > summary { display:flex; gap:10px; align-items:center; cursor:pointer; padding:11px 14px; list-style:none; }
 .case > summary::-webkit-details-marker { display:none; }
 .case-title { flex:1; font-weight:500; }
-.case-time { color:var(--muted); font-family:var(--mono); font-size:12px; }
+.case-time { color:var(--muted); font-family:var(--mono); font-size:12px; font-variant-numeric:tabular-nums; }
 .badge { font-size:11px; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px;
   border-radius:6px; white-space:nowrap; }
 .badge.pass { background:var(--pass-soft); color:var(--pass); }
@@ -833,7 +839,7 @@ pre.message { background:var(--panel); border:1px solid var(--line); border-radi
 .step-bar { flex:1; height:4px; background:var(--line); border-radius:999px; overflow:hidden; min-width:40px; }
 .step-bar span { display:block; height:100%; background:var(--accent); opacity:.55; }
 
-table.assertions { width:100%; border-collapse:collapse; margin:8px 0; font-size:12.5px; }
+table.assertions { width:100%; border-collapse:collapse; margin:8px 0; font-size:12.5px; display:block; overflow-x:auto; }
 table.assertions caption { text-align:left; color:var(--muted); font-size:11px;
   text-transform:uppercase; letter-spacing:.06em; padding-bottom:4px; }
 table.assertions th, table.assertions td { text-align:left; vertical-align:top; padding:5px 8px;
