@@ -10,6 +10,9 @@ repository.workspace = true
 [features]
 default = ["playback"]
 playback = ["dep:lingxia-platform", "dep:serde_json", "dep:log"]
+# Pipeline + orchestration. Depends on the platform contract only — never on
+# lingxia-device-io or a concrete native provider.
+capture = ["dep:lingxia-platform", "lingxia-platform/capture-contract"]
 
 [dependencies]
 lingxia-platform = { workspace = true, optional = true }
