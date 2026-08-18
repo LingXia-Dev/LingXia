@@ -11,14 +11,48 @@ export type PlatformOS = NonNullable<BridgeConfig['os']> | 'unknown';
 export const BRIDGE_CONFIG: BridgeConfig =
   (typeof window !== 'undefined' && window.__LX_BRIDGE_CFG) || {};
 
-const displayLanguage = BRIDGE_CONFIG.displayLanguage?.trim() || 'en-US';
+let displayLanguage = BRIDGE_CONFIG.displayLanguage?.trim() || 'en-US';
+const displayLanguageListeners = new Set<() => void>();
 
-if (typeof document !== 'undefined' && document.documentElement) {
-  document.documentElement.lang = displayLanguage;
+function stampDocumentLanguage(): void {
+  if (typeof document !== 'undefined' && document.documentElement) {
+    document.documentElement.lang = displayLanguage;
+  }
+}
+
+stampDocumentLanguage();
+
+/**
+ * Host entry point for a language the user changed while this document was
+ * open. Bootstrap alone would leave a live page in the language it started in,
+ * with the native chrome around it already switched.
+ */
+function applyDisplayLanguage(next: unknown): void {
+  const normalized = typeof next === 'string' ? next.trim() : '';
+  if (!normalized || normalized === displayLanguage) return;
+  displayLanguage = normalized;
+  stampDocumentLanguage();
+  for (const listener of [...displayLanguageListeners]) listener();
+}
+
+if (typeof window !== 'undefined' && !window.__lingxiaApplyDisplayLanguage) {
+  Object.defineProperty(window, '__lingxiaApplyDisplayLanguage', {
+    configurable: false,
+    enumerable: false,
+    value: applyDisplayLanguage,
+  });
 }
 
 export function getDisplayLanguage(): string {
   return displayLanguage;
+}
+
+/** Subscribe to host display-language changes. Returns an unsubscribe. */
+export function subscribeDisplayLanguage(listener: () => void): () => void {
+  displayLanguageListeners.add(listener);
+  return () => {
+    displayLanguageListeners.delete(listener);
+  };
 }
 
 export function getPlatformOS(): PlatformOS {

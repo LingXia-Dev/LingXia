@@ -44,6 +44,31 @@ static DISPLAY_LANGUAGE: Mutex<Option<String>> = Mutex::new(None);
 pub fn set_display_language(language: Option<String>) {
     let normalized = language.filter(|value| !value.trim().is_empty());
     *DISPLAY_LANGUAGE.lock().unwrap_or_else(|e| e.into_inner()) = normalized;
+    publish_display_language_to_pages(&get_display_language());
+}
+
+/// Push the language into every open page document.
+///
+/// The native chrome reads `get_display_language` live, but a page WebView
+/// only ever received the value its bootstrap was written with — so without
+/// this a language switch relabels the chrome and leaves the content it frames
+/// in the previous language until the page is recreated.
+fn publish_display_language_to_pages(language: &str) {
+    let Some(manager) = get_lxapps_manager() else {
+        return;
+    };
+    let script = format!(
+        "var f = globalThis.__lingxiaApplyDisplayLanguage; if (f) f({});",
+        serde_json::to_string(language).unwrap_or_else(|_| "\"en-US\"".to_string())
+    );
+    use lingxia_webview::WebViewController;
+    for entry in manager.lxapps.iter() {
+        for page in entry.value().live_page_instances() {
+            if let Some(webview) = page.webview() {
+                let _ = webview.exec_js(&script);
+            }
+        }
+    }
 }
 
 /// Get the product display language: the user override when set, else the

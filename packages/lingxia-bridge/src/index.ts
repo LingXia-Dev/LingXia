@@ -45,7 +45,7 @@ export {
   stream,
 } from './bridge';
 export { isNativeError } from './invocation';
-export { getDisplayLanguage } from './runtime-env';
+export { getDisplayLanguage, subscribeDisplayLanguage } from './runtime-env';
 export { renderErrorUI, hasError, getErrorInfo } from './error';
 export { boot, bootWhenReady } from './boot';
 

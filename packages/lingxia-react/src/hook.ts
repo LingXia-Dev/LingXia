@@ -4,7 +4,7 @@ import type {
   LxBridgeError,
   LxStream,
 } from "@lingxia/bridge";
-import { getDisplayLanguage } from "@lingxia/bridge";
+import { getDisplayLanguage, subscribeDisplayLanguage } from "@lingxia/bridge";
 import {
   getMethodKey,
   invokeMethod,
@@ -365,5 +365,9 @@ export function usePlatform(): LxPlatform {
 
 /** Effective product language selected by the host. */
 export function useDisplayLanguage(): string {
-  return getDisplayLanguage();
+  return React.useSyncExternalStore(
+    subscribeDisplayLanguage,
+    getDisplayLanguage,
+    getDisplayLanguage,
+  );
 }
