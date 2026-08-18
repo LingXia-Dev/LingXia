@@ -11,12 +11,39 @@ export type PlatformOS = NonNullable<BridgeConfig['os']> | 'unknown';
 export const BRIDGE_CONFIG: BridgeConfig =
   (typeof window !== 'undefined' && window.__LX_BRIDGE_CFG) || {};
 
-let displayLanguage = BRIDGE_CONFIG.displayLanguage?.trim() || 'en-US';
-const displayLanguageListeners = new Set<() => void>();
+interface DisplayLanguageStore {
+  value: string;
+  listeners: Set<() => void>;
+}
+
+/**
+ * One store per document, deliberately on `window`.
+ *
+ * This module is present twice in a page: once as the global bridge runtime
+ * the host injects, once bundled into the page's own JS. Module-local state
+ * would give each copy its own value — the host would push the change into
+ * whichever copy won the race to install the hook, and the other, which is the
+ * one the framework hooks read, would answer with the boot value forever.
+ */
+const fallbackStore: DisplayLanguageStore = {
+  value: BRIDGE_CONFIG.displayLanguage?.trim() || 'en-US',
+  listeners: new Set(),
+};
+
+function store(): DisplayLanguageStore {
+  if (typeof window === 'undefined') return fallbackStore;
+  if (!window.__lxDisplayLanguage) {
+    window.__lxDisplayLanguage = {
+      value: BRIDGE_CONFIG.displayLanguage?.trim() || 'en-US',
+      listeners: new Set(),
+    };
+  }
+  return window.__lxDisplayLanguage;
+}
 
 function stampDocumentLanguage(): void {
   if (typeof document !== 'undefined' && document.documentElement) {
-    document.documentElement.lang = displayLanguage;
+    document.documentElement.lang = store().value;
   }
 }
 
@@ -29,10 +56,11 @@ stampDocumentLanguage();
  */
 function applyDisplayLanguage(next: unknown): void {
   const normalized = typeof next === 'string' ? next.trim() : '';
-  if (!normalized || normalized === displayLanguage) return;
-  displayLanguage = normalized;
+  const current = store();
+  if (!normalized || normalized === current.value) return;
+  current.value = normalized;
   stampDocumentLanguage();
-  for (const listener of [...displayLanguageListeners]) listener();
+  for (const listener of [...current.listeners]) listener();
 }
 
 if (typeof window !== 'undefined' && !window.__lingxiaApplyDisplayLanguage) {
@@ -44,14 +72,15 @@ if (typeof window !== 'undefined' && !window.__lingxiaApplyDisplayLanguage) {
 }
 
 export function getDisplayLanguage(): string {
-  return displayLanguage;
+  return store().value;
 }
 
 /** Subscribe to host display-language changes. Returns an unsubscribe. */
 export function subscribeDisplayLanguage(listener: () => void): () => void {
-  displayLanguageListeners.add(listener);
+  const listeners = store().listeners;
+  listeners.add(listener);
   return () => {
-    displayLanguageListeners.delete(listener);
+    listeners.delete(listener);
   };
 }
 
