@@ -155,3 +155,31 @@ assert_has "$scratch/media-playback" "lingxia-platform" \
   "lingxia-media/playback must include the existing platform contracts"
 assert_lacks "$scratch/media-playback" "lingxia-device-io" \
   "lingxia-media/playback must remain independent of desktop device I/O"
+
+cargo tree -e features -p lingxia-media --no-default-features --features capture \
+  > "$scratch/media-capture"
+cargo tree -e features -p lingxia-media --no-default-features --features capture \
+  -i lingxia-platform > "$scratch/media-capture-platform"
+assert_has "$scratch/media-capture-platform" 'lingxia-platform feature "capture-contract"' \
+  "lingxia-media/capture must take the platform capture contract"
+assert_lacks "$scratch/media-capture" "lingxia-device-io" \
+  "lingxia-media/capture must not depend on desktop device I/O"
+
+cargo tree -e features -p lingxia-device-io --no-default-features \
+  --features snapshot > "$scratch/snapshot"
+cargo tree -e features -p lingxia-device-io --no-default-features \
+  --features snapshot -i lingxia-device-io > "$scratch/snapshot-features"
+assert_has "$scratch/snapshot-features" 'lingxia-device-io feature "desktop-capture-engine"' \
+  "snapshot must reuse the shared desktop visual engine"
+assert_lacks "$scratch/snapshot-features" 'lingxia-device-io feature "realtime-capture-provider"' \
+  "snapshot must not enable the realtime capture provider"
+assert_lacks "$scratch/snapshot" "lingxia-platform" \
+  "snapshot must not enable the platform capture contract"
+
+cargo tree -e features -p lingxia-device-io --no-default-features \
+  --features realtime-capture-provider > "$scratch/realtime-provider"
+cargo tree -e features -p lingxia-device-io --no-default-features \
+  --features realtime-capture-provider -i lingxia-platform \
+  > "$scratch/realtime-provider-platform"
+assert_has "$scratch/realtime-provider-platform" 'lingxia-platform feature "capture-contract"' \
+  "the desktop realtime adapter must take the capture contract"

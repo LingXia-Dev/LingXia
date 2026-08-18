@@ -36,7 +36,7 @@ mod ax_permission;
 #[cfg(feature = "window")]
 #[cfg_attr(not(feature = "ax"), allow(dead_code))]
 mod axui;
-#[cfg(feature = "snapshot")]
+#[cfg(feature = "desktop-capture-engine")]
 mod capture;
 #[cfg(feature = "window")]
 mod cf;
@@ -78,6 +78,8 @@ pub use ax::{
     invoke as ax_invoke, query as ax_query, scroll_into_view as ax_scroll_into_view,
     select as ax_select, set_value as ax_set_value, tree as ax_tree, wait as ax_wait,
 };
+#[cfg(feature = "desktop-capture-engine")]
+pub(crate) use capture::capture_frame;
 #[cfg(feature = "snapshot")]
 pub use capture::{pixel, screenshot, wait_pixel};
 #[cfg(feature = "clipboard")]

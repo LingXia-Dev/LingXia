@@ -47,10 +47,10 @@ fn capture_error(what: &str) -> Error {
     }
 }
 
-pub fn screenshot(target: CaptureTarget) -> Result<Capture> {
+pub(crate) fn capture_frame(target: &CaptureTarget) -> Result<crate::engine::EngineFrame> {
     match target {
         CaptureTarget::Window(id) => {
-            let wid = parse_window_id(&id)?;
+            let wid = parse_window_id(id)?;
             let img = unsafe {
                 CGWindowListCreateImage(
                     CGRectNull,
@@ -60,13 +60,15 @@ pub fn screenshot(target: CaptureTarget) -> Result<Capture> {
                 )
             }
             .ok_or_else(|| capture_error(&format!("window {id}")))?;
-            let (width, height, png) = encode(&img)?;
-            Ok(Capture {
+            let (width, height, rgba) = image_to_rgba(&img)?;
+            Ok(crate::engine::EngineFrame {
                 width,
                 height,
-                png,
+                rgba,
+                source: window_source(id)?,
+                scale: 1.0,
+                backend: "cgwindow",
                 occlusion_independent: true,
-                backend: "cgwindow".into(),
             })
         }
         CaptureTarget::Display(n) => {
@@ -74,33 +76,53 @@ pub fn screenshot(target: CaptureTarget) -> Result<Capture> {
             let d = ds
                 .get(n.wrapping_sub(1))
                 .ok_or_else(|| Error::NotFound(format!("no display {n}")))?;
-            // Re-derive the CGDirectDisplayID by index the same way displays() did.
             let id = display_id_at(n.wrapping_sub(1))?;
             let img = CGDisplayCreateImage(id)
                 .ok_or_else(|| capture_error(&format!("display {}", d.id)))?;
-            let (width, height, png) = encode(&img)?;
-            Ok(Capture {
+            let (width, height, rgba) = image_to_rgba(&img)?;
+            Ok(crate::engine::EngineFrame {
                 width,
                 height,
-                png,
+                rgba,
+                source: d.bounds,
+                scale: d.scale,
+                backend: "cgdisplay",
                 occlusion_independent: false,
-                backend: "cgdisplay".into(),
             })
         }
         CaptureTarget::Screen => {
             let bounds = virtual_bounds()?;
-            capture_screen_rect(bounds)
+            capture_screen_frame(bounds)
         }
         CaptureTarget::Region { x, y, w, h } => {
-            if w <= 0 || h <= 0 {
+            if *w <= 0 || *h <= 0 {
                 return Err(Error::Usage("region width/height must be positive".into()));
             }
-            capture_screen_rect(CGRect::new(
-                objc2_core_foundation::CGPoint::new(x as f64, y as f64),
-                objc2_core_foundation::CGSize::new(w as f64, h as f64),
+            capture_screen_frame(CGRect::new(
+                objc2_core_foundation::CGPoint::new(*x as f64, *y as f64),
+                objc2_core_foundation::CGSize::new(*w as f64, *h as f64),
             ))
         }
     }
+}
+
+fn window_source(id: &str) -> Result<crate::model::Rect> {
+    let wid = parse_window_id(id)?;
+    super::window_record(wid)
+        .map(|window| window.bounds)
+        .ok_or_else(|| Error::NotFound(format!("no window {id}")))
+}
+
+#[cfg(feature = "snapshot")]
+pub fn screenshot(target: CaptureTarget) -> Result<Capture> {
+    let frame = crate::engine::capture_frame(&target)?;
+    Ok(Capture {
+        width: frame.width,
+        height: frame.height,
+        png: crate::engine::encode_png(frame.width, frame.height, frame.rgba)?,
+        occlusion_independent: frame.occlusion_independent,
+        backend: frame.backend.into(),
+    })
 }
 
 /// Capture a screen rect as raw top-down RGBA, leaving out the viewer's own
@@ -149,7 +171,7 @@ pub(super) fn rgba_of_window(id: u32, max_width: u32) -> Result<(u32, u32, Vec<u
     image_to_rgba_within(&img, max_width)
 }
 
-fn capture_screen_rect(rect: CGRect) -> Result<Capture> {
+fn capture_screen_frame(rect: CGRect) -> Result<crate::engine::EngineFrame> {
     let img = CGWindowListCreateImage(
         rect,
         CGWindowListOption::OptionOnScreenOnly,
@@ -157,13 +179,15 @@ fn capture_screen_rect(rect: CGRect) -> Result<Capture> {
         CGWindowImageOption::Default,
     )
     .ok_or_else(|| capture_error("screen"))?;
-    let (width, height, png) = encode(&img)?;
-    Ok(Capture {
+    let (width, height, rgba) = image_to_rgba(&img)?;
+    Ok(crate::engine::EngineFrame {
         width,
         height,
-        png,
+        rgba,
+        source: super::rect_to(rect),
+        scale: 1.0,
+        backend: "cgwindow",
         occlusion_independent: false,
-        backend: "cgwindow".into(),
     })
 }
 
@@ -258,17 +282,6 @@ fn parse_hex(hex: &str) -> Result<(u8, u8, u8)> {
             .map_err(|_| Error::Usage(format!("invalid color '{hex}'")))
     };
     Ok((byte(0)?, byte(2)?, byte(4)?))
-}
-
-fn encode(img: &CGImage) -> Result<(u32, u32, Vec<u8>)> {
-    let (w, h, rgba) = image_to_rgba(img)?;
-    let image = image::RgbaImage::from_raw(w, h, rgba)
-        .ok_or_else(|| Error::Failed("bitmap buffer size mismatch".into()))?;
-    let mut png = Vec::new();
-    image
-        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
-        .map_err(|e| Error::Failed(format!("PNG encode failed: {e}")))?;
-    Ok((w, h, png))
 }
 
 /// Redraw a `CGImage` into a device-RGB bitmap we own and read it back top-down.
