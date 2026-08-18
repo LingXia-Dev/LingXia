@@ -128,6 +128,29 @@ impl SessionClock {
     }
 }
 
+/// What a queue did with a packet. A rejected packet still carries the
+/// discontinuity it caused, so a dropped backlog is never silent.
+struct PushOutcome {
+    discontinuity: Option<DiscontinuityReason>,
+    needs_keyframe: bool,
+}
+
+impl PushOutcome {
+    fn queued(discontinuity: Option<DiscontinuityReason>) -> Self {
+        Self {
+            discontinuity,
+            needs_keyframe: false,
+        }
+    }
+
+    fn needs_keyframe(discontinuity: Option<DiscontinuityReason>) -> Self {
+        Self {
+            discontinuity,
+            needs_keyframe: true,
+        }
+    }
+}
+
 struct TrackQueue {
     kind: TrackKind,
     packets: VecDeque<EncodedPacket>,
@@ -163,23 +186,18 @@ impl TrackQueue {
         }
     }
 
-    fn push(
-        &mut self,
-        packet: EncodedPacket,
-        clock: &SessionClock,
-    ) -> Result<Option<DiscontinuityReason>, EncodedPacket> {
+    fn push(&mut self, packet: EncodedPacket, clock: &SessionClock) -> PushOutcome {
         match self.kind {
             TrackKind::Visual => self.push_video(packet),
             TrackKind::SystemAudio | TrackKind::Microphone => self.push_audio(packet, clock),
         }
     }
 
-    fn push_video(
-        &mut self,
-        packet: EncodedPacket,
-    ) -> Result<Option<DiscontinuityReason>, EncodedPacket> {
+    fn push_video(&mut self, packet: EncodedPacket) -> PushOutcome {
         if self.waiting_keyframe && !packet.keyframe {
-            return Err(packet);
+            // The gap was reported when the queue was cleared; this packet is
+            // simply unusable until the encoder answers with a keyframe.
+            return PushOutcome::needs_keyframe(None);
         }
         let overflow = self.packets.len() >= self.max_packets
             || self.bytes.saturating_add(packet.payload.len()) > self.max_bytes;
@@ -189,21 +207,17 @@ impl TrackQueue {
             if packet.keyframe {
                 self.waiting_keyframe = false;
                 self.enqueue(packet);
-                return Ok(Some(DiscontinuityReason::Overflow));
+                return PushOutcome::queued(Some(DiscontinuityReason::Overflow));
             }
             self.waiting_keyframe = true;
-            return Err(packet);
+            return PushOutcome::needs_keyframe(Some(DiscontinuityReason::Overflow));
         }
         self.waiting_keyframe = false;
         self.enqueue(packet);
-        Ok(None)
+        PushOutcome::queued(None)
     }
 
-    fn push_audio(
-        &mut self,
-        packet: EncodedPacket,
-        _clock: &SessionClock,
-    ) -> Result<Option<DiscontinuityReason>, EncodedPacket> {
+    fn push_audio(&mut self, packet: EncodedPacket, _clock: &SessionClock) -> PushOutcome {
         let overflow = self.packets.len() >= self.max_packets
             || self.bytes.saturating_add(packet.payload.len()) > self.max_bytes
             || audio_span(&self.packets, &packet) > self.max_audio_duration;
@@ -211,10 +225,10 @@ impl TrackQueue {
             self.packets.clear();
             self.bytes = 0;
             self.enqueue(packet);
-            return Ok(Some(DiscontinuityReason::Overflow));
+            return PushOutcome::queued(Some(DiscontinuityReason::Overflow));
         }
         self.enqueue(packet);
-        Ok(None)
+        PushOutcome::queued(None)
     }
 
     fn enqueue(&mut self, packet: EncodedPacket) {
@@ -240,6 +254,9 @@ fn audio_span(queued: &VecDeque<EncodedPacket>, next: &EncodedPacket) -> Duratio
 
 struct TrackRuntime {
     kind: TrackKind,
+    /// The id reported outward. Providers number tracks per session, so the
+    /// pipeline mints its own to keep two sessions from colliding.
+    public_id: TrackId,
     format_generation: u64,
     geometry_generation: u64,
     configured: bool,
@@ -248,9 +265,10 @@ struct TrackRuntime {
 }
 
 impl TrackRuntime {
-    fn new(kind: TrackKind) -> Self {
+    fn new(kind: TrackKind, public_id: TrackId) -> Self {
         Self {
             kind,
+            public_id,
             format_generation: 0,
             geometry_generation: 0,
             configured: false,
@@ -264,6 +282,8 @@ impl TrackRuntime {
 }
 
 struct LiveSession {
+    /// Stable for the life of the session; `Vec` position is not.
+    slot: u64,
     kinds: Vec<TrackKind>,
     session: Box<dyn ProviderCaptureSession>,
 }
@@ -271,12 +291,16 @@ struct LiveSession {
 struct Inner {
     state: PipelineState,
     clock: SessionClock,
-    tracks: HashMap<TrackId, TrackRuntime>,
+    tracks: HashMap<(u64, TrackId), TrackRuntime>,
+    /// Minted id back to the session and provider track that owns it.
+    owners: HashMap<TrackId, (u64, TrackId)>,
+    next_slot: u64,
+    next_public_track: u64,
     subscribers: Vec<Sender<CaptureEvent>>,
     sessions: Vec<LiveSession>,
     request: CaptureRequest,
     unauthorized: Vec<Assignment>,
-    event_tx: Sender<ProviderEvent>,
+    event_tx: Sender<(u64, ProviderEvent)>,
 }
 
 impl Inner {
@@ -291,15 +315,37 @@ impl Inner {
         self.state = state;
         self.emit(CaptureEvent::State(state));
     }
+
+    fn runtime_mut(&mut self, slot: u64, track: TrackId, kind: TrackKind) -> &mut TrackRuntime {
+        let next_public = &mut self.next_public_track;
+        let owners = &mut self.owners;
+        self.tracks.entry((slot, track)).or_insert_with(|| {
+            let public_id = TrackId(*next_public);
+            *next_public += 1;
+            owners.insert(public_id, (slot, track));
+            TrackRuntime::new(kind, public_id)
+        })
+    }
+
+    /// Stop every native session. A pipeline that is no longer active must not
+    /// leave the provider capturing.
+    fn shutdown_sessions(&mut self) {
+        for live in &self.sessions {
+            live.session.stop();
+        }
+        self.sessions.clear();
+        self.unauthorized.clear();
+    }
 }
 
 struct Sink {
-    tx: Sender<ProviderEvent>,
+    tx: Sender<(u64, ProviderEvent)>,
+    slot: u64,
 }
 
 impl ProviderEventSink for Sink {
     fn emit(&self, event: ProviderEvent) {
-        let _ = self.tx.send(event);
+        let _ = self.tx.send((self.slot, event));
     }
 }
 
@@ -330,25 +376,26 @@ impl Pipeline {
 
         let assignments = assign_providers(&providers, &request)?;
         let (event_tx, event_rx) = mpsc::channel();
-        let sink: Arc<dyn ProviderEventSink> = Arc::new(Sink {
-            tx: event_tx.clone(),
-        });
 
         let mut sessions = Vec::new();
         let tracks = HashMap::new();
         let mut unauthorized = Vec::new();
+        let mut next_slot = 0u64;
 
         for assignment in assignments {
             let provider_request = ProviderCaptureRequest {
                 tracks: assignment.tracks.clone(),
                 authorization: request.authorization.clone(),
             };
-            match block_on(
-                assignment
-                    .provider
-                    .start(provider_request, Arc::clone(&sink)),
-            ) {
+            let slot = next_slot;
+            next_slot += 1;
+            let sink: Arc<dyn ProviderEventSink> = Arc::new(Sink {
+                tx: event_tx.clone(),
+                slot,
+            });
+            match block_on(assignment.provider.start(provider_request, sink)) {
                 Ok(session) => sessions.push(LiveSession {
+                    slot,
                     kinds: assignment.tracks.iter().map(|track| track.kind).collect(),
                     session,
                 }),
@@ -381,6 +428,9 @@ impl Pipeline {
             state: initial,
             clock: SessionClock::new(),
             tracks,
+            owners: HashMap::new(),
+            next_slot,
+            next_public_track: 1,
             subscribers: Vec::new(),
             sessions,
             request,
@@ -455,7 +505,7 @@ impl Pipeline {
         &self,
         authorization: CaptureAuthorization,
     ) -> Result<(), CaptureError> {
-        let (pending, sink) = {
+        let (pending, event_tx, first_slot) = {
             let mut inner = lock(&self.inner);
             if inner.state != PipelineState::Authorizing {
                 return Err(CaptureError::Failed {
@@ -463,53 +513,75 @@ impl Pipeline {
                 });
             }
             inner.request.authorization = Some(authorization.clone());
-            (
-                std::mem::take(&mut inner.unauthorized),
-                Arc::new(Sink {
-                    tx: inner.event_tx.clone(),
-                }) as Arc<dyn ProviderEventSink>,
-            )
+            let pending = std::mem::take(&mut inner.unauthorized);
+            // Reserve the slots up front: the starts below run unlocked.
+            let first_slot = inner.next_slot;
+            inner.next_slot += pending.len() as u64;
+            (pending, inner.event_tx.clone(), first_slot)
         };
         let mut started = Vec::new();
         let mut still_unauthorized = Vec::new();
-        for assignment in pending {
+        let mut required_failure = None;
+        for (index, assignment) in pending.into_iter().enumerate() {
             let provider_request = ProviderCaptureRequest {
                 tracks: assignment.tracks.clone(),
                 authorization: Some(authorization.clone()),
             };
-            match block_on(
-                assignment
-                    .provider
-                    .start(provider_request, Arc::clone(&sink)),
-            ) {
+            let slot = first_slot + index as u64;
+            let sink: Arc<dyn ProviderEventSink> = Arc::new(Sink {
+                tx: event_tx.clone(),
+                slot,
+            });
+            match block_on(assignment.provider.start(provider_request, sink)) {
                 Ok(session) => started.push(LiveSession {
+                    slot,
                     kinds: assignment.tracks.iter().map(|track| track.kind).collect(),
                     session,
                 }),
                 Err(CaptureError::AuthorizationRequired { .. }) => {
                     still_unauthorized.push(assignment);
                 }
-                Err(error) if assignment.tracks.iter().any(|track| track.required) => {
-                    return Err(error);
+                Err(error) => {
+                    // Keep going so the sessions that did start are still
+                    // adopted below; a required track decides the outcome.
+                    if required_failure.is_none()
+                        && assignment.tracks.iter().any(|track| track.required)
+                    {
+                        required_failure = Some(error);
+                    }
                 }
-                Err(_) => {}
             }
         }
         let mut inner = lock(&self.inner);
         inner.sessions.extend(started);
         inner.unauthorized = still_unauthorized;
-        if inner.unauthorized.is_empty() && !inner.sessions.is_empty() {
-            inner.set_state(PipelineState::Running);
+        if let Some(error) = required_failure {
+            inner.shutdown_sessions();
+            inner.set_state(PipelineState::Failed);
+            return Err(error);
         }
+        if !inner.unauthorized.is_empty() {
+            return Ok(());
+        }
+        if inner.sessions.is_empty() {
+            inner.set_state(PipelineState::Failed);
+            return Err(CaptureError::Composition(
+                "no provider could start the requested tracks".into(),
+            ));
+        }
+        inner.set_state(PipelineState::Running);
         Ok(())
     }
 
     pub fn request_keyframe(&self, track: TrackId) -> Result<(), CaptureError> {
         let inner = lock(&self.inner);
-        for live in &inner.sessions {
-            live.session.request_keyframe(track)?;
-        }
-        Ok(())
+        let Some(&(slot, provider_track)) = inner.owners.get(&track) else {
+            return Err(CaptureError::UnknownSession);
+        };
+        let Some(live) = inner.sessions.iter().find(|live| live.slot == slot) else {
+            return Err(CaptureError::UnknownSession);
+        };
+        live.session.request_keyframe(provider_track)
     }
 
     pub fn suspend(&self) -> Result<(), CaptureError> {
@@ -619,17 +691,34 @@ fn assign_providers(
     Ok(assignments)
 }
 
-fn pump(inner: Arc<Mutex<Inner>>, rx: Receiver<ProviderEvent>, stop: Arc<AtomicBool>) {
+const FLUSH_INTERVAL: Duration = Duration::from_millis(20);
+
+fn pump(inner: Arc<Mutex<Inner>>, rx: Receiver<(u64, ProviderEvent)>, stop: Arc<AtomicBool>) {
+    let mut next_flush = Instant::now() + FLUSH_INTERVAL;
     while !stop.load(Ordering::Relaxed) {
-        match rx.recv_timeout(Duration::from_millis(20)) {
-            Ok(event) => handle_provider_event(&inner, event),
-            Err(RecvTimeoutError::Timeout) => drain_queues(&inner),
-            Err(RecvTimeoutError::Disconnected) => break,
+        let wait = next_flush.saturating_duration_since(Instant::now());
+        let disconnected = match rx.recv_timeout(wait) {
+            Ok((slot, event)) => {
+                handle_provider_event(&inner, slot, event);
+                false
+            }
+            Err(RecvTimeoutError::Timeout) => false,
+            Err(RecvTimeoutError::Disconnected) => true,
+        };
+        // Flush on the interval, not on a lull in the stream: a track fast
+        // enough to keep `recv_timeout` busy never reaches a timeout, and its
+        // packets would sit in the queue forever.
+        if disconnected || Instant::now() >= next_flush {
+            drain_queues(&inner);
+            next_flush = Instant::now() + FLUSH_INTERVAL;
+        }
+        if disconnected {
+            break;
         }
     }
 }
 
-fn handle_provider_event(inner: &Arc<Mutex<Inner>>, event: ProviderEvent) {
+fn handle_provider_event(inner: &Arc<Mutex<Inner>>, slot: u64, event: ProviderEvent) {
     let mut inner = lock(inner);
     if !inner.state.is_active() {
         return;
@@ -645,12 +734,10 @@ fn handle_provider_event(inner: &Arc<Mutex<Inner>>, event: ProviderEvent) {
             channels,
             size,
         } => {
-            let runtime = inner
-                .tracks
-                .entry(track_id)
-                .or_insert_with(|| TrackRuntime::new(kind));
+            let runtime = inner.runtime_mut(slot, track_id, kind);
             runtime.format_generation = format_generation;
             runtime.configured = true;
+            let track_id = runtime.public_id;
             inner.emit(CaptureEvent::TrackConfigured {
                 track_id,
                 kind,
@@ -663,16 +750,14 @@ fn handle_provider_event(inner: &Arc<Mutex<Inner>>, event: ProviderEvent) {
             });
         }
         ProviderEvent::VisualGeometry { track_id, geometry } => {
-            let runtime = inner
-                .tracks
-                .entry(track_id)
-                .or_insert_with(|| TrackRuntime::new(TrackKind::Visual));
+            let runtime = inner.runtime_mut(slot, track_id, TrackKind::Visual);
             runtime.geometry_generation = geometry.generation;
             runtime.geometry_ready = true;
+            let track_id = runtime.public_id;
             inner.emit(CaptureEvent::VisualGeometry { track_id, geometry });
         }
         ProviderEvent::EncodedPacket(packet) => {
-            accept_packet(&mut inner, packet);
+            accept_packet(&mut inner, slot, packet);
         }
         ProviderEvent::Discontinuity {
             track_id,
@@ -681,6 +766,7 @@ fn handle_provider_event(inner: &Arc<Mutex<Inner>>, event: ProviderEvent) {
             format_generation,
             timestamp,
         } => {
+            let track_id = inner.runtime_mut(slot, track_id, kind).public_id;
             inner.emit(CaptureEvent::Discontinuity {
                 track_id,
                 kind,
@@ -692,6 +778,8 @@ fn handle_provider_event(inner: &Arc<Mutex<Inner>>, event: ProviderEvent) {
         ProviderEvent::AuthorizationRevoked { track } => {
             inner.emit(CaptureEvent::AuthorizationRevoked { track });
             inner.set_state(PipelineState::AuthorizationRevoked);
+            // Consent is gone: the native capture has to end with it.
+            inner.shutdown_sessions();
         }
         ProviderEvent::Failed { track, error } => {
             inner.emit(CaptureEvent::Failed {
@@ -699,6 +787,7 @@ fn handle_provider_event(inner: &Arc<Mutex<Inner>>, event: ProviderEvent) {
                 error: error.clone(),
             });
             inner.set_state(PipelineState::Failed);
+            inner.shutdown_sessions();
         }
         ProviderEvent::Stopped => {
             inner.set_state(PipelineState::Stopped);
@@ -706,9 +795,9 @@ fn handle_provider_event(inner: &Arc<Mutex<Inner>>, event: ProviderEvent) {
     }
 }
 
-fn accept_packet(inner: &mut Inner, packet: EncodedPacket) {
-    let track_id = packet.track_id;
-    let Some(runtime) = inner.tracks.get_mut(&track_id) else {
+fn accept_packet(inner: &mut Inner, slot: u64, packet: EncodedPacket) {
+    let provider_track = packet.track_id;
+    let Some(runtime) = inner.tracks.get_mut(&(slot, provider_track)) else {
         return;
     };
     if !runtime.configured || packet.format_generation != runtime.format_generation {
@@ -723,26 +812,24 @@ fn accept_packet(inner: &mut Inner, packet: EncodedPacket) {
         }
     }
     let kind = runtime.kind;
+    let track_id = runtime.public_id;
     let format_generation = runtime.format_generation;
-    match runtime.queue.push(packet, &inner.clock) {
-        Ok(Some(reason)) => {
-            let timestamp = inner.clock.now();
-            inner.emit(CaptureEvent::Discontinuity {
-                track_id,
-                kind,
-                reason,
-                format_generation,
-                timestamp,
-            });
-        }
-        Ok(None) => {}
-        Err(_) => {
-            if kind == TrackKind::Visual {
-                for live in &inner.sessions {
-                    let _ = live.session.request_keyframe(track_id);
-                }
-            }
-        }
+    let outcome = runtime.queue.push(packet, &inner.clock);
+    if let Some(reason) = outcome.discontinuity {
+        let timestamp = inner.clock.now();
+        inner.emit(CaptureEvent::Discontinuity {
+            track_id,
+            kind,
+            reason,
+            format_generation,
+            timestamp,
+        });
+    }
+    if outcome.needs_keyframe
+        && kind == TrackKind::Visual
+        && let Some(live) = inner.sessions.iter().find(|live| live.slot == slot)
+    {
+        let _ = live.session.request_keyframe(provider_track);
     }
 }
 
@@ -751,13 +838,14 @@ fn drain_queues(inner: &Arc<Mutex<Inner>>) {
     if inner.state != PipelineState::Running && inner.state != PipelineState::Suspended {
         return;
     }
-    let ids: Vec<_> = inner.tracks.keys().copied().collect();
-    for id in ids {
-        while let Some(packet) = inner
+    let keys: Vec<_> = inner.tracks.keys().copied().collect();
+    for key in keys {
+        while let Some((public_id, mut packet)) = inner
             .tracks
-            .get_mut(&id)
-            .and_then(|runtime| runtime.queue.pop())
+            .get_mut(&key)
+            .and_then(|runtime| runtime.queue.pop().map(|p| (runtime.public_id, p)))
         {
+            packet.track_id = public_id;
             inner.emit(CaptureEvent::EncodedPacket(packet));
         }
     }
