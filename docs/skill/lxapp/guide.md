@@ -415,7 +415,7 @@ more than once, so a subscription left behind is leaked once per page instance,
 not once per app. Calling the returned function twice is safe.
 
 The same shape covers `onNetworkChange`, `onWifiConnected`,
-`onDeviceOrientationChange`, `onKeyDown`, `onKeyUp`, `onSurfaceContext`,
+`onDeviceOrientationChange`, `onKeyDown`, `onKeyUp`, `lx.surface.onContext`,
 `onUpdateReady`, `onUpdateFailed`, and the surface handle's `onMessage` /
 `onShow` / `onHide` / `onClose`.
 
