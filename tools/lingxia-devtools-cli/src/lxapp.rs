@@ -525,7 +525,7 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
             }
         }
         LxAppCommand::Close { app, json } => action(ws_url, methods::lxapp::CLOSE, app, json)?,
-        LxAppCommand::Reload(options) => lxapp_build::execute(ws_url, &options)?,
+        LxAppCommand::Reload(options) => lxapp_build::execute(project_root, ws_url, &options)?,
         LxAppCommand::Restart { app, json } => action(ws_url, methods::lxapp::RESTART, app, json)?,
         LxAppCommand::Uninstall { app, json } => {
             action(ws_url, methods::lxapp::UNINSTALL, app, json)?

@@ -70,7 +70,7 @@ pub fn resolve_page(
             }
             let path = app
                 .find_page_path_by_name(n)
-                .ok_or_else(|| format!("unknown page name: {n}"))?;
+                .ok_or_else(|| unknown_page_name(app, n))?;
             let page = resolve_active_page_by_path(app, &path)
                 .ok_or_else(|| format!("page is not active: {n}"))?;
             Ok((page, Some(n.to_string())))
@@ -99,6 +99,27 @@ pub fn resolve_webview(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Arc<
 
 /// Whether the configured page name exists in the app's manifest at all
 /// (regardless of runtime state). `None`/"current" counts as known.
+/// A page name the session does not know, with the names it does know.
+///
+/// The page registry is built once when the session starts, so a name that is
+/// in `lxapp.json` but not here means the file was edited after the fact —
+/// the error has to say that, or the edit looks like it silently did nothing.
+pub fn unknown_page_name(app: &Arc<LxApp>, page_name: &str) -> String {
+    let configured: Vec<String> = app
+        .page_entries()
+        .into_iter()
+        .map(|page| page.name)
+        .collect();
+    format!(
+        "unknown page name: {page_name} (this session knows: {}). A page added to lxapp.json needs a `lingxia dev` restart; reload only rebuilds the bundle.",
+        if configured.is_empty() {
+            "none".to_string()
+        } else {
+            configured.join(", ")
+        }
+    )
+}
+
 pub fn page_name_known(app: &Arc<LxApp>, page_name: Option<&str>) -> bool {
     match page_name.map(str::trim).filter(|value| !value.is_empty()) {
         None => true,
@@ -275,7 +296,7 @@ pub async fn navigate(
     }
     let path = app
         .find_page_path_by_name(page_name)
-        .ok_or_else(|| format!("unknown page name: {page_name}"))?;
+        .ok_or_else(|| unknown_page_name(app, page_name))?;
     let target_url = match query {
         Some(query) => crate::append_page_query(path, query)?,
         None => path,
