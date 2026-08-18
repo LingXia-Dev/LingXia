@@ -177,6 +177,7 @@ pub fn raise(target: &WindowTarget) -> Result<Window> {
 pub fn move_to(target: &WindowTarget, x: i32, y: i32) -> Result<Window> {
     let w = resolve(target)?;
     let ax = ax_window_for_id(&w.id)?;
+    notify_self_window_mutation(w.pid);
     ax.set_point("AXPosition", x as f64, y as f64)?;
     Ok(with_ax_geometry(&ax, w))
 }
@@ -189,6 +190,7 @@ pub fn move_to_display(target: &WindowTarget, display_id: &str) -> Result<Window
         .find(|d| d.id == display_id)
         .ok_or_else(|| Error::NotFound(format!("no display {display_id}")))?;
     let ax = ax_window_for_id(&w.id)?;
+    notify_self_window_mutation(w.pid);
     ax.set_point("AXPosition", d.work_area.x as f64, d.work_area.y as f64)?;
     Ok(with_ax_geometry(&ax, w))
 }
@@ -199,14 +201,18 @@ pub fn resize(target: &WindowTarget, width: i32, height: i32) -> Result<Window> 
     }
     let w = resolve(target)?;
     let ax = ax_window_for_id(&w.id)?;
-    ax.set_size("AXSize", width as f64, height as f64)?;
     notify_self_window_mutation(w.pid);
+    ax.set_size("AXSize", width as f64, height as f64)?;
     Ok(with_ax_geometry(&ax, w))
 }
 
-/// Tell in-process shells that automation mutated a window frame, so pending
-/// panel-layout frame restorations must not fight the new geometry. Cross-
-/// process targets have no such machinery; only the self-process case posts.
+/// Tell in-process shells that automation is about to mutate a window frame, so
+/// pending panel-layout frame restorations must not fight the new geometry.
+/// Posted before the mutation on purpose: both the notice and the self-targeted
+/// AX write are main-queue work, so a restoration queued behind the notice is
+/// cancelled by it, and one already due simply runs before the new geometry
+/// lands. Cross-process targets have no such machinery; only the self-process
+/// case posts.
 fn notify_self_window_mutation(pid: u32) {
     if pid != std::process::id() {
         return;
@@ -227,9 +233,9 @@ fn notify_self_window_mutation(pid: u32) {
     if unsafe { libc::pthread_main_np() } != 0 {
         post();
     } else {
-        // Async is sufficient (the consumer races only +0.28s delayed
-        // closures) and cannot deadlock a main thread that is itself
-        // waiting on this automation thread.
+        // Async keeps the ordering the caller needs — the notice lands on the
+        // main queue ahead of the AX write that follows it — without risking a
+        // deadlock on a main thread already waiting on this automation thread.
         dispatch2::DispatchQueue::main().exec_async(post);
     }
 }
@@ -267,6 +273,7 @@ pub fn maximize(target: &WindowTarget) -> Result<Window> {
         .or_else(|| ds.first())
         .ok_or_else(|| Error::Unavailable("no display for window".into()))?;
     let ax = ax_window_for_id(&w.id)?;
+    notify_self_window_mutation(w.pid);
     ax.set_bool("AXMinimized", false)?;
     ax.set_point("AXPosition", d.work_area.x as f64, d.work_area.y as f64)?;
     ax.set_size("AXSize", d.work_area.w as f64, d.work_area.h as f64)?;
