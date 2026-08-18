@@ -1,5 +1,6 @@
 use super::{
-    ViewUsageAudit, analyze_script_bindings, ensure_no_direct_lx_usage, ensure_used_actions_exist,
+    ViewUsageAudit, analyze_script_bindings, downstream_action_usage, ensure_no_direct_lx_usage,
+    ensure_used_actions_exist,
 };
 use crate::lxapp::framework::PageAction;
 use crate::lxapp::project::Project;
@@ -23,7 +24,18 @@ pub(super) fn validate_react_bindings(
     let mut used_actions = analyzer.used_actions;
     mark_channel_topic_actions(&source, actions, &mut used_actions);
     ensure_used_actions_exist(page_path, actions, &used_actions)?;
-    Ok(ViewUsageAudit { used_actions })
+    // The entry can only judge what it reads itself; once the object is handed
+    // to a child view, the child files decide what is wired.
+    let mut unused_reportable = true;
+    if analyzer.actions_escaped {
+        let (downstream, complete) = downstream_action_usage(project, &source_path);
+        used_actions.extend(downstream);
+        unused_reportable = complete;
+    }
+    Ok(ViewUsageAudit {
+        used_actions,
+        unused_reportable,
+    })
 }
 
 fn mark_channel_topic_actions(

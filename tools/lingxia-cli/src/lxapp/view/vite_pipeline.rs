@@ -142,11 +142,15 @@ fn build_component_pages(
         let logic_path = page_logic_path(project, page_path)?;
         let actions = extract_page_actions(logic_path.as_deref())?;
         let usage_audit = validate_component_view_bindings(project, page_path, &actions)?;
-        let unused_actions = actions
-            .iter()
-            .map(|action| action.name.as_str())
-            .filter(|name| !name.starts_with('_') && !usage_audit.used_actions.contains(*name))
-            .collect::<Vec<_>>();
+        let unused_actions = if usage_audit.unused_reportable {
+            actions
+                .iter()
+                .map(|action| action.name.as_str())
+                .filter(|name| !name.starts_with('_') && !usage_audit.used_actions.contains(*name))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
         if !unused_actions.is_empty() {
             eprintln!(
                 "Warning: view {} does not reference Page(...) actions: {}\n  \

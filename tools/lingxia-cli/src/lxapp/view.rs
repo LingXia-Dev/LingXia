@@ -145,6 +145,9 @@ pub(crate) fn page_title(project: &Project, page_path: &str) -> Result<String> {
 #[derive(Debug, Clone)]
 pub(crate) struct ViewUsageAudit {
     pub used_actions: BTreeSet<String>,
+    /// Whether `used_actions` is complete enough to call the rest dead. False
+    /// when the actions object reached code this audit could not read.
+    pub unused_reportable: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -161,6 +164,12 @@ pub(super) struct ViewBindingAnalyzer {
     pub(super) local_action_aliases: HashMap<String, String>,
     pub(super) used_actions: BTreeSet<String>,
     pub(super) direct_lx_uses: Vec<(usize, String)>,
+    /// True once an actions alias is referenced as a whole value rather than
+    /// read through (`actions.foo`) or destructured.
+    pub(super) actions_escaped: bool,
+    /// Spans of alias references already accounted for, so the generic
+    /// identifier visit does not read them as an escape.
+    consumed_alias_spans: HashSet<u32>,
 }
 
 impl ViewBindingAnalyzer {
@@ -185,7 +194,15 @@ impl ViewBindingAnalyzer {
         if let Expression::Identifier(identifier) = init {
             let name = identifier.name.as_str();
             if self.action_object_aliases.contains(name) {
-                self.register_action_object_pattern(pattern);
+                self.consumed_alias_spans.insert(identifier.span.start);
+                match pattern {
+                    // `const other = actions` just renames the object.
+                    BindingPattern::BindingIdentifier(binding) => {
+                        self.action_object_aliases
+                            .insert(binding.name.as_str().to_string());
+                    }
+                    _ => self.register_action_object_pattern(pattern),
+                }
                 return;
             }
             if let Some(action_name) = self.local_action_aliases.get(name).cloned() {
@@ -303,6 +320,11 @@ impl<'a> Visit<'a> for ViewBindingAnalyzer {
         if let Some(action_name) = self.local_action_aliases.get(it.name.as_str()) {
             self.used_actions.insert(action_name.clone());
         }
+        if self.action_object_aliases.contains(it.name.as_str())
+            && !self.consumed_alias_spans.contains(&it.span.start)
+        {
+            self.actions_escaped = true;
+        }
         walk::walk_identifier_reference(self, it);
     }
 
@@ -315,9 +337,17 @@ impl<'a> Visit<'a> for ViewBindingAnalyzer {
                     it.property.name.as_str().to_string(),
                 ));
             } else if self.action_object_aliases.contains(object_name) {
+                self.consumed_alias_spans.insert(identifier.span.start);
                 self.used_actions
                     .insert(it.property.name.as_str().to_string());
             }
+        } else if let Expression::StaticMemberExpression(inner) = unwrap_expression(&it.object)
+            && inner.property.name.as_str() == "actions"
+        {
+            // A view handed the page as one prop reaches through it:
+            // `page.actions.foo`.
+            self.used_actions
+                .insert(it.property.name.as_str().to_string());
         }
         walk::walk_static_member_expression(self, it);
     }
@@ -346,6 +376,8 @@ pub(crate) fn validate_component_view_bindings(
         ProjectFramework::Vue => vue::validate_vue_bindings(project, page_path, actions),
         ProjectFramework::Html => Ok(ViewUsageAudit {
             used_actions: BTreeSet::new(),
+            // HTML pages bind through the bridge, so this audit sees no actions.
+            unused_reportable: false,
         }),
     }
 }
@@ -368,6 +400,103 @@ pub(super) fn analyze_script_bindings(
     };
     analyzer.visit_program(&parse_result.program);
     Ok(analyzer)
+}
+
+/// Collects the relative import specifiers a view source declares, so the
+/// action audit can follow the components a page composition root renders.
+fn local_import_specifiers(source: &str, source_type: SourceType) -> Vec<String> {
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, source, source_type).parse();
+    let mut specifiers = Vec::new();
+    for statement in &parse_result.program.body {
+        let Statement::ImportDeclaration(declaration) = statement else {
+            continue;
+        };
+        let specifier = declaration.source.value.as_str();
+        if specifier.starts_with("./") || specifier.starts_with("../") {
+            specifiers.push(specifier.to_string());
+        }
+    }
+    specifiers
+}
+
+/// Resolves an import specifier the way the bundler does, but only far enough
+/// to find a view source inside the project. Non-script imports (CSS, assets)
+/// resolve to nothing — they hold no action bindings.
+fn resolve_local_import(project: &Project, importer: &Path, specifier: &str) -> Option<PathBuf> {
+    const EXTENSIONS: [&str; 5] = ["tsx", "ts", "jsx", "js", "vue"];
+    let base = importer.parent()?.join(specifier);
+    let candidates = std::iter::once(base.clone())
+        .chain(EXTENSIONS.iter().map(|ext| base.with_extension(ext)))
+        .chain(
+            EXTENSIONS
+                .iter()
+                .map(|ext| base.join(format!("index.{ext}"))),
+        );
+    for candidate in candidates {
+        let is_script = candidate
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| EXTENSIONS.contains(&ext));
+        if is_script && candidate.is_file() && candidate.starts_with(&project.root) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+/// Unions the action usage of every local view file reachable from `entry`.
+///
+/// A composition root hands `actions` to the views it renders, so the entry
+/// alone cannot tell a wired action from a dead one. Children receive the
+/// object under a prop, so `actions` is treated as the object name there — a
+/// seed that can only add usage, never invent a missing binding.
+///
+/// The second field is false when a reachable file could not be read or
+/// parsed: usage may live in it, so nothing may be called dead.
+fn downstream_action_usage(project: &Project, entry: &Path) -> (BTreeSet<String>, bool) {
+    let mut used_actions = BTreeSet::new();
+    let mut complete = true;
+    let mut visited = HashSet::from([entry.to_path_buf()]);
+    let mut queue = vec![entry.to_path_buf()];
+
+    while let Some(path) = queue.pop() {
+        let Ok(source) = fs::read_to_string(&path) else {
+            complete = false;
+            continue;
+        };
+        let is_vue = path.extension().is_some_and(|extension| extension == "vue");
+        let (script, script_source_type) = if is_vue {
+            let sections = vue::sfc_sections(&source);
+            used_actions.extend(vue::template_action_names(&sections.template));
+            (sections.script, sections.script_source_type)
+        } else {
+            let Ok(source_type) = SourceType::from_path(&path) else {
+                complete = false;
+                continue;
+            };
+            (source, source_type)
+        };
+
+        if path != entry {
+            let seed = HashSet::from(["actions".to_string()]);
+            match analyze_script_bindings(&script, script_source_type, Some((seed, HashMap::new())))
+            {
+                Ok(analyzer) => used_actions.extend(analyzer.used_actions),
+                Err(_) => complete = false,
+            }
+        }
+
+        for specifier in local_import_specifiers(&script, script_source_type) {
+            if let Some(resolved) = resolve_local_import(project, &path, &specifier)
+                && visited.insert(resolved.clone())
+            {
+                queue.push(resolved);
+            }
+        }
+    }
+
+    (used_actions, complete)
 }
 
 pub(super) fn ensure_no_direct_lx_usage(
@@ -1172,5 +1301,187 @@ mod tests {
             audit.used_actions,
             BTreeSet::from(["primaryAction".to_string(), "secondaryAction".to_string()])
         );
+    }
+
+    fn write_file(root: &Path, relative: &str, contents: &str) {
+        let path = root.join(relative);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, contents).unwrap();
+    }
+
+    fn action(name: &str) -> PageAction {
+        PageAction {
+            name: name.to_string(),
+            mode: PageActionMode::Notify,
+        }
+    }
+
+    const COMPOSITION_ROOT: &str = r#"
+        import { useLxPage } from "@lingxia/react";
+        import CompactView from "./views/compact-view";
+
+        export default function Page() {
+          const { data, actions } = useLxPage();
+          const page = { data, actions };
+          return <CompactView page={page} />;
+        }
+        "#;
+
+    #[test]
+    fn composition_root_credits_actions_wired_in_the_views_it_renders() {
+        let temp = tempdir().unwrap();
+        let page_path = "pages/speedtest/index.tsx";
+        write_file(temp.path(), page_path, COMPOSITION_ROOT);
+        write_file(
+            temp.path(),
+            "pages/speedtest/views/compact-view.tsx",
+            r#"
+            import Chart from "../components/chart";
+
+            export default function CompactView({ page }) {
+              const { actions } = page;
+              return (
+                <>
+                  <button onClick={() => actions.start()}>start</button>
+                  <Chart actions={actions} />
+                </>
+              );
+            }
+            "#,
+        );
+        write_file(
+            temp.path(),
+            "pages/speedtest/components/chart.tsx",
+            r#"
+            export default function Chart({ actions }) {
+              return <button onClick={() => actions.reset()}>reset</button>;
+            }
+            "#,
+        );
+
+        let project = create_project(temp.path(), ProjectFramework::React, page_path);
+        let audit = validate_component_view_bindings(
+            &project,
+            page_path,
+            &[action("start"), action("reset")],
+        )
+        .unwrap();
+
+        assert!(audit.unused_reportable);
+        assert_eq!(
+            audit.used_actions,
+            BTreeSet::from(["reset".to_string(), "start".to_string()])
+        );
+    }
+
+    #[test]
+    fn composition_root_still_reports_an_action_no_view_wires() {
+        let temp = tempdir().unwrap();
+        let page_path = "pages/wifi/index.tsx";
+        write_file(temp.path(), page_path, COMPOSITION_ROOT);
+        write_file(
+            temp.path(),
+            "pages/wifi/views/compact-view.tsx",
+            r#"
+            export default function CompactView({ page }) {
+              return <button onClick={() => page.actions.save()}>save</button>;
+            }
+            "#,
+        );
+
+        let project = create_project(temp.path(), ProjectFramework::React, page_path);
+        let audit = validate_component_view_bindings(
+            &project,
+            page_path,
+            &[action("save"), action("back")],
+        )
+        .unwrap();
+
+        assert!(audit.unused_reportable);
+        assert_eq!(audit.used_actions, BTreeSet::from(["save".to_string()]));
+    }
+
+    #[test]
+    fn an_unreadable_view_keeps_every_action_unjudged() {
+        let temp = tempdir().unwrap();
+        let page_path = "pages/wifi/index.tsx";
+        write_file(temp.path(), page_path, COMPOSITION_ROOT);
+        // Reachable but unparseable: usage may live in it, so nothing is dead.
+        write_file(
+            temp.path(),
+            "pages/wifi/views/compact-view.tsx",
+            "export default function CompactView({ page } {",
+        );
+
+        let project = create_project(temp.path(), ProjectFramework::React, page_path);
+        let audit =
+            validate_component_view_bindings(&project, page_path, &[action("save")]).unwrap();
+
+        assert!(!audit.unused_reportable);
+    }
+
+    #[test]
+    fn a_view_that_keeps_actions_to_itself_is_judged_alone() {
+        let temp = tempdir().unwrap();
+        let page_path = "pages/api/index.tsx";
+        write_file(
+            temp.path(),
+            page_path,
+            r#"
+            import { useLxPage } from "@lingxia/react";
+
+            export default function Page() {
+              const { actions } = useLxPage();
+              return <button onClick={() => actions.run()}>run</button>;
+            }
+            "#,
+        );
+
+        let project = create_project(temp.path(), ProjectFramework::React, page_path);
+        let audit =
+            validate_component_view_bindings(&project, page_path, &[action("run"), action("idle")])
+                .unwrap();
+
+        assert!(audit.unused_reportable);
+        assert_eq!(audit.used_actions, BTreeSet::from(["run".to_string()]));
+    }
+
+    #[test]
+    fn vue_composition_root_credits_child_template_bindings() {
+        let temp = tempdir().unwrap();
+        let page_path = "pages/speedtest/index.vue";
+        write_file(
+            temp.path(),
+            page_path,
+            r#"
+            <template>
+              <CompactView :actions="actions" />
+            </template>
+            <script setup lang="ts">
+            import { useLxPage } from "@lingxia/vue";
+            import CompactView from "./views/compact-view.vue";
+            const { actions } = useLxPage();
+            </script>
+            "#,
+        );
+        write_file(
+            temp.path(),
+            "pages/speedtest/views/compact-view.vue",
+            r#"
+            <template>
+              <button @click="actions.start()">start</button>
+            </template>
+            <script setup lang="ts">
+            defineProps<{ actions: unknown }>();
+            </script>
+            "#,
+        );
+
+        let project = create_project(temp.path(), ProjectFramework::Vue, page_path);
+        let audit =
+            validate_component_view_bindings(&project, page_path, &[action("start")]).unwrap();
+
+        assert!(audit.unused_reportable);
+        assert_eq!(audit.used_actions, BTreeSet::from(["start".to_string()]));
     }
 }
