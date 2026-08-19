@@ -756,6 +756,20 @@ function readElementAsAuthor(element: Element): AuthorNode {
   return { type, authorId, automationId, props, children };
 }
 
+export function findInlineNativeRoot(element: Element): Element | null {
+  if (typeof element.closest === "function") {
+    return element.closest("lx-native-root");
+  }
+  let current: Element | null = element.parentElement;
+  while (current) {
+    if (current.tagName.toLowerCase() === "lx-native-root") {
+      return current;
+    }
+    current = current.parentElement;
+  }
+  return null;
+}
+
 export function isFallbackElement(element: Element): boolean {
   if (element.hasAttribute("data-lx-native-fallback")) {
     return true;

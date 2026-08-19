@@ -7,6 +7,7 @@ mod apply;
 mod geometry;
 mod lease;
 mod types;
+mod video;
 
 pub use apply::{
     ApplyCommitOutcome, HostCapabilities, RootRegistry, apply_root_commit, evaluate_root_ready,
@@ -27,6 +28,11 @@ pub use types::{
     NativeGeometrySnapshotRoot, NativeNode, NativeRootAck, NativeRootCommit,
     NativeRootLeaseMessage, NativeRootOperation, NodeRef, Rect, RootLifecycle, RootRef,
     ScrollChain, ScrollChainAncestor,
+};
+pub use video::{
+    VideoCommand, VideoCommandOutcome, VideoCommandQueue, VideoCommandRequest,
+    VideoControlDescriptor, VideoControlsSemanticSnapshot, apply_video_command,
+    apply_video_controls_snapshot,
 };
 
 #[cfg(test)]

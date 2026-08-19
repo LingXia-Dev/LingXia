@@ -429,6 +429,92 @@ fn lost_grant_never_displays_and_allows_fallback() {
 }
 
 #[test]
+fn video_command_requires_applied_video_node() {
+    let root = root();
+    let mut registry = RootRegistry::new(HostCapabilities::default());
+    apply_root_commit(
+        &mut registry,
+        &commit(&root, 0, 1, vec![mount(&root, "v", "video", None, 0)]),
+    );
+    let mut queue = VideoCommandQueue::default();
+    let request = VideoCommandRequest {
+        action: "video.command".into(),
+        owner: node(&root, "v", 1),
+        request_id: "r1".into(),
+        command: VideoCommand::Play,
+    };
+    match apply_video_command(&registry, &mut queue, request) {
+        VideoCommandOutcome::Queued { request_id } => assert_eq!(request_id, "r1"),
+        other => panic!("{other:?}"),
+    }
+    {
+        let state = registry.get_mut(&root).unwrap();
+        state.lifecycle = RootLifecycle::Ready;
+    }
+    let play = VideoCommandRequest {
+        action: "video.command".into(),
+        owner: node(&root, "v", 1),
+        request_id: "r2".into(),
+        command: VideoCommand::Seek { seconds: 4.0 },
+    };
+    assert!(matches!(
+        apply_video_command(&registry, &mut queue, play),
+        VideoCommandOutcome::Applied { .. }
+    ));
+    let missing = VideoCommandRequest {
+        action: "video.command".into(),
+        owner: node(&root, "missing", 1),
+        request_id: "r3".into(),
+        command: VideoCommand::Pause,
+    };
+    assert!(matches!(
+        apply_video_command(&registry, &mut queue, missing),
+        VideoCommandOutcome::Rejected(_)
+    ));
+}
+
+#[test]
+fn video_controls_snapshot_rejects_stale_and_bad_slider() {
+    let root = root();
+    let owner = node(&root, "v", 1);
+    let good = VideoControlsSemanticSnapshot {
+        action: "video.controlsSemanticSnapshot".into(),
+        owner: owner.clone(),
+        revision: 1,
+        controls: vec![VideoControlDescriptor {
+            control_id: "play".into(),
+            label: "Play".into(),
+            role: "button".into(),
+            visible: true,
+            disabled: false,
+            value: None,
+            min: None,
+            max: None,
+            actions: vec!["activate".into()],
+        }],
+    };
+    assert_eq!(apply_video_controls_snapshot(0, &good).unwrap(), 1);
+    assert!(apply_video_controls_snapshot(1, &good).is_err());
+    let bad = VideoControlsSemanticSnapshot {
+        action: "video.controlsSemanticSnapshot".into(),
+        owner,
+        revision: 2,
+        controls: vec![VideoControlDescriptor {
+            control_id: "seek".into(),
+            label: "Seek".into(),
+            role: "slider".into(),
+            visible: true,
+            disabled: false,
+            value: Some(50.0),
+            min: Some(0.0),
+            max: Some(10.0),
+            actions: vec!["setValue".into()],
+        }],
+    };
+    assert!(apply_video_controls_snapshot(1, &bad).is_err());
+}
+
+#[test]
 fn ready_requires_tree_geometry_and_active_lease() {
     let root = root();
     let mut registry = RootRegistry::new(HostCapabilities::default());

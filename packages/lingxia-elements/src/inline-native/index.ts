@@ -28,6 +28,7 @@ export {
   normalizeAuthorType,
   parseBooleanAttr,
   isFallbackElement,
+  findInlineNativeRoot,
 } from "./structure.js";
 
 export { unwrapNativeEventPayload, bindPayloadHandler, isDomEvent } from "./unwrap.js";
@@ -42,6 +43,16 @@ export {
   type ViewLeaseState,
 } from "./lease.js";
 export { buildGeometrySnapshot, type NativeGeometrySnapshotJson } from "./geometry.js";
+export {
+  VIDEO_COMMANDS,
+  buildVideoCommandRequest,
+  collectVideoResourceUrls,
+  videoCommandUrls,
+  validateControlsSnapshot,
+  type VideoCommand,
+  type VideoCommandRequest,
+  type VideoControlsSemanticSnapshot,
+} from "./video.js";
 
 export { nativeError, isNativeErrorCode } from "./errors.js";
 

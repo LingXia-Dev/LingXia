@@ -85,6 +85,8 @@ export {
   buildRootCommit,
   buildGeometrySnapshot,
   viewCanShowFallback,
+  collectVideoResourceUrls,
+  buildVideoCommandRequest,
   collectAuthorTreeFromElement,
   normalizeAuthorType,
   parseBooleanAttr,

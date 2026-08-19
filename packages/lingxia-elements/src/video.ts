@@ -6,6 +6,7 @@ import {
 import { measureElement } from "./dom.js";
 import { ensureComponentId, NativeComponentUpdateState, iOSNativeComponentHelper } from "./component.js";
 import { isAndroid, isHarmony, isIOS, isWindows } from "./platform.js";
+import { findInlineNativeRoot } from "./inline-native/structure.js";
 
 const HARMONY_PROPS_PREFIX = "data:application/json,";
 
@@ -81,6 +82,7 @@ export class LxVideoElement extends HTMLElement {
   }
 
   private componentId: string | null = null;
+  private islandLeaf = false;
   private mounted = false;
   private updateState = new NativeComponentUpdateState();
   private unregister?: () => void;
@@ -248,6 +250,19 @@ export class LxVideoElement extends HTMLElement {
     if (!this.componentId) {
       return;
     }
+    this.islandLeaf = !!findInlineNativeRoot(this);
+    if (!this.islandLeaf) {
+      this.dispatchEvent(
+        new CustomEvent("error", {
+          detail: {
+            code: "NATIVE_ROOT_INVALID_STRUCTURE",
+            message:
+              "LxVideo must be a direct child of an explicit LxNativeRoot; implicit roots are not created",
+          },
+        })
+      );
+      return;
+    }
     this.unregister = registerNativeComponentHandler(this.componentId!, (message) => {
       // Handle component events from native
       if (message.event) {
@@ -300,7 +315,7 @@ export class LxVideoElement extends HTMLElement {
   disconnectedCallback() {
     this.updateState.reset();
 
-    if (this.componentId && !isHarmony()) {
+    if (this.componentId && !isHarmony() && !this.islandLeaf) {
       sendNativeComponentMessage({
         action: "component.unmount",
         id: this.componentId
@@ -575,6 +590,10 @@ export class LxVideoElement extends HTMLElement {
   }
 
   private mountOrUpdate(forceUpdate = false) {
+    // Island leaves are committed by LxNativeRoot, not the legacy overlay channel.
+    if (findInlineNativeRoot(this)) {
+      return;
+    }
     if (isHarmony()) {
       this.mountOrUpdateHarmony(forceUpdate);
       return;
@@ -619,6 +638,9 @@ export class LxVideoElement extends HTMLElement {
   }
 
   private updatePosition() {
+    if (findInlineNativeRoot(this)) {
+      return;
+    }
     if (isHarmony()) {
       this.mountOrUpdateHarmony();
       return;
@@ -799,6 +821,9 @@ export class LxVideoElement extends HTMLElement {
   }
 
   private mountOrUpdateHarmony(forceUpdate = false) {
+    if (findInlineNativeRoot(this)) {
+      return;
+    }
     if (!this.componentId) return;
     const { rect, cornerRadius } = measureElement(this);
     const hasSize = rect.width > 0 && rect.height > 0;

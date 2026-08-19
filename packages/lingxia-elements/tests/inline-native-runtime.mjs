@@ -74,6 +74,51 @@ assert.equal(commit2.operations.length, 1);
 assert.equal(commit2.operations[0].op, "update");
 assert.equal(commit2.operations[0].patch.src, "https://cdn.example.com/b.mp4");
 
+import {
+  buildVideoCommandRequest,
+  collectVideoResourceUrls,
+  validateControlsSnapshot,
+} from "../dist/inline-native/video.js";
+
+const videoUrls = collectVideoResourceUrls({
+  src: "https://cdn.example.com/a.mp4",
+  poster: "https://cdn.example.com/p.jpg",
+  qualities: [{ id: "hd", label: "HD", url: "https://cdn.example.com/hd.mp4" }],
+});
+assert.deepEqual(videoUrls, [
+  "https://cdn.example.com/a.mp4",
+  "https://cdn.example.com/p.jpg",
+  "https://cdn.example.com/hd.mp4",
+]);
+
+const command = buildVideoCommandRequest(
+  identified.children[0].nodeRef,
+  { name: "seek", seconds: 12 },
+  "req-1"
+);
+assert.equal(command.action, "video.command");
+assert.equal(command.command.name, "seek");
+
+const snapshotOk = validateControlsSnapshot(
+  {
+    action: "video.controlsSemanticSnapshot",
+    owner: identified.children[0].nodeRef,
+    revision: 1,
+    controls: [
+      {
+        controlId: "play",
+        label: "Play",
+        frame: { x: 0, y: 0, width: 24, height: 24 },
+        visible: true,
+        role: "button",
+        actions: ["activate"],
+      },
+    ],
+  },
+  0
+);
+assert.equal(snapshotOk.ok, true);
+
 const none = emptyViewLease();
 assert.equal(viewCanShowFallback(none, 0), true);
 const granted = viewApplyGrant("lease-1", 1, 8000, 0);

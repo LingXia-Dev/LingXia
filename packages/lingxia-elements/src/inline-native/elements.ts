@@ -3,8 +3,11 @@ import {
   compileInlineNativeRoot,
   parseBooleanAttr,
 } from "./structure.js";
-import type { CompileInlineNativeResult, NativeError } from "./types.js";
+import type { CompileInlineNativeResult, NativeError, RootRef } from "./types.js";
 import { nativeError } from "./errors.js";
+import { identifyCompiledRoot, nextOpaqueKey, type IdentifiedRoot } from "./identity.js";
+import { buildRootCommit } from "./commit.js";
+import { sendNativeComponentMessage } from "../nativecomponent.js";
 
 const ROOT_INVALID_EVENT = "error";
 const STRUCTURE_COMPILED_EVENT = "lxnativecompiled";
@@ -85,6 +88,10 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   private pending: PendingCompile = { frame: null };
   private observer?: MutationObserver;
   private lastResult: CompileInlineNativeResult | null = null;
+  private rootKey = nextOpaqueKey("root");
+  private rootEpoch = 1;
+  private treeRevision = 0;
+  private identified: IdentifiedRoot | null = null;
 
   get fullscreenScope(): string {
     return this.getAttribute("fullscreen-scope") ?? "root";
@@ -144,6 +151,12 @@ export class LxNativeRootElement extends LxNativeBaseElement {
         })
       );
     } else {
+      const rootRef = this.rootRef();
+      const identified = identifyCompiledRoot(result.root, rootRef, this.identified);
+      this.treeRevision += 1;
+      const commit = buildRootCommit(identified, this.identified, this.treeRevision);
+      this.identified = identified;
+      sendNativeComponentMessage({ id: this.rootKey, ...commit });
       this.dispatchEvent(
         new CustomEvent(STRUCTURE_COMPILED_EVENT, {
           detail: result.root,
@@ -152,6 +165,10 @@ export class LxNativeRootElement extends LxNativeBaseElement {
       );
     }
     return result;
+  }
+
+  private rootRef(): RootRef {
+    return pageRootScope(this.rootKey, this.rootEpoch);
   }
 }
 
@@ -358,6 +375,23 @@ export class LxNativeSliderElement extends LxNativeBaseElement {
   set disabled(value: unknown) {
     reflectBoolean(this, "disabled", value);
   }
+}
+
+function pageRootScope(rootKey: string, rootEpoch: number): RootRef {
+  let surfaceInstanceId = "surface";
+  let pageInstanceId = "page";
+  let documentInstanceId = "doc";
+  if (typeof window !== "undefined") {
+    const cfg = (window as Window & { __LX_BRIDGE_CFG?: Record<string, string> }).__LX_BRIDGE_CFG;
+    if (cfg?.surfaceInstanceId) surfaceInstanceId = cfg.surfaceInstanceId;
+    if (cfg?.pageInstanceId) pageInstanceId = cfg.pageInstanceId;
+    const w = window as Window & { __LX_DOCUMENT_INSTANCE_ID?: string };
+    if (!w.__LX_DOCUMENT_INSTANCE_ID) {
+      w.__LX_DOCUMENT_INSTANCE_ID = nextOpaqueKey("doc");
+    }
+    documentInstanceId = w.__LX_DOCUMENT_INSTANCE_ID;
+  }
+  return { surfaceInstanceId, pageInstanceId, documentInstanceId, rootKey, rootEpoch };
 }
 
 function defineOnce(tag: string, ctor: CustomElementConstructor): void {
