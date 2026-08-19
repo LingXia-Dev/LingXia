@@ -192,8 +192,8 @@ fn finish_island_commit(
         let (offset_x, offset_y, full_width, full_height) =
             surface_rect(&context.page_key, &attach.rect);
         let (width, height) = match attach.kind.as_str() {
-            "video" => (full_width.min(640).max(1), full_height.min(360).max(1)),
-            "text" => (full_width.min(128).max(1), full_height.min(24).max(1)),
+            "video" => (full_width.clamp(1, 640), full_height.clamp(1, 360)),
+            "text" => (full_width.clamp(1, 128), full_height.clamp(1, 24)),
             _ => (16, 16),
         };
         let text = props
@@ -346,8 +346,8 @@ pub(super) fn present_decoded_island_frame(
             height: css.height,
         },
     );
-    let tex_w = dest_w.min(640).max(1) as u32;
-    let tex_h = dest_h.min(360).max(1) as u32;
+    let tex_w = dest_w.clamp(1, 640) as u32;
+    let tex_h = dest_h.clamp(1, 360) as u32;
     let pixels = crate::video_player::scale_bgra_nearest(&pixels, src_w, src_h, tex_w, tex_h);
     log::debug!(
         "island video frame {} {}x{} -> {}x{} dest {}x{}",
