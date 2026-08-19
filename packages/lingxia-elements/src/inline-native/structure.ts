@@ -399,6 +399,30 @@ function expandAuthorNode(
     } else {
       props.controls = parseBooleanAttr(props.controls, context.defaultVideoControls);
     }
+    if ("autoplay" in props) props.autoplay = parseBooleanAttr(props.autoplay, false);
+    if ("loop" in props) props.loop = parseBooleanAttr(props.loop, false);
+    if ("muted" in props) props.muted = parseBooleanAttr(props.muted, false);
+    if ("live" in props) props.live = parseBooleanAttr(props.live, false);
+    if (typeof props.volume === "string") {
+      const parsed = Number(props.volume);
+      if (Number.isFinite(parsed)) props.volume = parsed;
+    }
+    if (typeof props.qualities === "string") {
+      try {
+        const parsed = JSON.parse(props.qualities);
+        if (Array.isArray(parsed)) props.qualities = parsed;
+      } catch {
+        /* keep the raw string; host validation skips non-arrays */
+      }
+    }
+    if (typeof props.playbackRates === "string") {
+      try {
+        const parsed = JSON.parse(props.playbackRates);
+        if (Array.isArray(parsed)) props.playbackRates = parsed;
+      } catch {
+        /* keep the raw string */
+      }
+    }
     const pressHandler = props.onPress;
     if (
       props.controls === false &&

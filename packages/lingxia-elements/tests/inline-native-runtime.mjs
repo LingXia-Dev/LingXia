@@ -9,6 +9,11 @@ import {
   viewCanShowFallback,
   emptyViewLease,
 } from "../dist/inline-native/lease.js";
+import {
+  applyHostLeaseMessage,
+  createRootRuntimeState,
+  publishCompiledRoot,
+} from "../dist/inline-native/runtime.js";
 
 const compiled = compileInlineNativeRoot({
   type: "LxNativeRoot",
@@ -118,6 +123,41 @@ const snapshotOk = validateControlsSnapshot(
   0
 );
 assert.equal(snapshotOk.ok, true);
+
+const published = publishCompiledRoot({
+  compiled: compiled.root,
+  rootRef,
+  state: createRootRuntimeState(),
+  rootRect: { x: 0, y: 10, width: 320, height: 180 },
+  nodeRects: { hero: { x: 0, y: 10, width: 320, height: 180 } },
+});
+assert.ok(published.messages.commit, "first tick must send root.commit");
+assert.equal(published.messages.geometry.action, "geometry.snapshot");
+assert.equal(published.messages.geometry.coordinateSpace, "page-unscrolled-css-px");
+assert.equal(published.messages.geometry.roots[0].basisTreeRevision, published.messages.commit.revision);
+assert.equal(published.messages.geometry.nodes[0].contentRect.width, 320);
+const scrolled = publishCompiledRoot({
+  compiled: compiled.root,
+  rootRef,
+  state: published.state,
+  rootRect: { x: 0, y: 40, width: 320, height: 180 },
+  nodeRects: { hero: { x: 0, y: 40, width: 320, height: 180 } },
+});
+assert.equal(scrolled.messages.commit, undefined);
+assert.equal(scrolled.messages.geometry.revision, published.messages.geometry.revision + 1);
+assert.equal(scrolled.messages.geometry.roots[0].basisTreeRevision, published.messages.commit.revision);
+assert.equal(scrolled.messages.geometry.nodes[0].contentRect.y, 40);
+
+const leased = applyHostLeaseMessage(
+  published.state,
+  { action: "root.leaseGranted", leaseId: "lease-1", sequence: 1, leaseDurationMs: 8000 },
+  0
+);
+assert.ok(leased.leaseAccept);
+assert.equal(leased.leaseAccept.action, "root.leaseAccept");
+assert.equal(leased.ready, false);
+const activated = applyHostLeaseMessage(leased.state, { action: "root.leaseActive" }, 0);
+assert.equal(activated.ready, true);
 
 const none = emptyViewLease();
 assert.equal(viewCanShowFallback(none, 0), true);

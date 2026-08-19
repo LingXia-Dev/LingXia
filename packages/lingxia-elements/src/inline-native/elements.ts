@@ -5,9 +5,18 @@ import {
 } from "./structure.js";
 import type { CompileInlineNativeResult, NativeError, RootRef } from "./types.js";
 import { nativeError } from "./errors.js";
-import { identifyCompiledRoot, nextOpaqueKey, type IdentifiedRoot } from "./identity.js";
-import { buildRootCommit } from "./commit.js";
-import { sendNativeComponentMessage } from "../nativecomponent.js";
+import { nextOpaqueKey } from "./identity.js";
+import {
+  applyHostLeaseMessage,
+  createRootRuntimeState,
+  publishCompiledRoot,
+  type RootRuntimeState,
+} from "./runtime.js";
+import { isFallbackElement } from "./structure.js";
+import {
+  registerNativeComponentHandler,
+  sendNativeComponentMessage,
+} from "../nativecomponent.js";
 
 const ROOT_INVALID_EVENT = "error";
 const STRUCTURE_COMPILED_EVENT = "lxnativecompiled";
@@ -90,8 +99,8 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   private lastResult: CompileInlineNativeResult | null = null;
   private rootKey = nextOpaqueKey("root");
   private rootEpoch = 1;
-  private treeRevision = 0;
-  private identified: IdentifiedRoot | null = null;
+  private runtime: RootRuntimeState = createRootRuntimeState();
+  private unregisterHost?: () => void;
 
   get fullscreenScope(): string {
     return this.getAttribute("fullscreen-scope") ?? "root";
@@ -112,14 +121,27 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   connectedCallback(): void {
     this.style.display = this.style.display || "block";
     this.style.position = this.style.position || "relative";
+    this.unregisterHost = registerNativeComponentHandler(this.rootKey, (message) => {
+      this.onHostMessage(message as { action?: string; leaseId?: string; sequence?: number; leaseDurationMs?: number });
+    });
+    sendNativeComponentMessage({ id: this.rootKey, action: "component.ready" });
     this.observer = new MutationObserver(() => this.scheduleCompile());
     this.observer.observe(this, { childList: true, subtree: true, attributes: true });
+    if (typeof ResizeObserver !== "undefined") {
+      const resize = new ResizeObserver(() => this.scheduleCompile());
+      resize.observe(this);
+      (this as HTMLElement & { __lxResize?: ResizeObserver }).__lxResize = resize;
+    }
     this.scheduleCompile();
   }
 
   disconnectedCallback(): void {
     this.observer?.disconnect();
     this.observer = undefined;
+    this.unregisterHost?.();
+    this.unregisterHost = undefined;
+    const resize = (this as HTMLElement & { __lxResize?: ResizeObserver }).__lxResize;
+    resize?.disconnect();
     if (this.pending.frame != null && typeof cancelAnimationFrame === "function") {
       cancelAnimationFrame(this.pending.frame);
       this.pending.frame = null;
@@ -151,12 +173,18 @@ export class LxNativeRootElement extends LxNativeBaseElement {
         })
       );
     } else {
-      const rootRef = this.rootRef();
-      const identified = identifyCompiledRoot(result.root, rootRef, this.identified);
-      this.treeRevision += 1;
-      const commit = buildRootCommit(identified, this.identified, this.treeRevision);
-      this.identified = identified;
-      sendNativeComponentMessage({ id: this.rootKey, ...commit });
+      const published = publishCompiledRoot({
+        compiled: result.root,
+        rootRef: this.rootRef(),
+        state: this.runtime,
+        rootRect: elementContentRect(this),
+        nodeRects: measureNativeNodeRects(this, result.root),
+      });
+      this.runtime = published.state;
+      if (published.messages.commit) {
+        sendNativeComponentMessage({ id: this.rootKey, ...published.messages.commit });
+      }
+      sendNativeComponentMessage({ id: this.rootKey, ...published.messages.geometry });
       this.dispatchEvent(
         new CustomEvent(STRUCTURE_COMPILED_EVENT, {
           detail: result.root,
@@ -165,6 +193,22 @@ export class LxNativeRootElement extends LxNativeBaseElement {
       );
     }
     return result;
+  }
+
+  private onHostMessage(message: {
+    action?: string;
+    leaseId?: string;
+    sequence?: number;
+    leaseDurationMs?: number;
+  }): void {
+    const applied = applyHostLeaseMessage(this.runtime, message, Date.now());
+    this.runtime = applied.state;
+    if (applied.leaseAccept) {
+      sendNativeComponentMessage(applied.leaseAccept);
+    }
+    if (applied.ready) {
+      this.dispatchEvent(new CustomEvent("ready", { detail: {} }));
+    }
   }
 
   private rootRef(): RootRef {
@@ -375,6 +419,43 @@ export class LxNativeSliderElement extends LxNativeBaseElement {
   set disabled(value: unknown) {
     reflectBoolean(this, "disabled", value);
   }
+}
+
+function elementContentRect(el: Element): { x: number; y: number; width: number; height: number } {
+  if (typeof (el as HTMLElement).getBoundingClientRect !== "function") {
+    return { x: 0, y: 0, width: 0, height: 0 };
+  }
+  const box = (el as HTMLElement).getBoundingClientRect();
+  const scrollX = typeof window !== "undefined" ? window.scrollX || 0 : 0;
+  const scrollY = typeof window !== "undefined" ? window.scrollY || 0 : 0;
+  return {
+    x: box.left + scrollX,
+    y: box.top + scrollY,
+    width: box.width,
+    height: box.height,
+  };
+}
+
+function measureNativeNodeRects(
+  root: Element,
+  _compiled: { children: unknown }
+): Record<string, { x: number; y: number; width: number; height: number }> {
+  const rects: Record<string, { x: number; y: number; width: number; height: number }> = {};
+  const walk = (el: Element) => {
+    for (const child of Array.from(el.children)) {
+      if (isFallbackElement(child)) continue;
+      const tag = child.tagName.toLowerCase();
+      if (tag.startsWith("lx-native-") || tag === "lx-video") {
+        const id = child.getAttribute("id");
+        if (id) {
+          rects[id] = elementContentRect(child);
+        }
+        walk(child);
+      }
+    }
+  };
+  walk(root);
+  return rects;
 }
 
 function pageRootScope(rootKey: string, rootEpoch: number): RootRef {
