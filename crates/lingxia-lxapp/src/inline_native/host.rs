@@ -34,6 +34,14 @@ pub struct IslandPaintNode {
     pub props: Value,
 }
 
+/// Platform paint sink. Hosts attach island nodes above the page WebView in
+/// committed sibling order. Window z-order (`HWND_TOP`, `SetWindowPos`) is
+/// not part of this contract.
+pub trait IslandCompositor {
+    fn attach_above_webview(&mut self, id: &str, kind: &str, rect: &Rect);
+    fn order(&self) -> Vec<String>;
+}
+
 /// Shared host session for one page document. Platforms paint from
 /// [`IslandSession::composition_order`]; they must not invent HWND_TOP /
 /// SurfaceView hole-punch z-order for these nodes.
@@ -293,6 +301,30 @@ impl IslandSession {
 
     pub fn can_display_any(&self) -> bool {
         self.leases.iter().any(|(_, lease)| host_can_display(lease))
+    }
+
+    /// Pushes every displayable node into `compositor` in
+    /// [`IslandSession::composition_nodes`] order. Platforms must not add a
+    /// second z-order pass after this.
+    pub fn materialize_into(&self, compositor: &mut dyn IslandCompositor) {
+        if !self.can_display_any() {
+            return;
+        }
+        for node in self.composition_nodes() {
+            let id = node
+                .author_id
+                .clone()
+                .unwrap_or_else(|| node.node_ref.node_key.clone());
+            let rect = self
+                .last_node_rect(&node.node_ref.node_key)
+                .unwrap_or(Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                });
+            compositor.attach_above_webview(&id, &node.kind, &rect);
+        }
     }
 
     fn queue_view_message(&mut self, message: &super::types::NativeRootLeaseMessage) {

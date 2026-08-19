@@ -762,3 +762,136 @@ fn ready_requires_tree_geometry_and_active_lease() {
     }
     assert_eq!(registry.get(&root).unwrap().lifecycle, RootLifecycle::Ready);
 }
+
+struct AttachRecorder {
+    calls: Vec<(String, String, Rect)>,
+}
+
+impl IslandCompositor for AttachRecorder {
+    fn attach_above_webview(&mut self, id: &str, kind: &str, rect: &Rect) {
+        self.calls
+            .push((id.to_string(), kind.to_string(), rect.clone()));
+    }
+
+    fn order(&self) -> Vec<String> {
+        self.calls.iter().map(|(id, _, _)| id.clone()).collect()
+    }
+}
+
+#[test]
+fn materialize_into_attaches_root_video_cover_in_composition_order() {
+    let root = root();
+    let mut session = IslandSession::new();
+    session.set_trusted_domains(vec!["cdn.example.com".into()], true);
+    let mut ops = vec![
+        mount(&root, "lx-video-1", "video", None, 0),
+        mount(&root, "cover", "view", None, 1),
+        mount(&root, "title", "text", Some(node(&root, "cover", 1)), 0),
+    ];
+    if let NativeRootOperation::Mount { node } = &mut ops[0] {
+        node.props = serde_json::json!({ "src": "https://cdn.example.com/a.mp4" });
+    }
+    if let NativeRootOperation::Mount { node } = &mut ops[2] {
+        node.props = serde_json::json!({ "text": "Inline native" });
+    }
+    assert!(matches!(
+        session.apply_commit(commit(&root, 0, 1, ops)),
+        ApplyCommitOutcome::Applied(_)
+    ));
+    let grant = session
+        .drain_view_messages()
+        .into_iter()
+        .find(|msg| msg.get("action").and_then(Value::as_str) == Some("root.leaseGranted"))
+        .expect("leaseGranted");
+    let lease_id = grant.get("leaseId").and_then(Value::as_str).unwrap();
+    let sequence = grant.get("sequence").and_then(Value::as_u64).unwrap();
+    assert!(session.handle_view_json(&serde_json::json!({
+        "action": "root.leaseAccept",
+        "root": {
+            "surfaceInstanceId": root.surface_instance_id,
+            "pageInstanceId": root.page_instance_id,
+            "documentInstanceId": root.document_instance_id,
+            "rootKey": root.root_key,
+            "rootEpoch": root.root_epoch
+        },
+        "leaseId": lease_id,
+        "sequence": sequence
+    })));
+
+    let video_rect = Rect {
+        x: 8.0,
+        y: 40.0,
+        width: 320.0,
+        height: 180.0,
+    };
+    let cover_rect = video_rect.clone();
+    let text_rect = Rect {
+        x: 20.0,
+        y: 52.0,
+        width: 120.0,
+        height: 18.0,
+    };
+    session.apply_geometry(NativeGeometrySnapshot {
+        action: "geometry.snapshot".into(),
+        surface_instance_id: root.surface_instance_id.clone(),
+        page_instance_id: root.page_instance_id.clone(),
+        document_instance_id: root.document_instance_id.clone(),
+        revision: 2,
+        coordinate_space: "page-unscrolled-css-px".into(),
+        roots: vec![NativeGeometrySnapshotRoot {
+            root_ref: root.clone(),
+            basis_tree_revision: 1,
+            root_order: 0,
+            chain_key: "page".into(),
+            content_rect: video_rect.clone(),
+            visible: true,
+        }],
+        nodes: vec![
+            NativeGeometrySnapshotNode {
+                node_ref: node(&root, "lx-video-1", 1),
+                chain_key: "page".into(),
+                content_rect: video_rect.clone(),
+                clip_stack: vec![],
+                visible: true,
+            },
+            NativeGeometrySnapshotNode {
+                node_ref: node(&root, "cover", 1),
+                chain_key: "page".into(),
+                content_rect: cover_rect,
+                clip_stack: vec![],
+                visible: true,
+            },
+            NativeGeometrySnapshotNode {
+                node_ref: node(&root, "title", 1),
+                chain_key: "page".into(),
+                content_rect: text_rect.clone(),
+                clip_stack: vec![],
+                visible: true,
+            },
+        ],
+        chains: vec![ScrollChain {
+            chain_key: "page".into(),
+            ancestors: vec![],
+        }],
+    });
+
+    let mut recorder = AttachRecorder { calls: Vec::new() };
+    session.materialize_into(&mut recorder);
+    assert_eq!(
+        recorder.order(),
+        vec![
+            "lx-video-1".to_string(),
+            "cover".to_string(),
+            "title".to_string()
+        ]
+    );
+    let kinds: Vec<&str> = recorder
+        .calls
+        .iter()
+        .map(|(_, kind, _)| kind.as_str())
+        .collect();
+    assert_eq!(kinds, ["video", "view", "text"]);
+    assert_eq!(recorder.calls[0].2, video_rect);
+    assert_eq!(recorder.calls[2].2, text_rect);
+    assert!(!session.uses_hwnd_zorder());
+}
