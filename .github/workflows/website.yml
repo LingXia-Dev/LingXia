@@ -1,0 +1,44 @@
+name: Website
+
+# The workspace pipeline ignores `website/**`, so the site gets its own check.
+# Building it is the check that matters: the Logic API reference is generated
+# from the pinned `@lingxia/types`, and that generator fails when the published
+# surface no longer matches its capability grouping.
+
+on:
+  push:
+    branches: [main]
+    paths: ['website/**', '.github/workflows/website.yml']
+  pull_request:
+    branches: [main]
+    paths: ['website/**', '.github/workflows/website.yml']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  build:
+    name: Build site
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run build
