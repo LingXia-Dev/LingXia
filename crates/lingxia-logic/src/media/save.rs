@@ -22,10 +22,12 @@ rong::js_api! {
     }
 }
 
+/// Save an image into the system photo library.
 async fn save_image_to_photos_album(ctx: JSContext, options: JSSaveMediaOptions) -> JSResult<()> {
     save_media(ctx, options, true).await
 }
 
+/// Save a video into the system photo library.
 async fn save_video_to_photos_album(ctx: JSContext, options: JSSaveMediaOptions) -> JSResult<()> {
     save_media(ctx, options, false).await
 }

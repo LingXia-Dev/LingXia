@@ -26,6 +26,10 @@ struct JSShareResult {
     outcome: String,
 }
 
+/// Hand content to the system share sheet.
+///
+/// Share text, files, or a page link — files cannot be combined with a page
+/// target or with text; share those separately.
 async fn share(ctx: JSContext, options: JSValue) -> JSResult<JSShareResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let options = parse_share_options(options)?;

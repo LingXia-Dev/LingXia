@@ -61,6 +61,7 @@ rong::js_api! {
     }
 }
 
+/// Read an image's dimensions, type, and orientation without decoding it into a view.
 async fn get_image_info_api(ctx: JSContext, options: JSGetImageInfoOptions) -> JSResult<ImageInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = &lxapp.runtime;
@@ -102,6 +103,7 @@ async fn get_image_info_api(ctx: JSContext, options: JSGetImageInfoOptions) -> J
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
+/// Re-encode an image at a lower quality or size, writing a new managed file.
 async fn compress_image_api(
     ctx: JSContext,
     options: JSCompressImageOptions,

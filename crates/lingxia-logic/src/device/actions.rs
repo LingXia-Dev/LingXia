@@ -17,6 +17,7 @@ rong::js_api! {
     }
 }
 
+/// Vibrate briefly, where the device has a vibrator.
 fn vibrate_short(ctx: JSContext) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     lxapp
@@ -26,6 +27,7 @@ fn vibrate_short(ctx: JSContext) -> JSResult<bool> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
+/// Vibrate for a longer pulse, where the device has a vibrator.
 fn vibrate_long(ctx: JSContext) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     lxapp
@@ -43,6 +45,7 @@ struct MakePhoneCallParams {
     phone_number: String,
 }
 
+/// Hand a number to the system dialer; the user still places the call.
 fn make_phone_call(ctx: JSContext, params: MakePhoneCallParams) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     lxapp

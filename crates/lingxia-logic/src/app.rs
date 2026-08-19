@@ -36,6 +36,8 @@ struct AppBaseInfo {
     sdk_version: String,
 }
 
+/// Read the host app's identity: locale, display language, OS, product name,
+/// product version, and SDK runtime version.
 fn get_app_base_info(ctx: JSContext) -> JSResult<AppBaseInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let locale = lxapp.runtime.get_system_locale();
@@ -91,6 +93,7 @@ pub(crate) fn ensure_home_lxapp(lxapp: &LxApp, api_name: &str) -> JSResult<()> {
     ))
 }
 
+/// The native host app around this lxapp — its identity, updates, and window.
 fn app_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
     match lx.get::<_, JSObject>("app") {

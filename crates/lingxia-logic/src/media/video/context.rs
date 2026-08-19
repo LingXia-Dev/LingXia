@@ -18,6 +18,7 @@ pub fn init(ctx: &JSContext) -> JSResult<()> {
     register_video_context_api(ctx)
 }
 
+/// Take a control handle for the `<lx-video>` component with this id.
 fn create_video_context(ctx: JSContext, component_id: String) -> JSResult<JSVideoContext> {
     JSVideoContext::create(&ctx, component_id)
 }

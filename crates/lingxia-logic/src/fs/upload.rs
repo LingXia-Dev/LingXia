@@ -553,6 +553,10 @@ fn spawn_upload_worker(state: Arc<Mutex<UploadIteratorState>>) {
     }));
 }
 
+/// Upload a managed file to an ordinary HTTP multipart endpoint.
+///
+/// Returns a task handle synchronously so progress and abort can be wired up
+/// before the transfer starts.
 fn upload_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let options = parse_upload_options(options)?;

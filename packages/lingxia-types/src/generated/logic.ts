@@ -1743,8 +1743,11 @@ export type TabSurface = SurfaceBase & {
 };
 
 export type TerminalApi = {
+    /** Saved terminal settings, revision-checked on write. */
     readonly settings: TerminalSettingsApi;
+    /** Installed color schemes, plus import and live preview. */
     readonly colorSchemes: TerminalColorSchemesApi;
+    /** Terminal fonts installed on this machine. */
     readonly fonts: TerminalFontsApi;
     /** Windows-only optional inline-image compatibility runtime. */
     readonly windows?: WindowsTerminalApi;
@@ -2269,7 +2272,9 @@ export declare class LxFile {
 
 declare global {
   interface AppearanceApi {
+    /** Read the appearance preference and the light/dark value it resolves to. */
     get(): AppearanceState;
+    /** Set the appearance preference to `auto`, `light`, or `dark`. */
     set(preference: AppearancePreference): Promise<void>;
   }
 }
@@ -2321,6 +2326,10 @@ declare global {
      */
     checkUpdate(): Promise<HostAppUpdateCheckResult>;
     readonly envVersion: HostAppEnvVersion;
+    /**
+     * Read the host app's identity: locale, display language, OS, product name,
+     * product version, and SDK runtime version.
+     */
     getBaseInfo(): AppBaseInfo;
     /**
      * Follow the host's effective display language.
@@ -2360,11 +2369,17 @@ declare global {
      * a context that does not expose an API reports false for it.
      */
     supports(query: LxCapabilityQuery): boolean;
+    /** Vibrate briefly, where the device has a vibrator. */
     vibrateShort(): boolean;
+    /** Vibrate for a longer pulse, where the device has a vibrator. */
     vibrateLong(): boolean;
+    /** Hand a number to the system dialer; the user still places the call. */
     makePhoneCall(options: MakePhoneCallOptions): boolean;
+    /** Read the device and OS facts this host reports. */
     getDeviceInfo(): DeviceInfo;
+    /** Read the screen geometry and pixel ratio this host reports. */
     getScreenInfo(): ScreenInfo;
+    /** Read connectivity right now: whether it is connected, its type, and addresses. */
     getNetworkInfo(): Promise<NetworkInfo>;
     /** Subscribes to network changes and returns the unsubscribe fn. */
     onNetworkChange(callback: NetworkChangeCallback): () => void;
@@ -2384,11 +2399,21 @@ declare global {
     getConnectedWifi(): Promise<WifiInfo>;
     /** Subscribes to WiFi connection events and returns the unsubscribe fn. */
     onWifiConnected(callback: WifiConnectedCallback): () => void;
+    /**
+     * Lock this lxapp to `portrait` or `landscape`.
+     * Any other value rejects. Where the host does not report the change back,
+     * the runtime emits the orientation event itself so JS state stays in sync.
+     */
     setDeviceOrientation(orientation: DeviceOrientation): boolean;
     /** Subscribes to orientation changes and returns the unsubscribe fn. */
     onDeviceOrientationChange(callback: (event: DeviceOrientationChangeEvent) => void): () => void;
     readonly env: LxEnv;
     downloadFile(options: never): never;
+    /**
+     * Upload a managed file to an ordinary HTTP multipart endpoint.
+     * Returns a task handle synchronously so progress and abort can be wired up
+     * before the transfer starts.
+     */
     uploadFile(options: UploadOptions): UploadTask;
     /**
      * Open a local file with the requested strategy.
@@ -2417,8 +2442,11 @@ declare global {
     onKeyUp(callback: KeyEventCallback): () => void;
     /** Get location function */
     getLocation(options?: GetLocationOptions): Promise<LocationInfo>;
+    /** Identify the running lxapp: its id, display name, version, and release type. */
     getLxAppInfo(): LxAppInfo;
+    /** Read an image's dimensions, type, and orientation without decoding it into a view. */
     getImageInfo(options: GetImageInfoOptions): Promise<ImageInfo>;
+    /** Re-encode an image at a lower quality or size, writing a new managed file. */
     compressImage(options: CompressImageOptions): Promise<CompressImageResult>;
     /**
      * Opens the media picker or camera.
@@ -2446,7 +2474,9 @@ declare global {
      * caller never re-indexes their own array.
      */
     previewMedia(options: PreviewMediaOptions): PreviewMediaHandle;
+    /** Save an image into the system photo library. */
     saveImageToPhotosAlbum(options: SaveMediaOptions): Promise<void>;
+    /** Save a video into the system photo library. */
     saveVideoToPhotosAlbum(options: SaveMediaOptions): Promise<void>;
     /**
      * Opens the scanner.
@@ -2455,6 +2485,7 @@ declare global {
      * when scanning fails or the host returns an invalid payload.
      */
     scanCode(options?: ScanCodeOptions): Promise<ScanCodeResult>;
+    /** Take a control handle for the `<lx-video>` component with this id. */
     createVideoContext(componentId: string): VideoContext;
     /**
      * Reads local video metadata for upload preflight and presentation.
@@ -2464,10 +2495,28 @@ declare global {
      * still validate the uploaded bytes.
      */
     getVideoInfo(options: GetVideoInfoOptions): Promise<VideoInfo>;
+    /** Write one frame of a video out as an image file. */
     extractVideoThumbnail(options: ExtractVideoThumbnailOptions): Promise<ExtractVideoThumbnailResult>;
+    /**
+     * Transcode a video to a smaller file.
+     * Returns a task handle synchronously, so progress and cancellation can be
+     * wired up before transcoding starts.
+     */
     compressVideo(options: CompressVideoOptions): CompressVideoTask;
+    /**
+     * Open another lxapp, optionally at one of its pages.
+     * Navigating to the lxapp already running is a no-op. Rejects with
+     * `E_SURFACE_CONFLICT` when the target is currently docked as an aside —
+     * close that aside before opening it as a main.
+     */
     navigateToApp(options: NavigateToAppOptions): Promise<void>;
+    /** Leave this lxapp and reveal the one that opened it. */
     navigateBackApp(): Promise<void>;
+    /**
+     * Hand content to the system share sheet.
+     * Share text, files, or a page link — files cannot be combined with a page
+     * target or with text; share those separately.
+     */
     share(options: ShareOptions): Promise<ShareResult>;
     /**
      * Open this lxapp's asynchronous persistent key-value store. `get` asserts the
@@ -2478,6 +2527,7 @@ declare global {
     /** `lx.openExternal(url)` — hand the url off to the OS default browser. */
     openExternal(url: string): void;
     readonly surface: SurfaceApi;
+    /** Read system switches the lxapp may branch on, such as location and WiFi. */
     getSystemSetting(): SystemSettingInfo;
     /**
      * Shows a list of actions.
@@ -2568,6 +2618,7 @@ declare global {
 
 declare global {
   interface NavigationBarApi {
+    /** Patch the navigation bar of the active page; unset fields stay as they are. */
     update(patch: NavigationBarPatch): Promise<void>;
   }
 }
@@ -2666,6 +2717,7 @@ declare global {
 
 declare global {
   interface TabBarApi {
+    /** Patch this lxapp's tab bar; unset fields stay as they are. */
     update(patch: TabBarPatch): Promise<void>;
   }
 }
