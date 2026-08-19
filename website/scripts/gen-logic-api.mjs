@@ -38,7 +38,7 @@ const GROUPS = [
     summary: 'Move between pages of this lxapp, and between lxapps.',
     members: [
       'navigateTo', 'redirectTo', 'reLaunch', 'navigateBack', 'switchTab',
-      'navigateToLxApp', 'navigateBackLxApp',
+      'navigateToApp', 'navigateBackApp',
     ],
   },
   {
@@ -47,10 +47,7 @@ const GROUPS = [
     summary:
       'Open host surfaces and drive the chrome around the page — navigation bar, tab bar, tray, shell, and pull-to-refresh.',
     members: [
-      'openSurface', 'onSurfaceContext', 'getCapsuleRect', 'hideHomeButton',
-      'setNavigationBarTitle', 'setNavigationBarColor',
-      'showTabBar', 'hideTabBar', 'setTabBarItem', 'setTabBarStyle',
-      'setTabBarBadge', 'removeTabBarBadge', 'showTabBarRedDot', 'hideTabBarRedDot',
+      'surface', 'navigationBar', 'tabBar', 'setMoreActions', 'appearance',
       'startPullDownRefresh', 'stopPullDownRefresh',
       'tray', 'shell',
     ],
@@ -66,7 +63,7 @@ const GROUPS = [
     title: 'Files and storage',
     summary: 'Managed files, the system picker, transfers, and key-value storage.',
     members: [
-      'getFileManager', 'openFile', 'chooseFile', 'chooseDirectory',
+      'fs', 'openFile', 'chooseFile', 'chooseDirectory',
       'uploadFile', 'downloadFile', 'getStorage',
     ],
   },
@@ -88,8 +85,8 @@ const GROUPS = [
     members: [
       'getDeviceInfo', 'getScreenInfo', 'getSystemSetting',
       'vibrateShort', 'vibrateLong', 'makePhoneCall', 'getLocation',
-      'setDeviceOrientation', 'onDeviceOrientationChange', 'offDeviceOrientationChange',
-      'onKeyDown', 'offKeyDown', 'onKeyUp', 'offKeyUp',
+      'setDeviceOrientation', 'onDeviceOrientationChange',
+      'onKeyDown', 'onKeyUp',
     ],
   },
   {
@@ -97,16 +94,19 @@ const GROUPS = [
     title: 'Network and WiFi',
     summary: 'Connectivity facts and events, and the WiFi module.',
     members: [
-      'getNetworkInfo', 'onNetworkChange', 'offNetworkChange',
+      'getNetworkInfo', 'onNetworkChange',
       'startWifi', 'stopWifi', 'connectWifi', 'getWifiList', 'getConnectedWifi',
-      'onWifiConnected', 'offWifiConnected',
+      'onWifiConnected',
     ],
   },
   {
     slug: 'host',
     title: 'Host app and runtime',
     summary: 'The host app around this lxapp, its environment, updates, and automation.',
-    members: ['app', 'env', 'getLxAppInfo', 'getUpdateManager', 'openExternal', 'automation'],
+    members: [
+      'app', 'env', 'getLxAppInfo', 'getUpdateManager', 'openExternal',
+      'automation', 'supports', 'terminal',
+    ],
   },
 ];
 
