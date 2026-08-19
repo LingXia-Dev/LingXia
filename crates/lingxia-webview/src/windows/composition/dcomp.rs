@@ -9,14 +9,15 @@
 //! backstop.
 
 use super::*;
+use std::collections::HashMap;
 use windows::Win32::Graphics::Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP};
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_BOX, D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice,
     ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D,
 };
 use windows::Win32::Graphics::DirectComposition::{
-    DCompositionCreateDevice3, IDCompositionDesktopDevice, IDCompositionRectangleClip,
-    IDCompositionTarget, IDCompositionVisual, IDCompositionVisual2,
+    DCompositionCreateDevice3, IDCompositionDesktopDevice, IDCompositionDevice,
+    IDCompositionRectangleClip, IDCompositionTarget, IDCompositionVisual, IDCompositionVisual2,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_B8G8R8A8_UNORM,
@@ -38,6 +39,18 @@ pub(crate) struct DcompTree {
     wedges: [Option<IDCompositionVisual2>; 4],
     /// The `(radii, color)` the current visuals were built for.
     wedge_style: ([i32; 4], u32),
+    /// Island nodes attached above [`Self::webview_visual`], keyed by author
+    /// / node id. Sibling order is [`Self::sync_island_visuals`].
+    island: HashMap<String, IslandVisual>,
+}
+
+struct IslandVisual {
+    visual: IDCompositionVisual2,
+    width: i32,
+    height: i32,
+    color: u32,
+    text: Option<String>,
+    hwnd: Option<isize>,
 }
 
 impl DcompTree {
@@ -78,6 +91,7 @@ impl DcompTree {
                 clip,
                 wedges: [const { None }; 4],
                 wedge_style: ([0; 4], 0),
+                island: HashMap::new(),
             })
         }
     }
@@ -201,6 +215,23 @@ impl DcompTree {
         height: i32,
         pixels: &[u32],
     ) -> StdResult<IDCompositionVisual2> {
+        let visual = self.create_color_visual(width, height, pixels)?;
+        unsafe {
+            self.root
+                .AddVisual(&visual, true, &self.webview_visual)
+                .map_err(|err| dcomp_error("AddVisual", err))?;
+        }
+        Ok(visual)
+    }
+
+    fn create_color_visual(
+        &self,
+        width: i32,
+        height: i32,
+        pixels: &[u32],
+    ) -> StdResult<IDCompositionVisual2> {
+        let width = width.max(1);
+        let height = height.max(1);
         unsafe {
             let surface = self
                 .device
@@ -240,11 +271,250 @@ impl DcompTree {
             visual
                 .SetContent(&surface)
                 .map_err(|err| dcomp_error("SetContent", err))?;
-            self.root
-                .AddVisual(&visual, true, &self.webview_visual)
-                .map_err(|err| dcomp_error("AddVisual", err))?;
             Ok(visual)
         }
+    }
+
+    fn create_hwnd_visual(&self, hwnd: HWND) -> StdResult<IDCompositionVisual2> {
+        unsafe {
+            let device: IDCompositionDevice = self
+                .device
+                .cast()
+                .map_err(|err| dcomp_error("IDCompositionDevice cast", err))?;
+            let surface = device
+                .CreateSurfaceFromHwnd(hwnd)
+                .map_err(|err| dcomp_error("CreateSurfaceFromHwnd", err))?;
+            let visual = self
+                .device
+                .CreateVisual()
+                .map_err(|err| dcomp_error("CreateVisual", err))?;
+            visual
+                .SetContent(&surface)
+                .map_err(|err| dcomp_error("SetContent hwnd", err))?;
+            Ok(visual)
+        }
+    }
+
+    /// Inserts or updates island visuals immediately above the WebView2
+    /// visual, in `specs` order (first = lowest). Wedge visuals stay on top.
+    pub(crate) fn sync_island_visuals(&mut self, specs: &[IslandVisualSpec]) -> StdResult<()> {
+        let live: std::collections::HashSet<&str> =
+            specs.iter().map(|spec| spec.id.as_str()).collect();
+        let stale: Vec<String> = self
+            .island
+            .keys()
+            .filter(|id| !live.contains(id.as_str()))
+            .cloned()
+            .collect();
+        for id in stale {
+            if let Some(slot) = self.island.remove(&id) {
+                unsafe {
+                    let _ = self.root.RemoveVisual(&slot.visual);
+                }
+            }
+        }
+        for spec in specs {
+            log::debug!(
+                "island visual {} kind={} {}x{} hwnd={:?}",
+                spec.id,
+                spec.kind,
+                spec.width,
+                spec.height,
+                spec.hwnd
+            );
+            self.upsert_island_visual(spec)?;
+        }
+        for slot in self.island.values() {
+            unsafe {
+                let _ = self.root.RemoveVisual(&slot.visual);
+            }
+        }
+        let mut previous: Option<IDCompositionVisual2> = None;
+        for spec in specs {
+            let Some(slot) = self.island.get(&spec.id) else {
+                continue;
+            };
+            unsafe {
+                if let Some(ref previous) = previous {
+                    self.root
+                        .AddVisual(&slot.visual, true, previous)
+                        .map_err(|err| dcomp_error("AddVisual island", err))?;
+                } else {
+                    self.root
+                        .AddVisual(&slot.visual, true, &self.webview_visual)
+                        .map_err(|err| dcomp_error("AddVisual island", err))?;
+                }
+            }
+            previous = Some(slot.visual.clone());
+        }
+        // This device is shared with WebView2. Committing from a UI-thread
+        // command callback after AddVisual has stalled the page (eval and
+        // the dev websocket stop answering). apply_geometry commits later.
+        Ok(())
+    }
+
+    fn upsert_island_visual(&mut self, spec: &IslandVisualSpec) -> StdResult<()> {
+        let width = spec.width.max(1);
+        let height = spec.height.max(1);
+        let reusable = self.island.get(&spec.id).is_some_and(|slot| {
+            slot.width == width
+                && slot.height == height
+                && slot.color == spec.color
+                && slot.text == spec.text
+                && slot.hwnd == spec.hwnd
+        });
+        if reusable {
+            if let Some(slot) = self.island.get(&spec.id) {
+                unsafe {
+                    slot.visual
+                        .SetOffsetX2(spec.offset_x)
+                        .and_then(|_| slot.visual.SetOffsetY2(spec.offset_y))
+                        .map_err(|err| dcomp_error("island offset", err))?;
+                }
+            }
+            return Ok(());
+        }
+        if let Some(previous) = self.island.remove(&spec.id) {
+            unsafe {
+                let _ = self.root.RemoveVisual(&previous.visual);
+            }
+        }
+        let visual = if let Some(handle) = spec.hwnd.filter(|handle| *handle != 0) {
+            self.create_hwnd_visual(HWND(handle as *mut _))?
+        } else {
+            let pixels = rasterize_island_pixels(width, height, spec.color, spec.text.as_deref());
+            self.create_color_visual(width, height, &pixels)?
+        };
+        unsafe {
+            visual
+                .SetOffsetX2(spec.offset_x)
+                .and_then(|_| visual.SetOffsetY2(spec.offset_y))
+                .map_err(|err| dcomp_error("island offset", err))?;
+        }
+        self.island.insert(
+            spec.id.clone(),
+            IslandVisual {
+                visual,
+                width,
+                height,
+                color: spec.color,
+                text: spec.text.clone(),
+                hwnd: spec.hwnd,
+            },
+        );
+        Ok(())
+    }
+}
+
+/// One island node to attach above the WebView visual.
+#[derive(Debug, Clone)]
+pub struct IslandVisualSpec {
+    pub id: String,
+    pub kind: String,
+    pub offset_x: f32,
+    pub offset_y: f32,
+    pub width: i32,
+    pub height: i32,
+    /// Premultiplied source color as `0xAARRGGBB`. Alpha 0 is transparent.
+    pub color: u32,
+    pub text: Option<String>,
+    /// Cloaked (non-child) HWND whose redirection surface is the visual
+    /// content. Used for video; `CreateSurfaceFromHwnd` rejects `WS_CHILD`.
+    pub hwnd: Option<isize>,
+}
+
+/// BGRA pixels captured from the composition surface HWND (DComp target).
+#[derive(Debug, Clone)]
+pub struct CompositionSurfacePixels {
+    pub width: u32,
+    pub height: u32,
+    pub bgra: Vec<u8>,
+}
+
+fn rasterize_island_pixels(width: i32, height: i32, color: u32, text: Option<&str>) -> Vec<u32> {
+    let width = width.max(1);
+    let height = height.max(1);
+    let alpha = (color >> 24) & 0xff;
+    let red = (color >> 16) & 0xff;
+    let green = (color >> 8) & 0xff;
+    let blue = color & 0xff;
+    let premultiply = |channel: u32| (channel * alpha + 127) / 255;
+    let fill =
+        (alpha << 24) | (premultiply(red) << 16) | (premultiply(green) << 8) | premultiply(blue);
+    let mut pixels = vec![fill; (width * height) as usize];
+    if let Some(text) = text.filter(|text| !text.is_empty()) {
+        blit_text_5x7(&mut pixels, width, height, text);
+    }
+    // 8×8 magenta probe in the corner so PrintWindow of the DComp target
+    // can distinguish island visuals from CSS (which never paints #FF00FF).
+    let marker = 0xffff_00ffu32;
+    for y in 0..8.min(height) {
+        for x in 0..8.min(width) {
+            pixels[(y * width + x) as usize] = marker;
+        }
+    }
+    pixels
+}
+
+fn blit_text_5x7(pixels: &mut [u32], width: i32, height: i32, text: &str) {
+    const GLYPH_W: i32 = 5;
+    const GAP: i32 = 1;
+    let mut cursor_x = 2;
+    let cursor_y = 2;
+    let white = 0xffff_ffffu32;
+    for ch in text.chars() {
+        if cursor_x + GLYPH_W > width {
+            break;
+        }
+        if let Some(rows) = glyph_5x7(ch) {
+            for (row, bits) in rows.iter().enumerate() {
+                let y = cursor_y + row as i32;
+                if y < 0 || y >= height {
+                    continue;
+                }
+                for col in 0..GLYPH_W {
+                    if bits & (1 << (4 - col)) == 0 {
+                        continue;
+                    }
+                    let x = cursor_x + col;
+                    if x < 0 || x >= width {
+                        continue;
+                    }
+                    pixels[(y * width + x) as usize] = white;
+                }
+            }
+        }
+        cursor_x += GLYPH_W + GAP;
+    }
+}
+
+fn glyph_5x7(ch: char) -> Option<[u8; 7]> {
+    Some(match ch {
+        ' ' => [0, 0, 0, 0, 0, 0, 0],
+        'I' => [0x0e, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0e],
+        'a' => [0x00, 0x00, 0x0e, 0x01, 0x0f, 0x11, 0x0f],
+        'e' => [0x00, 0x00, 0x0e, 0x11, 0x1f, 0x10, 0x0e],
+        'i' => [0x04, 0x00, 0x0c, 0x04, 0x04, 0x04, 0x0e],
+        'l' => [0x0c, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0e],
+        'n' => [0x00, 0x00, 0x1e, 0x11, 0x11, 0x11, 0x11],
+        't' => [0x00, 0x04, 0x1f, 0x04, 0x04, 0x04, 0x03],
+        'v' => [0x00, 0x00, 0x11, 0x11, 0x11, 0x0a, 0x04],
+        _ => return None,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rasterize_island_pixels;
+
+    #[test]
+    fn rasterizes_inline_native_label_as_opaque_glyphs() {
+        let pixels = rasterize_island_pixels(96, 16, 0, Some("Inline native"));
+        let painted = pixels.iter().filter(|pixel| **pixel == 0xffff_ffff).count();
+        assert!(
+            painted > 20,
+            "expected white glyph pixels for 'Inline native', got {painted}"
+        );
     }
 }
 
