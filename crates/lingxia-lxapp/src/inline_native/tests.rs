@@ -385,6 +385,31 @@ fn rejects_reparent_cycle() {
 }
 
 #[test]
+fn base_zero_commit_replaces_a_stale_same_slot_tree() {
+    let root = root();
+    let mut registry = RootRegistry::new(HostCapabilities::default());
+    assert!(matches!(
+        apply_root_commit(
+            &mut registry,
+            &commit(&root, 0, 1, vec![mount(&root, "old", "video", None, 0)])
+        ),
+        ApplyCommitOutcome::Applied(_)
+    ));
+    match apply_root_commit(
+        &mut registry,
+        &commit(&root, 0, 1, vec![mount(&root, "fresh", "video", None, 0)]),
+    ) {
+        ApplyCommitOutcome::Applied(NativeRootAck::Applied { revision, .. }) => {
+            assert_eq!(revision, 1);
+        }
+        other => panic!("{other:?}"),
+    }
+    let state = registry.get(&root).unwrap();
+    assert!(state.nodes.contains_key("fresh"));
+    assert!(!state.nodes.contains_key("old"));
+}
+
+#[test]
 fn revision_gap_requests_resync_without_applying() {
     let root = root();
     let mut registry = RootRegistry::new(HostCapabilities::default());
