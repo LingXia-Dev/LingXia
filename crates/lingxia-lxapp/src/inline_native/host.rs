@@ -87,6 +87,10 @@ impl IslandSession {
                 message,
             }));
         }
+        if commit.base_revision == 0 {
+            self.leases
+                .retain(|(item, _)| !item.same_generation(&commit.root));
+        }
         let outcome = apply_root_commit(&mut self.registry, &commit);
         if matches!(outcome, ApplyCommitOutcome::Applied(_)) {
             if self.lease_for(&commit.root).is_none() {

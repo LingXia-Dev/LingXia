@@ -44,7 +44,7 @@ Page({
           id: "lx-video-1",
           // Big Buck Bunny — (c) Blender Foundation, CC-BY 3.0,
           // https://peach.blender.org — served from Blender's official mirror.
-          src: "public/island-sample.avi",
+          src: "public/island-sample.mp4",
           poster:
             "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/640px-Big_buck_bunny_poster_big.jpg",
           qualities: [
@@ -109,7 +109,7 @@ Page({
       eventLog: "Fallback",
       videos: [{
         id: "lx-video-1",
-        src: "public/island-sample.avi",
+        src: "public/island-sample.mp4",
         poster: "",
         qualities: [],
         playbackRates: [1.0],

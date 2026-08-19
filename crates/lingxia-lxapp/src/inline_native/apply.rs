@@ -208,10 +208,15 @@ pub fn apply_root_commit(
     };
 
     if state.last_applied_revision != commit.base_revision {
-        return ApplyCommitOutcome::ResyncRequired(NativeRootAck::ResyncRequired {
-            root: commit.root.clone(),
-            last_applied_revision: state.last_applied_revision,
-        });
+        if commit.base_revision == 0 {
+            // View remounted in the same document slot (page rebuild / HMR).
+            state = RootState::new(commit.root.clone());
+        } else {
+            return ApplyCommitOutcome::ResyncRequired(NativeRootAck::ResyncRequired {
+                root: commit.root.clone(),
+                last_applied_revision: state.last_applied_revision,
+            });
+        }
     }
 
     let mut next_nodes = state.nodes.clone();
