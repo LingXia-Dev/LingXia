@@ -250,7 +250,7 @@ fn handle_message(
         view.target = target;
     }
 
-    if island::handle_island_message(&context.page_key, message) {
+    if island::handle_island_message(&context, message) {
         return;
     }
 
@@ -284,6 +284,57 @@ fn message_component_id(message: &Value) -> Option<String> {
 enum MountKind {
     Edit { multiline: bool },
     Video,
+}
+
+fn ensure_island_video(
+    context: &PageContext,
+    author_id: &str,
+    props: &Value,
+    rect: Option<DocRect>,
+) {
+    let key = component_key(&context.page_key, author_id);
+    island::island_component_keys().insert(key.clone());
+    if components().contains_key(&key) {
+        if let Some(rect) = rect
+            && let Some(entry) = components().get_mut(&key)
+        {
+            entry.doc_rect = rect;
+        }
+        let parsed = parse_props(Some(props));
+        if let Some(parent) = components().get(&key).map(|entry| entry.parent) {
+            run_on_window_thread(parent, move || {
+                apply_props(&key, &parsed);
+                apply_layout(&key);
+            });
+        }
+        return;
+    }
+    let Some(parent) = parent_window_for_page(&context.page_key) else {
+        log::warn!(
+            "no webview window for page {}; dropping island video {author_id}",
+            context.page_key
+        );
+        return;
+    };
+    let doc_rect = rect.unwrap_or(DocRect {
+        x: 0.0,
+        y: 0.0,
+        width: 16.0,
+        height: 16.0,
+    });
+    let parsed = parse_props(Some(props));
+    let context = context.clone();
+    let component_id = author_id.to_string();
+    run_on_window_thread(parent, move || {
+        mount_on_ui(
+            context,
+            component_id,
+            MountKind::Video,
+            parent,
+            doc_rect,
+            parsed,
+        );
+    });
 }
 
 fn handle_mount(context: &PageContext, message: &Value) {
@@ -920,18 +971,20 @@ fn apply_layout(key: &str) {
             }
         }
         let _ = WindowsAndMessaging::ShowWindow(container_hwnd, WindowsAndMessaging::SW_SHOWNA);
-        let _ = WindowsAndMessaging::SetWindowPos(
-            container_hwnd,
-            Some(WindowsAndMessaging::HWND_TOP),
-            0,
-            0,
-            0,
-            0,
-            WindowsAndMessaging::SWP_NOMOVE
-                | WindowsAndMessaging::SWP_NOSIZE
-                | WindowsAndMessaging::SWP_NOACTIVATE
-                | WindowsAndMessaging::SWP_NOOWNERZORDER,
-        );
+        if !island::is_island_component_key(key) {
+            let _ = WindowsAndMessaging::SetWindowPos(
+                container_hwnd,
+                Some(WindowsAndMessaging::HWND_TOP),
+                0,
+                0,
+                0,
+                0,
+                WindowsAndMessaging::SWP_NOMOVE
+                    | WindowsAndMessaging::SWP_NOSIZE
+                    | WindowsAndMessaging::SWP_NOACTIVATE
+                    | WindowsAndMessaging::SWP_NOOWNERZORDER,
+            );
+        }
 
         if is_swiper {
             layout_swiper_children(key, width, height);
