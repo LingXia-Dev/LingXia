@@ -4,69 +4,97 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Every crate published to crates.io. This is the release policy -- which crates
+# ship -- so it is reviewed by hand and kept alphabetical. The order they publish
+# in is deliberately NOT here: it is derived from the dependency graph, because a
+# hand-ordered list mirrors that graph and drifts out of it silently, and a crate
+# published ahead of one it depends on fails mid-run, after earlier crates have
+# gone out irreversibly.
 CRATES=(
-  # Foundational crates.
+  "lingxia"
   "lingxia-app-context"
-  "lingxia-provider"
-  "lingxia-log"
-  "lingxia-update"
-  "lingxia-messaging"
-  "lingxia-webview"
-  "lingxia-settings"
-  "lingxia-transfer"
-  "lingxia-windows-contract"
-  "lingxia-surface"
-  "lingxia-shell"
-  "lingxia-platform"
-  # Takes lingxia-platform as an optional dep, which cargo still resolves at
-  # publish time -- so it cannot precede it however foundational it looks.
+  "lingxia-automation"
+  "lingxia-browser"
+  "lingxia-browser-shell"
+  "lingxia-control-commands"
+  "lingxia-control-protocol"
+  "lingxia-control-runtime"
   "lingxia-device-io"
+  "lingxia-log"
+  "lingxia-logic"
+  "lingxia-lxapp"
   "lingxia-media"
+  "lingxia-messaging"
+  "lingxia-native-codegen"
+  "lingxia-native-macros"
+  "lingxia-platform"
+  "lingxia-provider"
+  "lingxia-proxy"
   "lingxia-service"
-
-  # Terminal backend has no workspace deps; config sits on app-context +
-  # terminal. Both must precede lingxia-logic / lingxia, which take them as
-  # optional `terminal` / `terminal-runtime` features.
+  "lingxia-settings"
+  "lingxia-shell"
+  "lingxia-surface"
   "lingxia-terminal"
   "lingxia-terminal-config"
-
-  # Core runtime crates.
-  "lingxia-lxapp"
-  "lingxia-logic"
-  "lingxia-proxy"
-
-  # Facade and host support crates.
-  "lingxia-native-macros"
-  "lingxia-native-codegen"
-  "lingxia-browser"
-  "lingxia-automation"
-  "lingxia-browser-shell"
-
-  # Control protocol is consumed by SDK/tools and by lingxia-control-runtime.
-  "lingxia-control-protocol"
-
-  # Shared command library depends on the protocol and is consumed by lingxia.
-  "lingxia-control-commands"
-
-  # Public facade.
-  "lingxia"
-
-  # The shared control runtime depends on the public facade.
-  "lingxia-control-runtime"
-
-  # Windows build helper consumed by the windows app template.
-  # lingxia-windows-sdk is NOT published: it depends on a git-pinned windows-rs
-  # (proc-macros), and crates.io forbids git deps. It is consumed via a git ref
-  # in the windows app template instead.
+  "lingxia-transfer"
+  "lingxia-update"
+  "lingxia-webview"
   "lingxia-windows-build"
+  "lingxia-windows-contract"
 )
 
 # Workspace crates that cannot be published to crates.io. Keep this explicit so
 # adding a new crate under crates/ fails the inventory check until the release
 # policy is decided.
 UNPUBLISHED_CRATES=(
+  # Depends on a git-pinned windows-rs (proc-macros) and crates.io forbids git
+  # dependencies. The windows app template consumes it through a git ref.
   "lingxia-windows-sdk"
 )
+
+# Order CRATES so every crate publishes after the crates it depends on. cargo
+# resolves a dependency at publish time even when it is optional, so a crate
+# whose dependency is not on crates.io yet fails to package -- mid-run, with
+# earlier crates already irreversibly published.
+order_crates() {
+  cargo metadata --no-deps --format-version 1 --manifest-path "$ROOT_DIR/Cargo.toml" |
+    node -e '
+      const meta = JSON.parse(require("fs").readFileSync(0, "utf8"));
+      const wanted = new Set(process.argv.slice(1));
+      const deps = new Map();
+      for (const pkg of meta.packages) {
+        if (!wanted.has(pkg.name)) continue;
+        // A dev-dependency does not have to be on crates.io for this crate to
+        // package, and dev-dep cycles between two crates are legal. Only normal
+        // and build dependencies constrain the publish order.
+        const edges = pkg.dependencies
+          .filter((d) => d.kind !== "dev")
+          .map((d) => d.name)
+          .filter((n) => wanted.has(n));
+        deps.set(pkg.name, edges);
+      }
+      const missing = [...wanted].filter((n) => !deps.has(n));
+      if (missing.length) {
+        console.error(`Not workspace crates: ${missing.join(", ")}`);
+        process.exit(1);
+      }
+      // Kahn, taking the alphabetically first ready crate so the order is stable.
+      const remaining = new Map([...deps].map(([n, d]) => [n, new Set(d)]));
+      const order = [];
+      while (remaining.size) {
+        const ready = [...remaining].filter(([, d]) => d.size === 0).map(([n]) => n).sort();
+        if (!ready.length) {
+          console.error(`Dependency cycle among: ${[...remaining.keys()].join(", ")}`);
+          process.exit(1);
+        }
+        const next = ready[0];
+        remaining.delete(next);
+        order.push(next);
+        for (const d of remaining.values()) d.delete(next);
+      }
+      console.log(order.join("\n"));
+    ' "${CRATES[@]}"
+}
 
 array_contains() {
   local needle="$1"
@@ -201,6 +229,16 @@ if [[ -z "$workspace_version" ]]; then
   echo "Failed to read workspace version from Cargo.toml" >&2
   exit 1
 fi
+
+ordered=()
+while IFS= read -r _crate; do
+  [[ -n "$_crate" ]] && ordered+=("$_crate")
+done < <(order_crates)
+if [[ "${#ordered[@]}" -ne "${#CRATES[@]}" ]]; then
+  echo "Could not order the release inventory from the dependency graph." >&2
+  exit 1
+fi
+CRATES=("${ordered[@]}")
 
 SELECTED_CRATES=("${CRATES[@]}")
 if [[ -n "$FROM_CRATE" ]]; then
