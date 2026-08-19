@@ -50,10 +50,19 @@ function inspectSurface(
   };
 }
 
+// Claim only what this spec actually checks. An optional surface or member is
+// skipped when the host did not build it, and claiming it anyway makes the
+// covers gate report a surface nobody touched as proven.
 const SHAPE_COVERS = [
-  ...LX_RUNTIME_SURFACES.flatMap((surface) =>
-    surface.members.map((member) => `shape:${surface.name}.${member}`),
-  ),
+  ...LX_RUNTIME_SURFACES.flatMap((surface) => {
+    if ('optional' in surface && surface.optional) return [];
+    const optionalMembers: readonly string[] = 'optionalMembers' in surface
+      ? surface.optionalMembers
+      : [];
+    return surface.members
+      .filter((member) => !optionalMembers.includes(member))
+      .map((member) => `shape:${surface.name}.${member}`);
+  }),
   ...LX_RETURNED_OBJECT_SURFACES
     .filter((surface) => surface.fixture === 'runtime-safe')
     .flatMap((surface) => surface.members.map((member) => `shape:${surface.name}.${member}`)),

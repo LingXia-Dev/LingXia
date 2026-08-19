@@ -629,8 +629,22 @@ export const LX_RETURNED_OBJECT_CAPABILITY_NAMES = LX_RETURNED_OBJECT_SURFACES.f
 
 export const LX_RETURNED_OBJECT_SHAPE_NAMES = LX_RETURNED_OBJECT_CAPABILITY_NAMES.map((name) => `shape:${name}`);
 
+/**
+ * Shape coverage a run on any host must prove. A surface marked `optional`, or
+ * a member listed in `optionalMembers`, is absent on hosts that do not build
+ * it — `lx.terminal` ships only inside the bundled Terminal Settings lxapp —
+ * so a suite that skips it has not covered it. Requiring it here would let the
+ * covers gate report a surface nobody touched as proven.
+ */
 export const LX_REQUIRED_RUNTIME_SHAPE_NAMES = [
-  ...LX_RUNTIME_SHAPE_NAMES,
+  ...LX_RUNTIME_SURFACES.flatMap((surface) => {
+    if ('optional' in surface && surface.optional) return [];
+    const optionalMembers: readonly string[] =
+      'optionalMembers' in surface ? surface.optionalMembers : [];
+    return surface.members
+      .filter((member) => !optionalMembers.includes(member))
+      .map((member) => `shape:${surface.name}.${member}`);
+  }),
   ...LX_RETURNED_OBJECT_SURFACES
     .filter(({ fixture }) => fixture === 'runtime-safe')
     .flatMap(({ name, members }) => members.map((member) => `shape:${name}.${member}`)),

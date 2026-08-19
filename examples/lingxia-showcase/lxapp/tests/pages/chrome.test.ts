@@ -172,7 +172,7 @@ spec("round-trip appearance preference through the ui controls", {
         }) as Promise<string>,
         (text) => text === state.preference,
         { describe: `ui appearance label ${preference}`, timeoutMs: 5_000 },
-      ).catch(() => undefined);
+      );
     });
   }
 
