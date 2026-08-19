@@ -17,6 +17,7 @@ pub struct SystemSettingInfo {
     wifi_enabled: bool,
 }
 
+/// Read system switches the lxapp may branch on, such as location and WiFi.
 fn get_system_setting(ctx: JSContext) -> JSResult<SystemSettingInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let location_enabled = lxapp

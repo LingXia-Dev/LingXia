@@ -1,5 +1,6 @@
 use rong::{JSContext, JSObject, JSResult};
 
+/// Runtime path constants, as abstract `lx://` locations.
 fn env_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
     if let Ok(env) = lx.get::<_, JSObject>("env") {

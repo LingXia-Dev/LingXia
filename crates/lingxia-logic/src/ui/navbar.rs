@@ -4,6 +4,7 @@ use lxapp::LxApp;
 use lxapp::navbar::NavigationBarPatch;
 use rong::{JSContext, JSObject, JSResult};
 
+/// The navigation bar above the page: title, colors, and loading state.
 fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
     match lx.get::<_, JSObject>("navigationBar") {
@@ -16,6 +17,7 @@ fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
     }
 }
 
+/// Patch the navigation bar of the active page; unset fields stay as they are.
 async fn update(ctx: JSContext, patch: JSObject) -> JSResult<()> {
     let patch = parse_patch::<NavigationBarPatch>(&patch, "navigationBar")?;
     let app = LxApp::from_ctx(&ctx)?;

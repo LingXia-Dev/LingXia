@@ -149,6 +149,7 @@ fn parse_network_info(data: String) -> Result<JSNetworkInfoResult, RongJSError> 
     Ok(normalize_network_info(&parsed))
 }
 
+/// Read connectivity right now: whether it is connected, its type, and addresses.
 async fn get_network_info(ctx: JSContext) -> JSResult<JSNetworkInfoResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 

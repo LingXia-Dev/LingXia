@@ -34,6 +34,10 @@ fn should_emit_orientation_event_after_set() -> bool {
     cfg!(target_os = "ios") || cfg!(target_os = "macos") || cfg!(target_env = "ohos")
 }
 
+/// Lock this lxapp to `portrait` or `landscape`.
+///
+/// Any other value rejects. Where the host does not report the change back,
+/// the runtime emits the orientation event itself so JS state stays in sync.
 fn set_device_orientation(ctx: JSContext, orientation: String) -> JSResult<bool> {
     if orientation != "portrait" && orientation != "landscape" {
         return Err(js_invalid_parameter_error(format!(

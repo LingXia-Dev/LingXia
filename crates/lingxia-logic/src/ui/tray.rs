@@ -17,6 +17,7 @@ static MENU_COUNTS: LazyLock<Mutex<HashMap<String, usize>>> =
 /// configured surface action.
 static CLICK_HANDLERS: AtomicUsize = AtomicUsize::new(0);
 
+/// The desktop tray item this product publishes.
 fn tray_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
     match lx.get::<_, JSObject>("tray") {

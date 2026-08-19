@@ -11,6 +11,7 @@ struct AppearanceState {
     resolved: String,
 }
 
+/// Light/dark appearance: what is in effect now, and changes to it.
 fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
     match lx.get::<_, JSObject>("appearance") {
@@ -23,6 +24,7 @@ fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
     }
 }
 
+/// Read the appearance preference and the light/dark value it resolves to.
 fn get(ctx: JSContext) -> JSResult<AppearanceState> {
     let state = LxApp::from_ctx(&ctx)?.appearance_state();
     Ok(AppearanceState {
@@ -31,6 +33,7 @@ fn get(ctx: JSContext) -> JSResult<AppearanceState> {
     })
 }
 
+/// Set the appearance preference to `auto`, `light`, or `dark`.
 async fn set(ctx: JSContext, preference: String) -> JSResult<()> {
     let preference = preference
         .parse::<AppearancePreference>()

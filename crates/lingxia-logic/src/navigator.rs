@@ -200,6 +200,11 @@ fn do_navigate_back_lxapp(lxapp: &LxApp) -> Result<(), LxAppError> {
     Ok(())
 }
 
+/// Open another lxapp, optionally at one of its pages.
+///
+/// Navigating to the lxapp already running is a no-op. Rejects with
+/// `E_SURFACE_CONFLICT` when the target is currently docked as an aside —
+/// close that aside before opening it as a main.
 async fn navigate_to_app(ctx: JSContext, options: NavigateToAppOptions) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
 
@@ -225,6 +230,7 @@ async fn navigate_to_app(ctx: JSContext, options: NavigateToAppOptions) -> JSRes
     Ok(())
 }
 
+/// Leave this lxapp and reveal the one that opened it.
 async fn navigate_back_app(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     do_navigate_back_lxapp(&lxapp).map_err(|e| js_error_from_lxapp_error(&e))?;

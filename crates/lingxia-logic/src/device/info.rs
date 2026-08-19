@@ -57,12 +57,14 @@ rong::js_api! {
     }
 }
 
+/// Read the device and OS facts this host reports.
 fn device_info(ctx: JSContext) -> JSResult<DeviceInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let device_info = lxapp.runtime.device_info();
     Ok(device_info.into())
 }
 
+/// Read the screen geometry and pixel ratio this host reports.
 fn screen_info(ctx: JSContext) -> JSResult<ScreenInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     Ok(lxapp.runtime.screen_info().into())

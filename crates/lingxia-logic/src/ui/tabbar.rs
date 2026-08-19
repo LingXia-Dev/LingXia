@@ -4,6 +4,7 @@ use lxapp::LxApp;
 use lxapp::tabbar::TabBarPatch;
 use rong::{JSContext, JSObject, JSResult};
 
+/// The tab bar declared by this lxapp: visibility, items, badges, and style.
 fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
     match lx.get::<_, JSObject>("tabBar") {
@@ -16,6 +17,7 @@ fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
     }
 }
 
+/// Patch this lxapp's tab bar; unset fields stay as they are.
 async fn update(ctx: JSContext, patch: JSObject) -> JSResult<()> {
     let patch = parse_patch::<TabBarPatch>(&patch, "tabBar")?;
     let app = LxApp::from_ctx(&ctx)?;

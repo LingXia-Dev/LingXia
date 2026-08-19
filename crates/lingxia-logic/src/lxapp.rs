@@ -13,6 +13,7 @@ struct LxAppInfo {
     release_type: String,
 }
 
+/// Identify the running lxapp: its id, display name, version, and release type.
 fn get_lxapp_info(ctx: JSContext) -> JSResult<LxAppInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let info = lxapp.get_lxapp_info();

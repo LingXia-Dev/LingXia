@@ -55,6 +55,7 @@ fn handler_registry(ctx: &JSContext) -> &SidebarActionHandlerRegistry {
         .expect("sidebar action handler registry was inserted above")
 }
 
+/// The host shell around the content — its sidebar shortcuts and chrome.
 fn shell_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
     match lx.get::<_, JSObject>("shell") {

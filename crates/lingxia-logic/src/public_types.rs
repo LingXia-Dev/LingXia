@@ -301,8 +301,11 @@ rong::js_api! {
 }"###;
 
         type TerminalApi = r###"{
+    /** Saved terminal settings, revision-checked on write. */
     readonly settings: TerminalSettingsApi;
+    /** Installed color schemes, plus import and live preview. */
     readonly colorSchemes: TerminalColorSchemesApi;
+    /** Terminal fonts installed on this machine. */
     readonly fonts: TerminalFontsApi;
     /** Windows-only optional inline-image compatibility runtime. */
     readonly windows?: WindowsTerminalApi;

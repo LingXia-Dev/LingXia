@@ -219,6 +219,7 @@ async fn get_video_info_api(
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
+/// Write one frame of a video out as an image file.
 async fn extract_video_thumbnail_api(
     ctx: JSContext,
     options: JSVideoThumbnailOptions,
@@ -271,6 +272,10 @@ async fn extract_video_thumbnail_api(
     })
 }
 
+/// Transcode a video to a smaller file.
+///
+/// Returns a task handle synchronously, so progress and cancellation can be
+/// wired up before transcoding starts.
 fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = lxapp.runtime.clone();
