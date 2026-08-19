@@ -201,7 +201,6 @@ export const ui = {
         { name: '@lingxia/bridge', desc: 'Low-level bridge runtime and invocation helpers' },
         { name: '@lingxia/elements', desc: 'Custom elements behind the framework wrappers' },
         { name: '@lingxia/native', desc: 'CLI-generated client for your host Rust routes' },
-        { name: '@lingxia/skill', desc: 'The markdown skill bundle for AI coding tools' },
       ],
     },
     cta: {
@@ -426,7 +425,6 @@ export const ui = {
         { name: '@lingxia/bridge', desc: '底层桥运行时与调用辅助' },
         { name: '@lingxia/elements', desc: '框架封装背后的自定义元素' },
         { name: '@lingxia/native', desc: 'CLI 为宿主 Rust 路由生成的客户端' },
-        { name: '@lingxia/skill', desc: '面向 AI 编码工具的 markdown 技能包' },
       ],
     },
     cta: {

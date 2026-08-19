@@ -53,11 +53,13 @@ Not all npm packages may drift from the workspace. They split into three tiers:
   `npm install` resolves the newest patch on the line either way, and the lower
   floor keeps scaffolding working when a package lags the base.
 
-### Tier 3 — standalone tools (independent)
-`@lingxia/skill`
+### The agent skill (no tier — it is not a package)
+The skill describes what the CLI can do, so it is compiled into the CLI and
+written out by `lingxia skill install`. It has no version of its own and no
+release train: an installed copy always came from the binary that wrote it.
 
-- Agent/CLI helper; not embedded, not protocol-bound. Version freely
-  (`--component npm:skill`).
+Giving it a version of its own would reintroduce the only failure it can have:
+a skill describing calls the runtime it is paired with does not provide.
 
 ## CLI version line
 
@@ -109,7 +111,5 @@ and the developer Runner used by `lingxia dev` for standalone lxapps.
    Tier-1 npm (`bridge`, `polyfills`, `types`) — published together.
 2. **Framework npm train**: Tier-2 packages, major.minor pinned to the base
    runtime, patch may ship on its own via `--component npm:<package>`.
-3. **Tools**: `skill`, independent.
-
-The prepare-release workflow exposes `component=all | cli | npm:<framework|skill>`
+The prepare-release workflow exposes `component=all | cli | npm:<framework>`
 accordingly; base-runtime npm has no standalone option on purpose.

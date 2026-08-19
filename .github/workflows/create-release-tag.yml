@@ -32,7 +32,6 @@ on:
           - lingxia-page-runtime
           - lingxia-polyfills
           - lingxia-react
-          - lingxia-skill
           - lingxia-terminal-settings
           - lingxia-test
           - lingxia-types
@@ -59,7 +58,6 @@ env:
     lingxia-terminal-settings
     lingxia-types
     lingxia-test
-    lingxia-skill
 
 jobs:
   publish:

@@ -1,7 +1,7 @@
 ---
 import Icon from './Icon.astro';
 import CopyCommand from './CopyCommand.astro';
-import { NPM_SKILL } from '~/lib/url';
+import { SKILL_INSTALL } from '~/lib/url';
 import type { Lang, T } from '~/i18n/ui';
 
 interface Props {
@@ -39,7 +39,7 @@ const { t } = Astro.props;
         </ul>
 
         <div class="mt-8 max-w-md">
-          <CopyCommand command={NPM_SKILL} copyLabel={t.hero.copy} copiedLabel={t.hero.copied} prompt="$" />
+          <CopyCommand command={SKILL_INSTALL} copyLabel={t.hero.copy} copiedLabel={t.hero.copied} prompt="$" />
         </div>
         <p class="mt-4 text-sm text-fg-dim">{t.ai.tools}</p>
       </div>

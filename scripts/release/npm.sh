@@ -9,7 +9,7 @@ usage() {
 Release LingXia npm packages.
 
 Usage:
-  scripts/release/npm.sh [--package bridge|elements|react|vue|html|page-runtime|polyfills|terminal-settings|browser-shell-webui|types|test|skill|all] [--publish] [--dry-run]
+  scripts/release/npm.sh [--package bridge|elements|react|vue|html|page-runtime|polyfills|terminal-settings|browser-shell-webui|types|test|all] [--publish] [--dry-run]
 
 Options:
   --package <name>  Package set to process (default: all)
@@ -46,8 +46,8 @@ if [[ "$PUBLISH" -eq 0 && "$DRY_RUN" -eq 0 ]]; then
 fi
 
 # Tier 1, then framework in dep order (bridge → elements/page-runtime → html/react/vue),
-# then prebuilt lxapps and the standalone skill.
-ALL_TARGETS=("bridge" "polyfills" "types" "test" "elements" "page-runtime" "html" "react" "vue" "terminal-settings" "browser-shell-webui" "skill")
+# then prebuilt lxapps.
+ALL_TARGETS=("bridge" "polyfills" "types" "test" "elements" "page-runtime" "html" "react" "vue" "terminal-settings" "browser-shell-webui")
 
 case "$PACKAGE_SET" in
   bridge) targets=("bridge") ;;
@@ -61,7 +61,6 @@ case "$PACKAGE_SET" in
   browser-shell-webui) targets=("browser-shell-webui") ;;
   types) targets=("types") ;;
   test) targets=("test") ;;
-  skill) targets=("skill") ;;
   all) targets=("${ALL_TARGETS[@]}") ;;
   *) echo "Unknown package set: $PACKAGE_SET" >&2; exit 2 ;;
 esac
@@ -79,7 +78,6 @@ pkg_dir() {
     browser-shell-webui) echo "$ROOT_DIR/crates/lingxia-browser-shell/webui" ;;
     types) echo "$ROOT_DIR/packages/lingxia-types" ;;
     test) echo "$ROOT_DIR/packages/lingxia-test" ;;
-    skill) echo "$ROOT_DIR/packages/lingxia-skill" ;;
     *) return 1 ;;
   esac
 }
@@ -146,7 +144,6 @@ pkg_target_for_name() {
     @lingxia/vue) echo "vue" ;;
     @lingxia/terminal-settings) echo "terminal-settings" ;;
     @lingxia/browser-shell-webui) echo "browser-shell-webui" ;;
-    @lingxia/skill) echo "skill" ;;
     *) return 1 ;;
   esac
 }
@@ -169,7 +166,6 @@ const dirOf = {
   vue: "packages/lingxia-vue",
   "terminal-settings": "packages/lingxia-terminal-settings",
   "browser-shell-webui": "crates/lingxia-browser-shell/webui",
-  skill: "packages/lingxia-skill",
 };
 const nameOf = {};
 for (const target of targets) {

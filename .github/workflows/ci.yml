@@ -1309,32 +1309,6 @@ jobs:
       - name: Verify the npm release inventory
         run: bash scripts/release/npm.sh --verify-inventory
 
-  npm-skill:
-    needs: changes
-    if: ${{ needs.changes.outputs.npm == 'true' }}
-    name: Agent Skill
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Cache npm
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-skill-${{ hashFiles('packages/lingxia-skill/package.json') }}
-          restore-keys: npm-skill-
-
-      - name: Install & Pack (@lingxia/skill)
-        working-directory: packages/lingxia-skill
-        run: |
-          npm install
-          npm pack --dry-run
-
   # Single required check. Skipped gating jobs report result 'skipped' (≠
   # 'failure'), so a scoped PR still goes green and stays mergeable — require
   # ONLY this check in branch protection, never the individual jobs.
