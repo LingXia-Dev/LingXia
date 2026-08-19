@@ -21,6 +21,8 @@ Commands:
   cli                 Build/upload CLI GitHub Release assets
   runner              Build/upload Runner GitHub Release assets
   sdk                 Build/package SDK release artifacts
+  changelog           Print the pending CHANGELOG.md section
+  notes               Print release notes from Release-Note trailers
 
 CLI options:
   --target <platform> Build specific target(s): darwin-x64, darwin-arm64,
@@ -212,6 +214,12 @@ case "$cmd" in
     ;;
   sdk)
     run_cmd "$SCRIPT_DIR/sdk.sh" "$@"
+    ;;
+  changelog)
+    node "$SCRIPT_DIR/changelog.mjs" "$@"
+    ;;
+  notes)
+    node "$SCRIPT_DIR/changelog.mjs" --notes "$@"
     ;;
   -h|--help|help)
     usage
