@@ -1,16 +1,18 @@
 //! Inline native island host for Windows.
 //!
-//! Island nodes live in the WebView2 composition domain. They never use
-//! `HWND_TOP` or a second windowed z-order; the shared [`lxapp::inline_native::IslandSession`]
-//! is the source of sibling / document order. Video leaves reuse the existing
-//! MFPlay player, keyed by author id so `lx.createVideoContext` reaches them.
+//! Island nodes share the page protocol ([`lxapp::inline_native::IslandSession`])
+//! and never use `HWND_TOP` restacking. Video leaves reuse MFPlay keyed by
+//! author id so `lx.createVideoContext` reaches them. Live DComp attach of
+//! those nodes exists on the WebView DComp tree API but is not driven from
+//! this path: mutating that shared device stalls the page UI thread.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 
 use lingxia_webview::WebViewController;
 use lxapp::inline_native::{
-    ApplyCommitOutcome, IslandSession, NativeGeometrySnapshot, NativeRootAck, is_island_action,
+    ApplyCommitOutcome, IslandCompositor, IslandSession, NativeGeometrySnapshot, NativeRootAck,
+    Rect, is_island_action,
 };
 use serde_json::{Value, json};
 
@@ -109,27 +111,93 @@ pub(super) fn teardown_island(page_key: &str) {
 }
 
 fn materialize_island(context: &PageContext, session: &IslandSession) {
-    if !session.can_display_any() {
-        return;
+    let mut compositor = DcompIslandCompositor::new(context, session);
+    session.materialize_into(&mut compositor);
+    compositor.commit();
+}
+
+struct PendingAttach {
+    id: String,
+    kind: String,
+    rect: Rect,
+}
+
+struct DcompIslandCompositor<'a> {
+    context: &'a PageContext,
+    session: &'a IslandSession,
+    pending: Vec<PendingAttach>,
+}
+
+impl<'a> DcompIslandCompositor<'a> {
+    fn new(context: &'a PageContext, session: &'a IslandSession) -> Self {
+        Self {
+            context,
+            session,
+            pending: Vec::new(),
+        }
     }
-    let mut ordered_ids = Vec::new();
-    for node in session.composition_nodes() {
-        let id = node
-            .author_id
-            .clone()
-            .unwrap_or_else(|| node.node_ref.node_key.clone());
-        let rect = session
-            .last_node_rect(&node.node_ref.node_key)
-            .map(|content| DocRect {
-                x: content.x,
-                y: content.y,
-                width: content.width,
-                height: content.height,
-            });
-        super::ensure_island_node(context, &id, &node.kind, &node.props, rect);
-        ordered_ids.push(id);
+
+    fn commit(self) {
+        let context = self.context.clone();
+        let pending = self.pending;
+        let nodes = self.session.composition_nodes();
+        let Some(parent) = super::parent_window_for_page(&context.page_key) else {
+            if !pending.is_empty() {
+                log::debug!(
+                    "no host window for {}; island visuals not attached",
+                    context.page_key
+                );
+            }
+            return;
+        };
+        super::run_on_window_thread(parent, move || {
+            finish_island_commit(&context, &nodes, pending);
+        });
     }
-    super::restack_island_windows(&context.page_key, &ordered_ids);
+}
+
+fn finish_island_commit(
+    context: &PageContext,
+    nodes: &[lxapp::inline_native::IslandPaintNode],
+    pending: Vec<PendingAttach>,
+) {
+    for attach in &pending {
+        if attach.kind != "video" {
+            continue;
+        }
+        let props = nodes
+            .iter()
+            .find(|node| {
+                node.author_id.as_deref() == Some(attach.id.as_str())
+                    || node.node_ref.node_key == attach.id
+            })
+            .map(|node| &node.props);
+        let _ = super::ensure_island_video(
+            context,
+            &attach.id,
+            props.unwrap_or(&Value::Null),
+            Some(DocRect {
+                x: attach.rect.x,
+                y: attach.rect.y,
+                width: attach.rect.width,
+                height: attach.rect.height,
+            }),
+        );
+    }
+}
+
+impl IslandCompositor for DcompIslandCompositor<'_> {
+    fn attach_above_webview(&mut self, id: &str, kind: &str, rect: &Rect) {
+        self.pending.push(PendingAttach {
+            id: id.to_string(),
+            kind: kind.to_string(),
+            rect: rect.clone(),
+        });
+    }
+
+    fn order(&self) -> Vec<String> {
+        self.pending.iter().map(|item| item.id.clone()).collect()
+    }
 }
 
 fn post_island_payload(context: &PageContext, payload: Value) {
@@ -229,6 +297,115 @@ mod tests {
             let guard = sessions().lock().unwrap();
             assert!(guard.get(page).unwrap().can_display_any());
         }
+        let cover = json!({
+            "action": "root.commit",
+            "root": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "player",
+                "rootEpoch": 1
+            },
+            "baseRevision": 1,
+            "revision": 2,
+            "operations": [
+                {
+                    "op": "mount",
+                    "node": {
+                        "ref": {
+                            "surfaceInstanceId": "s",
+                            "pageInstanceId": "p",
+                            "documentInstanceId": "d",
+                            "rootKey": "player",
+                            "rootEpoch": 1,
+                            "nodeKey": "cover",
+                            "nodeEpoch": 1
+                        },
+                        "kind": "view",
+                        "parent": null,
+                        "order": 1,
+                        "authorType": "LxNativeCover",
+                        "authorId": "cover",
+                        "props": {}
+                    }
+                },
+                {
+                    "op": "mount",
+                    "node": {
+                        "ref": {
+                            "surfaceInstanceId": "s",
+                            "pageInstanceId": "p",
+                            "documentInstanceId": "d",
+                            "rootKey": "player",
+                            "rootEpoch": 1,
+                            "nodeKey": "title",
+                            "nodeEpoch": 1
+                        },
+                        "kind": "text",
+                        "parent": {
+                            "surfaceInstanceId": "s",
+                            "pageInstanceId": "p",
+                            "documentInstanceId": "d",
+                            "rootKey": "player",
+                            "rootEpoch": 1,
+                            "nodeKey": "cover",
+                            "nodeEpoch": 1
+                        },
+                        "order": 0,
+                        "authorType": "LxNativeText",
+                        "authorId": "title",
+                        "props": { "text": "Inline native" }
+                    }
+                }
+            ]
+        });
+        assert!(handle_island_message(&context, &cover));
+        {
+            let mut guard = sessions().lock().unwrap();
+            let session = guard.get_mut(page).unwrap();
+            session.apply_geometry(NativeGeometrySnapshot {
+                action: "geometry.snapshot".into(),
+                surface_instance_id: "s".into(),
+                page_instance_id: "p".into(),
+                document_instance_id: "d".into(),
+                revision: 3,
+                coordinate_space: "page-unscrolled-css-px".into(),
+                roots: vec![],
+                nodes: vec![],
+                chains: vec![],
+            });
+            let mut recorder = AttachRecorder { calls: Vec::new() };
+            session.materialize_into(&mut recorder);
+            assert_eq!(
+                recorder.order(),
+                vec![
+                    "lx-video-1".to_string(),
+                    "cover".to_string(),
+                    "title".to_string()
+                ]
+            );
+            let kinds: Vec<&str> = recorder
+                .calls
+                .iter()
+                .map(|(_, kind, _)| kind.as_str())
+                .collect();
+            assert_eq!(kinds, ["video", "view", "text"]);
+        }
         teardown_island(page);
+    }
+
+    struct AttachRecorder {
+        calls: Vec<(String, String, Rect)>,
+    }
+
+    impl IslandCompositor for AttachRecorder {
+        fn attach_above_webview(&mut self, id: &str, kind: &str, rect: &Rect) {
+            self.calls
+                .push((id.to_string(), kind.to_string(), rect.clone()));
+        }
+
+        fn order(&self) -> Vec<String> {
+            self.calls.iter().map(|(id, _, _)| id.clone()).collect()
+        }
     }
 }

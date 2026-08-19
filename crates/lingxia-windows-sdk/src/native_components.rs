@@ -289,35 +289,34 @@ enum MountKind {
     Video,
 }
 
+/// Ensures an island video player exists on a cloaked (non-child) HWND and
+/// returns that HWND for `CreateSurfaceFromHwnd`. Never parents a visible
+/// sibling under the host and never calls `SetWindowPos`.
 fn ensure_island_video(
     context: &PageContext,
     author_id: &str,
     props: &Value,
     rect: Option<DocRect>,
-) {
+) -> Option<isize> {
     let key = component_key(&context.page_key, author_id);
     island::island_component_keys().insert(key.clone());
-    if components().contains_key(&key) {
+    if let Some(container) = components().get(&key).map(|entry| entry.container) {
         if let Some(rect) = rect
             && let Some(entry) = components().get_mut(&key)
         {
             entry.doc_rect = rect;
         }
         let parsed = parse_props(Some(props));
-        if let Some(parent) = components().get(&key).map(|entry| entry.parent) {
-            run_on_window_thread(parent, move || {
-                apply_props(&key, &parsed);
-                apply_layout(&key);
-            });
-        }
-        return;
+        apply_props(&key, &parsed);
+        apply_layout(&key);
+        return Some(container);
     }
     let Some(parent) = parent_window_for_page(&context.page_key) else {
         log::warn!(
             "no webview window for page {}; dropping island video {author_id}",
             context.page_key
         );
-        return;
+        return None;
     };
     let doc_rect = rect.unwrap_or(DocRect {
         x: 0.0,
@@ -326,174 +325,27 @@ fn ensure_island_video(
         height: 16.0,
     });
     let parsed = parse_props(Some(props));
-    let context = context.clone();
-    let component_id = author_id.to_string();
-    run_on_window_thread(parent, move || {
-        mount_on_ui(
-            context,
-            component_id,
-            MountKind::Video,
-            parent,
-            doc_rect,
-            parsed,
-        );
-    });
-}
-
-fn ensure_island_node(
-    context: &PageContext,
-    component_id: &str,
-    kind: &str,
-    props: &Value,
-    rect: Option<DocRect>,
-) {
-    if kind == "video" {
-        ensure_island_video(context, component_id, props, rect);
-        return;
-    }
-    let key = component_key(&context.page_key, component_id);
-    island::island_component_keys().insert(key.clone());
-    if components().contains_key(&key) {
-        if let Some(rect) = rect
-            && let Some(entry) = components().get_mut(&key)
-        {
-            entry.doc_rect = rect;
-            if let Some(text) = props.get("text").and_then(Value::as_str) {
-                entry.last_value = text.to_string();
-            }
-        }
-        if let Some(parent) = components().get(&key).map(|entry| entry.parent) {
-            run_on_window_thread(parent, move || {
-                apply_layout(&key);
-            });
-        }
-        return;
-    }
-    let Some(parent) = parent_window_for_page(&context.page_key) else {
-        return;
-    };
-    let doc_rect = rect.unwrap_or(DocRect {
-        x: 0.0,
-        y: 0.0,
-        width: 16.0,
-        height: 16.0,
-    });
-    let context = context.clone();
-    let component_id = component_id.to_string();
-    let kind = kind.to_string();
-    let text = props
-        .get("text")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    run_on_window_thread(parent, move || {
-        mount_island_overlay_on_ui(context, component_id, kind, parent, doc_rect, text);
-    });
-}
-
-fn restack_island_windows(page_key: &str, ordered_ids: &[String]) {
-    let Some(parent) = parent_window_for_page(page_key) else {
-        return;
-    };
-    let keys: Vec<String> = ordered_ids
-        .iter()
-        .map(|id| component_key(page_key, id))
-        .collect();
-    run_on_window_thread(parent, move || {
-        let surface = composition_surface_child(parent);
-        let mut previous = surface;
-        for key in &keys {
-            let Some(container) = components().get(key).map(|entry| entry.container) else {
-                continue;
-            };
-            let hwnd = HWND(container as *mut _);
-            unsafe {
-                let _ = WindowsAndMessaging::SetWindowPos(
-                    hwnd,
-                    previous,
-                    0,
-                    0,
-                    0,
-                    0,
-                    WindowsAndMessaging::SWP_NOMOVE
-                        | WindowsAndMessaging::SWP_NOSIZE
-                        | WindowsAndMessaging::SWP_NOACTIVATE
-                        | WindowsAndMessaging::SWP_NOOWNERZORDER,
-                );
-            }
-            previous = Some(hwnd);
-        }
-    });
-}
-
-fn composition_surface_child(parent: isize) -> Option<HWND> {
-    unsafe {
-        let mut child = WindowsAndMessaging::GetWindow(HWND(parent as *mut _), GW_CHILD).ok()?;
-        loop {
-            let mut class_name = [0u16; 64];
-            let len = WindowsAndMessaging::GetClassNameW(child, &mut class_name);
-            if len > 0 {
-                let name = String::from_utf16_lossy(&class_name[..len as usize]);
-                if name == "LingXiaWebViewSurface" {
-                    return Some(child);
-                }
-            }
-            child = WindowsAndMessaging::GetWindow(child, WindowsAndMessaging::GW_HWNDNEXT).ok()?;
-        }
-    }
-}
-
-fn mount_island_overlay_on_ui(
-    context: PageContext,
-    component_id: String,
-    kind: String,
-    parent: isize,
-    doc_rect: DocRect,
-    text: String,
-) {
-    let key = component_key(&context.page_key, &component_id);
-    destroy_component(&key);
-    if !is_window(parent) {
-        return;
-    }
-    let Some(container) = create_container(parent, &component_id) else {
-        return;
-    };
-    unsafe {
-        let ex = WindowsAndMessaging::GetWindowLongW(container, WindowsAndMessaging::GWL_EXSTYLE);
-        let _ = WindowsAndMessaging::SetWindowLongW(
-            container,
-            WindowsAndMessaging::GWL_EXSTYLE,
-            ex | WindowsAndMessaging::WS_EX_LAYERED.0 as i32
-                | WindowsAndMessaging::WS_EX_TRANSPARENT.0 as i32,
-        );
-        let _ = windows::Win32::UI::WindowsAndMessaging::SetLayeredWindowAttributes(
-            container,
-            COLORREF(0x0000_0000),
-            255,
-            windows::Win32::UI::WindowsAndMessaging::LWA_COLORKEY,
-        );
-    }
-    let entry = ComponentEntry {
-        context,
-        component_id,
-        multiline: false,
+    let should_play =
+        parsed.src.as_deref().is_some_and(|src| !src.is_empty()) && parsed.autoplay != Some(false);
+    let container = create_container(parent, author_id)?;
+    mount_video_on_ui(
+        context.clone(),
+        author_id.to_string(),
         parent,
-        container: container.0 as isize,
-        edit: 0,
-        font: 0,
-        video: None,
-        swiper: None,
-        island_kind: Some(kind),
+        container,
         doc_rect,
-        state: ComponentProps::default(),
-        last_value: text,
-        ready: true,
-        pending: Vec::new(),
+        parsed,
+    );
+    let player = {
+        let mut components = components();
+        let entry = components.get_mut(&key)?;
+        entry.island_kind = Some("video".into());
+        entry.video.as_ref().map(|video| video.player.clone())
     };
-    components().insert(key.clone(), entry);
-    containers().insert(container.0 as isize, key.clone());
-    apply_layout(&key);
+    if should_play && let Some(player) = player {
+        player.play();
+    }
+    Some(container.0 as isize)
 }
 
 fn handle_mount(context: &PageContext, message: &Value) {
@@ -777,6 +629,35 @@ fn apply_component_visibility(key: &str, visible: bool) {
         return;
     }
 
+    if island::is_island_component_key(key) {
+        if let Some((player, resume)) = {
+            let mut components = components();
+            components.get_mut(key).and_then(|entry| {
+                entry.video.as_mut().map(|video| {
+                    if visible {
+                        (
+                            video.player.clone(),
+                            std::mem::take(&mut video.resume_on_show),
+                        )
+                    } else {
+                        video.resume_on_show = video.playing;
+                        (video.player.clone(), false)
+                    }
+                })
+            })
+        } {
+            if visible {
+                apply_layout(key);
+                if resume {
+                    player.play();
+                }
+            } else {
+                player.pause();
+            }
+        }
+        return;
+    }
+
     if !visible {
         // A fullscreen video must leave its screen-sized window before the
         // page hides, or the black host would stay covering the monitor.
@@ -995,6 +876,39 @@ fn container_class() -> PCWSTR {
     w!("LingXiaNativeComponentHost")
 }
 
+/// Sizes the cloaked island video HWND to the node's physical rect and
+/// parks it on the screen over the composition surface so DWM still
+/// composites frames. The window stays cloaked — this is not a z-order
+/// restack and does not call `SetWindowPos`.
+fn layout_island_video(
+    container_hwnd: HWND,
+    doc_rect: &DocRect,
+    context: &PageContext,
+    video: Option<&VideoLayout>,
+) {
+    let Some(view) = page_views().get(&context.page_key).copied() else {
+        return;
+    };
+    if !page_is_foreground(context) {
+        return;
+    }
+    let scale = if view.target.scale > 0.0 {
+        view.target.scale
+    } else {
+        1.0
+    };
+    let width = (doc_rect.width * scale).round().max(1.0) as i32;
+    let height = (doc_rect.height * scale).round().max(1.0) as i32;
+    let _ = view;
+    unsafe {
+        let _ =
+            WindowsAndMessaging::MoveWindow(container_hwnd, -32_000, -32_000, width, height, true);
+    }
+    if let Some(video) = video {
+        video.layout_children(width, height);
+    }
+}
+
 /// Repositions a component's container over the webview content from its
 /// document rect, the page scroll offset, and the content-window geometry;
 /// clips it to the content area (chrome regions stay clean) and to the
@@ -1032,9 +946,12 @@ fn apply_layout(key: &str) {
         return;
     };
     let container_hwnd = HWND(container as *mut _);
-    let hide_stopped_overlay = video
-        .as_ref()
-        .is_some_and(|video| video.stopped && !island::is_island_component_key(key));
+    if island::is_island_component_key(key) {
+        layout_island_video(container_hwnd, &doc_rect, &context, video.as_ref());
+        return;
+    }
+
+    let hide_stopped_overlay = video.as_ref().is_some_and(|video| video.stopped);
     if !page_is_foreground(&context) || hide_stopped_overlay {
         // Background pages keep their overlays hidden; a stopped video
         // hides too, letting the element's DOM placeholder/poster show.
@@ -1133,20 +1050,18 @@ fn apply_layout(key: &str) {
             }
         }
         let _ = WindowsAndMessaging::ShowWindow(container_hwnd, WindowsAndMessaging::SW_SHOWNA);
-        if !island::is_island_component_key(key) {
-            let _ = WindowsAndMessaging::SetWindowPos(
-                container_hwnd,
-                Some(WindowsAndMessaging::HWND_TOP),
-                0,
-                0,
-                0,
-                0,
-                WindowsAndMessaging::SWP_NOMOVE
-                    | WindowsAndMessaging::SWP_NOSIZE
-                    | WindowsAndMessaging::SWP_NOACTIVATE
-                    | WindowsAndMessaging::SWP_NOOWNERZORDER,
-            );
-        }
+        let _ = WindowsAndMessaging::SetWindowPos(
+            container_hwnd,
+            Some(WindowsAndMessaging::HWND_TOP),
+            0,
+            0,
+            0,
+            0,
+            WindowsAndMessaging::SWP_NOMOVE
+                | WindowsAndMessaging::SWP_NOSIZE
+                | WindowsAndMessaging::SWP_NOACTIVATE
+                | WindowsAndMessaging::SWP_NOOWNERZORDER,
+        );
 
         if is_swiper {
             layout_swiper_children(key, width, height);
@@ -1393,9 +1308,12 @@ fn container_is_island(hwnd: HWND) -> bool {
     let Some(key) = component_key_for_container(hwnd) else {
         return false;
     };
-    components()
-        .get(&key)
-        .is_some_and(|entry| entry.island_kind.is_some())
+    components().get(&key).is_some_and(|entry| {
+        entry
+            .island_kind
+            .as_deref()
+            .is_some_and(|kind| kind != "video")
+    })
 }
 
 fn paint_island_container(hwnd: HWND) {
