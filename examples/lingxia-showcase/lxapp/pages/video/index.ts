@@ -120,8 +120,8 @@ Page({
     this.setData({ eventLog: "Buffering..." });
   },
 
-  onTimeUpdate: function (event = {}) {
-    const detail = event?.detail || {};
+  onTimeUpdate: function (payload = {}) {
+    const detail = payload?.detail || payload;
     const nextData = {};
     if (typeof detail.currentTime === "number") {
       nextData.currentTime = detail.currentTime;
@@ -134,18 +134,19 @@ Page({
     }
   },
 
-  onFullscreenChange: function (event = {}) {
-    const fullScreen = event?.detail?.fullScreen === true;
+  onFullscreenChange: function (payload = {}) {
+    const detail = payload?.detail || payload;
+    const fullScreen = detail.fullScreen === true || detail.fullscreen === true;
     this.setData({ eventLog: `Fullscreen: ${fullScreen ? "on" : "off"}` });
   },
 
-  onQualityChange: function (event = {}) {
-    const detail = event?.detail || {};
-    this.setData({ eventLog: `Quality: ${detail.quality ?? ""}` });
+  onQualityChange: function (payload = {}) {
+    const detail = payload?.detail || payload;
+    this.setData({ eventLog: `Quality: ${detail.quality ?? detail.id ?? ""}` });
   },
 
-  onRateChange: function (event = {}) {
-    const detail = event?.detail || {};
+  onRateChange: function (payload = {}) {
+    const detail = payload?.detail || payload;
     this.setData({ eventLog: `Rate: ${detail.rate ?? ""}` });
   },
 });

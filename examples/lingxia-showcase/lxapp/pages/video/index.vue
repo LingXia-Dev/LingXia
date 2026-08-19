@@ -23,28 +23,30 @@
       </div>
 
       <div class="bg-black rounded-xl overflow-hidden">
-        <LxVideo
-          :id="video.id"
-          data-testid="native-video"
-          :src="video.src"
-          :poster="video.poster"
-          :qualities="video.qualities"
-          :playback-rates="video.playbackRates"
-          :autoplay="video.autoplay ?? Boolean(video.src)"
-          controls
-          volume="0.8"
-          class="block w-full rounded-lg bg-black"
-          :style="{ aspectRatio: '16 / 9', borderRadius: '12px' }"
-          @playing="onPlaying"
-          @pause="onPause"
-          @stop="onStop"
-          @ended="onEnded"
-          @waiting="onWaiting"
-          @time-update="onTimeUpdate"
-          @fullscreen-change="onFullscreenChange"
-          @quality-change="onQualityChange"
-          @rate-change="onRateChange"
-        />
+        <LxNativeRoot class="block w-full" :style="{ aspectRatio: '16 / 9' }">
+          <LxVideo
+            :id="video.id"
+            data-testid="native-video"
+            :src="video.src"
+            :poster="video.poster"
+            :qualities="video.qualities"
+            :playback-rates="video.playbackRates"
+            :autoplay="video.autoplay ?? Boolean(video.src)"
+            controls
+            volume="0.8"
+            class="block w-full rounded-lg bg-black"
+            :style="{ aspectRatio: '16 / 9', borderRadius: '12px' }"
+            @playing="onPlaying"
+            @pause="onPause"
+            @stop="onStop"
+            @ended="onEnded"
+            @waiting="onWaiting"
+            @time-update="onTimeUpdate"
+            @fullscreen-change="onFullscreenChange"
+            @quality-change="onQualityChange"
+            @rate-change="onRateChange"
+          />
+        </LxNativeRoot>
       </div>
 
       <!-- Controls -->
@@ -140,7 +142,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useLxPage } from '@lingxia/vue';
-import { LxVideo } from '@lingxia/vue';
+import { LxNativeRoot, LxVideo } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type VideoConfig = {
