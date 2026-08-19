@@ -6,7 +6,8 @@
  */
 import {
   NativeComponentNodeController,
-  NodeControllerParams
+  NodeControllerParams,
+  NodeControllerUpdateParams
 } from './NativeComponentNodeController';
 import { NativeComponentRecord } from './NativeComponentTypes';
 
@@ -15,9 +16,14 @@ const ALLOWED_KINDS: string[] = ['root', 'view', 'text', 'tappable', 'slider', '
 class IslandNode {
   key: string = '';
   kind: string = '';
+  authorId: string = '';
   order: number = 0;
   controller: NativeComponentNodeController = new NativeComponentNodeController();
   zIndex: number = 0;
+  rectX: number = 0;
+  rectY: number = 0;
+  rectW: number = 0;
+  rectH: number = 0;
 }
 
 export class InlineNativeIslandHost {
@@ -25,13 +31,27 @@ export class InlineNativeIslandHost {
   private lastRevision: number = 0;
   private compositionOrder: string[] = [];
   private nodeContainers: NativeComponentNodeController[] = [];
+  private pendingOutgoing: NativeComponentRecord[] = [];
+  private leaseGranted: boolean = false;
+  private leaseActive: boolean = false;
+  private leaseId: string = '';
+  private leaseSequence: number = 1;
+  private lastRoot: Record<string, Object> | undefined = undefined;
 
   handle(action: string, payload: Record<string, Object>): boolean {
     if (action === 'root.commit') {
       this.applyCommit(payload);
       return true;
     }
-    if (action === 'geometry.snapshot' || action === 'video.command' || action === 'root.leaseAccept') {
+    if (action === 'geometry.snapshot') {
+      this.applyGeometry(payload);
+      return true;
+    }
+    if (action === 'root.leaseAccept') {
+      this.acceptLease(payload);
+      return true;
+    }
+    if (action === 'video.command') {
       return true;
     }
     return false;
@@ -47,6 +67,36 @@ export class InlineNativeIslandHost {
 
   orderedNodeContainers(): NativeComponentNodeController[] {
     return this.nodeContainers.slice();
+  }
+
+  canDisplay(): boolean {
+    return this.leaseActive;
+  }
+
+  drainOutgoing(): NativeComponentRecord[] {
+    const outgoing = this.pendingOutgoing;
+    this.pendingOutgoing = [];
+    return outgoing;
+  }
+
+  videoAuthorIds(): string[] {
+    const ids: string[] = [];
+    this.nodes.forEach((node: IslandNode) => {
+      if (node.kind === 'video' && node.authorId.length > 0) {
+        ids.push(node.authorId);
+      }
+    });
+    return ids;
+  }
+
+  controllerForAuthor(authorId: string): NativeComponentNodeController | undefined {
+    let found: NativeComponentNodeController | undefined = undefined;
+    this.nodes.forEach((node: IslandNode) => {
+      if (node.authorId === authorId) {
+        found = node.controller;
+      }
+    });
+    return found;
   }
 
   private applyCommit(payload: Record<string, Object>): void {
@@ -79,6 +129,84 @@ export class InlineNativeIslandHost {
     if (revision !== undefined) {
       this.lastRevision = revision;
     }
+    const root = payload['root'] as Record<string, Object> | undefined;
+    if (root) {
+      this.lastRoot = root;
+      this.grantLeaseIfNeeded(root);
+    }
+  }
+
+  private applyGeometry(payload: Record<string, Object>): void {
+    const nodes = payload['nodes'] as Object[] | undefined;
+    if (!nodes) {
+      return;
+    }
+    for (let i = 0; i < nodes.length; i++) {
+      const entry = nodes[i] as Record<string, Object>;
+      const ref = entry['ref'] as Record<string, Object>;
+      if (!ref) {
+        continue;
+      }
+      const key = (ref['nodeKey'] as string) ?? '';
+      const existing = this.nodes.get(key);
+      const rect = entry['contentRect'] as Record<string, Object> | undefined;
+      if (!existing || !rect) {
+        continue;
+      }
+      existing.rectX = (rect['x'] as number) ?? 0;
+      existing.rectY = (rect['y'] as number) ?? 0;
+      existing.rectW = (rect['width'] as number) ?? 0;
+      existing.rectH = (rect['height'] as number) ?? 0;
+      const update = new NodeControllerUpdateParams();
+      update.x = existing.rectX;
+      update.y = existing.rectY;
+      update.width = existing.rectW;
+      update.height = existing.rectH;
+      existing.controller.updateRenderOption(update);
+    }
+  }
+
+  private acceptLease(payload: Record<string, Object>): void {
+    if (!this.leaseGranted || this.leaseActive) {
+      return;
+    }
+    const incomingId = (payload['leaseId'] as string) ?? '';
+    const incomingSeq = (payload['sequence'] as number) ?? 0;
+    if (incomingId.length > 0 && incomingId !== this.leaseId) {
+      return;
+    }
+    if (incomingSeq > 0 && incomingSeq !== this.leaseSequence) {
+      return;
+    }
+    this.leaseActive = true;
+    const active = new NativeComponentRecord();
+    active.set('action', 'root.leaseActive');
+    const rootKey = this.lastRoot ? (this.lastRoot['rootKey'] as string) : 'island';
+    active.set('id', rootKey);
+    if (this.lastRoot) {
+      active.set('root', this.lastRoot);
+    }
+    active.set('leaseId', this.leaseId);
+    active.set('sequence', this.leaseSequence);
+    this.pendingOutgoing.push(active);
+  }
+
+  private grantLeaseIfNeeded(root: Record<string, Object>): void {
+    if (this.leaseGranted) {
+      return;
+    }
+    const rootKey = (root['rootKey'] as string) ?? 'island';
+    this.leaseGranted = true;
+    this.leaseId = `lease-${rootKey}`;
+    this.leaseSequence = 1;
+    const grant = new NativeComponentRecord();
+    grant.set('action', 'root.leaseGranted');
+    grant.set('id', rootKey);
+    grant.set('root', root);
+    grant.set('leaseId', this.leaseId);
+    grant.set('sequence', this.leaseSequence);
+    grant.set('leaseDurationMs', 8000);
+    this.pendingOutgoing.push(grant);
   }
 
   private mount(node: Record<string, Object>): void {
@@ -94,9 +222,10 @@ export class InlineNativeIslandHost {
     const item = new IslandNode();
     item.key = key;
     item.kind = kind;
+    item.authorId = (node['authorId'] as string) ?? '';
     item.order = (node['order'] as number) ?? 0;
     const params = new NodeControllerParams();
-    params.componentId = (node['authorId'] as string) ?? key;
+    params.componentId = item.authorId.length > 0 ? item.authorId : key;
     params.type = kind === 'video' ? 'video.native' : `island/${kind}`;
     params.embedId = key;
     const props = new NativeComponentRecord();
