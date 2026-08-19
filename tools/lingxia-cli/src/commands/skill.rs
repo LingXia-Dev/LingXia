@@ -108,8 +108,14 @@ pub fn execute(action: SkillAction) -> Result<()> {
 
 /// Install the embedded skill for a freshly scaffolded project: the body in the
 /// home directory, a committable pointer in the project.
-pub fn install_for_new_project() -> Result<()> {
-    install(true, None, true, None, false)
+pub fn install_for_new_project(project_dir: &Path) -> Result<()> {
+    let dest = home_dir()?
+        .join(".claude")
+        .join("skills")
+        .join(SKILL_DIR_NAME);
+    write_skill(&dest, &embedded_files(), &Source::Embedded)?;
+    println!("Installed the LingXia skill to {}", dest.display());
+    write_agents_pointer(project_dir, &dest)
 }
 
 /// Resolve the directory the skill itself lives in (`.../lingxia`).
@@ -154,7 +160,10 @@ fn install(
             println!("  {}", path.display());
         }
         if agents_md {
-            println!("Would write {}", agents_md_path()?.display());
+            println!(
+                "Would write {}",
+                project_root()?.join("AGENTS.md").display()
+            );
         }
         return Ok(());
     }
@@ -169,7 +178,7 @@ fn install(
     );
 
     if agents_md {
-        write_agents_pointer(&dest)?;
+        write_agents_pointer(&project_root()?, &dest)?;
     }
     Ok(())
 }
@@ -214,6 +223,31 @@ pub fn refresh_if_stale(dest: &Path) -> Result<Option<String>> {
     }
     write_skill(dest, &embedded_files(), &Source::Embedded)?;
     Ok(Some(installed.unwrap_or_else(|| "unknown".to_string())))
+}
+
+/// Say once that a home install pinned with `--from` has fallen behind this
+/// CLI. The refresh deliberately leaves such a copy alone, so without this the
+/// pin is invisible to whoever set it months ago.
+pub fn notify_pinned_skill() {
+    let Ok(dest) = user_destination() else {
+        return;
+    };
+    let Some(manifest) = read_manifest(&dest) else {
+        return;
+    };
+    let field = |key: &str| manifest.get(key).and_then(serde_json::Value::as_str);
+    if field("source") != Some("directory") {
+        return;
+    }
+    if field("version") == Some(env!("CARGO_PKG_VERSION")) {
+        return;
+    }
+    println!(
+        "The installed skill is pinned to {} and predates this CLI ({}). \
+         Run `lingxia skill install --user` to follow the CLI again.",
+        field("sourcePath").unwrap_or("a directory"),
+        env!("CARGO_PKG_VERSION")
+    );
 }
 
 fn embedded_files() -> Vec<(PathBuf, Vec<u8>)> {
@@ -325,10 +359,8 @@ fn status(user: bool, target: Option<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-fn agents_md_path() -> Result<PathBuf> {
-    Ok(std::env::current_dir()
-        .context("Failed to read the current directory")?
-        .join("AGENTS.md"))
+fn project_root() -> Result<PathBuf> {
+    std::env::current_dir().context("Failed to read the current directory")
 }
 
 /// Marks the block this writes, so a re-install replaces it instead of
@@ -340,9 +372,9 @@ const AGENTS_MARKER: &str = "<!-- lingxia skill: AGENTS.md pointer -->";
 /// AGENTS.md is meant to be committed, so the reference must not be a path that
 /// only resolves on this machine: project-relative when the skill lives inside
 /// the project, `~`-relative for a home install, absolute only as a fallback.
-fn write_agents_pointer(dest: &Path) -> Result<()> {
-    let path = agents_md_path()?;
-    let block = agents_block(&portable_reference(dest));
+fn write_agents_pointer(project_dir: &Path, dest: &Path) -> Result<()> {
+    let path = project_dir.join("AGENTS.md");
+    let block = agents_block(&portable_reference(project_dir, dest));
 
     let body = match fs::read_to_string(&path) {
         Ok(existing) if existing.contains(AGENTS_MARKER) => replace_block(&existing, &block),
@@ -368,11 +400,9 @@ fn write_agents_pointer(dest: &Path) -> Result<()> {
 
 /// Forward slashes regardless of platform: the reference goes into a markdown
 /// link, where a Windows separator would escape rather than separate.
-fn portable_reference(dest: &Path) -> String {
+fn portable_reference(project_dir: &Path, dest: &Path) -> String {
     let render = |path: &Path| path.to_string_lossy().replace('\\', "/");
-    if let Ok(cwd) = std::env::current_dir()
-        && let Ok(relative) = dest.strip_prefix(&cwd)
-    {
+    if let Ok(relative) = dest.strip_prefix(project_dir) {
         return render(relative);
     }
     if let Some(home) = dirs::home_dir()

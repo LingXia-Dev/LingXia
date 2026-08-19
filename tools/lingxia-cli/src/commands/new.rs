@@ -385,14 +385,7 @@ fn setup_ai_tooling(project_dir: &std::path::Path, yes: bool) {
 /// for tools that only read a project-level AGENTS.md.
 fn run_skill_install(project_dir: &std::path::Path) -> Result<()> {
     println!("{}", "Setting up AI tooling...".bold());
-    // The pointer is written relative to the project, so run from there.
-    let previous = std::env::current_dir().context("failed to read the current directory")?;
-    std::env::set_current_dir(project_dir)
-        .with_context(|| format!("failed to enter {}", project_dir.display()))?;
-    let result = crate::commands::skill::install_for_new_project();
-    std::env::set_current_dir(&previous)
-        .with_context(|| format!("failed to return to {}", previous.display()))?;
-    result
+    crate::commands::skill::install_for_new_project(project_dir)
 }
 
 fn print_manual_skill_hint() {
