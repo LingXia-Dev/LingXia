@@ -187,7 +187,13 @@ fn run() -> Result<()> {
         // Session test runner: the handler owns process exit (run state
         // becomes the exit code).
         Commands::Test(options) => {
-            let info = resolve(&selector)?;
+            let info = resolve(&selector).map_err(|err| {
+                if test::looks_unreachable(&err) {
+                    anyhow::anyhow!(test::NO_SESSION_HINT)
+                } else {
+                    err
+                }
+            })?;
             test::execute(&info, options)
         }
     }
@@ -267,5 +273,18 @@ mod tests {
         assert!(
             Cli::try_parse_from(["lxdev", "browser", "ua", "configure", "TestAgent/1.0"]).is_err()
         );
+    }
+
+    #[test]
+    fn test_command_accepts_directory_grep_and_forbid_only() {
+        let cli =
+            Cli::try_parse_from(["lxdev", "test", "tests/", "--grep", "home", "--forbid-only"])
+                .unwrap();
+        let Commands::Test(options) = cli.command else {
+            panic!("expected test command");
+        };
+        assert_eq!(options.entry, std::path::PathBuf::from("tests/"));
+        assert_eq!(options.grep.as_deref(), Some("home"));
+        assert!(options.forbid_only);
     }
 }

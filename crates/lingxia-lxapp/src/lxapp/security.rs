@@ -23,7 +23,18 @@ impl NetworkSecurity {
     /// Checks if a domain is allowed for network access.
     ///
     /// Empty means deny all. Use `"*"` to explicitly allow all domains.
-    pub fn is_domain_allowed(&self, domain: &str) -> bool {
+    ///
+    /// `dev_session` relaxes exactly one rule: a non-public address the lxapp
+    /// trusts becomes reachable, so a suite can run against a fixture server
+    /// on loopback instead of against the public internet.
+    ///
+    /// This grants no new authority. A dev session already carries an
+    /// automation channel that evaluates arbitrary code in the Logic runtime,
+    /// so anything this permits was reachable already; what it buys is a
+    /// deterministic fixture. The gate is the dev session, not the spelling of
+    /// the entry — `"*"` and a named host both work, and a release build has
+    /// no dev session at all.
+    pub fn is_domain_allowed_in(&self, domain: &str, dev_session: bool) -> bool {
         let runtime_host = domain.trim().trim_end_matches('.');
         let ip_host = runtime_host
             .strip_prefix('[')
@@ -31,7 +42,12 @@ impl NetworkSecurity {
             .unwrap_or(runtime_host);
         let parsed_address = ip_host.parse::<IpAddr>().ok();
         if parsed_address.is_some_and(|address| !is_public_network_address(address)) {
-            return false;
+            if !dev_session {
+                return false;
+            }
+            return self.trusted_domains.contains("*")
+                || normalize_trusted_domain(domain)
+                    .is_some_and(|host| self.trusted_domains.contains(&host));
         }
         if parsed_address.is_none() && !runtime_host.contains('.') {
             return false;
@@ -257,18 +273,54 @@ mod tests {
     #[test]
     fn empty_trusted_domains_denies_all() {
         let security = NetworkSecurity::new();
-        assert!(!security.is_domain_allowed("example.com"));
+        assert!(!security.is_domain_allowed_in("example.com", false));
     }
 
     #[test]
     fn wildcard_trusted_domain_allows_all() {
         let mut security = NetworkSecurity::new();
         security.set_domains(&["*".to_string()]);
-        assert!(security.is_domain_allowed("example.com"));
-        assert!(security.is_domain_allowed("api.lingxia.app"));
-        assert!(!security.is_domain_allowed("localhost"));
-        assert!(!security.is_domain_allowed("127.0.0.1"));
-        assert!(!security.is_domain_allowed("[::1]"));
+        assert!(security.is_domain_allowed_in("example.com", false));
+        assert!(security.is_domain_allowed_in("api.lingxia.app", false));
+        assert!(!security.is_domain_allowed_in("localhost", false));
+        assert!(!security.is_domain_allowed_in("127.0.0.1", false));
+    }
+
+    #[test]
+    fn a_dev_session_reaches_only_a_loopback_host_the_lxapp_named() {
+        let mut security = NetworkSecurity::default();
+        security.set_domains(&["127.0.0.1".to_string(), "example.com".to_string()]);
+
+        // A release build never reaches the host's own network.
+        assert!(!security.is_domain_allowed_in("127.0.0.1", false));
+        // A dev session does, but only because the lxapp asked for it.
+        assert!(security.is_domain_allowed_in("127.0.0.1", true));
+        assert!(!security.is_domain_allowed_in("192.168.1.10", true));
+        assert!(!security.is_domain_allowed_in("10.0.0.1", true));
+        // Public hosts are unaffected either way.
+        assert!(security.is_domain_allowed_in("example.com", false));
+        assert!(!security.is_domain_allowed_in("other.example", true));
+    }
+
+    #[test]
+    fn a_wildcard_opens_a_private_address_only_inside_a_dev_session() {
+        let mut security = NetworkSecurity::default();
+        security.set_domains(&["*".to_string()]);
+
+        assert!(security.is_domain_allowed_in("example.com", false));
+        // A shipped app with `*` still never reaches the user's own network.
+        assert!(!security.is_domain_allowed_in("127.0.0.1", false));
+        assert!(!security.is_domain_allowed_in("192.168.1.10", false));
+        assert!(!security.is_domain_allowed_in("[::1]", false));
+        // Under a dev session `*` covers a fixture server like anything else.
+        assert!(security.is_domain_allowed_in("127.0.0.1", true));
+        assert!(security.is_domain_allowed_in("192.168.1.10", true));
+    }
+
+    #[test]
+    fn an_empty_policy_denies_loopback_even_in_a_dev_session() {
+        let security = NetworkSecurity::default();
+        assert!(!security.is_domain_allowed_in("127.0.0.1", true));
     }
 
     #[test]
@@ -276,9 +328,9 @@ mod tests {
         let mut security = NetworkSecurity::new();
         security.set_domains(&[" API.Example.COM. ".to_string()]);
 
-        assert!(security.is_domain_allowed("api.example.com"));
-        assert!(security.is_domain_allowed("API.EXAMPLE.COM."));
-        assert!(!security.is_domain_allowed("cdn.example.com"));
+        assert!(security.is_domain_allowed_in("api.example.com", false));
+        assert!(security.is_domain_allowed_in("API.EXAMPLE.COM.", false));
+        assert!(!security.is_domain_allowed_in("cdn.example.com", false));
     }
 
     #[test]
@@ -286,9 +338,9 @@ mod tests {
         let mut security = NetworkSecurity::new();
         security.set_domains(&["*.example.com".to_string()]);
 
-        assert!(security.is_domain_allowed("cdn.example.com"));
-        assert!(security.is_domain_allowed("img.cdn.example.com"));
-        assert!(!security.is_domain_allowed("example.com"));
+        assert!(security.is_domain_allowed_in("cdn.example.com", false));
+        assert!(security.is_domain_allowed_in("img.cdn.example.com", false));
+        assert!(!security.is_domain_allowed_in("example.com", false));
         assert_eq!(
             normalize_trusted_domain("*.Example.COM."),
             Some("*.example.com".to_string())

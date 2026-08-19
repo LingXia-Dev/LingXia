@@ -18,10 +18,10 @@
   <div class="card">
     <h1>Hello, LingXia</h1>
     <div class="form">
-      <input id="name" placeholder="Enter your name" />
-      <button id="btn">Say Hello</button>
+      <input id="name" data-testid="home-name" placeholder="Enter your name" />
+      <button id="btn" data-testid="home-greet">Say Hello</button>
     </div>
-    <p id="greeting" class="greeting"></p>
+    <p id="greeting" class="greeting" data-testid="home-greeting"></p>
   </div>
   <script type="module" src="./entry.ts"></script>
 </body>

@@ -1,4 +1,4 @@
-import { expect, test } from '@rongjs/test';
+import { expect, spec } from '@lingxia/test';
 import { showcaseApp } from '../helpers/app.js';
 import {
   waitForElementAttribute,
@@ -6,7 +6,7 @@ import {
   waitForElementText,
 } from '../helpers/page.js';
 
-test('greets through real page input and the Logic bridge', async () => {
+spec('greets through real page input and the Logic bridge', async () => {
   const app = showcaseApp();
   await app.nav.relaunch({ page: 'home' });
   await app.page.waitFor({ page: 'home', css: '[data-testid="home-page"]' });

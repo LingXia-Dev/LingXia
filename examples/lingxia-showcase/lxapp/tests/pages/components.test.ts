@@ -1,16 +1,11 @@
-import { expect } from '@rongjs/test';
 import { waitForCurrentPage } from '../helpers/page.js';
-import { contract } from '../support/contract.js';
+import { expect, spec } from '@lingxia/test';
+import { bindFixture, specNamespace } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-contract({
-  id: 'COMPONENTS-001',
-  title: 'open every component demo through rendered UI and the Logic bridge',
-  covers: ['lx.navigateTo'],
-  layer: 'logic',
-  levels: ['semantic', 'boundary', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app }) => {
+spec("open every component demo through rendered UI and the Logic bridge", { id: "COMPONENTS-001", covers: ['lx.navigateTo'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "COMPONENTS-001");
+
   const destinations = [
     ['components-video', 'video'],
     ['components-swiper', 'swiper'],

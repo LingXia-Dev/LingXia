@@ -1,0 +1,36 @@
+export { spec, expect, run, reset, trackPublicSurface } from "./runtime.js";
+export { AssertionError, logAssertion, setAssertionSink } from "./expect.js";
+export { TimeoutError } from "./fixture.js";
+export { renderJUnit } from "./junit.js";
+export { PUBLIC_CAPABILITIES } from "./inventory.js";
+export type { Capability, CapabilityLayer } from "./inventory.js";
+export {
+  VERSION,
+  PACKAGE_NAME,
+  DEFAULT_ACTION_TIMEOUT_MS,
+  DEFAULT_SPEC_TIMEOUT_MS,
+} from "./version.js";
+export type {
+  Apps,
+  AssertionRecord,
+  AttachmentRef,
+  CaseRecord,
+  ExpectOptions,
+  Fixture,
+  FixtureExpect,
+  JsonReport,
+  RunMeta,
+  LingxiaTestController,
+  Locator,
+  LocatorMatchers,
+  Matchers,
+  ProtocolReport,
+  RejectExpected,
+  RetryMatchers,
+  SpecBody,
+  SpecOptions,
+  SpecStatus,
+  StepRecord,
+  TestApp,
+  TestPage,
+} from "./types.js";

@@ -202,6 +202,12 @@ fn make_host(
         "emit",
         JSFunc::new(ctx, move |event: JSObject| emit(&event_shared, event))?,
     )?;
+
+    let logs_shared = shared.clone();
+    host.set(
+        "logs",
+        JSFunc::new(ctx, move || logs_shared.log_ring_text())?,
+    )?;
     Ok(host)
 }
 

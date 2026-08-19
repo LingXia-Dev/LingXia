@@ -1,0 +1,56 @@
+{
+  "name": "@lingxia/test",
+  "version": "0.11.2",
+  "description": "Authoring SDK and clock for lxapp tests run by lxdev test",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "npm run build && node --test --test-concurrency=1 --test-reporter spec tests/clock.test.mjs tests/waiting.test.mjs tests/report.test.mjs tests/stacks.test.mjs tests/hooks.test.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "prebuild": "npm run build --workspace @lingxia/types --if-present"
+  },
+  "dependencies": {
+    "@lingxia/types": "^0.11.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LingXia-Dev/LingXia.git",
+    "directory": "packages/lingxia-test"
+  },
+  "keywords": [
+    "lingxia",
+    "lxapp",
+    "test",
+    "lxdev"
+  ],
+  "author": "LingXia Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "sideEffects": [
+    "./dist/index.js",
+    "./dist/runtime.js"
+  ]
+}

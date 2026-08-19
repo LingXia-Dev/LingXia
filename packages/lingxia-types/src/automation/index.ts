@@ -545,9 +545,22 @@ export interface LxAppRuntimeInfo {
   page_entries: LxAppPageEntry[];
   page_stack: string[];
   tab_bar: LxAppRuntimeTabBarInfo | null;
+  navigation_bar: LxAppRuntimeNavigationBarInfo | null;
   lxapp_dir: string;
   data_dir: string;
   cache_dir: string;
+}
+
+/** Runtime NavigationBar state exposed for deterministic host-level assertions. */
+export interface LxAppRuntimeNavigationBarInfo {
+  title: string;
+  home_button: 'auto' | 'hidden';
+  home_button_visible: boolean;
+  runtime_style: {
+    background_color: string | null;
+    foreground_color: string | null;
+    divider_color: string | null;
+  };
 }
 
 /** Runtime TabBar state exposed for deterministic host-level assertions. */

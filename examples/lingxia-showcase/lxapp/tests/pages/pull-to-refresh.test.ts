@@ -1,7 +1,8 @@
-import { expect } from '@rongjs/test';
 import type { LxAppDriver } from 'lingxia-types/automation';
 import { waitForElementText } from '../helpers/page.js';
-import { contract, eventually } from '../support/contract.js';
+import { expect, spec } from '@lingxia/test';
+import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 interface RefreshState {
   count: number;
@@ -37,15 +38,9 @@ async function waitForStatus(app: LxAppDriver, expected: string): Promise<string
   );
 }
 
-contract({
-  id: 'PULL-001',
-  title: 'start, render, and stop the native pull-to-refresh lifecycle',
-  covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'],
-  layer: 'native',
-  levels: ['semantic', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app }) => {
+spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL-001", covers: ['lx.startPullDownRefresh', 'lx.stopPullDownRefresh'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "PULL-001");
+
   await app.nav.relaunch({ page: 'pullToRefresh' });
   await app.page.waitFor({ page: 'pullToRefresh', css: '[data-testid="pull-refresh-page"]' });
 

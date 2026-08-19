@@ -45,11 +45,14 @@ pub(super) fn ax_window_for_id(window_id: &str) -> Result<AxEl> {
         }
     }
     // Fall back to geometry when the private id bridge is unavailable.
+    let window_count = ax_windows.len();
+    let mut readable = 0usize;
     let mut best: Option<(f64, AxEl)> = None;
     for w in ax_windows {
         let (Some(pos), Some(size)) = (w.attr_point("AXPosition"), w.attr_size("AXSize")) else {
             continue;
         };
+        readable += 1;
         let dx = pos.x - target.bounds.x as f64;
         let dy = pos.y - target.bounds.y as f64;
         let dw = size.width - target.bounds.w as f64;
@@ -59,8 +62,27 @@ pub(super) fn ax_window_for_id(window_id: &str) -> Result<AxEl> {
             best = Some((score, w));
         }
     }
-    best.map(|(_, w)| w)
-        .ok_or_else(|| Error::NotFound(format!("no AX window matched {window_id}")))
+    if let Some((_, w)) = best {
+        return Ok(w);
+    }
+    // Neither the id bridge nor any window's geometry answered. That is an
+    // accessibility failure, not a stale window id: `AXIsProcessTrusted` keeps
+    // answering yes after macOS invalidates the grant — which rebuilding an
+    // unsigned app does — and every attribute read then comes back empty.
+    if readable == 0 {
+        return Err(Error::Permission(format!(
+            "process {pid} exposed {window_count} accessibility window(s) but no readable geometry, \
+             so window {window_id} cannot be resolved. Re-grant Accessibility to {app} in System \
+             Settings › Privacy & Security; macOS drops the grant when the binary changes while \
+             still reporting the process as trusted.",
+            pid = target.pid,
+            app = crate::responsible_app()
+        )));
+    }
+    Err(Error::NotFound(format!(
+        "no AX window matched {window_id} among {readable} positioned window(s) of process {}",
+        target.pid
+    )))
 }
 
 /// Update a snapshot's geometry from the AX element, which reflects a

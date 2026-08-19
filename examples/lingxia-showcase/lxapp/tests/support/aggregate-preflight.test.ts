@@ -1,17 +1,12 @@
-import { expect, test } from '@rongjs/test';
-import { contract } from './contract.js';
+import { expect, spec } from '@lingxia/test';
+import { bindFixture, specNamespace } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-const args = test.args as Record<string, string>;
+const args = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 
-contract({
-  id: 'TARGET-001',
-  title: 'match the aggregate entry to the running platform and framework',
-  covers: ['lx.app.getBaseInfo', 'LxAppDriver.pages'],
-  layer: 'host',
-  levels: ['semantic'],
-  scope: 'target',
-  expectedOutcome: 'supported',
-}, async ({ app }) => {
+spec("match the aggregate entry to the running platform and framework", { id: "TARGET-001", covers: ['lx.app.getBaseInfo', 'LxAppDriver.pages'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "TARGET-001");
+
   const expectedPlatform = args.platform?.toLocaleLowerCase();
   const expectedFramework = args.framework?.toLocaleLowerCase();
   if (!expectedPlatform || !expectedFramework) {

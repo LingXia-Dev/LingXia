@@ -1,6 +1,7 @@
-import { expect } from '@rongjs/test';
 import type { LxAppDriver } from 'lingxia-types/automation';
-import { contract, eventually } from '../support/contract.js';
+import { expect, spec } from '@lingxia/test';
+import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 interface SystemPageState {
   appBaseInfo: { os?: string; productName?: string } | null;
@@ -29,15 +30,9 @@ async function waitForSystemState(
   });
 }
 
-contract({
-  id: 'SYSTEM-001',
-  title: 'render host app and system information through page actions',
-  covers: ['lx.app.getBaseInfo', 'lx.getSystemSetting'],
-  layer: 'logic',
-  levels: ['semantic', 'boundary'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app }) => {
+spec("render host app and system information through page actions", { id: "SYSTEM-001", covers: ['lx.app.getBaseInfo', 'lx.getSystemSetting'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "SYSTEM-001");
+
 
   await app.nav.relaunch({ page: 'system', query: { type: 'appBaseInfo' } });
   await app.page.waitFor({ page: 'system', css: '[data-testid="system-base-info"]' });

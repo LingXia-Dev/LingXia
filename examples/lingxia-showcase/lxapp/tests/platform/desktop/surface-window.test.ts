@@ -1,10 +1,10 @@
-import { expect, test } from '@rongjs/test';
+import { expect, spec } from '@lingxia/test';
 import type { DesktopWindowInfo } from 'lingxia-types/automation';
-import { showcaseApp } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
-import { contract, eventually } from '../../support/contract.js';
+import { bindFixture, eventually } from '../../helpers/poll.js';
+import { showcaseApp, SHOWCASE_APP_ID } from '../../helpers/app.js';
 
-const testArgs = test.args as Record<string, string>;
+const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const targetPlatform = testArgs.platform?.toLocaleLowerCase();
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
 
@@ -110,8 +110,7 @@ async function waitForSurfacePage(
     {
       timeoutMs: 10_000,
       describe: `surface window page ${fixture} with topInset ${expectedTopInset}`,
-    },
-  );
+    });
 }
 
 function newSurfaceWindow(
@@ -138,19 +137,21 @@ function newSurfaceWindow(
     ))[0];
 }
 
-contract({
+const windowTest = selectedGate ? spec.skip : spec;
+
+windowTest('open a page window with system chrome and with full chrome', {
   id: 'DESKTOP-SURFACE-WINDOW-001',
-  title: 'open a page window with system chrome and with full chrome',
   covers: [
     'lx.surface.openPage',
     'lx.surface.get',
     'lx.supports',
+    'PageSurface.kind',
+    'PageSurface.realized',
+    'PageSurface.id',
   ],
-  layer: 'logic',
-  levels: ['semantic', 'lifecycle', 'boundary'],
-  scope: 'desktop',
-  expectedOutcome: 'supported',
-}, async ({ app, namespace, defer }) => {
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-WINDOW-001');
   const platform = await desktopPlatform();
   const desktop = lx.automation().desktop;
   const fullOffered = await app.eval({
@@ -202,8 +203,7 @@ contract({
         script: `return lx.surface.get(${JSON.stringify(key)}) == null`,
       }),
       (closed) => closed === true,
-      { describe: `${chrome} chrome surface to close`, timeoutMs: 10_000 },
-    );
+      { describe: `${chrome} chrome surface to close`, timeoutMs: 10_000 });
   }
 
   const system = seen.get('system');
@@ -221,6 +221,4 @@ contract({
     // size yields a shorter outer frame than system chrome.
     expect(full.window.bounds.h < system.window.bounds.h).toBeTruthy();
   }
-// Gated desktop jobs pin the host window into a fixed layout; this case needs a
-// free one, so it belongs to the ungated run.
-}, { skip: Boolean(selectedGate) });
+});

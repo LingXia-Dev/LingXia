@@ -23,7 +23,7 @@ use uuid::Uuid;
 use self::navbar::NavigationBarState;
 use self::page_chrome::{
     AppearancePreference, EffectivePageChromeLayout, LxAppAppearanceState, ResolvedAppearance,
-    TabBarPresentation, TabBarVisibilityPreference,
+    TabBarPresentation, TabBarVisibilityPreference, VisibilityPreference,
 };
 use crate::appservice::LxAppWorkers;
 use crate::error::LxAppError;
@@ -681,6 +681,7 @@ pub struct LxAppRuntimeInfo {
     pub page_entries: Vec<LxAppRuntimePageInfo>,
     pub page_stack: Vec<String>,
     pub tab_bar: Option<LxAppRuntimeTabBarInfo>,
+    pub navigation_bar: Option<LxAppRuntimeNavigationBarInfo>,
     pub lxapp_dir: String,
     pub data_dir: String,
     pub cache_dir: String,
@@ -701,6 +702,21 @@ pub struct LxAppRuntimeTabBarInfo {
 pub struct LxAppRuntimeTabBarStyleInfo {
     pub foreground_color: Option<String>,
     pub selected_foreground_color: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LxAppRuntimeNavigationBarInfo {
+    pub title: String,
+    pub home_button: VisibilityPreference,
+    pub home_button_visible: bool,
+    pub runtime_style: LxAppRuntimeNavigationBarStyleInfo,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LxAppRuntimeNavigationBarStyleInfo {
+    pub background_color: Option<String>,
+    pub foreground_color: Option<String>,
+    pub divider_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1026,6 +1042,28 @@ impl LxApp {
                 })
                 .collect(),
         });
+        let navigation_bar = self.peek_current_page_path().map(|path| {
+            let state = self.get_navbar_state(&path);
+            LxAppRuntimeNavigationBarInfo {
+                title: state.title().to_string(),
+                home_button: state.home_button,
+                home_button_visible: state.home_button_visible(),
+                runtime_style: LxAppRuntimeNavigationBarStyleInfo {
+                    background_color: state
+                        .runtime_style
+                        .background_color
+                        .map(|color| color.to_string()),
+                    foreground_color: state
+                        .runtime_style
+                        .foreground_color
+                        .map(|color| color.to_string()),
+                    divider_color: state
+                        .runtime_style
+                        .divider_color
+                        .map(|color| color.to_string()),
+                },
+            }
+        });
         // On the navigation stack = open from the user's perspective. A
         // capsule-closed app keeps its "opened" session (stateful hide) but
         // leaves the stack, so hosts must read `in_stack` — not `status` —
@@ -1048,6 +1086,7 @@ impl LxApp {
             page_entries,
             page_stack: self.get_page_stack_paths(),
             tab_bar,
+            navigation_bar,
             lxapp_dir: self.lxapp_dir.to_string_lossy().into_owned(),
             data_dir: self.user_data_dir.to_string_lossy().into_owned(),
             cache_dir: self.user_cache_dir.to_string_lossy().into_owned(),
@@ -2164,7 +2203,7 @@ impl LxApp {
             .lock()
             .unwrap()
             .network_security
-            .is_domain_allowed(domain)
+            .is_domain_allowed_in(domain, crate::is_dev_session())
     }
 
     /// Check whether this lxapp declares a high-risk security privilege.

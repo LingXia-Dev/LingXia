@@ -118,6 +118,8 @@ jobs:
               - 'crates/lingxia-logic/**'
             automation_types:
               - 'packages/lingxia-types/**'
+              - 'packages/lingxia-test/**'
+              - 'examples/lingxia-showcase/lxapp/tests/**'
             # Runtime paths exercised by the Showcase end-to-end contracts on
             # both desktop JS engines. Platform-only implementations are
             # filtered separately so they do not fan out to the other OS.
@@ -829,6 +831,12 @@ jobs:
         working-directory: examples/lingxia-showcase/lxapp
         run: npm run test:automation:types
 
+      # No spec can reach the HTTP fixture yet, so its own specs are the only
+      # thing standing between it and a silent regression.
+      - name: Test showcase test harness
+        working-directory: examples/lingxia-showcase/lxapp
+        run: npm run test:harness
+
       - name: Parse automation runners
         shell: pwsh
         run: |
@@ -1241,6 +1249,11 @@ jobs:
           npm run check:quality --workspace @lingxia/types
           npm run test:types --workspace @lingxia/types
           npm run build --workspaces --if-present
+
+      # The test SDK grades every other suite, so its own specs gate here.
+      - name: Test (@lingxia/test)
+        working-directory: packages
+        run: npm test --workspace @lingxia/test
 
   npm-skill:
     needs: changes

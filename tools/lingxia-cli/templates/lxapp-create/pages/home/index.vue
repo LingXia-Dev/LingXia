@@ -24,12 +24,13 @@ function handleSubmit() {
         <input
           v-model="inputName"
           class="input"
+          data-testid="home-name"
           placeholder="Enter your name"
           @keydown.enter.prevent="handleSubmit"
         />
-        <button class="btn" :disabled="!inputName.trim()" @click="handleSubmit">Say Hello</button>
+        <button class="btn" data-testid="home-greet" :disabled="!inputName.trim()" @click="handleSubmit">Say Hello</button>
       </div>
-      <p v-if="greeting" class="greeting">{{ greeting }}</p>
+      <p v-if="greeting" class="greeting" data-testid="home-greeting">{{ greeting }}</p>
       <LxNavigator url="https://www.lingxia.app" class="link">lingxia.app →</LxNavigator>
     </section>
   </main>

@@ -97,11 +97,27 @@ pub enum TestEventPayload {
     CaseStarted {
         name: String,
         full_name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        timeout_ms: Option<u64>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        covers: Vec<String>,
     },
     CaseFinished {
         name: String,
         full_name: String,
         status: TestCaseStatus,
+        duration_ms: u64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<TestRunError>,
+    },
+    StepStarted {
+        name: String,
+        path: String,
+    },
+    StepFinished {
+        name: String,
+        path: String,
+        status: String,
         duration_ms: u64,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<TestRunError>,

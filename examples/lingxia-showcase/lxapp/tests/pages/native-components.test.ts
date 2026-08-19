@@ -1,27 +1,21 @@
-import { expect, test } from '@rongjs/test';
+import { expect, spec, type Fixture } from '@lingxia/test';
 import {
   currentPageOrNull,
   waitForCurrentPage,
   waitForCurrentPageVisible,
   waitForElementText,
 } from '../helpers/page.js';
-import { contract } from '../support/contract.js';
+import { attachShot, bindFixture } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-async function attachWindow(name: string): Promise<void> {
-  if (!test.attach) return;
+async function attachWindow(t: Fixture, name: string): Promise<void> {
   const screenshot = await lx.automation().lxapps.screenshot();
-  await test.attach(name, { mimeType: 'image/png', base64: screenshot.base64 });
+  await attachShot(t, name, { mimeType: 'image/png', base64: screenshot.base64 });
 }
 
-contract({
-  id: 'NATIVE-VIDEO-001',
-  title: 'hide the native video overlay before the next page becomes interactive',
-  covers: ['lx.createVideoContext', 'VideoContext.pause', 'NavDriver.to', 'NavDriver.back'],
-  layer: 'native',
-  levels: ['semantic', 'boundary', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app, namespace, defer }) => {
+spec("hide the native video overlay before the next page becomes interactive", { id: "NATIVE-VIDEO-001", covers: ['lx.createVideoContext', 'VideoContext.pause', 'NavDriver.to', 'NavDriver.back'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, namespace, defer } = bindFixture(t, "NATIVE-VIDEO-001");
+
   const current = await currentPageOrNull(app);
   if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
@@ -41,7 +35,7 @@ contract({
   // The shape fixture loads no media, and only Apple emits a pause event
   // without a playing transition; just exercise the pause command itself.
   await app.page.click({ page: 'video', css: '[data-testid="video-pause"]' });
-  await attachWindow('native-video-active.png');
+  await attachWindow(t, 'native-video-active.png');
 
   const hiddenAt = Date.now();
   await app.nav.back();
@@ -58,5 +52,5 @@ contract({
     5_000,
   )).toContain(name);
   expect(Date.now() - hiddenAt < 5_000).toBeTruthy();
-  await attachWindow('native-video-hidden.png');
+  await attachWindow(t, 'native-video-hidden.png');
 });

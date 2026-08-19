@@ -547,8 +547,21 @@ Page({
         style: {
           backgroundColor: options.backgroundColor,
           foregroundColor: options.frontColor,
+          dividerColor: options.dividerColor,
         },
       }),
+    );
+  },
+
+  updateNavigationBarHomeButton: function (options) {
+    return this._runChromeUpdate("Navigation bar update", () =>
+      lx.navigationBar.update({ homeButton: options.homeButton }),
+    );
+  },
+
+  resetNavigationBar: function () {
+    return this._runChromeUpdate("Navigation bar update", () =>
+      lx.navigationBar.update({ title: null, style: null, homeButton: "auto" }),
     );
   },
 

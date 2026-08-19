@@ -1,18 +1,9 @@
-import { expect } from '@rongjs/test';
 import { currentPageOrNull, waitForCurrentPage } from '../helpers/page.js';
-import { contract, expectReject } from '../support/contract.js';
+import { expect, spec } from '@lingxia/test';
+import { bindFixture, expectReject, specNamespace } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-contract(
-  {
-    id: 'AUT-000',
-    title: 'expose only host automation authority in the test runtime',
-    covers: ['lx.automation'],
-    layer: 'automation',
-    levels: ['shape', 'failure', 'boundary'],
-    scope: 'portable',
-    expectedOutcome: 'mixed',
-  },
-  () => {
+spec("expose only host automation authority in the test runtime", { id: "AUT-000", covers: ['lx.automation'], app: SHOWCASE_APP_ID }, (t) => {
     const testLx = lx as unknown as Record<string, unknown>;
     const scope = globalThis as Record<string, unknown>;
     expect(typeof testLx.automation).toBe('function');
@@ -26,39 +17,21 @@ contract(
     expect(scope.process).toBeUndefined();
     expect(scope.window).toBeUndefined();
     expect(scope.document).toBeUndefined();
-  },
-);
+  });
 
-contract(
-  {
-    id: 'AUT-001',
-    title: 'select and inspect the current lxapp',
-    covers: ['Automation.lxapp', 'LxAppDriver.info', 'LxAppDriver.pages'],
-    layer: 'automation',
-    levels: ['semantic'],
-    scope: 'portable',
-    expectedOutcome: 'supported',
-  },
-  async ({ app }) => {
+spec("select and inspect the current lxapp", { id: "AUT-001", covers: ['Automation.lxapp', 'LxAppDriver.info', 'LxAppDriver.pages'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "AUT-001");
+
     const info = await app.info();
     const pages = await app.pages();
 
     expect(info.appid).toBe('lingxia-showcase');
     expect(pages.some((page) => page.name === 'todo')).toBeTruthy();
-  },
-);
+  });
 
-contract(
-  {
-    id: 'AUT-005',
-    title: 'reject re-entrant self-eval from the app Logic runtime',
-    covers: ['LxAppDriver.eval'],
-    layer: 'automation',
-    levels: ['failure'],
-    scope: 'portable',
-    expectedOutcome: 'reject',
-  },
-  async ({ app }) => {
+spec("reject re-entrant self-eval from the app Logic runtime", { id: "AUT-005", covers: ['LxAppDriver.eval'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "AUT-005");
+
     const rejection = await app.eval({
       timeoutMs: 15_000,
       script: `
@@ -78,35 +51,17 @@ contract(
     expect(rejection.rejected).toBeTruthy();
     expect(rejection.code).toBe('E_AUTOMATION');
     expect(rejection.message).toContain('cannot eval the calling app');
-  },
-);
+  });
 
-contract(
-  {
-    id: 'AUT-002',
-    title: 'evaluate across the Logic boundary',
-    covers: ['LxAppDriver.eval'],
-    layer: 'automation',
-    levels: ['semantic', 'boundary'],
-    scope: 'portable',
-    expectedOutcome: 'supported',
-  },
-  async ({ app }) => {
+spec("evaluate across the Logic boundary", { id: "AUT-002", covers: ['LxAppDriver.eval'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "AUT-002");
+
     expect(await app.eval({ script: '21 * 2' })).toBe(42);
-  },
-);
+  });
 
-contract(
-  {
-    id: 'AUT-003',
-    title: 'read the host surface plan with JavaScript-shaped fields',
-    covers: ['LxAppDriver.surfaceLayout'],
-    layer: 'automation',
-    levels: ['semantic', 'boundary'],
-    scope: 'portable',
-    expectedOutcome: 'supported',
-  },
-  async ({ app }) => {
+spec("read the host surface plan with JavaScript-shaped fields", { id: "AUT-003", covers: ['LxAppDriver.surfaceLayout'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "AUT-003");
+
     const layout = await app.surfaceLayout();
     const rootId = layout.mainSwitcher.rootSurfaceId;
     if (rootId !== undefined) {
@@ -123,20 +78,11 @@ contract(
     expect(serialized.includes('"app_id"')).toBeFalsy();
     expect(serialized.includes('"surface_id"')).toBeFalsy();
     expect(serialized.includes('"active_id"')).toBeFalsy();
-  },
-);
+  });
 
-contract(
-  {
-    id: 'AUT-004',
-    title: 'wait for every page element state',
-    covers: ['PageDriver.waitFor'],
-    layer: 'automation',
-    levels: ['semantic', 'failure', 'lifecycle'],
-    scope: 'portable',
-    expectedOutcome: 'mixed',
-  },
-  async ({ app, namespace, defer }) => {
+spec("wait for every page element state", { id: "AUT-004", covers: ['PageDriver.waitFor'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, namespace, defer } = bindFixture(t, "AUT-004");
+
     const current = await currentPageOrNull(app);
     if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
     await waitForCurrentPage(app, 'home');
@@ -166,12 +112,10 @@ contract(
     await app.page.waitFor({ page: 'home', css, state: 'hidden' });
     await expectReject(
       () => app.page.waitFor({ page: 'home', css, state: 'enabled', timeoutMs: 100 }),
-      { message: 'E_TIMEOUT' },
-    );
+      { message: 'E_TIMEOUT' });
     await expectReject(
       () => app.page.waitFor({ page: 'not-a-showcase-page', css, state: 'attached' }),
-      { message: 'unknown page name' },
-    );
+      { message: 'unknown page name' });
     const visible = app.page.waitFor({ page: 'home', css, state: 'visible' });
     await app.page.eval({
       page: 'home',
@@ -191,5 +135,4 @@ contract(
       script: `document.getElementById(${JSON.stringify(id)})?.remove()`,
     });
     await detached;
-  },
-);
+  });

@@ -42,6 +42,8 @@ export default function UIPage() {
     clearModalResult,
     updateNavigationBarTitle,
     updateNavigationBarColors,
+    updateNavigationBarHomeButton,
+    resetNavigationBar,
     enableTabBarRedDot,
     disableTabBarRedDot,
     updateTabBarBadge,
@@ -140,7 +142,7 @@ export default function UIPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="pb-6 px-4 pt-6">
         {chromeError && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:text-red-400">
+          <div data-testid="ui-chrome-error" className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:text-red-400">
             {chromeError}
           </div>
         )}
@@ -473,6 +475,7 @@ export default function UIPage() {
             {/* Action Buttons */}
             <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
               <div
+                data-testid="toast-show"
                 className="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100"
                 onClick={() => showToastWithParams({
                   title: toastTitle,
@@ -485,6 +488,7 @@ export default function UIPage() {
                 <div className="text-base text-blue-600 dark:text-blue-400 font-medium">Show Toast</div>
               </div>
               <div
+                data-testid="toast-hide"
                 className="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer"
                 onClick={hideToast}
               >
@@ -498,6 +502,7 @@ export default function UIPage() {
         {currentType === 'actionsheet' && (
           <div className="mx-1 mt-8 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
             <div
+              data-testid="actionsheet-show"
               className="px-4 py-10 text-base text-blue-600 dark:text-blue-400 font-medium text-center cursor-pointer hover:bg-blue-50"
               onClick={showDemoActionSheet}
             >
@@ -586,6 +591,7 @@ export default function UIPage() {
             {/* Action Button */}
             <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
               <div
+                data-testid="modal-show"
                 className="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer"
                 onClick={() => showModalWithParams({
                   title: modalTitle,
@@ -601,7 +607,7 @@ export default function UIPage() {
 
             {/* Result Display */}
             {modalResult && (
-              <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
+              <div data-testid="modal-result" className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
                 <div className="px-3 py-3">
                   <div className="text-sm font-medium text-gray-700 mb-3">Modal Result</div>
                   <div className="bg-surface-50 rounded-lg p-3">
@@ -780,10 +786,12 @@ export default function UIPage() {
                     <input
                       type="text"
                       id="navbarTitle"
+                      data-testid="navbar-title-input"
                       placeholder="Enter title"
                       className="flex-1 px-2 py-1.5 text-sm border border-line-300 rounded focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                     />
                     <button
+                      data-testid="navbar-set-title"
                       onClick={() => {
                         const title = document.getElementById('navbarTitle').value;
                         if (title) {
@@ -805,17 +813,20 @@ export default function UIPage() {
                       <input
                         type="text"
                         id="navbarBgColor"
+                        data-testid="navbar-bg-input"
                         placeholder="Background #ffffff"
                         className="px-2 py-1.5 text-sm border border-line-300 rounded focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                       />
                       <input
                         type="text"
                         id="navbarTextColor"
+                        data-testid="navbar-fg-input"
                         placeholder="Text #000000"
                         className="px-2 py-1.5 text-sm border border-line-300 rounded focus:outline-hidden focus:ring-1 focus:ring-blue-500"
                       />
                     </div>
                     <button
+                      data-testid="navbar-set-colors"
                       onClick={() => {
                         const bgColor = document.getElementById('navbarBgColor').value || '#ffffff';
                         const textColor = document.getElementById('navbarTextColor').value || '#000000';
@@ -838,6 +849,7 @@ export default function UIPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Presets</label>
                   <div className="grid grid-cols-2 gap-1.5">
                     <button
+                      data-testid="navbar-preset-dark"
                       onClick={() => {
                         updateNavigationBarTitle({ title: "Dark Theme" });
                         updateNavigationBarColors({ backgroundColor: "#1f2937", frontColor: "#ffffff" });
@@ -847,6 +859,7 @@ export default function UIPage() {
                       Dark
                     </button>
                     <button
+                      data-testid="navbar-preset-blue"
                       onClick={() => {
                         updateNavigationBarTitle({ title: "Blue Theme" });
                         updateNavigationBarColors({ backgroundColor: "#3b82f6", frontColor: "#ffffff" });
@@ -856,6 +869,7 @@ export default function UIPage() {
                       Blue
                     </button>
                     <button
+                      data-testid="navbar-preset-light"
                       onClick={() => {
                         updateNavigationBarTitle({ title: "Light Theme" });
                         updateNavigationBarColors({ backgroundColor: "#ffffff", frontColor: "#000000" });
@@ -865,6 +879,7 @@ export default function UIPage() {
                       Light
                     </button>
                     <button
+                      data-testid="navbar-preset-green"
                       onClick={() => {
                         updateNavigationBarTitle({ title: "Green Theme" });
                         updateNavigationBarColors({ backgroundColor: "#10b981", frontColor: "#ffffff" });
@@ -874,6 +889,30 @@ export default function UIPage() {
                       Green
                     </button>
                   </div>
+                </div>
+
+                <div className="flex space-x-2">
+                  <button
+                    data-testid="navbar-home-hide"
+                    onClick={() => updateNavigationBarHomeButton({ homeButton: 'hidden' })}
+                    className="flex-1 px-2 py-1.5 bg-surface text-foreground border border-line-300 rounded text-xs"
+                  >
+                    Hide home
+                  </button>
+                  <button
+                    data-testid="navbar-home-auto"
+                    onClick={() => updateNavigationBarHomeButton({ homeButton: 'auto' })}
+                    className="flex-1 px-2 py-1.5 bg-surface text-foreground border border-line-300 rounded text-xs"
+                  >
+                    Auto home
+                  </button>
+                  <button
+                    data-testid="navbar-reset"
+                    onClick={() => resetNavigationBar()}
+                    className="flex-1 px-2 py-1.5 bg-surface-100 text-gray-700 rounded text-xs"
+                  >
+                    Reset
+                  </button>
                 </div>
 
               </div>
@@ -990,12 +1029,14 @@ export default function UIPage() {
                   <div className="flex space-x-2">
                     <input
                       type="text"
+                      data-testid="tabbar-item-text"
                       value={itemText}
                       onChange={(e) => setItemText(e.target.value)}
                       className="flex-1 px-3 py-2 border border-line-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                       placeholder="Enter new text"
                     />
                     <button
+                      data-testid="tabbar-item-update"
                       onClick={() => {
                         const result = updateTabBarItem({ index: 1, text: itemText });
                         console.log(`Update tab 1 text to "${itemText}":`, result);
@@ -1020,6 +1061,7 @@ export default function UIPage() {
               <div className="p-4">
                 <div className="flex space-x-3">
                   <button
+                    data-testid="tabbar-reddot-show"
                     onClick={() => {
                       const result = enableTabBarRedDot({ index: 1 });
                       console.log('Show red dot on tab 1:', result);
@@ -1029,6 +1071,7 @@ export default function UIPage() {
                     Show Red Dot
                   </button>
                   <button
+                    data-testid="tabbar-reddot-hide"
                     onClick={() => {
                       const result = disableTabBarRedDot({ index: 1 });
                       console.log('Hide red dot on tab 1:', result);
@@ -1052,6 +1095,7 @@ export default function UIPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Badge Text</label>
                   <input
                     type="text"
+                    data-testid="tabbar-badge-input"
                     value={badgeText}
                     onChange={(e) => setBadgeText(e.target.value)}
                     className="w-full px-3 py-2 border border-line-300 rounded-lg text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-500"
@@ -1060,6 +1104,7 @@ export default function UIPage() {
                 </div>
                 <div className="flex space-x-3">
                   <button
+                    data-testid="tabbar-badge-set"
                     onClick={() => {
                       const result = updateTabBarBadge({ index: 1, text: badgeText });
                       console.log(`Set badge "${badgeText}" on tab 1:`, result);
@@ -1069,6 +1114,7 @@ export default function UIPage() {
                     Set Badge
                   </button>
                   <button
+                    data-testid="tabbar-badge-clear"
                     onClick={() => {
                       const result = clearTabBarBadge({ index: 1 });
                       console.log('Remove badge on tab 1:', result);
@@ -1126,6 +1172,7 @@ export default function UIPage() {
                 </div>
 
                 <button
+                  data-testid="tabbar-style-apply"
                   onClick={() => {
                     const result = updateTabBarForegrounds({
                       color,

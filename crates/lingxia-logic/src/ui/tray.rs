@@ -1,7 +1,8 @@
+use crate::app::badge_text;
 use crate::i18n::js_error_from_platform_error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::{LxApp, app_handler_unsub, register_app_handler, unregister_app_handler};
-use rong::{JSContext, JSFunc, JSObject, JSResult};
+use rong::{JSContext, JSFunc, JSObject, JSResult, JSValue};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -31,11 +32,12 @@ fn tray_namespace(ctx: &JSContext) -> JSResult<JSObject> {
 }
 
 /// lx.tray.setBadge(value) — the menu-bar / system-tray badge. Null/empty clears it.
-fn set_badge(ctx: JSContext, text: Option<String>) -> JSResult<()> {
+fn set_badge(ctx: JSContext, value: JSValue) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    let text = badge_text(value, "lx.tray.setBadge")?;
     lxapp
         .runtime
-        .set_tray_badge(text.as_deref().unwrap_or(""))
+        .set_tray_badge(&text)
         .map_err(|e| js_error_from_platform_error(&e))
 }
 

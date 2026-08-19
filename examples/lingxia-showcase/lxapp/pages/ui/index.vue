@@ -2,7 +2,7 @@
   <div class="h-screen bg-linear-to-br from-surface-50 to-surface-100 flex flex-col overflow-y-auto">
     <div class="flex-1 overflow-y-auto">
       <div class="pb-6 px-4 pt-6">
-        <div v-if="chromeError" class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:text-red-400">
+        <div v-if="chromeError" data-testid="ui-chrome-error" class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:text-red-400">
           {{ chromeError }}
         </div>
 
@@ -317,11 +317,11 @@
             </div>
           </div>
           <div class="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-            <div class="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100"
+            <div data-testid="toast-show" class="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100"
               @click="showToastWithParams({ title: toastTitle, icon: toastIcon, duration: toastDuration, position: toastPosition, mask: toastMask })">
               <div class="text-base text-blue-600 dark:text-blue-400 font-medium">Show Toast</div>
             </div>
-            <div class="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer" @click="hideToast">
+            <div data-testid="toast-hide" class="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer" @click="hideToast">
               <div class="text-base text-red-600 dark:text-red-400 font-medium">Hide Toast</div>
             </div>
           </div>
@@ -330,7 +330,7 @@
         <!-- ActionSheet Demo -->
         <template v-if="currentType === 'actionsheet'">
           <div class="mx-1 mt-8 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-            <div class="px-4 py-10 text-base text-blue-600 dark:text-blue-400 font-medium text-center cursor-pointer hover:bg-blue-50" @click="showDemoActionSheet">
+            <div data-testid="actionsheet-show" class="px-4 py-10 text-base text-blue-600 dark:text-blue-400 font-medium text-center cursor-pointer hover:bg-blue-50" @click="showDemoActionSheet">
               Show Action Sheet
             </div>
           </div>
@@ -364,12 +364,12 @@
             </div>
           </div>
           <div class="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-            <div class="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer"
+            <div data-testid="modal-show" class="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer"
               @click="showModalWithParams({ title: modalTitle, content: modalContent, showCancel: modalShowCancel, cancelText: modalCancelText, confirmText: modalConfirmText })">
               <div class="text-base text-blue-600 dark:text-blue-400 font-medium">Show Modal</div>
             </div>
           </div>
-          <div v-if="modalResult" class="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
+          <div v-if="modalResult" data-testid="modal-result" class="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
             <div class="px-3 py-3">
               <div class="text-sm font-medium text-gray-700 mb-3">Modal Result</div>
               <div class="bg-surface-50 rounded-lg p-3">
@@ -388,33 +388,38 @@
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Title</label>
                 <div class="flex space-x-2">
-                  <input type="text" v-model="navbarTitle" placeholder="Enter title" class="flex-1 px-2 py-1.5 text-sm border border-line-300 rounded focus:outline-hidden focus:ring-1 focus:ring-blue-500" />
-                  <button @click="updateNavigationBarTitle({ title: navbarTitle })" class="px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">Set</button>
+                  <input type="text" data-testid="navbar-title-input" v-model="navbarTitle" placeholder="Enter title" class="flex-1 px-2 py-1.5 text-sm border border-line-300 rounded focus:outline-hidden focus:ring-1 focus:ring-blue-500" />
+                  <button data-testid="navbar-set-title" @click="updateNavigationBarTitle({ title: navbarTitle })" class="px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600">Set</button>
                 </div>
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Colors</label>
                 <div class="space-y-2">
                   <div class="grid grid-cols-2 gap-2">
-                    <input type="text" v-model="navbarBgColor" placeholder="Background #ffffff" class="px-2 py-1.5 text-sm border border-line-300 rounded" />
-                    <input type="text" v-model="navbarTextColor" placeholder="Text #000000" class="px-2 py-1.5 text-sm border border-line-300 rounded" />
+                    <input type="text" data-testid="navbar-bg-input" v-model="navbarBgColor" placeholder="Background #ffffff" class="px-2 py-1.5 text-sm border border-line-300 rounded" />
+                    <input type="text" data-testid="navbar-fg-input" v-model="navbarTextColor" placeholder="Text #000000" class="px-2 py-1.5 text-sm border border-line-300 rounded" />
                   </div>
-                  <button @click="updateNavigationBarColors({ backgroundColor: navbarBgColor || '#ffffff', frontColor: navbarTextColor || '#000000' })"
+                  <button data-testid="navbar-set-colors" @click="updateNavigationBarColors({ backgroundColor: navbarBgColor || '#ffffff', frontColor: navbarTextColor || '#000000' })"
                     class="w-full px-3 py-1.5 text-sm bg-green-500 text-white rounded hover:bg-green-600">Set Colors</button>
                 </div>
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Presets</label>
                 <div class="grid grid-cols-2 gap-1.5">
-                  <button @click="updateNavigationBarTitle({ title: 'Dark Theme' }); updateNavigationBarColors({ backgroundColor: '#1f2937', frontColor: '#ffffff' })"
+                  <button data-testid="navbar-preset-dark" @click="updateNavigationBarTitle({ title: 'Dark Theme' }); updateNavigationBarColors({ backgroundColor: '#1f2937', frontColor: '#ffffff' })"
                     class="px-2 py-1.5 bg-surface-800 text-white rounded hover:bg-surface-900 text-xs">Dark</button>
-                  <button @click="updateNavigationBarTitle({ title: 'Blue Theme' }); updateNavigationBarColors({ backgroundColor: '#3b82f6', frontColor: '#ffffff' })"
+                  <button data-testid="navbar-preset-blue" @click="updateNavigationBarTitle({ title: 'Blue Theme' }); updateNavigationBarColors({ backgroundColor: '#3b82f6', frontColor: '#ffffff' })"
                     class="px-2 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 text-xs">Blue</button>
-                  <button @click="updateNavigationBarTitle({ title: 'Light Theme' }); updateNavigationBarColors({ backgroundColor: '#ffffff', frontColor: '#000000' })"
+                  <button data-testid="navbar-preset-light" @click="updateNavigationBarTitle({ title: 'Light Theme' }); updateNavigationBarColors({ backgroundColor: '#ffffff', frontColor: '#000000' })"
                     class="px-2 py-1.5 bg-surface text-foreground border border-line-300 rounded hover:bg-surface-50 text-xs">Light</button>
-                  <button @click="updateNavigationBarTitle({ title: 'Green Theme' }); updateNavigationBarColors({ backgroundColor: '#10b981', frontColor: '#ffffff' })"
+                  <button data-testid="navbar-preset-green" @click="updateNavigationBarTitle({ title: 'Green Theme' }); updateNavigationBarColors({ backgroundColor: '#10b981', frontColor: '#ffffff' })"
                     class="px-2 py-1.5 bg-green-500 text-white rounded hover:bg-green-600 text-xs">Green</button>
                 </div>
+              </div>
+              <div class="flex space-x-2">
+                <button data-testid="navbar-home-hide" @click="updateNavigationBarHomeButton({ homeButton: 'hidden' })" class="flex-1 px-2 py-1.5 bg-surface text-foreground border border-line-300 rounded text-xs">Hide home</button>
+                <button data-testid="navbar-home-auto" @click="updateNavigationBarHomeButton({ homeButton: 'auto' })" class="flex-1 px-2 py-1.5 bg-surface text-foreground border border-line-300 rounded text-xs">Auto home</button>
+                <button data-testid="navbar-reset" @click="resetNavigationBar()" class="flex-1 px-2 py-1.5 bg-surface-100 text-gray-700 rounded text-xs">Reset</button>
               </div>
             </div>
           </div>
@@ -487,8 +492,8 @@
               <div class="pt-2 border-t border-line-100">
                 <label class="block text-sm font-medium text-gray-700 mb-2">Update Tab 1 Text</label>
                 <div class="flex space-x-2">
-                  <input type="text" v-model="itemText" class="flex-1 px-3 py-2 border border-line-300 rounded-lg" placeholder="Enter new text" />
-                  <button @click="updateTabBarItem({ index: 1, text: itemText })" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Update</button>
+                  <input type="text" data-testid="tabbar-item-text" v-model="itemText" class="flex-1 px-3 py-2 border border-line-300 rounded-lg" placeholder="Enter new text" />
+                  <button data-testid="tabbar-item-update" @click="updateTabBarItem({ index: 1, text: itemText })" class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Update</button>
                 </div>
               </div>
             </div>
@@ -501,8 +506,8 @@
             </div>
             <div class="p-4">
               <div class="flex space-x-3">
-                <button @click="enableTabBarRedDot({ index: 1 })" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Show Red Dot</button>
-                <button @click="disableTabBarRedDot({ index: 1 })" class="flex-1 bg-surface-500 hover:bg-surface-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Hide Red Dot</button>
+                <button data-testid="tabbar-reddot-show" @click="enableTabBarRedDot({ index: 1 })" class="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Show Red Dot</button>
+                <button data-testid="tabbar-reddot-hide" @click="disableTabBarRedDot({ index: 1 })" class="flex-1 bg-surface-500 hover:bg-surface-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Hide Red Dot</button>
               </div>
             </div>
           </div>
@@ -515,11 +520,11 @@
             <div class="p-4 space-y-3">
               <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Badge Text</label>
-                <input type="text" v-model="badgeText" class="w-full px-3 py-2 border border-line-300 rounded-lg text-sm" placeholder="Enter badge text" />
+                <input type="text" data-testid="tabbar-badge-input" v-model="badgeText" class="w-full px-3 py-2 border border-line-300 rounded-lg text-sm" placeholder="Enter badge text" />
               </div>
               <div class="flex space-x-3">
-                <button @click="updateTabBarBadge({ index: 1, text: badgeText })" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Set Badge</button>
-                <button @click="clearTabBarBadge({ index: 1 })" class="flex-1 bg-surface-500 hover:bg-surface-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Remove Badge</button>
+                <button data-testid="tabbar-badge-set" @click="updateTabBarBadge({ index: 1, text: badgeText })" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Set Badge</button>
+                <button data-testid="tabbar-badge-clear" @click="clearTabBarBadge({ index: 1 })" class="flex-1 bg-surface-500 hover:bg-surface-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Remove Badge</button>
               </div>
             </div>
           </div>
@@ -546,7 +551,7 @@
                   </div>
                 </div>
               </div>
-              <button @click="updateTabBarForegrounds({ color: tabColor, selectedColor: tabSelectedColor })"
+              <button data-testid="tabbar-style-apply" @click="updateTabBarForegrounds({ color: tabColor, selectedColor: tabSelectedColor })"
                 class="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Apply Custom Style</button>
               <div class="mt-4">
                 <label class="block text-sm font-medium text-gray-700 mb-2">Preset Themes</label>
@@ -591,6 +596,8 @@ const {
   clearModalResult,
   updateNavigationBarTitle,
   updateNavigationBarColors,
+  updateNavigationBarHomeButton,
+  resetNavigationBar,
   enableTabBarRedDot,
   disableTabBarRedDot,
   updateTabBarBadge,

@@ -1,7 +1,8 @@
-import { expect } from '@rongjs/test';
 import type { LxAppDriver } from 'lingxia-types/automation';
 import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
-import { contract, eventually } from '../support/contract.js';
+import { expect, spec } from '@lingxia/test';
+import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 interface SurfaceLifecycleState {
   showCount: number;
@@ -37,15 +38,9 @@ async function waitForSurfaceLifecycle(
   return state;
 }
 
-contract({
-  id: 'PAGE-LIFECYCLE-001',
-  title: 'fire onShow/onHide on the same page instance across navigation',
-  covers: ['lx.navigateTo', 'lx.navigateBack'],
-  layer: 'logic',
-  levels: ['semantic', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app, defer }) => {
+spec("fire onShow/onHide on the same page instance across navigation", { id: "PAGE-LIFECYCLE-001", covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-001");
+
   defer(async () => {
     await app.nav.relaunch({ page: 'home' });
   });
@@ -120,15 +115,9 @@ const waitForViewCounter = (app: LxAppDriver, expected: string) => waitForElemen
   (text) => text.trim() === expected,
 );
 
-contract({
-  id: 'PAGE-LIFECYCLE-002',
-  title: 'reset logic data and the rendered document when a page is re-entered',
-  covers: ['lx.navigateTo', 'lx.navigateBack'],
-  layer: 'logic',
-  levels: ['semantic', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app, defer }) => {
+spec("reset logic data and the rendered document when a page is re-entered", { id: "PAGE-LIFECYCLE-002", covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID, timeout: 45_000 }, async (t) => {
+  const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-002");
+
   defer(async () => {
     await app.nav.relaunch({ page: 'home' });
   });
@@ -142,11 +131,16 @@ contract({
   // Dirty both layers plus the DOM, and the module-scoped counter that
   // must NOT reset.
   const moduleBase = first.moduleCounter;
+  await app.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-open-popup"]', state: 'attached' });
+  await app.page.eval({
+    page: 'ui',
+    script: `document.querySelector('[data-testid="lifecycle-open-popup"]')?.scrollIntoView({ block: 'center' })`,
+  });
   await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-logic"]' });
   await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-view"]' });
   await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-module"]' });
   await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-open-popup"]' });
-  await app.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-popup"]' });
+  await app.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-popup"]', state: 'visible' });
   await eventually(resetDemoState.bind(null, app), (
     candidate,
   ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });
@@ -174,15 +168,9 @@ contract({
   expect(popup.exists).toBe(false);
 });
 
-contract({
-  id: 'PAGE-LIFECYCLE-003',
-  title: 'stack two live instances of one route and unwind them independently',
-  covers: ['lx.navigateTo', 'lx.navigateBack'],
-  layer: 'logic',
-  levels: ['semantic', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app, defer }) => {
+spec("stack two live instances of one route and unwind them independently", { id: "PAGE-LIFECYCLE-003", covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-003");
+
   defer(async () => {
     await app.nav.relaunch({ page: 'home' });
   });
@@ -249,15 +237,12 @@ contract({
   await waitForCurrentPage(app, 'home');
 });
 
-contract({
+spec('deliver exactly one onLoad and one onReady to a re-entered page', {
   id: 'PAGE-LIFECYCLE-004',
-  title: 'deliver exactly one onLoad and one onReady to a re-entered page',
   covers: ['lx.navigateTo', 'lx.navigateBack'],
-  layer: 'logic',
-  levels: ['semantic', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app, defer }) => {
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app, defer } = bindFixture(t, 'PAGE-LIFECYCLE-004');
   defer(async () => {
     await app.nav.relaunch({ page: 'home' });
   });
@@ -299,15 +284,9 @@ contract({
   expect(count('onShow')).toBe(1);
 });
 
-contract({
-  id: 'PAGE-LIFECYCLE-005',
-  title: 'park a left page instead of re-rendering it off-screen',
-  covers: ['lx.navigateBack'],
-  layer: 'logic',
-  levels: ['semantic', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app, defer }) => {
+spec("park a left page instead of re-rendering it off-screen", { id: "PAGE-LIFECYCLE-005", covers: ['lx.navigateBack'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-005");
+
   defer(async () => {
     await app.nav.relaunch({ page: 'home' });
   });
@@ -334,15 +313,9 @@ contract({
   expect(second.previousInstanceTag).toBe(first.instanceTag);
 });
 
-contract({
-  id: 'PAGE-LIFECYCLE-006',
-  title: 'unload a pushed page dropped by switchTab',
-  covers: ['lx.switchTab', 'lx.navigateTo'],
-  layer: 'logic',
-  levels: ['semantic', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app, defer }) => {
+spec("unload a pushed page dropped by switchTab", { id: "PAGE-LIFECYCLE-006", covers: ['lx.switchTab', 'lx.navigateTo'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-006");
+
   defer(async () => {
     await app.nav.relaunch({ page: 'home' });
   });

@@ -6,12 +6,16 @@
   "keywords": ["lingxia", "miniapp", "{{FRAMEWORK}}"],
   "author": "",
   "license": "MIT",
+  "scripts": {
+    "test": "node -e \"console.error('Start a session first: lingxia dev --background\\nThen run: lxdev test tests/'); process.exit(2)\""
+  },
   "dependencies": {
     "{{FRAMEWORK_PKG}}": "{{LINGXIA_FRAMEWORK_RANGE}}",
     "@lingxia/types": "{{LINGXIA_FRAMEWORK_RANGE}}",
     {{FRAMEWORK_RUNTIME_DEPS}}
   },
   "devDependencies": {
-    {{FRAMEWORK_DEV_DEPS_PREFIX}}{{FRAMEWORK_VITE_DEV_DEPS}}"typescript": "^5.9.3"
+    {{FRAMEWORK_DEV_DEPS_PREFIX}}{{FRAMEWORK_VITE_DEV_DEPS}}"@lingxia/test": "{{LINGXIA_FRAMEWORK_RANGE}}",
+    "typescript": "^5.9.3"
   }
 }

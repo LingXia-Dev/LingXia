@@ -231,23 +231,23 @@ function filesBelow(directory, suffix) {
   });
 }
 
-function contractCoverage() {
+function specCoverage() {
   const result = new Map();
   for (const file of filesBelow(path.join(root, 'tests'), '.test.ts')) {
     const source = fs.readFileSync(file, 'utf8');
     const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
     const visit = (node) => {
-      if (ts.isCallExpression(node)
-        && ts.isIdentifier(node.expression)
-        && node.expression.text === 'contract'
-        && ts.isObjectLiteralExpression(node.arguments[0])) {
-        const properties = new Map(node.arguments[0].properties
-          .filter(ts.isPropertyAssignment)
-          .map((property) => [property.name.getText(ast).replaceAll(/["']/g, ''), property.initializer]));
-        const idNode = properties.get('id');
-        const coversNode = properties.get('covers');
-        if (idNode && ts.isStringLiteral(idNode) && coversNode && ts.isArrayLiteralExpression(coversNode)) {
-          result.set(idNode.text, new Set(coversNode.elements.filter(ts.isStringLiteral).map((item) => item.text)));
+      if (ts.isCallExpression(node) && node.arguments.length >= 2) {
+        const options = node.arguments.find((argument) => ts.isObjectLiteralExpression(argument));
+        if (options && ts.isObjectLiteralExpression(options)) {
+          const properties = new Map(options.properties
+            .filter(ts.isPropertyAssignment)
+            .map((property) => [property.name.getText(ast).replaceAll(/["']/g, ''), property.initializer]));
+          const idNode = properties.get('id');
+          const coversNode = properties.get('covers');
+          if (idNode && ts.isStringLiteral(idNode) && coversNode && ts.isArrayLiteralExpression(coversNode)) {
+            result.set(idNode.text, new Set(coversNode.elements.filter(ts.isStringLiteral).map((item) => item.text)));
+          }
         }
       }
       ts.forEachChild(node, visit);
@@ -265,7 +265,7 @@ if (process.argv.includes('--print')) {
 }
 
 const declared = new Map(manifest.apis.map((entry) => [entry.api, entry]));
-const contracts = contractCoverage();
+const specs = specCoverage();
 const missing = [...scanned.keys()].filter((api) => !declared.has(api));
 const stale = [...declared.keys()].filter((api) => !scanned.has(api));
 const invalid = manifest.apis.filter((entry) => (
@@ -279,9 +279,9 @@ const duplicates = manifest.apis
 const ownerErrors = manifest.apis
   .filter(({ mode }) => mode === 'automated')
   .flatMap(({ api, owner }) => {
-    const covers = contracts.get(owner);
-    if (!covers) return [{ api, owner, reason: 'contract id not found' }];
-    return covers.has(api) ? [] : [{ api, owner, reason: 'contract does not cover API' }];
+    const covers = specs.get(owner);
+    if (!covers) return [{ api, owner, reason: 'spec id not found' }];
+    return covers.has(api) ? [] : [{ api, owner, reason: 'spec does not cover API' }];
   });
 const unsupportedSyntax = unsupportedLxSyntax();
 

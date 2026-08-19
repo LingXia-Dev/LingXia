@@ -1,7 +1,8 @@
-import { expect, test } from '@rongjs/test';
+import { expect, spec } from '@lingxia/test';
 import type { LxAppDriver } from 'lingxia-types/automation';
 import { waitForElementAttribute } from '../helpers/page.js';
-import { contract, eventually } from '../support/contract.js';
+import { attachShot, bindFixture, eventually } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 async function waitForTodo(app: LxAppDriver, text: string, present: boolean): Promise<number> {
   return eventually(
@@ -15,8 +16,7 @@ async function waitForTodo(app: LxAppDriver, text: string, present: boolean): Pr
       return labels.items.findIndex((label) => label.text === text);
     },
     (index) => (index >= 0) === present,
-    { describe: `todo to be ${present ? 'present' : 'removed'}: ${text}`, timeoutMs: 30_000 },
-  );
+    { describe: `todo to be ${present ? 'present' : 'removed'}: ${text}`, timeoutMs: 30_000 });
 }
 
 async function waitForStoredTodo(
@@ -32,8 +32,7 @@ async function waitForStoredTodo(
       `,
     }),
     (stored) => stored === present,
-    { describe: `persisted todo to be ${present ? 'present' : 'removed'}: ${text}`, timeoutMs: 30_000 },
-  );
+    { describe: `persisted todo to be ${present ? 'present' : 'removed'}: ${text}`, timeoutMs: 30_000 });
 }
 
 async function waitForStoredCompleted(
@@ -50,8 +49,7 @@ async function waitForStoredCompleted(
       `,
     }),
     (stored) => stored === true,
-    { describe: `persisted todo completion=${completed}: ${text}`, timeoutMs: 30_000 },
-  );
+    { describe: `persisted todo completion=${completed}: ${text}`, timeoutMs: 30_000 });
 }
 
 async function cleanupStoredTodo(app: LxAppDriver, text: string): Promise<void> {
@@ -74,15 +72,9 @@ async function clickTodoToggle(app: LxAppDriver, index: number): Promise<void> {
   });
 }
 
-contract({
-  id: 'TODO-001',
-  title: 'persist todo edits made through the rendered page',
-  covers: ['lx.getStorage', 'Storage.get', 'Storage.set'],
-  layer: 'logic',
-  levels: ['semantic', 'boundary', 'lifecycle'],
-  scope: 'portable',
-  expectedOutcome: 'supported',
-}, async ({ app }) => {
+spec("persist todo edits made through the rendered page", { id: "TODO-001", covers: ['lx.getStorage', 'Storage.get', 'Storage.set'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "TODO-001");
+
   await app.nav.relaunch({ page: 'todo' });
   await app.page.waitFor({ page: 'todo', css: '[data-testid="todo-page"]' });
 
@@ -112,7 +104,7 @@ contract({
     await waitForStoredCompleted(app, text, false);
 
     const screenshot = await app.page.screenshot({ page: 'todo' });
-    await test.attach?.('todo-page.png', {
+    await attachShot(t, 'todo-page.png', {
       mimeType: 'image/png',
       base64: screenshot.base64,
     });
@@ -128,7 +120,7 @@ contract({
   } catch (error) {
     try {
       const screenshot = await app.page.screenshot({ page: 'todo' });
-      await test.attach?.('todo-page-failure.png', {
+      await attachShot(t, 'todo-page-failure.png', {
         mimeType: 'image/png',
         base64: screenshot.base64,
       });

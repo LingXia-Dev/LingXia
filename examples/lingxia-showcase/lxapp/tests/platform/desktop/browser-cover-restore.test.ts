@@ -1,25 +1,17 @@
-import { expect } from '@rongjs/test';
 import { waitForCurrentPage } from '../../helpers/page.js';
-import { contract, eventually } from '../../support/contract.js';
+import { expect, spec } from '@lingxia/test';
+import { bindFixture, eventually, specNamespace } from '../../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 
-contract(
-  {
-    id: 'DESKTOP-BROWSER-001',
-    title: 'restore rendered home content after closing covering web tabs',
-    covers: [
+spec("restore rendered home content after closing covering web tabs", { id: "DESKTOP-BROWSER-001", covers: [
       'BrowserDriver.tabs',
       'BrowserDriver.close',
       'lx.shell',
       'lx.shell.openBuiltin',
-      'lx.surface',
       'LxAppDriver.surfaceLayout',
-    ],
-    layer: 'host',
-    levels: ['semantic', 'boundary', 'lifecycle'],
-    scope: 'desktop',
-    expectedOutcome: 'supported',
-  },
-  async ({ app, defer }) => {
+    ], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, defer } = bindFixture(t, "DESKTOP-BROWSER-001");
+
     const browser = lx.automation().browser;
     const renderedBodyLength = async (): Promise<number> => Number(await app.page.eval({
       page: 'home',
@@ -51,8 +43,7 @@ contract(
     const opened = await eventually(
       async () => (await browser.tabs()).filter((tab) => !tabsBefore.has(tab.tab_id)),
       (tabs) => tabs.length >= 2,
-      { describe: 'two covering web tabs to open', timeoutMs: 15_000 },
-    );
+      { describe: 'two covering web tabs to open', timeoutMs: 15_000 });
 
     for (const tab of opened) {
       await browser.close({ tab: tab.tab_id });
@@ -61,14 +52,12 @@ contract(
     await eventually(
       async () => (await browser.tabs()).filter((tab) => !tabsBefore.has(tab.tab_id)),
       (tabs) => tabs.length === 0,
-      { describe: 'covering web tabs to close', timeoutMs: 15_000 },
-    );
+      { describe: 'covering web tabs to close', timeoutMs: 15_000 });
 
     const layout = await eventually(
       () => app.surfaceLayout(),
       (snapshot) => snapshot.activeMainId === snapshot.mainSwitcher.rootSurfaceId,
-      { describe: 'root main to become active after closes', timeoutMs: 15_000 },
-    );
+      { describe: 'root main to become active after closes', timeoutMs: 15_000 });
     expect(layout.mains.includes('lingxia-showcase')).toBeTruthy();
 
     const after = await eventually(renderedBodyLength, (length) => length > 0, {
@@ -76,5 +65,4 @@ contract(
       timeoutMs: 20_000,
     });
     expect(after > 0).toBeTruthy();
-  },
-);
+  });

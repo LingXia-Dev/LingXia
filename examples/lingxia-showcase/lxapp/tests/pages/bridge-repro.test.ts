@@ -1,6 +1,7 @@
-import { expect, test } from '@rongjs/test';
+import { expect, spec } from '@lingxia/test';
 import { showcaseApp } from '../helpers/app.js';
 import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
+import { attachShot } from '../helpers/poll.js';
 
 const waitForText = (
   app: Parameters<typeof waitForElementText>[0],
@@ -8,7 +9,7 @@ const waitForText = (
   predicate: (text: string) => boolean,
 ) => waitForElementText(app, 'bridge-repro', css, predicate, 30_000);
 
-test('keeps bootstrap, calls, and streams healthy across the page bridge', async () => {
+spec('keeps bootstrap, calls, and streams healthy across the page bridge', async (t) => {
   const app = showcaseApp();
   try {
     await app.nav.relaunch({ page: 'bridge-repro' });
@@ -36,7 +37,7 @@ test('keeps bootstrap, calls, and streams healthy across the page bridge', async
   } catch (error) {
     try {
       const screenshot = await app.page.screenshot({ page: 'bridge-repro' });
-      await test.attach?.('bridge-repro-failure.png', {
+      await attachShot(t, 'bridge-repro-failure.png', {
         mimeType: 'image/png',
         base64: screenshot.base64,
       });

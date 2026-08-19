@@ -1,4 +1,4 @@
-import { expect, test } from '@rongjs/test';
+import { expect, spec } from '@lingxia/test';
 import { showcaseApp } from '../helpers/app.js';
 import {
   waitForElementAttribute,
@@ -6,7 +6,7 @@ import {
   waitForElementText,
 } from '../helpers/page.js';
 
-test('streams a complete response from real page input', async () => {
+spec('streams a complete response from real page input', async () => {
   const app = showcaseApp();
   await app.nav.relaunch({ page: 'stream' });
   await app.page.waitFor({ page: 'stream', css: '[data-testid="stream-page"]' });

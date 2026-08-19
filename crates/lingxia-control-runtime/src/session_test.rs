@@ -201,9 +201,22 @@ struct FrameworkEvent {
     event_type: String,
     name: Option<String>,
     full_name: Option<String>,
-    status: Option<TestCaseStatus>,
+    path: Option<String>,
+    timeout_ms: Option<u64>,
+    #[serde(default)]
+    covers: Vec<String>,
+    status: Option<String>,
     duration_ms: Option<u64>,
     error: Option<TestRunError>,
+}
+
+fn parse_case_status(status: &str) -> Result<TestCaseStatus, String> {
+    match status {
+        "passed" => Ok(TestCaseStatus::Passed),
+        "failed" => Ok(TestCaseStatus::Failed),
+        "skipped" => Ok(TestCaseStatus::Skipped),
+        other => Err(format!("unknown case status: {other}")),
+    }
 }
 
 fn framework_event(value: Value) -> Result<TestEventPayload, String> {
@@ -216,17 +229,33 @@ fn framework_event(value: Value) -> Result<TestEventPayload, String> {
         "case_started" => Ok(TestEventPayload::CaseStarted {
             name: required(event.name, "name")?,
             full_name: required(event.full_name, "full_name")?,
+            timeout_ms: event.timeout_ms,
+            covers: event.covers,
         }),
         "case_finished" => Ok(TestEventPayload::CaseFinished {
             name: required(event.name, "name")?,
             full_name: required(event.full_name, "full_name")?,
-            status: event
-                .status
-                .ok_or_else(|| "@rongjs/test case_finished is missing status".to_string())?,
+            status: parse_case_status(
+                event
+                    .status
+                    .as_deref()
+                    .ok_or_else(|| "case_finished is missing status".to_string())?,
+            )?,
             duration_ms: event.duration_ms.unwrap_or_default(),
             error: event.error,
         }),
-        other => Err(format!("unknown @rongjs/test event type: {other}")),
+        "step_started" => Ok(TestEventPayload::StepStarted {
+            name: required(event.name, "name")?,
+            path: event.path.unwrap_or_default(),
+        }),
+        "step_finished" => Ok(TestEventPayload::StepFinished {
+            name: required(event.name, "name")?,
+            path: event.path.unwrap_or_default(),
+            status: event.status.unwrap_or_else(|| "passed".to_string()),
+            duration_ms: event.duration_ms.unwrap_or_default(),
+            error: event.error,
+        }),
+        other => Err(format!("unknown test event type: {other}")),
     }
 }
 
@@ -330,6 +359,50 @@ mod tests {
         let payload = framework_event(serde_json::json!({ "type": "suite_started" }));
 
         assert!(payload.is_err());
+    }
+
+    #[test]
+    fn case_started_carries_timeout_and_covers() {
+        let payload = framework_event(serde_json::json!({
+            "type": "case_started",
+            "name": "home",
+            "full_name": "home",
+            "timeout_ms": 30_000,
+            "covers": ["lx.tabBar.update"]
+        }))
+        .unwrap();
+        match payload {
+            TestEventPayload::CaseStarted {
+                timeout_ms, covers, ..
+            } => {
+                assert_eq!(timeout_ms, Some(30_000));
+                assert_eq!(covers, vec!["lx.tabBar.update"]);
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn step_events_are_additive() {
+        let started = framework_event(serde_json::json!({
+            "type": "step_started",
+            "name": "outer",
+            "path": "outer"
+        }))
+        .unwrap();
+        assert!(matches!(started, TestEventPayload::StepStarted { .. }));
+        let finished = framework_event(serde_json::json!({
+            "type": "step_finished",
+            "name": "outer",
+            "path": "outer",
+            "status": "timeout",
+            "duration_ms": 12
+        }))
+        .unwrap();
+        match finished {
+            TestEventPayload::StepFinished { status, .. } => assert_eq!(status, "timeout"),
+            other => panic!("unexpected {other:?}"),
+        }
     }
 
     #[test]
