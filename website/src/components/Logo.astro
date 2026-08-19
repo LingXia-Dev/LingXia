@@ -1,0 +1,24 @@
+---
+interface Props {
+  size?: number;
+  withWordmark?: boolean;
+  class?: string;
+}
+const { size = 32, withWordmark = true, class: cls = '' } = Astro.props;
+
+// The LingXia mark: 凵 — the open vessel of 匣 — holding a rising pearl (灵).
+// Vessel strokes in currentColor so it sits on any surface; the pearl is jade.
+---
+
+<span class={`inline-flex items-center gap-2.5 ${cls}`}>
+  <svg width={size} height={size} viewBox="0 0 100 100" fill="none" role="img" aria-label="LingXia" class="shrink-0">
+    <path
+      d="M 28.1 44 L 28.1 57.4 Q 28.1 67.6 38.3 67.6 L 61.7 67.6 Q 71.9 67.6 71.9 57.4 L 71.9 44"
+      stroke="currentColor"
+      stroke-width="9.4"
+      stroke-linecap="round"
+    ></path>
+    <circle cx="50" cy="41.5" r="10" fill="var(--color-jade-500, #14cf95)"></circle>
+  </svg>
+  {withWordmark && <span class="font-display text-[1.15rem] font-semibold tracking-tight text-fg">LingXia</span>}
+</span>

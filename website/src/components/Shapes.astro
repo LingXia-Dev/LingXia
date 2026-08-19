@@ -1,0 +1,72 @@
+---
+import SectionHeading from './SectionHeading.astro';
+import Icon from './Icon.astro';
+import type { Lang, T } from '~/i18n/ui';
+
+interface Props {
+  t: T;
+  lang: Lang;
+}
+const { t } = Astro.props;
+
+const accents = ['text-jade-700', 'text-cyan-600', 'text-ink-600'];
+
+// The vessel stroke of the brand mark, shared by all three variants.
+const VESSEL =
+  'M 28.1 44 L 28.1 57.4 Q 28.1 67.6 38.3 67.6 L 61.7 67.6 Q 71.9 67.6 71.9 57.4 L 71.9 44';
+
+// One mark per shape: a single pearl (one lxapp), a vessel holding several
+// (host app embeds many lxapps), and a hex pearl (Rust extension).
+const marks: { pearls?: { cx: number; cy: number; r: number; o: number }[]; hex?: boolean }[] = [
+  { pearls: [{ cx: 50, cy: 41.5, r: 10, o: 1 }] },
+  {
+    pearls: [
+      { cx: 50, cy: 41.5, r: 9, o: 1 },
+      { cx: 30.5, cy: 25, r: 6, o: 0.45 },
+      { cx: 69.5, cy: 21, r: 5, o: 0.7 },
+    ],
+  },
+  { hex: true },
+];
+const HEX_POINTS = '50,29 60.8,35.25 60.8,47.75 50,54 39.2,47.75 39.2,35.25';
+---
+
+<section id="build" class="section">
+  <div class="mx-auto max-w-7xl px-5 sm:px-8">
+    <SectionHeading eyebrow={t.shapes.eyebrow} title={t.shapes.title} subtitle={t.shapes.subtitle} />
+
+    <div class="mt-14 grid gap-5 lg:grid-cols-3">
+      {
+        t.shapes.items.map((s, i) => (
+          <div class="reveal" data-delay={i * 90}>
+            <div class="card card-hover relative flex h-full flex-col overflow-hidden p-7">
+              <span class="pointer-events-none absolute right-4 top-2 font-display text-7xl font-bold text-black/[0.05] select-none">
+                {s.n}
+              </span>
+              <div class="relative flex-1">
+                <svg
+                  width="38"
+                  height="38"
+                  viewBox="0 0 100 100"
+                  fill="none"
+                  aria-hidden="true"
+                  class="mb-4 text-fg"
+                >
+                  <path d={VESSEL} stroke="currentColor" stroke-width="9.4" stroke-linecap="round" />
+                  {marks[i].pearls?.map((p) => <circle cx={p.cx} cy={p.cy} r={p.r} fill="#14CF95" opacity={p.o} />)}
+                  {marks[i].hex && <polygon points={HEX_POINTS} fill="#14CF95" />}
+                </svg>
+                <span class={`block text-sm font-semibold uppercase tracking-widest ${accents[i]}`}>{s.tag}</span>
+                <p class="mt-3 text-[0.97rem] leading-relaxed text-fg-muted">{s.desc}</p>
+              </div>
+              <div class="dark-surface relative mt-6 flex items-center gap-2 rounded-lg border border-white/10 px-3 py-2.5">
+                <Icon name="cli" size={15} class="shrink-0 text-fg-dim" />
+                <code class="min-w-0 flex-1 overflow-x-auto whitespace-nowrap font-mono text-xs text-fg-muted [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{s.cmd}</code>
+              </div>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

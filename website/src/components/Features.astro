@@ -1,0 +1,53 @@
+---
+import SectionHeading from './SectionHeading.astro';
+import Icon from './Icon.astro';
+import PlatformIcon from './PlatformIcon.astro';
+import type { Lang, T } from '~/i18n/ui';
+
+interface Props {
+  t: T;
+  lang: Lang;
+}
+const { t } = Astro.props;
+
+// Bento rhythm: wide / narrow, narrow / wide, half / half.
+const spans = [
+  'lg:col-span-4',
+  'lg:col-span-2',
+  'lg:col-span-2',
+  'lg:col-span-4',
+  'lg:col-span-3',
+  'lg:col-span-3',
+];
+
+const platformNames = ['android', 'ios', 'macos', 'windows', 'harmony'] as const;
+---
+
+<section id="features" class="section">
+  <div class="mx-auto max-w-7xl px-5 sm:px-8">
+    <SectionHeading eyebrow={t.features.eyebrow} title={t.features.title} subtitle={t.features.subtitle} />
+
+    <div class="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-6">
+      {
+        t.features.items.map((f, i) => (
+          <div class={`reveal ${spans[i] ?? 'lg:col-span-2'}`} data-delay={(i % 3) * 80}>
+            <div class="card card-hover group relative h-full overflow-hidden p-6 sm:p-7">
+              <span class="inline-flex h-12 w-12 items-center justify-center rounded-xl border border-black/10 bg-gradient-to-b from-black/[0.03] to-transparent text-jade-600 transition-colors group-hover:text-jade-500">
+                <Icon name={f.icon} size={24} />
+              </span>
+              <h3 class="mt-5 font-display text-lg font-semibold text-fg">{f.title}</h3>
+              <p class="mt-2.5 max-w-md text-[0.95rem] leading-relaxed text-fg-muted">{f.desc}</p>
+              {f.icon === 'platforms' && (
+                <div class="pointer-events-none absolute right-6 top-6 hidden items-center gap-3 text-fg-dim/70 lg:flex">
+                  {platformNames.map((p) => (
+                    <PlatformIcon name={p} size={22} />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

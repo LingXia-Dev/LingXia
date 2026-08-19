@@ -1,0 +1,73 @@
+---
+import SectionHeading from './SectionHeading.astro';
+import Icon from './Icon.astro';
+import type { Lang, T } from '~/i18n/ui';
+
+interface Props {
+  t: T;
+  lang: Lang;
+}
+const { t } = Astro.props;
+
+const accents = [
+  { dot: 'bg-jade-500', text: 'text-jade-600', glow: 'bg-jade-400/15', icon: 'split' },
+  { dot: 'bg-cyan-500', text: 'text-cyan-600', glow: 'bg-cyan-400/15', icon: 'bridge' },
+  { dot: 'bg-ink-600', text: 'text-ink-600', glow: 'bg-ink-500/10', icon: 'rust' },
+];
+const layers = t.arch.layers.map((l, i) => ({ ...l, ...accents[i] }));
+---
+
+<section id="architecture" class="section">
+  <div class="mx-auto max-w-7xl px-5 sm:px-8">
+    <SectionHeading eyebrow={t.arch.eyebrow} title={t.arch.title} subtitle={t.arch.subtitle} />
+
+    <div class="relative mt-14">
+      <!-- connecting line (desktop) -->
+      <div class="pointer-events-none absolute left-0 right-0 top-1/2 hidden -translate-y-1/2 lg:block" aria-hidden="true">
+        <svg class="w-full" height="2" preserveAspectRatio="none" viewBox="0 0 100 2">
+          <line x1="0" y1="1" x2="100" y2="1" stroke="url(#flow)" stroke-width="1.5" stroke-dasharray="4 4" style="animation: dash 1.2s linear infinite"></line>
+          <defs>
+            <linearGradient id="flow" x1="0" y1="0" x2="100" y2="0" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#14cf95"></stop>
+              <stop offset="0.5" stop-color="#38d4f0"></stop>
+              <stop offset="1" stop-color="#43536a"></stop>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+
+      <div class="relative grid gap-5 lg:grid-cols-3 lg:gap-6">
+        {
+          layers.map((l, i) => (
+            <div class="reveal" data-delay={i * 90}>
+              <div class="ring-aura card card-hover relative h-full overflow-hidden p-6 sm:p-7">
+                <div class={`absolute -right-6 -top-6 h-24 w-24 rounded-full ${l.glow} blur-2xl`} />
+                <div class="relative">
+                  <div class="flex items-center justify-between">
+                    <span class={`inline-flex h-11 w-11 items-center justify-center rounded-xl border border-black/10 bg-black/[0.02] ${l.text}`}>
+                      <Icon name={l.icon} size={22} />
+                    </span>
+                    <span class="font-mono text-xs text-fg-dim">0{i + 1}</span>
+                  </div>
+                  <h3 class="mt-5 font-display text-2xl font-semibold">{l.tag}</h3>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <span class="inline-flex items-center gap-1.5 rounded-full border border-black/8 bg-black/[0.03] px-2.5 py-1 text-xs text-fg-muted">
+                      <span class={`h-1.5 w-1.5 rounded-full ${l.dot}`} />
+                      {l.runs}
+                    </span>
+                    <span class="rounded-full border border-black/8 bg-black/[0.03] px-2.5 py-1 text-xs text-fg-muted">
+                      {l.owns}
+                    </span>
+                  </div>
+                  <p class="mt-4 text-[0.95rem] leading-relaxed text-fg-muted">{l.desc}</p>
+                </div>
+              </div>
+            </div>
+          ))
+        }
+      </div>
+
+      <p class="reveal mt-8 text-center font-mono text-sm text-fg-dim">{t.arch.footnote}</p>
+    </div>
+  </div>
+</section>

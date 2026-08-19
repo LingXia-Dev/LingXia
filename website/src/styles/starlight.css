@@ -1,0 +1,15 @@
+/* LingXia brand accent for Starlight docs — jade, matching the marketing site. */
+
+/* Dark theme (Starlight default) */
+:root {
+  --sl-color-accent-low: #0a3a2c;
+  --sl-color-accent: #14cf95;
+  --sl-color-accent-high: #b6fbe2;
+}
+
+/* Light theme */
+:root[data-theme='light'] {
+  --sl-color-accent-low: #b6fbe2;
+  --sl-color-accent: #0a7d5e;
+  --sl-color-accent-high: #053d2e;
+}

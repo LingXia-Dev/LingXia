@@ -1,0 +1,30 @@
+---
+import Icon from './Icon.astro';
+
+interface Props {
+  command: string;
+  copyLabel: string;
+  copiedLabel: string;
+  prompt?: string;
+  class?: string;
+}
+const { command, copyLabel, copiedLabel, prompt = '$', class: cls = '' } = Astro.props;
+---
+
+<div
+  class={`dark-surface group flex items-center gap-3 rounded-xl border border-white/10 py-2.5 pl-4 pr-2.5 font-mono text-sm shadow-lg shadow-black/10 ${cls}`}
+>
+  <span class="select-none text-jade-400">{prompt}</span>
+  <code class="min-w-0 flex-1 overflow-x-auto whitespace-nowrap text-fg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{command}</code>
+  <button
+    type="button"
+    data-copy={command}
+    data-copied-label={copiedLabel}
+    data-label={copyLabel}
+    class="copy-btn inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:border-jade-400/40 hover:text-fg"
+    aria-label={copyLabel}
+  >
+    <span class="copy-icon"><Icon name="copy" size={14} /></span>
+    <span class="copy-text hidden sm:inline">{copyLabel}</span>
+  </button>
+</div>

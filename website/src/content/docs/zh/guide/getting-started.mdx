@@ -1,0 +1,116 @@
+---
+title: 快速开始
+description: 安装 LingXia 命令行、检查环境，并创建第一个项目。
+sidebar:
+  order: 2
+---
+
+import { Image } from 'astro:assets';
+import runnerShot from '../../../../assets/showcase/macos.png';
+
+从零到一个跑起来的 LingXia 应用，最快的路径。
+
+## 前置条件
+
+始终需要：
+
+- **Node.js** 18 或更高版本
+
+按目标平台只装需要的工具链：
+
+| 目标 | 工具链 |
+|---|---|
+| Android | Android SDK + NDK（命令行工具）、JDK |
+| iOS / macOS | macOS 主机上的 Xcode |
+| Harmony | Harmony 命令行工具 SDK |
+| Windows 原生宿主 | Windows 上的 Rust + MSVC Build Tools / Visual Studio |
+
+若要写 Rust 原生代码（自定义宿主 API、纯原生宿主），还需经 [rustup](https://rustup.rs) 安装 **Rust** 工具链。
+
+## 1. 安装命令行
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | sh
+lingxia version
+```
+
+Windows PowerShell：
+
+```powershell
+irm https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.ps1 | iex
+lingxia version
+```
+
+两个安装器都会把 `lingxia` 与 `lxdev` 放进 `~/.local/bin`（Windows 为 `%USERPROFILE%\.local\bin`）。若 shell 安装器提示该目录不在 `PATH`，请把它输出的配置行加入 shell profile。
+
+## 2. 检查环境
+
+```bash
+lingxia doctor
+```
+
+限定到单个平台：
+
+```bash
+lingxia doctor --platform android
+```
+
+继续前，先修复所有报告为 **fail** 的项。
+
+## 3. 创建第一个项目
+
+二选一（见[构建形态](../what-you-build/)）：
+
+### 独立 lxapp
+
+```bash
+lingxia new my-lxapp -t lxapp -y
+cd my-lxapp
+lingxia dev
+```
+
+`lingxia dev` 会构建 lxapp，并在 macOS 或 Windows 上启动 LingXia Runner。
+
+<Image src={runnerShot} alt="macOS 上的 LingXia Runner 正在模拟 iPhone 15 Pro，运行 showcase lxapp" densities={[1, 2]} style="max-width:320px;border-radius:14px;border:1px solid rgba(0,0,0,0.08);box-shadow:0 24px 60px -20px rgba(0,0,0,0.35)" />
+
+*`lingxia dev` 构建 View + Logic 并打开 LingXia Runner——此处在 macOS 上模拟 iPhone 15 Pro。可从标题栏的选择器切换模拟设备。*
+
+### 原生宿主应用
+
+```bash
+lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y
+cd my-app
+lingxia dev
+```
+
+`-p` 接受逗号分隔的列表：`-p android,ios,macos,harmony,windows` 或 `-p all`。
+
+## 4. 用 lxdev 驱动运行中的会话
+
+`lingxia dev` 负责实时会话，**`lxdev`** 负责驱动与检查。它可以在不重启原生会话的情况下重建并重载 lxapp，自动化浏览器标签与 lxapp 页面，控制宿主窗口，运行测试，并检查汇总日志。
+
+```bash
+lxdev --help          # browser、app、lxapp、test、logs、session
+lxdev logs -f         # 跟随原生 + webview + 逻辑日志
+lxdev lxapp reload    # 原地重建并重载当前 lxapp
+```
+
+`lxdev` 随 CLI 一起分发，通过每用户的本地 broker 发现实时会话。只有一个会话时可从任意目录自动连接；存在多个会话时，用 `lxdev --session <id-or-target> ...` 指定。
+
+完整的“编辑 → 重载 → 交互 → 断言 → 查日志”闭环见[开发工作流](../development-workflow/)。
+
+## 5. 与 AI 助手协作
+
+LingXia 的深度参考以可移植的 markdown **技能**形式分发——决策树、每条 CLI 命令、页面编写、原生组件、`lx.*` 逻辑 API 与 Rust 接口，经过编排，让助手直接路由到所需章节。
+
+技能为**可选**，以 npm 包分发：
+
+```bash
+npx @lingxia/skill install              # ./.claude/skills/lingxia/
+npx @lingxia/skill install --user       # ~/.claude/skills/lingxia/
+npx @lingxia/skill install --agents-md  # 同时为 Codex 类工具写入 AGENTS.md
+```
+
+- **Claude Code / Claude Agent SDK** —— `npx @lingxia/skill install`；Claude 会发现 `.claude/skills/lingxia/SKILL.md`。
+- **OpenAI Codex CLI** —— 加 `--agents-md`；Codex 读取 `<project>/AGENTS.md`。
+- **Cursor、Copilot 及其他读 markdown 的助手** —— 把工具指向 `.claude/skills/lingxia/SKILL.md`。

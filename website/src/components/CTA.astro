@@ -1,0 +1,87 @@
+---
+import CopyCommand from './CopyCommand.astro';
+import Icon from './Icon.astro';
+import { INSTALL_CMD, GITHUB_URL, guideUrl } from '~/lib/url';
+import type { Lang, T } from '~/i18n/ui';
+
+interface Props {
+  t: T;
+  lang: Lang;
+}
+const { t, lang } = Astro.props;
+---
+
+<section class="section">
+  <div class="mx-auto max-w-7xl px-5 sm:px-8">
+    <div class="reveal ring-aura ring-spin card relative overflow-hidden px-6 py-14 text-center sm:px-12 sm:py-20">
+      <div class="aura left-1/2 top-0 h-72 w-[36rem] -translate-x-1/2" style="background: radial-gradient(circle, rgba(20,207,149,0.14), transparent 65%)"></div>
+      <div class="absolute inset-0 bg-dots opacity-40 [mask-image:radial-gradient(ellipse_at_center,black,transparent_75%)]"></div>
+
+      <div class="relative mx-auto max-w-2xl">
+        <!-- The vessel holding several lxapps: side pearls drift while the main pearl rests. -->
+        <svg
+          width="64"
+          height="64"
+          viewBox="0 0 100 100"
+          fill="none"
+          aria-hidden="true"
+          class="mx-auto mb-6 text-fg"
+        >
+          <path
+            d="M 28.1 44 L 28.1 57.4 Q 28.1 67.6 38.3 67.6 L 61.7 67.6 Q 71.9 67.6 71.9 57.4 L 71.9 44"
+            stroke="currentColor"
+            stroke-width="9.4"
+            stroke-linecap="round"></path>
+          <circle class="cta-pearl" cx="50" cy="41.5" r="10" fill="#14cf95"></circle>
+          <circle class="cta-pearl cta-pearl-2" cx="30" cy="24" r="6" fill="#35e3ad" opacity="0.55"></circle>
+          <circle class="cta-pearl cta-pearl-3" cx="70.5" cy="19.5" r="5" fill="#6ff5cd" opacity="0.5"></circle>
+        </svg>
+
+        <h2 class="text-balance font-display text-3xl font-semibold leading-tight tracking-tight sm:text-4xl lg:text-5xl">
+          {t.cta.title}
+        </h2>
+        <p class="mt-4 text-lg text-fg-muted">{t.cta.subtitle}</p>
+
+        <div class="mx-auto mt-8 max-w-md">
+          <CopyCommand command={INSTALL_CMD} copyLabel={t.hero.copy} copiedLabel={t.hero.copied} />
+        </div>
+
+        <div class="mt-7 flex flex-wrap items-center justify-center gap-3">
+          <a href={guideUrl(lang, 'getting-started')} class="btn btn-primary">
+            {t.cta.ctaPrimary}
+            <Icon name="arrow" size={17} />
+          </a>
+          <a href={GITHUB_URL} target="_blank" rel="noopener" class="btn btn-ghost">
+            <Icon name="external" size={16} />
+            {t.cta.ctaSecondary}
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  @keyframes pearl-drift {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-6px);
+    }
+  }
+  .cta-pearl {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: pearl-drift 5s ease-in-out infinite;
+  }
+  .cta-pearl-2 {
+    animation-duration: 6.5s;
+    animation-delay: -2.2s;
+  }
+  .cta-pearl-3 {
+    animation-duration: 7.5s;
+    animation-delay: -4.1s;
+  }
+</style>

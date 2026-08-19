@@ -1,0 +1,21 @@
+# build output
+dist/
+# generated types
+.astro/
+# generated reference docs (TypeDoc API + components generator) — rebuilt each build
+src/content/docs/reference/api/
+src/content/docs/reference/components/
+# deps
+node_modules/
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+# environment
+.env
+.env.production
+# macOS
+.DS_Store
+# design exploration exports — kept local, not part of the site build
+.design_back/
