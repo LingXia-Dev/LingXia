@@ -39,7 +39,7 @@ urlencoding = { workspace = true }
 base64 = { workspace = true }
 bytes = "1.11"
 http-body-util = "0.1"
-redb = "3.1.0"
+redb = { workspace = true }
 tar = "0.4.44"
 zstd = "0.13.3"
 ring = "0.17.14"

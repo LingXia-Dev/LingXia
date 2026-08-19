@@ -19,7 +19,7 @@
 use crate::error::ProxyError;
 use crate::upstream::UpstreamStream;
 use base64::Engine as _;
-use rcgen::{CertificateParams, KeyPair};
+use rcgen::{CertificateParams, Issuer, KeyPair};
 use rustls::ClientConfig;
 use rustls::RootCertStore;
 use rustls::ServerConfig;
@@ -36,13 +36,10 @@ pub struct CaConfig {
     /// Original DER bytes — presented in the TLS chain so the browser can
     /// match it against the installed trusted root.
     pub cert_der: Vec<u8>,
-    /// Private key for signing per-domain certificates.
-    key: KeyPair,
-    /// rcgen Certificate reconstructed from cert_der + key.
-    /// Used as the `issuer` argument in `signed_by()`.
-    /// Its DER differs from cert_der (fresh serial/dates) but shares the
-    /// same SPKI, so AKI in signed domain certs resolves correctly.
-    signing_cert: rcgen::Certificate,
+    /// Signs per-domain certificates. Parsed from cert_der, so it carries the
+    /// real CA distinguished name and key-id method and the AKI in signed
+    /// domain certs resolves against the installed root.
+    issuer: Issuer<'static, KeyPair>,
 }
 
 impl CaConfig {
@@ -60,20 +57,10 @@ impl CaConfig {
         let key = KeyPair::from_pem(key_pem)
             .map_err(|e| ProxyError::Mitm(format!("CA key load: {e}")))?;
 
-        // Reconstruct signing Certificate from the DER + key.
-        // self_signed() yields a fresh cert with the same SPKI; AKI in domain
-        // certs is derived from SPKI so the chain resolves against cert_der.
-        let params = CertificateParams::from_ca_cert_pem(cert_pem)
+        let issuer = Issuer::from_ca_cert_pem(cert_pem, key)
             .map_err(|e| ProxyError::Mitm(format!("CA cert parse: {e}")))?;
-        let signing_cert = params
-            .self_signed(&key)
-            .map_err(|e| ProxyError::Mitm(format!("CA signing cert init: {e}")))?;
 
-        Ok(Self {
-            cert_der,
-            key,
-            signing_cert,
-        })
+        Ok(Self { cert_der, issuer })
     }
 }
 
@@ -99,7 +86,7 @@ fn server_config_for(host: &str, ca: &CaConfig) -> Result<Arc<ServerConfig>, Pro
         .map_err(|e| ProxyError::Mitm(format!("domain params: {e}")))?;
 
     let domain_cert = params
-        .signed_by(&domain_key, &ca.signing_cert, &ca.key)
+        .signed_by(&domain_key, &ca.issuer)
         .map_err(|e| ProxyError::Mitm(format!("domain cert sign: {e}")))?;
 
     // Chain: domain cert + original CA cert (the one the browser trusts).

@@ -102,9 +102,9 @@ tokio = { workspace = true, optional = true }
 image = { version = "0.25.10", default-features = false, features = ["png", "ico", "bmp", "jpeg", "gif", "webp"], optional = true }
 log = { workspace = true, optional = true }
 # SVG sidebar/app icons (lxapp icons may be SVG, as on macOS).
-resvg = { version = "0.45.1", optional = true }
-tiny-skia = { version = "0.11.4", optional = true }
-usvg = { version = "0.45.1", optional = true }
+resvg = { workspace = true, optional = true }
+tiny-skia = { workspace = true, optional = true }
+usvg = { workspace = true, optional = true }
 lxapp = { workspace = true, default-features = false, optional = true }
 lingxia-messaging = { workspace = true, optional = true }
 lingxia-platform = { workspace = true, optional = true }

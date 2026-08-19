@@ -32,10 +32,10 @@ log         = { workspace = true }
 serde       = { workspace = true }
 tokio       = { workspace = true, features = ["net", "io-util"] }
 http        = { workspace = true }
-fast-socks5 = "0.9"
+fast-socks5 = "1.0"
 
 # capture-only deps
-rcgen        = { version = "0.13",  optional = true, features = ["x509-parser"] }
+rcgen        = { workspace = true, optional = true, features = ["x509-parser"] }
 rustls       = { version = "0.23",  optional = true, default-features = false, features = ["ring", "std", "tls12"] }
 rustls-native-certs = { version = "0.8", optional = true }
 tokio-rustls = { version = "0.26",  optional = true }
