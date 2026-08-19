@@ -440,11 +440,14 @@ export class LiveFixture implements Fixture {
   /**
    * The driver's own eval default is a flat few seconds, so a call that runs
    * long under load fails a spec that still had most of its budget left. An
-   * eval inherits the spec's budget unless the spec pins its own.
+   * eval gets a share of the spec's budget instead — a third, capped — never
+   * all of it: a call allowed to run the full budget leaves the spec no room
+   * to retry, so one stalled call takes the whole spec down with it.
    */
   private withEvalBudget<T extends { timeoutMs?: number }>(options: T): T {
     if (options && typeof options === "object" && options.timeoutMs === undefined) {
-      return { ...options, timeoutMs: Math.min(this.specBudgetMs, MAX_EVAL_BUDGET_MS) };
+      const share = Math.floor(this.specBudgetMs / 3);
+      return { ...options, timeoutMs: Math.max(1, Math.min(share, MAX_EVAL_BUDGET_MS)) };
     }
     return options;
   }

@@ -139,7 +139,7 @@ test("locator re-resolves across mutations", async () => {
   assert.equal(protocol.passed, 1, decodeAttachment(attachments, "report.json"));
 });
 
-test("an eval inherits the spec budget unless the caller pins its own", async () => {
+test("an eval gets a share of the spec budget unless the caller pins its own", async () => {
   const world = createWorld();
   installFakeHost(world);
   const seen = [];
@@ -150,7 +150,7 @@ test("an eval inherits the spec budget unless the caller pins its own", async ()
     return inner(options);
   };
 
-  spec("inherits", { timeout: 12_000 }, async (t) => {
+  spec("takes a third of the spec budget", { timeout: 12_000 }, async (t) => {
     await t.app.eval({ script: "1" });
   });
   spec("caps at the eval ceiling", { timeout: 600_000 }, async (t) => {
@@ -162,7 +162,8 @@ test("an eval inherits the spec budget unless the caller pins its own", async ()
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0);
-  assert.deepEqual(seen, [12_000, 30_000, 250]);
+  // Never the whole budget: a call that eats it leaves no room to retry.
+  assert.deepEqual(seen, [4_000, 10_000, 250]);
 });
 
 test("wrapping the page driver never writes back onto the driver", async () => {
@@ -186,7 +187,7 @@ test("wrapping the page driver never writes back onto the driver", async () => {
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0, JSON.stringify(protocol.cases[0]?.error));
-  assert.deepEqual(budgets, [9_000]);
+  assert.deepEqual(budgets, [3_000]);
   assert.equal(driver.page.eval, wrappedOriginal, "the driver's own eval was replaced");
   assert.equal(driver.page.testId, original.testId);
   assert.equal(driver.page.css, original.css);
