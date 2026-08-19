@@ -23,7 +23,7 @@
       </div>
 
       <div class="bg-black rounded-xl overflow-hidden">
-        <LxNativeRoot class="block w-full" :style="{ aspectRatio: '16 / 9' }">
+        <LxNativeRoot class="block w-full" :style="{ aspectRatio: '16 / 9' }" data-testid="inline-native-root">
           <LxVideo
             :id="video.id"
             data-testid="native-video"
@@ -46,6 +46,9 @@
             @quality-change="onQualityChange"
             @rate-change="onRateChange"
           />
+          <LxNativeCover pointer-events="none" data-testid="inline-native-cover">
+            <LxNativeText class="absolute left-3 top-3 text-white text-xs">Inline native</LxNativeText>
+          </LxNativeCover>
         </LxNativeRoot>
       </div>
 
@@ -142,7 +145,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useLxPage } from '@lingxia/vue';
-import { LxNativeRoot, LxVideo } from '@lingxia/vue';
+import { LxNativeCover, LxNativeRoot, LxNativeText, LxVideo } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type VideoConfig = {
