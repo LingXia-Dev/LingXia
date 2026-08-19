@@ -85,9 +85,10 @@ unsafe impl Send for VideoPlayer {}
 unsafe impl Sync for VideoPlayer {}
 
 impl VideoPlayer {
-    /// Creates a player rendering into `video_window`. `sink` receives
-    /// playback transitions on this same (UI) thread.
-    pub(crate) fn new(video_window: HWND, sink: VideoEventSink) -> Option<Self> {
+    /// Creates a player. `video_window` is the EVR target; `None` is
+    /// windowless (decode + events only — island nodes paint in DComp).
+    /// `sink` receives playback transitions on this same thread.
+    pub(crate) fn new(video_window: Option<HWND>, sink: VideoEventSink) -> Option<Self> {
         let shared = Arc::new(Mutex::new(SharedState {
             rate: 1.0,
             ..Default::default()
@@ -104,7 +105,7 @@ impl VideoPlayer {
                 false,
                 MFP_OPTION_NONE,
                 &callback,
-                Some(video_window),
+                video_window,
                 Some(&mut player),
             )
         };
