@@ -19,7 +19,8 @@ pub use geometry::{
     last_applied_geometry_revision,
 };
 pub use host::{
-    IslandPaintNode, IslandSession, IslandVideoNode, is_island_action, parse_applied_revision,
+    IslandCompositor, IslandPaintNode, IslandSession, IslandVideoNode, is_island_action,
+    parse_applied_revision,
 };
 pub use lease::{
     DEFAULT_LEASE_DURATION_MS, LeasePhase, LeaseState, NEGOTIATION_TIMEOUT_MS, host_can_display,
