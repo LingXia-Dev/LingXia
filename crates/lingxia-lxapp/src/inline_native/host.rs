@@ -24,6 +24,16 @@ pub struct IslandVideoNode {
     pub props: Value,
 }
 
+/// One committed island node in composition order, ready for a platform factory.
+#[derive(Debug, Clone)]
+pub struct IslandPaintNode {
+    pub node_ref: NodeRef,
+    pub kind: String,
+    pub author_id: Option<String>,
+    pub author_type: String,
+    pub props: Value,
+}
+
 /// Shared host session for one page document. Platforms paint from
 /// [`IslandSession::composition_order`]; they must not invent HWND_TOP /
 /// SurfaceView hole-punch z-order for these nodes.
@@ -159,6 +169,29 @@ impl IslandSession {
 
     pub fn drain_view_messages(&mut self) -> Vec<Value> {
         std::mem::take(&mut self.pending_view_messages)
+    }
+
+    pub fn composition_nodes(&self) -> Vec<IslandPaintNode> {
+        let mut nodes = Vec::new();
+        for node_ref in self.composition_order() {
+            for state in self.registry.roots() {
+                let Some(node) = state.nodes.get(&node_ref.node_key) else {
+                    continue;
+                };
+                if node.node_ref.node_epoch != node_ref.node_epoch {
+                    continue;
+                }
+                nodes.push(IslandPaintNode {
+                    node_ref: node.node_ref.clone(),
+                    kind: node.kind.clone(),
+                    author_id: node.author_id.clone(),
+                    author_type: node.author_type.clone(),
+                    props: node.props.clone(),
+                });
+                break;
+            }
+        }
+        nodes
     }
 
     pub fn video_nodes(&self) -> Vec<IslandVideoNode> {

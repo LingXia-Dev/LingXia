@@ -262,6 +262,9 @@ fn island_session_orders_committed_siblings_without_hwnd_zorder() {
     let order = session.composition_order();
     let keys: Vec<&str> = order.iter().map(|node| node.node_key.as_str()).collect();
     assert_eq!(keys, ["video", "cover", "btn"]);
+    let painted = session.composition_nodes();
+    let kinds: Vec<&str> = painted.iter().map(|node| node.kind.as_str()).collect();
+    assert_eq!(kinds, ["video", "view", "tappable"]);
     session.set_fullscreen(&root, true).unwrap();
     assert_eq!(session.fullscreen_root().unwrap().root_key, "player");
 }
