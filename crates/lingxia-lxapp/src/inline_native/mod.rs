@@ -7,6 +7,7 @@ mod apply;
 mod geometry;
 mod host;
 mod lease;
+mod resource;
 mod types;
 mod video;
 
@@ -24,6 +25,7 @@ pub use lease::{
     host_tick_lease, view_can_show_fallback, view_on_grant, view_on_renew_granted,
     view_send_accept,
 };
+pub use resource::{media_urls_from_command_options, media_urls_from_props, validate_media_urls};
 pub use types::{
     ALLOWED_HOST_KINDS, GeometryResultRoot, GeometryRootStatus, HostFactoryKind, NativeError,
     NativeErrorCode, NativeGeometryResult, NativeGeometrySnapshot, NativeGeometrySnapshotNode,
