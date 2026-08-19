@@ -14,12 +14,54 @@ import { InlineNativeIslandHost } from './IslandHost';
 const islandHosts: Map<string, InlineNativeIslandHost> = new Map();
 
 export function handleIslandMessage(webTag: string, action: string, payload: Record<string, Object>): boolean {
-  let host = islandHosts.get(webTag);
+  const hostKey = resolveManagerKey(webTag) ?? webTag;
+  let host = islandHosts.get(hostKey);
   if (!host) {
     host = new InlineNativeIslandHost();
-    islandHosts.set(webTag, host);
+    islandHosts.set(hostKey, host);
   }
-  return host.handle(action, payload);
+  const handled = host.handle(action, payload);
+  if (!handled) {
+    return false;
+  }
+  const outgoing = host.drainOutgoing();
+  for (let i = 0; i < outgoing.length; i++) {
+    sendEventToJavaScript(webTag, outgoing[i]);
+  }
+  if (host.canDisplay()) {
+    adoptIslandVideos(webTag, host);
+  }
+  return true;
+}
+
+function tryHandleIslandMessage(webTag: string, propsJson: string): boolean {
+  let parsed: Record<string, Object> | undefined = undefined;
+  try {
+    parsed = JSON.parse(propsJson) as Record<string, Object>;
+  } catch {
+    return false;
+  }
+  if (!parsed) {
+    return false;
+  }
+  const action = parsed['action'] as string;
+  if (!action) {
+    return false;
+  }
+  return handleIslandMessage(webTag, action, parsed);
+}
+
+function adoptIslandVideos(webTag: string, host: InlineNativeIslandHost): void {
+  const resolvedKey = resolveManagerKey(webTag);
+  const manager = getOrCreateEmbedManager(resolvedKey ?? webTag);
+  const ids = host.videoAuthorIds();
+  for (let i = 0; i < ids.length; i++) {
+    const authorId = ids[i];
+    const controller = host.controllerForAuthor(authorId);
+    if (controller) {
+      manager.adoptIslandController(authorId, controller);
+    }
+  }
 }
 
 // Embed managers by webTag
@@ -363,6 +405,9 @@ export function updateNativeComponentProps(
   componentId: string,
   propsJson: string
 ): boolean {
+  if (tryHandleIslandMessage(webTag, propsJson)) {
+    return true;
+  }
   const resolvedKey = resolveManagerKey(webTag);
   if (!resolvedKey) {
     enqueuePendingPropsUpdate(webTag, componentId, propsJson);

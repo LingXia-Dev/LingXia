@@ -119,6 +119,21 @@ export class NativeComponentEmbedManager {
   }
 
   /**
+   * Attach an island-created controller so LingXiaWebView can render it
+   * as a same-level NodeContainer, keyed by author id.
+   */
+  adoptIslandController(componentId: string, controller: NativeComponentNodeController): void {
+    if (!componentId) {
+      return;
+    }
+    this.nodeControllerMap.set(componentId, controller);
+    if (this.componentIdArr.indexOf(componentId) < 0) {
+      this.componentIdArr.push(componentId);
+    }
+    this.onComponentsChanged?.();
+  }
+
+  /**
    * Handle native embed lifecycle change event from Web component
    * This should be called from Web.onNativeEmbedLifecycleChange
    */
