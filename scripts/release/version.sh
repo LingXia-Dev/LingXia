@@ -289,15 +289,12 @@ version = sys.argv[2]
 dry_run = sys.argv[3] == "1"
 text = path.read_text()
 
-patterns = [
-    r'(^lingxia\s*=\s*\{[^}\n]*version\s*=\s*")[^"]+(")',
-    r'(^lingxia-control-runtime\s*=\s*\{[^}\n]*version\s*=\s*")[^"]+(")',
-]
-
-count = 0
-for pattern in patterns:
-    text, changed = re.subn(pattern, rf"\g<1>{version}\2", text, count=1, flags=re.MULTILINE)
-    count += changed
+# Derived from the file, not listed here: the example gained a third
+# versioned dependency and a two-entry list silently left it behind, which
+# then failed to resolve against the freshly bumped crates.
+# Path dependencies carry no `version`, so they are skipped by construction.
+pattern = r'(^(?:lingxia[\w-]*|lxapp)\s*=\s*\{[^}\n]*version\s*=\s*")[^"]+(")'
+text, count = re.subn(pattern, rf"\g<1>{version}\2", text, flags=re.MULTILINE)
 
 if dry_run:
     print(f"would update {path}")
