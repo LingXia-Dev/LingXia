@@ -18,7 +18,7 @@ pub use geometry::{
     GeometryPageState, PendingGeometry, apply_geometry_snapshot, flush_pending_geometry,
     last_applied_geometry_revision,
 };
-pub use host::{IslandSession, is_island_action, parse_applied_revision};
+pub use host::{IslandSession, IslandVideoNode, is_island_action, parse_applied_revision};
 pub use lease::{
     DEFAULT_LEASE_DURATION_MS, LeasePhase, LeaseState, NEGOTIATION_TIMEOUT_MS, host_can_display,
     host_grant_lease, host_on_accept, host_on_renew, host_on_renew_accept, host_revoke_lease,

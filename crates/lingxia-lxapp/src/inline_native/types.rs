@@ -274,47 +274,47 @@ pub struct NativeGeometryResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "action", rename_all = "camelCase")]
+#[serde(tag = "action")]
 pub enum NativeRootLeaseMessage {
-    #[serde(rename = "root.leaseGranted")]
+    #[serde(rename = "root.leaseGranted", rename_all = "camelCase")]
     LeaseGranted {
         root: RootRef,
         lease_id: String,
         sequence: u64,
         lease_duration_ms: u64,
     },
-    #[serde(rename = "root.leaseAccept")]
+    #[serde(rename = "root.leaseAccept", rename_all = "camelCase")]
     LeaseAccept {
         root: RootRef,
         lease_id: String,
         sequence: u64,
     },
-    #[serde(rename = "root.leaseActive")]
+    #[serde(rename = "root.leaseActive", rename_all = "camelCase")]
     LeaseActive {
         root: RootRef,
         lease_id: String,
         sequence: u64,
     },
-    #[serde(rename = "root.leaseRenew")]
+    #[serde(rename = "root.leaseRenew", rename_all = "camelCase")]
     LeaseRenew {
         root: RootRef,
         lease_id: String,
         sequence: u64,
     },
-    #[serde(rename = "root.leaseRenewGranted")]
+    #[serde(rename = "root.leaseRenewGranted", rename_all = "camelCase")]
     LeaseRenewGranted {
         root: RootRef,
         lease_id: String,
         sequence: u64,
         lease_duration_ms: u64,
     },
-    #[serde(rename = "root.leaseRenewAccept")]
+    #[serde(rename = "root.leaseRenewAccept", rename_all = "camelCase")]
     LeaseRenewAccept {
         root: RootRef,
         lease_id: String,
         sequence: u64,
     },
-    #[serde(rename = "root.leaseRevoked")]
+    #[serde(rename = "root.leaseRevoked", rename_all = "camelCase")]
     LeaseRevoked {
         root: RootRef,
         lease_id: String,

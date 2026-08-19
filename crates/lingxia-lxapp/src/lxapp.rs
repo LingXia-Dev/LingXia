@@ -2224,6 +2224,11 @@ impl LxApp {
         scripts
     }
 
+    /// Hosts apply this list to island media URLs (`src` / `poster` / quality / commands).
+    pub fn trusted_network_domains(&self) -> Vec<String> {
+        self.config.trusted_domains().to_vec()
+    }
+
     /// Check if a domain is allowed for network access
     pub fn is_domain_allowed(&self, domain: &str) -> bool {
         self.state
