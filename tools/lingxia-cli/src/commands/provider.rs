@@ -96,12 +96,81 @@ pub fn inject(
     // Back up the lockfile cargo will rewrite, so injected entries never leak.
     let lock_dir = member_root.as_deref().unwrap_or(rust_lib_dir);
     backup_lock(lock_dir, &mut guard);
+    verify_framework_not_duplicated(lock_dir)?;
     println!(
         "  \u{2022} Provider(s): {} (source: {})",
         with_provider.join(", "),
         describe_source(provider_path)
     );
     Ok(Some(guard))
+}
+
+/// Fail when a framework crate resolves from crates.io beside the local copy.
+///
+/// Cargo drops a `[patch]` whose version does not satisfy a requirement — it
+/// does not warn, it resolves the real crate from crates.io instead. A provider
+/// pinning `lingxia-platform = "0.11"` against a 0.12 workspace therefore pulls
+/// a second, older copy of the framework, and the build fails much later at
+/// link time against a symbol that was renamed. Name the cause here instead.
+fn verify_framework_not_duplicated(workspace_dir: &Path) -> Result<()> {
+    let output = Command::new("cargo")
+        .args(["metadata", "--format-version", "1"])
+        .current_dir(workspace_dir)
+        .output()
+        .context("running cargo metadata to check the injected dependency graph")?;
+    if !output.status.success() {
+        // Resolution failed for its own reasons; let the build report that.
+        return Ok(());
+    }
+    let meta: serde_json::Value =
+        serde_json::from_slice(&output.stdout).context("parsing cargo metadata output")?;
+    duplicated_framework_crates(&meta).map_or(Ok(()), Err)
+}
+
+/// The graph half of [`verify_framework_not_duplicated`], split out so the
+/// pairing rule can be tested without resolving a real workspace.
+fn duplicated_framework_crates(meta: &serde_json::Value) -> Option<anyhow::Error> {
+    let packages = meta.get("packages")?.as_array()?;
+
+    let mut local: BTreeMap<&str, &str> = BTreeMap::new();
+    let mut registry: BTreeMap<&str, &str> = BTreeMap::new();
+    for package in packages {
+        let (Some(name), Some(version)) = (
+            package.get("name").and_then(|n| n.as_str()),
+            package.get("version").and_then(|v| v.as_str()),
+        ) else {
+            continue;
+        };
+        if !name.starts_with("lingxia") {
+            continue;
+        }
+        // A path dependency has no source; anything else came from a registry.
+        if package.get("source").is_some_and(|s| !s.is_null()) {
+            registry.insert(name, version);
+        } else {
+            local.insert(name, version);
+        }
+    }
+
+    let duplicated: Vec<String> = registry
+        .iter()
+        .filter_map(|(name, version)| {
+            local
+                .get(name)
+                .map(|local| format!("  {name}: {version} from crates.io, {local} local"))
+        })
+        .collect();
+    if duplicated.is_empty() {
+        return None;
+    }
+    Some(anyhow!(
+        "the build resolved two copies of the framework:\n{}\n\n\
+         A crate in the graph requires a version the local workspace no longer \
+         satisfies, so cargo skipped its [patch] and took the published crate \
+         instead. Widen that requirement — a crate built through [patch] should \
+         not pin a framework minor.",
+        duplicated.join("\n")
+    ))
 }
 
 fn resolve_provider(
@@ -451,6 +520,50 @@ fn backup_lock(workspace_dir: &Path, guard: &mut ProviderInjection) {
 
 #[cfg(test)]
 mod tests {
+    use super::duplicated_framework_crates;
+    use serde_json::json;
+
+    fn package(name: &str, version: &str, source: Option<&str>) -> serde_json::Value {
+        json!({ "name": name, "version": version, "source": source })
+    }
+
+    #[test]
+    fn accepts_a_graph_patched_entirely_to_local_paths() {
+        let meta = json!({ "packages": [
+            package("lingxia-platform", "0.12.0", None),
+            package("lingxia-lxapp", "0.12.0", None),
+            package("serde", "1.0.0", Some("registry+https://github.com/rust-lang/crates.io-index")),
+        ] });
+        assert!(duplicated_framework_crates(&meta).is_none());
+    }
+
+    #[test]
+    fn accepts_a_graph_that_only_uses_published_crates() {
+        // An external host app builds against the release, with no patch at all.
+        let registry = Some("registry+https://github.com/rust-lang/crates.io-index");
+        let meta = json!({ "packages": [
+            package("lingxia-platform", "0.12.0", registry),
+            package("lingxia-lxapp", "0.12.0", registry),
+        ] });
+        assert!(duplicated_framework_crates(&meta).is_none());
+    }
+
+    #[test]
+    fn reports_the_crate_cargo_took_from_the_registry_beside_the_local_one() {
+        let registry = Some("registry+https://github.com/rust-lang/crates.io-index");
+        let meta = json!({ "packages": [
+            package("lingxia-platform", "0.12.0", None),
+            package("lingxia-platform", "0.11.1", registry),
+            package("lingxia-lxapp", "0.12.0", None),
+            package("lingxia-lxapp", "0.11.1", registry),
+        ] });
+        let message = duplicated_framework_crates(&meta)
+            .expect("a duplicated framework crate must fail the build")
+            .to_string();
+        assert!(message.contains("lingxia-platform: 0.11.1 from crates.io, 0.12.0 local"));
+        assert!(message.contains("lingxia-lxapp: 0.11.1 from crates.io, 0.12.0 local"));
+    }
+
     use super::toml_path;
     use std::path::Path;
 
