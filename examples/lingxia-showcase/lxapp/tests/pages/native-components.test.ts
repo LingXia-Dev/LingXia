@@ -21,7 +21,7 @@ async function attachWindow(t: Fixture, name: string): Promise<void> {
   await attachShot(t, name, { mimeType: 'image/png', base64: screenshot.base64 });
 }
 
-spec("wrap the showcase player in LxNativeRoot so island video is the live path", { id: "NATIVE-ISLAND-001", covers: ['lx.createVideoContext', 'NavDriver.to'], app: SHOWCASE_APP_ID }, async (t) => {
+spec("wrap the showcase player in LxNativeRoot so island video is the live path", { id: "NATIVE-ISLAND-001", covers: ['lx.createVideoContext', 'NavDriver.to'], app: SHOWCASE_APP_ID, timeout: 30_000 }, async (t) => {
   const { app, defer } = bindFixture(t, "NATIVE-ISLAND-001");
   const current = await currentPageOrNull(app);
   if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
@@ -31,7 +31,7 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
     if (active?.name !== 'home') await app.nav.relaunch({ page: 'home' });
   });
 
-  await app.nav.to({ page: 'video', query: { automationFixture: 'video-context-shape' } });
+  await app.nav.to({ page: 'video' });
   await waitForCurrentPage(app, 'video');
   await app.page.waitFor({ page: 'video', css: 'lx-native-root', state: 'attached' });
   const wrapped = await app.page.eval({
@@ -41,11 +41,18 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
   });
   expect(wrapped.hasRoot).toBeTruthy();
   expect(wrapped.videoIsDirectChild).toBeTruthy();
-  expect(wrapped.videoId).toBe('lx-video-shape-fixture');
+  expect(wrapped.videoId).toBe('lx-video-1');
   expect(wrapped.compileOk).toBeTruthy();
   expect(wrapped.kinds[0]).toBe('video');
   expect(wrapped.kinds[1]).toBe('view');
-  await app.page.click({ page: 'video', css: '[data-testid="video-pause"]' });
+  const eventLog = await waitForElementText(
+    app,
+    'video',
+    '[data-testid="video-event"]',
+    (text) => text.includes('Playing'),
+    20_000,
+  );
+  expect(eventLog).toContain('Playing');
 });
 
 spec("hide the native video overlay before the next page becomes interactive", { id: "NATIVE-VIDEO-001", covers: ['lx.createVideoContext', 'VideoContext.pause', 'NavDriver.to', 'NavDriver.back'], app: SHOWCASE_APP_ID }, async (t) => {

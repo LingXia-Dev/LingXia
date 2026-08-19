@@ -37,6 +37,7 @@
             class="block w-full rounded-lg bg-black"
             :style="{ aspectRatio: '16 / 9', borderRadius: '12px' }"
             @playing="onPlaying"
+            @error="onError"
             @pause="onPause"
             @stop="onStop"
             @ended="onEnded"
@@ -167,6 +168,7 @@ const {
 const {
   play,
   pause,
+  onError,
   stop,
   seek,
   requestFullScreen,
