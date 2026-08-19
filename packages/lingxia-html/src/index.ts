@@ -19,3 +19,10 @@ export {
   getDisplayLanguage,
   subscribeDisplayLanguage,
 } from "@lingxia/bridge";
+export {
+  registerInlineNativeComponents,
+  registerInlineNativeAuthorComponents,
+  compileInlineNativeRoot,
+  compileInlineNativeForest,
+  unwrapNativeEventPayload,
+} from "@lingxia/elements";
