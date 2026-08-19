@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "description": "A LingXia mini app powered by HTML",
   "type": "module",
-  "keywords": ["lingxia", "miniapp", "html"],
+  "keywords": [
+    "lingxia",
+    "miniapp",
+    "html"
+  ],
   "author": "",
   "license": "MIT",
   "scripts": {
@@ -16,6 +20,6 @@
     "@lingxia/types": "{{LINGXIA_FRAMEWORK_RANGE}}",
     "@lingxia/test": "{{LINGXIA_FRAMEWORK_RANGE}}",
     "typescript": "^5.9.3",
-    "vite": "^8.0.0"
+    "vite": "^8.2.1"
   }
 }
