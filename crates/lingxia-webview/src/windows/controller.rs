@@ -239,6 +239,11 @@ pub(crate) enum UiCommand {
     ReplayContentGeometry {
         resp: Sender<StdResult<()>>,
     },
+    /// Uploads a decoded island video frame. Must not Commit the DComp device.
+    PresentIslandVideoFrame {
+        frame: super::composition::IslandVideoFrame,
+        resp: Sender<StdResult<()>>,
+    },
     Shutdown,
 }
 
@@ -525,6 +530,16 @@ impl WebViewInner {
     ) -> StdResult<()> {
         super::composition::queue_island_visuals(self.webtag.key(), visuals);
         self.dispatch_command_same_thread_safe(|resp| UiCommand::ReplayContentGeometry { resp })
+    }
+
+    pub(crate) fn present_island_video_frame(
+        &self,
+        frame: super::composition::IslandVideoFrame,
+    ) -> StdResult<()> {
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::PresentIslandVideoFrame {
+            frame,
+            resp,
+        })
     }
 
     pub(crate) fn dispatch_screenshot_command(&self) -> StdResult<Vec<u8>> {
@@ -1524,6 +1539,13 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             let result = match bounds {
                 Some(bounds) => set_content_geometry(state, bounds, None),
                 None => Ok(()),
+            };
+            let _ = resp.send(result);
+        }
+        UiCommand::PresentIslandVideoFrame { frame, resp } => {
+            let result = match &mut state.hosting {
+                HostingMode::Composition(surface) => surface.present_island_video_frame(&frame),
+                HostingMode::Windowed => Ok(()),
             };
             let _ = resp.send(result);
         }
