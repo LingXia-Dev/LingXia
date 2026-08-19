@@ -15,16 +15,25 @@
 
 use std::sync::{Arc, Mutex};
 
-use windows::Win32::Foundation::{COLORREF, HWND};
-use windows::Win32::Media::MediaFoundation::{
-    IMFPMediaPlayer, IMFPMediaPlayerCallback, IMFPMediaPlayerCallback_Impl, MFP_EVENT_HEADER,
-    MFP_EVENT_TYPE_ERROR, MFP_EVENT_TYPE_MEDIAITEM_CREATED, MFP_EVENT_TYPE_MEDIAITEM_SET,
-    MFP_EVENT_TYPE_PAUSE, MFP_EVENT_TYPE_PLAY, MFP_EVENT_TYPE_PLAYBACK_ENDED, MFP_EVENT_TYPE_STOP,
-    MFP_MEDIAITEM_CREATED_EVENT, MFP_OPTION_NONE, MFP_POSITIONTYPE_100NS, MFPCreateMediaPlayer,
+use windows::Win32::Foundation::{COLORREF, HWND, RECT};
+use windows::Win32::Graphics::Gdi::{
+    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS,
+    DeleteDC, DeleteObject, GetDC, ReleaseDC, SelectObject,
 };
+use windows::Win32::Media::MediaFoundation::{
+    IMFGetService, IMFPMediaPlayer, IMFPMediaPlayerCallback, IMFPMediaPlayerCallback_Impl,
+    IMFVideoDisplayControl, MFP_EVENT_HEADER, MFP_EVENT_TYPE_ERROR,
+    MFP_EVENT_TYPE_MEDIAITEM_CREATED, MFP_EVENT_TYPE_MEDIAITEM_SET, MFP_EVENT_TYPE_PAUSE,
+    MFP_EVENT_TYPE_PLAY, MFP_EVENT_TYPE_PLAYBACK_ENDED, MFP_EVENT_TYPE_STOP,
+    MFP_MEDIAITEM_CREATED_EVENT, MFP_OPTION_NONE, MFP_POSITIONTYPE_100NS, MFPCreateMediaPlayer,
+    MR_VIDEO_RENDER_SERVICE,
+};
+use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
+use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
 use windows::Win32::System::Variant::{VT_I8, VT_UI8};
-use windows::core::{PCWSTR, implement};
+use windows::Win32::UI::WindowsAndMessaging::{self, PW_RENDERFULLCONTENT};
+use windows::core::{Interface, PCWSTR, implement};
 
 /// Playback transitions reported to the component host, on the UI thread.
 pub(crate) enum VideoPlayerEvent {
@@ -307,6 +316,94 @@ impl VideoPlayer {
         }
     }
 
+    /// Copies the EVR HWND via PrintWindow (the same path that already
+    /// showed decoded frames on the off-screen island window).
+    pub(crate) fn capture_window_bgra(hwnd: HWND) -> Option<(u32, u32, Vec<u32>)> {
+        unsafe {
+            let mut rect = RECT::default();
+            WindowsAndMessaging::GetClientRect(hwnd, &mut rect).ok()?;
+            let width = rect.right.max(1);
+            let height = rect.bottom.max(1);
+            let screen = GetDC(None);
+            if screen.0.is_null() {
+                return None;
+            }
+            let mem = CreateCompatibleDC(Some(screen));
+            let mut bits_ptr = std::ptr::null_mut();
+            let info = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: width,
+                    biHeight: -height,
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let bmp =
+                CreateDIBSection(Some(mem), &info, DIB_RGB_COLORS, &mut bits_ptr, None, 0).ok()?;
+            if bits_ptr.is_null() {
+                let _ = DeleteDC(mem);
+                ReleaseDC(None, screen);
+                return None;
+            }
+            let old = SelectObject(mem, bmp.into());
+            let printed =
+                PrintWindow(hwnd, mem, PRINT_WINDOW_FLAGS(PW_RENDERFULLCONTENT)).as_bool();
+            let len = (width * height * 4) as usize;
+            let slice = std::slice::from_raw_parts(bits_ptr as *const u8, len);
+            let mut pixels = Vec::with_capacity((width * height) as usize);
+            for px in slice.chunks_exact(4) {
+                pixels.push(
+                    0xff00_0000 | ((px[2] as u32) << 16) | ((px[1] as u32) << 8) | px[0] as u32,
+                );
+            }
+            SelectObject(mem, old);
+            let _ = DeleteObject(bmp.into());
+            let _ = DeleteDC(mem);
+            ReleaseDC(None, screen);
+            if !printed {
+                return None;
+            }
+            Some((width as u32, height as u32, pixels))
+        }
+    }
+
+    /// Copies the EVR's current frame as top-down premultiplied BGRA.
+    /// Requires a video HWND (windowless players have no renderer).
+    pub(crate) fn current_frame(&self) -> Option<(u32, u32, Vec<u32>)> {
+        if !self.lock().media_ready {
+            return None;
+        }
+        let service: IMFGetService = self.player.cast().ok()?;
+        let display: IMFVideoDisplayControl =
+            unsafe { service.GetService(&MR_VIDEO_RENDER_SERVICE) }.ok()?;
+        let mut header = BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            ..Default::default()
+        };
+        let mut bits = std::ptr::null_mut();
+        let mut byte_len = 0u32;
+        let mut timestamp = 0i64;
+        if let Err(err) = unsafe {
+            display.GetCurrentImage(&mut header, &mut bits, &mut byte_len, &mut timestamp)
+        } {
+            log::debug!("GetCurrentImage failed: {err}");
+            return None;
+        }
+        if bits.is_null() || byte_len == 0 {
+            return None;
+        }
+        let slice = unsafe { std::slice::from_raw_parts(bits, byte_len as usize) };
+        let frame = bgra_from_dib(&header, slice);
+        unsafe {
+            CoTaskMemFree(Some(bits as *const _));
+        }
+        frame
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, SharedState> {
         self.shared
             .lock()
@@ -443,6 +540,88 @@ fn propvariant_from_100ns(value: i64) -> PROPVARIANT {
     variant
 }
 
+/// Top-down premultiplied BGRA from an EVR `GetCurrentImage` DIB.
+pub(crate) fn bgra_from_dib(
+    header: &BITMAPINFOHEADER,
+    bits: &[u8],
+) -> Option<(u32, u32, Vec<u32>)> {
+    let width = header.biWidth.unsigned_abs();
+    let height = header.biHeight.unsigned_abs();
+    if width == 0 || height == 0 {
+        return None;
+    }
+    let top_down = header.biHeight < 0;
+    let bpp = header.biBitCount;
+    let stride = match bpp {
+        32 => width.saturating_mul(4),
+        24 => (width.saturating_mul(3) + 3) & !3,
+        _ => return None,
+    };
+    if bits.len() < (stride * height) as usize {
+        return None;
+    }
+    let mut pixels = Vec::with_capacity((width * height) as usize);
+    for y in 0..height {
+        let src_y = if top_down { y } else { height - 1 - y };
+        let row = (src_y * stride) as usize;
+        for x in 0..width {
+            let pixel = match bpp {
+                32 => {
+                    let i = row + (x * 4) as usize;
+                    let b = bits[i] as u32;
+                    let g = bits[i + 1] as u32;
+                    let r = bits[i + 2] as u32;
+                    let a = bits[i + 3] as u32;
+                    if a == 0 || a == 255 {
+                        0xff00_0000 | (r << 16) | (g << 8) | b
+                    } else {
+                        let pre = |channel: u32| (channel * a + 127) / 255;
+                        (a << 24) | (pre(r) << 16) | (pre(g) << 8) | pre(b)
+                    }
+                }
+                _ => {
+                    let i = row + (x * 3) as usize;
+                    0xff00_0000
+                        | ((bits[i + 2] as u32) << 16)
+                        | ((bits[i + 1] as u32) << 8)
+                        | bits[i] as u32
+                }
+            };
+            pixels.push(pixel);
+        }
+    }
+    Some((width, height, pixels))
+}
+
+/// Nearest-neighbor scale used so a modest EVR bitmap fills the island dest.
+pub(crate) fn scale_bgra_nearest(
+    src: &[u32],
+    src_w: u32,
+    src_h: u32,
+    dest_w: u32,
+    dest_h: u32,
+) -> Vec<u32> {
+    let dest_w = dest_w.max(1);
+    let dest_h = dest_h.max(1);
+    if src_w == 0 || src_h == 0 {
+        return vec![0; (dest_w * dest_h) as usize];
+    }
+    if src_w == dest_w && src_h == dest_h {
+        return src.to_vec();
+    }
+    let mut dest = vec![0u32; (dest_w * dest_h) as usize];
+    for y in 0..dest_h {
+        let src_y = (y as u64 * src_h as u64 / dest_h as u64) as u32;
+        let src_row = (src_y.min(src_h - 1) * src_w) as usize;
+        let dest_row = (y * dest_w) as usize;
+        for x in 0..dest_w {
+            let src_x = (x as u64 * src_w as u64 / dest_w as u64) as u32;
+            dest[dest_row + x as usize] = src[src_row + src_x.min(src_w - 1) as usize];
+        }
+    }
+    dest
+}
+
 fn seconds_from_propvariant(variant: &PROPVARIANT) -> f64 {
     unsafe {
         let inner = &*variant.Anonymous.Anonymous;
@@ -453,5 +632,45 @@ fn seconds_from_propvariant(variant: &PROPVARIANT) -> f64 {
         } else {
             0.0
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{bgra_from_dib, scale_bgra_nearest};
+    use windows::Win32::Graphics::Gdi::BITMAPINFOHEADER;
+
+    #[test]
+    fn converts_bottom_up_32bpp_dib_to_top_down_bgra() {
+        // Memory order is bottom row first: blue then white, then red then green.
+        let bits = [
+            0xffu8, 0x00, 0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0xff, 0xff, 0x00, 0xff,
+            0x00, 0xff,
+        ];
+        let header = BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: 2,
+            biHeight: 2,
+            biPlanes: 1,
+            biBitCount: 32,
+            ..Default::default()
+        };
+        let (width, height, pixels) = bgra_from_dib(&header, &bits).expect("dib");
+        assert_eq!((width, height), (2, 2));
+        assert_eq!(pixels[0], 0xffff_0000, "top-left red");
+        assert_eq!(pixels[1], 0xff00_ff00, "top-right green");
+        assert_eq!(pixels[2], 0xff00_00ff, "bottom-left blue");
+        assert_eq!(pixels[3], 0xffff_ffff, "bottom-right white");
+    }
+
+    #[test]
+    fn scales_decoded_frame_to_the_island_dest() {
+        let src = [0xffff_0000, 0xff00_ff00, 0xff00_00ff, 0xffff_ffff];
+        let dest = scale_bgra_nearest(&src, 2, 2, 4, 4);
+        assert_eq!(dest.len(), 16);
+        assert_eq!(dest[0], 0xffff_0000);
+        assert_eq!(dest[3], 0xff00_ff00);
+        assert_eq!(dest[12], 0xff00_00ff);
+        assert_eq!(dest[15], 0xffff_ffff);
     }
 }
