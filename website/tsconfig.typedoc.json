@@ -1,9 +1,0 @@
-{
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "skipLibCheck": true,
-    "types": []
-  },
-  "include": ["node_modules/@lingxia/types/dist/**/*.d.ts"],
-  "exclude": []
-}
