@@ -5,7 +5,7 @@ use crate::appservice::js_runtime::{
 };
 use crate::lifecycle::AppServiceEvent;
 use crate::lifecycle::PageLifecycleEvent;
-use crate::{LxAppError, error, info};
+use crate::{LxAppError, debug, error, info};
 
 use rong::{JSContext, Rong, RongJS, TaskHandle, TaskMessage, Worker};
 use std::collections::{HashMap, VecDeque};
@@ -27,6 +27,21 @@ pub struct LxAppWorkers {
     instance_assignments: Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
     /// Available worker IDs for new mini-apps (FIFO)
     free_workers: Arc<Mutex<VecDeque<usize>>>,
+}
+
+/// Whether a message can arrive after its lxapp's worker is gone without that
+/// meaning something went wrong. Fan-out events and teardown are delivered
+/// concurrently with the unmapping; anything that needs a live worker to make
+/// progress is not on this list.
+fn tolerates_missing_worker(message: &ServiceMessage) -> bool {
+    matches!(
+        message,
+        ServiceMessage::DispatchAppBusEvent { .. }
+            | ServiceMessage::CallAppSvcEvent { .. }
+            | ServiceMessage::CallPageSvcEvent { .. }
+            | ServiceMessage::TerminateAppSvc { .. }
+            | ServiceMessage::TerminatePage { .. }
+    )
 }
 
 impl LxAppWorkers {
@@ -283,12 +298,25 @@ impl LxAppWorkers {
                 );
             }
         } else if logic_enabled {
-            // No instance mapping found for a logic-enabled app; drop the message
-            // to avoid misrouting (a real anomaly worth surfacing).
-            error!(
-                "No worker mapping for LxApp instance (appid: {}) while dispatching message",
-                appid
-            );
+            // No instance mapping: the message is dropped either way, to avoid
+            // misrouting it to another instance's worker. Whether that is an
+            // anomaly depends on the message.
+            if tolerates_missing_worker(&message) {
+                // Closing an lxapp unmaps its worker while a fan-out or a
+                // teardown message can still be in flight — a bus event
+                // reaching an app that just went away is the normal end of its
+                // life, not a fault, and logging it as one made the Windows
+                // "no error logs" gate fail at random.
+                debug!(
+                    "Dropping a fan-out or teardown message for a torn-down LxApp instance (appid: {})",
+                    appid
+                );
+            } else {
+                error!(
+                    "No worker mapping for LxApp instance (appid: {}) while dispatching message",
+                    appid
+                );
+            }
         }
         // Logic-disabled app: no worker by design — silently drop.
     }

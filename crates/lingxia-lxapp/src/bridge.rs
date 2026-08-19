@@ -88,6 +88,10 @@ pub(crate) trait AppServiceBackend: Send + Sync {
 pub(crate) const BRIDGE_NOT_READY: &str = "BRIDGE_NOT_READY";
 pub(crate) const BRIDGE_TIMEOUT: &str = "BRIDGE_TIMEOUT";
 pub(crate) const BRIDGE_CANCELED: &str = "BRIDGE_CANCELED";
+/// Why an in-flight call was cancelled. Without a message the page normalises
+/// it to "Unknown error" (`@lingxia/bridge` invocation.ts), which tells a
+/// developer reading a log nothing about what happened.
+pub(crate) const PAGE_UNLOADED: &str = "Page unloaded";
 pub(crate) const BRIDGE_PROTOCOL_MISMATCH: &str = "BRIDGE_PROTOCOL_MISMATCH";
 pub(crate) const BRIDGE_MALFORMED_MESSAGE: &str = "BRIDGE_MALFORMED_MESSAGE";
 pub(crate) const BRIDGE_METHOD_NOT_FOUND: &str = "BRIDGE_METHOD_NOT_FOUND";
@@ -879,12 +883,12 @@ impl PageBridge {
     /// Cancel all page-scoped bridge work while preserving the reusable handshake.
     pub(crate) fn cancel_page_work(&self, page: &PageInstance) {
         self.cancel_pending_requests();
-        self.close_host_channels(page, "Page unloaded");
+        self.close_host_channels(page, PAGE_UNLOADED);
         let _ = self.forward_js_message(
             page,
             AppServiceCommand::CloseChannels {
                 code: BRIDGE_CANCELED.to_string(),
-                reason: "Page unloaded".to_string(),
+                reason: PAGE_UNLOADED.to_string(),
             },
         );
     }
@@ -1054,7 +1058,7 @@ impl PageBridge {
                     if let Some(tx) = host_cancel_tx.take() {
                         let _ = tx.send(());
                     }
-                    Err(RpcError::new(BRIDGE_CANCELED, None))
+                    Err(RpcError::new(BRIDGE_CANCELED, Some(PAGE_UNLOADED.to_string())))
                 }
                 res = &mut host_fut => {
                     match res {
@@ -1173,7 +1177,7 @@ impl PageBridge {
                     if let Some(tx) = host_cancel_tx.take() {
                         let _ = tx.send(());
                     }
-                    return Err(RpcError::new(BRIDGE_CANCELED, None));
+                    return Err(RpcError::new(BRIDGE_CANCELED, Some(PAGE_UNLOADED.to_string())));
                 }
                 item = stream.next() => item,
             };
@@ -1223,7 +1227,7 @@ fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
         };
     }
     if matches!(err, LxAppError::Bridge(msg) if msg == "Canceled") {
-        return RpcError::new(BRIDGE_CANCELED, None);
+        return RpcError::new(BRIDGE_CANCELED, Some(PAGE_UNLOADED.to_string()));
     }
     RpcError::new(BRIDGE_INTERNAL_ERROR, Some(err.to_string()))
 }
