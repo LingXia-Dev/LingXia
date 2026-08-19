@@ -50,9 +50,6 @@ pub fn newer_released_cli() -> Option<(String, String)> {
 
 pub fn maybe_auto_update() {
     notify_deferred_update_failure();
-    // Before the install-method check below: the skill ships inside this binary,
-    // so refreshing it needs no network and no particular install layout.
-    refresh_installed_skill();
 
     let Ok(raw_exe_path) = current_exe_path() else {
         return;
@@ -88,9 +85,12 @@ pub fn maybe_auto_update() {
 
 /// Bring a skill installed under the home directory up to this binary.
 ///
+/// Called after argument parsing, not from `maybe_auto_update`: this writes to
+/// the filesystem, and `skill install --dry-run` promises it will not.
+///
 /// The skill ships inside the CLI, so there is no version to look up and no
 /// network call: a copy on disk either came from this binary or predates it.
-fn refresh_installed_skill() {
+pub fn refresh_installed_skill() {
     let Ok(dest) = crate::commands::skill::user_destination() else {
         return;
     };
