@@ -1,5 +1,9 @@
 import React, { forwardRef, useCallback, useEffect, useId, useMemo, useRef } from 'react';
-import { registerVideoComponent, type LxVideoAttributes } from '@lingxia/elements';
+import {
+  registerVideoComponent,
+  unwrapNativeEventPayload,
+  type LxVideoAttributes,
+} from '@lingxia/elements';
 import {
   buildVideoNativeAttrs,
   VIDEO_DOM_EVENT_MAP,
@@ -10,12 +14,33 @@ import {
   unbindElementEvents,
 } from './text_component_shared.js';
 
+type PayloadHandler = (payload: unknown) => void;
+
 export interface LxVideoProps
-  extends LxVideoAttributes,
+  extends Omit<LxVideoAttributes, `on${string}`>,
     Omit<
       React.HTMLAttributes<HTMLElement>,
-      keyof LxVideoAttributes | "children" | "dangerouslySetInnerHTML" | "ref" | "onPlaying"
-    > {}
+      keyof LxVideoAttributes | "children" | "dangerouslySetInnerHTML" | "ref" | "onPlaying" | "onPlay" | "onPause" | "onEnded" | "onError" | "onWaiting"
+    > {
+  onPlayRequest?: PayloadHandler;
+  onPlay?: PayloadHandler;
+  onPlaying?: PayloadHandler;
+  onPause?: PayloadHandler;
+  onStop?: PayloadHandler;
+  onEnded?: PayloadHandler;
+  onTimeUpdate?: PayloadHandler;
+  onError?: PayloadHandler;
+  onLoadedMetadata?: PayloadHandler;
+  onFullscreenChange?: PayloadHandler;
+  onWaiting?: PayloadHandler;
+  onQualityChange?: PayloadHandler;
+  onRateChange?: PayloadHandler;
+  onVolumeChange?: PayloadHandler;
+  onPress?: PayloadHandler;
+  onDoubleTap?: PayloadHandler;
+  onLongPressStart?: PayloadHandler;
+  onLongPressEnd?: PayloadHandler;
+}
 
 if (typeof window !== "undefined") {
   registerVideoComponent();
@@ -98,7 +123,7 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>(({
           handleEvent: (event: Event) => {
             const handler = handlerRef.current[propKey as keyof typeof handlerRef.current];
             if (typeof handler === "function") {
-              handler(event);
+              (handler as PayloadHandler)(unwrapNativeEventPayload(event));
             }
           },
         } satisfies EventListenerObject,
