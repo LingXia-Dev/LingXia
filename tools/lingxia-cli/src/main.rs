@@ -427,6 +427,12 @@ enum Commands {
         action: Option<commands::runner::RunnerAction>,
     },
 
+    /// Install the LingXia agent skill shipped inside this CLI
+    Skill {
+        #[command(subcommand)]
+        action: commands::skill::SkillAction,
+    },
+
     /// Per-user dev-session broker (started on demand by `lingxia dev`/`lxdev`)
     #[command(hide = true, name = "dev-broker")]
     DevBroker,
@@ -851,6 +857,9 @@ fn main() -> Result<()> {
         }
         Commands::Doctor { platform } => {
             commands::doctor::execute(platform)?;
+        }
+        Commands::Skill { action } => {
+            commands::skill::execute(action)?;
         }
         Commands::Auth { provider } => match provider {
             AuthProvider::Apple { action } => match action {
