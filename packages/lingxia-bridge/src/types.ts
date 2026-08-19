@@ -162,6 +162,9 @@ declare global {
       supportsMessagePort: () => boolean;
       getPort: (name: string) => string;
       postMessage: (message: string) => void;
+      nativeComponentUpdate?:
+        | ((payload: string) => void)
+        | ((componentId: string, payload: string) => void);
     };
     NativeComponentBridge?: {
       postMessage: (message: string) => void;

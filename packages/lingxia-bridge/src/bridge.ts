@@ -1615,7 +1615,8 @@ function hasNativeComponentHandler(): boolean {
   if (typeof window === "undefined") return false;
   return !!(
     window.webkit?.messageHandlers?.NativeComponent ||
-    window.NativeComponentBridge?.postMessage
+    window.NativeComponentBridge?.postMessage ||
+    window.LingXiaProxy?.nativeComponentUpdate
   );
 }
 
@@ -1627,6 +1628,21 @@ function postNativeComponentMessage(message: NativeComponentMessage): void {
     }
     if (window.NativeComponentBridge?.postMessage) {
       window.NativeComponentBridge.postMessage(stringifyForNative(message));
+      return;
+    }
+    const update = window.LingXiaProxy?.nativeComponentUpdate;
+    if (typeof update === "function") {
+      const componentId = message.id || "island";
+      const payload = stringifyForNative({ ...message, componentId });
+      try {
+        (update as (payload: string) => void).call(window.LingXiaProxy, payload);
+      } catch {
+        (update as (componentId: string, payload: string) => void).call(
+          window.LingXiaProxy,
+          componentId,
+          payload
+        );
+      }
       return;
     }
   } catch (e) {
