@@ -7,7 +7,6 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CRATES=(
   # Foundational crates.
   "lingxia-app-context"
-  "lingxia-device-io"
   "lingxia-provider"
   "lingxia-log"
   "lingxia-update"
@@ -19,6 +18,9 @@ CRATES=(
   "lingxia-surface"
   "lingxia-shell"
   "lingxia-platform"
+  # Takes lingxia-platform as an optional dep, which cargo still resolves at
+  # publish time -- so it cannot precede it however foundational it looks.
+  "lingxia-device-io"
   "lingxia-media"
   "lingxia-service"
 
