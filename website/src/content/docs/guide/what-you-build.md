@@ -27,6 +27,16 @@ lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y
 
 `-p` accepts a comma-separated list: `-p android,ios,macos,harmony` or `-p all`.
 
+### Terminal- or browser-main products
+
+On macOS and Windows the launch screen can be a built-in native surface instead of an lxapp:
+
+```bash
+lingxia new my-terminal -t native-app --main terminal --control native -y
+```
+
+`--main terminal` (or `--main browser`) makes that surface the main screen, and `--control native` leaves out the embedded control lxapp. It is still a native host app — it can open bundled or runtime lxapps later, and an lxapp reaches the same terminal engine through `lx.terminal` where the host enables it.
+
 ## Extend a host with Rust
 
 Add host APIs, background services, native media, or Rust-owned app logic to a native host with `#[lingxia::native]` and `HostAddon`.
