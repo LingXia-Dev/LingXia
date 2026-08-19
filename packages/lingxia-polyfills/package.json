@@ -1,8 +1,8 @@
 {
   "name": "@lingxia/polyfills",
-  "version": "0.11.2",
+  "version": "0.12.0",
   "private": false,
-  "description": "ES5 stdlib polyfills shipped to the lxapp runtime when targeting old Android WebView (Chromium 37\u201344).",
+  "description": "ES5 stdlib polyfills shipped to the lxapp runtime when targeting old Android WebView (Chromium 37–44).",
   "repository": {
     "type": "git",
     "url": "https://github.com/LingXia-Dev/LingXia.git",
