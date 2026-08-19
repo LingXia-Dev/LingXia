@@ -1,6 +1,10 @@
 ---
 const route = Astro.locals.starlightRoute;
-const slug = route.entry.slug;
+// Astro's content layer replaced `entry.slug` with `entry.id`. Read it off the
+// entry, not off the route: this notice only renders on a fallback page, where
+// the entry is the untranslated default-locale one and its id carries no
+// locale prefix — `route.id` would be `zh/reference/api/...` and match nothing.
+const slug = route.entry.id;
 const isChinese = route.locale === 'zh';
 
 let label = Astro.locals.t('i18n.untranslatedContent');
