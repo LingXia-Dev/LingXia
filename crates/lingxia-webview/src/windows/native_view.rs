@@ -132,6 +132,15 @@ impl WindowsWebViewHandler {
         self.webview.inner.sync_island_visuals(visuals)
     }
 
+    /// Uploads a decoded MFPlay frame onto the island video visual. Does not
+    /// commit the shared DComp device (WebView2 presents it).
+    pub fn present_island_video_frame(
+        &self,
+        frame: super::composition::IslandVideoFrame,
+    ) -> StdResult<()> {
+        self.webview.inner.present_island_video_frame(frame)
+    }
+
     /// `PrintWindow` of the DComp target, including island visuals above the
     /// webview visual. Not `CapturePreview` (that sees only WebView2).
     pub fn capture_composition_surface(

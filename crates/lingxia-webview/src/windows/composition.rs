@@ -17,7 +17,7 @@ mod pointer;
 mod surface_window;
 
 use dcomp::DcompTree;
-pub use dcomp::{CompositionSurfacePixels, IslandVisualSpec};
+pub use dcomp::{CompositionSurfacePixels, IslandVideoFrame, IslandVisualSpec};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
@@ -338,6 +338,14 @@ impl CompositionSurface {
             .apply_geometry(width, height, radii, corner_color, &island)
     }
 
+    /// Blits a decoded frame onto the island video visual. No DComp Commit.
+    pub(crate) fn present_island_video_frame(
+        &mut self,
+        frame: &dcomp::IslandVideoFrame,
+    ) -> StdResult<()> {
+        self.dcomp.present_island_video_frame(frame)
+    }
+
     /// Visibility is window-level first: hiding only hides the surface
     /// window and leaves the controller rendering through a grace timer, so
     /// a quick hide→show cycle (tab switches) re-reveals a live frame
@@ -535,9 +543,12 @@ mod tests {
                 offset_y: 40.0,
                 width: 8,
                 height: 8,
+                dest_width: 8.0,
+                dest_height: 8.0,
                 color: 0xff10_1010,
                 text: None,
                 hwnd: None,
+                pixels: None,
             }],
         );
         let queued = queued_island_visuals("test-island-queue");

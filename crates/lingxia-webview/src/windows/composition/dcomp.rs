@@ -17,7 +17,8 @@ use windows::Win32::Graphics::Direct3D11::{
 };
 use windows::Win32::Graphics::DirectComposition::{
     DCompositionCreateDevice3, IDCompositionDesktopDevice, IDCompositionDevice,
-    IDCompositionRectangleClip, IDCompositionTarget, IDCompositionVisual, IDCompositionVisual2,
+    IDCompositionRectangleClip, IDCompositionSurface, IDCompositionTarget, IDCompositionVisual,
+    IDCompositionVisual2,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
     DXGI_ALPHA_MODE_PREMULTIPLIED, DXGI_FORMAT_B8G8R8A8_UNORM,
@@ -46,6 +47,7 @@ pub(crate) struct DcompTree {
 
 struct IslandVisual {
     visual: IDCompositionVisual2,
+    surface: Option<IDCompositionSurface>,
     width: i32,
     height: i32,
     color: u32,
@@ -217,7 +219,7 @@ impl DcompTree {
         height: i32,
         pixels: &[u32],
     ) -> StdResult<IDCompositionVisual2> {
-        let visual = self.create_color_visual(width, height, pixels)?;
+        let (visual, _) = self.create_color_visual(width, height, pixels)?;
         unsafe {
             self.root
                 .AddVisual(&visual, true, &self.webview_visual)
@@ -231,7 +233,7 @@ impl DcompTree {
         width: i32,
         height: i32,
         pixels: &[u32],
-    ) -> StdResult<IDCompositionVisual2> {
+    ) -> StdResult<(IDCompositionVisual2, IDCompositionSurface)> {
         let width = width.max(1);
         let height = height.max(1);
         unsafe {
@@ -244,11 +246,33 @@ impl DcompTree {
                     DXGI_ALPHA_MODE_PREMULTIPLIED,
                 )
                 .map_err(|err| dcomp_error("CreateSurface", err))?;
+            Self::upload_surface(&self.d3d_context, &surface, width, height, pixels)?;
+            let visual = self
+                .device
+                .CreateVisual()
+                .map_err(|err| dcomp_error("CreateVisual", err))?;
+            visual
+                .SetContent(&surface)
+                .map_err(|err| dcomp_error("SetContent", err))?;
+            Ok((visual, surface))
+        }
+    }
+
+    fn upload_surface(
+        context: &ID3D11DeviceContext,
+        surface: &IDCompositionSurface,
+        width: i32,
+        height: i32,
+        pixels: &[u32],
+    ) -> StdResult<()> {
+        let width = width.max(1);
+        let height = height.max(1);
+        unsafe {
             let mut offset = windows::Win32::Foundation::POINT::default();
             let texture: ID3D11Texture2D = surface
                 .BeginDraw(None, &mut offset)
                 .map_err(|err| dcomp_error("BeginDraw", err))?;
-            self.d3d_context.UpdateSubresource(
+            context.UpdateSubresource(
                 &texture,
                 0,
                 Some(&D3D11_BOX {
@@ -263,18 +287,109 @@ impl DcompTree {
                 (width * 4) as u32,
                 0,
             );
-            surface
-                .EndDraw()
-                .map_err(|err| dcomp_error("EndDraw", err))?;
-            let visual = self
-                .device
-                .CreateVisual()
-                .map_err(|err| dcomp_error("CreateVisual", err))?;
-            visual
-                .SetContent(&surface)
-                .map_err(|err| dcomp_error("SetContent", err))?;
-            Ok(visual)
+            surface.EndDraw().map_err(|err| dcomp_error("EndDraw", err))
         }
+    }
+
+    fn apply_island_scale(
+        &self,
+        visual: &IDCompositionVisual2,
+        width: i32,
+        height: i32,
+        dest_width: f32,
+        dest_height: f32,
+    ) -> StdResult<()> {
+        if dest_width <= 1.0 || dest_height <= 1.0 || width <= 0 || height <= 0 {
+            return Ok(());
+        }
+        let scale_x = dest_width / width as f32;
+        let scale_y = dest_height / height as f32;
+        if (scale_x - 1.0).abs() < 0.01 && (scale_y - 1.0).abs() < 0.01 {
+            return Ok(());
+        }
+        let device: IDCompositionDevice = self
+            .device
+            .cast()
+            .map_err(|err| dcomp_error("IDCompositionDevice cast", err))?;
+        unsafe {
+            let transform = device
+                .CreateScaleTransform()
+                .map_err(|err| dcomp_error("CreateScaleTransform", err))?;
+            transform
+                .SetScaleX2(scale_x)
+                .and_then(|_| transform.SetScaleY2(scale_y))
+                .map_err(|err| dcomp_error("SetScale", err))?;
+            visual
+                .SetTransform(&transform)
+                .map_err(|err| dcomp_error("SetTransform", err))
+        }
+    }
+
+    /// Uploads a decoded video frame onto an existing island visual.
+    /// Does **not** `Commit` — WebView2 presents the shared device.
+    pub(crate) fn present_island_video_frame(&mut self, frame: &IslandVideoFrame) -> StdResult<()> {
+        let width = frame.width.max(1);
+        let height = frame.height.max(1);
+        if frame.pixels.len() < (width * height) as usize {
+            return Err(WebViewError::WebView(
+                "island video frame is smaller than its size".into(),
+            ));
+        }
+        if let Some(slot) = self.island.get(&frame.id) {
+            let reusable = slot.width == width
+                && slot.height == height
+                && slot.surface.is_some()
+                && slot.hwnd.is_none();
+            if reusable {
+                let surface = slot.surface.clone().expect("reusable island surface");
+                let visual = slot.visual.clone();
+                Self::upload_surface(&self.d3d_context, &surface, width, height, &frame.pixels)?;
+                unsafe {
+                    visual
+                        .SetOffsetX2(frame.offset_x)
+                        .and_then(|_| visual.SetOffsetY2(frame.offset_y))
+                        .map_err(|err| dcomp_error("island frame offset", err))?;
+                }
+                self.apply_island_scale(
+                    &visual,
+                    width,
+                    height,
+                    frame.dest_width,
+                    frame.dest_height,
+                )?;
+                // Timer path, not WebMessageReceived — present the new bits.
+                unsafe {
+                    self.device
+                        .Commit()
+                        .map_err(|err| dcomp_error("Commit island frame", err))?;
+                }
+                return Ok(());
+            }
+        }
+        let spec = IslandVisualSpec {
+            id: frame.id.clone(),
+            kind: "video".into(),
+            offset_x: frame.offset_x,
+            offset_y: frame.offset_y,
+            width,
+            height,
+            dest_width: frame.dest_width,
+            dest_height: frame.dest_height,
+            color: 0xff10_1010,
+            text: None,
+            hwnd: None,
+            pixels: Some(frame.pixels.clone()),
+        };
+        self.upsert_island_visual(&spec)?;
+        if let Some(slot) = self.island.get(&frame.id) {
+            unsafe {
+                let _ = self.root.RemoveVisual(&slot.visual);
+                self.root
+                    .AddVisual(&slot.visual, true, &self.webview_visual)
+                    .map_err(|err| dcomp_error("AddVisual island frame", err))?;
+            }
+        }
+        Ok(())
     }
 
     fn create_hwnd_visual(&self, hwnd: HWND) -> StdResult<IDCompositionVisual2> {
@@ -364,6 +479,7 @@ impl DcompTree {
                 && slot.color == spec.color
                 && slot.text == spec.text
                 && slot.hwnd == spec.hwnd
+                && spec.pixels.is_none()
         });
         if reusable {
             if let Some(slot) = self.island.get(&spec.id) {
@@ -373,6 +489,13 @@ impl DcompTree {
                         .and_then(|_| slot.visual.SetOffsetY2(spec.offset_y))
                         .map_err(|err| dcomp_error("island offset", err))?;
                 }
+                self.apply_island_scale(
+                    &slot.visual.clone(),
+                    width,
+                    height,
+                    spec.dest_width,
+                    spec.dest_height,
+                )?;
             }
             return Ok(());
         }
@@ -381,11 +504,14 @@ impl DcompTree {
                 let _ = self.root.RemoveVisual(&previous.visual);
             }
         }
-        let visual = if let Some(handle) = spec.hwnd.filter(|handle| *handle != 0) {
-            self.create_hwnd_visual(HWND(handle as *mut _))?
+        let (visual, surface) = if let Some(handle) = spec.hwnd.filter(|handle| *handle != 0) {
+            (self.create_hwnd_visual(HWND(handle as *mut _))?, None)
         } else {
-            let pixels = rasterize_island_pixels(width, height, spec.color, spec.text.as_deref());
-            self.create_color_visual(width, height, &pixels)?
+            let pixels = spec.pixels.clone().unwrap_or_else(|| {
+                rasterize_island_pixels(width, height, spec.color, spec.text.as_deref())
+            });
+            let (visual, surface) = self.create_color_visual(width, height, &pixels)?;
+            (visual, Some(surface))
         };
         unsafe {
             visual
@@ -393,10 +519,12 @@ impl DcompTree {
                 .and_then(|_| visual.SetOffsetY2(spec.offset_y))
                 .map_err(|err| dcomp_error("island offset", err))?;
         }
+        self.apply_island_scale(&visual, width, height, spec.dest_width, spec.dest_height)?;
         self.island.insert(
             spec.id.clone(),
             IslandVisual {
                 visual,
+                surface,
                 width,
                 height,
                 color: spec.color,
@@ -417,12 +545,31 @@ pub struct IslandVisualSpec {
     pub offset_y: f32,
     pub width: i32,
     pub height: i32,
+    /// Destination size in surface pixels. When larger than `width`/`height`
+    /// the visual is scaled so a modest texture fills the CSS rect.
+    pub dest_width: f32,
+    pub dest_height: f32,
     /// Premultiplied source color as `0xAARRGGBB`. Alpha 0 is transparent.
     pub color: u32,
     pub text: Option<String>,
     /// Cloaked (non-child) HWND whose redirection surface is the visual
     /// content. Used for video; `CreateSurfaceFromHwnd` rejects `WS_CHILD`.
     pub hwnd: Option<isize>,
+    /// Optional decoded frame. When set, used instead of a solid fill.
+    pub pixels: Option<Vec<u32>>,
+}
+
+/// A decoded video frame to blit onto an existing island visual.
+#[derive(Debug, Clone)]
+pub struct IslandVideoFrame {
+    pub id: String,
+    pub offset_x: f32,
+    pub offset_y: f32,
+    pub dest_width: f32,
+    pub dest_height: f32,
+    pub width: i32,
+    pub height: i32,
+    pub pixels: Vec<u32>,
 }
 
 /// BGRA pixels captured from the composition surface HWND (DComp target).
