@@ -30,8 +30,8 @@
     "@lingxia/bridge": "file:../lingxia-bridge",
     "@lingxia/elements": "file:../lingxia-elements",
     "@lingxia/page-runtime": "file:../lingxia-page-runtime",
-    "@types/react": "^19.0.0",
-    "react": "^19.0.0",
+    "@types/react": "^19.2.18",
+    "react": "^19.2.8",
     "typescript": "^5.7.2"
   },
   "files": [

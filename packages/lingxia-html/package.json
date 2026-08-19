@@ -27,7 +27,7 @@
   "devDependencies": {
     "@lingxia/bridge": "file:../lingxia-bridge",
     "@lingxia/page-runtime": "file:../lingxia-page-runtime",
-    "rolldown": "^1.0.0-rc.13",
+    "rolldown": "^1.2.4",
     "typescript": "^5.7.2"
   },
   "files": [
