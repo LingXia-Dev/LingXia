@@ -72,6 +72,21 @@ export function createFixtureServer() {
     };
 
     try {
+      // Same bytes, but with the extension in the path. A download client that
+      // names its output from the URL needs one, and `/bytes` deliberately has
+      // none so a spec can cover both.
+      if (route.startsWith('/file/')) {
+        const size = Number(url.searchParams.get('size') ?? 1024);
+        const payload = body(size);
+        response.writeHead(200, {
+          'content-type': url.searchParams.get('type') ?? 'application/octet-stream',
+          'content-length': payload.length,
+          etag: `"${digest(size)}"`,
+        });
+        response.end(payload);
+        return;
+      }
+
       // Fixed-size body with a known digest.
       if (route === '/bytes') {
         const size = Number(url.searchParams.get('size') ?? 1024);
@@ -129,6 +144,15 @@ export function createFixtureServer() {
       }
 
       if (route === '/upload' && request.method === 'POST') {
+        // Loopback delivers a few MB faster than any client can cancel, so a
+        // cancel spec needs the server to hold the request open.
+        const holdMs = Number(url.searchParams.get('holdMs') ?? 0);
+        if (holdMs > 0) {
+          request.pause();
+          await sleep(holdMs);
+          if (request.destroyed) return;
+          request.resume();
+        }
         const buffer = await readAll(request);
         const parts = parseMultipart(buffer, request.headers['content-type']);
         if (!parts) {

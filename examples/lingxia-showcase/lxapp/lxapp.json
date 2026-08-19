@@ -6,6 +6,7 @@
   "security": {
     "network": {
       "trustedDomains": [
+        "127.0.0.1",
         "api64.ipify.org",
         "cdn.plyr.io",
         "cn.bing.com",

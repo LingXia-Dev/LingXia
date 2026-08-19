@@ -61,10 +61,13 @@ spec('reject malformed transfer arguments before touching the network', {
     // Scheme and host are authority questions, not shape questions.
     { label: 'non-http scheme', call: `lx.downloadFile({ url: 'ftp://example.com/a' })`, code: 'E_PERMISSION_DENIED' },
     { label: 'untrusted host', call: `lx.downloadFile({ url: 'https://not-trusted.example/a' })`, code: 'E_PERMISSION_DENIED' },
-    // Loopback stays denied whatever trustedDomains says: an lxapp has no
-    // business reaching the host's own network.
-    { label: 'loopback', call: `lx.downloadFile({ url: 'http://127.0.0.1:1/a' })`, code: 'E_PERMISSION_DENIED' },
-    { label: 'private range', call: `lx.downloadFile({ url: 'https://192.168.0.1/a' })`, code: 'E_PERMISSION_DENIED' },
+    // The Showcase trusts 127.0.0.1 so its suite can reach a fixture server,
+    // and a dev session is what unlocks that. Policy therefore lets this
+    // through and it fails at connect instead — port 1 answers nothing.
+    // A release build has no dev session and denies it outright.
+    { label: 'trusted loopback', call: `lx.downloadFile({ url: 'http://127.0.0.1:1/a' })`, code: 'E_NETWORK' },
+    // A private address the lxapp never named stays denied even in dev.
+    { label: 'untrusted private range', call: `lx.downloadFile({ url: 'https://192.168.0.1/a' })`, code: 'E_PERMISSION_DENIED' },
   ]);
 });
 

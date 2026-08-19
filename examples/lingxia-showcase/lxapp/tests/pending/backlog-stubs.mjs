@@ -3,6 +3,24 @@
  *  `automated` in logic-api-coverage.mjs. */
 export default [
   {
+    id: "PEND-TRANSFER-PROGRESS-001",
+    title: "download progress, pause, resume, and the async-iterator form",
+    mode: "external-fixture",
+    covers: [
+      "DownloadTask.next",
+      "DownloadTask.return",
+      "DownloadTask.pause",
+      "DownloadTask.resume",
+      "DownloadTask.cancel",
+      "DownloadTask.finally",
+      "UploadTask.next",
+      "UploadTask.return",
+      "UploadTask.catch",
+      "UploadTask.finally",
+    ],
+    reason: "the HTTP fixture serves these routes; the specs asserting progress ordering and resume-after-pause are not written yet",
+  },
+  {
     id: "PEND-TERMINAL-API-001",
     title: "terminal settings, fonts, colour schemes, and Windows integration",
     mode: "external-fixture",
@@ -31,18 +49,6 @@ export default [
     mode: "external-ui",
     covers: ["lx.chooseDirectory"],
     reason: "the directory picker is an OS dialog with no in-process driver",
-  },
-  {
-    id: "PEND-UPLOAD-001",
-    title: "uploadFile progress, cancel, and the UploadTask contract",
-    mode: "external-fixture",
-    covers: [
-      "lx.uploadFile",
-      "UploadTask.then",
-      "UploadTask.wait",
-      "UploadTask.cancel",
-    ],
-    reason: "needs an upload endpoint the runner controls, so failure modes are deterministic",
   },
   {
     id: "PEND-DESTRUCTIVE-001",
@@ -141,19 +147,6 @@ export default [
     mode: "external-fixture",
     covers: ["lx.navigateToApp"],
     reason: "needs a second-lxapp fixture beyond the live Showcase session",
-  },
-  {
-    id: "PEND-DOWNLOAD-001",
-    title: "downloadFile progress, pause, resume, cancel, and abort",
-    mode: "external-fixture",
-    covers: [
-      "lx.downloadFile",
-      "DownloadTask.next",
-      "DownloadTask.pause",
-      "DownloadTask.resume",
-      "DownloadTask.cancel",
-    ],
-    reason: "generated type is never; needs an http download fixture",
   },
   {
     id: "PEND-OPENURL-001",

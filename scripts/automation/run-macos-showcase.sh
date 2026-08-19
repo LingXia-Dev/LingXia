@@ -16,10 +16,26 @@ case "$framework" in
   *) echo "Unsupported framework: $framework" >&2; exit 2 ;;
 esac
 
+fixture_pid=""
 cleanup() {
   (cd "$showcase_root" && "$lingxia" dev stop macos) >/dev/null 2>&1 || true
+  [[ -n "$fixture_pid" ]] && kill "$fixture_pid" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+
+# The transfer contracts need a server that answers deterministically; without
+# it they register as pending rather than silently passing.
+fixture_log=$(mktemp)
+node "$lxapp_root/tests/harness/http-fixture.mjs" --port 0 >"$fixture_log" 2>&1 &
+fixture_pid=$!
+for _ in $(seq 1 50); do
+  fixture_base=$(head -1 "$fixture_log" 2>/dev/null || true)
+  [[ -n "$fixture_base" ]] && break
+  sleep 0.1
+done
+if [[ -z "$fixture_base" ]]; then
+  echo 'HTTP fixture did not start; transfer specs will register as pending.' >&2
+fi
 
 echo 'Building automation CLIs from the current checkout...'
 (cd "$repo_root" && cargo build -p lingxia-cli -p lingxia-devtools-cli)
@@ -61,6 +77,7 @@ for framework_index in "${!frameworks[@]}"; do
       --timeout "$timeout_seconds" \
       --arg platform=macos \
       --arg "framework=$current_framework" \
+      ${fixture_base:+--arg "httpBase=$fixture_base"} \
       --output-dir "test-results/automation/macos-$current_framework"
   )
   test_status=$?
