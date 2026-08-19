@@ -234,6 +234,10 @@ pub(crate) enum UiCommand {
         scale: f64,
         resp: Sender<StdResult<()>>,
     },
+    SyncIslandVisuals {
+        visuals: Vec<super::composition::IslandVisualSpec>,
+        resp: Sender<StdResult<()>>,
+    },
     Shutdown,
 }
 
@@ -512,6 +516,16 @@ impl WebViewInner {
 
     pub(crate) fn set_parent_window(&self, window: isize) -> StdResult<()> {
         self.dispatch_command_same_thread_safe(|resp| UiCommand::SetParentWindow { window, resp })
+    }
+
+    pub(crate) fn sync_island_visuals(
+        &self,
+        visuals: Vec<super::composition::IslandVisualSpec>,
+    ) -> StdResult<()> {
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::SyncIslandVisuals {
+            visuals,
+            resp,
+        })
     }
 
     pub(crate) fn dispatch_screenshot_command(&self) -> StdResult<Vec<u8>> {
@@ -1502,6 +1516,15 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
         UiCommand::NotifyParentPositionChanged { resp } => {
             state.notify_parent_position_changed();
             let _ = resp.send(Ok(()));
+        }
+        UiCommand::SyncIslandVisuals { visuals, resp } => {
+            let result = match &mut state.hosting {
+                HostingMode::Composition(surface) => surface.sync_island_visuals(&visuals),
+                HostingMode::Windowed => Err(WebViewError::WebView(
+                    "island visuals require composition hosting".to_string(),
+                )),
+            };
+            let _ = resp.send(result);
         }
         UiCommand::SetRasterizationScale { scale, resp } => {
             let result = state

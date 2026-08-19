@@ -117,6 +117,31 @@ impl WindowsWebViewHandler {
         self.webview.inner.composition_hosted
     }
 
+    /// `LingXiaWebViewSurface` child HWND when composition-hosted.
+    pub fn composition_surface_hwnd(&self) -> Option<isize> {
+        super::composition::find_composition_surface_hwnd(self.native_view().window)
+    }
+
+    /// Attaches island visuals above the WebView2 visual. No-op on windowed
+    /// hosting (returns an error). Must not be paired with HWND z-order.
+    pub fn sync_island_visuals(
+        &self,
+        visuals: Vec<super::composition::IslandVisualSpec>,
+    ) -> StdResult<()> {
+        self.webview.inner.sync_island_visuals(visuals)
+    }
+
+    /// `PrintWindow` of the DComp target, including island visuals above the
+    /// webview visual. Not `CapturePreview` (that sees only WebView2).
+    pub fn capture_composition_surface(
+        &self,
+    ) -> StdResult<super::composition::CompositionSurfacePixels> {
+        let hwnd = self.composition_surface_hwnd().ok_or_else(|| {
+            WebViewError::WebView("webview is not composition-hosted".to_string())
+        })?;
+        super::composition::capture_composition_surface_bgra(hwnd)
+    }
+
     /// Rendering scale for a fit-scaled presentation: CSS px = physical px /
     /// `scale`, so a shrunk simulated device keeps its logical viewport.
     pub fn set_rasterization_scale(&self, scale: f64) -> StdResult<()> {

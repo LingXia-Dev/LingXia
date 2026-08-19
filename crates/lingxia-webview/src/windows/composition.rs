@@ -17,6 +17,7 @@ mod pointer;
 mod surface_window;
 
 use dcomp::DcompTree;
+pub use dcomp::{CompositionSurfacePixels, IslandVisualSpec};
 
 /// How a webview's controller is attached to the host window tree.
 pub(crate) enum HostingMode {
@@ -391,5 +392,99 @@ impl CompositionSurface {
         unsafe {
             let _ = WindowsAndMessaging::DestroyWindow(self.hwnd);
         }
+    }
+
+    pub(crate) fn sync_island_visuals(&mut self, visuals: &[IslandVisualSpec]) -> StdResult<()> {
+        self.dcomp.sync_island_visuals(visuals)
+    }
+}
+
+/// Finds the `LingXiaWebViewSurface` child of `parent` (host client HWND).
+pub fn find_composition_surface_hwnd(parent: isize) -> Option<isize> {
+    unsafe {
+        let found = WindowsAndMessaging::FindWindowExW(
+            Some(HWND(parent as *mut _)),
+            None,
+            windows::core::w!("LingXiaWebViewSurface"),
+            None,
+        )
+        .ok()?;
+        if found.0.is_null() {
+            None
+        } else {
+            Some(found.0 as isize)
+        }
+    }
+}
+
+/// `PrintWindow(PW_RENDERFULLCONTENT)` of the DComp target HWND so island
+/// visuals above `webview_visual` are in the buffer. Plain BitBlt misses
+/// `WS_EX_NOREDIRECTIONBITMAP` surfaces.
+pub fn capture_composition_surface_bgra(hwnd: isize) -> StdResult<CompositionSurfacePixels> {
+    use windows::Win32::Graphics::Gdi::{
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleBitmap, CreateCompatibleDC,
+        DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC, SelectObject,
+    };
+    use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
+    use windows::Win32::UI::WindowsAndMessaging::PW_RENDERFULLCONTENT;
+
+    unsafe {
+        let hwnd = HWND(hwnd as *mut _);
+        let mut rect = RECT::default();
+        WindowsAndMessaging::GetClientRect(hwnd, &mut rect).map_err(|err| {
+            WebViewError::WebView(format!("GetClientRect composition surface failed: {err}"))
+        })?;
+        let width = (rect.right - rect.left).max(0);
+        let height = (rect.bottom - rect.top).max(0);
+        if width == 0 || height == 0 {
+            return Err(WebViewError::WebView(
+                "composition surface has zero size".to_string(),
+            ));
+        }
+        let screen = GetDC(None);
+        let memdc = CreateCompatibleDC(Some(screen));
+        let bmp = CreateCompatibleBitmap(screen, width, height);
+        let old = SelectObject(memdc, bmp.into());
+        let printed = PrintWindow(hwnd, memdc, PRINT_WINDOW_FLAGS(PW_RENDERFULLCONTENT)).as_bool();
+        let mut info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bgra = vec![0u8; (width * height * 4) as usize];
+        let copied = if printed {
+            GetDIBits(
+                memdc,
+                bmp,
+                0,
+                height as u32,
+                Some(bgra.as_mut_ptr() as *mut _),
+                &mut info,
+                DIB_RGB_COLORS,
+            )
+        } else {
+            0
+        };
+        SelectObject(memdc, old);
+        let _ = DeleteObject(bmp.into());
+        let _ = DeleteDC(memdc);
+        ReleaseDC(None, screen);
+        if copied == 0 {
+            return Err(WebViewError::WebView(
+                "PrintWindow/GetDIBits of LingXiaWebViewSurface failed".to_string(),
+            ));
+        }
+        Ok(CompositionSurfacePixels {
+            width: width as u32,
+            height: height as u32,
+            bgra,
+        })
     }
 }
