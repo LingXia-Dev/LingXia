@@ -289,9 +289,9 @@ enum MountKind {
     Video,
 }
 
-/// Ensures an island video player exists on a cloaked (non-child) HWND and
-/// returns that HWND for `CreateSurfaceFromHwnd`. Never parents a visible
-/// sibling under the host and never calls `SetWindowPos`.
+/// Windowless MFPlay for an island video leaf. Decode and media events
+/// only — no WS_CHILD / EVR HWND (those fight the page DComp device).
+/// Paint lives on the WebView composition tree.
 fn ensure_island_video(
     context: &PageContext,
     author_id: &str,
@@ -300,7 +300,7 @@ fn ensure_island_video(
 ) -> Option<isize> {
     let key = component_key(&context.page_key, author_id);
     island::island_component_keys().insert(key.clone());
-    if let Some(container) = components().get(&key).map(|entry| entry.container) {
+    if components().contains_key(&key) {
         if let Some(rect) = rect
             && let Some(entry) = components().get_mut(&key)
         {
@@ -308,8 +308,7 @@ fn ensure_island_video(
         }
         let parsed = parse_props(Some(props));
         apply_props(&key, &parsed);
-        apply_layout(&key);
-        return Some(container);
+        return Some(0);
     }
     let Some(parent) = parent_window_for_page(&context.page_key) else {
         log::warn!(
@@ -325,27 +324,17 @@ fn ensure_island_video(
         height: 16.0,
     });
     let parsed = parse_props(Some(props));
-    let should_play =
-        parsed.src.as_deref().is_some_and(|src| !src.is_empty()) && parsed.autoplay != Some(false);
-    let container = create_container(parent, author_id)?;
-    mount_video_on_ui(
+    if mount_windowless_island_video(
         context.clone(),
         author_id.to_string(),
         parent,
-        container,
         doc_rect,
         parsed,
-    );
-    let player = {
-        let mut components = components();
-        let entry = components.get_mut(&key)?;
-        entry.island_kind = Some("video".into());
-        entry.video.as_ref().map(|video| video.player.clone())
-    };
-    if should_play && let Some(player) = player {
-        player.play();
+    ) {
+        Some(0)
+    } else {
+        None
     }
-    Some(container.0 as isize)
 }
 
 fn handle_mount(context: &PageContext, message: &Value) {
@@ -947,7 +936,9 @@ fn apply_layout(key: &str) {
     };
     let container_hwnd = HWND(container as *mut _);
     if island::is_island_component_key(key) {
-        layout_island_video(container_hwnd, &doc_rect, &context, video.as_ref());
+        if container != 0 {
+            layout_island_video(container_hwnd, &doc_rect, &context, video.as_ref());
+        }
         return;
     }
 
@@ -1153,7 +1144,7 @@ fn destroy_component(key: &str) {
         // destroying it tears both down.
         if fullscreen_host != 0 && is_window(fullscreen_host) {
             let _ = WindowsAndMessaging::DestroyWindow(HWND(fullscreen_host as *mut _));
-        } else {
+        } else if container != 0 {
             let _ = WindowsAndMessaging::DestroyWindow(HWND(container as *mut _));
         }
         if font != 0 {

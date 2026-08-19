@@ -1,15 +1,20 @@
 //! Inline native island host for Windows.
 //!
 //! Island nodes share the page protocol ([`lxapp::inline_native::IslandSession`])
-//! and never use `HWND_TOP` restacking. Video leaves reuse MFPlay keyed by
-//! author id so `lx.createVideoContext` reaches them. Live DComp attach of
-//! those nodes exists on the WebView DComp tree API but is not driven from
-//! this path: mutating that shared device stalls the page UI thread.
+//! and never use `HWND_TOP` restacking. Visuals are queued for the WebView
+//! DComp tree and committed on a later geometry pass — never from inside a
+//! WebView2 web-message callback. Video leaves use windowless MFPlay keyed
+//! by author id so `lx.createVideoContext` still reaches them.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
+use lingxia_webview::WebTag;
 use lingxia_webview::WebViewController;
+use lingxia_webview::platform::windows::{
+    IslandVisualSpec, find_webview_handler, queue_island_visuals, queued_island_visuals,
+};
 use lxapp::inline_native::{
     ApplyCommitOutcome, IslandCompositor, IslandSession, NativeGeometrySnapshot, NativeRootAck,
     Rect, is_island_action,
@@ -20,6 +25,18 @@ use super::{DocRect, PageContext};
 
 static SESSIONS: OnceLock<Mutex<HashMap<String, IslandSession>>> = OnceLock::new();
 static ISLAND_COMPONENT_KEYS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+static APPLY_SCHEDULED: AtomicBool = AtomicBool::new(false);
+static NEXT_APPLY: OnceLock<Mutex<Option<DeferredIslandApply>>> = OnceLock::new();
+
+struct DeferredIslandApply {
+    context: PageContext,
+    nodes: Vec<lxapp::inline_native::IslandPaintNode>,
+    pending: Vec<PendingAttach>,
+}
+
+fn next_apply() -> &'static Mutex<Option<DeferredIslandApply>> {
+    NEXT_APPLY.get_or_init(|| Mutex::new(None))
+}
 
 fn sessions() -> &'static Mutex<HashMap<String, IslandSession>> {
     SESSIONS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -116,6 +133,7 @@ fn materialize_island(context: &PageContext, session: &IslandSession) {
     compositor.commit();
 }
 
+#[derive(Clone)]
 struct PendingAttach {
     id: String,
     kind: String,
@@ -161,7 +179,119 @@ fn finish_island_commit(
     nodes: &[lxapp::inline_native::IslandPaintNode],
     pending: Vec<PendingAttach>,
 ) {
+    let mut specs = Vec::with_capacity(pending.len());
     for attach in &pending {
+        let props = nodes
+            .iter()
+            .find(|node| {
+                node.author_id.as_deref() == Some(attach.id.as_str())
+                    || node.node_ref.node_key == attach.id
+            })
+            .map(|node| &node.props);
+        let (offset_x, offset_y, mut width, mut height) =
+            surface_rect(&context.page_key, &attach.rect);
+        match attach.kind.as_str() {
+            "text" => {
+                width = width.min(128);
+                height = height.min(24);
+            }
+            _ => {
+                width = 16;
+                height = 16;
+            }
+        }
+        let text = props
+            .and_then(|props| props.get("text"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        specs.push(IslandVisualSpec {
+            id: attach.id.clone(),
+            kind: attach.kind.clone(),
+            offset_x,
+            offset_y,
+            width,
+            height,
+            color: island_fill_color(&attach.kind),
+            text,
+            hwnd: None,
+        });
+    }
+    // Queue only. MFPlay and the geometry replay run after WebView2 has
+    // left this web-message callback — a same-turn DComp Commit or EVR
+    // HWND on this stack stalls eval and the dev websocket.
+    queue_island_visuals(&context.page_key, specs);
+    let queued = queued_island_visuals(&context.page_key).len();
+    log::info!(
+        "queued {queued} island visuals for {} (deferred apply)",
+        context.page_key
+    );
+    if queued == 0 {
+        return;
+    }
+    schedule_island_apply(context.clone(), nodes.to_vec(), pending);
+}
+
+fn schedule_island_apply(
+    context: PageContext,
+    nodes: Vec<lxapp::inline_native::IslandPaintNode>,
+    pending: Vec<PendingAttach>,
+) {
+    *next_apply()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner()) = Some(DeferredIslandApply {
+        context,
+        nodes,
+        pending,
+    });
+    if APPLY_SCHEDULED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let _ = std::thread::Builder::new()
+        .name("lingxia-island-apply".into())
+        .spawn(|| {
+            std::thread::sleep(std::time::Duration::from_millis(48));
+            APPLY_SCHEDULED.store(false, Ordering::SeqCst);
+            let job = next_apply()
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .take();
+            let Some(job) = job else {
+                return;
+            };
+            apply_queued_island_visuals(&job.context.page_key);
+            let Some(parent) = super::parent_window_for_page(&job.context.page_key) else {
+                return;
+            };
+            super::run_on_window_thread(parent, move || {
+                mount_pending_island_videos(&job.context, &job.nodes, &job.pending);
+            });
+        });
+}
+
+fn apply_queued_island_visuals(page_key: &str) {
+    let visuals = queued_island_visuals(page_key);
+    if visuals.is_empty() {
+        return;
+    }
+    let Some(handler) = find_webview_handler(&WebTag::from(page_key)) else {
+        log::debug!("no webview handler for {page_key}; island visuals stay queued");
+        return;
+    };
+    match handler.sync_island_visuals(visuals) {
+        Ok(()) => log::info!(
+            "applied {} island visuals on {page_key}",
+            queued_island_visuals(page_key).len()
+        ),
+        Err(err) => log::warn!("island visual apply failed on {page_key}: {err}"),
+    }
+}
+
+fn mount_pending_island_videos(
+    context: &PageContext,
+    nodes: &[lxapp::inline_native::IslandPaintNode],
+    pending: &[PendingAttach],
+) {
+    for attach in pending {
         if attach.kind != "video" {
             continue;
         }
@@ -171,11 +301,12 @@ fn finish_island_commit(
                 node.author_id.as_deref() == Some(attach.id.as_str())
                     || node.node_ref.node_key == attach.id
             })
-            .map(|node| &node.props);
+            .map(|node| node.props.clone())
+            .unwrap_or(Value::Null);
         let _ = super::ensure_island_video(
             context,
             &attach.id,
-            props.unwrap_or(&Value::Null),
+            &props,
             Some(DocRect {
                 x: attach.rect.x,
                 y: attach.rect.y,
@@ -184,6 +315,28 @@ fn finish_island_commit(
             }),
         );
     }
+}
+
+fn island_fill_color(kind: &str) -> u32 {
+    match kind {
+        "video" => 0xff10_1010,
+        _ => 0x0000_0000,
+    }
+}
+
+fn surface_rect(page_key: &str, css: &Rect) -> (f32, f32, i32, i32) {
+    let view = super::page_views().get(page_key).copied();
+    let scale = view
+        .map(|view| view.target.scale)
+        .filter(|scale| *scale > 0.0)
+        .unwrap_or(1.0);
+    let scroll_x = view.map(|view| view.scroll_x).unwrap_or(0.0);
+    let scroll_y = view.map(|view| view.scroll_y).unwrap_or(0.0);
+    let x = ((css.x - scroll_x) * scale) as f32;
+    let y = ((css.y - scroll_y) * scale) as f32;
+    let width = (css.width * scale).round().max(1.0) as i32;
+    let height = (css.height * scale).round().max(1.0) as i32;
+    (x, y, width, height)
 }
 
 impl IslandCompositor for DcompIslandCompositor<'_> {

@@ -91,7 +91,7 @@ pub(super) fn mount_video_on_ui(
         return;
     };
     let sink = video_event_sink(key.clone(), container.0 as isize, surface.0 as isize);
-    let Some(player) = VideoPlayer::new(surface, sink) else {
+    let Some(player) = VideoPlayer::new(Some(surface), sink) else {
         log::warn!("failed to create video player for {component_id}");
         unsafe {
             let _ = WindowsAndMessaging::DestroyWindow(container);
@@ -141,6 +141,63 @@ pub(super) fn mount_video_on_ui(
 
     apply_video_props(&key, &props);
     apply_layout(&key);
+}
+
+/// Island video: decode + events, no EVR HWND.
+pub(super) fn mount_windowless_island_video(
+    context: PageContext,
+    author_id: String,
+    parent: isize,
+    doc_rect: DocRect,
+    props: ComponentProps,
+) -> bool {
+    let key = component_key(&context.page_key, &author_id);
+    let sink = video_event_sink(key.clone(), 0, 0);
+    let Some(player) = VideoPlayer::new(None, sink) else {
+        log::warn!("failed to create windowless island player for {author_id}");
+        return false;
+    };
+    let player = Arc::new(player);
+    let should_play =
+        props.src.as_deref().is_some_and(|src| !src.is_empty()) && props.autoplay != Some(false);
+    let entry = ComponentEntry {
+        context,
+        component_id: author_id,
+        multiline: false,
+        parent,
+        container: 0,
+        edit: 0,
+        font: 0,
+        video: Some(VideoComponent {
+            player: player.clone(),
+            last_surface_mouse: None,
+            surface: 0,
+            stopped: true,
+            fullscreen: false,
+            fullscreen_host: 0,
+            controls: None,
+            muted: props.muted == Some(true),
+            current_quality: active_quality_label(&props),
+            current_rate: 1.0,
+            volume: props.volume.unwrap_or(1.0).clamp(0.0, 1.0),
+            playing: false,
+            resume_on_show: false,
+        }),
+        swiper: None,
+        island_kind: Some("video".into()),
+        doc_rect,
+        state: ComponentProps::default(),
+        last_value: String::new(),
+        ready: true,
+        pending: Vec::new(),
+    };
+    components().insert(key.clone(), entry);
+    ready_keys().insert(key.clone());
+    apply_video_props(&key, &props);
+    if should_play {
+        player.play();
+    }
+    true
 }
 
 /// Registers (once) and returns the video-surface window class: the inner
@@ -344,7 +401,7 @@ pub(super) fn apply_video_props(key: &str, props: &ComponentProps) {
 /// Builds the sink translating player transitions into the element's media
 /// events and driving the `timeupdate` timer. MFPlay delivers these on the
 /// UI thread that owns the container window.
-fn video_event_sink(key: String, container: isize, surface: isize) -> VideoEventSink {
+pub(super) fn video_event_sink(key: String, container: isize, surface: isize) -> VideoEventSink {
     Arc::new(move |event| {
         let container_hwnd = HWND(container as *mut _);
         let surface_hwnd = HWND(surface as *mut _);
@@ -365,12 +422,14 @@ fn video_event_sink(key: String, container: isize, surface: isize) -> VideoEvent
                             WindowsAndMessaging::SW_SHOWNA,
                         );
                     }
-                    let _ = WindowsAndMessaging::SetTimer(
-                        Some(container_hwnd),
-                        VIDEO_TIMER_ID,
-                        VIDEO_TIMER_INTERVAL_MS,
-                        None,
-                    );
+                    if container != 0 {
+                        let _ = WindowsAndMessaging::SetTimer(
+                            Some(container_hwnd),
+                            VIDEO_TIMER_ID,
+                            VIDEO_TIMER_INTERVAL_MS,
+                            None,
+                        );
+                    }
                 }
                 apply_layout(&key);
                 poke_video_controls(&key);
@@ -497,10 +556,12 @@ pub(super) fn dispatch_video_command(
             .iter()
             .find(|(_, entry)| entry.video.is_some() && entry.component_id == component_id)
             .map(|(key, entry)| {
-                let thread_window = if entry.island_kind.is_some() {
-                    entry.container
-                } else {
+                // Island players may be windowless (`container == 0`); the
+                // host window still owns the UI thread they were created on.
+                let thread_window = if entry.parent != 0 {
                     entry.parent
+                } else {
+                    entry.container
                 };
                 (key.clone(), thread_window)
             })
