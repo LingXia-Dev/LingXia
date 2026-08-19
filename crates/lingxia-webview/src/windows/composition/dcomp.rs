@@ -123,6 +123,7 @@ impl DcompTree {
         height: i32,
         radii: [i32; 4],
         corner_color: u32,
+        island: &[IslandVisualSpec],
     ) -> StdResult<()> {
         let alpha = corner_color >> 24;
         let outline = alpha > 0 && alpha < 0xff;
@@ -149,6 +150,7 @@ impl DcompTree {
                 .map_err(|err| dcomp_error("clip update", err))?;
         }
         self.update_corner_visuals(width, height, radii, corner_color, outline)?;
+        self.sync_island_visuals(island)?;
         unsafe {
             self.device
                 .Commit()
@@ -444,14 +446,6 @@ fn rasterize_island_pixels(width: i32, height: i32, color: u32, text: Option<&st
     let mut pixels = vec![fill; (width * height) as usize];
     if let Some(text) = text.filter(|text| !text.is_empty()) {
         blit_text_5x7(&mut pixels, width, height, text);
-    }
-    // 8×8 magenta probe in the corner so PrintWindow of the DComp target
-    // can distinguish island visuals from CSS (which never paints #FF00FF).
-    let marker = 0xffff_00ffu32;
-    for y in 0..8.min(height) {
-        for x in 0..8.min(width) {
-            pixels[(y * width + x) as usize] = marker;
-        }
     }
     pixels
 }
