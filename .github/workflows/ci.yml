@@ -56,6 +56,7 @@ jobs:
       cli_matrix: ${{ steps.compute.outputs.cli_matrix }}
       cli_fingerprint: ${{ steps.compute.outputs.cli_fingerprint }}
       rust_test: ${{ steps.compute.outputs.rust_test }}
+      release_tooling: ${{ steps.filter.outputs.release_tooling }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -206,9 +207,24 @@ jobs:
               - 'crates/lingxia/src/ffi/apple.rs'
               - 'crates/lingxia-platform/src/apple/**'
               - 'crates/lingxia-webview/src/apple/**'
+            # Only the files this workflow actually reads: itself, the
+            # composite actions it calls, and the scripts it runs. The rest of
+            # .github/ is release plumbing and the site deploy, which CI never
+            # invokes — a change there cannot alter whether the build passes.
+            # A genuinely new CI-relevant workflow has to be added here.
             ci:
-              - '.github/**'
+              - '.github/workflows/ci.yml'
+              - '.github/actions/**'
               - 'scripts/ci/**'
+            release_tooling:
+              - 'scripts/release/**'
+              - 'scripts/ci/check-release-notes.mjs'
+              - '.github/workflows/prepare-release.yml'
+              - '.github/workflows/create-release-tag.yml'
+              - '.github/workflows/crates-release.yml'
+              - '.github/workflows/npm-release.yml'
+              - '.github/workflows/release-cli.yml'
+              - '.github/workflows/sdk-release.yml'
       - name: Test matrix selection
         shell: bash
         run: |
@@ -1269,6 +1285,30 @@ jobs:
         working-directory: packages
         run: npm test --workspace @lingxia/test
 
+  # The release scripts have their own tests but no change signal of their own:
+  # they used to ride on the showcase automation job, which a release-plumbing
+  # PR never triggers.
+  release-tooling:
+    needs: changes
+    if: ${{ needs.changes.outputs.release_tooling == 'true' }}
+    name: Release tooling
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Test release tooling
+        run: node --test scripts/release/changelog.test.mjs scripts/ci/check-release-notes.test.mjs
+
+      # Every publishable package must be registered in npm.sh AND in the two
+      # release workflows, or it publishes untagged and unverified.
+      - name: Verify the npm release inventory
+        run: bash scripts/release/npm.sh --verify-inventory
+
   npm-skill:
     needs: changes
     if: ${{ needs.changes.outputs.npm == 'true' }}
@@ -1314,6 +1354,7 @@ jobs:
       - android
       - showcase-automation-types
       - showcase-automation
+      - release-tooling
     runs-on: ubuntu-latest
     if: always()
     steps:
