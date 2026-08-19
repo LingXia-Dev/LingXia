@@ -263,8 +263,7 @@ fi
 # lockfile of their own: their dev tooling is hoisted to packages/node_modules,
 # and the in-repo @lingxia/* links live there too. A member installed on its
 # own therefore still cannot build -- lingxia-terminal-settings runs the CLI,
-# whose build.rs resolves rolldown from this workspace, and failed the 0.12.0
-# release for exactly that reason.
+# whose build.rs resolves rolldown from this workspace.
 install_packages_workspace() {
   local workspace="$ROOT_DIR/packages"
   [[ -f "$workspace/package.json" ]] || return 0
