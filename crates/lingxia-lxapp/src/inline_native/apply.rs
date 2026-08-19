@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use super::lease::{LeaseState, host_can_display};
 use super::types::{
     ALLOWED_HOST_KINDS, ErrorScope, NativeError, NativeErrorCode, NativeNode, NativeRootAck,
@@ -140,7 +142,7 @@ impl RootRegistry {
 pub enum ApplyCommitOutcome {
     Applied(NativeRootAck),
     ResyncRequired(NativeRootAck),
-    Rejected(NativeError),
+    Rejected(Box<NativeError>),
 }
 
 pub fn apply_root_commit(
@@ -148,20 +150,20 @@ pub fn apply_root_commit(
     commit: &NativeRootCommit,
 ) -> ApplyCommitOutcome {
     if commit.action != "root.commit" {
-        return ApplyCommitOutcome::Rejected(error(
+        return ApplyCommitOutcome::Rejected(Box::new(error(
             NativeErrorCode::InvalidStructure,
             &commit.root,
             None,
             "commit action must be root.commit",
-        ));
+        )));
     }
     if commit.revision == 0 || commit.revision <= commit.base_revision {
-        return ApplyCommitOutcome::Rejected(error(
+        return ApplyCommitOutcome::Rejected(Box::new(error(
             NativeErrorCode::InvalidStructure,
             &commit.root,
             None,
             "commit revision must be greater than baseRevision",
-        ));
+        )));
     }
 
     let slot_key = RootRegistry::slot_key(&commit.root);
@@ -170,12 +172,12 @@ pub fn apply_root_commit(
         if state.lifecycle == RootLifecycle::Destroyed
             && state.root.root_epoch == commit.root.root_epoch
         {
-            return ApplyCommitOutcome::Rejected(error(
+            return ApplyCommitOutcome::Rejected(Box::new(error(
                 NativeErrorCode::RootDestroyed,
                 &commit.root,
                 None,
                 "destroyed root rejects commits",
-            ));
+            )));
         }
         if state.root.document_instance_id != commit.root.document_instance_id
             || state.root.root_epoch != commit.root.root_epoch
@@ -185,12 +187,12 @@ pub fn apply_root_commit(
                 && state.root.document_instance_id == commit.root.document_instance_id
                 && state.root.root_epoch != commit.root.root_epoch
             {
-                return ApplyCommitOutcome::Rejected(error(
+                return ApplyCommitOutcome::Rejected(Box::new(error(
                     NativeErrorCode::InvalidStructure,
                     &commit.root,
                     None,
                     "rootEpoch changed without destroying the previous generation",
-                ));
+                )));
             }
         }
     }
@@ -221,7 +223,7 @@ pub fn apply_root_commit(
     ) {
         state.lifecycle = RootLifecycle::Failed;
         registry.insert(state);
-        return ApplyCommitOutcome::Rejected(err);
+        return ApplyCommitOutcome::Rejected(Box::new(err));
     }
 
     state.nodes = next_nodes;
