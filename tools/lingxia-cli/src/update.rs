@@ -100,7 +100,7 @@ pub fn refresh_installed_skill() {
             previous,
             env!("CARGO_PKG_VERSION")
         ),
-        Ok(None) => {}
+        Ok(None) => crate::commands::skill::notify_pinned_skill(),
         Err(err) => eprintln!("warning: could not refresh the installed skill: {err}"),
     }
 }

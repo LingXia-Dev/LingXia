@@ -83,13 +83,13 @@ LingXia ships an agent-oriented markdown skill as `@lingxia/skill`. It contains 
 For Claude Code / Anthropic Skills:
 
 ```bash
-npx @lingxia/skill install
+lingxia skill install
 ```
 
 For OpenAI Codex CLI:
 
 ```bash
-npx @lingxia/skill install --agents-md
+lingxia skill install --agents-md
 ```
 
 Codex reads `AGENTS.md`, so `--agents-md` installs the skill and adds a pointer from `<project>/AGENTS.md` to `.claude/skills/lingxia/SKILL.md`. The skill content is still plain markdown, so Cursor, GitHub Copilot, and other tools can use the same files when pointed at the installed `SKILL.md`.
