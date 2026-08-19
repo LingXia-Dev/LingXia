@@ -21,20 +21,36 @@ impl NetworkAccessGuard for LxAppNetworkAccessGuard {
                 "Network access denied: domain '{host}' is not allowed by lxapp security policy"
             )));
         }
-        // `is_domain_allowed` has already applied the dev-session rule; without
-        // matching it here the rebinding guard would deny a fixture the policy
-        // just permitted.
         ensure_public_target(
             host,
             uri.port_u16().unwrap_or(0),
-            lxapp::is_dev_session() && self.lxapp.is_domain_allowed(host),
+            is_dev_fixture_target(host, lxapp::is_dev_session()),
         )
     }
 }
 
+/// A dev-session fixture is reached by IP literal, where there is no DNS step
+/// for anyone to rebind. Relaxing on that alone keeps the guard doing its real
+/// job: a *domain* the lxapp trusts that resolves into the LAN stays refused,
+/// in a dev session as much as in a release build.
+///
+/// Testing `is_domain_allowed` here instead would be tautological — the caller
+/// has already proven it — and would switch the guard off for every trusted
+/// domain whenever a dev session is attached.
+fn is_dev_fixture_target(host: &str, dev_session: bool) -> bool {
+    if !dev_session {
+        return false;
+    }
+    host.strip_prefix('[')
+        .and_then(|host| host.strip_suffix(']'))
+        .unwrap_or(host)
+        .parse::<IpAddr>()
+        .is_ok()
+}
+
 /// Rejects a host that resolves to a non-public address, so a trusted public
 /// domain cannot be rebound onto the user's own network. `allow_private` is the
-/// dev-session fixture case, where the policy already named the host.
+/// dev-session fixture case, where the target is a literal address.
 fn ensure_public_target(host: &str, port: u16, allow_private: bool) -> Result<(), HttpError> {
     let unbracketed = host
         .strip_prefix('[')
@@ -82,7 +98,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::ensure_public_target;
+    use super::{ensure_public_target, is_dev_fixture_target};
 
     #[test]
     fn rejects_private_and_loopback_literal_targets() {
@@ -95,6 +111,20 @@ mod tests {
     fn accepts_public_literal_targets() {
         assert!(ensure_public_target("1.1.1.1", 443, false).is_ok());
         assert!(ensure_public_target("[2606:4700:4700::1111]", 443, false).is_ok());
+    }
+
+    #[test]
+    fn only_a_literal_address_counts_as_a_dev_fixture() {
+        // The fixture case: an address, so no name to rebind.
+        assert!(is_dev_fixture_target("127.0.0.1", true));
+        assert!(is_dev_fixture_target("[::1]", true));
+        assert!(is_dev_fixture_target("192.168.1.10", true));
+        // A trusted domain keeps the guard even in a dev session, or a name
+        // that resolves into the LAN would reach it.
+        assert!(!is_dev_fixture_target("cn.bing.com", true));
+        assert!(!is_dev_fixture_target("localhost", true));
+        // And a release build never relaxes at all.
+        assert!(!is_dev_fixture_target("127.0.0.1", false));
     }
 
     #[test]
