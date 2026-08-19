@@ -130,6 +130,9 @@ struct ComponentEntry {
     video: Option<VideoComponent>,
     /// Paged carousel of a `media-swiper.native` component, `None` otherwise.
     swiper: Option<MediaSwiperComponent>,
+    /// Core island kind (`view` / `text` / `tappable` / `slider`) when this
+    /// container is an overlay node in the inline native tree.
+    island_kind: Option<String>,
     doc_rect: DocRect,
     state: ComponentProps,
     last_value: String,
@@ -335,6 +338,162 @@ fn ensure_island_video(
             parsed,
         );
     });
+}
+
+fn ensure_island_node(
+    context: &PageContext,
+    component_id: &str,
+    kind: &str,
+    props: &Value,
+    rect: Option<DocRect>,
+) {
+    if kind == "video" {
+        ensure_island_video(context, component_id, props, rect);
+        return;
+    }
+    let key = component_key(&context.page_key, component_id);
+    island::island_component_keys().insert(key.clone());
+    if components().contains_key(&key) {
+        if let Some(rect) = rect
+            && let Some(entry) = components().get_mut(&key)
+        {
+            entry.doc_rect = rect;
+            if let Some(text) = props.get("text").and_then(Value::as_str) {
+                entry.last_value = text.to_string();
+            }
+        }
+        if let Some(parent) = components().get(&key).map(|entry| entry.parent) {
+            run_on_window_thread(parent, move || {
+                apply_layout(&key);
+            });
+        }
+        return;
+    }
+    let Some(parent) = parent_window_for_page(&context.page_key) else {
+        return;
+    };
+    let doc_rect = rect.unwrap_or(DocRect {
+        x: 0.0,
+        y: 0.0,
+        width: 16.0,
+        height: 16.0,
+    });
+    let context = context.clone();
+    let component_id = component_id.to_string();
+    let kind = kind.to_string();
+    let text = props
+        .get("text")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    run_on_window_thread(parent, move || {
+        mount_island_overlay_on_ui(context, component_id, kind, parent, doc_rect, text);
+    });
+}
+
+fn restack_island_windows(page_key: &str, ordered_ids: &[String]) {
+    let Some(parent) = parent_window_for_page(page_key) else {
+        return;
+    };
+    let keys: Vec<String> = ordered_ids
+        .iter()
+        .map(|id| component_key(page_key, id))
+        .collect();
+    run_on_window_thread(parent, move || {
+        let surface = composition_surface_child(parent);
+        let mut previous = surface;
+        for key in &keys {
+            let Some(container) = components().get(key).map(|entry| entry.container) else {
+                continue;
+            };
+            let hwnd = HWND(container as *mut _);
+            unsafe {
+                let _ = WindowsAndMessaging::SetWindowPos(
+                    hwnd,
+                    previous,
+                    0,
+                    0,
+                    0,
+                    0,
+                    WindowsAndMessaging::SWP_NOMOVE
+                        | WindowsAndMessaging::SWP_NOSIZE
+                        | WindowsAndMessaging::SWP_NOACTIVATE
+                        | WindowsAndMessaging::SWP_NOOWNERZORDER,
+                );
+            }
+            previous = Some(hwnd);
+        }
+    });
+}
+
+fn composition_surface_child(parent: isize) -> Option<HWND> {
+    unsafe {
+        let mut child = WindowsAndMessaging::GetWindow(HWND(parent as *mut _), GW_CHILD).ok()?;
+        loop {
+            let mut class_name = [0u16; 64];
+            let len = WindowsAndMessaging::GetClassNameW(child, &mut class_name);
+            if len > 0 {
+                let name = String::from_utf16_lossy(&class_name[..len as usize]);
+                if name == "LingXiaWebViewSurface" {
+                    return Some(child);
+                }
+            }
+            child = WindowsAndMessaging::GetWindow(child, WindowsAndMessaging::GW_HWNDNEXT).ok()?;
+        }
+    }
+}
+
+fn mount_island_overlay_on_ui(
+    context: PageContext,
+    component_id: String,
+    kind: String,
+    parent: isize,
+    doc_rect: DocRect,
+    text: String,
+) {
+    let key = component_key(&context.page_key, &component_id);
+    destroy_component(&key);
+    if !is_window(parent) {
+        return;
+    }
+    let Some(container) = create_container(parent, &component_id) else {
+        return;
+    };
+    unsafe {
+        let ex = WindowsAndMessaging::GetWindowLongW(container, WindowsAndMessaging::GWL_EXSTYLE);
+        let _ = WindowsAndMessaging::SetWindowLongW(
+            container,
+            WindowsAndMessaging::GWL_EXSTYLE,
+            ex | WindowsAndMessaging::WS_EX_LAYERED.0 as i32
+                | WindowsAndMessaging::WS_EX_TRANSPARENT.0 as i32,
+        );
+        let _ = windows::Win32::UI::WindowsAndMessaging::SetLayeredWindowAttributes(
+            container,
+            COLORREF(0x0000_0000),
+            255,
+            windows::Win32::UI::WindowsAndMessaging::LWA_COLORKEY,
+        );
+    }
+    let entry = ComponentEntry {
+        context,
+        component_id,
+        multiline: false,
+        parent,
+        container: container.0 as isize,
+        edit: 0,
+        font: 0,
+        video: None,
+        swiper: None,
+        island_kind: Some(kind),
+        doc_rect,
+        state: ComponentProps::default(),
+        last_value: text,
+        ready: true,
+        pending: Vec::new(),
+    };
+    components().insert(key.clone(), entry);
+    containers().insert(container.0 as isize, key.clone());
+    apply_layout(&key);
 }
 
 fn handle_mount(context: &PageContext, message: &Value) {
@@ -873,7 +1032,10 @@ fn apply_layout(key: &str) {
         return;
     };
     let container_hwnd = HWND(container as *mut _);
-    if !page_is_foreground(&context) || video.as_ref().is_some_and(|video| video.stopped) {
+    let hide_stopped_overlay = video
+        .as_ref()
+        .is_some_and(|video| video.stopped && !island::is_island_component_key(key));
+    if !page_is_foreground(&context) || hide_stopped_overlay {
         // Background pages keep their overlays hidden; a stopped video
         // hides too, letting the element's DOM placeholder/poster show.
         unsafe {
@@ -1227,6 +1389,56 @@ fn container_is_video(container: HWND) -> bool {
         .is_some_and(|entry| entry.video.is_some())
 }
 
+fn container_is_island(hwnd: HWND) -> bool {
+    let Some(key) = component_key_for_container(hwnd) else {
+        return false;
+    };
+    components()
+        .get(&key)
+        .is_some_and(|entry| entry.island_kind.is_some())
+}
+
+fn paint_island_container(hwnd: HWND) {
+    let Some(key) = component_key_for_container(hwnd) else {
+        return;
+    };
+    let (kind, text) = {
+        let components = components();
+        let Some(entry) = components.get(&key) else {
+            return;
+        };
+        (
+            entry.island_kind.clone().unwrap_or_default(),
+            entry.last_value.clone(),
+        )
+    };
+    let mut paint = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();
+    unsafe {
+        let hdc = windows::Win32::Graphics::Gdi::BeginPaint(hwnd, &mut paint);
+        let mut rect = RECT::default();
+        let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut rect);
+        let _ = windows::Win32::Graphics::Gdi::FillRect(
+            hdc,
+            &rect,
+            HBRUSH(GetStockObject(BLACK_BRUSH).0),
+        );
+        if kind == "text" && !text.is_empty() {
+            SetBkColor(hdc, COLORREF(0));
+            SetTextColor(hdc, COLORREF(0x00ff_ffff));
+            let mut wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+            let _ = windows::Win32::Graphics::Gdi::DrawTextW(
+                hdc,
+                &mut wide,
+                &mut rect,
+                windows::Win32::Graphics::Gdi::DT_LEFT
+                    | windows::Win32::Graphics::Gdi::DT_TOP
+                    | windows::Win32::Graphics::Gdi::DT_NOPREFIX,
+            );
+        }
+        let _ = windows::Win32::Graphics::Gdi::EndPaint(hwnd, &paint);
+    }
+}
+
 unsafe extern "system" fn container_proc(
     hwnd: HWND,
     msg: u32,
@@ -1288,6 +1500,10 @@ unsafe extern "system" fn container_proc(
                 );
             }
             LRESULT(1)
+        }
+        WindowsAndMessaging::WM_PAINT if container_is_island(hwnd) => {
+            paint_island_container(hwnd);
+            LRESULT(0)
         }
         WindowsAndMessaging::WM_PAINT if container_is_video(hwnd) || container_is_swiper(hwnd) => {
             let mut paint = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();
