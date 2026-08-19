@@ -14,6 +14,24 @@ import { readCommits } from '../release/changelog.mjs';
 
 export const PUBLIC_SURFACE = 'packages/lingxia-types/src/testing/public-api.ts';
 
+/**
+ * The commit both refs share. `base..HEAD` is only the PR's own commits when
+ * that commit is present; on the shallow clone CI checks out it is not, and
+ * the range silently widens to most of the history — which made this gate
+ * accuse a PR of editing an API it never touched.
+ */
+export function mergeBase(base, head, cwd = process.cwd()) {
+  try {
+    return execFileSync('git', ['merge-base', base, head], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export function touchedBy(range, file, cwd = process.cwd()) {
   const out = execFileSync('git', ['log', '--no-merges', '--format=%H', '--name-only', range, '--', file], {
     cwd,
@@ -28,7 +46,25 @@ export function touchedBy(range, file, cwd = process.cwd()) {
 function main(argv) {
   const base = argv[0] ?? process.env.GITHUB_BASE_REF ?? 'origin/main';
   const head = argv[1] ?? 'HEAD';
-  const range = `${base}..${head}`;
+
+  const shared = mergeBase(base, head);
+  if (!shared) {
+    process.stderr.write(
+      [
+        `Cannot find a commit shared by ${base} and ${head}, so there is no`,
+        'range to inspect. A shallow clone is the usual cause — deepen it',
+        'until the merge base is present:',
+        '',
+        `  git fetch --no-tags --unshallow origin ${base.replace(/^origin\//, '')}`,
+        '',
+        'Refusing to guess: a widened range makes this gate blame a change it',
+        'never saw.',
+        '',
+      ].join('\n'),
+    );
+    return 2;
+  }
+  const range = `${shared}..${head}`;
 
   const touching = touchedBy(range, PUBLIC_SURFACE);
   if (touching.length === 0) {

@@ -831,8 +831,12 @@ jobs:
         # A public lx API change that ships with only a changelog line leaves a
         # reader nothing to act on.
         run: |
-          git fetch --no-tags --depth=200 origin "${{ github.base_ref || 'main' }}"
-          node scripts/ci/check-release-notes.mjs "origin/${{ github.base_ref || 'main' }}" HEAD
+          # The merge base has to be in local history or the range widens to
+          # most of the repo; a shallow checkout does not have it.
+          base='${{ github.base_ref || 'main' }}'
+          git fetch --no-tags --unshallow origin "$base" 2>/dev/null \
+            || git fetch --no-tags origin "$base"
+          node scripts/ci/check-release-notes.mjs "origin/$base" HEAD
 
       - name: Test release tooling
         run: node --test scripts/release/changelog.test.mjs scripts/ci/check-release-notes.test.mjs

@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { PUBLIC_SURFACE, touchedBy } from './check-release-notes.mjs';
+import { PUBLIC_SURFACE, mergeBase, touchedBy } from './check-release-notes.mjs';
 
 /** A throwaway repo, so the gate is exercised against real git plumbing. */
 function repo() {
@@ -52,4 +52,62 @@ test('a rename of the file still counts as touching it', () => {
   r.git('commit', '-qm', 'refactor(types): drop the manifest');
 
   assert.equal(touchedBy(`${base}..HEAD`, PUBLIC_SURFACE, r.dir).length, 1);
+});
+
+test('a shallow clone is refused, not blamed', () => {
+  const r = repo();
+  // A public-API commit that is already on the base — a PR must not be
+  // charged for it.
+  commitPublicSurface(r, 'feat(lxapp): an api that shipped long ago');
+  for (let i = 0; i < 5; i += 1) {
+    writeFileSync(path.join(r.dir, 'seed.txt'), `filler ${i}\n`);
+    r.git('add', '.');
+    r.git('commit', '-qm', `chore: filler ${i}`);
+  }
+  // main and the branch must actually diverge, or a depth-1 clone of the
+  // branch already contains the base and there is nothing to reproduce.
+  r.git('branch', 'feature');
+  writeFileSync(path.join(r.dir, 'seed.txt'), 'main moves on\n');
+  r.git('add', '.');
+  r.git('commit', '-qm', 'chore: main moves on');
+  r.git('checkout', '-q', 'feature');
+  writeFileSync(path.join(r.dir, 'seed.txt'), 'the actual change\n');
+  r.git('add', '.');
+  r.git('commit', '-qm', 'fix(cli): tidy');
+  r.git('checkout', '-q', 'main');
+
+  // Full history: the merge base is the branch point, and the public-API
+  // commit sits before it, so nothing is required.
+  assert.ok(mergeBase('main', 'feature', r.dir));
+  assert.deepEqual(touchedBy(`${mergeBase('main', 'feature', r.dir)}..feature`, PUBLIC_SURFACE, r.dir), []);
+
+  // What CI has: the feature branch checked out shallowly, with the base
+  // fetched shallowly too, so the branch point is in neither.
+  const shallow = mkdtempSync(path.join(tmpdir(), 'lx-shallow-'));
+  execFileSync(
+    'git',
+    ['clone', '-q', '--depth', '1', '--branch', 'feature', `file://${r.dir}`, shallow],
+    { encoding: 'utf8' },
+  );
+  execFileSync('git', ['fetch', '-q', '--no-tags', '--depth', '1', 'origin', 'main:refs/remotes/origin/main'], {
+    cwd: shallow,
+    encoding: 'utf8',
+  });
+  assert.equal(mergeBase('origin/main', 'HEAD', shallow), null, 'expected no shared commit in a shallow clone');
+
+  const script = path.resolve('scripts/ci/check-release-notes.mjs');
+  assert.throws(
+    () => execFileSync(process.execPath, [script, 'origin/main', 'HEAD'], {
+      cwd: shallow,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }),
+    (error) => {
+      assert.equal(error.status, 2);
+      // The old failure named the wrong culprit; this one names the cause.
+      assert.match(error.stderr, /Cannot find a commit shared by/);
+      assert.doesNotMatch(error.stderr, /edits the public lx API/);
+      return true;
+    },
+  );
 });
