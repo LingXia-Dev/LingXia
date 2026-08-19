@@ -726,12 +726,13 @@ fn collect_top_level_function_bindings<'a>(
                             );
                         }
                         Expression::ArrowFunctionExpression(function) => {
+                            let (body, returns_expression) = arrow_body(function);
                             direct.insert(
                                 identifier.name.as_str().to_string(),
                                 FunctionBinding {
-                                    body: Some(&function.body),
+                                    body,
                                     is_generator: false,
-                                    returns_expression: function.expression,
+                                    returns_expression,
                                 },
                             );
                         }
@@ -848,7 +849,8 @@ fn infer_property_mode(
             function_mode(function.body.as_deref(), function.generator, false)
         }
         Expression::ArrowFunctionExpression(function) => {
-            function_mode(Some(&function.body), false, function.expression)
+            let (body, returns_expression) = arrow_body(function);
+            function_mode(body, false, returns_expression)
         }
         Expression::Identifier(identifier) => function_bindings
             .get(identifier.name.as_str())
@@ -861,6 +863,17 @@ fn infer_property_mode(
             })
             .unwrap_or(PageActionMode::Notify),
         _ => PageActionMode::Notify,
+    }
+}
+
+/// Splits an arrow's body into the block form and whether it is a concise body,
+/// whose expression is itself the return value.
+fn arrow_body<'a>(
+    function: &'a oxc_ast::ast::ArrowFunctionExpression<'a>,
+) -> (Option<&'a oxc_ast::ast::FunctionBody<'a>>, bool) {
+    match &function.body {
+        oxc_ast::ast::ArrowFunctionBody::FunctionBody(body) => (Some(body), false),
+        _ => (None, true),
     }
 }
 

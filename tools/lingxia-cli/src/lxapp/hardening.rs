@@ -67,7 +67,9 @@ fn minify_javascript_with_source_type<'a>(
                 class: false,
             },
             debug: false,
+            ..MangleOptions::default()
         }),
+        ..MinifierOptions::default()
     })
     .minify(allocator, &mut program);
 
