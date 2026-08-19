@@ -190,3 +190,45 @@ test("cleanup gets the spec's budget, and only a wedged spec gets the short one"
   assert.equal(protocol.cases[0].status, "passed");
   assert.equal(protocol.cases[1].status, "failed");
 });
+
+test("a cleanup failure after a timeout keeps the timeout verdict", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+
+  spec("hangs, then cannot clean up", { id: "VERDICT-1", timeout: 120 }, async (t) => {
+    t.defer(async () => {
+      // Outlives the post-timeout cleanup budget, as a wedged app's would.
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      await t.app.eval({ script: "1" });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 400));
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const report = JSON.parse(
+    Buffer.from(attachments.get("report.json").base64, "base64").toString("utf8"),
+  );
+  // Relabelling this "failed" hides that the app hung, which is the finding.
+  assert.equal(report.cases[0].status, "timeout");
+  assert.equal(report.timeout, 1);
+  assert.equal(report.failed, 0);
+});
+
+test("cleanup is not charged to a short spec's own budget", async () => {
+  const world = createWorld();
+  installFakeHost(world);
+  let cleaned = false;
+
+  spec("short spec, slower cleanup", { timeout: 2_000 }, async (t) => {
+    t.defer(async () => {
+      // A relaunch-and-wait routinely outruns a spec this short.
+      await new Promise((resolve) => setTimeout(resolve, 2_600));
+      await t.app.eval({ script: "1" });
+      cleaned = true;
+    });
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, JSON.stringify(protocol.cases[0]?.error));
+  assert.ok(cleaned, "cleanup was cut short by the spec's own timeout");
+});

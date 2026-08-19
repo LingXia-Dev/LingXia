@@ -12,6 +12,8 @@ export const MAX_ACTIONS = 300;
  * budget to retry in.
  */
 export const MAX_EVAL_BUDGET_MS = 10_000;
+/** Failure forensics run against a possibly wedged app; bound them too. */
+export const FORENSICS_BUDGET_MS = 10_000;
 /** Cleanup budget after a spec timed out — the app may be wedged, so bail fast. */
 export const WEDGED_DEFER_BUDGET_MS = 2_000;
 /** Cleanup budget on the normal path, capped so a leak cannot stall the run. */

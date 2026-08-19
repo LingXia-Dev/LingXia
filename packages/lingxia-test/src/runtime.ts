@@ -18,6 +18,7 @@ import type {
 } from "./types.js";
 import {
   DEFAULT_SPEC_TIMEOUT_MS,
+  FORENSICS_BUDGET_MS,
   MAX_DEFER_BUDGET_MS,
   PACKAGE_NAME,
   VERSION,
@@ -38,13 +39,12 @@ interface RegisteredSpec {
   reason?: string;
   annotation: Annotation;
   body: SpecBody;
-  file: string;
   frames: StackFrame[];
   indexInFile: number;
 }
 
 interface Hook {
-  file: string;
+  frames: StackFrame[];
   fn: SpecBody;
 }
 
@@ -82,12 +82,13 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     throw new TypeError("spec() requires a non-empty title");
   }
   const { options, body } = parseArgs(optionsOrBody, maybeBody);
-  // The bundle map is installed after the modules run, so keep the raw frames
-  // and resolve the authored file when the run starts.
+  // The bundle map is installed after the modules run, so keep the raw frames;
+  // the authored file is only knowable once the run starts. `frames[0]` is a
+  // frame inside this package, identical for every caller, so it can order
+  // registrations but must never stand in for identity.
   const frames = captureFrames();
-  const file = frames[0]?.file ?? "unknown";
-  const indexInFile = (fileCounts.get(file) ?? 0) + 1;
-  fileCounts.set(file, indexInFile);
+  const indexInFile = fileCounts.size + 1;
+  fileCounts.set(String(indexInFile), indexInFile);
   specs.push({
     title,
     id: options.id,
@@ -99,7 +100,6 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     reason: options.reason,
     annotation,
     body,
-    file,
     frames,
     indexInFile,
   });
@@ -128,7 +128,7 @@ const spec: SpecApi = Object.assign(
     },
     beforeEach(fn: SpecBody): void {
       if (typeof fn !== "function") throw new TypeError("spec.beforeEach() requires a function");
-      hooks.push({ file: captureFrames()[0]?.file ?? "unknown", fn });
+      hooks.push({ frames: captureFrames(), fn });
     },
   },
 );
@@ -207,6 +207,11 @@ async function run(): Promise<ProtocolReport> {
     }
   });
 
+  // Resolve each hook's authored file once, so a `beforeEach` stays scoped to
+  // the file that declared it rather than running for every spec in the run.
+  const hookFiles = new Map<Hook, string>(
+    hooks.map((hook) => [hook, resolveOrigin(hook.frames).file] as const),
+  );
   const subject = await describeSubject();
   const cases: CaseRecord[] = [];
   forceRelaunchNext = false;
@@ -268,7 +273,7 @@ async function run(): Promise<ProtocolReport> {
       if (shouldRelaunch) await relaunchHome(fixture.raw);
       phase = "beforeEach";
       for (const hook of hooks) {
-        if (hook.file === item.file) await hook.fn(fixture);
+        if (hookFiles.get(hook) === source.file) await hook.fn(fixture);
       }
       phase = "body";
       await item.body(fixture);
@@ -321,7 +326,14 @@ async function run(): Promise<ProtocolReport> {
     if (status !== "passed" && item.forensics) {
       phase = "forensics";
       try {
-        await captureForensics(fixture);
+        // The whole point of the timeout path is that a wedged app does not
+        // stall the run, and these calls bypass `guard` on the raw driver.
+        await Promise.race([
+          captureForensics(fixture),
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, FORENSICS_BUDGET_MS);
+          }),
+        ]);
       } catch (forensicsError) {
         if (status !== "timeout") {
           status = "failed";
@@ -338,10 +350,10 @@ async function run(): Promise<ProtocolReport> {
     // outruns the post-timeout budget, and a cut-short cleanup leaks the
     // fixture's state into every spec that follows.
     if (fixture.defers.length > 0) {
+      // Cleanup is not spent from the spec's budget: a 3s spec whose defer
+      // relaunches a page would otherwise be failed for its own tidying.
       fixture.allowCleanup(
-        status === "timeout"
-          ? WEDGED_DEFER_BUDGET_MS
-          : Math.min(item.timeout, MAX_DEFER_BUDGET_MS),
+        status === "timeout" ? WEDGED_DEFER_BUDGET_MS : MAX_DEFER_BUDGET_MS,
       );
     }
     for (let index = fixture.defers.length - 1; index >= 0; index -= 1) {
@@ -367,8 +379,13 @@ async function run(): Promise<ProtocolReport> {
 
     if (fixture.defers.length > 0) fixture.endCleanup();
     if (deferErrors.length > 0) {
-      status = "failed";
-      fixture.failurePhase = "defer";
+      // A spec that hung is reported as a timeout; cleanup that could not
+      // finish afterwards is a consequence of the hang, not a different
+      // verdict, and relabelling it hides what actually happened.
+      if (status !== "timeout") {
+        status = "failed";
+        fixture.failurePhase = "defer";
+      }
       const cleanupText = deferErrors
         .map((item) => (item instanceof Error ? item.message : String(item)))
         .join("\n");
