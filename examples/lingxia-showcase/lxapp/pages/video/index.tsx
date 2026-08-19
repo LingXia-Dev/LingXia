@@ -23,6 +23,7 @@ type PageActions = {
   data: PageData;
   play(): void;
   pause(): void;
+  onError(event: Event): void;
   stop(): void;
   seek(position: number): void;
   requestFullScreen(): void;
@@ -123,6 +124,7 @@ export default function App() {
               className="block w-full rounded-lg bg-black"
               style={{ aspectRatio: '16 / 9', borderRadius: 12 }}
               onPlaying={onPlaying}
+              onError={actions.onError}
               onPause={onPause}
               onStop={onStop}
               onEnded={onEnded}

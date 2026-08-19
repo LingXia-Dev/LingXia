@@ -6,6 +6,7 @@ Page({
     duration: 0,
   },
   videoContext: null,
+  usedLocalFallback: false,
 
   onLoad: function (options = {}) {
     if (options.automationFixture === "video-context-shape") {
@@ -98,6 +99,22 @@ Page({
 
   requestFullScreen: function () {
     this._getContext()?.requestFullScreen();
+  },
+
+  onError: function () {
+    if (this.usedLocalFallback) return;
+    this.usedLocalFallback = true;
+    this.videoContext = null;
+    this.setData({
+      eventLog: "Fallback",
+      videos: [{
+        id: "lx-video-1",
+        src: "public/island-sample.avi",
+        poster: "",
+        qualities: [],
+        playbackRates: [1.0],
+      }],
+    });
   },
 
   onPlaying: function () {
