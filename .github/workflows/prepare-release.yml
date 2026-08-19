@@ -18,6 +18,7 @@ on:
         type: choice
         options:
           - all
+          - cli
       version:
         description: "Version to release (e.g. 0.5.0)"
         required: true
@@ -54,15 +55,22 @@ jobs:
             echo "Invalid version: $VERSION (expected x.y.z)" >&2
             exit 1
           fi
-          [[ "$COMPONENT" == "all" ]] || {
-            echo "Independent version bumps are disabled; component must be all" >&2
-            exit 1
-          }
+          case "$COMPONENT" in
+            all | cli) ;;
+            *)
+              echo "Unknown component: $COMPONENT (expected all or cli)" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Create release branch
         run: |
           set -euo pipefail
-          branch="release/v${VERSION}"
+          if [[ "$COMPONENT" == "cli" ]]; then
+            branch="release/cli-v${VERSION}"
+          else
+            branch="release/v${VERSION}"
+          fi
           remote_sha="$(git ls-remote --heads origin "$branch" | awk '{print $1}')"
           git checkout -B "$branch"
           echo "BRANCH=$branch" >> "$GITHUB_ENV"
@@ -110,8 +118,39 @@ jobs:
         run: |
           set -euo pipefail
           version="$VERSION"
-          pr_title="Release v${version}"
-          pr_body="$(cat <<EOF
+          if [[ "$COMPONENT" == "cli" ]]; then
+            pr_title="Release CLI v${version}"
+          else
+            pr_title="Release v${version}"
+          fi
+          if [[ "$COMPONENT" == "cli" ]]; then
+            pr_body="$(cat <<EOF
+          ## Release CLI v${version}
+
+          CLI patch bump to \`${version}\` applied via
+          \`scripts/release/version.sh --component cli\`. Only the CLI patch line
+          moves:
+
+          - \`tools/lingxia-cli/Cargo.toml\` \`[package] version\`
+          - the Runner, which tracks the CLI version
+          - \`Cargo.lock\`
+
+          The workspace, the crates, the SDK and every npm package stay where they
+          are, and the component versions the CLI embeds still name the base
+          release it was built against.
+
+          ### After merge
+
+          This bump does not publish anything on its own. Run
+          **Release / 2. Publish Workspace Component** after this PR merges:
+
+          \`\`\`bash
+          component=cli, version=${version}
+          \`\`\`
+          EOF
+          )"
+          else
+            pr_body="$(cat <<EOF
           ## Release v${version}
 
           Unified version bump to \`${version}\` applied via
@@ -136,6 +175,7 @@ jobs:
           component independently at the same workspace version.
           EOF
           )"
+          fi
 
           existing_pr="$(gh pr list --base main --head "$BRANCH" --state open --json url --jq '.[0].url')"
           if [ -n "$existing_pr" ]; then
