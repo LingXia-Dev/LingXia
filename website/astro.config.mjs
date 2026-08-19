@@ -2,13 +2,10 @@
 import { defineConfig } from 'astro/config';
 import tailwindcss from '@tailwindcss/vite';
 import starlight from '@astrojs/starlight';
-import { createStarlightTypeDocPlugin } from 'starlight-typedoc';
 
-// Build-time JS API reference. TypeDoc reads the published `@lingxia/types`
-// package and emits markdown into src/content/docs/reference/api/, so the docs
-// always track the pinned package version. `apiSidebarGroup` is a placeholder
-// replaced in-place by the generated tree (see the Reference sidebar group).
-const [starlightTypeDoc, apiSidebarGroup] = createStarlightTypeDocPlugin();
+// The Logic JS API reference is generated into src/content/docs/reference/api/
+// by scripts/gen-logic-api.mjs before astro runs (see package.json), one page
+// per capability group. The sidebar picks it up as an ordinary directory.
 
 // GitHub Pages project-site config.
 // The repo is served at https://lingxia-dev.github.io/LingXia/, so `base` is the repo name.
@@ -43,39 +40,6 @@ export default defineConfig({
         root: { label: 'English', lang: 'en' },
         zh: { label: '简体中文', lang: 'zh-CN' },
       },
-      plugins: [
-        starlightTypeDoc({
-          // Entry point resolved from node_modules — the published package's
-          // main d.ts re-exports every `lx.*` namespace plus the `Lx` interface.
-          entryPoints: ['./node_modules/@lingxia/types/dist/index.d.ts'],
-          tsconfig: './tsconfig.typedoc.json',
-          output: 'reference/api',
-          sidebar: { label: 'Logic JS API', collapsed: true },
-          typeDoc: {
-            readme: 'none',
-            githubPages: false,
-            // Drop the repeated "Defined in: …/index.d.ts:NNN" line under every
-            // member (pure noise here, and the source links were broken anyway).
-            disableSources: true,
-            entryFileName: 'index',
-            indexFormat: 'table',
-            parametersFormat: 'table',
-            propertiesFormat: 'table',
-            enumMembersFormat: 'table',
-            typeDeclarationFormat: 'table',
-            useCodeBlocks: true,
-            // Inline option-object shapes (and their fields in parameter tables)
-            // so the reference reads top-to-bottom instead of hopping across a
-            // separate page per option/result type.
-            expandObjects: true,
-            expandParameters: true,
-            // Starlight renders its own page title + nav; drop typedoc's
-            // duplicate markdown header/breadcrumbs.
-            hidePageHeader: true,
-            hideBreadcrumbs: true,
-          },
-        }),
-      ],
       sidebar: [
         {
           label: 'Guide',
@@ -91,8 +55,12 @@ export default defineConfig({
               label: 'About the Logic API',
               translations: { 'zh-CN': '关于 Logic JS API' },
             },
-            // Replaced at build time by the generated TypeDoc group.
-            apiSidebarGroup,
+            {
+              label: 'Logic JS API',
+              translations: { 'zh-CN': 'Logic JS API' },
+              collapsed: true,
+              autogenerate: { directory: 'reference/api' },
+            },
             {
               label: 'Components',
               translations: { 'zh-CN': '组件' },
