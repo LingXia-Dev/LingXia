@@ -3,8 +3,11 @@ name: CI
 on:
   push:
     branches: [main]
+    # The site is built and deployed on its own; it links to no workspace code.
+    paths-ignore: ['website/**']
   pull_request:
     branches: [main]
+    paths-ignore: ['website/**']
   workflow_dispatch:
     inputs:
       focus:
