@@ -1,11 +1,15 @@
 use super::apply::{ApplyCommitOutcome, HostCapabilities, RootRegistry, apply_root_commit};
 use super::geometry::{GeometryPageState, apply_geometry_snapshot};
 use super::lease::{LeaseState, host_can_display, host_grant_lease, host_on_accept};
+use super::resource::{
+    media_urls_from_command_options, media_urls_from_props, validate_media_urls,
+};
+use super::types::NativeRootOperation;
 use super::types::{
     NativeGeometryResult, NativeGeometrySnapshot, NativeRootAck, NativeRootCommit, NodeRef, RootRef,
 };
 use super::video::{
-    VideoCommandOutcome, VideoCommandQueue, VideoCommandRequest, apply_video_command,
+    VideoCommand, VideoCommandOutcome, VideoCommandQueue, VideoCommandRequest, apply_video_command,
 };
 use serde_json::Value;
 
@@ -19,6 +23,8 @@ pub struct IslandSession {
     pub command_queue: VideoCommandQueue,
     leases: Vec<(RootRef, LeaseState)>,
     fullscreen_root: Option<RootRef>,
+    trusted_domains: Vec<String>,
+    dev_session: bool,
 }
 
 impl IslandSession {
@@ -29,7 +35,14 @@ impl IslandSession {
             command_queue: VideoCommandQueue::default(),
             leases: Vec::new(),
             fullscreen_root: None,
+            trusted_domains: Vec::new(),
+            dev_session: false,
         }
+    }
+
+    pub fn set_trusted_domains(&mut self, domains: Vec<String>, dev_session: bool) {
+        self.trusted_domains = domains;
+        self.dev_session = dev_session;
     }
 
     /// Island nodes share the WebView composition domain. Windowed HWND z-order
@@ -39,6 +52,16 @@ impl IslandSession {
     }
 
     pub fn apply_commit(&mut self, commit: NativeRootCommit) -> ApplyCommitOutcome {
+        if let Err(message) = self.validate_commit_urls(&commit) {
+            return ApplyCommitOutcome::Rejected(super::types::NativeError {
+                code: super::types::NativeErrorCode::InvalidProps,
+                scope: super::types::ErrorScope::Root,
+                recoverable: true,
+                root: commit.root.clone(),
+                node: None,
+                message,
+            });
+        }
         let outcome = apply_root_commit(&mut self.registry, &commit);
         if matches!(outcome, ApplyCommitOutcome::Applied(_))
             && self.lease_for(&commit.root).is_none()
@@ -68,6 +91,21 @@ impl IslandSession {
     }
 
     pub fn apply_video_command(&mut self, request: VideoCommandRequest) -> VideoCommandOutcome {
+        if let VideoCommand::SetStreamSource { options } = &request.command {
+            let urls = media_urls_from_command_options(options);
+            if let Err(message) =
+                validate_media_urls(&urls, &self.trusted_domains, self.dev_session)
+            {
+                return VideoCommandOutcome::Rejected(super::types::NativeError {
+                    code: super::types::NativeErrorCode::InvalidProps,
+                    scope: super::types::ErrorScope::Node,
+                    recoverable: true,
+                    root: request.owner.root(),
+                    node: Some(request.owner.clone()),
+                    message,
+                });
+            }
+        }
         apply_video_command(&self.registry, &mut self.command_queue, request)
     }
 
@@ -126,6 +164,22 @@ impl IslandSession {
 
     pub fn can_display(&self, root: &RootRef) -> bool {
         self.lease_for(root).is_some_and(host_can_display)
+    }
+
+    fn validate_commit_urls(&self, commit: &NativeRootCommit) -> Result<(), String> {
+        let mut urls = Vec::new();
+        for operation in &commit.operations {
+            match operation {
+                NativeRootOperation::Mount { node } => {
+                    urls.extend(media_urls_from_props(&node.props));
+                }
+                NativeRootOperation::Update { patch, .. } => {
+                    urls.extend(media_urls_from_props(patch));
+                }
+                _ => {}
+            }
+        }
+        validate_media_urls(&urls, &self.trusted_domains, self.dev_session)
     }
 
     fn lease_for(&self, root: &RootRef) -> Option<&LeaseState> {

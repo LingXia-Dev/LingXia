@@ -48,7 +48,7 @@ mod runtime_bootstrap;
 mod runtime_ops;
 pub(crate) mod runtime_registry;
 mod scheme;
-mod security;
+pub(crate) mod security;
 mod surface;
 pub use security::{LxAppSecurityPrivilege, is_public_network_address};
 pub mod tabbar;

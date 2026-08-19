@@ -839,6 +839,15 @@ mod tests {
     }
 
     #[test]
+    fn allows_root_wrapped_lx_video() {
+        audit_one(
+            "pages/player/index.html",
+            r#"<lx-native-root class="player"><lx-video src="./clip.mp4" controls="false"></lx-video></lx-native-root>"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
     fn allows_lx_video_and_media_swiper_type() {
         audit_one(
             "index.html",

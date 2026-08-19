@@ -103,6 +103,24 @@ fn applies_a_json_commit_through_the_shipped_deserializer() {
 }
 
 #[test]
+fn island_session_rejects_untrusted_video_src() {
+    let root = root();
+    let mut session = IslandSession::new();
+    session.set_trusted_domains(vec!["cdn.example.com".into()], false);
+    let mut ops = vec![mount(&root, "video", "video", None, 0)];
+    if let NativeRootOperation::Mount { node } = &mut ops[0] {
+        node.props = serde_json::json!({ "src": "https://evil.example/a.mp4" });
+    }
+    match session.apply_commit(commit(&root, 0, 1, ops)) {
+        ApplyCommitOutcome::Rejected(err) => {
+            assert_eq!(err.code, NativeErrorCode::InvalidProps);
+            assert!(err.message.contains("trustedDomains"));
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
 fn island_session_orders_committed_siblings_without_hwnd_zorder() {
     let root = root();
     let mut session = IslandSession::new();
