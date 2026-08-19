@@ -2203,7 +2203,7 @@ impl LxApp {
             .lock()
             .unwrap()
             .network_security
-            .is_domain_allowed(domain)
+            .is_domain_allowed_in(domain, crate::is_dev_session())
     }
 
     /// Check whether this lxapp declares a high-risk security privilege.

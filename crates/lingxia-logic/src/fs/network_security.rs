@@ -21,11 +21,21 @@ impl NetworkAccessGuard for LxAppNetworkAccessGuard {
                 "Network access denied: domain '{host}' is not allowed by lxapp security policy"
             )));
         }
-        ensure_public_target(host, uri.port_u16().unwrap_or(0))
+        // `is_domain_allowed` has already applied the dev-session rule; without
+        // matching it here the rebinding guard would deny a fixture the policy
+        // just permitted.
+        ensure_public_target(
+            host,
+            uri.port_u16().unwrap_or(0),
+            lxapp::is_dev_session() && self.lxapp.is_domain_allowed(host),
+        )
     }
 }
 
-fn ensure_public_target(host: &str, port: u16) -> Result<(), HttpError> {
+/// Rejects a host that resolves to a non-public address, so a trusted public
+/// domain cannot be rebound onto the user's own network. `allow_private` is the
+/// dev-session fixture case, where the policy already named the host.
+fn ensure_public_target(host: &str, port: u16, allow_private: bool) -> Result<(), HttpError> {
     let unbracketed = host
         .strip_prefix('[')
         .and_then(|host| host.strip_suffix(']'))
@@ -47,6 +57,9 @@ fn ensure_public_target(host: &str, port: u16) -> Result<(), HttpError> {
         return Err(HttpError::access_denied(format!(
             "Network access denied: domain '{host}' resolved to no addresses"
         )));
+    }
+    if allow_private {
+        return Ok(());
     }
     if let Some(address) = addresses
         .into_iter()
@@ -73,14 +86,22 @@ mod tests {
 
     #[test]
     fn rejects_private_and_loopback_literal_targets() {
-        assert!(ensure_public_target("127.0.0.1", 80).is_err());
-        assert!(ensure_public_target("169.254.169.254", 80).is_err());
-        assert!(ensure_public_target("[::1]", 80).is_err());
+        assert!(ensure_public_target("127.0.0.1", 80, false).is_err());
+        assert!(ensure_public_target("169.254.169.254", 80, false).is_err());
+        assert!(ensure_public_target("[::1]", 80, false).is_err());
     }
 
     #[test]
     fn accepts_public_literal_targets() {
-        assert!(ensure_public_target("1.1.1.1", 443).is_ok());
-        assert!(ensure_public_target("[2606:4700:4700::1111]", 443).is_ok());
+        assert!(ensure_public_target("1.1.1.1", 443, false).is_ok());
+        assert!(ensure_public_target("[2606:4700:4700::1111]", 443, false).is_ok());
+    }
+
+    #[test]
+    fn a_permitted_dev_fixture_passes_the_rebinding_guard() {
+        assert!(ensure_public_target("127.0.0.1", 8117, true).is_ok());
+        // The metadata endpoint is reachable too, which is why the caller must
+        // only pass true for a host the lxapp's own policy already trusts.
+        assert!(ensure_public_target("169.254.169.254", 80, true).is_ok());
     }
 }
