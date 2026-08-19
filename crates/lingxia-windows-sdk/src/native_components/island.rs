@@ -26,7 +26,7 @@ pub(super) fn handle_island_message(page_key: &str, message: &Value) -> bool {
     let mut sessions = sessions().lock().expect("island session lock");
     let session = sessions
         .entry(page_key.to_string())
-        .or_insert_with(IslandSession::new);
+        .or_default();
     debug_assert!(!session.uses_hwnd_zorder());
     match action {
         "root.commit" => match session.apply_commit_json(message) {

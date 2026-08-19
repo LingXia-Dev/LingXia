@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use super::apply::RootRegistry;
 use super::types::{ErrorScope, NativeError, NativeErrorCode, NodeRef, RootLifecycle};
 use serde::{Deserialize, Serialize};
@@ -29,7 +31,7 @@ pub struct VideoCommandRequest {
 pub enum VideoCommandOutcome {
     Applied { request_id: String },
     Queued { request_id: String },
-    Rejected(NativeError),
+    Rejected(Box<NativeError>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -70,6 +72,10 @@ impl VideoCommandQueue {
     pub fn len(&self) -> usize {
         self.items.len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
 }
 
 pub fn apply_video_command(
@@ -78,15 +84,15 @@ pub fn apply_video_command(
     request: VideoCommandRequest,
 ) -> VideoCommandOutcome {
     let Some(state) = registry.get(&request.owner.root()) else {
-        return VideoCommandOutcome::Rejected(command_error(
+        return VideoCommandOutcome::Rejected(Box::new(command_error(
             &request,
             NativeErrorCode::RootDestroyed,
             "video command owner root is not mounted",
-        ));
+        )));
     };
     match state.lifecycle {
         RootLifecycle::Destroyed | RootLifecycle::Failed | RootLifecycle::Unavailable => {
-            return VideoCommandOutcome::Rejected(command_error(
+            return VideoCommandOutcome::Rejected(Box::new(command_error(
                 &request,
                 if state.lifecycle == RootLifecycle::Destroyed {
                     NativeErrorCode::RootDestroyed
@@ -94,15 +100,15 @@ pub fn apply_video_command(
                     NativeErrorCode::CommandFailed
                 },
                 "video command rejected because the root is not runnable",
-            ));
+            )));
         }
         RootLifecycle::Negotiating | RootLifecycle::Mounting => {
             if queue.items.len() >= MAX_QUEUED_COMMANDS {
-                return VideoCommandOutcome::Rejected(command_error(
+                return VideoCommandOutcome::Rejected(Box::new(command_error(
                     &request,
                     NativeErrorCode::CommandFailed,
                     "video command queue overflow; newest command rejected",
-                ));
+                )));
             }
             queue.items.push(request.clone());
             return VideoCommandOutcome::Queued {
@@ -112,34 +118,34 @@ pub fn apply_video_command(
         RootLifecycle::Ready => {}
     }
     if !state.nodes.contains_key(&request.owner.node_key) {
-        return VideoCommandOutcome::Rejected(command_error(
+        return VideoCommandOutcome::Rejected(Box::new(command_error(
             &request,
             NativeErrorCode::CommandFailed,
             "video command owner node is not in the applied tree",
-        ));
+        )));
     }
     let Some(node) = state.nodes.get(&request.owner.node_key) else {
-        return VideoCommandOutcome::Rejected(command_error(
+        return VideoCommandOutcome::Rejected(Box::new(command_error(
             &request,
             NativeErrorCode::CommandFailed,
             "video command owner node is not in the applied tree",
-        ));
+        )));
     };
     if node.kind != "video" || node.node_ref.node_epoch != request.owner.node_epoch {
-        return VideoCommandOutcome::Rejected(command_error(
+        return VideoCommandOutcome::Rejected(Box::new(command_error(
             &request,
             NativeErrorCode::CommandFailed,
             "video command identity does not match a video node",
-        ));
+        )));
     }
     if let VideoCommand::Seek { seconds } = request.command
         && !seconds.is_finite()
     {
-        return VideoCommandOutcome::Rejected(command_error(
+        return VideoCommandOutcome::Rejected(Box::new(command_error(
             &request,
             NativeErrorCode::InvalidProps,
             "seek seconds must be finite",
-        ));
+        )));
     }
     VideoCommandOutcome::Applied {
         request_id: request.request_id,

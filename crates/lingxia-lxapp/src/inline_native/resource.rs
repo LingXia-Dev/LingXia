@@ -8,7 +8,7 @@ pub fn validate_media_urls(
     dev_session: bool,
 ) -> Result<(), String> {
     let mut security = NetworkSecurity::new();
-    security.set_domains(&trusted_domains.to_vec());
+    security.set_domains(trusted_domains);
     for url in urls {
         if let Some(host) = media_url_host(url)
             && !security.is_domain_allowed_in(&host, dev_session)
@@ -71,9 +71,7 @@ fn media_url_host(url: &str) -> Option<String> {
     {
         return None;
     }
-    let Some(scheme_end) = trimmed.find("://") else {
-        return None;
-    };
+    let scheme_end = trimmed.find("://")?;
     let rest = &trimmed[scheme_end + 3..];
     let host_port = rest.split(['/', '?', '#']).next().unwrap_or(rest);
     let host = host_port

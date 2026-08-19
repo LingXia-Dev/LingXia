@@ -53,14 +53,14 @@ impl IslandSession {
 
     pub fn apply_commit(&mut self, commit: NativeRootCommit) -> ApplyCommitOutcome {
         if let Err(message) = self.validate_commit_urls(&commit) {
-            return ApplyCommitOutcome::Rejected(super::types::NativeError {
+            return ApplyCommitOutcome::Rejected(Box::new(super::types::NativeError {
                 code: super::types::NativeErrorCode::InvalidProps,
                 scope: super::types::ErrorScope::Root,
                 recoverable: true,
                 root: commit.root.clone(),
                 node: None,
                 message,
-            });
+            }));
         }
         let outcome = apply_root_commit(&mut self.registry, &commit);
         if matches!(outcome, ApplyCommitOutcome::Applied(_))
@@ -96,14 +96,14 @@ impl IslandSession {
             if let Err(message) =
                 validate_media_urls(&urls, &self.trusted_domains, self.dev_session)
             {
-                return VideoCommandOutcome::Rejected(super::types::NativeError {
+                return VideoCommandOutcome::Rejected(Box::new(super::types::NativeError {
                     code: super::types::NativeErrorCode::InvalidProps,
                     scope: super::types::ErrorScope::Node,
                     recoverable: true,
                     root: request.owner.root(),
                     node: Some(request.owner.clone()),
                     message,
-                });
+                }));
             }
         }
         apply_video_command(&self.registry, &mut self.command_queue, request)

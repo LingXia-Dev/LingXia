@@ -48,10 +48,10 @@ pub fn apply_geometry_snapshot(
             page.pending_by_root
                 .remove(&RootRegistry::slot_key(&root_entry.root_ref));
             page.last_applied_revision = snapshot.revision;
-        } else if status == GeometryRootStatus::IdentityInvalid {
-            if let Some(state) = registry.get_mut(&root_entry.root_ref) {
-                state.lifecycle = super::types::RootLifecycle::Failed;
-            }
+        } else if status == GeometryRootStatus::IdentityInvalid
+            && let Some(state) = registry.get_mut(&root_entry.root_ref)
+        {
+            state.lifecycle = super::types::RootLifecycle::Failed;
         }
         roots.push(GeometryResultRoot {
             root: root_entry.root_ref.clone(),
