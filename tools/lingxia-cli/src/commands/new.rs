@@ -392,11 +392,11 @@ fn print_manual_skill_hint() {
     println!("{}", "AI tooling (install later):".bold());
     println!(
         "  {}              # for Claude Code / Anthropic Skills",
-        "npx @lingxia/skill install".cyan()
+        "lingxia skill install".cyan()
     );
     println!(
         "  {}  # for Codex CLI / AGENTS.md tools",
-        "npx @lingxia/skill install --agents-md".cyan()
+        "lingxia skill install --agents-md".cyan()
     );
     println!();
 }

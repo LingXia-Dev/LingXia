@@ -35,7 +35,6 @@ With --component all (default), this updates:
   - example native host Cargo.lock LingXia package versions
   - package versions under packages/*
   - @lingxia/browser-shell-webui (crates/lingxia-browser-shell/webui)
-  - the @lingxia/skill manifest version (kept in lockstep with its package.json)
   - internal @lingxia/* package dependency versions in published package.json files
 EOF
 }
@@ -269,11 +268,6 @@ if (dryRun) {
 }
 NODE
 
-  # The skill manifest carries its own version; keep it in lockstep whenever the
-  # skill package itself is (re)versioned.
-  case "$package_json" in
-    */packages/lingxia-skill/package.json) sync_skill_manifest "$VERSION" ;;
-  esac
 }
 
 update_example_host_cargo() {
@@ -447,33 +441,6 @@ if pn == 1 and not dry:
     plist.write_text(pnew)
 print(f"{'would update' if dry else 'updated'} {plist} CFBundleShortVersionString -> {version}" if pn == 1
       else f"warning: CFBundleShortVersionString not found in {plist}")
-PY
-}
-
-# The @lingxia/skill package ships a separate skill manifest with its own version
-# field; keep it in lockstep with packages/lingxia-skill/package.json so the two
-# never diverge. Called from update_package_json with the version being written,
-# so it stays accurate under --dry-run. Targeted rewrite avoids reformatting.
-sync_skill_manifest() {
-  local v="$1"
-  local manifest="$ROOT_DIR/packages/lingxia-skill/skill/skill-manifest.json"
-  [[ -f "$manifest" ]] || return 0
-  python3 - "$manifest" "$v" "$DRY_RUN" <<'PY'
-import re, sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-version = sys.argv[2]
-dry = sys.argv[3] == "1"
-text = path.read_text()
-new, n = re.subn(r'("version"\s*:\s*")[^"]+(")', rf'\g<1>{version}\2', text, count=1)
-if n != 1:
-    raise SystemExit(f"failed to set version in {path}")
-if dry:
-    print(f"would update {path} -> {version}")
-else:
-    path.write_text(new)
-    print(f"updated {path} -> {version}")
 PY
 }
 

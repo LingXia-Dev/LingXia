@@ -78,7 +78,7 @@ See [Quick Start](docs/quick-start.md) for Node.js, platform SDK, Android NDK, H
 
 ## AI Assistant Skill
 
-LingXia ships an agent-oriented markdown skill as `@lingxia/skill`. It contains the decision tree, CLI reference, lxapp recipes, native component docs, `lx.*` API map, host project docs, and Rust native development guide.
+LingXia ships an agent-oriented markdown skill inside the CLI. It contains the decision tree, CLI reference, lxapp recipes, native component docs, `lx.*` API map, host project docs, and Rust native development guide.
 
 For Claude Code / Anthropic Skills:
 
@@ -122,7 +122,6 @@ Browse the source directly at [docs/skill/SKILL.md](docs/skill/SKILL.md), or rea
 | `@lingxia/types` | TypeScript declarations for Logic-side `Page({})`, `App({})`, and `lx.*` |
 | `@lingxia/bridge` | Low-level bridge runtime |
 | `@lingxia/elements` | Custom elements behind the framework wrappers |
-| `@lingxia/skill` | Markdown skill bundle for AI coding tools |
 
 ## Repository Layout
 

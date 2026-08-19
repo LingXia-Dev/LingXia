@@ -106,11 +106,11 @@ LingXia 的深度参考以可移植的 markdown **技能**形式分发——决�
 技能为**可选**，以 npm 包分发：
 
 ```bash
-npx @lingxia/skill install              # ./.claude/skills/lingxia/
-npx @lingxia/skill install --user       # ~/.claude/skills/lingxia/
-npx @lingxia/skill install --agents-md  # 同时为 Codex 类工具写入 AGENTS.md
+lingxia skill install              # ./.claude/skills/lingxia/
+lingxia skill install --user       # ~/.claude/skills/lingxia/
+lingxia skill install --agents-md  # 同时为 Codex 类工具写入 AGENTS.md
 ```
 
-- **Claude Code / Claude Agent SDK** —— `npx @lingxia/skill install`；Claude 会发现 `.claude/skills/lingxia/SKILL.md`。
+- **Claude Code / Claude Agent SDK** —— `lingxia skill install`；Claude 会发现 `.claude/skills/lingxia/SKILL.md`。
 - **OpenAI Codex CLI** —— 加 `--agents-md`；Codex 读取 `<project>/AGENTS.md`。
 - **Cursor、Copilot 及其他读 markdown 的助手** —— 把工具指向 `.claude/skills/lingxia/SKILL.md`。
