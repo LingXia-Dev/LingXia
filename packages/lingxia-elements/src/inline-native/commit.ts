@@ -90,7 +90,10 @@ function walkMounts(
           authorType: node.node.authorType,
           authorId: node.node.authorId,
           automationId: node.node.automationId,
-          props: node.node.props,
+          props: {
+            ...node.node.props,
+            ...(node.node.text !== undefined ? { text: node.node.text } : {}),
+          },
         },
       });
     }

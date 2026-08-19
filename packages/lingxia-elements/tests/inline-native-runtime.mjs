@@ -46,6 +46,8 @@ assert.equal(commit.operations.length, 3);
 assert.equal(commit.operations[0].node.kind, "video");
 assert.equal(commit.operations[1].node.kind, "view");
 assert.equal(commit.operations[2].node.parent.nodeKey, commit.operations[1].node.ref.nodeKey);
+assert.equal(commit.operations[2].node.kind, "text");
+assert.equal(commit.operations[2].node.props.text, "Hi");
 
 const geometry = buildGeometrySnapshot({
   identified,
