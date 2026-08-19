@@ -54,6 +54,7 @@ final class MacNativeComponentManager {
     private var componentPlaybackIntent: [String: Bool] = [:]
     private var componentsPendingAutoResume: Set<String> = []
     private var inactivePages: Set<String> = []
+    private var island: MacInlineNativeIsland?
 
     init(
         hostView: NSView,
@@ -86,6 +87,12 @@ final class MacNativeComponentManager {
 
     func handle(message: [String: Any]) {
         guard let action = message["action"] as? String else { return }
+        if island == nil, let hostView {
+            island = MacInlineNativeIsland(host: hostView)
+        }
+        if island?.handle(message: message) == true {
+            return
+        }
 
         switch action {
         case "component.mount":

@@ -62,6 +62,7 @@ internal class NativeComponentManager(
     // Monotonic generation per component id. Used to drop stale async events from old instances.
     private val componentEpochs = mutableMapOf<String, Long>()
     private val factories = mutableMapOf<String, LxNativeComponentFactory>()
+    private var island: InlineNativeIsland? = null
 
     private val webOverlayCoverageRestore: MutableMap<String, Int> = mutableMapOf()
 
@@ -78,6 +79,13 @@ internal class NativeComponentManager(
     }
 
     fun handle(message: Map<String, Any?>) {
+        val host = hostViewRef.get()
+        if (host != null && island == null) {
+            island = InlineNativeIsland(host)
+        }
+        if (island?.handle(message) == true) {
+            return
+        }
         when (message["action"] as? String) {
             "component.mount" -> handleMount(message)
             "component.update" -> handleUpdate(message)

@@ -54,6 +54,7 @@ use windows::core::{PCWSTR, w};
 use super::video_controls::{ControlsAction, ControlsState, VideoControls};
 use super::video_player::{VideoEventSink, VideoPlayer, VideoPlayerEvent};
 
+mod island;
 mod model;
 mod swiper;
 mod text;
@@ -247,6 +248,10 @@ fn handle_message(
             target,
         });
         view.target = target;
+    }
+
+    if island::handle_island_message(&context.page_key, message) {
+        return;
     }
 
     match action {
@@ -623,6 +628,7 @@ fn apply_component_visibility(key: &str, visible: bool) {
 
 /// Destroys every component mounted by `page_key` and drops its view state.
 fn teardown_page(page_key: &str) {
+    island::teardown_island(page_key);
     page_views().remove(page_key);
     {
         let mut ready = ready_keys();

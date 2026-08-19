@@ -9,6 +9,18 @@ import { NativeComponentNodeController } from './NativeComponentNodeController';
 import { registerVideoBuilder } from './Builders/VideoBuilder';
 import { registerPickerBuilder } from './Builders/PickerBuilder';
 import { registerMediaSwiperBuilder } from './Builders/MediaSwiperBuilder';
+import { InlineNativeIslandHost } from './IslandHost';
+
+const islandHosts: Map<string, InlineNativeIslandHost> = new Map();
+
+export function handleIslandMessage(webTag: string, action: string, payload: Record<string, Object>): boolean {
+  let host = islandHosts.get(webTag);
+  if (!host) {
+    host = new InlineNativeIslandHost();
+    islandHosts.set(webTag, host);
+  }
+  return host.handle(action, payload);
+}
 
 // Embed managers by webTag
 const webViewEmbedManagers: Map<string, NativeComponentEmbedManager> = new Map();
