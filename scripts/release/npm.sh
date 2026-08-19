@@ -106,6 +106,31 @@ verify_package_inventory() {
   fi
 }
 
+# The release workflows carry their own NPM_PACKAGES list, used to verify
+# versions and to create each package's git tag. A package missing there is
+# published untagged and unverified, so hold the two lists to each other.
+verify_workflow_inventory() {
+  local expected workflow actual
+  expected="$(
+    for target in "${ALL_TARGETS[@]}"; do
+      # browser-shell-webui lives outside packages/, which is the only path the
+      # workflows know how to read, so it is deliberately absent from their list.
+      [[ "$target" == "browser-shell-webui" ]] && continue
+      echo "lingxia-$target"
+    done | sort
+  )"
+  for workflow in "$ROOT_DIR/.github/workflows/npm-release.yml" \
+                  "$ROOT_DIR/.github/workflows/create-release-tag.yml"; do
+    [[ -f "$workflow" ]] || continue
+    actual="$(awk '/^  NPM_PACKAGES:/{f=1; next} f && /^    [a-z]/{print $1; next} f{exit}' "$workflow" | sort)"
+    if [[ "$expected" != "$actual" ]]; then
+      echo "NPM_PACKAGES in $(basename "$workflow") is out of sync with ALL_TARGETS:" >&2
+      diff <(echo "$expected") <(echo "$actual") >&2 || true
+      exit 1
+    fi
+  done
+}
+
 pkg_target_for_name() {
   case "$1" in
     @lingxia/bridge) echo "bridge" ;;
@@ -222,6 +247,7 @@ NODE
 }
 
 verify_package_inventory
+verify_workflow_inventory
 if [[ "$PACKAGE_SET" == "all" ]]; then
   verify_publish_order
 fi

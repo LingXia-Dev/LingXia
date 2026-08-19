@@ -34,6 +34,7 @@ on:
           - lingxia-react
           - lingxia-skill
           - lingxia-terminal-settings
+          - lingxia-test
           - lingxia-types
           - lingxia-vue
       version:
@@ -57,6 +58,7 @@ env:
     lingxia-vue
     lingxia-terminal-settings
     lingxia-types
+    lingxia-test
     lingxia-skill
 
 jobs:
