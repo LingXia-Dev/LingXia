@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLxPage } from '@lingxia/react';
-import { LxNativeRoot, LxVideo } from '@lingxia/react';
+import { LxNativeCover, LxNativeRoot, LxNativeText, LxVideo } from '@lingxia/react';
 import '../../tailwind.css';
 
 type VideoConfig = {
@@ -109,7 +109,7 @@ export default function App() {
         </div>
 
         <div className="bg-black rounded-xl overflow-hidden">
-          <LxNativeRoot className="block w-full" style={{ aspectRatio: '16 / 9' }}>
+          <LxNativeRoot className="block w-full" style={{ aspectRatio: '16 / 9' }} data-testid="inline-native-root">
             <LxVideo
               id={video.id}
               data-testid="native-video"
@@ -132,6 +132,9 @@ export default function App() {
               onQualityChange={onQualityChange}
               onRateChange={onRateChange}
             />
+            <LxNativeCover pointerEvents="none" data-testid="inline-native-cover">
+              <LxNativeText className="absolute left-3 top-3 text-white text-xs">Inline native</LxNativeText>
+            </LxNativeCover>
           </LxNativeRoot>
         </div>
 

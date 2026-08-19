@@ -13,6 +13,30 @@ async function attachWindow(t: Fixture, name: string): Promise<void> {
   await attachShot(t, name, { mimeType: 'image/png', base64: screenshot.base64 });
 }
 
+spec("wrap the showcase player in LxNativeRoot so island video is the live path", { id: "NATIVE-ISLAND-001", covers: ['lx.createVideoContext', 'NavDriver.to'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, defer } = bindFixture(t, "NATIVE-ISLAND-001");
+  const current = await currentPageOrNull(app);
+  if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
+  await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
+  defer(async () => {
+    const active = await currentPageOrNull(app);
+    if (active?.name !== 'home') await app.nav.relaunch({ page: 'home' });
+  });
+
+  await app.nav.to({ page: 'video', query: { automationFixture: 'video-context-shape' } });
+  await waitForCurrentPage(app, 'video');
+  await app.page.waitFor({ page: 'video', css: '[data-testid="inline-native-root"]', state: 'visible' });
+  const wrapped = await app.page.eval({
+    page: 'video',
+    script:
+      '(() => { const root = document.querySelector("lx-native-root"); const video = document.querySelector("lx-native-root > lx-video"); return { hasRoot: !!root, videoIsDirectChild: !!video, videoId: video && video.getAttribute("id") }; })()',
+  });
+  expect(wrapped.hasRoot).toBeTruthy();
+  expect(wrapped.videoIsDirectChild).toBeTruthy();
+  expect(wrapped.videoId).toBe('lx-video-shape-fixture');
+  await app.page.click({ page: 'video', css: '[data-testid="video-pause"]' });
+});
+
 spec("hide the native video overlay before the next page becomes interactive", { id: "NATIVE-VIDEO-001", covers: ['lx.createVideoContext', 'VideoContext.pause', 'NavDriver.to', 'NavDriver.back'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, "NATIVE-VIDEO-001");
 
