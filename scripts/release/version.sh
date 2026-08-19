@@ -322,6 +322,64 @@ update_example_host_lock() {
     -p lingxia-control-runtime
 }
 
+# Every lockfile that links a workspace package mirrors that package's version:
+# the packages/ workspace lock by member name, an lxapp's lock by relative path.
+# Bumping only the package.json files leaves those mirrors behind, and the
+# runtime then warns that the linked package does not match the CLI.
+update_linked_package_locks() {
+  python3 - "$ROOT_DIR" "$VERSION" "$DRY_RUN" <<'PY_LOCK'
+from pathlib import Path
+import json
+import sys
+
+root = Path(sys.argv[1])
+version = sys.argv[2]
+dry_run = sys.argv[3] == "1"
+
+sources = sorted(root.glob("packages/*/package.json"))
+sources.append(root / "crates/lingxia-browser-shell/webui/package.json")
+names = set()
+dirs = set()
+for source in sources:
+    if not source.is_file():
+        continue
+    names.add(json.loads(source.read_text())["name"])
+    dirs.add(source.parent.name)
+
+
+def is_local(key, entry):
+    # A linked local package carries a version and no registry `resolved`.
+    if "version" not in entry or "resolved" in entry:
+        return False
+    return entry.get("name") in names or Path(key).name in dirs
+
+
+locks = [root / "packages/package-lock.json"]
+locks += sorted(root.glob("examples/*/package-lock.json"))
+locks += sorted(root.glob("examples/*/*/package-lock.json"))
+
+for lock in locks:
+    if not lock.is_file():
+        continue
+    data = json.loads(lock.read_text())
+    changed = [
+        key
+        for key, entry in data.get("packages", {}).items()
+        if is_local(key, entry) and entry["version"] != version
+    ]
+    if not changed:
+        continue
+    if dry_run:
+        print(f"would update {lock}")
+    else:
+        for key in changed:
+            data["packages"][key]["version"] = version
+        lock.write_text(json.dumps(data, indent=2) + "\n")
+        print(f"updated {lock}")
+    print(f"  linked workspace packages -> {version} ({len(changed)})")
+PY_LOCK
+}
+
 update_root_lock() {
   [[ -f "$ROOT_DIR/Cargo.lock" ]] || return 0
 
@@ -430,6 +488,7 @@ while IFS= read -r package_json; do
 done < <(find "$ROOT_DIR/packages" -mindepth 2 -maxdepth 2 -name package.json | sort)
 # Lives next to the crate, not under packages/, so the glob above misses it.
 update_package_json "$ROOT_DIR/crates/lingxia-browser-shell/webui/package.json"
+update_linked_package_locks
 update_root_lock
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
