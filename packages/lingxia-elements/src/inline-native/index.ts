@@ -31,6 +31,17 @@ export {
 } from "./structure.js";
 
 export { unwrapNativeEventPayload, bindPayloadHandler, isDomEvent } from "./unwrap.js";
+export { identifyCompiledRoot, nextOpaqueKey, type IdentifiedRoot, type IdentifiedNode } from "./identity.js";
+export { buildRootCommit, type NativeRootCommitJson } from "./commit.js";
+export {
+  emptyViewLease,
+  viewApplyGrant,
+  viewAcceptLease,
+  viewMarkActive,
+  viewCanShowFallback,
+  type ViewLeaseState,
+} from "./lease.js";
+export { buildGeometrySnapshot, type NativeGeometrySnapshotJson } from "./geometry.js";
 
 export { nativeError, isNativeErrorCode } from "./errors.js";
 
