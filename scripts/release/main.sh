@@ -129,7 +129,7 @@ current_cli_target() {
 }
 
 doctor() {
-  local ws_v cli_v cli_asset cli_runner_tag sdk_tag bridge_v polyfills_v elements_v react_v vue_v html_v page_runtime_v terminal_settings_v browser_shell_webui_v types_v skill_v cli_target
+  local ws_v cli_v cli_asset cli_runner_tag sdk_tag cli_target
   ws_v="$(workspace_version)"
   cli_v="$(cli_version)"
   if cli_target="$(current_cli_target 2>/dev/null)"; then
@@ -139,17 +139,6 @@ doctor() {
   fi
   cli_runner_tag="$(release_tag_for_version "$cli_v")"
   sdk_tag="lingxia-sdk-v$ws_v"
-  bridge_v="$(node -p "require('$ROOT_DIR/packages/lingxia-bridge/package.json').version" 2>/dev/null || echo "N/A")"
-  polyfills_v="$(node -p "require('$ROOT_DIR/packages/lingxia-polyfills/package.json').version" 2>/dev/null || echo "N/A")"
-  elements_v="$(node -p "require('$ROOT_DIR/packages/lingxia-elements/package.json').version" 2>/dev/null || echo "N/A")"
-  react_v="$(node -p "require('$ROOT_DIR/packages/lingxia-react/package.json').version" 2>/dev/null || echo "N/A")"
-  vue_v="$(node -p "require('$ROOT_DIR/packages/lingxia-vue/package.json').version" 2>/dev/null || echo "N/A")"
-  html_v="$(node -p "require('$ROOT_DIR/packages/lingxia-html/package.json').version" 2>/dev/null || echo "N/A")"
-  page_runtime_v="$(node -p "require('$ROOT_DIR/packages/lingxia-page-runtime/package.json').version" 2>/dev/null || echo "N/A")"
-  terminal_settings_v="$(node -p "require('$ROOT_DIR/packages/lingxia-terminal-settings/package.json').version" 2>/dev/null || echo "N/A")"
-  browser_shell_webui_v="$(node -p "require('$ROOT_DIR/crates/lingxia-browser-shell/webui/package.json').version" 2>/dev/null || echo "N/A")"
-  types_v="$(node -p "require('$ROOT_DIR/packages/lingxia-types/package.json').version" 2>/dev/null || echo "N/A")"
-  skill_v="$(node -p "require('$ROOT_DIR/packages/lingxia-skill/package.json').version" 2>/dev/null || echo "N/A")"
 
   cat <<EOF
 Workspace version:      $ws_v
@@ -159,17 +148,21 @@ CLI current asset:      $cli_asset
 Runner release tag:     $cli_runner_tag
 Runner targets:         ${RUNNER_TARGETS[*]}
 SDK release tag:        $sdk_tag
-NPM bridge version:     $bridge_v
-NPM polyfills version:  $polyfills_v
-NPM elements version:   $elements_v
-NPM react version:      $react_v
-NPM vue version:        $vue_v
-NPM html version:       $html_v
-NPM page-runtime version: $page_runtime_v
-NPM terminal-settings version: $terminal_settings_v
-NPM browser-shell-webui version: $browser_shell_webui_v
-NPM types version:      $types_v
-NPM skill version:      $skill_v
+EOF
+
+  # Scanned, not listed: a new package under packages/ must show up here without
+  # anyone remembering to add it.
+  local package_json name version
+  while IFS= read -r package_json; do
+    name="$(node -p "require('$package_json').name" 2>/dev/null || echo "N/A")"
+    version="$(node -p "require('$package_json').version" 2>/dev/null || echo "N/A")"
+    printf 'NPM %-24s %s\n' "$name" "$version"
+  done < <(
+    find "$ROOT_DIR/packages" -mindepth 2 -maxdepth 2 -name package.json | sort
+    echo "$ROOT_DIR/crates/lingxia-browser-shell/webui/package.json"
+  )
+
+  cat <<EOF
 GitHub release repo:    $GH_REPO
 
 Scripts:
