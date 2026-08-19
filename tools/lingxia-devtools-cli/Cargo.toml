@@ -23,16 +23,16 @@ ctrlc = "3.5"
 
 # `lxdev test` bundler — the same Oxc components as lingxia-cli's Logic
 # bundler, but a dedicated entry mode (no Page()/App() rewrites).
-oxc_parser = "0.138"
-oxc_resolver = "11.23.0"
-oxc_transformer = "0.138"
-oxc_codegen = "0.138"
-oxc_allocator = "0.138"
-oxc_span = "0.138"
-oxc_ast = "0.138"
-oxc_ast_visit = "0.138"
-oxc_semantic = "0.138"
-oxc_sourcemap = "8.1"
+oxc_parser = "0.145"
+oxc_resolver = "11.24.2"
+oxc_transformer = "0.145"
+oxc_codegen = "0.145"
+oxc_allocator = "0.145"
+oxc_span = "0.145"
+oxc_ast = "0.145"
+oxc_ast_visit = "0.145"
+oxc_semantic = "0.145"
+oxc_sourcemap = "8.1.2"
 
 [dev-dependencies]
 tempfile = "3"

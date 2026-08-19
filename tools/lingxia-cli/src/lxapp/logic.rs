@@ -234,7 +234,7 @@ fn dependency_paths_in_source_order(
                 .ok_or_else(|| anyhow!("Internal import bookkeeping mismatch"))?
                 .resolved_local
                 .as_ref(),
-            Statement::ExportNamedDeclaration(declaration) => export_dependencies
+            Statement::ExportFromDeclaration(declaration) => export_dependencies
                 .iter()
                 .find(|record| record.statement_span == declaration.span)
                 .ok_or_else(|| anyhow!("Internal export bookkeeping mismatch"))?
@@ -382,20 +382,23 @@ fn collect_export_dependencies(
     let mut exports = Vec::new();
     for statement in &program.body {
         match statement {
-            Statement::ExportNamedDeclaration(export_decl) => {
+            // `export { a }` and `export const a = 1` name no module, so only
+            // the `from` forms below carry a dependency to record.
+            Statement::ExportFromDeclaration(export_decl) => {
                 let has_runtime_specifiers = export_decl.export_kind != ImportOrExportKind::Type
                     && export_decl
                         .specifiers
                         .iter()
                         .any(|specifier| specifier.export_kind != ImportOrExportKind::Type);
-                let resolved_local = export_decl
-                    .source
-                    .as_ref()
-                    .filter(|_| has_runtime_specifiers)
-                    .map(|source| {
-                        resolve_import_specifier(module_path, source.value.as_str(), project_root)
-                    })
-                    .transpose()?;
+                let resolved_local = if has_runtime_specifiers {
+                    Some(resolve_import_specifier(
+                        module_path,
+                        export_decl.source.value.as_str(),
+                        project_root,
+                    )?)
+                } else {
+                    None
+                };
                 exports.push(ExportDependencyRecord {
                     statement_span: export_decl.span,
                     resolved_local,
@@ -453,62 +456,56 @@ fn rewrite_module_source(
                     .ok_or_else(|| anyhow!("Internal import bookkeeping mismatch"))?;
                 output.push_str(&render_import_stub(import, dependency_vars)?);
             }
-            Statement::ExportNamedDeclaration(export_decl) => {
-                if export_decl.source.is_some() {
-                    if export_decl.export_kind != ImportOrExportKind::Type {
-                        let export = export_dependencies
-                            .iter()
-                            .find(|record| record.statement_span == export_decl.span)
-                            .ok_or_else(|| anyhow!("Internal export bookkeeping mismatch"))?;
-                        if let Some(local_path) = &export.resolved_local {
-                            let module_var = dependency_vars.get(local_path).ok_or_else(|| {
-                                anyhow!("Missing dependency module for {}", local_path.display())
-                            })?;
-                            for specifier in &export_decl.specifiers {
-                                if specifier.export_kind == ImportOrExportKind::Type {
-                                    continue;
-                                }
-                                let exported =
-                                    module_export_name(&specifier.exported).ok_or_else(|| {
-                                        anyhow!(
-                                            "Unsupported exported name in {}",
-                                            module_path.display()
-                                        )
-                                    })?;
-                                let local =
-                                    module_export_name(&specifier.local).ok_or_else(|| {
-                                        anyhow!(
-                                            "Unsupported local export name in {}",
-                                            module_path.display()
-                                        )
-                                    })?;
-                                exports.push((
-                                    exported,
-                                    module_export_access_expr(module_var, &local),
-                                ));
+            Statement::ExportFromDeclaration(export_decl) => {
+                if export_decl.export_kind != ImportOrExportKind::Type {
+                    let export = export_dependencies
+                        .iter()
+                        .find(|record| record.statement_span == export_decl.span)
+                        .ok_or_else(|| anyhow!("Internal export bookkeeping mismatch"))?;
+                    if let Some(local_path) = &export.resolved_local {
+                        let module_var = dependency_vars.get(local_path).ok_or_else(|| {
+                            anyhow!("Missing dependency module for {}", local_path.display())
+                        })?;
+                        for specifier in &export_decl.specifiers {
+                            if specifier.export_kind == ImportOrExportKind::Type {
+                                continue;
                             }
-                        }
-                    }
-                } else if let Some(declaration) = &export_decl.declaration {
-                    output.push_str(slice(source, declaration.span())?);
-                    collect_exports_from_declaration(declaration, &mut exports)?;
-                } else {
-                    for specifier in &export_decl.specifiers {
-                        if specifier.export_kind == ImportOrExportKind::Type {
-                            continue;
-                        }
-                        exports.push((
-                            module_export_name(&specifier.exported).ok_or_else(|| {
-                                anyhow!("Unsupported exported name in {}", module_path.display())
-                            })?,
-                            module_export_name(&specifier.local).ok_or_else(|| {
+                            let exported =
+                                module_export_name(&specifier.exported).ok_or_else(|| {
+                                    anyhow!(
+                                        "Unsupported exported name in {}",
+                                        module_path.display()
+                                    )
+                                })?;
+                            let local = module_export_name(&specifier.local).ok_or_else(|| {
                                 anyhow!(
                                     "Unsupported local export name in {}",
                                     module_path.display()
                                 )
-                            })?,
-                        ));
+                            })?;
+                            exports.push((exported, module_export_access_expr(module_var, &local)));
+                        }
                     }
+                }
+            }
+            Statement::ExportDeclaration(export_decl) => {
+                let declaration = &export_decl.declaration;
+                output.push_str(slice(source, declaration.span())?);
+                collect_exports_from_declaration(declaration, &mut exports)?;
+            }
+            Statement::ExportNamedDeclaration(export_decl) => {
+                for specifier in &export_decl.specifiers {
+                    if specifier.export_kind == ImportOrExportKind::Type {
+                        continue;
+                    }
+                    exports.push((
+                        module_export_name(&specifier.exported).ok_or_else(|| {
+                            anyhow!("Unsupported exported name in {}", module_path.display())
+                        })?,
+                        module_export_name(&specifier.local).ok_or_else(|| {
+                            anyhow!("Unsupported local export name in {}", module_path.display())
+                        })?,
+                    ));
                 }
             }
             Statement::ExportAllDeclaration(export_all) => {
@@ -709,7 +706,8 @@ fn collect_exports_from_declaration(
         Declaration::TSTypeAliasDeclaration(_)
         | Declaration::TSInterfaceDeclaration(_)
         | Declaration::TSEnumDeclaration(_)
-        | Declaration::TSModuleDeclaration(_)
+        | Declaration::TSExternalModuleDeclaration(_)
+        | Declaration::TSNamespaceDeclaration(_)
         | Declaration::TSGlobalDeclaration(_)
         | Declaration::TSImportEqualsDeclaration(_) => {}
     }
