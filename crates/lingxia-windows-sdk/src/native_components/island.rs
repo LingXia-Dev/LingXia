@@ -104,7 +104,7 @@ mod tests {
                     "parent": null,
                     "order": 0,
                     "authorType": "LxVideo",
-                    "props": { "src": "https://cdn.example.com/a.mp4" }
+                    "props": { "src": "./clip.mp4" }
                 }
             }]
         });
