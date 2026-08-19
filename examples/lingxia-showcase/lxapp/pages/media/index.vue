@@ -790,24 +790,31 @@
                       </div>
                     </div>
                   </div>
-                  <LxVideo
-                    :id="`media-video-${index}`"
-                    :src="item.path"
-                    :content-rotate="componentRotateValue"
-                    :object-fit="componentObjectFitValue"
-                    controls
-                    autoplay
-                    muted
-                    loop
+                  <LxNativeRoot
                     :style="{
                       width: '100%',
-                      display: 'block',
-                      backgroundColor: 'black',
                       height: (item.displayWidth && item.displayHeight && item.displayHeight > item.displayWidth)
                         ? '300px'
                         : '220px'
                     }"
-                  />
+                  >
+                    <LxVideo
+                      :id="`media-video-${index}`"
+                      :src="item.path"
+                      :content-rotate="componentRotateValue"
+                      :object-fit="componentObjectFitValue"
+                      controls
+                      autoplay
+                      muted
+                      loop
+                      :style="{
+                        width: '100%',
+                        display: 'block',
+                        backgroundColor: 'black',
+                        height: '100%'
+                      }"
+                    />
+                  </LxNativeRoot>
                 </div>
                 <!-- Add Video Button -->
                 <button
@@ -851,7 +858,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useLxPage } from '@lingxia/vue';
-import { LxVideo } from '@lingxia/vue';
+import { LxNativeRoot, LxVideo } from '@lingxia/vue';
 import '../../tailwind.css';
 
 const SOURCE_OPTIONS = [

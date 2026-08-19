@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLxPage } from '@lingxia/react';
-import { LxVideo } from '@lingxia/react';
+import { LxNativeRoot, LxVideo } from '@lingxia/react';
 import '../../tailwind.css';
 
 type VideoConfig = {
@@ -109,28 +109,30 @@ export default function App() {
         </div>
 
         <div className="bg-black rounded-xl overflow-hidden">
-          <LxVideo
-            id={video.id}
-            data-testid="native-video"
-            src={video.src}
-            poster={video.poster}
-            qualities={video.qualities}
-            playbackRates={video.playbackRates}
-            autoplay={video.autoplay ?? Boolean(video.src)}
-            controls
-            volume="0.8"
-            className="block w-full rounded-lg bg-black"
-            style={{ aspectRatio: '16 / 9', borderRadius: 12 }}
-            onPlaying={onPlaying}
-            onPause={onPause}
-            onStop={onStop}
-            onEnded={onEnded}
-            onWaiting={onWaiting}
-            onTimeUpdate={onTimeUpdate}
-            onFullscreenChange={onFullscreenChange}
-            onQualityChange={onQualityChange}
-            onRateChange={onRateChange}
-          />
+          <LxNativeRoot className="block w-full" style={{ aspectRatio: '16 / 9' }}>
+            <LxVideo
+              id={video.id}
+              data-testid="native-video"
+              src={video.src}
+              poster={video.poster}
+              qualities={video.qualities}
+              playbackRates={video.playbackRates}
+              autoplay={video.autoplay ?? Boolean(video.src)}
+              controls
+              volume="0.8"
+              className="block w-full rounded-lg bg-black"
+              style={{ aspectRatio: '16 / 9', borderRadius: 12 }}
+              onPlaying={onPlaying}
+              onPause={onPause}
+              onStop={onStop}
+              onEnded={onEnded}
+              onWaiting={onWaiting}
+              onTimeUpdate={onTimeUpdate}
+              onFullscreenChange={onFullscreenChange}
+              onQualityChange={onQualityChange}
+              onRateChange={onRateChange}
+            />
+          </LxNativeRoot>
         </div>
 
         {/* Controls */}

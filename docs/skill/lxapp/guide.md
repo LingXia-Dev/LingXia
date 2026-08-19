@@ -6,7 +6,7 @@ Companion pages in this skill:
 
 - [Adaptive UI](./adaptive-ui.md) - surface size classes, dynamic View
   selection, and Runner device-frame testing.
-- [Components](./components.md) — `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator` — capabilities, callback shapes, and imperative control (attribute lists live in the exported `@lingxia/elements` types); text input is plain `<input>` / `<textarea>`.
+- [Components](./components.md) — inline native island (`LxNativeRoot` wraps `LxVideo`, plus Cover/View/Text/Button/Slider) and presenters (`LxPicker`, `LxMediaSwiper`, `LxNavigator`); text input is plain `<input>` / `<textarea>`.
 - [Logic runtime and typings](./lx-api.md) — runtime globals and typing wiring; signatures and behavior live in the generated `@lingxia/types` declarations.
 - [Bridge Guide](./bridge.md) — `setData`, stream, channel mechanics in depth.
 - [App Project](../app/project.md) — host app setup (`lingxia.yaml`, adaptive `surfaces`).
@@ -444,12 +444,12 @@ The same shape covers `onNetworkChange`, `onWifiConnected`,
 
 ### Native component events
 
-LingXia ships native-backed components (`LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator`) from `@lingxia/react` and `@lingxia/vue` (HTML views use the raw `<lx-*>` tags); text input is a plain `<input>` / `<textarea>`. Handlers use standard framework-native syntax:
+LingXia ships the inline native island (`LxNativeRoot` + `LxVideo` and the Cover/View/Text/Button/Slider recipes) plus presenters (`LxPicker`, `LxMediaSwiper`, `LxNavigator`) from `@lingxia/react` and `@lingxia/vue` (HTML views use the raw `<lx-*>` tags); text input is a plain `<input>` / `<textarea>`. `LxVideo` must sit inside `LxNativeRoot`. Handlers use standard framework-native syntax:
 
 **React:**
 
 ```tsx
-import { useLxPage, LxPicker, LxVideo } from '@lingxia/react';
+import { useLxPage, LxPicker, LxNativeRoot, LxVideo } from '@lingxia/react';
 
 const { actions } = useLxPage<PageData, PageActions>();
 
@@ -463,12 +463,14 @@ const { actions } = useLxPage<PageData, PageActions>();
 />
 
 // Video — handler receives raw DOM CustomEvent
-<LxVideo src={url} onPlaying={actions.onPlaying} />
+<LxNativeRoot>
+  <LxVideo src={url} onPlaying={actions.onPlaying} />
+</LxNativeRoot>
 ```
 
 Vue is the same with `@lingxia/vue` and `@event` syntax (`@confirm`, `@playing`, `@input`).
 
-Callback payloads differ by component — some unwrapped, some raw DOM `CustomEvent`. See [Callback shapes by component](./components.md#callback-shapes-by-component) in [`./components.md`](./components.md) for the per-component table and the full attribute/behavior reference (including imperative `LxVideo` control via `lx.createVideoContext()`).
+Callback payloads differ by component — island nodes and `LxVideo` are payload-first in React/Vue; some presenters still use raw DOM `CustomEvent`. See [Callback shapes by component](./components.md#callback-shapes-by-component) in [`./components.md`](./components.md) for the per-component table and the full attribute/behavior reference (including imperative `LxVideo` control via `lx.createVideoContext()`).
 
 ---
 
@@ -808,7 +810,7 @@ removed configuration fields with the complete field path and its replacement.
 - Mutating `data` directly in View instead of calling Logic actions.
 - Touching the DOM from Logic — Logic has no DOM access; use `lx.*` for platform operations and `setData()` for state.
 - Keeping business state in View `useState`/`ref` instead of Logic-managed `setData()` — state drifts across the bridge boundary.
-- Assuming every component's event handler receives the same shape — `LxPicker` hands you the resolved value, `LxVideo` passes the raw DOM `CustomEvent`. See [Components](./components.md#callback-shapes-by-component).
+- Assuming every component's event handler receives the same shape — island nodes are payload-first, `LxPicker` hands you the resolved value, some presenters still pass a raw DOM `CustomEvent`. See [Components](./components.md#callback-shapes-by-component).
 - Skipping `@lingxia/types` in the lxapp's devDependencies and losing intellisense on the entire `lx.*` surface. See [Logic runtime and typings](./lx-api.md).
 - Forgetting that only public `Page({})` methods become actions; lifecycle hooks and `_`-prefixed helpers are not exposed.
 - Mutating `App({}).globalData` and expecting page views to re-render — `globalData` is not reactive. Propagate to a page's `data` via `setData`.

@@ -123,7 +123,7 @@ Every published package and what to import from each. Don't guess imports from t
 
 | Package | What it is | Imported by | Typical import |
 |---|---|---|---|
-| `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxPageChrome`, `useLxStream`, `LxVideo`, … |
+| `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxPageChrome`, `useLxStream`, `LxNativeRoot`, `LxVideo`, … |
 | `@lingxia/vue` | Vue composables + framework-wrapped native components | lxapp View (Vue) | same surface as React, Vue-flavored |
 | `@lingxia/html` | DOM helpers for HTML-only views (`subscribe`, `getActions`, …) | lxapp View (HTML) | `getActions`, `subscribe`, `getPageChromeLayout` |
 | `@lingxia/elements` | Pure-JS custom elements (`<lx-video>`, `<lx-input>`, …) | rarely direct — `@lingxia/react`/`vue` re-export wrappers around these | `registerVideoComponent`, `LxVideoElement` |
@@ -146,7 +146,7 @@ Every published package and what to import from each. Don't guess imports from t
 | Ship it: publish to the LingXia server, platform signing, app-store submission, developer accounts | [`./cli/distribution.md`](./cli/distribution.md) |
 | Page authoring: `Page({})`, `useLxPage`, events | [`./lxapp/guide.md`](./lxapp/guide.md) |
 | Adaptive Views: surface size classes, runtime switching, Runner device frames | [`./lxapp/adaptive-ui.md`](./lxapp/adaptive-ui.md) |
-| **Native components: `LxVideo`, `LxMediaSwiper`, `LxPicker`, `LxNavigator` (text input is plain `<input>`/`<textarea>`)** | [`./lxapp/components.md`](./lxapp/components.md) |
+| **Inline native island: `LxNativeRoot` wraps `LxVideo`; plus Cover/View/Text/Button/Slider. Presenters: `LxPicker`, `LxMediaSwiper`, `LxNavigator`. Text input is plain `<input>`/`<textarea>`** | [`./lxapp/components.md`](./lxapp/components.md) |
 | **Logic runtime globals and typing setup** | [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
 | Bridge mechanics: `setData`, stream, channel | [`./lxapp/bridge.md`](./lxapp/bridge.md) |
 | Host project: `lingxia.yaml` reference, adaptive `surfaces` | [`./app/project.md`](./app/project.md) |
@@ -197,7 +197,8 @@ Jump straight here when the user reports a concrete failure:
 | TS doesn't know about `lx.foo()` / `Page({})` in Logic | install `@lingxia/types` as a devDependency; see [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
 | `<LxVideo>` / `<LxPicker>` attribute not recognized by TS or runtime | [`./lxapp/components.md`](./lxapp/components.md) → component attribute table |
 | `lingxia build` rejects `<video>` / `<audio>` / `new Audio()` | [`./lxapp/components.md`](./lxapp/components.md) → `LxVideo` — use `<lx-video>` / `setStreamSource`; audio is not available yet |
-| Event handler on `LxVideo` fires DOM CustomEvent, not unwrapped detail | [`./lxapp/components.md`](./lxapp/components.md) → "Callback shapes by component" |
+| Event handler on `LxVideo` / island nodes should be payload-first in React/Vue | [`./lxapp/components.md`](./lxapp/components.md) → "Callback shapes by component" |
+| Bare `<LxVideo>` without `LxNativeRoot` is `NATIVE_ROOT_INVALID_STRUCTURE` | [`./lxapp/components.md`](./lxapp/components.md) → inline native island |
 
 ---
 
