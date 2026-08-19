@@ -350,18 +350,21 @@ fn video_event_sink(key: String, container: isize, surface: isize) -> VideoEvent
         let surface_hwnd = HWND(surface as *mut _);
         match event {
             VideoPlayerEvent::MediaLoaded { duration } => {
+                log::info!("island/video {key} media loaded duration={duration}");
                 emit_event(&key, "loadedmetadata", json!({ "duration": duration }));
             }
             VideoPlayerEvent::Play => {
                 set_video_playing(&key, true);
                 set_video_stopped(&key, false);
                 unsafe {
-                    // Bring the surface back after a stop hid it; the
-                    // layout pass re-shows the container.
-                    let _ = WindowsAndMessaging::ShowWindow(
-                        surface_hwnd,
-                        WindowsAndMessaging::SW_SHOWNA,
-                    );
+                    if !super::island::is_island_component_key(&key) {
+                        // Bring the surface back after a stop hid it; the
+                        // layout pass re-shows the container.
+                        let _ = WindowsAndMessaging::ShowWindow(
+                            surface_hwnd,
+                            WindowsAndMessaging::SW_SHOWNA,
+                        );
+                    }
                     let _ = WindowsAndMessaging::SetTimer(
                         Some(container_hwnd),
                         VIDEO_TIMER_ID,
@@ -384,16 +387,19 @@ fn video_event_sink(key: String, container: isize, surface: isize) -> VideoEvent
                 set_video_playing(&key, false);
                 set_video_stopped(&key, true);
                 stop_video_timer(container_hwnd);
-                // MFPlay's subclassed surface keeps blitting the released
-                // frame; hide the whole component so the element's DOM
-                // placeholder/poster shows instead.
-                unsafe {
-                    let _ =
-                        WindowsAndMessaging::ShowWindow(surface_hwnd, WindowsAndMessaging::SW_HIDE);
-                    let _ = WindowsAndMessaging::ShowWindow(
-                        container_hwnd,
-                        WindowsAndMessaging::SW_HIDE,
-                    );
+                // Overlay videos hide so the DOM poster shows. Island
+                // players stay cloaked — hiding would drop DWM frames.
+                if !super::island::is_island_component_key(&key) {
+                    unsafe {
+                        let _ = WindowsAndMessaging::ShowWindow(
+                            surface_hwnd,
+                            WindowsAndMessaging::SW_HIDE,
+                        );
+                        let _ = WindowsAndMessaging::ShowWindow(
+                            container_hwnd,
+                            WindowsAndMessaging::SW_HIDE,
+                        );
+                    }
                 }
                 emit_event(&key, "stop", json!({}));
             }
@@ -406,13 +412,17 @@ fn video_event_sink(key: String, container: isize, surface: isize) -> VideoEvent
                 set_video_playing(&key, false);
                 set_video_stopped(&key, true);
                 stop_video_timer(container_hwnd);
-                unsafe {
-                    let _ =
-                        WindowsAndMessaging::ShowWindow(surface_hwnd, WindowsAndMessaging::SW_HIDE);
-                    let _ = WindowsAndMessaging::ShowWindow(
-                        container_hwnd,
-                        WindowsAndMessaging::SW_HIDE,
-                    );
+                if !super::island::is_island_component_key(&key) {
+                    unsafe {
+                        let _ = WindowsAndMessaging::ShowWindow(
+                            surface_hwnd,
+                            WindowsAndMessaging::SW_HIDE,
+                        );
+                        let _ = WindowsAndMessaging::ShowWindow(
+                            container_hwnd,
+                            WindowsAndMessaging::SW_HIDE,
+                        );
+                    }
                 }
                 log::warn!("native video component {key}: {message}");
                 emit_event(&key, "error", json!({ "errMsg": message }));
@@ -486,7 +496,14 @@ pub(super) fn dispatch_video_command(
         components
             .iter()
             .find(|(_, entry)| entry.video.is_some() && entry.component_id == component_id)
-            .map(|(key, entry)| (key.clone(), entry.parent))
+            .map(|(key, entry)| {
+                let thread_window = if entry.island_kind.is_some() {
+                    entry.container
+                } else {
+                    entry.parent
+                };
+                (key.clone(), thread_window)
+            })
     };
     let Some((key, parent)) = target else {
         return Err(format!("no native video component '{component_id}'"));
