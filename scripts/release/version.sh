@@ -21,7 +21,10 @@ Arguments:
   <version>       Semver to apply (for example: 0.5.0)
 
 Options:
-  --component     Version scope. Only `all` is accepted: every Rust crate, SDK,
+  --component     Version scope: `all` or `cli`. `cli` moves only the CLI patch
+                  line (and the Runner that tracks it) for a standalone hotfix;
+                  the workspace, crates, SDK and npm packages stay put.
+                  With `all`: every Rust crate, SDK,
                   CLI/Runner, and npm package moves to one workspace version.
   --dry-run       Print the files that would change without modifying them.
   -h, --help      Show help.
@@ -82,10 +85,13 @@ if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 2
 fi
 
-if [[ "$COMPONENT" != "all" ]]; then
-  echo "Independent version bumps are disabled; expected --component all." >&2
-  exit 2
-fi
+case "$COMPONENT" in
+  all | cli) ;;
+  *)
+    echo "Unknown component: $COMPONENT (expected all or cli)." >&2
+    exit 2
+    ;;
+esac
 
 update_workspace_cargo() {
   python3 - "$WORKSPACE_CARGO_TOML" "$VERSION" "$DRY_RUN" <<'PY'
@@ -444,19 +450,29 @@ print(f"{'would update' if dry else 'updated'} {plist} CFBundleShortVersionStrin
 PY
 }
 
-update_workspace_cargo
-update_cli_cargo
-update_runner_version "$VERSION"
-update_example_host_cargo
-update_example_host_lock
+# A CLI-only bump touches the CLI package version and the Runner that tracks
+# it. The workspace, the crates, the SDK and every npm package stay where they
+# are: the CLI patch line moves on its own, and the versions the CLI embeds
+# still name the base release it was built against.
+if [[ "$COMPONENT" == "cli" ]]; then
+  update_cli_cargo
+  update_runner_version "$VERSION"
+  update_root_lock
+else
+  update_workspace_cargo
+  update_cli_cargo
+  update_runner_version "$VERSION"
+  update_example_host_cargo
+  update_example_host_lock
 
-while IFS= read -r package_json; do
-  update_package_json "$package_json"
-done < <(find "$ROOT_DIR/packages" -mindepth 2 -maxdepth 2 -name package.json | sort)
-# Lives next to the crate, not under packages/, so the glob above misses it.
-update_package_json "$ROOT_DIR/crates/lingxia-browser-shell/webui/package.json"
-update_linked_package_locks
-update_root_lock
+  while IFS= read -r package_json; do
+    update_package_json "$package_json"
+  done < <(find "$ROOT_DIR/packages" -mindepth 2 -maxdepth 2 -name package.json | sort)
+  # Lives next to the crate, not under packages/, so the glob above misses it.
+  update_package_json "$ROOT_DIR/crates/lingxia-browser-shell/webui/package.json"
+  update_linked_package_locks
+  update_root_lock
+fi
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo ""

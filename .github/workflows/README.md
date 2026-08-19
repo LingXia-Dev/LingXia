@@ -7,17 +7,18 @@ Release / 1. Prepare Version PR          (workspace version) → review and merg
 Release / 2. Publish Workspace Component (same version)      → publish all or one component
 ```
 
-1. **Release / 1. Prepare Version PR** accepts only `component=all`. It moves
-   every Rust workspace crate, SDK, CLI/Runner, and npm package to one version
-   and opens a PR.
+1. **Release / 1. Prepare Version PR** takes `component=all` or `component=cli`.
+   `all` moves every Rust workspace crate, SDK, CLI/Runner, and npm package to
+   one version. `cli` moves only the CLI patch line and the Runner that tracks
+   it, for a fix that needs no base release. Either way it opens a PR.
 2. **Release / 2. Publish Workspace Component** verifies that same unified
    version on `main`, then publishes `all`, `crates`, `sdk`, `cli`, or `npm`.
    `all` remains the recommended default and runs crates → SDKs → CLIs/Runners
    → all npm packages in order.
 
-Independent version bumps are unsupported: component selection controls what is
-published, never its version. Independent component publishing is supported at
-the current workspace version. If a publish is interrupted, rerun its original
+Apart from the CLI patch line, component selection controls what is published,
+never its version: everything else moves together at the workspace version, and
+any component can be published on its own at that version. If a publish is interrupted, rerun its original
 bot-dispatched executor; humans cannot start a new real internal publish directly.
 
 ## Everything else is plumbing

@@ -81,7 +81,10 @@ require a base bump and must never be regressed by one. So the CLI keeps its
 - **patch is independent.** `--component all X` advances the CLI to
   `X.major.X.minor.(currentCliPatch+1)` on the same minor, or `X.major.X.minor.0`
   on a new minor — it reads the current CLI version and rolls forward, never
-  back. `--component cli Y` sets the CLI explicitly for a standalone hotfix.
+  back. `--component cli Y` sets the CLI explicitly for a standalone hotfix: it
+  touches the CLI package version, the Runner that tracks it, and `Cargo.lock`,
+  and nothing else. `lxdev` stays on the workspace line, because it reports
+  version skew against npm packages that move with the workspace.
 - When publishing a base release, pass the CLI's **own** version (from
   `tools/lingxia-cli/Cargo.toml`) to `component=cli`, not the workspace version.
 
