@@ -185,3 +185,23 @@ const falseLiteral = compileInlineNativeRoot({
 });
 assert.equal(falseLiteral.ok, true);
 assert.equal(falseLiteral.root.children[0].props.controls, false);
+
+const htmlBooleanVideo = compileInlineNativeRoot({
+  type: "LxNativeRoot",
+  children: [{
+    type: "LxVideo",
+    props: {
+      src: "https://cdn.example.com/a.mp4",
+      controls: false,
+      autoplay: "",
+      volume: "0.8",
+      qualities: JSON.stringify([{ label: "HD", url: "https://cdn.example.com/hd.mp4" }]),
+    },
+  }],
+});
+assert.equal(htmlBooleanVideo.ok, true, htmlBooleanVideo.ok ? "" : htmlBooleanVideo.error.message);
+assert.equal(htmlBooleanVideo.root.children[0].props.autoplay, true);
+assert.equal(htmlBooleanVideo.root.children[0].props.volume, 0.8);
+assert.deepEqual(htmlBooleanVideo.root.children[0].props.qualities, [
+  { label: "HD", url: "https://cdn.example.com/hd.mp4" },
+]);

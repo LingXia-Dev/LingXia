@@ -44,6 +44,13 @@ export {
 } from "./lease.js";
 export { buildGeometrySnapshot, type NativeGeometrySnapshotJson } from "./geometry.js";
 export {
+  createRootRuntimeState,
+  publishCompiledRoot,
+  applyHostLeaseMessage,
+  type RootRuntimeState,
+  type RootHostMessages,
+} from "./runtime.js";
+export {
   VIDEO_COMMANDS,
   buildVideoCommandRequest,
   collectVideoResourceUrls,
