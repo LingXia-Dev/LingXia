@@ -23,6 +23,13 @@ export function digest(size) {
   return createHash('sha256').update(body(size)).digest('hex');
 }
 
+/** A route param a spec can get wrong; `NaN` bytes crashes the allocator. */
+function size(url, key, fallback) {
+  const raw = Number(url.searchParams.get(key) ?? fallback);
+  if (!Number.isFinite(raw) || raw < 0) return fallback;
+  return Math.min(Math.floor(raw), 64 * 1024 * 1024);
+}
+
 function readAll(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -76,12 +83,12 @@ export function createFixtureServer() {
       // names its output from the URL needs one, and `/bytes` deliberately has
       // none so a spec can cover both.
       if (route.startsWith('/file/')) {
-        const size = Number(url.searchParams.get('size') ?? 1024);
-        const payload = body(size);
+        const bytes = size(url, 'size', 1024);
+        const payload = body(bytes);
         response.writeHead(200, {
           'content-type': url.searchParams.get('type') ?? 'application/octet-stream',
           'content-length': payload.length,
-          etag: `"${digest(size)}"`,
+          etag: `"${digest(bytes)}"`,
         });
         response.end(payload);
         return;
@@ -89,12 +96,12 @@ export function createFixtureServer() {
 
       // Fixed-size body with a known digest.
       if (route === '/bytes') {
-        const size = Number(url.searchParams.get('size') ?? 1024);
-        const payload = body(size);
+        const bytes = size(url, 'size', 1024);
+        const payload = body(bytes);
         response.writeHead(200, {
           'content-type': url.searchParams.get('type') ?? 'application/octet-stream',
           'content-length': payload.length,
-          etag: `"${digest(size)}"`,
+          etag: `"${digest(bytes)}"`,
         });
         response.end(payload);
         return;
@@ -102,22 +109,22 @@ export function createFixtureServer() {
 
       // Trickled in chunks so a spec can observe progress, pause, and cancel.
       if (route === '/slow') {
-        const size = Number(url.searchParams.get('size') ?? 65536);
-        const chunks = Number(url.searchParams.get('chunks') ?? 8);
-        const delay = Number(url.searchParams.get('delayMs') ?? 120);
-        const payload = body(size);
-        const step = Math.ceil(size / chunks);
+        const bytes = size(url, 'size', 65536);
+        const chunks = Math.max(1, size(url, 'chunks', 8));
+        const delay = size(url, 'delayMs', 120);
+        const payload = body(bytes);
+        const step = Math.ceil(bytes / chunks);
         response.writeHead(200, {
           'content-type': 'application/octet-stream',
           'content-length': payload.length,
         });
-        for (let offset = 0; offset < size; offset += step) {
+        for (let offset = 0; offset < bytes; offset += step) {
           // `writableEnded` only flips after end(); a client that aborts
           // mid-stream sets `destroyed`, and without this the handler keeps
           // sleeping through every remaining chunk — which is precisely the
           // cancel case this route exists to serve.
           if (response.destroyed) return;
-          response.write(payload.subarray(offset, Math.min(offset + step, size)));
+          response.write(payload.subarray(offset, Math.min(offset + step, bytes)));
           await sleep(delay);
         }
         response.end();
@@ -126,18 +133,19 @@ export function createFixtureServer() {
 
       // Promises more than it sends, so the client sees a truncated transfer.
       if (route === '/truncated') {
-        const size = Number(url.searchParams.get('size') ?? 4096);
+        const bytes = size(url, 'size', 4096);
         response.writeHead(200, {
           'content-type': 'application/octet-stream',
-          'content-length': size,
+          'content-length': bytes,
         });
-        response.write(body(Math.floor(size / 2)));
+        response.write(body(Math.floor(bytes / 2)));
         response.destroy();
         return;
       }
 
       if (route === '/status') {
-        const code = Number(url.searchParams.get('code') ?? 500);
+        const raw = Number(url.searchParams.get('code') ?? 500);
+        const code = Number.isInteger(raw) && raw >= 100 && raw <= 599 ? raw : 500;
         response.writeHead(code, { 'content-type': 'text/plain' });
         response.end(`status ${code}`);
         return;
@@ -146,7 +154,7 @@ export function createFixtureServer() {
       if (route === '/upload' && request.method === 'POST') {
         // Loopback delivers a few MB faster than any client can cancel, so a
         // cancel spec needs the server to hold the request open.
-        const holdMs = Number(url.searchParams.get('holdMs') ?? 0);
+        const holdMs = size(url, 'holdMs', 0);
         if (holdMs > 0) {
           request.pause();
           await sleep(holdMs);
@@ -181,6 +189,13 @@ export function createFixtureServer() {
 
       json(404, { error: `no fixture route ${route}` });
     } catch (error) {
+      // Once headers are out, writeHead throws inside this catch and the
+      // rejection is unhandled — which kills the process and takes every
+      // remaining spec with it, since one fixture serves the whole suite.
+      if (response.headersSent) {
+        response.destroy();
+        return;
+      }
       json(500, { error: String(error) });
     }
   });

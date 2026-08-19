@@ -94,3 +94,22 @@ test('stops writing when the client aborts mid-stream', async () => {
   await new Promise((resolve) => setTimeout(resolve, 200));
   assert.ok(Date.now() - started < 1000, 'the handler kept streaming after the abort');
 });
+
+test('survives malformed route parameters', async () => {
+  // One fixture serves the whole transfer suite, so a route that crashes the
+  // process takes every remaining spec down with connection-refused.
+  for (const path of [
+    '/truncated?size=abc',
+    '/bytes?size=-5',
+    '/bytes?size=1e99',
+    '/slow?chunks=0&size=abc&delayMs=nope',
+    '/status?code=99',
+    '/upload?holdMs=abc',
+  ]) {
+    // `/truncated` closes mid-body by design; only the crash matters here.
+    await fetch(`${base}${path}`).then((r) => r.arrayBuffer()).catch(() => {});
+  }
+
+  assert.ok(server.listening, 'a malformed request killed the fixture');
+  assert.equal((await fetch(`${base}/health`)).status, 200);
+});
