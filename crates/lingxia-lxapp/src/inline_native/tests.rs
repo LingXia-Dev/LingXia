@@ -1,4 +1,5 @@
 use super::*;
+use serde_json::Value;
 
 fn root() -> RootRef {
     RootRef {
@@ -118,6 +119,128 @@ fn island_session_rejects_untrusted_video_src() {
         }
         other => panic!("{other:?}"),
     }
+}
+
+#[test]
+fn island_session_completes_lease_handshake_and_exposes_video_author() {
+    let root = root();
+    let mut session = IslandSession::new();
+    session.set_trusted_domains(vec!["cdn.example.com".into()], false);
+    let mut ops = vec![mount(&root, "hero", "video", None, 0)];
+    if let NativeRootOperation::Mount { node } = &mut ops[0] {
+        node.author_id = Some("lx-video-1".into());
+        node.props = serde_json::json!({ "src": "https://cdn.example.com/a.mp4" });
+    }
+    assert!(matches!(
+        session.apply_commit(commit(&root, 0, 1, ops)),
+        ApplyCommitOutcome::Applied(_)
+    ));
+    let videos = session.video_nodes();
+    assert_eq!(videos.len(), 1);
+    assert_eq!(videos[0].author_id.as_deref(), Some("lx-video-1"));
+    assert!(!session.can_display(&root));
+
+    let grant = session
+        .drain_view_messages()
+        .into_iter()
+        .find(|msg| msg.get("action").and_then(Value::as_str) == Some("root.leaseGranted"))
+        .expect("host must send leaseGranted to the View");
+    assert_eq!(grant.get("id").and_then(Value::as_str), Some("player"));
+    let lease_id = grant
+        .get("leaseId")
+        .and_then(Value::as_str)
+        .expect("leaseGranted must camelCase leaseId for the View handshake");
+    let sequence = grant
+        .get("sequence")
+        .and_then(Value::as_u64)
+        .expect("leaseGranted must include sequence");
+    assert!(session.handle_view_json(&serde_json::json!({
+        "action": "root.leaseAccept",
+        "root": {
+            "surfaceInstanceId": root.surface_instance_id,
+            "pageInstanceId": root.page_instance_id,
+            "documentInstanceId": root.document_instance_id,
+            "rootKey": root.root_key,
+            "rootEpoch": root.root_epoch
+        },
+        "leaseId": lease_id,
+        "sequence": sequence
+    })));
+    assert!(session.can_display(&root));
+    let active = session
+        .drain_view_messages()
+        .into_iter()
+        .find(|msg| msg.get("action").and_then(Value::as_str) == Some("root.leaseActive"));
+    assert!(active.is_some());
+}
+
+#[test]
+fn island_session_accepts_showcase_blender_media_when_domains_listed() {
+    let root = root();
+    let mut session = IslandSession::new();
+    session.set_trusted_domains(
+        vec!["download.blender.org".into(), "upload.wikimedia.org".into()],
+        false,
+    );
+    let mut ops = vec![mount(&root, "hero", "video", None, 0)];
+    if let NativeRootOperation::Mount { node } = &mut ops[0] {
+        node.author_id = Some("lx-video-1".into());
+        node.props = serde_json::json!({
+            "src": "https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_480p_h264.mov",
+            "poster": "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/640px-Big_buck_bunny_poster_big.jpg",
+            "qualities": [{
+                "label": "720P",
+                "url": "https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_720p_h264.mov"
+            }]
+        });
+    }
+    assert!(matches!(
+        session.apply_commit(commit(&root, 0, 1, ops)),
+        ApplyCommitOutcome::Applied(_)
+    ));
+    let snapshot = NativeGeometrySnapshot {
+        action: "geometry.snapshot".into(),
+        surface_instance_id: root.surface_instance_id.clone(),
+        page_instance_id: root.page_instance_id.clone(),
+        document_instance_id: root.document_instance_id.clone(),
+        revision: 1,
+        coordinate_space: "page-unscrolled-css-px".into(),
+        roots: vec![NativeGeometrySnapshotRoot {
+            root_ref: root.clone(),
+            basis_tree_revision: 1,
+            root_order: 0,
+            chain_key: "page".into(),
+            content_rect: Rect {
+                x: 0.0,
+                y: 40.0,
+                width: 320.0,
+                height: 180.0,
+            },
+            visible: true,
+        }],
+        nodes: vec![NativeGeometrySnapshotNode {
+            node_ref: node(&root, "hero", 1),
+            chain_key: "page".into(),
+            content_rect: Rect {
+                x: 0.0,
+                y: 40.0,
+                width: 320.0,
+                height: 180.0,
+            },
+            clip_stack: vec![],
+            visible: true,
+        }],
+        chains: vec![ScrollChain {
+            chain_key: "page".into(),
+            ancestors: vec![],
+        }],
+    };
+    session.apply_geometry(snapshot);
+    assert_eq!(session.last_node_rect("hero").unwrap().y, 40.0);
+    assert_eq!(
+        session.registry.get(&root).unwrap().last_applied_revision,
+        1
+    );
 }
 
 #[test]
