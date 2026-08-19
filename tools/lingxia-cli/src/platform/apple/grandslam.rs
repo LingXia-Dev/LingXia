@@ -733,7 +733,8 @@ impl GrandSlamClient {
         }
 
         let aad = &encrypted[..3];
-        let iv = &encrypted[3..19];
+        // aes-gcm 0.11 builds a nonce from a fixed-size array, not a slice.
+        let iv: [u8; 16] = encrypted[3..19].try_into().expect("length checked above");
         let tag = &encrypted[encrypted.len() - 16..];
         let ciphertext = &encrypted[19..encrypted.len() - 16];
 
@@ -753,7 +754,7 @@ impl GrandSlamClient {
 
             cipher
                 .decrypt(
-                    iv.into(),
+                    (&iv).into(),
                     aes_gcm::aead::Payload {
                         msg: &combined,
                         aad,

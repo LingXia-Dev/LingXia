@@ -58,9 +58,9 @@ ctrlc = "3.4"
 libc = "0.2"
 
 # Apple signing and API
-p256 = { version = "0.13", features = ["ecdsa", "pkcs8", "pem"] }
+p256 = { version = "0.14", features = ["ecdsa", "pkcs8", "pem"] }
 base64 = "0.22"
-rcgen = "0.14"
+rcgen = { workspace = true }
 rsa = { version = "0.9", features = ["pem"] }
 
 # Apple ID authentication (SRP, crypto)
@@ -68,13 +68,13 @@ sha2 = "0.11"
 sha1 = "0.11"
 hmac = "0.13"
 aes = "0.9"
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 cbc = "0.2"
-num-bigint = "0.4"
+num-bigint = "0.5"
 rand = "0.10"
 uuid = { version = "1.20", features = ["v4"] }
 plist = "1"
-tungstenite = { version = "0.29", features = ["native-tls"] }
+tungstenite = { version = "0.30", features = ["native-tls"] }
 x509-parser = "0.18"
 
 which = "8.0"
@@ -82,17 +82,17 @@ urlencoding = "2.1"
 url = "2.5"
 
 image = { version = "0.25.10", default-features = false, features = ["png", "webp"] }
-ico = "0.4"
+ico = "0.5"
 
 # Resource-generation deps (i18n/icons), absorbed from the former
 # standalone `lingxia-gen` crate; see src/gen/.
 Inflector = "0.11"
 svg2pdf = "0.13"
-resvg = "0.47.0"
-tiny-skia = "0.12.0"
-usvg = "0.47.0"
+resvg = { workspace = true }
+tiny-skia = { workspace = true }
+usvg = { workspace = true }
 roxmltree = "0.21"
-jsonschema = "0.46"
+jsonschema = "0.49"
 lingxia-control-protocol = { workspace = true, features = ["broker"] }
 lingxia-log = { workspace = true }
 
@@ -126,9 +126,9 @@ windows = { workspace = true, features = [
 [build-dependencies]
 serde_json = "1.0"
 toml = "1.1.2"
-resvg = "0.47.0"
-tiny-skia = "0.12.0"
-usvg = "0.47.0"
+resvg = { workspace = true }
+tiny-skia = { workspace = true }
+usvg = { workspace = true }
 
 [dev-dependencies]
 filetime = "0.2"
