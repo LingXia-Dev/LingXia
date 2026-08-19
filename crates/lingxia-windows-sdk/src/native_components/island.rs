@@ -54,7 +54,7 @@ pub(super) fn handle_island_message(context: &PageContext, message: &Value) -> b
                     "inline native root applied revision {revision} on {}",
                     context.page_key
                 );
-                materialize_videos(context, session);
+                materialize_island(context, session);
             }
             Ok(ApplyCommitOutcome::ResyncRequired(NativeRootAck::ResyncRequired {
                 last_applied_revision,
@@ -82,12 +82,12 @@ pub(super) fn handle_island_message(context: &PageContext, message: &Value) -> b
             if let Ok(snapshot) = serde_json::from_value::<NativeGeometrySnapshot>(message.clone())
             {
                 let _ = session.apply_geometry(snapshot);
-                materialize_videos(context, session);
+                materialize_island(context, session);
             }
         }
         "root.leaseAccept" | "video.command" => {
             let _ = session.handle_view_json(message);
-            materialize_videos(context, session);
+            materialize_island(context, session);
         }
         other => {
             log::debug!("inline native action '{other}' on {}", context.page_key);
@@ -108,24 +108,28 @@ pub(super) fn teardown_island(page_key: &str) {
     island_component_keys().retain(|key| !key.starts_with(page_key));
 }
 
-fn materialize_videos(context: &PageContext, session: &IslandSession) {
+fn materialize_island(context: &PageContext, session: &IslandSession) {
     if !session.can_display_any() {
         return;
     }
-    for video in session.video_nodes() {
-        let Some(author_id) = video.author_id.clone() else {
-            continue;
-        };
+    let mut ordered_ids = Vec::new();
+    for node in session.composition_nodes() {
+        let id = node
+            .author_id
+            .clone()
+            .unwrap_or_else(|| node.node_ref.node_key.clone());
         let rect = session
-            .last_node_rect(&video.node_ref.node_key)
+            .last_node_rect(&node.node_ref.node_key)
             .map(|content| DocRect {
                 x: content.x,
                 y: content.y,
                 width: content.width,
                 height: content.height,
             });
-        super::ensure_island_video(context, &author_id, &video.props, rect);
+        super::ensure_island_node(context, &id, &node.kind, &node.props, rect);
+        ordered_ids.push(id);
     }
+    super::restack_island_windows(&context.page_key, &ordered_ids);
 }
 
 fn post_island_payload(context: &PageContext, payload: Value) {

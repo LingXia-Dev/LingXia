@@ -474,6 +474,7 @@ pub(super) fn mount_swiper_on_ui(
             anim: None,
             load_seq: 0,
         }),
+        island_kind: None,
         doc_rect,
         state,
         last_value: String::new(),

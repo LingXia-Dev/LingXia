@@ -129,6 +129,7 @@ pub(super) fn mount_video_on_ui(
             resume_on_show: false,
         }),
         swiper: None,
+        island_kind: None,
         doc_rect,
         state: ComponentProps::default(),
         last_value: String::new(),
