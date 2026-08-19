@@ -70,8 +70,8 @@ pub use color_scheme::{
 };
 pub use composition::{
     CompositionSurfacePixels, IslandVisualSpec, capture_composition_surface_bgra,
-    find_composition_surface_hwnd, set_webview_composition_hosting,
-    webview_composition_hosting_enabled,
+    find_composition_surface_hwnd, queue_island_visuals, queued_island_visuals,
+    set_webview_composition_hosting, webview_composition_hosting_enabled,
 };
 pub use environment::set_windows_context_menu_refresh_provider;
 pub use native_view::{

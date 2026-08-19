@@ -122,8 +122,9 @@ impl WindowsWebViewHandler {
         super::composition::find_composition_surface_hwnd(self.native_view().window)
     }
 
-    /// Attaches island visuals above the WebView2 visual. No-op on windowed
-    /// hosting (returns an error). Must not be paired with HWND z-order.
+    /// Queues island visuals and replays the last content geometry so they
+    /// are staged inside WebView2's existing DComp commit. Must not be
+    /// paired with HWND z-order.
     pub fn sync_island_visuals(
         &self,
         visuals: Vec<super::composition::IslandVisualSpec>,

@@ -234,8 +234,9 @@ pub(crate) enum UiCommand {
         scale: f64,
         resp: Sender<StdResult<()>>,
     },
-    SyncIslandVisuals {
-        visuals: Vec<super::composition::IslandVisualSpec>,
+    /// Re-runs the last content geometry so queued island visuals ride the
+    /// same DComp commit as the corner wedges.
+    ReplayContentGeometry {
         resp: Sender<StdResult<()>>,
     },
     Shutdown,
@@ -522,10 +523,8 @@ impl WebViewInner {
         &self,
         visuals: Vec<super::composition::IslandVisualSpec>,
     ) -> StdResult<()> {
-        self.dispatch_command_same_thread_safe(|resp| UiCommand::SyncIslandVisuals {
-            visuals,
-            resp,
-        })
+        super::composition::queue_island_visuals(self.webtag.key(), visuals);
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::ReplayContentGeometry { resp })
     }
 
     pub(crate) fn dispatch_screenshot_command(&self) -> StdResult<Vec<u8>> {
@@ -1517,12 +1516,14 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
             state.notify_parent_position_changed();
             let _ = resp.send(Ok(()));
         }
-        UiCommand::SyncIslandVisuals { visuals, resp } => {
-            let result = match &mut state.hosting {
-                HostingMode::Composition(surface) => surface.sync_island_visuals(&visuals),
-                HostingMode::Windowed => Err(WebViewError::WebView(
-                    "island visuals require composition hosting".to_string(),
-                )),
+        UiCommand::ReplayContentGeometry { resp } => {
+            let bounds = match &state.hosting {
+                HostingMode::Composition(surface) => Some(surface.bounds),
+                HostingMode::Windowed => None,
+            };
+            let result = match bounds {
+                Some(bounds) => set_content_geometry(state, bounds, None),
+                None => Ok(()),
             };
             let _ = resp.send(result);
         }
@@ -1623,7 +1624,7 @@ fn set_content_geometry(
                 .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))
         },
         HostingMode::Composition(surface) => {
-            surface.set_geometry(&state.controller, bounds, corners)
+            surface.set_geometry(&state.controller, bounds, corners, &state.webtag_key)
         }
     }
 }

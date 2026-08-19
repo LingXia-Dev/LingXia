@@ -18,6 +18,30 @@ mod surface_window;
 
 use dcomp::DcompTree;
 pub use dcomp::{CompositionSurfacePixels, IslandVisualSpec};
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
+static ISLAND_VISUALS: OnceLock<Mutex<HashMap<String, Vec<IslandVisualSpec>>>> = OnceLock::new();
+
+fn island_visuals() -> &'static Mutex<HashMap<String, Vec<IslandVisualSpec>>> {
+    ISLAND_VISUALS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Stores island visuals for the next [`CompositionSurface::set_geometry`]
+/// commit. No DComp calls — apply happens on WebView2's own composition pass.
+pub fn queue_island_visuals(webtag_key: &str, visuals: Vec<IslandVisualSpec>) {
+    if let Ok(mut queued) = island_visuals().lock() {
+        queued.insert(webtag_key.to_string(), visuals);
+    }
+}
+
+pub fn queued_island_visuals(webtag_key: &str) -> Vec<IslandVisualSpec> {
+    island_visuals()
+        .lock()
+        .ok()
+        .and_then(|queued| queued.get(webtag_key).cloned())
+        .unwrap_or_default()
+}
 
 /// How a webview's controller is attached to the host window tree.
 pub(crate) enum HostingMode {
@@ -49,8 +73,10 @@ pub(crate) struct CompositionSurface {
     /// Last applied wedge backdrop color (`0xAARGB`; alpha 0 = no wedges).
     corner_color: u32,
     /// Last applied bounds/visibility, replayed after a recreation.
-    bounds: RECT,
+    pub(crate) bounds: RECT,
     visible: bool,
+    /// WebTag key used to look up queued island visuals on each geometry commit.
+    webtag_key: String,
 }
 
 static COMPOSITION_HOSTING: std::sync::atomic::AtomicBool =
@@ -135,6 +161,7 @@ fn create_composition_surface(
                 corner_color: 0,
                 bounds,
                 visible: false,
+                webtag_key: String::new(),
             }),
         ))
     })();
@@ -245,7 +272,7 @@ impl CompositionSurface {
         self.input_tokens = tokens;
         self.parent = parent;
         let bounds = self.bounds;
-        self.set_geometry(base, bounds, None)?;
+        self.set_geometry(base, bounds, None, &self.webtag_key.clone())?;
         if self.visible {
             self.set_visible(base, true)?;
         }
@@ -261,6 +288,7 @@ impl CompositionSurface {
         base: &ICoreWebView2Controller,
         bounds: RECT,
         corners: Option<([i32; 4], u32)>,
+        webtag_key: &str,
     ) -> StdResult<()> {
         // Self-heal here too: the main surface's own parent window never gets
         // a reparent command, so a surface killed elsewhere would otherwise
@@ -272,7 +300,13 @@ impl CompositionSurface {
                 self.corner_color = corner_color;
             }
             let parent = self.parent;
+            if !webtag_key.is_empty() {
+                self.webtag_key = webtag_key.to_string();
+            }
             return self.ensure_alive(parent, base).map(|_| ());
+        }
+        if !webtag_key.is_empty() {
+            self.webtag_key = webtag_key.to_string();
         }
         let (radii, corner_color) = corners.unwrap_or((self.radii, self.corner_color));
         let width = (bounds.right - bounds.left).max(0);
@@ -299,8 +333,9 @@ impl CompositionSurface {
         self.bounds = bounds;
         self.radii = radii;
         self.corner_color = corner_color;
+        let island = queued_island_visuals(webtag_key);
         self.dcomp
-            .apply_geometry(width, height, radii, corner_color)
+            .apply_geometry(width, height, radii, corner_color, &island)
     }
 
     /// Visibility is window-level first: hiding only hides the surface
@@ -393,10 +428,6 @@ impl CompositionSurface {
             let _ = WindowsAndMessaging::DestroyWindow(self.hwnd);
         }
     }
-
-    pub(crate) fn sync_island_visuals(&mut self, visuals: &[IslandVisualSpec]) -> StdResult<()> {
-        self.dcomp.sync_island_visuals(visuals)
-    }
 }
 
 /// Finds the `LingXiaWebViewSurface` child of `parent` (host client HWND).
@@ -486,5 +517,33 @@ pub fn capture_composition_surface_bgra(hwnd: isize) -> StdResult<CompositionSur
             height: height as u32,
             bgra,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{IslandVisualSpec, queue_island_visuals, queued_island_visuals};
+
+    #[test]
+    fn queued_island_visuals_are_visible_to_the_geometry_commit() {
+        queue_island_visuals(
+            "test-island-queue",
+            vec![IslandVisualSpec {
+                id: "lx-video-1".into(),
+                kind: "video".into(),
+                offset_x: 8.0,
+                offset_y: 40.0,
+                width: 8,
+                height: 8,
+                color: 0xff10_1010,
+                text: None,
+                hwnd: None,
+            }],
+        );
+        let queued = queued_island_visuals("test-island-queue");
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0].id, "lx-video-1");
+        assert_eq!(queued[0].kind, "video");
+        assert!(queued[0].hwnd.is_none());
     }
 }
