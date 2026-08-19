@@ -5,7 +5,7 @@ import {
   waitForCurrentPageVisible,
   waitForElementText,
 } from '../helpers/page.js';
-import { attachShot, bindFixture } from '../helpers/poll.js';
+import { attachShot, bindFixture, eventually } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 const testGlobals = globalThis as typeof globalThis & {
@@ -31,7 +31,7 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
     if (active?.name !== 'home') await app.nav.relaunch({ page: 'home' });
   });
 
-  await app.nav.to({ page: 'video' });
+  await app.nav.relaunch({ page: 'video' });
   await waitForCurrentPage(app, 'video');
   await app.page.waitFor({ page: 'video', css: 'lx-native-root', state: 'attached' });
   const wrapped = await app.page.eval({
@@ -45,14 +45,18 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
   expect(wrapped.compileOk).toBeTruthy();
   expect(wrapped.kinds[0]).toBe('video');
   expect(wrapped.kinds[1]).toBe('view');
-  const eventLog = await waitForElementText(
-    app,
-    'video',
-    '[data-testid="video-event"]',
-    (text) => text.includes('Playing'),
-    20_000,
+  const playing = await eventually(
+    () =>
+      app.page.eval({
+        page: 'video',
+        script:
+          'document.querySelector("lx-video") && document.querySelector("lx-video").getAttribute("data-lx-playing")',
+      }),
+    (value) => value === 'true',
+    { timeoutMs: 20_000, describe: 'lx-video data-lx-playing' },
   );
-  expect(eventLog).toContain('Playing');
+  expect(playing).toBe('true');
+  await attachShot(t, 'island-playing.png');
 });
 
 spec("hide the native video overlay before the next page becomes interactive", { id: "NATIVE-VIDEO-001", covers: ['lx.createVideoContext', 'VideoContext.pause', 'NavDriver.to', 'NavDriver.back'], app: SHOWCASE_APP_ID }, async (t) => {

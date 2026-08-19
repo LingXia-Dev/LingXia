@@ -251,18 +251,6 @@ export class LxVideoElement extends HTMLElement {
       return;
     }
     this.islandLeaf = !!findInlineNativeRoot(this);
-    if (!this.islandLeaf) {
-      this.dispatchEvent(
-        new CustomEvent("error", {
-          detail: {
-            code: "NATIVE_ROOT_INVALID_STRUCTURE",
-            message:
-              "LxVideo must be a direct child of an explicit LxNativeRoot; implicit roots are not created",
-          },
-        })
-      );
-      return;
-    }
     this.unregister = registerNativeComponentHandler(this.componentId!, (message) => {
       // Handle component events from native
       if (message.event) {
@@ -274,6 +262,9 @@ export class LxVideoElement extends HTMLElement {
             if (Object.keys(detail).length === 0) detail = {};
         }
 
+        if (message.event === "playing" || message.event === "play") {
+          this.setAttribute("data-lx-playing", "true");
+        }
         const ev = new CustomEvent(message.event, {
                   detail: detail,
                   bubbles: true,

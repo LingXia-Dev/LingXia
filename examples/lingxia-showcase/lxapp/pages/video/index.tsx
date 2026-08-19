@@ -60,6 +60,7 @@ export default function App() {
   } = actions;
   const video = data?.videos?.[0];
   const eventLog = data?.eventLog || 'Ready';
+  const [islandPlaying, setIslandPlaying] = React.useState(false);
   const currentTime = typeof data?.currentTime === 'number' ? data.currentTime : 0;
   const duration = typeof data?.duration === 'number' ? data.duration : 0;
 
@@ -107,6 +108,7 @@ export default function App() {
           <div data-testid="video-event" className="bg-surface-900 text-green-400 font-mono text-xs px-3 py-1.5 rounded-lg w-[180px] truncate">
             {eventLog}
           </div>
+          <div data-testid="island-playing" className="sr-only">{islandPlaying ? 'yes' : 'no'}</div>
         </div>
 
         <div className="bg-black rounded-xl overflow-hidden">
@@ -123,7 +125,10 @@ export default function App() {
               volume="0.8"
               className="block w-full rounded-lg bg-black"
               style={{ aspectRatio: '16 / 9', borderRadius: 12 }}
-              onPlaying={onPlaying}
+              onPlaying={(event) => {
+                setIslandPlaying(true);
+                onPlaying(event);
+              }}
               onError={actions.onError}
               onPause={onPause}
               onStop={onStop}
