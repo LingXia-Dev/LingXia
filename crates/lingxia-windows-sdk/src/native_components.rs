@@ -1121,7 +1121,7 @@ fn apply_props(key: &str, props: &ComponentProps) {
 /// Destroys a component's windows and removes all its bookkeeping. Runs on
 /// the owning UI thread (window destruction requirement).
 fn destroy_component(key: &str) {
-    let Some((container, font, fullscreen_host)) = ({
+    let Some((container, font, fullscreen_host, evr)) = ({
         let components = components();
         components.get(key).map(|entry| {
             (
@@ -1132,6 +1132,7 @@ fn destroy_component(key: &str) {
                     .as_ref()
                     .map(|video| video.fullscreen_host)
                     .unwrap_or(0),
+                entry.video.as_ref().map(|video| video.surface).unwrap_or(0),
             )
         })
     }) else {
@@ -1146,6 +1147,9 @@ fn destroy_component(key: &str) {
             let _ = WindowsAndMessaging::DestroyWindow(HWND(fullscreen_host as *mut _));
         } else if container != 0 {
             let _ = WindowsAndMessaging::DestroyWindow(HWND(container as *mut _));
+        }
+        if evr != 0 && evr != container && evr != fullscreen_host {
+            let _ = WindowsAndMessaging::DestroyWindow(HWND(evr as *mut _));
         }
         if font != 0 {
             let _ = DeleteObject(HGDIOBJ(font as *mut _));

@@ -13,7 +13,8 @@ use std::sync::{Mutex, OnceLock};
 use lingxia_webview::WebTag;
 use lingxia_webview::WebViewController;
 use lingxia_webview::platform::windows::{
-    IslandVisualSpec, find_webview_handler, queue_island_visuals, queued_island_visuals,
+    IslandVideoFrame, IslandVisualSpec, find_webview_handler, queue_island_visuals,
+    queued_island_visuals,
 };
 use lxapp::inline_native::{
     ApplyCommitOutcome, IslandCompositor, IslandSession, NativeGeometrySnapshot, NativeRootAck,
@@ -188,18 +189,13 @@ fn finish_island_commit(
                     || node.node_ref.node_key == attach.id
             })
             .map(|node| &node.props);
-        let (offset_x, offset_y, mut width, mut height) =
+        let (offset_x, offset_y, full_width, full_height) =
             surface_rect(&context.page_key, &attach.rect);
-        match attach.kind.as_str() {
-            "text" => {
-                width = width.min(128);
-                height = height.min(24);
-            }
-            _ => {
-                width = 16;
-                height = 16;
-            }
-        }
+        let (width, height) = match attach.kind.as_str() {
+            "video" => (full_width.min(640).max(1), full_height.min(360).max(1)),
+            "text" => (full_width.min(128).max(1), full_height.min(24).max(1)),
+            _ => (16, 16),
+        };
         let text = props
             .and_then(|props| props.get("text"))
             .and_then(Value::as_str)
@@ -211,9 +207,20 @@ fn finish_island_commit(
             offset_y,
             width,
             height,
+            dest_width: if attach.kind == "video" {
+                full_width as f32
+            } else {
+                width as f32
+            },
+            dest_height: if attach.kind == "video" {
+                full_height as f32
+            } else {
+                height as f32
+            },
             color: island_fill_color(&attach.kind),
             text,
             hwnd: None,
+            pixels: None,
         });
     }
     // Queue only. MFPlay and the geometry replay run after WebView2 has
@@ -315,6 +322,56 @@ fn mount_pending_island_videos(
             }),
         );
     }
+}
+
+pub(super) fn present_decoded_island_frame(
+    context: &PageContext,
+    author_id: &str,
+    css: &DocRect,
+    player: &crate::video_player::VideoPlayer,
+    evr: isize,
+) {
+    let hwnd = windows::Win32::Foundation::HWND(evr as *mut _);
+    let Some((src_w, src_h, pixels)) = crate::video_player::VideoPlayer::capture_window_bgra(hwnd)
+        .or_else(|| player.current_frame())
+    else {
+        return;
+    };
+    let (offset_x, offset_y, dest_w, dest_h) = surface_rect(
+        &context.page_key,
+        &Rect {
+            x: css.x,
+            y: css.y,
+            width: css.width,
+            height: css.height,
+        },
+    );
+    let tex_w = dest_w.min(640).max(1) as u32;
+    let tex_h = dest_h.min(360).max(1) as u32;
+    let pixels = crate::video_player::scale_bgra_nearest(&pixels, src_w, src_h, tex_w, tex_h);
+    log::debug!(
+        "island video frame {} {}x{} -> {}x{} dest {}x{}",
+        author_id,
+        src_w,
+        src_h,
+        tex_w,
+        tex_h,
+        dest_w,
+        dest_h
+    );
+    let Some(handler) = find_webview_handler(&WebTag::from(context.page_key.as_str())) else {
+        return;
+    };
+    let _ = handler.present_island_video_frame(IslandVideoFrame {
+        id: author_id.to_string(),
+        offset_x,
+        offset_y,
+        dest_width: dest_w as f32,
+        dest_height: dest_h as f32,
+        width: tex_w as i32,
+        height: tex_h as i32,
+        pixels,
+    });
 }
 
 fn island_fill_color(kind: &str) -> u32 {

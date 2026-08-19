@@ -8,8 +8,11 @@ use controls::*;
 
 /// `WM_TIMER` id driving `timeupdate` while a video component plays ("LXVT").
 pub(super) const VIDEO_TIMER_ID: usize = 0x4C58_5654;
+/// Island EVR frame pump ("LXFR") — copies GetCurrentImage onto the DComp visual.
+pub(super) const ISLAND_FRAME_TIMER_ID: usize = 0x4C58_4652;
 /// Video `timeupdate` cadence, matching the HTML media-event ballpark.
 const VIDEO_TIMER_INTERVAL_MS: u32 = 250;
+const ISLAND_FRAME_INTERVAL_MS: u32 = 66;
 
 pub(super) struct VideoComponent {
     pub(super) player: Arc<VideoPlayer>,
@@ -143,7 +146,8 @@ pub(super) fn mount_video_on_ui(
     apply_layout(&key);
 }
 
-/// Island video: decode + events, no EVR HWND.
+/// Island video: off-screen top-level EVR HWND (not a host child) so
+/// `GetCurrentImage` can feed the DComp visual. Never `HWND_TOP`.
 pub(super) fn mount_windowless_island_video(
     context: PageContext,
     author_id: String,
@@ -152,9 +156,17 @@ pub(super) fn mount_windowless_island_video(
     props: ComponentProps,
 ) -> bool {
     let key = component_key(&context.page_key, &author_id);
-    let sink = video_event_sink(key.clone(), 0, 0);
-    let Some(player) = VideoPlayer::new(None, sink) else {
-        log::warn!("failed to create windowless island player for {author_id}");
+    let Some(evr) = create_island_evr_window() else {
+        log::warn!("failed to create island EVR window for {author_id}");
+        return false;
+    };
+    let evr_handle = evr.0 as isize;
+    let sink = video_event_sink(key.clone(), 0, evr_handle);
+    let Some(player) = VideoPlayer::new(Some(evr), sink) else {
+        log::warn!("failed to create island player for {author_id}");
+        unsafe {
+            let _ = WindowsAndMessaging::DestroyWindow(evr);
+        }
         return false;
     };
     let player = Arc::new(player);
@@ -171,7 +183,7 @@ pub(super) fn mount_windowless_island_video(
         video: Some(VideoComponent {
             player: player.clone(),
             last_surface_mouse: None,
-            surface: 0,
+            surface: evr_handle,
             stopped: true,
             fullscreen: false,
             fullscreen_host: 0,
@@ -198,6 +210,102 @@ pub(super) fn mount_windowless_island_video(
         player.play();
     }
     true
+}
+
+fn create_island_evr_window() -> Option<HWND> {
+    let hwnd = unsafe {
+        WindowsAndMessaging::CreateWindowExW(
+            WINDOW_EX_STYLE(
+                WindowsAndMessaging::WS_EX_TOOLWINDOW.0 | WindowsAndMessaging::WS_EX_NOACTIVATE.0,
+            ),
+            island_evr_class(),
+            PCWSTR::null(),
+            WINDOW_STYLE(WindowsAndMessaging::WS_POPUP.0 | WindowsAndMessaging::WS_DISABLED.0),
+            -32_000,
+            -32_000,
+            320,
+            180,
+            None,
+            None,
+            GetModuleHandleW(None)
+                .ok()
+                .map(|module| HINSTANCE(module.0)),
+            None,
+        )
+    };
+    let hwnd = hwnd.ok()?;
+    unsafe {
+        let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_SHOWNA);
+    }
+    Some(hwnd)
+}
+
+fn island_evr_class() -> PCWSTR {
+    static REGISTERED: OnceLock<()> = OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        let class = WNDCLASSW {
+            lpfnWndProc: Some(island_evr_proc),
+            hInstance: unsafe { GetModuleHandleW(None) }
+                .map(|module| HINSTANCE(module.0))
+                .unwrap_or_default(),
+            lpszClassName: w!("LingXiaIslandEvr"),
+            hbrBackground: HBRUSH(unsafe { GetStockObject(BLACK_BRUSH) }.0),
+            ..Default::default()
+        };
+        unsafe {
+            WindowsAndMessaging::RegisterClassW(&class);
+        }
+    });
+    w!("LingXiaIslandEvr")
+}
+
+unsafe extern "system" fn island_evr_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if msg == WindowsAndMessaging::WM_TIMER && wparam.0 == ISLAND_FRAME_TIMER_ID {
+        on_island_frame_timer(hwnd);
+        return LRESULT(0);
+    }
+    unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+fn on_island_frame_timer(hwnd: HWND) {
+    let handle = hwnd.0 as isize;
+    let snapshot = {
+        let components = components();
+        components.iter().find_map(|(key, entry)| {
+            let video = entry.video.as_ref()?;
+            if video.surface != handle {
+                return None;
+            }
+            Some((
+                key.clone(),
+                entry.context.clone(),
+                entry.component_id.clone(),
+                entry.doc_rect,
+                video.player.clone(),
+                video.playing,
+            ))
+        })
+    };
+    let Some((key, context, author_id, doc_rect, player, playing)) = snapshot else {
+        return;
+    };
+    if playing {
+        super::island::present_decoded_island_frame(
+            &context, &author_id, &doc_rect, &player, handle,
+        );
+        let current_time = player.position();
+        let duration = player.duration();
+        emit_event(
+            &key,
+            "timeupdate",
+            json!({ "currentTime": current_time, "duration": duration }),
+        );
+    }
 }
 
 /// Registers (once) and returns the video-surface window class: the inner
@@ -422,7 +530,16 @@ pub(super) fn video_event_sink(key: String, container: isize, surface: isize) ->
                             WindowsAndMessaging::SW_SHOWNA,
                         );
                     }
-                    if container != 0 {
+                    if super::island::is_island_component_key(&key) {
+                        if surface != 0 {
+                            let _ = WindowsAndMessaging::SetTimer(
+                                Some(surface_hwnd),
+                                ISLAND_FRAME_TIMER_ID,
+                                ISLAND_FRAME_INTERVAL_MS,
+                                None,
+                            );
+                        }
+                    } else if container != 0 {
                         let _ = WindowsAndMessaging::SetTimer(
                             Some(container_hwnd),
                             VIDEO_TIMER_ID,
@@ -439,6 +556,7 @@ pub(super) fn video_event_sink(key: String, container: isize, surface: isize) ->
             VideoPlayerEvent::Pause => {
                 set_video_playing(&key, false);
                 stop_video_timer(container_hwnd);
+                stop_island_frame_timer(surface_hwnd);
                 poke_video_controls(&key);
                 emit_event(&key, "pause", json!({}));
             }
@@ -446,6 +564,7 @@ pub(super) fn video_event_sink(key: String, container: isize, surface: isize) ->
                 set_video_playing(&key, false);
                 set_video_stopped(&key, true);
                 stop_video_timer(container_hwnd);
+                stop_island_frame_timer(surface_hwnd);
                 // Overlay videos hide so the DOM poster shows. Island
                 // players stay cloaked — hiding would drop DWM frames.
                 if !super::island::is_island_component_key(&key) {
@@ -465,12 +584,14 @@ pub(super) fn video_event_sink(key: String, container: isize, surface: isize) ->
             VideoPlayerEvent::Ended => {
                 set_video_playing(&key, false);
                 stop_video_timer(container_hwnd);
+                stop_island_frame_timer(surface_hwnd);
                 emit_event(&key, "ended", json!({}));
             }
             VideoPlayerEvent::Error { message } => {
                 set_video_playing(&key, false);
                 set_video_stopped(&key, true);
                 stop_video_timer(container_hwnd);
+                stop_island_frame_timer(surface_hwnd);
                 if !super::island::is_island_component_key(&key) {
                     unsafe {
                         let _ = WindowsAndMessaging::ShowWindow(
@@ -513,6 +634,15 @@ fn set_video_stopped(key: &str, stopped: bool) {
 fn stop_video_timer(container: HWND) {
     unsafe {
         let _ = WindowsAndMessaging::KillTimer(Some(container), VIDEO_TIMER_ID);
+    }
+}
+
+fn stop_island_frame_timer(surface: HWND) {
+    if surface.0.is_null() {
+        return;
+    }
+    unsafe {
+        let _ = WindowsAndMessaging::KillTimer(Some(surface), ISLAND_FRAME_TIMER_ID);
     }
 }
 
