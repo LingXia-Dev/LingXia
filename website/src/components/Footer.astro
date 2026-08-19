@@ -1,0 +1,85 @@
+---
+import Logo from './Logo.astro';
+import { withBase, GITHUB_URL, guideUrl, repositoryDocUrl } from '~/lib/url';
+import { langHome, type Lang, type T } from '~/i18n/ui';
+
+interface Props {
+  t: T;
+  lang: Lang;
+}
+const { t, lang } = Astro.props;
+const L = t.footer.links;
+
+const cols = [
+  {
+    title: t.footer.colProduct,
+    links: [
+      { label: L.architecture, href: '#architecture' },
+      { label: L.features, href: '#features' },
+      { label: L.build, href: '#build' },
+      { label: L.ai, href: '#ai' },
+    ],
+  },
+  {
+    title: t.footer.colDocs,
+    links: [
+      { label: L.quickStart, href: guideUrl(lang, 'getting-started') },
+      { label: L.cliRef, href: guideUrl(lang, 'development-workflow') },
+      { label: L.lxappGuide, href: guideUrl(lang, 'lxapp-pages') },
+      { label: L.skill, href: repositoryDocUrl('docs/skill/SKILL.md') },
+    ],
+  },
+  {
+    title: t.footer.colCommunity,
+    links: [
+      { label: L.github, href: GITHUB_URL },
+      { label: L.issues, href: `${GITHUB_URL}/issues` },
+      { label: L.license, href: `${GITHUB_URL}/blob/main/Readme.md` },
+    ],
+  },
+];
+const year = 2026;
+---
+
+<footer class="relative border-t border-black/8 bg-white/60">
+  <div class="mx-auto max-w-7xl px-5 py-14 sm:px-8">
+    <div class="grid gap-10 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
+      <div class="max-w-xs">
+        <Logo size={30} />
+        <p class="mt-4 text-sm leading-relaxed text-fg-muted">{t.footer.tagline}</p>
+        <div class="mt-5 flex items-center gap-2 text-sm">
+          <a href={withBase(langHome('en'))} class={lang === 'en' ? 'font-semibold text-jade-600' : 'text-fg-dim transition-colors hover:text-fg'}>English</a>
+          <span class="text-fg-dim">·</span>
+          <a href={withBase(langHome('zh'))} class={lang === 'zh' ? 'font-semibold text-jade-600' : 'text-fg-dim transition-colors hover:text-fg'}>中文</a>
+        </div>
+      </div>
+
+      {
+        cols.map((col) => (
+          <div>
+            <h3 class="text-sm font-semibold text-fg">{col.title}</h3>
+            <ul class="mt-4 space-y-2.5">
+              {col.links.map((l) => (
+                <li>
+                  <a
+                    href={l.href}
+                    target={l.href.startsWith('http') ? '_blank' : undefined}
+                    rel={l.href.startsWith('http') ? 'noopener' : undefined}
+                    class="text-sm text-fg-muted transition-colors hover:text-jade-600"
+                  >
+                    {l.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      }
+    </div>
+
+    <div class="mt-12 flex flex-col items-center justify-between gap-4 border-t border-black/8 pt-7 sm:flex-row">
+      <p class="font-mono text-xs text-fg-dim">© {year} LingXia · /lɪŋ ʃiə/</p>
+      <p class="text-xs text-fg-dim">{t.footer.rights}</p>
+    </div>
+  </div>
+</footer>

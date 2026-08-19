@@ -1,0 +1,41 @@
+---
+import Base from '~/layouts/Base.astro';
+import Nav from './Nav.astro';
+import Hero from './Hero.astro';
+import Platforms from './Platforms.astro';
+import DevWorkflow from './DevWorkflow.astro';
+import Architecture from './Architecture.astro';
+import Features from './Features.astro';
+import Shapes from './Shapes.astro';
+import CodeShowcase from './CodeShowcase.astro';
+import AiNative from './AiNative.astro';
+import Packages from './Packages.astro';
+import CTA from './CTA.astro';
+import Footer from './Footer.astro';
+import Interactions from './Interactions.astro';
+import { getT, type Lang } from '~/i18n/ui';
+
+interface Props {
+  lang: Lang;
+}
+const { lang } = Astro.props;
+const t = getT(lang);
+---
+
+<Base lang={lang} title={t.meta.title} description={t.meta.description}>
+  <Nav t={t} lang={lang} />
+  <main>
+    <Hero t={t} lang={lang} />
+    <Platforms t={t} lang={lang} />
+    <DevWorkflow t={t} lang={lang} />
+    <Architecture t={t} lang={lang} />
+    <Features t={t} lang={lang} />
+    <Shapes t={t} lang={lang} />
+    <CodeShowcase t={t} lang={lang} />
+    <AiNative t={t} lang={lang} />
+    <Packages t={t} lang={lang} />
+    <CTA t={t} lang={lang} />
+  </main>
+  <Footer t={t} lang={lang} />
+  <Interactions />
+</Base>

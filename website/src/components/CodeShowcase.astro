@@ -1,0 +1,118 @@
+---
+import SectionHeading from './SectionHeading.astro';
+import Icon from './Icon.astro';
+import type { Lang, T } from '~/i18n/ui';
+
+interface Props {
+  t: T;
+  lang: Lang;
+}
+const { t } = Astro.props;
+
+type Line = { kind: 'cmd' | 'cont' | 'out' | 'comment'; text: string };
+
+// Shell content is language-neutral; tab labels & caption come from t.
+const samples: Record<string, { copy: string; lines: Line[] }> = {
+  lxapp: {
+    copy: 'lingxia new my-lxapp -t lxapp -y\ncd my-lxapp\nlingxia dev',
+    lines: [
+      { kind: 'cmd', text: 'lingxia new my-lxapp -t lxapp -y' },
+      { kind: 'cmd', text: 'cd my-lxapp' },
+      { kind: 'cmd', text: 'lingxia dev' },
+      { kind: 'out', text: 'Building lxapp View + Logic…' },
+      { kind: 'out', text: 'Launching LingXia Runner' },
+    ],
+  },
+  native: {
+    copy: 'lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y\ncd my-app\nlingxia doctor --platform macos\nlingxia dev',
+    lines: [
+      { kind: 'cmd', text: 'lingxia new my-app -t native-app \\' },
+      { kind: 'cont', text: '-p macos \\' },
+      { kind: 'cont', text: '--package-id com.example.myapp -y' },
+      { kind: 'cmd', text: 'cd my-app' },
+      { kind: 'cmd', text: 'lingxia doctor --platform macos' },
+      { kind: 'out', text: 'macOS toolchain ready' },
+      { kind: 'cmd', text: 'lingxia dev' },
+    ],
+  },
+  skill: {
+    copy: 'npx @lingxia/skill install\nnpx @lingxia/skill install --agents-md',
+    lines: [
+      { kind: 'comment', text: '# Claude Code, Claude Agent SDK' },
+      { kind: 'cmd', text: 'npx @lingxia/skill install' },
+      { kind: 'out', text: 'Skill written to .claude/skills/lingxia/' },
+      { kind: 'comment', text: '# OpenAI Codex CLI (also writes AGENTS.md)' },
+      { kind: 'cmd', text: 'npx @lingxia/skill install --agents-md' },
+    ],
+  },
+};
+---
+
+<section id="code" class="section">
+  <div class="mx-auto max-w-5xl px-5 sm:px-8">
+    <SectionHeading eyebrow={t.code.eyebrow} title={t.code.title} subtitle={t.code.subtitle} />
+
+    <div class="reveal mt-12" data-tabs>
+      <!-- terminal window -->
+      <div class="ring-aura dark-surface overflow-hidden rounded-2xl border border-white/10 shadow-2xl shadow-black/25">
+        <!-- title bar + tabs -->
+        <div class="flex flex-col gap-3 border-b border-white/8 bg-white/[0.02] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="flex items-center gap-2">
+            <span class="h-3 w-3 rounded-full bg-[#ff5f57]/80"></span>
+            <span class="h-3 w-3 rounded-full bg-[#febc2e]/80"></span>
+            <span class="h-3 w-3 rounded-full bg-[#28c840]/80"></span>
+          </div>
+          <div role="tablist" class="flex items-center gap-1 rounded-lg border border-white/8 bg-ink-900/60 p-1">
+            {
+              t.code.tabs.map((tab, i) => (
+                <button
+                  type="button"
+                  role="tab"
+                  data-tab={tab.id}
+                  aria-selected={i === 0 ? 'true' : 'false'}
+                  class="rounded-md px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors aria-selected:bg-white/10 aria-selected:text-fg hover:text-fg"
+                >
+                  {tab.label}
+                </button>
+              ))
+            }
+          </div>
+        </div>
+
+        <!-- panels -->
+        <div class="relative">
+          {
+            t.code.tabs.map((tab, i) => {
+              const s = samples[tab.id];
+              return (
+                <div data-panel={tab.id} hidden={i !== 0}>
+                  <div class="flex items-center justify-between border-b border-white/5 px-4 py-2">
+                    <span class="font-mono text-xs text-fg-dim">zsh — my-project</span>
+                    <button
+                      type="button"
+                      data-copy={s.copy}
+                      data-label={t.hero.copy}
+                      data-copied-label={t.hero.copied}
+                      class="copy-btn inline-flex items-center gap-1.5 rounded-md border border-white/8 bg-white/[0.03] px-2 py-1 text-xs font-medium text-fg-muted transition-colors hover:border-jade-400/40 hover:text-fg"
+                    >
+                      <span class="copy-icon"><Icon name="copy" size={13} /></span>
+                      <span class="copy-text">{t.hero.copy}</span>
+                    </button>
+                  </div>
+                  <pre class="overflow-x-auto px-5 py-5 font-mono text-[0.86rem] leading-7"><code>{s.lines.map((ln) => (
+                    ln.kind === 'cmd' ? (<div><span class="select-none text-jade-400">$ </span><span class="text-fg">{ln.text}</span></div>)
+                    : ln.kind === 'cont' ? (<div><span class="select-none text-transparent">$ </span><span class="pl-4 text-fg">{ln.text}</span></div>)
+                    : ln.kind === 'comment' ? (<div><span class="text-fg-dim">{ln.text}</span></div>)
+                    : (<div><span class="select-none text-jade-400">✓ </span><span class="text-fg-dim">{ln.text}</span></div>)
+                  ))}</code></pre>
+                </div>
+              );
+            })
+          }
+        </div>
+      </div>
+
+      <p class="reveal mt-5 text-center text-sm text-fg-dim">{t.code.note}</p>
+    </div>
+  </div>
+</section>

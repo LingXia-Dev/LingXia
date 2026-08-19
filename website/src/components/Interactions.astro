@@ -1,0 +1,110 @@
+---
+// All client-side behavior in one place: copy buttons, code tabs,
+// mobile nav, and the nav scroll state. Included once per page.
+---
+
+<script>
+  // ---- Copy buttons --------------------------------------------------------
+  const CHECK =
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+
+  async function copyText(text: string): Promise<boolean> {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      /* fall through */
+    }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('.copy-btn').forEach((btn) => {
+    const iconEl = btn.querySelector<HTMLElement>('.copy-icon');
+    const textEl = btn.querySelector<HTMLElement>('.copy-text');
+    const original = iconEl?.innerHTML ?? '';
+    const labelText = btn.dataset.label ?? '';
+    const copiedText = btn.dataset.copiedLabel ?? 'Copied';
+    let resetTimer: number | undefined;
+
+    btn.addEventListener('click', async () => {
+      const payload = btn.dataset.copy ?? '';
+      const ok = await copyText(payload);
+      if (!ok) return;
+      if (iconEl) iconEl.innerHTML = CHECK;
+      if (textEl) textEl.textContent = copiedText;
+      btn.classList.add('text-jade-300', 'border-jade-400/50');
+      window.clearTimeout(resetTimer);
+      resetTimer = window.setTimeout(() => {
+        if (iconEl) iconEl.innerHTML = original;
+        if (textEl) textEl.textContent = labelText;
+        btn.classList.remove('text-jade-300', 'border-jade-400/50');
+      }, 1600);
+    });
+  });
+
+  // ---- Code tabs -----------------------------------------------------------
+  document.querySelectorAll<HTMLElement>('[data-tabs]').forEach((group) => {
+    const tabs = group.querySelectorAll<HTMLButtonElement>('[data-tab]');
+    const panels = group.querySelectorAll<HTMLElement>('[data-panel]');
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const id = tab.dataset.tab;
+        tabs.forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
+        panels.forEach((p) => {
+          p.hidden = p.dataset.panel !== id;
+        });
+      });
+    });
+  });
+
+  // ---- Card spotlight (pointer-tracked glow) -------------------------------
+  if (window.matchMedia('(hover: hover)').matches) {
+    document.querySelectorAll<HTMLElement>('.card-hover').forEach((card) => {
+      card.addEventListener('pointermove', (e) => {
+        const r = card.getBoundingClientRect();
+        card.style.setProperty('--mx', `${e.clientX - r.left}px`);
+        card.style.setProperty('--my', `${e.clientY - r.top}px`);
+      });
+    });
+  }
+
+  // ---- Mobile nav ----------------------------------------------------------
+  const toggle = document.querySelector<HTMLButtonElement>('[data-nav-toggle]');
+  const panel = document.querySelector<HTMLElement>('[data-nav-panel]');
+  if (toggle && panel) {
+    const close = () => {
+      panel.hidden = true;
+      toggle.setAttribute('aria-expanded', 'false');
+    };
+    toggle.addEventListener('click', () => {
+      const open = panel.hidden;
+      panel.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+    });
+    panel.querySelectorAll('[data-nav-link], a').forEach((a) => a.addEventListener('click', close));
+  }
+
+  // ---- Nav scroll state ----------------------------------------------------
+  const nav = document.querySelector<HTMLElement>('[data-nav]');
+  if (nav) {
+    const onScroll = () => {
+      nav.classList.toggle('nav-scrolled', window.scrollY > 8);
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+  }
+</script>

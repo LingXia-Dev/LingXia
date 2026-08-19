@@ -1,0 +1,55 @@
+---
+const route = Astro.locals.starlightRoute;
+const slug = route.entry.slug;
+const isChinese = route.locale === 'zh';
+
+let label = Astro.locals.t('i18n.untranslatedContent');
+
+if (slug.startsWith('reference/api')) {
+  label = isChinese
+    ? '此 Logic JS API Reference 由 @lingxia/types 自动生成；API 名称与类型签名保持原文，不做本地化。'
+    : 'This Logic JS API reference is generated from @lingxia/types; API names and type signatures are intentionally not localized.';
+} else if (slug.startsWith('reference/components')) {
+  label = isChinese
+    ? '此组件 Reference 由 @lingxia/elements 的类型声明生成；组件名、属性与事件名保持原文，不做本地化。'
+    : 'This component reference is generated from @lingxia/elements declarations; component, property, and event names are intentionally not localized.';
+}
+---
+
+<p class="generated-reference-notice">
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="9"></circle>
+    <path d="M12 11v5M12 8h.01"></path>
+  </svg>
+  <span>{label}</span>
+</p>
+
+<style>
+  @layer starlight.core {
+    .generated-reference-notice {
+      display: flex;
+      width: max-content;
+      max-width: 100%;
+      align-items: center;
+      gap: 0.75rem;
+      border: 1px solid color-mix(in srgb, var(--sl-color-accent) 45%, transparent);
+      border-radius: 0.25rem;
+      background: var(--sl-color-accent-low);
+      color: var(--sl-color-accent-high);
+      padding: 0.75em 1em;
+      font-size: var(--sl-text-body-sm);
+      line-height: var(--sl-line-height-headings);
+    }
+
+    svg {
+      width: 1.5em;
+      height: 1.5em;
+      flex: none;
+      fill: none;
+      stroke: currentColor;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-width: 1.8;
+    }
+  }
+</style>

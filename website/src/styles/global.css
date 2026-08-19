@@ -1,0 +1,419 @@
+@import 'tailwindcss';
+
+/* Self-hosted fonts (no external requests — GitHub Pages friendly) */
+@import '@fontsource-variable/space-grotesk';
+@import '@fontsource-variable/inter';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/700.css';
+
+/* ------------------------------------------------------------------ *
+ *  Design tokens — LingXia brand
+ *  灵匣 = "luminous vessel". Warm paper canvas, jade accent; ink is
+ *  reserved for terminal / device surfaces (.dark-surface).
+ * ------------------------------------------------------------------ */
+@theme {
+  /* Paper — warm near-white canvas */
+  --color-paper: #fafaf7;
+  --color-paper-2: #f2f3ee;
+
+  /* Ink — used by terminal / device mock surfaces */
+  --color-ink-950: #0c0f14;
+  --color-ink-900: #11151b;
+  --color-ink-850: #161b22;
+  --color-ink-800: #1c222b;
+  --color-ink-700: #242c37;
+  --color-ink-600: #2f3a48;
+  --color-ink-500: #43536a;
+
+  /* Jade — the primary accent (the spark inside the vessel) */
+  --color-jade-200: #b6fbe2;
+  --color-jade-300: #6ff5cd;
+  --color-jade-400: #35e3ad;
+  --color-jade-500: #14cf95;
+  --color-jade-600: #0a7d5e;
+  --color-jade-700: #075b45;
+
+  /* Cyan — the only secondary; everything else is jade or ink */
+  --color-cyan-300: #7ee9ff;
+  --color-cyan-400: #38d4f0;
+  --color-cyan-500: #16b5d6;
+  --color-cyan-600: #0c8aaf;
+
+  /* Text — ink on paper */
+  --color-fg: #1b1f26;
+  --color-fg-muted: #4f5b68;
+  --color-fg-dim: #828d99;
+
+  /* Fonts */
+  --font-display: 'Space Grotesk Variable', 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Menlo', monospace;
+
+  /* Easing */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Base
+ * ------------------------------------------------------------------ */
+@layer base {
+  :root {
+    color-scheme: light;
+    scroll-behavior: smooth;
+    scroll-padding-top: 6rem;
+  }
+
+  html,
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+    font-weight: 600;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-jade-400) 30%, transparent);
+    color: var(--color-fg);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-jade-500);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-paper-2);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #c6ccd2;
+    border-radius: 9999px;
+    border: 3px solid var(--color-paper-2);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #aab2bb;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ *  Reusable pieces
+ * ------------------------------------------------------------------ */
+
+/* Gradient ink text — slowly pans for a living, lit-from-within feel */
+.text-gradient {
+  background: linear-gradient(
+    100deg,
+    var(--color-jade-600) 0%,
+    var(--color-cyan-600) 50%,
+    var(--color-jade-600) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: gradient-pan 9s ease-in-out infinite;
+}
+
+/* Faint engineering grid backdrop */
+.bg-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, #1a2430 6%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, #1a2430 6%, transparent) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+.bg-dots {
+  background-image: radial-gradient(
+    color-mix(in oklab, #1a2430 10%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 22px 22px;
+}
+
+/* Film-grain noise — breaks up flat dark surfaces so gradients don't band */
+.bg-noise {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+/* Card surface — solid white on paper, hairline border, soft shadow */
+.card {
+  position: relative;
+  background: #fff;
+  border: 1px solid color-mix(in oklab, #18222e 9%, transparent);
+  border-radius: 1rem;
+  box-shadow:
+    0 1px 2px rgba(20, 28, 38, 0.04),
+    0 10px 28px -18px rgba(20, 28, 38, 0.1);
+}
+
+.card-hover {
+  transition:
+    transform 0.4s var(--ease-out-expo),
+    border-color 0.4s var(--ease-out-expo),
+    box-shadow 0.4s var(--ease-out-expo);
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in oklab, var(--color-jade-500) 45%, transparent);
+  box-shadow:
+    0 2px 4px rgba(20, 28, 38, 0.04),
+    0 18px 40px -18px rgba(20, 28, 38, 0.16);
+}
+
+/* Ink surface — terminals, device mocks, code. Re-scopes the text tokens
+   so text-fg/fg-muted/fg-dim utilities flip to light-on-dark inside. */
+.dark-surface {
+  --color-fg: #e8eef5;
+  --color-fg-muted: #9fb0c3;
+  --color-fg-dim: #6c7e94;
+  color-scheme: dark;
+  background: var(--color-ink-900);
+  border-radius: 1rem;
+  color: var(--color-fg);
+}
+
+/* Pointer-tracked spotlight wash on hoverable cards (set via --mx/--my in JS) */
+.card-hover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    240px circle at var(--mx, 50%) var(--my, 50%),
+    color-mix(in oklab, var(--color-jade-400) 8%, transparent),
+    transparent 70%
+  );
+  opacity: 0;
+  transition: opacity 0.35s var(--ease-out-expo);
+  pointer-events: none;
+}
+.card-hover:hover::after {
+  opacity: 1;
+}
+
+/* A hairline gradient ring used on featured cards */
+.ring-aura {
+  position: relative;
+}
+.ring-aura::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    130deg,
+    color-mix(in oklab, var(--color-jade-400) 65%, transparent),
+    transparent 40%,
+    transparent 60%,
+    color-mix(in oklab, var(--color-cyan-400) 50%, transparent)
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border-radius: 0.7rem;
+  padding: 0.72rem 1.25rem;
+  transition:
+    transform 0.25s var(--ease-out-expo),
+    box-shadow 0.3s var(--ease-out-expo),
+    background 0.3s,
+    border-color 0.3s;
+  white-space: nowrap;
+}
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn-primary {
+  color: #03130d;
+  background: linear-gradient(180deg, var(--color-jade-300), var(--color-jade-500));
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.25) inset,
+    0 8px 30px -8px color-mix(in oklab, var(--color-jade-400) 70%, transparent);
+}
+.btn-primary:hover {
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.3) inset,
+    0 12px 40px -8px color-mix(in oklab, var(--color-jade-400) 85%, transparent);
+  transform: translateY(-2px);
+}
+
+.btn-ghost {
+  color: var(--color-fg);
+  background: #fff;
+  border: 1px solid color-mix(in oklab, #18222e 13%, transparent);
+  box-shadow: 0 1px 2px rgba(20, 28, 38, 0.05);
+}
+.btn-ghost:hover {
+  border-color: color-mix(in oklab, #18222e 24%, transparent);
+  box-shadow: 0 6px 16px -8px rgba(20, 28, 38, 0.18);
+  transform: translateY(-2px);
+}
+
+/* Eyebrow / pill chip */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  padding: 0.32rem 0.8rem;
+  border-radius: 9999px;
+  color: var(--color-jade-700);
+  background: color-mix(in oklab, var(--color-jade-400) 10%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-jade-500) 30%, transparent);
+}
+
+/* Nav once the page is scrolled (class toggled in Interactions) */
+.nav-scrolled {
+  background: color-mix(in oklab, #fff 78%, transparent);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(18, 26, 36, 0.08);
+  box-shadow: 0 10px 28px -20px rgba(18, 26, 36, 0.18);
+}
+
+/* Section heading helpers */
+.section {
+  position: relative;
+  padding-block: clamp(4.5rem, 10vw, 8rem);
+}
+
+/* Glow blob */
+.aura {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* mono inline */
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* ------------------------------------------------------------------ *
+ *  Animations
+ * ------------------------------------------------------------------ */
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  50% { transform: translateY(-22px) translateX(10px); }
+}
+@keyframes float-slower {
+  0%, 100% { transform: translateY(0) translateX(0); }
+  50% { transform: translateY(18px) translateX(-12px); }
+}
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+@keyframes pulse-line {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+@keyframes dash {
+  to { stroke-dashoffset: -16; }
+}
+@keyframes gradient-pan {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes ring-spin {
+  to { --ring-angle: 360deg; }
+}
+
+/* Slowly revolving conic highlight for hero-level framed surfaces.
+   @property lets the angle interpolate; browsers without it keep a static ring. */
+@property --ring-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+.ring-spin::before {
+  background: conic-gradient(
+    from var(--ring-angle),
+    color-mix(in oklab, var(--color-jade-400) 70%, transparent),
+    transparent 18%,
+    transparent 42%,
+    color-mix(in oklab, var(--color-cyan-400) 45%, transparent) 50%,
+    transparent 58%,
+    transparent 82%,
+    color-mix(in oklab, var(--color-jade-300) 50%, transparent)
+  );
+  animation: ring-spin 14s linear infinite;
+}
+
+.anim-float { animation: float-slow 14s ease-in-out infinite; }
+.anim-float-2 { animation: float-slower 18s ease-in-out infinite; }
+.caret::after {
+  content: '▍';
+  margin-left: 1px;
+  color: var(--color-jade-400);
+  animation: blink 1.1s steps(1) infinite;
+}
+
+/* Reveal-on-scroll (progressive enhancement; visible by default) */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.7s var(--ease-out-expo),
+    transform 0.7s var(--ease-out-expo);
+  will-change: opacity, transform;
+}
+.reveal.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+}

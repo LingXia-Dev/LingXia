@@ -1,0 +1,88 @@
+---
+import '~/styles/global.css';
+import { withBase } from '~/lib/url';
+import type { Lang } from '~/i18n/ui';
+
+interface Props {
+  lang: Lang;
+  title: string;
+  description: string;
+}
+const { lang, title, description } = Astro.props;
+
+const ogImage = new URL(withBase('/og.png'), Astro.site).href;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+const altEn = new URL(withBase('/'), Astro.site).href;
+const altZh = new URL(withBase('/zh/'), Astro.site).href;
+---
+
+<!doctype html>
+<html lang={lang === 'zh' ? 'zh-Hans' : 'en'}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="alternate" hreflang="en" href={altEn} />
+    <link rel="alternate" hreflang="zh-Hans" href={altZh} />
+    <link rel="alternate" hreflang="x-default" href={altEn} />
+
+    <link rel="icon" type="image/svg+xml" href={withBase('/favicon.svg')} />
+    <meta name="theme-color" content="#fafaf7" />
+    <meta name="color-scheme" content="light" />
+
+    <!-- Open Graph / Twitter -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:site_name" content="LingXia" />
+    <meta property="og:locale" content={lang === 'zh' ? 'zh_CN' : 'en_US'} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+  </head>
+  <body class="relative min-h-screen antialiased">
+    <!-- Ambient background — soft pastel washes on warm paper -->
+    <div class="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
+      <div class="absolute inset-0 bg-grid opacity-50 [mask-image:radial-gradient(ellipse_at_top,black_5%,transparent_70%)]"></div>
+      <div class="aura anim-float left-[-10%] top-[-8%] h-[40rem] w-[40rem]" style="background: radial-gradient(circle, rgba(20,207,149,0.14), transparent 60%)"></div>
+      <div class="aura anim-float-2 right-[-12%] top-[12%] h-[34rem] w-[34rem]" style="background: radial-gradient(circle, rgba(125,180,255,0.14), transparent 60%)"></div>
+      <div class="aura left-[20%] bottom-[-10%] h-[36rem] w-[36rem]" style="background: radial-gradient(circle, rgba(167,139,250,0.1), transparent 60%)"></div>
+      <div class="bg-noise absolute inset-0 opacity-[0.02]"></div>
+    </div>
+
+    <slot />
+
+    <!-- Reveal-on-scroll (progressive enhancement) -->
+    <script>
+      const els = document.querySelectorAll<HTMLElement>('.reveal');
+      if (!('IntersectionObserver' in window) || els.length === 0) {
+        els.forEach((el) => el.classList.add('is-in'));
+      } else {
+        const io = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                const el = entry.target as HTMLElement;
+                const delay = el.dataset.delay;
+                if (delay) el.style.transitionDelay = `${delay}ms`;
+                el.classList.add('is-in');
+                io.unobserve(el);
+              }
+            });
+          },
+          { rootMargin: '0px 0px -10% 0px', threshold: 0.08 },
+        );
+        els.forEach((el) => io.observe(el));
+      }
+    </script>
+  </body>
+</html>

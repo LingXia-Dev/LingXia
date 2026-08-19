@@ -1,0 +1,34 @@
+{
+  "name": "lingxia-website",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Marketing site + docs for LingXia — the cross-platform app runtime",
+  "scripts": {
+    "dev": "node scripts/gen-components.mjs && astro dev",
+    "start": "node scripts/gen-components.mjs && astro dev",
+    "build": "node scripts/gen-components.mjs && astro build",
+    "preview": "astro preview",
+    "gen:components": "node scripts/gen-components.mjs",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.37.0",
+    "@fontsource-variable/inter": "^5.1.1",
+    "@fontsource-variable/space-grotesk": "^5.1.1",
+    "@fontsource/jetbrains-mono": "^5.1.1",
+    "@tailwindcss/vite": "^4.0.0",
+    "astro": "^5.2.0",
+    "sharp": "^0.35.1",
+    "tailwindcss": "^4.0.0"
+  },
+  "devDependencies": {
+    "@lingxia/elements": "^0.10.0",
+    "@lingxia/types": "^0.10.0",
+    "starlight-typedoc": "^0.21.5",
+    "ts-morph": "^28.0.0",
+    "typedoc": "^0.28.19",
+    "typedoc-plugin-markdown": "^4.12.0",
+    "typescript": "^5.9.3"
+  }
+}

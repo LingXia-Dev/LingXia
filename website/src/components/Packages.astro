@@ -1,0 +1,32 @@
+---
+import SectionHeading from './SectionHeading.astro';
+import type { Lang, T } from '~/i18n/ui';
+
+interface Props {
+  t: T;
+  lang: Lang;
+}
+const { t } = Astro.props;
+---
+
+<section id="packages" class="section">
+  <div class="mx-auto max-w-7xl px-5 sm:px-8">
+    <SectionHeading eyebrow={t.packages.eyebrow} title={t.packages.title} subtitle={t.packages.subtitle} />
+
+    <div class="reveal mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {
+        t.packages.items.map((p) => (
+          <div class="card card-hover flex items-center gap-4 p-4 sm:p-5">
+            <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-ink-900 font-mono text-base font-bold text-jade-300">
+              {'{ }'}
+            </span>
+            <div class="min-w-0">
+              <code class="block truncate font-mono text-sm font-medium text-fg">{p.name}</code>
+              <p class="mt-0.5 text-xs leading-snug text-fg-muted">{p.desc}</p>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

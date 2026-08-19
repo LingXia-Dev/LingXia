@@ -1,0 +1,84 @@
+---
+import Icon from './Icon.astro';
+import CopyCommand from './CopyCommand.astro';
+import { NPM_SKILL } from '~/lib/url';
+import type { Lang, T } from '~/i18n/ui';
+
+interface Props {
+  t: T;
+  lang: Lang;
+}
+const { t } = Astro.props;
+---
+
+<section id="ai" class="section">
+  <div class="mx-auto max-w-7xl px-5 sm:px-8">
+    <div class="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+      <!-- copy -->
+      <div class="reveal max-w-xl">
+        <span class="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-jade-600">
+          <Icon name="sparkle" size={16} />
+          {t.ai.eyebrow}
+        </span>
+        <h2 class="mt-3 text-balance font-display text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
+          {t.ai.title}
+        </h2>
+        <p class="mt-4 text-lg leading-relaxed text-fg-muted">{t.ai.subtitle}</p>
+
+        <ul class="mt-7 space-y-3">
+          {
+            t.ai.bullets.map((b) => (
+              <li class="flex items-start gap-3">
+                <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-jade-400/15 text-jade-700">
+                  <Icon name="check" size={13} />
+                </span>
+                <span class="text-[0.97rem] leading-relaxed text-fg-muted">{b}</span>
+              </li>
+            ))
+          }
+        </ul>
+
+        <div class="mt-8 max-w-md">
+          <CopyCommand command={NPM_SKILL} copyLabel={t.hero.copy} copiedLabel={t.hero.copied} prompt="$" />
+        </div>
+        <p class="mt-4 text-sm text-fg-dim">{t.ai.tools}</p>
+      </div>
+
+      <!-- skill preview -->
+      <div class="reveal" data-delay="120">
+        <div class="ring-aura dark-surface overflow-hidden rounded-2xl border border-white/10 shadow-2xl shadow-black/25">
+          <div class="flex items-center gap-2 border-b border-white/8 bg-white/[0.02] px-4 py-3">
+            <Icon name="book" size={15} class="text-jade-300" />
+            <span class="font-mono text-xs text-fg-muted">.claude/skills/lingxia/</span>
+          </div>
+          <div class="grid gap-px bg-white/5 sm:grid-cols-[0.9fr_1.1fr]">
+            <!-- file tree -->
+            <div class="bg-ink-900/60 p-4 font-mono text-xs leading-7 text-fg-muted">
+              <div class="text-jade-300">SKILL.md</div>
+              <div>cli/<span class="text-fg-dim">lingxia.md</span></div>
+              <div>cli/<span class="text-fg-dim">lxdev.md</span></div>
+              <div>lxapp/<span class="text-fg-dim">guide.md</span></div>
+              <div>lxapp/<span class="text-fg-dim">components.md</span></div>
+              <div>lxapp/<span class="text-fg-dim">lx-api.md</span></div>
+              <div>native/<span class="text-fg-dim">development.md</span></div>
+            </div>
+            <!-- md preview -->
+            <div class="bg-ink-900/40 p-4 font-mono text-xs leading-6">
+              <div class="text-fg-dim">---</div>
+              <div><span class="text-cyan-300">name:</span> <span class="text-fg">lingxia</span></div>
+              <div><span class="text-cyan-300">description:</span> <span class="text-fg-muted">Build apps on the</span></div>
+              <div class="text-fg-muted">&nbsp;&nbsp;LingXia framework…</div>
+              <div class="text-fg-dim">---</div>
+              <div class="mt-2 text-jade-300"># LingXia App Development</div>
+              <div class="mt-1 text-cyan-300">## Step 0 — Decide first</div>
+              <div class="text-fg-muted">Probe lingxia.yaml / lxapp.json…</div>
+            </div>
+          </div>
+          <div class="border-t border-white/8 bg-white/[0.02] px-4 py-2.5">
+            <p class="text-center font-mono text-[0.7rem] text-fg-dim">{t.ai.codexLabel}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

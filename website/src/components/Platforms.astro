@@ -1,0 +1,38 @@
+---
+import PlatformIcon from './PlatformIcon.astro';
+import type { Lang, T } from '~/i18n/ui';
+
+interface Props {
+  t: T;
+  lang: Lang;
+}
+const { t } = Astro.props;
+
+const platforms = [
+  { name: 'android' as const, label: 'Android' },
+  { name: 'ios' as const, label: 'iOS' },
+  { name: 'macos' as const, label: 'macOS' },
+  { name: 'windows' as const, label: 'Windows' },
+  { name: 'harmony' as const, label: 'HarmonyOS' },
+];
+---
+
+<section class="border-y border-black/5 bg-white/50 py-12">
+  <div class="reveal mx-auto flex max-w-7xl flex-col items-center gap-8 px-5 sm:px-8">
+    <p class="text-center text-xs font-semibold uppercase tracking-[0.2em] text-fg-dim">{t.platforms.label}</p>
+    <div class="flex w-full flex-wrap justify-center gap-3">
+      {
+        platforms.map((p, i) => (
+          <div class="reveal w-[9.5rem] sm:w-[10.5rem]" data-delay={i * 60}>
+            <div class="card card-hover group flex flex-col items-center gap-2.5 px-4 py-5">
+              <PlatformIcon name={p.name} size={30} class="text-fg-dim transition-colors group-hover:text-jade-600" />
+              <span class="font-display text-sm font-medium tracking-tight text-fg-muted transition-colors group-hover:text-fg">
+                {p.label}
+              </span>
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

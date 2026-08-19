@@ -1,0 +1,116 @@
+---
+title: Getting started
+description: Install the LingXia CLI, verify your environment, and create your first project.
+sidebar:
+  order: 2
+---
+
+import { Image } from 'astro:assets';
+import runnerShot from '../../../assets/showcase/macos.png';
+
+The fastest path from zero to a running LingXia app.
+
+## Prerequisites
+
+Always needed:
+
+- **Node.js** 18 or later
+
+Install only the platform toolchains you target:
+
+| Target | Toolchain |
+|---|---|
+| Android | Android SDK + NDK (command-line tools), JDK |
+| iOS / macOS | Xcode on a macOS host |
+| Harmony | Harmony command-line tools SDK |
+| Windows native host | Rust + MSVC Build Tools / Visual Studio on Windows |
+
+If you'll write Rust native code (custom host APIs, native-only host), also install a **Rust** toolchain via [rustup](https://rustup.rs).
+
+## 1. Install the CLI
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh | sh
+lingxia version
+```
+
+On Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.ps1 | iex
+lingxia version
+```
+
+Both installers place `lingxia` and `lxdev` in `~/.local/bin` (`%USERPROFILE%\.local\bin` on Windows). If the shell installer reports that the directory is missing from `PATH`, add the line it prints to your shell profile.
+
+## 2. Verify your environment
+
+```bash
+lingxia doctor
+```
+
+Scope checks to one platform:
+
+```bash
+lingxia doctor --platform android
+```
+
+Fix anything reported as **fail** before moving on.
+
+## 3. Create your first project
+
+Pick one of the two project shapes (see [What you build](../what-you-build/)):
+
+### Standalone lxapp
+
+```bash
+lingxia new my-lxapp -t lxapp -y
+cd my-lxapp
+lingxia dev
+```
+
+`lingxia dev` builds the lxapp and launches LingXia Runner on macOS or Windows.
+
+<Image src={runnerShot} alt="The LingXia Runner on macOS simulating iPhone 15 Pro, running the showcase lxapp" densities={[1, 2]} style="max-width:320px;border-radius:14px;border:1px solid rgba(0,0,0,0.08);box-shadow:0 24px 60px -20px rgba(0,0,0,0.35)" />
+
+*`lingxia dev` builds the View + Logic and opens the LingXia Runner — here simulating iPhone 15 Pro on macOS. Switch the simulated device from the title-bar selector.*
+
+### Native host app
+
+```bash
+lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y
+cd my-app
+lingxia dev
+```
+
+`-p` accepts a comma-separated list: `-p android,ios,macos,harmony,windows` or `-p all`.
+
+## 4. Drive the running session with lxdev
+
+While `lingxia dev` owns the live session, **`lxdev`** drives and inspects it. It can rebuild and reload lxapp code without starting a new native session, automate browser tabs and lxapp pages, control host windows, run tests, and inspect the combined log stream.
+
+```bash
+lxdev --help          # browser, app, lxapp, test, logs, session
+lxdev logs -f         # follow native + webview + logic logs
+lxdev lxapp reload    # rebuild and reload the current lxapp in place
+```
+
+`lxdev` ships with the CLI and discovers live sessions through a per-user local broker. With one session it connects automatically from any directory; with several sessions, select one using `lxdev --session <id-or-target> ...`.
+
+See [Development workflow](../development-workflow/) for the edit → reload → interact → assert → logs loop.
+
+## 5. Work with an AI assistant
+
+LingXia's deep reference lives as a portable markdown **skill** — the decision tree, every CLI command, page authoring, native components, the `lx.*` Logic API, and the Rust surface, organized so an agent routes to the right section.
+
+The skill is **opt-in**, distributed as an npm package:
+
+```bash
+npx @lingxia/skill install              # ./.claude/skills/lingxia/
+npx @lingxia/skill install --user       # ~/.claude/skills/lingxia/
+npx @lingxia/skill install --agents-md  # also writes AGENTS.md for Codex-style tools
+```
+
+- **Claude Code / Claude Agent SDK** — `npx @lingxia/skill install`; Claude discovers `.claude/skills/lingxia/SKILL.md`.
+- **OpenAI Codex CLI** — add `--agents-md`; Codex reads `<project>/AGENTS.md`.
+- **Cursor, Copilot, and other markdown agents** — point the tool at `.claude/skills/lingxia/SKILL.md`.

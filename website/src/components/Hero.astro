@@ -1,0 +1,138 @@
+---
+import CopyCommand from './CopyCommand.astro';
+import PlatformIcon from './PlatformIcon.astro';
+import Icon from './Icon.astro';
+import { INSTALL_CMD, GITHUB_URL, guideUrl } from '~/lib/url';
+import type { Lang, T } from '~/i18n/ui';
+
+interface Props {
+  t: T;
+  lang: Lang;
+}
+const { t, lang } = Astro.props;
+
+const platforms = [
+  { name: 'android' as const, label: 'Android' },
+  { name: 'ios' as const, label: 'iOS' },
+  { name: 'macos' as const, label: 'macOS' },
+  { name: 'windows' as const, label: 'Windows' },
+  { name: 'harmony' as const, label: 'HarmonyOS' },
+];
+---
+
+<section class="relative overflow-hidden pt-28 pb-16 sm:pt-36 sm:pb-24">
+  <div class="mx-auto grid max-w-7xl items-center gap-12 px-5 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-8">
+    <!-- Copy column -->
+    <div class="relative z-10 max-w-2xl">
+      <span class="chip reveal">
+        <span class="relative flex h-1.5 w-1.5">
+          <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-jade-400 opacity-75"></span>
+          <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-jade-400"></span>
+        </span>
+        {t.hero.eyebrow}
+      </span>
+
+      <h1 class="reveal mt-6 text-balance font-display text-5xl font-semibold leading-[1.04] tracking-tight sm:text-6xl lg:text-[4.1rem]" data-delay="60">
+        {t.hero.titleA}<br />
+        <span class="text-gradient">{t.hero.titleB}</span>{' '}{t.hero.titleC}
+      </h1>
+
+      <p class="reveal mt-6 max-w-xl text-lg leading-relaxed text-fg-muted" data-delay="120">
+        {t.hero.subtitle}
+      </p>
+
+      <div class="reveal mt-8 flex flex-wrap items-center gap-3" data-delay="180">
+        <a href={guideUrl(lang, 'getting-started')} class="btn btn-primary">
+          {t.hero.ctaPrimary}
+          <Icon name="arrow" size={17} />
+        </a>
+        <a href={GITHUB_URL} target="_blank" rel="noopener" class="btn btn-ghost">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 .5a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2 0-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17 5 18 5.3 18 5.3c.6 1.7.1 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6A12 12 0 0 0 12 .5Z"></path>
+          </svg>
+          {t.hero.ctaSecondary}
+        </a>
+      </div>
+
+      <div class="reveal mt-6 max-w-md" data-delay="240">
+        <CopyCommand command={INSTALL_CMD} copyLabel={t.hero.copy} copiedLabel={t.hero.copied} />
+      </div>
+
+      <p class="reveal mt-4 text-sm text-fg-dim" data-delay="300">{t.hero.runtimeNote}</p>
+
+      <div class="reveal mt-7 flex flex-wrap items-center gap-x-5 gap-y-3" data-delay="340">
+        {
+          platforms.map((p) => (
+            <span class="inline-flex items-center gap-2 text-sm font-medium text-fg-muted">
+              <PlatformIcon name={p.name} size={20} class="text-jade-600/90" />
+              {p.label}
+            </span>
+          ))
+        }
+      </div>
+    </div>
+
+    <!-- Visual column: glass app preview + layer labels -->
+    <div class="reveal relative z-10 mx-auto w-full max-w-md lg:max-w-none" data-delay="200">
+      <div class="relative [perspective:1600px]">
+        <!-- floating layer plate behind -->
+        <div class="absolute -right-3 -top-5 hidden h-full w-full rounded-[1.6rem] border border-black/5 bg-black/[0.02] sm:block" style="transform: rotateY(-12deg) rotateX(4deg)"></div>
+
+        <!-- the device / app frame -->
+        <div class="ring-aura ring-spin dark-surface relative overflow-hidden rounded-[1.6rem] border border-white/10 p-3 shadow-2xl shadow-black/25" style="transform: rotateY(-9deg) rotateX(3deg)">
+          <!-- title bar -->
+          <div class="flex items-center gap-2 px-2 pb-3 pt-1">
+            <span class="h-2.5 w-2.5 rounded-full bg-[#ff5f57]/80"></span>
+            <span class="h-2.5 w-2.5 rounded-full bg-[#febc2e]/80"></span>
+            <span class="h-2.5 w-2.5 rounded-full bg-[#28c840]/80"></span>
+            <span class="ml-2 font-mono text-xs text-fg-dim">my-lxapp</span>
+          </div>
+
+          <!-- app body -->
+          <div class="overflow-hidden rounded-2xl border border-white/8 bg-ink-900/80">
+            <div class="relative overflow-hidden px-5 pb-5 pt-6">
+              <div class="absolute -left-8 -top-8 h-32 w-32 rounded-full bg-jade-400/20 blur-2xl"></div>
+              <div class="relative">
+                <div class="text-[0.7rem] font-medium uppercase tracking-widest text-jade-300">LingXia</div>
+                <div class="mt-1 font-display text-xl font-semibold text-fg">Hello, lxapp</div>
+                <div class="mt-1 text-xs text-fg-dim">View renders · Logic owns state</div>
+              </div>
+            </div>
+
+            <div class="space-y-2.5 px-4 pb-4">
+              {
+                [
+                  { w: 'w-[72%]', t: 'jade' },
+                  { w: 'w-[88%]', t: 'cyan' },
+                  { w: 'w-[60%]', t: 'slate' },
+                ].map((row) => (
+                  <div class="flex items-center gap-3 rounded-xl border border-white/6 bg-white/[0.02] p-2.5">
+                    <span class={`h-8 w-8 shrink-0 rounded-lg ${row.t === 'jade' ? 'bg-jade-400/25' : row.t === 'cyan' ? 'bg-cyan-400/25' : 'bg-white/12'}`}></span>
+                    <span class="flex-1 space-y-1.5">
+                      <span class={`block h-2 ${row.w} rounded-full bg-white/15`}></span>
+                      <span class="block h-2 w-[40%] rounded-full bg-white/8"></span>
+                    </span>
+                  </div>
+                ))
+              }
+              <div class="mt-3 flex h-9 items-center justify-center rounded-xl bg-gradient-to-b from-jade-300 to-jade-500 text-sm font-semibold text-[#03130d]">
+                setData()
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- floating labels -->
+        <div class="anim-float absolute -left-4 top-10 hidden rounded-xl border border-jade-400/30 bg-ink-850/90 px-3 py-1.5 text-xs font-medium text-jade-200 shadow-lg backdrop-blur sm:block">
+          View · WebView
+        </div>
+        <div class="anim-float-2 absolute -right-4 bottom-16 hidden rounded-xl border border-white/20 bg-ink-850/90 px-3 py-1.5 text-xs font-medium text-white/85 shadow-lg backdrop-blur sm:block">
+          Logic · Rust / JS
+        </div>
+        <div class="absolute -bottom-3 left-1/2 hidden -translate-x-1/2 rounded-full border border-cyan-400/30 bg-ink-850/90 px-3 py-1 font-mono text-[0.7rem] text-cyan-300 shadow-lg backdrop-blur md:block">
+          ⇅ bridge
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
