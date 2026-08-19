@@ -12,23 +12,29 @@ node tests/harness/http-fixture.mjs --port 0   # prints the base URL
 lxdev test tests/ --arg httpBase=http://127.0.0.1:<port>
 ```
 
-## Not reachable from an lxapp yet
+## Reaching it from an lxapp
 
-`LxAppSecurity::is_domain_allowed` rejects loopback and private addresses
-before `trustedDomains` is consulted (`crates/lingxia-lxapp/src/lxapp/
-security.rs`, `is_public_network_address`). That rule is right — an lxapp has
-no business reaching the host's local network — and it also blocks a fixture
-on `127.0.0.1`, from Logic and from the page alike.
+`is_domain_allowed` and the rebinding guard in
+`crates/lingxia-logic/src/fs/network_security.rs` both reject non-public
+addresses before `trustedDomains` is consulted. Both relax for one case: a dev
+session, on a host the lxapp's own `trustedDomains` names — the Showcase lists
+`127.0.0.1`, and `"*"` works too. A release build has no dev session, so a
+shipped app still cannot reach the user's network.
 
-Closing that gap is a deliberate design decision, not a config change:
+That grants no new authority: a dev session already carries an automation
+channel that evaluates arbitrary code in the Logic runtime. What it buys is a
+deterministic fixture instead of the public internet.
 
-1. **A dev-session allowance.** While `lingxia dev` is live, the runtime trusts
-   one fixture origin it was told about. Scoped to the dev broker, absent in a
-   release build. Smallest change, and it keeps the production rule intact.
-2. **A fixture served from a public host.** No runtime change, but the suite
-   depends on a deployment and stops being self-contained.
-3. **A loopback exception behind an explicit lxapp privilege.** Widest blast
-   radius; it would weaken the rule for real apps too, so not recommended.
+## Known gaps
 
-Until one of those lands, the transfer capabilities stay owned by
-`PEND-UPLOAD-001` and `PEND-DOWNLOAD-001` rather than being quietly skipped.
+- **The response `Content-Type` is ignored.** `download_extension`
+  (`crates/lingxia-logic/src/fs/download.rs`) maps `image/png` and friends, but
+  `build_user_cache_download_request` (`crates/lingxia-transfer/src/download/
+  manager.rs`) hardcodes `mime_type: None` and the manager only ever propagates
+  the *caller's* hint, so that branch is dead. A download whose URL has no file
+  extension fails with "download response requires Content-Type or a URL file
+  extension" — an error that names a path which never works, reported as
+  `E_NETWORK` / "Server error" when the server answered 200. Hence `/file/<name>`
+  alongside `/bytes`.
+- The Windows and Android runners do not start the fixture yet, so the transfer
+  specs register as pending there.
