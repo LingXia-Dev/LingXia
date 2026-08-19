@@ -822,6 +822,16 @@ jobs:
         working-directory: examples/lingxia-showcase/lxapp
         run: npm ci
 
+      - name: Check release notes
+        # A public lx API change that ships with only a changelog line leaves a
+        # reader nothing to act on.
+        run: |
+          git fetch --no-tags --depth=200 origin "${{ github.base_ref || 'main' }}"
+          node scripts/ci/check-release-notes.mjs "origin/${{ github.base_ref || 'main' }}" HEAD
+
+      - name: Test release tooling
+        run: node --test scripts/release/changelog.test.mjs scripts/ci/check-release-notes.test.mjs
+
       - name: Check showcase automation types
         working-directory: examples/lingxia-showcase/lxapp
         run: npm run test:automation:types
