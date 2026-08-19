@@ -68,7 +68,7 @@ Mobile reports one host window. Desktop hosts may report several (for example ma
 - `cookies list|set|delete|clear`
 - `screenshot` — PNG of the tab's web content only
 
-**`test`** — run bundled JavaScript/TypeScript cases in the session (`lxdev test tests/flows/checkout.test.ts`). Install `@rongjs/test`, import its `describe` / `test` / hooks / `expect`, and keep contracts in `tests/api/`, page behavior in `tests/pages/`, and journeys in `tests/flows/`.
+**`test`** — run bundled JavaScript/TypeScript cases in the session (`lxdev test tests/flows/checkout.test.ts`). Install `@lingxia/test`, import its `spec` and `expect`, and keep contracts in `tests/api/`, page behavior in `tests/pages/`, and journeys in `tests/flows/`.
 
 - `const auto = lx.automation()` — select the current app with `auto.lxapp()` or a specific running app with `auto.lxapp(appid)`; the returned driver's `page`, `nav`, `eval`, and read-only `surfaceLayout()` surfaces all target that app. `surfaceLayout()` is the authoritative render plan for end-to-end host assertions, not an app-behavior API. Cross-app lifecycle operations live on `auto.lxapps`.
 - `auto.shell.pins()` reads the host sidebar's ordered persisted shortcuts. `auto.shell.setPin({ kind: 'lxapp' | 'bookmark', key, pinned })` idempotently mutates one shortcut and returns the resulting full order; new Pins append, while a host-limit error leaves the old order intact. This host-privileged surface exists for deterministic test setup and cleanup; production lxapp behavior still uses `lx.shell`, and tests must restore any pre-existing Pin state in `finally`.

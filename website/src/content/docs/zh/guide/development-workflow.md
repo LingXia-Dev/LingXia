@@ -73,4 +73,4 @@ lxdev --session ios lxapp current
 
 ## 把可重复行为沉淀为测试
 
-`lxdev test` 配合 `@rongjs/test` 使用。API contract 放在 `tests/api/`，页面行为放在 `tests/pages/`，用户旅程放在 `tests/flows/`。一次性的视觉微调仍需实时交互与截图验证，但不一定要写永久测试。
+`lxdev test` 配合 `@lingxia/test` 使用。API contract 放在 `tests/api/`，页面行为放在 `tests/pages/`，用户旅程放在 `tests/flows/`。一次性的视觉微调仍需实时交互与截图验证，但不一定要写永久测试。
