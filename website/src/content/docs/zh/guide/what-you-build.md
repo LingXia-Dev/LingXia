@@ -27,6 +27,16 @@ lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y
 
 `-p` 接受逗号分隔的列表：`-p android,ios,macos,harmony` 或 `-p all`。
 
+### 以终端或浏览器为主界面的产品
+
+在 macOS 与 Windows 上，启动主界面可以是内置的原生界面，而不是 lxapp：
+
+```bash
+lingxia new my-terminal -t native-app --main terminal --control native -y
+```
+
+`--main terminal`（或 `--main browser`）把该界面设为主屏，`--control native` 则不生成内嵌的控制 lxapp。它仍然是原生宿主应用——之后照样可以打开 bundled 或 runtime lxapp；在宿主开启该能力时，lxapp 也能通过 `lx.terminal` 使用同一套终端引擎。
+
 ## 用 Rust 扩展宿主
 
 在原生宿主中通过 `#[lingxia::native]` 与 `HostAddon` 提供宿主 API、后台服务、原生媒体或由 Rust 掌管的应用逻辑。
