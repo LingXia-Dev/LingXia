@@ -118,7 +118,15 @@ function Test-BenignWindowsSessionError {
   # circuits to Cancelled in windows_load_error_kind, so this arrives as an
   # error-level log. A load that genuinely fails still fails the test that
   # navigated there.
-  $Message -match 'page load failed: WebView2 web error status 9 \(Network\)'
+  if ($Message -match 'page load failed: WebView2 web error status 9 \(Network\)') {
+    return $true
+  }
+  # A page that is unloaded while a bridge call is in flight has that call
+  # cancelled by design (PageBridge::cancel_page_work). The rejection reaches
+  # the page after its own teardown, so nothing is left to catch it and the
+  # WebView reports the uncaught rejection to the console. A call that fails
+  # for any other reason still carries its own code and still fails here.
+  $Message -match 'BRIDGE_CANCELED.*Page unloaded'
 }
 
 function Get-UnexpectedWindowsSessionErrors {
