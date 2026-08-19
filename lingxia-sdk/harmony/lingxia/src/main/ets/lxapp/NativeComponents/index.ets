@@ -24,6 +24,8 @@ export {
   teardownEmbedManager
 } from './NativeBridgeInternal';
 
+export { InlineNativeIslandHost } from './IslandHost';
+
 export { registerVideoBuilder } from './Builders/VideoBuilder';
 export { registerPickerBuilder } from './Builders/PickerBuilder';
 export { registerMediaSwiperBuilder } from './Builders/MediaSwiperBuilder';

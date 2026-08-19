@@ -103,6 +103,29 @@ fn applies_a_json_commit_through_the_shipped_deserializer() {
 }
 
 #[test]
+fn island_session_orders_committed_siblings_without_hwnd_zorder() {
+    let root = root();
+    let mut session = IslandSession::new();
+    assert!(!session.uses_hwnd_zorder());
+    let outcome = session.apply_commit(commit(
+        &root,
+        0,
+        1,
+        vec![
+            mount(&root, "video", "video", None, 0),
+            mount(&root, "cover", "view", None, 1),
+            mount(&root, "btn", "tappable", Some(node(&root, "cover", 1)), 0),
+        ],
+    ));
+    assert!(matches!(outcome, ApplyCommitOutcome::Applied(_)));
+    let order = session.composition_order();
+    let keys: Vec<&str> = order.iter().map(|node| node.node_key.as_str()).collect();
+    assert_eq!(keys, ["video", "cover", "btn"]);
+    session.set_fullscreen(&root, true).unwrap();
+    assert_eq!(session.fullscreen_root().unwrap().root_key, "player");
+}
+
+#[test]
 fn applies_an_atomic_first_commit() {
     let root = root();
     let mut registry = RootRegistry::new(HostCapabilities::default());

@@ -88,8 +88,16 @@ final class NativeComponentManager {
         factories[type] = factory
     }
 
+    private var island: InlineNativeIsland?
+
     func handle(message: [String: Any]) {
         guard let action = message["action"] as? String else { return }
+        if island == nil, let hostView {
+            island = InlineNativeIsland(host: hostView)
+        }
+        if island?.handle(message: message) == true {
+            return
+        }
 
         switch action {
         case "component.mount":
