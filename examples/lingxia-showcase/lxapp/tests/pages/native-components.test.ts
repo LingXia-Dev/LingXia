@@ -8,6 +8,14 @@ import {
 import { attachShot, bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
+const testGlobals = globalThis as typeof globalThis & {
+  __LINGXIA_TEST__?: { run: () => Promise<unknown> };
+  __RONG_TEST__?: { run: () => Promise<unknown> };
+};
+if (testGlobals.__LINGXIA_TEST__ && !testGlobals.__RONG_TEST__) {
+  testGlobals.__RONG_TEST__ = testGlobals.__LINGXIA_TEST__;
+}
+
 async function attachWindow(t: Fixture, name: string): Promise<void> {
   const screenshot = await lx.automation().lxapps.screenshot();
   await attachShot(t, name, { mimeType: 'image/png', base64: screenshot.base64 });
@@ -25,15 +33,18 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
 
   await app.nav.to({ page: 'video', query: { automationFixture: 'video-context-shape' } });
   await waitForCurrentPage(app, 'video');
-  await app.page.waitFor({ page: 'video', css: '[data-testid="inline-native-root"]', state: 'visible' });
+  await app.page.waitFor({ page: 'video', css: 'lx-native-root', state: 'attached' });
   const wrapped = await app.page.eval({
     page: 'video',
     script:
-      '(() => { const root = document.querySelector("lx-native-root"); const video = document.querySelector("lx-native-root > lx-video"); return { hasRoot: !!root, videoIsDirectChild: !!video, videoId: video && video.getAttribute("id") }; })()',
+      '(() => { const root = document.querySelector("lx-native-root"); const video = document.querySelector("lx-native-root > lx-video"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; return { hasRoot: !!root, videoIsDirectChild: !!video, videoId: video && video.getAttribute("id"), compileOk: !!(compiled && compiled.ok), kinds: compiled && compiled.ok ? compiled.root.children.map((child) => child.kind) : [] }; })()',
   });
   expect(wrapped.hasRoot).toBeTruthy();
   expect(wrapped.videoIsDirectChild).toBeTruthy();
   expect(wrapped.videoId).toBe('lx-video-shape-fixture');
+  expect(wrapped.compileOk).toBeTruthy();
+  expect(wrapped.kinds[0]).toBe('video');
+  expect(wrapped.kinds[1]).toBe('view');
   await app.page.click({ page: 'video', css: '[data-testid="video-pause"]' });
 });
 
