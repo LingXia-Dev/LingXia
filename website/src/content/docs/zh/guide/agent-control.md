@@ -2,7 +2,7 @@
 title: Agent 控制
 description: 让本地命令行或 agent 驱动你交付的产品，开关始终握在用户手里。
 sidebar:
-  order: 9
+  order: 10
 ---
 
 `lxdev` 驱动的是**开发**会话。交付出去的产品则可以开放自己的本地接口，让命令行或

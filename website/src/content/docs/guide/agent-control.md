@@ -2,7 +2,7 @@
 title: Agent control
 description: Let a local command line or agent drive the product you ship, with the user owning the switch.
 sidebar:
-  order: 9
+  order: 10
 ---
 
 `lxdev` drives a **development** session. A shipped product can expose its own
