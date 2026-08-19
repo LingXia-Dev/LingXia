@@ -27,12 +27,14 @@ fi
 PACKAGE_SET="all"
 PUBLISH=0
 DRY_RUN=0
+VERIFY_ONLY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --package) PACKAGE_SET="${2:-}"; shift ;;
     --publish) PUBLISH=1 ;;
     --dry-run) DRY_RUN=1 ;;
+    --verify-inventory) VERIFY_ONLY=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
   esac
@@ -248,6 +250,11 @@ NODE
 
 verify_package_inventory
 verify_workflow_inventory
+
+if [[ "$VERIFY_ONLY" -eq 1 ]]; then
+  echo "npm release inventory is in sync"
+  exit 0
+fi
 if [[ "$PACKAGE_SET" == "all" ]]; then
   verify_publish_order
 fi
