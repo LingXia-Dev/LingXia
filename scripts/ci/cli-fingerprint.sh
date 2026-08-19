@@ -18,6 +18,7 @@ CLI_FINGERPRINT_PATHS=(
   tools/lingxia-cli
   tools/lingxia-devtools-cli
   crates/lingxia-app-context
+  docs/skill
   crates/lingxia-control-commands
   crates/lingxia-control-protocol
   crates/lingxia-device-io

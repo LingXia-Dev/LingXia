@@ -666,6 +666,13 @@ fn main() -> Result<()> {
         }
     };
 
+    // After parsing, so a command that promises not to write -- `skill install
+    // --dry-run` -- is not undercut by a refresh that already wrote. Skipped for
+    // `skill` itself, which is the command that manages the install.
+    if !matches!(cli.command, Commands::Skill { .. }) {
+        update::refresh_installed_skill();
+    }
+
     match cli.command {
         Commands::Version { verbose } => {
             commands::version::execute(verbose);

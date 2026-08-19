@@ -379,25 +379,20 @@ fn setup_ai_tooling(project_dir: &std::path::Path, yes: bool) {
     }
 }
 
-/// Run `npx @lingxia/skill install --user --agents-md` from the new project.
-/// `--user` puts the skill body in the global `~/.claude/skills/` (shared by
+/// Write the skill this binary carries into `~/.claude/skills/` (shared by
 /// every LingXia project, discovered by Claude Code) instead of vendoring a
-/// copy per repo; `--agents-md` writes a small, committable `AGENTS.md` pointer
-/// into the project for Codex (which only reads project-level AGENTS.md).
+/// copy per repo, plus a small, committable `AGENTS.md` pointer in the project
+/// for tools that only read a project-level AGENTS.md.
 fn run_skill_install(project_dir: &std::path::Path) -> Result<()> {
     println!("{}", "Setting up AI tooling...".bold());
-    let status = std::process::Command::new("npx")
-        .arg("@lingxia/skill")
-        .arg("install")
-        .arg("--user")
-        .arg("--agents-md")
-        .current_dir(project_dir)
-        .status()
-        .context("failed to run `npx @lingxia/skill install` (is `npx` on PATH?)")?;
-    if !status.success() {
-        bail!("`npx @lingxia/skill install` exited with a non-zero status");
-    }
-    Ok(())
+    // The pointer is written relative to the project, so run from there.
+    let previous = std::env::current_dir().context("failed to read the current directory")?;
+    std::env::set_current_dir(project_dir)
+        .with_context(|| format!("failed to enter {}", project_dir.display()))?;
+    let result = crate::commands::skill::install_for_new_project();
+    std::env::set_current_dir(&previous)
+        .with_context(|| format!("failed to return to {}", previous.display()))?;
+    result
 }
 
 fn print_manual_skill_hint() {

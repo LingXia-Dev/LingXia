@@ -376,6 +376,11 @@ fn emit_rerun_markers(
     );
     emit_rerun_for_dir(&manifest_dir.join("templates"))?;
     emit_rerun_for_dir(&repo_root.join("design").join("icons").join("svg"))?;
+    // The agent skill is embedded with include_dir!, which expands to one
+    // include_bytes! per file. Editing a file retriggers on its own, but adding
+    // or removing one does not re-expand the macro -- the binary would keep
+    // shipping the previous file list.
+    emit_rerun_for_dir(&repo_root.join("docs").join("skill"))?;
     let git_head = repo_root.join(".git").join("HEAD");
     if git_head.exists() {
         println!("cargo:rerun-if-changed={}", git_head.display());
