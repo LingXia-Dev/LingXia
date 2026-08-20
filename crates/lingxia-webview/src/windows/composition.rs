@@ -22,9 +22,74 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
 static ISLAND_VISUALS: OnceLock<Mutex<HashMap<String, Vec<IslandVisualSpec>>>> = OnceLock::new();
+static SURFACE_WEBTAGS: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
+static ISLAND_POINTER_FILTER: OnceLock<
+    Mutex<Option<std::sync::Arc<dyn Fn(&str, IslandPointerPhase, f32, f32) -> bool + Send + Sync>>>,
+> = OnceLock::new();
 
 fn island_visuals() -> &'static Mutex<HashMap<String, Vec<IslandVisualSpec>>> {
     ISLAND_VISUALS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn surface_webtags() -> &'static Mutex<HashMap<isize, String>> {
+    SURFACE_WEBTAGS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn island_pointer_filter() -> &'static Mutex<
+    Option<std::sync::Arc<dyn Fn(&str, IslandPointerPhase, f32, f32) -> bool + Send + Sync>>,
+> {
+    ISLAND_POINTER_FILTER.get_or_init(|| Mutex::new(None))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IslandPointerPhase {
+    Down,
+    Move,
+    Up,
+    Cancel,
+}
+
+pub fn register_surface_webtag(hwnd: isize, webtag: &str) {
+    if webtag.is_empty() {
+        return;
+    }
+    if let Ok(mut tags) = surface_webtags().lock() {
+        tags.insert(hwnd, webtag.to_string());
+    }
+}
+
+pub fn unregister_surface_webtag(hwnd: isize) {
+    if let Ok(mut tags) = surface_webtags().lock() {
+        tags.remove(&hwnd);
+    }
+}
+
+pub fn set_island_pointer_filter(
+    filter: impl Fn(&str, IslandPointerPhase, f32, f32) -> bool + Send + Sync + 'static,
+) {
+    if let Ok(mut slot) = island_pointer_filter().lock() {
+        *slot = Some(std::sync::Arc::new(filter));
+    }
+}
+
+pub fn consume_island_pointer(
+    hwnd: windows::Win32::Foundation::HWND,
+    phase: IslandPointerPhase,
+    x: f32,
+    y: f32,
+) -> bool {
+    let tag = surface_webtags()
+        .lock()
+        .ok()
+        .and_then(|tags| tags.get(&(hwnd.0 as isize)).cloned());
+    let Some(tag) = tag else {
+        return false;
+    };
+    let filter = island_pointer_filter()
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone());
+    filter.is_some_and(|filter| filter(&tag, phase, x, y))
 }
 
 /// Stores island visuals for the next [`CompositionSurface::set_geometry`]
@@ -308,6 +373,7 @@ impl CompositionSurface {
         if !webtag_key.is_empty() {
             self.webtag_key = webtag_key.to_string();
         }
+        register_surface_webtag(self.hwnd.0 as isize, &self.webtag_key);
         let (radii, corner_color) = corners.unwrap_or((self.radii, self.corner_color));
         let width = (bounds.right - bounds.left).max(0);
         let height = (bounds.bottom - bounds.top).max(0);
@@ -432,6 +498,7 @@ impl CompositionSurface {
     /// window's owner); called from `cleanup_state` after `Controller.Close`.
     /// The wndproc's WM_DESTROY arm revokes the OLE drop target.
     pub(crate) fn destroy(&self) {
+        unregister_surface_webtag(self.hwnd.0 as isize);
         unsafe {
             let _ = WindowsAndMessaging::DestroyWindow(self.hwnd);
         }
