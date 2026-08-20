@@ -352,10 +352,14 @@ fn select_template_provider(name: Option<&str>, yes: bool) -> Result<Option<Inst
 
 /// Set up AI tooling (the LingXia agent skill) in the freshly created project.
 /// Opt-out: installs by default, including in non-interactive/`--yes` mode. A
-/// declined prompt, a missing `npx`, or a failed install never fails
-/// `lingxia new` — we fall back to printing the manual one-liners.
+/// declined prompt or a failed install never fails `lingxia new` — we fall back
+/// to printing the manual one-liners.
 fn setup_ai_tooling(project_dir: &std::path::Path, yes: bool) {
-    let proceed = if yes {
+    // The skill body is shared by every project. Once it is in the home
+    // directory there is nothing to decide: the rest is the project's own
+    // AGENTS.md pointer, which belongs to the scaffold like any other file.
+    let already_installed = crate::commands::skill::user_install_exists();
+    let proceed = if yes || already_installed {
         true
     } else {
         Confirm::with_theme(&ColorfulTheme::default())

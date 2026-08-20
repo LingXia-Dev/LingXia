@@ -257,6 +257,16 @@ fn embedded_files() -> Vec<(PathBuf, Vec<u8>)> {
         .collect()
 }
 
+/// Whether the home directory already carries the skill.
+///
+/// Presence only, deliberately not the version: the body is shared by every
+/// project, so the question "may I write outside this project" is asked once
+/// and answered forever. An older copy is not a reason to ask again -- the
+/// refresh brings it forward on its own.
+pub fn user_install_exists() -> bool {
+    user_destination().is_ok_and(|dest| dest.join("SKILL.md").is_file())
+}
+
 /// The home-directory skills root, where an install shared by every project
 /// lives.
 pub fn user_destination() -> Result<PathBuf> {
