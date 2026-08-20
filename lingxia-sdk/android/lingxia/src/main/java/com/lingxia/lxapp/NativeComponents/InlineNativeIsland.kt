@@ -192,6 +192,9 @@ internal class InlineNativeIsland(
         val authorId = (node["authorId"] as? String)?.takeIf { it.isNotEmpty() } ?: key
         val props = asMap(node["props"]) ?: emptyMap()
         val order = (node["order"] as? Number)?.toInt() ?: 0
+        if (nodes.containsKey(key)) {
+            removeNode(key)
+        }
         val item = factoryNode(key, kind, authorId, order, props)
         nodes[key] = item
         if (item.view.parent == null) {
@@ -374,6 +377,20 @@ internal class InlineNativeIsland(
         val top = (node.rectY * density - scrollYPx).roundToInt()
         val width = (node.rectW * density).roundToInt().coerceAtLeast(1)
         val height = (node.rectH * density).roundToInt().coerceAtLeast(1)
+        node.view.visibility = if (node.visible && node.rectW > 0 && node.rectH > 0) View.VISIBLE else View.GONE
+        if (node.video != null) {
+            // Player positions via translationX/Y; layout margins on the same
+            // view would double-offset the picture away from the CSS rect.
+            node.video?.setFrame(
+                android.graphics.RectF(
+                    left.toFloat(),
+                    top.toFloat(),
+                    (left + width).toFloat(),
+                    (top + height).toFloat()
+                )
+            )
+            return
+        }
         val params = (node.view.layoutParams as? FrameLayout.LayoutParams)
             ?: FrameLayout.LayoutParams(width, height)
         params.width = width
@@ -381,15 +398,6 @@ internal class InlineNativeIsland(
         params.leftMargin = left
         params.topMargin = top
         node.view.layoutParams = params
-        node.view.visibility = if (node.visible && node.rectW > 0 && node.rectH > 0) View.VISIBLE else View.GONE
-        node.video?.setFrame(
-            android.graphics.RectF(
-                left.toFloat(),
-                top.toFloat(),
-                (left + width).toFloat(),
-                (top + height).toFloat()
-            )
-        )
     }
 
     private fun restack() {
