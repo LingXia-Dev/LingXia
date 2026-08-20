@@ -53,6 +53,28 @@
         </LxNativeRoot>
       </div>
 
+      <LxNativeRoot class="block w-full" data-testid="inline-native-controls" :style="{ height: '56px' }">
+        <LxNativeView class="flex h-full items-center gap-3 px-3">
+          <LxNativeButton
+            id="island-play"
+            data-testid="island-play"
+            label="Play"
+            aria-label="Island play"
+            @press="play()"
+          />
+          <LxNativeSlider
+            id="island-seek"
+            data-testid="island-seek"
+            aria-label="Island value"
+            :min="0"
+            :max="100"
+            :value="Math.min(100, Math.round(currentTime))"
+            value-label="value"
+            @value-commit="onIslandSeek"
+          />
+        </LxNativeView>
+      </LxNativeRoot>
+
       <!-- Controls -->
       <div class="bg-surface/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 p-5">
         <div class="text-xs text-gray-400 uppercase tracking-wider mb-4 font-semibold">Playback Controls</div>
@@ -146,7 +168,15 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useLxPage } from '@lingxia/vue';
-import { LxNativeCover, LxNativeRoot, LxNativeText, LxVideo } from '@lingxia/vue';
+import {
+  LxNativeButton,
+  LxNativeCover,
+  LxNativeRoot,
+  LxNativeSlider,
+  LxNativeText,
+  LxNativeView,
+  LxVideo,
+} from '@lingxia/vue';
 import '../../tailwind.css';
 
 type VideoConfig = {
@@ -199,5 +229,11 @@ function seekForward(seconds: number) {
   const maxTime = duration.value > 0 ? duration.value : Number.POSITIVE_INFINITY;
   const newTime = Math.min(maxTime, currentTime.value + seconds);
   seek(newTime);
+}
+
+function onIslandSeek(payload: { value: number }) {
+  if (duration.value > 0) {
+    seek((payload.value / 100) * duration.value);
+  }
 }
 </script>

@@ -1,6 +1,14 @@
 import React from 'react';
 import { useLxPage } from '@lingxia/react';
-import { LxNativeCover, LxNativeRoot, LxNativeText, LxVideo } from '@lingxia/react';
+import {
+  LxNativeButton,
+  LxNativeCover,
+  LxNativeRoot,
+  LxNativeSlider,
+  LxNativeText,
+  LxNativeView,
+  LxVideo,
+} from '@lingxia/react';
 import '../../tailwind.css';
 
 type VideoConfig = {
@@ -144,6 +152,32 @@ export default function App() {
             </LxNativeCover>
           </LxNativeRoot>
         </div>
+
+        <LxNativeRoot className="block w-full" data-testid="inline-native-controls" style={{ height: 56 }}>
+          <LxNativeView className="flex h-full items-center gap-3 px-3">
+            <LxNativeButton
+              id="island-play"
+              data-testid="island-play"
+              label="Play"
+              aria-label="Island play"
+              onPress={() => play()}
+            />
+            <LxNativeSlider
+              id="island-seek"
+              data-testid="island-seek"
+              aria-label="Island value"
+              min={0}
+              max={100}
+              value={Math.min(100, Math.round(currentTime))}
+              valueLabel="value"
+              onValueCommit={({ value }) => {
+                if (duration > 0) {
+                  seek((value / 100) * duration);
+                }
+              }}
+            />
+          </LxNativeView>
+        </LxNativeRoot>
 
         {/* Controls */}
         <div className="bg-surface/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 p-5">
