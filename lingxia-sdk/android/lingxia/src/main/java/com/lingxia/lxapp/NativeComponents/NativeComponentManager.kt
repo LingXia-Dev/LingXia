@@ -82,7 +82,16 @@ internal class NativeComponentManager(
         val host = hostViewRef.get()
         if (host != null && island == null) {
             island = InlineNativeIsland(host) { componentId, event, detail ->
-                emitComponentEvent(componentId, event, detail)
+                // Island nodes never go through component.ready, so the overlay
+                // pending-event gate would queue press/value forever.
+                val payload = mutableMapOf<String, Any>(
+                    "action" to "component.event",
+                    "id" to componentId,
+                    "componentId" to componentId,
+                    "event" to event,
+                    "detail" to detail
+                )
+                eventSink(payload)
             }
         }
         if (island?.handle(message) == true) {
@@ -93,12 +102,7 @@ internal class NativeComponentManager(
                         outgoing[key] = value
                     }
                 }
-                val id = outgoing["id"] as? String
-                if (id != null) {
-                    emitEventToView(id, outgoing)
-                } else {
-                    eventSink(outgoing)
-                }
+                eventSink(outgoing)
             }
             return
         }
