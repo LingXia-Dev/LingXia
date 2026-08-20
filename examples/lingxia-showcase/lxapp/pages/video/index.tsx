@@ -153,23 +153,30 @@ export default function App() {
           </LxNativeRoot>
         </div>
 
-        <LxNativeRoot className="block w-full" data-testid="inline-native-controls" style={{ height: 56 }}>
-          <LxNativeView className="flex h-full items-center gap-3 px-3">
+        <LxNativeRoot
+          id="island-controls"
+          className="block w-full"
+          style={{ height: 56 }}
+        >
+          <LxNativeView
+            className="flex h-full w-full items-center gap-3 px-3"
+            style={{ height: 56 }}
+          >
             <LxNativeButton
               id="island-play"
-              data-testid="island-play"
               label="Play"
               aria-label="Island play"
+              style={{ width: 80, height: 40 }}
               onPress={() => play()}
             />
             <LxNativeSlider
               id="island-seek"
-              data-testid="island-seek"
               aria-label="Island value"
               min={0}
               max={100}
               value={Math.min(100, Math.round(currentTime))}
               valueLabel="value"
+              style={{ flex: 1, height: 24, minWidth: 160 }}
               onValueCommit={({ value }) => {
                 if (duration > 0) {
                   seek((value / 100) * duration);
