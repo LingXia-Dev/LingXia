@@ -223,9 +223,10 @@ pub(super) fn create_lxapp_project(
 ) -> Result<LxAppInfo> {
     let lxapp_dir_name = lxapp_dir_name.trim();
     let lxapp_dir = config.target_dir.join(lxapp_dir_name);
-    // The lxapp's appId is namespaced (lingxia.lxapp.<name>) and must match the
-    // host's homeAppId / bundle appId; only the directory name stays simple.
-    let app_id = super::types::default_lxapp_app_id(&config.name);
+    // Namespaced by host and lxapp, and must match the host's homeAppId /
+    // bundle appId -- both read this value. Only the directory name stays
+    // simple.
+    let app_id = super::types::embedded_lxapp_app_id(&config.name, &slugify(lxapp_dir_name));
     println!("  Creating LxApp project...");
     create_lxapp_from_template(
         &lxapp_dir,
