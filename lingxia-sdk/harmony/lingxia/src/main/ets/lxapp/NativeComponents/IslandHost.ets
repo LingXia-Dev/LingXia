@@ -10,10 +10,11 @@ import {
   NodeControllerUpdateParams
 } from './NativeComponentNodeController';
 import { NativeComponentRecord } from './NativeComponentTypes';
+import { LxNativeVideoPlayer } from '../APIs/media/player/LxNativeVideoPlayer';
 
 const ALLOWED_KINDS: string[] = ['root', 'view', 'text', 'tappable', 'slider', 'video'];
 
-class IslandNode {
+export class IslandNode {
   key: string = '';
   kind: string = '';
   authorId: string = '';
@@ -52,6 +53,7 @@ export class InlineNativeIslandHost {
       return true;
     }
     if (action === 'video.command') {
+      this.applyVideoCommand(payload);
       return true;
     }
     return false;
@@ -87,6 +89,14 @@ export class InlineNativeIslandHost {
       }
     });
     return ids;
+  }
+
+  adoptEntries(): IslandNode[] {
+    const values: IslandNode[] = [];
+    this.nodes.forEach((node: IslandNode) => {
+      values.push(node);
+    });
+    return values;
   }
 
   controllerForAuthor(authorId: string): NativeComponentNodeController | undefined {
@@ -189,6 +199,44 @@ export class InlineNativeIslandHost {
     active.set('leaseId', this.leaseId);
     active.set('sequence', this.leaseSequence);
     this.pendingOutgoing.push(active);
+  }
+
+  private applyVideoCommand(payload: Record<string, Object>): void {
+    const command = payload['command'] as Record<string, Object> | undefined;
+    const owner = payload['owner'] as Record<string, Object> | undefined;
+    const name = command ? (command['name'] as string) : '';
+    let authorId = '';
+    if (owner) {
+      const key = (owner['nodeKey'] as string) ?? '';
+      const node = this.nodes.get(key);
+      if (node) {
+        authorId = node.authorId.length > 0 ? node.authorId : key;
+      }
+    }
+    if (authorId.length === 0) {
+      const ids = this.videoAuthorIds();
+      if (ids.length > 0) {
+        authorId = ids[0];
+      }
+    }
+    if (authorId.length === 0) {
+      return;
+    }
+    if (name === 'play') {
+      LxNativeVideoPlayer.playStatic(authorId);
+    } else if (name === 'pause') {
+      LxNativeVideoPlayer.pauseStatic(authorId);
+    } else if (name === 'stop') {
+      LxNativeVideoPlayer.stopStatic(authorId);
+    } else if (name === 'seek') {
+      const seconds = command ? (command['seconds'] as number) : 0;
+      LxNativeVideoPlayer.seekTo(authorId, (seconds || 0) * 1000);
+    } else if (name === 'enterFullscreen') {
+      const controller = this.controllerForAuthor(authorId);
+      if (controller) {
+        controller.toggleFullscreen(0, 0);
+      }
+    }
   }
 
   private grantLeaseIfNeeded(root: Record<string, Object>): void {

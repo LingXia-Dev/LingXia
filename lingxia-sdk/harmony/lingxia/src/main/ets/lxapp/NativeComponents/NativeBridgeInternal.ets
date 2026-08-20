@@ -7,6 +7,7 @@ import { NativeComponentRecord, NativeComponentValue, nativeComponentError, nati
 import { NativeComponentEmbedManager } from './NativeComponentEmbed';
 import { NativeComponentNodeController } from './NativeComponentNodeController';
 import { registerVideoBuilder } from './Builders/VideoBuilder';
+import { registerIslandBuilders } from './Builders/IslandBuilder';
 import { registerPickerBuilder } from './Builders/PickerBuilder';
 import { registerMediaSwiperBuilder } from './Builders/MediaSwiperBuilder';
 import { InlineNativeIslandHost } from './IslandHost';
@@ -29,7 +30,7 @@ export function handleIslandMessage(webTag: string, action: string, payload: Rec
     sendEventToJavaScript(webTag, outgoing[i]);
   }
   if (host.canDisplay()) {
-    adoptIslandVideos(webTag, host);
+    adoptIslandNodes(webTag, host);
   }
   return true;
 }
@@ -51,16 +52,14 @@ function tryHandleIslandMessage(webTag: string, propsJson: string): boolean {
   return handleIslandMessage(webTag, action, parsed);
 }
 
-function adoptIslandVideos(webTag: string, host: InlineNativeIslandHost): void {
+function adoptIslandNodes(webTag: string, host: InlineNativeIslandHost): void {
   const resolvedKey = resolveManagerKey(webTag);
   const manager = getOrCreateEmbedManager(resolvedKey ?? webTag);
-  const ids = host.videoAuthorIds();
-  for (let i = 0; i < ids.length; i++) {
-    const authorId = ids[i];
-    const controller = host.controllerForAuthor(authorId);
-    if (controller) {
-      manager.adoptIslandController(authorId, controller);
-    }
+  const nodes = host.adoptEntries();
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const authorId = node.authorId.length > 0 ? node.authorId : node.key;
+    manager.adoptIslandController(authorId, node.controller);
   }
 }
 
@@ -164,6 +163,7 @@ function registerDefaultBuilders(): void {
   registerVideoBuilder();
   registerPickerBuilder();
   registerMediaSwiperBuilder();
+  registerIslandBuilders();
 }
 
 function resolveLogicalWebTag(webTag: string): string {
