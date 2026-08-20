@@ -555,7 +555,8 @@ fn inject_sdk_package_dependency(package_dir: &Path, sdk_dir: &Path) -> Result<(
     let original = fs::read_to_string(&manifest_path)
         .with_context(|| format!("Failed to read Package.swift: {}", manifest_path.display()))?;
 
-    if is_hand_wired(&original) {
+    let cache_root = sdk_cache_root_string();
+    if is_hand_wired(&original, cache_root.as_deref()) {
         return Ok(());
     }
 
@@ -577,17 +578,11 @@ fn inject_sdk_package_dependency(package_dir: &Path, sdk_dir: &Path) -> Result<(
         let trimmed = line.trim();
         let indent = &line[..line.len() - line.trim_start().len()];
 
-        // Replace an existing CLI-managed package line (path/version drift) or
-        // the template's placeholder.
-        if trimmed.contains(SDK_PACKAGE_MARKER) && trimmed.contains(".package(") {
-            rewritten.push_str(indent);
-            rewritten.push_str(&package_line);
-            rewritten.push('\n');
-            inserted_package = true;
-            continue;
-        }
+        // Replace a line we wrote earlier (path/version drift) or the template's
+        // placeholder.
         if !inserted_package
-            && trimmed.starts_with("// Add the LingXia Swift package dependency here")
+            && (is_managed_package_line(trimmed, cache_root.as_deref())
+                || trimmed.starts_with("// Add the LingXia Swift package dependency here"))
         {
             rewritten.push_str(indent);
             rewritten.push_str(&package_line);
@@ -596,16 +591,9 @@ fn inject_sdk_package_dependency(package_dir: &Path, sdk_dir: &Path) -> Result<(
             continue;
         }
 
-        // Same for the app target's product line.
-        if trimmed.contains(SDK_PACKAGE_MARKER) && trimmed.contains(".product(") {
-            rewritten.push_str(indent);
-            rewritten.push_str(&product_line);
-            rewritten.push('\n');
-            inserted_product = true;
-            continue;
-        }
         if !inserted_product
-            && trimmed.starts_with("// .product(name: \"lingxia\", package: \"lingxia\")")
+            && (is_sdk_product_line(trimmed)
+                || trimmed.starts_with("// .product(name: \"lingxia\", package: \"lingxia\")"))
         {
             rewritten.push_str(indent);
             rewritten.push_str(&product_line);
@@ -636,21 +624,43 @@ fn inject_sdk_package_dependency(package_dir: &Path, sdk_dir: &Path) -> Result<(
     Ok(())
 }
 
-/// Whether the manifest already names the SDK on lines the CLI did not write.
-/// Such a project is wired by hand, so injection stays out of it rather than
-/// clobbering the author's own path.
-fn is_hand_wired(manifest: &str) -> bool {
+fn sdk_cache_root_string() -> Option<String> {
+    crate::sdk_cache::sdk_cache_root().map(|root| root.to_string_lossy().replace('\\', "/"))
+}
+
+/// A package line this CLI wrote. The marker is the primary signal; a path into
+/// the SDK cache is the backup, so a reflowed or hand-tidied comment downgrades
+/// to a rewrite rather than freezing yesterday's absolute path.
+fn is_managed_package_line(trimmed: &str, cache_root: Option<&str>) -> bool {
+    if trimmed.starts_with("//") || !trimmed.contains(".package(") {
+        return false;
+    }
+    trimmed.contains(SDK_PACKAGE_MARKER)
+        || (trimmed.contains("\"lingxia\"")
+            && cache_root.is_some_and(|root| trimmed.contains(root)))
+}
+
+/// A live (uncommented) target dependency on the SDK, in either spelling
+/// SwiftPM accepts.
+fn is_sdk_product_line(trimmed: &str) -> bool {
+    if trimmed.starts_with("//") || !trimmed.contains("\"lingxia\"") {
+        return false;
+    }
+    trimmed.contains(".product(") || trimmed.trim_end_matches(',') == "\"lingxia\""
+}
+
+/// Whether the manifest names the SDK on lines the CLI did not write. Such a
+/// project is wired by hand, so injection stays out of it rather than clobbering
+/// the author's own path.
+fn is_hand_wired(manifest: &str, cache_root: Option<&str>) -> bool {
     let (mut package, mut product) = (false, false);
     for line in manifest.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("//") || trimmed.contains(SDK_PACKAGE_MARKER) {
+        if trimmed.starts_with("//") || !trimmed.contains("\"lingxia\"") {
             continue;
         }
-        if !trimmed.contains("\"lingxia\"") {
-            continue;
-        }
-        package |= trimmed.contains(".package(");
-        product |= trimmed.contains(".product(");
+        package |= trimmed.contains(".package(") && !is_managed_package_line(trimmed, cache_root);
+        product |= is_sdk_product_line(trimmed);
     }
     package && product
 }
@@ -664,6 +674,14 @@ fn is_hand_wired(manifest: &str) -> bool {
 /// already point at the SDK source, so this is a no-op there.
 pub fn ensure_sdk_package_dependency(project_root: &Path, package_dir: &Path) -> Result<()> {
     if super::is_inside_lingxia_workspace(project_root) {
+        return Ok(());
+    }
+    // Decide before paying for a release download: a hand-wired manifest is
+    // left alone, and vendored-SDK projects should not need the network at all.
+    let cache_root = sdk_cache_root_string();
+    if fs::read_to_string(package_dir.join("Package.swift"))
+        .is_ok_and(|manifest| is_hand_wired(&manifest, cache_root.as_deref()))
+    {
         return Ok(());
     }
     let version = crate::sdk_cache::sdk_version();
@@ -759,6 +777,59 @@ mod tests {
             ".package(name: \"lingxia\", path: \"{}\"",
             sdk_b.path().canonicalize().unwrap().display()
         )));
+    }
+
+    /// The pre-injection macOS template hinted the bare-string spelling, so a
+    /// project hand-wired around the missing macOS injection uses it. Treating
+    /// that as unwired would abort the build on a manifest that already works.
+    #[test]
+    fn inject_reads_a_bare_string_target_dependency_as_hand_wired() {
+        let pkg = TempDir::new().unwrap();
+        let hand_wired = MACOS_TEMPLATE
+            .replace(
+                "// Add the LingXia Swift package dependency here before building.",
+                ".package(name: \"lingxia\", path: \"../vendor/lingxia-sdk/apple\"),",
+            )
+            .replace(
+                "// .product(name: \"lingxia\", package: \"lingxia\"), // managed by `lingxia build`",
+                "\"lingxia\",",
+            );
+        write_manifest(pkg.path(), &hand_wired);
+        let sdk = TempDir::new().unwrap();
+
+        inject_sdk_package_dependency(pkg.path(), sdk.path()).unwrap();
+        let out = fs::read_to_string(pkg.path().join("Package.swift")).unwrap();
+        assert_eq!(out, hand_wired);
+    }
+
+    /// Losing the trailing marker (a formatter reflowing the line, a tidied
+    /// comment) must not freeze the previous machine's absolute path.
+    #[test]
+    fn inject_rewrites_a_cache_path_that_lost_its_marker() {
+        let cache_root = sdk_cache_root_string().expect("home dir");
+        let pkg = TempDir::new().unwrap();
+        write_manifest(
+            pkg.path(),
+            &MACOS_TEMPLATE
+                .replace(
+                    "// Add the LingXia Swift package dependency here before building.",
+                    &format!(".package(name: \"lingxia\", path: \"{cache_root}/apple/0.0.1\"),"),
+                )
+                .replace(
+                    "// .product(name: \"lingxia\", package: \"lingxia\"), // managed by `lingxia build`",
+                    ".product(name: \"lingxia\", package: \"lingxia\"),",
+                ),
+        );
+        let sdk = TempDir::new().unwrap();
+
+        inject_sdk_package_dependency(pkg.path(), sdk.path()).unwrap();
+        let out = fs::read_to_string(pkg.path().join("Package.swift")).unwrap();
+
+        assert_eq!(managed_line_counts(&out), (1, 1));
+        assert!(
+            !out.contains("apple/0.0.1"),
+            "stale cache path must be replaced"
+        );
     }
 
     #[test]
