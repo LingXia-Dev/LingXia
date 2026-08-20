@@ -17,6 +17,66 @@ pub(super) fn default_lxapp_app_id(project_name: &str) -> String {
     format!("lingxia.lxapp.{}", project_name.to_lowercase())
 }
 
+/// `appId` for an lxapp embedded in a host app: `lingxia.lxapp.<host>.<lxapp>`.
+///
+/// The host segment keeps ids from colliding across projects on a shared
+/// server; the lxapp segment keeps them from colliding *within* one host, which
+/// naming after the project alone did not -- every lxapp a host embeds took the
+/// host's own id. The two collapse when an lxapp carries the project's name,
+/// since repeating it identifies nothing.
+pub(super) fn embedded_lxapp_app_id(project_name: &str, lxapp_name: &str) -> String {
+    let host = project_name.to_lowercase();
+    let lxapp = lxapp_name.to_lowercase();
+    if lxapp.is_empty() || lxapp == host {
+        return format!("lingxia.lxapp.{host}");
+    }
+    format!("lingxia.lxapp.{host}.{lxapp}")
+}
+
+#[cfg(test)]
+mod app_id_tests {
+    use super::{default_lxapp_app_id, embedded_lxapp_app_id};
+
+    #[test]
+    fn an_embedded_lxapp_is_named_after_the_host_and_itself() {
+        assert_eq!(
+            embedded_lxapp_app_id("fusheng", "home"),
+            "lingxia.lxapp.fusheng.home"
+        );
+    }
+
+    #[test]
+    fn two_lxapps_in_one_host_get_distinct_ids() {
+        let home = embedded_lxapp_app_id("fusheng", "home");
+        let settings = embedded_lxapp_app_id("fusheng", "settings");
+        assert_ne!(
+            home, settings,
+            "a host embedding two lxapps must not give them one id"
+        );
+    }
+
+    #[test]
+    fn the_same_lxapp_name_in_two_hosts_stays_distinct() {
+        assert_ne!(
+            embedded_lxapp_app_id("fusheng", "home"),
+            embedded_lxapp_app_id("showcase", "home")
+        );
+    }
+
+    #[test]
+    fn an_lxapp_carrying_the_project_name_does_not_repeat_it() {
+        assert_eq!(
+            embedded_lxapp_app_id("fusheng", "fusheng"),
+            "lingxia.lxapp.fusheng"
+        );
+    }
+
+    #[test]
+    fn a_standalone_lxapp_is_still_named_after_its_project() {
+        assert_eq!(default_lxapp_app_id("Fusheng"), "lingxia.lxapp.fusheng");
+    }
+}
+
 #[derive(Debug)]
 pub(super) struct ProjectConfig {
     pub(super) name: String,
