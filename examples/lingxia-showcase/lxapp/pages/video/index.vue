@@ -53,23 +53,23 @@
         </LxNativeRoot>
       </div>
 
-      <LxNativeRoot class="block w-full" data-testid="inline-native-controls" :style="{ height: '56px' }">
-        <LxNativeView class="flex h-full items-center gap-3 px-3">
+      <LxNativeRoot id="island-controls" class="block w-full" :style="{ height: '56px' }">
+        <LxNativeView class="flex h-full w-full items-center gap-3 px-3" :style="{ height: '56px' }">
           <LxNativeButton
             id="island-play"
-            data-testid="island-play"
             label="Play"
             aria-label="Island play"
+            :style="{ width: '80px', height: '40px' }"
             @press="play()"
           />
           <LxNativeSlider
             id="island-seek"
-            data-testid="island-seek"
             aria-label="Island value"
             :min="0"
             :max="100"
             :value="Math.min(100, Math.round(currentTime))"
             value-label="value"
+            :style="{ flex: 1, height: '24px', minWidth: '160px' }"
             @value-commit="onIslandSeek"
           />
         </LxNativeView>
