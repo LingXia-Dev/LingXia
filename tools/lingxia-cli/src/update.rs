@@ -29,12 +29,12 @@ struct UpdateCheckCache {
 }
 
 #[derive(Debug)]
-struct UpdateStatus {
-    current_version: Version,
-    latest_version: Version,
-    latest_tag: String,
-    release_repo: String,
-    update_available: bool,
+pub(crate) struct UpdateStatus {
+    pub(crate) current_version: Version,
+    pub(crate) latest_version: Version,
+    pub(crate) latest_tag: String,
+    pub(crate) release_repo: String,
+    pub(crate) update_available: bool,
 }
 
 /// Best-effort: if GitHub has a newer CLI than this binary, return
@@ -105,7 +105,7 @@ pub fn refresh_installed_skill() {
     }
 }
 
-fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<()> {
+pub(crate) fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<()> {
     let asset_name = current_platform_asset_name()?;
     let bytes = github::download_release_asset_from_repo(
         &status.release_repo,
@@ -406,7 +406,7 @@ fn ps_single_quote_str(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
-fn load_update_status(force_refresh: bool) -> Result<UpdateStatus> {
+pub(crate) fn load_update_status(force_refresh: bool) -> Result<UpdateStatus> {
     let release_repo = release_repo_for_current_install();
     let current_version =
         Version::parse(env!("CARGO_PKG_VERSION")).context("Failed to parse current CLI version")?;
@@ -533,11 +533,11 @@ fn current_unix_secs() -> u64 {
         .as_secs()
 }
 
-fn current_exe_path() -> Result<PathBuf> {
+pub(crate) fn current_exe_path() -> Result<PathBuf> {
     env::current_exe().context("Failed to resolve current executable path")
 }
 
-fn is_install_sh_install(exe_path: &Path) -> bool {
+pub(crate) fn is_install_sh_install(exe_path: &Path) -> bool {
     if load_install_metadata(exe_path)
         .filter(|metadata| metadata.channel == "github-release")
         .is_some_and(|metadata| {
@@ -562,7 +562,7 @@ fn install_path_matches_exe(install_path: &Path, exe_path: &Path) -> bool {
     configured_path == resolved_exe_path
 }
 
-fn release_repo_for_current_install() -> String {
+pub(crate) fn release_repo_for_current_install() -> String {
     if let Ok(exe_path) = current_exe_path()
         && let Some(metadata) = load_install_metadata(&exe_path)
         && is_install_sh_install(&exe_path)

@@ -433,6 +433,17 @@ enum Commands {
         action: commands::skill::SkillAction,
     },
 
+    /// Update lingxia, lxdev and the Runner to a newer release
+    Upgrade {
+        /// Report what is available and exit without installing anything
+        #[arg(long)]
+        check: bool,
+
+        /// Install this version instead of the newest one, downgrade included
+        #[arg(long, value_name = "VERSION")]
+        version: Option<String>,
+    },
+
     /// Per-user dev-session broker (started on demand by `lingxia dev`/`lxdev`)
     #[command(hide = true, name = "dev-broker")]
     DevBroker,
@@ -652,7 +663,11 @@ enum HarmonyAuthAction {
 
 fn main() -> Result<()> {
     let raw_args: Vec<String> = std::env::args().collect();
-    update::maybe_auto_update();
+    // Skipped for `upgrade`, which does this deliberately and with the user's
+    // arguments: running both would download twice and race on the binary.
+    if !raw_args.iter().any(|arg| arg == "upgrade") {
+        update::maybe_auto_update();
+    }
 
     let cli = match Cli::try_parse_from(&raw_args) {
         Ok(cli) => cli,
@@ -669,7 +684,10 @@ fn main() -> Result<()> {
     // After parsing, so a command that promises not to write -- `skill install
     // --dry-run` -- is not undercut by a refresh that already wrote. Skipped for
     // `skill` itself, which is the command that manages the install.
-    if !matches!(cli.command, Commands::Skill { .. }) {
+    if !matches!(
+        cli.command,
+        Commands::Skill { .. } | Commands::Upgrade { .. }
+    ) {
         update::refresh_installed_skill();
     }
 
@@ -867,6 +885,12 @@ fn main() -> Result<()> {
         }
         Commands::Skill { action } => {
             commands::skill::execute(action)?;
+        }
+        Commands::Upgrade { check, version } => {
+            let code = commands::upgrade::execute(check, version)?;
+            if code != 0 {
+                std::process::exit(code);
+            }
         }
         Commands::Auth { provider } => match provider {
             AuthProvider::Apple { action } => match action {
