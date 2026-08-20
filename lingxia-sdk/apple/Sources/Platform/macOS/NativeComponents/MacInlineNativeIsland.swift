@@ -235,11 +235,12 @@ final class MacInlineNativeIsland {
             item.slider = slider
             item.view = slider
         default:
-            let view = NSView()
+            let view = IslandPassthroughView()
             view.wantsLayer = true
             item.view = view
         }
         item.view.wantsLayer = true
+        applyPointerEvents(item)
     }
 
     private func applyProps(_ item: IslandNode) {
@@ -267,9 +268,23 @@ final class MacInlineNativeIsland {
             slider.isEnabled = !boolValue(item.props["disabled"])
         case "view":
             applyScrim(item)
+            applyPointerEvents(item)
         default:
-            break
+            applyPointerEvents(item)
         }
+    }
+
+    private func applyPointerEvents(_ item: IslandNode) {
+        guard let view = item.view as? IslandPassthroughView else { return }
+        if let mode = item.props["pointerEvents"] as? String {
+            view.pointerEvents = mode
+            return
+        }
+        if item.props["scrimPaint"] != nil {
+            view.pointerEvents = "box-none"
+            return
+        }
+        view.pointerEvents = item.kind == "text" ? "none" : "auto"
     }
 
     private func applyScrim(_ item: IslandNode) {
@@ -365,6 +380,26 @@ final class MacInlineNativeIsland {
             let commit = NSEvent.pressedMouseButtons == 0
             dragging = !commit
             onSliderChange?(sender.doubleValue, commit)
+        }
+    }
+}
+
+/// Cover/view `box-none`: the view itself does not hit, siblings below can.
+private final class IslandPassthroughView: NSView {
+    var pointerEvents: String = "auto"
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        switch pointerEvents {
+        case "none":
+            return nil
+        case "box-none":
+            if hit == nil || hit === self {
+                return nil
+            }
+            return hit
+        default:
+            return hit
         }
     }
 }
