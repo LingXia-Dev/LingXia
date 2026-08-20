@@ -153,22 +153,27 @@ jobs:
             echo "$package workspace version verified: $actual"
           }
 
-          # Every component publish is anchored to the unified workspace
-          # version. Component selection controls what is shipped, not versioning.
-          verify_workspace_version
+          # Every component is anchored to the unified workspace version, with
+          # one exception: the CLI keeps its own patch line, so a CLI-only
+          # release deliberately leaves the workspace where it is. Verifying it
+          # against the CLI's version would reject exactly the release the CLI
+          # patch line exists to allow.
           case "$COMPONENT" in
             all)
+              verify_workspace_version
               verify_cli_version
               for package in $NPM_PACKAGES; do
                 verify_npm_package_version "$package"
               done
               ;;
             crates|sdk)
+              verify_workspace_version
               ;;
             cli)
               verify_cli_version
               ;;
             npm)
+              verify_workspace_version
               if [[ "$NPM_PACKAGE" == "all" ]]; then
                 for package in $NPM_PACKAGES; do
                   verify_npm_package_version "$package"
