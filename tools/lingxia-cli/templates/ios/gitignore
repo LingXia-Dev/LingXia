@@ -6,3 +6,10 @@ xcuserdata/
 DerivedData/
 .swiftpm
 .netrc
+
+# Staged by `lingxia build`: host config, the embedded bridge runtime, packaged
+# host assets, and one directory per bundled lxapp (named by appId). Only the
+# committed asset catalog survives the sweep — list any other tracked resource
+# here with its own `!` rule.
+Sources/Resources/*
+!Sources/Resources/Assets.xcassets/
