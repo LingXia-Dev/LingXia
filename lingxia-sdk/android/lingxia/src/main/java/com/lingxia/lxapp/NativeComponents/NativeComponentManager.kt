@@ -81,9 +81,25 @@ internal class NativeComponentManager(
     fun handle(message: Map<String, Any?>) {
         val host = hostViewRef.get()
         if (host != null && island == null) {
-            island = InlineNativeIsland(host)
+            island = InlineNativeIsland(host) { componentId, event, detail ->
+                emitComponentEvent(componentId, event, detail)
+            }
         }
         if (island?.handle(message) == true) {
+            island?.drainOutgoing()?.forEach { payload ->
+                val outgoing = mutableMapOf<String, Any>()
+                payload.forEach { (key, value) ->
+                    if (value != null) {
+                        outgoing[key] = value
+                    }
+                }
+                val id = outgoing["id"] as? String
+                if (id != null) {
+                    emitEventToView(id, outgoing)
+                } else {
+                    eventSink(outgoing)
+                }
+            }
             return
         }
         when (message["action"] as? String) {
@@ -301,6 +317,7 @@ internal class NativeComponentManager(
             )
             component.setFrame(screenRect)
         }
+        island?.onWebViewScroll(scrollX, scrollY)
     }
 
     /**
