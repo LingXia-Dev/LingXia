@@ -539,10 +539,142 @@ fn is_apple_junk_entry(name: &std::ffi::OsStr) -> bool {
     };
     name == ".DS_Store" || name == "__MACOSX" || name.starts_with("._")
 }
+/// Sentinel marking the CLI-managed SDK package line in a generated
+/// `Package.swift`. Lets repeated builds / version bumps converge instead of
+/// appending duplicate dependencies.
+const SDK_PACKAGE_MARKER: &str = "// lingxia-sdk: managed by `lingxia build`";
+
+/// Idempotently rewrite the app's `Package.swift` so it depends on the cached
+/// LingXia Apple SDK via a local `.package(path:)`.
+///
+/// Replaces the iOS/macOS templates' commented-out placeholders on the first
+/// build and our own previously-written lines afterwards, so path and version
+/// drift converge instead of appending duplicates.
+fn inject_sdk_package_dependency(package_dir: &Path, sdk_dir: &Path) -> Result<()> {
+    let manifest_path = package_dir.join("Package.swift");
+    let original = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Failed to read Package.swift: {}", manifest_path.display()))?;
+
+    if is_hand_wired(&original) {
+        return Ok(());
+    }
+
+    let abs = sdk_dir
+        .canonicalize()
+        .unwrap_or_else(|_| sdk_dir.to_path_buf());
+    let abs_str = abs.to_string_lossy().replace('\\', "/");
+
+    let package_line =
+        format!(".package(name: \"lingxia\", path: \"{abs_str}\"), {SDK_PACKAGE_MARKER}");
+    let product_line =
+        format!(".product(name: \"lingxia\", package: \"lingxia\"), {SDK_PACKAGE_MARKER}");
+
+    let mut rewritten = String::with_capacity(original.len() + 256);
+    let mut inserted_package = false;
+    let mut inserted_product = false;
+
+    for line in original.lines() {
+        let trimmed = line.trim();
+        let indent = &line[..line.len() - line.trim_start().len()];
+
+        // Replace an existing CLI-managed package line (path/version drift) or
+        // the template's placeholder.
+        if trimmed.contains(SDK_PACKAGE_MARKER) && trimmed.contains(".package(") {
+            rewritten.push_str(indent);
+            rewritten.push_str(&package_line);
+            rewritten.push('\n');
+            inserted_package = true;
+            continue;
+        }
+        if !inserted_package
+            && trimmed.starts_with("// Add the LingXia Swift package dependency here")
+        {
+            rewritten.push_str(indent);
+            rewritten.push_str(&package_line);
+            rewritten.push('\n');
+            inserted_package = true;
+            continue;
+        }
+
+        // Same for the app target's product line.
+        if trimmed.contains(SDK_PACKAGE_MARKER) && trimmed.contains(".product(") {
+            rewritten.push_str(indent);
+            rewritten.push_str(&product_line);
+            rewritten.push('\n');
+            inserted_product = true;
+            continue;
+        }
+        if !inserted_product
+            && trimmed.starts_with("// .product(name: \"lingxia\", package: \"lingxia\")")
+        {
+            rewritten.push_str(indent);
+            rewritten.push_str(&product_line);
+            rewritten.push('\n');
+            inserted_product = true;
+            continue;
+        }
+
+        rewritten.push_str(line);
+        rewritten.push('\n');
+    }
+
+    if !inserted_package || !inserted_product {
+        return Err(anyhow!(
+            "Could not locate the LingXia dependency placeholders in {}\n  \
+             Expected the generated template's commented-out `.package(name: \"lingxia\", ...)` \
+             under `dependencies:` and `.product(name: \"lingxia\", package: \"lingxia\")` in the \
+             app target.",
+            manifest_path.display()
+        ));
+    }
+
+    if rewritten != original {
+        fs::write(&manifest_path, &rewritten).with_context(|| {
+            format!("Failed to write Package.swift: {}", manifest_path.display())
+        })?;
+    }
+    Ok(())
+}
+
+/// Whether the manifest already names the SDK on lines the CLI did not write.
+/// Such a project is wired by hand, so injection stays out of it rather than
+/// clobbering the author's own path.
+fn is_hand_wired(manifest: &str) -> bool {
+    let (mut package, mut product) = (false, false);
+    for line in manifest.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("//") || trimmed.contains(SDK_PACKAGE_MARKER) {
+            continue;
+        }
+        if !trimmed.contains("\"lingxia\"") {
+            continue;
+        }
+        package |= trimmed.contains(".package(");
+        product |= trimmed.contains(".product(");
+    }
+    package && product
+}
+
+/// Point an app's `Package.swift` at the LingXia Apple SDK, fetching it into the
+/// shared cache first. Shared by the iOS and macOS build paths.
+///
+/// The SDK uses `unsafeFlags`, so SwiftPM accepts it only as a local path
+/// dependency; that path is absolute and machine-specific, which is why it is
+/// rewritten on every build instead of being committed. In-workspace projects
+/// already point at the SDK source, so this is a no-op there.
+pub fn ensure_sdk_package_dependency(project_root: &Path, package_dir: &Path) -> Result<()> {
+    if super::is_inside_lingxia_workspace(project_root) {
+        return Ok(());
+    }
+    let version = crate::sdk_cache::sdk_version();
+    let sdk_dir = crate::sdk_cache::ensure_sdk(crate::sdk_cache::SdkPlatform::Apple, &version)?;
+    inject_sdk_package_dependency(package_dir, &sdk_dir)
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
 
     #[test]
     fn test_is_macos() {
@@ -561,5 +693,91 @@ mod tests {
         assert!(is_apple_junk_entry(std::ffi::OsStr::new("._Icon")));
         assert!(!is_apple_junk_entry(std::ffi::OsStr::new(".well-known")));
         assert!(!is_apple_junk_entry(std::ffi::OsStr::new(".config")));
+    }
+
+    /// The shipped templates are the real input to the injector; matching on a
+    /// hand-copied replica would let template edits silently break external
+    /// builds (in-workspace projects never exercise this path).
+    const IOS_TEMPLATE: &str = include_str!("../../templates/ios/Package.swift");
+    const MACOS_TEMPLATE: &str = include_str!("../../templates/macos/Package.swift");
+
+    fn write_manifest(package_dir: &Path, body: &str) {
+        fs::write(package_dir.join("Package.swift"), body).unwrap();
+    }
+
+    fn managed_line_counts(manifest: &str) -> (usize, usize) {
+        let count = |needle: &str| {
+            manifest
+                .lines()
+                .filter(|l| l.contains(needle) && l.contains(SDK_PACKAGE_MARKER))
+                .count()
+        };
+        (
+            count(".package(name: \"lingxia\""),
+            count(".product(name: \"lingxia\""),
+        )
+    }
+
+    #[test]
+    fn inject_replaces_the_shipped_template_placeholders() {
+        for template in [IOS_TEMPLATE, MACOS_TEMPLATE] {
+            let pkg = TempDir::new().unwrap();
+            write_manifest(pkg.path(), template);
+            let sdk = TempDir::new().unwrap();
+
+            inject_sdk_package_dependency(pkg.path(), sdk.path()).unwrap();
+            let out = fs::read_to_string(pkg.path().join("Package.swift")).unwrap();
+
+            assert!(out.contains(".package(name: \"lingxia\", path:"));
+            assert_eq!(managed_line_counts(&out), (1, 1));
+            // Placeholders consumed.
+            assert!(!out.contains("// Add the LingXia Swift package dependency here"));
+            assert!(!out.contains("// .product(name: \"lingxia\""));
+        }
+    }
+
+    #[test]
+    fn inject_is_idempotent_and_converges_on_path_change() {
+        let pkg = TempDir::new().unwrap();
+        write_manifest(pkg.path(), MACOS_TEMPLATE);
+        let sdk_a = TempDir::new().unwrap();
+
+        inject_sdk_package_dependency(pkg.path(), sdk_a.path()).unwrap();
+        let first = fs::read_to_string(pkg.path().join("Package.swift")).unwrap();
+
+        // Re-running with the same SDK dir is a no-op.
+        inject_sdk_package_dependency(pkg.path(), sdk_a.path()).unwrap();
+        let again = fs::read_to_string(pkg.path().join("Package.swift")).unwrap();
+        assert_eq!(first, again);
+
+        // A new SDK path replaces the managed lines rather than duplicating them.
+        let sdk_b = TempDir::new().unwrap();
+        inject_sdk_package_dependency(pkg.path(), sdk_b.path()).unwrap();
+        let third = fs::read_to_string(pkg.path().join("Package.swift")).unwrap();
+        assert_eq!(managed_line_counts(&third), (1, 1));
+        assert!(third.contains(&format!(
+            ".package(name: \"lingxia\", path: \"{}\"",
+            sdk_b.path().canonicalize().unwrap().display()
+        )));
+    }
+
+    #[test]
+    fn inject_leaves_a_hand_wired_manifest_alone() {
+        let pkg = TempDir::new().unwrap();
+        let hand_wired = MACOS_TEMPLATE
+            .replace(
+                "// Add the LingXia Swift package dependency here before building.",
+                ".package(name: \"lingxia\", path: \"/somewhere/else\"),",
+            )
+            .replace(
+                "// .product(name: \"lingxia\", package: \"lingxia\"), // managed by `lingxia build`",
+                ".product(name: \"lingxia\", package: \"lingxia\"),",
+            );
+        write_manifest(pkg.path(), &hand_wired);
+        let sdk = TempDir::new().unwrap();
+
+        inject_sdk_package_dependency(pkg.path(), sdk.path()).unwrap();
+        let out = fs::read_to_string(pkg.path().join("Package.swift")).unwrap();
+        assert_eq!(out, hand_wired);
     }
 }

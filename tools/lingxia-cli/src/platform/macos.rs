@@ -382,6 +382,9 @@ impl Platform for MacosPlatform {
             Self::rust_lib_path(&config.project_root, arch, config.profile)
         };
 
+        // Point Package.swift at the cached Apple SDK (no-op in-workspace).
+        apple::ensure_sdk_package_dependency(&config.project_root, &macos_dir)?;
+
         // Build Swift Package and get bin dir
         let mut bin_dir = self.swift_build_and_get_bin_dir(
             &macos_dir,
