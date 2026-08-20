@@ -121,6 +121,28 @@ impl IslandPointerTracker {
     pub fn cancel(&mut self) {
         self.down = None;
     }
+
+    /// Slider thumb value latched for the current drag, if any.
+    pub fn latched_slider(&self) -> Option<(String, f64)> {
+        let down = self.down.as_ref()?;
+        if down.kind != PointerKind::Slider {
+            return None;
+        }
+        Some((down.id.clone(), down.latched?))
+    }
+}
+
+/// Overlay a locally latched slider value onto committed props so paint does
+/// not wait on a Logic `root.commit` to move the thumb.
+pub fn props_with_slider_value(props: &Value, value: f64) -> Value {
+    let mut next = props.clone();
+    match &mut next {
+        Value::Object(map) => {
+            map.insert("value".to_string(), serde_json::json!(value));
+        }
+        _ => next = serde_json::json!({ "value": value }),
+    }
+    next
 }
 
 #[derive(Debug, Clone)]

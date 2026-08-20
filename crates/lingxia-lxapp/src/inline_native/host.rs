@@ -5,7 +5,7 @@ use super::geometry::{GeometryPageState, apply_geometry_snapshot, flush_pending_
 use super::lease::{LeaseState, host_can_display, host_grant_lease, host_on_accept};
 use super::paint::{
     IslandHitTarget, IslandHostEvent, IslandPointerPhase, IslandPointerTracker, dispatch_pointer,
-    pointer_events_from_props,
+    pointer_events_from_props, props_with_slider_value,
 };
 use super::resource::{
     media_urls_from_command_options, media_urls_from_props, validate_media_urls,
@@ -351,6 +351,26 @@ impl IslandSession {
 
     pub fn pointer_sequence_active(&self) -> bool {
         self.pointer.is_active()
+    }
+
+    pub fn latched_slider(&self) -> Option<(String, f64)> {
+        self.pointer.latched_slider()
+    }
+
+    /// Props the compositor should paint for `id`, including a latched slider
+    /// value while a drag is in progress.
+    pub fn paint_props_for(&self, id: &str) -> Option<Value> {
+        let node = self
+            .composition_nodes()
+            .into_iter()
+            .find(|node| node.author_id.as_deref() == Some(id) || node.node_ref.node_key == id)?;
+        if node.kind == "slider"
+            && let Some((latch_id, value)) = self.latched_slider()
+            && (latch_id == id || latch_id == node.node_ref.node_key)
+        {
+            return Some(props_with_slider_value(&node.props, value));
+        }
+        Some(node.props)
     }
 
     pub fn hit_targets(&self) -> Vec<IslandHitTarget> {

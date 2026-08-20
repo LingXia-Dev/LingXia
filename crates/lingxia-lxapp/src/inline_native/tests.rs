@@ -1084,6 +1084,29 @@ fn paints_cover_button_slider_and_dispatches_pointer() {
     assert_eq!(drag.len(), 1);
     let drag_value = drag[0].detail["value"].as_f64().unwrap();
     assert!(drag_value > start_value);
+    let (latch_id, latch_value) = session
+        .latched_slider()
+        .expect("slider drag must latch locally");
+    assert_eq!(latch_id, "seek");
+    assert_eq!(latch_value, drag_value);
+    let latched_props = session
+        .paint_props_for("seek")
+        .expect("slider paint props during drag");
+    assert_eq!(latched_props["value"].as_f64(), Some(drag_value));
+    assert_ne!(
+        latched_props["value"].as_f64(),
+        recorder.calls[3].3.get("value").and_then(Value::as_f64),
+        "latched paint must not wait on the committed Logic value"
+    );
+    let latched_plan = plan_island_visual("slider", &slider_rect, &latched_props);
+    let committed_plan = plan_island_visual("slider", &slider_rect, &recorder.calls[3].3);
+    assert_ne!(latched_plan.text, committed_plan.text);
+    let latched_pixels = rasterize_island_kind("slider", 80, 16, &latched_props);
+    let committed_pixels = rasterize_island_kind("slider", 80, 16, &recorder.calls[3].3);
+    assert_ne!(
+        latched_pixels, committed_pixels,
+        "raster must move the thumb from the latched value without a new commit"
+    );
     let commit_events = session.handle_pointer(IslandPointerPhase::Up, 280.0, 196.0);
     assert_eq!(commit_events.len(), 1);
     assert_eq!(commit_events[0].event, "valuecommit");
