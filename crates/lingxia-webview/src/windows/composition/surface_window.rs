@@ -471,6 +471,19 @@ fn forward_mouse_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
         }
     }
 
+    let island_phase = match msg {
+        WM::WM_LBUTTONDOWN => Some(super::IslandPointerPhase::Down),
+        WM::WM_MOUSEMOVE => Some(super::IslandPointerPhase::Move),
+        WM::WM_LBUTTONUP => Some(super::IslandPointerPhase::Up),
+        WM_MOUSELEAVE => Some(super::IslandPointerPhase::Cancel),
+        _ => None,
+    };
+    if let Some(phase) = island_phase
+        && super::consume_island_pointer(hwnd, phase, point.x as f32, point.y as f32)
+    {
+        return LRESULT(0);
+    }
+
     let result = unsafe {
         controller.SendMouseInput(
             COREWEBVIEW2_MOUSE_EVENT_KIND(msg as i32),

@@ -69,9 +69,10 @@ pub use color_scheme::{
     set_windows_lxapp_preferred_color_scheme, set_windows_preferred_color_scheme_for_new_webviews,
 };
 pub use composition::{
-    CompositionSurfacePixels, IslandVideoFrame, IslandVisualSpec, capture_composition_surface_bgra,
-    find_composition_surface_hwnd, queue_island_visuals, queued_island_visuals,
-    set_webview_composition_hosting, webview_composition_hosting_enabled,
+    CompositionSurfacePixels, IslandPointerPhase, IslandVideoFrame, IslandVisualSpec,
+    capture_composition_surface_bgra, find_composition_surface_hwnd, queue_island_visuals,
+    queued_island_visuals, set_island_pointer_filter, set_webview_composition_hosting,
+    webview_composition_hosting_enabled,
 };
 pub use environment::set_windows_context_menu_refresh_provider;
 pub use native_view::{
