@@ -3,7 +3,7 @@ package {{PACKAGE_ID}}
 import android.os.Bundle
 import android.util.Log
 import androidx.appcompat.app.AppCompatActivity
-import com.lingxia.lxapp.Lingxia
+import com.lingxia.app.Lingxia
 
 class MainActivity : AppCompatActivity() {
     private val TAG = "MainActivity"
