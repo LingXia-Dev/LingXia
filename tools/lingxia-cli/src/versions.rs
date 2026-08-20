@@ -70,6 +70,24 @@ mod tests {
         assert_eq!(versions.lingxia_crate, env!("LINGXIA_RUST_CRATE_VERSION"));
     }
 
+    /// The reported Rong version drifted a full minor behind the workspace for
+    /// a month while it was a hand-kept key in the CLI manifest. It is derived
+    /// now; this fails if anything reintroduces a copy.
+    #[test]
+    fn rong_version_matches_the_workspace_dependency() {
+        let manifest = concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml");
+        let workspace = std::fs::read_to_string(manifest).expect("read the workspace manifest");
+        let declared = workspace
+            .lines()
+            .find_map(|line| line.strip_prefix("rong = "))
+            .expect("workspace declares a rong dependency");
+        assert!(
+            declared.contains(env!("LINGXIA_RONG_VERSION")),
+            "CLI reports rong {}, workspace declares {declared}",
+            env!("LINGXIA_RONG_VERSION"),
+        );
+    }
+
     #[test]
     fn minor_tilde_range_floors_to_the_compat_line() {
         assert_eq!(minor_tilde_range("0.11.2"), "~0.11.0");
