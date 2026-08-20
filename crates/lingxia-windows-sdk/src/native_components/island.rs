@@ -13,21 +13,24 @@ use std::sync::{Mutex, OnceLock};
 use lingxia_webview::WebTag;
 use lingxia_webview::WebViewController;
 use lingxia_webview::platform::windows::{
-    IslandVideoFrame, IslandVisualSpec, find_webview_handler, queue_island_visuals,
-    queued_island_visuals,
+    IslandPointerPhase as SurfacePointerPhase, IslandVideoFrame, IslandVisualSpec,
+    find_webview_handler, queue_island_visuals, queued_island_visuals, set_island_pointer_filter,
 };
 use lxapp::inline_native::{
-    ApplyCommitOutcome, IslandCompositor, IslandSession, NativeGeometrySnapshot, NativeRootAck,
-    Rect, is_island_action,
+    ApplyCommitOutcome, IslandCompositor, IslandPointerPhase, IslandSession,
+    NativeGeometrySnapshot, NativeRootAck, Rect, is_island_action, plan_island_visual,
+    rasterize_island_kind,
 };
 use serde_json::{Value, json};
 
 use super::{DocRect, PageContext};
 
 static SESSIONS: OnceLock<Mutex<HashMap<String, IslandSession>>> = OnceLock::new();
+static CONTEXTS: OnceLock<Mutex<HashMap<String, PageContext>>> = OnceLock::new();
 static ISLAND_COMPONENT_KEYS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 static APPLY_SCHEDULED: AtomicBool = AtomicBool::new(false);
 static NEXT_APPLY: OnceLock<Mutex<Option<DeferredIslandApply>>> = OnceLock::new();
+static POINTER_FILTER_READY: AtomicBool = AtomicBool::new(false);
 
 struct DeferredIslandApply {
     context: PageContext,
@@ -41,6 +44,76 @@ fn next_apply() -> &'static Mutex<Option<DeferredIslandApply>> {
 
 fn sessions() -> &'static Mutex<HashMap<String, IslandSession>> {
     SESSIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn contexts() -> &'static Mutex<HashMap<String, PageContext>> {
+    CONTEXTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub(super) fn install_island_pointer_filter() {
+    if POINTER_FILTER_READY.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    set_island_pointer_filter(|page_key, phase, x, y| route_island_pointer(page_key, phase, x, y));
+}
+
+fn route_island_pointer(page_key: &str, phase: SurfacePointerPhase, x: f32, y: f32) -> bool {
+    let session_phase = match phase {
+        SurfacePointerPhase::Down => IslandPointerPhase::Down,
+        SurfacePointerPhase::Move => IslandPointerPhase::Move,
+        SurfacePointerPhase::Up => IslandPointerPhase::Up,
+        SurfacePointerPhase::Cancel => IslandPointerPhase::Cancel,
+    };
+    let (css_x, css_y) = surface_point_to_css(page_key, x, y);
+    let mut sessions = match sessions().lock() {
+        Ok(guard) => guard,
+        Err(poison) => poison.into_inner(),
+    };
+    let Some(session) = sessions.get_mut(page_key) else {
+        return false;
+    };
+    let was_active = session.pointer_sequence_active();
+    let events = session.handle_pointer(session_phase, css_x, css_y);
+    let consumed = was_active || session.pointer_sequence_active() || !events.is_empty();
+    drop(sessions);
+    if let Some(context) = contexts()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .get(page_key)
+        .cloned()
+    {
+        for event in events {
+            post_island_event(&context, &event);
+        }
+    }
+    consumed
+}
+
+fn surface_point_to_css(page_key: &str, x: f32, y: f32) -> (f64, f64) {
+    let view = super::page_views().get(page_key).copied();
+    let scale = view
+        .map(|view| view.target.scale)
+        .filter(|scale| *scale > 0.0)
+        .unwrap_or(1.0);
+    let scroll_x = view.map(|view| view.scroll_x).unwrap_or(0.0);
+    let scroll_y = view.map(|view| view.scroll_y).unwrap_or(0.0);
+    (
+        f64::from(x) / scale + scroll_x,
+        f64::from(y) / scale + scroll_y,
+    )
+}
+
+fn post_island_event(context: &PageContext, event: &lxapp::inline_native::IslandHostEvent) {
+    post_island_payload(
+        context,
+        json!({
+            "action": "component.event",
+            "id": event.id,
+            "componentId": event.id,
+            "event": event.event,
+            "detail": event.detail,
+        }),
+    );
 }
 
 pub(super) fn island_component_keys() -> std::sync::MutexGuard<'static, HashSet<String>> {
@@ -60,6 +133,9 @@ pub(super) fn handle_island_message(context: &PageContext, message: &Value) -> b
     };
     if !is_island_action(action) {
         return false;
+    }
+    if let Ok(mut contexts) = contexts().lock() {
+        contexts.insert(context.page_key.clone(), context.clone());
     }
     let mut sessions = sessions().lock().expect("island session lock");
     let session = sessions.entry(context.page_key.clone()).or_default();
@@ -125,6 +201,9 @@ pub(super) fn teardown_island(page_key: &str) {
     if let Ok(mut sessions) = sessions().lock() {
         sessions.remove(page_key);
     }
+    if let Ok(mut contexts) = contexts().lock() {
+        contexts.remove(page_key);
+    }
     island_component_keys().retain(|key| !key.starts_with(page_key));
 }
 
@@ -139,6 +218,7 @@ struct PendingAttach {
     id: String,
     kind: String,
     rect: Rect,
+    props: Value,
 }
 
 struct DcompIslandCompositor<'a> {
@@ -188,40 +268,20 @@ fn finish_island_commit(
                 node.author_id.as_deref() == Some(attach.id.as_str())
                     || node.node_ref.node_key == attach.id
             })
-            .map(|node| &node.props);
-        let (offset_x, offset_y, full_width, full_height) =
+            .map(|node| node.props.clone())
+            .unwrap_or_else(|| attach.props.clone());
+        let (offset_x, offset_y, dest_width, dest_height) =
             surface_rect(&context.page_key, &attach.rect);
-        let (width, height) = match attach.kind.as_str() {
-            "video" => (full_width.clamp(1, 640), full_height.clamp(1, 360)),
-            "text" => (full_width.clamp(1, 128), full_height.clamp(1, 24)),
-            _ => (16, 16),
-        };
-        let text = props
-            .and_then(|props| props.get("text"))
-            .and_then(Value::as_str)
-            .map(str::to_string);
-        specs.push(IslandVisualSpec {
-            id: attach.id.clone(),
-            kind: attach.kind.clone(),
+        specs.push(build_island_visual_spec(
+            &attach.id,
+            &attach.kind,
+            &attach.rect,
+            &props,
             offset_x,
             offset_y,
-            width,
-            height,
-            dest_width: if attach.kind == "video" {
-                full_width as f32
-            } else {
-                width as f32
-            },
-            dest_height: if attach.kind == "video" {
-                full_height as f32
-            } else {
-                height as f32
-            },
-            color: island_fill_color(&attach.kind),
-            text,
-            hwnd: None,
-            pixels: None,
-        });
+            dest_width as f32,
+            dest_height as f32,
+        ));
     }
     // Queue only. MFPlay and the geometry replay run after WebView2 has
     // left this web-message callback — a same-turn DComp Commit or EVR
@@ -374,10 +434,36 @@ pub(super) fn present_decoded_island_frame(
     });
 }
 
-fn island_fill_color(kind: &str) -> u32 {
-    match kind {
-        "video" => 0xff10_1010,
-        _ => 0x0000_0000,
+pub(crate) fn build_island_visual_spec(
+    id: &str,
+    kind: &str,
+    css: &Rect,
+    props: &Value,
+    offset_x: f32,
+    offset_y: f32,
+    dest_width: f32,
+    dest_height: f32,
+) -> IslandVisualSpec {
+    let plan = plan_island_visual(kind, css, props);
+    let width = dest_width.round().clamp(1.0, 640.0) as i32;
+    let height = dest_height.round().clamp(1.0, 360.0) as i32;
+    let pixels = match kind {
+        "video" => None,
+        _ => Some(rasterize_island_kind(kind, width, height, props)),
+    };
+    IslandVisualSpec {
+        id: id.to_string(),
+        kind: kind.to_string(),
+        offset_x,
+        offset_y,
+        width,
+        height,
+        dest_width,
+        dest_height,
+        color: plan.color,
+        text: plan.text,
+        hwnd: None,
+        pixels,
     }
 }
 
@@ -397,11 +483,12 @@ fn surface_rect(page_key: &str, css: &Rect) -> (f32, f32, i32, i32) {
 }
 
 impl IslandCompositor for DcompIslandCompositor<'_> {
-    fn attach_above_webview(&mut self, id: &str, kind: &str, rect: &Rect) {
+    fn attach_above_webview(&mut self, id: &str, kind: &str, rect: &Rect, props: &Value) {
         self.pending.push(PendingAttach {
             id: id.to_string(),
             kind: kind.to_string(),
             rect: rect.clone(),
+            props: props.clone(),
         });
     }
 
@@ -604,12 +691,78 @@ mod tests {
         teardown_island(page);
     }
 
+    #[test]
+    fn island_visual_builder_uses_committed_css_rects() {
+        let rect = Rect {
+            x: 0.0,
+            y: 40.0,
+            width: 320.0,
+            height: 80.0,
+        };
+        let cover = build_island_visual_spec(
+            "cover",
+            "view",
+            &rect,
+            &json!({ "scrimPaint": { "scrim": "bottom", "opacity": 0.6 } }),
+            0.0,
+            40.0,
+            320.0,
+            80.0,
+        );
+        assert!((cover.dest_width - 320.0).abs() < f32::EPSILON);
+        assert!((cover.dest_height - 80.0).abs() < f32::EPSILON);
+        assert_ne!((cover.width, cover.height), (16, 16));
+        assert!(
+            cover
+                .pixels
+                .as_ref()
+                .is_some_and(|pixels| !pixels.is_empty())
+        );
+
+        let button = build_island_visual_spec(
+            "play",
+            "tappable",
+            &Rect {
+                x: 16.0,
+                y: 180.0,
+                width: 48.0,
+                height: 32.0,
+            },
+            &json!({ "content": { "text": "Play" } }),
+            16.0,
+            180.0,
+            48.0,
+            32.0,
+        );
+        assert!((button.dest_width - 48.0).abs() < f32::EPSILON);
+        assert_eq!(button.text.as_deref(), Some("Play"));
+
+        let slider = build_island_visual_spec(
+            "seek",
+            "slider",
+            &Rect {
+                x: 80.0,
+                y: 188.0,
+                width: 200.0,
+                height: 16.0,
+            },
+            &json!({ "min": 0, "max": 100, "value": 25, "step": 1, "valueLabel": "value" }),
+            80.0,
+            188.0,
+            200.0,
+            16.0,
+        );
+        assert!((slider.dest_width - 200.0).abs() < f32::EPSILON);
+        assert_ne!((slider.width, slider.height), (16, 16));
+        assert_eq!(slider.text.as_deref(), Some("25"));
+    }
+
     struct AttachRecorder {
         calls: Vec<(String, String, Rect)>,
     }
 
     impl IslandCompositor for AttachRecorder {
-        fn attach_above_webview(&mut self, id: &str, kind: &str, rect: &Rect) {
+        fn attach_above_webview(&mut self, id: &str, kind: &str, rect: &Rect, _props: &Value) {
             self.calls
                 .push((id.to_string(), kind.to_string(), rect.clone()));
         }
