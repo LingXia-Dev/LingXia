@@ -79,15 +79,15 @@ fn create_root_gitignore(config: &ProjectConfig) -> Result<()> {
     // and one directory per bundled lxapp into the Swift package's resources.
     // Ignoring the whole staging area and re-including the asset catalog beats
     // listing entries: the lxapp directories are named by appId, so a fixed list
-    // goes stale on a rename. `App.entitlements` and the `.lproj` strings are
-    // seeded rather than staged — the CLI merges into them and keeps hand edits,
-    // so they stay tracked.
+    // goes stale on a rename, and `**` covers both target layouts.
+    // `App.entitlements` and the `.lproj` strings are seeded rather than staged
+    // — the CLI merges into them and keeps hand edits, so they stay tracked.
     if config.platforms.contains(&Platform::Ios) {
         lines.extend([
             "",
             "# iOS generated",
-            "ios/Sources/Resources/*",
-            "!ios/Sources/Resources/Assets.xcassets/",
+            "ios/Sources/**/Resources/*",
+            "!ios/Sources/**/Resources/Assets.xcassets/",
         ]);
     }
 
@@ -95,8 +95,8 @@ fn create_root_gitignore(config: &ProjectConfig) -> Result<()> {
         lines.extend([
             "",
             "# macOS generated",
-            "macos/Sources/Resources/*",
-            "!macos/Sources/Resources/Assets.xcassets/",
+            "macos/Sources/**/Resources/*",
+            "!macos/Sources/**/Resources/Assets.xcassets/",
         ]);
     }
 
