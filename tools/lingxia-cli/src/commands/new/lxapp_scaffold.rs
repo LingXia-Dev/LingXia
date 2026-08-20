@@ -311,6 +311,28 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    /// Every shape of scaffolded lxapp must declare the icon the scaffold
+    /// actually writes — a manifest pointing anywhere else looks identical to no
+    /// icon at all, because the host silently falls back to the LingXia mark.
+    #[test]
+    fn every_lxapp_template_declares_the_icon_the_scaffold_writes() {
+        let templates =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("templates/lxapp-create");
+        for manifest in ["lxapp.json", "native/lxapp.json", "html/lxapp.json"] {
+            let body = fs::read_to_string(templates.join(manifest)).unwrap();
+            let icon = body
+                .lines()
+                .find_map(|line| line.trim().strip_prefix("\"icon\": \""))
+                .and_then(|rest| rest.split('"').next())
+                .unwrap_or_else(|| panic!("{manifest} declares no icon"));
+            assert_eq!(
+                icon,
+                crate::commands::new::icons::LXAPP_PUBLIC_ICON,
+                "{manifest}"
+            );
+        }
+    }
+
     #[test]
     fn rejects_target_inside_custom_template() {
         let template = tempdir().unwrap();

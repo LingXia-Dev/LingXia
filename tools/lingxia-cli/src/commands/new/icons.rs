@@ -92,10 +92,13 @@ pub fn configure_and_apply_icons(
     Ok(())
 }
 
+/// The icon every scaffolded lxapp ends up with. The `lxapp-create` manifests
+/// declare this path, so the two must stay in step.
+pub const LXAPP_PUBLIC_ICON: &str = "public/AppIcon.png";
+
 pub fn ensure_lxapp_public_icon(target_dir: &Path) -> Result<()> {
-    let public_dir = target_dir.join("public");
-    fs::create_dir_all(&public_dir)?;
-    let icon_dest = public_dir.join("AppIcon.png");
+    let icon_dest = target_dir.join(LXAPP_PUBLIC_ICON);
+    fs::create_dir_all(icon_dest.parent().expect("icon path has a parent"))?;
     if icon_dest.exists() {
         return Ok(());
     }
