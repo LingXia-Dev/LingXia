@@ -32,6 +32,7 @@ export {
 } from "./structure.js";
 
 export { unwrapNativeEventPayload, bindPayloadHandler, isDomEvent } from "./unwrap.js";
+export { applyIslandHostEvent, type IslandHostMessage } from "./events.js";
 export { identifyCompiledRoot, nextOpaqueKey, type IdentifiedRoot, type IdentifiedNode } from "./identity.js";
 export { buildRootCommit, type NativeRootCommitJson } from "./commit.js";
 export {

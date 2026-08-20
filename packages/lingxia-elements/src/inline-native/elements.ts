@@ -13,6 +13,8 @@ import {
   type RootRuntimeState,
 } from "./runtime.js";
 import { isFallbackElement } from "./structure.js";
+import { applyIslandHostEvent } from "./events.js";
+import { ensureComponentId } from "../component.js";
 import {
   registerNativeComponentHandler,
   sendNativeComponentMessage,
@@ -201,6 +203,9 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     sequence?: number;
     leaseDurationMs?: number;
   }): void {
+    if (applyIslandHostEvent(this, message)) {
+      return;
+    }
     const applied = applyHostLeaseMessage(this.runtime, message, Date.now());
     this.runtime = applied.state;
     if (applied.leaseAccept) {
@@ -290,6 +295,20 @@ export class LxNativeTextElement extends LxNativeBaseElement {
 }
 
 export class LxNativeButtonElement extends LxNativeBaseElement {
+  private unregisterHost?: () => void;
+
+  connectedCallback(): void {
+    const id = ensureComponentId(this, "lx-native-button");
+    this.unregisterHost = registerNativeComponentHandler(id, (message) => {
+      applyIslandHostEvent(this, message as { event?: string; action?: string; detail?: unknown });
+    });
+  }
+
+  disconnectedCallback(): void {
+    this.unregisterHost?.();
+    this.unregisterHost = undefined;
+  }
+
   static get observedAttributes(): string[] {
     return [
       ...LxNativeBaseElement.observedAttributes,
@@ -357,6 +376,20 @@ export class LxNativeButtonElement extends LxNativeBaseElement {
 }
 
 export class LxNativeSliderElement extends LxNativeBaseElement {
+  private unregisterHost?: () => void;
+
+  connectedCallback(): void {
+    const id = ensureComponentId(this, "lx-native-slider");
+    this.unregisterHost = registerNativeComponentHandler(id, (message) => {
+      applyIslandHostEvent(this, message as { event?: string; action?: string; detail?: unknown });
+    });
+  }
+
+  disconnectedCallback(): void {
+    this.unregisterHost?.();
+    this.unregisterHost = undefined;
+  }
+
   static get observedAttributes(): string[] {
     return [
       ...LxNativeBaseElement.observedAttributes,
