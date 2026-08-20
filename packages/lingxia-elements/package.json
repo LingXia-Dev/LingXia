@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "npm --prefix ../lingxia-bridge run build:types && tsc -p tsconfig.json",
-    "test:inline-native": "npm run build && node tests/inline-native-structure.mjs && node tests/inline-native-unwrap.mjs && node tests/inline-native-runtime.mjs",
+    "test:inline-native": "npm run build && node tests/inline-native-structure.mjs && node tests/inline-native-unwrap.mjs && node tests/inline-native-runtime.mjs && node tests/inline-native-events.mjs",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build"
   },
