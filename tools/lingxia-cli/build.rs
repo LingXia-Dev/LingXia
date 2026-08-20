@@ -34,7 +34,10 @@ fn run() -> Result<(), String> {
     let polyfills_dir = repo_root.join("packages").join("lingxia-polyfills");
     let bridge_package_json = bridge_dir.join("package.json");
     let polyfills_package_json = polyfills_dir.join("package.json");
-    let component_versions = read_component_versions(&manifest_dir.join("Cargo.toml"))?;
+    let component_versions = read_component_versions(
+        &manifest_dir.join("Cargo.toml"),
+        &repo_root.join("Cargo.toml"),
+    )?;
 
     emit_rerun_markers(&manifest_dir, repo_root, &bridge_dir, &polyfills_dir)?;
     emit_component_version_env(&component_versions);
@@ -191,7 +194,10 @@ fn write_if_changed(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     file.write_all(bytes)
 }
 
-fn read_component_versions(manifest: &Path) -> Result<ComponentVersions, String> {
+fn read_component_versions(
+    manifest: &Path,
+    workspace_manifest: &Path,
+) -> Result<ComponentVersions, String> {
     let content = fs::read_to_string(manifest)
         .map_err(|e| format!("failed to read {}: {e}", manifest.display()))?;
     let value: TomlTable = content
@@ -227,10 +233,47 @@ fn read_component_versions(manifest: &Path) -> Result<ComponentVersions, String>
     Ok(ComponentVersions {
         bridge: get("bridge-version")?,
         polyfills: get("polyfills-version")?,
-        rong: get("rong-version")?,
+        // Read from the workspace rather than a metadata key beside it: rong is
+        // a third-party version this release does not set, so a copy here is a
+        // mirror that nothing updates when the dependency moves.
+        rong: read_workspace_dependency_version(workspace_manifest, "rong")?,
         rust_crate: get("rust-crate-version")?,
         sdk: get("sdk-version")?,
     })
+}
+
+/// The version the workspace resolves for a `[workspace.dependencies]` entry,
+/// whether it is written as a bare string or a table with a `version` key.
+fn read_workspace_dependency_version(manifest: &Path, name: &str) -> Result<String, String> {
+    let content = fs::read_to_string(manifest)
+        .map_err(|e| format!("failed to read {}: {e}", manifest.display()))?;
+    let value: TomlTable = content
+        .parse()
+        .map_err(|e| format!("failed to parse {}: {e}", manifest.display()))?;
+    let entry = value
+        .get("workspace")
+        .and_then(|value| value.get("dependencies"))
+        .and_then(|value| value.get(name))
+        .ok_or_else(|| {
+            format!(
+                "missing [workspace.dependencies].{name} in {}",
+                manifest.display()
+            )
+        })?;
+    let version = match entry {
+        TomlValue::String(version) => Some(version.as_str()),
+        other => other.get("version").and_then(TomlValue::as_str),
+    };
+    version
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            format!(
+                "[workspace.dependencies].{name} in {} has no version",
+                manifest.display()
+            )
+        })
 }
 
 fn emit_component_version_env(versions: &ComponentVersions) {
