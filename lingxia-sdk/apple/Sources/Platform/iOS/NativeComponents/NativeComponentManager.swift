@@ -93,9 +93,14 @@ final class NativeComponentManager {
     func handle(message: [String: Any]) {
         guard let action = message["action"] as? String else { return }
         if island == nil, let hostView {
-            island = InlineNativeIsland(host: hostView)
+            island = InlineNativeIsland(host: hostView) { [weak self] id, event, detail in
+                self?.emitIslandEvent(componentId: id, event: event, detail: detail)
+            }
         }
         if island?.handle(message: message) == true {
+            island?.drainOutgoing().forEach { payload in
+                emitIslandPayload(payload)
+            }
             return
         }
 
@@ -373,6 +378,25 @@ final class NativeComponentManager {
 
     func componentView(componentId: String) -> UIView? {
         return components[componentId]?.view
+    }
+
+    func emitIslandEvent(componentId: String, event: String, detail: [String: Any] = [:]) {
+        emitIslandPayload([
+            "action": "component.event",
+            "id": componentId,
+            "componentId": componentId,
+            "event": event,
+            "detail": detail,
+        ])
+    }
+
+    private func emitIslandPayload(_ payload: [String: Any]) {
+        var next = payload
+        if let id = next["id"] as? String {
+            emitEventToView(componentId: id, payload: next)
+            return
+        }
+        eventSink(next)
     }
 
     func emitComponentEvent(componentId: String, event: String, detail: [String: Any] = [:]) {
