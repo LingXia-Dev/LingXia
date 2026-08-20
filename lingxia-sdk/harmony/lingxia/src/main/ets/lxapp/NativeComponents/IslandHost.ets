@@ -9,7 +9,7 @@ import {
   NodeControllerParams,
   NodeControllerUpdateParams
 } from './NativeComponentNodeController';
-import { NativeComponentRecord } from './NativeComponentTypes';
+import { NativeComponentRecord, NativeComponentValue } from './NativeComponentTypes';
 import { LxNativeVideoPlayer } from '../APIs/media/player/LxNativeVideoPlayer';
 
 const ALLOWED_KINDS: string[] = ['root', 'view', 'text', 'tappable', 'slider', 'video'];
@@ -20,6 +20,7 @@ export class IslandNode {
   authorId: string = '';
   order: number = 0;
   controller: NativeComponentNodeController = new NativeComponentNodeController();
+  props: NativeComponentRecord = new NativeComponentRecord();
   zIndex: number = 0;
   rectX: number = 0;
   rectY: number = 0;
@@ -119,6 +120,8 @@ export class InlineNativeIslandHost {
       const kind = op['op'] as string;
       if (kind === 'mount') {
         this.mount(op['node'] as Record<string, Object>);
+      } else if (kind === 'update') {
+        this.updateNode(op);
       } else if (kind === 'unmount') {
         const node = op['node'] as Record<string, Object>;
         const ref = (node['ref'] as Record<string, Object>) ?? node;
@@ -284,8 +287,42 @@ export class InlineNativeIslandHost {
       });
     }
     params.props = props;
+    item.props = props;
     item.controller.setRenderOption(params);
     this.nodes.set(key, item);
+  }
+
+  private updateNode(op: Record<string, Object>): void {
+    const node = op['node'] as Record<string, Object>;
+    if (!node) {
+      return;
+    }
+    const ref = (node['ref'] as Record<string, Object>) ?? node;
+    const key = (ref['nodeKey'] as string) ?? '';
+    const existing = this.nodes.get(key);
+    if (!existing) {
+      return;
+    }
+    const patch = op['patch'] as Record<string, Object> | undefined;
+    if (!patch) {
+      return;
+    }
+    const next = new NativeComponentRecord();
+    existing.props.forEach((propKey: string, value: NativeComponentValue) => {
+      next.set(propKey, value);
+    });
+    Object.keys(patch).forEach((propKey: string) => {
+      const value = patch[propKey] as NativeComponentValue;
+      if (value === null || value === undefined) {
+        next.delete(propKey);
+      } else {
+        next.set(propKey, value);
+      }
+    });
+    existing.props = next;
+    const update = new NodeControllerUpdateParams();
+    update.props = next;
+    existing.controller.updateRenderOption(update);
   }
 
   private restack(): void {
