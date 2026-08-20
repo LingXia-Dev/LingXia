@@ -75,6 +75,31 @@ fn create_root_gitignore(config: &ProjectConfig) -> Result<()> {
         ]);
     }
 
+    // `lingxia build` stages host config, the bridge runtime, packaged assets,
+    // and one directory per bundled lxapp into the Swift package's resources.
+    // Ignoring the whole staging area and re-including the asset catalog beats
+    // listing entries: the lxapp directories are named by appId, so a fixed list
+    // goes stale on a rename. `App.entitlements` and the `.lproj` strings are
+    // seeded rather than staged — the CLI merges into them and keeps hand edits,
+    // so they stay tracked.
+    if config.platforms.contains(&Platform::Ios) {
+        lines.extend([
+            "",
+            "# iOS generated",
+            "ios/Sources/Resources/*",
+            "!ios/Sources/Resources/Assets.xcassets/",
+        ]);
+    }
+
+    if config.platforms.contains(&Platform::Macos) {
+        lines.extend([
+            "",
+            "# macOS generated",
+            "macos/Sources/Resources/*",
+            "!macos/Sources/Resources/Assets.xcassets/",
+        ]);
+    }
+
     if config.platforms.contains(&Platform::Harmony) {
         lines.extend([
             "",
@@ -246,6 +271,64 @@ pub(super) fn create_rust_library(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::commands::new::ProjectType;
+    use tempfile::TempDir;
+
+    /// The root ignore file and the per-platform template have to cover the same
+    /// staged paths — Apple output once slipped through at both levels because
+    /// only Android/Harmony/Windows had rules.
+    #[test]
+    fn apple_root_ignores_mirror_the_platform_templates() {
+        let dir = TempDir::new().unwrap();
+        let config = ProjectConfig {
+            name: "demo".to_string(),
+            product_name: "Demo".to_string(),
+            project_type: ProjectType::NativeApp,
+            platforms: vec![Platform::Ios, Platform::Macos],
+            package_id: "com.example.demo".to_string(),
+            app_link_hosts: Vec::new(),
+            target_dir: dir.path().to_path_buf(),
+        };
+        create_root_gitignore(&config).unwrap();
+        let root = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
+
+        for (platform_dir, template) in [
+            ("ios", include_str!("../../../templates/ios/gitignore")),
+            ("macos", include_str!("../../../templates/macos/gitignore")),
+        ] {
+            for rule in template
+                .lines()
+                .filter(|line| line.trim_start_matches('!').starts_with("Sources/"))
+            {
+                let expected = match rule.strip_prefix('!') {
+                    Some(rest) => format!("!{platform_dir}/{rest}"),
+                    None => format!("{platform_dir}/{rule}"),
+                };
+                assert!(
+                    root.lines().any(|line| line == expected),
+                    "root .gitignore is missing `{expected}`"
+                );
+            }
+        }
+
+        // The CLI merges into these and keeps hand edits, so they stay tracked.
+        assert!(!root.contains("App.entitlements"));
+        assert!(!root.contains(".lproj"));
+    }
+
+    /// macOS honours app links too; without the placeholder the scaffolded
+    /// entitlements silently omit the associated domains iOS gets.
+    #[test]
+    fn both_apple_entitlements_templates_carry_the_associated_domains_placeholder() {
+        for template in [
+            include_str!("../../../templates/ios/App.entitlements"),
+            include_str!("../../../templates/macos/App.entitlements"),
+        ] {
+            assert!(template.contains("{{APPLE_ASSOCIATED_DOMAINS_ENTITLEMENT}}"));
+        }
+    }
+
     #[test]
     fn control_template_declares_its_logging_dependency() {
         let manifest = include_str!("../../../templates/native/Cargo.toml.template");

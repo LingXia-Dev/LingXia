@@ -156,8 +156,7 @@ fn sync_info_plist(info_plist_path: &Path) -> Result<bool> {
     }
 
     if changed || !info_plist_path.exists() {
-        plist::to_file_xml(info_plist_path, &dict)
-            .with_context(|| format!("Failed to write {}", info_plist_path.display()))?;
+        write_plist_dictionary(info_plist_path, &dict)?;
     }
 
     Ok(changed)
@@ -241,11 +240,23 @@ fn sync_app_entitlements(
     changed |= sync_associated_domains(&mut dict, app_link_hosts)?;
 
     if changed || !entitlements_path.exists() {
-        plist::to_file_xml(entitlements_path, &dict)
-            .with_context(|| format!("Failed to write {}", entitlements_path.display()))?;
+        write_plist_dictionary(entitlements_path, &dict)?;
     }
 
     Ok(changed)
+}
+
+/// Write a plist into the project tree, keeping the trailing newline that
+/// `plist::to_file_xml` drops — without it every sync shows up as a one-byte
+/// diff on a file the author also edits by hand.
+fn write_plist_dictionary(path: &Path, dict: &plist::Dictionary) -> Result<()> {
+    let mut buf = Vec::new();
+    plist::to_writer_xml(&mut buf, dict)
+        .with_context(|| format!("Failed to serialize {}", path.display()))?;
+    if !buf.ends_with(b"\n") {
+        buf.push(b'\n');
+    }
+    fs::write(path, buf).with_context(|| format!("Failed to write {}", path.display()))
 }
 
 fn required_info_plist_requirements() -> Vec<&'static AppleInfoPlistRequirement> {
@@ -354,7 +365,34 @@ fn escape_strings_value(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{ASSOCIATED_DOMAINS_ENTITLEMENT, Value, sync_associated_domains};
+    use super::{
+        ASSOCIATED_DOMAINS_ENTITLEMENT, Value, sync_app_entitlements, sync_associated_domains,
+        sync_info_plist,
+    };
+    use std::fs;
+    use tempfile::TempDir;
+
+    /// Both files are hand-editable, so a sync that strips their trailing
+    /// newline shows up as a diff on every build.
+    #[test]
+    fn synced_plists_keep_one_trailing_newline() {
+        let dir = TempDir::new().unwrap();
+
+        let entitlements = dir.path().join("App.entitlements");
+        sync_app_entitlements(&entitlements, &[], &["example.com".to_string()]).unwrap();
+
+        let info_plist = dir.path().join("Info.plist");
+        sync_info_plist(&info_plist).unwrap();
+
+        for path in [entitlements, info_plist] {
+            let raw = fs::read_to_string(&path).unwrap();
+            assert!(
+                raw.ends_with("</plist>\n"),
+                "{} lost its newline",
+                path.display()
+            );
+        }
+    }
 
     fn associated_domains(dict: &plist::Dictionary) -> Vec<String> {
         dict.get(ASSOCIATED_DOMAINS_ENTITLEMENT)
