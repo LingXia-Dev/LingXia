@@ -245,6 +245,12 @@ lingxia doctor
 lingxia doctor --platform harmony
 ```
 
+### Setup — `upgrade`, `skill`
+
+Low-frequency, and not part of building anything: `upgrade` moves the CLI,
+`lxdev` and the Runner to a newer release (which also happens on its own, once
+a day), and `skill install` writes this skill where an AI coding tool finds it.
+
 ### Distribution — `publish`, `auth`, `store`, `ds`, signing
 
 Low-frequency: publish to the LingXia server, platform signing setup,

@@ -16,4 +16,5 @@ pub mod rust;
 pub mod skill;
 pub mod store;
 pub mod template_provider;
+pub mod upgrade;
 pub mod version;
