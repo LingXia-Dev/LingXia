@@ -7,6 +7,7 @@ mod apply;
 mod geometry;
 mod host;
 mod lease;
+mod paint;
 mod resource;
 mod types;
 mod video;
@@ -27,6 +28,13 @@ pub use lease::{
     host_grant_lease, host_on_accept, host_on_renew, host_on_renew_accept, host_revoke_lease,
     host_tick_lease, view_can_show_fallback, view_on_grant, view_on_renew_granted,
     view_send_accept,
+};
+pub use paint::{
+    IslandHit, IslandHitTarget, IslandHostEvent, IslandPointerPhase, IslandPointerTracker,
+    IslandVisualPlan, PointerEventsMode, ScrimPaint, SliderPaint, TappableContent,
+    cover_scrim_from_props, dispatch_pointer, format_value_label, hit_test_island,
+    plan_island_visual, pointer_events_from_props, rasterize_island_kind, slider_paint_from_props,
+    slider_value_from_x, tappable_content_from_props,
 };
 pub use resource::{media_urls_from_command_options, media_urls_from_props, validate_media_urls};
 pub use types::{

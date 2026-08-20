@@ -3,6 +3,10 @@ use super::apply::{
 };
 use super::geometry::{GeometryPageState, apply_geometry_snapshot, flush_pending_geometry};
 use super::lease::{LeaseState, host_can_display, host_grant_lease, host_on_accept};
+use super::paint::{
+    IslandHitTarget, IslandHostEvent, IslandPointerPhase, IslandPointerTracker, dispatch_pointer,
+    pointer_events_from_props,
+};
 use super::resource::{
     media_urls_from_command_options, media_urls_from_props, validate_media_urls,
 };
@@ -38,7 +42,7 @@ pub struct IslandPaintNode {
 /// committed sibling order. Window z-order (`HWND_TOP`, `SetWindowPos`) is
 /// not part of this contract.
 pub trait IslandCompositor {
-    fn attach_above_webview(&mut self, id: &str, kind: &str, rect: &Rect);
+    fn attach_above_webview(&mut self, id: &str, kind: &str, rect: &Rect, props: &Value);
     fn order(&self) -> Vec<String>;
 }
 
@@ -56,6 +60,7 @@ pub struct IslandSession {
     dev_session: bool,
     pending_view_messages: Vec<Value>,
     last_geometry: Option<NativeGeometrySnapshot>,
+    pointer: IslandPointerTracker,
 }
 
 impl IslandSession {
@@ -70,6 +75,7 @@ impl IslandSession {
             dev_session: false,
             pending_view_messages: Vec::new(),
             last_geometry: None,
+            pointer: IslandPointerTracker::default(),
         }
     }
 
@@ -323,8 +329,70 @@ impl IslandSession {
                     width: 0.0,
                     height: 0.0,
                 });
-            compositor.attach_above_webview(&id, &node.kind, &rect);
+            compositor.attach_above_webview(&id, &node.kind, &rect, &node.props);
         }
+    }
+
+    /// Hit-test and emit press / valueChange / valueCommit for the current
+    /// committed tree. Slider values latch for the duration of the drag.
+    pub fn handle_pointer(
+        &mut self,
+        phase: IslandPointerPhase,
+        x: f64,
+        y: f64,
+    ) -> Vec<IslandHostEvent> {
+        if !self.can_display_any() {
+            self.pointer.cancel();
+            return Vec::new();
+        }
+        let targets = self.hit_targets();
+        dispatch_pointer(&mut self.pointer, &targets, phase, x, y)
+    }
+
+    pub fn pointer_sequence_active(&self) -> bool {
+        self.pointer.is_active()
+    }
+
+    pub fn hit_targets(&self) -> Vec<IslandHitTarget> {
+        self.composition_nodes()
+            .into_iter()
+            .map(|node| {
+                let id = node
+                    .author_id
+                    .clone()
+                    .unwrap_or_else(|| node.node_ref.node_key.clone());
+                let rect = self
+                    .last_node_rect(&node.node_ref.node_key)
+                    .unwrap_or(Rect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 0.0,
+                        height: 0.0,
+                    });
+                let visible = self.last_node_visible(&node.node_ref.node_key);
+                IslandHitTarget {
+                    id,
+                    kind: node.kind.clone(),
+                    rect,
+                    pointer_events: pointer_events_from_props(&node.kind, &node.props),
+                    visible,
+                    props: node.props,
+                }
+            })
+            .collect()
+    }
+
+    fn last_node_visible(&self, node_key: &str) -> bool {
+        self.last_geometry
+            .as_ref()
+            .and_then(|snapshot| {
+                snapshot
+                    .nodes
+                    .iter()
+                    .find(|node| node.node_ref.node_key == node_key)
+                    .map(|node| node.visible)
+            })
+            .unwrap_or(true)
     }
 
     fn queue_view_message(&mut self, message: &super::types::NativeRootLeaseMessage) {

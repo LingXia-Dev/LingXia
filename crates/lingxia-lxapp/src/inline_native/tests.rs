@@ -764,17 +764,21 @@ fn ready_requires_tree_geometry_and_active_lease() {
 }
 
 struct AttachRecorder {
-    calls: Vec<(String, String, Rect)>,
+    calls: Vec<(String, String, Rect, Value)>,
 }
 
 impl IslandCompositor for AttachRecorder {
-    fn attach_above_webview(&mut self, id: &str, kind: &str, rect: &Rect) {
-        self.calls
-            .push((id.to_string(), kind.to_string(), rect.clone()));
+    fn attach_above_webview(&mut self, id: &str, kind: &str, rect: &Rect, props: &Value) {
+        self.calls.push((
+            id.to_string(),
+            kind.to_string(),
+            rect.clone(),
+            props.clone(),
+        ));
     }
 
     fn order(&self) -> Vec<String> {
-        self.calls.iter().map(|(id, _, _)| id.clone()).collect()
+        self.calls.iter().map(|(id, _, _, _)| id.clone()).collect()
     }
 }
 
@@ -888,10 +892,206 @@ fn materialize_into_attaches_root_video_cover_in_composition_order() {
     let kinds: Vec<&str> = recorder
         .calls
         .iter()
-        .map(|(_, kind, _)| kind.as_str())
+        .map(|(_, kind, _, _)| kind.as_str())
         .collect();
     assert_eq!(kinds, ["video", "view", "text"]);
     assert_eq!(recorder.calls[0].2, video_rect);
     assert_eq!(recorder.calls[2].2, text_rect);
     assert!(!session.uses_hwnd_zorder());
+}
+
+fn activate_lease(session: &mut IslandSession, root: &RootRef) {
+    let grant = session
+        .drain_view_messages()
+        .into_iter()
+        .find(|msg| msg.get("action").and_then(Value::as_str) == Some("root.leaseGranted"))
+        .expect("leaseGranted");
+    let lease_id = grant.get("leaseId").and_then(Value::as_str).unwrap();
+    let sequence = grant.get("sequence").and_then(Value::as_u64).unwrap();
+    assert!(session.handle_view_json(&serde_json::json!({
+        "action": "root.leaseAccept",
+        "root": {
+            "surfaceInstanceId": root.surface_instance_id,
+            "pageInstanceId": root.page_instance_id,
+            "documentInstanceId": root.document_instance_id,
+            "rootKey": root.root_key,
+            "rootEpoch": root.root_epoch
+        },
+        "leaseId": lease_id,
+        "sequence": sequence
+    })));
+}
+
+#[test]
+fn paints_cover_button_slider_and_dispatches_pointer() {
+    let root = root();
+    let mut session = IslandSession::new();
+    session.set_trusted_domains(vec!["cdn.example.com".into()], true);
+    let mut ops = vec![
+        mount(&root, "hero", "video", None, 0),
+        mount(&root, "cover", "view", None, 1),
+        mount(&root, "play", "tappable", Some(node(&root, "cover", 1)), 0),
+        mount(&root, "seek", "slider", Some(node(&root, "cover", 1)), 1),
+    ];
+    if let NativeRootOperation::Mount { node } = &mut ops[0] {
+        node.props = serde_json::json!({ "src": "https://cdn.example.com/a.mp4" });
+    }
+    if let NativeRootOperation::Mount { node } = &mut ops[1] {
+        node.author_type = "LxNativeCover".into();
+        node.props = serde_json::json!({
+            "scrimPaint": { "scrim": "bottom", "opacity": 0.6 },
+            "pointerEvents": "box-none"
+        });
+    }
+    if let NativeRootOperation::Mount { node } = &mut ops[2] {
+        node.props = serde_json::json!({
+            "content": { "icon": { "kind": "semantic", "name": "play" }, "text": "Play" },
+            "pointerEvents": "auto"
+        });
+    }
+    if let NativeRootOperation::Mount { node } = &mut ops[3] {
+        node.props = serde_json::json!({
+            "min": 0,
+            "max": 100,
+            "value": 10,
+            "step": 5,
+            "valueLabel": "value",
+            "pointerEvents": "auto"
+        });
+    }
+    assert!(matches!(
+        session.apply_commit(commit(&root, 0, 1, ops)),
+        ApplyCommitOutcome::Applied(_)
+    ));
+    activate_lease(&mut session, &root);
+
+    let video_rect = Rect {
+        x: 0.0,
+        y: 40.0,
+        width: 320.0,
+        height: 180.0,
+    };
+    let button_rect = Rect {
+        x: 16.0,
+        y: 180.0,
+        width: 48.0,
+        height: 32.0,
+    };
+    let slider_rect = Rect {
+        x: 80.0,
+        y: 188.0,
+        width: 200.0,
+        height: 16.0,
+    };
+    session.apply_geometry(NativeGeometrySnapshot {
+        action: "geometry.snapshot".into(),
+        surface_instance_id: root.surface_instance_id.clone(),
+        page_instance_id: root.page_instance_id.clone(),
+        document_instance_id: root.document_instance_id.clone(),
+        revision: 2,
+        coordinate_space: "page-unscrolled-css-px".into(),
+        roots: vec![NativeGeometrySnapshotRoot {
+            root_ref: root.clone(),
+            basis_tree_revision: 1,
+            root_order: 0,
+            chain_key: "page".into(),
+            content_rect: video_rect.clone(),
+            visible: true,
+        }],
+        nodes: vec![
+            NativeGeometrySnapshotNode {
+                node_ref: node(&root, "hero", 1),
+                chain_key: "page".into(),
+                content_rect: video_rect.clone(),
+                clip_stack: vec![],
+                visible: true,
+            },
+            NativeGeometrySnapshotNode {
+                node_ref: node(&root, "cover", 1),
+                chain_key: "page".into(),
+                content_rect: video_rect.clone(),
+                clip_stack: vec![],
+                visible: true,
+            },
+            NativeGeometrySnapshotNode {
+                node_ref: node(&root, "play", 1),
+                chain_key: "page".into(),
+                content_rect: button_rect.clone(),
+                clip_stack: vec![],
+                visible: true,
+            },
+            NativeGeometrySnapshotNode {
+                node_ref: node(&root, "seek", 1),
+                chain_key: "page".into(),
+                content_rect: slider_rect.clone(),
+                clip_stack: vec![],
+                visible: true,
+            },
+        ],
+        chains: vec![],
+    });
+
+    let mut recorder = AttachRecorder { calls: Vec::new() };
+    session.materialize_into(&mut recorder);
+    let kinds: Vec<&str> = recorder
+        .calls
+        .iter()
+        .map(|(_, kind, _, _)| kind.as_str())
+        .collect();
+    assert_eq!(kinds, ["video", "view", "tappable", "slider"]);
+    assert_eq!(recorder.calls[1].2.width, 320.0);
+    assert_eq!(recorder.calls[2].2, button_rect);
+    assert_eq!(recorder.calls[3].2, slider_rect);
+    assert!(
+        recorder.calls[1].3.get("scrimPaint").is_some(),
+        "Cover wire field must reach the compositor"
+    );
+    assert!(
+        recorder.calls[2].3.get("content").is_some(),
+        "Button content must reach the compositor"
+    );
+
+    let cover_plan = plan_island_visual("view", &video_rect, &recorder.calls[1].3);
+    assert!((cover_plan.dest_width - 320.0).abs() < f32::EPSILON);
+    assert!((cover_plan.dest_height - 180.0).abs() < f32::EPSILON);
+    assert_ne!(
+        (cover_plan.texture_width, cover_plan.texture_height),
+        (16, 16)
+    );
+    let button_plan = plan_island_visual("tappable", &button_rect, &recorder.calls[2].3);
+    assert_eq!(button_plan.text.as_deref(), Some("Play"));
+    let slider_plan = plan_island_visual("slider", &slider_rect, &recorder.calls[3].3);
+    assert_eq!(slider_plan.text.as_deref(), Some("10"));
+    let pixels = rasterize_island_kind("slider", 80, 16, &recorder.calls[3].3);
+    assert!(
+        pixels.iter().any(|pixel| *pixel == 0xffff_ffff),
+        "slider raster must paint a thumb or valueLabel"
+    );
+
+    let press = session.handle_pointer(IslandPointerPhase::Down, 24.0, 190.0);
+    assert!(press.is_empty());
+    let press = session.handle_pointer(IslandPointerPhase::Up, 24.0, 190.0);
+    assert_eq!(press.len(), 1);
+    assert_eq!(press[0].id, "play");
+    assert_eq!(press[0].event, "press");
+    assert_eq!(press[0].detail["source"], "pointer");
+
+    let start = session.handle_pointer(IslandPointerPhase::Down, 180.0, 196.0);
+    assert_eq!(start.len(), 1);
+    assert_eq!(start[0].event, "valuechange");
+    let start_value = start[0].detail["value"].as_f64().unwrap();
+    let drag = session.handle_pointer(IslandPointerPhase::Move, 280.0, 196.0);
+    assert_eq!(drag.len(), 1);
+    let drag_value = drag[0].detail["value"].as_f64().unwrap();
+    assert!(drag_value > start_value);
+    let commit_events = session.handle_pointer(IslandPointerPhase::Up, 280.0, 196.0);
+    assert_eq!(commit_events.len(), 1);
+    assert_eq!(commit_events[0].event, "valuecommit");
+    assert_eq!(commit_events[0].detail["value"], drag[0].detail["value"]);
+
+    let through_cover = hit_test_island(&session.hit_targets(), 40.0, 80.0);
+    assert!(
+        matches!(through_cover, IslandHit::Video { ref id } if id == "hero"),
+        "Cover box-none must not swallow hits meant for video, got {through_cover:?}"
+    );
 }
