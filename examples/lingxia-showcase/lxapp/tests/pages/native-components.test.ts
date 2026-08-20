@@ -45,6 +45,16 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
   expect(wrapped.compileOk).toBeTruthy();
   expect(wrapped.kinds[0]).toBe('video');
   expect(wrapped.kinds[1]).toBe('view');
+  const chrome = await app.page.eval({
+    page: 'video',
+    script:
+      '(() => { const root = document.querySelector("[data-testid=\\"inline-native-controls\\"]"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const kids = compiled && compiled.ok ? compiled.root.children : []; const kinds = []; const walk = (nodes) => { for (const node of nodes || []) { kinds.push(node.kind); walk(node.children); } }; walk(kids); return { compileOk: !!(compiled && compiled.ok), kinds, hasPlay: !!document.querySelector("#island-play"), hasSeek: !!document.querySelector("#island-seek") }; })()',
+  });
+  expect(chrome.compileOk).toBeTruthy();
+  expect(chrome.hasPlay).toBeTruthy();
+  expect(chrome.hasSeek).toBeTruthy();
+  expect(chrome.kinds.includes('tappable')).toBeTruthy();
+  expect(chrome.kinds.includes('slider')).toBeTruthy();
   const playing = await eventually(
     () =>
       app.page.eval({
