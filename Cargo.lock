@@ -3238,7 +3238,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-cli"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "Inflector",
  "aes",
@@ -3611,14 +3611,14 @@ dependencies = [
 
 [[package]]
 name = "lingxia-runner-config"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "toml",
 ]
 
 [[package]]
 name = "lingxia-runner-lib"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "libc",
  "lingxia",
@@ -3630,7 +3630,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-runner-windows"
-version = "0.12.1"
+version = "0.12.2"
 dependencies = [
  "lingxia",
  "lingxia-control-runtime",
