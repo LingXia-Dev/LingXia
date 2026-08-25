@@ -172,11 +172,15 @@ pub async fn download(
     .map_err(map_download_error)
 }
 
+pub use lingxia_transfer::{UploadBodyMode, UploadMethod};
+
 /// Request builder for [`upload`].
 #[derive(Debug, Clone)]
 pub struct UploadRequest {
     url: String,
     file_path: PathBuf,
+    method: UploadMethod,
+    body_mode: UploadBodyMode,
     field_name: String,
     file_name: Option<String>,
     mime_type: Option<String>,
@@ -185,17 +189,33 @@ pub struct UploadRequest {
 }
 
 impl UploadRequest {
-    /// Creates a multipart file upload request.
+    /// Creates a `POST` multipart file upload request.
     pub fn new(url: impl Into<String>, file_path: impl Into<PathBuf>) -> Self {
         Self {
             url: url.into(),
             file_path: file_path.into(),
+            method: UploadMethod::Post,
+            body_mode: UploadBodyMode::Multipart,
             field_name: "file".to_string(),
             file_name: None,
             mime_type: None,
             headers: Vec::new(),
             form_fields: Vec::new(),
         }
+    }
+
+    /// Sets the HTTP method. Defaults to `POST`.
+    pub fn method(mut self, method: UploadMethod) -> Self {
+        self.method = method;
+        self
+    }
+
+    /// Sends the file bytes as the whole request body instead of wrapping them
+    /// in `multipart/form-data`. Field name and form fields are then unused,
+    /// and the transfer rejects the request if form fields were set.
+    pub fn raw_body(mut self) -> Self {
+        self.body_mode = UploadBodyMode::Raw;
+        self
     }
 
     /// Sets the multipart file field name. Defaults to `file`.
@@ -210,7 +230,9 @@ impl UploadRequest {
         self
     }
 
-    /// Sets the uploaded file MIME type.
+    /// Sets the uploaded file MIME type. Under [`UploadRequest::raw_body`] this
+    /// becomes the request `Content-Type`, which a presigned URL's signature
+    /// usually covers.
     pub fn mime_type(mut self, mime_type: impl Into<String>) -> Self {
         self.mime_type = Some(mime_type.into());
         self
@@ -259,7 +281,8 @@ impl UploadRequest {
     fn into_transfer(self) -> lingxia_transfer::UploadRequest {
         lingxia_transfer::UploadRequest {
             url: self.url,
-            method: lingxia_transfer::UploadMethod::Post,
+            method: self.method,
+            body_mode: self.body_mode,
             file_path: self.file_path,
             field_name: self.field_name,
             file_name: self.file_name,
@@ -313,7 +336,11 @@ fn upload_response_from_result(result: lingxia_transfer::UploadResult) -> Upload
     }
 }
 
-/// Uploads a local file as multipart form data.
+/// Uploads a local file, streamed from disk.
+///
+/// Defaults to a `POST` with a `multipart/form-data` body; see
+/// [`UploadRequest::method`] and [`UploadRequest::raw_body`] for the shape
+/// presigned object-storage endpoints expect.
 pub async fn upload(
     _app: &crate::LxApp,
     request: impl Into<UploadRequest>,
@@ -394,6 +421,22 @@ mod tests {
         assert_eq!(request.file_path, PathBuf::from("/tmp/a.bin"));
         assert_eq!(request.field_name, "package");
         assert_eq!(request.form_fields, vec![("kind".into(), "app".into())]);
+        assert_eq!(request.method, UploadMethod::Post);
+        assert_eq!(request.body_mode, UploadBodyMode::Multipart);
+    }
+
+    #[test]
+    fn upload_request_can_send_a_raw_put_body() {
+        let request = UploadRequest::new("https://example.com/presigned", "/tmp/a.bin")
+            .method(UploadMethod::Put)
+            .raw_body()
+            .mime_type("video/mp4");
+
+        let transfer = request.into_transfer();
+        assert_eq!(transfer.method, UploadMethod::Put);
+        assert_eq!(transfer.body_mode, UploadBodyMode::Raw);
+        assert_eq!(transfer.mime_type.as_deref(), Some("video/mp4"));
+        assert!(transfer.form_fields.is_empty());
     }
 
     #[test]

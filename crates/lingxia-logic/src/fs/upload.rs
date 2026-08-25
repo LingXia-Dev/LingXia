@@ -7,8 +7,9 @@ use futures::channel::{mpsc, oneshot};
 use futures::lock::Mutex;
 use futures::{SinkExt, StreamExt};
 use lingxia_transfer::{
-    UploadBehavior, UploadEvent as TransferUploadEvent, UploadFailure, UploadFailureKind,
-    UploadMethod, UploadRequest, resolve_upload_file_name, upload_file_with_behavior,
+    UploadBehavior, UploadBodyMode, UploadEvent as TransferUploadEvent, UploadFailure,
+    UploadFailureKind, UploadMethod, UploadRequest, resolve_upload_file_name,
+    upload_file_with_behavior,
 };
 use lxapp::LxApp;
 use rong::{
@@ -24,7 +25,11 @@ use tokio::sync::oneshot as tokio_oneshot;
 struct ParsedUploadOptions {
     url: String,
     file_path: String,
-    field_name: String,
+    method: UploadMethod,
+    body_mode: UploadBodyMode,
+    /// `None` when the lxapp left `name` unset, so a raw body can reject an
+    /// explicit multipart field name instead of silently dropping it.
+    field_name: Option<String>,
     headers: Vec<(String, String)>,
     form_data: Vec<(String, String)>,
     timeout_ms: Option<u64>,
@@ -405,18 +410,63 @@ fn parse_upload_options(options: JSValue) -> JSResult<ParsedUploadOptions> {
             "uploadFile expects an options object",
         ));
     };
+    let body_mode = read_upload_body_mode_field(&obj)?;
+    let field_name = read_optional_string_field(&obj, "name", "uploadFile")?;
+    let form_data = read_string_map(&obj, "formData", "uploadFile")?;
+    // A raw body has nowhere to carry multipart framing, so reject it rather
+    // than dropping fields the lxapp believes it sent.
+    if body_mode == UploadBodyMode::Raw {
+        if !form_data.is_empty() {
+            return Err(js_invalid_parameter_error(
+                "uploadFile formData requires bodyMode \"multipart\"",
+            ));
+        }
+        if field_name.is_some() {
+            return Err(js_invalid_parameter_error(
+                "uploadFile name requires bodyMode \"multipart\"",
+            ));
+        }
+    }
     Ok(ParsedUploadOptions {
         url: read_required_string_field(&obj, "url", "uploadFile")?,
         file_path: read_required_string_field(&obj, "filePath", "uploadFile")?,
-        field_name: read_optional_string_field(&obj, "name", "uploadFile")?
-            .unwrap_or_else(|| "file".to_string()),
+        method: read_upload_method_field(&obj)?,
+        body_mode,
+        field_name,
         headers: read_string_map(&obj, "headers", "uploadFile")?,
-        form_data: read_string_map(&obj, "formData", "uploadFile")?,
+        form_data,
         timeout_ms: read_optional_timeout_field(&obj)?,
         file_name: read_optional_string_field(&obj, "fileName", "uploadFile")?,
         mime_type: read_optional_string_field(&obj, "mimeType", "uploadFile")?,
         signal: read_optional_signal(&obj)?,
     })
+}
+
+fn read_upload_method_field(obj: &JSObject) -> JSResult<UploadMethod> {
+    let Some(method) = read_optional_string_field(obj, "method", "uploadFile")? else {
+        return Ok(UploadMethod::Post);
+    };
+    match method.trim().to_ascii_uppercase().as_str() {
+        "POST" => Ok(UploadMethod::Post),
+        "PUT" => Ok(UploadMethod::Put),
+        "PATCH" => Ok(UploadMethod::Patch),
+        _ => Err(js_invalid_parameter_error(
+            "uploadFile method must be \"POST\", \"PUT\", or \"PATCH\"",
+        )),
+    }
+}
+
+fn read_upload_body_mode_field(obj: &JSObject) -> JSResult<UploadBodyMode> {
+    let Some(body_mode) = read_optional_string_field(obj, "bodyMode", "uploadFile")? else {
+        return Ok(UploadBodyMode::Multipart);
+    };
+    match body_mode.trim().to_ascii_lowercase().as_str() {
+        "multipart" => Ok(UploadBodyMode::Multipart),
+        "raw" => Ok(UploadBodyMode::Raw),
+        _ => Err(js_invalid_parameter_error(
+            "uploadFile bodyMode must be \"multipart\" or \"raw\"",
+        )),
+    }
 }
 
 fn resolve_upload_path(
@@ -553,10 +603,15 @@ fn spawn_upload_worker(state: Arc<Mutex<UploadIteratorState>>) {
     }));
 }
 
-/// Upload a managed file to an ordinary HTTP multipart endpoint.
+/// Upload a file over HTTP, streamed from disk.
 ///
-/// Returns a task handle synchronously so progress and abort can be wired up
-/// before the transfer starts.
+/// Defaults to a `POST` with a `multipart/form-data` body. Set
+/// `method: 'PUT'` with `bodyMode: 'raw'` to send the file bytes as the whole
+/// body instead, which is what presigned object-storage URLs expect.
+///
+/// Returns the task handle synchronously, before the transfer starts, so
+/// progress and cancellation can be wired up without racing it: the handle is
+/// awaitable for the final result, async-iterable for progress, and cancelable.
 fn upload_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let options = parse_upload_options(options)?;
@@ -601,9 +656,10 @@ fn upload_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
             lxapp: lxapp.clone(),
             request: UploadRequest {
                 url,
-                method: UploadMethod::Post,
+                method: options.method,
+                body_mode: options.body_mode,
                 file_path: resolved_path,
-                field_name: options.field_name,
+                field_name: options.field_name.unwrap_or_else(|| "file".to_string()),
                 file_name: Some(file_name),
                 mime_type: options.mime_type,
                 headers: options.headers,
