@@ -34,6 +34,19 @@ impl UploadMethod {
     }
 }
 
+/// How the file bytes are framed in the request body.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum UploadBodyMode {
+    /// `multipart/form-data`, the file carried as one part next to the text
+    /// form fields. The default, and the only mode that uses `field_name`,
+    /// `file_name`, and `form_fields`.
+    #[default]
+    Multipart,
+    /// The file bytes are the entire request body, unframed. What presigned
+    /// `PUT` endpoints (S3, OSS, Azure Blob) expect.
+    Raw,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UploadBehavior {
     pub request_timeout: Duration,
@@ -55,6 +68,7 @@ impl Default for UploadBehavior {
 pub struct UploadRequest {
     pub url: String,
     pub method: UploadMethod,
+    pub body_mode: UploadBodyMode,
     pub file_path: PathBuf,
     pub field_name: String,
     pub file_name: Option<String>,
@@ -190,10 +204,16 @@ fn upload_request_options(
     }
 }
 
-fn should_forward_header(name: &str) -> bool {
+fn should_forward_header(name: &str, body_mode: UploadBodyMode) -> bool {
+    if name == "content-type" {
+        // A raw body lets the caller pin the type: presigned upload signatures
+        // usually cover `Content-Type`, so silently rewriting it breaks them.
+        // Multipart owns the header instead -- it carries the boundary.
+        return body_mode == UploadBodyMode::Raw;
+    }
     !matches!(
         name,
-        "content-length" | "content-type" | "host" | "referer" | "transfer-encoding" | "user-agent"
+        "content-length" | "host" | "referer" | "transfer-encoding" | "user-agent"
     )
 }
 
@@ -222,6 +242,32 @@ fn invalid_multipart_value(request: &UploadRequest, file_name: &str) -> Option<&
         }
     }
     None
+}
+
+fn invalid_raw_value(request: &UploadRequest) -> Option<&'static str> {
+    if !request.form_fields.is_empty() {
+        return Some("raw upload does not support form fields");
+    }
+    if request
+        .mime_type
+        .as_deref()
+        .is_some_and(|value| value.chars().any(char::is_control))
+    {
+        return Some("upload mimeType cannot contain control characters");
+    }
+    None
+}
+
+/// Content type for a raw body. An explicit `content-type` request header still
+/// wins over this -- it is applied after the builder sets the default.
+fn raw_content_type(request: &UploadRequest) -> String {
+    request
+        .mime_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| "application/octet-stream".to_string())
 }
 
 fn file_name_for_request(request: &UploadRequest) -> String {
@@ -343,7 +389,11 @@ pub async fn upload_file_with_behavior(
     }
 
     let file_name = file_name_for_request(&request);
-    if let Some(error) = invalid_multipart_value(&request, &file_name) {
+    let invalid_value = match request.body_mode {
+        UploadBodyMode::Multipart => invalid_multipart_value(&request, &file_name),
+        UploadBodyMode::Raw => invalid_raw_value(&request),
+    };
+    if let Some(error) = invalid_value {
         return Err(UploadFailure::new(
             UploadFailureKind::InvalidRequest,
             url.clone(),
@@ -381,8 +431,20 @@ pub async fn upload_file_with_behavior(
         ));
     }
 
-    let boundary = multipart_boundary(&request);
-    let (prefix, suffix) = build_multipart_parts(&request, &boundary, &file_name);
+    let (content_type, prefix, suffix) = match request.body_mode {
+        UploadBodyMode::Multipart => {
+            let boundary = multipart_boundary(&request);
+            let (prefix, suffix) = build_multipart_parts(&request, &boundary, &file_name);
+            (
+                format!("multipart/form-data; boundary={boundary}"),
+                prefix,
+                suffix,
+            )
+        }
+        // No framing: the file bytes are the whole body, so `total_bytes`
+        // collapses to the file size and progress tracks it exactly.
+        UploadBodyMode::Raw => (raw_content_type(&request), Vec::new(), Vec::new()),
+    };
     let file_size = file_meta.len();
     let total_bytes = prefix.len() as u64 + file_size + suffix.len() as u64;
 
@@ -397,10 +459,7 @@ pub async fn upload_file_with_behavior(
     let mut request_builder = HttpRequest::builder()
         .method(request.method.as_str())
         .uri(&url)
-        .header(
-            header::CONTENT_TYPE,
-            format!("multipart/form-data; boundary={boundary}"),
-        )
+        .header(header::CONTENT_TYPE, content_type)
         .header(header::CONTENT_LENGTH, total_bytes.to_string())
         .header(header::ACCEPT, "*/*");
 
@@ -410,7 +469,7 @@ pub async fn upload_file_with_behavior(
         }
         for (name, value) in &request.headers {
             let normalized = name.trim().to_ascii_lowercase();
-            if !should_forward_header(&normalized) {
+            if !should_forward_header(&normalized, request.body_mode) {
                 continue;
             }
             let header_name = match http::header::HeaderName::from_bytes(normalized.as_bytes()) {
@@ -551,8 +610,14 @@ pub async fn upload_file_with_behavior(
     let uploaded_bytes = match writer.await {
         Ok(Ok(uploaded_bytes)) => uploaded_bytes,
         Ok(Err(err)) => {
-            if err.error == UPLOAD_CANCELED_ERROR
-                && let Some(Ok(response_value)) = response.take()
+            // A server that rejects the request answers and hangs up while the
+            // body is still streaming -- a presigned PUT refusing a signature
+            // does exactly that. The writer then fails with a closed-body
+            // error, but the status already in hand explains the refusal far
+            // better, so it wins over whatever the writer tripped on.
+            let settled = response.take();
+            let canceled = matches!(&settled, Some(Err(error)) if error.to_string() == "aborted");
+            if let Some(Ok(response_value)) = settled
                 && !response_value.status.is_success()
             {
                 let status_code = response_value.status.as_u16();
@@ -581,24 +646,35 @@ pub async fn upload_file_with_behavior(
                 let _ = forwarder.await;
                 return Err(failure);
             }
-            let event = if err.error == UPLOAD_CANCELED_ERROR {
+            let failure = if canceled {
+                UploadFailure::new(
+                    UploadFailureKind::Canceled,
+                    request.url.clone(),
+                    UPLOAD_CANCELED_ERROR,
+                    err.uploaded_bytes,
+                    total_bytes,
+                )
+            } else {
+                err
+            };
+            let event = if canceled {
                 UploadEvent::Canceled {
                     url: request.url.clone(),
-                    uploaded_bytes: err.uploaded_bytes,
+                    uploaded_bytes: failure.uploaded_bytes,
                     total_bytes,
                 }
             } else {
                 UploadEvent::Failed {
                     url: request.url.clone(),
-                    error: err.error.clone(),
-                    uploaded_bytes: err.uploaded_bytes,
+                    error: failure.error.clone(),
+                    uploaded_bytes: failure.uploaded_bytes,
                     total_bytes,
                 }
             };
             let _ = event_tx.send(event);
             drop(event_tx);
             let _ = forwarder.await;
-            return Err(err);
+            return Err(failure);
         }
         Err(err) => {
             let failure = UploadFailure::new(
@@ -723,6 +799,7 @@ mod tests {
         UploadRequest {
             url: "https://example.com/upload".to_string(),
             method: UploadMethod::Post,
+            body_mode: UploadBodyMode::Multipart,
             file_path: PathBuf::from("upload.bin"),
             field_name: "file".to_string(),
             file_name: Some("upload.bin".to_string()),
@@ -755,5 +832,39 @@ mod tests {
     #[test]
     fn multipart_header_values_still_escape_quotes_and_backslashes() {
         assert_eq!(escape_multipart_value("a\\b\"c"), "a\\\\b\\\"c");
+    }
+
+    #[test]
+    fn raw_uploads_reject_form_fields_and_keep_the_caller_mime_type() {
+        let mut request = upload_request();
+        request.body_mode = UploadBodyMode::Raw;
+        assert_eq!(
+            invalid_raw_value(&request),
+            Some("raw upload does not support form fields")
+        );
+
+        request.form_fields.clear();
+        assert_eq!(invalid_raw_value(&request), None);
+        assert_eq!(raw_content_type(&request), "application/octet-stream");
+
+        request.mime_type = Some("video/mp4".to_string());
+        assert_eq!(raw_content_type(&request), "video/mp4");
+
+        request.mime_type = Some("   ".to_string());
+        assert_eq!(raw_content_type(&request), "application/octet-stream");
+    }
+
+    #[test]
+    fn only_raw_uploads_may_override_content_type() {
+        assert!(!should_forward_header(
+            "content-type",
+            UploadBodyMode::Multipart
+        ));
+        assert!(should_forward_header("content-type", UploadBodyMode::Raw));
+        assert!(!should_forward_header(
+            "content-length",
+            UploadBodyMode::Raw
+        ));
+        assert!(should_forward_header("x-amz-acl", UploadBodyMode::Raw));
     }
 }

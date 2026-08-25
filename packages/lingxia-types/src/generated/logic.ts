@@ -1927,35 +1927,91 @@ export type UploadIteratorResult = {
     value?: UploadProgressEvent;
 };
 
+/**
+ * Upload options. The file streams from disk, so the size ceiling is
+ * the remote's, not memory.
+ * `bodyMode` picks the body shape, and with it which of the other
+ * fields apply:
+ * - `multipart` (default) wraps the file in a `multipart/form-data`
+ * envelope beside the `formData` text fields — what an ordinary form
+ * endpoint parses. `name`, `fileName`, and `formData` describe that
+ * envelope.
+ * - `raw` sends the file bytes as the entire body. Presigned
+ * object-storage URLs (S3, OSS, Azure Blob) need this: a multipart
+ * envelope would be stored verbatim as the object's contents,
+ * boundary lines and all. `name` and `formData` are then rejected
+ * rather than silently dropped, and `fileName` is ignored.
+ * @example
+ * ```ts
+ * // A presigned URL is signed for one method and one Content-Type,
+ * // so both have to match whatever the signer used.
+ * const task = lx.uploadFile({
+ * url: presignedUrl,
+ * filePath: 'lx://media/clip.mp4',
+ * method: 'PUT',
+ * bodyMode: 'raw',
+ * mimeType: 'video/mp4',
+ * });
+ * for await (const event of task) render(event.progress);
+ * const { statusCode } = await task;
+ * ```
+ */
 export type UploadOptions = {
     /** HTTP(S) destination URL. */
     url: string;
     /** Local file path or runtime-managed URI to upload. */
     filePath: string;
-    /** Multipart field name. Default: `file`. */
+    /**
+     * HTTP method. Default: `POST`.
+     * A presigned URL is signed for exactly one method, usually `PUT`.
+     */
+    method?: 'POST' | 'PUT' | 'PATCH';
+    /**
+     * How the file bytes are framed. Default: `multipart`.
+     * `raw` sends them as the whole body under a `Content-Length` taken from
+     * the file itself, which is what presigned endpoints require.
+     */
+    bodyMode?: 'multipart' | 'raw';
+    /** Name of the multipart part carrying the file. Default: `file`. Multipart only. */
     name?: string;
     /**
      * Optional request headers.
      * Restricted headers such as `Referer` are ignored by the runtime.
+     * `Content-Type` is yours to set only under `bodyMode: 'raw'`, where it
+     * wins over `mimeType`; a multipart body owns the header, because it
+     * carries the part boundary.
      */
     headers?: Record<string, string>;
-    /** Optional extra `multipart/form-data` text fields. */
+    /** Text fields sent alongside the file in the envelope. Multipart only. */
     formData?: Record<string, string>;
     /** Request timeout in milliseconds. */
     timeout?: number;
-    /** Override multipart filename. */
+    /** Filename announced for the file part. Defaults to the file's own name. Multipart only. */
     fileName?: string;
-    /** Override file MIME type. */
+    /**
+     * File MIME type. Types the file part under `multipart`; becomes the
+     * request `Content-Type` under `raw`, where it defaults to
+     * `application/octet-stream`.
+     */
     mimeType?: string;
     /** Optional abort signal. */
     signal?: AbortSignal;
 };
 
 export type UploadProgressEvent = {
+    /** `completed` and `canceled` are terminal; iteration ends after either. */
     kind: 'progress' | 'canceled' | 'completed';
+    /** Bytes handed to the socket so far, envelope included under `multipart`. */
     uploadedBytes?: number;
+    /**
+     * Bytes the whole request body will carry. Equals the file size under
+     * `bodyMode: 'raw'`; under `multipart` it also covers the envelope, so it
+     * runs slightly above the file size.
+     */
     totalBytes?: number;
+    /** `uploadedBytes / totalBytes`, absent while the total is unknown or zero. */
     progress?: number;
+    /** Present on `completed` only. */
     result?: UploadResult;
 };
 
@@ -2410,9 +2466,13 @@ declare global {
     readonly env: LxEnv;
     downloadFile(options: never): never;
     /**
-     * Upload a managed file to an ordinary HTTP multipart endpoint.
-     * Returns a task handle synchronously so progress and abort can be wired up
-     * before the transfer starts.
+     * Upload a file over HTTP, streamed from disk.
+     * Defaults to a `POST` with a `multipart/form-data` body. Set
+     * `method: 'PUT'` with `bodyMode: 'raw'` to send the file bytes as the whole
+     * body instead, which is what presigned object-storage URLs expect.
+     * Returns the task handle synchronously, before the transfer starts, so
+     * progress and cancellation can be wired up without racing it: the handle is
+     * awaitable for the final result, async-iterable for progress, and cancelable.
      */
     uploadFile(options: UploadOptions): UploadTask;
     /**

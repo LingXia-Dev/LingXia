@@ -182,6 +182,30 @@ export function createFixtureServer() {
         return;
       }
 
+      if (route === '/upload-raw' && (request.method === 'PUT' || request.method === 'PATCH')) {
+        // Answer and hang up without draining the body, the way object storage
+        // refuses a signature it disagrees with mid-upload.
+        const reject = Number(url.searchParams.get('reject') ?? 0);
+        if (Number.isInteger(reject) && reject >= 400 && reject <= 599) {
+          response.writeHead(reject, { 'content-type': 'text/plain' });
+          response.end(`refused ${reject}`);
+          request.socket.destroy();
+          return;
+        }
+        // A presigned-style endpoint: the body is the file, nothing else.
+        const buffer = await readAll(request);
+        json(200, {
+          ok: true,
+          method: request.method,
+          received: buffer.length,
+          contentType: request.headers['content-type'] ?? null,
+          contentLength: Number(request.headers['content-length'] ?? -1),
+          firstBytes: buffer.subarray(0, 8).toString('hex'),
+          headerEcho: request.headers['x-lx-test'] ?? null,
+        });
+        return;
+      }
+
       if (route === '/health') {
         json(200, { ok: true });
         return;

@@ -130,6 +130,130 @@ transferSpec('upload a managed file as multipart and read the server echo', {
   expect(result.echo.headerEcho).toBe('echo');
 });
 
+transferSpec('upload a raw body with PUT for presigned endpoints', {
+  id: 'TRANSFER-UPLOAD-RAW-001',
+  covers: ['lx.uploadFile'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-001');
+
+  const result = await app.eval({
+    timeoutMs: 30_000,
+    script: `
+      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=2048`)} });
+      const response = await lx.uploadFile({
+        url: ${JSON.stringify(`${httpBase}/upload-raw`)},
+        filePath: source.tempFilePath,
+        method: 'PUT',
+        bodyMode: 'raw',
+        mimeType: 'application/x-lingxia-test',
+        headers: { 'x-lx-test': 'echo' },
+      });
+      // A presigned signature covers Content-Type, so an explicit header has
+      // to win over mimeType rather than be rewritten by the runtime.
+      const overridden = await lx.uploadFile({
+        url: ${JSON.stringify(`${httpBase}/upload-raw`)},
+        filePath: source.tempFilePath,
+        method: 'PUT',
+        bodyMode: 'raw',
+        mimeType: 'application/x-lingxia-test',
+        headers: { 'Content-Type': 'image/avif' },
+      });
+      return {
+        statusCode: response.statusCode,
+        echo: JSON.parse(response.data),
+        overriddenContentType: JSON.parse(overridden.data).contentType,
+      };
+    `,
+  }) as {
+    statusCode: number;
+    echo: {
+      ok: boolean;
+      method: string;
+      received: number;
+      contentType: string;
+      contentLength: number;
+      firstBytes: string;
+      headerEcho: string;
+    };
+    overriddenContentType: string;
+  };
+
+  expect(result.statusCode).toBe(200);
+  expect(result.echo.method).toBe('PUT');
+  // Raw means the file bytes and nothing else: no multipart framing overhead,
+  // and a Content-Length taken from the file, which presigned PUT endpoints
+  // require. The fixture fills byte i with i % 251.
+  expect(result.echo.received).toBe(2048);
+  expect(result.echo.contentLength).toBe(2048);
+  expect(result.echo.firstBytes).toBe('0001020304050607');
+  expect(result.echo.contentType).toBe('application/x-lingxia-test');
+  expect(result.echo.headerEcho).toBe('echo');
+  expect(result.overriddenContentType).toBe('image/avif');
+});
+
+transferSpec('reject multipart-only options when the body is raw', {
+  id: 'TRANSFER-UPLOAD-RAW-002',
+  covers: ['lx.uploadFile'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-002');
+
+  // Dropping these silently would leave the lxapp believing they were sent.
+  const rejectedFormData = await evalCaught(app, `
+    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=64`)} });
+    return await lx.uploadFile({
+      url: ${JSON.stringify(`${httpBase}/upload-raw`)},
+      filePath: source.tempFilePath,
+      method: 'PUT',
+      bodyMode: 'raw',
+      formData: { note: 'spec' },
+    });
+  `);
+  const rejectedName = await evalCaught(app, `
+    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=64`)} });
+    return await lx.uploadFile({
+      url: ${JSON.stringify(`${httpBase}/upload-raw`)},
+      filePath: source.tempFilePath,
+      method: 'PUT',
+      bodyMode: 'raw',
+      name: 'asset',
+    });
+  `);
+
+  expect(rejectedFormData.ok).toBeFalsy();
+  expect(String(rejectedFormData.code)).toBe('E_INVALID_ARG');
+  expect(rejectedName.ok).toBeFalsy();
+  expect(String(rejectedName.code)).toBe('E_INVALID_ARG');
+});
+
+transferSpec('report the refusing status when a raw upload is rejected mid-body', {
+  id: 'TRANSFER-UPLOAD-RAW-003',
+  covers: ['lx.uploadFile'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-003');
+
+  // How a presigned URL refuses a signature: answer, then hang up before the
+  // body is done. The status has to survive that, or the lxapp cannot tell a
+  // rejected signature from a flaky network.
+  const outcome = await evalCaught(app, `
+    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/reject.bin?size=8000000`)} });
+    return await lx.uploadFile({
+      url: ${JSON.stringify(`${httpBase}/upload-raw?reject=403`)},
+      filePath: source.tempFilePath,
+      method: 'PUT',
+      bodyMode: 'raw',
+    });
+  `);
+
+  expect(outcome.ok).toBeFalsy();
+  expect(String((outcome.data as { detail?: string } | undefined)?.detail)).toContain('403');
+});
+
 transferSpec('cancel an upload and reject rather than resolve', {
   id: 'TRANSFER-UPLOAD-CANCEL-001',
   covers: ['UploadTask.cancel'],
