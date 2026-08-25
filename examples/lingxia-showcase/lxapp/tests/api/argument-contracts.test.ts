@@ -50,7 +50,7 @@ spec('reject malformed navigation arguments with stable codes', {
 
 spec('reject malformed transfer arguments before touching the network', {
   id: 'ARGS-TRANSFER-001',
-  covers: ['lx.downloadFile'],
+  covers: ['lx.downloadFile', 'lx.uploadFile'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'ARGS-TRANSFER-001');
@@ -68,6 +68,19 @@ spec('reject malformed transfer arguments before touching the network', {
     { label: 'trusted loopback', call: `lx.downloadFile({ url: 'http://127.0.0.1:1/a' })`, code: 'E_NETWORK' },
     // A private address the lxapp never named stays denied even in dev.
     { label: 'untrusted private range', call: `lx.downloadFile({ url: 'https://192.168.0.1/a' })`, code: 'E_PERMISSION_DENIED' },
+
+    // uploadFile rejects on shape before it opens the file, so these rows need
+    // no fixture and no source file -- they hold on every platform.
+    { label: 'upload no url', call: `lx.uploadFile({})`, code: 'E_INVALID_ARG' },
+    { label: 'upload no filePath', call: `lx.uploadFile({ url: 'http://127.0.0.1:1/upload' })`, code: 'E_INVALID_ARG' },
+    { label: 'upload empty url', call: `lx.uploadFile({ url: '', filePath: 'a.bin' })`, code: 'E_INVALID_ARG' },
+    { label: 'upload unknown method', call: `lx.uploadFile({ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', method: 'DELETE' })`, code: 'E_INVALID_ARG' },
+    { label: 'upload unknown bodyMode', call: `lx.uploadFile({ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', bodyMode: 'binary' })`, code: 'E_INVALID_ARG' },
+    // Multipart-only options under a raw body are rejected, never dropped.
+    { label: 'upload raw with formData', call: `lx.uploadFile({ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', bodyMode: 'raw', formData: { note: 'x' } })`, code: 'E_INVALID_ARG' },
+    { label: 'upload raw with name', call: `lx.uploadFile({ url: 'http://127.0.0.1:1/upload', filePath: 'a.bin', bodyMode: 'raw', name: 'asset' })`, code: 'E_INVALID_ARG' },
+    // Shape is fine here; the file simply is not there.
+    { label: 'upload missing file', call: `lx.uploadFile({ url: 'http://127.0.0.1:1/upload', filePath: 'no-such-file.bin' })`, code: 'E_INVALID_ARG' },
   ]);
 });
 
