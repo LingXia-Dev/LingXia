@@ -868,3 +868,225 @@ mod tests {
         assert!(should_forward_header("x-amz-acl", UploadBodyMode::Raw));
     }
 }
+
+/// Request-shape tests against a throwaway loopback server. The showcase
+/// automation covers uploads end to end, but only on macOS -- these hold the
+/// wire format on every platform CI builds.
+#[cfg(test)]
+mod wire_tests {
+    use super::*;
+    use std::net::SocketAddr;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use tokio::task::JoinHandle;
+
+    const OK_RESPONSE: &[u8] = b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok";
+
+    /// Accepts one request, reads until the client stops, and answers `OK`.
+    /// Returns the raw bytes the client sent.
+    async fn serve_once() -> (SocketAddr, JoinHandle<Vec<u8>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut seen = Vec::new();
+            let mut buf = vec![0u8; 64 * 1024];
+            loop {
+                let read = socket.read(&mut buf).await.unwrap_or(0);
+                if read == 0 {
+                    break;
+                }
+                seen.extend_from_slice(&buf[..read]);
+                // Headers plus the whole body have arrived once the client goes
+                // quiet; every fixture here sends a known, small payload.
+                if seen.len() >= 128 && socket.try_write(b"").is_ok() {
+                    let idle =
+                        tokio::time::timeout(Duration::from_millis(120), socket.read(&mut buf))
+                            .await;
+                    match idle {
+                        Ok(Ok(0)) | Err(_) => break,
+                        Ok(Ok(read)) => seen.extend_from_slice(&buf[..read]),
+                        Ok(Err(_)) => break,
+                    }
+                }
+            }
+            let _ = socket.write_all(OK_RESPONSE).await;
+            let _ = socket.flush().await;
+            seen
+        });
+        (addr, handle)
+    }
+
+    /// Answers with `status` while the body is still arriving, then hangs up --
+    /// how a presigned endpoint refuses a signature it disagrees with.
+    ///
+    /// It absorbs a slice of the body between answering and closing. Closing a
+    /// socket that still holds unread data resets the connection, which would
+    /// discard the answer in flight and leave an ordinary connection error in
+    /// its place; draining a little first lets the client read the status,
+    /// while leaving far too much body outstanding for the upload to finish.
+    async fn refuse_once(status: u16) -> (SocketAddr, JoinHandle<()>) {
+        const DRAIN_AFTER_ANSWER: usize = 256 * 1024;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 64 * 1024];
+            let _ = socket.read(&mut buf).await;
+            let response =
+                format!("HTTP/1.1 {status} Forbidden\r\ncontent-length: 9\r\n\r\nrefused!!");
+            let _ = socket.write_all(response.as_bytes()).await;
+            let _ = socket.flush().await;
+
+            let mut drained = 0usize;
+            while drained < DRAIN_AFTER_ANSWER {
+                match socket.read(&mut buf).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(read) => drained += read,
+                }
+            }
+            drop(socket);
+        });
+        (addr, handle)
+    }
+
+    fn temp_file(name: &str, bytes: usize) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("lingxia-upload-{name}.bin"));
+        std::fs::write(&path, vec![7u8; bytes]).unwrap();
+        path
+    }
+
+    fn request_for(addr: SocketAddr, file: &Path, body_mode: UploadBodyMode) -> UploadRequest {
+        UploadRequest {
+            url: format!("http://{addr}/target"),
+            method: match body_mode {
+                UploadBodyMode::Raw => UploadMethod::Put,
+                UploadBodyMode::Multipart => UploadMethod::Post,
+            },
+            body_mode,
+            file_path: file.to_path_buf(),
+            field_name: "asset".to_string(),
+            file_name: Some("clip.mp4".to_string()),
+            mime_type: Some("video/mp4".to_string()),
+            headers: Vec::new(),
+            form_fields: Vec::new(),
+            user_agent: Some("lingxia-test/1.0".to_string()),
+        }
+    }
+
+    async fn send(request: UploadRequest) -> Result<UploadResult, UploadFailure> {
+        let (_abort_tx, abort_rx) = oneshot::channel();
+        upload_file_with_behavior(request, UploadBehavior::default(), abort_rx, |_| {}).await
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_raw_body_is_the_file_and_nothing_else() {
+        let (addr, server) = serve_once().await;
+        let file = temp_file("raw", 128);
+
+        let result = send(request_for(addr, &file, UploadBodyMode::Raw)).await;
+        let seen = String::from_utf8_lossy(&server.await.unwrap()).to_string();
+        let _ = std::fs::remove_file(&file);
+
+        assert_eq!(result.unwrap().status_code, 200);
+        assert!(seen.starts_with("PUT /target "), "request line: {seen}");
+        let lower = seen.to_lowercase();
+        assert!(lower.contains("content-type: video/mp4"), "{seen}");
+        assert!(lower.contains("content-length: 128"), "{seen}");
+        // No envelope: a presigned endpoint would store these bytes verbatim.
+        assert!(!lower.contains("multipart/form-data"), "{seen}");
+        assert!(!seen.contains("Content-Disposition"), "{seen}");
+        assert!(seen.ends_with(&"\u{7}".repeat(128)), "body was reframed");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_multipart_body_still_carries_its_envelope() {
+        let (addr, server) = serve_once().await;
+        let file = temp_file("multipart", 128);
+        let mut request = request_for(addr, &file, UploadBodyMode::Multipart);
+        request.form_fields = vec![("note".to_string(), "spec".to_string())];
+
+        let result = send(request).await;
+        let seen = String::from_utf8_lossy(&server.await.unwrap()).to_string();
+        let _ = std::fs::remove_file(&file);
+
+        assert_eq!(result.unwrap().status_code, 200);
+        assert!(seen.starts_with("POST /target "), "request line: {seen}");
+        assert!(
+            seen.to_lowercase()
+                .contains("content-type: multipart/form-data; boundary="),
+            "{seen}"
+        );
+        assert!(
+            seen.contains(r#"name="asset"; filename="clip.mp4""#),
+            "{seen}"
+        );
+        assert!(
+            seen.contains(r#"name="note""#) && seen.contains("spec"),
+            "{seen}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn only_a_raw_body_lets_the_caller_state_content_type() {
+        let (raw_addr, raw_server) = serve_once().await;
+        let file = temp_file("pinned", 128);
+
+        // A presigned signature covers Content-Type, so the caller's value has
+        // to reach the wire untouched.
+        let mut raw = request_for(raw_addr, &file, UploadBodyMode::Raw);
+        raw.headers = vec![
+            ("Content-Type".to_string(), "image/avif".to_string()),
+            ("User-Agent".to_string(), "spoofed/1.0".to_string()),
+            ("Content-Length".to_string(), "1".to_string()),
+        ];
+        assert_eq!(send(raw).await.unwrap().status_code, 200);
+        let seen = String::from_utf8_lossy(&raw_server.await.unwrap()).to_string();
+        let lower = seen.to_lowercase();
+        assert!(lower.contains("content-type: image/avif"), "{seen}");
+        assert!(
+            !lower.contains("video/mp4"),
+            "mimeType should have lost: {seen}"
+        );
+        // The runtime owns its identity and the derived length regardless.
+        assert!(!lower.contains("spoofed/1.0"), "{seen}");
+        assert!(lower.contains("lingxia-test/1.0"), "{seen}");
+        assert!(lower.contains("content-length: 128"), "{seen}");
+
+        // Multipart owns the header instead: it carries the boundary the
+        // server parses by, so a caller value must not replace it.
+        let (multipart_addr, multipart_server) = serve_once().await;
+        let mut multipart = request_for(multipart_addr, &file, UploadBodyMode::Multipart);
+        multipart.headers = vec![("Content-Type".to_string(), "text/plain".to_string())];
+        assert_eq!(send(multipart).await.unwrap().status_code, 200);
+        let seen = String::from_utf8_lossy(&multipart_server.await.unwrap()).to_string();
+        let _ = std::fs::remove_file(&file);
+        assert!(
+            seen.to_lowercase()
+                .contains("content-type: multipart/form-data; boundary="),
+            "{seen}"
+        );
+        assert!(!seen.to_lowercase().contains("text/plain"), "{seen}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_refusal_mid_body_reports_the_status_not_the_broken_pipe() {
+        let (addr, server) = refuse_once(403).await;
+        // Far more than the server drains, so the body is guaranteed to still
+        // be outstanding when the connection dies.
+        let file = temp_file("refused", 32 * 1024 * 1024);
+
+        let failure = send(request_for(addr, &file, UploadBodyMode::Raw))
+            .await
+            .expect_err("a 403 must not read as success");
+        server.await.unwrap();
+        let _ = std::fs::remove_file(&file);
+
+        // Without the status, a rejected signature is indistinguishable from a
+        // flaky network, which is the one thing the caller must be able to tell.
+        assert_eq!(failure.kind, UploadFailureKind::Server, "{}", failure.error);
+        assert!(failure.error.contains("403"), "{}", failure.error);
+        assert!(failure.error.contains("refused!!"), "{}", failure.error);
+    }
+}

@@ -24,6 +24,9 @@ redb = { workspace = true }
 rong_rt = { workspace = true, default-features = false }
 rong = { workspace = true, default-features = false }
 
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "io-util"] }
+
 [target.'cfg(any(target_os = "android", target_os = "ios", all(target_os = "linux", target_env = "ohos")))'.dependencies]
 rong_rt = { workspace = true, default-features = false, features = ["tls-ring"] }
 

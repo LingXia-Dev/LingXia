@@ -130,6 +130,105 @@ transferSpec('upload a managed file as multipart and read the server echo', {
   expect(result.echo.headerEcho).toBe('echo');
 });
 
+transferSpec('keep the multipart envelope intact whatever the caller heads', {
+  id: 'TRANSFER-UPLOAD-002',
+  covers: ['lx.uploadFile'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-002');
+
+  const result = await app.eval({
+    timeoutMs: 30_000,
+    script: `
+      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/env.bin?size=512`)} });
+      // Content-Type carries the boundary the server parses by, so a caller
+      // header must not reach it -- unlike bodyMode 'raw', where it must.
+      // user-agent is the runtime's to state, and content-length is derived.
+      const response = await lx.uploadFile({
+        url: ${JSON.stringify(`${httpBase}/upload`)},
+        filePath: source.tempFilePath,
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'text/plain',
+          'User-Agent': 'spoofed/1.0',
+          'Content-Length': '1',
+        },
+      });
+      return JSON.parse(response.data);
+    `,
+  }) as {
+    ok: boolean;
+    method: string;
+    contentType: string;
+    userAgent: string;
+    received: number;
+    file: { bytes: number } | null;
+  };
+
+  expect(result.ok).toBeTruthy();
+  // method is orthogonal to body shape: PUT with a multipart envelope is legal.
+  expect(result.method).toBe('PUT');
+  expect(result.contentType.startsWith('multipart/form-data; boundary=')).toBeTruthy();
+  expect(result.userAgent).not.toBe('spoofed/1.0');
+  expect(result.file?.bytes).toBe(512);
+  // A caller Content-Length of 1 would have truncated the body at the server.
+  expect(result.received).toBeGreaterThan(512);
+});
+
+transferSpec('stream upload progress that ends on a completed event', {
+  id: 'TRANSFER-UPLOAD-PROGRESS-001',
+  covers: ['lx.uploadFile', 'UploadTask.next'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-PROGRESS-001');
+
+  const result = await app.eval({
+    timeoutMs: 60_000,
+    script: `
+      const collect = async (options) => {
+        const events = [];
+        for await (const event of lx.uploadFile(options)) {
+          events.push({ kind: event.kind, uploaded: event.uploadedBytes, total: event.totalBytes });
+        }
+        return events;
+      };
+      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/prog.bin?size=1500000`)} });
+      const raw = await collect({
+        url: ${JSON.stringify(`${httpBase}/upload-raw`)},
+        filePath: source.tempFilePath,
+        method: 'PUT',
+        bodyMode: 'raw',
+      });
+      const multipart = await collect({
+        url: ${JSON.stringify(`${httpBase}/upload`)},
+        filePath: source.tempFilePath,
+      });
+      return { raw, multipart, size: source.size };
+    `,
+  }) as {
+    raw: { kind: string; uploaded: number; total: number }[];
+    multipart: { kind: string; uploaded: number; total: number }[];
+    size: number;
+  };
+
+  for (const [label, events] of [['raw', result.raw], ['multipart', result.multipart]] as const) {
+    expect(events.length).toBeGreaterThan(1);
+    expect(events[events.length - 1].kind).toBe('completed');
+    // Progress that goes backwards is worse than no progress at all.
+    const uploaded = events.map((event) => event.uploaded);
+    expect(uploaded).toEqual([...uploaded].sort((a, b) => a - b));
+    expect(events[events.length - 1].uploaded).toBe(events[events.length - 1].total);
+    expect(label).toBeTruthy();
+  }
+
+  // Raw carries the file and nothing else; multipart also pays for the
+  // envelope, so its total runs above the file size.
+  expect(result.raw[0].total).toBe(result.size);
+  expect(result.multipart[0].total).toBeGreaterThan(result.size);
+});
+
 transferSpec('upload a raw body with PUT for presigned endpoints', {
   id: 'TRANSFER-UPLOAD-RAW-001',
   covers: ['lx.uploadFile'],
@@ -254,6 +353,65 @@ transferSpec('report the refusing status when a raw upload is rejected mid-body'
   expect(String((outcome.data as { detail?: string } | undefined)?.detail)).toContain('403');
 });
 
+transferSpec('accept PATCH and an empty file as a raw body', {
+  id: 'TRANSFER-UPLOAD-RAW-004',
+  covers: ['lx.uploadFile'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-004');
+
+  const result = await app.eval({
+    timeoutMs: 30_000,
+    script: `
+      // Zero bytes is only reachable with a raw body -- multipart always has an
+      // envelope -- and it must still be a well-formed request, not a hang.
+      const empty = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/empty.bin?size=0`)} });
+      const response = await lx.uploadFile({
+        url: ${JSON.stringify(`${httpBase}/upload-raw`)},
+        filePath: empty.tempFilePath,
+        method: 'PATCH',
+        bodyMode: 'raw',
+      });
+      return { statusCode: response.statusCode, echo: JSON.parse(response.data) };
+    `,
+  }) as {
+    statusCode: number;
+    echo: { method: string; received: number; contentType: string; contentLength: number };
+  };
+
+  expect(result.statusCode).toBe(200);
+  expect(result.echo.method).toBe('PATCH');
+  expect(result.echo.received).toBe(0);
+  expect(result.echo.contentLength).toBe(0);
+  // No mimeType was given, so the runtime states the neutral default.
+  expect(result.echo.contentType).toBe('application/octet-stream');
+});
+
+transferSpec('deny an upload to a host the lxapp never trusted', {
+  id: 'TRANSFER-UPLOAD-AUTH-001',
+  covers: ['lx.uploadFile'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app } = bindFixture(t, 'TRANSFER-UPLOAD-AUTH-001');
+
+  // trustedDomains governs uploads exactly as it governs downloads, and the
+  // file resolving first must not be mistaken for permission to send it.
+  const outcome = await evalCaught(app, `
+    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/auth.bin?size=64`)} });
+    return await lx.uploadFile({
+      url: 'https://not-trusted.example/upload',
+      filePath: source.tempFilePath,
+      method: 'PUT',
+      bodyMode: 'raw',
+    });
+  `);
+
+  expect(outcome.ok).toBeFalsy();
+  expect(String(outcome.code)).toBe('E_PERMISSION_DENIED');
+});
+
 transferSpec('cancel an upload and reject rather than resolve', {
   id: 'TRANSFER-UPLOAD-CANCEL-001',
   covers: ['UploadTask.cancel'],
@@ -274,5 +432,7 @@ transferSpec('cancel an upload and reject rather than resolve', {
   `);
 
   expect(outcome.ok).toBeFalsy();
-  expect(String(outcome.code)).toMatch(/E_ABORT|E_NETWORK/);
+  // A cancel that reports as a connection error is indistinguishable from the
+  // network dropping, so E_NETWORK is not an acceptable answer here.
+  expect(String(outcome.code)).toBe('E_ABORT');
 });

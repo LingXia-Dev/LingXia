@@ -151,7 +151,7 @@ export function createFixtureServer() {
         return;
       }
 
-      if (route === '/upload' && request.method === 'POST') {
+      if (route === '/upload' && (request.method === 'POST' || request.method === 'PUT')) {
         // Loopback delivers a few MB faster than any client can cancel, so a
         // cancel spec needs the server to hold the request open.
         const holdMs = size(url, 'holdMs', 0);
@@ -170,7 +170,12 @@ export function createFixtureServer() {
         const file = parts.find((part) => part.filename !== undefined);
         json(200, {
           ok: true,
+          method: request.method,
           received: buffer.length,
+          // The request's own Content-Type, not the file part's: a caller must
+          // never be able to replace the boundary the envelope depends on.
+          contentType: request.headers['content-type'] ?? null,
+          userAgent: request.headers['user-agent'] ?? null,
           file: file
             ? { field: file.name, filename: file.filename, type: file.type, bytes: file.bytes }
             : null,
@@ -200,6 +205,7 @@ export function createFixtureServer() {
           received: buffer.length,
           contentType: request.headers['content-type'] ?? null,
           contentLength: Number(request.headers['content-length'] ?? -1),
+          userAgent: request.headers['user-agent'] ?? null,
           firstBytes: buffer.subarray(0, 8).toString('hex'),
           headerEcho: request.headers['x-lx-test'] ?? null,
         });
