@@ -627,37 +627,43 @@ pub async fn upload_file_with_behavior(
     let uploaded_bytes = match writer.await {
         Ok(Ok(uploaded_bytes)) => uploaded_bytes,
         Ok(Err(err)) => {
-            // The writer trips on a closed body whenever the request ends early,
-            // so its error is the symptom. Whatever the request itself settled
-            // on is the cause and wins: a status from a server that answered and
-            // hung up mid-body -- how a presigned PUT refuses a signature -- or
-            // a transport error such as a host the lxapp never trusted.
-            let failure = match response.take() {
-                Some(Ok(response_value)) if !response_value.status.is_success() => {
-                    let status_code = response_value.status.as_u16();
-                    let body = collect_response_body(response_value.body)
-                        .await
-                        .unwrap_or_default();
-                    let error = String::from_utf8_lossy(&body).trim().to_string();
-                    UploadFailure::new(
-                        UploadFailureKind::Server,
+            // A closed body is the writer's symptom of the request ending early,
+            // so whatever the request itself settled on is the cause and wins:
+            // a status from a server that answered and hung up mid-body -- how a
+            // presigned PUT refuses a signature -- or a transport error such as
+            // a host the lxapp never trusted. Every other writer error is the
+            // cause already (a file that vanished or was truncated under us),
+            // and replacing it would bury the only useful diagnosis.
+            let failure = if err.kind != UploadFailureKind::Connection {
+                err
+            } else {
+                match response.take() {
+                    Some(Ok(response_value)) if !response_value.status.is_success() => {
+                        let status_code = response_value.status.as_u16();
+                        let body = collect_response_body(response_value.body)
+                            .await
+                            .unwrap_or_default();
+                        let error = String::from_utf8_lossy(&body).trim().to_string();
+                        UploadFailure::new(
+                            UploadFailureKind::Server,
+                            request.url.clone(),
+                            if error.is_empty() {
+                                format!("http status {status_code}")
+                            } else {
+                                format!("http status {status_code}: {error}")
+                            },
+                            err.uploaded_bytes,
+                            total_bytes,
+                        )
+                    }
+                    Some(Err(transport_error)) => http_failure(
+                        &transport_error,
                         request.url.clone(),
-                        if error.is_empty() {
-                            format!("http status {status_code}")
-                        } else {
-                            format!("http status {status_code}: {error}")
-                        },
                         err.uploaded_bytes,
                         total_bytes,
-                    )
+                    ),
+                    _ => err,
                 }
-                Some(Err(transport_error)) => http_failure(
-                    &transport_error,
-                    request.url.clone(),
-                    err.uploaded_bytes,
-                    total_bytes,
-                ),
-                _ => err,
             };
             let event = if failure.kind == UploadFailureKind::Canceled {
                 UploadEvent::Canceled {
@@ -872,8 +878,9 @@ mod wire_tests {
 
     const OK_RESPONSE: &[u8] = b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\nok";
 
-    /// Accepts one request, reads until the client stops, and answers `OK`.
-    /// Returns the raw bytes the client sent.
+    /// Accepts one request, reads exactly what its `Content-Length` declares,
+    /// and answers `OK`. Reading by the declared length rather than by going
+    /// quiet keeps the capture whole no matter how the client's chunks land.
     async fn serve_once() -> (SocketAddr, JoinHandle<Vec<u8>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -881,23 +888,20 @@ mod wire_tests {
             let (mut socket, _) = listener.accept().await.unwrap();
             let mut seen = Vec::new();
             let mut buf = vec![0u8; 64 * 1024];
+            let mut wanted: Option<usize> = None;
             loop {
+                if let Some(total) = wanted
+                    && seen.len() >= total
+                {
+                    break;
+                }
                 let read = socket.read(&mut buf).await.unwrap_or(0);
                 if read == 0 {
                     break;
                 }
                 seen.extend_from_slice(&buf[..read]);
-                // Headers plus the whole body have arrived once the client goes
-                // quiet; every fixture here sends a known, small payload.
-                if seen.len() >= 128 && socket.try_write(b"").is_ok() {
-                    let idle =
-                        tokio::time::timeout(Duration::from_millis(120), socket.read(&mut buf))
-                            .await;
-                    match idle {
-                        Ok(Ok(0)) | Err(_) => break,
-                        Ok(Ok(read)) => seen.extend_from_slice(&buf[..read]),
-                        Ok(Err(_)) => break,
-                    }
+                if wanted.is_none() {
+                    wanted = header_end(&seen).map(|end| end + content_length(&seen[..end]));
                 }
             }
             let _ = socket.write_all(OK_RESPONSE).await;
@@ -905,6 +909,24 @@ mod wire_tests {
             seen
         });
         (addr, handle)
+    }
+
+    fn header_end(seen: &[u8]) -> Option<usize> {
+        seen.windows(4)
+            .position(|w| w == b"\r\n\r\n")
+            .map(|at| at + 4)
+    }
+
+    fn content_length(headers: &[u8]) -> usize {
+        String::from_utf8_lossy(headers)
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.trim()
+                    .eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse().ok())?
+            })
+            .unwrap_or(0)
     }
 
     /// Answers with `status` while the body is still arriving, then hangs up --
@@ -936,6 +958,9 @@ mod wire_tests {
                     Ok(read) => drained += read,
                 }
             }
+            // FIN first: the client sees the answer and end-of-stream before the
+            // reset that the still-arriving body will provoke.
+            let _ = socket.shutdown().await;
             drop(socket);
         });
         (addr, handle)
@@ -1058,6 +1083,66 @@ mod wire_tests {
             "{seen}"
         );
         assert!(!seen.to_lowercase().contains("text/plain"), "{seen}");
+    }
+
+    /// Reads the headers, waits to be told to continue, then drains the body
+    /// and answers `OK`. Holding the drain lets a test change the file while
+    /// the writer is definitely still blocked on it, with no sleeps involved.
+    async fn serve_on_cue() -> (
+        SocketAddr,
+        oneshot::Receiver<()>,
+        oneshot::Sender<()>,
+        JoinHandle<()>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (ready_tx, ready_rx) = oneshot::channel();
+        let (go_tx, go_rx) = oneshot::channel::<()>();
+        let handle = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 64 * 1024];
+            let _ = socket.read(&mut buf).await;
+            let _ = ready_tx.send(());
+            let _ = go_rx.await;
+            while let Ok(read) = socket.read(&mut buf).await {
+                if read == 0 {
+                    break;
+                }
+            }
+            let _ = socket.write_all(OK_RESPONSE).await;
+            let _ = socket.flush().await;
+        });
+        (addr, ready_rx, go_tx, handle)
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_file_that_shrinks_under_the_writer_says_so() {
+        let (addr, ready_rx, go_tx, server) = serve_on_cue().await;
+        // Far beyond the body channel and socket buffers, so the writer is
+        // still blocked mid-file when the file is replaced.
+        let file = temp_file("shrinking", 32 * 1024 * 1024);
+
+        let upload = send(request_for(addr, &file, UploadBodyMode::Raw));
+        let shrink = async {
+            ready_rx.await.unwrap();
+            std::fs::write(&file, b"gone").unwrap();
+            go_tx.send(()).unwrap();
+        };
+        let (result, ()) = tokio::join!(upload, shrink);
+        server.await.unwrap();
+        let _ = std::fs::remove_file(&file);
+
+        // The body then ends short of its declared length and the request fails
+        // too -- but that is downstream of the real cause, and the caller can
+        // act on a truncated file where it cannot act on a dropped connection.
+        let failure = result.expect_err("a truncated body is not a successful upload");
+        assert_eq!(
+            failure.kind,
+            UploadFailureKind::InvalidFile,
+            "{}",
+            failure.error
+        );
+        assert!(failure.error.contains("truncated"), "{}", failure.error);
     }
 
     /// Accepts the connection and hangs up without answering at all.
