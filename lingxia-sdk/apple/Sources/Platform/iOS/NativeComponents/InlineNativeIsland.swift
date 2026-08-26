@@ -307,7 +307,7 @@ final class InlineNativeIsland {
 
     private func applyText(_ item: IslandNode) {
         guard let label = item.label else { return }
-        label.text = item.props["text"] as? String ?? ""
+        let text = item.props["text"] as? String ?? ""
         label.textColor = color(item.props["color"]) ?? .white
         let size = cg(item.props["fontSize"], fallback: 12)
         label.font = .systemFont(ofSize: size, weight: fontWeight(item.props["fontWeight"]))
@@ -323,6 +323,21 @@ final class InlineNativeIsland {
         case "rtl": label.semanticContentAttribute = .forceRightToLeft
         case "ltr": label.semanticContentAttribute = .forceLeftToRight
         default: label.semanticContentAttribute = .unspecified
+        }
+        let lineHeight = cg(item.props["lineHeight"])
+        if lineHeight > 0, let font = label.font, let textColor = label.textColor {
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.minimumLineHeight = lineHeight
+            paragraph.maximumLineHeight = lineHeight
+            paragraph.alignment = label.textAlignment
+            paragraph.baseWritingDirection = item.props["dir"] as? String == "rtl" ? .rightToLeft : .leftToRight
+            label.attributedText = NSAttributedString(
+                string: text,
+                attributes: [.font: font, .foregroundColor: textColor, .paragraphStyle: paragraph]
+            )
+        } else {
+            label.attributedText = nil
+            label.text = text
         }
     }
 

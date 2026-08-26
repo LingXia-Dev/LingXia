@@ -333,7 +333,7 @@ final class MacInlineNativeIsland {
 
     private func applyText(_ item: IslandNode) {
         guard let label = item.label else { return }
-        label.stringValue = item.props["text"] as? String ?? ""
+        let text = item.props["text"] as? String ?? ""
         label.textColor = color(item.props["color"]) ?? .white
         label.font = .systemFont(
             ofSize: cg(item.props["fontSize"], fallback: 12),
@@ -346,6 +346,20 @@ final class MacInlineNativeIsland {
         case "center": label.alignment = .center
         case "end": label.alignment = .right
         default: label.alignment = .left
+        }
+        let lineHeight = cg(item.props["lineHeight"])
+        if lineHeight > 0, let font = label.font, let textColor = label.textColor {
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.minimumLineHeight = lineHeight
+            paragraph.maximumLineHeight = lineHeight
+            paragraph.alignment = label.alignment
+            paragraph.baseWritingDirection = item.props["dir"] as? String == "rtl" ? .rightToLeft : .leftToRight
+            label.attributedStringValue = NSAttributedString(
+                string: text,
+                attributes: [.font: font, .foregroundColor: textColor, .paragraphStyle: paragraph]
+            )
+        } else {
+            label.stringValue = text
         }
     }
 
