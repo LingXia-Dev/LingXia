@@ -44,7 +44,7 @@ use lingxia_windows_contract::{
     hide_host_panel, is_panel_visible, present_webview_in_active_group,
     restore_presented_group_main, set_webview_chrome_event_handler, set_webview_window_layout,
 };
-use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType, ReleaseType};
+use lxapp::{LxApp, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType};
 #[cfg(feature = "browser-runtime")]
 use windows::Win32::System::SystemInformation::{GlobalMemoryStatusEx, MEMORYSTATUSEX};
 
