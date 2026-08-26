@@ -962,7 +962,26 @@ jobs:
 
       - name: Run showcase automation
         if: runner.os == 'macOS'
-        run: bash scripts/automation/run-macos-showcase.sh '${{ matrix.framework }}' 300
+        shell: bash
+        run: |
+          framework='${{ matrix.framework }}'
+          result_dir="examples/lingxia-showcase/lxapp/test-results/automation/macos-$framework"
+
+          for attempt in 1 2; do
+            if bash scripts/automation/run-macos-showcase.sh "$framework" 300; then
+              exit 0
+            fi
+
+            if [[ "$attempt" -eq 2 ]]; then
+              exit 1
+            fi
+
+            # Recycle the whole host process once when WebKit or AX stops responding.
+            if [[ -d "$result_dir" ]]; then
+              mv "$result_dir" "${result_dir}-attempt-${attempt}"
+            fi
+            echo "Retrying macOS Showcase automation after recycling the session..."
+          done
 
       - name: Show session diagnostics
         if: always()
