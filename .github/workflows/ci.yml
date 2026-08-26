@@ -528,9 +528,9 @@ jobs:
     if: ${{ needs.changes.outputs.rust == 'true' || needs.changes.outputs.i18n == 'true' }}
     name: Windows Target
     runs-on: windows-latest
-    # Feature checks are linear (`--each-feature`); cache save of the target
-    # dir can still add a few minutes after the compile steps.
-    timeout-minutes: 40
+    # Feature checks are linear (`--each-feature`). A cold main build also
+    # publishes the large target cache after the checks have completed.
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
 
@@ -542,6 +542,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           prefix-key: rust-windows
+          # PRs can restore main's cache, but must not fail after successful
+          # checks while compressing a multi-gigabyte target directory.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - uses: taiki-e/install-action@cargo-hack
 
