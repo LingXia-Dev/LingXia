@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/test",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Authoring SDK and clock for lxapp tests run by lxdev test",
   "type": "module",
   "main": "dist/index.js",
@@ -24,7 +24,7 @@
     "prebuild": "npm run build --workspace @lingxia/types --if-present"
   },
   "dependencies": {
-    "@lingxia/types": "~0.12.0"
+    "@lingxia/types": "~0.13.0"
   },
   "devDependencies": {
     "typescript": "^5.7.2"
