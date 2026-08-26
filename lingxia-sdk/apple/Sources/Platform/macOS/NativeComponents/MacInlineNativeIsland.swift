@@ -7,7 +7,7 @@ import AppKit
 final class MacInlineNativeIsland {
     static let allowedKinds: Set<String> = ["root", "view", "text", "tappable", "slider", "video"]
 
-    private let container = NSView()
+    private let container = IslandContainerView()
     private var nodes: [String: IslandNode] = [:]
     private(set) var lastAppliedRevision: UInt64 = 0
     private let eventSink: (_ componentId: String, _ event: String, _ detail: [String: Any]) -> Void
@@ -17,6 +17,7 @@ final class MacInlineNativeIsland {
     private var leaseSequence: UInt64 = 1
     private var lastRoot: [String: Any]?
     private var pendingOutgoing: [[String: Any]] = []
+    private var scrollOffset = CGPoint.zero
 
     init(
         host: NSView,
@@ -56,6 +57,19 @@ final class MacInlineNativeIsland {
         let outgoing = pendingOutgoing
         pendingOutgoing.removeAll()
         return outgoing
+    }
+
+    func rebind(to host: NSView) {
+        guard container.superview !== host else { return }
+        container.removeFromSuperview()
+        host.addSubview(container)
+        container.frame = host.bounds
+        container.autoresizingMask = [.width, .height]
+    }
+
+    func updateScrollOffset(x: CGFloat, y: CGFloat) {
+        scrollOffset = CGPoint(x: x, y: y)
+        nodes.values.forEach(applyFrame)
     }
 
     /// Remove the island tree when its WebView is being destroyed.
@@ -186,9 +200,18 @@ final class MacInlineNativeIsland {
               Self.allowedKinds.contains(kind)
         else { return }
         let authorId = (node["authorId"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? key
+        let automationId = (node["automationId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         let props = node["props"] as? [String: Any] ?? [:]
         let order = node["order"] as? Int ?? 0
-        let item = IslandNode(key: key, kind: kind, authorId: authorId, order: order, props: props)
+        removeNode(key)
+        let item = IslandNode(
+            key: key,
+            kind: kind,
+            authorId: authorId,
+            automationId: automationId,
+            order: order,
+            props: props
+        )
         factoryView(item)
         nodes[key] = item
         if item.view.superview == nil {
@@ -205,7 +228,11 @@ final class MacInlineNativeIsland {
         else { return }
         let patch = operation["patch"] as? [String: Any] ?? [:]
         for (name, value) in patch {
-            item.props[name] = value
+            if value is NSNull {
+                item.props.removeValue(forKey: name)
+            } else {
+                item.props[name] = value
+            }
         }
         applyProps(item)
     }
@@ -222,24 +249,29 @@ final class MacInlineNativeIsland {
             item.video = video
             item.view = video.view
         case "text":
-            let label = NSTextField(labelWithString: "")
-            label.textColor = .white
-            label.font = .systemFont(ofSize: 12)
+            let label = IslandTextField()
+            label.stringValue = ""
+            label.isEditable = false
+            label.isSelectable = false
             label.isBezeled = false
             label.drawsBackground = false
             item.label = label
             item.view = label
         case "tappable":
-            let button = NSButton(title: "", target: item, action: #selector(IslandNode.press))
+            let button = IslandButton()
+            button.title = ""
+            button.target = item
+            button.action = #selector(IslandNode.press)
             button.bezelStyle = .rounded
             item.onPress = { [weak self, weak item] in
                 guard let item, !(item.props["disabled"] as? Bool ?? false) else { return }
-                self?.eventSink(item.authorId, "press", ["source": "pointer"])
+                let source = NSApp.currentEvent?.type == .keyDown ? "keyboard" : "pointer"
+                self?.eventSink(item.authorId, "press", ["source": source])
             }
             item.button = button
             item.view = button
         case "slider":
-            let slider = NSSlider()
+            let slider = IslandSlider()
             slider.minValue = 0
             slider.maxValue = 100
             slider.target = item
@@ -247,7 +279,9 @@ final class MacInlineNativeIsland {
             item.onSliderChange = { [weak self, weak item] value, commit in
                 guard let item else { return }
                 let event = commit ? "valuecommit" : "valuechange"
-                self?.eventSink(item.authorId, event, ["value": value])
+                let snapped = self?.sliderValue(item, proposed: value) ?? value
+                item.slider?.doubleValue = snapped
+                self?.eventSink(item.authorId, event, ["value": snapped])
             }
             item.slider = slider
             item.view = slider
@@ -265,47 +299,140 @@ final class MacInlineNativeIsland {
         case "video":
             item.video?.update(props: item.props)
         case "text":
-            item.label?.stringValue = item.props["text"] as? String ?? ""
+            applyText(item)
         case "tappable":
-            let content = item.props["content"] as? [String: Any]
-            let icon = content?["icon"] as? [String: Any]
-            item.button?.title = (content?["text"] as? String)
-                ?? (icon?["name"] as? String)
-                ?? (item.props["label"] as? String)
-                ?? (item.props["icon"] as? String)
-                ?? ""
-            item.button?.isEnabled = !boolValue(item.props["disabled"])
+            applyButton(item)
         case "slider":
-            guard let slider = item.slider, !item.dragging else { return }
-            let min = Double(cg(item.props["min"]))
-            let maximum = Swift.max(Double(cg(item.props["max"])), min + 1)
-            slider.minValue = min
-            slider.maxValue = maximum
-            slider.doubleValue = Double(cg(item.props["value"]))
-            slider.isEnabled = !boolValue(item.props["disabled"])
+            if let slider = item.slider, !item.dragging {
+                let minimum = Double(cg(item.props["min"], fallback: 0))
+                let maximum = Swift.max(Double(cg(item.props["max"], fallback: 100)), minimum + 1)
+                slider.minValue = minimum
+                slider.maxValue = maximum
+                slider.doubleValue = Swift.min(Swift.max(Double(cg(item.props["value"], fallback: CGFloat(minimum))), minimum), maximum)
+                slider.isEnabled = !boolValue(item.props["disabled"])
+                slider.setAccessibilityValue(formatSliderValue(item.props, value: slider.doubleValue))
+            }
         case "view":
             applyScrim(item)
-            applyPointerEvents(item)
         default:
-            applyPointerEvents(item)
+            break
         }
+        applyNativeStyle(item)
+        applyAccessibility(item)
+        applyPointerEvents(item)
     }
 
     private func applyPointerEvents(_ item: IslandNode) {
-        guard let view = item.view as? IslandPassthroughView else { return }
-        if let mode = item.props["pointerEvents"] as? String {
-            view.pointerEvents = mode
-            return
+        let mode = item.props["pointerEvents"] as? String
+            ?? ((item.kind == "text" || item.kind == "view") ? "box-none" : "auto")
+        (item.view as? IslandPassthroughView)?.pointerEvents = mode
+        (item.view as? IslandButton)?.pointerEvents = mode
+        (item.view as? IslandSlider)?.pointerEvents = mode
+        container.setPointerEvents(mode, for: item.view)
+    }
+
+    private func applyText(_ item: IslandNode) {
+        guard let label = item.label else { return }
+        label.stringValue = item.props["text"] as? String ?? ""
+        label.textColor = color(item.props["color"]) ?? .white
+        label.font = .systemFont(
+            ofSize: cg(item.props["fontSize"], fallback: 12),
+            weight: fontWeight(item.props["fontWeight"])
+        )
+        let maxLines = Int(cg(item.props["maxLines"]))
+        label.maximumNumberOfLines = maxLines > 0 ? maxLines : 0
+        label.lineBreakMode = maxLines > 0 ? .byTruncatingTail : .byWordWrapping
+        switch item.props["textAlign"] as? String {
+        case "center": label.alignment = .center
+        case "end": label.alignment = .right
+        default: label.alignment = .left
         }
-        if item.props["scrimPaint"] != nil {
-            view.pointerEvents = "box-none"
-            return
+    }
+
+    private func applyButton(_ item: IslandNode) {
+        guard let button = item.button else { return }
+        let content = item.props["content"] as? [String: Any]
+        let icon = content?["icon"] as? [String: Any]
+        let text = (content?["text"] as? String) ?? (item.props["label"] as? String) ?? ""
+        let iconName = (icon?["name"] as? String) ?? (item.props["icon"] as? String)
+        let loading = boolValue(item.props["loading"])
+        let glyph = semanticIcon(iconName) ?? iconName
+        if loading {
+            button.title = "…"
+        } else if let glyph, !text.isEmpty {
+            button.title = item.props["iconPosition"] as? String == "end" ? "\(text)  \(glyph)" : "\(glyph)  \(text)"
+        } else {
+            button.title = glyph ?? text
         }
-        view.pointerEvents = item.kind == "text" ? "none" : "auto"
+        let disabled = boolValue(item.props["disabled"])
+        button.isEnabled = !disabled && !loading
+        button.isBordered = false
+        let colors = buttonColors(
+            intent: item.props["intent"] as? String ?? "neutral",
+            emphasis: item.props["emphasis"] as? String ?? "secondary",
+            pressed: boolValue(item.props["pressed"]),
+            disabled: disabled || loading
+        )
+        let foreground = color(item.props["color"]) ?? colors.foreground
+        let font = NSFont.systemFont(
+            ofSize: cg(style(item.props)["fontSize"], fallback: item.props["size"] as? String == "compact" ? 12 : 14),
+            weight: .semibold
+        )
+        button.contentTintColor = foreground
+        button.font = font
+        button.attributedTitle = NSAttributedString(
+            string: button.title,
+            attributes: [.foregroundColor: foreground, .font: font]
+        )
+        button.wantsLayer = true
+        button.layer?.backgroundColor = colors.background.cgColor
+        button.layer?.cornerRadius = cg(style(item.props)["borderRadius"], fallback: 10)
+        (button as? IslandButton)?.hitSlop = cg(item.props["hitSlop"])
+    }
+
+    private func applyNativeStyle(_ item: IslandNode) {
+        let nativeStyle = style(item.props)
+        item.view.alphaValue = min(max(cg(nativeStyle["opacity"], fallback: 1), 0), 1)
+        item.view.wantsLayer = true
+        if let background = color(nativeStyle["backgroundColor"]), item.kind != "video" {
+            item.view.layer?.backgroundColor = background.cgColor
+        } else if item.kind == "view", item.props["scrimPaint"] == nil {
+            item.view.layer?.backgroundColor = NSColor.clear.cgColor
+        }
+        if nativeStyle["borderRadius"] != nil || item.kind == "view" {
+            item.view.layer?.cornerRadius = cg(nativeStyle["borderRadius"])
+        }
+        item.view.layer?.borderWidth = cg(nativeStyle["borderWidth"])
+        item.view.layer?.borderColor = color(nativeStyle["borderColor"])?.cgColor
+        item.view.layer?.masksToBounds = (item.view.layer?.cornerRadius ?? 0) > 0
+    }
+
+    private func applyAccessibility(_ item: IslandNode) {
+        let hidden = boolValue(item.props["aria-hidden"]) || boolValue(item.props["ariaHidden"])
+        item.view.setAccessibilityElement(!hidden && ["text", "tappable", "slider", "video"].contains(item.kind))
+        if let automationId = item.automationId {
+            item.view.identifier = NSUserInterfaceItemIdentifier(automationId)
+        }
+        let label = (item.props["aria-label"] as? String)
+            ?? (item.props["ariaLabel"] as? String)
+            ?? (item.kind == "tappable" ? item.button?.title : nil)
+        item.view.setAccessibilityLabel(label)
+        item.view.setAccessibilityHelp(
+            (item.props["aria-description"] as? String) ?? (item.props["ariaDescription"] as? String)
+        )
+        switch item.kind {
+        case "tappable": item.view.setAccessibilityRole(.button)
+        case "slider": item.view.setAccessibilityRole(.slider)
+        case "text": item.view.setAccessibilityRole(.staticText)
+        default: break
+        }
+        item.view.setAccessibilityEnabled(item.view.isHidden == false && item.button?.isEnabled != false)
     }
 
     private func applyScrim(_ item: IslandNode) {
         item.view.wantsLayer = true
+        item.scrim?.removeFromSuperlayer()
+        item.scrim = nil
         guard let paint = item.props["scrimPaint"] as? [String: Any] else {
             item.view.layer?.backgroundColor = NSColor.clear.cgColor
             return
@@ -316,13 +443,30 @@ final class MacInlineNativeIsland {
             item.view.layer?.backgroundColor = NSColor.clear.cgColor
             return
         }
-        item.view.layer?.backgroundColor = NSColor.black.withAlphaComponent(opacity).cgColor
+        let gradient = CAGradientLayer()
+        gradient.name = "lx-scrim"
+        gradient.frame = item.view.bounds
+        let shade = NSColor.black.withAlphaComponent(min(max(opacity, 0), 1)).cgColor
+        switch scrim {
+        case "top": gradient.colors = [shade, NSColor.clear.cgColor]
+        case "bottom": gradient.colors = [NSColor.clear.cgColor, shade]
+        default: gradient.colors = [shade, shade]
+        }
+        item.view.layer?.insertSublayer(gradient, at: 0)
+        item.scrim = gradient
     }
 
     private func applyFrame(_ item: IslandNode) {
-        item.view.frame = item.rect
+        let viewportRect = NSRect(
+            x: item.rect.origin.x - scrollOffset.x,
+            y: item.rect.origin.y - scrollOffset.y,
+            width: item.rect.width,
+            height: item.rect.height
+        )
+        item.view.frame = viewportRect
         item.view.isHidden = !item.visible || item.rect.width <= 0 || item.rect.height <= 0
-        item.video?.setFrame(item.rect)
+        item.scrim?.frame = item.view.bounds
+        item.video?.setFrame(viewportRect)
     }
 
     private func restack() {
@@ -337,6 +481,7 @@ final class MacInlineNativeIsland {
 
     private func removeNode(_ key: String) {
         guard let node = nodes.removeValue(forKey: key) else { return }
+        container.removePointerEvents(for: node.view)
         node.video?.unmount()
         node.view.removeFromSuperview()
     }
@@ -348,13 +493,91 @@ final class MacInlineNativeIsland {
         return node["nodeKey"] as? String
     }
 
-    private func cg(_ value: Any?) -> CGFloat {
+    private func cg(_ value: Any?, fallback: CGFloat = 0) -> CGFloat {
         if let number = value as? CGFloat { return number }
         if let number = value as? Double { return CGFloat(number) }
         if let number = value as? Int { return CGFloat(number) }
         if let number = value as? NSNumber { return CGFloat(truncating: number) }
-        if let text = value as? String, let number = Double(text) { return CGFloat(number) }
-        return 0
+        if let text = value as? String {
+            let scanner = Scanner(string: text.trimmingCharacters(in: .whitespacesAndNewlines))
+            if let number = scanner.scanDouble() { return CGFloat(number) }
+        }
+        return fallback
+    }
+
+    private func style(_ props: [String: Any]) -> [String: Any] {
+        props["nativeStyle"] as? [String: Any] ?? [:]
+    }
+
+    private func color(_ value: Any?) -> NSColor? {
+        guard let raw = value as? String else { return nil }
+        return NativeComponentColorStyle.parseColor(raw)
+    }
+
+    private func fontWeight(_ value: Any?) -> NSFont.Weight {
+        if let number = value as? NSNumber {
+            return number.intValue >= 600 ? .bold : .regular
+        }
+        let raw = (value as? String)?.lowercased() ?? ""
+        return raw == "bold" || raw == "bolder" || (Int(raw) ?? 400) >= 600 ? .bold : .regular
+    }
+
+    private func sliderValue(_ item: IslandNode, proposed: Double) -> Double {
+        let minimum = Double(cg(item.props["min"], fallback: 0))
+        let maximum = max(Double(cg(item.props["max"], fallback: 100)), minimum + 1)
+        let step = Double(cg(item.props["step"]))
+        let snapped = step > 0 ? minimum + ((proposed - minimum) / step).rounded() * step : proposed
+        return min(max(snapped, minimum), maximum)
+    }
+
+    private func formatSliderValue(_ props: [String: Any], value: Double) -> String? {
+        switch props["valueLabel"] as? String {
+        case "value": return value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
+        case "time":
+            let total = max(Int(value.rounded()), 0)
+            let hours = total / 3600
+            let minutes = (total % 3600) / 60
+            let seconds = total % 60
+            return hours > 0
+                ? String(format: "%d:%02d:%02d", hours, minutes, seconds)
+                : String(format: "%d:%02d", minutes, seconds)
+        default: return nil
+        }
+    }
+
+    private func semanticIcon(_ name: String?) -> String? {
+        switch name {
+        case "close": return "×"
+        case "play": return "▶"
+        case "pause": return "Ⅱ"
+        case "mute": return "🔇"
+        case "unmute": return "🔊"
+        case "fullscreen": return "⛶"
+        case "more": return "⋯"
+        default: return nil
+        }
+    }
+
+    private func buttonColors(
+        intent: String,
+        emphasis: String,
+        pressed: Bool,
+        disabled: Bool
+    ) -> (background: NSColor, foreground: NSColor) {
+        if disabled {
+            return (NSColor(calibratedRed: 0.61, green: 0.64, blue: 0.69, alpha: 1), .white)
+        }
+        let base: NSColor
+        switch intent {
+        case "accent": base = NSColor(calibratedRed: 0.15, green: 0.39, blue: 0.92, alpha: 1)
+        case "destructive": base = NSColor(calibratedRed: 0.86, green: 0.15, blue: 0.15, alpha: 1)
+        default: base = NSColor(calibratedRed: 0.22, green: 0.25, blue: 0.32, alpha: 1)
+        }
+        if emphasis == "quiet" {
+            return (.clear, base)
+        }
+        let alpha: CGFloat = emphasis == "secondary" ? (pressed ? 0.44 : 0.31) : (pressed ? 0.82 : 1)
+        return (base.withAlphaComponent(alpha), .white)
     }
 
     private func boolValue(_ value: Any?) -> Bool {
@@ -368,6 +591,7 @@ final class MacInlineNativeIsland {
         let key: String
         let kind: String
         let authorId: String
+        let automationId: String?
         var order: Int
         var props: [String: Any]
         var view = NSView()
@@ -375,16 +599,25 @@ final class MacInlineNativeIsland {
         var label: NSTextField?
         var button: NSButton?
         var slider: NSSlider?
+        var scrim: CAGradientLayer?
         var rect: NSRect = .zero
         var visible = true
         var dragging = false
         var onPress: (() -> Void)?
         var onSliderChange: ((Double, Bool) -> Void)?
 
-        init(key: String, kind: String, authorId: String, order: Int, props: [String: Any]) {
+        init(
+            key: String,
+            kind: String,
+            authorId: String,
+            automationId: String?,
+            order: Int,
+            props: [String: Any]
+        ) {
             self.key = key
             self.kind = kind
             self.authorId = authorId
+            self.automationId = automationId
             self.order = order
             self.props = props
         }
@@ -397,6 +630,42 @@ final class MacInlineNativeIsland {
             let commit = NSEvent.pressedMouseButtons == 0
             dragging = !commit
             onSliderChange?(sender.doubleValue, commit)
+        }
+    }
+}
+
+private final class IslandContainerView: NSView {
+    private var pointerEvents: [ObjectIdentifier: String] = [:]
+
+    nonisolated override var isFlipped: Bool { true }
+
+    func setPointerEvents(_ mode: String, for view: NSView) {
+        pointerEvents[ObjectIdentifier(view)] = mode
+    }
+
+    func removePointerEvents(for view: NSView) {
+        pointerEvents.removeValue(forKey: ObjectIdentifier(view))
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if let button = subviews.reversed().compactMap({ $0 as? IslandButton }).first(where: { button in
+            guard button.hitSlop > 0, button.pointerEvents == "auto" || button.pointerEvents == "box-only" else {
+                return false
+            }
+            let local = convert(point, to: button)
+            return button.bounds.insetBy(dx: -button.hitSlop, dy: -button.hitSlop).contains(local)
+        }) {
+            return button
+        }
+        guard let hit = super.hitTest(point), hit !== self else { return nil }
+        var directChild = hit
+        while let parent = directChild.superview, parent !== self {
+            directChild = parent
+        }
+        switch pointerEvents[ObjectIdentifier(directChild)] ?? "auto" {
+        case "none", "box-none": return nil
+        case "box-only": return directChild
+        default: return hit
         }
     }
 }
@@ -418,6 +687,29 @@ private final class IslandPassthroughView: NSView {
         default:
             return hit
         }
+    }
+}
+
+private final class IslandTextField: NSTextField {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
+private final class IslandButton: NSButton {
+    var pointerEvents: String = "auto"
+    var hitSlop: CGFloat = 0
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard pointerEvents == "auto" || pointerEvents == "box-only" else { return nil }
+        return super.hitTest(point)
+    }
+}
+
+private final class IslandSlider: NSSlider {
+    var pointerEvents: String = "auto"
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard pointerEvents == "auto" || pointerEvents == "box-only" else { return nil }
+        return super.hitTest(point)
     }
 }
 #endif
