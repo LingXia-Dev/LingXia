@@ -21,7 +21,12 @@ struct IslandViewNode {
     }
     .width('100%')
     .height('100%')
+    .backgroundColor(this.backgroundColor())
+    .borderRadius(this.styleNumber('borderRadius', 0))
+    .opacity(Math.max(0, Math.min(1, this.styleNumber('opacity', 1))))
     .hitTestBehavior(this.hitMode())
+    .accessibilityText(this.ariaLabel())
+    .accessibilityDescription(this.ariaDescription())
   }
 
   private scrimGradient(): { angle: number; colors: Array<[string, number]> } {
@@ -60,6 +65,31 @@ struct IslandViewNode {
     }
     return HitTestMode.Default;
   }
+
+  private styleRecord(): Record<string, Object> | undefined {
+    const value = this.params.props?.get('nativeStyle');
+    return value && typeof value === 'object' ? value as Record<string, Object> : undefined;
+  }
+
+  private styleNumber(key: string, fallback: number): number {
+    const record = this.styleRecord();
+    const value = record ? record[key] : undefined;
+    return typeof value === 'number' ? value : fallback;
+  }
+
+  private backgroundColor(): string {
+    const record = this.styleRecord();
+    const value = record ? record['backgroundColor'] : undefined;
+    return typeof value === 'string' && value.length > 0 ? value : '#00000000';
+  }
+
+  private ariaLabel(): string {
+    return getStringProp(this.params.props, 'aria-label', getStringProp(this.params.props, 'ariaLabel', ''));
+  }
+
+  private ariaDescription(): string {
+    return getStringProp(this.params.props, 'aria-description', getStringProp(this.params.props, 'ariaDescription', ''));
+  }
 }
 
 @Component
@@ -68,11 +98,70 @@ struct IslandTextNode {
 
   build() {
     Text(getStringProp(this.params.props, 'text', ''))
-      .fontColor('#FFFFFF')
-      .fontSize(12)
+      .fontColor(this.styleString('color', '#FFFFFF'))
+      .fontSize(this.styleNumber('fontSize', 12))
+      .fontWeight(this.fontWeight())
+      .maxLines(Math.max(1, Math.round(getNumberProp(this.params.props, 'maxLines', 1000))))
+      .textOverflow({ overflow: TextOverflow.Ellipsis })
+      .textAlign(this.textAlign())
       .width('100%')
       .height('100%')
       .hitTestBehavior(HitTestMode.None)
+      .accessibilityText(this.ariaLabel())
+      .accessibilityDescription(this.ariaDescription())
+      .opacity(this.opacity())
+  }
+
+  private styleRecord(): Record<string, Object> | undefined {
+    const value = this.params.props?.get('nativeStyle');
+    return value && typeof value === 'object' ? value as Record<string, Object> : undefined;
+  }
+
+  private styleString(key: string, fallback: string): string {
+    const direct = this.params.props?.get(key);
+    if (typeof direct === 'string' && direct.length > 0) {
+      return direct;
+    }
+    const record = this.styleRecord();
+    const value = record ? record[key] : undefined;
+    return typeof value === 'string' && value.length > 0 ? value : fallback;
+  }
+
+  private styleNumber(key: string, fallback: number): number {
+    const direct = this.params.props?.get(key);
+    if (typeof direct === 'number') {
+      return direct;
+    }
+    const record = this.styleRecord();
+    const value = record ? record[key] : undefined;
+    return typeof value === 'number' ? value : fallback;
+  }
+
+  private fontWeight(): FontWeight {
+    const value = this.params.props?.get('fontWeight');
+    if ((typeof value === 'number' && value >= 600) || value === 'bold' || value === 'bolder') {
+      return FontWeight.Bold;
+    }
+    return FontWeight.Normal;
+  }
+
+  private textAlign(): TextAlign {
+    const value = getStringProp(this.params.props, 'textAlign', 'start');
+    if (value === 'center') return TextAlign.Center;
+    if (value === 'end') return TextAlign.End;
+    return TextAlign.Start;
+  }
+
+  private ariaLabel(): string {
+    return getStringProp(this.params.props, 'aria-label', getStringProp(this.params.props, 'ariaLabel', ''));
+  }
+
+  private ariaDescription(): string {
+    return getStringProp(this.params.props, 'aria-description', getStringProp(this.params.props, 'ariaDescription', ''));
+  }
+
+  private opacity(): number {
+    return Math.max(0, Math.min(1, this.styleNumber('opacity', 1)));
   }
 }
 
@@ -84,15 +173,37 @@ struct IslandTappableNode {
     Button(this.label())
       .width('100%')
       .height('100%')
-      .backgroundColor('#CC2A2A2A')
-      .fontColor('#FFFFFF')
-      .enabled(!getBooleanProp(this.params.props, 'disabled', false))
+      .backgroundColor(this.backgroundColor())
+      .fontColor(this.foregroundColor())
+      .fontSize(getStringProp(this.params.props, 'size', 'regular') === 'compact' ? 12 : 14)
+      .fontWeight(FontWeight.Bold)
+      .enabled(this.enabled())
+      .hitTestBehavior(this.hitMode())
+      .accessibilityText(this.ariaLabel())
+      .accessibilityDescription(this.ariaDescription())
       .onClick(() => {
+        if (!this.enabled()) return;
         onNativeComponentEventFromBuilder(this.params.componentId, 'press', { source: 'pointer' });
+      })
+      .onFocus(() => {
+        onNativeComponentEventFromBuilder(this.params.componentId, 'focus', { source: 'keyboard' });
+      })
+      .onBlur(() => {
+        onNativeComponentEventFromBuilder(this.params.componentId, 'blur', { source: 'keyboard' });
+      })
+      .onHover((hovered: boolean) => {
+        onNativeComponentEventFromBuilder(
+          this.params.componentId,
+          hovered ? 'pointerenter' : 'pointerleave',
+          { source: 'pointer' }
+        );
       })
   }
 
   private label(): string {
+    if (getBooleanProp(this.params.props, 'loading', false)) {
+      return '…';
+    }
     const props = this.params.props;
     const content = props?.get('content');
     if (content && typeof content === 'object') {
@@ -110,6 +221,47 @@ struct IslandTappableNode {
       }
     }
     return getStringProp(props, 'label', getStringProp(props, 'icon', ''));
+  }
+
+  private enabled(): boolean {
+    return !getBooleanProp(this.params.props, 'disabled', false) &&
+      !getBooleanProp(this.params.props, 'loading', false);
+  }
+
+  private hitMode(): HitTestMode {
+    const mode = getStringProp(this.params.props, 'pointerEvents', 'auto');
+    return mode === 'none' || mode === 'box-none' ? HitTestMode.None : HitTestMode.Default;
+  }
+
+  private ariaLabel(): string {
+    return getStringProp(
+      this.params.props,
+      'aria-label',
+      getStringProp(this.params.props, 'ariaLabel', this.label())
+    );
+  }
+
+  private ariaDescription(): string {
+    return getStringProp(this.params.props, 'aria-description', getStringProp(this.params.props, 'ariaDescription', ''));
+  }
+
+  private backgroundColor(): string {
+    const emphasis = getStringProp(this.params.props, 'emphasis', 'secondary');
+    if (emphasis === 'quiet') return '#00000000';
+    if (!this.enabled()) return '#FF9CA3AF';
+    const intent = getStringProp(this.params.props, 'intent', 'neutral');
+    if (intent === 'accent') return emphasis === 'secondary' ? '#502563EB' : '#FF2563EB';
+    if (intent === 'destructive') return emphasis === 'secondary' ? '#50DC2626' : '#FFDC2626';
+    return emphasis === 'secondary' ? '#50374151' : '#FF374151';
+  }
+
+  private foregroundColor(): string {
+    const emphasis = getStringProp(this.params.props, 'emphasis', 'secondary');
+    if (emphasis !== 'quiet') return '#FFFFFFFF';
+    const intent = getStringProp(this.params.props, 'intent', 'neutral');
+    if (intent === 'accent') return '#FF2563EB';
+    if (intent === 'destructive') return '#FFDC2626';
+    return '#FF111827';
   }
 }
 
@@ -133,6 +285,9 @@ struct IslandSliderNode {
     })
       .width('100%')
       .enabled(!getBooleanProp(this.params.props, 'disabled', false))
+      .hitTestBehavior(this.hitMode())
+      .accessibilityText(this.ariaLabel())
+      .accessibilityDescription(this.valueDescription())
       .onChange((value: number, mode: SliderChangeMode) => {
         this.localValue = value;
         if (mode === SliderChangeMode.Begin || mode === SliderChangeMode.Moving) {
@@ -143,6 +298,19 @@ struct IslandSliderNode {
           onNativeComponentEventFromBuilder(this.params.componentId, 'valuecommit', { value: value });
         }
       })
+      .onFocus(() => {
+        onNativeComponentEventFromBuilder(this.params.componentId, 'focus', { source: 'keyboard' });
+      })
+      .onBlur(() => {
+        onNativeComponentEventFromBuilder(this.params.componentId, 'blur', { source: 'keyboard' });
+      })
+      .onHover((hovered: boolean) => {
+        onNativeComponentEventFromBuilder(
+          this.params.componentId,
+          hovered ? 'pointerenter' : 'pointerleave',
+          { source: 'pointer' }
+        );
+      })
   }
 
   private currentValue(): number {
@@ -150,6 +318,35 @@ struct IslandSliderNode {
       return this.localValue;
     }
     return getNumberProp(this.params.props, 'value', this.localValue);
+  }
+
+  private hitMode(): HitTestMode {
+    const mode = getStringProp(this.params.props, 'pointerEvents', 'auto');
+    return mode === 'none' || mode === 'box-none' ? HitTestMode.None : HitTestMode.Default;
+  }
+
+  private ariaLabel(): string {
+    return getStringProp(this.params.props, 'aria-label', getStringProp(this.params.props, 'ariaLabel', ''));
+  }
+
+  private valueDescription(): string {
+    const explicit = getStringProp(
+      this.params.props,
+      'aria-description',
+      getStringProp(this.params.props, 'ariaDescription', '')
+    );
+    if (explicit.length > 0) return explicit;
+    const value = this.currentValue();
+    if (getStringProp(this.params.props, 'valueLabel', 'none') === 'time') {
+      const total = Math.max(0, Math.round(value));
+      const hours = Math.floor(total / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      const seconds = total % 60;
+      const mm = minutes.toString().padStart(hours > 0 ? 2 : 1, '0');
+      const ss = seconds.toString().padStart(2, '0');
+      return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
+    }
+    return getStringProp(this.params.props, 'valueLabel', 'none') === 'value' ? value.toString() : '';
   }
 }
 

@@ -75,6 +75,7 @@ final class MacNativeComponentManager {
     func rebindHostView(_ host: NSView) {
         guard hostView !== host else { return }
         hostView = host
+        island?.rebind(to: host)
 
         for (id, component) in components {
             component.view.removeFromSuperview()
@@ -348,6 +349,7 @@ final class MacNativeComponentManager {
     func updateScrollOffset(x: CGFloat, y: CGFloat) {
         scrollOffsetX = x
         scrollOffsetY = y
+        island?.updateScrollOffset(x: x, y: y)
         for (id, docRect) in componentDocumentRects {
             guard let component = components[id] else { continue }
             component.setFrame(documentToViewport(docRect))
