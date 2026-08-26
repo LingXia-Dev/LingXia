@@ -56,11 +56,15 @@ function adoptIslandNodes(webTag: string, host: InlineNativeIslandHost): void {
   const resolvedKey = resolveManagerKey(webTag);
   const manager = getOrCreateEmbedManager(resolvedKey ?? webTag);
   const nodes = host.adoptEntries();
+  const componentIds: string[] = [];
+  const controllers: NativeComponentNodeController[] = [];
   for (let i = 0; i < nodes.length; i++) {
     const node = nodes[i];
     const authorId = node.authorId.length > 0 ? node.authorId : node.key;
-    manager.adoptIslandController(authorId, node.controller);
+    componentIds.push(authorId);
+    controllers.push(node.controller);
   }
+  manager.syncIslandControllers(componentIds, controllers);
 }
 
 // Embed managers by webTag

@@ -122,11 +122,11 @@ impl JSPagePointer {
                     "window {requested} does not host the current page (expected {actual_window})"
                 )));
             }
-            return Ok((
+            Ok((
                 f64::from(content.content_left) + x * content.scale,
                 f64::from(content.content_top) + y * content.scale,
                 Some(actual_window),
-            ));
+            ))
         }
 
         #[cfg(not(target_os = "windows"))]

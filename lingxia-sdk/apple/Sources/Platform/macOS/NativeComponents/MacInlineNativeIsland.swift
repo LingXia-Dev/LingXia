@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 
 /// One ordered NSView host for an inline native Root on macOS.
@@ -419,3 +420,4 @@ private final class IslandPassthroughView: NSView {
         }
     }
 }
+#endif
