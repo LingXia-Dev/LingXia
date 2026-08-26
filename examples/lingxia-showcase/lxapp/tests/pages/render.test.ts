@@ -101,7 +101,7 @@ for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
         expectation.text,
       );
       expect(documentState.title).toBe(SHOWCASE_PAGE_TITLES[expectation.page]);
-      expect(documentState.text.length > 0).toBeTruthy();
+      expect(documentState.text.length).toBeGreaterThan(0);
       expect(documentState.isNotFound).toBeFalsy();
       const ready = await waitForCurrentPage(app, expectation.page, 30_000);
       expect(ready.name).toBe(expectation.page);

@@ -87,14 +87,14 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
     await app.page.waitFor({ page: 'todo', css: '[data-testid="todo-item"]' });
 
     const index = await waitForTodo(app, text, true);
-    expect(index >= 0).toBeTruthy();
+    expect(index).toBeGreaterThanOrEqual(0);
     await waitForStoredTodo(app, text, true);
 
     await clickTodoToggle(app, index);
     await waitForStoredCompleted(app, text, true);
 
     await app.page.click({ page: 'todo', css: '[data-testid="todo-filter-completed"]' });
-    expect(await waitForTodo(app, text, true) >= 0).toBeTruthy();
+    expect(await waitForTodo(app, text, true)).toBeGreaterThanOrEqual(0);
     await app.page.click({ page: 'todo', css: '[data-testid="todo-filter-active"]' });
     expect(await waitForTodo(app, text, false)).toBe(-1);
     await app.page.click({ page: 'todo', css: '[data-testid="todo-filter-all"]' });

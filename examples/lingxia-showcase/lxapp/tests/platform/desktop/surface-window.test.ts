@@ -219,6 +219,6 @@ windowTest('open a page window with system chrome and with full chrome', {
   if (platform === 'windows') {
     // Full chrome has no system title bar, so the same requested content
     // size yields a shorter outer frame than system chrome.
-    expect(full.window.bounds.h < system.window.bounds.h).toBeTruthy();
+    expect(full.window.bounds.h).toBeLessThan(system.window.bounds.h);
   }
 });

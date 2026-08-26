@@ -64,5 +64,5 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
       describe: 'restored home page to have rendered body text',
       timeoutMs: 20_000,
     });
-    expect(after > 0).toBeTruthy();
+    expect(after).toBeGreaterThan(0);
   });

@@ -67,7 +67,7 @@ spec("render device and screen API results after real UI actions", { id: "DEVICE
       && Number(state.screenInfo.scale) > 0,
   );
   await app.page.waitFor({ page: 'device', css: '[data-testid="device-screen-result"]' });
-  expect(Number(screen.screenInfo?.width) > 0).toBeTruthy();
+  expect(Number(screen.screenInfo?.width)).toBeGreaterThan(0);
 });
 
 spec("keep network query and listener behavior equivalent across renderers", { id: "DEVICE-002", covers: ['lx.getNetworkInfo'], app: SHOWCASE_APP_ID }, async (t) => {

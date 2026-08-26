@@ -173,7 +173,7 @@ transferSpec('keep the multipart envelope intact whatever the caller heads', {
   expect(result.userAgent).not.toBe('spoofed/1.0');
   expect(result.file?.bytes).toBe(512);
   // A caller Content-Length of 1 would have truncated the body at the server.
-  expect(result.received > 512).toBeTruthy();
+  expect(result.received).toBeGreaterThan(512);
 });
 
 transferSpec('stream upload progress that ends on a completed event', {
@@ -229,7 +229,7 @@ transferSpec('stream upload progress that ends on a completed event', {
   // Raw carries the file and nothing else; multipart also pays for the
   // envelope, so its total runs above the file size.
   expect(result.raw[0].total).toBe(result.size);
-  expect(result.multipart[0].total > result.size).toBeTruthy();
+  expect(result.multipart[0].total).toBeGreaterThan(result.size);
 });
 
 transferSpec('upload a raw body with PUT for presigned endpoints', {

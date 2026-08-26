@@ -51,6 +51,6 @@ spec("hide the native video overlay before the next page becomes interactive", {
     (text) => text.includes(name),
     5_000,
   )).toContain(name);
-  expect(Date.now() - hiddenAt < 5_000).toBeTruthy();
+  expect(Date.now() - hiddenAt).toBeLessThan(5_000);
   await attachWindow(t, 'native-video-hidden.png');
 });

@@ -90,10 +90,10 @@ desktopTerminalTest('publishes and mutates the native nested pane tree without d
     expect(panes.filter((pane) => pane.active).length).toBe(1);
     for (const pane of panes) {
       expect(pane.visible).toBeTruthy();
-      expect(pane.frame.width > 20).toBeTruthy();
-      expect(pane.frame.height > 20).toBeTruthy();
-      expect(pane.grid.cols > 0).toBeTruthy();
-      expect(pane.grid.rows > 0).toBeTruthy();
+      expect(pane.frame.width).toBeGreaterThan(20);
+      expect(pane.frame.height).toBeGreaterThan(20);
+      expect(pane.grid.cols).toBeGreaterThan(0);
+      expect(pane.grid.rows).toBeGreaterThan(0);
     }
   } finally {
     await app.eval({

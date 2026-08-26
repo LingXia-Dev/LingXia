@@ -520,6 +520,10 @@ export class LiveFixture implements Fixture {
       toBeDefined: () => run("toBeDefined"),
       toBeUndefined: () => run("toBeUndefined"),
       toBeInstanceOf: (expected: Function) => run("toBeInstanceOf", expected),
+      toBeGreaterThan: (expected: number) => run("toBeGreaterThan", expected),
+      toBeGreaterThanOrEqual: (expected: number) => run("toBeGreaterThanOrEqual", expected),
+      toBeLessThan: (expected: number) => run("toBeLessThan", expected),
+      toBeLessThanOrEqual: (expected: number) => run("toBeLessThanOrEqual", expected),
     };
     Object.defineProperty(self, "not", {
       get: () => fixture.pollMatchers(read, options, !inverted),

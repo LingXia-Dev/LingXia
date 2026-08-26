@@ -152,7 +152,26 @@ function fail(
   );
 }
 
+function isComparable(value: unknown): value is number {
+  return typeof value === "number" && !Number.isNaN(value);
+}
+
 function createMatchers<T>(actual: T, inverted: boolean): Matchers<T> {
+  const compare = (
+    matcher: string,
+    expected: number,
+    pass: (actual: number, expected: number) => boolean,
+  ) => {
+    if (!isComparable(actual) || !isComparable(expected)) {
+      // Comparing a non-number is a broken assertion, not a threshold that was
+      // missed, so it fails even under `.not` -- otherwise a misspelled field
+      // reads as "correctly not greater" and the spec passes on nothing.
+      settle(matcher, actual, expected, false, false, "both values must be numbers");
+      return;
+    }
+    settle(matcher, actual, expected, inverted, pass(actual, expected));
+  };
+
   const self = {
     get not(): Matchers<T> {
       return createMatchers(actual, !inverted);
@@ -184,6 +203,18 @@ function createMatchers<T>(actual: T, inverted: boolean): Matchers<T> {
     toBeInstanceOf(expected: Function) {
       const pass = actual instanceof (expected as new (...args: never[]) => unknown);
       settle("toBeInstanceOf", actual, expected, inverted, pass);
+    },
+    toBeGreaterThan(expected: number) {
+      compare("toBeGreaterThan", expected, (a, b) => a > b);
+    },
+    toBeGreaterThanOrEqual(expected: number) {
+      compare("toBeGreaterThanOrEqual", expected, (a, b) => a >= b);
+    },
+    toBeLessThan(expected: number) {
+      compare("toBeLessThan", expected, (a, b) => a < b);
+    },
+    toBeLessThanOrEqual(expected: number) {
+      compare("toBeLessThanOrEqual", expected, (a, b) => a <= b);
     },
     toThrow(expected?: unknown) {
       if (typeof actual !== "function") {
@@ -250,6 +281,18 @@ export function applyMatcher(
       return;
     case "toBeInstanceOf":
       assertion.toBeInstanceOf(expected as Function);
+      return;
+    case "toBeGreaterThan":
+      assertion.toBeGreaterThan(expected as number);
+      return;
+    case "toBeGreaterThanOrEqual":
+      assertion.toBeGreaterThanOrEqual(expected as number);
+      return;
+    case "toBeLessThan":
+      assertion.toBeLessThan(expected as number);
+      return;
+    case "toBeLessThanOrEqual":
+      assertion.toBeLessThanOrEqual(expected as number);
       return;
     default:
       throw new AssertionError(matcher, actual, expected, `Unknown matcher ${matcher}`);

@@ -45,5 +45,5 @@ spec('streams a complete response from real page input', async () => {
     (text) => text.trim().length > 10,
     15_000,
   );
-  expect(response.trim().length > 10).toBeTruthy();
+  expect(response.trim().length).toBeGreaterThan(10);
 });
