@@ -15,9 +15,11 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-/// macOS app bundle name (matches `commands/dev.rs` `RUNNER_APP_NAME`).
+/// macOS app bundle name as it was before `lingxia package` began naming
+/// artifacts from the project. Only a fallback for reporting a path that does
+/// not exist — never used to find an installed bundle; see [`runner_path`].
 #[cfg(not(target_os = "windows"))]
-const RUNNER_APP_NAME: &str = "LingXia Runner.app";
+const RUNNER_APP_NAME_FALLBACK: &str = "LingXiaRunner.app";
 /// Windows runner exe stem (matches `commands/dev.rs` `RUNNER_WINDOWS_BIN_NAME`).
 #[cfg(target_os = "windows")]
 const RUNNER_WINDOWS_BIN_NAME: &str = "lingxia-runner";
@@ -68,7 +70,20 @@ fn runner_path(dir: &Path) -> PathBuf {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        dir.join(RUNNER_APP_NAME)
+        // The zip names the bundle; we do not. `lingxia package` names its
+        // artifacts from the project, which turned "LingXia Runner.app" into
+        // "LingXiaRunner.app" and left this lookup pointing at nothing —
+        // `lingxia dev` then reported the install as incomplete. A version dir
+        // holds exactly one bundle, so read the name off disk.
+        fs::read_dir(dir)
+            .ok()
+            .and_then(|entries| {
+                entries
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .find(|path| path.extension().and_then(|ext| ext.to_str()) == Some("app"))
+            })
+            .unwrap_or_else(|| dir.join(RUNNER_APP_NAME_FALLBACK))
     }
 }
 

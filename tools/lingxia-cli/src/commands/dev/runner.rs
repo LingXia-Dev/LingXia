@@ -8,7 +8,9 @@ pub(super) fn focus_windows_launch(executable: &Path, excluded_pids: &str) -> Re
     windows_interactive::focus_windows_launch(executable, excluded_pids)
 }
 
-const RUNNER_APP_NAME: &str = "LingXia Runner.app";
+/// Only a fallback for the "not installed" message — the bundle is found by
+/// extension, since `lingxia package` names it from the project.
+const RUNNER_APP_NAME_FALLBACK: &str = "LingXiaRunner.app";
 const RUNNER_EXECUTABLE_NAME: &str = "LingXiaRunner";
 const RUNNER_LXAPP_PATH_ENV: &str = "LINGXIA_LXAPP_PATH";
 const RUNNER_WEB_URL_ENV: &str = "LINGXIA_RUNNER_WEB_URL";
@@ -1405,11 +1407,19 @@ fn terminate_runner_from_pid_file(pid_file: &Path) {
 
 fn installed_runner_app_path() -> Result<PathBuf> {
     let home = dirs::home_dir().ok_or_else(|| anyhow!("Failed to resolve home directory"))?;
-    let path = home
+    let dir = home
         .join(".lingxia")
         .join("runner")
-        .join(REQUIRED_RUNNER_VERSION)
-        .join(RUNNER_APP_NAME);
+        .join(REQUIRED_RUNNER_VERSION);
+    let path = std::fs::read_dir(&dir)
+        .ok()
+        .and_then(|entries| {
+            entries
+                .flatten()
+                .map(|entry| entry.path())
+                .find(|path| path.extension().and_then(|ext| ext.to_str()) == Some("app"))
+        })
+        .unwrap_or_else(|| dir.join(RUNNER_APP_NAME_FALLBACK));
     if !path.exists() {
         return Err(anyhow!(
             "LingXia Runner {} is not installed at {}.\n\
