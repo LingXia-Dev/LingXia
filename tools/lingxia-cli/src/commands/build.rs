@@ -598,7 +598,7 @@ fn validate_manifest_features(
 
 /// Assembles the self-contained Windows app directory — the Windows
 /// equivalent of a macOS `.app` bundle:
-/// `<target>/lingxia/windows/dist/<ProductName>/` holding the executable next
+/// `<target>/lingxia/windows/dist/<ProjectName>/` holding the executable next
 /// to the prepared `assets/` (the runtime's default asset dir is the `assets`
 /// folder beside the exe, so the directory runs and ships as-is).
 fn assemble_windows_dist(
@@ -610,14 +610,14 @@ fn assemble_windows_dist(
     let BuildArtifacts::Windows { exe_path } = artifacts else {
         return Ok(artifacts);
     };
-    let product_name = config
+    let project_name = config
         .app
         .as_ref()
-        .map(|app| app.product_name.as_str())
+        .map(|app| app.project_name.as_str())
         .unwrap_or("LingXia");
     let dist_dir = crate::platform::windows::resolve_windows_build_dir(project_root)?
         .join("dist")
-        .join(product_name);
+        .join(project_name);
     if dist_dir.exists() {
         std::fs::remove_dir_all(&dist_dir)
             .with_context(|| format!("Failed to clear {}", dist_dir.display()))?;
@@ -682,6 +682,17 @@ fn stage_package_artifact(
     fs::create_dir_all(&dist_dir)?;
     let dest = dist_dir.join(file_name);
 
+    if let Some(extension) = source.extension() {
+        for entry in fs::read_dir(&dist_dir)? {
+            let stale = entry?.path();
+            if stale != dest && stale.is_file() && stale.extension() == Some(extension) {
+                fs::remove_file(&stale).with_context(|| {
+                    format!("Failed to remove stale artifact {}", stale.display())
+                })?;
+            }
+        }
+    }
+
     if source != dest {
         fs::copy(source, &dest).map_err(|err| {
             anyhow!(
@@ -697,7 +708,7 @@ fn stage_package_artifact(
     Ok(Some(dest))
 }
 
-/// Zip the assembled Windows app into `dist/windows/<Product>-<version>-windows.zip`
+/// Zip the assembled Windows app into `dist/windows/<Project>-<version>-windows.zip`
 /// — the runnable, no-signing artifact for non-MSIX distribution.
 fn create_windows_zip(
     project_root: &Path,
@@ -708,12 +719,12 @@ fn create_windows_zip(
         .app
         .as_ref()
         .ok_or_else(|| anyhow!("Missing [app] config for Windows packaging"))?;
-    let product = app.product_name.trim();
+    let project = app.project_name.trim();
     let version = app.product_version.trim();
     let out_dir = project_root.join("dist").join("windows");
     fs::create_dir_all(&out_dir)
         .with_context(|| format!("Failed to create {}", out_dir.display()))?;
-    let zip_path = out_dir.join(format!("{product}-{version}-windows.zip"));
+    let zip_path = out_dir.join(format!("{project}-{version}-windows.zip"));
     if zip_path.exists() {
         fs::remove_file(&zip_path)?;
     }
@@ -943,13 +954,16 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn package_stages_android_apk_under_dist_android() {
+    fn package_stages_project_named_android_apk_and_removes_stale_name() {
         let temp = TempDir::new().unwrap();
         let source = temp
             .path()
-            .join("android/app/build/outputs/apk/release/app-release.apk");
+            .join("android/app/build/outputs/apk/release/demo-app.apk");
         fs::create_dir_all(source.parent().unwrap()).unwrap();
         fs::write(&source, b"apk").unwrap();
+        let stale = temp.path().join("dist/android/Old Name.apk");
+        fs::create_dir_all(stale.parent().unwrap()).unwrap();
+        fs::write(&stale, b"old").unwrap();
 
         let artifacts = BuildArtifacts::Android {
             apk_path: source.clone(),
@@ -958,8 +972,9 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(staged, temp.path().join("dist/android/app-release.apk"));
+        assert_eq!(staged, temp.path().join("dist/android/demo-app.apk"));
         assert_eq!(fs::read(staged).unwrap(), b"apk");
+        assert!(!stale.exists());
     }
 
     #[test]

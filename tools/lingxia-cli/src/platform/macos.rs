@@ -488,6 +488,7 @@ impl Platform for MacosPlatform {
             &macos_dir,
             &bin_dir,
             &executable_path,
+            app_project_name.unwrap_or(&product_name),
             &product_name,
             &product_version,
             &bundle_id,
@@ -688,6 +689,7 @@ fn create_macos_app_bundle(
     macos_dir: &Path,
     bin_dir: &Path,
     executable_path: &Path,
+    project_name: &str,
     product_name: &str,
     product_version: &str,
     bundle_id: &str,
@@ -695,7 +697,7 @@ fn create_macos_app_bundle(
     info_plist_path: Option<&PathBuf>,
     hide_dock_icon: bool,
 ) -> Result<PathBuf> {
-    let app_name = format!("{}.app", product_name);
+    let app_name = format!("{}.app", project_name);
     let output_dir = resolve_lingxia_target_dir(project_root).join("macos");
     fs::create_dir_all(&output_dir)?;
     remove_stale_macos_app_bundles(&output_dir, &app_name)?;

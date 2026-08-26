@@ -170,6 +170,7 @@ impl IosPlatform {
                 )
             })?;
         let app_name = app_config.product_name.clone();
+        let bundle_name = app_config.project_name.clone();
         let swift_product_name = apple::resolve_swiftpm_target_name(
             ios_dir,
             ios_config.and_then(|c| c.target_name.as_deref()),
@@ -198,6 +199,7 @@ impl IosPlatform {
             .transpose()?;
         let bundle_config = AppBundleConfig {
             bundle_id,
+            bundle_name,
             app_name,
             swift_product_name,
             executable_name,

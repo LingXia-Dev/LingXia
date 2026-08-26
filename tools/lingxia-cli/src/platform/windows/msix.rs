@@ -1,9 +1,9 @@
 //! MSIX packaging for Windows host apps.
 //!
-//! Packs the assembled `target/lingxia/windows/dist/<Product>/` payload (the exe next
+//! Packs the assembled `target/lingxia/windows/dist/<ProjectName>/` payload (the exe next
 //! to the runtime `assets/`) into an installable `.msix` at
-//! `<project>/dist/windows/<Product>.msix` — the Windows counterpart of how
-//! macOS packages its `.app` into `dist/macos/<Product>.dmg`.
+//! `<project>/dist/windows/<ProjectName>.msix` — the Windows counterpart of how
+//! macOS packages its `.app` into `dist/macos/<ProjectName>.dmg`.
 //!
 //! The package is produced **unsigned**. Windows refuses to install an unsigned
 //! MSIX, so the caller must sign it (`signtool`) before installation; the CLI
@@ -28,8 +28,8 @@ const LOGOS: &[(&str, u32)] = &[
     ("StoreLogo.png", 50),
 ];
 
-/// Pack the assembled `dist_dir` (`target/lingxia/windows/dist/<Product>/`) into an
-/// unsigned `<project>/dist/windows/<Product>.msix`. Returns the `.msix` path.
+/// Pack the assembled `dist_dir` (`target/lingxia/windows/dist/<ProjectName>/`) into an
+/// unsigned `<project>/dist/windows/<ProjectName>.msix`. Returns the `.msix` path.
 pub fn package(
     project_root: &Path,
     config: &LingXiaConfig,
@@ -43,6 +43,7 @@ pub fn package(
         .as_ref()
         .ok_or_else(|| anyhow!("Missing [app] config for MSIX packaging"))?;
     let product_name = app.product_name.trim();
+    let project_name = app.project_name.trim();
     let windows_cfg = config.windows.as_ref();
 
     let exe_name = dist_exe_name(dist_dir)?;
@@ -95,7 +96,7 @@ pub fn package(
     let out_dir = project_root.join("dist").join("windows");
     std::fs::create_dir_all(&out_dir)
         .with_context(|| format!("Failed to create {}", out_dir.display()))?;
-    let msix_path = out_dir.join(format!("{product_name}.msix"));
+    let msix_path = out_dir.join(format!("{project_name}.msix"));
 
     let status = Command::new(&makeappx)
         .args(["pack", "/d"])

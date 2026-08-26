@@ -136,7 +136,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 
 ## `app` Section
 
-`app` carries host metadata that generates the runtime `app.json`: `projectName` (technical identifier behind native build paths and the Rust host library name), `productName` (user-facing), `productVersion` (a semver string — the build rejects non-semver), and `platforms` (the enabled set, drawn from `macos`, `windows`, `ios`, `android`, `harmony`). Optional `lingxiaId` / `lingxiaServer` / `packageIdSuffix` drive publishing and per-env builds (see [Environment versions](#environment-versions)).
+`app` carries host metadata that generates the runtime `app.json`: `projectName` (technical identifier behind native build paths, the Rust host library name, and platform artifact filenames), `productName` (user-facing), `productVersion` (a semver string — the build rejects non-semver), and `platforms` (the enabled set, drawn from `macos`, `windows`, `ios`, `android`, `harmony`). Optional `lingxiaId` / `lingxiaServer` / `packageIdSuffix` drive publishing and per-env builds (see [Environment versions](#environment-versions)).
 
 `homeAppId` is optional only for a macOS/Windows native-main host with
 `features.appService: false`. Such a host still declares exactly one launch
