@@ -476,12 +476,14 @@ class LxAppActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
-        applyCanvasBackground()
-
         setContentView(rootContainer)
 
         // Cover the home cold start until its page first renders (or times out).
         SplashOverlay.attachIfNeeded(this, appId)
+
+        // After the cover, so the canvas can take the launch background while
+        // one is on screen.
+        applyCanvasBackground()
 
         // Get TabBar config and setup UI in parallel
         val tabBarConfig = NativeApi.getTabBarState(appId)
@@ -842,18 +844,10 @@ class LxAppActivity : AppCompatActivity() {
         val isTabBarTransparent = tabBarBgColor == Color.TRANSPARENT ||
                                  (tabBarBgColor?.let { Color.alpha(it) < 255 } == true)
 
-        // Get the actual TabBar background color (considering defaults)
-        val actualTabBarColor: Int = when (config.position) {
-            TabBarState.Position.BOTTOM -> config.backgroundColor // Use configured color for bottom
-            else -> {
-                // Use vertical TabBar default color for LEFT/RIGHT positions
-                0xFFF8F8F8.toInt() // VERTICAL_TABBAR_BACKGROUND_COLOR
-            }
-        }
-
-        // Deliberately not coloured here: the bar follows the TabBar that is
-        // actually on screen, and showTabBar() is what decides that. Colouring
-        // it now would paint a plate for a page whose TabBar is about to hide.
+        // The system navigation bar is deliberately not coloured here: it
+        // follows the TabBar that is actually on screen, and showTabBar() is
+        // what decides that. Colouring it now would paint a plate for a page
+        // whose TabBar is about to be hidden.
 
         if (tabBar == null) {
             tabBar = TabBar(this).apply {
@@ -1495,6 +1489,9 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
+    /** Set while the launch cover holds the system bars on our behalf. */
+    private var navBarSyncDeferred = false
+
     private fun showTabBar(show: Boolean) {
         if (isMediaFullscreen) {
             pendingTabBarVisibility = if (show) View.VISIBLE else View.GONE
@@ -1520,11 +1517,15 @@ class LxAppActivity : AppCompatActivity() {
         // While the launch cover is up it owns the whole window, bars included.
         // The home page's TabBar state lands well before the cover lifts, so
         // colouring the bar now paints the TabBar's colour along the bottom of
-        // a full-bleed cover. Hold it transparent and re-apply on dismissal.
-        if (SplashOverlay.coverActive()) {
-            SplashOverlay.doOnCoverGone {
+        // a full-bleed cover. Hold it transparent and re-apply on dismissal —
+        // once, however many times the TabBar state churns under the cover.
+        if (!navBarSyncDeferred) {
+            navBarSyncDeferred = SplashOverlay.doOnCoverGone {
+                navBarSyncDeferred = false
                 syncNavigationBarToTabBar(tabBar?.visibility == View.VISIBLE)
             }
+        }
+        if (navBarSyncDeferred) {
             updateNavigationBarTransparency(this, isTabBarTransparent = true)
             return
         }
@@ -1611,6 +1612,7 @@ class LxAppActivity : AppCompatActivity() {
             val navVisibility = pendingNavBarVisibility ?: state.navigationBarVisibility
             tabBar?.visibility = tabVisibility
             navigationBar?.visibility = navVisibility
+            syncNavigationBarToTabBar(visible = tabVisibility == View.VISIBLE)
             rootContainer.setPadding(
                 state.rootPaddingLeft,
                 state.rootPaddingTop,
@@ -2005,13 +2007,33 @@ class LxAppActivity : AppCompatActivity() {
      */
     internal fun applyCanvasBackground() {
         val value = android.util.TypedValue()
-        if (theme.resolveAttribute(android.R.attr.colorBackground, value, true)) {
-            val color = if (value.resourceId != 0) {
-                androidx.core.content.ContextCompat.getColor(this, value.resourceId)
-            } else {
-                value.data
-            }
-            rootContainer.setBackgroundColor(color)
+        if (!theme.resolveAttribute(android.R.attr.colorBackground, value, true)) return
+        val themed = if (value.resourceId != 0) {
+            androidx.core.content.ContextCompat.getColor(this, value.resourceId)
+        } else {
+            value.data
+        }
+        // While the launch cover is up, the canvas behind it belongs to the
+        // launch, not to the app theme. It is not idle scenery either: a home
+        // page that redirects on boot tears its WebView down and builds
+        // another, and for those frames the canvas is all there is. Painted
+        // the theme's colorBackground that reads as a white flash punched
+        // through the cover; painted the launch background it is the colour
+        // the launch started from.
+        val launch = SplashOverlay.backgroundColor(this)
+        val deferred = launch != null && SplashOverlay.doAfterCoverRemoved {
+            rootContainer.setBackgroundColor(themed)
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(themed))
+        }
+        if (deferred) {
+            rootContainer.setBackgroundColor(launch!!)
+            // The window background too: the frame the cover is detached on is
+            // one the WebView may not have composited into yet, and the window
+            // is what shows through then — the theme's is a light flash
+            // punched through the end of the launch.
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(launch))
+        } else {
+            rootContainer.setBackgroundColor(themed)
         }
     }
 

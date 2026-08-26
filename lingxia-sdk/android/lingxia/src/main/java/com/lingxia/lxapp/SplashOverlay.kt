@@ -67,15 +67,46 @@ internal object SplashOverlay {
     /** Whether this cold start is showing a cover (drives seamless activity handoff). */
     fun coverActive(): Boolean = launchCover != null && !homeReadySeen
 
-    /**
-     * Run when the cover starts lifting. The cover is full-bleed, so while it
-     * is up the system bars belong to it, not to the page underneath — the
-     * host defers colouring them and re-applies here.
-     */
+    /** Queued for the moment the cover starts lifting. */
     private val onCoverGone = mutableListOf<() -> Unit>()
 
-    fun doOnCoverGone(action: () -> Unit) {
-        if (overlay == null) action() else onCoverGone += action
+    /** Queued for after the cover is off the screen entirely. */
+    private val onCoverRemoved = mutableListOf<() -> Unit>()
+
+    /** True from the cover's first frame until it is off the screen. */
+    private var lifting = false
+
+    /**
+     * Whether the cover still covers the screen — including the fade-out,
+     * where it is no longer *the* overlay but is very much still visible.
+     * Anything drawing underneath during that window has to match it.
+     */
+    fun coverOnScreen(): Boolean = overlay != null || lifting
+
+    /**
+     * Defer [action] until the cover starts lifting, and report whether it was
+     * deferred. The cover is full-bleed, so while it is up the system bars
+     * belong to it, not to the page underneath — the host reads the return
+     * value to know it should leave them alone for now.
+     *
+     * Returns false, having run nothing, when no cover is on screen.
+     */
+    fun doOnCoverGone(action: () -> Unit): Boolean {
+        if (overlay == null) return false
+        onCoverGone += action
+        return true
+    }
+
+    /**
+     * Defer [action] until the cover has left the screen, and report whether
+     * it was deferred. The frame the cover is detached on is the one where
+     * nothing else may have composited yet, so whatever shows through then
+     * must still match the cover — restore it only after this fires.
+     */
+    fun doAfterCoverRemoved(action: () -> Unit): Boolean {
+        if (!coverOnScreen()) return false
+        onCoverRemoved += action
+        return true
     }
 
     /**
@@ -285,6 +316,7 @@ internal object SplashOverlay {
             }
         }
         overlay = null
+        lifting = true
         onCoverGone.forEach { it() }
         onCoverGone.clear()
         // The cover lifts away: a slight zoom under the fade reads as depth —
@@ -295,9 +327,21 @@ internal object SplashOverlay {
             .scaleY(1.06f)
             .setDuration(DISMISS_MS)
             .setInterpolator(android.view.animation.DecelerateInterpolator())
-            .withEndAction { (view.parent as? ViewGroup)?.removeView(view) }
+            .withEndAction {
+                lifting = false
+                (view.parent as? ViewGroup)?.removeView(view)
+                // A frame later: the page has certainly composited by then,
+                // and restoring underneath it cannot be seen.
+                view.post {
+                    onCoverRemoved.forEach { it() }
+                    onCoverRemoved.clear()
+                }
+            }
             .start()
     }
+
+    /** The launch background, or null when this host configures no splash. */
+    fun backgroundColor(context: Context): Int? = resolveBackgroundColor(context)
 
     private fun resolveBackgroundColor(context: Context): Int? {
         val id = context.resources.getIdentifier(
