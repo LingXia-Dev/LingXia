@@ -2,6 +2,7 @@ import React, { forwardRef, useCallback, useEffect, useRef } from "react";
 import { registerNativeViewComponent } from "@lingxia/elements";
 import {
   assignNativeRef,
+  applyNativeAria,
   setOptionalAttribute,
   type LxNativeNodeProps,
 } from "./shared.js";
@@ -46,8 +47,7 @@ export const LxNativeView = forwardRef<HTMLElement, LxNativeViewProps>(
       setOptionalAttribute(el, "pointer-events", pointerEvents);
       setOptionalAttribute(el, "hidden-transition", hiddenTransition);
       setOptionalAttribute(el, "role", role);
-      setOptionalAttribute(el, "aria-label", aria["aria-label"]);
-      setOptionalAttribute(el, "aria-description", aria["aria-description"]);
+      applyNativeAria(el, aria);
     }, [automationId, pointerEvents, hiddenTransition, role, aria]);
 
     return React.createElement(

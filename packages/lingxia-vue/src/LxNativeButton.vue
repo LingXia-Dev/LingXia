@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { h, onBeforeUnmount, ref, useAttrs, useSlots, watch } from 'vue';
 import {
   registerNativeButtonComponent,
   unwrapNativeEventPayload,
@@ -9,7 +9,7 @@ import {
 } from '@lingxia/elements';
 import { bindElementEvents, unbindElementEvents } from './text_component_shared.js';
 
-defineProps<{
+const props = defineProps<{
   id?: string;
   automationId?: string;
   class?: string;
@@ -28,6 +28,8 @@ defineProps<{
   hidden?: boolean;
   hiddenTransition?: 'none' | 'fade';
 }>();
+const slots = useSlots();
+const attrs = useAttrs();
 
 const emit = defineEmits<{
   press: [payload: PressPayload];
@@ -55,29 +57,30 @@ watch(elementRef, (element) => {
   bound = bindElementEvents(bound, element, listeners);
 });
 onBeforeUnmount(() => unbindElementEvents(bound, listeners));
+
+const render = () => h('lx-native-button', {
+  ...attrs,
+  ref: elementRef,
+  id: props.id,
+  class: props.class,
+  'automation-id': props.automationId,
+  label: props.label,
+  icon: typeof props.icon === 'string' ? props.icon : undefined,
+  'icon-position': props.iconPosition,
+  intent: props.intent,
+  emphasis: props.emphasis,
+  size: props.size,
+  'hit-slop': props.hitSlop,
+  disabled: props.disabled,
+  pressed: props.pressed,
+  expanded: props.expanded,
+  loading: props.loading,
+  'pointer-events': props.pointerEvents,
+  hidden: props.hidden,
+  'hidden-transition': props.hiddenTransition,
+}, slots.default?.());
 </script>
 
 <template>
-  <lx-native-button
-    ref="elementRef"
-    :id="id"
-    :class="class"
-    :automation-id="automationId"
-    :label="label"
-    :icon="typeof icon === 'string' ? icon : undefined"
-    :icon-position="iconPosition"
-    :intent="intent"
-    :emphasis="emphasis"
-    :size="size"
-    :hit-slop="hitSlop"
-    :disabled="disabled"
-    :pressed="pressed"
-    :expanded="expanded"
-    :loading="loading"
-    :pointer-events="pointerEvents"
-    :hidden="hidden"
-    :hidden-transition="hiddenTransition"
-  >
-    <slot />
-  </lx-native-button>
+  <render />
 </template>

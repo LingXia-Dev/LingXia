@@ -59,7 +59,7 @@ pub(super) fn install_island_pointer_filter() {
     if POINTER_FILTER_READY.swap(true, Ordering::SeqCst) {
         return;
     }
-    set_island_pointer_filter(|page_key, phase, x, y| route_island_pointer(page_key, phase, x, y));
+    set_island_pointer_filter(route_island_pointer);
 }
 
 fn route_island_pointer(page_key: &str, phase: SurfacePointerPhase, x: f32, y: f32) -> bool {
@@ -80,6 +80,10 @@ fn route_island_pointer(page_key: &str, phase: SurfacePointerPhase, x: f32, y: f
     let was_active = session.pointer_sequence_active();
     let events = session.handle_pointer(session_phase, css_x, css_y);
     let consumed = was_active || session.pointer_sequence_active() || !events.is_empty();
+    log::debug!(
+        "inline native pointer {session_phase:?} on {page_key}: surface=({x:.1},{y:.1}) css=({css_x:.1},{css_y:.1}) active={was_active} events={} consumed={consumed}",
+        events.len(),
+    );
     let latched = session.latched_slider().or_else(|| {
         events.iter().rev().find_map(|event| {
             if event.event == "valuechange" || event.event == "valuecommit" {
@@ -130,16 +134,25 @@ fn surface_point_to_css(page_key: &str, x: f32, y: f32) -> (f64, f64) {
 }
 
 fn post_island_event(context: &PageContext, event: &lxapp::inline_native::IslandHostEvent) {
-    post_island_payload(
-        context,
-        json!({
-            "action": "component.event",
-            "id": event.id,
-            "componentId": event.id,
-            "event": event.event,
-            "detail": event.detail,
-        }),
-    );
+    let context = context.clone();
+    let component_id = event.id.clone();
+    let payload = json!({
+        "action": "component.event",
+        "id": component_id.clone(),
+        "componentId": component_id.clone(),
+        "event": event.event,
+        "detail": event.detail,
+        "pageId": format!("{}:{}", context.appid, context.path),
+    });
+    let thread_name = format!("lingxia-island-event-{component_id}");
+    if let Err(err) = std::thread::Builder::new()
+        .name(thread_name)
+        .spawn(move || {
+            post_island_payload(&context, payload);
+        })
+    {
+        log::warn!("failed to spawn inline-native event thread: {err}");
+    }
 }
 
 pub(super) fn island_component_keys() -> std::sync::MutexGuard<'static, HashSet<String>> {
@@ -585,8 +598,9 @@ fn post_island_payload(context: &PageContext, payload: Value) {
     let page = lxapp::try_get(&context.appid).and_then(|app| app.get_page(&context.path));
     if let Some(page) = page
         && let Some(webview) = page.webview()
+        && let Err(err) = webview.post_message(&view_message)
     {
-        let _ = webview.post_message(&view_message);
+        log::debug!("failed to post inline-native event to view: {err}");
     }
 }
 

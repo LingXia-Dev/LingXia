@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { h, useAttrs, useSlots } from 'vue';
 import { registerNativeViewComponent } from '@lingxia/elements';
 
-defineProps<{
+const props = defineProps<{
   id?: string;
   automationId?: string;
   class?: string;
@@ -10,22 +11,25 @@ defineProps<{
   hiddenTransition?: 'none' | 'fade';
   role?: 'group' | 'region' | 'status' | 'presentation' | 'none';
 }>();
+const slots = useSlots();
+const attrs = useAttrs();
 
 if (typeof window !== 'undefined') {
   registerNativeViewComponent();
 }
+
+const render = () => h('lx-native-view', {
+  ...attrs,
+  id: props.id,
+  class: props.class,
+  'automation-id': props.automationId,
+  'pointer-events': props.pointerEvents,
+  hidden: props.hidden,
+  'hidden-transition': props.hiddenTransition,
+  role: props.role,
+}, slots.default?.());
 </script>
 
 <template>
-  <lx-native-view
-    :id="id"
-    :class="class"
-    :automation-id="automationId"
-    :pointer-events="pointerEvents"
-    :hidden="hidden"
-    :hidden-transition="hiddenTransition"
-    :role="role"
-  >
-    <slot />
-  </lx-native-view>
+  <render />
 </template>

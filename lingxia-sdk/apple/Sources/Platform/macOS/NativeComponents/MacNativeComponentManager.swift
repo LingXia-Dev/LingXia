@@ -284,6 +284,8 @@ final class MacNativeComponentManager {
         inactivePages.removeAll()
         componentsPendingAutoResume.removeAll()
         componentPlaybackIntent.removeAll()
+        island?.teardown()
+        island = nil
         let allIds = Array(components.keys)
         allIds.forEach { id in
             unmountComponent(id: id, pageId: componentPage[id])

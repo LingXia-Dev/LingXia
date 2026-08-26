@@ -423,6 +423,10 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation()',
     members: AUTOMATION_API,
+    // The desktop tier is deliberately absent on mobile hosts. Keep the
+    // portable shape contract honest while the desktop entry covers it on
+    // Windows and macOS.
+    optionalMembers: ['desktop'],
     properties: ['browser', 'desktop', 'device', 'lxapps', 'shell', 'terminal'],
   },
   { name: 'ShellDriver', layer: 'automation', expression: 'lx.automation().shell', members: SHELL_DRIVER_API },
@@ -464,16 +468,17 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation().desktop',
     members: DESKTOP_DRIVER_API,
+    optional: true,
     properties: ['app', 'ax', 'clipboard', 'key', 'pointer', 'process', 'wait', 'window'],
   },
-  { name: 'DesktopPointer', layer: 'automation', expression: 'lx.automation().desktop.pointer', members: DESKTOP_POINTER_API },
-  { name: 'DesktopKey', layer: 'automation', expression: 'lx.automation().desktop.key', members: DESKTOP_KEY_API },
-  { name: 'DesktopWindow', layer: 'automation', expression: 'lx.automation().desktop.window', members: DESKTOP_WINDOW_API },
-  { name: 'DesktopClipboard', layer: 'automation', expression: 'lx.automation().desktop.clipboard', members: DESKTOP_CLIPBOARD_API },
-  { name: 'DesktopAx', layer: 'automation', expression: 'lx.automation().desktop.ax', members: DESKTOP_AX_API },
-  { name: 'DesktopWait', layer: 'automation', expression: 'lx.automation().desktop.wait', members: DESKTOP_WAIT_API },
-  { name: 'DesktopApp', layer: 'automation', expression: 'lx.automation().desktop.app', members: DESKTOP_APP_API },
-  { name: 'DesktopProcess', layer: 'automation', expression: 'lx.automation().desktop.process', members: DESKTOP_PROCESS_API },
+  { name: 'DesktopPointer', layer: 'automation', expression: 'lx.automation().desktop.pointer', members: DESKTOP_POINTER_API, optional: true },
+  { name: 'DesktopKey', layer: 'automation', expression: 'lx.automation().desktop.key', members: DESKTOP_KEY_API, optional: true },
+  { name: 'DesktopWindow', layer: 'automation', expression: 'lx.automation().desktop.window', members: DESKTOP_WINDOW_API, optional: true },
+  { name: 'DesktopClipboard', layer: 'automation', expression: 'lx.automation().desktop.clipboard', members: DESKTOP_CLIPBOARD_API, optional: true },
+  { name: 'DesktopAx', layer: 'automation', expression: 'lx.automation().desktop.ax', members: DESKTOP_AX_API, optional: true },
+  { name: 'DesktopWait', layer: 'automation', expression: 'lx.automation().desktop.wait', members: DESKTOP_WAIT_API, optional: true },
+  { name: 'DesktopApp', layer: 'automation', expression: 'lx.automation().desktop.app', members: DESKTOP_APP_API, optional: true },
+  { name: 'DesktopProcess', layer: 'automation', expression: 'lx.automation().desktop.process', members: DESKTOP_PROCESS_API, optional: true },
 ] as const;
 
 /** Canonical identifiers used by behavioral automation coverage. */
@@ -546,6 +551,9 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     properties: [],
     optionalProperties: [],
     fixture: 'runtime-safe',
+    // Android exposes the native video island, but not VideoContext command
+    // binding yet; keep this returned-object surface pending on mobile.
+    optional: true,
     factory: 'lx.createVideoContext',
   },
   {
@@ -646,7 +654,8 @@ export const LX_REQUIRED_RUNTIME_SHAPE_NAMES = [
       .map((member) => `shape:${surface.name}.${member}`);
   }),
   ...LX_RETURNED_OBJECT_SURFACES
-    .filter(({ fixture }) => fixture === 'runtime-safe')
+    .filter((surface) => surface.fixture === 'runtime-safe'
+      && !('optional' in surface && surface.optional))
     .flatMap(({ name, members }) => members.map((member) => `shape:${name}.${member}`)),
 ];
 

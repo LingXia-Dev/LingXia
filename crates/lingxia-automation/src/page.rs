@@ -33,12 +33,14 @@ fn is_transient_page_error(error: &str) -> bool {
 #[js_class(clone)]
 pub(crate) struct JSPageDriver {
     lxapp: Weak<LxApp>,
+    appid: Arc<str>,
 }
 
 impl JSPageDriver {
     pub(crate) fn new(lxapp: &Arc<LxApp>) -> Self {
         Self {
             lxapp: Arc::downgrade(lxapp),
+            appid: Arc::from(lxapp.appid.as_str()),
         }
     }
 }
@@ -269,7 +271,7 @@ impl JSPageDriver {
     #[js_method(getter, enumerable)]
     fn pointer(&self, ctx: JSContext) -> JSResult<JSObject> {
         Ok(Class::lookup::<crate::input::JSPagePointer>(&ctx)?
-            .instance(crate::input::JSPagePointer::new()))
+            .instance(crate::input::JSPagePointer::new(self.appid.clone())))
     }
 
     /// App-window keyboard input (`lxdev lxapp page key`).

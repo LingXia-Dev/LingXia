@@ -82,6 +82,30 @@ export class InlineNativeIslandHost {
     return outgoing;
   }
 
+  /**
+   * Release island controllers and reset the lease for a destroyed WebView.
+   * A subsequent root commit must not inherit stale ArkUI nodes or state.
+   */
+  teardown(): void {
+    this.nodes.forEach((node: IslandNode) => {
+      if (node.kind === 'video' && node.authorId.length > 0) {
+        LxNativeVideoPlayer.destroyStatic(node.authorId);
+      }
+      node.controller.setBuilderNode(null);
+      node.controller.rebuild();
+    });
+    this.nodes.clear();
+    this.compositionOrder = [];
+    this.nodeContainers = [];
+    this.pendingOutgoing = [];
+    this.leaseGranted = false;
+    this.leaseActive = false;
+    this.leaseId = '';
+    this.leaseSequence = 1;
+    this.lastRoot = undefined;
+    this.lastRevision = 0;
+  }
+
   videoAuthorIds(): string[] {
     const ids: string[] = [];
     this.nodes.forEach((node: IslandNode) => {

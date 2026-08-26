@@ -725,6 +725,7 @@ function normalizeCoverProps(props: Record<string, unknown> | undefined): Record
 
 function normalizeButtonProps(props: Record<string, unknown> | undefined): Record<string, unknown> {
   const next = { ...(props ?? {}) };
+  normalizeNumberField(next, "hitSlop");
   if (next.intent === undefined) next.intent = "neutral";
   if (next.emphasis === undefined) next.emphasis = "secondary";
   if (next.size === undefined) next.size = "regular";
@@ -735,12 +736,21 @@ function normalizeButtonProps(props: Record<string, unknown> | undefined): Recor
 
 function normalizeSliderProps(props: Record<string, unknown> | undefined): Record<string, unknown> {
   const next = { ...(props ?? {}) };
+  for (const key of ["value", "min", "max", "step", "bufferedValue"] as const) {
+    normalizeNumberField(next, key);
+  }
   if (next.min === undefined) next.min = 0;
   if (next.max === undefined) next.max = 100;
   if (next.step === undefined) next.step = 0;
   if (next.valueLabel === undefined) next.valueLabel = "none";
   if (next.pointerEvents === undefined) next.pointerEvents = "auto";
   return next;
+}
+
+function normalizeNumberField(props: Record<string, unknown>, key: string): void {
+  if (typeof props[key] !== "string" || props[key] === "") return;
+  const parsed = Number(props[key]);
+  if (Number.isFinite(parsed)) props[key] = parsed;
 }
 
 /** Collect author nodes from a Root element's light DOM (skips fallback). */
@@ -877,7 +887,45 @@ function readElementProps(element: Element): Record<string, unknown> {
     props["aria-label"] = ariaLabel;
     props.ariaLabel = ariaLabel;
   }
+  const nativeStyle = readComputedNativeStyle(element);
+  if (Object.keys(nativeStyle).length > 0) {
+    props.nativeStyle = nativeStyle;
+  }
+  const type = normalizeAuthorType(element.tagName.toLowerCase());
+  if (type === "LxNativeText") {
+    for (const key of ["fontSize", "fontWeight", "lineHeight", "textAlign", "color", "dir"] as const) {
+      if (props[key] === undefined && nativeStyle[key] !== undefined) {
+        props[key] = nativeStyle[key];
+      }
+    }
+  }
   return props;
+}
+
+function readComputedNativeStyle(element: Element): Record<string, unknown> {
+  const view = element.ownerDocument?.defaultView;
+  if (!view || typeof view.getComputedStyle !== "function") return {};
+  const style = view.getComputedStyle(element);
+  const out: Record<string, unknown> = {};
+  const put = (key: string, value: string, skip?: (value: string) => boolean) => {
+    const normalized = value.trim();
+    if (!normalized || skip?.(normalized)) return;
+    out[key] = normalized;
+  };
+  put("backgroundColor", style.backgroundColor, (value) => value === "transparent" || value === "rgba(0, 0, 0, 0)");
+  put("color", style.color);
+  put("accentColor", style.accentColor, (value) => value === "auto");
+  put("opacity", style.opacity, (value) => value === "1");
+  put("borderColor", style.borderTopColor);
+  put("borderWidth", style.borderTopWidth, (value) => value === "0px");
+  put("borderStyle", style.borderTopStyle, (value) => value === "none");
+  put("borderRadius", style.borderTopLeftRadius, (value) => value === "0px");
+  put("fontSize", style.fontSize);
+  put("fontWeight", style.fontWeight);
+  put("lineHeight", style.lineHeight, (value) => value === "normal");
+  put("textAlign", style.textAlign, (value) => value === "start");
+  put("dir", style.direction, (value) => value === "ltr");
+  return out;
 }
 
 function camelize(name: string): string {

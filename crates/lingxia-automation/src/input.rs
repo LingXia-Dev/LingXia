@@ -5,8 +5,11 @@
 
 use crate::auto_err;
 use crate::resolve::json_to_js;
+#[cfg(target_os = "windows")]
+use crate::resolve::resolve_lxapp_by_id;
 use lingxia_platform::traits::{keyboard, mouse};
 use rong::{FromJSObject, HostError, JSContext, JSResult, JSValue, js_class, js_method};
+use std::sync::Arc;
 
 fn illegal_ctor() -> rong::RongJSError {
     HostError::new(rong::error::E_ILLEGAL_CONSTRUCTOR, "Use lx.automation()").into()
@@ -15,7 +18,8 @@ fn illegal_ctor() -> rong::RongJSError {
 /// Parse the `at: [x, y]` coordinate form (page CSS pixels).
 fn point(at: &[f64], flag: &str) -> JSResult<(f64, f64)> {
     match at {
-        [x, y] => Ok((*x, *y)),
+        [x, y] if x.is_finite() && y.is_finite() => Ok((*x, *y)),
+        [_, _] => Err(auto_err(format!("{flag}: coordinates must be finite"))),
         _ => Err(auto_err(format!("{flag}: expected [x, y]"))),
     }
 }
@@ -87,12 +91,63 @@ fn keyboard_modifiers(raw: &Option<Vec<String>>) -> JSResult<Vec<keyboard::AppKe
 // ===================== page.pointer.* =====================
 
 #[js_class(clone)]
-pub(crate) struct JSPagePointer {}
+pub(crate) struct JSPagePointer {
+    appid: Arc<str>,
+}
 
 impl JSPagePointer {
-    pub(crate) fn new() -> Self {
-        Self {}
+    pub(crate) fn new(appid: Arc<str>) -> Self {
+        Self { appid }
     }
+
+    fn page_point(
+        &self,
+        at: &[f64],
+        flag: &str,
+        window: Option<String>,
+    ) -> JSResult<(f64, f64, Option<String>)> {
+        let (x, y) = point(at, flag)?;
+
+        #[cfg(target_os = "windows")]
+        {
+            let app = resolve_lxapp_by_id(self.appid.as_ref())?;
+            let (page, _) = lxapp::automation::resolve_page(&app, None).map_err(auto_err)?;
+            let content = lingxia_windows_contract::find_webview_content_window(&page.webtag())
+                .ok_or_else(|| auto_err("current page is not attached to a Windows host window"))?;
+            let actual_window = content.window.to_string();
+            if let Some(requested) = window.as_deref()
+                && !windows_window_id_matches(requested, content.window)
+            {
+                return Err(auto_err(format!(
+                    "window {requested} does not host the current page (expected {actual_window})"
+                )));
+            }
+            return Ok((
+                f64::from(content.content_left) + x * content.scale,
+                f64::from(content.content_top) + y * content.scale,
+                Some(actual_window),
+            ));
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = &self.appid;
+            Ok((x, y, window))
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_window_id_matches(raw: &str, expected: isize) -> bool {
+    let raw = raw.trim();
+    raw.parse::<usize>()
+        .ok()
+        .or_else(|| {
+            raw.strip_prefix("0x")
+                .or_else(|| raw.strip_prefix("0X"))
+                .and_then(|hex| usize::from_str_radix(hex, 16).ok())
+        })
+        .is_some_and(|value| value == expected as usize)
 }
 
 #[derive(FromJSObject)]
@@ -142,27 +197,27 @@ impl JSPagePointer {
 
     #[js_method(rename = "move")]
     async fn pointer_move(&self, ctx: JSContext, o: PointerAt) -> JSResult<JSValue> {
-        let (x, y) = point(&o.at, "at")?;
-        app_mouse(&ctx, o.window, mouse::AppMouseAction::Move { x, y }).await
+        let (x, y, window) = self.page_point(&o.at, "at", o.window)?;
+        app_mouse(&ctx, window, mouse::AppMouseAction::Move { x, y }).await
     }
 
     #[js_method]
     async fn down(&self, ctx: JSContext, o: PointerButtonAt) -> JSResult<JSValue> {
-        let (x, y) = point(&o.at, "at")?;
+        let (x, y, window) = self.page_point(&o.at, "at", o.window)?;
         let button = mouse_button(&o.button)?;
-        app_mouse(&ctx, o.window, mouse::AppMouseAction::Down { x, y, button }).await
+        app_mouse(&ctx, window, mouse::AppMouseAction::Down { x, y, button }).await
     }
 
     #[js_method]
     async fn up(&self, ctx: JSContext, o: PointerButtonAt) -> JSResult<JSValue> {
-        let (x, y) = point(&o.at, "at")?;
+        let (x, y, window) = self.page_point(&o.at, "at", o.window)?;
         let button = mouse_button(&o.button)?;
-        app_mouse(&ctx, o.window, mouse::AppMouseAction::Up { x, y, button }).await
+        app_mouse(&ctx, window, mouse::AppMouseAction::Up { x, y, button }).await
     }
 
     #[js_method]
     async fn click(&self, ctx: JSContext, o: PointerClick) -> JSResult<JSValue> {
-        let (x, y) = point(&o.at, "at")?;
+        let (x, y, window) = self.page_point(&o.at, "at", o.window)?;
         let button = mouse_button(&o.button)?;
         let click_count = o.count.unwrap_or(1);
         if click_count == 0 {
@@ -170,7 +225,7 @@ impl JSPagePointer {
         }
         app_mouse(
             &ctx,
-            o.window,
+            window,
             mouse::AppMouseAction::Click {
                 x,
                 y,
@@ -183,12 +238,12 @@ impl JSPagePointer {
 
     #[js_method]
     async fn drag(&self, ctx: JSContext, o: PointerDrag) -> JSResult<JSValue> {
-        let (from_x, from_y) = point(&o.from, "from")?;
-        let (to_x, to_y) = point(&o.to, "to")?;
+        let (from_x, from_y, window) = self.page_point(&o.from, "from", o.window)?;
+        let (to_x, to_y, _) = self.page_point(&o.to, "to", window.clone())?;
         let button = mouse_button(&o.button)?;
         app_mouse(
             &ctx,
-            o.window,
+            window,
             mouse::AppMouseAction::Drag {
                 from_x,
                 from_y,
@@ -202,10 +257,10 @@ impl JSPagePointer {
 
     #[js_method]
     async fn scroll(&self, ctx: JSContext, o: PointerScroll) -> JSResult<JSValue> {
-        let (x, y) = point(&o.at, "at")?;
+        let (x, y, window) = self.page_point(&o.at, "at", o.window)?;
         app_mouse(
             &ctx,
-            o.window,
+            window,
             mouse::AppMouseAction::Scroll {
                 x,
                 y,
@@ -225,6 +280,18 @@ pub(crate) struct JSPageKey {}
 impl JSPageKey {
     pub(crate) fn new() -> Self {
         Self {}
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod tests {
+    use super::windows_window_id_matches;
+
+    #[test]
+    fn windows_window_ids_accept_decimal_and_hex_handles() {
+        assert!(windows_window_id_matches("12322762", 12_322_762));
+        assert!(windows_window_id_matches("0xBC07CA", 12_322_762));
+        assert!(!windows_window_id_matches("0xBC07CB", 12_322_762));
     }
 }
 

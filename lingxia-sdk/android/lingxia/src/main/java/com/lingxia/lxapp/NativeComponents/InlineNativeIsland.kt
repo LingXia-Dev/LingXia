@@ -1,10 +1,18 @@
 package com.lingxia.lxapp.NativeComponents
 
 import android.graphics.Color
+import android.graphics.Rect
+import android.graphics.Typeface
+import android.content.res.ColorStateList
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
+import android.text.TextUtils
 import android.view.Gravity
+import android.view.MotionEvent
+import android.view.TouchDelegate
 import android.view.View
 import android.view.ViewGroup
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.FrameLayout
 import android.widget.SeekBar
 import android.widget.TextView
@@ -32,6 +40,7 @@ internal class InlineNativeIsland(
         clipChildren = true
     }
     private val nodes = linkedMapOf<String, IslandNode>()
+    private val touchDelegates = CompositeTouchDelegate(container).also { container.touchDelegate = it }
     private var lastAppliedRevision = 0L
     private var scrollXPx = 0
     private var scrollYPx = 0
@@ -89,6 +98,15 @@ internal class InlineNativeIsland(
     }
 
     fun lastAppliedRevision(): Long = lastAppliedRevision
+
+    fun teardown() {
+        nodes.keys.toList().forEach(::removeNode)
+        (container.parent as? ViewGroup)?.removeView(container)
+        pendingOutgoing.clear()
+        lastRoot = null
+        leaseGranted = false
+        leaseActive = false
+    }
 
     private fun applyCommit(message: Map<String, Any?>) {
         val operations = message["operations"] as? List<*> ?: return
@@ -190,12 +208,13 @@ internal class InlineNativeIsland(
         val kind = node["kind"] as? String ?: return
         if (kind !in ALLOWED_KINDS) return
         val authorId = (node["authorId"] as? String)?.takeIf { it.isNotEmpty() } ?: key
+        val automationId = (node["automationId"] as? String)?.takeIf { it.isNotEmpty() }
         val props = asMap(node["props"]) ?: emptyMap()
         val order = (node["order"] as? Number)?.toInt() ?: 0
         if (nodes.containsKey(key)) {
             removeNode(key)
         }
-        val item = factoryNode(key, kind, authorId, order, props)
+        val item = factoryNode(key, kind, authorId, automationId, order, props)
         nodes[key] = item
         if (item.view.parent == null) {
             container.addView(item.view)
@@ -216,6 +235,7 @@ internal class InlineNativeIsland(
         key: String,
         kind: String,
         authorId: String,
+        automationId: String?,
         order: Int,
         props: Map<String, Any?>
     ): IslandNode {
@@ -223,6 +243,7 @@ internal class InlineNativeIsland(
             key,
             kind,
             authorId,
+            automationId,
             order,
             props,
             FrameLayout(host.context)
@@ -241,9 +262,8 @@ internal class InlineNativeIsland(
             }
             "text" -> {
                 item.view = TextView(host.context).apply {
-                    setTextColor(Color.WHITE)
-                    textSize = 12f
                     isClickable = false
+                    includeFontPadding = false
                 }
             }
             "tappable" -> {
@@ -264,10 +284,13 @@ internal class InlineNativeIsland(
                     )
                     setOnClickListener {
                         if (!boolProp(item.props, "disabled")) {
-                            eventSink(authorId, "press", mapOf("source" to "pointer"))
+                            val source = if (isInTouchMode) "pointer" else "keyboard"
+                            eventSink(authorId, "press", mapOf("source" to source))
                         }
                     }
+                    isFocusable = true
                 }
+                installInteractiveEvents(item.view, authorId)
             }
             "slider" -> {
                 val seek = SeekBar(host.context).apply {
@@ -292,6 +315,7 @@ internal class InlineNativeIsland(
                 }
                 item.seek = seek
                 item.view = seek
+                installInteractiveEvents(item.view, authorId)
             }
             else -> {
                 item.view = FrameLayout(host.context).apply { isClickable = false }
@@ -304,20 +328,87 @@ internal class InlineNativeIsland(
     private fun applyProps(node: IslandNode) {
         when (node.kind) {
             "video" -> node.video?.update(node.props)
-            "text" -> (node.view as? TextView)?.text = node.props["text"] as? String ?: ""
-            "tappable" -> {
-                val content = asMap(node.props["content"])
-                node.label?.text = (content?.get("text") as? String)
-                    ?: (content?.let { asMap(it["icon"]) }?.get("name") as? String)
-                    ?: (node.props["label"] as? String)
-                    ?: (node.props["icon"] as? String)
-                    ?: ""
-                node.view.isEnabled = !boolProp(node.props, "disabled")
-            }
+            "text" -> applyText(node)
+            "tappable" -> applyButton(node)
             "slider" -> applySlider(node)
             "view" -> applyScrim(node)
         }
+        applyNativeStyle(node)
+        applyAccessibility(node)
         applyPointerEvents(node)
+    }
+
+    private fun applyText(node: IslandNode) {
+        val text = node.view as? TextView ?: return
+        text.text = node.props["text"]?.toString().orEmpty()
+        text.setTextColor(readColor(node.props, "color", Color.WHITE))
+        text.textSize = cssNumber(node.props["fontSize"], 12f)
+        text.typeface = Typeface.create(
+            Typeface.DEFAULT,
+            if (fontWeight(node.props["fontWeight"]) >= 600) Typeface.BOLD else Typeface.NORMAL
+        )
+        val maxLines = number(node.props["maxLines"]).roundToInt()
+        text.maxLines = if (maxLines > 0) maxLines else Integer.MAX_VALUE
+        text.ellipsize = if (maxLines > 0) TextUtils.TruncateAt.END else null
+        text.gravity = when (node.props["textAlign"]?.toString()) {
+            "center" -> Gravity.CENTER_HORIZONTAL or Gravity.CENTER_VERTICAL
+            "end" -> Gravity.END or Gravity.CENTER_VERTICAL
+            else -> Gravity.START or Gravity.CENTER_VERTICAL
+        }
+        text.textDirection = when (node.props["dir"]?.toString()) {
+            "rtl" -> View.TEXT_DIRECTION_RTL
+            "ltr" -> View.TEXT_DIRECTION_LTR
+            else -> View.TEXT_DIRECTION_FIRST_STRONG
+        }
+        val lineHeight = cssNumber(node.props["lineHeight"], 0f)
+        if (lineHeight > 0f) {
+            text.setLineSpacing((lineHeight - text.textSize / density).coerceAtLeast(0f) * density, 1f)
+        } else {
+            text.setLineSpacing(0f, 1f)
+        }
+    }
+
+    private fun applyButton(node: IslandNode) {
+        val content = asMap(node.props["content"])
+        val text = content?.get("text")?.toString()
+            ?: node.props["label"]?.toString()
+            ?: ""
+        val icon = content?.let { asMap(it["icon"]) }?.get("name")?.toString()
+            ?: node.props["icon"]?.toString()
+        val loading = boolProp(node.props, "loading")
+        val iconText = semanticIcon(icon)
+        val iconPosition = node.props["iconPosition"]?.toString() ?: "start"
+        node.label?.text = when {
+            loading -> "…"
+            iconText.isNullOrEmpty() -> text
+            text.isEmpty() -> iconText
+            iconPosition == "end" -> "$text  $iconText"
+            else -> "$iconText  $text"
+        }
+        val disabled = boolProp(node.props, "disabled")
+        val pressed = boolProp(node.props, "pressed")
+        node.view.isEnabled = !disabled && !loading
+        node.view.isSelected = pressed
+        node.view.isActivated = boolProp(node.props, "expanded")
+
+        val intent = node.props["intent"]?.toString() ?: "neutral"
+        val emphasis = node.props["emphasis"]?.toString() ?: "secondary"
+        val foreground = buttonForeground(intent, emphasis, disabled)
+        val background = buttonBackground(intent, emphasis, pressed, disabled)
+        node.label?.setTextColor(readColor(node.props, "color", foreground))
+        node.label?.textSize = cssNumber(
+            styleValue(node.props, "fontSize"),
+            if (node.props["size"]?.toString() == "compact") 12f else 14f
+        )
+        node.label?.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        node.view.background = GradientDrawable().apply {
+            setColor(readStyleColor(node.props, "backgroundColor", background))
+            cornerRadius = cssNumber(styleValue(node.props, "borderRadius"), 10f) * density
+            val borderWidth = cssNumber(styleValue(node.props, "borderWidth"), 0f).roundToInt()
+            if (borderWidth > 0) {
+                setStroke(borderWidth.coerceAtLeast(1), readStyleColor(node.props, "borderColor", foreground))
+            }
+        }
     }
 
     private fun applySlider(node: IslandNode) {
@@ -328,7 +419,18 @@ internal class InlineNativeIsland(
         val value = number(node.props["value"]).coerceIn(min, max)
         val t = ((value - min) / (max - min)).coerceIn(0.0, 1.0)
         seek.progress = (t * 1000.0).roundToInt()
+        val buffered = number(node.props["bufferedValue"]).coerceIn(min, max)
+        seek.secondaryProgress = (((buffered - min) / (max - min)).coerceIn(0.0, 1.0) * 1000.0).roundToInt()
         seek.isEnabled = !boolProp(node.props, "disabled")
+        val accent = readStyleColor(node.props, "accentColor", 0xFF3B82F6.toInt())
+        seek.progressTintList = ColorStateList.valueOf(accent)
+        seek.thumbTintList = ColorStateList.valueOf(accent)
+        seek.secondaryProgressTintList = ColorStateList.valueOf(withAlpha(accent, 112))
+        seek.progressBackgroundTintList = ColorStateList.valueOf(0x665F6368)
+        val label = formatSliderValue(node.props, value)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            seek.stateDescription = label
+        }
     }
 
     private fun sliderValue(node: IslandNode, progress: Int): Double {
@@ -360,15 +462,83 @@ internal class InlineNativeIsland(
         }
     }
 
+    private fun applyNativeStyle(node: IslandNode) {
+        val style = asMap(node.props["nativeStyle"]) ?: return
+        if (style.containsKey("opacity")) {
+            node.view.alpha = number(style["opacity"]).toFloat().coerceIn(0f, 1f)
+        } else {
+            node.view.alpha = 1f
+        }
+        if (node.kind == "view" && style["backgroundColor"] != null) {
+            val background = parseCssColor(style["backgroundColor"], Color.TRANSPARENT)
+            val radius = cssNumber(style["borderRadius"], 0f) * density
+            val width = cssNumber(style["borderWidth"], 0f).roundToInt()
+            node.view.background = GradientDrawable().apply {
+                setColor(background)
+                cornerRadius = radius
+                if (width > 0) setStroke(width, parseCssColor(style["borderColor"], Color.TRANSPARENT))
+            }
+        }
+    }
+
+    private fun applyAccessibility(node: IslandNode) {
+        val hidden = boolProp(node.props, "aria-hidden") || boolProp(node.props, "ariaHidden")
+        node.view.importantForAccessibility = when {
+            hidden -> View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            node.kind in setOf("tappable", "slider", "video", "text") -> View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            else -> View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        }
+        val ariaLabel = node.props["aria-label"]?.toString()
+            ?: node.props["ariaLabel"]?.toString()
+        node.view.contentDescription = ariaLabel?.takeIf { it.isNotBlank() }
+        node.automationId?.let { node.view.tag = it }
+        val description = node.props["aria-description"]?.toString()
+            ?: node.props["ariaDescription"]?.toString()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!description.isNullOrBlank()) {
+                node.view.stateDescription = description
+            } else if (node.kind != "slider") {
+                node.view.stateDescription = null
+            }
+        }
+        node.view.accessibilityDelegate = object : View.AccessibilityDelegate() {
+            override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+                super.onInitializeAccessibilityNodeInfo(host, info)
+                info.className = when (node.kind) {
+                    "tappable" -> "android.widget.Button"
+                    "slider" -> "android.widget.SeekBar"
+                    "text" -> "android.widget.TextView"
+                    else -> info.className
+                }
+                info.isEnabled = node.view.isEnabled
+                info.isClickable = node.kind == "tappable" && node.view.isEnabled
+            }
+        }
+    }
+
+    private fun installInteractiveEvents(view: View, authorId: String) {
+        view.setOnFocusChangeListener { _, focused ->
+            eventSink(authorId, if (focused) "focus" else "blur", mapOf("source" to "keyboard"))
+        }
+        view.setOnHoverListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_HOVER_ENTER -> eventSink(authorId, "pointerenter", mapOf("source" to "pointer"))
+                MotionEvent.ACTION_HOVER_EXIT -> eventSink(authorId, "pointerleave", mapOf("source" to "pointer"))
+            }
+            false
+        }
+    }
+
     private fun applyPointerEvents(node: IslandNode) {
         val mode = node.props["pointerEvents"] as? String
             ?: if (node.kind == "text" || node.kind == "view") "box-none" else "auto"
         val interactive = node.kind == "tappable" || node.kind == "slider" || node.kind == "video"
-        node.view.isClickable = interactive && mode != "none"
-        if (mode == "none" || mode == "box-none") {
-            if (!interactive) {
-                node.view.isClickable = false
-            }
+        val acceptsPointer = mode == "auto" || mode == "box-only"
+        node.view.isClickable = interactive && acceptsPointer
+        if (interactive) {
+            val unavailable = boolProp(node.props, "disabled") ||
+                (node.kind == "tappable" && boolProp(node.props, "loading"))
+            node.view.isEnabled = acceptsPointer && !unavailable
         }
     }
 
@@ -398,6 +568,22 @@ internal class InlineNativeIsland(
         params.leftMargin = left
         params.topMargin = top
         node.view.layoutParams = params
+        updateHitSlop(node)
+    }
+
+    private fun updateHitSlop(node: IslandNode) {
+        val hitSlop = cssNumber(node.props["hitSlop"], 0f)
+        if (hitSlop <= 0f || node.kind != "tappable") {
+            touchDelegates.remove(node.key)
+            return
+        }
+        node.view.post {
+            val rect = Rect()
+            node.view.getHitRect(rect)
+            val extra = (hitSlop * density).roundToInt()
+            rect.inset(-extra, -extra)
+            touchDelegates.put(node.key, TouchDelegate(rect, node.view))
+        }
     }
 
     private fun restack() {
@@ -410,6 +596,7 @@ internal class InlineNativeIsland(
 
     private fun removeNode(key: String) {
         val node = nodes.remove(key) ?: return
+        touchDelegates.remove(key)
         node.video?.unmount()
         container.removeView(node.view)
     }
@@ -422,6 +609,7 @@ internal class InlineNativeIsland(
         val key: String,
         val kind: String,
         val authorId: String,
+        val automationId: String?,
         var order: Int,
         var props: Map<String, Any?>,
         var view: View,
@@ -438,6 +626,21 @@ internal class InlineNativeIsland(
 
     companion object {
         val ALLOWED_KINDS = setOf("root", "view", "text", "tappable", "slider", "video")
+    }
+
+    private class CompositeTouchDelegate(owner: View) : TouchDelegate(Rect(), owner) {
+        private val delegates = linkedMapOf<String, TouchDelegate>()
+
+        fun put(key: String, delegate: TouchDelegate) {
+            delegates[key] = delegate
+        }
+
+        fun remove(key: String) {
+            delegates.remove(key)
+        }
+
+        override fun onTouchEvent(event: MotionEvent): Boolean =
+            delegates.values.any { it.onTouchEvent(event) }
     }
 }
 
@@ -462,6 +665,121 @@ private fun boolProp(props: Map<String, Any?>, key: String): Boolean {
         is String -> value == "true" || value == "1"
         is Number -> value.toDouble() != 0.0
         else -> false
+    }
+}
+
+private fun styleValue(props: Map<String, Any?>, key: String): Any? =
+    asMap(props["nativeStyle"])?.get(key)
+
+private fun cssNumber(value: Any?, fallback: Float): Float {
+    return when (value) {
+        is Number -> value.toFloat()
+        is String -> Regex("-?[0-9]+(?:\\.[0-9]+)?")
+            .find(value.trim())
+            ?.value
+            ?.toFloatOrNull()
+            ?: fallback
+        else -> fallback
+    }
+}
+
+private fun fontWeight(value: Any?): Int = when (value) {
+    is Number -> value.toInt()
+    is String -> when (value.lowercase()) {
+        "bold", "bolder" -> 700
+        "normal", "lighter" -> 400
+        else -> value.toIntOrNull() ?: 400
+    }
+    else -> 400
+}
+
+private fun readColor(props: Map<String, Any?>, key: String, fallback: Int): Int {
+    val direct = props[key]
+    if (direct != null) return parseCssColor(direct, fallback)
+    return readStyleColor(props, key, fallback)
+}
+
+private fun readStyleColor(props: Map<String, Any?>, key: String, fallback: Int): Int =
+    parseCssColor(styleValue(props, key), fallback)
+
+private fun parseCssColor(value: Any?, fallback: Int): Int {
+    val raw = value?.toString()?.trim().orEmpty()
+    if (raw.isEmpty()) return fallback
+    val rgb = Regex("rgba?\\(([^)]+)\\)", RegexOption.IGNORE_CASE).matchEntire(raw)
+    if (rgb != null) {
+        val fields = rgb.groupValues[1].split(',').map { it.trim() }
+        if (fields.size >= 3) {
+            val red = cssColorChannel(fields[0])
+            val green = cssColorChannel(fields[1])
+            val blue = cssColorChannel(fields[2])
+            val alpha = fields.getOrNull(3)?.toFloatOrNull()?.let {
+                if (it <= 1f) (it * 255f).roundToInt() else it.roundToInt()
+            } ?: 255
+            return Color.argb(alpha.coerceIn(0, 255), red, green, blue)
+        }
+    }
+    return try {
+        Color.parseColor(raw)
+    } catch (_: IllegalArgumentException) {
+        fallback
+    }
+}
+
+private fun cssColorChannel(value: String): Int {
+    if (value.endsWith('%')) {
+        return ((value.dropLast(1).toFloatOrNull() ?: 0f) * 2.55f).roundToInt().coerceIn(0, 255)
+    }
+    return (value.toFloatOrNull() ?: 0f).roundToInt().coerceIn(0, 255)
+}
+
+private fun withAlpha(color: Int, alpha: Int): Int =
+    Color.argb(alpha.coerceIn(0, 255), Color.red(color), Color.green(color), Color.blue(color))
+
+private fun buttonBackground(intent: String, emphasis: String, pressed: Boolean, disabled: Boolean): Int {
+    if (emphasis == "quiet") return Color.TRANSPARENT
+    if (disabled) return 0xFF9CA3AF.toInt()
+    val base = when (intent) {
+        "accent" -> 0xFF2563EB.toInt()
+        "destructive" -> 0xFFDC2626.toInt()
+        else -> 0xFF374151.toInt()
+    }
+    if (emphasis == "secondary") return withAlpha(base, if (pressed) 112 else 80)
+    return if (pressed) withAlpha(base, 210) else base
+}
+
+private fun buttonForeground(intent: String, emphasis: String, disabled: Boolean): Int {
+    if (disabled) return 0xFFE5E7EB.toInt()
+    if (emphasis != "quiet") return Color.WHITE
+    return when (intent) {
+        "accent" -> 0xFF2563EB.toInt()
+        "destructive" -> 0xFFDC2626.toInt()
+        else -> 0xFF111827.toInt()
+    }
+}
+
+private fun semanticIcon(name: String?): String? = when (name) {
+    "close" -> "×"
+    "play" -> "▶"
+    "pause" -> "Ⅱ"
+    "mute" -> "🔇"
+    "unmute" -> "🔊"
+    "fullscreen" -> "⛶"
+    "more" -> "⋯"
+    else -> null
+}
+
+private fun formatSliderValue(props: Map<String, Any?>, value: Double): String? {
+    return when (props["valueLabel"]?.toString()) {
+        "value" -> if (value % 1.0 == 0.0) value.roundToInt().toString() else "%.1f".format(value)
+        "time" -> {
+            val total = value.coerceAtLeast(0.0).roundToInt()
+            val hours = total / 3600
+            val minutes = (total % 3600) / 60
+            val seconds = total % 60
+            if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
+            else "%d:%02d".format(minutes, seconds)
+        }
+        else -> null
     }
 }
 

@@ -19,13 +19,18 @@ mod surface_window;
 use dcomp::DcompTree;
 pub use dcomp::{CompositionSurfacePixels, IslandVideoFrame, IslandVisualSpec};
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
+
+type IslandPointerFilter = Arc<dyn Fn(&str, IslandPointerPhase, f32, f32) -> bool + Send + Sync>;
 
 static ISLAND_VISUALS: OnceLock<Mutex<HashMap<String, Vec<IslandVisualSpec>>>> = OnceLock::new();
 static SURFACE_WEBTAGS: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
-static ISLAND_POINTER_FILTER: OnceLock<
-    Mutex<Option<std::sync::Arc<dyn Fn(&str, IslandPointerPhase, f32, f32) -> bool + Send + Sync>>>,
-> = OnceLock::new();
+static ISLAND_POINTER_FILTER: OnceLock<Mutex<Option<IslandPointerFilter>>> = OnceLock::new();
+
+/// High-word marker used by LingXia's deterministic `PostMessage` input.
+/// Synthetic moves must not arm `TrackMouseEvent`, whose hover state follows
+/// the unrelated physical cursor and would immediately emit `WM_MOUSELEAVE`.
+pub const SYNTHETIC_MOUSE_WPARAM_MARKER: usize = 0x4c58_0000;
 
 fn island_visuals() -> &'static Mutex<HashMap<String, Vec<IslandVisualSpec>>> {
     ISLAND_VISUALS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -35,9 +40,7 @@ fn surface_webtags() -> &'static Mutex<HashMap<isize, String>> {
     SURFACE_WEBTAGS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn island_pointer_filter() -> &'static Mutex<
-    Option<std::sync::Arc<dyn Fn(&str, IslandPointerPhase, f32, f32) -> bool + Send + Sync>>,
-> {
+fn island_pointer_filter() -> &'static Mutex<Option<IslandPointerFilter>> {
     ISLAND_POINTER_FILTER.get_or_init(|| Mutex::new(None))
 }
 
@@ -68,7 +71,7 @@ pub fn set_island_pointer_filter(
     filter: impl Fn(&str, IslandPointerPhase, f32, f32) -> bool + Send + Sync + 'static,
 ) {
     if let Ok(mut slot) = island_pointer_filter().lock() {
-        *slot = Some(std::sync::Arc::new(filter));
+        *slot = Some(Arc::new(filter));
     }
 }
 

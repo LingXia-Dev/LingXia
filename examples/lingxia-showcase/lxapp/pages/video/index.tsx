@@ -69,6 +69,7 @@ export default function App() {
   const video = data?.videos?.[0];
   const eventLog = data?.eventLog || 'Ready';
   const [islandPlaying, setIslandPlaying] = React.useState(false);
+  const [nativePressSource, setNativePressSource] = React.useState('none');
   const currentTime = typeof data?.currentTime === 'number' ? data.currentTime : 0;
   const duration = typeof data?.duration === 'number' ? data.duration : 0;
 
@@ -117,6 +118,7 @@ export default function App() {
             {eventLog}
           </div>
           <div data-testid="island-playing" className="sr-only">{islandPlaying ? 'yes' : 'no'}</div>
+          <div data-testid="native-press-source" className="sr-only">{nativePressSource}</div>
         </div>
 
         <div className="bg-black rounded-xl overflow-hidden">
@@ -148,35 +150,52 @@ export default function App() {
               onRateChange={onRateChange}
             />
             <LxNativeCover pointerEvents="none" data-testid="inline-native-cover">
-              <LxNativeText className="absolute left-3 top-3 text-white text-xs">Inline native</LxNativeText>
+              <LxNativeText
+                className="absolute left-3 top-3 text-white text-xs"
+                fontSize={12}
+                fontWeight={600}
+                color="#ffffff"
+                maxLines={1}
+              >
+                Inline native
+              </LxNativeText>
             </LxNativeCover>
           </LxNativeRoot>
         </div>
 
-        <LxNativeRoot
-          id="island-controls"
-          className="block w-full"
-          style={{ height: 56 }}
-        >
+        <LxNativeRoot id="island-controls" className="block w-full" style={{ height: 56 }}>
           <LxNativeView
             className="flex h-full w-full items-center gap-3 px-3"
             style={{ height: 56 }}
           >
             <LxNativeButton
               id="island-play"
-              label="Play"
-              aria-label="Island play"
-              style={{ width: 80, height: 40 }}
-              onPress={() => play()}
+              automationId="island-play-button"
+              label={islandPlaying ? 'Pause' : 'Play'}
+              icon={islandPlaying ? 'pause' : 'play'}
+              intent="accent"
+              emphasis="primary"
+              size="regular"
+              hitSlop={8}
+              aria-label={islandPlaying ? 'Pause island video' : 'Play island video'}
+              aria-description="Controls the native video player"
+              style={{ width: 96, height: 40, borderRadius: 10, color: '#ffffff' }}
+              onPress={({ source }) => {
+                setNativePressSource(source);
+                if (islandPlaying) pause();
+                else play();
+              }}
             />
             <LxNativeSlider
               id="island-seek"
               aria-label="Island value"
               min={0}
               max={100}
-              value={Math.min(100, Math.round(currentTime))}
+              step={1}
+              value={duration > 0 ? Math.min(100, Math.round((currentTime / duration) * 100)) : 0}
+              bufferedValue={duration > 0 ? Math.min(100, Math.round((currentTime / duration) * 100) + 15) : 15}
               valueLabel="value"
-              style={{ flex: 1, height: 24, minWidth: 160 }}
+              style={{ flex: 1, height: 28, minWidth: 160, accentColor: '#2563eb' }}
               onValueCommit={({ value }) => {
                 if (duration > 0) {
                   seek((value / 100) * duration);
