@@ -194,7 +194,16 @@ export function createFixtureServer() {
         if (Number.isInteger(reject) && reject >= 400 && reject <= 599) {
           response.writeHead(reject, { 'content-type': 'text/plain' });
           response.end(`refused ${reject}`);
-          request.socket.destroy();
+          // Resetting a socket that still holds unread data discards whatever
+          // is unread on the peer too, answer included. Absorb a slice so the
+          // client reads the status, while leaving far too much body
+          // outstanding for the upload to finish.
+          let drained = 0;
+          request.on('data', (chunk) => {
+            drained += chunk.length;
+            if (drained >= 256 * 1024) request.socket.destroy();
+          });
+          request.on('end', () => request.socket.destroy());
           return;
         }
         // A presigned-style endpoint: the body is the file, nothing else.

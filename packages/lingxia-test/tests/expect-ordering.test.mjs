@@ -49,6 +49,12 @@ test("treats a non-number as a broken assertion, even when inverted", () => {
   ]) {
     assert.match(failure(body)?.message ?? "", /must be numbers/);
   }
+
+  // The report has to name the assertion the spec wrote, not its positive twin.
+  assert.equal(
+    failure(() => expect(undefined).not.toBeGreaterThan(0))?.matcher,
+    "not.toBeGreaterThan",
+  );
 });
 
 test("compares infinities like the operators do", () => {

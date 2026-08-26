@@ -166,8 +166,14 @@ function createMatchers<T>(actual: T, inverted: boolean): Matchers<T> {
       // Comparing a non-number is a broken assertion, not a threshold that was
       // missed, so it fails even under `.not` -- otherwise a misspelled field
       // reads as "correctly not greater" and the spec passes on nothing.
-      settle(matcher, actual, expected, false, false, "both values must be numbers");
-      return;
+      // Logged under the matcher the spec actually wrote, `.not` included.
+      logAssertion({
+        matcher: inverted ? `not.${matcher}` : matcher,
+        expected: formatValue(expected),
+        actual: formatValue(actual),
+        passed: false,
+      });
+      fail(matcher, actual, expected, inverted, "both values must be numbers");
     }
     settle(matcher, actual, expected, inverted, pass(actual, expected));
   };

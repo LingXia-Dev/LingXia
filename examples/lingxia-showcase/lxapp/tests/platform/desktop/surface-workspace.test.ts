@@ -2928,8 +2928,8 @@ desktopTest('migrates one keyed workspace across aside edges and main exactly on
   expect(result.afterRepeatedClose.mainSwitcher.revision).toBe(result.revisionAfterClose);
   expect(topology(result.afterRepeatedClose)).toEqual(topology(result.afterClose));
   expect(result.aside.mainSwitcher.revision).toBeLessThan(result.mainLayout.mainSwitcher.revision);
-  expect(result.mainLayout.mainSwitcher.revision < result.dockedLayout.mainSwitcher.revision)
-    .toBeTruthy();
+  expect(result.mainLayout.mainSwitcher.revision)
+    .toBeLessThan(result.dockedLayout.mainSwitcher.revision);
   expect(topology(result.afterCleanup)).toEqual(topology(before));
 });
 
