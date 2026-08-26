@@ -157,8 +157,8 @@ fn write_if_changed(dest: &Path, content: &[u8]) -> Result<bool> {
 /// merged by Gradle): the cover drawable the overlay renders as the first
 /// frame, and the color themes. The launcher activity picks the theme up
 /// through the `lxSplashTheme` manifest placeholder. The configured mark is
-/// deliberately not staged — the splash icon slot keeps the real app icon,
-/// whose launcher-zoom morph the OS composes.
+/// deliberately not staged — on API 31+ the icon slot belongs to the real app
+/// icon, whose launcher-zoom morph the OS composes.
 pub fn stage_android_res(splash: &ResolvedSplash, res_dir: &Path) -> Result<()> {
     if let Some(image) = &splash.image {
         save_png(
@@ -182,19 +182,31 @@ pub fn stage_android_res(splash: &ResolvedSplash, res_dir: &Path) -> Result<()> 
     fs::create_dir_all(values_path.parent().unwrap())?;
     fs::write(&values_path, values)?;
 
-    // API 31+: the system splash window takes over the launch frame, and it
-    // cannot render the cover. So it must not show a face of its own either:
-    // the icon slot is explicitly blanked and the background is the cover's
-    // ground, turning the mandatory splash beat into a plain brand-color
-    // frame that reads as the cover's entrance — an icon there would be a
-    // second face shown before the real one.
+    // API 31+: the system splash window takes over the launch frame and cannot
+    // render the cover, so what belongs in its icon slot depends on whether a
+    // cover is coming.
+    //
+    // With a cover, the slot is blanked: the cover is the app's real first
+    // face, and an icon here would be a second face shown before it. The beat
+    // becomes a plain brand-color frame that reads as the cover's entrance.
+    //
+    // Without one (`image` omitted — the documented placeholder-only launch
+    // that holds until the home page is ready) there is no second face to
+    // avoid, and blanking the slot leaves the launch showing nothing at all
+    // until the home page renders, which reads as a hang rather than a launch.
+    // So the slot is left alone and the platform draws the launcher icon,
+    // preserving its zoom morph out of the launcher.
+    let animated_icon = if splash.image.is_some() {
+        "\n        <item name=\"android:windowSplashScreenAnimatedIcon\">@android:color/transparent</item>"
+    } else {
+        ""
+    };
     let v31 = format!(
         r#"<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="{ANDROID_SPLASH_THEME}" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowBackground">@color/{ANDROID_COLOR_RES}</item>
-        <item name="android:windowSplashScreenBackground">@color/{ANDROID_COLOR_RES}</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="android:windowSplashScreenBackground">@color/{ANDROID_COLOR_RES}</item>{animated_icon}
     </style>
 </resources>
 "#
@@ -486,4 +498,53 @@ fn sync_harmony_start_window(harmony_dir: &Path, has_mark: bool) -> Result<bool>
     fs::write(&module_path, format!("{updated}\n"))
         .with_context(|| format!("Failed to write {}", module_path.display()))?;
     Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::{DynamicImage, RgbaImage};
+
+    fn splash(with_cover: bool) -> ResolvedSplash {
+        ResolvedSplash {
+            image: with_cover.then(|| DynamicImage::ImageRgba8(RgbaImage::new(4, 4))),
+            mark: None,
+            background: "#130CA2".to_string(),
+        }
+    }
+
+    fn staged_v31(with_cover: bool) -> String {
+        let dir = tempfile::tempdir().unwrap();
+        stage_android_res(&splash(with_cover), dir.path()).unwrap();
+        fs::read_to_string(dir.path().join("values-v31/lingxia_splash.xml")).unwrap()
+    }
+
+    /// A cover is the app's real first face, so the system splash must not
+    /// show a second one ahead of it.
+    #[test]
+    fn cover_blanks_the_api31_icon_slot() {
+        assert!(staged_v31(true).contains(
+            "<item name=\"android:windowSplashScreenAnimatedIcon\">@android:color/transparent</item>"
+        ));
+    }
+
+    /// Without a cover there is no second face to avoid, and a blanked slot
+    /// would leave the launch showing nothing at all until the home page
+    /// renders. The slot is left to the platform so it draws the launcher
+    /// icon and keeps the zoom morph.
+    #[test]
+    fn placeholder_only_launch_keeps_the_real_app_icon() {
+        assert!(!staged_v31(false).contains("windowSplashScreenAnimatedIcon"));
+    }
+
+    /// Either way the beat is the configured brand colour, never a white flash.
+    #[test]
+    fn both_shapes_paint_the_configured_background() {
+        for with_cover in [true, false] {
+            let xml = staged_v31(with_cover);
+            assert!(xml.contains(&format!(
+                "<item name=\"android:windowSplashScreenBackground\">@color/{ANDROID_COLOR_RES}</item>"
+            )));
+        }
+    }
 }
