@@ -561,6 +561,7 @@ final class InlineNativeIsland {
         return false
     }
 
+    @MainActor
     private final class IslandNode {
         let key: String
         let kind: String
