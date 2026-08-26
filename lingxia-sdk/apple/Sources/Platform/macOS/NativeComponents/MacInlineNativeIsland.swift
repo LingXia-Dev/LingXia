@@ -601,6 +601,7 @@ final class MacInlineNativeIsland {
         return false
     }
 
+    @MainActor
     private final class IslandNode: NSObject {
         let key: String
         let kind: String
