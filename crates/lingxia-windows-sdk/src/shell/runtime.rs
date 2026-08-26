@@ -4816,7 +4816,10 @@ fn focus_or_open_lxapp(_owner_appid: &str, target_appid: &str) {
 }
 
 fn open_pinned_lxapp_main(target_appid: &str) {
-    match lxapp::open_lxapp(target_appid, LxAppStartupOptions::default()) {
+    match lxapp::open_lxapp(
+        target_appid,
+        LxAppStartupOptions::default().set_release_type(lxapp::host_channel()),
+    ) {
         Ok(_) => focus_existing_main_lxapp(target_appid),
         Err(err) => log::warn!("failed to open pinned lxapp {target_appid}: {err}"),
     }
@@ -6722,14 +6725,16 @@ async fn open_panel_lxapp(
     appid: &str,
     path: &str,
 ) -> Result<(), lxapp::LxAppError> {
-    lxapp::prepare_lxapp_open(appid, ReleaseType::Release).await?;
+    let channel = lxapp::host_channel();
+    lxapp::prepare_lxapp_open(appid, channel).await?;
     let _ = lxapp::open_lxapp(
         appid,
         LxAppStartupOptions::new(path)
+            .set_release_type(channel)
             .set_open_mode(LxAppOpenMode::Panel)
             .set_panel_id(panel_id.to_string()),
     )?;
-    lxapp::schedule_lxapp_update_check(appid, ReleaseType::Release);
+    lxapp::schedule_lxapp_update_check(appid, channel);
     Ok(())
 }
 

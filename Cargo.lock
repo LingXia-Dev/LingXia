@@ -3752,6 +3752,7 @@ dependencies = [
 name = "lingxia-update"
 version = "0.12.0"
 dependencies = [
+ "lingxia-app-context",
  "lingxia-provider",
  "serde",
  "thiserror 2.0.20",

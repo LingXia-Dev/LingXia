@@ -1,5 +1,6 @@
 use crate::lxapp::ReleaseType;
 use lingxia_platform::traits::app_runtime::LxAppOpenMode;
+use lingxia_update::host_channel;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
 use serde_json::Value;
 
@@ -105,7 +106,7 @@ pub fn parse_env_release_type(tag: &str) -> Result<ReleaseType, String> {
 pub fn parse_optional_env_release_type(env_version: Option<&str>) -> Result<ReleaseType, String> {
     match env_version.map(str::trim).filter(|value| !value.is_empty()) {
         Some(value) => parse_env_release_type(value),
-        None => Ok(ReleaseType::Release),
+        None => Ok(host_channel()),
     }
 }
 
@@ -150,7 +151,7 @@ impl LxAppStartupOptions {
         Self {
             path: path.to_string(),
             query: query_str.to_string(),
-            release_type: ReleaseType::Release,
+            release_type: host_channel(),
             open_mode: LxAppOpenMode::Normal,
             panel_id: String::new(),
             ..Default::default()

@@ -21,6 +21,9 @@ pub trait LxAppUpdateHost: Clone + Send + Sync + 'static {
     fn spawn_detached(&self, task: BoxFuture<'static, ()>);
     fn target_appid(&self) -> &str;
     fn channel(&self) -> ReleaseType;
+    /// Whether the target's bundle is managed by the update system. False for a
+    /// bundle served live from a local path, which has no installed package.
+    fn is_ota_managed(&self) -> bool;
     fn runtime_version(&self) -> &str;
     fn current_version_hint(&self) -> Option<String>;
     fn installed_version<'a>(&'a self) -> BoxFuture<'a, Result<Option<String>, UpdateError>>;
@@ -201,7 +204,7 @@ pub fn spawn_background_update_check<H: LxAppUpdateHost>(host: H, current_versio
 }
 
 pub async fn ensure_first_install<H: LxAppUpdateHost>(host: &H) -> Result<(), UpdateError> {
-    if host.channel() != ReleaseType::Release {
+    if !host.is_ota_managed() {
         return Ok(());
     }
 
@@ -263,7 +266,7 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
         None
     };
 
-    if host.channel() == ReleaseType::Release && update_config().force_update_gate {
+    if host.is_ota_managed() && update_config().force_update_gate {
         match with_foreground_update_timeout(
             host.check_latest_update(current_version.as_deref()),
             &format!("force-update gate check for {}", host.target_appid()),
@@ -333,7 +336,7 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
 pub async fn ensure_force_update_for_installed<H: LxAppUpdateHost>(
     host: &H,
 ) -> Result<(), UpdateError> {
-    if host.channel() != ReleaseType::Release {
+    if !host.is_ota_managed() {
         return Ok(());
     }
 

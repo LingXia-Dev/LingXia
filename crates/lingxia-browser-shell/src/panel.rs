@@ -1,6 +1,6 @@
 use lingxia_platform::traits::app_runtime::LxAppOpenMode;
+use lxapp::LxAppError;
 use lxapp::startup::LxAppStartupOptions;
-use lxapp::{LxAppError, ReleaseType};
 
 pub fn panel_item_for_id(panel_id: &str) -> Option<(String, String)> {
     lingxia_app_context::app_config()
@@ -34,15 +34,17 @@ pub fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
 }
 
 async fn do_open_panel_lxapp(panel_id: &str, appid: &str, path: &str) -> Result<(), LxAppError> {
-    lxapp::prepare_lxapp_open(appid, ReleaseType::Release).await?;
+    let channel = lxapp::host_channel();
+    lxapp::prepare_lxapp_open(appid, channel).await?;
 
     let _ = lxapp::open_lxapp(
         appid,
         LxAppStartupOptions::new(path)
+            .set_release_type(channel)
             .set_open_mode(LxAppOpenMode::Panel)
             .set_panel_id(panel_id.to_string()),
     )?;
 
-    lxapp::schedule_lxapp_update_check(appid, ReleaseType::Release);
+    lxapp::schedule_lxapp_update_check(appid, channel);
     Ok(())
 }

@@ -54,6 +54,7 @@ pub use lifecycle::{
 };
 pub use lingxia_surface;
 pub use lingxia_surface::{FloatDismiss, SurfaceInteraction};
+pub use lingxia_update::host_channel;
 pub use lingxia_update::{
     ReleaseType, RuntimeCompatibilityError, SemanticVersion, Version, VersionError,
 };
