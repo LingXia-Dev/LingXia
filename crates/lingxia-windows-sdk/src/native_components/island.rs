@@ -30,7 +30,7 @@ static CONTEXTS: OnceLock<Mutex<HashMap<String, PageContext>>> = OnceLock::new()
 static LAST_ATTACHES: OnceLock<Mutex<HashMap<String, Vec<PendingAttach>>>> = OnceLock::new();
 static ISLAND_COMPONENT_KEYS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 static APPLY_SCHEDULED: AtomicBool = AtomicBool::new(false);
-static NEXT_APPLY: OnceLock<Mutex<Option<DeferredIslandApply>>> = OnceLock::new();
+static PENDING_APPLIES: OnceLock<Mutex<HashMap<String, DeferredIslandApply>>> = OnceLock::new();
 static POINTER_FILTER_READY: AtomicBool = AtomicBool::new(false);
 
 struct DeferredIslandApply {
@@ -39,8 +39,8 @@ struct DeferredIslandApply {
     pending: Vec<PendingAttach>,
 }
 
-fn next_apply() -> &'static Mutex<Option<DeferredIslandApply>> {
-    NEXT_APPLY.get_or_init(|| Mutex::new(None))
+fn pending_applies() -> &'static Mutex<HashMap<String, DeferredIslandApply>> {
+    PENDING_APPLIES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn sessions() -> &'static Mutex<HashMap<String, IslandSession>> {
@@ -246,6 +246,10 @@ pub(super) fn teardown_island(page_key: &str) {
     if let Ok(mut attaches) = last_attaches().lock() {
         attaches.remove(page_key);
     }
+    pending_applies()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .remove(page_key);
     island_component_keys().retain(|key| !key.starts_with(page_key));
 }
 
@@ -349,36 +353,66 @@ fn schedule_island_apply(
     nodes: Vec<lxapp::inline_native::IslandPaintNode>,
     pending: Vec<PendingAttach>,
 ) {
-    *next_apply()
+    let page_key = context.page_key.clone();
+    pending_applies()
         .lock()
-        .unwrap_or_else(|poison| poison.into_inner()) = Some(DeferredIslandApply {
-        context,
-        nodes,
-        pending,
-    });
+        .unwrap_or_else(|poison| poison.into_inner())
+        .insert(
+            page_key,
+            DeferredIslandApply {
+                context,
+                nodes,
+                pending,
+            },
+        );
     if APPLY_SCHEDULED.swap(true, Ordering::SeqCst) {
         return;
     }
-    let _ = std::thread::Builder::new()
+    if let Err(err) = std::thread::Builder::new()
         .name("lingxia-island-apply".into())
         .spawn(|| {
             std::thread::sleep(std::time::Duration::from_millis(48));
-            APPLY_SCHEDULED.store(false, Ordering::SeqCst);
-            let job = next_apply()
-                .lock()
-                .unwrap_or_else(|poison| poison.into_inner())
-                .take();
-            let Some(job) = job else {
-                return;
-            };
-            apply_queued_island_visuals(&job.context.page_key);
-            let Some(parent) = super::parent_window_for_page(&job.context.page_key) else {
-                return;
-            };
-            super::run_on_window_thread(parent, move || {
-                mount_pending_island_videos(&job.context, &job.nodes, &job.pending);
-            });
-        });
+            loop {
+                let jobs = {
+                    let mut jobs = pending_applies()
+                        .lock()
+                        .unwrap_or_else(|poison| poison.into_inner());
+                    if jobs.is_empty() {
+                        // Publish the idle state while holding the queue lock.
+                        // A racing producer inserts only after this unlock and
+                        // will therefore observe `false` and start a new drain.
+                        APPLY_SCHEDULED.store(false, Ordering::SeqCst);
+                        return;
+                    }
+                    std::mem::take(&mut *jobs)
+                };
+                for (_, job) in jobs {
+                    let page_key = job.context.page_key.clone();
+                    let Some(parent) = super::parent_window_for_page(&page_key) else {
+                        log::debug!("no host window for {page_key}; deferred island apply dropped");
+                        continue;
+                    };
+                    let posted = super::run_on_window_thread(parent, move || {
+                        let active = contexts()
+                            .lock()
+                            .unwrap_or_else(|poison| poison.into_inner())
+                            .contains_key(&job.context.page_key);
+                        if !active {
+                            return;
+                        }
+                        apply_queued_island_visuals(&job.context.page_key);
+                        mount_pending_island_videos(&job.context, &job.nodes, &job.pending);
+                    });
+                    if !posted {
+                        log::debug!("host window disappeared before island apply on {page_key}");
+                    }
+                }
+            }
+        })
+    {
+        APPLY_SCHEDULED.store(false, Ordering::SeqCst);
+        log::warn!("failed to spawn deferred island apply worker: {err}");
+    }
 }
 
 fn apply_queued_island_visuals(page_key: &str) {
