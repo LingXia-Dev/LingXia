@@ -844,7 +844,19 @@ jobs:
 
       - name: Install showcase test dependencies
         working-directory: examples/lingxia-showcase/lxapp
-        run: npm ci
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            if npm ci; then
+              exit 0
+            fi
+            if [[ "$attempt" == 3 ]]; then
+              exit 1
+            fi
+            delay=$((attempt * 10))
+            echo "npm ci failed (attempt $attempt/3); retrying in ${delay}s..."
+            sleep "$delay"
+          done
 
       - name: Check release notes
         # A public lx API change that ships with only a changelog line leaves a
@@ -923,7 +935,18 @@ jobs:
       - name: Install showcase test dependencies
         working-directory: examples/lingxia-showcase/lxapp
         shell: bash
-        run: npm ci
+        run: |
+          for attempt in 1 2 3; do
+            if npm ci; then
+              exit 0
+            fi
+            if [[ "$attempt" == 3 ]]; then
+              exit 1
+            fi
+            delay=$((attempt * 10))
+            echo "npm ci failed (attempt $attempt/3); retrying in ${delay}s..."
+            sleep "$delay"
+          done
 
       - name: Run showcase automation
         if: runner.os == 'Windows'
