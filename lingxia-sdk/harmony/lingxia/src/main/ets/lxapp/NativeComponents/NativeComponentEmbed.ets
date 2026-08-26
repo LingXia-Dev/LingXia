@@ -58,6 +58,7 @@ export class NativeComponentEmbedManager {
   private webTag: string;
   private nodeControllerMap: Map<string, NativeComponentNodeController> = new Map();
   private componentIdArr: string[] = [];
+  private islandComponentIds: Set<string> = new Set();
   private pendingPropsByComponentId: Map<string, NativeComponentRecord> = new Map();
   private uiContext: UIContext | null = null;
   private onComponentsChanged?: () => void;
@@ -130,6 +131,39 @@ export class NativeComponentEmbedManager {
     if (this.componentIdArr.indexOf(componentId) < 0) {
       this.componentIdArr.push(componentId);
     }
+    this.onComponentsChanged?.();
+  }
+
+  /** Replace the island-owned slice atomically so unmounts and reorders cannot leave stale nodes. */
+  syncIslandControllers(componentIds: string[], controllers: NativeComponentNodeController[]): void {
+    const nextIds = new Set<string>(componentIds);
+    this.islandComponentIds.forEach((componentId: string) => {
+      if (nextIds.has(componentId)) {
+        return;
+      }
+      const controller = this.nodeControllerMap.get(componentId);
+      if (controller) {
+        controller.setBuilderNode(null);
+        controller.rebuild();
+      }
+      this.nodeControllerMap.delete(componentId);
+      this.componentPageFuncBindings.delete(componentId);
+      this.componentDataset.delete(componentId);
+      this.componentPlaybackIntent.delete(componentId);
+      this.componentsPendingAutoResume.delete(componentId);
+    });
+
+    for (let i = 0; i < componentIds.length; i++) {
+      const componentId = componentIds[i];
+      const controller = controllers[i];
+      if (componentId && controller) {
+        this.nodeControllerMap.set(componentId, controller);
+      }
+    }
+
+    const regularIds = this.componentIdArr.filter((componentId: string) => !this.islandComponentIds.has(componentId));
+    this.islandComponentIds = nextIds;
+    this.componentIdArr = regularIds.concat(componentIds);
     this.onComponentsChanged?.();
   }
 
@@ -878,6 +912,7 @@ export class NativeComponentEmbedManager {
     });
     this.nodeControllerMap.clear();
     this.componentIdArr = [];
+    this.islandComponentIds.clear();
     this.componentPageFuncBindings.clear();
     this.componentDataset.clear();
   }

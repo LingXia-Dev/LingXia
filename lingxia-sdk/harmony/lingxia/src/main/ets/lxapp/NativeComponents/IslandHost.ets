@@ -26,6 +26,7 @@ export class IslandNode {
   rectY: number = 0;
   rectW: number = 0;
   rectH: number = 0;
+  visible: boolean = true;
 }
 
 export class InlineNativeIslandHost {
@@ -88,11 +89,7 @@ export class InlineNativeIslandHost {
    */
   teardown(): void {
     this.nodes.forEach((node: IslandNode) => {
-      if (node.kind === 'video' && node.authorId.length > 0) {
-        LxNativeVideoPlayer.destroyStatic(node.authorId);
-      }
-      node.controller.setBuilderNode(null);
-      node.controller.rebuild();
+      this.releaseNode(node);
     });
     this.nodes.clear();
     this.compositionOrder = [];
@@ -120,6 +117,12 @@ export class InlineNativeIslandHost {
     const values: IslandNode[] = [];
     this.nodes.forEach((node: IslandNode) => {
       values.push(node);
+    });
+    values.sort((a: IslandNode, b: IslandNode) => {
+      if (a.order !== b.order) {
+        return a.order - b.order;
+      }
+      return a.key < b.key ? -1 : 1;
     });
     return values;
   }
@@ -150,7 +153,11 @@ export class InlineNativeIslandHost {
         const node = op['node'] as Record<string, Object>;
         const ref = (node['ref'] as Record<string, Object>) ?? node;
         const key = (ref['nodeKey'] as string) ?? '';
-        this.nodes.delete(key);
+        const existing = this.nodes.get(key);
+        if (existing) {
+          this.releaseNode(existing);
+          this.nodes.delete(key);
+        }
       } else if (kind === 'reorder') {
         const node = op['node'] as Record<string, Object>;
         const ref = (node['ref'] as Record<string, Object>) ?? node;
@@ -194,11 +201,12 @@ export class InlineNativeIslandHost {
       existing.rectY = (rect['y'] as number) ?? 0;
       existing.rectW = (rect['width'] as number) ?? 0;
       existing.rectH = (rect['height'] as number) ?? 0;
+      existing.visible = (entry['visible'] as boolean) ?? true;
       const update = new NodeControllerUpdateParams();
       update.x = existing.rectX;
       update.y = existing.rectY;
-      update.width = existing.rectW;
-      update.height = existing.rectH;
+      update.width = existing.visible ? Math.max(existing.rectW, 1) : 0;
+      update.height = existing.visible ? Math.max(existing.rectH, 1) : 0;
       existing.controller.updateRenderOption(update);
     }
   }
@@ -263,6 +271,8 @@ export class InlineNativeIslandHost {
       if (controller) {
         controller.toggleFullscreen(0, 0);
       }
+    } else if (name === 'exitFullscreen') {
+      LxNativeVideoPlayer.exitFullscreen(authorId);
     }
   }
 
@@ -294,6 +304,10 @@ export class InlineNativeIslandHost {
     if (ALLOWED_KINDS.indexOf(kind) < 0) {
       return;
     }
+    const previous = this.nodes.get(key);
+    if (previous) {
+      this.releaseNode(previous);
+    }
     const item = new IslandNode();
     item.key = key;
     item.kind = kind;
@@ -309,6 +323,10 @@ export class InlineNativeIslandHost {
       Object.keys(rawProps).forEach((propKey: string) => {
         props.set(propKey, rawProps[propKey]);
       });
+    }
+    const automationId = node['automationId'] as string | undefined;
+    if (automationId && automationId.length > 0) {
+      props.set('automationId', automationId);
     }
     params.props = props;
     item.props = props;
@@ -367,5 +385,14 @@ export class InlineNativeIslandHost {
       this.compositionOrder.push(values[i].key);
       this.nodeContainers.push(values[i].controller);
     }
+  }
+
+  private releaseNode(node: IslandNode): void {
+    if (node.kind === 'video') {
+      const componentId = node.authorId.length > 0 ? node.authorId : node.key;
+      LxNativeVideoPlayer.destroyStatic(componentId);
+    }
+    node.controller.setBuilderNode(null);
+    node.controller.rebuild();
   }
 }

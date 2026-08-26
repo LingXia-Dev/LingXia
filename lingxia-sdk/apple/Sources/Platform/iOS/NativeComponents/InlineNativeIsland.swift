@@ -1,3 +1,4 @@
+#if os(iOS)
 import UIKit
 
 /// One ordered container for an inline native Root on iOS.
@@ -387,3 +388,4 @@ final class InlineNativeIsland {
         }
     }
 }
+#endif
