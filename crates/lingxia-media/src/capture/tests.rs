@@ -823,13 +823,23 @@ fn revoked_authorization_stops_the_provider_session() {
     provider.emit(ProviderEvent::AuthorizationRevoked {
         track: TrackKind::Visual,
     });
-    let _ = collect_until(&rx, |event| {
+    let events = collect_until(&rx, |event| {
         matches!(
             event,
             CaptureEvent::State(PipelineState::AuthorizationRevoked)
         )
     });
 
+    // Waiting is not observing: without this the wait could time out and the
+    // assertion below would race the worker instead of following it.
+    assert!(
+        events.iter().any(|event| matches!(
+            event,
+            CaptureEvent::State(PipelineState::AuthorizationRevoked)
+        )),
+        "the pipeline never announced the revocation: {events:?}"
+    );
+    // The announcement follows the stop, so seeing it settles this.
     assert!(
         provider.session.stopped.load(Ordering::SeqCst),
         "capture must stop when the user withdraws authorization"

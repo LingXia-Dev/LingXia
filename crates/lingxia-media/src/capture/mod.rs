@@ -776,18 +776,21 @@ fn handle_provider_event(inner: &Arc<Mutex<Inner>>, slot: u64, event: ProviderEv
             });
         }
         ProviderEvent::AuthorizationRevoked { track } => {
+            // Consent is gone: the native capture has to end with it, and end
+            // before anyone is told. Announcing first leaves every listener --
+            // a UI dropping its recording indicator included -- believing the
+            // camera is off while it is still running.
+            inner.shutdown_sessions();
             inner.emit(CaptureEvent::AuthorizationRevoked { track });
             inner.set_state(PipelineState::AuthorizationRevoked);
-            // Consent is gone: the native capture has to end with it.
-            inner.shutdown_sessions();
         }
         ProviderEvent::Failed { track, error } => {
+            inner.shutdown_sessions();
             inner.emit(CaptureEvent::Failed {
                 track,
                 error: error.clone(),
             });
             inner.set_state(PipelineState::Failed);
-            inner.shutdown_sessions();
         }
         ProviderEvent::Stopped => {
             inner.set_state(PipelineState::Stopped);
