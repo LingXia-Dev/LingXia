@@ -505,11 +505,21 @@ class LxAppActivity : AppCompatActivity() {
             val currentBg = tabBar?.config?.backgroundColor ?: tabBarConfig?.backgroundColor
             val isTabBarTransparent = currentBg == Color.TRANSPARENT ||
                                      (currentBg?.let { Color.alpha(it) < 255 } == true)
+            // Reserve the system bar strip only where the host actually draws
+            // the bottom: an opaque TabBar that is *on screen*. Keying this off
+            // the TabBar config alone reserved it on pages that hide the bar
+            // too, and what showed through the reserved strip was the theme's
+            // colorBackground — a plate the page never asked for, under a page
+            // that had no chrome down there at all. The opaque bar also shrank
+            // the window, so such a page could not reach the bottom edge even
+            // if it wanted to. Pages pad for the system bars the standard way,
+            // via env(safe-area-inset-bottom).
+            val hostOwnsBottom = !isTabBarTransparent && tabBar?.visibility == View.VISIBLE
 
             // Keep host chrome anchored while resizing only the WebView around the IME.
             // Applying the IME inset to rootContainer also lifts the TabBar, unlike the
             // native iOS and Harmony shells where the keyboard covers fixed chrome.
-            val baseBottom = if (isTabBarTransparent) 0 else sysBars.bottom
+            val baseBottom = if (hostOwnsBottom) sysBars.bottom else 0
             val sidePadLeft = if (isTabBarTransparent) 0 else sysBars.left
             val sidePadRight = if (isTabBarTransparent) 0 else sysBars.right
             view.setPadding(sidePadLeft, 0, sidePadRight, baseBottom)
@@ -811,7 +821,7 @@ class LxAppActivity : AppCompatActivity() {
 
     private fun setupTabBar(config: TabBarState?) {
         if (config == null) {
-
+            syncNavigationBarToTabBar(visible = false)
             return
         }
 
@@ -828,8 +838,9 @@ class LxAppActivity : AppCompatActivity() {
             }
         }
 
-        // Update system navigation bar transparency based on TabBar transparency and color
-        updateNavigationBarTransparency(this, isTabBarTransparent, actualTabBarColor)
+        // Deliberately not coloured here: the bar follows the TabBar that is
+        // actually on screen, and showTabBar() is what decides that. Colouring
+        // it now would paint a plate for a page whose TabBar is about to hide.
 
         if (tabBar == null) {
             tabBar = TabBar(this).apply {
@@ -852,8 +863,8 @@ class LxAppActivity : AppCompatActivity() {
         } else {
             tabBar?.setConfig(config)
             tabBar?.let { tb -> applyTabBarLayoutParams(tb, config) }
-            // Update navigation bar transparency when tabbar config changes
-            updateNavigationBarTransparency(this, isTabBarTransparent, actualTabBarColor)
+            // Config changed; re-apply for whatever is on screen right now.
+            syncNavigationBarToTabBar(visible = tabBar?.visibility == View.VISIBLE)
         }
 
         updateLayoutMargins()
@@ -1475,9 +1486,37 @@ class LxAppActivity : AppCompatActivity() {
         if (isMediaFullscreen) {
             pendingTabBarVisibility = if (show) View.VISIBLE else View.GONE
             tabBar?.visibility = View.GONE
+            syncNavigationBarToTabBar(visible = false)
             return
         }
         tabBar?.visibility = if (show) View.VISIBLE else View.GONE
+        syncNavigationBarToTabBar(visible = show)
+    }
+
+    /**
+     * Colour the system navigation bar for the TabBar *currently on screen*.
+     *
+     * The bar sits directly under the TabBar, so matching it is right while the
+     * TabBar is showing, and wrong the rest of the time: a page that hides the
+     * TabBar owns the bottom of the window, and a bar left in the TabBar's
+     * colour paints over it. It also bit any lxapp declaring a `tabBar` with no
+     * `backgroundColor` — the colour fell back to white, so every page outside
+     * the tabs ended in a white plate.
+     */
+    private fun syncNavigationBarToTabBar(visible: Boolean) {
+        val config = tabBar?.config
+        if (!visible || config == null) {
+            updateNavigationBarTransparency(this, isTabBarTransparent = true)
+            return
+        }
+        val background = config.backgroundColor
+        val isTransparent = background == Color.TRANSPARENT ||
+                            (background?.let { Color.alpha(it) < 255 } == true)
+        val actual: Int = when (config.position) {
+            TabBarState.Position.BOTTOM -> background
+            else -> 0xFFF8F8F8.toInt() // VERTICAL_TABBAR_BACKGROUND_COLOR
+        }
+        updateNavigationBarTransparency(this, isTransparent, actual)
     }
 
     fun enterMediaFullscreen() {
