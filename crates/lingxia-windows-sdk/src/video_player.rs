@@ -62,6 +62,10 @@ struct SharedState {
     /// `play()` (or autoplay) requested before the media item finished
     /// opening; issued on `MEDIAITEM_SET`.
     pending_play: bool,
+    /// MFPlay has confirmed a Play transition. Keeping this separate from
+    /// `pending_play` lets page lifecycle pause a loading item without asking
+    /// MFPlay to pause its stopped state.
+    playing: bool,
     /// Restart from the beginning instead of surfacing `Ended`.
     looping: bool,
     /// Current source URL. `stop()` clears the media item (releasing the
@@ -137,6 +141,8 @@ impl VideoPlayer {
             let mut shared = self.lock();
             shared.source = Some(url.to_string());
             shared.media_ready = false;
+            shared.pending_play = false;
+            shared.playing = false;
             shared.opening = None;
             shared.pending_seek = None;
         }
@@ -151,6 +157,7 @@ impl VideoPlayer {
             let mut shared = self.lock();
             shared.source = Some(url.to_string());
             shared.media_ready = false;
+            shared.playing = false;
             shared.opening = None;
             shared.pending_seek = (position > 0.0).then_some(position);
             shared.pending_play = resume;
@@ -215,10 +222,10 @@ impl VideoPlayer {
         }
         let action = {
             let mut shared = self.lock();
+            shared.pending_play = true;
             if shared.media_ready {
                 Action::Direct
             } else {
-                shared.pending_play = true;
                 let opening_live = shared
                     .opening
                     .is_some_and(|since| since.elapsed() < OPEN_STALE_AFTER);
@@ -239,10 +246,21 @@ impl VideoPlayer {
     }
 
     pub(crate) fn pause(&self) {
-        self.lock().pending_play = false;
-        unsafe {
-            let _ = self.player.Pause();
+        let playing = {
+            let mut shared = self.lock();
+            shared.pending_play = false;
+            shared.playing
+        };
+        if playing {
+            unsafe {
+                let _ = self.player.Pause();
+            }
         }
+    }
+
+    pub(crate) fn wants_playback(&self) -> bool {
+        let shared = self.lock();
+        shared.pending_play || shared.playing
     }
 
     /// Stops playback and releases the media item: the decoder and the
@@ -253,6 +271,7 @@ impl VideoPlayer {
             let mut shared = self.lock();
             shared.pending_play = false;
             shared.media_ready = false;
+            shared.playing = false;
             shared.opening = None;
         }
         unsafe {
@@ -449,6 +468,7 @@ impl IMFPMediaPlayerCallback_Impl for PlayerCallback_Impl {
             {
                 let mut shared = self.lock();
                 shared.pending_play = false;
+                shared.playing = false;
                 shared.opening = None;
             }
             (self.sink)(VideoPlayerEvent::Error {
@@ -474,15 +494,11 @@ impl IMFPMediaPlayerCallback_Impl for PlayerCallback_Impl {
                 }
             }
             MFP_EVENT_TYPE_MEDIAITEM_SET => {
-                let (pending_play, pending_seek, rate) = {
+                let (pending_seek, rate) = {
                     let mut shared = self.lock();
                     shared.media_ready = true;
                     shared.opening = None;
-                    (
-                        std::mem::take(&mut shared.pending_play),
-                        std::mem::take(&mut shared.pending_seek),
-                        shared.rate,
-                    )
+                    (std::mem::take(&mut shared.pending_seek), shared.rate)
                 };
                 if let Some(player) = player {
                     unsafe {
@@ -500,31 +516,71 @@ impl IMFPMediaPlayerCallback_Impl for PlayerCallback_Impl {
                     .map(|value| seconds_from_propvariant(&value))
                     .unwrap_or(0.0);
                 (self.sink)(VideoPlayerEvent::MediaLoaded { duration });
-                if pending_play && let Some(player) = player {
+                if self.lock().pending_play
+                    && let Some(player) = player
+                {
                     unsafe {
                         let _ = player.Play();
                     }
                 }
             }
-            MFP_EVENT_TYPE_PLAY => (self.sink)(VideoPlayerEvent::Play),
-            MFP_EVENT_TYPE_PAUSE => (self.sink)(VideoPlayerEvent::Pause),
-            MFP_EVENT_TYPE_STOP => (self.sink)(VideoPlayerEvent::Stop),
+            MFP_EVENT_TYPE_PLAY => {
+                let requested = {
+                    let mut shared = self.lock();
+                    let requested = std::mem::take(&mut shared.pending_play);
+                    shared.playing = requested;
+                    requested
+                };
+                if requested {
+                    (self.sink)(VideoPlayerEvent::Play);
+                } else if let Some(player) = player {
+                    unsafe {
+                        let _ = player.Pause();
+                    }
+                }
+            }
+            MFP_EVENT_TYPE_PAUSE => {
+                let mut shared = self.lock();
+                shared.playing = false;
+                drop(shared);
+                (self.sink)(VideoPlayerEvent::Pause);
+            }
+            MFP_EVENT_TYPE_STOP => {
+                let mut shared = self.lock();
+                shared.playing = false;
+                drop(shared);
+                (self.sink)(VideoPlayerEvent::Stop);
+            }
             MFP_EVENT_TYPE_PLAYBACK_ENDED => {
                 if self.lock().looping
                     && let Some(player) = player
                 {
+                    let mut shared = self.lock();
+                    shared.playing = false;
+                    shared.pending_play = true;
+                    drop(shared);
                     unsafe {
                         let start = propvariant_from_100ns(0);
                         let _ = player.SetPosition(&MFP_POSITIONTYPE_100NS, &start);
                         let _ = player.Play();
                     }
                 } else {
+                    let mut shared = self.lock();
+                    shared.playing = false;
+                    shared.pending_play = false;
+                    drop(shared);
                     (self.sink)(VideoPlayerEvent::Ended);
                 }
             }
-            MFP_EVENT_TYPE_ERROR => (self.sink)(VideoPlayerEvent::Error {
-                message: "playback error".to_string(),
-            }),
+            MFP_EVENT_TYPE_ERROR => {
+                let mut shared = self.lock();
+                shared.playing = false;
+                shared.pending_play = false;
+                drop(shared);
+                (self.sink)(VideoPlayerEvent::Error {
+                    message: "playback error".to_string(),
+                });
+            }
             _ => {}
         }
     }
