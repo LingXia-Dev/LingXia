@@ -684,8 +684,8 @@ export type HostAppApi = globalThis.HostAppApi;
  * `crates/lingxia-update::ReleaseType` enum and the `envVersion` field in the
  * generated `app.json`. Pre-envVersion app artifacts are treated as `'release'`.
  * Note: this is *separate* from `LxAppEnvVersion` in the navigator module,
- * which encodes lxapp release channels (`'develop' | 'preview' | 'release'`)
- * for cross-app navigation URLs and uses the truncated `develop` form.
+ * which encodes lxapp release channels for cross-app navigation URLs —
+ * same three names, different axis.
  */
 export type HostAppEnvVersion = 'developer' | 'preview' | 'release';
 
@@ -774,7 +774,7 @@ export type KeyEvent = {
 
 export type KeyEventCallback = (event: KeyEvent) => void;
 
-export type LxAppEnvVersion = 'release' | 'preview' | 'develop';
+export type LxAppEnvVersion = 'release' | 'preview' | 'developer';
 
 /** LxApp metadata APIs. */
 export type LxAppReleaseType = 'release' | 'preview' | 'developer';

@@ -17,7 +17,7 @@ A LingXia AppLink is an HTTPS URL split into `scheme`, `host`, `path`, and
 `query`:
 
 ```text
-https://<host>/lxapp/open?appId=<appId>&path=<pagePath>&envVersion=<release|preview|develop>&<pageQuery>
+https://<host>/lxapp/open?appId=<appId>&path=<pagePath>&envVersion=<release|preview|developer>&<pageQuery>
 ```
 
 | Field | Value | Description |
@@ -56,9 +56,10 @@ Release channel mapping:
 |---|---|
 | `envVersion=release` | `release` |
 | `envVersion=preview` | `preview` |
-| `envVersion=develop` | `developer` |
+| `envVersion=developer` | `developer` |
 
-No aliases are accepted. Invalid `envVersion` values are rejected.
+`develop` is accepted as the pre-0.13 spelling of `developer`. No other aliases;
+invalid `envVersion` values are rejected.
 
 Example:
 
@@ -267,7 +268,7 @@ HarmonyOS:
 
 ```bash
 hdc shell aa start -A ohos.want.action.viewData \
-  -U "https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&envVersion=develop&id=42"
+  -U "https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&envVersion=developer&id=42"
 ```
 
 ## Checklist

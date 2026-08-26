@@ -98,7 +98,9 @@ pub fn parse_env_release_type(tag: &str) -> Result<ReleaseType, String> {
     match tag.trim() {
         "release" => Ok(ReleaseType::Release),
         "preview" => Ok(ReleaseType::Preview),
-        "develop" => Ok(ReleaseType::Developer),
+        // `developer` is the channel name on the wire and in app.json; `develop`
+        // is the pre-0.13 spelling of this parameter, still accepted.
+        "developer" | "develop" => Ok(ReleaseType::Developer),
         value => Err(format!("invalid envVersion: {value}")),
     }
 }
