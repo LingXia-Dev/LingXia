@@ -1276,7 +1276,7 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
         ));
     }
     if let Some(app_id) = declared_app_id {
-        lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release)
+        lxapp::prepare_lxapp_open(&app_id, lxapp::host_channel())
             .await
             .map_err(|err| surface_error(SurfaceErrorCode::NotDeclared, err.to_string()))?;
     }

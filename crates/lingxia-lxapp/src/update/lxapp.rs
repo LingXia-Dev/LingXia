@@ -76,6 +76,10 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
         self.release_type
     }
 
+    fn is_ota_managed(&self) -> bool {
+        lxapp_runtime::is_ota_managed_appid(&self.target_appid)
+    }
+
     fn runtime_version(&self) -> &str {
         crate::SDK_RUNTIME_VERSION
     }
@@ -345,10 +349,8 @@ impl UpdateManager {
         .await
     }
 
-    /// Spawn a release-channel background update check for a known lxapp.
-    pub fn spawn_release_lxapp_update_check(target_appid: String) {
-        let release_type = ReleaseType::Release;
-
+    /// Spawn a background update check for a known lxapp on `release_type`.
+    pub fn spawn_lxapp_update_check(target_appid: String, release_type: ReleaseType) {
         let Some(lxapp) = lxapp_runtime::try_get(&target_appid) else {
             crate::warn!(
                 "LxApp '{}' not found for background update check",
@@ -356,6 +358,10 @@ impl UpdateManager {
             );
             return;
         };
+
+        if !lxapp.is_ota_managed() {
+            return;
+        }
 
         if lxapp.release_type != release_type {
             return;
@@ -371,7 +377,7 @@ impl UpdateManager {
 
     /// Spawn a background check to download newer packages for the given app.
     pub fn spawn_background_update_check(lxapp: Arc<lxapp_runtime::LxApp>) {
-        if lxapp.release_type != ReleaseType::Release {
+        if !lxapp.is_ota_managed() {
             return;
         }
 
@@ -537,8 +543,5 @@ pub async fn prepare_lxapp_open(
 }
 
 pub fn schedule_lxapp_update_check(target_appid: &str, release_type: ReleaseType) {
-    if release_type != ReleaseType::Release {
-        return;
-    }
-    UpdateManager::spawn_release_lxapp_update_check(target_appid.to_string());
+    UpdateManager::spawn_lxapp_update_check(target_appid.to_string(), release_type);
 }

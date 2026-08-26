@@ -200,6 +200,15 @@ fn register_lxapp_bundle_source(appid: impl Into<String>, source: LxAppBundleSou
     guard.insert(appid, source);
 }
 
+/// Whether `appid`'s bundle is managed by the update system. Answers for an
+/// appid with no live instance too — first install runs before one exists.
+pub(crate) fn is_ota_managed_appid(appid: &str) -> bool {
+    !matches!(
+        lxapp_bundle_source_for(appid),
+        Some(LxAppBundleSource::DevPath { .. })
+    )
+}
+
 fn lxapp_bundle_source_for(appid: &str) -> Option<LxAppBundleSource> {
     LXAPP_SOURCE_OVERRIDES
         .get()
@@ -1156,6 +1165,13 @@ impl LxApp {
         self.session.cas_status(from, to)
     }
 
+    /// Whether this lxapp's bundle is managed by the update system. A
+    /// dev-served bundle is served live from a local `dist`, so there is no
+    /// installed package to check or replace.
+    pub(crate) fn is_ota_managed(&self) -> bool {
+        !matches!(self.bundle_source, LxAppBundleSource::DevPath { .. })
+    }
+
     pub(crate) fn trigger_home_update_check_once(&self) {
         if !self.is_home_lxapp {
             return;
@@ -1168,7 +1184,7 @@ impl LxApp {
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
             .is_ok()
         {
-            UpdateManager::spawn_release_lxapp_update_check(self.appid.clone());
+            UpdateManager::spawn_lxapp_update_check(self.appid.clone(), self.release_type);
         }
     }
 
@@ -1631,7 +1647,7 @@ impl LxApp {
         runtime: Arc<Platform>,
         executor: Arc<LxAppWorkers>,
     ) -> Result<Self, LxAppError> {
-        let mut app = Self::_new(appid, runtime, executor, ReleaseType::Release);
+        let mut app = Self::_new(appid, runtime, executor, crate::host_channel());
 
         // Mark as home lxapp
         app.is_home_lxapp = true;

@@ -1,4 +1,4 @@
-use lingxia_update::ReleaseType;
+use lingxia_update::{ReleaseType, host_channel};
 use std::sync::OnceLock;
 
 const LXAPP_PREFIX: &str = "/lxapp/";
@@ -172,13 +172,13 @@ struct QueryParts {
 fn parse_query(raw_query: Option<&str>, include_routing: bool) -> Result<QueryParts, String> {
     let Some(raw_query) = raw_query else {
         return Ok(QueryParts {
-            release_type: ReleaseType::Release,
+            release_type: host_channel(),
             appid: None,
             path: None,
             page_query: String::new(),
         });
     };
-    let mut release_type = ReleaseType::Release;
+    let mut release_type = host_channel();
     let mut appid = None;
     let mut path = None;
     let mut page_params = Vec::new();

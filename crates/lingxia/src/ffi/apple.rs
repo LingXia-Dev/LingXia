@@ -1456,16 +1456,19 @@ pub fn shell_open_lxapp_main(app_id: &str) -> bool {
             return false;
         }
         std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
-            if let Err(err) = lxapp::prepare_lxapp_open(&app_id, lxapp::ReleaseType::Release).await
-            {
+            let channel = lxapp::host_channel();
+            if let Err(err) = lxapp::prepare_lxapp_open(&app_id, channel).await {
                 log::error!("pin open failed for {app_id}: {err}");
                 return;
             }
-            if let Err(err) = lxapp::open_lxapp(&app_id, lxapp::LxAppStartupOptions::default()) {
+            if let Err(err) = lxapp::open_lxapp(
+                &app_id,
+                lxapp::LxAppStartupOptions::default().set_release_type(channel),
+            ) {
                 log::error!("pin open failed for {app_id}: {err}");
                 return;
             }
-            lxapp::schedule_lxapp_update_check(&app_id, lxapp::ReleaseType::Release);
+            lxapp::schedule_lxapp_update_check(&app_id, channel);
         }));
         true
     })

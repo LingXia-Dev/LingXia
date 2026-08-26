@@ -206,7 +206,8 @@ pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
             )));
         }
     };
-    let installed_home_version = match installed_home_version(&home_app_id, ReleaseType::Release) {
+    let home_channel = crate::host_channel();
+    let installed_home_version = match installed_home_version(&home_app_id, home_channel) {
         Ok(version) => version,
         Err(e) => {
             warn!("Failed to inspect installed home lxapp version: {}", e)
@@ -257,14 +258,14 @@ pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
             return Err(e);
         }
     } else {
-        let has_pending_home_update = metadata::downloaded_get(&home_app_id, ReleaseType::Release)
+        let has_pending_home_update = metadata::downloaded_get(&home_app_id, home_channel)
             .map(|record| record.is_some())
             .unwrap_or(false);
         if has_pending_home_update {
             match crate::update::UpdateManager::apply_downloaded_update(
                 runtime_arc.clone(),
                 &home_app_id,
-                ReleaseType::Release,
+                home_channel,
             ) {
                 Ok(()) => {
                     info!("Applied pending home lxapp update before startup")

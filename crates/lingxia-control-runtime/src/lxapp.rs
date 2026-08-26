@@ -237,7 +237,7 @@ fn resolve_app(raw: &str) -> Result<Arc<lxapp::LxApp>, String> {
     if let Some(app) = lxapp::try_get(&appid) {
         return Ok(app);
     }
-    ensure_lxapp_available(&appid, lxapp::ReleaseType::Release)
+    ensure_lxapp_available(&appid, lxapp::host_channel())
 }
 
 fn ensure_lxapp_available(

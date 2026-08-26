@@ -44,7 +44,7 @@ actions.
 |---|---:|---|
 | `appId` | Yes | Target lxapp id. |
 | `path` | No | Target page path inside the lxapp. If omitted, the lxapp initial route is used. |
-| `envVersion` | No | Target release channel. Matches `navigateToApp`. |
+| `envVersion` | No | Target release channel. Matches `navigateToApp`. Omitted, the host build's own channel (its `envVersion`) is used — a developer build opens the target from the developer channel, not release. |
 
 All query keys and values should be URL encoded. Routing parameters are consumed
 by the SDK and are not forwarded to the page. Other query parameters are

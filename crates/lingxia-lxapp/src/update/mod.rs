@@ -66,18 +66,18 @@ impl UpdateManager {
     pub fn trigger_ota_update(target: OtaUpdateTarget) {
         match target {
             OtaUpdateTarget::LxApp { target_appid } => {
-                let release_type = ReleaseType::Release;
-                let context_lxapp = lxapp_runtime::try_get(&target_appid)
-                    .filter(|app| app.release_type == release_type);
-
-                let Some(context_lxapp) = context_lxapp else {
+                let Some(context_lxapp) = lxapp_runtime::try_get(&target_appid) else {
                     crate::warn!(
-                        "Target lxapp is not active for OTA-triggered update check: {}@{}",
-                        target_appid,
-                        release_type.as_str()
+                        "Target lxapp is not active for OTA-triggered update check: {}",
+                        target_appid
                     );
                     return;
                 };
+
+                if !context_lxapp.is_ota_managed() {
+                    return;
+                }
+                let release_type = context_lxapp.release_type;
 
                 let current_version = context_lxapp.current_version();
 
@@ -181,7 +181,7 @@ impl UpdateManager {
         lxappid: &str,
         version: &str,
     ) -> Result<PathBuf, LxAppError> {
-        let dir_name = lxapp_fingermark(lxappid, ReleaseType::Release);
+        let dir_name = lxapp_fingermark(lxappid, crate::host_channel());
         let destination = runtime
             .app_data_dir()
             .join(LINGXIA_DIR)
@@ -216,7 +216,7 @@ impl UpdateManager {
             return Err(e);
         }
 
-        Self::record_install_metadata(lxappid, ReleaseType::Release, version, &destination)?;
+        Self::record_install_metadata(lxappid, crate::host_channel(), version, &destination)?;
         Ok(destination)
     }
 
