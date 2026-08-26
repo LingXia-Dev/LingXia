@@ -38,9 +38,16 @@ internal class WebView(context: Context) : LingXiaWebView(context) {
         // a page explicitly rendering light under a dark-created webview gets
         // force-inverted into a fake dark palette.
         // Pre-first-paint canvas follows the resolved DayNight theme instead
-        // of stock white, so dark lxapps don't flash on load.
+        // of stock white, so dark lxapps don't flash on load — except during a
+        // cold start under the launch cover, where the launch background is
+        // what the user is already looking at. A home page that redirects on
+        // boot builds a second WebView while the cover is still up, and this
+        // canvas is what fills the cover's frame until that page paints.
+        val launch = SplashOverlay.backgroundColor(context)
         val background = android.util.TypedValue()
-        if (context.theme.resolveAttribute(android.R.attr.colorBackground, background, true)) {
+        if (launch != null && SplashOverlay.coverOnScreen()) {
+            setBackgroundColor(launch)
+        } else if (context.theme.resolveAttribute(android.R.attr.colorBackground, background, true)) {
             setBackgroundColor(background.data)
         }
     }
