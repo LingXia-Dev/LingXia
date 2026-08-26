@@ -57,6 +57,22 @@ final class MacInlineNativeIsland {
         return outgoing
     }
 
+    /// Remove the island tree when its WebView is being destroyed.
+    /// The next root commit must start with a fresh lease and native views.
+    func teardown() {
+        for key in Array(nodes.keys) {
+            removeNode(key)
+        }
+        container.removeFromSuperview()
+        pendingOutgoing.removeAll()
+        lastRoot = nil
+        leaseGranted = false
+        leaseActive = false
+        leaseId = ""
+        leaseSequence = 1
+        lastAppliedRevision = 0
+    }
+
     private func applyCommit(_ message: [String: Any]) {
         guard let operations = message["operations"] as? [[String: Any]] else { return }
         for operation in operations {

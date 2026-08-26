@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { h, onBeforeUnmount, ref, useAttrs, watch } from 'vue';
 import {
   registerNativeSliderComponent,
   unwrapNativeEventPayload,
@@ -9,7 +9,7 @@ import {
 } from '@lingxia/elements';
 import { bindElementEvents, unbindElementEvents } from './text_component_shared.js';
 
-defineProps<{
+const props = defineProps<{
   id?: string;
   automationId?: string;
   class?: string;
@@ -39,6 +39,7 @@ if (typeof window !== 'undefined') {
 }
 
 const elementRef = ref<HTMLElement | null>(null);
+const attrs = useAttrs();
 let bound: HTMLElement | null = null;
 const listeners: Record<string, EventListenerObject> = {
   valuechange: { handleEvent: (event) => emit('valueChange', unwrapNativeEventPayload(event)) },
@@ -53,23 +54,26 @@ watch(elementRef, (element) => {
   bound = bindElementEvents(bound, element, listeners);
 });
 onBeforeUnmount(() => unbindElementEvents(bound, listeners));
+
+const render = () => h('lx-native-slider', {
+  ...attrs,
+  ref: elementRef,
+  id: props.id,
+  class: props.class,
+  'automation-id': props.automationId,
+  value: props.value,
+  min: props.min,
+  max: props.max,
+  step: props.step,
+  'buffered-value': props.bufferedValue,
+  'value-label': props.valueLabel,
+  disabled: props.disabled,
+  'pointer-events': props.pointerEvents,
+  hidden: props.hidden,
+  'hidden-transition': props.hiddenTransition,
+});
 </script>
 
 <template>
-  <lx-native-slider
-    ref="elementRef"
-    :id="id"
-    :class="class"
-    :automation-id="automationId"
-    :value="value"
-    :min="min"
-    :max="max"
-    :step="step"
-    :buffered-value="bufferedValue"
-    :value-label="valueLabel"
-    :disabled="disabled"
-    :pointer-events="pointerEvents"
-    :hidden="hidden"
-    :hidden-transition="hiddenTransition"
-  />
+  <render />
 </template>

@@ -292,6 +292,8 @@ internal class NativeComponentManager(
         pageInactiveStopRunnables.clear()
         componentsPendingAutoResume.clear()
         componentPlaybackIntent.clear()
+        island?.teardown()
+        island = null
         val allIds = components.keys.toList()
         allIds.forEach { id ->
             unmountComponent(id, componentPage[id])

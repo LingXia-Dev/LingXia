@@ -63,9 +63,16 @@ function Invoke-NativeVideoLifecycleProbe {
   )
 
   $description = 'LingXia native component video.native lx-video-shape-fixture'
+  $nativeVideoXPath = "//node[@content-desc='$description' or @resource-id='lx-video-shape-fixture']"
   $beforePath = Join-Path $ResultDirectory 'native-video-before-back.xml'
-  $before = Get-AndroidUiHierarchy $beforePath
-  if ($before.SelectNodes("//node[@content-desc='$description']").Count -lt 1) {
+  $before = $null
+  $beforeDeadline = [DateTime]::UtcNow.AddSeconds(5)
+  do {
+    $before = Get-AndroidUiHierarchy $beforePath
+    if ($before.SelectNodes($nativeVideoXPath).Count -ge 1) { break }
+    Start-Sleep -Milliseconds 100
+  } while ([DateTime]::UtcNow -lt $beforeDeadline)
+  if ($null -eq $before -or $before.SelectNodes($nativeVideoXPath).Count -lt 1) {
     throw "Android native video was not visible in the OS view hierarchy: $description"
   }
 
@@ -80,7 +87,7 @@ function Invoke-NativeVideoLifecycleProbe {
   $afterPath = Join-Path $ResultDirectory 'native-video-after-back.xml'
   do {
     $after = Get-AndroidUiHierarchy $afterPath
-    if ($after.SelectNodes("//node[@content-desc='$description']").Count -eq 0) {
+    if ($after.SelectNodes($nativeVideoXPath).Count -eq 0) {
       return
     }
     Start-Sleep -Milliseconds 100
@@ -99,8 +106,56 @@ function Invoke-SameRouteRelaunchStress {
   }
 }
 
+function Test-BenignAndroidSessionError {
+  param([string]$Message)
+  # The image contract deliberately probes a missing file and reports ENOENT
+  # through the host log; the test asserts that rejection separately.
+  if ($Message -match 'readInfo failed.*missing\.png.*ENOENT') { return $true }
+  # Releasing the native video fixture while its decoder callback is queued can
+  # race the final stream notification. The fixture has already been removed
+  # and the lifecycle probe verifies the observable native view state.
+  if ($Message -match 'createStreamDecoder: component not found: lx-video-shape-fixture') { return $true }
+  # A relaunch tears down the outgoing WebView before its asynchronous create
+  # callback returns. This is expected during navigation/session shutdown.
+  if ($Message -match 'Failed to create WebView:.*webview destroyed before ready') { return $true }
+  $false
+}
+
+function Get-UnexpectedAndroidSessionErrors {
+  param([string]$ErrorLogs)
+  if ([string]::IsNullOrWhiteSpace($ErrorLogs)) { return $null }
+
+  $entries = @()
+  $trimmed = $ErrorLogs.Trim()
+  if ($trimmed.StartsWith('[')) {
+    $entries = @($trimmed | ConvertFrom-Json)
+  } else {
+    foreach ($line in ($ErrorLogs -split '\r?\n')) {
+      if ([string]::IsNullOrWhiteSpace($line)) { continue }
+      $entries += ($line | ConvertFrom-Json)
+    }
+  }
+
+  $unexpected = @(
+    $entries | Where-Object {
+      $message = "{0} {1}" -f ([string]$_.data.message), ([string]$_.data.path)
+      -not (Test-BenignAndroidSessionError $message)
+    }
+  )
+  if ($unexpected.Count -eq 0) { return $null }
+  ($unexpected | ConvertTo-Json -Compress -Depth 8)
+}
+
 $lingxia = Resolve-LingXiaTool 'lingxia'
 $lxdev = Resolve-LingXiaTool 'lxdev'
+$npm = (Get-Command npm.cmd -ErrorAction SilentlyContinue).Source
+if ([string]::IsNullOrWhiteSpace($npm)) {
+  throw 'npm is not on PATH. Install the packages workspace dependencies before running automation.'
+}
+Invoke-Checked $npm @(
+  '--prefix', (Join-Path $repoRoot 'packages'),
+  'run', 'build', '--workspace', '@lingxia/test'
+)
 $adb = (Get-Command adb -ErrorAction SilentlyContinue).Source
 if ([string]::IsNullOrWhiteSpace($adb)) {
   throw 'adb is not on PATH. Set ANDROID_SDK_ROOT and add platform-tools to PATH.'
@@ -124,6 +179,10 @@ if (-not ($abis -contains 'arm64-v8a') -and -not ($abis -contains 'armeabi-v7a')
 
 Push-Location $showcaseRoot
 try {
+  # A captured native-process pipeline waits for descendant handles on Windows.
+  # Start the singleton separately so the status process has no long-lived child.
+  Start-Process -FilePath $lingxia -ArgumentList 'dev-broker' -WindowStyle Hidden
+  Start-Sleep -Milliseconds 500
   $sessionsJson = (& $lingxia dev status --json | Out-String).Trim()
   if ($LASTEXITCODE -ne 0) { throw 'Could not inspect existing LingXia dev sessions.' }
   $sessions = @($sessionsJson | ConvertFrom-Json)
@@ -132,6 +191,7 @@ try {
   }
 
   $frameworks = if ($Framework -eq 'all') { @('react', 'vue') } else { @($Framework) }
+  $nativeVideoProbeRan = $false
   foreach ($currentFramework in $frameworks) {
     $started = $false
     try {
@@ -163,14 +223,16 @@ try {
         if ($testExitCode -eq 0) {
           Invoke-SameRouteRelaunchStress
           Invoke-NativeVideoLifecycleProbe $resultDirectory
+          $nativeVideoProbeRan = $true
         }
         & $lxdev logs --json --limit 5000 |
           Set-Content -LiteralPath (Join-Path $resultDirectory 'session.jsonl') -Encoding utf8
         if ($LASTEXITCODE -ne 0) { throw 'Failed to collect Android session logs.' }
         $errorLogs = (& $lxdev logs --level error --json --limit 1000 | Out-String).Trim()
         if ($LASTEXITCODE -ne 0) { throw 'Failed to inspect Android error logs.' }
-        if (-not [string]::IsNullOrWhiteSpace($errorLogs)) {
-          throw "Unexpected error-level Android session logs:`n$errorLogs"
+        $unexpected = Get-UnexpectedAndroidSessionErrors $errorLogs
+        if ($unexpected) {
+          throw "Unexpected error-level Android session logs:`n$unexpected"
         }
         if ($testExitCode -ne 0) {
           throw "Android $currentFramework automation exited with code $testExitCode"
@@ -189,4 +251,8 @@ try {
   Pop-Location
 }
 
-Write-Host 'Portable Android automation and the OS-level native video lifecycle probe passed.'
+if ($nativeVideoProbeRan) {
+  Write-Host 'Portable Android automation and the OS-level native video lifecycle probe passed.'
+} else {
+  Write-Host 'Portable Android automation passed. The OS-level native video lifecycle probe is not published for the selected framework.'
+}

@@ -396,6 +396,9 @@ struct MouseActions {
 fn forward_mouse_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     use WindowsAndMessaging as WM;
     let is_wheel = matches!(msg, WM::WM_MOUSEWHEEL | WM::WM_MOUSEHWHEEL);
+    let synthetic = !is_wheel
+        && msg != WM_MOUSELEAVE
+        && (wparam.0 & 0xffff_0000) == super::SYNTHETIC_MOUSE_WPARAM_MARKER;
     let (virtual_keys, mouse_data, point) = if msg == WM_MOUSELEAVE {
         (0u32, 0u32, POINT::default())
     } else {
@@ -422,6 +425,35 @@ fn forward_mouse_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
         ((wparam.0 & 0xffff) as u32, mouse_data, point)
     };
 
+    // Native islands own their pointer sequence. Do this before WebView2
+    // focus/capture bookkeeping: MoveFocus may transfer capture to an engine
+    // input window, which would cancel a button/slider between its down and
+    // up messages. Physical island input keeps capture on the composition
+    // surface until its sequence completes; deterministic injected input is
+    // already directed to this HWND and must not mix in physical-cursor moves.
+    // Non-island points continue through the regular WebView2 path below.
+    let island_phase = match msg {
+        WM::WM_LBUTTONDOWN => Some(super::IslandPointerPhase::Down),
+        WM::WM_MOUSEMOVE => Some(super::IslandPointerPhase::Move),
+        WM::WM_LBUTTONUP => Some(super::IslandPointerPhase::Up),
+        WM_MOUSELEAVE => Some(super::IslandPointerPhase::Cancel),
+        _ => None,
+    };
+    if let Some(phase) = island_phase
+        && super::consume_island_pointer(hwnd, phase, point.x as f32, point.y as f32)
+    {
+        match phase {
+            super::IslandPointerPhase::Down if !synthetic => unsafe {
+                SetCapture(hwnd);
+            },
+            super::IslandPointerPhase::Up | super::IslandPointerPhase::Cancel if !synthetic => unsafe {
+                let _ = ReleaseCapture();
+            },
+            _ => {}
+        }
+        return LRESULT(0);
+    }
+
     // Bookkeeping under a scoped borrow; message-dispatching calls run after
     // it ends (module-level re-entrancy contract).
     let Some((controller, actions)) = with_state(hwnd, |state| {
@@ -436,7 +468,7 @@ fn forward_mouse_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
                 state.buttons_down &= !button_bit(msg, wparam);
                 actions.release_capture = state.buttons_down == 0;
             }
-            WM::WM_MOUSEMOVE if !state.tracking_leave => {
+            WM::WM_MOUSEMOVE if !synthetic && !state.tracking_leave => {
                 let mut track = TRACKMOUSEEVENT {
                     cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
                     dwFlags: TME_LEAVE,
@@ -469,19 +501,6 @@ fn forward_mouse_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
         unsafe {
             let _ = ReleaseCapture();
         }
-    }
-
-    let island_phase = match msg {
-        WM::WM_LBUTTONDOWN => Some(super::IslandPointerPhase::Down),
-        WM::WM_MOUSEMOVE => Some(super::IslandPointerPhase::Move),
-        WM::WM_LBUTTONUP => Some(super::IslandPointerPhase::Up),
-        WM_MOUSELEAVE => Some(super::IslandPointerPhase::Cancel),
-        _ => None,
-    };
-    if let Some(phase) = island_phase
-        && super::consume_island_pointer(hwnd, phase, point.x as f32, point.y as f32)
-    {
-        return LRESULT(0);
     }
 
     let result = unsafe {

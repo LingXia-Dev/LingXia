@@ -22,6 +22,15 @@ export interface LxNativeNodeProps {
   children?: ReactNode;
 }
 
+export function applyNativeAria(
+  el: HTMLElement,
+  aria: Pick<LxNativeNodeProps, "aria-label" | "aria-description" | "aria-hidden">
+): void {
+  setOptionalAttribute(el, "aria-label", aria["aria-label"]);
+  setOptionalAttribute(el, "aria-description", aria["aria-description"]);
+  setOptionalAttribute(el, "aria-hidden", aria["aria-hidden"]);
+}
+
 export function assignNativeRef<T>(ref: ForwardedRef<T>, value: T | null): void {
   assignForwardedRef(ref, value);
 }

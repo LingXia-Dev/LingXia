@@ -2,6 +2,7 @@ import React, { forwardRef, useCallback, useEffect, useRef } from "react";
 import { registerNativeCoverComponent } from "@lingxia/elements";
 import {
   assignNativeRef,
+  applyNativeAria,
   setOptionalAttribute,
   type LxNativeNodeProps,
 } from "./shared.js";
@@ -52,7 +53,7 @@ export const LxNativeCover = forwardRef<HTMLElement, LxNativeCoverProps>(
       setOptionalAttribute(el, "scrim", scrim);
       setOptionalAttribute(el, "scrim-opacity", scrimOpacity);
       setOptionalAttribute(el, "role", role);
-      setOptionalAttribute(el, "aria-label", aria["aria-label"]);
+      applyNativeAria(el, aria);
     }, [automationId, pointerEvents, hiddenTransition, scrim, scrimOpacity, role, aria]);
 
     return React.createElement(

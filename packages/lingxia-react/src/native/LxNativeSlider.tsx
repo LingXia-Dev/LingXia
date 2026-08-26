@@ -8,6 +8,7 @@ import {
 } from "@lingxia/elements";
 import {
   assignNativeRef,
+  applyNativeAria,
   bindNativeEvents,
   payloadListener,
   setOptionalAttribute,
@@ -120,7 +121,7 @@ export const LxNativeSlider = forwardRef<HTMLElement, LxNativeSliderProps>(
       setOptionalAttribute(el, "buffered-value", bufferedValue);
       setOptionalAttribute(el, "value-label", valueLabel);
       setOptionalAttribute(el, "disabled", disabled);
-      setOptionalAttribute(el, "aria-label", aria["aria-label"]);
+      applyNativeAria(el, aria);
       if (typeof tabIndex === "number") {
         el.tabIndex = tabIndex;
       }

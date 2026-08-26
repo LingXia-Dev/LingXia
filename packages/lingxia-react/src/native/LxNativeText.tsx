@@ -2,6 +2,7 @@ import React, { forwardRef, useCallback, useEffect, useRef } from "react";
 import { registerNativeTextComponent } from "@lingxia/elements";
 import {
   assignNativeRef,
+  applyNativeAria,
   setOptionalAttribute,
   type LxNativeNodeProps,
 } from "./shared.js";
@@ -65,7 +66,7 @@ export const LxNativeText = forwardRef<HTMLElement, LxNativeTextProps>(
       setOptionalAttribute(el, "line-height", lineHeight);
       setOptionalAttribute(el, "text-align", textAlign);
       setOptionalAttribute(el, "color", color);
-      setOptionalAttribute(el, "aria-label", aria["aria-label"]);
+      applyNativeAria(el, aria);
     }, [
       automationId,
       pointerEvents,

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { onBeforeUnmount, ref, watch } from 'vue';
+import { h, onBeforeUnmount, ref, useAttrs, useSlots, watch } from 'vue';
 import { registerNativeRootComponent, unwrapNativeEventPayload, type NativeError } from '@lingxia/elements';
 import { bindElementEvents, unbindElementEvents } from './text_component_shared.js';
 
-defineProps<{
+const props = defineProps<{
   id?: string;
   automationId?: string;
   class?: string;
@@ -12,6 +12,8 @@ defineProps<{
   hidden?: boolean;
   hiddenTransition?: 'none' | 'fade';
 }>();
+const slots = useSlots();
+const attrs = useAttrs();
 
 const emit = defineEmits<{
   ready: [payload: Record<string, never>];
@@ -44,22 +46,27 @@ const retry = async () => {
 };
 
 defineExpose({ retry, el: elementRef });
+
+const render = () => h('lx-native-root', {
+  ...attrs,
+  ref: elementRef,
+  id: props.id,
+  class: props.class,
+  'fullscreen-scope': props.fullscreenScope ?? 'root',
+  'pointer-events': props.pointerEvents,
+  hidden: props.hidden,
+  'hidden-transition': props.hiddenTransition,
+  'automation-id': props.automationId,
+}, [
+  slots.default?.(),
+  slots.fallback ? h('div', {
+    'data-lx-native-fallback': '',
+    hidden: true,
+    'aria-hidden': 'true',
+  }, slots.fallback()) : null,
+]);
 </script>
 
 <template>
-  <lx-native-root
-    ref="elementRef"
-    :id="id"
-    :class="class"
-    :fullscreen-scope="fullscreenScope ?? 'root'"
-    :pointer-events="pointerEvents"
-    :hidden="hidden"
-    :hidden-transition="hiddenTransition"
-    :automation-id="automationId"
-  >
-    <slot />
-    <div v-if="$slots.fallback" data-lx-native-fallback hidden aria-hidden="true">
-      <slot name="fallback" />
-    </div>
-  </lx-native-root>
+  <render />
 </template>

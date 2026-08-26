@@ -20,6 +20,8 @@
         <div data-testid="video-event" class="bg-surface-900 text-green-400 font-mono text-xs px-3 py-1.5 rounded-lg w-[180px] truncate">
           {{ eventLog }}
         </div>
+        <div data-testid="island-playing" class="sr-only">{{ islandPlaying ? 'yes' : 'no' }}</div>
+        <div data-testid="native-press-source" class="sr-only">{{ nativePressSource }}</div>
       </div>
 
       <div class="bg-black rounded-xl overflow-hidden">
@@ -36,9 +38,9 @@
             volume="0.8"
             class="block w-full rounded-lg bg-black"
             :style="{ aspectRatio: '16 / 9', borderRadius: '12px' }"
-            @playing="onPlaying"
+            @playing="onNativePlaying"
             @error="onError"
-            @pause="onPause"
+            @pause="onNativePause"
             @stop="onStop"
             @ended="onEnded"
             @waiting="onWaiting"
@@ -48,28 +50,46 @@
             @rate-change="onRateChange"
           />
           <LxNativeCover pointer-events="none" data-testid="inline-native-cover">
-            <LxNativeText class="absolute left-3 top-3 text-white text-xs">Inline native</LxNativeText>
+            <LxNativeText
+              class="absolute left-3 top-3 text-white text-xs"
+              :font-size="12"
+              :font-weight="600"
+              color="#ffffff"
+              :max-lines="1"
+            >Inline native</LxNativeText>
           </LxNativeCover>
         </LxNativeRoot>
       </div>
 
       <LxNativeRoot id="island-controls" class="block w-full" :style="{ height: '56px' }">
-        <LxNativeView class="flex h-full w-full items-center gap-3 px-3" :style="{ height: '56px' }">
+        <LxNativeView
+          class="flex h-full w-full items-center gap-3 px-3"
+          :style="{ height: '56px' }"
+        >
           <LxNativeButton
             id="island-play"
-            label="Play"
-            aria-label="Island play"
-            :style="{ width: '80px', height: '40px' }"
-            @press="play()"
+            automation-id="island-play-button"
+            :label="islandPlaying ? 'Pause' : 'Play'"
+            :icon="islandPlaying ? 'pause' : 'play'"
+            intent="accent"
+            emphasis="primary"
+            size="regular"
+            :hit-slop="8"
+            :aria-label="islandPlaying ? 'Pause island video' : 'Play island video'"
+            aria-description="Controls the native video player"
+            :style="{ width: '96px', height: '40px', borderRadius: '10px', color: '#ffffff' }"
+            @press="onIslandPress"
           />
           <LxNativeSlider
             id="island-seek"
             aria-label="Island value"
             :min="0"
             :max="100"
-            :value="Math.min(100, Math.round(currentTime))"
+            :step="1"
+            :value="islandProgress"
+            :buffered-value="islandBufferedProgress"
             value-label="value"
-            :style="{ flex: 1, height: '24px', minWidth: '160px' }"
+            :style="{ flex: 1, height: '28px', minWidth: '160px', accentColor: '#2563eb' }"
             @value-commit="onIslandSeek"
           />
         </LxNativeView>
@@ -166,7 +186,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useLxPage } from '@lingxia/vue';
 import {
   LxNativeButton,
@@ -217,8 +237,30 @@ const SEEK_STEP_SECONDS = 10;
 const eventLog = computed(() => data?.eventLog || 'Ready');
 const currentTime = computed(() => (typeof data?.currentTime === 'number' ? data.currentTime : 0));
 const duration = computed(() => (typeof data?.duration === 'number' ? data.duration : 0));
+const islandPlaying = ref(false);
+const nativePressSource = ref('none');
+const islandProgress = computed(() => duration.value > 0
+  ? Math.min(100, Math.round((currentTime.value / duration.value) * 100))
+  : 0);
+const islandBufferedProgress = computed(() => Math.min(100, islandProgress.value + 15));
 
 const video = computed(() => data?.videos?.[0]);
+
+function onNativePlaying(payload: unknown) {
+  islandPlaying.value = true;
+  onPlaying(payload);
+}
+
+function onNativePause(payload: unknown) {
+  islandPlaying.value = false;
+  onPause(payload);
+}
+
+function onIslandPress(payload: { source?: string }) {
+  nativePressSource.value = payload?.source || 'unknown';
+  if (islandPlaying.value) pause();
+  else play();
+}
 
 function seekBackward(seconds: number) {
   const newTime = Math.max(0, currentTime.value - seconds);

@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { h, useAttrs, useSlots } from 'vue';
 import { registerNativeTextComponent } from '@lingxia/elements';
 
-defineProps<{
+const props = defineProps<{
   id?: string;
   automationId?: string;
   class?: string;
@@ -16,28 +17,31 @@ defineProps<{
   textAlign?: 'start' | 'center' | 'end';
   color?: string;
 }>();
+const slots = useSlots();
+const attrs = useAttrs();
 
 if (typeof window !== 'undefined') {
   registerNativeTextComponent();
 }
+
+const render = () => h('lx-native-text', {
+  ...attrs,
+  id: props.id,
+  class: props.class,
+  'automation-id': props.automationId,
+  'pointer-events': props.pointerEvents,
+  hidden: props.hidden,
+  'hidden-transition': props.hiddenTransition,
+  'max-lines': props.maxLines,
+  dir: props.dir,
+  'font-size': props.fontSize,
+  'font-weight': props.fontWeight,
+  'line-height': props.lineHeight,
+  'text-align': props.textAlign,
+  color: props.color,
+}, slots.default?.());
 </script>
 
 <template>
-  <lx-native-text
-    :id="id"
-    :class="class"
-    :automation-id="automationId"
-    :pointer-events="pointerEvents"
-    :hidden="hidden"
-    :hidden-transition="hiddenTransition"
-    :max-lines="maxLines"
-    :dir="dir"
-    :font-size="fontSize"
-    :font-weight="fontWeight"
-    :line-height="lineHeight"
-    :text-align="textAlign"
-    :color="color"
-  >
-    <slot />
-  </lx-native-text>
+  <render />
 </template>

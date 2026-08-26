@@ -308,6 +308,8 @@ function removePendingPropsForTag(webTag: string): void {
 export function teardownEmbedManager(webTag: string): void {
   cancelDelayedStopForTag(webTag);
   const resolvedKey = resolveManagerKey(webTag);
+  const islandKey = resolvedKey ?? webTag;
+  const island = islandHosts.get(islandKey);
   if (resolvedKey) {
     const manager = webViewEmbedManagers.get(resolvedKey);
     if (manager) {
@@ -332,6 +334,12 @@ export function teardownEmbedManager(webTag: string): void {
       // Then teardown
       manager.teardown();
     }
+  }
+  island?.teardown();
+  islandHosts.delete(islandKey);
+  const logicalIslandKey = resolveLogicalWebTag(islandKey);
+  if (logicalIslandKey !== islandKey) {
+    islandHosts.delete(logicalIslandKey);
   }
   removePendingPropsForTag(webTag);
   if (pendingPropsUpdates.size === 0 && pendingPropsFlushTimer !== null) {

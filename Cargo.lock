@@ -3181,6 +3181,7 @@ dependencies = [
  "lingxia-service",
  "lingxia-shell",
  "lingxia-webview",
+ "lingxia-windows-contract",
  "log",
  "rong",
  "rong_console",

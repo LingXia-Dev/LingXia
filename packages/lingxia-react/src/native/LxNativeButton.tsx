@@ -9,6 +9,7 @@ import {
 } from "@lingxia/elements";
 import {
   assignNativeRef,
+  applyNativeAria,
   bindNativeEvents,
   payloadListener,
   setOptionalAttribute,
@@ -116,7 +117,7 @@ export const LxNativeButton = forwardRef<HTMLElement, LxNativeButtonProps>(
       setOptionalAttribute(el, "pressed", pressed);
       setOptionalAttribute(el, "expanded", expanded);
       setOptionalAttribute(el, "loading", loading);
-      setOptionalAttribute(el, "aria-label", aria["aria-label"]);
+      applyNativeAria(el, aria);
       if (typeof tabIndex === "number") {
         el.tabIndex = tabIndex;
       }
