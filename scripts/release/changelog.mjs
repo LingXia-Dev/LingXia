@@ -28,6 +28,7 @@ export const AUDIENCES = [
     scopes: [
       'lxapp', 'logic', 'page', 'bridge', 'react', 'vue', 'html', 'elements',
       'runtime', 'api', 'capability', 'webview', 'surface', 'splash', 'test',
+      'update', 'upload', 'download', 'storage', 'i18n', 'theme',
     ],
   },
   {
