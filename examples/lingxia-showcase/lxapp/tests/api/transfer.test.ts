@@ -173,7 +173,7 @@ transferSpec('keep the multipart envelope intact whatever the caller heads', {
   expect(result.userAgent).not.toBe('spoofed/1.0');
   expect(result.file?.bytes).toBe(512);
   // A caller Content-Length of 1 would have truncated the body at the server.
-  expect(result.received).toBeGreaterThan(512);
+  expect(result.received > 512).toBeTruthy();
 });
 
 transferSpec('stream upload progress that ends on a completed event', {
@@ -213,20 +213,23 @@ transferSpec('stream upload progress that ends on a completed event', {
     size: number;
   };
 
-  for (const [label, events] of [['raw', result.raw], ['multipart', result.multipart]] as const) {
-    expect(events.length).toBeGreaterThan(1);
-    expect(events[events.length - 1].kind).toBe('completed');
-    // Progress that goes backwards is worse than no progress at all.
-    const uploaded = events.map((event) => event.uploaded);
-    expect(uploaded).toEqual([...uploaded].sort((a, b) => a - b));
-    expect(events[events.length - 1].uploaded).toBe(events[events.length - 1].total);
-    expect(label).toBeTruthy();
-  }
+  // One shape per mode, so a failure names the property that moved rather than
+  // just the assertion that tripped. Progress that goes backwards is worse
+  // than no progress at all, and the stream has to end on a terminal event.
+  const shape = (events: { kind: string; uploaded: number; total: number }[]) => ({
+    streamed: events.length > 1,
+    terminal: events[events.length - 1].kind,
+    monotonic: events.every((event, i) => i === 0 || event.uploaded >= events[i - 1].uploaded),
+    finished: events[events.length - 1].uploaded === events[events.length - 1].total,
+  });
+  const complete = { streamed: true, terminal: 'completed', monotonic: true, finished: true };
+  expect(shape(result.raw)).toEqual(complete);
+  expect(shape(result.multipart)).toEqual(complete);
 
   // Raw carries the file and nothing else; multipart also pays for the
   // envelope, so its total runs above the file size.
   expect(result.raw[0].total).toBe(result.size);
-  expect(result.multipart[0].total).toBeGreaterThan(result.size);
+  expect(result.multipart[0].total > result.size).toBeTruthy();
 });
 
 transferSpec('upload a raw body with PUT for presigned endpoints', {
