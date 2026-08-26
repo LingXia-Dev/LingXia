@@ -190,6 +190,23 @@ fn classify_transport_upload_failure(error: &str) -> UploadFailureKind {
     UploadFailureKind::Internal
 }
 
+/// Turns a transport error into a failure the caller can act on. A denied host
+/// is not a network glitch, and only the error's own kind can tell them apart.
+fn http_failure(
+    error: &host_http::HttpError,
+    url: String,
+    uploaded_bytes: u64,
+    total_bytes: u64,
+) -> UploadFailure {
+    let message = error.to_string();
+    let kind = if error.kind() == host_http::HttpErrorKind::AccessDenied {
+        UploadFailureKind::AccessDenied
+    } else {
+        classify_transport_upload_failure(&message)
+    };
+    UploadFailure::new(kind, url, message, uploaded_bytes, total_bytes)
+}
+
 fn upload_request_options(
     behavior: UploadBehavior,
     abort_rx: oneshot::Receiver<()>,
@@ -610,54 +627,39 @@ pub async fn upload_file_with_behavior(
     let uploaded_bytes = match writer.await {
         Ok(Ok(uploaded_bytes)) => uploaded_bytes,
         Ok(Err(err)) => {
-            // A server that rejects the request answers and hangs up while the
-            // body is still streaming -- a presigned PUT refusing a signature
-            // does exactly that. The writer then fails with a closed-body
-            // error, but the status already in hand explains the refusal far
-            // better, so it wins over whatever the writer tripped on.
-            let settled = response.take();
-            let canceled = matches!(&settled, Some(Err(error)) if error.to_string() == "aborted");
-            if let Some(Ok(response_value)) = settled
-                && !response_value.status.is_success()
-            {
-                let status_code = response_value.status.as_u16();
-                let body = collect_response_body(response_value.body)
-                    .await
-                    .unwrap_or_default();
-                let error = String::from_utf8_lossy(&body).trim().to_string();
-                let failure = UploadFailure::new(
-                    UploadFailureKind::Server,
+            // The writer trips on a closed body whenever the request ends early,
+            // so its error is the symptom. Whatever the request itself settled
+            // on is the cause and wins: a status from a server that answered and
+            // hung up mid-body -- how a presigned PUT refuses a signature -- or
+            // a transport error such as a host the lxapp never trusted.
+            let failure = match response.take() {
+                Some(Ok(response_value)) if !response_value.status.is_success() => {
+                    let status_code = response_value.status.as_u16();
+                    let body = collect_response_body(response_value.body)
+                        .await
+                        .unwrap_or_default();
+                    let error = String::from_utf8_lossy(&body).trim().to_string();
+                    UploadFailure::new(
+                        UploadFailureKind::Server,
+                        request.url.clone(),
+                        if error.is_empty() {
+                            format!("http status {status_code}")
+                        } else {
+                            format!("http status {status_code}: {error}")
+                        },
+                        err.uploaded_bytes,
+                        total_bytes,
+                    )
+                }
+                Some(Err(transport_error)) => http_failure(
+                    &transport_error,
                     request.url.clone(),
-                    if error.is_empty() {
-                        format!("http status {status_code}")
-                    } else {
-                        format!("http status {status_code}: {error}")
-                    },
                     err.uploaded_bytes,
                     total_bytes,
-                );
-                let _ = event_tx.send(UploadEvent::Failed {
-                    url: request.url.clone(),
-                    error: failure.error.clone(),
-                    uploaded_bytes: failure.uploaded_bytes,
-                    total_bytes,
-                });
-                drop(event_tx);
-                let _ = forwarder.await;
-                return Err(failure);
-            }
-            let failure = if canceled {
-                UploadFailure::new(
-                    UploadFailureKind::Canceled,
-                    request.url.clone(),
-                    UPLOAD_CANCELED_ERROR,
-                    err.uploaded_bytes,
-                    total_bytes,
-                )
-            } else {
-                err
+                ),
+                _ => err,
             };
-            let event = if canceled {
+            let event = if failure.kind == UploadFailureKind::Canceled {
                 UploadEvent::Canceled {
                     url: request.url.clone(),
                     uploaded_bytes: failure.uploaded_bytes,
@@ -743,20 +745,8 @@ pub async fn upload_file_with_behavior(
             Ok(UploadResult { status_code, body })
         }
         Err(err) => {
-            let message = err.to_string();
-            let kind = if err.kind() == host_http::HttpErrorKind::AccessDenied {
-                UploadFailureKind::AccessDenied
-            } else {
-                classify_transport_upload_failure(&message)
-            };
-            let failure = UploadFailure::new(
-                kind,
-                request.url.clone(),
-                message.clone(),
-                uploaded_bytes,
-                total_bytes,
-            );
-            let event = if message == "aborted" {
+            let failure = http_failure(&err, request.url.clone(), uploaded_bytes, total_bytes);
+            let event = if failure.kind == UploadFailureKind::Canceled {
                 UploadEvent::Canceled {
                     url: request.url.clone(),
                     uploaded_bytes,
@@ -765,7 +755,7 @@ pub async fn upload_file_with_behavior(
             } else {
                 UploadEvent::Failed {
                     url: request.url.clone(),
-                    error: message,
+                    error: failure.error.clone(),
                     uploaded_bytes,
                     total_bytes,
                 }
@@ -1068,6 +1058,38 @@ mod wire_tests {
             "{seen}"
         );
         assert!(!seen.to_lowercase().contains("text/plain"), "{seen}");
+    }
+
+    /// Accepts the connection and hangs up without answering at all.
+    async fn drop_once() -> (SocketAddr, JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            drop(socket);
+        });
+        (addr, handle)
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_transport_error_beats_the_writers_broken_pipe() {
+        let (addr, server) = drop_once().await;
+        let file = temp_file("dropped", 32 * 1024 * 1024);
+
+        let failure = send(request_for(addr, &file, UploadBodyMode::Raw))
+            .await
+            .expect_err("a connection that never answers is not a success");
+        server.await.unwrap();
+        let _ = std::fs::remove_file(&file);
+
+        // Both sides fail here, and only the request's own error carries why.
+        // The lxapp-facing codes are derived from it, so a denied host reaching
+        // the caller as a closed body would read as a flaky network.
+        assert!(
+            !failure.error.contains("upload request body closed"),
+            "the writer's symptom reached the caller: {}",
+            failure.error
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
