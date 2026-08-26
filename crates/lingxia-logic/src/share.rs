@@ -239,7 +239,7 @@ fn app_link_env_version(lxapp: &LxApp) -> Option<&'static str> {
     match lxapp.release_type() {
         lxapp::ReleaseType::Release => None,
         lxapp::ReleaseType::Preview => Some("preview"),
-        lxapp::ReleaseType::Developer => Some("develop"),
+        lxapp::ReleaseType::Developer => Some("developer"),
     }
 }
 

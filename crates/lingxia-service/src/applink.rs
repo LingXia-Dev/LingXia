@@ -214,7 +214,9 @@ fn parse_release_type(tag: &str) -> Result<ReleaseType, String> {
     match tag {
         "release" => Ok(ReleaseType::Release),
         "preview" => Ok(ReleaseType::Preview),
-        "develop" => Ok(ReleaseType::Developer),
+        // `developer` is the channel name on the wire and in app.json; `develop`
+        // is the pre-0.13 spelling of this parameter, still accepted.
+        "developer" | "develop" => Ok(ReleaseType::Developer),
         other => Err(format!("invalid envVersion: {other}")),
     }
 }

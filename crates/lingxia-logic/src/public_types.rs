@@ -651,8 +651,8 @@ rong::js_api! {
         /// generated `app.json`. Pre-envVersion app artifacts are treated as `'release'`.
         ///
         /// Note: this is *separate* from `LxAppEnvVersion` in the navigator module,
-        /// which encodes lxapp release channels (`'develop' | 'preview' | 'release'`)
-        /// for cross-app navigation URLs and uses the truncated `develop` form.
+        /// which encodes lxapp release channels for cross-app navigation URLs —
+        /// same three names, different axis.
         ///
         type HostAppEnvVersion = r###"'developer' | 'preview' | 'release'"###;
 
@@ -734,7 +734,7 @@ rong::js_api! {
 
         type KeyEventCallback = r###"(event: KeyEvent) => void"###;
 
-        type LxAppEnvVersion = r###"'release' | 'preview' | 'develop'"###;
+        type LxAppEnvVersion = r###"'release' | 'preview' | 'developer'"###;
 
         /// LxApp metadata APIs.
         ///
