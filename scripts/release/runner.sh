@@ -340,8 +340,6 @@ BUILT_ZIPS=()
 
 for arch in "${ARCHES[@]}"; do
   ARCH_SUFFIX="$(runner_arch_suffix "$arch")"
-  RAW_APP_SRC="$RUNNER_RAW_APP_DIR/LingXia Runner.app"
-  RAW_ZIP_SRC="$RUNNER_RAW_DIST_DIR/LingXia Runner-$VERSION-macos.zip"
   APP_OUT="$OUT_DIR/LingXia Runner-$ARCH_SUFFIX.app"
   ZIP_OUT="$OUT_DIR/lingxia-runner-$VERSION-macos-$ARCH_SUFFIX.zip"
 
@@ -378,12 +376,19 @@ for arch in "${ARCHES[@]}"; do
     )
   fi
 
-  [[ -d "$RAW_APP_SRC" ]] || {
-    echo "ERROR: missing Runner app bundle from lingxia build: $RAW_APP_SRC" >&2
+  # Named by the CLI, not by us. `lingxia package` names its artifacts from the
+  # project, so hard-coding the display name here broke the moment that landed
+  # ("LingXia Runner.app" became "LingXiaRunner.app"). Both directories hold one
+  # bundle and one zip for this build, so ask for what is there.
+  RAW_APP_SRC="$(find "$RUNNER_RAW_APP_DIR" -maxdepth 1 -name '*.app' 2>/dev/null | head -n1)"
+  RAW_ZIP_SRC="$(find "$RUNNER_RAW_DIST_DIR" -maxdepth 1 -name "*-$VERSION-macos.zip" 2>/dev/null | head -n1)"
+
+  [[ -n "$RAW_APP_SRC" && -d "$RAW_APP_SRC" ]] || {
+    echo "ERROR: no Runner app bundle from lingxia build in: $RUNNER_RAW_APP_DIR" >&2
     exit 1
   }
-  [[ -f "$RAW_ZIP_SRC" ]] || {
-    echo "ERROR: missing Runner release zip from lingxia build: $RAW_ZIP_SRC" >&2
+  [[ -n "$RAW_ZIP_SRC" && -f "$RAW_ZIP_SRC" ]] || {
+    echo "ERROR: no Runner release zip from lingxia build in: $RUNNER_RAW_DIST_DIR" >&2
     exit 1
   }
 
