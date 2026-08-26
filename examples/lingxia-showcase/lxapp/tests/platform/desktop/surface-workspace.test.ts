@@ -487,7 +487,7 @@ function expectOverlayCoversMain(
   expect(Boolean(visibleOverlay)).toBeTruthy();
   expect(visibleOverlay!.bounds.x).toBe(baseline.bounds.x);
   expect(visibleOverlay!.bounds.w).toBe(baseline.bounds.w);
-  expect(visibleOverlay!.bounds.y >= baseline.bounds.y).toBeTruthy();
+  expect(visibleOverlay!.bounds.y).toBeGreaterThanOrEqual(baseline.bounds.y);
   expect(visibleOverlay!.bounds.y + visibleOverlay!.bounds.h).toBe(
     baseline.bounds.y + baseline.bounds.h,
   );
@@ -1234,7 +1234,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
           ? edge
           : undefined;
       });
-    expect(expandedSidebarNavbarLeft > railNavbarLeft).toBeTruthy();
+    expect(expandedSidebarNavbarLeft).toBeGreaterThan(railNavbarLeft);
     expect((await app.surfaceLayout()).sizeClass).toBe('medium');
 
     host = await resizeHostOnScreen(desktop, host, compactWidth, testHeight);
@@ -1714,12 +1714,12 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       'root main physically restored beside docked Chat',
     );
     const dockedWindows = await desktop.windows();
-    expect(visibleMain.bounds.x < chatWindow.bounds.x).toBeTruthy();
+    expect(visibleMain.bounds.x).toBeLessThan(chatWindow.bounds.x);
     expectSingleWorkspaceHost(host, dockedWindows);
 
     const capture = await automation.lxapps.screenshot();
-    expect(capture.width >= host.bounds.w - 2).toBeTruthy();
-    expect(capture.height >= host.bounds.h - 2).toBeTruthy();
+    expect(capture.width).toBeGreaterThanOrEqual(host.bounds.w - 2);
+    expect(capture.height).toBeGreaterThanOrEqual(host.bounds.h - 2);
 
     await closeChatSurface(app);
     await waitForValue(async () => (
@@ -2195,7 +2195,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
 
     const pins = await shell.setPin({ ...targetPin, pinned: true });
     const pinIndex = pins.findIndex((pin) => samePin(pin, targetPin));
-    expect(pinIndex >= 0).toBeTruthy();
+    expect(pinIndex).toBeGreaterThanOrEqual(0);
 
     host = await resizeHostOnScreen(desktop, host, dockedWidth, 900);
     await waitForValue(async () => {
@@ -2343,7 +2343,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     }, 'promoted Chat runtime fully closed');
     const coldPins = await shell.pins();
     const coldPinIndex = coldPins.findIndex((pin) => samePin(pin, targetPin));
-    expect(coldPinIndex >= 0).toBeTruthy();
+    expect(coldPinIndex).toBeGreaterThanOrEqual(0);
     host = (await desktop.windows()).find((window) => window.id === host!.id) ?? host;
     const coldPinPoint = pinnedShortcutPoint(host, coldPinIndex);
     host = await ensureHostForeground(desktop, host);
@@ -2927,7 +2927,7 @@ desktopTest('migrates one keyed workspace across aside edges and main exactly on
   expect(containsSurface(result.afterClose, result.id)).toBeFalsy();
   expect(result.afterRepeatedClose.mainSwitcher.revision).toBe(result.revisionAfterClose);
   expect(topology(result.afterRepeatedClose)).toEqual(topology(result.afterClose));
-  expect(result.aside.mainSwitcher.revision < result.mainLayout.mainSwitcher.revision).toBeTruthy();
+  expect(result.aside.mainSwitcher.revision).toBeLessThan(result.mainLayout.mainSwitcher.revision);
   expect(result.mainLayout.mainSwitcher.revision < result.dockedLayout.mainSwitcher.revision)
     .toBeTruthy();
   expect(topology(result.afterCleanup)).toEqual(topology(before));

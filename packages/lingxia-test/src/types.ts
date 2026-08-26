@@ -71,6 +71,10 @@ export interface RetryMatchers<T> {
   toBeDefined(): Promise<void>;
   toBeUndefined(): Promise<void>;
   toBeInstanceOf(expected: Function): Promise<void>;
+  toBeGreaterThan(expected: number): Promise<void>;
+  toBeGreaterThanOrEqual(expected: number): Promise<void>;
+  toBeLessThan(expected: number): Promise<void>;
+  toBeLessThanOrEqual(expected: number): Promise<void>;
 }
 
 export interface LocatorMatchers {
@@ -112,6 +116,11 @@ export interface Matchers<T> {
   toBeUndefined(): void;
   toBeInstanceOf(expected: Function): void;
   toThrow(expected?: unknown): void;
+  /** Numeric ordering. Comparing anything but numbers fails the assertion. */
+  toBeGreaterThan(expected: number): void;
+  toBeGreaterThanOrEqual(expected: number): void;
+  toBeLessThan(expected: number): void;
+  toBeLessThanOrEqual(expected: number): void;
 }
 
 export interface SourceLocation {

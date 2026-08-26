@@ -23,7 +23,7 @@ spec("match the aggregate entry to the running platform and framework", { id: "T
 
   const expectedExtension = expectedFramework === 'react' ? '.tsx' : '.vue';
   const pages = await app.pages();
-  expect(pages.length > 0).toBeTruthy();
+  expect(pages.length).toBeGreaterThan(0);
   expect(pages.every(({ path }) => path.toLocaleLowerCase().endsWith(expectedExtension)))
     .toBeTruthy();
 });

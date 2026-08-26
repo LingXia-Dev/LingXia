@@ -53,9 +53,9 @@ spec('capture a host app screenshot into the lxapp sandbox', {
 
   // A screenshot the app cannot read back is not a screenshot.
   expect(shot.path).toMatch(/^lx:\/\//);
-  expect(shot.width > 0).toBeTruthy();
-  expect(shot.height > 0).toBeTruthy();
-  expect(shot.bytes > 0).toBeTruthy();
+  expect(shot.width).toBeGreaterThan(0);
+  expect(shot.height).toBeGreaterThan(0);
+  expect(shot.bytes).toBeGreaterThan(0);
 });
 
 spec('set and clear the host app badge without leaving one behind', {
@@ -323,7 +323,7 @@ spec('reject shell surface reconfigure for an id the shell never realized', {
 
   expect(result.ok).toBeFalsy();
   expect(typeof result.code).toBe('string');
-  expect(String(result.code).length > 0).toBeTruthy();
+  expect(String(result.code).length).toBeGreaterThan(0);
 });
 
 spec('subscribe to and release the surface context listener', {
