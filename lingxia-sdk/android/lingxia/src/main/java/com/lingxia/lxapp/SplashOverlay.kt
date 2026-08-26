@@ -68,6 +68,17 @@ internal object SplashOverlay {
     fun coverActive(): Boolean = launchCover != null && !homeReadySeen
 
     /**
+     * Run when the cover starts lifting. The cover is full-bleed, so while it
+     * is up the system bars belong to it, not to the page underneath — the
+     * host defers colouring them and re-applies here.
+     */
+    private val onCoverGone = mutableListOf<() -> Unit>()
+
+    fun doOnCoverGone(action: () -> Unit) {
+        if (overlay == null) action() else onCoverGone += action
+    }
+
+    /**
      * Bootstrap half, called before anything native exists: make the bundled
      * cover the bootstrap activity's own content, from resources alone, so
      * the first frame the system splash exits onto is already the cover —
@@ -274,6 +285,8 @@ internal object SplashOverlay {
             }
         }
         overlay = null
+        onCoverGone.forEach { it() }
+        onCoverGone.clear()
         // The cover lifts away: a slight zoom under the fade reads as depth —
         // the home page is beneath it, not after it.
         view.animate()

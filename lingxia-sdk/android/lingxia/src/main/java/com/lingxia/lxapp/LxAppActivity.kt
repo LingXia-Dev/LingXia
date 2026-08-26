@@ -256,8 +256,21 @@ class LxAppActivity : AppCompatActivity() {
 
             activity.window.apply {
                 addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-                // Set initial status bar to transparent - navbar will override when needed
                 statusBarColor = Color.TRANSPARENT
+                // The navigation bar too, despite the name only promising it
+                // once. Left at the theme default it is opaque (white under
+                // Theme.AppCompat.DayNight.NoActionBar), and that default is
+                // what the window wears from the moment it is created until
+                // the TabBar state arrives — a white bar across the bottom of
+                // the launch cover for the length of the boot. Whoever owns
+                // the bottom colours it from here on.
+                navigationBarColor = Color.TRANSPARENT
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    isNavigationBarContrastEnforced = false
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    navigationBarDividerColor = Color.TRANSPARENT
+                }
             }
 
             val darkTheme = (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -1504,6 +1517,17 @@ class LxAppActivity : AppCompatActivity() {
      * the tabs ended in a white plate.
      */
     private fun syncNavigationBarToTabBar(visible: Boolean) {
+        // While the launch cover is up it owns the whole window, bars included.
+        // The home page's TabBar state lands well before the cover lifts, so
+        // colouring the bar now paints the TabBar's colour along the bottom of
+        // a full-bleed cover. Hold it transparent and re-apply on dismissal.
+        if (SplashOverlay.coverActive()) {
+            SplashOverlay.doOnCoverGone {
+                syncNavigationBarToTabBar(tabBar?.visibility == View.VISIBLE)
+            }
+            updateNavigationBarTransparency(this, isTabBarTransparent = true)
+            return
+        }
         val config = tabBar?.config
         if (!visible || config == null) {
             updateNavigationBarTransparency(this, isTabBarTransparent = true)
