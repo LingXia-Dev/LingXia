@@ -630,7 +630,7 @@ fn apply_component_visibility(key: &str, visible: bool) {
                             std::mem::take(&mut video.resume_on_show),
                         )
                     } else {
-                        video.resume_on_show = video.playing;
+                        video.resume_on_show = video.playing || video.player.wants_playback();
                         (video.player.clone(), false)
                     }
                 })
@@ -674,7 +674,7 @@ fn apply_component_visibility(key: &str, visible: bool) {
                     std::mem::take(&mut video.resume_on_show),
                 )
             } else {
-                video.resume_on_show = video.playing;
+                video.resume_on_show = video.playing || video.player.wants_playback();
                 (video.player.clone(), false)
             }
         });
