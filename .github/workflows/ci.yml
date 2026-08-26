@@ -926,6 +926,9 @@ jobs:
         with:
           prefix-key: showcase-automation-${{ matrix.platform }}-${{ matrix.profile }}
           cache-on-failure: true
+          # Cancelled PR automation must release the concurrency group instead
+          # of spending minutes archiving a target directory in its post step.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - uses: ./.github/actions/build-web-packages
 
