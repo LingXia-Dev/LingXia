@@ -1,7 +1,7 @@
 use super::{
     BuildArtifacts, BuildConfig, Device, DeviceType, InstallConfig, Platform, RunConfig,
-    native_client_out_for_host_project, resolve_cargo_target_dir, resolve_lingxia_target_dir,
-    set_native_client_codegen_env,
+    native_client_out_for_host_project, project_named_artifact, resolve_cargo_target_dir,
+    resolve_lingxia_target_dir, set_native_client_codegen_env,
 };
 use crate::commands::rust::run_cargo_build_for_target;
 use anyhow::{Context, Result, anyhow};
@@ -558,12 +558,13 @@ impl Platform for AndroidPlatform {
         };
 
         // Build Gradle project
-        let apk_path = self.build_gradle(
+        let gradle_artifact = self.build_gradle(
             &android_root,
             config,
             res_overlay.as_ref(),
             sdk_maven_repo.as_deref(),
         )?;
+        let apk_path = project_named_artifact(&gradle_artifact, config.lingxia_config.as_ref())?;
 
         Ok(BuildArtifacts::Android { apk_path })
     }

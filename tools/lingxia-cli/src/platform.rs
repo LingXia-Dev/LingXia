@@ -1,5 +1,5 @@
 use crate::config::LingXiaConfig;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -310,6 +310,38 @@ pub enum BuildArtifacts {
     },
 }
 
+/// Copy a platform tool's fixed-name file to the project-facing artifact name.
+///
+/// Gradle and Hvigor own their native output paths, so keep those files intact
+/// for incremental builds while returning a sibling named from `projectName`.
+pub(crate) fn project_named_artifact(
+    source: &Path,
+    config: Option<&LingXiaConfig>,
+) -> Result<PathBuf> {
+    let Some(project_name) = config
+        .and_then(|config| config.app.as_ref())
+        .map(|app| app.project_name.trim())
+        .filter(|name| !name.is_empty())
+    else {
+        return Ok(source.to_path_buf());
+    };
+    let Some(extension) = source.extension().and_then(|extension| extension.to_str()) else {
+        return Ok(source.to_path_buf());
+    };
+    let destination = source.with_file_name(format!("{project_name}.{extension}"));
+    if destination == source {
+        return Ok(destination);
+    }
+    fs::copy(source, &destination).with_context(|| {
+        format!(
+            "Failed to create project-named artifact {} from {}",
+            destination.display(),
+            source.display()
+        )
+    })?;
+    Ok(destination)
+}
+
 impl BuildArtifacts {
     /// Get the primary artifact path regardless of platform.
     ///
@@ -442,5 +474,28 @@ mod tests {
         let project = temp.path().join("app");
         fs::create_dir_all(&project).unwrap();
         assert!(!is_inside_lingxia_workspace(&project));
+    }
+
+    #[test]
+    fn project_named_artifact_uses_project_name_and_preserves_tool_output() {
+        let temp = TempDir::new().unwrap();
+        let source = temp.path().join("app-release.apk");
+        fs::write(&source, b"apk").unwrap();
+        let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
+        config.app.as_mut().unwrap().product_name = "Branded Display Name".to_string();
+        let artifact = project_named_artifact(&source, Some(&config)).unwrap();
+
+        assert_eq!(artifact, temp.path().join("demo.apk"));
+        assert_eq!(fs::read(&artifact).unwrap(), b"apk");
+        assert_eq!(fs::read(&source).unwrap(), b"apk");
+    }
+
+    #[test]
+    fn project_named_artifact_without_host_config_keeps_source_path() {
+        let source = Path::new("dist/app-release.apk");
+        assert_eq!(
+            project_named_artifact(source, None).unwrap(),
+            source.to_path_buf()
+        );
     }
 }

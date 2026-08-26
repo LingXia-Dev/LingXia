@@ -14,6 +14,8 @@ use std::process::Command;
 pub struct AppBundleConfig {
     /// Bundle identifier (e.g., "app.lingxia.example")
     pub bundle_id: String,
+    /// Filesystem-safe app bundle name from `app.projectName`
+    pub bundle_name: String,
     /// App display name (user-facing)
     pub app_name: String,
     /// Swift package product name from the root package
@@ -207,7 +209,7 @@ let package = Package(
         config: &AppBundleConfig,
     ) -> Result<PathBuf> {
         let target_name = APP_RUNNER_TARGET;
-        let app_name = format!("{}.app", config.app_name);
+        let app_name = format!("{}.app", config.bundle_name);
 
         let output_dir = resolve_lingxia_target_dir(project_root).join("ios");
         fs::create_dir_all(&output_dir)?;

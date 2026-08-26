@@ -2,8 +2,8 @@ use super::{HarmonyPlatform, OHOS_TARGET, deploy::ensure_command};
 use crate::commands::rust::run_cargo_build_for_target;
 use crate::platform::{
     BuildArtifacts, BuildConfig, BuildProfile, lingxia_workspace_root,
-    native_client_out_for_host_project, resolve_cargo_target_dir, resolve_lingxia_target_dir,
-    set_native_client_codegen_env,
+    native_client_out_for_host_project, project_named_artifact, resolve_cargo_target_dir,
+    resolve_lingxia_target_dir, set_native_client_codegen_env,
 };
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -115,7 +115,8 @@ impl HarmonyPlatform {
         }
 
         self.ohpm_install(&staging)?;
-        let hap_path = self.build_hap(&staging, config)?;
+        let hvigor_artifact = self.build_hap(&staging, config)?;
+        let hap_path = project_named_artifact(&hvigor_artifact, config.lingxia_config.as_ref())?;
 
         Ok(BuildArtifacts::Harmony { hap_path })
     }
