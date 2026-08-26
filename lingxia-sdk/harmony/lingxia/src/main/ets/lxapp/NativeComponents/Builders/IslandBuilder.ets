@@ -4,9 +4,22 @@
  * only root/view/text/tappable/slider plus video.native.
  */
 import { NativeComponentParams, registerNativeComponentBuilder } from '../NativeComponentNodeController';
-import { NativeComponentRecord } from '../NativeComponentTypes';
+import { NativeComponentRecord, NativeComponentValue } from '../NativeComponentTypes';
 import { onNativeComponentEventFromBuilder } from '../NativeBridgeInternal';
 import { getBooleanProp, getNumberProp, getStringProp } from './BuilderUtils';
+
+function cssNumber(value: NativeComponentValue, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return fallback;
+}
 
 @Component
 struct IslandViewNode {
@@ -21,12 +34,14 @@ struct IslandViewNode {
     }
     .width('100%')
     .height('100%')
+    .id(this.automationId())
     .backgroundColor(this.backgroundColor())
     .borderRadius(this.styleNumber('borderRadius', 0))
     .opacity(Math.max(0, Math.min(1, this.styleNumber('opacity', 1))))
     .hitTestBehavior(this.hitMode())
     .accessibilityText(this.ariaLabel())
     .accessibilityDescription(this.ariaDescription())
+    .accessibilityLevel(this.accessibilityLevel())
   }
 
   private scrimGradient(): { angle: number; colors: Array<[string, number]> } {
@@ -66,15 +81,15 @@ struct IslandViewNode {
     return HitTestMode.Default;
   }
 
-  private styleRecord(): Record<string, Object> | undefined {
+  private styleRecord(): Record<string, NativeComponentValue> | undefined {
     const value = this.params.props?.get('nativeStyle');
-    return value && typeof value === 'object' ? value as Record<string, Object> : undefined;
+    return value && typeof value === 'object' ? value as Record<string, NativeComponentValue> : undefined;
   }
 
   private styleNumber(key: string, fallback: number): number {
     const record = this.styleRecord();
     const value = record ? record[key] : undefined;
-    return typeof value === 'number' ? value : fallback;
+    return cssNumber(value, fallback);
   }
 
   private backgroundColor(): string {
@@ -90,6 +105,15 @@ struct IslandViewNode {
   private ariaDescription(): string {
     return getStringProp(this.params.props, 'aria-description', getStringProp(this.params.props, 'ariaDescription', ''));
   }
+
+  private automationId(): string {
+    return getStringProp(this.params.props, 'automationId', '');
+  }
+
+  private accessibilityLevel(): string {
+    return getBooleanProp(this.params.props, 'aria-hidden', false) ||
+      getBooleanProp(this.params.props, 'ariaHidden', false) ? 'no-hide-descendants' : 'auto';
+  }
 }
 
 @Component
@@ -100,21 +124,24 @@ struct IslandTextNode {
     Text(getStringProp(this.params.props, 'text', ''))
       .fontColor(this.styleString('color', '#FFFFFF'))
       .fontSize(this.styleNumber('fontSize', 12))
+      .lineHeight(this.styleNumber('lineHeight', this.styleNumber('fontSize', 12) * 1.2))
       .fontWeight(this.fontWeight())
       .maxLines(Math.max(1, Math.round(getNumberProp(this.params.props, 'maxLines', 1000))))
       .textOverflow({ overflow: TextOverflow.Ellipsis })
       .textAlign(this.textAlign())
       .width('100%')
       .height('100%')
+      .id(this.automationId())
       .hitTestBehavior(HitTestMode.None)
       .accessibilityText(this.ariaLabel())
       .accessibilityDescription(this.ariaDescription())
+      .accessibilityLevel(this.accessibilityLevel())
       .opacity(this.opacity())
   }
 
-  private styleRecord(): Record<string, Object> | undefined {
+  private styleRecord(): Record<string, NativeComponentValue> | undefined {
     const value = this.params.props?.get('nativeStyle');
-    return value && typeof value === 'object' ? value as Record<string, Object> : undefined;
+    return value && typeof value === 'object' ? value as Record<string, NativeComponentValue> : undefined;
   }
 
   private styleString(key: string, fallback: string): string {
@@ -129,12 +156,13 @@ struct IslandTextNode {
 
   private styleNumber(key: string, fallback: number): number {
     const direct = this.params.props?.get(key);
-    if (typeof direct === 'number') {
-      return direct;
+    const directNumber = cssNumber(direct, Number.NaN);
+    if (Number.isFinite(directNumber)) {
+      return directNumber;
     }
     const record = this.styleRecord();
     const value = record ? record[key] : undefined;
-    return typeof value === 'number' ? value : fallback;
+    return cssNumber(value, fallback);
   }
 
   private fontWeight(): FontWeight {
@@ -160,6 +188,15 @@ struct IslandTextNode {
     return getStringProp(this.params.props, 'aria-description', getStringProp(this.params.props, 'ariaDescription', ''));
   }
 
+  private automationId(): string {
+    return getStringProp(this.params.props, 'automationId', '');
+  }
+
+  private accessibilityLevel(): string {
+    return getBooleanProp(this.params.props, 'aria-hidden', false) ||
+      getBooleanProp(this.params.props, 'ariaHidden', false) ? 'no-hide-descendants' : 'auto';
+  }
+
   private opacity(): number {
     return Math.max(0, Math.min(1, this.styleNumber('opacity', 1)));
   }
@@ -173,6 +210,7 @@ struct IslandTappableNode {
     Button(this.label())
       .width('100%')
       .height('100%')
+      .id(this.automationId())
       .backgroundColor(this.backgroundColor())
       .fontColor(this.foregroundColor())
       .fontSize(getStringProp(this.params.props, 'size', 'regular') === 'compact' ? 12 : 14)
@@ -181,6 +219,7 @@ struct IslandTappableNode {
       .hitTestBehavior(this.hitMode())
       .accessibilityText(this.ariaLabel())
       .accessibilityDescription(this.ariaDescription())
+      .accessibilityLevel(this.accessibilityLevel())
       .onClick(() => {
         if (!this.enabled()) return;
         onNativeComponentEventFromBuilder(this.params.componentId, 'press', { source: 'pointer' });
@@ -245,6 +284,15 @@ struct IslandTappableNode {
     return getStringProp(this.params.props, 'aria-description', getStringProp(this.params.props, 'ariaDescription', ''));
   }
 
+  private automationId(): string {
+    return getStringProp(this.params.props, 'automationId', '');
+  }
+
+  private accessibilityLevel(): string {
+    return getBooleanProp(this.params.props, 'aria-hidden', false) ||
+      getBooleanProp(this.params.props, 'ariaHidden', false) ? 'no-hide-descendants' : 'auto';
+  }
+
   private backgroundColor(): string {
     const emphasis = getStringProp(this.params.props, 'emphasis', 'secondary');
     if (emphasis === 'quiet') return '#00000000';
@@ -284,10 +332,12 @@ struct IslandSliderNode {
       style: SliderStyle.OutSet
     })
       .width('100%')
+      .id(this.automationId())
       .enabled(!getBooleanProp(this.params.props, 'disabled', false))
       .hitTestBehavior(this.hitMode())
       .accessibilityText(this.ariaLabel())
       .accessibilityDescription(this.valueDescription())
+      .accessibilityLevel(this.accessibilityLevel())
       .onChange((value: number, mode: SliderChangeMode) => {
         this.localValue = value;
         if (mode === SliderChangeMode.Begin || mode === SliderChangeMode.Moving) {
@@ -327,6 +377,15 @@ struct IslandSliderNode {
 
   private ariaLabel(): string {
     return getStringProp(this.params.props, 'aria-label', getStringProp(this.params.props, 'ariaLabel', ''));
+  }
+
+  private automationId(): string {
+    return getStringProp(this.params.props, 'automationId', '');
+  }
+
+  private accessibilityLevel(): string {
+    return getBooleanProp(this.params.props, 'aria-hidden', false) ||
+      getBooleanProp(this.params.props, 'ariaHidden', false) ? 'no-hide-descendants' : 'auto';
   }
 
   private valueDescription(): string {
