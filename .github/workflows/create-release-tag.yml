@@ -27,6 +27,7 @@ on:
         options:
           - all
           - lingxia-bridge
+          - lingxia-browser-shell-webui
           - lingxia-elements
           - lingxia-html
           - lingxia-page-runtime
@@ -47,6 +48,11 @@ permissions:
   id-token: write
 
 env:
+  # Must match scripts/release/npm.sh's ALL_TARGETS: that script is what a
+  # `component=npm` publish actually runs, and this list is only the guard on
+  # which single package may be named. They disagreed on
+  # lingxia-browser-shell-webui, so `all` tried to publish a package that could
+  # not then be re-run on its own when it failed.
   NPM_PACKAGES: >-
     lingxia-bridge
     lingxia-polyfills
@@ -58,6 +64,7 @@ env:
     lingxia-terminal-settings
     lingxia-types
     lingxia-test
+    lingxia-browser-shell-webui
 
 jobs:
   publish:
