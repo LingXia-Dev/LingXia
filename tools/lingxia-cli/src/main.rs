@@ -427,6 +427,12 @@ enum Commands {
         action: Option<commands::runner::RunnerAction>,
     },
 
+    /// Work with the in-app browser's webui
+    BrowserShell {
+        #[command(subcommand)]
+        action: commands::browser_shell::BrowserShellAction,
+    },
+
     /// Install the LingXia agent skill shipped inside this CLI
     Skill {
         #[command(subcommand)]
@@ -882,6 +888,9 @@ fn main() -> Result<()> {
         }
         Commands::Doctor { platform } => {
             commands::doctor::execute(platform)?;
+        }
+        Commands::BrowserShell { action } => {
+            commands::browser_shell::run(action)?;
         }
         Commands::Skill { action } => {
             commands::skill::execute(action)?;

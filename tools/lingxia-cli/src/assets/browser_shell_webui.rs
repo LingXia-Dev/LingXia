@@ -59,12 +59,14 @@ pub(super) fn resolve_browser_shell_webui_dir(
     // whole error: the alternative was a default that pointed at a package the
     // registry has never had, which failed at `npm pack` with nothing to act on.
     Err(anyhow!(
-        "capabilities.browser is on, but browser.webui is not set.\n\
-         The in-app browser's webui is a prebuilt lxapp that ships with LingXia \
-         rather than through npm, so point at your copy:\n\n  \
-         browser:\n    webui:\n      path: <dir containing lxapp.json>\n\n\
-         In-repo that is crates/lingxia-browser-shell/webui; a host app usually \
-         vendors it. `browser.webui.package`/`version` still works for a fork \
-         you publish yourself."
+        "capabilities.browser is on, but browser.webui is not set.\n\n\
+         The webui is the browser's face — newtab, settings, downloads — so it \
+         ships as a starting point you own rather than a package you depend on. \
+         Take a copy:\n\n  \
+         lingxia browser-shell eject\n\n\
+         then point the host at it:\n\n  \
+         browser:\n    webui:\n      path: browser-shell-webui\n\n\
+         `browser.webui.package`/`version` still works for a fork you publish \
+         yourself."
     ))
 }
