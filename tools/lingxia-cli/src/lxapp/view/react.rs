@@ -1,5 +1,6 @@
 use super::{
-    ViewUsageAudit, analyze_script_bindings, downstream_action_usage, ensure_no_direct_lx_usage,
+    ViewUsageAudit, analyze_script_bindings, downstream_action_usage,
+    ensure_forwarded_actions_cover_downstream, ensure_no_direct_lx_usage,
     ensure_used_actions_exist,
 };
 use crate::lxapp::framework::PageAction;
@@ -24,14 +25,25 @@ pub(super) fn validate_react_bindings(
     let mut used_actions = analyzer.used_actions;
     mark_channel_topic_actions(&source, actions, &mut used_actions);
     ensure_used_actions_exist(page_path, actions, &used_actions)?;
+
+    // What the entry itself reads off `actions` is what it can forward. Keep it
+    // before the downstream set is folded in, so the two can be compared.
+    let forwarded = used_actions.clone();
+
     // The entry can only judge what it reads itself; once the object is handed
-    // to a child view, the child files decide what is wired.
+    // to a child view, the child files decide what is wired. Scan downstream
+    // either way: when the whole `actions` object escapes the children can
+    // reach anything, but when the entry re-wraps it into a literal the
+    // children can only reach what that literal names — and an omission there
+    // is invisible to every other check.
+    let (downstream, complete) = downstream_action_usage(project, &source_path);
     let mut unused_reportable = true;
     if analyzer.actions_escaped {
-        let (downstream, complete) = downstream_action_usage(project, &source_path);
-        used_actions.extend(downstream);
         unused_reportable = complete;
+    } else {
+        ensure_forwarded_actions_cover_downstream(page_path, &forwarded, &downstream, complete)?;
     }
+    used_actions.extend(downstream);
     Ok(ViewUsageAudit {
         used_actions,
         unused_reportable,
