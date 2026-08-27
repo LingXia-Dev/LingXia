@@ -17,31 +17,29 @@ or `[publish] token` in `~/.lingxia/cli/config.toml`.
 
 See `lingxia publish --help` for the flags.
 
-**Machine-wide publish defaults (`~/.lingxia/cli/config.toml`):**
+**Publish tokens (wallet):**
 
-Set per-user defaults so lxapp projects (which have no `lingxia.yaml`) need not
-pass `--token` / `--lingxia-server` on every publish. The flags (and, for the
-server, project `app.lingxiaServer`) take precedence. Publish keys sit under
-`[publish]` (the file holds more areas than publishing), and each value follows
-the same shape as `app.lingxiaServer` in `lingxia.yaml`: a scalar applies to
-every env, an env-keyed map is explicit per env with no fallback for envs it
-omits. The env comes from the package's `--env`/`--channel` (`developer` when
-omitted for lxapp publish; host-app publish reads the package's `app.json
-envVersion`). The file is CLI-managed — `lingxia publish login` writes it, hand
+Store the token once with `lingxia auth login publish --env release --token …`;
+it is keyed by the canonical server URL + env, so the project's server and the
+package's `--env`/`--channel` pick the right token automatically (`developer`
+when omitted for lxapp publish; host-app publish reads the package's
+`app.json envVersion`). CI sets `LINGXIA_PUBLISH_TOKEN` instead.
+
+**Machine-wide server default (`~/.lingxia/cli/config.toml`):**
+
+Set a per-user server default so lxapp projects (which have no `lingxia.yaml`)
+need not pass `--lingxia-server` on every publish. The flag (and project
+`app.lingxiaServer`) take precedence. The value follows the same shape as
+`app.lingxiaServer` in `lingxia.yaml`: a scalar applies to every env, an
+env-keyed map is explicit per env with no fallback for envs it omits. The file
+is CLI-managed — `lingxia auth login publish --server …` writes it, hand
 comments are lost.
 
 ```toml
-[publish.token]                    # map: explicit per env — each env is a
-developer = "lx_dev_token"         # distinct backend with its own credentials
-release = "lx_prod_token"
-
 [publish.lingxiaServer]
 developer = "http://localhost:8080"
 release = "https://prod.example.com"
 ```
-
-A scalar form covers the single-backend case: `token = "lx_tok"` under
-`[publish]` applies to every env.
 
 ## App signing
 
@@ -154,10 +152,14 @@ The concrete flows are in [App signing](#app-signing) above; see
 Submit a built installable to an **OS app store**. Talks to stores only — never
 the LingXia server (that's `publish`) and never builds (run `build`/`package`
 first; `submit` consumes the staged `dist/<platform>/` and fails clearly if it's
-missing). Each platform has a `login` / `logout` / `submit` / `status` flow;
-store identity lives in `lingxia.yaml` and credentials in
-`~/.lingxia/store/credentials.toml`, with **env vars overriding the file** for
-CI.
+missing). The artifact's real bundle/package identity is checked against the
+platform block in `lingxia.yaml` before any credential or network use, so a
+dev-suffixed or wrong-app artifact fails immediately. Credentials come from
+the wallet (`lingxia auth login googleplay|xiaomi|oppo|honor|msstore`, Apple
+and Harmony reuse their `auth login` credentials); each provider's
+`LINGXIA_<PROVIDER>_*` env group overrides the wallet for CI — complete groups
+only, a partial group is an error. Store-record settings (numeric app ids,
+default track) live under the platform blocks in `lingxia.yaml`.
 
 Run `lingxia store --help` for the current set of supported stores and per-action
 flags (`--draft`, release notes, track, etc.).

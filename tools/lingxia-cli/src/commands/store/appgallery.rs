@@ -14,8 +14,8 @@ use std::io::Read;
 use std::path::Path;
 
 use super::backend::{SubmitOptions, http};
-use super::creds::AppGalleryCreds;
 use crate::config::AppGalleryConfig;
+use crate::platform::harmony::AgcApiCredentials;
 
 const API: &str = "https://connect-api.cloud.huawei.com/api";
 
@@ -25,7 +25,7 @@ struct Session {
 }
 
 impl Session {
-    fn login(creds: &AppGalleryCreds) -> Result<Self> {
+    fn login(creds: &AgcApiCredentials) -> Result<Self> {
         let body = json!({
             "grant_type": "client_credentials",
             "client_id": creds.client_id,
@@ -82,7 +82,7 @@ impl Session {
 }
 
 pub fn submit(
-    creds: &AppGalleryCreds,
+    creds: &AgcApiCredentials,
     cfg: &AppGalleryConfig,
     artifact: &Path,
     opts: &SubmitOptions,
@@ -146,7 +146,7 @@ pub fn submit(
     Ok(())
 }
 
-pub fn status(creds: &AppGalleryCreds, cfg: &AppGalleryConfig) -> Result<()> {
+pub fn status(creds: &AgcApiCredentials, cfg: &AppGalleryConfig) -> Result<()> {
     let session = Session::login(creds)?;
     let info = session.get(&format!("{API}/publish/v2/app-info?appId={}", cfg.app_id))?;
     let state = info

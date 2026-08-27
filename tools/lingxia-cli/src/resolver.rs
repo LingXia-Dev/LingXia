@@ -134,6 +134,11 @@ fn interactive() -> bool {
     std::io::stdin().is_terminal() && std::io::stderr().is_terminal()
 }
 
+/// Whether prompting the user is possible in this invocation.
+pub fn is_interactive() -> bool {
+    interactive()
+}
+
 fn env_nonempty(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.trim().is_empty())
 }
@@ -681,7 +686,52 @@ fn resolve_harmony_identity(
     allow_login: bool,
     interactive: bool,
 ) -> Result<String> {
-    let identities = wallet.harmony_identities()?;
+    resolve_single_identity(&SingleIdentityInput {
+        provider: "harmony",
+        label: "Harmony AGC identity",
+        login_cmd: "lingxia auth login harmony",
+        identities: &wallet.harmony_identities()?,
+        bindings,
+        binding_key,
+        interactive,
+        inline_login: if allow_login {
+            Some(&crate::commands::auth::harmony_inline_login)
+        } else {
+            None
+        },
+    })
+}
+
+/// Resolution for providers with one mechanism and no yaml constraint:
+/// binding cache → sole identity → one interactive selection, with the same
+/// never-switch-organizations-silently rule as Apple.
+pub(crate) struct SingleIdentityInput<'a> {
+    /// Binding provider key, e.g. `harmony`, `googleplay`.
+    pub provider: &'a str,
+    /// Human label for messages, e.g. `Harmony AGC identity`.
+    pub label: &'a str,
+    /// The login command that fixes a missing credential.
+    pub login_cmd: &'a str,
+    pub identities: &'a [String],
+    pub bindings: &'a BindingStore,
+    pub binding_key: Option<(&'a std::path::Path, &'a str)>,
+    pub interactive: bool,
+    /// In-place login hook; returns the identity that was logged in.
+    #[allow(clippy::type_complexity)]
+    pub inline_login: Option<&'a dyn Fn() -> Result<String>>,
+}
+
+pub(crate) fn resolve_single_identity(input: &SingleIdentityInput) -> Result<String> {
+    let SingleIdentityInput {
+        provider,
+        label,
+        login_cmd,
+        identities,
+        bindings,
+        binding_key,
+        interactive,
+        inline_login,
+    } = *input;
 
     let mut previous_identity: Option<String> = None;
     if let Some((root, channel)) = binding_key
@@ -694,34 +744,31 @@ fn resolve_harmony_identity(
     }
 
     let resolved = match identities.len() {
-        0 => {
-            if allow_login && interactive {
-                crate::commands::auth::harmony_inline_login()?
-            } else {
-                bail!(
-                    "{}: no Harmony AGC credentials. Fix: lingxia auth login harmony",
-                    codes::CREDENTIALS_MISSING
-                );
-            }
-        }
+        0 => match inline_login.filter(|_| interactive) {
+            Some(login) => login()?,
+            None => bail!(
+                "{}: no {label} stored. Fix: {login_cmd}",
+                codes::CREDENTIALS_MISSING
+            ),
+        },
         1 => identities[0].clone(),
         _ => {
             if !interactive {
                 bail!(
-                    "{}: {} Harmony AGC identities can serve this operation ({}); provide \
-                     {ENV_AGC_CLIENT_ID}/{ENV_AGC_CLIENT_SECRET} or select once interactively",
+                    "{}: {} {label} candidates ({}); provide the credential env group or \
+                     select once interactively",
                     codes::CREDENTIAL_SELECTION_REQUIRED,
                     identities.len(),
                     identities.join(", ")
                 );
             }
             eprintln!(
-                "This checkout can use {} Harmony AGC identities:",
+                "This checkout can use {} {label} candidates:",
                 identities.len()
             );
             let selection = dialoguer::Select::new()
                 .with_prompt("Select once for this checkout")
-                .items(&identities)
+                .items(identities)
                 .default(0)
                 .interact()?;
             identities[selection].clone()
@@ -731,27 +778,27 @@ fn resolve_harmony_identity(
     if let Some(previous) = previous_identity.filter(|p| *p != resolved) {
         if !interactive {
             bail!(
-                "{}: this checkout previously used AGC identity {previous}, which is no longer \
+                "{}: this checkout previously used {label} {previous}, which is no longer \
                  stored; re-run interactively to confirm {resolved}, or `lingxia auth forget` first",
                 codes::CREDENTIAL_SELECTION_REQUIRED
             );
         }
         let confirmed = dialoguer::Confirm::new()
             .with_prompt(format!(
-                "This checkout previously used AGC identity {previous}; continue with {resolved}?"
+                "This checkout previously used {label} {previous}; continue with {resolved}?"
             ))
             .default(true)
             .interact()?;
         if !confirmed {
             bail!(
-                "{}: resolution cancelled; run `lingxia auth login harmony` for the identity you want",
+                "{}: resolution cancelled; run `{login_cmd}` for the identity you want",
                 codes::CREDENTIAL_SELECTION_REQUIRED
             );
         }
     }
 
     if let Some((root, channel)) = binding_key {
-        bindings.save(root, channel, "harmony", &resolved, None)?;
+        bindings.save(root, channel, provider, &resolved, None)?;
     }
     Ok(resolved)
 }

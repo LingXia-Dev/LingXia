@@ -1,36 +1,16 @@
-//! `lingxia store` credential store: `~/.lingxia/store/credentials.toml`.
+//! OS-store credential resolution: canonical env group → wallet.
 //!
-//! Resolution precedence is **env var > file**, so `store login` writes the
-//! file once for zero-env local dev, while CI injects env vars (no file on
-//! disk) and the env transparently overrides the cache. The file is written
-//! owner-only (`0600` on Unix) and never belongs in a repo.
+//! Each provider's env group must be complete or absent — a partial group is
+//! a hard error and is never mixed with wallet credentials. Wallet slots are
+//! identity-keyed (`credentials/stores/<provider>/<identity>/`), written by
+//! `lingxia auth login <provider>`.
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
-use std::fs;
-use std::path::{Path, PathBuf};
 
-const STORE_DIR: &str = "store";
-const CREDENTIALS_FILE: &str = "credentials.toml";
-
-/// The whole `credentials.toml` (one table per store).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct StoreCredentials {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub msstore: Option<MsStoreCreds>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub appstore: Option<AppStoreCreds>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub appgallery: Option<AppGalleryCreds>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub googleplay: Option<GooglePlayCreds>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub xiaomi: Option<XiaomiCreds>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub oppo: Option<OppoCreds>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub honor: Option<HonorCreds>,
-}
+use crate::binding::BindingStore;
+use crate::resolver::{self, SingleIdentityInput, codes};
+use crate::wallet::Wallet;
 
 /// Microsoft Store (Partner Center) — Azure AD client credentials.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -40,22 +20,6 @@ pub struct MsStoreCreds {
     pub client_secret: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seller_id: Option<String>,
-}
-
-/// App Store Connect — API key (issuer + key id + `.p8` path).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AppStoreCreds {
-    pub issuer_id: String,
-    pub key_id: String,
-    /// Path to the App Store Connect `.p8` private key (`~` is expanded).
-    pub key_path: String,
-}
-
-/// Huawei AppGallery Connect — client credentials.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AppGalleryCreds {
-    pub client_id: String,
-    pub client_secret: String,
 }
 
 /// Google Play Developer API — service account. Either point at the JSON key
@@ -95,55 +59,6 @@ pub struct HonorCreds {
     pub client_secret: String,
 }
 
-fn store_dir() -> Result<PathBuf> {
-    Ok(crate::state_root::lingxia_dir()?.join(STORE_DIR))
-}
-
-/// Path to `~/.lingxia/store/credentials.toml`.
-pub fn credentials_path() -> Result<PathBuf> {
-    Ok(store_dir()?.join(CREDENTIALS_FILE))
-}
-
-impl StoreCredentials {
-    /// Load the credential file, or an empty set when it does not exist.
-    pub fn load() -> Result<Self> {
-        let path = credentials_path()?;
-        Self::load_from(&path)
-    }
-
-    pub fn load_from(path: &Path) -> Result<Self> {
-        if !path.exists() {
-            return Ok(Self::default());
-        }
-        let text = fs::read_to_string(path)
-            .with_context(|| format!("Failed to read {}", path.display()))?;
-        toml::from_str(&text).with_context(|| format!("Failed to parse {}", path.display()))
-    }
-
-    /// Persist the credential file owner-only.
-    pub fn save(&self) -> Result<()> {
-        let dir = store_dir()?;
-        fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
-        let path = dir.join(CREDENTIALS_FILE);
-        let text = toml::to_string_pretty(self).context("Failed to serialize credentials")?;
-        fs::write(&path, text).with_context(|| format!("Failed to write {}", path.display()))?;
-        set_owner_only(&path)?;
-        Ok(())
-    }
-}
-
-#[cfg(unix)]
-fn set_owner_only(path: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o600))
-        .with_context(|| format!("Failed to set permissions on {}", path.display()))
-}
-
-#[cfg(not(unix))]
-fn set_owner_only(_path: &Path) -> Result<()> {
-    Ok(())
-}
-
 fn env_nonempty(key: &str) -> Option<String> {
     std::env::var(key)
         .ok()
@@ -151,239 +66,197 @@ fn env_nonempty(key: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
-/// Resolve Microsoft Store credentials: env (`LINGXIA_MSSTORE_*`) over file.
-pub fn resolve_msstore(file: &StoreCredentials) -> Result<MsStoreCreds> {
-    let f = file.msstore.as_ref();
-    let tenant = env_nonempty("LINGXIA_MSSTORE_TENANT").or_else(|| f.map(|c| c.tenant.clone()));
-    let client_id =
-        env_nonempty("LINGXIA_MSSTORE_CLIENT_ID").or_else(|| f.map(|c| c.client_id.clone()));
-    let client_secret = env_nonempty("LINGXIA_MSSTORE_CLIENT_SECRET")
-        .or_else(|| f.map(|c| c.client_secret.clone()));
-    let seller_id =
-        env_nonempty("LINGXIA_MSSTORE_SELLER_ID").or_else(|| f.and_then(|c| c.seller_id.clone()));
-    match (tenant, client_id, client_secret) {
-        (Some(tenant), Some(client_id), Some(client_secret)) => Ok(MsStoreCreds {
+/// A complete-or-absent env group: `Some` values when all are set, `None`
+/// when none are, an `CREDENTIAL_ENV_INCOMPLETE` error otherwise.
+fn env_group<const N: usize>(keys: [&str; N]) -> Result<Option<[String; N]>> {
+    let values: Vec<Option<String>> = keys.iter().map(|k| env_nonempty(k)).collect();
+    if values.iter().all(Option::is_none) {
+        return Ok(None);
+    }
+    if values.iter().all(Option::is_some) {
+        let values: Vec<String> = values.into_iter().map(Option::unwrap).collect();
+        return Ok(Some(values.try_into().expect("length preserved")));
+    }
+    let missing: Vec<&str> = keys
+        .iter()
+        .zip(&values)
+        .filter(|(_, v)| v.is_none())
+        .map(|(k, _)| *k)
+        .collect();
+    bail!(
+        "{}: the credential env group must be complete; missing: {}",
+        codes::CREDENTIAL_ENV_INCOMPLETE,
+        missing.join(", ")
+    );
+}
+
+/// Resolve the wallet identity for one store provider (binding cache → sole →
+/// one interactive selection), with in-place login when nothing is stored.
+fn wallet_identity(
+    provider: &'static str,
+    label: &'static str,
+    inline_login: Option<&dyn Fn() -> Result<String>>,
+) -> Result<String> {
+    let wallet = Wallet::open()?;
+    wallet.notice_legacy_files();
+    let identities = wallet.store_identities(provider)?;
+    let project = resolver::detect_project()?;
+    let bindings = BindingStore::open()?;
+    let login_cmd = format!("lingxia auth login {provider}");
+    resolver::resolve_single_identity(&SingleIdentityInput {
+        provider,
+        label,
+        login_cmd: &login_cmd,
+        identities: &identities,
+        bindings: &bindings,
+        binding_key: project.as_ref().map(|p| (p.root.as_path(), provider)),
+        interactive: resolver::is_interactive(),
+        inline_login,
+    })
+}
+
+fn wallet_creds<T: serde::de::DeserializeOwned>(
+    provider: &'static str,
+    label: &'static str,
+    inline_login: Option<&dyn Fn() -> Result<String>>,
+) -> Result<T> {
+    let identity = wallet_identity(provider, label, inline_login)?;
+    Wallet::open()?
+        .load_store_creds(provider, &identity)?
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "{}: credentials for {label} {identity} disappeared during resolution",
+                codes::CREDENTIALS_MISSING
+            )
+        })
+}
+
+/// Resolve Microsoft Store credentials: env group (`LINGXIA_MSSTORE_*`) → wallet.
+pub fn resolve_msstore() -> Result<MsStoreCreds> {
+    if let Some([tenant, client_id, client_secret]) = env_group([
+        "LINGXIA_MSSTORE_TENANT",
+        "LINGXIA_MSSTORE_CLIENT_ID",
+        "LINGXIA_MSSTORE_CLIENT_SECRET",
+    ])? {
+        return Ok(MsStoreCreds {
             tenant,
             client_id,
             client_secret,
-            seller_id,
-        }),
-        _ => bail!(
-            "Microsoft Store credentials not found. Run `lingxia store login --platform windows`, \
-             or set LINGXIA_MSSTORE_TENANT / _CLIENT_ID / _CLIENT_SECRET."
-        ),
-    }
-}
-
-/// Resolve App Store Connect credentials: env (`LINGXIA_ASC_*`) over file.
-pub fn resolve_appstore(file: &StoreCredentials) -> Result<AppStoreCreds> {
-    let f = file.appstore.as_ref();
-    let issuer_id =
-        env_nonempty("LINGXIA_ASC_ISSUER_ID").or_else(|| f.map(|c| c.issuer_id.clone()));
-    let key_id = env_nonempty("LINGXIA_ASC_KEY_ID").or_else(|| f.map(|c| c.key_id.clone()));
-    let key_path = env_nonempty("LINGXIA_ASC_KEY_PATH").or_else(|| f.map(|c| c.key_path.clone()));
-    match (issuer_id, key_id, key_path) {
-        (Some(issuer_id), Some(key_id), Some(key_path)) => Ok(AppStoreCreds {
-            issuer_id,
-            key_id,
-            key_path,
-        }),
-        _ => bail!(
-            "App Store Connect credentials not found. Run `lingxia store login --platform ios`, \
-             or set LINGXIA_ASC_ISSUER_ID / _KEY_ID / _KEY_PATH."
-        ),
-    }
-}
-
-/// Resolve AppGallery credentials: env (`LINGXIA_AGC_*`) over file.
-pub fn resolve_appgallery(file: &StoreCredentials) -> Result<AppGalleryCreds> {
-    let f = file.appgallery.as_ref();
-    let client_id =
-        env_nonempty("LINGXIA_AGC_CLIENT_ID").or_else(|| f.map(|c| c.client_id.clone()));
-    let client_secret =
-        env_nonempty("LINGXIA_AGC_CLIENT_SECRET").or_else(|| f.map(|c| c.client_secret.clone()));
-    match (client_id, client_secret) {
-        (Some(client_id), Some(client_secret)) => Ok(AppGalleryCreds {
-            client_id,
-            client_secret,
-        }),
-        _ => bail!(
-            "AppGallery credentials not found. Run `lingxia store login --platform harmony`, \
-             or set LINGXIA_AGC_CLIENT_ID / _CLIENT_SECRET."
-        ),
-    }
-}
-
-/// Resolve Google Play credentials: env (`LINGXIA_GPLAY_*`) over file. Either a
-/// service-account JSON path, or an inline client_email + private_key.
-pub fn resolve_googleplay(file: &StoreCredentials) -> Result<GooglePlayCreds> {
-    let f = file.googleplay.as_ref();
-    // Resolve ONE credential mode, highest priority first, so the returned
-    // struct never mixes sources — otherwise a file `service_account_json` path
-    // would shadow an inline env pair in `service_account()`, violating
-    // env-over-file. Priority: env JSON path -> env inline -> file JSON path ->
-    // file inline.
-    if let Some(p) = env_nonempty("LINGXIA_GPLAY_SERVICE_ACCOUNT_JSON") {
-        return Ok(GooglePlayCreds {
-            service_account_json: Some(p),
-            client_email: None,
-            private_key: None,
+            seller_id: env_nonempty("LINGXIA_MSSTORE_SELLER_ID"),
         });
     }
-    if let (Some(email), Some(key)) = (
-        env_nonempty("LINGXIA_GPLAY_CLIENT_EMAIL"),
-        env_nonempty("LINGXIA_GPLAY_PRIVATE_KEY"),
-    ) {
-        return Ok(GooglePlayCreds {
-            service_account_json: None,
-            client_email: Some(email),
-            private_key: Some(key),
-        });
-    }
-    if let Some(p) = f
-        .and_then(|c| c.service_account_json.clone())
-        .filter(|s| !s.is_empty())
-    {
-        return Ok(GooglePlayCreds {
-            service_account_json: Some(p),
-            client_email: None,
-            private_key: None,
-        });
-    }
-    if let (Some(email), Some(key)) = (
-        f.and_then(|c| c.client_email.clone())
-            .filter(|s| !s.is_empty()),
-        f.and_then(|c| c.private_key.clone())
-            .filter(|s| !s.is_empty()),
-    ) {
-        return Ok(GooglePlayCreds {
-            service_account_json: None,
-            client_email: Some(email),
-            private_key: Some(key),
-        });
-    }
-    bail!(
-        "Google Play credentials not found. Run `lingxia store login --platform googleplay`, \
-         or set LINGXIA_GPLAY_SERVICE_ACCOUNT_JSON (or _CLIENT_EMAIL + _PRIVATE_KEY)."
+    wallet_creds(
+        "msstore",
+        "Microsoft Store identity",
+        Some(&|| crate::commands::auth::store_inline_login("msstore")),
     )
 }
 
-/// Resolve Xiaomi credentials: env (`LINGXIA_XIAOMI_*`) over file.
-pub fn resolve_xiaomi(file: &StoreCredentials) -> Result<XiaomiCreds> {
-    let f = file.xiaomi.as_ref();
-    let client_id =
-        env_nonempty("LINGXIA_XIAOMI_CLIENT_ID").or_else(|| f.map(|c| c.client_id.clone()));
-    let client_secret =
-        env_nonempty("LINGXIA_XIAOMI_CLIENT_SECRET").or_else(|| f.map(|c| c.client_secret.clone()));
-    match (client_id, client_secret) {
-        (Some(client_id), Some(client_secret)) => Ok(XiaomiCreds {
-            client_id,
-            client_secret,
-        }),
-        _ => bail!(
-            "Xiaomi credentials not found. Run `lingxia store login --platform xiaomi`, \
-             or set LINGXIA_XIAOMI_CLIENT_ID / _CLIENT_SECRET."
-        ),
+/// Resolve Google Play credentials: env (`LINGXIA_GPLAY_*`, JSON path or the
+/// inline email + key pair) → wallet.
+pub fn resolve_googleplay() -> Result<GooglePlayCreds> {
+    if let Some([path]) = env_group(["LINGXIA_GPLAY_SERVICE_ACCOUNT_JSON"])? {
+        return Ok(GooglePlayCreds {
+            service_account_json: Some(path),
+            client_email: None,
+            private_key: None,
+        });
     }
+    if let Some([email, key]) =
+        env_group(["LINGXIA_GPLAY_CLIENT_EMAIL", "LINGXIA_GPLAY_PRIVATE_KEY"])?
+    {
+        return Ok(GooglePlayCreds {
+            service_account_json: None,
+            client_email: Some(email),
+            private_key: Some(key),
+        });
+    }
+    wallet_creds(
+        "googleplay",
+        "Google Play service account",
+        Some(&|| crate::commands::auth::store_inline_login("googleplay")),
+    )
 }
 
-/// Resolve OPPO credentials: env (`LINGXIA_OPPO_*`) over file.
-pub fn resolve_oppo(file: &StoreCredentials) -> Result<OppoCreds> {
-    let f = file.oppo.as_ref();
-    let client_id =
-        env_nonempty("LINGXIA_OPPO_CLIENT_ID").or_else(|| f.map(|c| c.client_id.clone()));
-    let client_secret =
-        env_nonempty("LINGXIA_OPPO_CLIENT_SECRET").or_else(|| f.map(|c| c.client_secret.clone()));
-    match (client_id, client_secret) {
-        (Some(client_id), Some(client_secret)) => Ok(OppoCreds {
+/// Resolve Xiaomi credentials: env group (`LINGXIA_XIAOMI_*`) → wallet.
+pub fn resolve_xiaomi() -> Result<XiaomiCreds> {
+    if let Some([client_id, client_secret]) =
+        env_group(["LINGXIA_XIAOMI_CLIENT_ID", "LINGXIA_XIAOMI_CLIENT_SECRET"])?
+    {
+        return Ok(XiaomiCreds {
             client_id,
             client_secret,
-        }),
-        _ => bail!(
-            "OPPO credentials not found. Run `lingxia store login --platform oppo`, \
-             or set LINGXIA_OPPO_CLIENT_ID / _CLIENT_SECRET."
-        ),
+        });
     }
+    wallet_creds(
+        "xiaomi",
+        "Xiaomi GetApps identity",
+        Some(&|| crate::commands::auth::store_inline_login("xiaomi")),
+    )
 }
 
-/// Resolve Honor credentials: env (`LINGXIA_HONOR_*`) over file.
-pub fn resolve_honor(file: &StoreCredentials) -> Result<HonorCreds> {
-    let f = file.honor.as_ref();
-    let client_id =
-        env_nonempty("LINGXIA_HONOR_CLIENT_ID").or_else(|| f.map(|c| c.client_id.clone()));
-    let client_secret =
-        env_nonempty("LINGXIA_HONOR_CLIENT_SECRET").or_else(|| f.map(|c| c.client_secret.clone()));
-    match (client_id, client_secret) {
-        (Some(client_id), Some(client_secret)) => Ok(HonorCreds {
+/// Resolve OPPO credentials: env group (`LINGXIA_OPPO_*`) → wallet.
+pub fn resolve_oppo() -> Result<OppoCreds> {
+    if let Some([client_id, client_secret]) =
+        env_group(["LINGXIA_OPPO_CLIENT_ID", "LINGXIA_OPPO_CLIENT_SECRET"])?
+    {
+        return Ok(OppoCreds {
             client_id,
             client_secret,
-        }),
-        _ => bail!(
-            "Honor credentials not found. Run `lingxia store login --platform honor`, \
-             or set LINGXIA_HONOR_CLIENT_ID / _CLIENT_SECRET."
-        ),
+        });
     }
+    wallet_creds(
+        "oppo",
+        "OPPO store identity",
+        Some(&|| crate::commands::auth::store_inline_login("oppo")),
+    )
+}
+
+/// Resolve Honor credentials: env group (`LINGXIA_HONOR_*`) → wallet.
+pub fn resolve_honor() -> Result<HonorCreds> {
+    if let Some([client_id, client_secret]) =
+        env_group(["LINGXIA_HONOR_CLIENT_ID", "LINGXIA_HONOR_CLIENT_SECRET"])?
+    {
+        return Ok(HonorCreds {
+            client_id,
+            client_secret,
+        });
+    }
+    wallet_creds(
+        "honor",
+        "Honor store identity",
+        Some(&|| crate::commands::auth::store_inline_login("honor")),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn sample() -> StoreCredentials {
-        StoreCredentials {
-            msstore: Some(MsStoreCreds {
-                tenant: "t".into(),
-                client_id: "c".into(),
-                client_secret: "s".into(),
-                seller_id: None,
-            }),
-            appstore: None,
-            appgallery: None,
-            googleplay: None,
-            xiaomi: None,
-            oppo: None,
-            honor: None,
+    #[test]
+    fn env_group_complete_or_absent() {
+        // Absent group resolves to None.
+        unsafe {
+            std::env::remove_var("LX_TEST_A");
+            std::env::remove_var("LX_TEST_B");
         }
-    }
+        assert!(env_group(["LX_TEST_A", "LX_TEST_B"]).unwrap().is_none());
 
-    #[test]
-    fn toml_roundtrips() {
-        let text = toml::to_string_pretty(&sample()).unwrap();
-        let back: StoreCredentials = toml::from_str(&text).unwrap();
-        assert_eq!(back.msstore, sample().msstore);
-    }
+        // Partial group is a hard error naming the missing keys.
+        unsafe { std::env::set_var("LX_TEST_A", "x") };
+        let err = env_group(["LX_TEST_A", "LX_TEST_B"])
+            .unwrap_err()
+            .to_string();
+        assert!(err.starts_with(codes::CREDENTIAL_ENV_INCOMPLETE));
+        assert!(err.contains("LX_TEST_B") && !err.contains("LX_TEST_A,"));
 
-    #[test]
-    fn resolve_uses_file_when_no_env() {
-        // Guard against a polluted env in the test runner.
-        for k in [
-            "LINGXIA_MSSTORE_TENANT",
-            "LINGXIA_MSSTORE_CLIENT_ID",
-            "LINGXIA_MSSTORE_CLIENT_SECRET",
-        ] {
-            unsafe { std::env::remove_var(k) };
+        // Complete group returns the values in order.
+        unsafe { std::env::set_var("LX_TEST_B", "y") };
+        let [a, b] = env_group(["LX_TEST_A", "LX_TEST_B"]).unwrap().unwrap();
+        assert_eq!((a.as_str(), b.as_str()), ("x", "y"));
+        unsafe {
+            std::env::remove_var("LX_TEST_A");
+            std::env::remove_var("LX_TEST_B");
         }
-        let creds = resolve_msstore(&sample()).unwrap();
-        assert_eq!(creds.tenant, "t");
-    }
-
-    #[test]
-    fn resolve_missing_errors() {
-        for k in [
-            "LINGXIA_ASC_ISSUER_ID",
-            "LINGXIA_ASC_KEY_ID",
-            "LINGXIA_ASC_KEY_PATH",
-        ] {
-            unsafe { std::env::remove_var(k) };
-        }
-        assert!(resolve_appstore(&StoreCredentials::default()).is_err());
-    }
-
-    #[test]
-    fn load_missing_file_is_empty() {
-        let dir = std::env::temp_dir().join(format!("lx-store-test-{}", std::process::id()));
-        let path = dir.join("nope.toml");
-        let creds = StoreCredentials::load_from(&path).unwrap();
-        assert!(creds.msstore.is_none() && creds.appstore.is_none());
     }
 }

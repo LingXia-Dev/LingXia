@@ -500,13 +500,9 @@ enum Commands {
 
     /// Publish a package to the LingXia server
     ///
-    /// Run with no subcommand to upload; `lingxia publish login` saves the
-    /// server URL + token to `~/.lingxia/cli/config.toml`.
-    #[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
+    /// Tokens come from the wallet (`lingxia auth login publish`), keyed by
+    /// the server URL + env.
     Publish {
-        #[command(subcommand)]
-        action: Option<PublishAction>,
-
         #[command(flatten)]
         args: PublishArgs,
     },
@@ -547,28 +543,6 @@ struct PublishArgs {
 }
 
 #[derive(Subcommand)]
-enum PublishAction {
-    /// Save the publish server URL + token to `~/.lingxia/cli/config.toml`
-    ///
-    /// Pass `--env` to target a single channel's `[publish.<env>]` table;
-    /// omit it to set the top-level defaults used by all channels. Existing
-    /// values for other channels are preserved.
-    Login {
-        /// LingXia server URL to save
-        #[arg(long)]
-        server: Option<String>,
-
-        /// Bearer token to save
-        #[arg(long)]
-        token: Option<String>,
-
-        /// Channel to scope these credentials to: developer, preview, release.
-        #[arg(long = "env", alias = "channel", value_parser = ["developer", "dev", "preview", "release"])]
-        env: Option<String>,
-    },
-}
-
-#[derive(Subcommand)]
 enum GenCommand {
     /// Generate i18n resources
     I18n(r#gen::i18n::I18nConfig),
@@ -597,7 +571,7 @@ enum AuthAction {
     /// Drop this checkout's automatic credential selection for a channel
     Forget {
         /// Channel to re-resolve next time
-        #[arg(long, value_parser = ["ios", "macos", "harmony"])]
+        #[arg(long, value_parser = ["ios", "macos", "harmony", "googleplay", "xiaomi", "oppo", "honor", "msstore"])]
         platform: String,
     },
 }
@@ -668,6 +642,74 @@ enum AuthLoginProvider {
         #[arg(short = 'y', long)]
         yes: bool,
     },
+    /// Google Play Developer API service account
+    Googleplay {
+        /// Path to the service-account JSON key file
+        #[arg(long)]
+        service_account_json: Option<String>,
+
+        /// Replace existing credentials without interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+    /// Xiaomi GetApps open-platform credentials
+    Xiaomi {
+        #[arg(long)]
+        client_id: Option<String>,
+        #[arg(long)]
+        client_secret: Option<String>,
+        /// Replace existing credentials without interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+    /// OPPO open-platform credentials
+    Oppo {
+        #[arg(long)]
+        client_id: Option<String>,
+        #[arg(long)]
+        client_secret: Option<String>,
+        /// Replace existing credentials without interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+    /// Honor Developer open-platform credentials
+    Honor {
+        #[arg(long)]
+        client_id: Option<String>,
+        #[arg(long)]
+        client_secret: Option<String>,
+        /// Replace existing credentials without interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+    /// Microsoft Store (Partner Center) Azure AD credentials
+    Msstore {
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        client_id: Option<String>,
+        #[arg(long)]
+        client_secret: Option<String>,
+        #[arg(long)]
+        seller_id: Option<String>,
+        /// Replace existing credentials without interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+    /// LingXia server publish token (keyed by server URL + env)
+    Publish {
+        /// Server URL (defaults to the project / machine-wide server for --env)
+        #[arg(long)]
+        server: Option<String>,
+
+        /// Bearer token to save (prompted when omitted)
+        #[arg(long)]
+        token: Option<String>,
+
+        /// Channel this token is for: developer, preview, release.
+        #[arg(long = "env", alias = "channel", value_parser = ["developer", "dev", "preview", "release"])]
+        env: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -683,6 +725,42 @@ enum AuthLogoutProvider {
         /// AGC client ID to remove (prompted when several are stored)
         #[arg(long)]
         client_id: Option<String>,
+    },
+    /// Remove Google Play credentials
+    Googleplay {
+        /// Identity to remove (prompted when several are stored)
+        #[arg(long)]
+        identity: Option<String>,
+    },
+    /// Remove Xiaomi credentials
+    Xiaomi {
+        #[arg(long)]
+        identity: Option<String>,
+    },
+    /// Remove OPPO credentials
+    Oppo {
+        #[arg(long)]
+        identity: Option<String>,
+    },
+    /// Remove Honor credentials
+    Honor {
+        #[arg(long)]
+        identity: Option<String>,
+    },
+    /// Remove Microsoft Store credentials
+    Msstore {
+        #[arg(long)]
+        identity: Option<String>,
+    },
+    /// Remove a stored publish token
+    Publish {
+        /// Server URL (defaults to the project / machine-wide server for --env)
+        #[arg(long)]
+        server: Option<String>,
+
+        /// Channel: developer, preview, release.
+        #[arg(long = "env", alias = "channel", value_parser = ["developer", "dev", "preview", "release"])]
+        env: Option<String>,
     },
 }
 
@@ -962,6 +1040,86 @@ fn main() -> Result<()> {
                         yes,
                     })?;
                 }
+                AuthLoginProvider::Googleplay {
+                    service_account_json,
+                    yes,
+                } => {
+                    commands::auth::store_login(
+                        "googleplay",
+                        commands::auth::StoreLoginOptions {
+                            service_account_json,
+                            yes,
+                            ..Default::default()
+                        },
+                    )?;
+                }
+                AuthLoginProvider::Xiaomi {
+                    client_id,
+                    client_secret,
+                    yes,
+                } => {
+                    commands::auth::store_login(
+                        "xiaomi",
+                        commands::auth::StoreLoginOptions {
+                            client_id,
+                            client_secret,
+                            yes,
+                            ..Default::default()
+                        },
+                    )?;
+                }
+                AuthLoginProvider::Oppo {
+                    client_id,
+                    client_secret,
+                    yes,
+                } => {
+                    commands::auth::store_login(
+                        "oppo",
+                        commands::auth::StoreLoginOptions {
+                            client_id,
+                            client_secret,
+                            yes,
+                            ..Default::default()
+                        },
+                    )?;
+                }
+                AuthLoginProvider::Honor {
+                    client_id,
+                    client_secret,
+                    yes,
+                } => {
+                    commands::auth::store_login(
+                        "honor",
+                        commands::auth::StoreLoginOptions {
+                            client_id,
+                            client_secret,
+                            yes,
+                            ..Default::default()
+                        },
+                    )?;
+                }
+                AuthLoginProvider::Msstore {
+                    tenant,
+                    client_id,
+                    client_secret,
+                    seller_id,
+                    yes,
+                } => {
+                    commands::auth::store_login(
+                        "msstore",
+                        commands::auth::StoreLoginOptions {
+                            tenant,
+                            client_id,
+                            client_secret,
+                            seller_id,
+                            yes,
+                            ..Default::default()
+                        },
+                    )?;
+                }
+                AuthLoginProvider::Publish { server, token, env } => {
+                    commands::publish::publish_login(server, token, env)?;
+                }
             },
             AuthAction::Logout { provider } => match provider {
                 AuthLogoutProvider::Apple { team_id } => {
@@ -969,6 +1127,24 @@ fn main() -> Result<()> {
                 }
                 AuthLogoutProvider::Harmony { client_id } => {
                     commands::auth::harmony_logout(client_id)?;
+                }
+                AuthLogoutProvider::Googleplay { identity } => {
+                    commands::auth::store_logout("googleplay", identity)?;
+                }
+                AuthLogoutProvider::Xiaomi { identity } => {
+                    commands::auth::store_logout("xiaomi", identity)?;
+                }
+                AuthLogoutProvider::Oppo { identity } => {
+                    commands::auth::store_logout("oppo", identity)?;
+                }
+                AuthLogoutProvider::Honor { identity } => {
+                    commands::auth::store_logout("honor", identity)?;
+                }
+                AuthLogoutProvider::Msstore { identity } => {
+                    commands::auth::store_logout("msstore", identity)?;
+                }
+                AuthLogoutProvider::Publish { server, env } => {
+                    commands::publish::publish_logout(server, env)?;
                 }
             },
             AuthAction::Status { json } => {
@@ -994,22 +1170,17 @@ fn main() -> Result<()> {
                 r#gen::icons::run(config)?;
             }
         },
-        Commands::Publish { action, args } => match action {
-            Some(PublishAction::Login { server, token, env }) => {
-                commands::publish::save_login(server, token, env)?;
-            }
-            None => {
-                commands::publish::execute(commands::publish::PublishOptions {
-                    token: args.token,
-                    lingxia_server: args.lingxia_server,
-                    package: args.package_path,
-                    platform: args.platform,
-                    channel: args.channel,
-                    framework: args.framework,
-                    progress: args.progress,
-                })?;
-            }
-        },
+        Commands::Publish { args } => {
+            commands::publish::execute(commands::publish::PublishOptions {
+                token: args.token,
+                lingxia_server: args.lingxia_server,
+                package: args.package_path,
+                platform: args.platform,
+                channel: args.channel,
+                framework: args.framework,
+                progress: args.progress,
+            })?;
+        }
     }
 
     Ok(())

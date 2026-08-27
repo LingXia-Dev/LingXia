@@ -10,11 +10,13 @@ use crate::resolver::{self, AppleChannel};
 
 mod apple;
 mod harmony;
+mod stores;
 
 pub use apple::{AppleLoginOptions, apple_login, apple_logout, apple_status, inline_login};
 pub use harmony::{
     HarmonyLoginOptions, harmony_inline_login, harmony_login, harmony_logout, harmony_status,
 };
+pub use stores::{StoreLoginOptions, store_inline_login, store_login, store_logout};
 
 /// `lingxia auth forget --platform <channel>`: drop this checkout's automatic
 /// credential selection; the next command re-resolves. Never touches secrets.
@@ -150,5 +152,14 @@ pub fn auth_status(json: bool) -> Result<bool> {
     apple_status()?;
     println!();
     harmony_status()?;
+    println!();
+    stores::stores_status()?;
+    let publish_entries = crate::wallet::Wallet::open()?.publish_entries()?;
+    if !publish_entries.is_empty() {
+        println!("{}", "Publish".cyan().bold());
+        for (server, env) in publish_entries {
+            println!("  {server}  ({env})");
+        }
+    }
     Ok(ready)
 }

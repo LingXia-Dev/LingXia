@@ -17,7 +17,31 @@ const ASC_FILE: &str = "asc.json";
 const APPLE_ID_FILE: &str = "apple-id.json";
 const DEVELOPER_ID_FILE: &str = "developer-id.json";
 const AGC_FILE: &str = "agc.json";
+const STORE_SLOT_FILE: &str = "creds.json";
 const LEGACY_NOTICE_MARKER: &str = ".legacy-noticed";
+
+/// On-disk store slot: the provider credentials plus the display identity
+/// (the directory name may be a hash when the identity is not path-safe).
+#[derive(serde::Serialize)]
+struct StoreSlot<'a, T: serde::Serialize> {
+    identity: String,
+    #[serde(flatten)]
+    creds: &'a T,
+}
+
+#[derive(serde::Deserialize)]
+struct StoreSlotIdentity {
+    identity: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(bound = "T: serde::de::DeserializeOwned")]
+struct StoreSlotOwned<T> {
+    #[allow(dead_code)]
+    identity: String,
+    #[serde(flatten)]
+    creds: T,
+}
 
 /// Which Apple mechanism slots exist for one team.
 #[derive(Debug, Clone)]
@@ -277,6 +301,197 @@ impl Wallet {
         Ok(self.harmony_identity_dir(client_id)?.join("signing"))
     }
 
+    fn store_provider_root(&self, provider: &str) -> Result<PathBuf> {
+        validate_path_component(provider)?;
+        Ok(self.root.join("stores").join(provider))
+    }
+
+    fn store_identity_dir(&self, provider: &str, identity: &str) -> Result<PathBuf> {
+        // Identities that are not path-safe (e.g. service-account emails) get
+        // a short hash directory; the real identity lives inside the slot.
+        let component = match validate_path_component(identity) {
+            Ok(()) => identity.to_string(),
+            Err(_) if !identity.is_empty() => {
+                use sha2::{Digest, Sha256};
+                let mut hasher = Sha256::new();
+                hasher.update(identity.as_bytes());
+                hasher.finalize()[..8]
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect()
+            }
+            Err(e) => return Err(e),
+        };
+        Ok(self.store_provider_root(provider)?.join(component))
+    }
+
+    /// All identities stored for one OS-store provider, sorted.
+    pub fn store_identities(&self, provider: &str) -> Result<Vec<String>> {
+        let root = self.store_provider_root(provider)?;
+        let mut identities = Vec::new();
+        let entries = match fs::read_dir(&root) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(identities),
+            Err(e) => return Err(e).with_context(|| format!("read {}", root.display())),
+        };
+        for entry in entries {
+            let path = entry?.path().join(STORE_SLOT_FILE);
+            if !path.is_file() {
+                continue;
+            }
+            let content =
+                fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+            if let Ok(slot) = serde_json::from_str::<StoreSlotIdentity>(&content) {
+                identities.push(slot.identity);
+            }
+        }
+        identities.sort();
+        Ok(identities)
+    }
+
+    pub fn load_store_creds<T: serde::de::DeserializeOwned>(
+        &self,
+        provider: &str,
+        identity: &str,
+    ) -> Result<Option<T>> {
+        let path = self
+            .store_identity_dir(provider, identity)?
+            .join(STORE_SLOT_FILE);
+        if !path.is_file() {
+            return Ok(None);
+        }
+        let content =
+            fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+        let slot: StoreSlotOwned<T> = serde_json::from_str(&content).with_context(|| {
+            format!(
+                "parse {}. Re-run `lingxia auth login {provider}` to refresh it.",
+                path.display()
+            )
+        })?;
+        Ok(Some(slot.creds))
+    }
+
+    pub fn save_store_creds<T: serde::Serialize>(
+        &self,
+        provider: &str,
+        identity: &str,
+        creds: &T,
+    ) -> Result<PathBuf> {
+        let path = self
+            .store_identity_dir(provider, identity)?
+            .join(STORE_SLOT_FILE);
+        let slot = StoreSlot {
+            identity: identity.to_string(),
+            creds,
+        };
+        write_secret(&path, serde_json::to_string_pretty(&slot)?.as_bytes())?;
+        Ok(path)
+    }
+
+    pub fn delete_store_identity(&self, provider: &str, identity: &str) -> Result<bool> {
+        let dir = self.store_identity_dir(provider, identity)?;
+        if !dir.exists() {
+            return Ok(false);
+        }
+        fs::remove_dir_all(&dir).with_context(|| format!("remove {}", dir.display()))?;
+        Ok(true)
+    }
+
+    fn publish_env_path(&self, canonical_server: &str, env: &str) -> Result<PathBuf> {
+        validate_path_component(env)?;
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(canonical_server.as_bytes());
+        let hash: String = hasher.finalize()[..8]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        Ok(self
+            .root
+            .join("publish")
+            .join(hash)
+            .join(format!("{env}.json")))
+    }
+
+    /// Persist a publish token for `(canonical server, env)`; saving the same
+    /// key again is a token rotation (atomic replace).
+    pub fn save_publish_token(
+        &self,
+        canonical_server: &str,
+        env: &str,
+        token: &str,
+    ) -> Result<PathBuf> {
+        let path = self.publish_env_path(canonical_server, env)?;
+        let slot = serde_json::json!({ "server": canonical_server, "token": token });
+        write_secret(&path, serde_json::to_string_pretty(&slot)?.as_bytes())?;
+        Ok(path)
+    }
+
+    pub fn load_publish_token(&self, canonical_server: &str, env: &str) -> Result<Option<String>> {
+        let path = self.publish_env_path(canonical_server, env)?;
+        if !path.is_file() {
+            return Ok(None);
+        }
+        let content =
+            fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+        let slot: serde_json::Value =
+            serde_json::from_str(&content).with_context(|| format!("parse {}", path.display()))?;
+        Ok(slot
+            .get("token")
+            .and_then(|v| v.as_str())
+            .map(str::to_string))
+    }
+
+    pub fn delete_publish_token(&self, canonical_server: &str, env: &str) -> Result<bool> {
+        let path = self.publish_env_path(canonical_server, env)?;
+        if !path.exists() {
+            return Ok(false);
+        }
+        fs::remove_file(&path).with_context(|| format!("remove {}", path.display()))?;
+        Ok(true)
+    }
+
+    /// All stored publish tokens as `(server, env)` pairs, for status output.
+    pub fn publish_entries(&self) -> Result<Vec<(String, String)>> {
+        let root = self.root.join("publish");
+        let mut entries = Vec::new();
+        let dirs = match fs::read_dir(&root) {
+            Ok(dirs) => dirs,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(entries),
+            Err(e) => return Err(e).with_context(|| format!("read {}", root.display())),
+        };
+        for dir in dirs {
+            let dir = dir?.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            for file in fs::read_dir(&dir)? {
+                let path = file?.path();
+                let Some(env) = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(str::to_string)
+                else {
+                    continue;
+                };
+                if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                    continue;
+                }
+                let Ok(content) = fs::read_to_string(&path) else {
+                    continue;
+                };
+                if let Some(server) = serde_json::from_str::<serde_json::Value>(&content)
+                    .ok()
+                    .and_then(|v| v.get("server").and_then(|s| s.as_str()).map(str::to_string))
+                {
+                    entries.push((server, env));
+                }
+            }
+        }
+        entries.sort();
+        Ok(entries)
+    }
+
     /// One-time notice for pre-wallet credential files, which are no longer
     /// read. Prints at most once per state root.
     pub fn notice_legacy_files(&self) {
@@ -284,6 +499,7 @@ impl Wallet {
             self.state_root.join("apple").join("credentials.json"),
             self.state_root.join("apple").join("developer-id.json"),
             self.state_root.join("harmony").join("agc_credentials.json"),
+            self.state_root.join("store").join("credentials.toml"),
         ];
         let present: Vec<&Path> = legacy
             .iter()
@@ -348,6 +564,31 @@ fn write_secret(path: &Path, bytes: &[u8]) -> Result<()> {
     tmp.persist(path)
         .with_context(|| format!("write {}", path.display()))?;
     Ok(())
+}
+
+/// Canonicalize a publish server URL for use as a wallet key: lowercase
+/// scheme/host, default port stripped, trailing `/` trimmed, base path kept.
+/// Userinfo, query, and fragment are rejected.
+pub fn canonical_publish_server(server: &str) -> Result<String> {
+    let url = url::Url::parse(server.trim())
+        .with_context(|| format!("invalid publish server URL: {server}"))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        bail!("publish server must be http(s): {server}");
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        bail!("publish server URL must not contain userinfo: {server}");
+    }
+    if url.query().is_some() || url.fragment().is_some() {
+        bail!("publish server URL must not contain a query or fragment: {server}");
+    }
+    let host = url
+        .host_str()
+        .with_context(|| format!("publish server URL has no host: {server}"))?;
+    let path = url.path().trim_end_matches('/');
+    Ok(match url.port() {
+        Some(port) => format!("{}://{host}:{port}{path}", url.scheme()),
+        None => format!("{}://{host}{path}", url.scheme()),
+    })
 }
 
 /// Masked display for a sensitive identifier, e.g. `AB12…F4` / `m***@example.com`.
@@ -457,6 +698,75 @@ mod tests {
                 & 0o777;
             assert_eq!(dir_mode, 0o700);
         }
+    }
+
+    #[test]
+    fn canonical_publish_server_normalizes() {
+        assert_eq!(
+            canonical_publish_server("HTTPS://LX.Example.com:443/base/").unwrap(),
+            "https://lx.example.com/base"
+        );
+        assert_eq!(
+            canonical_publish_server("http://localhost:8080").unwrap(),
+            "http://localhost:8080"
+        );
+        assert!(canonical_publish_server("https://u:p@x.com").is_err());
+        assert!(canonical_publish_server("https://x.com/a?b=1").is_err());
+        assert!(canonical_publish_server("https://x.com/#frag").is_err());
+        assert!(canonical_publish_server("ftp://x.com").is_err());
+    }
+
+    #[test]
+    fn publish_token_roundtrip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let wallet = Wallet::at(tmp.path());
+        let server = "https://lx.example.com/base";
+
+        assert!(
+            wallet
+                .load_publish_token(server, "release")
+                .unwrap()
+                .is_none()
+        );
+        wallet
+            .save_publish_token(server, "release", "tok1")
+            .unwrap();
+        assert_eq!(
+            wallet
+                .load_publish_token(server, "release")
+                .unwrap()
+                .as_deref(),
+            Some("tok1")
+        );
+
+        // Same key again is a rotation.
+        wallet
+            .save_publish_token(server, "release", "tok2")
+            .unwrap();
+        assert_eq!(
+            wallet
+                .load_publish_token(server, "release")
+                .unwrap()
+                .as_deref(),
+            Some("tok2")
+        );
+
+        // Envs and servers are independent keys.
+        wallet
+            .save_publish_token(server, "developer", "dev")
+            .unwrap();
+        wallet
+            .save_publish_token("https://other.example.com", "release", "o")
+            .unwrap();
+        assert_eq!(wallet.publish_entries().unwrap().len(), 3);
+
+        assert!(wallet.delete_publish_token(server, "release").unwrap());
+        assert!(
+            wallet
+                .load_publish_token(server, "release")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

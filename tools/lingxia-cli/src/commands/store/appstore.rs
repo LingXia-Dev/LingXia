@@ -15,21 +15,17 @@ use std::path::Path;
 use std::process::Command;
 
 use super::backend::{StorePlatform, SubmitOptions, http};
-use super::creds::AppStoreCreds;
-use crate::config::AppStoreConfig;
+use crate::resolver::AscMaterial;
 
 const ASC_BASE: &str = "https://api.appstoreconnect.apple.com";
 
 /// Mint a short-lived (≤20 min) ES256 JWT for the App Store Connect API.
-pub fn asc_jwt(creds: &AppStoreCreds) -> Result<String> {
+pub fn asc_jwt(creds: &AscMaterial) -> Result<String> {
     use p256::ecdsa::{Signature, SigningKey, signature::Signer};
     use p256::pkcs8::DecodePrivateKey;
 
-    let key_path = expand(&creds.key_path);
-    let pem = std::fs::read_to_string(&key_path)
-        .with_context(|| format!("read ASC private key {}", key_path.display()))?;
-    let signing_key =
-        SigningKey::from_pkcs8_pem(&pem).context("parse ASC .p8 (expected PKCS#8 EC P-256)")?;
+    let signing_key = SigningKey::from_pkcs8_pem(&creds.private_key_pem)
+        .context("parse ASC .p8 (expected PKCS#8 EC P-256)")?;
 
     let now = chrono::Utc::now().timestamp();
     let header = json!({ "alg": "ES256", "kid": creds.key_id, "typ": "JWT" });
@@ -49,7 +45,7 @@ pub fn asc_jwt(creds: &AppStoreCreds) -> Result<String> {
 }
 
 pub fn submit(
-    creds: &AppStoreCreds,
+    creds: &AscMaterial,
     platform: StorePlatform,
     artifact: &Path,
     opts: &SubmitOptions,
@@ -89,12 +85,12 @@ pub fn submit(
     Ok(())
 }
 
-pub fn status(creds: &AppStoreCreds, cfg: &AppStoreConfig) -> Result<()> {
+pub fn status(creds: &AscMaterial, bundle_id: &str) -> Result<()> {
     let jwt = asc_jwt(creds)?;
     // Latest builds for the app's bundle id → processing state.
     let url = format!(
         "{ASC_BASE}/v1/builds?filter[app.bundleId]={}&limit=5&sort=-uploadedDate",
-        cfg.bundle_id
+        bundle_id
     );
     let mut resp = http()
         .get(&url)
@@ -108,7 +104,7 @@ pub fn status(creds: &AppStoreCreds, cfg: &AppStoreConfig) -> Result<()> {
     let builds = body.get("data").and_then(Value::as_array);
     match builds {
         Some(b) if !b.is_empty() => {
-            println!("App Store Connect builds for {}:", cfg.bundle_id);
+            println!("App Store Connect builds for {bundle_id}:");
             for build in b {
                 let attrs = build.get("attributes");
                 let version = attrs
@@ -122,38 +118,26 @@ pub fn status(creds: &AppStoreCreds, cfg: &AppStoreConfig) -> Result<()> {
                 println!("  build {version}: {state}");
             }
         }
-        _ => println!("No builds found for {} yet.", cfg.bundle_id),
+        _ => println!("No builds found for {bundle_id} yet."),
     }
     Ok(())
 }
 
 /// altool searches `~/.appstoreconnect/private_keys/AuthKey_<id>.p8`; make sure
-/// the configured key is there.
-fn stage_private_key(creds: &AppStoreCreds) -> Result<()> {
-    let src = expand(&creds.key_path);
+/// the resolved key is there.
+fn stage_private_key(creds: &AscMaterial) -> Result<()> {
     let dir = dirs::home_dir()
         .context("home dir")?
         .join(".appstoreconnect")
         .join("private_keys");
     std::fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
     let dst = dir.join(format!("AuthKey_{}.p8", creds.key_id));
-    if src != dst {
-        std::fs::copy(&src, &dst)
-            .with_context(|| format!("stage {} -> {}", src.display(), dst.display()))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o600));
-        }
+    std::fs::write(&dst, creds.private_key_pem.as_bytes())
+        .with_context(|| format!("stage {}", dst.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&dst, std::fs::Permissions::from_mode(0o600));
     }
     Ok(())
-}
-
-fn expand(path: &str) -> std::path::PathBuf {
-    if let Some(rest) = path.strip_prefix("~/")
-        && let Some(home) = dirs::home_dir()
-    {
-        return home.join(rest);
-    }
-    std::path::PathBuf::from(path)
 }

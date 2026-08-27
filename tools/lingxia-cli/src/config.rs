@@ -1275,53 +1275,41 @@ pub struct AndroidConfig {
 }
 
 /// Google Play submission identity. Lives in `lingxia.yaml` under
-/// `android.googlePlayStore`; credentials live in
-/// `~/.lingxia/store/credentials.toml` (`[googleplay]`).
+/// `android.googlePlayStore`. The package name comes from
+/// `android.packageId`; only Play-specific settings live here.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GooglePlayConfig {
-    /// Play `applicationId` (the package name, e.g. `app.lingxia.example`).
-    pub package_name: String,
     /// Default release track when `--track` is omitted (e.g. `internal`,
     /// `alpha`, `beta`, `production`). Defaults to `internal`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_track: Option<String>,
 }
 
-/// Xiaomi GetApps submission identity. Lives in `lingxia.yaml` under
-/// `android.xiaomiStore`; credentials live in
-/// `~/.lingxia/store/credentials.toml` (`[xiaomi]`).
+/// Xiaomi GetApps has no store-specific project settings; the package name
+/// comes from `android.packageId`. The empty block stays accepted so retired
+/// fields inside it fail loudly instead of being ignored.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct XiaomiStoreConfig {
-    /// Application package name (e.g. `app.lingxia.example`).
-    pub package_name: String,
-}
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct XiaomiStoreConfig {}
 
-/// OPPO software-store submission identity. Lives in `lingxia.yaml` under
-/// `android.oppoStore`; credentials live in
-/// `~/.lingxia/store/credentials.toml` (`[oppo]`).
+/// OPPO software-store settings. Lives in `lingxia.yaml` under
+/// `android.oppoStore`; the package name comes from `android.packageId`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OppoStoreConfig {
-    /// Application package name (e.g. `app.lingxia.example`).
-    pub package_name: String,
     /// OPPO numeric app id, if the open-platform API requires it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_id: Option<String>,
 }
 
-/// Honor AppGallery submission identity. Lives in `lingxia.yaml` under
-/// `android.honorStore`; credentials live in
-/// `~/.lingxia/store/credentials.toml` (`[honor]`).
+/// Honor AppGallery record settings. Lives in `lingxia.yaml` under
+/// `android.honorStore`; the package name comes from `android.packageId`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HonorStoreConfig {
     /// Honor Developer numeric app id.
     pub app_id: String,
-    /// Application package name (e.g. `app.lingxia.example`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub package_name: Option<String>,
 }
 
 impl AndroidConfig {
@@ -1368,14 +1356,12 @@ pub struct IosConfig {
     pub store: Option<AppStoreConfig>,
 }
 
-/// App Store Connect submission identity. Lives in `lingxia.yaml` under
-/// `ios.store` / `macos.store`; credentials live in
-/// `~/.lingxia/store/credentials.toml` (`[appstore]`).
+/// App Store Connect record settings. Lives in `lingxia.yaml` under
+/// `ios.store` / `macos.store`; the bundle identifier comes from the platform
+/// block, credentials from the wallet.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AppStoreConfig {
-    /// The app's bundle identifier (must match the App Store Connect record).
-    pub bundle_id: String,
     /// The App Store Connect numeric app id (the "Apple ID" of the app).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub app_id: Option<String>,
@@ -1429,11 +1415,10 @@ pub struct HarmonyConfig {
     pub store: Option<AppGalleryConfig>,
 }
 
-/// Huawei AppGallery Connect submission identity. Lives in `lingxia.yaml`
-/// under `harmony.store`; credentials live in
-/// `~/.lingxia/store/credentials.toml` (`[appgallery]`).
+/// Huawei AppGallery Connect record settings. Lives in `lingxia.yaml` under
+/// `harmony.store`; credentials come from `lingxia auth login harmony`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AppGalleryConfig {
     /// AppGallery Connect app id.
     pub app_id: String,
@@ -1459,17 +1444,13 @@ pub struct WindowsConfig {
     pub store: Option<MsStoreConfig>,
 }
 
-/// Microsoft Store (Partner Center) submission identity. Lives in
-/// `lingxia.yaml` under `windows.store`; credentials live in
-/// `~/.lingxia/store/credentials.toml` (`[msstore]`).
+/// Microsoft Store (Partner Center) record settings. Lives in `lingxia.yaml`
+/// under `windows.store`; credentials come from `lingxia auth login msstore`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct MsStoreConfig {
     /// Partner-Center-reserved Store ID (app id) for the application.
     pub app_id: String,
-    /// Optional reserved package name (display only).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub package_name: Option<String>,
 }
 
 impl LingXiaConfig {

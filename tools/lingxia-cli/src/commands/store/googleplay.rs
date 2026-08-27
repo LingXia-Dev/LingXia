@@ -19,7 +19,6 @@ use std::path::Path;
 
 use super::backend::{SubmitOptions, http};
 use super::creds::GooglePlayCreds;
-use crate::config::GooglePlayConfig;
 
 const OAUTH_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const SCOPE: &str = "https://www.googleapis.com/auth/androidpublisher";
@@ -102,15 +101,15 @@ impl Session {
 
 pub fn submit(
     creds: &GooglePlayCreds,
-    cfg: &GooglePlayConfig,
+    pkg: &str,
+    default_track: Option<&str>,
     artifact: &Path,
     opts: &SubmitOptions,
 ) -> Result<()> {
-    let pkg = &cfg.package_name;
     let track = opts
         .track
         .clone()
-        .or_else(|| cfg.default_track.clone())
+        .or_else(|| default_track.map(str::to_string))
         .unwrap_or_else(|| "internal".to_string());
 
     let session = Session::login(creds)?;
@@ -173,8 +172,7 @@ pub fn submit(
     Ok(())
 }
 
-pub fn status(creds: &GooglePlayCreds, cfg: &GooglePlayConfig) -> Result<()> {
-    let pkg = &cfg.package_name;
+pub fn status(creds: &GooglePlayCreds, pkg: &str) -> Result<()> {
     let session = Session::login(creds)?;
     // Open a throwaway edit to read current track releases.
     let edit = session.post(&format!("{API}/applications/{pkg}/edits"), &json!({}))?;

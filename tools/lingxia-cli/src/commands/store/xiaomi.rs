@@ -16,7 +16,6 @@ use std::path::Path;
 
 use super::backend::{SubmitOptions, http};
 use super::creds::XiaomiCreds;
-use crate::config::XiaomiStoreConfig;
 
 // TODO: verify Xiaomi open-platform API base host/path.
 const API: &str = "https://api.developer.xiaomi.com/devupload";
@@ -69,13 +68,7 @@ impl Session {
     }
 }
 
-pub fn submit(
-    creds: &XiaomiCreds,
-    cfg: &XiaomiStoreConfig,
-    artifact: &Path,
-    opts: &SubmitOptions,
-) -> Result<()> {
-    let pkg = &cfg.package_name;
+pub fn submit(creds: &XiaomiCreds, pkg: &str, artifact: &Path, opts: &SubmitOptions) -> Result<()> {
     let session = Session::login(creds)?;
     println!("  {} authenticated with Xiaomi GetApps", "✓".green());
 
@@ -104,15 +97,15 @@ pub fn submit(
     Ok(())
 }
 
-pub fn status(creds: &XiaomiCreds, cfg: &XiaomiStoreConfig) -> Result<()> {
+pub fn status(creds: &XiaomiCreds, pkg: &str) -> Result<()> {
     let session = Session::login(creds)?;
     // TODO: verify Xiaomi status/query endpoint + response shape.
-    let info = session.get(&format!("{API}/dev/query?packageName={}", cfg.package_name))?;
+    let info = session.get(&format!("{API}/dev/query?packageName={pkg}"))?;
     let state = info
         .get("auditStatus")
         .map(|v| v.to_string())
         .unwrap_or_else(|| "unknown".to_string());
-    println!("Xiaomi GetApps {} audit status: {state}", cfg.package_name);
+    println!("Xiaomi GetApps {pkg} audit status: {state}");
     Ok(())
 }
 
