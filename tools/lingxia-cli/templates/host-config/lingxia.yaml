@@ -126,13 +126,13 @@ capabilities:
 # Use resources.bundles for lxapps instead.
 # assets: assets
 
-# Optional: override the SDK's default in-app browser webui (used only when
-# capabilities.browser is true). Omit to use the npm-published default
-# `@lingxia/browser-shell-webui` on this CLI's major.minor line.
+# The in-app browser's webui. Required when capabilities.browser is true, and
+# only then: it is a prebuilt lxapp that ships with LingXia rather than through
+# npm, so point at your copy of it. `path` builds from source; `package` /
+# `version` fetch a prebuilt bundle from npm, for a fork you publish yourself.
 # browser:
 #   webui:
-#     package: '@lingxia/browser-shell-webui'
-#     # version: omitted — CLI resolves the latest compatible patch
+#     path: vendor/browser-shell-webui
 
 {{SHELL_SECTION}}
 {{APP_LINKS_SECTION}}

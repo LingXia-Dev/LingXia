@@ -1,11 +1,10 @@
 use crate::config::LingXiaConfig;
-use anyhow::{Context, Result};
+use anyhow::{Result, anyhow};
 use std::path::{Path, PathBuf};
 
 use super::lxapp_package::resolve_lxapp_package;
 
 pub(crate) const APP_ID: &str = "app.lingxia.browser";
-const DEFAULT_PACKAGE: &str = "@lingxia/browser-shell-webui";
 
 pub(super) struct BrowserShellWebUiSource {
     pub(super) bundle_dir: PathBuf,
@@ -54,23 +53,18 @@ pub(super) fn resolve_browser_shell_webui_dir(
         });
     }
 
-    // Latest published package on this CLI's major.minor line.
-    let version = crate::versions::npm_compat_range();
-    Ok(BrowserShellWebUiSource {
-        bundle_dir: resolve_lxapp_package(
-            project_root,
-            DEFAULT_PACKAGE,
-            &version,
-            "browser-shell-webui",
-            "browser.webui",
-        )
-        .with_context(|| {
-            format!(
-                "Failed to resolve default browser webui package {}@{}. Set `browser.webui.path` to point at a local checkout, or `browser.webui.package`/`version` to pin a fork.",
-                DEFAULT_PACKAGE,
-                version
-            )
-        })?,
-        build: false,
-    })
+    // There is no default. The browser shell webui is a prebuilt lxapp that
+    // lives in this repo and is deliberately not published to npm, so a host
+    // enabling the browser has to say where its copy is. Saying so here is the
+    // whole error: the alternative was a default that pointed at a package the
+    // registry has never had, which failed at `npm pack` with nothing to act on.
+    Err(anyhow!(
+        "capabilities.browser is on, but browser.webui is not set.\n\
+         The in-app browser's webui is a prebuilt lxapp that ships with LingXia \
+         rather than through npm, so point at your copy:\n\n  \
+         browser:\n    webui:\n      path: <dir containing lxapp.json>\n\n\
+         In-repo that is crates/lingxia-browser-shell/webui; a host app usually \
+         vendors it. `browser.webui.package`/`version` still works for a fork \
+         you publish yourself."
+    ))
 }
