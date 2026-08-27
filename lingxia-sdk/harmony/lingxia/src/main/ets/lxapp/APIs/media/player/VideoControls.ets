@@ -314,7 +314,7 @@ export struct VideoControlsView {
           // Settings button (if has qualities or playback rates)
           if (this.hasSettings()) {
             Row() {
-              Image($rawfile('icons/icon_settings.svg'))
+              Image($rawfile('icons/icon_browser_settings.svg'))
                 .width(this.getDim().iconSize - 2)
                 .height(this.getDim().iconSize - 2)
             }

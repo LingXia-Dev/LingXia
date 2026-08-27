@@ -1357,6 +1357,13 @@ jobs:
       - name: Verify the npm release inventory
         run: bash scripts/release/npm.sh --verify-inventory
 
+      # The Harmony SDK resolves `$rawfile('icons/…')` at compile time, and its
+      # build needs a self-hosted runner, so a reference to an icon that no
+      # longer exists survives every PR and surfaces only when someone cuts a
+      # release. Comparing the two lists needs neither.
+      - name: Verify Harmony rawfile icons resolve
+        run: node scripts/ci/check-harmony-rawfile-icons.mjs
+
   # Single required check. Skipped gating jobs report result 'skipped' (≠
   # 'failure'), so a scoped PR still goes green and stays mergeable — require
   # ONLY this check in branch protection, never the individual jobs.
