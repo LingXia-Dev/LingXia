@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod browser_shell;
 pub mod build;
 pub mod clean;
 pub mod dev;
