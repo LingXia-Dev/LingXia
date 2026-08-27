@@ -22,7 +22,7 @@ matches the installed version, so read flags there.
 ```bash
 lingxia --help               # the command list + global flags
 lingxia <cmd> --help         # exact flags, defaults, and which are required
-lingxia <cmd> <sub> --help   # e.g. lingxia auth apple login --help
+lingxia <cmd> <sub> --help   # e.g. lingxia auth login apple --help
 ```
 
 **Platforms.** The platform-aware commands support `android`, `ios`, `macos`,

@@ -140,7 +140,7 @@ where
 {
     let storage = AgcCredentialStorage::new()?;
     let mut credentials = storage.load()?.ok_or_else(|| {
-        anyhow!("Not logged in with AGC API mode. Run `lingxia auth harmony login --mode api`.")
+        anyhow!("Not logged in with AGC API mode. Run `lingxia auth login harmony --mode api`.")
     })?;
 
     let client = AgcConnectClient::new();

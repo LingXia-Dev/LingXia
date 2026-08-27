@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, error::ErrorKind};
 
 mod appicon;
+mod binding;
 mod cli_config;
 mod commands;
 mod config;
@@ -18,6 +19,7 @@ mod npm;
 mod path_completion;
 mod permission_cache;
 mod platform;
+mod resolver;
 mod runner_cache;
 mod runtime;
 mod sdk_cache;
@@ -25,6 +27,7 @@ mod splash;
 mod state_root;
 mod update;
 mod versions;
+mod wallet;
 
 #[derive(Parser)]
 #[command(name = "lingxia")]
@@ -470,10 +473,10 @@ enum Commands {
         platform: Vec<String>,
     },
 
-    /// Developer account authentication (Apple/Harmony)
+    /// Developer credentials: log in once, commands pick automatically
     Auth {
         #[command(subcommand)]
-        provider: AuthProvider,
+        action: AuthAction,
     },
 
     /// Interact with developer services (Apple, Harmony, etc.)
@@ -574,23 +577,35 @@ enum GenCommand {
 }
 
 #[derive(Subcommand)]
-enum AuthProvider {
-    /// Apple Developer authentication (iOS/macOS)
-    Apple {
+enum AuthAction {
+    /// Add or refresh credentials for a provider
+    Login {
         #[command(subcommand)]
-        action: AppleAuthAction,
+        provider: Box<AuthLoginProvider>,
     },
-    /// Harmony authentication
-    Harmony {
+    /// Remove stored credentials for a provider
+    Logout {
         #[command(subcommand)]
-        action: HarmonyAuthAction,
+        provider: AuthLogoutProvider,
+    },
+    /// Show credential status (project view inside a project)
+    Status {
+        /// Machine-readable output
+        #[arg(long)]
+        json: bool,
+    },
+    /// Drop this checkout's automatic credential selection for a channel
+    Forget {
+        /// Channel to re-resolve next time
+        #[arg(long, value_parser = ["ios", "macos"])]
+        platform: String,
     },
 }
 
 #[derive(Subcommand)]
-enum AppleAuthAction {
-    /// Login with Apple Developer account
-    Login {
+enum AuthLoginProvider {
+    /// Apple Developer credentials (ASC key, Apple ID, or Developer ID cert)
+    Apple {
         /// Apple ID (email) for password mode
         #[arg(short, long)]
         username: Option<String>,
@@ -599,8 +614,8 @@ enum AppleAuthAction {
         #[arg(short, long)]
         password: Option<String>,
 
-        /// Authentication mode: key or password
-        #[arg(short = 'm', long, value_parser = ["key", "password"])]
+        /// Authentication mode
+        #[arg(short = 'm', long, value_parser = ["key", "password", "developer-id"])]
         mode: Option<String>,
 
         /// App Store Connect API Key ID (for --mode key)
@@ -615,37 +630,28 @@ enum AppleAuthAction {
         #[arg(long)]
         private_key_path: Option<String>,
 
-        /// Apple Developer Team ID (for --mode key)
+        /// Apple Developer Team ID
         #[arg(long)]
         team_id: Option<String>,
+
+        /// Path to a Developer ID Application .p12 (for --mode developer-id)
+        #[arg(long)]
+        p12: Option<String>,
+
+        /// Password of the .p12 (for --mode developer-id; prompts if omitted)
+        #[arg(long)]
+        p12_password: Option<String>,
+
+        /// codesign identity name (for --mode developer-id; auto-detected if omitted)
+        #[arg(long)]
+        identity: Option<String>,
 
         /// Replace existing credentials without interactive confirmation
         #[arg(short = 'y', long)]
         yes: bool,
     },
-    /// Import a Developer ID Application .p12 for macOS signing/notarization
-    ImportDeveloperId {
-        /// Path to the Developer ID Application .p12 certificate
-        p12: String,
-
-        /// Certificate password (will prompt if not provided)
-        #[arg(long)]
-        password: Option<String>,
-
-        /// codesign identity name (auto-detected if not provided)
-        #[arg(long)]
-        identity: Option<String>,
-    },
-    /// Logout and clear stored credentials
-    Logout,
-    /// Show current authentication status
-    Status,
-}
-
-#[derive(Subcommand)]
-enum HarmonyAuthAction {
-    /// Login with Harmony account
-    Login {
+    /// Harmony AGC Connect API credentials
+    Harmony {
         /// Authentication mode: api
         #[arg(short = 'm', long, value_parser = ["api"])]
         mode: Option<String>,
@@ -662,10 +668,18 @@ enum HarmonyAuthAction {
         #[arg(short = 'y', long)]
         yes: bool,
     },
-    /// Logout Harmony credentials
-    Logout,
-    /// Show Harmony authentication status
-    Status,
+}
+
+#[derive(Subcommand)]
+enum AuthLogoutProvider {
+    /// Remove Apple credentials for one team
+    Apple {
+        /// Team ID to remove (prompted when several are stored)
+        #[arg(long)]
+        team_id: Option<String>,
+    },
+    /// Remove Harmony AGC credentials
+    Harmony,
 }
 
 fn main() -> Result<()> {
@@ -902,9 +916,9 @@ fn main() -> Result<()> {
                 std::process::exit(code);
             }
         }
-        Commands::Auth { provider } => match provider {
-            AuthProvider::Apple { action } => match action {
-                AppleAuthAction::Login {
+        Commands::Auth { action } => match action {
+            AuthAction::Login { provider } => match *provider {
+                AuthLoginProvider::Apple {
                     username,
                     password,
                     mode,
@@ -912,6 +926,9 @@ fn main() -> Result<()> {
                     issuer_id,
                     private_key_path,
                     team_id,
+                    p12,
+                    p12_password,
+                    identity,
                     yes,
                 } => {
                     commands::auth::apple_login(commands::auth::AppleLoginOptions {
@@ -922,25 +939,13 @@ fn main() -> Result<()> {
                         issuer_id,
                         private_key_path,
                         team_id,
+                        p12,
+                        p12_password,
+                        identity,
                         yes,
                     })?;
                 }
-                AppleAuthAction::ImportDeveloperId {
-                    p12,
-                    password,
-                    identity,
-                } => {
-                    commands::auth::apple_import_developer_id(p12, password, identity)?;
-                }
-                AppleAuthAction::Logout => {
-                    commands::auth::apple_logout()?;
-                }
-                AppleAuthAction::Status => {
-                    commands::auth::apple_status()?;
-                }
-            },
-            AuthProvider::Harmony { action } => match action {
-                HarmonyAuthAction::Login {
+                AuthLoginProvider::Harmony {
                     mode,
                     client_id,
                     client_secret,
@@ -953,13 +958,23 @@ fn main() -> Result<()> {
                         yes,
                     })?;
                 }
-                HarmonyAuthAction::Logout => {
+            },
+            AuthAction::Logout { provider } => match provider {
+                AuthLogoutProvider::Apple { team_id } => {
+                    commands::auth::apple_logout(team_id)?;
+                }
+                AuthLogoutProvider::Harmony => {
                     commands::auth::harmony_logout()?;
                 }
-                HarmonyAuthAction::Status => {
-                    commands::auth::harmony_status()?;
-                }
             },
+            AuthAction::Status { json } => {
+                if !commands::auth::auth_status(json)? {
+                    std::process::exit(1);
+                }
+            }
+            AuthAction::Forget { platform } => {
+                commands::auth::auth_forget(&platform)?;
+            }
         },
         Commands::Ds { platform } => {
             commands::ds::execute(platform)?;

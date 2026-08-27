@@ -67,16 +67,16 @@ Two independent credentials, which **must belong to the same team**:
 
 | Credential | Used for | Stored by |
 |---|---|---|
-| App Store Connect API key | `notarytool submit` notarization | `lingxia auth apple login` |
-| Developer ID Application certificate + key | `codesign` signing | login keychain, or `lingxia auth apple import-developer-id` |
+| App Store Connect API key | `notarytool submit` notarization | `lingxia auth login apple --mode key` |
+| Developer ID Application certificate + key | `codesign` signing | login keychain, or `lingxia auth login apple --mode developer-id` |
 
 ```bash
-lingxia auth apple login --mode key \
+lingxia auth login apple --mode key \
   --key-id <KEY_ID> --issuer-id <ISSUER_ID> \
   --private-key-path AuthKey_XXXX.p8 --team-id <TEAM_ID>
 
-lingxia auth apple import-developer-id DeveloperID.p12   # optional locally —
-# keychain discovery finds an existing Developer ID identity by itself
+lingxia auth login apple --mode developer-id --p12 DeveloperID.p12   # optional
+# locally — keychain discovery finds an existing Developer ID identity by itself
 ```
 
 To export a `.p12`: Xcode → Settings → Accounts → Manage Certificates → **+** →
@@ -84,11 +84,13 @@ Developer ID Application; then in Keychain Access select the certificate *and*
 its private key and export as `.p12`. No private key under the certificate →
 it was created on another Mac; recreate or export it there.
 
-**CI:** either restore the two credential files (`~/.lingxia/apple/credentials.json`,
-`~/.lingxia/apple/developer-id.json`) from secrets before building, or set the
-env overrides `LINGXIA_APPLE_NOTARY_KEY` / `_KEY_ID` / `_ISSUER_ID` and
-`LINGXIA_APPLE_DEVELOPER_ID_P12` / `_P12_PASSWORD` / `_IDENTITY`. Without
-resolvable credentials the build ad-hoc signs and still succeeds.
+**CI:** either restore the two wallet files
+(`~/.lingxia/credentials/apple/<team>/asc.json` and `…/developer-id.json`)
+from secrets before building, or set the env groups
+`LINGXIA_APPLE_KEY_PATH` / `_KEY_ID` / `_ISSUER_ID` (each group must be
+complete) and `LINGXIA_APPLE_DEVELOPER_ID_P12` / `_P12_PASSWORD` /
+`_IDENTITY`. Without resolvable credentials the build ad-hoc signs and still
+succeeds.
 
 **Verify:** `codesign --verify --deep --strict "MyApp.app"`,
 `spctl --assess --type execute "MyApp.app"`, `xcrun stapler validate "MyApp.app"`.
@@ -97,7 +99,7 @@ resolvable credentials the build ad-hoc signs and still succeeds.
 
 Distribution signing uses a **provisioning profile** plus a **distribution
 certificate** from your Apple Developer account, applied at build time. Store
-the account credential with `lingxia auth apple login`; manage profiles and the
+the account credential with `lingxia auth login apple`; manage profiles and the
 certificate through your Apple Developer account / Xcode.
 
 ### Android
@@ -134,11 +136,18 @@ Huawei's own signing material through the Harmony tooling.
 
 ## `lingxia auth`
 
-The credential store behind signing and developer services: `lingxia auth
-apple` (`login`, `import-developer-id`, `logout`, `status`) and
-`lingxia auth harmony` (`login`, `logout`, `status`). The concrete flows are in
-[App signing](#app-signing) above; see `lingxia auth <provider> --help` for
-flags.
+The credential wallet behind signing and developer services. Log in once per
+provider; commands pick the right credential automatically from the project:
+
+- `lingxia auth login apple|harmony` — add or refresh credentials (Apple modes:
+  `key`, `password`, `developer-id`)
+- `lingxia auth logout apple|harmony` — remove them
+- `lingxia auth status [--json]` — per-project diagnosis plus the wallet view
+- `lingxia auth forget --platform <channel>` — drop this checkout's automatic
+  credential selection so the next command re-resolves
+
+The concrete flows are in [App signing](#app-signing) above; see
+`lingxia auth login <provider> --help` for flags.
 
 ## `lingxia store`
 

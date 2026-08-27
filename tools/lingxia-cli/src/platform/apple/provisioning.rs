@@ -19,7 +19,7 @@ use tempfile::NamedTempFile;
 use crate::permission_cache::{PermissionCache, PermissionPlatform};
 
 use super::asc::AppStoreConnectClient;
-use super::auth::{AuthCredentials, CachedSigningIdentity, CredentialStorage};
+use super::auth::{AuthCredentials, CachedSigningIdentity};
 use super::capabilities;
 use super::developer_services;
 use super::developer_services::DeveloperServicesClient;
@@ -27,6 +27,8 @@ use super::devicectl::{ConnectedDevice, DeviceCtl};
 use super::grandslam::DeviceInfo;
 use super::keychain::{KeychainManager, generate_csr};
 use super::signer::{Signer, extract_entitlements_from_profile};
+use crate::resolver::{AppleChannel, AppleNeed, AuthSource, ResolvedAppleAuth};
+use crate::wallet::Wallet;
 
 /// Result of the provisioning process
 #[derive(Debug)]
@@ -249,8 +251,8 @@ impl Drop for TempKeychain {
 
 /// Provisioning context for iOS app signing
 pub struct ProvisioningContext {
-    /// Credential storage
-    credentials: CredentialStorage,
+    /// Resolved Apple credentials (wallet or CI env)
+    auth: ResolvedAppleAuth,
     /// Device info for API calls
     device_info: DeviceInfo,
     /// Target device UDID
@@ -262,7 +264,7 @@ pub struct ProvisioningContext {
 impl ProvisioningContext {
     /// Create a new provisioning context
     pub fn new(target_device: &ConnectedDevice) -> Result<Self> {
-        let credentials = CredentialStorage::new()?;
+        let auth = crate::resolver::resolve_apple_auth(Some(AppleChannel::Ios), AppleNeed::Auth)?;
         let device_info = DeviceInfo::default_macos();
 
         let udid = target_device
@@ -273,7 +275,7 @@ impl ProvisioningContext {
         let name = target_device.name().unwrap_or("iOS Device").to_string();
 
         Ok(Self {
-            credentials,
+            auth,
             device_info,
             target_device_udid: udid,
             target_device_name: name,
@@ -293,12 +295,7 @@ impl ProvisioningContext {
     pub fn provision(&self, original_bundle_id: &str) -> Result<ProvisioningResult> {
         println!("{}", "Starting provisioning workflow...".cyan());
 
-        // Load credentials
-        let creds = self.credentials.load()?.ok_or_else(|| {
-            anyhow!("No Apple credentials found. Run 'lingxia auth apple login' first.")
-        })?;
-
-        match creds {
+        match self.auth.auth.clone() {
             AuthCredentials::AppleId {
                 adsid,
                 app_token,
@@ -333,11 +330,11 @@ impl ProvisioningContext {
         original_bundle_id: &str,
     ) -> Result<Option<ProvisioningResult>> {
         // Signing without the API requires a cached certificate + key.
-        let cached = match self.credentials.load()? {
-            Some(AuthCredentials::AppStoreConnect {
+        let cached = match &self.auth.auth {
+            AuthCredentials::AppStoreConnect {
                 cached_signing_identity: Some(identity),
                 ..
-            }) => identity,
+            } => identity.clone(),
             _ => return Ok(None),
         };
 
@@ -959,7 +956,12 @@ Tip: Revoke the existing iOS Development certificate in Apple Developer portal, 
         team_id: &str,
         cache: Option<CachedSigningIdentity>,
     ) -> Result<()> {
-        let Some(mut creds) = self.credentials.load()? else {
+        // Env-provided credentials have no persistent slot to update.
+        if self.auth.source != AuthSource::Wallet {
+            return Ok(());
+        }
+        let wallet = Wallet::open()?;
+        let Some(mut creds) = wallet.load_apple_asc(team_id)? else {
             return Ok(());
         };
 
@@ -978,7 +980,7 @@ Tip: Revoke the existing iOS Development certificate in Apple Developer portal, 
         }
 
         if changed {
-            self.credentials.save(&creds)?;
+            wallet.save_apple_auth(&creds)?;
         }
 
         Ok(())
@@ -1011,7 +1013,7 @@ The Bundle ID '{bundle_id}' does not exist yet.\n\
 Fix options:\n\
 1) Ask a Team Admin to grant this API key access for Certificates/Identifiers/Profiles operations.\n\
 2) Create Bundle ID '{bundle_id}' manually in Apple Developer portal, then retry.\n\
-3) Use 'lingxia auth apple login -m password' and run install again."
+3) Use 'lingxia auth login apple -m password' and run install again."
                     ));
                 }
                 return Err(e);

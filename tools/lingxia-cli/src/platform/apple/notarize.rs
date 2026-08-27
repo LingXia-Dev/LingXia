@@ -1,17 +1,15 @@
 //! Developer ID code-signing + notarization for macOS app bundles.
 //!
 //! Notary (App Store Connect API) credentials are always required and resolved
-//! store-first, env-fallback: the auth credential store
-//! (`~/.lingxia/apple/credentials.json`, populated by
-//! `lingxia auth apple login --mode key`) first, then the
-//! `LINGXIA_APPLE_NOTARY_KEY` (`.p8` path) / `_KEY_ID` / `_ISSUER_ID` env vars.
+//! env-first, wallet-second: the `LINGXIA_APPLE_KEY_PATH` (`.p8` path) /
+//! `LINGXIA_APPLE_KEY_ID` / `LINGXIA_APPLE_ISSUER_ID` env group, then the
+//! credential wallet (populated by `lingxia auth login apple --mode key`).
 //!
 //! The **signing identity** is then resolved by environment:
 //!
-//! - **CI** — an explicit `.p12` from the credential store
-//!   (`~/.lingxia/apple/developer-id.json`, populated by
-//!   `lingxia auth apple import-developer-id`) or the
-//!   `LINGXIA_APPLE_DEVELOPER_ID_P12` / `_P12_PASSWORD` env vars is imported into
+//! - **CI** — an explicit `.p12` from the
+//!   `LINGXIA_APPLE_DEVELOPER_ID_P12` / `_P12_PASSWORD` env vars or the wallet
+//!   (`lingxia auth login apple --mode developer-id`) is imported into
 //!   a throwaway keychain for the run. A runner has no Keychain, so it restores
 //!   the cert from CI secrets onto an ephemeral machine — the only place the
 //!   `.p12` + password are materialized.
@@ -30,7 +28,7 @@
 //!   "Developer ID Application".
 //! - `LINGXIA_APPLE_ENTITLEMENTS` — path to an entitlements plist for codesign.
 
-use crate::platform::apple::auth::{AuthCredentials, CredentialStorage, DeveloperIdCredentials};
+use crate::resolver::{self, AppleChannel};
 use anyhow::{Context, Result, anyhow};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -40,9 +38,6 @@ use std::process::Command;
 
 const ENV_P12: &str = "LINGXIA_APPLE_DEVELOPER_ID_P12";
 const ENV_P12_PASSWORD: &str = "LINGXIA_APPLE_DEVELOPER_ID_P12_PASSWORD";
-const ENV_NOTARY_KEY: &str = "LINGXIA_APPLE_NOTARY_KEY";
-const ENV_NOTARY_KEY_ID: &str = "LINGXIA_APPLE_NOTARY_KEY_ID";
-const ENV_NOTARY_ISSUER_ID: &str = "LINGXIA_APPLE_NOTARY_ISSUER_ID";
 const ENV_IDENTITY: &str = "LINGXIA_APPLE_DEVELOPER_ID_IDENTITY";
 const ENV_ENTITLEMENTS: &str = "LINGXIA_APPLE_ENTITLEMENTS";
 
@@ -108,76 +103,61 @@ fn non_empty_env(key: &str) -> Option<String> {
     std::env::var(key).ok().filter(|v| !v.trim().is_empty())
 }
 
-/// Resolve the Developer ID certificate, store-first then env-fallback.
+/// Resolve the Developer ID certificate, env-first then wallet.
 fn resolve_developer_id() -> Result<Option<DeveloperIdMaterial>> {
-    // 1. Credential store (`~/.lingxia/apple/developer-id.json`).
-    if let Some(creds) = DeveloperIdCredentials::load()? {
-        let bytes = STANDARD
-            .decode(creds.p12_base64.trim())
-            .context("Failed to base64-decode stored Developer ID .p12")?;
-        let path =
-            std::env::temp_dir().join(format!("lingxia-developer-id-{}.p12", std::process::id()));
-        std::fs::write(&path, &bytes)
-            .with_context(|| format!("Failed to write temporary .p12 to {}", path.display()))?;
-        let temp = TempFile { path };
-        return Ok(Some(DeveloperIdMaterial {
-            p12_path: temp.path.to_string_lossy().to_string(),
-            p12_password: creds.password,
-            identity: creds.identity.or_else(|| non_empty_env(ENV_IDENTITY)),
-            _temp_p12: Some(temp),
-        }));
+    // 1. CI environment. The pair must be complete or absent.
+    let env_p12 = non_empty_env(ENV_P12);
+    let env_password = non_empty_env(ENV_P12_PASSWORD);
+    match (env_p12, env_password) {
+        (Some(p12_path), Some(p12_password)) => {
+            return Ok(Some(DeveloperIdMaterial {
+                p12_path,
+                p12_password,
+                identity: non_empty_env(ENV_IDENTITY),
+                _temp_p12: None,
+            }));
+        }
+        (None, None) => {}
+        _ => anyhow::bail!(
+            "{}: {ENV_P12} and {ENV_P12_PASSWORD} must be provided together",
+            resolver::codes::CREDENTIAL_ENV_INCOMPLETE
+        ),
     }
 
-    // 2. Environment fallback.
-    let (Some(p12_path), Some(p12_password)) =
-        (non_empty_env(ENV_P12), non_empty_env(ENV_P12_PASSWORD))
-    else {
+    // 2. Wallet.
+    let Some(creds) = resolver::try_resolve_apple_developer_id(Some(AppleChannel::Macos))? else {
         return Ok(None);
     };
+    let bytes = STANDARD
+        .decode(creds.p12_base64.trim())
+        .context("Failed to base64-decode stored Developer ID .p12")?;
+    let path =
+        std::env::temp_dir().join(format!("lingxia-developer-id-{}.p12", std::process::id()));
+    std::fs::write(&path, &bytes)
+        .with_context(|| format!("Failed to write temporary .p12 to {}", path.display()))?;
+    let temp = TempFile { path };
     Ok(Some(DeveloperIdMaterial {
-        p12_path,
-        p12_password,
-        identity: non_empty_env(ENV_IDENTITY),
-        _temp_p12: None,
+        p12_path: temp.path.to_string_lossy().to_string(),
+        p12_password: creds.password,
+        identity: creds.identity.or_else(|| non_empty_env(ENV_IDENTITY)),
+        _temp_p12: Some(temp),
     }))
 }
 
-/// Resolve notary credentials, store-first then env-fallback.
+/// Resolve notary credentials (ASC key), env-first then wallet.
 fn resolve_notary() -> Result<Option<NotaryMaterial>> {
-    // 1. Credential store (`~/.lingxia/apple/credentials.json`, ASC API key).
-    if let Some(AuthCredentials::AppStoreConnect {
-        key_id,
-        issuer_id,
-        private_key_pem,
-        ..
-    }) = CredentialStorage::new()?.load()?
-    {
-        let path =
-            std::env::temp_dir().join(format!("lingxia-notary-key-{}.p8", std::process::id()));
-        std::fs::write(&path, private_key_pem.as_bytes())
-            .with_context(|| format!("Failed to write temporary .p8 to {}", path.display()))?;
-        let temp = TempFile { path };
-        return Ok(Some(NotaryMaterial {
-            notary_key: temp.path.to_string_lossy().to_string(),
-            notary_key_id: key_id,
-            notary_issuer_id: issuer_id,
-            _temp_key: Some(temp),
-        }));
-    }
-
-    // 2. Environment fallback.
-    let (Some(notary_key), Some(notary_key_id), Some(notary_issuer_id)) = (
-        non_empty_env(ENV_NOTARY_KEY),
-        non_empty_env(ENV_NOTARY_KEY_ID),
-        non_empty_env(ENV_NOTARY_ISSUER_ID),
-    ) else {
+    let Some(material) = resolver::try_resolve_apple_asc(Some(AppleChannel::Macos))? else {
         return Ok(None);
     };
+    let path = std::env::temp_dir().join(format!("lingxia-notary-key-{}.p8", std::process::id()));
+    std::fs::write(&path, material.private_key_pem.as_bytes())
+        .with_context(|| format!("Failed to write temporary .p8 to {}", path.display()))?;
+    let temp = TempFile { path };
     Ok(Some(NotaryMaterial {
-        notary_key,
-        notary_key_id,
-        notary_issuer_id,
-        _temp_key: None,
+        notary_key: temp.path.to_string_lossy().to_string(),
+        notary_key_id: material.key_id,
+        notary_issuer_id: material.issuer_id,
+        _temp_key: Some(temp),
     }))
 }
 
@@ -193,9 +173,8 @@ pub fn maybe_sign_and_notarize(app_path: &Path) -> Result<()> {
     let Some(notary) = resolve_notary()? else {
         println!(
             "{} macOS app left ad-hoc signed — no notary creds \
-             ('lingxia auth apple login --mode key' or {}/_KEY_ID/_ISSUER_ID)",
-            "ℹ️".blue(),
-            ENV_NOTARY_KEY
+             ('lingxia auth login apple --mode key' or LINGXIA_APPLE_KEY_PATH/_KEY_ID/_ISSUER_ID)",
+            "ℹ️".blue()
         );
         return Ok(());
     };
@@ -224,7 +203,7 @@ pub fn maybe_sign_and_notarize(app_path: &Path) -> Result<()> {
     println!(
         "{} macOS app left ad-hoc signed — add a Developer ID Application identity \
          to your login keychain, or set a .p12 \
-         ('lingxia auth apple import-developer-id' or {}) for CI",
+         ('lingxia auth login apple --mode developer-id' or {}) for CI",
         "ℹ️".blue(),
         ENV_P12
     );

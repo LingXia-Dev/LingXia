@@ -2,7 +2,7 @@
 
 use crate::platform::apple::anisette::OmnisetteProvider;
 use crate::platform::apple::asc::AppStoreConnectClient;
-use crate::platform::apple::auth::{AuthCredentials, CredentialStorage};
+use crate::platform::apple::auth::AuthCredentials;
 use crate::platform::apple::developer_services;
 use crate::platform::apple::developer_services::DeveloperServicesClient;
 use crate::platform::apple::grandslam::DeviceInfo;
@@ -176,10 +176,8 @@ pub fn with_client<F, T>(f: F) -> Result<T>
 where
     F: FnOnce(&AppleDsClient) -> Result<T>,
 {
-    let storage = CredentialStorage::new()?;
-    let credentials = storage
-        .load()?
-        .ok_or_else(|| anyhow::anyhow!("Not logged in. Run 'lingxia auth apple login' first."))?;
+    let credentials =
+        crate::resolver::resolve_apple_auth(None, crate::resolver::AppleNeed::Auth)?.auth;
 
     let client = match credentials {
         AuthCredentials::AppleId {

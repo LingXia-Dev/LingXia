@@ -1351,6 +1351,10 @@ impl AndroidConfig {
 #[serde(rename_all = "camelCase")]
 pub struct IosConfig {
     pub bundle_id: String,
+    /// Optional Apple Team constraint. When present it is hard: only
+    /// credentials proven to belong to this team may be used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deployment_target: Option<String>, // e.g., "17.0"
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1383,6 +1387,11 @@ pub struct MacosConfig {
     /// Bundle identifier (e.g., "app.lingxia.example")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bundle_id: Option<String>,
+
+    /// Optional Apple Team constraint. When present it is hard: only
+    /// credentials proven to belong to this team may be used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub team_id: Option<String>,
 
     /// Deployment target (e.g., "14.0")
     #[serde(skip_serializing_if = "Option::is_none")]

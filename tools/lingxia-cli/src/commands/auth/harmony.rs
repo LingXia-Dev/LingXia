@@ -157,7 +157,7 @@ pub fn harmony_status() -> Result<()> {
     if status.is_none() {
         println!("{} Not logged in", "✗".red());
         println!();
-        println!("Run 'lingxia auth harmony login --mode api' to authenticate.");
+        println!("Run 'lingxia auth login harmony --mode api' to authenticate.");
         return Ok(());
     }
 

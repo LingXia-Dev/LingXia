@@ -75,7 +75,7 @@ impl ProvisioningManager {
         let api_storage = AgcCredentialStorage::new()?;
         let credentials = api_storage.load()?.ok_or_else(|| {
             anyhow!(
-                "Harmony AGC API credentials are missing. Run `lingxia auth harmony login --mode api` first.\n\
+                "Harmony AGC API credentials are missing. Run `lingxia auth login harmony --mode api` first.\n\
                  Use AGC Connect API client credentials and set Project to `N/A`."
             )
         })?;
