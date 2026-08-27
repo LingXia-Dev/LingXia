@@ -1,7 +1,7 @@
 {
   "name": "@lingxia/browser-shell-webui",
   "version": "0.13.0",
-  "private": false,
+  "private": true,
   "description": "Prebuilt LingXia browser shell webui lxapp bundle",
   "type": "module",
   "repository": {
@@ -16,9 +16,6 @@
   "scripts": {
     "build": "cargo run -p lingxia-cli -- build --release",
     "prepublishOnly": "npm run build"
-  },
-  "publishConfig": {
-    "access": "public"
   },
   "license": "MIT"
 }

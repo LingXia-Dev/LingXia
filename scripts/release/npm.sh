@@ -9,7 +9,7 @@ usage() {
 Release LingXia npm packages.
 
 Usage:
-  scripts/release/npm.sh [--package bridge|elements|react|vue|html|page-runtime|polyfills|terminal-settings|browser-shell-webui|types|test|all] [--publish] [--dry-run]
+  scripts/release/npm.sh [--package bridge|elements|react|vue|html|page-runtime|polyfills|terminal-settings|types|test|all] [--publish] [--dry-run]
 
 Options:
   --package <name>  Package set to process (default: all)
@@ -47,7 +47,7 @@ fi
 
 # Tier 1, then framework in dep order (bridge → elements/page-runtime → html/react/vue),
 # then prebuilt lxapps.
-ALL_TARGETS=("bridge" "polyfills" "types" "test" "elements" "page-runtime" "html" "react" "vue" "terminal-settings" "browser-shell-webui")
+ALL_TARGETS=("bridge" "polyfills" "types" "test" "elements" "page-runtime" "html" "react" "vue" "terminal-settings")
 
 case "$PACKAGE_SET" in
   bridge) targets=("bridge") ;;
@@ -58,7 +58,6 @@ case "$PACKAGE_SET" in
   page-runtime) targets=("page-runtime") ;;
   polyfills) targets=("polyfills") ;;
   terminal-settings) targets=("terminal-settings") ;;
-  browser-shell-webui) targets=("browser-shell-webui") ;;
   types) targets=("types") ;;
   test) targets=("test") ;;
   all) targets=("${ALL_TARGETS[@]}") ;;
@@ -75,7 +74,6 @@ pkg_dir() {
     page-runtime) echo "$ROOT_DIR/packages/lingxia-page-runtime" ;;
     polyfills) echo "$ROOT_DIR/packages/lingxia-polyfills" ;;
     terminal-settings) echo "$ROOT_DIR/packages/lingxia-terminal-settings" ;;
-    browser-shell-webui) echo "$ROOT_DIR/crates/lingxia-browser-shell/webui" ;;
     types) echo "$ROOT_DIR/packages/lingxia-types" ;;
     test) echo "$ROOT_DIR/packages/lingxia-test" ;;
     *) return 1 ;;
@@ -85,7 +83,7 @@ pkg_dir() {
 verify_package_inventory() {
   local unmapped=() unreleased=()
   local dir name target
-  for dir in "$ROOT_DIR"/packages/lingxia-*/ "$ROOT_DIR/crates/lingxia-browser-shell/webui/"; do
+  for dir in "$ROOT_DIR"/packages/lingxia-*/; do
     [[ -f "${dir}package.json" ]] || continue
     name="$(node -p "require('${dir}package.json').name")"
     if ! target="$(pkg_target_for_name "$name")"; then
@@ -113,9 +111,6 @@ verify_workflow_inventory() {
   local expected workflow actual
   expected="$(
     for target in "${ALL_TARGETS[@]}"; do
-      # browser-shell-webui lives outside packages/, which is the only path the
-      # workflows know how to read, so it is deliberately absent from their list.
-      [[ "$target" == "browser-shell-webui" ]] && continue
       echo "lingxia-$target"
     done | sort
   )"
@@ -143,7 +138,6 @@ pkg_target_for_name() {
     @lingxia/react) echo "react" ;;
     @lingxia/vue) echo "vue" ;;
     @lingxia/terminal-settings) echo "terminal-settings" ;;
-    @lingxia/browser-shell-webui) echo "browser-shell-webui" ;;
     *) return 1 ;;
   esac
 }
@@ -165,7 +159,6 @@ const dirOf = {
   react: "packages/lingxia-react",
   vue: "packages/lingxia-vue",
   "terminal-settings": "packages/lingxia-terminal-settings",
-  "browser-shell-webui": "crates/lingxia-browser-shell/webui",
 };
 const nameOf = {};
 for (const target of targets) {
