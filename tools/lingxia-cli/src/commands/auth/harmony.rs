@@ -1,6 +1,11 @@
-use anyhow::{Context, Result, anyhow};
+//! Harmony AGC authentication commands (wallet-backed).
+
+use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
 use dialoguer::{Input, Password, Select};
+
+use crate::platform::harmony::{AgcApiCredentials, AgcConnectClient};
+use crate::wallet::{Wallet, mask};
 
 /// Options for Harmony login command.
 pub struct HarmonyLoginOptions {
@@ -10,7 +15,7 @@ pub struct HarmonyLoginOptions {
     pub yes: bool,
 }
 
-/// Execute Harmony login command.
+/// Execute `lingxia auth login harmony`.
 ///
 /// Official Harmony flow uses AGC Connect API mode.
 pub fn harmony_login(options: HarmonyLoginOptions) -> Result<()> {
@@ -25,13 +30,26 @@ pub fn harmony_login(options: HarmonyLoginOptions) -> Result<()> {
         ));
     }
 
-    harmony_login_api_mode(&options)
+    login_api_mode(&options)?;
+    Ok(())
 }
 
-/// AGC Connect API login (api mode) - for CI/CD
-fn harmony_login_api_mode(options: &HarmonyLoginOptions) -> Result<()> {
-    use crate::platform::harmony::HarmonyAuthService;
+/// In-place login used by the resolver; returns the client id.
+pub fn harmony_inline_login() -> Result<String> {
+    eprintln!(
+        "{} Missing Harmony AGC credentials; logging in now, then the command continues.",
+        "→".cyan()
+    );
+    login_api_mode(&HarmonyLoginOptions {
+        mode: None,
+        client_id: None,
+        client_secret: None,
+        yes: false,
+    })
+}
 
+/// AGC Connect API login (api mode). Returns the client id.
+fn login_api_mode(options: &HarmonyLoginOptions) -> Result<String> {
     println!("{} Using API mode", "→".dimmed());
     println!(
         "  {} Use AGC `API密钥 > Connect API > API客户端` credentials with Project set to `N/A`.",
@@ -39,33 +57,50 @@ fn harmony_login_api_mode(options: &HarmonyLoginOptions) -> Result<()> {
     );
     println!();
 
-    let auth_service = HarmonyAuthService::new()?;
+    let (client_id, client_secret) = prompt_agc_api_credentials(options)?;
 
-    // Check for existing credentials
-    if let Some(existing) = auth_service.load_credentials()?
-        && !confirm_replace_harmony_agc_credentials(&existing.client_id, options.yes)?
+    let wallet = Wallet::open()?;
+    wallet.notice_legacy_files();
+    if let Some(existing) = wallet.load_harmony_agc(&client_id)?
+        && existing.client_secret != client_secret
     {
-        println!("Login cancelled.");
-        return Ok(());
+        println!(
+            "{} Replacing the stored secret for AGC client {}: {} -> {}",
+            "ℹ".blue(),
+            client_id,
+            mask(&existing.client_secret),
+            mask(&client_secret)
+        );
+        if !options.yes {
+            if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                bail!("refusing to rotate the AGC secret non-interactively; pass --yes to confirm");
+            }
+            if !dialoguer::Confirm::new()
+                .with_prompt("Continue?")
+                .default(true)
+                .interact()?
+            {
+                bail!("Login cancelled.");
+            }
+        }
     }
-
-    let (client_id, client_secret) = prompt_harmony_agc_api_credentials(options)?;
 
     println!();
     println!("  {} Validating credentials...", "→".dimmed());
 
-    let credentials = auth_service
-        .authenticate(&client_id, &client_secret)
+    let client = AgcConnectClient::new();
+    let token = client
+        .get_token(&client_id, &client_secret)
         .context("Failed to authenticate with AGC API")?;
-
     println!("  {} Authentication successful!", "✓".green());
 
-    auth_service.save_credentials(&credentials)?;
-    println!(
-        "  {} Credentials saved to {}",
-        "✓".green(),
-        auth_service.storage_path().display()
-    );
+    let credentials = AgcApiCredentials {
+        client_id: client_id.clone(),
+        client_secret,
+        token: Some(token),
+    };
+    let path = wallet.save_harmony_agc(&credentials)?;
+    println!("  {} Credentials saved to {}", "✓".green(), path.display());
 
     println!();
     println!(
@@ -74,31 +109,10 @@ fn harmony_login_api_mode(options: &HarmonyLoginOptions) -> Result<()> {
         &client_id[..8.min(client_id.len())]
     );
 
-    Ok(())
+    Ok(client_id)
 }
 
-fn confirm_replace_harmony_agc_credentials(existing_client_id: &str, yes: bool) -> Result<bool> {
-    println!(
-        "{} Existing AGC API credentials found (Client ID: {}...)",
-        "ℹ".blue(),
-        &existing_client_id[..8.min(existing_client_id.len())]
-    );
-
-    if yes {
-        return Ok(true);
-    }
-
-    let choices = vec!["Replace existing credentials", "Cancel"];
-    let selection = Select::new()
-        .with_prompt("What would you like to do?")
-        .items(&choices)
-        .default(1)
-        .interact()?;
-
-    Ok(selection == 0)
-}
-
-fn prompt_harmony_agc_api_credentials(options: &HarmonyLoginOptions) -> Result<(String, String)> {
+fn prompt_agc_api_credentials(options: &HarmonyLoginOptions) -> Result<(String, String)> {
     let client_id = match &options.client_id {
         Some(id) => id.clone(),
         None => Input::<String>::new()
@@ -116,63 +130,74 @@ fn prompt_harmony_agc_api_credentials(options: &HarmonyLoginOptions) -> Result<(
     Ok((client_id, secret))
 }
 
-/// Execute Harmony logout command.
-pub fn harmony_logout() -> Result<()> {
-    use crate::platform::harmony::HarmonyAuthService;
+/// Execute `lingxia auth logout harmony`.
+pub fn harmony_logout(client_id: Option<String>) -> Result<()> {
+    let wallet = Wallet::open()?;
+    let identities = wallet.harmony_identities()?;
 
-    let auth_service = HarmonyAuthService::new()?;
-    let deleted_any = auth_service.clear_credentials()?;
-
-    if deleted_any {
-        println!(
-            "{} API mode credentials removed from: {}",
-            "✓".green(),
-            auth_service.storage_path().display()
-        );
-    }
-
-    if deleted_any {
-        println!();
-        println!("{} Successfully logged out.", "✓".green());
-    } else {
-        println!("{} Not currently logged in.", "ℹ".blue());
-    }
-
-    Ok(())
-}
-
-/// Execute Harmony status command.
-pub fn harmony_status() -> Result<()> {
-    use crate::platform::harmony::HarmonyAuthService;
-
-    let auth_service = HarmonyAuthService::new()?;
-    let status = auth_service.status()?;
-
-    println!(
-        "{}",
-        "HarmonyOS Developer Authentication Status".cyan().bold()
-    );
-    println!();
-
-    if status.is_none() {
-        println!("{} Not logged in", "✗".red());
-        println!();
-        println!("Run 'lingxia auth login harmony --mode api' to authenticate.");
+    if identities.is_empty() {
+        println!("{} No Harmony AGC credentials stored.", "ℹ".blue());
         return Ok(());
     }
 
-    if let Some(status) = status {
-        println!(
-            "{} API (client credentials): {}",
-            "•".cyan(),
-            status.token_state.as_str()
-        );
-        println!(
-            "  Client ID:  {}...",
-            &status.client_id[..8.min(status.client_id.len())]
-        );
-        println!("  Storage:    {}", status.storage_path.display());
-    }
+    let client_id = match client_id {
+        Some(id) => id,
+        None if identities.len() == 1 => identities[0].clone(),
+        None => {
+            if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+                bail!(
+                    "several AGC identities are stored ({}); pass --client-id",
+                    identities.join(", ")
+                );
+            }
+            let selection = Select::new()
+                .with_prompt("Log out which AGC identity?")
+                .items(&identities)
+                .default(0)
+                .interact()?;
+            identities[selection].clone()
+        }
+    };
 
+    if wallet.delete_harmony_identity(&client_id)? {
+        println!(
+            "{} Removed AGC credentials (and signing material) for {}.",
+            "✓".green(),
+            client_id
+        );
+    } else {
+        println!(
+            "{} No AGC credentials stored for {}.",
+            "ℹ".blue(),
+            client_id
+        );
+    }
+    Ok(())
+}
+
+/// Print the Harmony section of `lingxia auth status`.
+pub fn harmony_status() -> Result<()> {
+    let wallet = Wallet::open()?;
+    let identities = wallet.harmony_identities()?;
+
+    println!("{}", "Harmony".cyan().bold());
+    if identities.is_empty() {
+        println!(
+            "  {} No credentials. Fix: lingxia auth login harmony",
+            "✗".red()
+        );
+        return Ok(());
+    }
+    for client_id in identities {
+        let token_state = match wallet.load_harmony_agc(&client_id)? {
+            Some(creds) => match creds.token {
+                Some(token) if !AgcConnectClient::is_token_expired(&token) => "token valid",
+                Some(_) => "token expired (refreshed on use)",
+                None => "no cached token",
+            },
+            None => "unreadable",
+        };
+        println!("  {client_id}  AGC API ({token_state})");
+    }
     Ok(())
 }

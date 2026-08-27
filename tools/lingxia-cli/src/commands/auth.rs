@@ -12,7 +12,9 @@ mod apple;
 mod harmony;
 
 pub use apple::{AppleLoginOptions, apple_login, apple_logout, apple_status, inline_login};
-pub use harmony::{HarmonyLoginOptions, harmony_login, harmony_logout, harmony_status};
+pub use harmony::{
+    HarmonyLoginOptions, harmony_inline_login, harmony_login, harmony_logout, harmony_status,
+};
 
 /// `lingxia auth forget --platform <channel>`: drop this checkout's automatic
 /// credential selection; the next command re-resolves. Never touches secrets.

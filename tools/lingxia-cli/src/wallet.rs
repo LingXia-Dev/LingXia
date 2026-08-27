@@ -1,9 +1,9 @@
 //! Identity-keyed credential wallet under `<state root>/credentials/`.
 //!
-//! Credentials are stored per verified provider identity (Apple: Team ID),
-//! one file per mechanism — no aliases, no global "current account". Legacy
-//! single-slot files (`apple/credentials.json`, `apple/developer-id.json`)
-//! are never read; re-login is the migration path.
+//! Credentials are stored per verified provider identity (Apple: Team ID;
+//! Harmony: AGC client id), one file per mechanism — no aliases, no global
+//! "current account". Legacy single-slot files are never read; re-login is
+//! the migration path.
 
 use anyhow::{Context, Result, anyhow, bail};
 use std::fs;
@@ -11,10 +11,12 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::platform::apple::auth::{AuthCredentials, DeveloperIdCredentials};
+use crate::platform::harmony::AgcApiCredentials;
 
 const ASC_FILE: &str = "asc.json";
 const APPLE_ID_FILE: &str = "apple-id.json";
 const DEVELOPER_ID_FILE: &str = "developer-id.json";
+const AGC_FILE: &str = "agc.json";
 const LEGACY_NOTICE_MARKER: &str = ".legacy-noticed";
 
 /// Which Apple mechanism slots exist for one team.
@@ -204,12 +206,84 @@ impl Wallet {
         Ok(true)
     }
 
+    fn harmony_identity_dir(&self, client_id: &str) -> Result<PathBuf> {
+        validate_path_component(client_id)?;
+        Ok(self.root.join("harmony").join(client_id))
+    }
+
+    /// All Harmony AGC identities (client ids) in the wallet, sorted.
+    pub fn harmony_identities(&self) -> Result<Vec<String>> {
+        let root = self.root.join("harmony");
+        let mut identities = Vec::new();
+        let entries = match fs::read_dir(&root) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(identities),
+            Err(e) => return Err(e).with_context(|| format!("read {}", root.display())),
+        };
+        for entry in entries {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let Some(client_id) = entry.file_name().to_str().map(str::to_string) else {
+                continue;
+            };
+            if validate_path_component(&client_id).is_ok() && entry.path().join(AGC_FILE).is_file()
+            {
+                identities.push(client_id);
+            }
+        }
+        identities.sort();
+        Ok(identities)
+    }
+
+    pub fn load_harmony_agc(&self, client_id: &str) -> Result<Option<AgcApiCredentials>> {
+        let path = self.harmony_identity_dir(client_id)?.join(AGC_FILE);
+        if !path.is_file() {
+            return Ok(None);
+        }
+        let content =
+            fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+        let creds = serde_json::from_str(&content).with_context(|| {
+            format!(
+                "parse {}. Re-run `lingxia auth login harmony` to refresh it.",
+                path.display()
+            )
+        })?;
+        Ok(Some(creds))
+    }
+
+    /// Save AGC credentials into their identity slot (keyed by `client_id`
+    /// from the credentials). Returns the written path.
+    pub fn save_harmony_agc(&self, creds: &AgcApiCredentials) -> Result<PathBuf> {
+        let path = self.harmony_identity_dir(&creds.client_id)?.join(AGC_FILE);
+        write_secret(&path, serde_json::to_string_pretty(creds)?.as_bytes())?;
+        Ok(path)
+    }
+
+    /// Remove one Harmony identity (credentials and its signing material).
+    pub fn delete_harmony_identity(&self, client_id: &str) -> Result<bool> {
+        let dir = self.harmony_identity_dir(client_id)?;
+        if !dir.exists() {
+            return Ok(false);
+        }
+        fs::remove_dir_all(&dir).with_context(|| format!("remove {}", dir.display()))?;
+        Ok(true)
+    }
+
+    /// Signing material (keys, certs, profiles, keystores) lives next to the
+    /// identity that minted it, so organizations never share certificates.
+    pub fn harmony_signing_dir(&self, client_id: &str) -> Result<PathBuf> {
+        Ok(self.harmony_identity_dir(client_id)?.join("signing"))
+    }
+
     /// One-time notice for pre-wallet credential files, which are no longer
     /// read. Prints at most once per state root.
     pub fn notice_legacy_files(&self) {
         let legacy = [
             self.state_root.join("apple").join("credentials.json"),
             self.state_root.join("apple").join("developer-id.json"),
+            self.state_root.join("harmony").join("agc_credentials.json"),
         ];
         let present: Vec<&Path> = legacy
             .iter()

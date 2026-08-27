@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use crate::binding::BindingStore;
 use crate::config::LingXiaConfig;
 use crate::platform::apple::auth::AuthCredentials;
+use crate::platform::harmony::AgcApiCredentials;
 use crate::wallet::{AppleTeamSlots, Wallet};
 
 pub mod codes {
@@ -608,6 +609,153 @@ pub fn diagnose_apple_channel(
     Ok(diagnosis)
 }
 
+const ENV_AGC_CLIENT_ID: &str = "LINGXIA_AGC_CLIENT_ID";
+const ENV_AGC_CLIENT_SECRET: &str = "LINGXIA_AGC_CLIENT_SECRET";
+
+pub struct ResolvedHarmonyAgc {
+    pub credentials: AgcApiCredentials,
+    pub source: AuthSource,
+}
+
+/// The AGC env pair, complete or absent.
+fn harmony_from_env() -> Result<Option<AgcApiCredentials>> {
+    match (
+        env_nonempty(ENV_AGC_CLIENT_ID),
+        env_nonempty(ENV_AGC_CLIENT_SECRET),
+    ) {
+        (Some(client_id), Some(client_secret)) => Ok(Some(AgcApiCredentials {
+            client_id,
+            client_secret,
+            token: None,
+        })),
+        (None, None) => Ok(None),
+        _ => bail!(
+            "{}: {ENV_AGC_CLIENT_ID} and {ENV_AGC_CLIENT_SECRET} must be provided together",
+            codes::CREDENTIAL_ENV_INCOMPLETE
+        ),
+    }
+}
+
+/// Resolve Harmony AGC credentials: env pair → binding cache → wallet. There
+/// is no yaml org constraint yet (AGC has no stable public org identity), so
+/// routing relies on the automatic per-checkout binding.
+pub fn resolve_harmony_agc(allow_login: bool) -> Result<ResolvedHarmonyAgc> {
+    if let Some(credentials) = harmony_from_env()? {
+        return Ok(ResolvedHarmonyAgc {
+            credentials,
+            source: AuthSource::Env,
+        });
+    }
+
+    let wallet = Wallet::open()?;
+    wallet.notice_legacy_files();
+    let project = detect_project()?;
+    let bindings = BindingStore::open()?;
+    let binding_key = project.as_ref().map(|p| (p.root.as_path(), "harmony"));
+    let client_id =
+        resolve_harmony_identity(&wallet, &bindings, binding_key, allow_login, interactive())?;
+    let credentials = wallet.load_harmony_agc(&client_id)?.ok_or_else(|| {
+        anyhow!(
+            "{}: AGC credentials for {client_id} disappeared during resolution",
+            codes::CREDENTIALS_MISSING
+        )
+    })?;
+    Ok(ResolvedHarmonyAgc {
+        credentials,
+        source: AuthSource::Wallet,
+    })
+}
+
+/// `Ok(None)` when nothing is configured, for callers with skip semantics.
+pub fn try_resolve_harmony_agc() -> Result<Option<ResolvedHarmonyAgc>> {
+    if harmony_from_env()?.is_none() && Wallet::open()?.harmony_identities()?.is_empty() {
+        return Ok(None);
+    }
+    resolve_harmony_agc(false).map(Some)
+}
+
+fn resolve_harmony_identity(
+    wallet: &Wallet,
+    bindings: &BindingStore,
+    binding_key: Option<(&std::path::Path, &str)>,
+    allow_login: bool,
+    interactive: bool,
+) -> Result<String> {
+    let identities = wallet.harmony_identities()?;
+
+    let mut previous_identity: Option<String> = None;
+    if let Some((root, channel)) = binding_key
+        && let Some(binding) = bindings.load(root, channel)
+    {
+        if identities.contains(&binding.identity) {
+            return Ok(binding.identity);
+        }
+        previous_identity = Some(binding.identity);
+    }
+
+    let resolved = match identities.len() {
+        0 => {
+            if allow_login && interactive {
+                crate::commands::auth::harmony_inline_login()?
+            } else {
+                bail!(
+                    "{}: no Harmony AGC credentials. Fix: lingxia auth login harmony",
+                    codes::CREDENTIALS_MISSING
+                );
+            }
+        }
+        1 => identities[0].clone(),
+        _ => {
+            if !interactive {
+                bail!(
+                    "{}: {} Harmony AGC identities can serve this operation ({}); provide \
+                     {ENV_AGC_CLIENT_ID}/{ENV_AGC_CLIENT_SECRET} or select once interactively",
+                    codes::CREDENTIAL_SELECTION_REQUIRED,
+                    identities.len(),
+                    identities.join(", ")
+                );
+            }
+            eprintln!(
+                "This checkout can use {} Harmony AGC identities:",
+                identities.len()
+            );
+            let selection = dialoguer::Select::new()
+                .with_prompt("Select once for this checkout")
+                .items(&identities)
+                .default(0)
+                .interact()?;
+            identities[selection].clone()
+        }
+    };
+
+    if let Some(previous) = previous_identity.filter(|p| *p != resolved) {
+        if !interactive {
+            bail!(
+                "{}: this checkout previously used AGC identity {previous}, which is no longer \
+                 stored; re-run interactively to confirm {resolved}, or `lingxia auth forget` first",
+                codes::CREDENTIAL_SELECTION_REQUIRED
+            );
+        }
+        let confirmed = dialoguer::Confirm::new()
+            .with_prompt(format!(
+                "This checkout previously used AGC identity {previous}; continue with {resolved}?"
+            ))
+            .default(true)
+            .interact()?;
+        if !confirmed {
+            bail!(
+                "{}: resolution cancelled; run `lingxia auth login harmony` for the identity you want",
+                codes::CREDENTIAL_SELECTION_REQUIRED
+            );
+        }
+    }
+
+    if let Some((root, channel)) = binding_key {
+        bindings.save(root, channel, "harmony", &resolved, None)?;
+    }
+    Ok(resolved)
+}
+
 /// Human-readable pointer shown before an in-place login starts.
 pub fn announce_inline_login(need: AppleNeed, team: Option<&str>) {
     match team {
@@ -778,6 +926,58 @@ mod tests {
             "TEAMBBBBBB"
         );
         assert_eq!(f.binding_identity().as_deref(), Some("TEAMBBBBBB"));
+    }
+
+    #[test]
+    fn harmony_sole_identity_binds() {
+        let f = fixture();
+        f.wallet
+            .save_harmony_agc(&crate::platform::harmony::AgcApiCredentials {
+                client_id: "123456789".into(),
+                client_secret: "s".into(),
+                token: None,
+            })
+            .unwrap();
+        let id = resolve_harmony_identity(
+            &f.wallet,
+            &f.bindings,
+            Some((f.project.path(), "harmony")),
+            false,
+            false,
+        )
+        .unwrap();
+        assert_eq!(id, "123456789");
+        assert_eq!(
+            f.bindings
+                .load(f.project.path(), "harmony")
+                .map(|b| b.identity)
+                .as_deref(),
+            Some("123456789")
+        );
+    }
+
+    #[test]
+    fn harmony_stale_binding_needs_confirmation() {
+        let f = fixture();
+        f.wallet
+            .save_harmony_agc(&crate::platform::harmony::AgcApiCredentials {
+                client_id: "222222222".into(),
+                client_secret: "s".into(),
+                token: None,
+            })
+            .unwrap();
+        f.bindings
+            .save(f.project.path(), "harmony", "harmony", "111111111", None)
+            .unwrap();
+        let err = resolve_harmony_identity(
+            &f.wallet,
+            &f.bindings,
+            Some((f.project.path(), "harmony")),
+            false,
+            false,
+        )
+        .unwrap_err();
+        assert_eq!(code_of(err), codes::CREDENTIAL_SELECTION_REQUIRED);
     }
 
     #[test]

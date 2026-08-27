@@ -1,4 +1,4 @@
-use super::{AgcConnectClient, AgcCredentialStorage};
+use super::AgcConnectClient;
 use crate::permission_cache::{PermissionCache, PermissionPlatform};
 use anyhow::{Context, Result};
 use colored::Colorize;
@@ -99,20 +99,20 @@ fn persist_harmony_acl_permissions_cache(package_name: &str, permissions: &[Stri
 }
 
 fn fetch_harmony_acl_permissions_from_agc(package_name: &str) -> Result<Option<Vec<String>>> {
-    let storage = AgcCredentialStorage::new()?;
-    let Some(mut credentials) = storage.load()? else {
+    let Some(resolved) = crate::resolver::try_resolve_harmony_agc()? else {
         return Ok(None);
     };
+    let mut credentials = resolved.credentials;
 
     let client = AgcConnectClient::new();
     let token = client.ensure_valid_token(&credentials)?;
     let changed = credentials.token.as_ref().is_none_or(|old| {
         old.access_token != token.access_token || old.expires_at != token.expires_at
     });
-    if changed {
+    if changed && resolved.source == crate::resolver::AuthSource::Wallet {
         credentials.token = Some(token.clone());
-        storage
-            .save(&credentials)
+        crate::wallet::Wallet::open()?
+            .save_harmony_agc(&credentials)
             .context("Failed to persist refreshed AGC token")?;
     }
 

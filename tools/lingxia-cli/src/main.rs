@@ -597,7 +597,7 @@ enum AuthAction {
     /// Drop this checkout's automatic credential selection for a channel
     Forget {
         /// Channel to re-resolve next time
-        #[arg(long, value_parser = ["ios", "macos"])]
+        #[arg(long, value_parser = ["ios", "macos", "harmony"])]
         platform: String,
     },
 }
@@ -678,8 +678,12 @@ enum AuthLogoutProvider {
         #[arg(long)]
         team_id: Option<String>,
     },
-    /// Remove Harmony AGC credentials
-    Harmony,
+    /// Remove Harmony AGC credentials for one identity
+    Harmony {
+        /// AGC client ID to remove (prompted when several are stored)
+        #[arg(long)]
+        client_id: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -963,8 +967,8 @@ fn main() -> Result<()> {
                 AuthLogoutProvider::Apple { team_id } => {
                     commands::auth::apple_logout(team_id)?;
                 }
-                AuthLogoutProvider::Harmony => {
-                    commands::auth::harmony_logout()?;
+                AuthLogoutProvider::Harmony { client_id } => {
+                    commands::auth::harmony_logout(client_id)?;
                 }
             },
             AuthAction::Status { json } => {
