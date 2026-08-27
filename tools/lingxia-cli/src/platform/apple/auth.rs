@@ -12,15 +12,13 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-const CREDENTIALS_DIR: &str = ".lingxia";
 const APPLE_CREDENTIALS_SUBDIR: &str = "apple";
 const CREDENTIALS_FILE: &str = "credentials.json";
 const DEVELOPER_ID_FILE: &str = "developer-id.json";
 
 /// Resolve the `~/.lingxia/apple` directory used for all Apple credentials.
 pub(crate) fn apple_credentials_dir() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("Could not determine home directory")?;
-    Ok(home.join(CREDENTIALS_DIR).join(APPLE_CREDENTIALS_SUBDIR))
+    Ok(crate::state_root::lingxia_dir()?.join(APPLE_CREDENTIALS_SUBDIR))
 }
 
 // =============================================================================

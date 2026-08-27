@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const LINGXIA_DIR: &str = ".lingxia";
 const STORE_DIR: &str = "store";
 const CREDENTIALS_FILE: &str = "credentials.toml";
 
@@ -97,8 +96,7 @@ pub struct HonorCreds {
 }
 
 fn store_dir() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("Could not determine home directory")?;
-    Ok(home.join(LINGXIA_DIR).join(STORE_DIR))
+    Ok(crate::state_root::lingxia_dir()?.join(STORE_DIR))
 }
 
 /// Path to `~/.lingxia/store/credentials.toml`.

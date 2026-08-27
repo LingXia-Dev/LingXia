@@ -57,10 +57,7 @@ fn sign_self_signed(msix_path: &Path, publisher: &str) -> Result<()> {
 
 /// Return `(pfx, cer)` for `publisher`, generating + persisting them once.
 fn ensure_self_signed_cert(publisher: &str) -> Result<(PathBuf, PathBuf)> {
-    let dir = dirs::home_dir()
-        .ok_or_else(|| anyhow!("cannot resolve home dir for the self-signed cert store"))?
-        .join(".lingxia")
-        .join("windows");
+    let dir = crate::state_root::lingxia_dir()?.join("windows");
     std::fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
     let stem = sanitize_file_stem(publisher);
     let pfx = dir.join(format!("{stem}.pfx"));

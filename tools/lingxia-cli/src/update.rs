@@ -10,7 +10,6 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 const UPDATE_CHECK_INTERVAL_SECS: u64 = 24 * 60 * 60;
 const INSTALL_META_NAME: &str = "lingxia-cli-install.json";
 const BIN_NAME: &str = "lingxia";
-const UPDATE_ERROR_LOG_REL_PATH: &str = ".lingxia/cli/update-error.log";
 
 #[derive(Debug, Deserialize, Serialize)]
 struct InstallMetadata {
@@ -503,13 +502,21 @@ fn persist_update_cache(
 }
 
 fn update_cache_path() -> Option<PathBuf> {
-    let home = dirs::home_dir()?;
-    Some(home.join(".lingxia").join("cli").join("update.json"))
+    Some(
+        crate::state_root::lingxia_dir()
+            .ok()?
+            .join("cli")
+            .join("update.json"),
+    )
 }
 
 fn update_error_log_path() -> Option<PathBuf> {
-    let home = dirs::home_dir()?;
-    Some(home.join(UPDATE_ERROR_LOG_REL_PATH))
+    Some(
+        crate::state_root::lingxia_dir()
+            .ok()?
+            .join("cli")
+            .join("update-error.log"),
+    )
 }
 
 fn notify_deferred_update_failure() {

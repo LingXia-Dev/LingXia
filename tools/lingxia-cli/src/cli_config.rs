@@ -17,7 +17,6 @@ use std::path::{Path, PathBuf};
 
 use crate::config::EnvVersion;
 
-const LINGXIA_DIR: &str = ".lingxia";
 const CLI_DIR: &str = "cli";
 const CONFIG_FILE: &str = "config.toml";
 
@@ -177,8 +176,9 @@ fn clean(value: Option<&str>) -> Option<&str> {
 
 /// Path to `~/.lingxia/cli/config.toml`.
 pub fn config_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("Could not determine home directory")?;
-    Ok(home.join(LINGXIA_DIR).join(CLI_DIR).join(CONFIG_FILE))
+    Ok(crate::state_root::lingxia_dir()?
+        .join(CLI_DIR)
+        .join(CONFIG_FILE))
 }
 
 impl CliConfig {

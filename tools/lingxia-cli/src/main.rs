@@ -22,6 +22,7 @@ mod runner_cache;
 mod runtime;
 mod sdk_cache;
 mod splash;
+mod state_root;
 mod update;
 mod versions;
 

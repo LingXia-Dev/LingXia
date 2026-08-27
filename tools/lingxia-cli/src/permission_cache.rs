@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
@@ -116,8 +116,9 @@ fn cache_key(platform: PermissionPlatform, app_id: &str) -> String {
 }
 
 fn cache_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not determine home directory"))?;
-    Ok(home.join(".lingxia").join("permissions").join("cache.json"))
+    Ok(crate::state_root::lingxia_dir()?
+        .join("permissions")
+        .join("cache.json"))
 }
 
 fn now_unix() -> i64 {

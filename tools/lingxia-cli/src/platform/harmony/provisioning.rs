@@ -432,9 +432,7 @@ fn update_permission_cache(platform: PermissionPlatform, app_id: &str, permissio
 }
 
 fn signing_paths(bundle_name: &str, mode: SigningMode) -> Result<SigningPaths> {
-    let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not determine home directory"))?;
-    let root = home
-        .join(".lingxia")
+    let root = crate::state_root::lingxia_dir()?
         .join("harmony")
         .join("signing")
         .join(sanitize_for_path(bundle_name))

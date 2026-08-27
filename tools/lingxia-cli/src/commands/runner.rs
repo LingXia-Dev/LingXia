@@ -5,7 +5,6 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-const LINGXIA_DIR: &str = ".lingxia";
 const RUNNER_DIR: &str = "runner";
 const CONFIG_FILE: &str = "config.toml";
 
@@ -97,8 +96,9 @@ pub fn execute(action: Option<RunnerAction>) -> Result<()> {
 }
 
 fn config_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("Could not determine home directory")?;
-    Ok(home.join(LINGXIA_DIR).join(RUNNER_DIR).join(CONFIG_FILE))
+    Ok(crate::state_root::lingxia_dir()?
+        .join(RUNNER_DIR)
+        .join(CONFIG_FILE))
 }
 
 fn prepare_config(

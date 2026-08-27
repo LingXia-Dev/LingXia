@@ -17,9 +17,7 @@ pub struct AgcCredentialStorage {
 impl AgcCredentialStorage {
     /// Create a new AGC credential storage instance.
     pub fn new() -> Result<Self> {
-        let home = dirs::home_dir().context("Could not determine home directory")?;
-        let storage_path = home
-            .join(".lingxia")
+        let storage_path = crate::state_root::lingxia_dir()?
             .join("harmony")
             .join("agc_credentials.json");
         Ok(Self { storage_path })
