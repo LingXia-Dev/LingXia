@@ -536,6 +536,46 @@ pub(super) fn ensure_no_direct_lx_usage(
     );
 }
 
+/// Every action a child view calls must be one the entry actually handed it.
+///
+/// An entry that re-wraps `actions` into its own object literal —
+/// `actions: { save: actions.save, … }` — is writing a whitelist, and a child
+/// calling something the whitelist omits gets `undefined` at runtime. Nothing
+/// else catches it: the action exists on `Page(...)`, the child's call is
+/// well-typed against the page contract, and the omission is a missing line
+/// rather than a wrong one. The first symptom is a tap that does nothing.
+///
+/// Only reported when the downstream scan was complete. A view this analysis
+/// could not read might be forwarding the action some other way, and a build
+/// error has to be certain.
+pub(super) fn ensure_forwarded_actions_cover_downstream(
+    page_path: &str,
+    forwarded: &BTreeSet<String>,
+    downstream: &BTreeSet<String>,
+    downstream_complete: bool,
+) -> Result<()> {
+    if !downstream_complete {
+        return Ok(());
+    }
+    let missing = downstream
+        .iter()
+        .filter(|name| !forwarded.contains(name.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if missing.is_empty() {
+        return Ok(());
+    }
+
+    bail!(
+        "View {page_path} does not forward Page(...) actions its child views call: {}. \
+         The entry builds its own actions object, so anything left out of it is \
+         undefined at runtime even though the action exists and the call type-checks. \
+         Add each one to the object the entry passes down, or pass `actions` through \
+         whole.",
+        missing.join(", ")
+    );
+}
+
 pub(super) fn ensure_used_actions_exist(
     page_path: &str,
     actions: &[PageAction],
@@ -1208,6 +1248,115 @@ mod tests {
 
         assert!(error.contains("references missing Page(...) actions"));
         assert!(error.contains("navigateToUIPage"));
+    }
+
+    /// Build an entry that re-wraps `actions` into its own object and hands it
+    /// to a child view, plus that child. `forwarded` is what the entry names.
+    fn write_whitelist_entry(root: &Path, page_path: &str, forwarded: &[&str], child_calls: &str) {
+        let full_path = root.join(page_path);
+        fs::create_dir_all(full_path.parent().unwrap()).unwrap();
+        let forwarded_lines = forwarded
+            .iter()
+            .map(|name| format!("{name}: actions.{name},"))
+            .collect::<Vec<_>>()
+            .join("\n            ");
+        fs::write(
+            &full_path,
+            format!(
+                r#"
+            import {{ useLxPage }} from "@lingxia/sdk";
+            import ChildView from "./views/child-view";
+
+            export default function Page() {{
+              const {{ data, actions }} = useLxPage();
+              const page = {{
+                data,
+                actions: {{
+            {forwarded_lines}
+                }},
+              }};
+              return <ChildView page={{page}} />;
+            }}
+            "#
+            ),
+        )
+        .unwrap();
+
+        let child_path = full_path.parent().unwrap().join("views/child-view.tsx");
+        fs::create_dir_all(child_path.parent().unwrap()).unwrap();
+        fs::write(
+            &child_path,
+            format!(
+                r#"
+            export default function ChildView({{ page }}) {{
+              const {{ actions }} = page;
+              return <button onClick={{() => {child_calls}}}>go</button>;
+            }}
+            "#
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn entry_whitelist_missing_a_child_action_fails_the_build() {
+        let temp = tempdir().unwrap();
+        let page_path = "pages/account/index.tsx";
+        // The entry forwards `save` but the child also calls `invite` — exactly
+        // the shape that type-checks and then does nothing when tapped.
+        write_whitelist_entry(temp.path(), page_path, &["save"], "actions.invite()");
+
+        let project = create_project(temp.path(), ProjectFramework::React, page_path);
+        let error = validate_component_view_bindings(
+            &project,
+            page_path,
+            &[
+                PageAction {
+                    name: "save".to_string(),
+                    mode: PageActionMode::Notify,
+                },
+                PageAction {
+                    name: "invite".to_string(),
+                    mode: PageActionMode::Notify,
+                },
+            ],
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(
+            error.contains("does not forward Page(...) actions its child views call: invite"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn entry_whitelist_covering_every_child_action_passes() {
+        let temp = tempdir().unwrap();
+        let page_path = "pages/account/index.tsx";
+        write_whitelist_entry(
+            temp.path(),
+            page_path,
+            &["save", "invite"],
+            "actions.invite()",
+        );
+
+        let project = create_project(temp.path(), ProjectFramework::React, page_path);
+        validate_component_view_bindings(
+            &project,
+            page_path,
+            &[
+                PageAction {
+                    name: "save".to_string(),
+                    mode: PageActionMode::Notify,
+                },
+                PageAction {
+                    name: "invite".to_string(),
+                    mode: PageActionMode::Notify,
+                },
+            ],
+        )
+        .expect("a complete whitelist must build");
     }
 
     #[test]
