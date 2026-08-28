@@ -6,6 +6,7 @@ import com.lingxia.lxapp.chrome.NavigationBarState
 import com.lingxia.lxapp.chrome.NavigationBar
 import com.lingxia.lxapp.chrome.TabBarState
 import com.lingxia.lxapp.chrome.TabBar
+import com.lingxia.lxapp.chrome.TabBarOverflowSheet
 import com.lingxia.lxapp.chrome.CapsuleButton
 import com.lingxia.lxapp.chrome.CapsuleMenuBottomSheet
 import com.lingxia.lxapp.chrome.LxAppTheme
@@ -855,6 +856,16 @@ class LxAppActivity : AppCompatActivity() {
                 setOnTabSelectedListener { index, path ->
                     // Use new UI event API
                     NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_TABBAR_CLICK, index.toString())
+                }
+                setOnMoreRequestedListener { indices ->
+                    val bar = this@apply
+                    TabBarOverflowSheet.show(this@LxAppActivity, bar, bar.config, indices) { index ->
+                        NativeApi.onLxappEvent(
+                            appId,
+                            NativeApi.UI_EVENT_TABBAR_CLICK,
+                            index.toString()
+                        )
+                    }
                 }
                 applyTabBarLayoutParams(this, config)
             }
