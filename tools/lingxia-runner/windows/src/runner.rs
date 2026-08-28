@@ -306,13 +306,13 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
         // A bare appearance change must not rebuild frames or re-run browser
         // emulation; only a device, orientation, or capsule request touches
         // the frame (the capsule is part of the frame spec).
-        if id.is_some() || landscape.is_some() || capsule_changed {
-            if let Err(err) = apply_device(index, landscape_value) {
-                if capsule_changed {
-                    CAPSULE_ENABLED.store(previous_capsule, Ordering::Release);
-                }
-                return Err(err);
+        if (id.is_some() || landscape.is_some() || capsule_changed)
+            && let Err(err) = apply_device(index, landscape_value)
+        {
+            if capsule_changed {
+                CAPSULE_ENABLED.store(previous_capsule, Ordering::Release);
             }
+            return Err(err);
         }
         Ok(device_state(index, landscape_value))
     }
