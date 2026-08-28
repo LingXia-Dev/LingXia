@@ -7,7 +7,13 @@ import AppKit
 final class MacInlineNativeIsland {
     static let allowedKinds: Set<String> = ["root", "view", "text", "tappable", "slider", "video"]
 
+    static func isIslandAction(_ action: String) -> Bool {
+        action == "root.commit" || action == "geometry.snapshot"
+            || action == "root.leaseAccept" || action == "video.command"
+    }
+
     private let container = IslandContainerView()
+    private weak var manager: MacNativeComponentManager?
     private var nodes: [String: IslandNode] = [:]
     private(set) var lastAppliedRevision: UInt64 = 0
     private let eventSink: (_ componentId: String, _ event: String, _ detail: [String: Any]) -> Void
@@ -16,21 +22,34 @@ final class MacInlineNativeIsland {
     private var leaseId = ""
     private var leaseSequence: UInt64 = 1
     private var lastRoot: [String: Any]?
+    private var pageActive = true
     private var pendingOutgoing: [[String: Any]] = []
     private var scrollOffset = CGPoint.zero
 
     init(
         host: NSView,
+        manager: MacNativeComponentManager,
         eventSink: @escaping (_ componentId: String, _ event: String, _ detail: [String: Any]) -> Void
     ) {
+        self.manager = manager
         self.eventSink = eventSink
         container.wantsLayer = true
         container.layer?.masksToBounds = true
         if container.superview == nil {
-            host.addSubview(container)
-            container.frame = host.bounds
-            container.autoresizingMask = [.width, .height]
+            attach(to: host)
         }
+    }
+
+    /// Pin by constraint: the host's bounds can still be empty on the first commit.
+    private func attach(to host: NSView) {
+        host.addSubview(container)
+        container.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            container.topAnchor.constraint(equalTo: host.topAnchor),
+            container.leadingAnchor.constraint(equalTo: host.leadingAnchor),
+            container.trailingAnchor.constraint(equalTo: host.trailingAnchor),
+            container.bottomAnchor.constraint(equalTo: host.bottomAnchor),
+        ])
     }
 
     func handle(message: [String: Any]) -> Bool {
@@ -62,13 +81,19 @@ final class MacInlineNativeIsland {
     func rebind(to host: NSView) {
         guard container.superview !== host else { return }
         container.removeFromSuperview()
-        host.addSubview(container)
-        container.frame = host.bounds
-        container.autoresizingMask = [.width, .height]
+        attach(to: host)
     }
 
     func updateScrollOffset(x: CGFloat, y: CGFloat) {
         scrollOffset = CGPoint(x: x, y: y)
+        nodes.values.forEach(applyFrame)
+    }
+
+    /// Hide the island while its page is not the interactive one: a native video
+    /// surface outlives the WebView's own visibility.
+    func setPageActive(_ active: Bool) {
+        pageActive = active
+        container.isHidden = !active
         nodes.values.forEach(applyFrame)
     }
 
@@ -240,14 +265,17 @@ final class MacInlineNativeIsland {
     private func factoryView(_ item: IslandNode) {
         switch item.kind {
         case "video":
-            let video = MacVideoComponent(id: item.authorId, initialProps: item.props) { [weak self] event in
+            // The player retains this sink for its lifetime, so hold the node weakly.
+            let authorId = item.authorId
+            let video = MacVideoComponent(id: authorId, initialProps: item.props) { [weak self] event in
                 guard let name = event["event"] as? String else { return }
                 let detail = event["detail"] as? [String: Any] ?? [:]
-                self?.eventSink(item.authorId, name, detail)
+                self?.eventSink(authorId, name, detail)
             }
             video.mount(in: container)
             item.video = video
             item.view = video.view
+            manager?.attachIslandVideo(id: item.authorId, component: video)
         case "text":
             let label = IslandTextField()
             label.stringValue = ""
@@ -264,7 +292,7 @@ final class MacInlineNativeIsland {
             button.action = #selector(IslandNode.press)
             button.bezelStyle = .rounded
             item.onPress = { [weak self, weak item] in
-                guard let item, !(item.props["disabled"] as? Bool ?? false) else { return }
+                guard let item, !(self?.boolValue(item.props["disabled"]) ?? false) else { return }
                 let source = NSApp.currentEvent?.type == .keyDown ? "keyboard" : "pointer"
                 self?.eventSink(item.authorId, "press", ["source": source])
             }
@@ -471,16 +499,39 @@ final class MacInlineNativeIsland {
     }
 
     private func applyFrame(_ item: IslandNode) {
+        // A fullscreen video lives in its own window until it exits; leave its layout alone.
+        guard item.view.superview === container else { return }
+        let rect = textFittedRect(item)
         let viewportRect = NSRect(
-            x: item.rect.origin.x - scrollOffset.x,
-            y: item.rect.origin.y - scrollOffset.y,
-            width: item.rect.width,
-            height: item.rect.height
+            x: rect.origin.x - scrollOffset.x,
+            y: rect.origin.y - scrollOffset.y,
+            width: rect.width,
+            height: rect.height
         )
-        item.view.frame = viewportRect
-        item.view.isHidden = !item.visible || item.rect.width <= 0 || item.rect.height <= 0
+        if let video = item.video {
+            // The player owns its own view's layout.
+            video.setFrame(viewportRect)
+        } else {
+            item.view.frame = viewportRect
+        }
+        item.view.isHidden = !pageActive || !item.visible || item.rect.width <= 0 || item.rect.height <= 0
         item.scrim?.frame = item.view.bounds
-        item.video?.setFrame(viewportRect)
+    }
+
+    /// Web and native shapers space the same nominal font differently, so a box the
+    /// page measured can fall a few points short. Widen rather than drop characters.
+    private func textFittedRect(_ item: IslandNode) -> NSRect {
+        guard item.kind == "text", let label = item.label, item.rect.width > 0 else { return item.rect }
+        let fitting = label.fittingSize.width
+        guard fitting > item.rect.width else { return item.rect }
+        var rect = item.rect
+        switch label.alignment {
+        case .center: rect.origin.x -= (fitting - rect.width) / 2
+        case .right: rect.origin.x -= fitting - rect.width
+        default: break
+        }
+        rect.size.width = ceil(fitting)
+        return rect
     }
 
     private func restack() {
@@ -488,7 +539,7 @@ final class MacInlineNativeIsland {
             if lhs.order != rhs.order { return lhs.order < rhs.order }
             return lhs.key < rhs.key
         }
-        for node in ordered {
+        for node in ordered where node.view.superview === container {
             container.addSubview(node.view, positioned: .above, relativeTo: nil)
         }
     }
@@ -496,6 +547,9 @@ final class MacInlineNativeIsland {
     private func removeNode(_ key: String) {
         guard let node = nodes.removeValue(forKey: key) else { return }
         container.removePointerEvents(for: node.view)
+        if node.video != nil {
+            manager?.detachIslandVideo(id: node.authorId)
+        }
         node.video?.unmount()
         node.view.removeFromSuperview()
     }
@@ -528,12 +582,31 @@ final class MacInlineNativeIsland {
         return NativeComponentColorStyle.parseColor(raw)
     }
 
+    /// Map the CSS weight onto the full system scale: collapsing everything above
+    /// 500 to `.bold` renders text wider than the CSS box it was measured into.
     private func fontWeight(_ value: Any?) -> NSFont.Weight {
-        if let number = value as? NSNumber {
-            return number.intValue >= 600 ? .bold : .regular
+        switch cssFontWeight(value) {
+        case ..<200: return .ultraLight
+        case ..<300: return .thin
+        case ..<400: return .light
+        case ..<500: return .regular
+        case ..<600: return .medium
+        case ..<700: return .semibold
+        case ..<800: return .bold
+        case ..<900: return .heavy
+        default: return .black
         }
-        let raw = (value as? String)?.lowercased() ?? ""
-        return raw == "bold" || raw == "bolder" || (Int(raw) ?? 400) >= 600 ? .bold : .regular
+    }
+
+    private func cssFontWeight(_ value: Any?) -> Int {
+        if let number = value as? NSNumber { return number.intValue }
+        switch (value as? String)?.lowercased() {
+        case "lighter": return 300
+        case "normal", .none, .some(""): return 400
+        case "bold": return 700
+        case "bolder": return 800
+        case .some(let raw): return Int(raw) ?? 400
+        }
     }
 
     private func sliderValue(_ item: IslandNode, proposed: Double) -> Double {
@@ -596,7 +669,11 @@ final class MacInlineNativeIsland {
 
     private func boolValue(_ value: Any?) -> Bool {
         if let flag = value as? Bool { return flag }
-        if let text = value as? String { return text == "true" || text == "1" }
+        // `reflectBoolean` writes a bare attribute as "", which parseBooleanAttr reads as true.
+        if let text = value as? String {
+            let normalized = text.trimmingCharacters(in: .whitespaces).lowercased()
+            return normalized == "" || normalized == "true" || normalized == "1"
+        }
         if let number = value as? NSNumber { return number.boolValue }
         return false
     }
