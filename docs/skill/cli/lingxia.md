@@ -256,11 +256,14 @@ safe comparison is **major.minor** (same-line patches are not a new version).
 If the project is on an older line, the pending pin/SDK changes are printed
 and you choose whether to apply them (default yes). `--yes` skips the prompt;
 non-interactive runs skip the project half unless `--yes` is set.
+The skipped non-interactive project half exits nonzero so automation cannot
+mistake missing confirmation for a completed upgrade.
 
 Applying a newer line:
 
 - `@lingxia/*` npm ranges (lockfile refreshed via `npm install`)
-- `lingxia` crate requirement in `native/Cargo.toml` (`cargo update -p lingxia`)
+- scaffolded LingXia crate requirements in `native/Cargo.toml`, followed by
+  targeted `cargo update -p ...` lockfile refreshes
 - **Android:** gradle `lingxia.sdkVersion` fallback, then the Maven zip into
   `~/.lingxia/sdk/android-maven/<ver>/` (the same artifact `lingxia build`
   injects as a repo)
@@ -279,6 +282,10 @@ deferred until the process exits — re-run `lingxia upgrade` after that so
 project pins follow the new CLI's line. Builds print a one-line hint when
 the project's line is older than the CLI's. `skill install` writes this skill
 where an AI coding tool finds it.
+
+Manifest rewrites are followed by their npm/Cargo lockfile refreshes. If a
+refresh command fails, `upgrade` exits nonzero and reports the directory that
+still needs attention.
 
 ### Distribution — `publish`, `auth`, `store`, `ds`, signing
 

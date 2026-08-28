@@ -31,6 +31,8 @@ enum CliStep {
     UpToDate,
     /// `--check` only: a newer CLI exists.
     Available,
+    /// The release service could not be queried, so the CLI state is unknown.
+    Unavailable,
     #[cfg(not(target_os = "windows"))]
     Replaced {
         exe: PathBuf,
@@ -50,7 +52,7 @@ pub fn execute(check: bool, version: Option<String>, yes: bool) -> Result<i32> {
 
     let cli = run_cli_step(check, version.as_deref(), project_root.is_some())?;
 
-    if matches!(cli, CliStep::UpToDate) {
+    if should_refresh_skill(&cli, check) {
         crate::update::refresh_installed_skill();
     }
 
@@ -69,8 +71,12 @@ pub fn execute(check: bool, version: Option<String>, yes: bool) -> Result<i32> {
                 "!".yellow()
             );
             println!(
-                "  Re-run `lingxia upgrade` once the new CLI is in place so project pins follow that release."
+                "  Re-run `{}` once the new CLI is in place so project pins follow that release.",
+                rerun_command(version.as_deref(), yes)
             );
+            return Ok(cli_exit(&cli));
+        }
+        if blocks_project_upgrade(&cli) {
             return Ok(cli_exit(&cli));
         }
         let project = crate::commands::project_upgrade::execute(root, check, yes)?;
@@ -83,6 +89,26 @@ pub fn execute(check: bool, version: Option<String>, yes: bool) -> Result<i32> {
 #[cfg(target_os = "windows")]
 fn should_defer_project_upgrade(cli: &CliStep, check: bool) -> bool {
     matches!(cli, CliStep::Staged) && !check
+}
+
+fn rerun_command(version: Option<&str>, yes: bool) -> String {
+    let mut command = "lingxia upgrade".to_string();
+    if let Some(version) = version {
+        command.push_str(" --version ");
+        command.push_str(version);
+    }
+    if yes {
+        command.push_str(" --yes");
+    }
+    command
+}
+
+fn should_refresh_skill(cli: &CliStep, check: bool) -> bool {
+    !check && matches!(cli, CliStep::UpToDate)
+}
+
+fn blocks_project_upgrade(cli: &CliStep) -> bool {
+    matches!(cli, CliStep::NotReplaceable)
 }
 
 fn run_cli_step(check: bool, version: Option<&str>, in_project: bool) -> Result<CliStep> {
@@ -98,7 +124,7 @@ fn run_cli_step(check: bool, version: Option<&str>, in_project: bool) -> Result<
             Err(err) if in_project => {
                 eprintln!("{} Could not check for a CLI update: {err}", "!".yellow());
                 eprintln!("  Continuing; will still check this project's LingXia line.");
-                return Ok(CliStep::UpToDate);
+                return Ok(CliStep::Unavailable);
             }
             Err(err) => {
                 return Err(err).context("Failed to check for a newer CLI release");
@@ -176,6 +202,7 @@ fn reexec_upgraded_cli(exe: &Path) -> Result<i32> {
 fn cli_exit(cli: &CliStep) -> i32 {
     match cli {
         CliStep::Available => EXIT_UPDATE_AVAILABLE,
+        CliStep::Unavailable => 1,
         CliStep::NotReplaceable => 1,
         CliStep::UpToDate => 0,
         #[cfg(not(target_os = "windows"))]
@@ -186,7 +213,9 @@ fn cli_exit(cli: &CliStep) -> i32 {
 }
 
 fn combine_exit(check: bool, cli: &CliStep, project: i32) -> i32 {
-    if check {
+    if matches!(cli, CliStep::Unavailable | CliStep::NotReplaceable) {
+        1
+    } else if check {
         if matches!(cli, CliStep::Available) || project == EXIT_UPDATE_AVAILABLE {
             EXIT_UPDATE_AVAILABLE
         } else {
@@ -295,12 +324,35 @@ mod tests {
             EXIT_UPDATE_AVAILABLE
         );
         assert_eq!(combine_exit(true, &CliStep::UpToDate, 0), 0);
+        assert_eq!(combine_exit(true, &CliStep::Unavailable, 0), 1);
+        assert_eq!(
+            combine_exit(true, &CliStep::Unavailable, EXIT_UPDATE_AVAILABLE),
+            1
+        );
     }
 
     #[test]
     fn apply_keeps_not_replaceable_as_failure_after_project() {
         assert_eq!(combine_exit(false, &CliStep::NotReplaceable, 0), 1);
         assert_eq!(combine_exit(false, &CliStep::UpToDate, 0), 0);
+        assert!(blocks_project_upgrade(&CliStep::NotReplaceable));
+        assert!(!blocks_project_upgrade(&CliStep::UpToDate));
+    }
+
+    #[test]
+    fn check_never_refreshes_the_installed_skill() {
+        assert!(!should_refresh_skill(&CliStep::UpToDate, true));
+        assert!(should_refresh_skill(&CliStep::UpToDate, false));
+        assert!(!should_refresh_skill(&CliStep::Unavailable, false));
+    }
+
+    #[test]
+    fn rerun_command_preserves_explicit_upgrade_intent() {
+        assert_eq!(
+            rerun_command(Some("0.12.3"), true),
+            "lingxia upgrade --version 0.12.3 --yes"
+        );
+        assert_eq!(rerun_command(None, false), "lingxia upgrade");
     }
 
     #[cfg(target_os = "windows")]
