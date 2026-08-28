@@ -72,13 +72,9 @@ mod bridge {
         pub page_path: String,
         pub text: String,
         pub icon_path: String,
-        pub selected_icon_path: String,
         pub selected: bool,
         pub badge: String,
         pub has_red_dot: bool,
-        /// A distinct selected icon is in play; without one the host indicates
-        /// selection itself instead of swapping the drawable.
-        pub has_selected_icon: bool,
     }
 
     // Push notification trigger types
@@ -2106,11 +2102,9 @@ pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<self::bridge::TabBarI
                 page_path: item.page_path.clone(),
                 text: item.text.clone().unwrap_or_default(),
                 icon_path: item.icon_path.clone().unwrap_or_default(),
-                selected_icon_path: item.selected_icon_path.clone().unwrap_or_default(),
                 selected: tabbar.selected_index == index,
                 badge: item.badge.clone().unwrap_or_default(),
                 has_red_dot: item.has_red_dot,
-                has_selected_icon: item.has_selected_icon,
             })
         })
 }

@@ -2119,10 +2119,8 @@ fn build_tab_bar_layout(
                     page_path: item.page_path.clone(),
                     text: item.text.clone().unwrap_or_default(),
                     icon_path: item.icon_path.clone().unwrap_or_default(),
-                    selected_icon_path: item.selected_icon_path.clone().unwrap_or_default(),
                     badge: item.badge.clone(),
                     has_red_dot: item.has_red_dot,
-                    has_selected_icon: item.has_selected_icon,
                 })
                 .collect::<Vec<_>>()
         })

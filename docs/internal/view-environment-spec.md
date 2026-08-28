@@ -190,14 +190,12 @@ The old flat shape is replaced by separate layout, style, and items:
       {
         "text": "Home",
         "pagePath": "pages/home/index",
-        "iconPath": "public/home.png",
-        "selectedIconPath": "public/home_selected.png"
+        "iconPath": "public/home.png"
       },
       {
         "text": "Settings",
         "pagePath": "pages/settings/index",
-        "iconPath": "public/settings.png",
-        "selectedIconPath": "public/settings_selected.png"
+        "iconPath": "public/settings.png"
       }
     ]
   }
@@ -328,7 +326,6 @@ interface TabBarUpdate {
     index: number
     text?: string
     iconPath?: string
-    selectedIconPath?: string
     badge?: string | null
     redDot?: boolean
   }>

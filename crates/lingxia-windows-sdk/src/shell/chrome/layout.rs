@@ -27,12 +27,8 @@ pub struct WindowsShellTabBarItemLayout {
     pub page_path: String,
     pub text: String,
     pub icon_path: String,
-    pub selected_icon_path: String,
     pub badge: Option<String>,
     pub has_red_dot: bool,
-    /// A distinct selected icon is in play; without one the strip marks the
-    /// active item with an indicator instead of swapping the artwork.
-    pub has_selected_icon: bool,
 }
 
 impl WindowsShellTabBarLayout {

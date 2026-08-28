@@ -46,10 +46,9 @@ class SidebarItemView: NSView {
     /// Unselected title tint from the tabbar's `color`; nil keeps the neutral
     /// label color.
     var unselectedTint: NSColor? { didSet { updateAppearance() } }
-    /// Icon pair from the item config; selection swaps between them exactly
-    /// like the mobile tabbar (colors style TEXT, icons come as a pair).
-    private var normalIconPath = ""
-    private var selectedIconPath = ""
+    /// The item's single icon; selection is styled, not swapped, exactly like
+    /// the mobile tabbar.
+    private var iconPath = ""
 
     let itemIndex: Int
     let appId: String
@@ -190,10 +189,8 @@ class SidebarItemView: NSView {
     func configure(item: TabBarItem) {
         titleLabel.stringValue = item.cachedText
 
-        // Icon pair: selection swaps normal/selected images (mobile parity).
-        normalIconPath = item.cachedIconPath
-        selectedIconPath = item.cachedSelectedIconPath
-        loadIcon(path: isSelected && !selectedIconPath.isEmpty ? selectedIconPath : normalIconPath)
+        iconPath = item.cachedIconPath
+        loadIcon(path: iconPath)
 
         // Badge / red dot from Rust state
         if let rustItem = getTabBarItem(appId, Int32(itemIndex)) {
@@ -253,8 +250,7 @@ class SidebarItemView: NSView {
         let accent = selectedTint ?? LxAppHostTheme.accent
         accentBar.isHidden = !isSelected
         accentBar.layer?.backgroundColor = accent.cgColor
-        // Selection swaps the icon pair, mirroring the mobile tabbar.
-        loadIcon(path: isSelected && !selectedIconPath.isEmpty ? selectedIconPath : normalIconPath)
+        loadIcon(path: iconPath)
         if isSelected {
             // Windows-baseline selected card: a light floating card on the
             // dark base, accent icon + accent bar. The title takes the

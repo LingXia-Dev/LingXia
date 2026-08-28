@@ -56,7 +56,6 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
             index: 1,
             text: null,
             iconPath: null,
-            selectedIconPath: null,
             badge: null,
             redDot: false,
           }],
@@ -97,7 +96,6 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
           index: 1,
           text: 'Automation',
           iconPath: 'public/home.png',
-          selectedIconPath: 'public/home_selected.png',
           badge: '7',
         }],
       });
@@ -112,7 +110,6 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
       && state.runtime_style.selected_foreground_color === '#405060'
       && state.items[1]?.text === 'Automation'
       && assetPath(state.items[1]?.icon_path).endsWith('/public/home.png')
-      && assetPath(state.items[1]?.selected_icon_path).endsWith('/public/home_selected.png')
       && state.items[1]?.badge === '7'
       && state.items[1]?.red_dot === false
     ),

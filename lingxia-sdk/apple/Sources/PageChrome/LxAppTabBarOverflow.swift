@@ -174,13 +174,13 @@ final class LxAppTabBarOverflowPanel: UIView {
         let icon = UIImageView()
         icon.contentMode = .scaleAspectFit
         icon.translatesAutoresizingMaskIntoConstraints = false
-        // Mirrors the strip: a single icon is a template glyph the panel tints.
-        let image = LxAppTabBarOverflowPanel.icon(for: item, selected: selected)
-        icon.image = item.has_selected_icon ? image : image?.withRenderingMode(.alwaysTemplate)
+        // Mirrors the strip: the icon is a template the panel tints, and the
+        // indicator marks whatever is selected.
+        let image = LxAppTabBarOverflowPanel.icon(for: item)
+        icon.image = image?.withRenderingMode(.alwaysTemplate)
         icon.tintColor = selected
             ? PlatformColor(argb: config.selected_color)
             : PlatformColor(argb: config.color)
-        // Mirrors the strip: the indicator marks whatever is selected.
         if selected {
             let indicator = UIView()
             indicator.backgroundColor = PlatformColor(argb: config.selected_color)
@@ -239,10 +239,8 @@ final class LxAppTabBarOverflowPanel: UIView {
         onPick(index)
     }
 
-    private static func icon(for item: TabBarItem, selected: Bool) -> UIImage? {
-        let path = selected && !item.selected_icon_path.toString().isEmpty
-            ? item.selected_icon_path.toString()
-            : item.icon_path.toString()
+    private static func icon(for item: TabBarItem) -> UIImage? {
+        let path = item.icon_path.toString()
         if path.hasPrefix("SF:") {
             return UIImage(systemName: String(path.dropFirst(3)))
         }

@@ -134,14 +134,9 @@ fn draw_tab_bar_inner(
             if selected {
                 draw_active_indicator(hdc, icon_rect, tabbar);
             }
-            // Phone tab cell: the lxapp's pre-tinted icon stacked over its
-            // label, both centered. A bundle that ships separate normal and
-            // selected icons has its PNG drawn as-is.
-            let icon_path = if selected && !item.selected_icon_path.trim().is_empty() {
-                item.selected_icon_path.as_str()
-            } else {
-                item.icon_path.as_str()
-            };
+            // Phone tab cell: the item's single icon stacked over its label,
+            // both centered.
+            let icon_path = item.icon_path.as_str();
             !icon_path.trim().is_empty()
                 && draw_icon_from_path(hdc, icon_path, icon_rect, BOTTOM_TAB_ICON_SIZE as u32)
         };
@@ -454,11 +449,7 @@ pub(super) fn draw_sidebar_items(
         } else {
             tabbar.color
         };
-        let icon_path = if selected && !item.selected_icon_path.trim().is_empty() {
-            &item.selected_icon_path
-        } else {
-            &item.icon_path
-        };
+        let icon_path = &item.icon_path;
         let icon_rect = centered_icon_rect(
             RECT {
                 left: item_rect.left + 8,
