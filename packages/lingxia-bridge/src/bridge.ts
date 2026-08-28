@@ -111,12 +111,9 @@ function installEarlyReceiver(): void {
   };
 }
 
-function activateReceiver(receiver: (message: string) => void): void {
-  if (typeof window === "undefined") return;
+function flushEarlyNativeMessages(receiver: (message: string) => void): void {
   drainHostEarlyNativeMessages();
-  window[GLOBAL_RECEIVER_NAME] = receiver;
   if (earlyNativeMessages.length === 0) return;
-
   const queued = earlyNativeMessages.splice(0, earlyNativeMessages.length);
   for (const message of queued) {
     try {
@@ -125,6 +122,17 @@ function activateReceiver(receiver: (message: string) => void): void {
       warn("Failed to replay queued native message:", err);
     }
   }
+}
+
+function activateReceiver(receiver: (message: string) => void): void {
+  if (typeof window === "undefined") return;
+  // Drain the inject-script queue on every inbound call so late
+  // `__LingXiaEarlyNativeMessages` items flush without rebinding.
+  window[GLOBAL_RECEIVER_NAME] = (message: string): void => {
+    flushEarlyNativeMessages(receiver);
+    receiver(message);
+  };
+  flushEarlyNativeMessages(receiver);
 }
 
 function isDebugEnabled(flag: keyof typeof debugFlags): boolean {
@@ -2165,10 +2173,6 @@ export function initBridge(): void {
     log(
       `Bridge already ${window.__LX_BRIDGE_INIT_STATE}, skipping duplicate init`,
     );
-    // A later boot on the same document must rebind the inbound receiver:
-    // WebView2 can deliver native events after the first init, and a
-    // document that lost `__LingXiaRecvMessage` would otherwise drop them.
-    activateReceiver(LingXiaBridge._receiveEvaluateMessage);
     return;
   }
 
