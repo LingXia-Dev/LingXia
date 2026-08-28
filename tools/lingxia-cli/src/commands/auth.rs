@@ -59,12 +59,27 @@ struct AppleTeamJson {
 }
 
 #[derive(Serialize)]
+struct StoreIdentityJson {
+    provider: String,
+    identity: String,
+}
+
+#[derive(Serialize)]
+struct PublishEntryJson {
+    server: String,
+    env: String,
+}
+
+#[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StatusJson {
     schema_version: u32,
     project_root: Option<String>,
     channels: Vec<ChannelStatusJson>,
     apple_teams: Vec<AppleTeamJson>,
+    harmony_identities: Vec<String>,
+    store_identities: Vec<StoreIdentityJson>,
+    publish_entries: Vec<PublishEntryJson>,
 }
 
 /// `lingxia auth status`: per-channel project view (inside a project) plus the
@@ -88,6 +103,15 @@ pub fn auth_status(json: bool) -> Result<bool> {
 
     if json {
         let wallet = crate::wallet::Wallet::open()?;
+        let mut store_identities = Vec::new();
+        for provider in stores::STORE_PROVIDERS {
+            for identity in wallet.store_identities(provider)? {
+                store_identities.push(StoreIdentityJson {
+                    provider: provider.to_string(),
+                    identity,
+                });
+            }
+        }
         let payload = StatusJson {
             schema_version: 1,
             project_root: project
@@ -116,6 +140,13 @@ pub fn auth_status(json: bool) -> Result<bool> {
                     mechanisms: t.mechanisms(),
                     team_id: t.team_id,
                 })
+                .collect(),
+            harmony_identities: wallet.harmony_identities()?,
+            store_identities,
+            publish_entries: wallet
+                .publish_entries()?
+                .into_iter()
+                .map(|(server, env)| PublishEntryJson { server, env })
                 .collect(),
         };
         println!("{}", serde_json::to_string_pretty(&payload)?);
