@@ -319,6 +319,28 @@ internal object SplashOverlay {
         lifting = true
         onCoverGone.forEach { it() }
         onCoverGone.clear()
+        // Everything the cover holds — the `lifting` flag, and the deferred
+        // canvas/bar restores queued in `onCoverRemoved` — must end exactly
+        // once, and the restores must actually run. The old drain never did:
+        // it was a `view.post` issued right after `removeView`, and a detached
+        // view's `post` (API 24+) parks the runnable in the view's run queue
+        // until its next attach — which for a removed cover is never. So the
+        // launch colour owned the canvas for the rest of the process, and
+        // every navigation bared a near-black strip where the bars move.
+        var finished = false
+        val finishDismiss = finishDismiss@{
+            if (finished) return@finishDismiss
+            finished = true
+            lifting = false
+            (view.parent as? ViewGroup)?.removeView(view)
+            // A beat later, so the page beneath has composited and the restore
+            // cannot be seen — via the main handler, never the removed view.
+            val drain = Runnable {
+                onCoverRemoved.forEach { it() }
+                onCoverRemoved.clear()
+            }
+            if (view.isAttachedToWindow) view.post(drain) else mainHandler.post(drain)
+        }
         // The cover lifts away: a slight zoom under the fade reads as depth —
         // the home page is beneath it, not after it.
         view.animate()
@@ -327,17 +349,12 @@ internal object SplashOverlay {
             .scaleY(1.06f)
             .setDuration(DISMISS_MS)
             .setInterpolator(android.view.animation.DecelerateInterpolator())
-            .withEndAction {
-                lifting = false
-                (view.parent as? ViewGroup)?.removeView(view)
-                // A frame later: the page has certainly composited by then,
-                // and restoring underneath it cannot be seen.
-                view.post {
-                    onCoverRemoved.forEach { it() }
-                    onCoverRemoved.clear()
-                }
-            }
+            .withEndAction { finishDismiss() }
             .start()
+        // Hardening, not the fix: should any future path cancel the fade
+        // before its end action, this still ends the cover's tenure exactly
+        // once. A completed fade has already finished and this is a no-op.
+        mainHandler.postDelayed({ finishDismiss() }, DISMISS_MS + 100L)
     }
 
     /** The launch background, or null when this host configures no splash. */
