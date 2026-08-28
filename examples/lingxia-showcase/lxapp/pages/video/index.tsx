@@ -151,7 +151,7 @@ export default function App() {
             />
             <LxNativeCover pointerEvents="none" data-testid="inline-native-cover">
               <LxNativeText
-                className="absolute left-3 top-3 text-white text-xs"
+                className="absolute left-3 top-3 text-white text-xs font-semibold"
                 fontSize={12}
                 fontWeight={600}
                 color="#ffffff"

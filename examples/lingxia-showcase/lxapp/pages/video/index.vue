@@ -51,7 +51,7 @@
           />
           <LxNativeCover pointer-events="none" data-testid="inline-native-cover">
             <LxNativeText
-              class="absolute left-3 top-3 text-white text-xs"
+              class="absolute left-3 top-3 text-white text-xs font-semibold"
               :font-size="12"
               :font-weight="600"
               color="#ffffff"
