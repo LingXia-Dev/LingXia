@@ -135,7 +135,6 @@ impl TabBarItem {
     fn set_icon_override(&mut self, value: Option<String>) {
         self.icon_path = value.or_else(|| self.manifest_icon_path.clone());
     }
-
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -212,7 +211,8 @@ impl TabBar {
     /// [`Self::compact_overflow_start`] flattened for the native bridges: the
     /// index, or `-1` when the strip shows every item.
     pub fn compact_overflow_start_index(&self) -> i32 {
-        self.compact_overflow_start().map_or(-1, |start| start as i32)
+        self.compact_overflow_start()
+            .map_or(-1, |start| start as i32)
     }
 
     /// Tab pages worth creating up front — exactly those holding a slot of

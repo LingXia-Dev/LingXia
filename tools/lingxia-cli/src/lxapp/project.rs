@@ -676,10 +676,12 @@ mod tests {
 
     fn manifest_with_tab_items(count: usize) -> Value {
         let pages: Vec<Value> = (0..count)
-            .map(|index| serde_json::json!({
-                "name": format!("p{index}"),
-                "path": format!("pages/p{index}/index"),
-            }))
+            .map(|index| {
+                serde_json::json!({
+                    "name": format!("p{index}"),
+                    "path": format!("pages/p{index}/index"),
+                })
+            })
             .collect();
         let items: Vec<Value> = (0..count)
             .map(|index| serde_json::json!({ "pagePath": format!("pages/p{index}/index") }))
