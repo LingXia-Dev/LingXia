@@ -204,8 +204,11 @@ mod bridge {
         #[swift_bridge(swift_name = "getDisplayLanguage")]
         fn get_display_language() -> String;
 
-        #[swift_bridge(swift_name = "splashSelectCover")]
-        fn splash_select_cover(data_dir: &str, dark: bool) -> String;
+        #[swift_bridge(swift_name = "splashMarkLaunchFace")]
+        fn splash_mark_launch_face(dark: bool);
+
+        #[swift_bridge(swift_name = "pageBackgroundColor")]
+        fn page_background_color(dark: bool) -> String;
 
         #[swift_bridge(swift_name = "forwardHostLog")]
         fn forward_host_log(
@@ -847,13 +850,22 @@ pub fn get_display_language() -> String {
     crate::app::display_language()
 }
 
-/// Resolve this launch's cover before the overlay attaches. Runs before
-/// runtime initialization on iOS, so the host passes the data dir. An empty
-/// string means the bundled cover.
-pub fn splash_select_cover(data_dir: &str, dark: bool) -> String {
-    crate::splash::select_cover(std::path::PathBuf::from(data_dir), dark)
-        .map(|path| path.to_string_lossy().into_owned())
-        .unwrap_or_default()
+/// The launch face is on screen, in this appearance — the one the OS frame
+/// resolved. Runs before runtime initialization on iOS.
+pub fn splash_mark_launch_face(dark: bool) {
+    crate::splash::mark_launch_face(dark)
+}
+
+/// The host-declared page floor for one appearance, as `#RRGGBB`.
+///
+/// Empty means the host declared none and the platform should keep its own
+/// system background. Native chrome paints with this wherever it borders the
+/// page — the strip a pull-to-refresh opens above it, the container a
+/// navigation transition slides views across — because a WebView cannot be
+/// asked for its document colour in time to paint the frame already on
+/// screen.
+pub fn page_background_color(dark: bool) -> String {
+    lingxia_app_context::page_background_color(dark).unwrap_or_default()
 }
 
 pub fn forward_host_log(

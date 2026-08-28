@@ -84,7 +84,7 @@ object Lingxia {
                     throw error
                 }
             }
-            SplashOverlay.applyHookSelection(activity)
+            SplashOverlay.markLaunchFace(activity)
             initializeRuntime(activity)
             openHomeFrom(activity)
         }, 32L)

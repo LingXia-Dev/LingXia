@@ -164,14 +164,25 @@ pub fn get_display_language() -> String {
     crate::app::display_language()
 }
 
-/// Resolve this launch's cover before the splash layer attaches. Runs before
-/// runtime initialization — the splash must never wait on the runtime — so
-/// the host passes the data dir. Empty means the bundled cover.
+/// The launch face is on screen, in this appearance — the one the start
+/// window resolved. Runs before runtime initialization; the launch face must
+/// never wait on the runtime.
 #[napi]
-pub fn splash_select_cover(data_dir: String, dark: bool) -> String {
-    crate::splash::select_cover(std::path::PathBuf::from(data_dir), dark)
-        .map(|path| path.to_string_lossy().into_owned())
-        .unwrap_or_default()
+pub fn splash_mark_launch_face(dark: bool) {
+    crate::splash::mark_launch_face(dark)
+}
+
+/// The host-declared page floor for one appearance, as `#RRGGBB`.
+///
+/// Empty means the host declared none and the platform should keep its own
+/// system background. Native chrome paints with this wherever it borders the
+/// page — the strip a pull-to-refresh opens above it, the container a
+/// navigation transition slides views across — because a WebView cannot be
+/// asked for its document colour in time to paint the frame already on
+/// screen.
+#[napi]
+pub fn page_background_color(dark: bool) -> String {
+    lingxia_app_context::page_background_color(dark).unwrap_or_default()
 }
 
 #[napi]

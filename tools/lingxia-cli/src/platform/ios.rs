@@ -205,8 +205,16 @@ impl IosPlatform {
             executable_name,
             deployment_target,
             info_plist_path: info_plist,
-            splash_background: splash.as_ref().map(|s| s.background.clone()),
-            splash_mark: splash.as_ref().is_some_and(|s| s.has_mark()),
+            splash_background: splash.as_ref().map(|s| s.background().to_string()),
+            splash_launch_image: match splash.as_ref() {
+                Some(splash) if splash.has_image() => {
+                    crate::platform::apple::app_bundle::LaunchImage::Art
+                }
+                Some(splash) if splash.has_mark() => {
+                    crate::platform::apple::app_bundle::LaunchImage::Mark
+                }
+                _ => crate::platform::apple::app_bundle::LaunchImage::None,
+            },
         };
 
         AppBundler::create_app_bundle(
@@ -375,22 +383,35 @@ impl Platform for IosPlatform {
             &deployment_target,
             apple::assets::AssetPlatform::Ios,
         ) {
-            eprintln!(
-                "  {} Asset catalog compilation failed: {}",
-                "Warning:".yellow(),
-                err
-            );
-            // Without a compiled catalog the app icon is missing and
-            // UILaunchScreen's color cannot resolve, so iOS paints the launch
-            // frame white. Say so: the build still "succeeds", and a silent
-            // white first frame is exactly what splash exists to prevent.
-            if splash_config.is_some() {
+            let raw_launch_fallback = apple::assets::is_missing_ios_runtime_error(&err)
+                && splash_config.is_some_and(|splash| splash.image.is_some())
+                && apple::assets::install_ios_launch_fallback(&app_path).is_ok();
+            if raw_launch_fallback {
                 eprintln!(
-                    "  {} No Assets.car: the launch frame will be white, not the configured\n     \
-                     splash background. `actool` needs the iOS platform installed —\n     \
-                     run `xcodebuild -downloadPlatform iOS` to restore it.",
+                    "  {} No iOS simulator runtime; using the configured cover as a raw OS launch resource.",
                     "Warning:".yellow()
                 );
+            } else if matches!(
+                config.resolved_env.version,
+                crate::config::EnvVersion::Release
+            ) {
+                return Err(err).context(
+                    "Release iOS build requires a compiled asset catalog; without it the app icon and OS launch face are missing",
+                );
+            } else {
+                eprintln!(
+                    "  {} Asset catalog compilation failed: {}",
+                    "Warning:".yellow(),
+                    err
+                );
+                // Without a compiled catalog or the cover fallback, the app
+                // icon is missing and UILaunchScreen's color cannot resolve.
+                if splash_config.is_some() {
+                    eprintln!(
+                        "  {} No Assets.car: the launch frame may not match the configured splash.",
+                        "Warning:".yellow()
+                    );
+                }
             }
         }
         if let Err(err) = apple::assets::merge_assetcatalog_plist_with_platform(

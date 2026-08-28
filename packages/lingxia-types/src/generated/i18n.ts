@@ -134,6 +134,7 @@ export const I18N_KEYS = [
   "permission_wifi_reason",
   "shell_pin_limit_message",
   "shell_pin_limit_title",
+  "splash_skip",
   "surface_close",
   "surface_close_after",
   "surface_close_others",

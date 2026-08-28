@@ -37,6 +37,43 @@ impl UIUpdate for Platform {
         });
     }
 
+    fn show_splash_campaign(&self, image_path: String, duration_ms: u32) {
+        let Ok(lxapp_class) = super::get_cached_class(super::CachedClass::LxApp) else {
+            return;
+        };
+        let _ = super::with_env(|env| {
+            let path = env.new_string(&image_path)?;
+            env.call_static_method(
+                lxapp_class,
+                jni_str!("showSplashCampaign"),
+                jni_sig!("(Ljava/lang/String;I)V"),
+                &[JValue::Object(&path), JValue::Int(duration_ms as i32)],
+            )
+            .map(|_| ())
+        });
+    }
+
+    fn set_host_color_mode(&self, dark: Option<bool>) {
+        let Ok(lxapp_class) = super::get_cached_class(super::CachedClass::LxApp) else {
+            return;
+        };
+        // -1 follows the system; 0 and 1 pin the app's own appearance.
+        let mode = match dark {
+            None => -1,
+            Some(false) => 0,
+            Some(true) => 1,
+        };
+        let _ = super::with_env(|env| {
+            env.call_static_method(
+                lxapp_class,
+                jni_str!("setHostColorMode"),
+                jni_sig!("(I)V"),
+                &[JValue::Int(mode)],
+            )
+            .map(|_| ())
+        });
+    }
+
     fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), PlatformError> {
         let lxapp_class: &JClass = super::get_cached_class(super::CachedClass::LxApp)
             .map_err(|error| PlatformError::Platform(error.to_string()))?;

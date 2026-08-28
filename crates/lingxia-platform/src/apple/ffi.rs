@@ -139,6 +139,11 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.onHomeFirstReady")]
         fn on_home_first_ready();
 
+        // Home page first render, with a campaign to show before the overlay
+        // lifts: the same layer, the host's art, a skippable countdown.
+        #[swift_bridge(swift_name = "LxApp.showSplashCampaign")]
+        fn show_splash_campaign(image_path: &str, duration_ms: u32);
+
         #[swift_bridge(swift_name = "LxApp.applyAppearance")]
         fn apply_appearance(appid: &str, dark: bool) -> bool;
 
@@ -475,9 +480,9 @@ pub use bridge::{
     open_url, present_layout, present_surface, preview_media, request_lxapp_main_activation,
     review_document, set_app_badge, set_managed_surface_visible, set_shell_pins,
     set_sidebar_actions, set_tray_badge, set_tray_click_intercept, set_tray_icon, set_tray_menu,
-    set_tray_title, set_tray_visible, share, show_action_sheet, show_modal, show_surface,
-    show_toast, take_opened_url_tab_id, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
-    update_tabbar_ui_async,
+    set_tray_title, set_tray_visible, share, show_action_sheet, show_modal, show_splash_campaign,
+    show_surface, show_toast, take_opened_url_tab_id, update_navbar_ui, update_orientation_ui,
+    update_tabbar_ui, update_tabbar_ui_async,
 };
 #[cfg(target_os = "macos")]
 pub use bridge::{notify_app_update_ready, reveal_in_file_manager};

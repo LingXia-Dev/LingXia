@@ -31,18 +31,17 @@ import com.lingxia.app.NativeApi
  */
 internal object SplashOverlay {
     private const val TIMEOUT_MS = 6_000L
-    private const val FADE_MS = 250L
+    /// The campaign's fade-in and the face's lift. Both match iOS and Harmony
+    /// to the millisecond: one launch experience, three renderers.
+    private const val FADE_MS = 200L
     private const val DISMISS_MS = 300L
 
     /**
-     * Minimum time the cover must be *seen*. The core already holds the ready
-     * signal, but it measures from process start — on Android 12+ the system
-     * splash window covers the activity (overlay included) until first frame,
-     * so that hold can elapse while the cover is still hidden and the user
-     * never sees it. Measured here from the cover's first draw, which the
-     * splash's default exit follows within a beat.
+     * Fallback minimum time the cover must be *seen*, used only when the
+     * configured hold cannot be read (the runtime is not up, so there is no
+     * app config yet). Matches the framework default.
      */
-    private const val MIN_VISIBLE_MS = 600L
+    private const val DEFAULT_MIN_VISIBLE_MS = 600L
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var overlay: View? = null
@@ -54,9 +53,17 @@ internal object SplashOverlay {
     private var launchBackground: Int? = null
     private var launchCover: Drawable? = null
 
-    /** The bootstrap cover's image, so a late hook pick can land on it. */
-    private var bootstrapImage: ImageView? = null
-    private var selectionDone = false
+    /** Whether the runtime has been told this launch has a face. */
+    private var launchFaceMarked = false
+
+    /** The campaign countdown's tick, so dismissal can stop it. */
+    private var campaignTick: Runnable? = null
+
+    /** Exact campaign deadline; the visible counter is deliberately separate. */
+    private var campaignDismiss: Runnable? = null
+
+    /** The launch watchdog, held by reference so a campaign can call it off. */
+    private var watchdog: Runnable? = null
 
     /** Whether the system-splash reveal is already being tracked. */
     private var revealHooked = false
@@ -126,8 +133,7 @@ internal object SplashOverlay {
             holdFirstDraw(activity)
             return false
         }
-        val (view, image) = buildCoverView(activity, cover)
-        bootstrapImage = image
+        val (view, _) = buildCoverView(activity, cover)
         activity.setContentView(view)
         hookReveal(activity)
         android.util.Log.i("SplashOverlay", "bootstrap cover shown")
@@ -135,32 +141,109 @@ internal object SplashOverlay {
     }
 
     /**
-     * Deferred half of the launch decision: the hook needs the native
-     * library, so it runs with the boot — under the cover, never in front of
-     * it. A pick that differs from the bundled cover lands with a quick
-     * crossfade, the same beat as a campaign layer arriving over a brand
-     * frame.
+     * Tell the runtime the launch face is up, once the native library exists.
+     *
+     * The face itself was already drawn from resources — nothing here can
+     * change it, and nothing should: art picked at runtime cannot match a
+     * frame the system composed before this process started. What the runtime
+     * learns is which appearance bucket that frame came from, so a campaign
+     * can match it. A pinned appearance reaches the bucket itself through
+     * [UiModeManager], set when the user picks it.
      */
-    fun applyHookSelection(activity: Activity) {
-        if (selectionDone || launchBackground == null) return
-        selectionDone = true
+    fun markLaunchFace(activity: Activity) {
+        if (launchFaceMarked || launchBackground == null) return
+        launchFaceMarked = true
         val dark = (activity.resources.configuration.uiMode and
             Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        val dataDir = activity.applicationContext.filesDir.absolutePath
-        val picked = NativeApi.splashSelectCover(dataDir, dark)
-        if (picked.isEmpty()) return
-        val drawable = Drawable.createFromPath(picked) ?: return
-        launchCover = drawable
-        val image = bootstrapImage ?: return
-        image.animate()
-            .alpha(0f)
-            .setDuration(FADE_MS / 2)
-            .withEndAction {
-                image.setImageDrawable(drawable)
-                image.animate().alpha(1f).setDuration(FADE_MS / 2).start()
+        runCatching { NativeApi.splashMarkLaunchFace(dark) }
+    }
+
+    /**
+     * Runtime signal (via [LxApp.showSplashCampaign]): the home page is ready
+     * and the host has a screen of its own to show first. The launch layer
+     * stays up and takes the campaign's art with a skippable countdown, so
+     * there is never a gap between the two screens.
+     */
+    fun showCampaign(imagePath: String, durationMs: Int) {
+        mainHandler.post { startCampaign(imagePath, durationMs) }
+    }
+
+    private fun startCampaign(imagePath: String, durationMs: Int) {
+        val art = Drawable.createFromPath(imagePath)
+        if (art == null) {
+            homeReadySeen = true
+            dismiss()
+            return
+        }
+        val frame = (overlay as? ViewGroup) ?: createCampaignFrame()
+        if (frame == null) {
+            homeReadySeen = true
+            dismiss()
+            return
+        }
+        // Placeholder-only launches hold Android's system splash instead of
+        // creating an app overlay. Build the campaign frame first, then release
+        // that hold: the system frame exits directly onto the campaign rather
+        // than silently dropping a valid host choice.
+        homeReadySeen = true
+        val image = ImageView(frame.context).apply {
+            setImageDrawable(art)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            alpha = 0f
+        }
+        frame.addView(
+            image,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        val skip = SplashSkipButton(frame.context).apply {
+            alpha = 0f
+            seconds = Math.max(1, Math.ceil(durationMs / 1000.0).toInt())
+            setOnClickListener { dismiss(force = true) }
+        }
+        frame.addView(skip, skip.topEndLayoutParams())
+        // Fades in, unlike the launch face: this beat is content arriving, and
+        // a cut here would read as the launch stuttering.
+        image.animate().alpha(1f).setDuration(FADE_MS).start()
+        skip.animate().alpha(1f).setDuration(FADE_MS).start()
+
+        // The campaign owns the screen from here, with a bounded countdown of
+        // its own, so the launch watchdog must not fire underneath it.
+        watchdog?.let { mainHandler.removeCallbacks(it) }
+        watchdog = null
+
+        val tick = object : Runnable {
+            override fun run() {
+                if (skip.seconds > 1) {
+                    skip.seconds -= 1
+                    mainHandler.postDelayed(this, 1_000L)
+                }
             }
-            .start()
-        android.util.Log.i("SplashOverlay", "hook cover applied")
+        }
+        campaignTick = tick
+        mainHandler.postDelayed(tick, 1_000L)
+        val deadline = Runnable { dismiss(force = true) }
+        campaignDismiss = deadline
+        mainHandler.postDelayed(deadline, durationMs.coerceAtLeast(0).toLong())
+    }
+
+    private fun createCampaignFrame(): FrameLayout? {
+        val activity = LxApp.getCurrentActivity() ?: return null
+        val decor = activity.window?.decorView as? ViewGroup ?: return null
+        return FrameLayout(activity).also { frame ->
+            launchBackground?.let(frame::setBackgroundColor)
+            frame.isClickable = true
+            decor.addView(
+                frame,
+                ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
+            overlay = frame
+        }
     }
 
     /** Attach over the home activity on a cold start when splash resources exist. */
@@ -210,7 +293,9 @@ internal object SplashOverlay {
         shownThisProcess = true
         hookReveal(activity)
         android.util.Log.i("SplashOverlay", "cover overlay shown")
-        mainHandler.postDelayed({ dismiss(force = true) }, TIMEOUT_MS)
+        val watchdog = Runnable { dismiss(force = true) }
+        this.watchdog = watchdog
+        mainHandler.postDelayed(watchdog, TIMEOUT_MS)
     }
 
     /** Runtime signal (via [LxApp.onHomeFirstReady]): home page rendered its first frame. */
@@ -265,7 +350,7 @@ internal object SplashOverlay {
      * OEM splash implementations simply never invoke, leaving the splash
      * stuck on screen over a cover no one sees. The splash is a plain
      * brand-color frame (blank icon slot), so its default exit is invisible;
-     * [MIN_VISIBLE_MS] absorbs the small overlap.
+     * the configured hold, re-measured from that draw, absorbs the small overlap.
      */
     private fun hookReveal(activity: Activity) {
         if (revealHooked) return
@@ -303,14 +388,41 @@ internal object SplashOverlay {
         )
     }
 
+    /**
+     * The configured hold, in milliseconds.
+     *
+     * The core holds the ready signal for this long too, but it starts its
+     * clock where the runtime learns the cover is going up — and on Android
+     * that is under the system splash window, which on 12+ covers the
+     * activity (overlay included) until first frame and then runs its own
+     * exit. Whatever of the hold elapses in there is time the user did not
+     * spend looking at the cover, so the overlay measures the same duration
+     * again from the cover's own first draw.
+     *
+     * Read here rather than cached at attach: it resolves from the app config,
+     * which the runtime loads long after the bootstrap activity drew the
+     * cover. By the time a non-forced dismissal can happen the runtime has
+     * signalled home-ready, so the value is there.
+     */
+    private fun minVisibleMs(): Long = runCatching { NativeApi.splashMinDurationMs() }
+        .getOrDefault(DEFAULT_MIN_VISIBLE_MS)
+        .coerceAtLeast(0L)
+
     private fun dismiss(force: Boolean = false) {
+        campaignTick?.let { mainHandler.removeCallbacks(it) }
+        campaignTick = null
+        campaignDismiss?.let { mainHandler.removeCallbacks(it) }
+        campaignDismiss = null
+        watchdog?.let { mainHandler.removeCallbacks(it) }
+        watchdog = null
         val view = overlay ?: return
         if (!force) {
             // Hold until the cover has been on screen long enough — the
             // system splash may still be covering it, or has only just left.
+            val minVisible = minVisibleMs()
             val since = android.os.SystemClock.uptimeMillis() - visibleAt
-            if (visibleAt < 0 || since < MIN_VISIBLE_MS) {
-                val delay = if (visibleAt < 0) 150L else MIN_VISIBLE_MS - since
+            if (visibleAt < 0 || since < minVisible) {
+                val delay = if (visibleAt < 0) 150L else minVisible - since
                 mainHandler.postDelayed({ dismiss() }, delay)
                 return
             }
@@ -374,5 +486,56 @@ internal object SplashOverlay {
         )
         if (id == 0) return null
         return ContextCompat.getDrawable(context, id)
+    }
+}
+
+/**
+ * The campaign's countdown, and the only way past it. A skip control that is
+ * hard to hit is the same as no skip control, so it is a full pill with a
+ * generous tap target, clear of the status bar.
+ */
+private class SplashSkipButton(context: Context) : android.widget.TextView(context) {
+    private val skipLabel: String = context.resources
+        .getIdentifier("lx_splash_skip", "string", context.packageName)
+        .takeIf { it != 0 }
+        ?.let { context.getString(it) }
+        ?: "Skip"
+
+    var seconds: Int = 0
+        set(value) {
+            field = value
+            text = "$skipLabel ${Math.max(0, value)}"
+        }
+
+    init {
+        setTextColor(android.graphics.Color.WHITE)
+        textSize = 13f
+        val pad = (12 * resources.displayMetrics.density).toInt()
+        val padV = (6 * resources.displayMetrics.density).toInt()
+        setPadding(pad, padV, pad, padV)
+        background = android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = 14 * resources.displayMetrics.density
+            setColor(android.graphics.Color.argb(102, 0, 0, 0))
+        }
+        isClickable = true
+    }
+
+    /** Top-trailing, clear of the status bar the launch layer draws under. */
+    fun topEndLayoutParams(): FrameLayout.LayoutParams {
+        val margin = (16 * resources.displayMetrics.density).toInt()
+        val top = (statusBarHeight() + 12 * resources.displayMetrics.density).toInt()
+        return FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = android.view.Gravity.TOP or android.view.Gravity.END
+            marginEnd = margin
+            topMargin = top
+        }
+    }
+
+    private fun statusBarHeight(): Float {
+        val id = resources.getIdentifier("status_bar_height", "dimen", "android")
+        return if (id > 0) resources.getDimensionPixelSize(id).toFloat() else 0f
     }
 }

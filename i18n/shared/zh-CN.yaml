@@ -95,6 +95,10 @@ date:
   this_month: "本月"
   last_month: "上月"
 
+# Launch campaign
+splash:
+  skip: "跳过"
+
 # App Update
 update:
   downloading: "正在下载更新"

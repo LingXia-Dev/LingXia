@@ -24,6 +24,23 @@ impl UIUpdate for Platform {
         let _ = lingxia_webview::platform::harmony::tsfn::call_arkts("onHomeFirstReady", &[]);
     }
 
+    fn show_splash_campaign(&self, image_path: String, duration_ms: u32) {
+        let duration = duration_ms.to_string();
+        let _ = lingxia_webview::platform::harmony::tsfn::call_arkts(
+            "showSplashCampaign",
+            &[&image_path, &duration],
+        );
+    }
+
+    fn set_host_color_mode(&self, dark: Option<bool>) {
+        let mode = match dark {
+            Some(true) => "dark",
+            Some(false) => "light",
+            None => "auto",
+        };
+        let _ = lingxia_webview::platform::harmony::tsfn::call_arkts("setHostColorMode", &[mode]);
+    }
+
     async fn measure_page_chrome_capsule(
         &self,
         appid: String,

@@ -215,24 +215,49 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getDisplayLanguage<'a>(
         .resolve::<LogErrorAndDefault>()
 }
 
-/// Resolve this launch's cover before the overlay attaches. Runs before
-/// runtime initialization — the splash must never wait on the runtime — so
-/// the host passes the data dir. Empty means the bundled cover.
+/// The launch face is on screen, in this appearance — the one the system
+/// splash resolved. Runs before runtime initialization; the launch face must
+/// never wait on the runtime.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_app_NativeApi_splashSelectCover<'a>(
+pub extern "system" fn Java_com_lingxia_app_NativeApi_splashMarkLaunchFace<'a>(
+    _env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    dark: jboolean,
+) {
+    crate::splash::mark_launch_face(dark)
+}
+
+/// The host-declared page floor for one appearance, as `#RRGGBB`.
+///
+/// Empty means the host declared none and the platform should keep its own
+/// system background. Native chrome paints with this wherever it borders the
+/// page — the strip a pull-to-refresh opens above it, the container a
+/// navigation transition slides views across — because a WebView cannot be
+/// asked for its document colour in time to paint the frame already on
+/// screen.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_pageBackgroundColor<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,
-    data_dir: JString<'a>,
     dark: jboolean,
 ) -> JString<'a> {
     env.with_env(|env| {
-        let data_dir: String = data_dir.try_to_string(env)?;
-        let path = crate::splash::select_cover(std::path::PathBuf::from(data_dir), dark)
-            .map(|path| path.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        env.new_string(path)
+        env.new_string(lingxia_app_context::page_background_color(dark).unwrap_or_default())
     })
     .resolve::<LogErrorAndDefault>()
+}
+
+/// The configured minimum hold, in milliseconds.
+///
+/// Read at dismissal rather than at attach: this resolves from `app.json`,
+/// which the runtime loads well after the bootstrap activity has already put
+/// the cover on screen.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_splashMinDurationMs(
+    _env: EnvUnowned,
+    _class: JClass,
+) -> jlong {
+    jlong::try_from(lingxia_app_context::splash_min_duration().as_millis()).unwrap_or(jlong::MAX)
 }
 
 #[unsafe(no_mangle)]

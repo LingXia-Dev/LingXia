@@ -69,21 +69,21 @@ pub struct LingXiaConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SplashConfig {
-    /// Background color, `#RRGGBB` — the ground of the OS launch placeholder,
-    /// and what shows behind a hook-picked cover. The only required field: no
-    /// code runs before the launch frame, so only build-time config can brand
-    /// it. A dark color keeps the placeholder from ever reading as a white
-    /// flash.
-    ///
-    /// Deliberately one color, not a light/dark pair: the launch frame and
-    /// the first app frame must be the same color, and a pair would let them
-    /// disagree.
+    /// Background color, `#RRGGBB` — the ground of the OS launch frame, and
+    /// what shows behind the art. The only required field: no code runs
+    /// before that frame, so only build-time config can brand it. Pick the
+    /// art's own ground, so the frame reads as the art's entrance.
     pub background: String,
-    /// The launch cover (PNG), path relative to the project root. Rendered
+    /// The launch art (PNG), path relative to the project root. Rendered
     /// full-screen (aspect-fill) as the app's first frame on every cold
-    /// start — the OS placeholder's exit reveals it, so the launch reads as
-    /// "tap the icon, see the cover". Omit for a placeholder-only launch.
-    /// The runtime hook can substitute a different file per launch.
+    /// start, and carried by the OS launch frame itself where the platform
+    /// allows it (HarmonyOS start window, iOS `UILaunchScreen`) — so the
+    /// launch reads as "tap the icon, see the art", with no handoff to see.
+    /// Omit for a placeholder-only launch.
+    ///
+    /// One image, drawn in every appearance: it has to be identical to a
+    /// frame the OS composed from build-time resources before this process
+    /// existed, and one picture is the only thing that always is.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
     /// The brand mark (PNG) shown centered on the launch placeholder, at the
@@ -93,11 +93,14 @@ pub struct SplashConfig {
     /// Used where the frame accepts a custom image (HarmonyOS
     /// `startWindowIcon`, iOS `UILaunchScreen`); Android 12+ keeps the real
     /// app icon, whose launcher-zoom morph must not be broken.
+    ///
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mark: Option<String>,
-    /// Minimum time the launch face (placeholder or cover) stays up, in
-    /// milliseconds (default 600). Keeps a fast first render from flashing
-    /// it. The hard upper bound is a framework constant and deliberately not
+    /// Minimum time the launch face stays on screen, in milliseconds
+    /// (default 600), measured from process start — the OS frame is already
+    /// showing the same art, so the user has been looking at it since before
+    /// this process could count.
+    /// The hard upper bound is a framework constant and deliberately not
     /// configurable — a splash that can be configured to never leave is a
     /// failure mode, not a feature.
     #[serde(default, skip_serializing_if = "Option::is_none")]

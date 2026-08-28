@@ -92,12 +92,27 @@ appLinks:
   hosts:
     - applink.lingxia.app
 
+# Host-declared page floor: the colour the showcase lxapp's own CSS paints its
+# pages with (`--lx-surface-100` in lxapp/theme/tokens.css). Native chrome that
+# borders the page matches it — most visibly the strip a pull-to-refresh opens
+# above the page, which without this bares the platform's system background.
+theme:
+  light:
+    pageBackgroundColor: "#E5E5EA"
+  dark:
+    pageBackgroundColor: "#2A2A2E"
+
 splash:
+  # One face, both appearances. The launch screen is a brand asset, not a UI
+  # surface that follows the system: a single picture is the same on every
+  # launch, on every device, and cannot disagree with the frame the OS drew
+  # before this process existed. The ground is the art's own, so the OS frame
+  # reads as the art's entrance rather than as a flash.
   background: "#171C22"
   image: design/splash.png
   mark: design/splash-mark.png
-
-assets: assets
+  # No `minDuration`: the launch face only covers the boot, so the default
+  # floor is enough and the face lifts the moment home is ready.
 
 storage:
   tempMaxSizeMB: 1024

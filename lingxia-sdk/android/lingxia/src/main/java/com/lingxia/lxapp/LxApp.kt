@@ -175,6 +175,35 @@ object LxApp {
         SplashOverlay.notifyHomeReady()
     }
 
+    /**
+     * Runtime signal (JNI): the home page is ready and the host has a campaign
+     * to show before the launch layer lifts.
+     */
+    @JvmStatic
+    fun showSplashCampaign(imagePath: String, durationMs: Int) {
+        SplashOverlay.showCampaign(imagePath, durationMs)
+    }
+
+    /**
+     * Runtime signal (JNI): the app's own appearance, pinned or following the
+     * system (-1). Persisted with the system so the *next* launch — the splash
+     * window the OS composes before any code runs included — resolves the same
+     * night mode. Below API 31 there is no such lever, and a pinned app keeps
+     * one launch frame in the system's appearance.
+     */
+    @JvmStatic
+    fun setHostColorMode(mode: Int) {
+        val activity = currentActivity ?: return
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return
+        val manager = activity.getSystemService(android.app.UiModeManager::class.java) ?: return
+        val nightMode = when (mode) {
+            0 -> android.app.UiModeManager.MODE_NIGHT_NO
+            1 -> android.app.UiModeManager.MODE_NIGHT_YES
+            else -> android.app.UiModeManager.MODE_NIGHT_AUTO
+        }
+        runCatching { manager.setApplicationNightMode(nightMode) }
+    }
+
     @JvmStatic
     fun updateTabBarUI(appId: String): Boolean {
         val activity = currentActivity?.takeIf { it.getAppId() == appId }

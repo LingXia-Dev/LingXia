@@ -376,6 +376,20 @@ class NativeBridge {
       return true;
     });
 
+    // Home page first render, with a campaign to show first: the same layer
+    // stays up, carrying the host's art and a countdown, then lifts itself.
+    this.register('showSplashCampaign', (imagePath: string, durationMs: string): boolean => {
+      LxAppNavigation.showCampaign(imagePath, Number.parseInt(durationMs, 10));
+      return true;
+    });
+
+    // The app's own appearance, pushed down so the *next* launch frame — drawn
+    // by the system before any code runs — resolves the same bucket.
+    this.register('setHostColorMode', (mode: string): boolean => {
+      Lingxia.setHostColorMode(mode);
+      return true;
+    });
+
     // Update TabBar APIs
     this.register('updateTabBarUI', (appId: string): boolean => {
       try {

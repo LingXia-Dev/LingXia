@@ -101,6 +101,17 @@ impl<'de> Deserialize<'de> for ThemeColor {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ThemeStyle {
+    /// The page floor: the colour an lxapp's own CSS paints its page with.
+    ///
+    /// The host declares it because native chrome has to agree with it in
+    /// places the page cannot reach — the strip a pull-to-refresh opens above
+    /// the page, the container a navigation transition slides views across —
+    /// and no platform can ask a WebView what colour its document is early
+    /// enough to paint the frame the user is already looking at. Unset falls
+    /// back to the platform's own system background, which is what every host
+    /// got before this existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_background_color: Option<ThemeColor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window_background_color: Option<ThemeColor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -513,33 +524,129 @@ pub fn since_startup() -> std::time::Duration {
     STARTUP.elapsed()
 }
 
-/// A host's per-launch override of the minimum hold (`u32::MAX` = unset).
-/// Bounded by the platforms' 6s dismissal timeout, which stays absolute.
-static SPLASH_MIN_DURATION_OVERRIDE: std::sync::atomic::AtomicU32 =
-    std::sync::atomic::AtomicU32::new(u32::MAX);
-const SPLASH_HOLD_CAP_MS: u32 = 6_000;
+/// When the launch cover reached the screen, as an offset from [`STARTUP`]
+/// in milliseconds (`u64::MAX` = it has not).
+static SPLASH_VISIBLE_AT_MS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(u64::MAX);
 
-/// Override the configured minimum hold for this launch, from the host's
-/// splash selection hook.
-pub fn set_splash_min_duration_override(ms: u32) {
-    SPLASH_MIN_DURATION_OVERRIDE.store(
-        ms.min(SPLASH_HOLD_CAP_MS),
+/// Note that this launch has a launch face, so the hold applies to it.
+///
+/// The face has been on screen since process start, not since this call: the
+/// OS frame carries the same art, so the user has been looking at it from the
+/// first frame the system composed. Charging the hold from when the runtime
+/// *learned* about it would hold a picture that is already several hundred
+/// milliseconds old — which is the launch feeling slow for no reason.
+///
+/// Idempotent by first-writer-wins: a warm relaunch that marks a second time
+/// must not restart the hold, or the face would outstay a launch the user is
+/// already past.
+pub fn mark_splash_visible() {
+    let _ = SPLASH_VISIBLE_AT_MS.compare_exchange(
+        u64::MAX,
+        0,
+        std::sync::atomic::Ordering::Relaxed,
         std::sync::atomic::Ordering::Relaxed,
     );
 }
 
+/// How long the launch face has been on screen, or `None` when this launch
+/// has no launch face at all.
+///
+/// `None` — a host with no splash configured, or a platform that never
+/// consults the splash (desktop, where the home-ready signal reveals the
+/// first window) — means there is nothing on screen for a hold to protect,
+/// and delaying the signal would only postpone real content.
+///
+/// Where the OS frame cannot carry the art (Android, whose system splash
+/// offers a colour and an icon slot and nothing else) the face really does
+/// begin at the app's own first draw, and that platform's overlay measures
+/// its own hold from there.
+pub fn splash_visible_for() -> Option<std::time::Duration> {
+    match SPLASH_VISIBLE_AT_MS.load(std::sync::atomic::Ordering::Relaxed) {
+        u64::MAX => None,
+        shown_at => {
+            Some(since_startup().saturating_sub(std::time::Duration::from_millis(shown_at)))
+        }
+    }
+}
+
+const SPLASH_HOLD_CAP_MS: u32 = 6_000;
+
 /// How long the splash must stay up before a ready signal may dismiss it.
 pub fn splash_min_duration() -> std::time::Duration {
-    let overridden = SPLASH_MIN_DURATION_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed);
-    if overridden != u32::MAX {
-        return std::time::Duration::from_millis(u64::from(overridden));
-    }
     let ms = APP_CONFIG
         .get()
         .and_then(|config| config.splash.as_ref())
         .and_then(|splash| splash.min_duration)
-        .unwrap_or(DEFAULT_SPLASH_MIN_DURATION_MS);
+        .unwrap_or(DEFAULT_SPLASH_MIN_DURATION_MS)
+        // Config used to reach the platforms only through this crate's own
+        // hold, which the dismissal timeout bounded anyway; now a platform can
+        // read the number and wait on it itself, so the documented upper bound
+        // has to be real here.
+        .min(SPLASH_HOLD_CAP_MS);
     std::time::Duration::from_millis(u64::from(ms))
+}
+
+/// One-shot handoff between the host's campaign selector and home-first-ready.
+struct CampaignHandoff {
+    pending: Option<(String, u32)>,
+    closed: bool,
+}
+
+impl CampaignHandoff {
+    const fn new() -> Self {
+        Self {
+            pending: None,
+            closed: false,
+        }
+    }
+
+    fn offer(&mut self, image_path: String, duration_ms: u32) -> bool {
+        if self.closed {
+            return false;
+        }
+        self.pending = Some((image_path, duration_ms));
+        true
+    }
+
+    fn take_and_close(&mut self) -> Option<(String, u32)> {
+        self.closed = true;
+        self.pending.take()
+    }
+}
+
+static CAMPAIGN_HANDOFF: std::sync::Mutex<CampaignHandoff> =
+    std::sync::Mutex::new(CampaignHandoff::new());
+
+/// Hold a resolved campaign until the launch face is ready to hand over.
+/// Returns `false` when home already crossed that boundary and the late answer
+/// was dropped.
+pub fn set_pending_campaign(image_path: String, duration_ms: u32) -> bool {
+    CAMPAIGN_HANDOFF
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .offer(image_path, duration_ms)
+}
+
+/// Take the campaign, if one arrived in time. Taking rather than reading:
+/// the launch face hands over exactly once, and a campaign that missed that
+/// moment must not surface later over real content.
+pub fn take_pending_campaign() -> Option<(String, u32)> {
+    CAMPAIGN_HANDOFF
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .take_and_close()
+}
+
+/// The configured page floor for one appearance, as `#RRGGBB`.
+///
+/// `None` means the host did not declare one and the platform should keep
+/// using its own system background.
+pub fn page_background_color(dark: bool) -> Option<String> {
+    theme()?
+        .style(dark)?
+        .page_background_color
+        .map(|color| color.to_string())
 }
 
 pub fn product_name() -> Option<&'static str> {
@@ -855,7 +962,9 @@ fn panel_position_name(position: PanelPosition) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{AppConfig, AppContextError, ThemeColor, ThemeConfig, set_app_config};
+    use super::{
+        AppConfig, AppContextError, CampaignHandoff, ThemeColor, ThemeConfig, set_app_config,
+    };
 
     fn test_config(product_name: &str) -> AppConfig {
         AppConfig {
@@ -952,5 +1061,17 @@ mod tests {
         let theme: ThemeConfig =
             serde_json::from_str(r#"{ "light": {}, "dark": {} }"#).expect("parse empty theme");
         assert!(theme.normalized().is_none());
+    }
+
+    #[test]
+    fn campaign_handoff_drops_an_answer_after_home_is_ready() {
+        let mut handoff = CampaignHandoff::new();
+        assert!(handoff.offer("first.png".to_string(), 1_500));
+        assert_eq!(
+            handoff.take_and_close(),
+            Some(("first.png".to_string(), 1_500))
+        );
+        assert!(!handoff.offer("late.png".to_string(), 3_000));
+        assert_eq!(handoff.take_and_close(), None);
     }
 }

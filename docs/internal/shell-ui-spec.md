@@ -905,14 +905,25 @@ shared `background` makes the frame read as the cover's entrance.
   until `minDuration` (default 600 ms). A 6 s timeout MUST dismiss
   regardless and MUST NOT be configurable. While up, the cover swallows
   input.
-- **Runtime hook.** A host MAY implement `HostAddon::select_splash` to
-  substitute this launch's cover file. Selection is synchronous, on-disk
-  only, and budgeted — the bundled cover wins on overrun; acquisition goes
-  through `lingxia::spawn` and MUST NOT block it. The cover store sits
-  under app data, exempt from OS and framework eviction; `splash::store`
-  writes it atomically and `splash::retain` bounds it. The hook cannot
-  choose the background — that is baked into the launch frame at build
-  time.
+- **The launch face is build-time art.** No hook may substitute it: the OS
+  frame is composed from build-time resources before the process exists, so
+  a runtime choice can only disagree with what is already on screen.
+- **One face, every appearance.** `splash:` has no dark counterpart: an
+  appearance pair can only follow the system, never an in-app choice
+  (measured: Harmony's `setColorMode` does not survive process death, iOS has
+  no lever), so the pair's halves are what disagree at launch. The runtime
+  still pushes an in-app appearance into the platform's own night mode where
+  one persists (Android `UiModeManager`), for everything the app draws after
+  the launch.
+- **Runtime hook.** A host MAY implement `HostAddon::select_campaign` to
+  show its own screen after the launch face, with a countdown the user can
+  skip. Selection runs after runtime init, is on-disk only, and is dropped
+  if it misses the moment the launch face lifts; acquisition goes through
+  `lingxia::spawn` and MUST NOT block it. Duration defaults to 3 s and is
+  capped at 8 s. The store sits under app data, exempt from OS and framework
+  eviction; `splash::store` writes it atomically and `splash::retain` bounds
+  it. The hook cannot choose the background — that is baked into the launch
+  frame at build time.
 - Generated resource names are the CLI↔SDK contract: Android
   `lingxia_splash_background` / `lingxia_splash_image` /
   `Theme.LingXia.Splash`, Apple `LingXiaSplashBackground` / `LingXiaSplash`

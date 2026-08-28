@@ -147,11 +147,10 @@ declare module 'liblingxia.so' {
   export function getDisplayLanguage(): string;
 
   /**
-   * Resolve this launch's splash cover via the host's Rust hook, before the
-   * splash layer attaches and before runtime initialization. Empty means the
-   * bundled cover.
+   * The launch face is on screen, in the appearance the start window resolved.
+   * Called before the launch layer attaches and before runtime initialization.
    */
-  export function splashSelectCover(dataDir: string, dark: boolean): string;
+  export function splashMarkLaunchFace(dark: boolean): void;
 
   /**
    * The host-declared page floor for one appearance, as `#RRGGBB`, or an empty
