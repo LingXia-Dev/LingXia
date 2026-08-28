@@ -309,6 +309,7 @@ fn ensure_island_video(
         }
         let parsed = parse_props(Some(props));
         apply_props(&key, &parsed);
+        sync_island_video_playback(&key, &parsed);
         return Some(0);
     }
     let Some(parent) = parent_window_for_page(&context.page_key) else {
@@ -625,12 +626,14 @@ fn apply_component_visibility(key: &str, visible: bool) {
             components.get_mut(key).and_then(|entry| {
                 entry.video.as_mut().map(|video| {
                     if visible {
+                        video.view_needs_playback_event = true;
                         (
                             video.player.clone(),
                             std::mem::take(&mut video.resume_on_show),
                         )
                     } else {
                         video.resume_on_show = video.playing || video.player.wants_playback();
+                        video.view_needs_playback_event = true;
                         (video.player.clone(), false)
                     }
                 })

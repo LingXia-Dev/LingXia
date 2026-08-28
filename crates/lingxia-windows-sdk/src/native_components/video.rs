@@ -50,6 +50,10 @@ pub(super) struct VideoComponent {
     /// Was playing when its page left the foreground; auto-resumes when
     /// the page returns (mirrors the macOS manager).
     pub(super) resume_on_show: bool,
+    /// The view may have remounted after we last emitted `play`/`playing`.
+    /// The next island rematerialize re-delivers those events so
+    /// `data-lx-playing` can land on the new element.
+    pub(super) view_needs_playback_event: bool,
 }
 
 /// Mounts a `video.native` component: an MFPlay player rendering into the
@@ -130,6 +134,7 @@ pub(super) fn mount_video_on_ui(
             volume: props.volume.unwrap_or(1.0).clamp(0.0, 1.0),
             playing: false,
             resume_on_show: false,
+            view_needs_playback_event: false,
         }),
         swiper: None,
         island_kind: None,
@@ -194,6 +199,7 @@ pub(super) fn mount_windowless_island_video(
             volume: props.volume.unwrap_or(1.0).clamp(0.0, 1.0),
             playing: false,
             resume_on_show: false,
+            view_needs_playback_event: false,
         }),
         swiper: None,
         island_kind: Some("video".into()),
@@ -210,6 +216,45 @@ pub(super) fn mount_windowless_island_video(
         player.play();
     }
     true
+}
+
+/// Re-issue autoplay / replay `playing` after an island rematerialize.
+///
+/// A page can be hidden (which pauses and clears `pending_play`) and later
+/// revived with the same component key. `onShow` may resume MFPlay before
+/// `lx-video` has registered its handler, so those events never set
+/// `data-lx-playing`. The commit that rematerializes runs after connect.
+pub(super) fn sync_island_video_playback(key: &str, props: &ComponentProps) {
+    let (player, should_play_now, should_emit) = {
+        let mut components = components();
+        let Some(entry) = components.get_mut(key) else {
+            return;
+        };
+        let Some(video) = entry.video.as_mut() else {
+            return;
+        };
+        let src = props
+            .src
+            .as_deref()
+            .or(entry.state.src.as_deref())
+            .unwrap_or("");
+        let autoplay = props.autoplay.or(entry.state.autoplay);
+        let wants_autoplay = !src.is_empty() && autoplay != Some(false);
+        let resume = std::mem::take(&mut video.resume_on_show);
+        let needs_event = std::mem::take(&mut video.view_needs_playback_event);
+        let should_play_now = (resume || (video.stopped && wants_autoplay)) && !video.playing;
+        let should_emit =
+            !should_play_now && (video.playing || video.player.wants_playback()) && needs_event;
+        (video.player.clone(), should_play_now, should_emit)
+    };
+    if should_play_now {
+        player.play();
+        return;
+    }
+    if should_emit {
+        emit_event(key, "play", json!({}));
+        emit_event(key, "playing", json!({}));
+    }
 }
 
 fn create_island_evr_window() -> Option<HWND> {
@@ -697,10 +742,21 @@ pub(super) fn dispatch_video_command(
             })
     };
     let Some((key, parent)) = target else {
-        return Err(format!("no native video component '{component_id}'"));
+        return match command {
+            // Island video mounts after the WebView2 message turn. Pause/stop
+            // from `lx.createVideoContext` must not throw while that apply is
+            // still queued (the shape-fixture spec clicks pause immediately).
+            VideoPlayerCommand::Pause | VideoPlayerCommand::Stop => Ok(()),
+            _ => Err(format!("no native video component '{component_id}'")),
+        };
     };
     let command = command.clone();
-    if run_on_window_thread(parent, move || apply_video_command(&key, &command)) {
+    let quiet = matches!(
+        command,
+        VideoPlayerCommand::Pause | VideoPlayerCommand::Stop
+    );
+    let posted = run_on_window_thread(parent, move || apply_video_command(&key, &command));
+    if posted || quiet {
         Ok(())
     } else {
         Err(format!(
@@ -892,4 +948,26 @@ pub(super) fn set_video_fullscreen(key: &str, fullscreen: bool) {
         }
     }
     emit_event(key, "fullscreenchange", json!({ "fullScreen": fullscreen }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pause_without_a_mounted_video_is_a_noop() {
+        assert_eq!(
+            dispatch_video_command("missing-video", &VideoPlayerCommand::Pause),
+            Ok(())
+        );
+        assert_eq!(
+            dispatch_video_command("missing-video", &VideoPlayerCommand::Stop),
+            Ok(())
+        );
+        assert!(
+            dispatch_video_command("missing-video", &VideoPlayerCommand::Play)
+                .unwrap_err()
+                .contains("no native video component")
+        );
+    }
 }
