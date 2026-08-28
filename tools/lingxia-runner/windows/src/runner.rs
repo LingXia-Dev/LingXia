@@ -298,13 +298,21 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
         if let Some(appearance) = appearance {
             set_appearance(appearance)?;
         }
-        let capsule_changed = capsule
-            .is_some_and(|enabled| CAPSULE_ENABLED.swap(enabled, Ordering::AcqRel) != enabled);
+        let previous_capsule = capsule_enabled();
+        let capsule_changed = capsule.is_some_and(|enabled| enabled != previous_capsule);
+        if let Some(enabled) = capsule {
+            CAPSULE_ENABLED.store(enabled, Ordering::Release);
+        }
         // A bare appearance change must not rebuild frames or re-run browser
         // emulation; only a device, orientation, or capsule request touches
         // the frame (the capsule is part of the frame spec).
         if id.is_some() || landscape.is_some() || capsule_changed {
-            apply_device(index, landscape_value)?;
+            if let Err(err) = apply_device(index, landscape_value) {
+                if capsule_changed {
+                    CAPSULE_ENABLED.store(previous_capsule, Ordering::Release);
+                }
+                return Err(err);
+            }
         }
         Ok(device_state(index, landscape_value))
     }

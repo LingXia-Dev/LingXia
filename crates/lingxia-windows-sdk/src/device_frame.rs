@@ -310,7 +310,7 @@ pub(crate) fn set_device_frame_overlays_visible(window: isize, visible: bool) {
     native::set_frame_overlays_visible(window, visible);
 }
 
-pub(crate) use native::capsule_reserve_width;
+pub(crate) use native::visible_capsule_reserve_width;
 
 /// Shows a generic bottom sheet over the active framed window for `appid`.
 /// The caller owns the meaning of the text; the device frame only owns the
