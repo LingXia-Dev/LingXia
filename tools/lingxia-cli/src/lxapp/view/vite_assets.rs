@@ -47,6 +47,15 @@ pub(super) fn write_root_manifest(project: &Project) -> Result<()> {
                 }
             }
 
+            // Stamp the @lingxia line compiled into the page bundles so a
+            // loading runtime can check compatibility.
+            if let Some(sdk_version) =
+                crate::commands::project_upgrade::installed_lingxia_npm_version(&project.root)
+                && let Some(object) = value.as_object_mut()
+            {
+                object.insert("sdkVersion".to_string(), Value::String(sdk_version));
+            }
+
             fs::write(
                 project.output_dir.join("lxapp.json"),
                 serde_json::to_string_pretty(&value)?,
@@ -490,6 +499,35 @@ mod tests {
             manifest["tabBar"]["items"][0]["pagePath"].as_str(),
             Some("pages/home/index.tsx")
         );
+        // No node_modules in this fixture: nothing to stamp.
+        assert!(manifest.get("sdkVersion").is_none());
+    }
+
+    #[test]
+    fn write_root_manifest_stamps_the_installed_lingxia_line() {
+        let temp = tempdir().unwrap();
+        let mut project = make_project(temp.path());
+        project.framework = ProjectFramework::React;
+        project.pages = vec!["pages/home/index.tsx".to_string()];
+        write_file(
+            temp.path(),
+            "lxapp.json",
+            r#"{ "appId": "demo", "pages": [ { "name": "home", "path": "pages/home/index" } ] }"#,
+        );
+        write_file(
+            temp.path(),
+            "node_modules/@lingxia/page-runtime/package.json",
+            r#"{ "name": "@lingxia/page-runtime", "version": "0.12.3" }"#,
+        );
+        fs::create_dir_all(&project.output_dir).unwrap();
+
+        write_root_manifest(&project).unwrap();
+
+        let manifest: Value = serde_json::from_str(
+            &fs::read_to_string(project.output_dir.join("lxapp.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(manifest["sdkVersion"].as_str(), Some("0.12.3"));
     }
 
     #[test]

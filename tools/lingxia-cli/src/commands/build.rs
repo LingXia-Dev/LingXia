@@ -92,6 +92,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
 
     // Detect project root (current directory)
     let current_dir = env::current_dir()?;
+    crate::commands::project_upgrade::warn_if_behind(&current_dir);
     let mut project_root = current_dir.clone();
     let mut inferred_platform_from_subdir = None;
     let mut standalone_apple_swift_package = false;

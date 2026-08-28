@@ -43,6 +43,20 @@ pub fn cargo_compat_req() -> String {
     format!("~{}", env!("LINGXIA_RUST_CRATE_VERSION"))
 }
 
+/// Git ref for the `lingxia-windows-sdk` dependency (not on crates.io): the
+/// exact commit for dev builds of the CLI, the crates release tag otherwise.
+pub fn windows_sdk_git_ref() -> String {
+    let hash = env!("LINGXIA_COMMIT_HASH");
+    if hash != "unknown" && hash.len() >= 7 {
+        format!("rev = \"{hash}\"")
+    } else {
+        format!(
+            "tag = \"lingxia-crates-v{}\"",
+            env!("LINGXIA_RUST_CRATE_VERSION")
+        )
+    }
+}
+
 /// `~M.m.0` from a full semver. Used by scaffolds so an older framework
 /// patch still resolves after a base-only bump.
 pub fn minor_tilde_range(version: &str) -> String {
@@ -96,6 +110,51 @@ mod tests {
             npm_compat_range(),
             minor_tilde_range(env!("LINGXIA_RUST_CRATE_VERSION"))
         );
+    }
+
+    /// The version train: every `@lingxia/*` npm package publishes on the
+    /// workspace's major.minor line. A package left behind here would make
+    /// `~M.m.0` project ranges resolve a stale line.
+    #[test]
+    fn npm_packages_stay_on_the_workspace_line() {
+        let packages = concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages");
+        let line = {
+            let mut parts = env!("LINGXIA_RUST_CRATE_VERSION").split('.');
+            (
+                parts.next().unwrap().to_string(),
+                parts.next().unwrap().to_string(),
+            )
+        };
+        let mut checked = 0;
+        for entry in std::fs::read_dir(packages).expect("packages dir exists") {
+            let manifest = entry.expect("dir entry").path().join("package.json");
+            let Ok(content) = std::fs::read_to_string(&manifest) else {
+                continue;
+            };
+            let json: serde_json::Value = serde_json::from_str(&content).expect("valid json");
+            let Some(name) = json.get("name").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            if !name.starts_with("@lingxia/") {
+                continue;
+            }
+            let version = json
+                .get("version")
+                .and_then(|v| v.as_str())
+                .expect("package has a version");
+            let mut parts = version.split('.');
+            let package_line = (
+                parts.next().unwrap_or("").to_string(),
+                parts.next().unwrap_or("").to_string(),
+            );
+            assert_eq!(
+                package_line, line,
+                "{name} is on {version}, off the workspace {}.{} line",
+                line.0, line.1
+            );
+            checked += 1;
+        }
+        assert!(checked >= 5, "expected to check the @lingxia packages");
     }
 
     #[test]

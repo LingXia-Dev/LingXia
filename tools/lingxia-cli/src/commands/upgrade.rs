@@ -19,7 +19,17 @@ const EXIT_UPDATE_AVAILABLE: i32 = 10;
 const INSTALL_SCRIPT_URL: &str =
     "https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh";
 
-pub fn execute(check: bool, version: Option<String>) -> Result<i32> {
+pub fn execute(check: bool, version: Option<String>, cli_only: bool) -> Result<i32> {
+    // Inside a project (unless --cli or an explicit CLI version is asked for),
+    // `upgrade` means: bring the project's pinned LingXia versions to this
+    // CLI's line. The CLI itself already self-updates daily.
+    if !cli_only
+        && version.is_none()
+        && let Some(root) = crate::commands::project_upgrade::find_project_root()
+    {
+        return crate::commands::project_upgrade::execute(&root, check);
+    }
+
     let exe_path = update::current_exe_path()?
         .canonicalize()
         .context("Failed to resolve the running executable")?;

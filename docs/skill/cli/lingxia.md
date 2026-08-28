@@ -247,9 +247,17 @@ lingxia doctor --platform harmony
 
 ### Setup — `upgrade`, `skill`
 
-Low-frequency, and not part of building anything: `upgrade` moves the CLI,
-`lxdev` and the Runner to a newer release (which also happens on its own, once
-a day), and `skill install` writes this skill where an AI coding tool finds it.
+Low-frequency, and not part of building anything: outside a project, `upgrade`
+moves the CLI, `lxdev` and the Runner to a newer release (which also happens
+on its own, once a day; `--cli` forces this mode anywhere). **Inside a
+project**, `upgrade` brings the project's pinned LingXia versions to this
+CLI's line — the `@lingxia/*` npm ranges (lockfile refreshed via
+`npm install`), the `lingxia` crate requirement in `native/Cargo.toml`, the
+`lingxia-windows-sdk` git ref, and the gradle `lingxia.sdkVersion` fallback.
+`--check` prints the pending changes without writing (exit 10 when behind).
+Platform SDK binaries always follow the CLI at build time and need no project
+change; builds print a one-line hint when the project's line drifts from the
+CLI's. `skill install` writes this skill where an AI coding tool finds it.
 
 ### Distribution — `publish`, `auth`, `store`, `ds`, signing
 

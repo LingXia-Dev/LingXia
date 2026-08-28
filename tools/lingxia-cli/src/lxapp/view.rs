@@ -89,6 +89,7 @@ pub fn build(
     progress: Option<ViewProgress>,
     install_duration_hint: Option<Duration>,
 ) -> Result<ViewBuildReport> {
+    crate::commands::project_upgrade::warn_if_behind(&project.root);
     vite_pipeline::build(project, options, progress, install_duration_hint)
 }
 

@@ -47,7 +47,7 @@ pub(super) fn create_project(config: &ProjectConfig, versions: &LingXiaVersions)
                 created_any = true;
             }
             Platform::Windows => {
-                windows::create_windows_project(config, versions)?;
+                windows::create_windows_project(config)?;
                 created_any = true;
             }
         }
