@@ -199,6 +199,14 @@ pub struct Rect {
     pub height: f64,
 }
 
+impl Rect {
+    /// True when the snapshot has a real layout, not the 0×0 / 1×1 placeholder
+    /// used before the first measure (or while the document is hidden).
+    pub fn is_measured(&self) -> bool {
+        self.width >= 2.0 && self.height >= 2.0
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScrollChainAncestor {

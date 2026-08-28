@@ -143,6 +143,38 @@ impl IslandSession {
         })
     }
 
+    /// Layout used to paint `node`. Prefers the node's geometry snapshot;
+    /// a missing or degenerate (0×0 / 1×1) node rect falls back to the
+    /// root content rect so the first attach is not a 1×1 placeholder.
+    pub fn paint_rect_for_node(&self, node: &IslandPaintNode) -> Rect {
+        if let Some(rect) = self.last_node_rect(&node.node_ref.node_key)
+            && rect.is_measured()
+        {
+            return rect;
+        }
+        if let Some(rect) = self.last_root_content_rect(&node.node_ref) {
+            return rect;
+        }
+        self.last_node_rect(&node.node_ref.node_key)
+            .unwrap_or(Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 0.0,
+            })
+    }
+
+    fn last_root_content_rect(&self, node: &NodeRef) -> Option<Rect> {
+        self.last_geometry.as_ref().and_then(|snapshot| {
+            snapshot
+                .roots
+                .iter()
+                .find(|root| node.same_root(&root.root_ref))
+                .map(|root| root.content_rect.clone())
+                .filter(Rect::is_measured)
+        })
+    }
+
     pub fn accept_lease(&mut self, root: &RootRef, lease_id: &str, sequence: u64) -> bool {
         let Some(active) = self
             .lease_for_mut(root)
@@ -321,14 +353,7 @@ impl IslandSession {
                 .author_id
                 .clone()
                 .unwrap_or_else(|| node.node_ref.node_key.clone());
-            let rect = self
-                .last_node_rect(&node.node_ref.node_key)
-                .unwrap_or(Rect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: 0.0,
-                    height: 0.0,
-                });
+            let rect = self.paint_rect_for_node(&node);
             compositor.attach_above_webview(&id, &node.kind, &rect, &node.props);
         }
     }
@@ -381,14 +406,7 @@ impl IslandSession {
                     .author_id
                     .clone()
                     .unwrap_or_else(|| node.node_ref.node_key.clone());
-                let rect = self
-                    .last_node_rect(&node.node_ref.node_key)
-                    .unwrap_or(Rect {
-                        x: 0.0,
-                        y: 0.0,
-                        width: 0.0,
-                        height: 0.0,
-                    });
+                let rect = self.paint_rect_for_node(&node);
                 let visible = self.last_node_visible(&node.node_ref.node_key);
                 IslandHitTarget {
                     id,
