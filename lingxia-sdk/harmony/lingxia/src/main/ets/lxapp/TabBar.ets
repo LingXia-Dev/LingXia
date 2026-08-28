@@ -40,6 +40,15 @@ const TAB_BAR_ITEM_RED_DOT_SIZE = 8;
 const TAB_BAR_ITEM_RED_DOT_POSITION_X = 32;  // Position at right of icon (icon center + icon_size/2 + offset)
 const TAB_BAR_ITEM_RED_DOT_POSITION_Y = -2;
 
+// Overflow ("more") slot and its popup
+const TAB_BAR_MORE_DOT_SIZE = 4;
+const TAB_BAR_MORE_DOT_SPACING = 3;
+const TAB_BAR_OVERFLOW_COLUMNS = 5;
+const TAB_BAR_OVERFLOW_CELL_WIDTH = 64;
+const TAB_BAR_OVERFLOW_CELL_PADDING = 10;
+const TAB_BAR_OVERFLOW_PANEL_PADDING = 8;
+const TAB_BAR_OVERFLOW_RADIUS = 16;
+
 // Text max lines
 const TAB_BAR_ITEM_TEXT_MAX_LINES_VERTICAL = 2;
 const TAB_BAR_ITEM_TEXT_MAX_LINES_HORIZONTAL = 1;
@@ -102,6 +111,8 @@ export struct TabBar {
   // Bottom system-gesture inset (vp): the home-indicator zone swallows taps,
   // so the strip grows and the items sit above it.
   @Prop bottomInset: number = 0;
+  // Whether the overflow panel is open above the "more" slot.
+  @State private moreVisible: boolean = false;
 
   // Callback functions
   onTabSelected?: (appId: string, index: number, item: TabBarItem) => void;
@@ -260,13 +271,220 @@ export struct TabBar {
   }
 
   /**
-   * Build centered horizontal layout (original behavior)
+   * Build centered horizontal layout. Rust caps how many items a compact strip
+   * shows; past that the last slot becomes the overflow affordance.
    */
   @Builder
   buildCenteredHorizontalLayout() {
-    ForEach(this.tabbar.items, (item: TabBarItem, index: number) => {
-      this.buildTabItem(item, index)
+    ForEach(this.stripIndices(), (index: number) => {
+      this.buildTabItem(this.tabbar.items[index], index)
     })
+    if (this.overflowStart() >= 0) {
+      this.buildMoreItem()
+    }
+  }
+
+  /** First folded item index, or -1 when every item has its own slot. */
+  private overflowStart(): number {
+    const start: number = this.tabbar.overflowStartIndex ?? -1;
+    return start >= 0 && start < this.tabbar.items.length ? start : -1;
+  }
+
+  /** Item indices that keep a slot of their own in the strip. */
+  private stripIndices(): number[] {
+    const start: number = this.overflowStart();
+    const count: number = start >= 0 ? start : this.tabbar.items.length;
+    const indices: number[] = [];
+    for (let index = 0; index < count; index++) {
+      indices.push(index);
+    }
+    return indices;
+  }
+
+  /** Item indices only the overflow panel can reach. */
+  private overflowIndices(): number[] {
+    const start: number = this.overflowStart();
+    const indices: number[] = [];
+    if (start < 0) {
+      return indices;
+    }
+    for (let index = start; index < this.tabbar.items.length; index++) {
+      indices.push(index);
+    }
+    return indices;
+  }
+
+  /** The overflow slot stands in for the folded items, selection included. */
+  private isMoreSelected(): boolean {
+    const start: number = this.overflowStart();
+    return start >= 0 && this.tabbar.selectedIndex >= start;
+  }
+
+  /** Folded badges still have to surface, so "more" aggregates them to a dot. */
+  private overflowHasNotification(): boolean {
+    const indices: number[] = this.overflowIndices();
+    for (const index of indices) {
+      const item: TabBarItem = this.tabbar.items[index];
+      if (item.hasRedDot || (item.badge !== undefined && item.badge !== '')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @Builder
+  buildMoreItem() {
+    Column() {
+      Stack() {
+        Row({ space: TAB_BAR_MORE_DOT_SPACING }) {
+          Circle()
+            .width(TAB_BAR_MORE_DOT_SIZE)
+            .height(TAB_BAR_MORE_DOT_SIZE)
+            .fill(this.isMoreSelected() ? this.getSelectedColor() : this.getNormalColor())
+          Circle()
+            .width(TAB_BAR_MORE_DOT_SIZE)
+            .height(TAB_BAR_MORE_DOT_SIZE)
+            .fill(this.isMoreSelected() ? this.getSelectedColor() : this.getNormalColor())
+          Circle()
+            .width(TAB_BAR_MORE_DOT_SIZE)
+            .height(TAB_BAR_MORE_DOT_SIZE)
+            .fill(this.isMoreSelected() ? this.getSelectedColor() : this.getNormalColor())
+        }
+        .justifyContent(FlexAlign.Center)
+        .alignItems(VerticalAlign.Center)
+        .width(TAB_BAR_ITEM_ICON_SIZE)
+        .height(TAB_BAR_ITEM_ICON_SIZE)
+
+        if (this.overflowHasNotification()) {
+          Circle()
+            .width(TAB_BAR_ITEM_RED_DOT_SIZE)
+            .height(TAB_BAR_ITEM_RED_DOT_SIZE)
+            .fill(COLOR_RED_DOT)
+            .position({ x: TAB_BAR_ITEM_RED_DOT_POSITION_X, y: TAB_BAR_ITEM_RED_DOT_POSITION_Y })
+            .zIndex(1)
+        }
+      }
+      .width(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
+      .height(TAB_BAR_ITEM_ICON_SIZE)
+
+      Text($r('app.string.lx_tabbar_more'))
+        .fontSize(TAB_BAR_ITEM_TEXT_SIZE_HORIZONTAL)
+        .fontColor(this.isMoreSelected() ? this.getSelectedColor() : this.getNormalColor())
+        .margin({ top: TAB_BAR_ITEM_ICON_TEXT_SPACING })
+        .fontWeight(this.isTransparent() ? FontWeight.Medium : FontWeight.Normal)
+        .maxLines(TAB_BAR_ITEM_TEXT_MAX_LINES_HORIZONTAL)
+        .textAlign(TextAlign.Center)
+        .textShadow(this.isTransparent() ? {
+          radius: TEXT_SHADOW_RADIUS,
+          color: COLOR_TEXT_SHADOW,
+          offsetX: TEXT_SHADOW_OFFSET_X,
+          offsetY: TEXT_SHADOW_OFFSET_Y
+        } : undefined)
+    }
+    .layoutWeight(1)
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+    .margin({ top: TAB_BAR_ITEM_PADDING, bottom: TAB_BAR_ITEM_PADDING })
+    .onClick(() => {
+      this.moreVisible = !this.moreVisible;
+    })
+    .bindPopup(this.moreVisible, {
+      builder: (): void => this.buildOverflowPanel(),
+      placement: Placement.Top,
+      enableArrow: true,
+      popupColor: this.getOverflowPanelColor(),
+      radius: TAB_BAR_OVERFLOW_RADIUS,
+      onStateChange: (event: PopupStateChangeParam): void => {
+        // Tapping outside closes the popup natively; mirror that into our state.
+        if (!event.isVisible) {
+          this.moreVisible = false;
+        }
+      }
+    })
+  }
+
+  /**
+   * The folded items as a grid. Rows keep the strip's column count so a short
+   * final row stays aligned instead of spreading across the panel.
+   */
+  @Builder
+  buildOverflowPanel() {
+    Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Start }) {
+      ForEach(this.overflowIndices(), (index: number) => {
+        this.buildOverflowCell(this.tabbar.items[index], index)
+      })
+    }
+    .width(TAB_BAR_OVERFLOW_CELL_WIDTH * Math.min(this.overflowIndices().length, TAB_BAR_OVERFLOW_COLUMNS) +
+      TAB_BAR_OVERFLOW_PANEL_PADDING * 2)
+    .padding(TAB_BAR_OVERFLOW_PANEL_PADDING)
+  }
+
+  @Builder
+  buildOverflowCell(item: TabBarItem, index: number) {
+    Column() {
+      Stack() {
+        Image(this.getIconUrl(item, index))
+          .width(TAB_BAR_ITEM_ICON_SIZE)
+          .height(TAB_BAR_ITEM_ICON_SIZE)
+          .fillColor(this.tabbar.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
+          .objectFit(ImageFit.Contain)
+
+        if (item.badge) {
+          Text(item.badge)
+            .fontSize(TAB_BAR_ITEM_BADGE_FONT_SIZE)
+            .fontColor(COLOR_WHITE)
+            .backgroundColor(COLOR_BADGE_RED)
+            .borderRadius(TAB_BAR_ITEM_BADGE_BORDER_RADIUS)
+            .padding({
+              left: TAB_BAR_ITEM_BADGE_PADDING,
+              right: TAB_BAR_ITEM_BADGE_PADDING,
+              top: TAB_BAR_ITEM_BADGE_VERTICAL_PADDING,
+              bottom: TAB_BAR_ITEM_BADGE_VERTICAL_PADDING
+            })
+            .maxLines(1)
+            .textAlign(TextAlign.Center)
+            .position({ x: TAB_BAR_ITEM_BADGE_POSITION_X, y: TAB_BAR_ITEM_BADGE_POSITION_Y })
+            .zIndex(1)
+            .height(TAB_BAR_ITEM_BADGE_HEIGHT)
+        } else if (item.hasRedDot) {
+          Circle()
+            .width(TAB_BAR_ITEM_RED_DOT_SIZE)
+            .height(TAB_BAR_ITEM_RED_DOT_SIZE)
+            .fill(COLOR_RED_DOT)
+            .position({ x: TAB_BAR_ITEM_RED_DOT_POSITION_X, y: TAB_BAR_ITEM_RED_DOT_POSITION_Y })
+            .zIndex(1)
+        }
+      }
+      .width(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
+      .height(TAB_BAR_ITEM_ICON_SIZE)
+
+      if (item.text) {
+        Text(item.text)
+          .fontSize(TAB_BAR_ITEM_TEXT_SIZE_HORIZONTAL)
+          .fontColor(this.tabbar.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
+          .margin({ top: TAB_BAR_ITEM_ICON_TEXT_SPACING })
+          .maxLines(TAB_BAR_ITEM_TEXT_MAX_LINES_HORIZONTAL)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .textAlign(TextAlign.Center)
+      }
+    }
+    .width(TAB_BAR_OVERFLOW_CELL_WIDTH)
+    .padding({ top: TAB_BAR_OVERFLOW_CELL_PADDING, bottom: TAB_BAR_OVERFLOW_CELL_PADDING })
+    .alignItems(HorizontalAlign.Center)
+    .onClick(() => {
+      this.moreVisible = false;
+      if (this.onTabSelected) {
+        this.onTabSelected(this.appId, index, item);
+      }
+    })
+  }
+
+  /** Popup plate colour; follows the bar so the panel reads as part of it. */
+  private getOverflowPanelColor(): ResourceColor {
+    const background: number = this.tabbar.backgroundColor ?? 0;
+    // A transparent/immersive bar has no plate of its own to borrow.
+    return (background >>> 24) === 0 ? this.toResourceColor(0xFFFFFFFF) : this.toResourceColor(background);
   }
 
   /**

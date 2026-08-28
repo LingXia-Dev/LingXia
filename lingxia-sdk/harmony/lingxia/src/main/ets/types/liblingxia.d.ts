@@ -92,6 +92,8 @@ declare module 'liblingxia.so' {
     isVisible: boolean;
     items: TabBarItem[];
     selectedIndex: number;
+    /** First item folded into the overflow menu, or -1 when all items fit. */
+    overflowStartIndex: number;
   }
 
   /**
