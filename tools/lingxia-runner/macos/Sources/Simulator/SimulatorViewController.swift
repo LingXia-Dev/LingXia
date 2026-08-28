@@ -235,6 +235,14 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
             RunnerSupport.TabBar.refresh(tabBar)
         }
 
+        // Only phone shapes reach this host — pad and desktop run the surface
+        // shell, which lists every item in its sidebar. Stating it anyway keeps
+        // the strip honest if a roomier shape is ever routed here.
+        RunnerSupport.TabBar.setCompact(
+            tabBarView,
+            compact: RunnerApp.shared.selectedDeviceSize.shape == .phone
+        )
+
         if let tabBar = tabBarView {
             view.addSubview(tabBar, positioned: .above, relativeTo: webViewContainer)
             updateWebViewEdgeConstraints(tabBar: tabBar, config: tabBarConfig)
