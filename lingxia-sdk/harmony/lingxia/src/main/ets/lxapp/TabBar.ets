@@ -194,17 +194,14 @@ export struct TabBar {
         }
 
         // Tab icon - support full path icons from native
-        if (item.iconPath || item.selectedIconPath) {
-          Image(this.getIconUrl(item, index))
+        if (item.iconPath) {
+          Image(this.getIconUrl(item))
             .width(TAB_BAR_ITEM_ICON_SIZE)
             .height(TAB_BAR_ITEM_ICON_SIZE)
             .fillColor(this.tabbar.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
             .objectFit(ImageFit.Contain)
             .onError((error: ImageError): void => {
-              const currentIconPath: string | undefined = this.tabbar.selectedIndex === index ?
-                (item.selectedIconPath || item.iconPath) :
-                item.iconPath;
-              LxLog.e(TAG, `Tab ${index} icon load error: ${JSON.stringify(error)}, path: ${currentIconPath}`);
+              LxLog.e(TAG, `Tab ${index} icon load error: ${JSON.stringify(error)}, path: ${item.iconPath}`);
             })
         }
 
@@ -447,7 +444,7 @@ export struct TabBar {
             .opacity(TAB_BAR_ACTIVE_INDICATOR_OPACITY)
         }
 
-        Image(this.getIconUrl(item, index))
+        Image(this.getIconUrl(item))
           .width(TAB_BAR_ITEM_ICON_SIZE)
           .height(TAB_BAR_ITEM_ICON_SIZE)
           .fillColor(this.tabbar.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
@@ -513,10 +510,8 @@ export struct TabBar {
   /**
    * Get icon URL with proper file:// prefix for absolute paths
    */
-  private getIconUrl(item: TabBarItem, index: number): string {
-    const iconPath: string | undefined = this.tabbar.selectedIndex === index ?
-      (item.selectedIconPath || item.iconPath) :
-      item.iconPath;
+  private getIconUrl(item: TabBarItem): string {
+    const iconPath: string | undefined = item.iconPath;
 
     if (!iconPath) {
       return '';

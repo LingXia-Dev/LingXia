@@ -990,11 +990,6 @@ fn create_tab_bar_item<'a>(
         Ok(s) => s,
         Err(_) => return None,
     };
-    let selected_icon_path = match env.new_string(item.selected_icon_path.as_deref().unwrap_or(""))
-    {
-        Ok(s) => s,
-        Err(_) => return None,
-    };
 
     // Create badge string from actual Rust data (nullable)
     let badge_jstring = match &item.badge {
@@ -1009,16 +1004,14 @@ fn create_tab_bar_item<'a>(
     env
         .new_object(
             tab_item_class,
-            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;ZZ)V"),
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Z)V"),
             &[
                 (&page_path).into(),
                 (&text).into(),
                 (&icon_path).into(),
-                (&selected_icon_path).into(),
                 selected.into(),
                 (&badge_jstring).into(),
                 item.has_red_dot.into(), // Use actual red dot data from Rust
-                item.has_selected_icon.into(),
             ],
         )
         .ok()

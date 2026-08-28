@@ -258,12 +258,7 @@ internal object TabBarOverflowSheet {
         state: TabBarState,
         density: Float
     ): android.graphics.drawable.Drawable {
-        val path = if (selected && item.selectedIconPath.isNotEmpty()) {
-            item.selectedIconPath
-        } else {
-            item.iconPath
-        }
-        val file = File(path)
+        val file = File(item.iconPath)
         val loaded = if (file.exists()) {
             android.graphics.drawable.Drawable.createFromPath(file.absolutePath)
         } else {
@@ -275,10 +270,7 @@ internal object TabBarOverflowSheet {
             val size = (CELL_ICON_SIZE_DP * density).toInt()
             setSize(size, size)
         }
-        // Mirrors the strip: a single icon is a template glyph the panel tints.
-        if (item.hasSelectedIcon) {
-            return drawable
-        }
+        // Mirrors the strip: the icon is a template glyph the panel tints.
         return drawable.mutate().apply {
             setTint(if (selected) state.selectedColor else state.color)
         }

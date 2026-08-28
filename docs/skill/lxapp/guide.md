@@ -609,62 +609,31 @@ Rules:
 
 - `items` holds **2 to 10** entries.
 - Every `items[].pagePath` must match a registered page path under `pages[]`.
-- `iconPath` / `selectedIconPath` are project-relative — usually under `public/` so they're copied verbatim into `dist/` by the default static-assets rule.
-- The first item is initially selected. Placement and dimensions are host-owned;
-  desktop hosts project the same items into their sidebar.
+- `iconPath` is project-relative — usually under `public/`, so the default
+  static-assets rule copies it verbatim into `dist/`.
+- The first item is initially selected. Placement and dimensions are host-owned.
 
-### One icon per tab is enough
+### Icons
 
-The host always marks the active tab with a circular **active indicator** behind
-its icon. What `selectedIconPath` controls is only where the icon's *colour*
-comes from:
+One icon per item, drawn as a **template**: the host tints it with
+`foregroundColor` / `selectedForegroundColor` and marks the active tab with a
+circle behind it. Ship a monochrome glyph — a multi-colour PNG is flattened to
+one colour. There is no second "selected" icon to author.
 
-- **Omit it** (the example above does) and the icon is treated as a template
-  glyph: the host tints it with `foregroundColor` / `selectedForegroundColor`.
-  One monochrome PNG per tab, and both states come out right.
-- **Supply it** when the artwork itself should change — a filled version of an
-  outlined glyph, say — and both icons are drawn exactly as authored:
+### More than five tabs
 
-```json
-{
-  "text":             "Home",
-  "pagePath":         "pages/home/index",
-  "iconPath":         "public/home.png",
-  "selectedIconPath": "public/home_filled.png"
-}
-```
+A phone strip fits five slots. Past that the host shows the first four, then a
+**More** slot; tapping it opens the rest in a panel above the bar. Desktop and
+tablet hosts have the room and list every item in their sidebar instead.
 
-Because the indicator is drawn either way, the two styles look consistent side
-by side, and a tab can be switched from one to the other by adding or removing a
-single key. Templates only work on artwork whose colour is meant to be replaced;
-a multi-colour icon should ship the pair so it keeps its own palette.
+The split is host-owned — nothing to configure, no API to open the panel. What
+follows:
 
-### More than five tabs on a phone
-
-A phone-sized strip only has room for five slots. Declare more than five items
-and the host renders the first four, then a **More** slot holding the rest:
-
-- **Phone** hosts (Android, iOS, Harmony, and the runner's phone shapes) open
-  the folded items in a panel above the bar; picking one switches to it like any
-  other tab.
-- **Desktop and tablet** hosts have the room and show every item — macOS and
-  Windows in their sidebar, the runner's pad and desktop shapes likewise. The
-  More slot is a compact-layout affordance only.
-
-The split is host-owned. There is nothing to configure and no API to open the
-panel; a host decides from its own shape whether it is folding at all.
-
-What follows from that:
-
-- The **first four** items are the ones always one tap away. Order the list so
-  the most-used pages come first.
-- While a folded page is active, the More slot carries the selected tint; the
-  panel marks the active item.
-- A badge or red dot on a folded item shows as a red dot on the More slot, so
-  notifications are never hidden.
-- Only the items holding a slot are warmed at launch. Folded pages load on
-  first pick, so a ten-tab lxapp starts no slower than a four-tab one — one
-  more reason to order the list by how often a page is used.
+- Order the list by use: the first four are the ones always one tap away.
+- "More" carries the selected tint while a folded page is active, and shows a
+  red dot if any folded item has a badge or dot.
+- Only items holding a slot are warmed at launch, so ten tabs start as fast as
+  four.
 
 ### Switching tabs at runtime
 

@@ -78,13 +78,9 @@ internal data class TabBarItem(
     val pagePath: String,                 // Page path to navigate to
     val text: String?,                    // Tab text label (optional, null means no text)
     val iconPath: String,                 // Absolute path to the icon file
-    val selectedIconPath: String,         // Absolute path to the selected state icon file
     val selected: Boolean = false,        // Whether this tab is selected
     val badge: String? = null,            // Badge text (optional)
-    val hasRedDot: Boolean = false,       // Whether to show red dot indicator
-    // A distinct selected icon was declared, so the icon swap is the selected
-    // state. Without one the strip draws an active indicator instead.
-    val hasSelectedIcon: Boolean = false
+    val hasRedDot: Boolean = false        // Whether to show red dot indicator
 )
 
 /**
@@ -390,12 +386,10 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     }
 
     /**
-     * The active indicator belongs to the bar, not to an item's artwork: every
-     * slot draws it when selected. Making it depend on whether an item shipped
-     * a selected icon would put two different selected states in one strip.
+     * The active indicator belongs to the bar, not to an item's artwork, so
+     * every slot draws it when selected — a strip must not show two different
+     * selected states.
      */
-    private fun slotNeedsActiveIndicator(slot: Slot): Boolean = true
-
     private fun activeIndicatorDrawable(): Drawable = GradientDrawable().apply {
         shape = GradientDrawable.OVAL
         setColor((config.selectedColor and 0x00FFFFFF) or (ACTIVE_INDICATOR_ALPHA shl 24))
@@ -439,11 +433,7 @@ internal class TabBar(context: Context) : LinearLayout(context) {
                 val badgeSpace = (10 * resources.displayMetrics.density).toInt()
                 // The active indicator sits behind the icon, so the wrapper has
                 // to be at least as tall and wide or it squares the circle off.
-                val indicatorSize = if (slotNeedsActiveIndicator(slot)) {
-                    (ACTIVE_INDICATOR_SIZE_DP * resources.displayMetrics.density).toInt()
-                } else {
-                    0
-                }
+                val indicatorSize = (ACTIVE_INDICATOR_SIZE_DP * resources.displayMetrics.density).toInt()
                 val wrapperWidth = maxOf(iconSizePx + badgeSpace, indicatorSize)
                 val wrapperHeight = maxOf(
                     iconSizePx + (4 * resources.displayMetrics.density).toInt(),
@@ -471,16 +461,14 @@ internal class TabBar(context: Context) : LinearLayout(context) {
                 setImageDrawable(slotIcon(slot, isSelected))
             }
 
-            // Behind the icon, so a single-icon item still reads as selected.
-            if (slotNeedsActiveIndicator(slot)) {
-                val indicatorSize = (ACTIVE_INDICATOR_SIZE_DP * resources.displayMetrics.density).toInt()
-                iconWrapper.addView(View(context).apply {
-                    layoutParams = FrameLayout.LayoutParams(indicatorSize, indicatorSize)
-                        .apply { gravity = Gravity.CENTER }
-                    background = activeIndicatorDrawable()
-                    visibility = if (isSelected) View.VISIBLE else View.INVISIBLE
-                })
-            }
+            // Added before the icon so it sits behind it.
+            iconWrapper.addView(View(context).apply {
+                val size = (ACTIVE_INDICATOR_SIZE_DP * resources.displayMetrics.density).toInt()
+                layoutParams = FrameLayout.LayoutParams(size, size)
+                    .apply { gravity = Gravity.CENTER }
+                background = activeIndicatorDrawable()
+                visibility = if (isSelected) View.VISIBLE else View.INVISIBLE
+            })
 
             iconWrapper.addView(icon)
 
@@ -540,12 +528,9 @@ internal class TabBar(context: Context) : LinearLayout(context) {
 
     private fun updateTabState(tabView: LinearLayout, slot: Slot, selected: Boolean) {
         val iconContainer = tabView.getChildAt(0) as FrameLayout
-        // The indicator is added before the icon, so it shifts the icon's index.
-        val hasIndicator = slotNeedsActiveIndicator(slot)
-        if (hasIndicator) {
-            iconContainer.getChildAt(0).visibility = if (selected) View.VISIBLE else View.INVISIBLE
-        }
-        val icon = iconContainer.getChildAt(if (hasIndicator) 1 else 0) as ImageView
+        // The indicator is added before the icon, so it holds index 0.
+        iconContainer.getChildAt(0).visibility = if (selected) View.VISIBLE else View.INVISIBLE
+        val icon = iconContainer.getChildAt(1) as ImageView
         icon.setImageDrawable(slotIcon(slot, selected))
 
         if (tabView.childCount > 1) {
@@ -582,14 +567,8 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     }
 
     private fun getIconDrawable(item: TabBarItem, selected: Boolean): Drawable {
-        val iconPath = if (selected && item.selectedIconPath.isNotEmpty()) {
-            item.selectedIconPath
-        } else {
-            item.iconPath
-        }
-
         val drawable = try {
-            val iconFile = File(iconPath)
+            val iconFile = File(item.iconPath)
             if (iconFile.exists()) {
                 android.graphics.drawable.Drawable.createFromPath(iconFile.absolutePath)
                     ?: createDefaultIcon(selected)
@@ -601,12 +580,8 @@ internal class TabBar(context: Context) : LinearLayout(context) {
             createDefaultIcon(selected)
         }
 
-        // An item that ships an icon pair owns its own artwork in both states.
-        // A single icon is a template glyph instead, so the strip tints it and
-        // selection reads the same as it does on a pair.
-        if (item.hasSelectedIcon) {
-            return drawable
-        }
+        // The icon is a template glyph: the strip owns its colour in both
+        // states, which is why an item never ships selected artwork.
         return drawable.mutate().apply {
             setTint(if (selected) config.selectedColor else config.color)
         }

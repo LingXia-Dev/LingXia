@@ -733,7 +733,6 @@ pub struct LxAppRuntimeTabBarItemInfo {
     pub index: usize,
     pub text: Option<String>,
     pub icon_path: Option<String>,
-    pub selected_icon_path: Option<String>,
     pub badge: Option<String>,
     pub red_dot: bool,
 }
@@ -1045,7 +1044,6 @@ impl LxApp {
                     index,
                     text: item.text,
                     icon_path: item.icon_path,
-                    selected_icon_path: item.selected_icon_path,
                     badge: item.badge,
                     red_dot: item.has_red_dot,
                 })

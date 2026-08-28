@@ -60,13 +60,9 @@ pub struct TabItem {
     pub page_path: String,
     pub text: Option<String>,
     pub icon_path: Option<String>,
-    pub selected_icon_path: Option<String>,
     pub selected: bool,
     pub badge: Option<String>, // Optional - only populated by get_tab_bar_item
     pub has_red_dot: Option<bool>, // Optional - only populated by get_tab_bar_item
-    /// A distinct selected icon is in play; without one the host indicates
-    /// selection itself instead of swapping the drawable.
-    pub has_selected_icon: bool,
 }
 
 /// NAPI-compatible NavigationBar state
@@ -412,11 +408,9 @@ fn get_tab_bar(appid: String) -> Option<TabBarState> {
                     page_path: item.page_path.clone(),
                     text: item.text.clone(),
                     icon_path: item.icon_path.clone(),
-                    selected_icon_path: item.selected_icon_path.clone(),
                     selected: tabbar.selected_index == index as i32,
                     badge: item.badge.clone(),
                     has_red_dot: Some(item.has_red_dot),
-                    has_selected_icon: item.has_selected_icon,
                 })
                 .collect();
 

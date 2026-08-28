@@ -327,7 +327,7 @@ fn validate_page_chrome_manifest(manifest: &Value) -> Result<()> {
         }
         reject_unknown_fields(
             item,
-            &["pagePath", "text", "iconPath", "selectedIconPath"],
+            &["pagePath", "text", "iconPath"],
             &format!("tabBar.items[{index}]"),
         )?;
         let page_path = item
@@ -339,7 +339,7 @@ fn validate_page_chrome_manifest(manifest: &Value) -> Result<()> {
                 "tabBar.items[{index}].pagePath: '{page_path}' is not a registered page"
             ));
         }
-        for field in ["text", "iconPath", "selectedIconPath"] {
+        for field in ["text", "iconPath"] {
             if let Some(value) = item.get(field)
                 && !value.is_string()
             {

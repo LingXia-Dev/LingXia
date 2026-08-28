@@ -424,8 +424,8 @@ crammed in the moment the window crosses 840.
   | `backgroundColor` | Bar background | Expanded group (items container) background |
   | `dividerColor` | Bar divider | Attribution line base color |
 
-  Colors apply to text and structural elements only; icons switch via
-  `iconPath`/`selectedIconPath` pairs exactly as on mobile, with no tinting.
+  Colors apply to text and structural elements alike; an item's single
+  `iconPath` is a template the host tints, exactly as on mobile.
 - macOS and Windows MUST match in structure, spacing, selection, and
   separation; only system-control differences are allowed.
 

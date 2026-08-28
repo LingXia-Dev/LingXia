@@ -73,13 +73,9 @@ declare module 'liblingxia.so' {
     pagePath: string;
     text: string;
     iconPath: string;
-    selectedIconPath: string;
     selected: boolean;
     badge?: string;         // Badge text (e.g., "99+", "NEW")
     hasRedDot?: boolean;    // Show red dot indicator
-    /** A distinct selected icon was declared; without one the host draws an
-     *  active indicator instead of swapping the drawable. */
-    hasSelectedIcon: boolean;
   }
 
   /**

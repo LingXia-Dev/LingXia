@@ -69,7 +69,6 @@ extension TabBarItem {
     var cachedPagePath: String { page_path.toString() }
     var cachedText: String { text.toString() }
     var cachedIconPath: String { icon_path.toString() }
-    var cachedSelectedIconPath: String { selected_icon_path.toString() }
 }
 
 /// TabBar styling helpers
@@ -211,9 +210,7 @@ struct LxAppTabBar: View {
 
     @ViewBuilder
     private func buildTabIcon(item: TabBarItem, isSelected: Bool, forceColor: Color) -> some View {
-        let iconPath = isSelected && !item.cachedSelectedIconPath.isEmpty
-            ? item.cachedSelectedIconPath
-            : item.cachedIconPath
+        let iconPath = item.cachedIconPath
 
         let iconColor = forceColor
 
@@ -225,7 +222,7 @@ struct LxAppTabBar: View {
         } else if iconPath.hasPrefix("/") {
             if let image = loadPlatformImage(from: iconPath) {
                 image
-                    .renderingMode(item.has_selected_icon ? .original : .template)
+                    .renderingMode(.template)
                     .resizable()
                     .frame(width: LxAppTheme.Metrics.tabIconSize, height: LxAppTheme.Metrics.tabIconSize)
                     .foregroundColor(iconColor)
@@ -233,7 +230,7 @@ struct LxAppTabBar: View {
         } else {
             if let bundleImage = loadBundleImage(named: iconPath) {
                 bundleImage
-                    .renderingMode(item.has_selected_icon ? .original : .template)
+                    .renderingMode(.template)
                     .resizable()
                     .frame(width: LxAppTheme.Metrics.tabIconSize, height: LxAppTheme.Metrics.tabIconSize)
                     .foregroundColor(iconColor)
@@ -522,9 +519,7 @@ struct MacOSLxAppTabBar: View {
 
     @ViewBuilder
     private func buildTabIcon(item: TabBarItem, isSelected: Bool, forceColor: Color) -> some View {
-        let iconPath = isSelected && !item.cachedSelectedIconPath.isEmpty
-            ? item.cachedSelectedIconPath
-            : item.cachedIconPath
+        let iconPath = item.cachedIconPath
 
         let iconColor = forceColor
 
@@ -536,7 +531,7 @@ struct MacOSLxAppTabBar: View {
         } else if iconPath.hasPrefix("/") {
             if let image = loadPlatformImage(from: iconPath) {
                 image
-                    .renderingMode(item.has_selected_icon ? .original : .template)
+                    .renderingMode(.template)
                     .resizable()
                     .frame(width: LxAppTheme.Metrics.tabIconSize, height: LxAppTheme.Metrics.tabIconSize)
                     .foregroundColor(iconColor)
@@ -544,7 +539,7 @@ struct MacOSLxAppTabBar: View {
         } else {
             if let bundleImage = loadBundleImage(named: iconPath) {
                 bundleImage
-                    .renderingMode(item.has_selected_icon ? .original : .template)
+                    .renderingMode(.template)
                     .resizable()
                     .frame(width: LxAppTheme.Metrics.tabIconSize, height: LxAppTheme.Metrics.tabIconSize)
                     .foregroundColor(iconColor)
@@ -856,24 +851,14 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         iconView.contentMode = .scaleAspectFit
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
-        let iconPath = isSelected && !item.selected_icon_path.toString().isEmpty
-            ? item.selected_icon_path.toString()
-            : item.icon_path.toString()
+        let iconPath = item.icon_path.toString()
 
-        // An item shipping an icon pair owns its artwork in both states; a
-        // single icon is a template glyph the strip tints instead.
-        let template = !item.has_selected_icon
-        let iconColor = if template {
-            isSelected
-                ? PlatformColor(argb: tabBarConfig?.selected_color ?? 0)
-                : PlatformColor(argb: tabBarConfig?.color ?? 0)
-        } else {
-            isSelected ? UIColor.systemBlue : UIColor.secondaryLabel
-        }
+        // The icon is a template glyph the strip tints in both states.
+        let iconColor = isSelected
+            ? PlatformColor(argb: tabBarConfig?.selected_color ?? 0)
+            : PlatformColor(argb: tabBarConfig?.color ?? 0)
 
-        let render: (UIImage?) -> UIImage? = { image in
-            template ? image?.withRenderingMode(.alwaysTemplate) : image
-        }
+        let render: (UIImage?) -> UIImage? = { $0?.withRenderingMode(.alwaysTemplate) }
         if iconPath.hasPrefix("SF:") {
             let symbolName = String(iconPath.dropFirst(3))
             iconView.image = UIImage(systemName: symbolName)

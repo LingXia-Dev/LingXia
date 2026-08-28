@@ -73,8 +73,6 @@ pub struct TabBarItemPatch {
     #[serde(default)]
     pub icon_path: PatchField<String>,
     #[serde(default)]
-    pub selected_icon_path: PatchField<String>,
-    #[serde(default)]
     pub badge: PatchField<String>,
     #[serde(default)]
     pub red_dot: ValuePatchField<bool>,
@@ -105,47 +103,27 @@ pub struct TabBarItem {
     pub page_path: String,
     #[serde(default)]
     pub text: Option<String>,
+    /// One icon per item, drawn as a template: the host tints it for both
+    /// states and marks the active tab with its own indicator, so an item
+    /// never ships a second piece of artwork.
     #[serde(default)]
     pub icon_path: Option<String>,
-    #[serde(default)]
-    pub selected_icon_path: Option<String>,
 
     #[serde(skip)]
     manifest_text: Option<String>,
     #[serde(skip)]
     manifest_icon_path: Option<String>,
     #[serde(skip)]
-    manifest_selected_icon_path: Option<String>,
-    #[serde(skip)]
-    manifest_has_selected_icon: bool,
-    #[serde(skip)]
     pub badge: Option<String>,
     #[serde(skip)]
     pub has_red_dot: bool,
-    /// A distinct selected icon is in play, so the icon swap IS the selected
-    /// state. Without one, `selected_icon_path` mirrors `icon_path` and the
-    /// host must indicate selection itself.
-    #[serde(skip)]
-    pub has_selected_icon: bool,
 }
 
 impl TabBarItem {
     fn initialize_runtime(&mut self, base_path: &Path) {
         self.icon_path = Some(resolve_asset_path(base_path, self.icon_path.as_deref()));
-        let declared_selected_icon = self
-            .selected_icon_path
-            .as_deref()
-            .is_some_and(|path| !path.trim().is_empty());
-        self.selected_icon_path = Some(if declared_selected_icon {
-            resolve_asset_path(base_path, self.selected_icon_path.as_deref())
-        } else {
-            self.icon_path.clone().unwrap_or_default()
-        });
-        self.manifest_has_selected_icon = declared_selected_icon;
-        self.has_selected_icon = declared_selected_icon;
         self.manifest_text = self.text.clone();
         self.manifest_icon_path = self.icon_path.clone();
-        self.manifest_selected_icon_path = self.selected_icon_path.clone();
         self.badge = None;
         self.has_red_dot = false;
     }
@@ -158,10 +136,6 @@ impl TabBarItem {
         self.icon_path = value.or_else(|| self.manifest_icon_path.clone());
     }
 
-    fn set_selected_icon_override(&mut self, value: Option<String>) {
-        self.has_selected_icon = value.is_some() || self.manifest_has_selected_icon;
-        self.selected_icon_path = value.or_else(|| self.manifest_selected_icon_path.clone());
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -208,11 +182,6 @@ impl TabBar {
                 ));
             }
             validate_asset_path(item.icon_path.as_deref(), index, "iconPath")?;
-            validate_asset_path(
-                item.selected_icon_path.as_deref(),
-                index,
-                "selectedIconPath",
-            )?;
         }
         Ok(())
     }
@@ -344,17 +313,6 @@ impl TabBar {
             return false;
         };
         item.set_icon_override(icon_path);
-        true
-    }
-
-    pub fn set_item_selected_icon(&mut self, index: i32, icon_path: Option<String>) -> bool {
-        let Some(item) = usize::try_from(index)
-            .ok()
-            .and_then(|index| self.items.get_mut(index))
-        else {
-            return false;
-        };
-        item.set_selected_icon_override(icon_path);
         true
     }
 
@@ -492,14 +450,6 @@ impl TabBar {
             apply_string_patch(&icon, |value| {
                 self.set_item_icon(item.index, value);
             });
-            let selected_icon = resolve_string_patch(
-                &item.selected_icon_path,
-                &mut resolve_icon,
-                &format!("{path}.selectedIconPath"),
-            )?;
-            apply_string_patch(&selected_icon, |value| {
-                self.set_item_selected_icon(item.index, value);
-            });
             apply_string_patch(&badge, |value| {
                 self.set_badge(item.index, value);
             });
@@ -533,8 +483,6 @@ impl TabBar {
         for (item, original_item) in self.items.iter_mut().zip(&original.items) {
             item.text.clone_from(&original_item.text);
             item.icon_path.clone_from(&original_item.icon_path);
-            item.selected_icon_path
-                .clone_from(&original_item.selected_icon_path);
             item.badge.clone_from(&original_item.badge);
             item.has_red_dot = original_item.has_red_dot;
         }
@@ -864,36 +812,6 @@ mod tests {
         assert_eq!(items(10).compact_overflow_start(), Some(4));
         assert_eq!(items(5).compact_overflow_start_index(), -1);
         assert_eq!(items(10).compact_overflow_start_index(), 4);
-    }
-
-    #[test]
-    fn selected_icon_presence_survives_runtime_overrides() {
-        let mut single: TabBarItem = serde_json::from_value(serde_json::json!({
-            "pagePath": "pages/home/index",
-            "iconPath": "public/home.png"
-        }))
-        .unwrap();
-        single.initialize_runtime(Path::new("/app"));
-        assert!(!single.has_selected_icon);
-        // Falling back keeps one drawable in play, so the host has to show
-        // selection some other way.
-        assert_eq!(single.selected_icon_path, single.icon_path);
-
-        single.set_selected_icon_override(Some("/app/public/home_on.png".into()));
-        assert!(single.has_selected_icon);
-        single.set_selected_icon_override(None);
-        assert!(!single.has_selected_icon);
-
-        let mut paired: TabBarItem = serde_json::from_value(serde_json::json!({
-            "pagePath": "pages/home/index",
-            "iconPath": "public/home.png",
-            "selectedIconPath": "public/home_on.png"
-        }))
-        .unwrap();
-        paired.initialize_runtime(Path::new("/app"));
-        assert!(paired.has_selected_icon);
-        paired.set_selected_icon_override(None);
-        assert!(paired.has_selected_icon);
     }
 
     #[test]

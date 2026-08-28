@@ -1708,7 +1708,6 @@ export type TabBarItemPatch = {
     index: number;
     text?: string | null;
     iconPath?: string | null;
-    selectedIconPath?: string | null;
     badge?: string | null;
     redDot?: boolean;
 };

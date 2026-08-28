@@ -578,7 +578,6 @@ export interface LxAppRuntimeTabBarInfo {
     index: number;
     text: string | null;
     icon_path: string | null;
-    selected_icon_path: string | null;
     badge: string | null;
     red_dot: boolean;
   }>;
