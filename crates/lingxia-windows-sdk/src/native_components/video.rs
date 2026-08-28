@@ -820,17 +820,19 @@ pub(super) fn dispatch_video_command(
     };
     let Some((key, parent)) = target else {
         return match command {
-            // Island video mounts after the WebView2 message turn. Pause/stop
+            // Island video mounts after the WebView2 message turn. Play/pause/stop
             // from `lx.createVideoContext` must not throw while that apply is
-            // still queued (the shape-fixture spec clicks pause immediately).
-            VideoPlayerCommand::Pause | VideoPlayerCommand::Stop => Ok(()),
+            // still queued (the showcase view notifies `play` on autoplay).
+            VideoPlayerCommand::Play | VideoPlayerCommand::Pause | VideoPlayerCommand::Stop => {
+                Ok(())
+            }
             _ => Err(format!("no native video component '{component_id}'")),
         };
     };
     let command = command.clone();
     let quiet = matches!(
         command,
-        VideoPlayerCommand::Pause | VideoPlayerCommand::Stop
+        VideoPlayerCommand::Play | VideoPlayerCommand::Pause | VideoPlayerCommand::Stop
     );
     let posted = run_on_window_thread(parent, move || apply_video_command(&key, &command));
     if posted || quiet {
@@ -1041,10 +1043,9 @@ mod tests {
             dispatch_video_command("missing-video", &VideoPlayerCommand::Stop),
             Ok(())
         );
-        assert!(
-            dispatch_video_command("missing-video", &VideoPlayerCommand::Play)
-                .unwrap_err()
-                .contains("no native video component")
+        assert_eq!(
+            dispatch_video_command("missing-video", &VideoPlayerCommand::Play),
+            Ok(())
         );
     }
 }
