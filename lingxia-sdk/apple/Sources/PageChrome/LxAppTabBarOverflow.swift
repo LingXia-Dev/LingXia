@@ -180,9 +180,8 @@ final class LxAppTabBarOverflowPanel: UIView {
         icon.tintColor = selected
             ? PlatformColor(argb: config.selected_color)
             : PlatformColor(argb: config.color)
-        // Mirrors the strip: a single-icon item needs chrome to read as
-        // selected, since there is no second drawable to swap in.
-        if selected, !item.has_selected_icon {
+        // Mirrors the strip: the indicator marks whatever is selected.
+        if selected {
             let indicator = UIView()
             indicator.backgroundColor = PlatformColor(argb: config.selected_color)
                 .withAlphaComponent(TabBarMetrics.activeIndicatorOpacity)

@@ -167,9 +167,9 @@ struct LxAppTabBar: View {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
                 // Tab icon with badge and red dot overlay
                 ZStack {
-                    // A single-icon item has no swap to signal selection, so the
-                    // strip draws an active indicator behind it instead.
-                    if isSelected, let rustItem, !rustItem.has_selected_icon {
+                    // The indicator belongs to the bar, not to an item's
+                    // artwork: whatever is selected gets it.
+                    if isSelected {
                         Circle()
                             .fill(Color(PlatformColor(argb: config.selected_color))
                                 .opacity(TabBarMetrics.activeIndicatorOpacity))
@@ -364,9 +364,9 @@ struct MacOSLxAppTabBar: View {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
                 // Tab icon with badge and red dot overlay
                 ZStack {
-                    // A single-icon item has no swap to signal selection, so the
-                    // strip draws an active indicator behind it instead.
-                    if isSelected, let rustItem, !rustItem.has_selected_icon {
+                    // The indicator belongs to the bar, not to an item's
+                    // artwork: whatever is selected gets it.
+                    if isSelected {
                         Circle()
                             .fill(Color(PlatformColor(argb: config.selected_color))
                                 .opacity(TabBarMetrics.activeIndicatorOpacity))
@@ -888,9 +888,9 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             }
         }
 
-        // A single-icon item has no swap to signal selection, so the strip
-        // draws a Material-style active indicator behind it instead.
-        if isSelected, !item.has_selected_icon {
+        // The indicator belongs to the bar, not to an item's artwork:
+        // whatever is selected gets it.
+        if isSelected {
             let indicator = UIView()
             indicator.backgroundColor = PlatformColor(argb: tabBarConfig?.selected_color ?? 0)
                 .withAlphaComponent(TabBarMetrics.activeIndicatorOpacity)

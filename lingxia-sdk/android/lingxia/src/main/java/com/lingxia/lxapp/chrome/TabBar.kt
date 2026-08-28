@@ -390,15 +390,11 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     }
 
     /**
-     * Whether this slot must draw its own selected state. An item with a
-     * distinct selected icon already reads as selected through the swap; one
-     * with a single icon would otherwise look identical to its neighbours.
+     * The active indicator belongs to the bar, not to an item's artwork: every
+     * slot draws it when selected. Making it depend on whether an item shipped
+     * a selected icon would put two different selected states in one strip.
      */
-    private fun slotNeedsActiveIndicator(slot: Slot): Boolean = when (slot) {
-        is Slot.Tab -> !items[slot.itemIndex].hasSelectedIcon
-        // "More" has no app-supplied icon pair; its tinted glyph is the state.
-        Slot.More -> false
-    }
+    private fun slotNeedsActiveIndicator(slot: Slot): Boolean = true
 
     private fun activeIndicatorDrawable(): Drawable = GradientDrawable().apply {
         shape = GradientDrawable.OVAL
