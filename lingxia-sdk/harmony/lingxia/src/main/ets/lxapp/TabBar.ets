@@ -40,10 +40,9 @@ const TAB_BAR_ITEM_RED_DOT_SIZE = 8;
 const TAB_BAR_ITEM_RED_DOT_POSITION_X = 32;  // Position at right of icon (icon center + icon_size/2 + offset)
 const TAB_BAR_ITEM_RED_DOT_POSITION_Y = -2;
 
-// Active indicator drawn behind the icon of a selected item that ships only
-// one icon. Sized like the Material navigation-bar pill.
-const TAB_BAR_ACTIVE_INDICATOR_WIDTH = 40;
-const TAB_BAR_ACTIVE_INDICATOR_HEIGHT = 28;
+// Circle drawn behind the icon of a selected item that ships only one icon,
+// standing in for the selected artwork it does not have.
+const TAB_BAR_ACTIVE_INDICATOR_SIZE = 36;
 const TAB_BAR_ACTIVE_INDICATOR_OPACITY = 0.2;
 
 // Overflow ("more") slot and its popup
@@ -187,11 +186,10 @@ export struct TabBar {
         // A single-icon item has no swap to signal selection, so the strip
         // draws an active indicator behind it instead.
         if (this.tabbar.selectedIndex === index && !item.hasSelectedIcon) {
-          Row()
-            .width(TAB_BAR_ACTIVE_INDICATOR_WIDTH)
-            .height(TAB_BAR_ACTIVE_INDICATOR_HEIGHT)
-            .borderRadius(TAB_BAR_ACTIVE_INDICATOR_HEIGHT / 2)
-            .backgroundColor(this.getSelectedColor())
+          Circle()
+            .width(TAB_BAR_ACTIVE_INDICATOR_SIZE)
+            .height(TAB_BAR_ACTIVE_INDICATOR_SIZE)
+            .fill(this.getSelectedColor())
             .opacity(TAB_BAR_ACTIVE_INDICATOR_OPACITY)
         }
 
@@ -442,11 +440,10 @@ export struct TabBar {
     Column() {
       Stack() {
         if (this.tabbar.selectedIndex === index && !item.hasSelectedIcon) {
-          Row()
-            .width(TAB_BAR_ACTIVE_INDICATOR_WIDTH)
-            .height(TAB_BAR_ACTIVE_INDICATOR_HEIGHT)
-            .borderRadius(TAB_BAR_ACTIVE_INDICATOR_HEIGHT / 2)
-            .backgroundColor(this.getSelectedColor())
+          Circle()
+            .width(TAB_BAR_ACTIVE_INDICATOR_SIZE)
+            .height(TAB_BAR_ACTIVE_INDICATOR_SIZE)
+            .fill(this.getSelectedColor())
             .opacity(TAB_BAR_ACTIVE_INDICATOR_OPACITY)
         }
 

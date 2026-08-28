@@ -217,6 +217,13 @@ import WebKit
             RunnerBridge.refreshTabBarView(view)
         }
 
+        /// Tell the strip which shape it is standing in. A phone-shaped host
+        /// has room for five slots and folds the rest behind "more"; desktop
+        /// and tablet shapes lay every item out.
+        public static func setCompact(_ view: NSView?, compact: Bool) {
+            RunnerBridge.setTabBarCompact(view, compact: compact)
+        }
+
         public static func setSelectedIndex(
             _ view: NSView?,
             index: Int,

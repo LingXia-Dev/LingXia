@@ -26,8 +26,7 @@ internal object TabBarOverflowSheet {
     private const val CELL_ICON_TEXT_SPACING_DP = 4
     private const val CELL_TEXT_SIZE_SP = 11f
     private const val ENTER_DURATION_MS = 160L
-    private const val CELL_INDICATOR_WIDTH_DP = 40
-    private const val CELL_INDICATOR_HEIGHT_DP = 28
+    private const val CELL_INDICATOR_SIZE_DP = 36
     private const val CELL_INDICATOR_ALPHA = 0x33
 
     /**
@@ -193,10 +192,17 @@ internal object TabBarOverflowSheet {
 
             val iconSize = (CELL_ICON_SIZE_DP * density).toInt()
             val badgeSpace = (10 * density).toInt()
+            // The active indicator sits behind the icon, so the wrapper has to
+            // be at least as tall and wide or it squares the circle off.
+            val indicator = if (selected && !item.hasSelectedIcon) {
+                (CELL_INDICATOR_SIZE_DP * density).toInt()
+            } else {
+                0
+            }
             val iconWrapper = FrameLayout(activity).apply {
                 layoutParams = LinearLayout.LayoutParams(
-                    iconSize + badgeSpace,
-                    iconSize + (4 * density).toInt()
+                    maxOf(iconSize + badgeSpace, indicator),
+                    maxOf(iconSize + (4 * density).toInt(), indicator)
                 )
                 clipChildren = false
                 clipToPadding = false
@@ -204,15 +210,13 @@ internal object TabBarOverflowSheet {
             // Mirrors the strip: a single-icon item needs chrome to read as
             // selected, since there is no second drawable to swap in.
             if (selected && !item.hasSelectedIcon) {
+                val indicatorSize = (CELL_INDICATOR_SIZE_DP * density).toInt()
                 iconWrapper.addView(View(activity).apply {
-                    layoutParams = FrameLayout.LayoutParams(
-                        (CELL_INDICATOR_WIDTH_DP * density).toInt(),
-                        (CELL_INDICATOR_HEIGHT_DP * density).toInt()
-                    ).apply { gravity = Gravity.CENTER }
+                    layoutParams = FrameLayout.LayoutParams(indicatorSize, indicatorSize)
+                        .apply { gravity = Gravity.CENTER }
                     background = GradientDrawable().apply {
-                        shape = GradientDrawable.RECTANGLE
+                        shape = GradientDrawable.OVAL
                         setColor((state.selectedColor and 0x00FFFFFF) or (CELL_INDICATOR_ALPHA shl 24))
-                        cornerRadius = CELL_INDICATOR_HEIGHT_DP * density / 2f
                     }
                 })
             }
@@ -266,11 +270,18 @@ internal object TabBarOverflowSheet {
         } else {
             null
         }
-        return loaded ?: GradientDrawable().apply {
+        val drawable = loaded ?: GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(if (selected) state.selectedColor else state.color)
             val size = (CELL_ICON_SIZE_DP * density).toInt()
             setSize(size, size)
+        }
+        // Mirrors the strip: a single icon is a template glyph the panel tints.
+        if (item.hasSelectedIcon) {
+            return drawable
+        }
+        return drawable.mutate().apply {
+            setTint(if (selected) state.selectedColor else state.color)
         }
     }
 

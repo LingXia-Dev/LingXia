@@ -174,7 +174,9 @@ final class LxAppTabBarOverflowPanel: UIView {
         let icon = UIImageView()
         icon.contentMode = .scaleAspectFit
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.image = LxAppTabBarOverflowPanel.icon(for: item, selected: selected)
+        // Mirrors the strip: a single icon is a template glyph the panel tints.
+        let image = LxAppTabBarOverflowPanel.icon(for: item, selected: selected)
+        icon.image = item.has_selected_icon ? image : image?.withRenderingMode(.alwaysTemplate)
         icon.tintColor = selected
             ? PlatformColor(argb: config.selected_color)
             : PlatformColor(argb: config.color)
@@ -184,14 +186,14 @@ final class LxAppTabBarOverflowPanel: UIView {
             let indicator = UIView()
             indicator.backgroundColor = PlatformColor(argb: config.selected_color)
                 .withAlphaComponent(TabBarMetrics.activeIndicatorOpacity)
-            indicator.layer.cornerRadius = TabBarMetrics.activeIndicatorHeight / 2
+            indicator.layer.cornerRadius = TabBarMetrics.activeIndicatorSize / 2
             indicator.translatesAutoresizingMaskIntoConstraints = false
             iconContainer.addSubview(indicator)
             NSLayoutConstraint.activate([
                 indicator.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
                 indicator.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
-                indicator.widthAnchor.constraint(equalToConstant: TabBarMetrics.activeIndicatorWidth),
-                indicator.heightAnchor.constraint(equalToConstant: TabBarMetrics.activeIndicatorHeight)
+                indicator.widthAnchor.constraint(equalToConstant: TabBarMetrics.activeIndicatorSize),
+                indicator.heightAnchor.constraint(equalToConstant: TabBarMetrics.activeIndicatorSize)
             ])
         }
 

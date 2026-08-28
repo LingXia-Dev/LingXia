@@ -14,10 +14,9 @@ const BOTTOM_TAB_ICON_SIZE: i32 = 22;
 const BOTTOM_TAB_ITEM_HEIGHT: i32 = 49;
 const BOTTOM_TAB_ICON_TOP: i32 = 5;
 const BOTTOM_TAB_LABEL_TOP_GAP: i32 = 1;
-/// Active indicator behind a selected single-icon tab, sized like the
-/// Material navigation-bar pill the mobile hosts draw.
-const ACTIVE_INDICATOR_WIDTH: i32 = 36;
-const ACTIVE_INDICATOR_HEIGHT: i32 = 26;
+/// Circle behind a selected single-icon tab, standing in for the selected
+/// artwork it does not have. Matches the mobile hosts.
+const ACTIVE_INDICATOR_SIZE: i32 = 36;
 /// How far the indicator sits from the bar toward the selected colour. GDI has
 /// no alpha here, so the tint is mixed against the plate instead.
 const ACTIVE_INDICATOR_MIX_PERCENT: u32 = 20;
@@ -206,10 +205,10 @@ fn draw_active_indicator(hdc: HDC, icon_rect: RECT, tabbar: &WindowsShellTabBarL
     let center_x = (icon_rect.left + icon_rect.right) / 2;
     let center_y = (icon_rect.top + icon_rect.bottom) / 2;
     let plate = RECT {
-        left: center_x - ACTIVE_INDICATOR_WIDTH / 2,
-        top: center_y - ACTIVE_INDICATOR_HEIGHT / 2,
-        right: center_x + ACTIVE_INDICATOR_WIDTH / 2,
-        bottom: center_y + ACTIVE_INDICATOR_HEIGHT / 2,
+        left: center_x - ACTIVE_INDICATOR_SIZE / 2,
+        top: center_y - ACTIVE_INDICATOR_SIZE / 2,
+        right: center_x + ACTIVE_INDICATOR_SIZE / 2,
+        bottom: center_y + ACTIVE_INDICATOR_SIZE / 2,
     };
     // An immersive bar paints no plate of its own, so mix against the shell.
     let behind = if tabbar.background_transparent {
@@ -220,7 +219,7 @@ fn draw_active_indicator(hdc: HDC, icon_rect: RECT, tabbar: &WindowsShellTabBarL
     fill_round_rect_aa(
         hdc,
         plate,
-        ACTIVE_INDICATOR_HEIGHT / 2,
+        ACTIVE_INDICATOR_SIZE / 2,
         blend_rgb(tabbar.selected_color, behind, ACTIVE_INDICATOR_MIX_PERCENT),
     );
 }
