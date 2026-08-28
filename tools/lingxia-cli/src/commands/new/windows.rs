@@ -1,17 +1,13 @@
 use super::locate_templates_dir;
 use super::template::process_template_dir;
 use super::types::ProjectConfig;
-use crate::versions::LingXiaVersions;
 use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use std::fs;
 
 pub(super) const WINDOWS_RS_REV: &str = "a1e9fce43c026221f62f0a149267cb6d7d3c607b";
 
-pub(super) fn create_windows_project(
-    config: &ProjectConfig,
-    versions: &LingXiaVersions,
-) -> Result<()> {
+pub(super) fn create_windows_project(config: &ProjectConfig) -> Result<()> {
     let windows_dir = config.target_dir.join("windows");
     fs::create_dir_all(&windows_dir)?;
 
@@ -39,7 +35,7 @@ pub(super) fn create_windows_project(
     );
     vars.insert(
         "LINGXIA_WINDOWS_SDK_GIT_REF".to_string(),
-        lingxia_windows_sdk_git_ref(&versions.lingxia_crate),
+        crate::versions::windows_sdk_git_ref(),
     );
     vars.insert("WINDOWS_RS_REV".to_string(), WINDOWS_RS_REV.to_string());
 
@@ -48,24 +44,15 @@ pub(super) fn create_windows_project(
     Ok(())
 }
 
-fn lingxia_windows_sdk_git_ref(version: &str) -> String {
-    let hash = env!("LINGXIA_COMMIT_HASH");
-    if hash != "unknown" && hash.len() >= 7 {
-        format!("rev = \"{hash}\"")
-    } else {
-        format!("tag = \"lingxia-crates-v{version}\"")
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{WINDOWS_RS_REV, lingxia_windows_sdk_git_ref};
+    use super::WINDOWS_RS_REV;
 
     #[test]
     fn windows_sdk_git_ref_is_valid_inline_table_fragment() {
-        let fragment = lingxia_windows_sdk_git_ref("0.10.0");
+        let fragment = crate::versions::windows_sdk_git_ref();
         assert!(
-            fragment.starts_with("rev = \"") || fragment == "tag = \"lingxia-crates-v0.10.0\"",
+            fragment.starts_with("rev = \"") || fragment.starts_with("tag = \"lingxia-crates-v"),
             "{fragment}"
         );
     }

@@ -10,6 +10,7 @@ pub mod icon;
 pub mod install;
 pub mod new;
 pub mod package;
+pub mod project_upgrade;
 pub mod provider;
 pub mod publish;
 pub mod runner;

@@ -443,15 +443,19 @@ enum Commands {
         action: commands::skill::SkillAction,
     },
 
-    /// Update lingxia, lxdev and the Runner to a newer release
+    /// Update the CLI — or, inside a project, the project's LingXia pins
     Upgrade {
         /// Report what is available and exit without installing anything
         #[arg(long)]
         check: bool,
 
-        /// Install this version instead of the newest one, downgrade included
+        /// Install this CLI version instead of the newest one, downgrade included
         #[arg(long, value_name = "VERSION")]
         version: Option<String>,
+
+        /// Upgrade the CLI itself even when run inside a project
+        #[arg(long)]
+        cli: bool,
     },
 
     /// Per-user dev-session broker (started on demand by `lingxia dev`/`lxdev`)
@@ -992,8 +996,12 @@ fn main() -> Result<()> {
         Commands::Skill { action } => {
             commands::skill::execute(action)?;
         }
-        Commands::Upgrade { check, version } => {
-            let code = commands::upgrade::execute(check, version)?;
+        Commands::Upgrade {
+            check,
+            version,
+            cli,
+        } => {
+            let code = commands::upgrade::execute(check, version, cli)?;
             if code != 0 {
                 std::process::exit(code);
             }
