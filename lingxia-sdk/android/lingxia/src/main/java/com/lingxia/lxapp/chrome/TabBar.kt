@@ -1,5 +1,7 @@
 package com.lingxia.lxapp.chrome
 
+import com.lingxia.lxapp.R
+
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -9,6 +11,11 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.graphics.Canvas
+import android.graphics.ColorFilter
+import android.graphics.Paint
+import android.graphics.PixelFormat
+import android.graphics.drawable.Drawable
 import java.io.File
 import android.util.Log
 import com.lingxia.app.LxLog
@@ -24,7 +31,10 @@ internal data class TabBarState(
     val position: Position = Position.BOTTOM,        // Position: 0=Bottom, 1=Left, 2=Right
     val list: List<TabBarItem> = emptyList(),        // List of tab items
     val visible: Boolean = true,                     // TabBar visibility (kept for FFI compatibility)
-    val selectedIndex: Int = 0                       // Selected tab index managed by Rust
+    val selectedIndex: Int = 0,                      // Selected tab index managed by Rust
+    // First item Rust wants folded into the overflow menu, or -1 when the strip
+    // shows every item. The slot it vacates becomes the "more" affordance.
+    val overflowStartIndex: Int = -1
 ) {
     /**
      * Check if background color is transparent.
@@ -110,11 +120,20 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         private const val INITIAL_SELECTED_ITEM_CORNER_RADIUS_DP = 8f // For createTabItem
     }
 
+    /** One rendered strip slot: a declared tab, or the overflow affordance. */
+    private sealed class Slot {
+        data class Tab(val itemIndex: Int) : Slot()
+        object More : Slot()
+    }
+
     internal var config = TabBarState()
     private var items = listOf<TabBarItem>()
     private var tabViews = mutableListOf<LinearLayout>()
+    /** Parallel to [tabViews]: what each rendered slot stands for. */
+    private var slots = listOf<Slot>()
     private var itemsContainer: LinearLayout? = null
     private var onTabSelectedListener: ((Int, String) -> Unit)? = null
+    private var onMoreRequestedListener: ((List<Int>) -> Unit)? = null
 
 
     init {
@@ -261,41 +280,46 @@ internal class TabBar(context: Context) : LinearLayout(context) {
 
     fun setItems(newItems: List<TabBarItem>) {
         items = newItems  // Use all items from configuration
+        slots = buildSlots()
 
         itemsContainer?.let { container ->
             container.removeAllViews()
             tabViews.clear()
 
-            if (items.isNotEmpty()) {
-                setupCenteredLayout(container)
+            slots.forEach { slot ->
+                createSlotView(slot).also { view ->
+                    tabViews.add(view)
+                    container.addView(view)
+                }
             }
         }
     }
 
     /**
-     * Setup centered layout: all items centered (original behavior)
+     * Rust decides how many items a compact strip may show; past that the last
+     * slot is the overflow affordance and stands in for every folded item.
      */
-    private fun setupCenteredLayout(container: LinearLayout) {
-        val isVertical = config.position.value == TabBarState.POSITION_LEFT || config.position.value == TabBarState.POSITION_RIGHT
-
-        // Get the size of the space for each item (original logic)
-        val itemSize = if (isVertical) {
-            // For vertical layout, use more compact spacing
-            (resources.displayMetrics.heightPixels / Math.max(items.size, 4)).coerceAtMost(
-                (VERTICAL_ITEM_MAX_HEIGHT_DP * resources.displayMetrics.density).toInt()
-            ).coerceAtLeast(
-                (VERTICAL_ITEM_MIN_HEIGHT_DP * resources.displayMetrics.density).toInt()
-            )
-        } else {
-            resources.displayMetrics.widthPixels / items.size
+    private fun buildSlots(): List<Slot> {
+        val start = overflowStart()
+        if (start < 0) {
+            return items.indices.map { Slot.Tab(it) }
         }
+        return (0 until start).map { Slot.Tab(it) } + Slot.More
+    }
 
-        items.forEachIndexed { index, item ->
-            createTabView(item, config, index == config.selectedIndex, index).also { view ->
-                tabViews.add(view)
-                container.addView(view)
-            }
-        }
+    /** First folded item index, or -1 when every item has its own slot. */
+    private fun overflowStart(): Int =
+        config.overflowStartIndex.takeIf { it in 0 until items.size } ?: -1
+
+    /** Indices of the items that only the overflow menu can reach. */
+    internal fun overflowItemIndices(): List<Int> {
+        val start = overflowStart()
+        return if (start < 0) emptyList() else (start until items.size).toList()
+    }
+
+    private fun isSlotSelected(slot: Slot): Boolean = when (slot) {
+        is Slot.Tab -> slot.itemIndex == config.selectedIndex
+        Slot.More -> overflowStart().let { it >= 0 && config.selectedIndex >= it }
     }
 
     fun setSelectedIndex(index: Int, notifyListener: Boolean = true) {
@@ -304,16 +328,12 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         }
 
         if (index != config.selectedIndex) {
-            val previousIndex = config.selectedIndex
             config = config.copy(selectedIndex = index)
 
-            // Update UI state for all tab views
-            tabViews.forEachIndexed { viewIndex, tabView ->
-                // Find which item this view represents by checking the tag or by position
-                val itemIndex = findItemIndexForTabView(tabView, viewIndex)
-                if (itemIndex >= 0 && itemIndex < items.size) {
-                    val isSelected = itemIndex == index
-                    updateTabState(tabView, items[itemIndex], isSelected)
+            // Update UI state for every slot; a folded selection lights "more".
+            tabViews.forEachIndexed { slotIndex, tabView ->
+                slots.getOrNull(slotIndex)?.let { slot ->
+                    updateTabState(tabView, slot, isSlotSelected(slot))
                 }
             }
 
@@ -324,28 +344,50 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         }
     }
 
-    /**
-     * Find the item index for a given tab view using its tag
-     */
-    private fun findItemIndexForTabView(tabView: LinearLayout, viewIndex: Int): Int {
-        return (tabView.tag as? Int) ?: viewIndex.takeIf { it < items.size } ?: -1
-    }
-
     fun setOnTabSelectedListener(listener: (Int, String) -> Unit) {
         onTabSelectedListener = listener
     }
 
-    private fun createTabView(item: TabBarItem, config: TabBarState, isSelected: Boolean, itemIndex: Int = -1): LinearLayout {
+    /** Invoked with the folded item indices when the "more" slot is tapped. */
+    fun setOnMoreRequestedListener(listener: (List<Int>) -> Unit) {
+        onMoreRequestedListener = listener
+    }
+
+    /** Label a slot renders: the item's own text, or the overflow label. */
+    private fun slotText(slot: Slot): String? = when (slot) {
+        is Slot.Tab -> items[slot.itemIndex].text
+        Slot.More -> context.getString(R.string.lx_tabbar_more)
+    }
+
+    private fun slotIcon(slot: Slot, selected: Boolean): Drawable = when (slot) {
+        is Slot.Tab -> getIconDrawable(items[slot.itemIndex], selected)
+        Slot.More -> EllipsisDrawable(
+            if (selected) config.selectedColor else config.color,
+            resources.displayMetrics.density
+        )
+    }
+
+    private fun slotBadge(slot: Slot): String? = when (slot) {
+        is Slot.Tab -> items[slot.itemIndex].badge
+        // A folded badge count would misread on a slot that stands for many items.
+        Slot.More -> null
+    }
+
+    /** Folded badges still have to surface, so "more" aggregates them to a dot. */
+    private fun slotHasRedDot(slot: Slot): Boolean = when (slot) {
+        is Slot.Tab -> items[slot.itemIndex].hasRedDot
+        Slot.More -> overflowItemIndices().any { index ->
+            items[index].hasRedDot || !items[index].badge.isNullOrBlank()
+        }
+    }
+
+    private fun createSlotView(slot: Slot): LinearLayout {
         val isVertical = config.position.value == TabBarState.POSITION_LEFT || config.position.value == TabBarState.POSITION_RIGHT
+        val isSelected = isSlotSelected(slot)
 
         return LinearLayout(context).apply {
             orientation = VERTICAL
             gravity = Gravity.CENTER
-
-            // Set tag to store the item index for grouped layout
-            if (itemIndex >= 0) {
-                tag = itemIndex
-            }
 
             layoutParams = if (isVertical) {
                 LayoutParams(
@@ -396,28 +438,31 @@ internal class TabBar(context: Context) : LinearLayout(context) {
                     gravity = Gravity.CENTER
                 }
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                setImageDrawable(getIconDrawable(item, isSelected))
+                setImageDrawable(slotIcon(slot, isSelected))
             }
 
             iconWrapper.addView(icon)
 
+            val badge = slotBadge(slot)
+
             // Add badge if present - positioned outside icon bounds
-            if (!item.badge.isNullOrBlank()) {
-                val badgeView = createBadgeView(item.badge!!)
+            if (!badge.isNullOrBlank()) {
+                val badgeView = createBadgeView(badge)
                 iconWrapper.addView(badgeView)
             }
 
             // Add red dot if present - positioned outside icon bounds
-            if (item.hasRedDot) {
+            if (slotHasRedDot(slot)) {
                 val redDotView = createRedDotView()
                 iconWrapper.addView(redDotView)
             }
 
             addView(iconWrapper)
 
-            if (!item.text.isNullOrBlank()) {
+            val label = slotText(slot)
+            if (!label.isNullOrBlank()) {
                 val textView = TextView(context).apply {
-                    text = item.text
+                    text = label
 
                     // Use config colors with proper alpha handling
                     setTextColor(if (isSelected) config.selectedColor else config.color)
@@ -441,21 +486,53 @@ internal class TabBar(context: Context) : LinearLayout(context) {
             }
 
             setOnClickListener {
-                onTabSelectedListener?.invoke(items.indexOf(item), item.pagePath)
+                when (slot) {
+                    is Slot.Tab -> onTabSelectedListener?.invoke(
+                        slot.itemIndex,
+                        items[slot.itemIndex].pagePath
+                    )
+                    Slot.More -> onMoreRequestedListener?.invoke(overflowItemIndices())
+                }
             }
         }
     }
 
-    private fun updateTabState(tabView: LinearLayout, item: TabBarItem, selected: Boolean) {
+    private fun updateTabState(tabView: LinearLayout, slot: Slot, selected: Boolean) {
         val iconContainer = tabView.getChildAt(0) as FrameLayout
         val icon = iconContainer.getChildAt(0) as ImageView
-        icon.setImageDrawable(getIconDrawable(item, selected))
+        icon.setImageDrawable(slotIcon(slot, selected))
 
         if (tabView.childCount > 1) {
             (tabView.getChildAt(1) as? TextView)?.setTextColor(
                 if (selected) config.selectedColor else config.color
             )
         }
+    }
+
+    /** Three dots drawn in the strip's own tint - no per-density asset needed. */
+    private class EllipsisDrawable(tint: Int, private val density: Float) : Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = tint }
+
+        override fun draw(canvas: Canvas) {
+            val radius = 2f * density
+            val gap = 6f * density
+            val centerY = bounds.exactCenterY()
+            val centerX = bounds.exactCenterX()
+            for (offset in -1..1) {
+                canvas.drawCircle(centerX + offset * gap, centerY, radius, paint)
+            }
+        }
+
+        override fun setAlpha(alpha: Int) {
+            paint.alpha = alpha
+        }
+
+        override fun setColorFilter(colorFilter: ColorFilter?) {
+            paint.colorFilter = colorFilter
+        }
+
+        @Deprecated("Drawable.getOpacity is deprecated but still abstract")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
     }
 
     private fun getIconDrawable(item: TabBarItem, selected: Boolean): android.graphics.drawable.Drawable {

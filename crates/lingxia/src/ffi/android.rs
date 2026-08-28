@@ -946,7 +946,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
         // Create TabBarState object (all parameters non-nullable)
         let obj = env.new_object(
             tab_bar_class,
-            jni_sig!("(IIIIILcom/lingxia/lxapp/chrome/TabBarState$Position;Ljava/util/List;ZI)V"),
+            jni_sig!("(IIIIILcom/lingxia/lxapp/chrome/TabBarState$Position;Ljava/util/List;ZII)V"),
             &[
                 background_color.into(),
                 selected_color.into(),
@@ -957,6 +957,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
                 (&tab_items_list).into(),
                 tab_bar_config.is_effectively_visible().into(),
                 tab_bar_config.selected_index.into(),
+                tab_bar_config.compact_overflow_start_index().into(),
             ],
         )?;
         Ok(obj)
