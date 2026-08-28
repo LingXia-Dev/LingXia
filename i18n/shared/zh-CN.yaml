@@ -20,6 +20,10 @@ webview:
   load_error_message: "请检查网络连接后重试。"
   retry: "重试"
 
+# Tab bar
+tabbar:
+  more: "更多"
+
 # Capsule Menu
 capsule:
   clean_cache: "清缓存"

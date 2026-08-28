@@ -20,6 +20,10 @@ webview:
   load_error_message: "Check your connection and try again."
   retry: "Retry"
 
+# Tab bar
+tabbar:
+  more: "More"
+
 # Capsule Menu
 capsule:
   clean_cache: "Clear cache"
