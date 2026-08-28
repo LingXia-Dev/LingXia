@@ -559,9 +559,25 @@ pub fn diagnose_apple_channel(
         }
     }
 
-    let wallet = Wallet::open()?;
-    let bindings = BindingStore::open()?;
-    let binding = bindings.load(&project.root, channel.as_str());
+    diagnose_apple_wallet_channel(
+        &project.root,
+        channel,
+        constraint,
+        &Wallet::open()?,
+        &BindingStore::open()?,
+        diagnosis,
+    )
+}
+
+fn diagnose_apple_wallet_channel(
+    project_root: &std::path::Path,
+    channel: AppleChannel,
+    constraint: Option<String>,
+    wallet: &Wallet,
+    bindings: &BindingStore,
+    mut diagnosis: ChannelDiagnosis,
+) -> Result<ChannelDiagnosis> {
+    let binding = bindings.load(project_root, channel.as_str());
     diagnosis.binding = binding.as_ref().map(|b| b.identity.clone());
 
     let describe = |slots: &AppleTeamSlots| format!("{} ({})", slots.team_id, slots.mechanisms());
@@ -569,10 +585,14 @@ pub fn diagnose_apple_channel(
     if let Some(binding) = &binding
         && constraint.as_deref().is_none_or(|c| c == binding.identity)
         && let Some(slots) = wallet.apple_team(&binding.identity)?
-        && slots.has_auth()
     {
-        diagnosis.credential = Some(describe(&slots));
-        diagnosis.ready = true;
+        if slots.has_auth() {
+            diagnosis.credential = Some(describe(&slots));
+            diagnosis.ready = true;
+        } else {
+            diagnosis.error_code = Some(codes::CREDENTIAL_CAPABILITY_MISSING);
+            diagnosis.fix = Some("lingxia auth login apple".to_string());
+        }
         return Ok(diagnosis);
     }
 
@@ -600,8 +620,21 @@ pub fn diagnose_apple_channel(
             diagnosis.fix = Some("lingxia auth login apple".to_string());
         }
         1 => {
-            diagnosis.credential = Some(describe(&candidates[0]));
-            diagnosis.ready = true;
+            if binding
+                .as_ref()
+                .is_some_and(|previous| previous.identity != candidates[0].team_id)
+            {
+                diagnosis.error_code = Some(codes::CREDENTIAL_SELECTION_REQUIRED);
+                diagnosis.fix = Some(format!(
+                    "this checkout previously used Apple team {}; run an Apple command interactively to confirm {}, or `lingxia auth forget --platform {}` first",
+                    binding.as_ref().expect("checked above").identity,
+                    candidates[0].team_id,
+                    channel.as_str()
+                ));
+            } else {
+                diagnosis.credential = Some(describe(&candidates[0]));
+                diagnosis.ready = true;
+            }
         }
         _ => {
             diagnosis.error_code = Some(codes::CREDENTIAL_SELECTION_REQUIRED);
@@ -639,6 +672,93 @@ fn harmony_from_env() -> Result<Option<AgcApiCredentials>> {
             codes::CREDENTIAL_ENV_INCOMPLETE
         ),
     }
+}
+
+/// Read-only Harmony project status using the same stale-binding rules as the
+/// real resolver. It never writes a binding or prompts.
+pub fn diagnose_harmony_channel(project: &ProjectContext) -> Result<ChannelDiagnosis> {
+    let mut diagnosis = ChannelDiagnosis {
+        channel: "harmony",
+        constraint: None,
+        binding: None,
+        credential: None,
+        ready: false,
+        error_code: None,
+        fix: None,
+    };
+
+    match harmony_from_env() {
+        Ok(Some(credentials)) => {
+            diagnosis.credential = Some(format!(
+                "environment (AGC client {})",
+                credentials.client_id
+            ));
+            diagnosis.ready = true;
+            return Ok(diagnosis);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            diagnosis.error_code = Some(codes::CREDENTIAL_ENV_INCOMPLETE);
+            diagnosis.fix = Some(error.to_string());
+            return Ok(diagnosis);
+        }
+    }
+
+    diagnose_single_identity_channel(
+        &project.root,
+        "harmony",
+        "Harmony AGC identity",
+        "lingxia auth login harmony",
+        &Wallet::open()?.harmony_identities()?,
+        &BindingStore::open()?,
+        diagnosis,
+    )
+}
+
+fn diagnose_single_identity_channel(
+    project_root: &std::path::Path,
+    channel: &'static str,
+    label: &str,
+    login_cmd: &str,
+    identities: &[String],
+    bindings: &BindingStore,
+    mut diagnosis: ChannelDiagnosis,
+) -> Result<ChannelDiagnosis> {
+    let binding = bindings.load(project_root, channel);
+    diagnosis.binding = binding.as_ref().map(|value| value.identity.clone());
+
+    if let Some(binding) = &binding
+        && identities.contains(&binding.identity)
+    {
+        diagnosis.credential = Some(binding.identity.clone());
+        diagnosis.ready = true;
+        return Ok(diagnosis);
+    }
+
+    match identities {
+        [] => {
+            diagnosis.error_code = Some(codes::CREDENTIALS_MISSING);
+            diagnosis.fix = Some(login_cmd.to_string());
+        }
+        [identity] if binding.is_none() => {
+            diagnosis.credential = Some(identity.clone());
+            diagnosis.ready = true;
+        }
+        [identity] => {
+            diagnosis.error_code = Some(codes::CREDENTIAL_SELECTION_REQUIRED);
+            diagnosis.fix = Some(format!(
+                "this checkout previously used {label} {}; run a Harmony command interactively to confirm {identity}, or `lingxia auth forget --platform {channel}` first",
+                binding.as_ref().expect("single stale binding").identity
+            ));
+        }
+        _ => {
+            diagnosis.error_code = Some(codes::CREDENTIAL_SELECTION_REQUIRED);
+            diagnosis.fix = Some(format!(
+                "run a Harmony command interactively to select one {label}, or provide its environment credential group"
+            ));
+        }
+    }
+    Ok(diagnosis)
 }
 
 /// Resolve Harmony AGC credentials: env pair → binding cache → wallet. There
@@ -889,6 +1009,18 @@ mod tests {
         text.split(':').next().unwrap_or("").to_string()
     }
 
+    fn empty_diagnosis(channel: &'static str) -> ChannelDiagnosis {
+        ChannelDiagnosis {
+            channel,
+            constraint: None,
+            binding: None,
+            credential: None,
+            ready: false,
+            error_code: None,
+            fix: None,
+        }
+    }
+
     #[test]
     fn sole_candidate_resolves_and_binds() {
         let f = fixture();
@@ -960,6 +1092,32 @@ mod tests {
     }
 
     #[test]
+    fn apple_diagnosis_preserves_stale_binding_confirmation() {
+        let f = fixture();
+        f.wallet.save_apple_auth(&asc("TEAMBBBBBB")).unwrap();
+        f.bindings
+            .save(f.project.path(), "ios", "apple", "TEAMAAAAAA", None)
+            .unwrap();
+
+        let diagnosis = diagnose_apple_wallet_channel(
+            f.project.path(),
+            AppleChannel::Ios,
+            None,
+            &f.wallet,
+            &f.bindings,
+            empty_diagnosis("ios"),
+        )
+        .unwrap();
+
+        assert!(!diagnosis.ready);
+        assert_eq!(
+            diagnosis.error_code,
+            Some(codes::CREDENTIAL_SELECTION_REQUIRED)
+        );
+        assert_eq!(diagnosis.binding.as_deref(), Some("TEAMAAAAAA"));
+    }
+
+    #[test]
     fn constraint_change_rebinds_without_confirmation() {
         let f = fixture();
         f.wallet.save_apple_auth(&asc("TEAMAAAAAA")).unwrap();
@@ -1025,6 +1183,41 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(code_of(err), codes::CREDENTIAL_SELECTION_REQUIRED);
+    }
+
+    #[test]
+    fn harmony_diagnosis_matches_resolution_for_sole_and_stale_identity() {
+        let f = fixture();
+        let identities = vec!["222222222".to_string()];
+
+        let ready = diagnose_single_identity_channel(
+            f.project.path(),
+            "harmony",
+            "Harmony AGC identity",
+            "lingxia auth login harmony",
+            &identities,
+            &f.bindings,
+            empty_diagnosis("harmony"),
+        )
+        .unwrap();
+        assert!(ready.ready);
+        assert_eq!(ready.credential.as_deref(), Some("222222222"));
+
+        f.bindings
+            .save(f.project.path(), "harmony", "harmony", "111111111", None)
+            .unwrap();
+        let stale = diagnose_single_identity_channel(
+            f.project.path(),
+            "harmony",
+            "Harmony AGC identity",
+            "lingxia auth login harmony",
+            &identities,
+            &f.bindings,
+            empty_diagnosis("harmony"),
+        )
+        .unwrap();
+        assert!(!stale.ready);
+        assert_eq!(stale.error_code, Some(codes::CREDENTIAL_SELECTION_REQUIRED));
     }
 
     #[test]

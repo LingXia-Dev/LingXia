@@ -98,6 +98,9 @@ pub fn auth_status(json: bool) -> Result<bool> {
                 channels.push(resolver::diagnose_apple_channel(project, channel)?);
             }
         }
+        if project.config.harmony.is_some() {
+            channels.push(resolver::diagnose_harmony_channel(project)?);
+        }
     }
     let ready = channels.iter().all(|c| c.ready);
 
@@ -154,10 +157,16 @@ pub fn auth_status(json: bool) -> Result<bool> {
     }
 
     for diagnosis in &channels {
-        println!("{}", format!("Apple / {}", diagnosis.channel).cyan().bold());
-        match &diagnosis.constraint {
-            Some(team) => println!("  constraint: {team} (lingxia.yaml)"),
-            None => println!("  constraint: none"),
+        let title = match diagnosis.channel {
+            "harmony" => "Harmony".to_string(),
+            channel => format!("Apple / {channel}"),
+        };
+        println!("{}", title.cyan().bold());
+        if diagnosis.channel != "harmony" {
+            match &diagnosis.constraint {
+                Some(team) => println!("  constraint: {team} (lingxia.yaml)"),
+                None => println!("  constraint: none"),
+            }
         }
         if let Some(binding) = &diagnosis.binding {
             println!("  binding:    {binding} (this checkout)");

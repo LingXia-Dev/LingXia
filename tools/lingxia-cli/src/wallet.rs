@@ -166,6 +166,10 @@ impl Wallet {
         self.load_apple_slot(team_id, ASC_FILE)
     }
 
+    pub fn load_apple_id(&self, team_id: &str) -> Result<Option<AuthCredentials>> {
+        self.load_apple_slot(team_id, APPLE_ID_FILE)
+    }
+
     fn load_apple_slot(&self, team_id: &str, file: &str) -> Result<Option<AuthCredentials>> {
         let path = self.apple_team_dir(team_id)?.join(file);
         if !path.is_file() {
@@ -297,6 +301,7 @@ impl Wallet {
 
     /// Signing material (keys, certs, profiles, keystores) lives next to the
     /// identity that minted it, so organizations never share certificates.
+    #[cfg(not(target_os = "windows"))]
     pub fn harmony_signing_dir(&self, client_id: &str) -> Result<PathBuf> {
         Ok(self.harmony_identity_dir(client_id)?.join("signing"))
     }
@@ -606,6 +611,22 @@ pub fn mask(value: &str) -> String {
     format!("{head}…{tail}")
 }
 
+/// Stable full digest used to compare credential material without displaying
+/// or persisting the secret itself.
+pub fn credential_fingerprint<T: serde::Serialize>(value: &T) -> Result<String> {
+    use sha2::{Digest, Sha256};
+
+    let encoded = serde_json::to_vec(value).context("serialize credential fingerprint")?;
+    Ok(Sha256::digest(encoded)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+pub fn display_fingerprint(fingerprint: &str) -> String {
+    format!("sha256:{}", &fingerprint[..fingerprint.len().min(12)])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -647,6 +668,8 @@ mod tests {
         // ASC preferred over Apple ID for the same team.
         let auth = wallet.load_apple_auth("TEAMAAAAAA").unwrap().unwrap();
         assert!(matches!(auth, AuthCredentials::AppStoreConnect { .. }));
+        let auth = wallet.load_apple_id("TEAMAAAAAA").unwrap().unwrap();
+        assert!(matches!(auth, AuthCredentials::AppleId { .. }));
         let auth = wallet.load_apple_auth("TEAMBBBBBB").unwrap().unwrap();
         assert!(matches!(auth, AuthCredentials::AppleId { .. }));
         assert!(wallet.load_apple_asc("TEAMBBBBBB").unwrap().is_none());
@@ -775,5 +798,16 @@ mod tests {
         assert_eq!(mask("michael@example.com"), "m***@example.com");
         assert_eq!(mask("ABC123DEF4"), "ABC1…F4");
         assert_eq!(mask("ab"), "…");
+    }
+
+    #[test]
+    fn fingerprints_do_not_collapse_values_with_the_same_mask() {
+        let left = "ABCD-one-EF";
+        let right = "ABCD-two-EF";
+        assert_eq!(mask(left), mask(right));
+        assert_ne!(
+            credential_fingerprint(&left).unwrap(),
+            credential_fingerprint(&right).unwrap()
+        );
     }
 }

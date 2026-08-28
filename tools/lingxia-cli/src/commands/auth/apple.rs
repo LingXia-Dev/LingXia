@@ -13,7 +13,7 @@ use crate::platform::apple::grandslam::{
     DeviceInfo, GrandSlamClient, GrandSlamLoginData, TwoFactorMode, TwoFactorRequired,
 };
 use crate::resolver::{self, AppleNeed};
-use crate::wallet::{Wallet, mask};
+use crate::wallet::{Wallet, credential_fingerprint, display_fingerprint};
 use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -217,15 +217,17 @@ fn resolve_login_mode(
 }
 
 /// Show the fingerprint change and confirm before replacing an existing slot.
-fn confirm_rotation(old: &str, new: &str, what: &str, yes: bool) -> Result<()> {
-    if old == new {
+fn confirm_rotation<T: serde::Serialize>(old: &T, new: &T, what: &str, yes: bool) -> Result<()> {
+    let old_fingerprint = credential_fingerprint(old)?;
+    let new_fingerprint = credential_fingerprint(new)?;
+    if old_fingerprint == new_fingerprint {
         return Ok(());
     }
     println!(
         "{} Replacing the stored {what}: {} -> {}",
         "ℹ".blue(),
-        old,
-        new
+        display_fingerprint(&old_fingerprint),
+        display_fingerprint(&new_fingerprint)
     );
     if yes {
         return Ok(());
@@ -378,19 +380,6 @@ fn login_with_password(
     let (team_id, app_token) =
         select_team(&client, &login_data, &device_info, &mut anisette_provider)?;
 
-    if let Some(AuthCredentials::AppleId { adsid, .. }) = wallet
-        .load_apple_auth(&team_id)?
-        .filter(|c| matches!(c, AuthCredentials::AppleId { .. }))
-    {
-        confirm_rotation(
-            &mask(&adsid),
-            &mask(&login_data.adsid),
-            "Apple ID session",
-            yes,
-        )?;
-    }
-
-    // Save credentials
     let credentials = AuthCredentials::AppleId {
         adsid: login_data.adsid.clone(),
         token: login_data.idms_token.clone(),
@@ -398,6 +387,10 @@ fn login_with_password(
         team_id: team_id.clone(),
         expiry: chrono::Utc::now() + chrono::Duration::hours(24),
     };
+
+    if let Some(old) = wallet.load_apple_id(&team_id)? {
+        confirm_rotation(&old, &credentials, "Apple ID session", yes)?;
+    }
 
     let path = wallet.save_apple_auth(&credentials)?;
 
@@ -471,14 +464,6 @@ fn login_with_api_key(wallet: &Wallet, args: ApiKeyLoginArgs, yes: bool) -> Resu
     let private_key_pem =
         validate_api_key_credentials(&key_id, &issuer_id, &private_key_path, &team_id)?;
 
-    if let Some(AuthCredentials::AppStoreConnect {
-        key_id: old_key_id, ..
-    }) = wallet.load_apple_asc(&team_id)?
-    {
-        confirm_rotation(&mask(&old_key_id), &mask(&key_id), "ASC key", yes)?;
-    }
-
-    // Save credentials
     let credentials = AuthCredentials::AppStoreConnect {
         key_id: key_id.clone(),
         issuer_id: issuer_id.clone(),
@@ -486,6 +471,28 @@ fn login_with_api_key(wallet: &Wallet, args: ApiKeyLoginArgs, yes: bool) -> Resu
         team_id: team_id.clone(),
         cached_signing_identity: None,
     };
+
+    if let Some(AuthCredentials::AppStoreConnect {
+        key_id: old_key_id,
+        issuer_id: old_issuer_id,
+        private_key_pem: old_private_key_pem,
+        ..
+    }) = wallet.load_apple_asc(&team_id)?
+    {
+        let AuthCredentials::AppStoreConnect {
+            private_key_pem: new_private_key_pem,
+            ..
+        } = &credentials
+        else {
+            unreachable!()
+        };
+        confirm_rotation(
+            &(&old_key_id, &old_issuer_id, &old_private_key_pem),
+            &(&key_id, &issuer_id, new_private_key_pem),
+            "ASC key",
+            yes,
+        )?;
+    }
 
     let path = wallet.save_apple_auth(&credentials)?;
 
@@ -534,8 +541,6 @@ fn login_developer_id(
 
     let bytes = std::fs::read(&p12_path)
         .with_context(|| format!("Failed to read {}", p12_path.display()))?;
-    let p12_base64 = STANDARD.encode(&bytes);
-
     let password = if let Some(p) = p12_password {
         p
     } else {
@@ -544,20 +549,26 @@ fn login_developer_id(
             .interact()?
     };
 
-    if let Some(old) = wallet.load_apple_developer_id(&team_id)? {
-        confirm_rotation(
-            &mask(&old.p12_base64),
-            &mask(&p12_base64),
-            "Developer ID certificate",
-            yes,
-        )?;
+    let certificate_identity = verify_developer_id_team(&bytes, &password, &team_id)?;
+    let identity = identity.filter(|value| !value.trim().is_empty());
+    if let Some(requested) = &identity
+        && requested != &certificate_identity
+    {
+        bail!(
+            "Developer ID identity mismatch: --identity is `{requested}`, but the certificate is `{certificate_identity}`"
+        );
     }
 
     let credentials = DeveloperIdCredentials {
-        p12_base64,
+        p12_base64: STANDARD.encode(&bytes),
         password,
-        identity: identity.filter(|s| !s.trim().is_empty()),
+        identity: Some(certificate_identity),
     };
+
+    if let Some(old) = wallet.load_apple_developer_id(&team_id)? {
+        confirm_rotation(&old, &credentials, "Developer ID certificate", yes)?;
+    }
+
     let path = wallet.save_apple_developer_id(&team_id, &credentials)?;
 
     println!();
@@ -570,6 +581,89 @@ fn login_developer_id(
     );
 
     Ok(team_id)
+}
+
+fn verify_developer_id_team(bytes: &[u8], password: &str, expected_team: &str) -> Result<String> {
+    let certificates = p12_certificates(bytes, password)?;
+    for certificate in certificates {
+        if let Some(common_name) = validate_developer_id_certificate(&certificate, expected_team)? {
+            return Ok(common_name);
+        }
+    }
+    bail!("the PKCS#12 archive has no `Developer ID Application` certificate")
+}
+
+fn validate_developer_id_certificate(
+    cert_der: &[u8],
+    expected_team: &str,
+) -> Result<Option<String>> {
+    let Some((common_name, team_id)) = developer_id_certificate_identity(cert_der)? else {
+        return Ok(None);
+    };
+    if team_id != expected_team {
+        bail!(
+            "{}: Developer ID certificate belongs to Apple team {team_id}, not {expected_team}",
+            resolver::codes::CREDENTIAL_IDENTITY_MISMATCH
+        );
+    }
+    Ok(Some(common_name))
+}
+
+fn developer_id_certificate_identity(cert_der: &[u8]) -> Result<Option<(String, String)>> {
+    use x509_parser::prelude::*;
+
+    let (_, certificate) = X509Certificate::from_der(cert_der)
+        .map_err(|error| anyhow!("Failed to parse certificate in PKCS#12 archive: {error:?}"))?;
+    let common_name = certificate
+        .subject()
+        .iter_common_name()
+        .next()
+        .and_then(|value| value.as_str().ok());
+    let Some(common_name) =
+        common_name.filter(|value| value.starts_with("Developer ID Application:"))
+    else {
+        return Ok(None);
+    };
+    let team_id = certificate
+        .subject()
+        .iter_organizational_unit()
+        .next()
+        .and_then(|value| value.as_str().ok())
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| anyhow!("Developer ID certificate has no Apple Team ID (subject OU)"))?;
+    Ok(Some((common_name.to_string(), team_id.to_string())))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn p12_certificates(bytes: &[u8], password: &str) -> Result<Vec<Vec<u8>>> {
+    use openssl::pkcs12::Pkcs12;
+
+    let archive = Pkcs12::from_der(bytes).context("Invalid PKCS#12 archive")?;
+    let parsed = archive
+        .parse2(password)
+        .context("Failed to decrypt PKCS#12 archive with the provided password")?;
+    let certificate = parsed
+        .cert
+        .ok_or_else(|| anyhow!("PKCS#12 archive contains no leaf certificate"))?;
+    Ok(vec![
+        certificate
+            .to_der()
+            .context("Failed to encode PKCS#12 leaf certificate")?,
+    ])
+}
+
+#[cfg(target_os = "windows")]
+fn p12_certificates(bytes: &[u8], password: &str) -> Result<Vec<Vec<u8>>> {
+    let store = schannel::cert_store::CertStore::import_pkcs12(bytes, Some(password))
+        .context("Failed to decrypt PKCS#12 archive with the provided password")?;
+    let certificates: Vec<Vec<u8>> = store
+        .certs()
+        .map(|certificate| certificate.to_der().to_vec())
+        .collect();
+    if certificates.is_empty() {
+        bail!("PKCS#12 archive contains no certificates");
+    }
+    Ok(certificates)
 }
 
 fn validate_api_key_credentials(
@@ -773,4 +867,63 @@ fn expand_path(path: &str) -> PathBuf {
         return home.join(suffix);
     }
     PathBuf::from(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
+
+    fn certificate(common_name: &str, team_id: &str) -> Vec<u8> {
+        let key = KeyPair::generate().unwrap();
+        let mut distinguished_name = DistinguishedName::new();
+        distinguished_name.push(DnType::CommonName, common_name);
+        distinguished_name.push(DnType::OrganizationalUnitName, team_id);
+        let mut params = CertificateParams::default();
+        params.distinguished_name = distinguished_name;
+        params.self_signed(&key).unwrap().der().to_vec()
+    }
+
+    #[test]
+    fn extracts_developer_id_team_from_certificate_subject() {
+        let identity = developer_id_certificate_identity(&certificate(
+            "Developer ID Application: Example (TEAMAAAAAA)",
+            "TEAMAAAAAA",
+        ))
+        .unwrap();
+        assert_eq!(
+            identity,
+            Some((
+                "Developer ID Application: Example (TEAMAAAAAA)".to_string(),
+                "TEAMAAAAAA".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn rejects_non_developer_id_application_certificates() {
+        let identity = developer_id_certificate_identity(&certificate(
+            "Apple Development: Example (TEAMAAAAAA)",
+            "TEAMAAAAAA",
+        ))
+        .unwrap();
+        assert!(identity.is_none());
+    }
+
+    #[test]
+    fn rejects_developer_id_certificate_from_another_team() {
+        let error = validate_developer_id_certificate(
+            &certificate(
+                "Developer ID Application: Example (TEAMAAAAAA)",
+                "TEAMAAAAAA",
+            ),
+            "TEAMBBBBBB",
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .starts_with(resolver::codes::CREDENTIAL_IDENTITY_MISMATCH)
+        );
+    }
 }
