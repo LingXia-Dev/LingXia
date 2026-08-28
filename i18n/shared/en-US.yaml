@@ -95,6 +95,10 @@ date:
   this_month: "This Month"
   last_month: "Last Month"
 
+# Launch campaign
+splash:
+  skip: "Skip"
+
 # App Update
 update:
   downloading: "Downloading Update"

@@ -515,6 +515,7 @@ impl LxApp {
                 preference.as_str(),
             )
             .map_err(|error| LxAppError::Runtime(error.to_string()))?;
+            self.publish_host_color_mode(preference, resolved);
             return Ok(());
         }
         let revision = self.next_page_chrome_revision();
@@ -560,7 +561,39 @@ impl LxApp {
             return Err(error);
         }
         self.publish_appearance_to_background_pages(&page, revision, resolved);
+        self.publish_host_color_mode(preference, resolved);
         Ok(())
+    }
+
+    /// Push the app's appearance into the platform's own night mode.
+    ///
+    /// The launch face — the OS frame and the frame the SDK draws over it —
+    /// is resolved from platform resources, so the only way an in-app choice
+    /// can reach it is through the platform's own per-app setting. Android
+    /// persists one, so its next launch resolves this appearance for both
+    /// frames; Harmony's is process-scoped and iOS has none, and there a
+    /// pinned app still launches through the system's face.
+    ///
+    /// Only the home lxapp speaks for the app: it is the one whose appearance
+    /// the user sees at launch.
+    fn publish_host_color_mode(
+        &self,
+        preference: AppearancePreference,
+        resolved: ResolvedAppearance,
+    ) {
+        if lingxia_app_context::home_app_id() != Some(self.appid.as_str()) {
+            return;
+        }
+        // Auto clears the override rather than pinning today's answer: the
+        // next launch must follow the system as it is then, not as it was here.
+        let dark = match preference {
+            AppearancePreference::Auto => None,
+            _ => Some(resolved.is_dark()),
+        };
+        if let Some(platform) = crate::lxapp::runtime_registry::get_platform() {
+            use lingxia_platform::traits::ui::UIUpdate;
+            platform.set_host_color_mode(dark);
+        }
     }
 
     /// Stamp the live scheme onto a page about to be (re)shown: a cached

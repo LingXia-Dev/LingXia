@@ -167,9 +167,8 @@ mod terminal_config_impl;
 /// Runs a future on LingXia's runtime, from any phase of the process.
 ///
 /// This is the host addon's one way to hand work to LingXia: safe even
-/// before the runtime is initialized (e.g. inside `HostAddon::select_splash`,
-/// which runs on the cold-start path) — early work is queued and starts
-/// right after initialization. For handles, joins, and blocking work inside
+/// before the runtime is initialized (e.g. inside `HostAddon::before_init`)
+/// — early work is queued and starts right after initialization. For handles, joins, and blocking work inside
 /// already-running runtime code, use [`task`].
 pub fn spawn<F>(future: F)
 where

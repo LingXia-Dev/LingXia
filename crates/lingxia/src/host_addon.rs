@@ -9,14 +9,17 @@ pub trait HostAddon: Send + Sync {
     fn install_logic_extensions(&self) {}
     /// Registers native host APIs before the runtime starts serving requests.
     fn install_host_apis(&self) {}
-    /// Picks the launch cover for this cold start.
+    /// Picks the campaign screen shown after this cold start's launch face,
+    /// with a countdown the user can skip.
     ///
-    /// Must return quickly — it runs on the startup path under a budget, and
-    /// the configured cover wins if it overruns. Choose only among assets
-    /// already on disk; hand any downloading to [`crate::spawn`], which
-    /// lands it in time for the *next* launch.
-    fn select_splash(&self, _launch: &crate::splash::Launch) -> crate::splash::SplashChoice {
-        crate::splash::SplashChoice::default()
+    /// Runs once the runtime is up, not on the cold-start path, so reading a
+    /// file or checking a clock here costs the launch nothing — but an answer
+    /// that arrives after the launch face lifts is dropped, so this is not
+    /// the place to wait on a network. Choose only among assets already on
+    /// disk; hand any downloading to [`crate::spawn`], which lands it in time
+    /// for a later launch.
+    fn select_campaign(&self, _launch: &crate::splash::Launch) -> crate::splash::CampaignChoice {
+        crate::splash::CampaignChoice::default()
     }
 
     /// Runs after LingXia initialization succeeds.
@@ -70,23 +73,22 @@ pub(crate) fn run_install_host_apis() {
     }
 }
 
-/// First addon that returns a non-default choice wins; ties go to the
-/// configured cover. Splash has one writer by construction — a second opinion
-/// would just be a race for the same pixels.
 /// Whether any addon is installed — lets startup-path work skip entirely.
 pub(crate) fn any_registered() -> bool {
     !snapshot_host_addons().is_empty()
 }
 
-pub(crate) fn run_select_splash(launch: &crate::splash::Launch) -> crate::splash::SplashChoice {
+/// First addon that names a campaign wins. The screen has one writer by
+/// construction — a second opinion would just be a race for the same pixels.
+pub(crate) fn run_select_campaign(launch: &crate::splash::Launch) -> crate::splash::CampaignChoice {
     let installed = snapshot_host_addons();
     for addon in installed.iter() {
-        let choice = addon.select_splash(launch);
-        if choice != crate::splash::SplashChoice::default() {
+        let choice = addon.select_campaign(launch);
+        if choice != crate::splash::CampaignChoice::default() {
             return choice;
         }
     }
-    crate::splash::SplashChoice::default()
+    crate::splash::CampaignChoice::default()
 }
 
 pub(crate) fn run_after_init() {

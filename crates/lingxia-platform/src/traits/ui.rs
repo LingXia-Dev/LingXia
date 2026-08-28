@@ -293,6 +293,18 @@ pub trait UIUpdate: Send + Sync + 'static {
     /// once per process). Hosts dismiss the startup splash overlay on it.
     fn notify_home_first_ready(&self) {}
 
+    /// Hand the launch face over to the host's campaign screen instead of
+    /// dismissing it: the same layer, new art, plus a countdown the user can
+    /// skip. The platform owns the countdown and lifts the layer when it ends
+    /// — the runtime has already said everything it knows.
+    fn show_splash_campaign(&self, _image_path: String, _duration_ms: u32) {}
+
+    /// Persist the appearance the app draws in, so the *next* launch frame —
+    /// composed by the OS before any code runs — resolves the same one. `None`
+    /// follows the system again. No-op where the platform has no such lever
+    /// (iOS: a launch frame there can only follow the system).
+    fn set_host_color_mode(&self, _dark: Option<bool>) {}
+
     /// Measure the visible capsule after native Page Chrome has laid out.
     /// The JSON payload is an internal transport; app code only sees the
     /// revisioned View snapshot assembled by `lingxia-lxapp`.

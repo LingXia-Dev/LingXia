@@ -98,7 +98,25 @@ internal object NativeApi {
      * bundled cover.
      */
     @JvmStatic
-    external fun splashSelectCover(dataDir: String, dark: Boolean): String
+    external fun splashMarkLaunchFace(dark: Boolean)
+
+    /**
+     * The configured minimum time the launch cover must stay on screen, in
+     * milliseconds. Resolves from the loaded app config, so it is only
+     * meaningful once the runtime is up — the overlay reads it at dismissal,
+     * not at attach.
+     */
+    @JvmStatic
+    external fun splashMinDurationMs(): Long
+
+    /**
+     * The host-declared page floor for one appearance, as `#RRGGBB`, or an
+     * empty string when the host declared none. This is the colour the lxapp's
+     * own CSS paints its page with; native chrome that borders the page has to
+     * match it.
+     */
+    @JvmStatic
+    external fun pageBackgroundColor(dark: Boolean): String
 
     /**
      * Notify native layer that an LxApp has been opened

@@ -172,6 +172,32 @@ export class Lingxia {
     }
   }
 
+  /**
+   * Persist the appearance the app draws in, so the *next* launch resolves the
+   * same one everywhere it matters: the system-composed start window, the
+   * launch face this SDK draws over it, and every resource in between.
+   *
+   * `auto` clears the override rather than storing today's answer — the launch
+   * after it must follow the system as it is then, not as it was here.
+   */
+  public static setHostColorMode(mode: string): void {
+    const context = Lingxia.context;
+    if (!context) {
+      return;
+    }
+    let colorMode: ConfigurationConstant.ColorMode = ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
+    if (mode === 'dark') {
+      colorMode = ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+    } else if (mode === 'light') {
+      colorMode = ConfigurationConstant.ColorMode.COLOR_MODE_LIGHT;
+    }
+    try {
+      context.getApplicationContext().setColorMode(colorMode);
+    } catch (error) {
+      LxLog.e(TAG, `setColorMode(${mode}) failed: ${error}`);
+    }
+  }
+
   private static observeHostAppearance(appContext: common.ApplicationContext): void {
     if (Lingxia.environmentCallback !== null) {
       return;

@@ -12,6 +12,10 @@ impl UIUpdate for Platform {
         ffi::on_home_first_ready();
     }
 
+    fn show_splash_campaign(&self, image_path: String, duration_ms: u32) {
+        ffi::show_splash_campaign(&image_path, duration_ms);
+    }
+
     fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), PlatformError> {
         if ffi::apply_appearance(appid, dark) {
             Ok(())

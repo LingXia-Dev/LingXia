@@ -38,6 +38,8 @@ const TAB_BAR_HORIZONTAL_HEIGHT = 72;    // Match TabBar default height
 const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
 
+const canvasColorCache: Map<boolean, ResourceColor> = new Map<boolean, ResourceColor>();
+
 /**
  * The colour the canvas behind the page should be, or transparent when the
  * host declares no page floor.
@@ -49,9 +51,18 @@ const COLOR_TRANSPARENT = Color.Transparent;
  * host's declared page floor there makes the strip read as part of the page.
  */
 function resolveCanvasColor(dark: boolean): ResourceColor {
+  // Memoized per appearance: this is read from a @Builder, which ArkUI re-runs
+  // on every state change around it, and the answer comes from app config that
+  // cannot change while the process lives. Misses stay unmemoized so a call
+  // made before the runtime is up does not poison the slot.
+  const cached: ResourceColor | undefined = canvasColorCache.get(dark);
+  if (cached !== undefined) {
+    return cached;
+  }
   try {
     const declared: string = pageBackgroundColor(dark);
     if (declared.length > 0) {
+      canvasColorCache.set(dark, declared);
       return declared;
     }
   } catch (_error) {
@@ -59,6 +70,7 @@ function resolveCanvasColor(dark: boolean): ResourceColor {
   }
   return COLOR_TRANSPARENT;
 }
+
 const POPUP_MASK_COLOR = 'rgba(0,0,0,0.45)';
 const OVERLAY_MASK_FADE_DURATION = 180;
 

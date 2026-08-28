@@ -655,6 +655,18 @@ extension LxApp {
         }
     }
 
+    /// Runtime signal: the home page is ready, and the host has a campaign to
+    /// show before the launch layer lifts.
+    nonisolated static func showSplashCampaign(image_path: RustStr, duration_ms: UInt32) {
+        let path = image_path.toString()
+        let durationMs = duration_ms
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                LingXiaSplashOverlay.showCampaign(path: path, durationMs: durationMs)
+            }
+        }
+    }
+
     nonisolated static func applyAppearance(appid: RustStr, dark: Bool) -> Bool {
         let appIdString = appid.toString()
         return executeOnMain {

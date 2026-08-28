@@ -280,6 +280,9 @@ pub(crate) fn init_with_platform(
     crate::update::install_auto_trigger(runtime.clone());
     crate::browser::register_builtin_assets();
     crate::host_addon::run_after_init();
+    // Between the runtime being up and the home page being ready: the only
+    // window where asking the host for a campaign costs the launch nothing.
+    crate::splash::resolve_campaign();
     crate::task::release_deferred();
     crate::browser::warmup();
     crate::host_addon::run_start_services();

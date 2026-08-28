@@ -1,3 +1,6 @@
 {
-  "startWindowBackgroundColor": "$color:lingxia_splash_background"
+  "startWindowBackgroundColor": "$color:lingxia_splash_background",
+  "startWindowColorModeType": "FOLLOW_SYSTEM",
+  "startWindowBackgroundImage": "$media:lingxia_splash",
+  "startWindowBackgroundImageFit": "Cover"
 }

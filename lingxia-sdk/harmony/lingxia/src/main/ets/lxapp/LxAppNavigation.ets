@@ -7,7 +7,7 @@ import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
 import { SplashResources } from './SplashOverlay';
 import { pauseAllComponentsByAppId } from './WebViewBridge';
-import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onLxappEvent, UiEventType, splashSelectCover } from 'liblingxia.so';
+import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onLxappEvent, UiEventType, splashMarkLaunchFace } from 'liblingxia.so';
 import { ToastManager } from './APIs/LxAppToast';
 import { ModalManager } from './APIs/LxAppModal';
 import { PickerManager } from './APIs/LxAppPicker';
@@ -24,6 +24,11 @@ const DOMAIN = 0xA000;
 const TAG = 'LingXia.Navigation';
 
 // Back handling
+/// Clears the status bar the launch layer draws under, so the skip control
+/// never lands on the clock: the platform's own bar height plus the same 12
+/// Android and iOS inset theirs by, so the control sits in one place across
+/// the three.
+const SPLASH_SKIP_TOP: number = 44 + 12;
 const KEYCODE_BACK: number = 2;
 const BACK_PRESS_THROTTLE_MS: number = 200;
 
@@ -65,6 +70,14 @@ export struct LxAppNavigation {
   @State private splashBackground: number = 0xFFFFFFFF
   @State private splashImage: image.PixelMap | null = null
   @State private splashIsMark: boolean = false
+  // Campaign: the host's own screen, handed the launch layer once the launch
+  // face has done its job. Its own art, its own countdown, skippable.
+  @State private campaignImage: image.PixelMap | null = null
+  @State private campaignOpacity: number = 0
+  @State private campaignSeconds: number = 0
+  private campaignTimer: number = -1
+  private campaignDismissTimer: number = -1
+  private splashTimeout: number = -1
   private static current: LxAppNavigation | null = null
 
   // Current modal LxApp state (only one modal app can be shown at a time)
@@ -634,19 +647,49 @@ export struct LxAppNavigation {
       if (this.splashVisible) {
         Stack() {
           if (this.splashImage && this.splashIsMark) {
-            // No cover configured: the start window's own mark, unscaled and
-            // centered — pixel-identical to the frame it replaces.
+            // No launch art configured: the start window's own mark, unscaled
+            // and centered — pixel-identical to the frame it replaces.
             Image(this.splashImage)
               .width(this.getUIContext().px2vp(this.splashImage.getImageInfoSync().size.width))
               .height(this.getUIContext().px2vp(this.splashImage.getImageInfoSync().size.height))
               .objectFit(ImageFit.Contain)
           } else if (this.splashImage) {
-            // The cover: full bleed, opaque from the first frame — the start
-            // window's exit is the transition onto it.
+            // The launch face: full bleed, opaque from the first frame — the
+            // start window's exit is the transition onto it.
             Image(this.splashImage)
               .width('100%')
               .height('100%')
               .objectFit(ImageFit.Cover)
+          }
+          if (this.campaignImage) {
+            // The campaign fades in over the launch face rather than cutting:
+            // a cut here is exactly what a mid-launch swap looks like, and
+            // this beat is content arriving, not the launch continuing.
+            Image(this.campaignImage)
+              .width('100%')
+              .height('100%')
+              .objectFit(ImageFit.Cover)
+              .opacity(this.campaignOpacity)
+            Column() {
+              Row() {
+                Text($r('app.string.lx_splash_skip'))
+                  .fontSize(13)
+                  .fontColor(Color.White)
+                Text(` ${this.campaignSeconds}`)
+                  .fontSize(13)
+                  .fontColor(Color.White)
+              }
+              .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+              .backgroundColor('#66000000')
+              .borderRadius(14)
+              .onClick(() => this.hideSplash())
+            }
+            .width('100%')
+            .height('100%')
+            .alignItems(HorizontalAlign.End)
+            // The layer covers the status bar, so the pill clears it itself.
+            .padding({ top: SPLASH_SKIP_TOP, right: 16 })
+            .opacity(this.campaignOpacity)
           }
         }
         .width('100%')
@@ -654,7 +697,11 @@ export struct LxAppNavigation {
         .backgroundColor(this.splashBackground)
         .opacity(this.splashOpacity)
         .scale({ x: this.splashScale, y: this.splashScale })
-        .hitTestBehavior(HitTestMode.Block)
+        // Swallows taps so nothing underneath is reachable while the layer is
+        // up — but by consuming them itself, not by blocking hit testing:
+        // `HitTestMode.Block` never lets the skip control see a touch either,
+        // which makes a countdown the user cannot actually skip.
+        .onClick(() => {})
         .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
         .zIndex(20000)
       }
@@ -774,19 +821,20 @@ export struct LxAppNavigation {
     }
     SplashResources.shownThisProcess = true;
     this.splashBackground = background;
-    // The host's Rust hook picks this launch's cover; empty means the
-    // bundled one. The cover is full bleed and opaque in the very first
-    // frame — the start window's own exit is the only transition onto it,
-    // so the launch reads "tap the icon, see the cover". With no cover
-    // configured, the layer instead reproduces the start window exactly —
-    // the same mark, centered at its own pixels — and the only transition
-    // is into the home page.
+    // The launch face is build-time art, and the only art that can be
+    // identical to the frame the start window already drew — so it is what
+    // this layer shows, full bleed and opaque in its very first frame. With
+    // no art configured the layer instead reproduces the start window
+    // exactly: the same mark, centered at its own pixels.
+    //
+    // The appearance is the platform's: resources here resolve out of the same
+    // bucket the start window already resolved, which is what lets this frame
+    // be identical to the one it replaces. The runtime is only told which
+    // bucket won, so a campaign can match it.
     const dark: boolean =
       context.config?.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
-    const dataDir: string = context.getApplicationContext().filesDir;
-    const picked: string = splashSelectCover(dataDir, dark);
-    const cover: image.PixelMap | null =
-      (picked ? SplashResources.loadImageFile(picked) : null) ?? SplashResources.loadImage(context);
+    splashMarkLaunchFace(dark);
+    const cover: image.PixelMap | null = SplashResources.loadImage(context);
     if (cover) {
       this.splashImage = cover;
       this.splashIsMark = false;
@@ -795,8 +843,46 @@ export struct LxAppNavigation {
       this.splashIsMark = true;
     }
     this.splashVisible = true;
-    // Timeout fallback: a broken page must never leave the splash stuck.
-    setTimeout(() => this.hideSplash(), 6000);
+    // Timeout fallback: a broken page must never leave the launch face stuck.
+    this.splashTimeout = setTimeout(() => this.hideSplash(), 6000);
+  }
+
+  /// Hand the launch layer to the host's campaign: same layer, new art, and a
+  /// countdown the user can skip. Called by the runtime instead of the
+  /// dismissal, so there is no gap between the two screens.
+  public static showCampaign(imagePath: string, durationMs: number): void {
+    LxAppNavigation.current?.startCampaign(imagePath, durationMs);
+  }
+
+  private startCampaign(imagePath: string, durationMs: number): void {
+    const art: image.PixelMap | null = SplashResources.loadImageFile(imagePath);
+    if (!this.splashVisible || !art) {
+      // Unreadable art is not worth a stuck launch: go straight to the app.
+      this.hideSplash();
+      return;
+    }
+    // The campaign owns the screen from here, so the launch face's own
+    // watchdog must not fire underneath it.
+    if (this.splashTimeout !== -1) {
+      clearTimeout(this.splashTimeout);
+      this.splashTimeout = -1;
+    }
+    this.campaignImage = art;
+    this.campaignSeconds = Math.max(1, Math.ceil(durationMs / 1000));
+    animateTo({ duration: 200, curve: Curve.EaseOut }, () => {
+      this.campaignOpacity = 1;
+    });
+    this.campaignTimer = setInterval(() => {
+      if (this.campaignSeconds > 1) {
+        this.campaignSeconds -= 1;
+      }
+    }, 1000);
+    // The label counts whole seconds, but the public duration is milliseconds;
+    // keep the exact dismissal deadline independent from the display tick.
+    this.campaignDismissTimer = setTimeout(
+      () => this.hideSplash(),
+      Math.max(0, durationMs)
+    );
   }
 
   /**
@@ -812,6 +898,18 @@ export struct LxAppNavigation {
     if (!this.splashVisible || this.splashOpacity === 0) {
       return;
     }
+    if (this.campaignTimer !== -1) {
+      clearInterval(this.campaignTimer);
+      this.campaignTimer = -1;
+    }
+    if (this.campaignDismissTimer !== -1) {
+      clearTimeout(this.campaignDismissTimer);
+      this.campaignDismissTimer = -1;
+    }
+    if (this.splashTimeout !== -1) {
+      clearTimeout(this.splashTimeout);
+      this.splashTimeout = -1;
+    }
     // The cover lifts away: a slight zoom under the fade reads as depth —
     // the home page is beneath it, not after it.
     animateTo({
@@ -820,6 +918,7 @@ export struct LxAppNavigation {
       onFinish: () => {
         this.splashVisible = false;
         this.splashImage = null;
+        this.campaignImage = null;
       }
     }, () => {
       this.splashOpacity = 0;

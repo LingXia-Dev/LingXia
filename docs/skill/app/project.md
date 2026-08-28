@@ -162,6 +162,7 @@ optional, and every role inside them is optional:
 ```yaml
 theme:
   light:
+    pageBackgroundColor: "#E9EAEE"
     windowBackgroundColor: "#F4F5F7"
     surfaceBackgroundColor: "#FFFFFF"
     foregroundColor: "#111827"
@@ -170,6 +171,7 @@ theme:
     separatorColor: "#E5E7EB"
     selectionBackgroundColor: "#EEF3FF"
   dark:
+    pageBackgroundColor: "#1B1D21"
     windowBackgroundColor: "#17191C"
     surfaceBackgroundColor: "#23262B"
     foregroundColor: "#F3F4F6"
@@ -191,6 +193,15 @@ window backdrop and sidebar, and `surfaceBackgroundColor` for native cards and
 other raised surfaces. Text, selection, accent, and structural dividers consume
 the correspondingly named roles. Other hosts can map the same semantic roles
 without adding platform-specific configuration.
+
+`pageBackgroundColor` is the odd one out: not a colour native UI paints
+itself, but the host declaring what colour the lxapp paints its page — no
+platform can ask a WebView for its document colour in time to paint a frame
+already on screen. Native chrome uses it wherever it borders the page (the
+strip a pull-to-refresh opens, the canvas behind navigation transitions).
+Set it to the page floor the lxapp's CSS uses, both schemes; unset, each
+platform keeps its system background, which reads as a pale seam on a
+tinted page.
 
 Lxapp page content does not inherit these colors; it responds to the standard
 `prefers-color-scheme` surface and owns its CSS design.
@@ -335,11 +346,26 @@ The cache cap has the one non-obvious behavior worth knowing: cleanup triggers a
 
 ## `splash` Section
 
-Optional launch screen, generated per platform from a few fields — no hand-built launch UI. The launch experience is "tap the icon, see the cover": `image` (PNG, full-screen aspect-fill) is rendered as the app's first frame on every cold start and held until the home page first renders, then fades into real content. The OS launch frame before it is the placeholder — `background` (required, `#RRGGBB`) with a small centered image — and sharing one background color makes that instant read as the cover's entrance. Pick a dark background so it never reads as a white flash.
+Optional launch screen, generated per platform from a few fields — no hand-built launch UI. The launch experience is "tap the icon, see the art": `image` (PNG, full-screen aspect-fill) is the app's first frame on every cold start, held until the home page first renders, then fading into real content. Where the platform allows it the OS launch frame carries that same art — HarmonyOS's start window, iOS's `UILaunchScreen` — so the two frames are one picture and the handoff has nothing to change.
 
-The cover deliberately never goes into the OS launch frame itself: launch-frame compositors render full-bleed art soft or hide app-drawn content until the app's first frame, so the SDK rides the first frame instead — the one place the cover is both sharp and immediate. `mark` (PNG, authored at the pixels it should occupy on screen) is what the placeholder centers where the OS accepts a custom image (HarmonyOS start window, iOS launch screen). Omit `image` for a placeholder-only launch that holds until the home page is ready. On Android 12+ the icon slot follows from that choice: with a cover it is blanked, since the cover is the app's real first face and an icon before it would be a second one; without a cover the platform draws the real app icon there, preserving the launcher's zoom morph, because a blank slot would leave the launch showing nothing until the home page renders.
+Android is the exception: its 12+ system splash offers a colour and an icon slot and nothing else, so there the OS beat is `background` (required, `#RRGGBB`) and the art arrives on the app's first frame. Pick the art's own ground for `background` and that beat reads as the art's entrance rather than as a flash. On Android the icon slot follows from whether art is configured: with art it is blanked, since the art is the app's real first face and an icon before it would be a second one; without art the platform draws the real app icon, preserving the launcher's zoom morph. HarmonyOS follows the same rule with a generated transparent icon.
 
-A host's Rust addon can implement `select_splash` to substitute the cover file for a given cold start (e.g. a downloaded campaign cover) — same first-frame timing, different art; see [Launch Cover](../native/splash.md). `minDuration` (ms, default 600) is the minimum the cover stays up; the maximum is a framework constant.
+**One face, every appearance.** The launch screen is a brand asset, not a UI surface that follows the system: it has to be identical to a frame the OS composed from build-time resources before the process existed, and one picture is the only thing that always is. There is deliberately no dark counterpart — an appearance pair can only ever follow the *system*, never an in-app appearance choice (HarmonyOS's colour mode does not survive process death and iOS has no such lever at all), so the pair's own halves are what end up disagreeing at launch.
+
+`mark` (PNG, authored at the pixels it should occupy on screen) is what the OS frame centers when no `image` is configured — the documented placeholder-only launch, which holds until the home page is ready.
+
+The launch face is this configured art and nothing else. A host's Rust addon can implement `select_campaign` to show a screen of its own *after* the launch face — its own art, a countdown, skippable — see [Launch Screen](../native/splash.md).
+
+`minDuration` (ms, default 600) is the minimum the launch face stays on screen, measured from process start — the OS frame is already showing the same art, so the user has been looking at it since before this process could count. The maximum is a framework constant.
+
+An iOS release-environment build fails when the asset catalog cannot compile:
+without `Assets.car`, `UILaunchScreen` normally cannot resolve the configured
+face and iOS would ship a white system frame. There is one narrow device-build
+fallback when Xcode has the iOS SDK but no simulator runtime: with a full cover,
+the CLI installs that cover under the raw resource name used by
+`UILaunchScreen` and keeps the legacy icon output that `actool` did produce. A
+mark-only face still requires the iOS platform (`xcodebuild -downloadPlatform
+iOS`); developer/preview builds warn when neither path is available.
 
 ---
 

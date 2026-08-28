@@ -31,10 +31,24 @@ pub struct AppBundleConfig {
     /// value is also written to Info.plist so the runtime overlay never
     /// depends on the catalog being compiled.
     pub splash_background: Option<String>,
-    /// Whether `splash.mark` is configured: `UILaunchScreen` then also
-    /// centers the catalog mark, completing the OS placeholder (color +
-    /// mark) before any app code runs.
-    pub splash_mark: bool,
+    /// What `UILaunchScreen` draws over the ground. The art wins when the
+    /// host configures it: the OS frame is then the same picture the SDK's
+    /// own layer draws over it, so the handoff has nothing to change. The
+    /// mark is the placeholder-only launch's face, and is drawn only when
+    /// there is no art to show.
+    pub splash_launch_image: LaunchImage,
+}
+
+/// What the OS launch frame draws over the brand ground.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaunchImage {
+    /// The configured launch art, full bleed — identical to the frame the SDK
+    /// draws over it.
+    Art,
+    /// The placeholder mark, centered, for a launch with no art configured.
+    Mark,
+    /// Ground only.
+    None,
 }
 
 /// App bundle packager
@@ -363,10 +377,11 @@ let package = Package(
             "UISupportedInterfaceOrientations".into(),
             plist::Value::Array(vec!["UIInterfaceOrientationPortrait".into()]),
         );
-        // Splash: the OS launch frame is the placeholder — background color
-        // plus the centered mark. Both resolve from the compiled catalog; the
-        // raw color also lands in Info.plist so the runtime overlay never
-        // depends on `actool` having succeeded.
+        // Splash: the OS launch frame carries the configured launch art, or —
+        // with no art — the placeholder's centered mark on the brand ground.
+        // Both resolve from the compiled catalog; the raw color also lands in
+        // Info.plist so the runtime overlay never depends on `actool` having
+        // succeeded.
         let mut launch_screen = plist::Dictionary::new();
         if let Some(background) = &config.splash_background {
             launch_screen.insert(
@@ -375,8 +390,20 @@ let package = Package(
             );
             info.insert("LingXiaSplashBackground".into(), background.clone().into());
         }
-        if config.splash_mark {
-            launch_screen.insert("UIImageName".into(), crate::splash::APPLE_MARK_ASSET.into());
+        match config.splash_launch_image {
+            LaunchImage::Art => {
+                launch_screen.insert(
+                    "UIImageName".into(),
+                    crate::splash::APPLE_IMAGE_ASSET.into(),
+                );
+                // Edge to edge: the frame this hands over to is full bleed, and
+                // an inset copy of the same art would move on the handoff.
+                launch_screen.insert("UIImageRespectsSafeAreaInsets".into(), false.into());
+            }
+            LaunchImage::Mark => {
+                launch_screen.insert("UIImageName".into(), crate::splash::APPLE_MARK_ASSET.into());
+            }
+            LaunchImage::None => {}
         }
         info.insert(
             "UILaunchScreen".into(),

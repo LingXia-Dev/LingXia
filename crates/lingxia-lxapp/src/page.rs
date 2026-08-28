@@ -75,11 +75,21 @@ fn notify_home_first_ready_once(appid: &str) {
         return;
     }
 
-    // Hold the signal until the cover has been up long enough. A page that
-    // renders in 200ms would otherwise flash the splash, which reads worse
-    // than not having one. The platform-side timeout still caps the wait.
-    let remaining = lingxia_app_context::splash_min_duration()
-        .saturating_sub(lingxia_app_context::since_startup());
+    // Hold the signal until the launch face has been up long enough. A page
+    // that renders in 200ms would otherwise flash the splash, which reads
+    // worse than not having one. The platform-side timeout still caps the
+    // wait.
+    //
+    // Measured from when the face reached the screen, not from process
+    // start: the two differ by the whole runtime boot, which the user spends
+    // looking at the OS placeholder, and charging that to the hold is what
+    // made a fast boot flash the art it was supposed to show. A process that
+    // never marked a launch face — desktop, where this signal reveals the
+    // first window — has nothing to hold for, and waiting would only delay
+    // real content.
+    let remaining = lingxia_app_context::splash_visible_for()
+        .map(|visible| lingxia_app_context::splash_min_duration().saturating_sub(visible))
+        .unwrap_or_default();
     if remaining.is_zero() {
         signal_home_first_ready();
         return;
@@ -91,9 +101,17 @@ fn notify_home_first_ready_once(appid: &str) {
 }
 
 fn signal_home_first_ready() {
-    if let Some(platform) = lxapp::runtime_registry::get_platform() {
-        use lingxia_platform::traits::ui::UIUpdate;
-        platform.notify_home_first_ready();
+    let Some(platform) = lxapp::runtime_registry::get_platform() else {
+        return;
+    };
+    use lingxia_platform::traits::ui::UIUpdate;
+    // The launch face has done its job. If the host resolved a campaign in
+    // time, it takes over the same layer with its own countdown; otherwise the
+    // face lifts straight into the app. A campaign that is not ready by this
+    // moment is dropped, never shown late over real content.
+    match lingxia_app_context::take_pending_campaign() {
+        Some((image_path, duration_ms)) => platform.show_splash_campaign(image_path, duration_ms),
+        None => platform.notify_home_first_ready(),
     }
 }
 

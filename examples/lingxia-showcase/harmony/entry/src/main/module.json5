@@ -18,7 +18,7 @@
         "description": "$string:EntryAbility_desc",
         "icon": "$media:layered_image",
         "label": "$string:EntryAbility_label",
-        "startWindowIcon": "$media:lingxia_splash_mark",
+        "startWindow": "$profile:start_window",
         "startWindowBackground": "$color:lingxia_splash_background",
         "orientation": "auto_rotation",
         "exported": true,
@@ -46,7 +46,7 @@
             ]
           }
         ],
-        "startWindow": "$profile:start_window"
+        "startWindowIcon": "$media:lingxia_splash_blank"
       }
     ]
   }
