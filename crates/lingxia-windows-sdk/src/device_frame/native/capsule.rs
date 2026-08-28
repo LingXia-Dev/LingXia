@@ -80,6 +80,62 @@ pub(crate) fn capsule_reserve_width() -> i32 {
     pill_w + CAPSULE_INSET * 2
 }
 
+/// The visible pill's rect in the page's CSS pixel space, or `None` while the
+/// capsule is hidden or absent. Answers the runtime's Page Chrome capsule
+/// measurement, so a custom-navigation page can lay out around the pill the
+/// same way it does on iOS.
+///
+/// Coordinate mapping mirrors `report_surface_viewport`: a fit-scaled device
+/// frame renders `fit` physical px per CSS px regardless of monitor DPI;
+/// otherwise physical px per CSS px is the window DPI over 96. Win32 window
+/// queries used here are safe from any thread, which matters because the
+/// runtime asks from the Logic executor, not the UI thread.
+pub(super) fn capsule_page_rect(content: HWND) -> Option<String> {
+    let handle = hwnd_handle(content);
+    let (capsule, fit) =
+        frame_state(handle, |state| (state.capsule, state.fit_scale)).filter(|(c, _)| *c != 0)?;
+    let capsule = hwnd_from_handle(capsule);
+    if !is_window_handle_valid(hwnd_handle(capsule))
+        || !unsafe { WindowsAndMessaging::IsWindowVisible(capsule) }.as_bool()
+    {
+        return None;
+    }
+
+    let mut capsule_rect = RECT::default();
+    let mut content_rect = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetWindowRect(capsule, &mut capsule_rect).is_err()
+            || WindowsAndMessaging::GetWindowRect(content, &mut content_rect).is_err()
+        {
+            return None;
+        }
+    }
+
+    let scale = if fit < 1.0 {
+        fit
+    } else {
+        let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(content) }.max(96);
+        dpi as f64 / 96.0
+    };
+    if scale <= 0.0 {
+        return None;
+    }
+
+    // The pill sits `CAPSULE_SHADOW` inside the layered capsule window.
+    let geometry = capsule_geometry();
+    let pill_w = (geometry.pill.right - geometry.pill.left) as f64;
+    let left = (capsule_rect.left + CAPSULE_SHADOW - content_rect.left) as f64 / scale;
+    let top = (capsule_rect.top + CAPSULE_SHADOW - content_rect.top) as f64 / scale;
+    let width = pill_w / scale;
+    let height = CAPSULE_H as f64 / scale;
+
+    Some(format!(
+        "{{\"width\":{width},\"height\":{height},\"top\":{top},\"right\":{right},\"bottom\":{bottom},\"left\":{left}}}",
+        right = left + width,
+        bottom = top + height,
+    ))
+}
+
 fn capsule_class() -> PCWSTR {
     static REGISTERED: OnceLock<()> = OnceLock::new();
     REGISTERED.get_or_init(|| {

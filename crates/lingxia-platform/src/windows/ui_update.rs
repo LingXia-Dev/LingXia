@@ -18,6 +18,19 @@ static WINDOWS_UI_UPDATE_ASYNC_HANDLER: Mutex<Option<WindowsUiUpdateAsyncHandler
     Mutex::new(None);
 static WINDOWS_HOST_APPEARANCE_DARK: AtomicBool = AtomicBool::new(false);
 
+/// Host-registered capsule geometry, answered as the JSON payload the shared
+/// Page Chrome pipeline parses (`{width,height,top,right,bottom,left}` in the
+/// page's CSS pixel space). A plain Windows host draws no capsule and leaves
+/// this empty; the Runner's simulated phone frame registers its floating pill.
+type WindowsCapsuleRectProvider = Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
+static WINDOWS_CAPSULE_RECT_PROVIDER: Mutex<Option<WindowsCapsuleRectProvider>> = Mutex::new(None);
+
+pub fn set_windows_capsule_rect_provider(provider: WindowsCapsuleRectProvider) {
+    if let Ok(mut slot) = WINDOWS_CAPSULE_RECT_PROVIDER.lock() {
+        *slot = Some(provider);
+    }
+}
+
 pub fn set_windows_host_appearance_dark(dark: bool) {
     WINDOWS_HOST_APPEARANCE_DARK.store(dark, Ordering::Release);
 }
@@ -68,6 +81,17 @@ impl UIUpdate for Platform {
     fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError> {
         invoke_windows_ui_update_handler(appid);
         Ok(())
+    }
+
+    async fn measure_page_chrome_capsule(
+        &self,
+        appid: String,
+    ) -> Result<Option<String>, PlatformError> {
+        let provider = WINDOWS_CAPSULE_RECT_PROVIDER
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone());
+        Ok(provider.and_then(|provider| provider(&appid)))
     }
 
     fn update_tabbar_ui(&self, appid: String) -> Result<(), PlatformError> {

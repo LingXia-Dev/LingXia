@@ -421,6 +421,23 @@ pub(super) fn content_fit_scale(content: isize) -> Option<f64> {
     frame_state(content, |state| state.fit_scale)
 }
 
+/// The first framed content window whose capsule is visible, answered as the
+/// capsule's page-space rect. The Runner presents one simulated phone at a
+/// time, so "first" is "the phone"; a host with no device frame answers None.
+pub(super) fn visible_capsule_page_rect() -> Option<String> {
+    let frames = DEVICE_FRAMES.get()?;
+    let handles: Vec<isize> = frames
+        .lock()
+        .ok()?
+        .iter()
+        .filter(|(_, state)| state.capsule != 0)
+        .map(|(handle, _)| *handle)
+        .collect();
+    handles
+        .into_iter()
+        .find_map(|handle| capsule::capsule_page_rect(hwnd_from_handle(handle)))
+}
+
 /// True while `content`'s frame toolbar carries the close/minimize dots and
 /// therefore owns the window controls. A framed simulated desktop returns
 /// `false`: the shell keeps its standard caption buttons there.

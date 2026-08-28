@@ -23,6 +23,8 @@ struct RunnerSetArgs {
     landscape: Option<bool>,
     #[serde(default)]
     appearance: Option<String>,
+    #[serde(default)]
+    capsule: Option<bool>,
 }
 
 fn handle_runner_command_impl(handler: &str, args: Option<Value>) -> Result<Option<Value>, String> {
@@ -41,10 +43,17 @@ fn handle_runner_command_impl(handler: &str, args: Option<Value>) -> Result<Opti
                     id: None,
                     landscape: None,
                     appearance: None,
+                    capsule: None,
                 },
             };
-            if parsed.id.is_none() && parsed.landscape.is_none() && parsed.appearance.is_none() {
-                return Err("runner.set requires at least one of id, landscape, appearance".into());
+            if parsed.id.is_none()
+                && parsed.landscape.is_none()
+                && parsed.appearance.is_none()
+                && parsed.capsule.is_none()
+            {
+                return Err(
+                    "runner.set requires at least one of id, landscape, appearance, capsule".into(),
+                );
             }
             let appearance = parsed
                 .appearance
@@ -55,6 +64,7 @@ fn handle_runner_command_impl(handler: &str, args: Option<Value>) -> Result<Opti
                 parsed.id.as_deref(),
                 parsed.landscape,
                 appearance,
+                parsed.capsule,
             )?)
             .map(Some)
             .map_err(|err| err.to_string())

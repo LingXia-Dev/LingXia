@@ -1,5 +1,6 @@
 //! `lxdev runner`: the simulated environment owned by the runner host —
-//! device preset, orientation, and appearance. Runner sessions only.
+//! device preset, orientation, appearance, and the simulated host capsule.
+//! Runner sessions only.
 
 use crate::client;
 use crate::project::SessionInfo;
@@ -42,6 +43,10 @@ pub enum RunnerCommand {
         /// Simulated appearance for the device screen
         #[arg(long, value_enum)]
         appearance: Option<AppearanceArg>,
+        /// Show or hide the simulated host capsule (phone presets draw it by
+        /// default, as a real host does for a non-home lxapp)
+        #[arg(long, value_enum)]
+        capsule: Option<CapsuleArg>,
         /// Print JSON output
         #[arg(long)]
         json: bool,
@@ -65,6 +70,20 @@ impl AppearanceArg {
             AppearanceArg::Light => "light",
             AppearanceArg::Dark => "dark",
         }
+    }
+}
+
+#[derive(ValueEnum, Clone, Copy)]
+pub enum CapsuleArg {
+    /// Draw the host capsule over phone presets (the non-home default)
+    On,
+    /// Hide the capsule, simulating a home-lxapp placement
+    Off,
+}
+
+impl CapsuleArg {
+    fn as_bool(self) -> bool {
+        matches!(self, CapsuleArg::On)
     }
 }
 
@@ -94,11 +113,13 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
             landscape,
             portrait,
             appearance,
+            capsule,
             json,
         } => {
-            if id.is_none() && !landscape && !portrait && appearance.is_none() {
+            if id.is_none() && !landscape && !portrait && appearance.is_none() && capsule.is_none()
+            {
                 anyhow::bail!(
-                    "nothing to change: pass --id, --landscape/--portrait, or --appearance"
+                    "nothing to change: pass --id, --landscape/--portrait, --appearance, or --capsule"
                 );
             }
             // Leave orientation to the runner's normal selector behavior
@@ -117,6 +138,7 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
                     "id": id,
                     "landscape": orientation,
                     "appearance": appearance.map(AppearanceArg::as_str),
+                    "capsule": capsule.map(CapsuleArg::as_bool),
                 })),
             )?
             .unwrap_or(Value::Null);
@@ -182,7 +204,14 @@ fn print_state(data: &Value) {
         .get("appearance")
         .and_then(Value::as_str)
         .unwrap_or("system");
-    println!("{name} ({id})  {width}x{height}  {orientation}  appearance: {appearance}");
+    // Old runners predate the field; absent means the pill is in its default
+    // shown state, so print nothing rather than a guess.
+    let capsule = match data.get("capsule").and_then(Value::as_bool) {
+        Some(true) => "  capsule: on",
+        Some(false) => "  capsule: off",
+        None => "",
+    };
+    println!("{name} ({id})  {width}x{height}  {orientation}  appearance: {appearance}{capsule}");
 }
 
 fn print_json(value: &Value, pretty: bool) -> Result<()> {

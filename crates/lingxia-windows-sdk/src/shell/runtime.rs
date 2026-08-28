@@ -1034,6 +1034,14 @@ pub(super) fn install() {
             done(true);
         }));
     }));
+    // Page Chrome capsule measurement: a framed simulated phone answers with
+    // its floating pill's page-space rect, so a custom-navigation page lays
+    // out around the capsule the way it does on iOS. Hosts without a device
+    // frame keep answering None.
+    #[cfg(feature = "device-frame")]
+    lingxia_platform::set_windows_capsule_rect_provider(Arc::new(|_appid| {
+        crate::device_frame::device_frame_capsule_page_rect()
+    }));
     // A trimmed lxapp page that opted into pull-down refresh gets an app-level
     // "Refresh" right-click entry (mirrors the macOS lxapp menu). The webview
     // layer that builds the menu sits below lxapp / i18n / pull-refresh, so it

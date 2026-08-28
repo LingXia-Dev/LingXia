@@ -18,6 +18,7 @@ private struct RunnerDeviceStatePayload: Encodable, Sendable {
     let height: Int
     let landscape: Bool
     let appearance: String
+    let capsule: Bool
 }
 
 @MainActor
@@ -46,7 +47,8 @@ private func deviceState() -> RunnerDeviceStatePayload {
         width: Int(effective.width),
         height: Int(effective.height),
         landscape: RunnerApp.shared.deviceOrientation == .landscape,
-        appearance: RunnerApp.shared.simulatedAppearance.rawValue
+        appearance: RunnerApp.shared.simulatedAppearance.rawValue,
+        capsule: RunnerApp.shared.capsuleEnabled
     )
 }
 
@@ -54,7 +56,8 @@ private func deviceState() -> RunnerDeviceStatePayload {
 private func setDevice(
     id: String?,
     landscape: Bool?,
-    appearance: RunnerAppearance?
+    appearance: RunnerAppearance?,
+    capsule: Bool?
 ) -> RunnerDeviceStatePayload? {
     if let id {
         guard let device = MobileDeviceSize.allCases.first(where: { $0.id == id }) else {
@@ -69,6 +72,9 @@ private func setDevice(
     }
     if let appearance {
         RunnerApp.shared.setAppearance(appearance)
+    }
+    if let capsule {
+        RunnerApp.shared.setCapsuleEnabled(capsule)
     }
     return deviceState()
 }
@@ -107,7 +113,8 @@ func lingxiaRunnerDeviceGetJSON() -> UnsafeMutablePointer<CChar>? {
 func lingxiaRunnerDeviceSetJSON(
     _ id: UnsafePointer<CChar>?,
     _ landscape: Int32,
-    _ appearance: Int32
+    _ appearance: Int32,
+    _ capsule: Int32
 ) -> UnsafeMutablePointer<CChar>? {
     let deviceId = id.map { String(cString: $0) }
     let requestedOrientation: Bool? = switch landscape {
@@ -121,11 +128,17 @@ func lingxiaRunnerDeviceSetJSON(
     case 2: .dark
     default: nil
     }
+    let requestedCapsule: Bool? = switch capsule {
+    case 0: false
+    case 1: true
+    default: nil
+    }
     guard let state = onRunnerMain({
         setDevice(
             id: deviceId,
             landscape: requestedOrientation,
-            appearance: requestedAppearance
+            appearance: requestedAppearance,
+            capsule: requestedCapsule
         )
     }) else {
         return nil

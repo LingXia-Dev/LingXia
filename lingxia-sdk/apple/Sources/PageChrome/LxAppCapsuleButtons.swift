@@ -122,10 +122,25 @@ class LxAppCapsuleButtons {
     #endif
 
     #if os(macOS)
-    /// Get capsule rect with async callback pattern (macOS stub - Capsule mode in lingxia-runner)
+    /// Host-registered capsule geometry, in the lxapp page's CSS pixel space.
+    /// A plain macOS host draws no capsule and leaves this nil; the Runner's
+    /// simulated phone chrome registers its floating pill here.
+    @MainActor
+    public static var capsuleRectProvider: ((String) -> [String: Double]?)?
+
+    /// Get capsule rect with async callback pattern (macOS: answered by the
+    /// host's provider — the capsule is host chrome, only the host can measure it)
     nonisolated public static func getCapsuleRect(appid: RustStr, callback_id: UInt64) {
-        let _ = appid
-        let _ = onCallback(callback_id, true, "null")
+        let appId = appid.toString()
+        Task { @MainActor in
+            guard let rect = capsuleRectProvider?(appId),
+                  let jsonData = try? JSONSerialization.data(withJSONObject: rect, options: []),
+                  let jsonString = String(data: jsonData, encoding: .utf8) else {
+                let _ = onCallback(callback_id, true, "null")
+                return
+            }
+            let _ = onCallback(callback_id, true, jsonString)
+        }
     }
     #endif
 }

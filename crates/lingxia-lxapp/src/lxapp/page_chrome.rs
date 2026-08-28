@@ -638,12 +638,10 @@ const fn immersive_tabbar_inset() -> f64 {
 }
 
 const fn capsule_trailing_inset() -> f64 {
-    #[cfg(any(target_os = "android", target_os = "ios", target_env = "ohos"))]
-    {
-        return 12.0;
-    }
-    #[allow(unreachable_code)]
-    0.0
+    // Applied only when a capsule was actually measured, and a measured capsule
+    // means phone-chrome metrics — including on macOS, where the Runner's
+    // simulated phone draws the same 12pt-trailing pill as iOS.
+    12.0
 }
 
 #[cfg(test)]

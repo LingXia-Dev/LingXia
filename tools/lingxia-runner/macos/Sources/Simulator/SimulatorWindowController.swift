@@ -824,7 +824,43 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         divider.frame = NSRect(x: edge + buttonWidth, y: (h - 20) / 2, width: 0.5, height: 20)
         closeButton.frame = NSRect(x: edge + buttonWidth + 0.5, y: 0, width: buttonWidth, height: h)
 
+        capsuleContainer.isHidden = !RunnerApp.shared.capsuleEnabled
         self.floatingCapsuleContainer = capsuleContainer
+        registerCapsuleRectProvider()
+    }
+
+    /// Re-apply the capsule setting to the live pill. The rect provider already
+    /// answers nil while the pill is hidden, so the page's next Page Chrome
+    /// publication reports the change without extra plumbing.
+    func applyCapsuleEnabled() {
+        let phoneChrome = Self.currentDeviceSize.usesPhoneChrome && webTarget == nil
+        floatingCapsuleContainer?.isHidden = !phoneChrome || !RunnerApp.shared.capsuleEnabled
+    }
+
+    /// Answer the runtime's capsule measurement with the floating pill's frame
+    /// in the lxapp page's CSS pixel space. WKWebView view points are CSS
+    /// pixels (no page zoom is applied), so a plain view-space conversion is
+    /// the whole mapping. Nil while the pill is hidden — a desktop-preset
+    /// device draws no phone chrome and must keep reporting "no capsule".
+    private func registerCapsuleRectProvider() {
+        RunnerSupport.PageChrome.setCapsuleRectProvider { [weak self] _ in
+            guard let self,
+                  let capsule = self.floatingCapsuleContainer,
+                  !capsule.isHidden,
+                  capsule.window != nil,
+                  let webView = RunnerSupport.WebView.current(),
+                  webView.window === capsule.window else { return nil }
+            let rect = capsule.convert(capsule.bounds, to: webView)
+            guard rect.width > 0, rect.height > 0 else { return nil }
+            return [
+                "width": Double(rect.width),
+                "height": Double(rect.height),
+                "top": Double(rect.minY),
+                "left": Double(rect.minX),
+                "right": Double(rect.maxX),
+                "bottom": Double(rect.maxY),
+            ]
+        }
     }
     
     private func makeButton(image: NSImage?, action: Selector) -> NSButton {
@@ -913,7 +949,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         } else {
             systemStatusBar?.isHidden = false
             // navigationBar visibility is managed by updateNavigationBar
-            floatingCapsuleContainer?.isHidden = false
+            floatingCapsuleContainer?.isHidden = !RunnerApp.shared.capsuleEnabled
             if systemStatusBar == nil, phoneContentView != nil {
                 setupPhoneUIOverlay()
             } else {

@@ -26,20 +26,15 @@ impl UIUpdate for Platform {
         &self,
         appid: String,
     ) -> Result<Option<String>, PlatformError> {
-        #[cfg(target_os = "ios")]
-        {
-            let payload = crate::rt::native_call(|callback_id| {
-                ffi::get_capsule_rect(&appid, callback_id);
-                Ok(())
-            })
-            .await?;
-            Ok((payload != "null").then_some(payload))
-        }
-        #[cfg(not(target_os = "ios"))]
-        {
-            let _ = appid;
-            Ok(None)
-        }
+        // One path for iOS and macOS: on macOS the SDK answers "null" unless a
+        // host (the Runner's simulated phone chrome) registered a capsule
+        // provider, so plain macOS hosts still report no capsule.
+        let payload = crate::rt::native_call(|callback_id| {
+            ffi::get_capsule_rect(&appid, callback_id);
+            Ok(())
+        })
+        .await?;
+        Ok((payload != "null").then_some(payload))
     }
 
     fn update_navbar_ui(&self, appid: String) -> Result<(), PlatformError> {

@@ -19,6 +19,10 @@ static LANDSCAPE: AtomicBool = AtomicBool::new(false);
 /// (0 system / 1 light / 2 dark), applied through the WebView2 profile's
 /// preferred color scheme and reported through `runner.get`.
 static APPEARANCE: AtomicUsize = AtomicUsize::new(0);
+/// Whether the simulated host capsule is enabled (`lxdev runner set
+/// --capsule`). Default on: the capsule is real host chrome for every
+/// non-home lxapp, so hiding it is the opt-in.
+static CAPSULE_ENABLED: AtomicBool = AtomicBool::new(true);
 static BROWSER_HOST: OnceLock<lingxia_windows_sdk::WindowsHost> = OnceLock::new();
 static MORE_ACTION_TOKENS: OnceLock<Mutex<HashMap<u32, (String, String)>>> = OnceLock::new();
 
@@ -272,6 +276,7 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
         id: Option<&str>,
         landscape: Option<bool>,
         appearance: Option<lingxia::dev::Appearance>,
+        capsule: Option<bool>,
     ) -> Result<lingxia::dev::DeviceState, String> {
         // Validate the preset before any side effect so a typo cannot leave a
         // half-applied environment.
@@ -293,9 +298,12 @@ impl lingxia::dev::DeviceController for RunnerDeviceController {
         if let Some(appearance) = appearance {
             set_appearance(appearance)?;
         }
+        let capsule_changed = capsule
+            .is_some_and(|enabled| CAPSULE_ENABLED.swap(enabled, Ordering::AcqRel) != enabled);
         // A bare appearance change must not rebuild frames or re-run browser
-        // emulation; only a device or orientation request touches the frame.
-        if id.is_some() || landscape.is_some() {
+        // emulation; only a device, orientation, or capsule request touches
+        // the frame (the capsule is part of the frame spec).
+        if id.is_some() || landscape.is_some() || capsule_changed {
             apply_device(index, landscape_value)?;
         }
         Ok(device_state(index, landscape_value))
@@ -319,7 +327,13 @@ fn device_state(index: usize, landscape: bool) -> lingxia::dev::DeviceState {
         height: height.max(0) as u32,
         landscape,
         appearance: simulated_appearance(),
+        capsule: capsule_enabled(),
     }
+}
+
+/// The configured capsule setting (`runner.set --capsule`).
+pub(crate) fn capsule_enabled() -> bool {
+    CAPSULE_ENABLED.load(Ordering::Acquire)
 }
 
 /// The configured simulated appearance (the `runner.set` pin, `System` when

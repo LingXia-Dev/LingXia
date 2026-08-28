@@ -65,6 +65,10 @@ public class RunnerApp {
     private(set) var deviceOrientation: RunnerDeviceOrientation = .portrait
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
     private(set) var simulatedAppearance: RunnerAppearance = .system
+    /// Whether the simulated host capsule is enabled. Default on: the capsule
+    /// is real host chrome for every non-home lxapp, so hiding it is the
+    /// opt-in for developing home-style products.
+    private(set) var capsuleEnabled: Bool = true
     
     private init() {
         deviceOrientation = Self.defaultOrientation(for: selectedDeviceSize)
@@ -122,6 +126,13 @@ public class RunnerApp {
         simulatedAppearance = appearance
         applyAppearanceToHosts()
         NotificationCenter.default.post(name: Self.appearanceDidChange, object: nil)
+    }
+
+    /// Enable or disable the simulated host capsule (`lxdev runner set --capsule`).
+    public func setCapsuleEnabled(_ enabled: Bool) {
+        guard capsuleEnabled != enabled else { return }
+        capsuleEnabled = enabled
+        windowController?.applyCapsuleEnabled()
     }
 
     /// Window-level `NSAppearance` reaches every hosted WebView (and the

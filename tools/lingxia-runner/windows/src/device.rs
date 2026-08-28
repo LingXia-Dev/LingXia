@@ -245,12 +245,13 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
             rotate_command: Some(ROTATE_COMMAND),
             appearance_command: Some(APPEARANCE_COMMAND),
             appearance_dark: crate::runner::effective_appearance_dark(),
-            capsule_items: if is_phone(index) {
+            capsule_items: if is_phone(index) && crate::runner::capsule_enabled() {
                 capsule_menu_items()
             } else {
                 Vec::new()
             },
-            capsule_close_command: is_phone(index).then_some(CAPSULE_CLOSE_COMMAND),
+            capsule_close_command: (is_phone(index) && crate::runner::capsule_enabled())
+                .then_some(CAPSULE_CLOSE_COMMAND),
             // Phones/tablets are handheld mockups: the toolbar's macOS-style
             // dots own close/minimize. A simulated desktop keeps the standard
             // Windows caption buttons in the shell chrome instead.

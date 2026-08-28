@@ -267,6 +267,13 @@ pub(crate) fn device_frame_fit_scale(window: isize) -> Option<f64> {
     native::content_fit_scale(window)
 }
 
+/// Page-space rect of the visible simulated-phone capsule (`None` when no
+/// framed window shows one), answered to the runtime's Page Chrome capsule
+/// measurement.
+pub(crate) fn device_frame_capsule_page_rect() -> Option<String> {
+    native::visible_capsule_page_rect()
+}
+
 /// True while `window`'s device frame owns the window controls (macOS-style
 /// close/minimize dots on its toolbar). The shell suppresses its caption
 /// buttons only then — a framed simulated desktop keeps the standard Windows

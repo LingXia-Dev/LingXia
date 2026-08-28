@@ -86,6 +86,16 @@ pub struct DeviceState {
     /// Simulated system appearance of the device screen.
     #[serde(default = "Appearance::default_system")]
     pub appearance: Appearance,
+    /// Whether the simulated host capsule is enabled. This is the setting, not
+    /// per-device visibility: a desktop preset draws no phone chrome either
+    /// way. Defaults to true — the capsule is real host chrome for every
+    /// non-home lxapp, so hiding it is the opt-in.
+    #[serde(default = "default_capsule")]
+    pub capsule: bool,
+}
+
+fn default_capsule() -> bool {
+    true
 }
 
 /// Host-provided controller for switching the simulated device. Implemented by
@@ -102,6 +112,7 @@ pub trait DeviceController: Send + Sync {
         id: Option<&str>,
         landscape: Option<bool>,
         appearance: Option<Appearance>,
+        capsule: Option<bool>,
     ) -> Result<DeviceState, String>;
 }
 
@@ -137,6 +148,7 @@ pub fn device_set(
     id: Option<&str>,
     landscape: Option<bool>,
     appearance: Option<Appearance>,
+    capsule: Option<bool>,
 ) -> Result<DeviceState, String> {
-    device_controller()?.set(id, landscape, appearance)
+    device_controller()?.set(id, landscape, appearance, capsule)
 }
