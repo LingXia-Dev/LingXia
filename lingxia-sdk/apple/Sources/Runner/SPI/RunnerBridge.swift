@@ -230,6 +230,10 @@ enum RunnerBridge {
         (view as? LingXiaTabBar)?.refreshLayout()
     }
 
+    static func setTabBarCompact(_ view: NSView?, compact: Bool) {
+        (view as? LingXiaTabBar)?.setCompact(compact)
+    }
+
     static func setTabBarSelectedIndex(
         _ view: NSView?,
         index: Int,

@@ -122,10 +122,9 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         private const val SELECTED_ITEM_CORNER_RADIUS_DP = 12f // Unified corner radius for updateTabState
         private const val INITIAL_SELECTED_ITEM_CORNER_RADIUS_DP = 8f // For createTabItem
 
-        // Active indicator drawn behind the icon of a selected item that ships
-        // only one icon. Sized like the Material navigation-bar pill.
-        private const val ACTIVE_INDICATOR_WIDTH_DP = 40
-        private const val ACTIVE_INDICATOR_HEIGHT_DP = 28
+        // Circle drawn behind the icon of a selected item that ships only one
+        // icon, standing in for the selected artwork it does not have.
+        private const val ACTIVE_INDICATOR_SIZE_DP = 36
         private const val ACTIVE_INDICATOR_ALPHA = 0x33
     }
 
@@ -402,9 +401,8 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     }
 
     private fun activeIndicatorDrawable(): Drawable = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
+        shape = GradientDrawable.OVAL
         setColor((config.selectedColor and 0x00FFFFFF) or (ACTIVE_INDICATOR_ALPHA shl 24))
-        cornerRadius = ACTIVE_INDICATOR_HEIGHT_DP * resources.displayMetrics.density / 2f
     }
 
     private fun createSlotView(slot: Slot): LinearLayout {
@@ -443,8 +441,18 @@ internal class TabBar(context: Context) : LinearLayout(context) {
 
                 // Minimal extension to accommodate small badge
                 val badgeSpace = (10 * resources.displayMetrics.density).toInt()
-                val wrapperWidth = iconSizePx + badgeSpace
-                val wrapperHeight = iconSizePx + (4 * resources.displayMetrics.density).toInt()  // Minimal vertical extension
+                // The active indicator sits behind the icon, so the wrapper has
+                // to be at least as tall and wide or it squares the circle off.
+                val indicatorSize = if (slotNeedsActiveIndicator(slot)) {
+                    (ACTIVE_INDICATOR_SIZE_DP * resources.displayMetrics.density).toInt()
+                } else {
+                    0
+                }
+                val wrapperWidth = maxOf(iconSizePx + badgeSpace, indicatorSize)
+                val wrapperHeight = maxOf(
+                    iconSizePx + (4 * resources.displayMetrics.density).toInt(),
+                    indicatorSize
+                )
 
                 layoutParams = LayoutParams(wrapperWidth, wrapperHeight).apply {
                     gravity = Gravity.CENTER_HORIZONTAL
@@ -469,11 +477,10 @@ internal class TabBar(context: Context) : LinearLayout(context) {
 
             // Behind the icon, so a single-icon item still reads as selected.
             if (slotNeedsActiveIndicator(slot)) {
+                val indicatorSize = (ACTIVE_INDICATOR_SIZE_DP * resources.displayMetrics.density).toInt()
                 iconWrapper.addView(View(context).apply {
-                    layoutParams = FrameLayout.LayoutParams(
-                        (ACTIVE_INDICATOR_WIDTH_DP * resources.displayMetrics.density).toInt(),
-                        (ACTIVE_INDICATOR_HEIGHT_DP * resources.displayMetrics.density).toInt()
-                    ).apply { gravity = Gravity.CENTER }
+                    layoutParams = FrameLayout.LayoutParams(indicatorSize, indicatorSize)
+                        .apply { gravity = Gravity.CENTER }
                     background = activeIndicatorDrawable()
                     visibility = if (isSelected) View.VISIBLE else View.INVISIBLE
                 })
@@ -578,14 +585,14 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
     }
 
-    private fun getIconDrawable(item: TabBarItem, selected: Boolean): android.graphics.drawable.Drawable {
+    private fun getIconDrawable(item: TabBarItem, selected: Boolean): Drawable {
         val iconPath = if (selected && item.selectedIconPath.isNotEmpty()) {
             item.selectedIconPath
         } else {
             item.iconPath
         }
 
-        return try {
+        val drawable = try {
             val iconFile = File(iconPath)
             if (iconFile.exists()) {
                 android.graphics.drawable.Drawable.createFromPath(iconFile.absolutePath)
@@ -596,6 +603,16 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         } catch (e: Exception) {
             LxLog.e(TAG, "Failed to load icon: ${e.message}")
             createDefaultIcon(selected)
+        }
+
+        // An item that ships an icon pair owns its own artwork in both states.
+        // A single icon is a template glyph instead, so the strip tints it and
+        // selection reads the same as it does on a pair.
+        if (item.hasSelectedIcon) {
+            return drawable
+        }
+        return drawable.mutate().apply {
+            setTint(if (selected) config.selectedColor else config.color)
         }
     }
 
