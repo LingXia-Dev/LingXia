@@ -7,7 +7,9 @@ const NATIVE_COMPONENT_LAYOUT_INVALIDATED_EVENT = "lingxia:native-component-layo
 let pendingLayoutInvalidationFrame: number | null = null;
 const pendingLayoutInvalidationTimers = new Map<number, number>();
 
-export function sendNativeComponentMessage(message: NativeComponentMessage) {
+/// Returns false when the native channel is not up yet and the message was
+/// dropped, so callers that carry state (an island's first commit) can retry.
+export function sendNativeComponentMessage(message: NativeComponentMessage): boolean {
   const sender =
     typeof window !== "undefined"
       ? window.LingXiaBridge?.nativeComponents?.send
@@ -17,9 +19,10 @@ export function sendNativeComponentMessage(message: NativeComponentMessage) {
       warnedNoHandler = true;
       console.warn("[LingXia NativeComponent] message handler not available");
     }
-    return;
+    return false;
   }
   sender(message);
+  return true;
 }
 
 export function registerNativeComponentHandler(
