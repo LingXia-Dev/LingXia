@@ -468,7 +468,7 @@ fn reorder_node(
 }
 
 fn unmount_node(
-    root: &RootRef,
+    _root: &RootRef,
     nodes: &mut HashMap<String, ShadowNode>,
     node: &NodeRef,
 ) -> Result<(), NativeError> {

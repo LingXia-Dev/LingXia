@@ -1064,7 +1064,7 @@ fn paints_cover_button_slider_and_dispatches_pointer() {
     assert_eq!(slider_plan.text.as_deref(), Some("10"));
     let pixels = rasterize_island_kind("slider", 80, 16, &recorder.calls[3].3);
     assert!(
-        pixels.iter().any(|pixel| *pixel == 0xffff_ffff),
+        pixels.contains(&0xffff_ffff),
         "slider raster must paint a thumb or valueLabel"
     );
 
