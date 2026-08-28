@@ -78,9 +78,34 @@ function createDebugObject(flags: typeof debugFlags): typeof debugFlags {
   return target;
 }
 
+function drainHostEarlyNativeMessages(): void {
+  if (typeof window === "undefined") return;
+  const hostQueue = window.__LingXiaEarlyNativeMessages;
+  if (!Array.isArray(hostQueue) || hostQueue.length === 0) return;
+  window.__LingXiaEarlyNativeMessages = [];
+  for (const message of hostQueue) {
+    if (typeof message === "string") {
+      earlyNativeMessages.push(message);
+    }
+  }
+}
+
 function installEarlyReceiver(): void {
   if (typeof window === "undefined") return;
-  if (typeof window[GLOBAL_RECEIVER_NAME] === "function") return;
+  drainHostEarlyNativeMessages();
+  const existing = window[GLOBAL_RECEIVER_NAME];
+  if (typeof existing === "function") {
+    if (earlyNativeMessages.length === 0) return;
+    const queued = earlyNativeMessages.splice(0, earlyNativeMessages.length);
+    for (const message of queued) {
+      try {
+        existing(message);
+      } catch (err) {
+        warn("Failed to replay queued native message:", err);
+      }
+    }
+    return;
+  }
   window[GLOBAL_RECEIVER_NAME] = (message: string): void => {
     earlyNativeMessages.push(message);
   };
@@ -88,6 +113,7 @@ function installEarlyReceiver(): void {
 
 function activateReceiver(receiver: (message: string) => void): void {
   if (typeof window === "undefined") return;
+  drainHostEarlyNativeMessages();
   window[GLOBAL_RECEIVER_NAME] = receiver;
   if (earlyNativeMessages.length === 0) return;
 
@@ -2139,6 +2165,10 @@ export function initBridge(): void {
     log(
       `Bridge already ${window.__LX_BRIDGE_INIT_STATE}, skipping duplicate init`,
     );
+    // A later boot on the same document must rebind the inbound receiver:
+    // WebView2 can deliver native events after the first init, and a
+    // document that lost `__LingXiaRecvMessage` would otherwise drop them.
+    activateReceiver(LingXiaBridge._receiveEvaluateMessage);
     return;
   }
 
