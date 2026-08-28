@@ -608,10 +608,30 @@ behind it). An immersive bar must omit `backgroundColor` and `dividerColor`.
 
 Rules:
 
+- `items` holds **2 to 10** entries.
 - Every `items[].pagePath` must match a registered page path under `pages[]`.
 - `iconPath` / `selectedIconPath` are project-relative — usually under `public/` so they're copied verbatim into `dist/` by the default static-assets rule.
 - The first item is initially selected. Placement and dimensions are host-owned;
   desktop hosts project the same items into their sidebar.
+
+### More than five tabs on a phone
+
+A phone-sized strip only has room for five slots. Declare more than five items
+and the host renders the first four, then a **More** slot that opens the
+remaining items in a panel above the bar; picking one there switches to it like
+any other tab. The split is host-owned — there is nothing to configure and no
+API to open the panel.
+
+What follows from that:
+
+- The **first four** items are the ones always one tap away. Order the list so
+  the most-used pages come first.
+- While a folded page is active, the More slot carries the selected tint; the
+  panel marks the active item.
+- A badge or red dot on a folded item shows as a red dot on the More slot, so
+  notifications are never hidden.
+- Desktop hosts have room for the whole list and show every item in their
+  sidebar — the More slot is a compact-layout affordance only.
 
 ### Switching tabs at runtime
 

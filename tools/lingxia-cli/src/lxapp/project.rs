@@ -6,6 +6,9 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+const MIN_TAB_ITEMS: usize = 2;
+const MAX_TAB_ITEMS: usize = 10;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectKind {
     LxApp,
@@ -301,8 +304,12 @@ fn validate_page_chrome_manifest(manifest: &Value) -> Result<()> {
         }
     }
     let items = tabbar["items"].as_array().expect("items checked above");
-    if !(2..=5).contains(&items.len()) {
-        return Err(anyhow!("tabBar.items: expected 2 to 5 items"));
+    // Mirrors TabBar::MIN_ITEMS/MAX_ITEMS in lingxia-lxapp; the runtime crate is
+    // too heavy a dependency for the CLI, so the bound is restated here.
+    if !(MIN_TAB_ITEMS..=MAX_TAB_ITEMS).contains(&items.len()) {
+        return Err(anyhow!(
+            "tabBar.items: expected {MIN_TAB_ITEMS} to {MAX_TAB_ITEMS} items"
+        ));
     }
     let page_paths: BTreeSet<&str> = manifest
         .get("pages")
@@ -665,6 +672,34 @@ mod tests {
             fs::create_dir_all(parent).unwrap();
         }
         fs::write(path, content).unwrap();
+    }
+
+    fn manifest_with_tab_items(count: usize) -> Value {
+        let pages: Vec<Value> = (0..count)
+            .map(|index| serde_json::json!({
+                "name": format!("p{index}"),
+                "path": format!("pages/p{index}/index"),
+            }))
+            .collect();
+        let items: Vec<Value> = (0..count)
+            .map(|index| serde_json::json!({ "pagePath": format!("pages/p{index}/index") }))
+            .collect();
+        serde_json::json!({ "pages": pages, "tabBar": { "items": items } })
+    }
+
+    /// The bound is restated here because the CLI cannot depend on the runtime
+    /// crate; this pins it so the two copies cannot drift apart unnoticed.
+    #[test]
+    fn tab_bar_accepts_two_to_ten_items() {
+        for count in [2, 5, 6, 10] {
+            validate_page_chrome_manifest(&manifest_with_tab_items(count))
+                .unwrap_or_else(|error| panic!("{count} items rejected: {error}"));
+        }
+        for count in [0, 1, 11, 12] {
+            let error = validate_page_chrome_manifest(&manifest_with_tab_items(count))
+                .expect_err(&format!("{count} items accepted"));
+            assert_eq!(error.to_string(), "tabBar.items: expected 2 to 10 items");
+        }
     }
 
     #[test]

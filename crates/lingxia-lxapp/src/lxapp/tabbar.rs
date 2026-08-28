@@ -170,7 +170,10 @@ pub struct TabBar {
 
 impl TabBar {
     pub const MIN_ITEMS: usize = 2;
-    pub const MAX_ITEMS: usize = 5;
+    pub const MAX_ITEMS: usize = 10;
+    /// Slots a compact (phone) tab strip renders. Beyond this the last slot
+    /// becomes an overflow affordance instead of a tab.
+    pub const COMPACT_SLOTS: usize = 5;
 
     pub fn validate(&mut self, page_paths: &[String]) -> Result<(), String> {
         if !(Self::MIN_ITEMS..=Self::MAX_ITEMS).contains(&self.items.len()) {
@@ -213,6 +216,19 @@ impl TabBar {
             item.initialize_runtime(base_path);
         }
         result
+    }
+
+    /// First item a compact host must move into its overflow menu, or `None`
+    /// when every item fits the strip. With overflow, the last strip slot is
+    /// the "more" affordance, so one declared item gives up its slot too.
+    pub fn compact_overflow_start(&self) -> Option<usize> {
+        (self.items.len() > Self::COMPACT_SLOTS).then_some(Self::COMPACT_SLOTS - 1)
+    }
+
+    /// [`Self::compact_overflow_start`] flattened for the native bridges: the
+    /// index, or `-1` when the strip shows every item.
+    pub fn compact_overflow_start_index(&self) -> i32 {
+        self.compact_overflow_start().map_or(-1, |start| start as i32)
     }
 
     pub fn get_item(&self, index: i32) -> Option<&TabBarItem> {
@@ -803,6 +819,38 @@ mod tests {
         assert_eq!(item.text.as_deref(), Some("Inbox"));
         item.set_text_override(None);
         assert_eq!(item.text.as_deref(), Some("Home"));
+    }
+
+    #[test]
+    fn compact_overflow_starts_only_past_the_strip_capacity() {
+        let items = |count: usize| {
+            manifest(serde_json::json!({
+                "items": (0..count)
+                    .map(|index| serde_json::json!({ "pagePath": format!("pages/p{index}/index") }))
+                    .collect::<Vec<_>>()
+            }))
+        };
+        assert_eq!(items(2).compact_overflow_start(), None);
+        assert_eq!(items(5).compact_overflow_start(), None);
+        assert_eq!(items(6).compact_overflow_start(), Some(4));
+        assert_eq!(items(10).compact_overflow_start(), Some(4));
+        assert_eq!(items(5).compact_overflow_start_index(), -1);
+        assert_eq!(items(10).compact_overflow_start_index(), 4);
+    }
+
+    #[test]
+    fn ten_items_validate_but_eleven_do_not() {
+        let paths: Vec<String> = (0..11).map(|i| format!("pages/p{i}/index")).collect();
+        let of = |count: usize| {
+            manifest(serde_json::json!({
+                "items": (0..count)
+                    .map(|index| serde_json::json!({ "pagePath": format!("pages/p{index}/index") }))
+                    .collect::<Vec<_>>()
+            }))
+        };
+        assert!(of(10).validate(&paths).is_ok());
+        assert!(of(11).validate(&paths).is_err());
+        assert!(of(1).validate(&paths).is_err());
     }
 
     #[test]
