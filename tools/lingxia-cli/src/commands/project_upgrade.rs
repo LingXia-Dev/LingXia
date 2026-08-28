@@ -1,17 +1,33 @@
-//! `lingxia upgrade` inside a project: bump every project-pinned LingXia
-//! version to this CLI's compatibility line.
+//! `lingxia upgrade` inside a project: after the CLI half, compare the
+//! project's LingXia line (major.minor of npm / crate / SDK pins) with this
+//! CLI. A newer line is printed and offered as a prompt; `--yes` applies
+//! without asking. Same-line patch drift is not a new version.
 //!
-//! Platform SDK binaries (Apple/Android/Harmony) already follow the CLI at
-//! build time; what goes stale in a checkout are the pins the project owns:
+//! Pins the project owns, rewritten string-level so formatting stays put:
 //! `@lingxia/*` npm ranges, the `lingxia` crate requirement in
-//! `native/Cargo.toml`, the `lingxia-windows-sdk` git ref, and the gradle
-//! `lingxia.sdkVersion` fallback. This rewrites exactly those, string-level,
-//! so file formatting and every other line stay untouched.
+//! `native/Cargo.toml`, the `lingxia-windows-sdk` git ref +
+//! `lingxia-windows-build` crate req, and the gradle `lingxia.sdkVersion`
+//! fallback.
+//!
+//! SDK packages differ by platform and are fetched (or lock-refreshed) here
+//! rather than waiting for the next `lingxia build`:
+//! - Android: Maven zip into `~/.lingxia/sdk/android-maven/<ver>/`
+//! - Apple: source zip into `~/.lingxia/sdk/apple/<ver>/`, then point
+//!   `ios/` and `macos/` `Package.swift` at it
+//! - Windows: `cargo update -p lingxia-windows-sdk` (git, not crates.io)
+//! - Harmony: HAR into `~/.lingxia/sdk/harmony/<ver>/`
+//!
+//! In-workspace checkouts already have the SDK as source paths; those are
+//! left alone.
 
+use crate::sdk_cache::{self, SdkPlatform};
 use anyhow::{Context, Result};
 use colored::Colorize;
+use dialoguer::{Confirm, theme::ColorfulTheme};
 use std::fs;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// Exit code for `--check` when the project is behind (mirrors the CLI
 /// self-upgrade `--check` convention).
@@ -49,46 +65,158 @@ struct Edit {
     changes: Vec<String>,
     /// Re-run `npm install` in this file's directory after writing.
     refresh_npm: bool,
+    /// `cargo update -p <name>` in this file's directory after writing.
+    cargo_update: Vec<String>,
 }
 
-pub fn execute(root: &Path, check: bool) -> Result<i32> {
-    let edits = plan(root)?;
+/// Platform SDK work that is not a source-file rewrite.
+enum SdkStep {
+    Fetch { platform: SdkPlatform, cached: bool },
+    InjectApple { dir: PathBuf },
+}
 
-    println!("{}", "LingXia project".bold());
-    println!("  root       {}", root.display());
-    println!(
-        "  CLI line   npm {} / crate {}",
-        crate::versions::npm_compat_range(),
-        crate::versions::cargo_compat_req()
-    );
+struct UpgradePlan {
+    edits: Vec<Edit>,
+    sdk_steps: Vec<SdkStep>,
+    sdk_version: String,
+    project_line: Option<(u64, u64)>,
+    cli_line: Option<(u64, u64)>,
+}
 
-    if edits.is_empty() {
+impl UpgradePlan {
+    /// Newer CLI major.minor than the oldest project pin. Same-line patches
+    /// (and a project that is ahead) are not a new version.
+    fn line_behind(&self) -> bool {
+        is_line_behind(self.project_line, self.cli_line)
+    }
+}
+
+pub fn execute(root: &Path, check: bool, yes: bool) -> Result<i32> {
+    let prepared = build_plan(root)?;
+    report_plan(root, &prepared);
+
+    if !prepared.line_behind() {
         println!("  {}", "up to date".green());
         return Ok(0);
-    }
-
-    println!();
-    for edit in &edits {
-        println!(
-            "  {}",
-            edit.path.strip_prefix(root).unwrap_or(&edit.path).display()
-        );
-        for change in &edit.changes {
-            println!("    {change}");
-        }
     }
 
     if check {
         println!();
         println!(
-            "{} The project is behind this CLI; run `lingxia upgrade` to apply.",
+            "{} The project is on an older LingXia line; run `lingxia upgrade` and confirm to apply.",
             "!".yellow()
         );
         return Ok(EXIT_UPGRADE_AVAILABLE);
     }
 
+    if !confirm_project_upgrade(prepared.project_line, prepared.cli_line, yes) {
+        println!("  Skipped project pins and SDK packages.");
+        return Ok(0);
+    }
+
+    apply_plan(root, &prepared)?;
+    Ok(0)
+}
+
+fn build_plan(root: &Path) -> Result<UpgradePlan> {
+    let sdk_version = crate::versions::current_versions().sdk;
+    let in_workspace = crate::platform::is_inside_lingxia_workspace(root);
+    Ok(UpgradePlan {
+        edits: plan(root)?,
+        sdk_steps: collect_sdk_steps(root, in_workspace, &sdk_version),
+        sdk_version,
+        project_line: project_compat_line(root),
+        cli_line: cli_compat_line(),
+    })
+}
+
+fn report_plan(root: &Path, prepared: &UpgradePlan) {
+    println!();
+    println!("{}", "LingXia project".bold());
+    println!("  root       {}", root.display());
+    match (prepared.project_line, prepared.cli_line) {
+        (Some(project), Some(cli)) => {
+            println!("  project    {}.{}", project.0, project.1);
+            println!("  CLI        {}.{}", cli.0, cli.1);
+        }
+        (_, Some(cli)) => {
+            println!("  CLI        {}.{}", cli.0, cli.1);
+        }
+        _ => {}
+    }
+
+    if !prepared.line_behind() {
+        return;
+    }
+
+    if !prepared.edits.is_empty() {
+        println!();
+        for edit in &prepared.edits {
+            println!(
+                "  {}",
+                edit.path.strip_prefix(root).unwrap_or(&edit.path).display()
+            );
+            for change in &edit.changes {
+                println!("    {change}");
+            }
+            if !edit.cargo_update.is_empty() {
+                println!("    cargo update -p {}", edit.cargo_update.join(" -p "));
+            }
+        }
+    }
+
+    let pending_sdk = prepared
+        .sdk_steps
+        .iter()
+        .any(|step| step.is_pending(&prepared.sdk_version));
+    if pending_sdk {
+        println!();
+        println!("  {}", "SDK packages".bold());
+        for step in &prepared.sdk_steps {
+            if !step.is_pending(&prepared.sdk_version) {
+                continue;
+            }
+            print_sdk_step(root, step, &prepared.sdk_version);
+        }
+    }
+}
+
+fn confirm_project_upgrade(
+    project_line: Option<(u64, u64)>,
+    cli_line: Option<(u64, u64)>,
+    yes: bool,
+) -> bool {
+    if yes {
+        return true;
+    }
+    let (Some(project), Some(cli)) = (project_line, cli_line) else {
+        return false;
+    };
+    if !std::io::stdin().is_terminal() {
+        println!(
+            "  {} Re-run in a terminal or pass --yes to upgrade pins and SDKs from {}.{} to {}.{}.",
+            "!".yellow(),
+            project.0,
+            project.1,
+            cli.0,
+            cli.1
+        );
+        return false;
+    }
+    Confirm::with_theme(&ColorfulTheme::default())
+        .with_prompt(format!(
+            "Upgrade this project's pins and SDK packages from {}.{} to {}.{}?",
+            project.0, project.1, cli.0, cli.1
+        ))
+        .default(true)
+        .interact()
+        .unwrap_or(false)
+}
+
+fn apply_plan(root: &Path, prepared: &UpgradePlan) -> Result<()> {
     let mut npm_dirs = Vec::new();
-    for edit in &edits {
+    let mut cargo_dirs: Vec<(PathBuf, Vec<String>)> = Vec::new();
+    for edit in &prepared.edits {
         fs::write(&edit.path, &edit.new_content)
             .with_context(|| format!("write {}", edit.path.display()))?;
         if edit.refresh_npm
@@ -96,13 +224,24 @@ pub fn execute(root: &Path, check: bool) -> Result<i32> {
         {
             npm_dirs.push(dir.to_path_buf());
         }
+        if !edit.cargo_update.is_empty()
+            && let Some(dir) = edit.path.parent()
+        {
+            cargo_dirs.push((dir.to_path_buf(), edit.cargo_update.clone()));
+        }
     }
-    println!();
-    println!("{} Project pins updated.", "✓".green());
+    if !prepared.edits.is_empty() {
+        println!();
+        println!("{} Project pins updated.", "✓".green());
+    }
+
+    if npm_dirs.is_empty() && root.join("package.json").is_file() {
+        npm_dirs.push(root.to_path_buf());
+    }
 
     for dir in npm_dirs {
         println!("  refreshing lockfile in {} …", dir.display());
-        let status = std::process::Command::new(crate::npm::command())
+        let status = Command::new(crate::npm::command())
             .arg("install")
             .current_dir(&dir)
             .status();
@@ -115,7 +254,30 @@ pub fn execute(root: &Path, check: bool) -> Result<i32> {
             ),
         }
     }
-    Ok(0)
+
+    for (dir, packages) in cargo_dirs {
+        let mut cmd = Command::new("cargo");
+        cmd.arg("update");
+        for package in &packages {
+            cmd.arg("-p").arg(package);
+        }
+        println!(
+            "  cargo update -p {} in {} …",
+            packages.join(" -p "),
+            dir.display()
+        );
+        match cmd.current_dir(&dir).status() {
+            Ok(status) if status.success() => {}
+            _ => println!(
+                "  {} `cargo update` did not complete in {}; run it manually.",
+                "!".yellow(),
+                dir.display()
+            ),
+        }
+    }
+
+    apply_sdk_steps(root, &prepared.sdk_steps, &prepared.sdk_version);
+    Ok(())
 }
 
 fn plan(root: &Path) -> Result<Vec<Edit>> {
@@ -132,6 +294,7 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
                 new_content,
                 changes,
                 refresh_npm: true,
+                cargo_update: Vec::new(),
             });
         }
     }
@@ -141,13 +304,14 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
         let content = fs::read_to_string(&native_cargo)
             .with_context(|| format!("read {}", native_cargo.display()))?;
         let (new_content, changes) =
-            rewrite_cargo_lingxia_req(&content, &crate::versions::cargo_compat_req());
+            rewrite_cargo_dep_req(&content, "lingxia", &crate::versions::cargo_compat_req());
         if !changes.is_empty() {
             edits.push(Edit {
                 path: native_cargo,
                 new_content,
                 changes,
                 refresh_npm: false,
+                cargo_update: vec!["lingxia".to_string()],
             });
         }
     }
@@ -156,14 +320,28 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
     if windows_cargo.is_file() {
         let content = fs::read_to_string(&windows_cargo)
             .with_context(|| format!("read {}", windows_cargo.display()))?;
-        let (new_content, changes) =
+        let (content, mut changes) =
             rewrite_windows_sdk_ref(&content, &crate::versions::windows_sdk_git_ref());
+        let mut cargo_update = Vec::new();
+        if changes.iter().any(|c| c.starts_with("lingxia-windows-sdk")) {
+            cargo_update.push("lingxia-windows-sdk".to_string());
+        }
+        let (new_content, build_changes) = rewrite_cargo_dep_req(
+            &content,
+            "lingxia-windows-build",
+            &crate::versions::cargo_compat_req(),
+        );
+        if !build_changes.is_empty() {
+            cargo_update.push("lingxia-windows-build".to_string());
+        }
+        changes.extend(build_changes);
         if !changes.is_empty() {
             edits.push(Edit {
                 path: windows_cargo,
                 new_content,
                 changes,
                 refresh_npm: false,
+                cargo_update,
             });
         }
     }
@@ -180,11 +358,145 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
                 new_content,
                 changes,
                 refresh_npm: false,
+                cargo_update: Vec::new(),
             });
         }
     }
 
     Ok(edits)
+}
+
+fn collect_sdk_steps(root: &Path, in_workspace: bool, version: &str) -> Vec<SdkStep> {
+    if in_workspace {
+        return Vec::new();
+    }
+    let mut steps = Vec::new();
+    if root
+        .join("android")
+        .join("app")
+        .join("build.gradle.kts")
+        .is_file()
+    {
+        steps.push(SdkStep::Fetch {
+            platform: SdkPlatform::Android,
+            cached: sdk_cache::sdk_is_cached(SdkPlatform::Android, version),
+        });
+    }
+    let mut apple_dirs = Vec::new();
+    for name in ["ios", "macos"] {
+        let dir = root.join(name);
+        if dir.join("Package.swift").is_file() {
+            apple_dirs.push(dir);
+        }
+    }
+    if !apple_dirs.is_empty() {
+        steps.push(SdkStep::Fetch {
+            platform: SdkPlatform::Apple,
+            cached: sdk_cache::sdk_is_cached(SdkPlatform::Apple, version),
+        });
+        for dir in apple_dirs {
+            steps.push(SdkStep::InjectApple { dir });
+        }
+    }
+    if root
+        .join("harmony")
+        .join("entry")
+        .join("oh-package.json5")
+        .is_file()
+    {
+        steps.push(SdkStep::Fetch {
+            platform: SdkPlatform::Harmony,
+            cached: sdk_cache::sdk_is_cached(SdkPlatform::Harmony, version),
+        });
+    }
+    steps
+}
+
+impl SdkStep {
+    fn is_pending(&self, sdk_version: &str) -> bool {
+        match self {
+            SdkStep::Fetch { cached, .. } => !cached,
+            SdkStep::InjectApple { dir } => apple_inject_pending(dir, sdk_version),
+        }
+    }
+}
+
+fn apple_inject_pending(dir: &Path, sdk_version: &str) -> bool {
+    let Some(sdk_dir) = sdk_cache::cached_sdk_dir(SdkPlatform::Apple, sdk_version) else {
+        return true;
+    };
+    !crate::platform::apple::sdk_package_points_at(dir, &sdk_dir)
+}
+
+fn sdk_label(platform: SdkPlatform) -> &'static str {
+    match platform {
+        SdkPlatform::Android => "Android Maven",
+        SdkPlatform::Apple => "Apple source",
+        SdkPlatform::Harmony => "Harmony HAR",
+    }
+}
+
+fn print_sdk_step(root: &Path, step: &SdkStep, sdk_version: &str) {
+    match step {
+        SdkStep::Fetch { platform, .. } => {
+            let asset = platform.asset_name(sdk_version);
+            println!(
+                "    {} {sdk_version} (download {asset})",
+                sdk_label(*platform)
+            );
+        }
+        SdkStep::InjectApple { dir } => {
+            let rel = dir.strip_prefix(root).unwrap_or(dir);
+            println!(
+                "    {}/Package.swift -> cached Apple SDK {sdk_version}",
+                rel.display()
+            );
+        }
+    }
+}
+
+fn apply_sdk_steps(root: &Path, steps: &[SdkStep], sdk_version: &str) {
+    if steps.is_empty() {
+        return;
+    }
+    println!();
+    println!("{} Refreshing platform SDKs.", "✓".green());
+    for step in steps {
+        match step {
+            SdkStep::Fetch { platform, .. } => {
+                println!("  fetching {} {} …", sdk_label(*platform), sdk_version);
+                match sdk_cache::ensure_sdk(*platform, sdk_version) {
+                    Ok(path) => println!("    {} {}", "✓".green(), path.display()),
+                    Err(err) => println!(
+                        "    {} {err}\n      Pins are updated; `lingxia build` will retry the fetch.",
+                        "!".yellow()
+                    ),
+                }
+            }
+            SdkStep::InjectApple { dir } => {
+                let Some(sdk_dir) = sdk_cache::cached_sdk_dir(SdkPlatform::Apple, sdk_version)
+                else {
+                    continue;
+                };
+                if !sdk_cache::sdk_is_cached(SdkPlatform::Apple, sdk_version) {
+                    println!(
+                        "    {} skip {}/Package.swift (Apple SDK not in cache)",
+                        "!".yellow(),
+                        dir.strip_prefix(root).unwrap_or(dir).display()
+                    );
+                    continue;
+                }
+                match crate::platform::apple::inject_sdk_package_dependency(dir, &sdk_dir) {
+                    Ok(()) => println!(
+                        "    {} {}/Package.swift",
+                        "✓".green(),
+                        dir.strip_prefix(root).unwrap_or(dir).display()
+                    ),
+                    Err(err) => println!("    {} {err}", "!".yellow()),
+                }
+            }
+        }
+    }
 }
 
 /// All package.json files that belong to the project (root plus embedded
@@ -263,14 +575,16 @@ fn is_version_range(spec: &str) -> bool {
         .is_some_and(|c| c.is_ascii_digit() || matches!(c, '^' | '~' | '>' | '<' | '='))
 }
 
-/// Rewrite the `lingxia` dependency requirement in a native Cargo.toml,
-/// handling both `lingxia = "req"` and `lingxia = { version = "req", … }`.
-fn rewrite_cargo_lingxia_req(content: &str, req: &str) -> (String, Vec<String>) {
+/// Rewrite `crate_name = "req"` / `{ version = "req", … }` in a Cargo.toml.
+/// Path-only tables have no `version =` and are left untouched.
+fn rewrite_cargo_dep_req(content: &str, crate_name: &str, req: &str) -> (String, Vec<String>) {
     let mut changes = Vec::new();
     let mut out = String::with_capacity(content.len());
+    let prefix = format!("{crate_name} =");
+    let prefix_nospace = format!("{crate_name}=");
     for line in content.split_inclusive('\n') {
         let trimmed = line.trim_start();
-        let is_dep = trimmed.starts_with("lingxia =") || trimmed.starts_with("lingxia=");
+        let is_dep = trimmed.starts_with(&prefix) || trimmed.starts_with(&prefix_nospace);
         if !is_dep {
             out.push_str(line);
             continue;
@@ -278,11 +592,11 @@ fn rewrite_cargo_lingxia_req(content: &str, req: &str) -> (String, Vec<String>) 
         let rewritten = if trimmed.contains('{') {
             rewrite_quoted_after(line, "version = ", req)
         } else {
-            rewrite_quoted_after(line, "lingxia = ", req)
+            rewrite_quoted_after(line, &format!("{crate_name} = "), req)
         };
         match rewritten {
             Some((new_line, old)) if old != req => {
-                changes.push(format!("lingxia: {old} -> {req}"));
+                changes.push(format!("{crate_name}: {old} -> {req}"));
                 out.push_str(&new_line);
             }
             _ => out.push_str(line),
@@ -395,16 +709,124 @@ fn major_minor(version: &str) -> Option<(u64, u64)> {
     Some((parts.next()?.parse().ok()?, parts.next()?.parse().ok()?))
 }
 
+fn cli_compat_line() -> Option<(u64, u64)> {
+    major_minor(env!("LINGXIA_RUST_CRATE_VERSION"))
+}
+
+/// Oldest major.minor among the project's LingXia pins (installed npm, npm
+/// ranges, native crate, Android SDK fallback, Windows crates tag / build crate).
+fn project_compat_line(root: &Path) -> Option<(u64, u64)> {
+    collect_project_versions(root)
+        .into_iter()
+        .filter_map(|v| major_minor(&v))
+        .min()
+}
+
+fn is_line_behind(project: Option<(u64, u64)>, cli: Option<(u64, u64)>) -> bool {
+    matches!((project, cli), (Some(p), Some(c)) if p < c)
+}
+
+fn collect_project_versions(root: &Path) -> Vec<String> {
+    let mut versions = Vec::new();
+    if let Some(version) = installed_lingxia_npm_version(root) {
+        versions.push(version);
+    }
+    for package_json in find_package_jsons(root) {
+        if let Ok(content) = fs::read_to_string(&package_json) {
+            versions.extend(npm_range_specs(&content));
+        }
+    }
+    if let Some(version) = pinned_native_crate_req(root) {
+        versions.push(version);
+    }
+    if let Some(version) = pinned_gradle_sdk(root) {
+        versions.push(version);
+    }
+    if let Some(version) = pinned_windows_sdk_version(root) {
+        versions.push(version);
+    }
+    if let Some(version) = pinned_windows_build_req(root) {
+        versions.push(version);
+    }
+    versions
+}
+
+fn npm_range_specs(content: &str) -> Vec<String> {
+    let mut specs = Vec::new();
+    for line in content.lines() {
+        if let Some(spec) = npm_lingxia_spec(line)
+            && is_version_range(&spec)
+        {
+            specs.push(spec);
+        }
+    }
+    specs
+}
+
+fn npm_lingxia_spec(line: &str) -> Option<String> {
+    let key_start = line.find("\"@lingxia/")?;
+    let key_end = line[key_start + 1..].find('"').map(|i| key_start + 1 + i)?;
+    let rest = &line[key_end + 1..];
+    let value_open = rest.find('"').map(|i| key_end + 2 + i)?;
+    let value_end = line[value_open..].find('"').map(|i| value_open + i)?;
+    Some(line[value_open..value_end].to_string())
+}
+
+fn pinned_gradle_sdk(root: &Path) -> Option<String> {
+    let content =
+        fs::read_to_string(root.join("android").join("app").join("build.gradle.kts")).ok()?;
+    for line in content.lines() {
+        if line.contains("lingxia.sdkVersion")
+            && line.contains("?:")
+            && let Some((_, old)) = rewrite_quoted_after(line, "?: ", "")
+        {
+            return Some(old);
+        }
+    }
+    None
+}
+
+fn pinned_windows_sdk_version(root: &Path) -> Option<String> {
+    let content = fs::read_to_string(root.join("windows").join("Cargo.toml")).ok()?;
+    for line in content.lines() {
+        if !line.trim_start().starts_with("lingxia-windows-sdk") {
+            continue;
+        }
+        const PREFIX: &str = "tag = \"lingxia-crates-v";
+        let start = line.find(PREFIX)? + PREFIX.len();
+        let end = line[start..].find('"')? + start;
+        return Some(line[start..end].to_string());
+    }
+    None
+}
+
+fn pinned_windows_build_req(root: &Path) -> Option<String> {
+    let content = fs::read_to_string(root.join("windows").join("Cargo.toml")).ok()?;
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        if !(trimmed.starts_with("lingxia-windows-build =")
+            || trimmed.starts_with("lingxia-windows-build="))
+        {
+            continue;
+        }
+        let marker = if trimmed.contains('{') {
+            "version = "
+        } else {
+            "lingxia-windows-build = "
+        };
+        if let Some((_, old)) = rewrite_quoted_after(line, marker, "") {
+            return Some(old);
+        }
+    }
+    None
+}
+
 /// One-line drift warning at build time: the project's installed/pinned
 /// LingXia line differs from this CLI's. Never fails the build; silent when
 /// nothing is resolvable.
 pub fn warn_if_behind(project_root: &Path) {
-    let cli_line = major_minor(env!("LINGXIA_RUST_CRATE_VERSION"));
-    let project_line = installed_lingxia_npm_version(project_root)
-        .or_else(|| pinned_native_crate_req(project_root))
-        .and_then(|v| major_minor(&v));
-    if let (Some(cli), Some(project)) = (cli_line, project_line)
-        && cli != project
+    if let (Some(cli), Some(project)) = (cli_compat_line(), project_compat_line(project_root))
+        && project != cli
     {
         eprintln!(
             "{} This project is on the LingXia {}.{} line, the CLI on {}.{} — run `lingxia upgrade` in the project to align.",
@@ -473,15 +895,28 @@ mod tests {
     #[test]
     fn cargo_req_is_rewritten_in_both_forms() {
         let content = "[dependencies]\nlingxia = { version = \"0.11.2\", default-features = false, features = [\"standard\"] }\nserde = \"1\"\n";
-        let (out, changes) = rewrite_cargo_lingxia_req(content, "~0.12.0");
+        let (out, changes) = rewrite_cargo_dep_req(content, "lingxia", "~0.12.0");
         assert_eq!(changes, vec!["lingxia: 0.11.2 -> ~0.12.0"]);
         assert!(out.contains("lingxia = { version = \"~0.12.0\", default-features = false"));
         assert!(out.contains("serde = \"1\""));
 
         let simple = "lingxia = \"0.11\"\n";
-        let (out, changes) = rewrite_cargo_lingxia_req(simple, "~0.12.0");
+        let (out, changes) = rewrite_cargo_dep_req(simple, "lingxia", "~0.12.0");
         assert_eq!(changes.len(), 1);
         assert_eq!(out, "lingxia = \"~0.12.0\"\n");
+
+        let path_only = "lingxia = { path = \"../../../crates/lingxia\" }\n";
+        let (out, changes) = rewrite_cargo_dep_req(path_only, "lingxia", "~0.12.0");
+        assert!(changes.is_empty());
+        assert_eq!(out, path_only);
+    }
+
+    #[test]
+    fn windows_build_crate_req_is_rewritten() {
+        let content = "lingxia-windows-build = { version = \"0.11.2\" }\n";
+        let (out, changes) = rewrite_cargo_dep_req(content, "lingxia-windows-build", "~0.12.0");
+        assert_eq!(changes, vec!["lingxia-windows-build: 0.11.2 -> ~0.12.0"]);
+        assert_eq!(out, "lingxia-windows-build = { version = \"~0.12.0\" }\n");
     }
 
     #[test]
@@ -533,5 +968,121 @@ mod tests {
         assert_eq!(major_minor("0.11.2"), Some((0, 11)));
         assert_eq!(major_minor("^1.2.3"), Some((1, 2)));
         assert_eq!(major_minor("garbage"), None);
+    }
+
+    #[test]
+    fn sdk_steps_cover_each_platform_and_skip_workspace() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("android/app")).unwrap();
+        fs::write(root.join("android/app/build.gradle.kts"), "").unwrap();
+        fs::create_dir_all(root.join("ios")).unwrap();
+        fs::write(
+            root.join("ios/Package.swift"),
+            "// swift-tools-version: 6.0\n",
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("macos")).unwrap();
+        fs::write(
+            root.join("macos/Package.swift"),
+            "// swift-tools-version: 6.0\n",
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("harmony/entry")).unwrap();
+        fs::write(root.join("harmony/entry/oh-package.json5"), "{}\n").unwrap();
+
+        let steps = collect_sdk_steps(root, false, "0.12.0");
+        let fetches: Vec<_> = steps
+            .iter()
+            .filter_map(|s| match s {
+                SdkStep::Fetch { platform, .. } => Some(*platform),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            fetches,
+            vec![
+                SdkPlatform::Android,
+                SdkPlatform::Apple,
+                SdkPlatform::Harmony
+            ]
+        );
+        let injects = steps
+            .iter()
+            .filter(|s| matches!(s, SdkStep::InjectApple { .. }))
+            .count();
+        assert_eq!(injects, 2);
+
+        assert!(collect_sdk_steps(root, true, "0.12.0").is_empty());
+    }
+
+    #[test]
+    fn windows_git_ref_and_build_crate_compose() {
+        let content = "lingxia-windows-sdk = { git = \"https://github.com/LingXia-Dev/LingXia.git\", tag = \"lingxia-crates-v0.11.2\", package = \"lingxia-windows-sdk\", default-features = false }\nlingxia-windows-build = { version = \"0.11.2\" }\n";
+        let (mid, sdk_changes) = rewrite_windows_sdk_ref(content, "rev = \"abc1234\"");
+        let (out, build_changes) = rewrite_cargo_dep_req(&mid, "lingxia-windows-build", "~0.12.0");
+        assert_eq!(sdk_changes.len(), 1);
+        assert_eq!(build_changes.len(), 1);
+        assert!(out.contains("rev = \"abc1234\""));
+        assert!(out.contains("lingxia-windows-build = { version = \"~0.12.0\" }"));
+    }
+
+    #[test]
+    fn major_minor_line_is_the_safe_behind_check() {
+        assert!(is_line_behind(Some((0, 11)), Some((0, 12))));
+        assert!(!is_line_behind(Some((0, 12)), Some((0, 12))));
+        assert!(!is_line_behind(Some((0, 13)), Some((0, 12))));
+        assert!(!is_line_behind(None, Some((0, 12))));
+        assert!(!is_line_behind(Some((0, 11)), None));
+    }
+
+    #[test]
+    fn npm_range_specs_skip_path_deps() {
+        let content = r#"{
+  "dependencies": {
+    "@lingxia/react": "~0.11.0",
+    "@lingxia/bridge": "file:../../../packages/lingxia-bridge"
+  }
+}
+"#;
+        assert_eq!(npm_range_specs(content), vec!["~0.11.0".to_string()]);
+    }
+
+    #[test]
+    fn oldest_pin_wins_the_project_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(
+            root.join("package.json"),
+            r#"{ "dependencies": { "@lingxia/react": "~0.12.0" } }"#,
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("native")).unwrap();
+        fs::write(
+            root.join("native/Cargo.toml"),
+            "lingxia = { version = \"0.11.2\" }\n",
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("android/app")).unwrap();
+        fs::write(
+            root.join("android/app/build.gradle.kts"),
+            "val lingxiaSdkVersion = (findProperty(\"lingxia.sdkVersion\") as String?) ?: \"0.12.0\"\n",
+        )
+        .unwrap();
+        assert_eq!(project_compat_line(root), Some((0, 11)));
+    }
+
+    #[test]
+    fn windows_crates_tag_parses_as_a_version() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("windows")).unwrap();
+        fs::write(
+            root.join("windows/Cargo.toml"),
+            "lingxia-windows-sdk = { git = \"https://github.com/LingXia-Dev/LingXia.git\", tag = \"lingxia-crates-v0.11.2\", package = \"lingxia-windows-sdk\" }\n",
+        )
+        .unwrap();
+        assert_eq!(pinned_windows_sdk_version(root).as_deref(), Some("0.11.2"));
+        assert_eq!(project_compat_line(root), Some((0, 11)));
     }
 }

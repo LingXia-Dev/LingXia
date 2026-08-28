@@ -4,11 +4,17 @@
 //! `install.sh` puts it. That leaves no way to update on demand, to see what a
 //! newer release would be without taking it, to move to a specific version, or
 //! to learn why nothing is happening when the install does not qualify.
+//!
+//! Always upgrades the CLI. Inside a project it then compares the project's
+//! LingXia line (npm / crate / SDK pins, major.minor) with this CLI. A newer
+//! line is offered as a prompt — never applied silently.
 
-use crate::update::{self, UpdateStatus};
+use crate::update::{self, SelfReplace, UpdateStatus};
 use anyhow::{Context, Result};
 use colored::Colorize;
 use semver::Version;
+#[cfg(not(target_os = "windows"))]
+use std::path::{Path, PathBuf};
 
 /// Exit code for `--check` when a newer release exists, so a script can branch
 /// on it without parsing output.
@@ -19,39 +25,92 @@ const EXIT_UPDATE_AVAILABLE: i32 = 10;
 const INSTALL_SCRIPT_URL: &str =
     "https://raw.githubusercontent.com/LingXia-Dev/LingXia/main/install.sh";
 
-pub fn execute(check: bool, version: Option<String>, cli_only: bool) -> Result<i32> {
-    // Inside a project (unless --cli or an explicit CLI version is asked for),
-    // `upgrade` means: bring the project's pinned LingXia versions to this
-    // CLI's line. The CLI itself already self-updates daily.
-    if !cli_only
-        && version.is_none()
-        && let Some(root) = crate::commands::project_upgrade::find_project_root()
-    {
-        return crate::commands::project_upgrade::execute(&root, check);
+/// What the CLI half of `upgrade` did, so the project half can decide whether
+/// to re-exec (new binary on disk) or keep going with this process.
+enum CliStep {
+    UpToDate,
+    /// `--check` only: a newer CLI exists.
+    Available,
+    #[cfg(not(target_os = "windows"))]
+    Replaced {
+        exe: PathBuf,
+    },
+    #[cfg(target_os = "windows")]
+    Staged,
+    NotReplaceable,
+}
+
+pub fn execute(check: bool, version: Option<String>, yes: bool) -> Result<i32> {
+    // CLI first, always. The new CLI's baked compatibility line is what the
+    // project half compares against, so a successful self-replace re-execs on
+    // Unix. Windows stages the swap until this process exits — project pins
+    // are compared to *this* CLI's line, and the user re-runs after the new
+    // binary is in place for a newer line.
+    let project_root = crate::commands::project_upgrade::find_project_root();
+
+    let cli = run_cli_step(check, version.as_deref(), project_root.is_some())?;
+
+    if matches!(cli, CliStep::UpToDate) {
+        crate::update::refresh_installed_skill();
     }
 
+    if let Some(root) = project_root.as_deref() {
+        #[cfg(not(target_os = "windows"))]
+        if let CliStep::Replaced { exe } = &cli
+            && !check
+        {
+            return reexec_upgraded_cli(exe);
+        }
+        #[cfg(target_os = "windows")]
+        if matches!(cli, CliStep::Staged) && !check {
+            println!();
+            println!(
+                "{} CLI update is staged and installs after this command exits.",
+                "!".yellow()
+            );
+            println!(
+                "  Re-run `lingxia upgrade` once the new CLI is in place so project pins follow that release."
+            );
+        }
+        let project = crate::commands::project_upgrade::execute(root, check, yes)?;
+        return Ok(combine_exit(check, &cli, project));
+    }
+
+    Ok(cli_exit(&cli))
+}
+
+fn run_cli_step(check: bool, version: Option<&str>, in_project: bool) -> Result<CliStep> {
     let exe_path = update::current_exe_path()?
         .canonicalize()
         .context("Failed to resolve the running executable")?;
 
-    let status = match &version {
+    let pinned = version.map(str::to_string);
+    let status = match version {
         Some(target) => pinned_status(target)?,
-        None => {
-            update::load_update_status(true).context("Failed to check for a newer CLI release")?
-        }
+        None => match update::load_update_status(true) {
+            Ok(status) => status,
+            Err(err) if in_project => {
+                eprintln!("{} Could not check for a CLI update: {err}", "!".yellow());
+                eprintln!("  Continuing; will still check this project's LingXia line.");
+                return Ok(CliStep::UpToDate);
+            }
+            Err(err) => {
+                return Err(err).context("Failed to check for a newer CLI release");
+            }
+        },
     };
 
-    report(&status, &version);
+    report(&status, &pinned);
 
     if check {
         return Ok(if status.update_available {
-            EXIT_UPDATE_AVAILABLE
+            CliStep::Available
         } else {
-            0
+            CliStep::UpToDate
         });
     }
     if !status.update_available {
-        return Ok(0);
+        return Ok(CliStep::UpToDate);
     }
 
     // An install this CLI cannot replace in place still deserves an answer.
@@ -71,7 +130,7 @@ pub fn execute(check: bool, version: Option<String>, cli_only: bool) -> Result<i
             )
             .cyan()
         );
-        return Ok(1);
+        return Ok(CliStep::NotReplaceable);
     }
 
     println!();
@@ -79,14 +138,59 @@ pub fn execute(check: bool, version: Option<String>, cli_only: bool) -> Result<i
         "Updating LingXia CLI {} -> {}...",
         status.current_version, status.latest_version
     );
-    update::install_update(&exe_path, &status)?;
+    let kind = update::install_update(&exe_path, &status)?;
     println!(
         "{} lingxia, lxdev and the Runner are now {}.",
         "✓".green(),
         status.latest_version
     );
-    println!("  The installed agent skill refreshes on the next run.");
-    Ok(0)
+    match kind {
+        #[cfg(not(target_os = "windows"))]
+        SelfReplace::Complete => {
+            println!("  The installed agent skill refreshes on the next run of this CLI.");
+            Ok(CliStep::Replaced { exe: exe_path })
+        }
+        #[cfg(target_os = "windows")]
+        SelfReplace::Deferred => Ok(CliStep::Staged),
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn reexec_upgraded_cli(exe: &Path) -> Result<i32> {
+    let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    println!();
+    println!("Re-running the new CLI to upgrade this project…");
+    let status = std::process::Command::new(exe)
+        .args(&args)
+        .status()
+        .context("Failed to re-run the upgraded CLI")?;
+    Ok(status.code().unwrap_or(1))
+}
+
+fn cli_exit(cli: &CliStep) -> i32 {
+    match cli {
+        CliStep::Available => EXIT_UPDATE_AVAILABLE,
+        CliStep::NotReplaceable => 1,
+        CliStep::UpToDate => 0,
+        #[cfg(not(target_os = "windows"))]
+        CliStep::Replaced { .. } => 0,
+        #[cfg(target_os = "windows")]
+        CliStep::Staged => 0,
+    }
+}
+
+fn combine_exit(check: bool, cli: &CliStep, project: i32) -> i32 {
+    if check {
+        if matches!(cli, CliStep::Available) || project == EXIT_UPDATE_AVAILABLE {
+            EXIT_UPDATE_AVAILABLE
+        } else {
+            0
+        }
+    } else if matches!(cli, CliStep::NotReplaceable) {
+        1
+    } else {
+        project
+    }
 }
 
 /// Build a status for an explicitly requested version, which may be older than
@@ -172,5 +276,24 @@ mod tests {
             0
         };
         assert_eq!(code, 0, "the running version must not report an update");
+    }
+
+    #[test]
+    fn check_exit_is_10_if_either_half_is_behind() {
+        assert_eq!(
+            combine_exit(true, &CliStep::Available, 0),
+            EXIT_UPDATE_AVAILABLE
+        );
+        assert_eq!(
+            combine_exit(true, &CliStep::UpToDate, EXIT_UPDATE_AVAILABLE),
+            EXIT_UPDATE_AVAILABLE
+        );
+        assert_eq!(combine_exit(true, &CliStep::UpToDate, 0), 0);
+    }
+
+    #[test]
+    fn apply_keeps_not_replaceable_as_failure_after_project() {
+        assert_eq!(combine_exit(false, &CliStep::NotReplaceable, 0), 1);
+        assert_eq!(combine_exit(false, &CliStep::UpToDate, 0), 0);
     }
 }

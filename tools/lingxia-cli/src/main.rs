@@ -443,7 +443,7 @@ enum Commands {
         action: commands::skill::SkillAction,
     },
 
-    /// Update the CLI — or, inside a project, the project's LingXia pins
+    /// Update the CLI, and inside a project offer to upgrade pins and SDKs
     Upgrade {
         /// Report what is available and exit without installing anything
         #[arg(long)]
@@ -453,9 +453,9 @@ enum Commands {
         #[arg(long, value_name = "VERSION")]
         version: Option<String>,
 
-        /// Upgrade the CLI itself even when run inside a project
-        #[arg(long)]
-        cli: bool,
+        /// Upgrade project pins and SDKs without prompting
+        #[arg(short = 'y', long)]
+        yes: bool,
     },
 
     /// Per-user dev-session broker (started on demand by `lingxia dev`/`lxdev`)
@@ -999,9 +999,9 @@ fn main() -> Result<()> {
         Commands::Upgrade {
             check,
             version,
-            cli,
+            yes,
         } => {
-            let code = commands::upgrade::execute(check, version, cli)?;
+            let code = commands::upgrade::execute(check, version, yes)?;
             if code != 0 {
                 std::process::exit(code);
             }

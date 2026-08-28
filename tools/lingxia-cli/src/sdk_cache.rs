@@ -114,6 +114,23 @@ pub(crate) fn shasum_for(shasums: &str, basename: &str) -> Option<String> {
     None
 }
 
+/// Directory the given SDK version would occupy (`~/.lingxia/sdk/<plat>/<ver>`).
+/// Does not require the cache to be populated.
+pub fn cached_sdk_dir(platform: SdkPlatform, version: &str) -> Option<PathBuf> {
+    Some(
+        sdk_cache_root()?
+            .join(platform.cache_subdir())
+            .join(version),
+    )
+}
+
+/// Whether `ensure_sdk` would be a cache hit for this platform/version.
+pub fn sdk_is_cached(platform: SdkPlatform, version: &str) -> bool {
+    cached_sdk_dir(platform, version)
+        .map(|dir| dir.join(READY_SENTINEL).exists())
+        .unwrap_or(false)
+}
+
 /// Ensure the SDK for `platform`/`version` is present in the cache and return
 /// the resolved path:
 /// - Android: the maven repo dir (contains `io/github/...`).
@@ -372,5 +389,10 @@ mod tests {
     fn shasum_missing_entry_returns_none() {
         let shasums = "abc123  unrelated.zip\n";
         assert!(shasum_for(shasums, "lingxia-sdk-harmony-0.8.0.har").is_none());
+    }
+
+    #[test]
+    fn missing_cache_is_not_ready() {
+        assert!(!sdk_is_cached(SdkPlatform::Android, "0.0.0-never-cached"));
     }
 }

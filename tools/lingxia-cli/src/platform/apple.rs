@@ -550,7 +550,7 @@ const SDK_PACKAGE_MARKER: &str = "// lingxia-sdk: managed by `lingxia build`";
 /// Replaces the iOS/macOS templates' commented-out placeholders on the first
 /// build and our own previously-written lines afterwards, so path and version
 /// drift converge instead of appending duplicates.
-fn inject_sdk_package_dependency(package_dir: &Path, sdk_dir: &Path) -> Result<()> {
+pub(crate) fn inject_sdk_package_dependency(package_dir: &Path, sdk_dir: &Path) -> Result<()> {
     let manifest_path = package_dir.join("Package.swift");
     let original = fs::read_to_string(&manifest_path)
         .with_context(|| format!("Failed to read Package.swift: {}", manifest_path.display()))?;
@@ -622,6 +622,18 @@ fn inject_sdk_package_dependency(package_dir: &Path, sdk_dir: &Path) -> Result<(
         })?;
     }
     Ok(())
+}
+
+/// Whether `Package.swift` already depends on `sdk_dir` via a local path.
+pub(crate) fn sdk_package_points_at(package_dir: &Path, sdk_dir: &Path) -> bool {
+    let Ok(content) = fs::read_to_string(package_dir.join("Package.swift")) else {
+        return false;
+    };
+    let abs = sdk_dir
+        .canonicalize()
+        .unwrap_or_else(|_| sdk_dir.to_path_buf());
+    let abs_str = abs.to_string_lossy().replace('\\', "/");
+    content.contains(&abs_str)
 }
 
 fn sdk_cache_root_string() -> Option<String> {
@@ -762,6 +774,7 @@ mod tests {
 
         inject_sdk_package_dependency(pkg.path(), sdk_a.path()).unwrap();
         let first = fs::read_to_string(pkg.path().join("Package.swift")).unwrap();
+        assert!(sdk_package_points_at(pkg.path(), sdk_a.path()));
 
         // Re-running with the same SDK dir is a no-op.
         inject_sdk_package_dependency(pkg.path(), sdk_a.path()).unwrap();
@@ -773,10 +786,8 @@ mod tests {
         inject_sdk_package_dependency(pkg.path(), sdk_b.path()).unwrap();
         let third = fs::read_to_string(pkg.path().join("Package.swift")).unwrap();
         assert_eq!(managed_line_counts(&third), (1, 1));
-        assert!(third.contains(&format!(
-            ".package(name: \"lingxia\", path: \"{}\"",
-            sdk_b.path().canonicalize().unwrap().display()
-        )));
+        assert!(sdk_package_points_at(pkg.path(), sdk_b.path()));
+        assert!(!sdk_package_points_at(pkg.path(), sdk_a.path()));
     }
 
     /// The pre-injection macOS template hinted the bare-string spelling, so a
