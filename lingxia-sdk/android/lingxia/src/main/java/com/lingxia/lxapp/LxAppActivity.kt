@@ -2034,6 +2034,11 @@ class LxAppActivity : AppCompatActivity() {
             window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(launch))
         } else {
             rootContainer.setBackgroundColor(themed)
+            // The window as well: a deferred pass may have painted it the
+            // launch colour, and an appearance change repaints through here —
+            // the two surfaces must not part ways, or the stale one shows
+            // through wherever the bars and containers move during navigation.
+            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(themed))
         }
     }
 
