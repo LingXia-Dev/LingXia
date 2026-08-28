@@ -81,15 +81,27 @@ Page({
   },
 
   play: function () {
-    this._getContext()?.play();
+    try {
+      this._getContext()?.play();
+    } catch {
+      /* island player may not be mounted yet */
+    }
   },
 
   pause: function () {
-    this._getContext()?.pause();
+    try {
+      this._getContext()?.pause();
+    } catch {
+      /* island player may not be mounted yet */
+    }
   },
 
   stop: function () {
-    this._getContext()?.stop();
+    try {
+      this._getContext()?.stop();
+    } catch {
+      /* island player may not be mounted yet */
+    }
   },
 
   seek: function (position) {
@@ -118,7 +130,11 @@ Page({
   },
 
   onPlaying: function () {
-    this.setData({ eventLog: "Playing" });
+    try {
+      this.setData({ eventLog: "Playing" });
+    } catch {
+      /* page may already be tearing down */
+    }
   },
 
   onPause: function () {
