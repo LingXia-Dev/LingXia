@@ -62,7 +62,7 @@ pub fn execute(check: bool, version: Option<String>, yes: bool) -> Result<i32> {
             return reexec_upgraded_cli(exe);
         }
         #[cfg(target_os = "windows")]
-        if matches!(cli, CliStep::Staged) && !check {
+        if should_defer_project_upgrade(&cli, check) {
             println!();
             println!(
                 "{} CLI update is staged and installs after this command exits.",
@@ -71,12 +71,18 @@ pub fn execute(check: bool, version: Option<String>, yes: bool) -> Result<i32> {
             println!(
                 "  Re-run `lingxia upgrade` once the new CLI is in place so project pins follow that release."
             );
+            return Ok(cli_exit(&cli));
         }
         let project = crate::commands::project_upgrade::execute(root, check, yes)?;
         return Ok(combine_exit(check, &cli, project));
     }
 
     Ok(cli_exit(&cli))
+}
+
+#[cfg(target_os = "windows")]
+fn should_defer_project_upgrade(cli: &CliStep, check: bool) -> bool {
+    matches!(cli, CliStep::Staged) && !check
 }
 
 fn run_cli_step(check: bool, version: Option<&str>, in_project: bool) -> Result<CliStep> {
@@ -295,5 +301,13 @@ mod tests {
     fn apply_keeps_not_replaceable_as_failure_after_project() {
         assert_eq!(combine_exit(false, &CliStep::NotReplaceable, 0), 1);
         assert_eq!(combine_exit(false, &CliStep::UpToDate, 0), 0);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn staged_replace_defers_project_upgrade_until_the_new_cli_runs() {
+        assert!(should_defer_project_upgrade(&CliStep::Staged, false));
+        assert!(!should_defer_project_upgrade(&CliStep::Staged, true));
+        assert!(!should_defer_project_upgrade(&CliStep::UpToDate, false));
     }
 }

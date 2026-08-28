@@ -538,33 +538,40 @@ fn find_package_jsons(root: &Path) -> Vec<PathBuf> {
 fn rewrite_npm_ranges(content: &str, range: &str) -> (String, Vec<String>) {
     let mut changes = Vec::new();
     let mut out = String::with_capacity(content.len());
-    for (index, line) in content.split_inclusive('\n').enumerate() {
-        out.push_str(&rewrite_npm_line(line, range, index, &mut changes));
+    for line in content.split_inclusive('\n') {
+        out.push_str(&rewrite_npm_line(line, range, &mut changes));
     }
     (out, changes)
 }
 
-fn rewrite_npm_line(line: &str, range: &str, _index: usize, changes: &mut Vec<String>) -> String {
-    let Some(key_start) = line.find("\"@lingxia/") else {
-        return line.to_string();
-    };
-    let Some(key_end) = line[key_start + 1..].find('"').map(|i| key_start + 1 + i) else {
-        return line.to_string();
-    };
-    let name = &line[key_start + 1..key_end];
-    let rest = &line[key_end + 1..];
-    let Some(value_open) = rest.find('"').map(|i| key_end + 2 + i) else {
-        return line.to_string();
-    };
-    let Some(value_end) = line[value_open..].find('"').map(|i| value_open + i) else {
-        return line.to_string();
-    };
-    let spec = &line[value_open..value_end];
-    if !is_version_range(spec) || spec == range {
-        return line.to_string();
+fn rewrite_npm_line(line: &str, range: &str, changes: &mut Vec<String>) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut copied_through = 0;
+    let mut search_from = 0;
+    while let Some((name, spec, value_start, value_end)) = next_npm_entry(line, search_from) {
+        if is_version_range(spec) && spec != range {
+            out.push_str(&line[copied_through..value_start]);
+            out.push_str(range);
+            copied_through = value_end;
+            changes.push(format!("{name}: {spec} -> {range}"));
+        }
+        search_from = value_end + 1;
     }
-    changes.push(format!("{name}: {spec} -> {range}"));
-    format!("{}{range}{}", &line[..value_open], &line[value_end..])
+    out.push_str(&line[copied_through..]);
+    out
+}
+
+fn next_npm_entry(line: &str, search_from: usize) -> Option<(&str, &str, usize, usize)> {
+    let key_start = line[search_from..].find("\"@lingxia/")? + search_from;
+    let key_end = line[key_start + 1..].find('"')? + key_start + 1;
+    let value_start = line[key_end + 1..].find('"')? + key_end + 2;
+    let value_end = line[value_start..].find('"')? + value_start;
+    Some((
+        &line[key_start + 1..key_end],
+        &line[value_start..value_end],
+        value_start,
+        value_end,
+    ))
 }
 
 /// Whether an npm dependency spec is a plain version range (as opposed to a
@@ -591,8 +598,10 @@ fn rewrite_cargo_dep_req(content: &str, crate_name: &str, req: &str) -> (String,
         }
         let rewritten = if trimmed.contains('{') {
             rewrite_quoted_after(line, "version = ", req)
+                .or_else(|| rewrite_quoted_after(line, "version=", req))
         } else {
             rewrite_quoted_after(line, &format!("{crate_name} = "), req)
+                .or_else(|| rewrite_quoted_after(line, &format!("{crate_name}="), req))
         };
         match rewritten {
             Some((new_line, old)) if old != req => {
@@ -615,11 +624,13 @@ fn rewrite_windows_sdk_ref(content: &str, git_ref: &str) -> (String, Vec<String>
             out.push_str(line);
             continue;
         }
-        let old_ref = ["rev = \"", "tag = \""].iter().find_map(|marker| {
-            let start = line.find(marker)? + marker.len();
-            let end = line[start..].find('"')? + start;
-            Some((line[start..end].to_string(), marker, start, end))
-        });
+        let old_ref = ["rev = \"", "tag = \"", "rev=\"", "tag=\""]
+            .iter()
+            .find_map(|marker| {
+                let start = line.find(marker)? + marker.len();
+                let end = line[start..].find('"')? + start;
+                Some((line[start..end].to_string(), marker, start, end))
+            });
         match old_ref {
             Some((old, marker, start, end)) => {
                 // `current`/`git_ref` are full fragments incl. both quotes,
@@ -754,22 +765,15 @@ fn collect_project_versions(root: &Path) -> Vec<String> {
 fn npm_range_specs(content: &str) -> Vec<String> {
     let mut specs = Vec::new();
     for line in content.lines() {
-        if let Some(spec) = npm_lingxia_spec(line)
-            && is_version_range(&spec)
-        {
-            specs.push(spec);
+        let mut search_from = 0;
+        while let Some((_, spec, _, value_end)) = next_npm_entry(line, search_from) {
+            if is_version_range(spec) {
+                specs.push(spec.to_string());
+            }
+            search_from = value_end + 1;
         }
     }
     specs
-}
-
-fn npm_lingxia_spec(line: &str) -> Option<String> {
-    let key_start = line.find("\"@lingxia/")?;
-    let key_end = line[key_start + 1..].find('"').map(|i| key_start + 1 + i)?;
-    let rest = &line[key_end + 1..];
-    let value_open = rest.find('"').map(|i| key_end + 2 + i)?;
-    let value_end = line[value_open..].find('"').map(|i| value_open + i)?;
-    Some(line[value_open..value_end].to_string())
 }
 
 fn pinned_gradle_sdk(root: &Path) -> Option<String> {
@@ -792,10 +796,12 @@ fn pinned_windows_sdk_version(root: &Path) -> Option<String> {
         if !line.trim_start().starts_with("lingxia-windows-sdk") {
             continue;
         }
-        const PREFIX: &str = "tag = \"lingxia-crates-v";
-        let start = line.find(PREFIX)? + PREFIX.len();
-        let end = line[start..].find('"')? + start;
-        return Some(line[start..end].to_string());
+        for prefix in ["tag = \"lingxia-crates-v", "tag=\"lingxia-crates-v"] {
+            if let Some(start) = line.find(prefix).map(|index| index + prefix.len()) {
+                let end = line[start..].find('"')? + start;
+                return Some(line[start..end].to_string());
+            }
+        }
     }
     None
 }
@@ -809,12 +815,15 @@ fn pinned_windows_build_req(root: &Path) -> Option<String> {
         {
             continue;
         }
-        let marker = if trimmed.contains('{') {
-            "version = "
+        let markers = if trimmed.contains('{') {
+            ["version = ", "version="]
         } else {
-            "lingxia-windows-build = "
+            ["lingxia-windows-build = ", "lingxia-windows-build="]
         };
-        if let Some((_, old)) = rewrite_quoted_after(line, marker, "") {
+        if let Some(old) = markers
+            .iter()
+            .find_map(|marker| rewrite_quoted_after(line, marker, "").map(|(_, old)| old))
+        {
             return Some(old);
         }
     }
@@ -822,11 +831,11 @@ fn pinned_windows_build_req(root: &Path) -> Option<String> {
 }
 
 /// One-line drift warning at build time: the project's installed/pinned
-/// LingXia line differs from this CLI's. Never fails the build; silent when
+/// LingXia line is older than this CLI's. Never fails the build; silent when
 /// nothing is resolvable.
 pub fn warn_if_behind(project_root: &Path) {
     if let (Some(cli), Some(project)) = (cli_compat_line(), project_compat_line(project_root))
-        && project != cli
+        && project < cli
     {
         eprintln!(
             "{} This project is on the LingXia {}.{} line, the CLI on {}.{} — run `lingxia upgrade` in the project to align.",
@@ -847,12 +856,15 @@ fn pinned_native_crate_req(project_root: &Path) -> Option<String> {
         if !(trimmed.starts_with("lingxia =") || trimmed.starts_with("lingxia=")) {
             continue;
         }
-        let marker = if trimmed.contains('{') {
-            "version = "
+        let markers = if trimmed.contains('{') {
+            ["version = ", "version="]
         } else {
-            "lingxia = "
+            ["lingxia = ", "lingxia="]
         };
-        if let Some((_, old)) = rewrite_quoted_after(line, marker, "") {
+        if let Some(old) = markers
+            .iter()
+            .find_map(|marker| rewrite_quoted_after(line, marker, "").map(|(_, old)| old))
+        {
             return Some(old);
         }
     }
@@ -893,6 +905,20 @@ mod tests {
     }
 
     #[test]
+    fn minified_npm_manifest_rewrites_and_reads_every_lingxia_range() {
+        let content = r#"{"dependencies":{"@lingxia/react":"~0.11.0","@lingxia/types":"^0.11.2","@lingxia/bridge":"file:../bridge"}}"#;
+        let (out, changes) = rewrite_npm_ranges(content, "~0.13.0");
+        assert_eq!(changes.len(), 2);
+        assert!(out.contains(r#""@lingxia/react":"~0.13.0""#));
+        assert!(out.contains(r#""@lingxia/types":"~0.13.0""#));
+        assert!(out.contains(r#""@lingxia/bridge":"file:../bridge""#));
+        assert_eq!(
+            npm_range_specs(content),
+            vec!["~0.11.0".to_string(), "^0.11.2".to_string()]
+        );
+    }
+
+    #[test]
     fn cargo_req_is_rewritten_in_both_forms() {
         let content = "[dependencies]\nlingxia = { version = \"0.11.2\", default-features = false, features = [\"standard\"] }\nserde = \"1\"\n";
         let (out, changes) = rewrite_cargo_dep_req(content, "lingxia", "~0.12.0");
@@ -909,6 +935,19 @@ mod tests {
         let (out, changes) = rewrite_cargo_dep_req(path_only, "lingxia", "~0.12.0");
         assert!(changes.is_empty());
         assert_eq!(out, path_only);
+
+        let compact = "lingxia={version=\"0.11.2\",default-features=false}\n";
+        let (out, changes) = rewrite_cargo_dep_req(compact, "lingxia", "~0.13.0");
+        assert_eq!(changes, vec!["lingxia: 0.11.2 -> ~0.13.0"]);
+        assert_eq!(
+            out,
+            "lingxia={version=\"~0.13.0\",default-features=false}\n"
+        );
+
+        let compact_simple = "lingxia=\"0.11\"\n";
+        let (out, changes) = rewrite_cargo_dep_req(compact_simple, "lingxia", "~0.13.0");
+        assert_eq!(changes, vec!["lingxia: 0.11 -> ~0.13.0"]);
+        assert_eq!(out, "lingxia=\"~0.13.0\"\n");
     }
 
     #[test]
@@ -931,6 +970,12 @@ mod tests {
         let (again, changes) = rewrite_windows_sdk_ref(&out, "rev = \"abc1234\"");
         assert!(changes.is_empty());
         assert_eq!(again, out);
+
+        let compact = "lingxia-windows-sdk={git=\"repo\",tag=\"lingxia-crates-v0.11.2\"}\n";
+        let (out, changes) = rewrite_windows_sdk_ref(compact, "rev = \"abc1234\"");
+        assert_eq!(changes.len(), 1);
+        assert!(out.contains("rev = \"abc1234\""));
+        assert!(!out.contains("tag="));
     }
 
     #[test]

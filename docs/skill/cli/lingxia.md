@@ -277,7 +277,7 @@ re-fetched. `--check` reports CLI *and* project-line drift without writing
 (exit 10 when either half is behind). On Windows a CLI self-replace is
 deferred until the process exits — re-run `lingxia upgrade` after that so
 project pins follow the new CLI's line. Builds print a one-line hint when
-the project's line drifts from the CLI's. `skill install` writes this skill
+the project's line is older than the CLI's. `skill install` writes this skill
 where an AI coding tool finds it.
 
 ### Distribution — `publish`, `auth`, `store`, `ds`, signing
