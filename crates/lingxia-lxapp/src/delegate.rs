@@ -175,7 +175,7 @@ impl LxAppDelegate for LxApp {
             }
             let _ = self.push_to_page_stack(&page);
             // Pre-create tab pages (synchronously enqueue); FIFO ordering ensures CreateAppSvc precedes these.
-            if let Some(tab_pages) = self.get_tabbar().map(|t| t.get_tabbar_pages()) {
+            if let Some(tab_pages) = self.get_tabbar().map(|t| t.preload_page_paths()) {
                 for tab_path in tab_pages {
                     if tab_path == resolved_path {
                         continue;
