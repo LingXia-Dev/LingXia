@@ -41,7 +41,8 @@ pub(crate) fn install_document_scripts(
                         if (typeof window.__LingXiaRecvMessage === 'function') {
                             window.__LingXiaRecvMessage(payload);
                         } else {
-                            console.warn('[LingXia] __LingXiaRecvMessage not available');
+                            window.__LingXiaEarlyNativeMessages = window.__LingXiaEarlyNativeMessages || [];
+                            window.__LingXiaEarlyNativeMessages.push(payload);
                         }
                     } catch (e) {}
                 });
@@ -143,4 +144,16 @@ pub(crate) fn install_document_scripts(
     .map_err(map_webview2_error)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn inbound_messages_queue_when_receiver_is_missing() {
+        let source = include_str!("scripts.rs");
+        assert!(
+            source.contains("__LingXiaEarlyNativeMessages.push(payload)"),
+            "WebView2 inject script must queue inbound payloads until the bridge binds"
+        );
+    }
 }
