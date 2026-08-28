@@ -1118,3 +1118,44 @@ fn paints_cover_button_slider_and_dispatches_pointer() {
         "Cover box-none must not swallow hits meant for video, got {through_cover:?}"
     );
 }
+
+#[test]
+fn unmounting_a_parent_and_its_child_in_one_commit_is_applied() {
+    // The view enumerates every removed node, ancestors first. Unmounting the
+    // parent cascades the child away, so the child's own op must not reject the
+    // commit and latch the root into Failed.
+    let root = root();
+    let mut registry = RootRegistry::new(HostCapabilities::default());
+    let cover = node(&root, "cover", 1);
+    let caption = node(&root, "caption", 1);
+    let first = commit(
+        &root,
+        0,
+        1,
+        vec![
+            mount(&root, "cover", "view", None, 0),
+            mount(&root, "caption", "text", Some(cover.clone()), 0),
+        ],
+    );
+    assert!(matches!(
+        apply_root_commit(&mut registry, &first),
+        ApplyCommitOutcome::Applied(_)
+    ));
+
+    let second = commit(
+        &root,
+        1,
+        2,
+        vec![
+            NativeRootOperation::Unmount { node: cover },
+            NativeRootOperation::Unmount { node: caption },
+        ],
+    );
+    match apply_root_commit(&mut registry, &second) {
+        ApplyCommitOutcome::Applied(_) => {}
+        other => panic!("{other:?}"),
+    }
+    let state = registry.get(&root).unwrap();
+    assert!(state.nodes.is_empty());
+    assert_ne!(state.lifecycle, RootLifecycle::Failed);
+}

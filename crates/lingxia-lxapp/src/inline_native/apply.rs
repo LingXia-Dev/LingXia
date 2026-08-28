@@ -472,13 +472,11 @@ fn unmount_node(
     nodes: &mut HashMap<String, ShadowNode>,
     node: &NodeRef,
 ) -> Result<(), NativeError> {
+    // The producer enumerates every removed node, ancestors first, so a
+    // descendant's op arrives after this cascade already took it. Absent is a
+    // no-op, not a structural error.
     if !nodes.contains_key(&node.node_key) {
-        return Err(error(
-            NativeErrorCode::InvalidStructure,
-            root,
-            Some(node.clone()),
-            "unmount target does not exist",
-        ));
+        return Ok(());
     }
     let mut remove = vec![node.node_key.clone()];
     let mut i = 0;
