@@ -198,10 +198,16 @@ export class LxNativeRootElement extends LxNativeBaseElement {
         rootRect: elementContentRect(this),
         nodeRects: measureNativeNodeRects(this, result.root),
       });
-      this.runtime = published.state;
+      // Adopt the published state only once the host has actually been told about
+      // it: a dropped first commit carries every mount operation, and the next
+      // compile would only produce a diff against a tree the host never saw.
       if (published.messages.commit) {
-        sendNativeComponentMessage({ id: this.rootKey, ...published.messages.commit });
+        if (!sendNativeComponentMessage({ id: this.rootKey, ...published.messages.commit })) {
+          this.scheduleCompile();
+          return result;
+        }
       }
+      this.runtime = published.state;
       sendNativeComponentMessage({ id: this.rootKey, ...published.messages.geometry });
       this.dispatchEvent(
         new CustomEvent(STRUCTURE_COMPILED_EVENT, {
