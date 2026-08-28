@@ -18,10 +18,16 @@ final class InlineNativeIsland {
     private var nodes: [String: IslandNode] = [:]
     private(set) var lastAppliedRevision: UInt64 = 0
     private let eventSink: (_ componentId: String, _ event: String, _ detail: [String: Any]) -> Void
-    private var leaseGranted = false
-    private var leaseActive = false
-    private var leaseId = ""
-    private var leaseSequence: UInt64 = 1
+    /// The lease is per root, not per host: a page may mount several
+    /// `LxNativeRoot`s into one island and each negotiates its own.
+    private struct RootLease {
+        var granted = false
+        var active = false
+        var id = ""
+        var sequence: UInt64 = 1
+        var root: [String: Any]
+    }
+    private var leases: [String: RootLease] = [:]
     private var lastRoot: [String: Any]?
     private var pageActive = true
     private var pendingOutgoing: [[String: Any]] = []
@@ -98,10 +104,7 @@ final class InlineNativeIsland {
         container.removeFromSuperview()
         pendingOutgoing.removeAll()
         lastRoot = nil
-        leaseGranted = false
-        leaseActive = false
-        leaseId = ""
-        leaseSequence = 1
+        leases.removeAll()
         lastAppliedRevision = 0
     }
 
@@ -166,34 +169,36 @@ final class InlineNativeIsland {
     }
 
     private func acceptLease(_ message: [String: Any]) {
-        guard leaseGranted, !leaseActive else { return }
         let incomingId = message["leaseId"] as? String ?? ""
         let incomingSeq = (message["sequence"] as? UInt64) ?? UInt64((message["sequence"] as? Int) ?? 0)
-        if !incomingId.isEmpty, incomingId != leaseId { return }
-        if incomingSeq > 0, incomingSeq != leaseSequence { return }
-        leaseActive = true
-        var payload: [String: Any] = [
+        let rootKey = (message["id"] as? String)
+            ?? (message["root"] as? [String: Any])?["rootKey"] as? String
+            ?? leases.first(where: { $0.value.id == incomingId })?.key
+        guard let rootKey, var lease = leases[rootKey], lease.granted, !lease.active else { return }
+        if !incomingId.isEmpty, incomingId != lease.id { return }
+        if incomingSeq > 0, incomingSeq != lease.sequence { return }
+        lease.active = true
+        leases[rootKey] = lease
+        pendingOutgoing.append([
             "action": "root.leaseActive",
-            "id": lastRoot?["rootKey"] as? String ?? "island",
-            "leaseId": leaseId,
-            "sequence": leaseSequence,
-        ]
-        if let lastRoot { payload["root"] = lastRoot }
-        pendingOutgoing.append(payload)
+            "id": rootKey,
+            "root": lease.root,
+            "leaseId": lease.id,
+            "sequence": lease.sequence,
+        ])
     }
 
     private func grantLeaseIfNeeded(_ root: [String: Any]) {
-        guard !leaseGranted else { return }
         let rootKey = root["rootKey"] as? String ?? "island"
-        leaseGranted = true
-        leaseId = "lease-\(rootKey)"
-        leaseSequence = 1
+        guard leases[rootKey] == nil else { return }
+        let lease = RootLease(granted: true, active: false, id: "lease-\(rootKey)", sequence: 1, root: root)
+        leases[rootKey] = lease
         pendingOutgoing.append([
             "action": "root.leaseGranted",
             "id": rootKey,
             "root": root,
-            "leaseId": leaseId,
-            "sequence": leaseSequence,
+            "leaseId": lease.id,
+            "sequence": lease.sequence,
             "leaseDurationMs": 8000,
         ])
     }
