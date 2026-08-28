@@ -14,6 +14,13 @@ const BOTTOM_TAB_ICON_SIZE: i32 = 22;
 const BOTTOM_TAB_ITEM_HEIGHT: i32 = 49;
 const BOTTOM_TAB_ICON_TOP: i32 = 5;
 const BOTTOM_TAB_LABEL_TOP_GAP: i32 = 1;
+/// Active indicator behind a selected single-icon tab, sized like the
+/// Material navigation-bar pill the mobile hosts draw.
+const ACTIVE_INDICATOR_WIDTH: i32 = 36;
+const ACTIVE_INDICATOR_HEIGHT: i32 = 26;
+/// How far the indicator sits from the bar toward the selected colour. GDI has
+/// no alpha here, so the tint is mixed against the plate instead.
+const ACTIVE_INDICATOR_MIX_PERCENT: u32 = 20;
 
 pub(super) fn draw_tab_bar(
     hdc: HDC,
@@ -76,28 +83,29 @@ fn draw_tab_bar_inner(
         draw_tabbar_border(hdc, rect, tabbar);
     }
 
-    let count = tabbar.items.len();
+    // Past the strip's capacity the last cell becomes "more" and stands in for
+    // every folded item, so slots and items stop being the same list.
+    let count = tabbar.bottom_slot_count();
     if count == 0 {
         return;
     }
+    let overflow_start = tabbar.bottom_overflow_start();
 
-    for (index, item) in tabbar.items.iter().enumerate() {
-        let item_rect = tab_item_rect(rect, tabbar.position, count, index);
-        let selected = tabbar.selected_index == index as i32;
+    for slot in 0..count {
+        let item_rect = tab_item_rect(rect, tabbar.position, count, slot);
+        let item = tabbar.items.get(slot);
+        let is_more = overflow_start.is_some_and(|start| slot == start);
+        let selected = if is_more {
+            overflow_start.is_some_and(|start| tabbar.selected_index >= start as i32)
+        } else {
+            tabbar.selected_index == slot as i32
+        };
         let color = if selected {
             tabbar.selected_color
         } else {
             tabbar.color
         };
 
-        // Phone tab cell: the lxapp's pre-tinted icon stacked over its label,
-        // both centered. The bundle ships separate normal/selected icons, so the
-        // PNG is drawn as-is and only the label tracks `selected_color`.
-        let icon_path = if selected && !item.selected_icon_path.trim().is_empty() {
-            item.selected_icon_path.as_str()
-        } else {
-            item.icon_path.as_str()
-        };
         let item_top = item_rect.top;
         let item_bottom = (item_rect.top + BOTTOM_TAB_ITEM_HEIGHT).min(item_rect.bottom);
         let center_x = (item_rect.left + item_rect.right) / 2;
@@ -108,8 +116,45 @@ fn draw_tab_bar_inner(
             right: center_x + BOTTOM_TAB_ICON_SIZE / 2,
             bottom: icon_top + BOTTOM_TAB_ICON_SIZE,
         };
-        let drew_icon = !icon_path.trim().is_empty()
-            && draw_icon_from_path(hdc, icon_path, icon_rect, BOTTOM_TAB_ICON_SIZE as u32);
+
+        let drew_icon = if is_more {
+            // The overflow glyph is shell chrome, so it tints with the strip
+            // instead of coming from the lxapp's bundle.
+            draw_design_icon_button(
+                hdc,
+                icon_rect,
+                WindowsDesignIcon::PageMenu,
+                color,
+                BOTTOM_TAB_ICON_SIZE,
+            );
+            true
+        } else {
+            let Some(item) = item else { continue };
+            // An item with only one icon has no swap to signal selection, so
+            // the strip marks it with an indicator behind the artwork.
+            if selected && !item.has_selected_icon {
+                draw_active_indicator(hdc, icon_rect, tabbar);
+            }
+            // Phone tab cell: the lxapp's pre-tinted icon stacked over its
+            // label, both centered. A bundle that ships separate normal and
+            // selected icons has its PNG drawn as-is.
+            let icon_path = if selected && !item.selected_icon_path.trim().is_empty() {
+                item.selected_icon_path.as_str()
+            } else {
+                item.icon_path.as_str()
+            };
+            !icon_path.trim().is_empty()
+                && draw_icon_from_path(hdc, icon_path, icon_rect, BOTTOM_TAB_ICON_SIZE as u32)
+        };
+
+        let label = if is_more {
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::TabbarMore)
+        } else {
+            match item {
+                Some(item) => item.text.clone(),
+                None => continue,
+            }
+        };
 
         // Icon-less bars keep the label vertically centred; otherwise it sits
         // just under the icon.
@@ -128,24 +173,56 @@ fn draw_tab_bar_inner(
                 text_runs.push(LayeredTextRun {
                     rect: label_rect,
                     color,
-                    text: item.text.clone(),
+                    text: label.clone(),
                     font_height: logical_font_height(hdc, SHELL_TEXT_POINT_SIZE),
                     font_weight: SHELL_TEXT_WEIGHT,
                 });
             } else {
-                draw_text_antialiased(hdc, &item.text, label_rect, color, DT_CENTER);
+                draw_text_antialiased(hdc, &label, label_rect, color, DT_CENTER);
             }
         } else {
-            draw_text(hdc, &item.text, label_rect, color, DT_CENTER);
+            draw_text(hdc, &label, label_rect, color, DT_CENTER);
         }
 
         let badge_anchor = if drew_icon { icon_rect } else { item_rect };
-        if let Some(badge) = item.badge.as_ref().filter(|badge| !badge.is_empty()) {
-            draw_badge(hdc, badge_anchor, badge);
-        } else if item.has_red_dot {
-            draw_red_dot(hdc, badge_anchor);
+        if is_more {
+            // Folded badges still have to surface, so "more" aggregates them.
+            if tabbar.overflow_has_notification() {
+                draw_red_dot(hdc, badge_anchor);
+            }
+        } else if let Some(item) = item {
+            if let Some(badge) = item.badge.as_ref().filter(|badge| !badge.is_empty()) {
+                draw_badge(hdc, badge_anchor, badge);
+            } else if item.has_red_dot {
+                draw_red_dot(hdc, badge_anchor);
+            }
         }
     }
+}
+
+/// Rounded plate behind the icon of a selected single-icon item, matching the
+/// active indicator the mobile hosts draw.
+fn draw_active_indicator(hdc: HDC, icon_rect: RECT, tabbar: &WindowsShellTabBarLayout) {
+    let center_x = (icon_rect.left + icon_rect.right) / 2;
+    let center_y = (icon_rect.top + icon_rect.bottom) / 2;
+    let plate = RECT {
+        left: center_x - ACTIVE_INDICATOR_WIDTH / 2,
+        top: center_y - ACTIVE_INDICATOR_HEIGHT / 2,
+        right: center_x + ACTIVE_INDICATOR_WIDTH / 2,
+        bottom: center_y + ACTIVE_INDICATOR_HEIGHT / 2,
+    };
+    // An immersive bar paints no plate of its own, so mix against the shell.
+    let behind = if tabbar.background_transparent {
+        shell_palette().sidebar_background
+    } else {
+        tabbar.background_color
+    };
+    fill_round_rect_aa(
+        hdc,
+        plate,
+        ACTIVE_INDICATOR_HEIGHT / 2,
+        blend_rgb(tabbar.selected_color, behind, ACTIVE_INDICATOR_MIX_PERCENT),
+    );
 }
 
 pub(super) fn draw_sidebar_tab_bar(

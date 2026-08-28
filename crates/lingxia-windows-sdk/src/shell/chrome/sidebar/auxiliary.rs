@@ -418,6 +418,7 @@ mod tests {
             background_transparent: true,
             border_color: 0,
             selected_index: -1,
+            overflow_start_index: -1,
             items: Vec::new(),
             collapsed: false,
             icon_rail: false,

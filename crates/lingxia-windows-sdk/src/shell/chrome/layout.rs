@@ -30,6 +30,51 @@ pub struct WindowsShellTabBarItemLayout {
     pub selected_icon_path: String,
     pub badge: Option<String>,
     pub has_red_dot: bool,
+    /// A distinct selected icon is in play; without one the strip marks the
+    /// active item with an indicator instead of swapping the artwork.
+    pub has_selected_icon: bool,
+}
+
+impl WindowsShellTabBarLayout {
+    /// First item the bottom strip folds behind "more". Only the compact
+    /// bottom shape folds; a sidebar lists everything it is given.
+    pub fn bottom_overflow_start(&self) -> Option<usize> {
+        if self.position != WindowsShellTabBarPosition::Bottom {
+            return None;
+        }
+        usize::try_from(self.overflow_start_index)
+            .ok()
+            .filter(|start| *start < self.items.len())
+    }
+
+    /// Cells the bottom strip renders: the direct tabs, plus "more" when it
+    /// has anything to hold.
+    pub fn bottom_slot_count(&self) -> usize {
+        self.bottom_overflow_start()
+            .map_or(self.items.len(), |start| start + 1)
+    }
+
+    /// Which strip slot an item paints in. Folded items all share the "more"
+    /// slot, so a switch between two of them repaints the same cell.
+    pub fn bottom_slot_for_item(&self, index: i32) -> Option<usize> {
+        let index = usize::try_from(index).ok()?;
+        if index >= self.items.len() {
+            return None;
+        }
+        Some(match self.bottom_overflow_start() {
+            Some(start) if index >= start => start,
+            _ => index,
+        })
+    }
+
+    /// Folded badges still have to surface, so "more" aggregates them.
+    pub fn overflow_has_notification(&self) -> bool {
+        self.bottom_overflow_start().is_some_and(|start| {
+            self.items[start..]
+                .iter()
+                .any(|item| item.has_red_dot || item.badge.is_some())
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +131,9 @@ pub struct WindowsShellTabBarLayout {
     pub border_color: u32,
     pub selected_index: i32,
     pub items: Vec<WindowsShellTabBarItemLayout>,
+    /// First item a compact bottom strip folds behind "more", or -1 when every
+    /// item has a slot. Sidebar layouts have room for the list and ignore it.
+    pub overflow_start_index: i32,
     /// Sidebar fully hidden (width 0).
     pub collapsed: bool,
     /// Sidebar collapsed to an icon-only rail (the macOS first-collapse

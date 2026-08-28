@@ -481,6 +481,7 @@ fn navigate_browser_tab(tab_id: &str, url: &str) -> Result<(), lxapp::LxAppError
 
 mod chrome_command {
     pub(super) const TAB_BAR_CLICK: &str = "tabbar.click";
+    pub(super) const TAB_BAR_MORE_CLICK: &str = "tabbar.more.click";
     pub(super) const FOOTER_ACTION_CLICK: &str = "sidebar-footer-action.click";
     pub(super) const NAVIGATION_BACK: &str = "navigation.back";
     pub(super) const NAVIGATION_HOME: &str = "navigation.home";
@@ -1865,6 +1866,7 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
         border_color: 0xf0f0f0,
         selected_index: -1,
         items: Vec::new(),
+        overflow_start_index: -1,
         collapsed: ui_state.collapsed,
         icon_rail: ui_state.icon_rail,
         items_api_hidden: false,
@@ -2190,6 +2192,7 @@ fn build_tab_bar_layout(
                     selected_icon_path: item.selected_icon_path.clone().unwrap_or_default(),
                     badge: item.badge.clone(),
                     has_red_dot: item.has_red_dot,
+                    has_selected_icon: item.has_selected_icon,
                 })
                 .collect::<Vec<_>>()
         })
@@ -2361,6 +2364,10 @@ fn build_tab_bar_layout(
         // A detail page keeps the lxapp group selected but clears every child
         // selection; group and tabbar-item selection are independent levels.
         selected_index: current_tab_index.map(|index| index as i32).unwrap_or(-1),
+        overflow_start_index: tabbar
+            .as_ref()
+            .map(|tabbar| tabbar.compact_overflow_start_index())
+            .unwrap_or(-1),
         items,
         auxiliary_items,
         show_auxiliary_add,
@@ -3302,9 +3309,12 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
     // targets the shell owner's chrome state — route there instead of
     // dropping the event.
     let page_scoped = chrome_command_is_page_scoped(event.id.as_str());
-    let tabbar_target = (event.id == chrome_command::TAB_BAR_CLICK)
-        .then(|| payload_string(&event, "group"))
-        .flatten();
+    let tabbar_target = matches!(
+        event.id.as_str(),
+        chrome_command::TAB_BAR_CLICK | chrome_command::TAB_BAR_MORE_CLICK
+    )
+    .then(|| payload_string(&event, "group"))
+    .flatten();
     let appid = if let Some(target) = tabbar_target {
         target
     } else if page_scoped || is_shell_owner_appid(appid) {
@@ -3348,6 +3358,12 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
                     log::warn!("failed to present tabbar owner lxapp {appid}");
                 }
             }
+            return;
+        }
+        chrome_command::TAB_BAR_MORE_CLICK => {
+            let screen_x = payload_i32(&event, "screen_x").unwrap_or(0);
+            let screen_y = payload_i32(&event, "screen_y").unwrap_or(0);
+            show_tabbar_overflow_menu(appid, screen_x, screen_y);
             return;
         }
         chrome_command::NAVIGATION_BACK => {
@@ -3813,7 +3829,66 @@ fn chrome_command_is_page_scoped(command: &str) -> bool {
         chrome_command::NAVIGATION_BACK
             | chrome_command::NAVIGATION_HOME
             | chrome_command::TAB_BAR_CLICK
+            | chrome_command::TAB_BAR_MORE_CLICK
     )
+}
+
+/// The tab items the compact strip folded away, offered as a native menu above
+/// the "more" slot. Picking one switches to it exactly like a strip tab.
+fn show_tabbar_overflow_menu(appid: &str, screen_x: i32, screen_y: i32) {
+    use super::context_menu::ContextMenuEntry;
+
+    let Some(app) = lxapp::try_get(appid) else {
+        return;
+    };
+    let Some(tabbar) = app.get_tabbar() else {
+        return;
+    };
+    let Some(start) = tabbar.compact_overflow_start() else {
+        return;
+    };
+    let Some(window) = owner_window_handle(appid) else {
+        return;
+    };
+
+    let folded: Vec<usize> = (start..tabbar.items.len()).collect();
+    let items: Vec<ContextMenuEntry> = folded
+        .iter()
+        .map(|index| {
+            let item = &tabbar.items[*index];
+            let label = item
+                .text
+                .clone()
+                .filter(|text| !text.trim().is_empty())
+                .unwrap_or_else(|| item.page_path.clone());
+            // The lxapp's icons are bundle PNGs the menu cannot tint, so the
+            // active item is marked with a check instead.
+            ContextMenuEntry {
+                label,
+                enabled: true,
+                checked: tabbar.selected_index == *index as i32,
+                separator: false,
+                icon: None,
+            }
+        })
+        .collect();
+
+    let appid = appid.to_string();
+    super::context_menu::show_context_menu_entries(
+        window,
+        (screen_x, screen_y),
+        items,
+        Arc::new(move |picked| {
+            let Some(index) = folded.get(picked).copied() else {
+                return;
+            };
+            let Some(app) = lxapp::try_get(&appid) else {
+                return;
+            };
+            prime_tabbar_selection(&app, index);
+            let _ = app.on_lxapp_event(LxAppUiEventType::TabBarClick, index.to_string());
+        }),
+    );
 }
 
 fn payload_usize(command: &WindowsChromeCommand, field: &str) -> Option<usize> {

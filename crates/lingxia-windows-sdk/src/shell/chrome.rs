@@ -207,6 +207,8 @@ pub(super) const ATTACHED_MAIN_MIN_HEIGHT: i32 = 240;
 
 pub(super) mod command_id {
     pub(super) const TAB_BAR_CLICK: &str = "tabbar.click";
+    /// The compact strip's overflow slot; opens the folded items as a menu.
+    pub(super) const TAB_BAR_MORE_CLICK: &str = "tabbar.more.click";
     pub(super) const FOOTER_ACTION_CLICK: &str = "sidebar-footer-action.click";
     pub(super) const NAVIGATION_BACK: &str = "navigation.back";
     pub(super) const NAVIGATION_HOME: &str = "navigation.home";
@@ -902,11 +904,15 @@ fn push_tabbar_selected_rects(
                 new_tabbar.main_scroll_offset,
             )
         } else {
+            // A folded item paints in the "more" slot, not one of its own.
+            let Some(slot) = new_tabbar.bottom_slot_for_item(index) else {
+                continue;
+            };
             tab_item_rect(
                 rect,
                 new_tabbar.position,
-                new_tabbar.items.len(),
-                index as usize,
+                new_tabbar.bottom_slot_count(),
+                slot,
             )
         };
         push_dirty_rect(dirty, item_rect, client);
@@ -2324,18 +2330,34 @@ pub(super) fn chrome_hit_test(
             }
         }
         if !sidebar || (!tabbar.items_collapsed && in_sidebar_viewport) {
-            for index in 0..tabbar.items.len() {
+            // A sidebar lists every item; a compact bottom strip renders slots,
+            // whose last one may be "more" rather than a tab.
+            let slot_count = if sidebar {
+                tabbar.items.len()
+            } else {
+                tabbar.bottom_slot_count()
+            };
+            let overflow_start = tabbar.bottom_overflow_start();
+            for slot in 0..slot_count {
                 let item_rect = if sidebar {
-                    sidebar_item_rect(tabbar_rect, tabbar, index, scroll_offset)
+                    sidebar_item_rect(tabbar_rect, tabbar, slot, scroll_offset)
                 } else {
-                    tab_item_rect(tabbar_rect, tabbar.position, tabbar.items.len(), index)
+                    tab_item_rect(tabbar_rect, tabbar.position, slot_count, slot)
                 };
-                if rect_contains(&item_rect, point) {
-                    return Some(chrome_command(
-                        command_id::TAB_BAR_CLICK,
-                        json!({ "group": tabbar.group_id, "index": index }),
+                if !rect_contains(&item_rect, point) {
+                    continue;
+                }
+                if overflow_start == Some(slot) {
+                    return Some(WindowsChromeHit::Command(
+                        WindowsChromeCommand::new(command_id::TAB_BAR_MORE_CLICK)
+                            .with_payload(json!({ "group": tabbar.group_id }))
+                            .with_screen_position(),
                     ));
                 }
+                return Some(chrome_command(
+                    command_id::TAB_BAR_CLICK,
+                    json!({ "group": tabbar.group_id, "index": slot }),
+                ));
             }
         }
         if sidebar
@@ -2689,6 +2711,7 @@ mod scroll_tests {
             background_transparent,
             border_color: 0,
             selected_index: 0,
+            overflow_start_index: -1,
             items: vec![WindowsShellTabBarItemLayout {
                 page_path: "home".to_string(),
                 text: "Home".to_string(),
@@ -2696,6 +2719,7 @@ mod scroll_tests {
                 selected_icon_path: String::new(),
                 badge: None,
                 has_red_dot: false,
+                has_selected_icon: false,
             }],
             collapsed: false,
             icon_rail: false,
@@ -3127,6 +3151,7 @@ mod scroll_tests {
             background_transparent: false,
             border_color: 0,
             selected_index: 0,
+            overflow_start_index: -1,
             items: Vec::new(),
             collapsed: true,
             icon_rail: true,
@@ -3191,6 +3216,7 @@ mod scroll_tests {
             background_transparent: false,
             border_color: 0,
             selected_index: 0,
+            overflow_start_index: -1,
             items: vec![WindowsShellTabBarItemLayout {
                 page_path: "home".to_string(),
                 text: "Home".to_string(),
@@ -3198,6 +3224,7 @@ mod scroll_tests {
                 selected_icon_path: String::new(),
                 badge: None,
                 has_red_dot: false,
+                has_selected_icon: false,
             }],
             collapsed: false,
             icon_rail: false,
@@ -3461,6 +3488,7 @@ mod scroll_tests {
             background_transparent: true,
             border_color: 0,
             selected_index: -1,
+            overflow_start_index: -1,
             items: Vec::new(),
             collapsed: false,
             icon_rail: false,
@@ -3521,6 +3549,7 @@ mod scroll_tests {
             background_transparent: true,
             border_color: 0,
             selected_index: -1,
+            overflow_start_index: -1,
             items: Vec::new(),
             collapsed: false,
             icon_rail: false,
