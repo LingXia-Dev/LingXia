@@ -54,6 +54,10 @@ mod bridge {
         /// what desktop skins map to group collapse.
         pub is_api_hidden: bool,
         pub selected_index: i32,
+        /// First item a compact strip folds into its overflow menu, or -1 when
+        /// every item has a slot of its own. Desktop skins list all items and
+        /// ignore this.
+        pub overflow_start_index: i32,
         /// Which style fields the app DECLARED (bit0 color, bit1
         /// selectedColor, bit2 backgroundColor, bit3 borderStyle). The color
         /// fields above always carry effective values (mobile defaults);
@@ -2084,6 +2088,7 @@ pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
             is_api_hidden: tabbar.visibility
                 == lxapp::page_chrome::TabBarVisibilityPreference::Hidden,
             selected_index: tabbar.selected_index,
+            overflow_start_index: tabbar.compact_overflow_start_index(),
             styled_mask: (tabbar
                 .runtime_style
                 .foreground_color
