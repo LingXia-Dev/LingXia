@@ -615,14 +615,15 @@ Rules:
 
 ### One icon per tab is enough
 
-`selectedIconPath` is optional, and leaving it out is the cheaper path — the
-example above does. Ship a single `iconPath` and the host marks the active tab
-with a rounded **active indicator** behind the icon, the way a Material
-navigation bar does. You get a working selected state without drawing,
-exporting, and version-matching a second set of artwork.
+The host always marks the active tab with a circular **active indicator** behind
+its icon. What `selectedIconPath` controls is only where the icon's *colour*
+comes from:
 
-Supply `selectedIconPath` only when the icon itself should change — a filled
-version of an outlined glyph, say:
+- **Omit it** (the example above does) and the icon is treated as a template
+  glyph: the host tints it with `foregroundColor` / `selectedForegroundColor`.
+  One monochrome PNG per tab, and both states come out right.
+- **Supply it** when the artwork itself should change — a filled version of an
+  outlined glyph, say — and both icons are drawn exactly as authored:
 
 ```json
 {
@@ -633,9 +634,10 @@ version of an outlined glyph, say:
 }
 ```
 
-Then the swap *is* the selected state and no indicator is drawn. The choice is
-per item, so a bar can mix both, though one style throughout usually looks
-better.
+Because the indicator is drawn either way, the two styles look consistent side
+by side, and a tab can be switched from one to the other by adding or removing a
+single key. Templates only work on artwork whose colour is meant to be replaced;
+a multi-colour icon should ship the pair so it keeps its own palette.
 
 ### More than five tabs on a phone
 

@@ -194,7 +194,7 @@ internal object TabBarOverflowSheet {
             val badgeSpace = (10 * density).toInt()
             // The active indicator sits behind the icon, so the wrapper has to
             // be at least as tall and wide or it squares the circle off.
-            val indicator = if (selected && !item.hasSelectedIcon) {
+            val indicator = if (selected) {
                 (CELL_INDICATOR_SIZE_DP * density).toInt()
             } else {
                 0
@@ -207,9 +207,8 @@ internal object TabBarOverflowSheet {
                 clipChildren = false
                 clipToPadding = false
             }
-            // Mirrors the strip: a single-icon item needs chrome to read as
-            // selected, since there is no second drawable to swap in.
-            if (selected && !item.hasSelectedIcon) {
+            // Mirrors the strip: the indicator marks whatever is selected.
+            if (selected) {
                 val indicatorSize = (CELL_INDICATOR_SIZE_DP * density).toInt()
                 iconWrapper.addView(View(activity).apply {
                     layoutParams = FrameLayout.LayoutParams(indicatorSize, indicatorSize)

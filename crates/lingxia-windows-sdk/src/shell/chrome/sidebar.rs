@@ -129,9 +129,9 @@ fn draw_tab_bar_inner(
             true
         } else {
             let Some(item) = item else { continue };
-            // An item with only one icon has no swap to signal selection, so
-            // the strip marks it with an indicator behind the artwork.
-            if selected && !item.has_selected_icon {
+            // The indicator belongs to the bar, not to an item's artwork:
+            // whatever is selected gets it.
+            if selected {
                 draw_active_indicator(hdc, icon_rect, tabbar);
             }
             // Phone tab cell: the lxapp's pre-tinted icon stacked over its

@@ -183,9 +183,9 @@ export struct TabBar {
     Column() {
       // Tab icon with badge/red dot overlay
       Stack() {
-        // A single-icon item has no swap to signal selection, so the strip
-        // draws an active indicator behind it instead.
-        if (this.tabbar.selectedIndex === index && !item.hasSelectedIcon) {
+        // The indicator belongs to the bar, not to an item's artwork:
+        // whatever is selected gets it.
+        if (this.tabbar.selectedIndex === index) {
           Circle()
             .width(TAB_BAR_ACTIVE_INDICATOR_SIZE)
             .height(TAB_BAR_ACTIVE_INDICATOR_SIZE)
@@ -439,7 +439,7 @@ export struct TabBar {
   buildOverflowCell(item: TabBarItem, index: number) {
     Column() {
       Stack() {
-        if (this.tabbar.selectedIndex === index && !item.hasSelectedIcon) {
+        if (this.tabbar.selectedIndex === index) {
           Circle()
             .width(TAB_BAR_ACTIVE_INDICATOR_SIZE)
             .height(TAB_BAR_ACTIVE_INDICATOR_SIZE)
