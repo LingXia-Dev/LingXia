@@ -6,7 +6,10 @@ const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args
   ?? {} as Record<string, string>;
 // The published API intentionally omits autostart on mobile hosts. Keep the
 // behavioral case for desktop hosts, where the login-item contract exists.
-const autostartSpec = testArgs.platform?.toLocaleLowerCase() === 'android' ? spec.skip : spec;
+const MOBILE_HOSTS = new Set(['android', 'ios']);
+const autostartSpec = MOBILE_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '')
+  ? spec.skip
+  : spec;
 
 spec('publish the lxapp sandbox roots through lx.env', {
   id: 'ENV-001',
@@ -171,7 +174,7 @@ autostartSpec('report autostart state and accept an idempotent write', {
   id: 'HOSTAPP-AUTOSTART-001',
   covers: ['lx.app.autostart', 'lx.app.autostart.isEnabled', 'lx.app.autostart.setEnabled'],
   app: SHOWCASE_APP_ID,
-  reason: 'Autostart is intentionally absent on Android.',
+  reason: 'Autostart is intentionally absent on mobile hosts.',
   // `SMAppService.mainApp.status` costs ~6s per call on macOS; the spec pays
   // that twice rather than pretending the API is cheap.
   timeout: 90_000,
