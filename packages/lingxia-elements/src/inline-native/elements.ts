@@ -25,6 +25,7 @@ const STRUCTURE_COMPILED_EVENT = "lxnativecompiled";
 
 type PendingCompile = {
   frame: number | null;
+  timer: ReturnType<typeof setTimeout> | null;
 };
 
 function asRecord(el: HTMLElement): HTMLElement & Record<string, unknown> {
@@ -96,7 +97,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     return [...LxNativeBaseElement.observedAttributes, "fullscreen-scope"];
   }
 
-  private pending: PendingCompile = { frame: null };
+  private pending: PendingCompile = { frame: null, timer: null };
   private observer?: MutationObserver;
   private lastResult: CompileInlineNativeResult | null = null;
   private rootKey = nextOpaqueKey("root");
@@ -148,11 +149,26 @@ export class LxNativeRootElement extends LxNativeBaseElement {
       cancelAnimationFrame(this.pending.frame);
       this.pending.frame = null;
     }
+    if (this.pending.timer != null) {
+      clearTimeout(this.pending.timer);
+      this.pending.timer = null;
+    }
   }
 
   private scheduleCompile(): void {
     if (typeof requestAnimationFrame !== "function") {
       this.compileNow();
+      return;
+    }
+    // A hidden document never services animation frames — an occluded or
+    // backgrounded window would leave the host without a tree until it is
+    // revealed. Commit on a timer instead; the host owns what it paints.
+    if (typeof document !== "undefined" && document.hidden) {
+      if (this.pending.timer != null) return;
+      this.pending.timer = setTimeout(() => {
+        this.pending.timer = null;
+        this.compileNow();
+      }, 0);
       return;
     }
     if (this.pending.frame != null) return;
