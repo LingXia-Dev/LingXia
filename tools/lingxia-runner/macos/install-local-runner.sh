@@ -29,7 +29,7 @@ BACKUP_TARGET_DIR="$TARGET_PARENT/.prev-runner-$RUNNER_VERSION-$$"
 LINGXIA_BIN="${LINGXIA_BIN:-lingxia}"
 CARGO_BIN="${CARGO_BIN:-cargo}"
 NPM_BIN="${NPM_BIN:-npm}"
-APP_NAME="LingXia Runner.app"
+APP_NAME="LingXiaRunner.app"
 BRIDGE_DIR="$ROOT_DIR/packages/lingxia-bridge"
 BRIDGE_RUNTIME="$BRIDGE_DIR/dist/bridge-runtime.es2020.js"
 
