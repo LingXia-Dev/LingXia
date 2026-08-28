@@ -1725,17 +1725,28 @@ class LxAppActivity : AppCompatActivity() {
      * Extracted from navigateToPage for reuse in coordinated navigation
      */
     private fun performWebViewTransition(oldWebView: WebView?, newContainer: FrameLayout, isBackNavigation: Boolean, shouldAnimate: Boolean = true, navbarState: NavigationBarState? = null) {
-        // Get reference to old container BEFORE adding new one
+        // Get reference to old container BEFORE adding new one. A reused
+        // container is already a child and can still carry the current tag, so
+        // exclude it here or the page would be mistaken for its own predecessor.
         val oldContainer = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
+            ?.takeIf { it !== newContainer }
         oldContainer?.tag = "previous_webview_container" // Re-tag old container
+        newContainer.tag = "current_webview_container"
 
         try {
-            // Add the new container to the webview container
-            webViewContainer.addView(newContainer)
+            if (newContainer.parent == null) {
+                webViewContainer.addView(newContainer)
+            } else {
+                // Retired earlier but never detached, so its surface is intact:
+                // showing it is the whole switch.
+                newContainer.visibility = View.VISIBLE
+                webViewContainer.bringChildToFront(newContainer)
+            }
         } catch (e: Exception) {
             LxLog.e(TAG, "Error adding new container to webViewContainer: ${e.message}")
             return
         }
+        pruneRetiredDuplicates(newContainer)
         // App-context webviews miss the activity's night override; sync the
         // freshly attached tree (see setupWebViewContentWithExisting).
         newContainer.dispatchConfigurationChanged(resources.configuration)
@@ -1777,7 +1788,7 @@ class LxAppActivity : AppCompatActivity() {
                     .setDuration(animationDuration)
                     .setInterpolator(android.view.animation.AccelerateInterpolator())
                     .withEndAction {
-                        cleanupOldContainer(container)
+                        retireContainer(container)
                     }
                     .start()
             }
@@ -1792,9 +1803,10 @@ class LxAppActivity : AppCompatActivity() {
 
             newContainer.translationX = 0f
 
-            // Clean up old container immediately
+            // Take the old container off screen — retired, not necessarily
+            // removed; see retireContainer.
             oldContainer?.let { container ->
-                cleanupOldContainer(container)
+                retireContainer(container)
             }
 
             // Trigger onPageShow immediately
@@ -1826,6 +1838,58 @@ class LxAppActivity : AppCompatActivity() {
     /**
      * Clean up old container after animation
      */
+    /**
+     * Paths the TabBar owns. The runtime keeps a tab page alive as a warm
+     * singleton, so its view stays in the window between visits rather than
+     * being torn down and rebuilt on every switch.
+     */
+    private fun isTabPath(path: String?): Boolean {
+        if (path.isNullOrEmpty()) return false
+        val normalized = path.substringBefore('?').substringBefore('#')
+        return tabBar?.config?.list?.any {
+            it.pagePath.substringBefore('?').substringBefore('#') == normalized
+        } == true
+    }
+
+    /**
+     * Take [container] off screen.
+     *
+     * A tab page stays attached and hidden: detaching its WebView from the
+     * window destroys the compositor surface, and the blank fill while the
+     * surface is rebuilt is exactly what a tab switch would show. Hidden costs
+     * no drawing, and the count is bounded by the tab list.
+     *
+     * Everything else is removed as before — a pushed page is not coming back.
+     */
+    private fun retireContainer(container: ViewGroup) {
+        val path = (container.getChildAt(0) as? WebView)?.getCurrentPath()
+        if (isTabPath(path)) {
+            container.translationX = 0f
+            container.visibility = View.GONE
+        } else {
+            cleanupOldContainer(container)
+        }
+    }
+
+    /**
+     * Drop a retired container left over from an earlier instance of the page
+     * now on screen — a tab page rebuilt by `reLaunch`/`redirectTo` gets a new
+     * WebView, and the old one must not linger behind it. Only hidden
+     * containers qualify: a visible one is still mid-transition.
+     */
+    private fun pruneRetiredDuplicates(keep: ViewGroup) {
+        val keepPath = (keep.getChildAt(0) as? WebView)?.getCurrentPath() ?: return
+        val normalized = keepPath.substringBefore('?').substringBefore('#')
+        for (index in webViewContainer.childCount - 1 downTo 0) {
+            val child = webViewContainer.getChildAt(index) as? ViewGroup ?: continue
+            if (child === keep || child.visibility != View.GONE) continue
+            val childPath = (child.getChildAt(0) as? WebView)?.getCurrentPath() ?: continue
+            if (childPath.substringBefore('?').substringBefore('#') == normalized) {
+                cleanupOldContainer(child)
+            }
+        }
+    }
+
     private fun cleanupOldContainer(container: ViewGroup) {
         try {
             webViewContainer.removeView(container)
@@ -1889,8 +1953,17 @@ class LxAppActivity : AppCompatActivity() {
 
             val navbarState = pageConfig ?: getNavBarState(appId, targetPath)
 
-            // Continue with webview setup...
-            if (newWebView.parent != null) {
+            // Keep the container this WebView already lives in when it is
+            // still attached. Taking a WebView out of the window destroys its
+            // compositor surface, and rebuilding one costs frames the switch
+            // cannot hide: the page lands on a blank fill until it composites
+            // again — measured at ~8 frames on a mid-range device, which is the
+            // flash a tab switch shows. `attachWebViewToUI` already reuses an
+            // attached wrapper for the same reason.
+            val liveContainer = (newWebView.parent as? FrameLayout)
+                ?.takeIf { it.parent === webViewContainer }
+
+            if (liveContainer == null && newWebView.parent != null) {
                 (newWebView.parent as? ViewGroup)?.removeView(newWebView)
             }
 
@@ -1898,13 +1971,14 @@ class LxAppActivity : AppCompatActivity() {
             newWebView.visibility = View.VISIBLE
             newWebView.resume()
 
-            // Create a new container for the WebView
-            val newContainer = FrameLayout(this).apply {
+            // Reuse the attached container, or build one for a page arriving
+            // fresh. The current-page tag is stamped by the transition, once it
+            // has told the incoming container apart from the outgoing one.
+            val newContainer = liveContainer ?: FrameLayout(this).apply {
                 layoutParams = FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.MATCH_PARENT
                 )
-                tag = "current_webview_container"
 
                 try {
                     addView(newWebView)
