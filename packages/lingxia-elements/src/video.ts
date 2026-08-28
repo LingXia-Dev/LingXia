@@ -275,9 +275,13 @@ export class LxVideoElement extends HTMLElement {
     });
     this.ensurePlaceholderStyle();
 
-    // Setup iOS native component rendering helper (no-op on other platforms)
-    this.iOSHelper = new iOSNativeComponentHelper(this, this.componentId);
-    this.iOSHelper.setup();
+    // Setup iOS native component rendering helper (no-op on other platforms).
+    // Island leaves skip it: it serves the legacy overlay mount, and the child it
+    // injects makes the island compiler reject the root as invalid structure.
+    if (!this.islandLeaf) {
+      this.iOSHelper = new iOSNativeComponentHelper(this, this.componentId);
+      this.iOSHelper.setup();
+    }
     this.startAttrObserver();
 
     // iOS bootstrap:
