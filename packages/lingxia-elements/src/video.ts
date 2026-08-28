@@ -83,6 +83,8 @@ export class LxVideoElement extends HTMLElement {
 
   private componentId: string | null = null;
   private islandLeaf = false;
+  /** Native pause/stop/ended after island autoplay so a delayed rAF cannot relatch playing. */
+  private islandPlaybackIdle = false;
   private mounted = false;
   private updateState = new NativeComponentUpdateState();
   private unregister?: () => void;
@@ -263,7 +265,15 @@ export class LxVideoElement extends HTMLElement {
         }
 
         if (message.event === "playing" || message.event === "play") {
+          this.islandPlaybackIdle = false;
           this.setAttribute("data-lx-playing", "true");
+        } else if (
+          message.event === "pause" ||
+          message.event === "stop" ||
+          message.event === "ended"
+        ) {
+          this.islandPlaybackIdle = true;
+          this.removeAttribute("data-lx-playing");
         }
         const ev = new CustomEvent(message.event, {
                   detail: detail,
@@ -273,6 +283,21 @@ export class LxVideoElement extends HTMLElement {
         this.dispatchEvent(ev);
       }
     });
+    // Island autoplay: Windows inbound play/playing can land on another
+    // page's WebView while the host warms navigator. The leaf still has
+    // autoplay and is the live island path — mark playing after connect.
+    if (this.islandLeaf && this.hasAttribute("autoplay")) {
+      const latchIslandAutoplay = () => {
+        if (!this.isConnected || this.islandPlaybackIdle) return;
+        if (!this.hasAttribute("autoplay")) return;
+        this.setAttribute("data-lx-playing", "true");
+      };
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(latchIslandAutoplay);
+      } else {
+        queueMicrotask(latchIslandAutoplay);
+      }
+    }
     this.ensurePlaceholderStyle();
 
     // Setup iOS native component rendering helper (no-op on other platforms).
