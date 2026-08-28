@@ -58,7 +58,7 @@ export function buildRootCommit(
     if (prev.order !== current.order) {
       operations.push({ op: "reorder", node: current.nodeRef, order: current.order });
     }
-    const patch = propsPatch(prev.node.props, current.node.props);
+    const patch = propsPatch(effectiveProps(prev), effectiveProps(current));
     if (patch) {
       operations.push({ op: "update", node: current.nodeRef, patch });
     }
@@ -90,10 +90,7 @@ function walkMounts(
           authorType: node.node.authorType,
           authorId: node.node.authorId,
           automationId: node.node.automationId,
-          props: {
-            ...node.node.props,
-            ...(node.node.text !== undefined ? { text: node.node.text } : {}),
-          },
+          props: effectiveProps(node),
         },
       });
     }
@@ -115,6 +112,15 @@ function indexIdentified(root: IdentifiedRoot): Map<string, IdentifiedNode> {
 
 function parentKey(node: IdentifiedNode): string {
   return node.parentRef?.nodeKey ?? "";
+}
+
+/// `text` is a sibling of `props` on the core node, but the host reads it from
+/// props. Fold it in for both the mount and the diff, or a caption that changes
+/// after mount emits no update and the host keeps painting the first string.
+function effectiveProps(node: IdentifiedNode): Record<string, unknown> {
+  return node.node.text !== undefined
+    ? { ...node.node.props, text: node.node.text }
+    : node.node.props;
 }
 
 function propsPatch(
