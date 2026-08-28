@@ -61,6 +61,11 @@ enum RunnerSupport {
         ) {
             LingxiaRunnerSPI.PageChrome.setCapsuleRectProvider(provider)
         }
+
+        @discardableResult
+        static func republish(appId: String) -> Bool {
+            LingxiaRunnerSPI.PageChrome.republish(appId: appId)
+        }
     }
 
     @MainActor

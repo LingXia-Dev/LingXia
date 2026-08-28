@@ -543,6 +543,9 @@ mod bridge {
         #[swift_bridge(swift_name = "getLxAppSessionId")]
         fn get_lxapp_session_id(appid: &str) -> u64;
 
+        #[swift_bridge(swift_name = "syncLxAppHostUI")]
+        fn sync_lxapp_host_ui(appid: &str) -> bool;
+
         #[swift_bridge(swift_name = "onPushlinkReceived")]
         fn on_pushlink_received(url: &str, trigger: PushTrigger) -> i32;
 
@@ -1732,6 +1735,15 @@ pub fn get_lxapp_session_id(appid: &str) -> u64 {
     lxapp::try_get(appid)
         .map(|lxapp| lxapp.session_id())
         .unwrap_or(0)
+}
+
+/// Republish host UI state for a specific lxapp, if it is still alive.
+pub fn sync_lxapp_host_ui(appid: &str) -> bool {
+    let Some(lxapp) = lxapp::try_get(appid) else {
+        return false;
+    };
+    lxapp.sync_host_ui();
+    true
 }
 
 pub fn find_webview_by_page_instance_id(page_instance_id: &str) -> usize {

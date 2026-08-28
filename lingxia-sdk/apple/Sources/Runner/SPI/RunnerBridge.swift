@@ -39,6 +39,10 @@ enum RunnerBridge {
         return sessionId > 0 ? sessionId : nil
     }
 
+    static func syncHostUI(appId: String) -> Bool {
+        syncLxAppHostUI(appId)
+    }
+
     static func currentAppId() -> String? {
         LxAppCore.currentAppId
     }
