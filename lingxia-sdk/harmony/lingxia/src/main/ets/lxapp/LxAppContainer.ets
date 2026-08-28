@@ -23,7 +23,7 @@ import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } f
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar, tabBarExtraBottomHeight } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth } from 'liblingxia.so';
+import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor } from 'liblingxia.so';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
 import { AnimationType } from './LxAppNavigation';
 import { LxNativeVideoPlayer } from './APIs/media/player/LxNativeVideoPlayer';
@@ -37,6 +37,28 @@ const TAB_BAR_HORIZONTAL_HEIGHT = 72;    // Match TabBar default height
 
 const COLOR_BLACK = '#000000';
 const COLOR_TRANSPARENT = Color.Transparent;
+
+/**
+ * The colour the canvas behind the page should be, or transparent when the
+ * host declares no page floor.
+ *
+ * The web stack is transparent all the way down, so anything the page does not
+ * cover falls through to the ability window — which is the system default
+ * white, in both appearances. That shows wherever native chrome borders the
+ * page: the strip a pull-to-refresh opens above it most visibly. Painting the
+ * host's declared page floor there makes the strip read as part of the page.
+ */
+function resolveCanvasColor(dark: boolean): ResourceColor {
+  try {
+    const declared: string = pageBackgroundColor(dark);
+    if (declared.length > 0) {
+      return declared;
+    }
+  } catch (_error) {
+    // Runtime not up yet; the page paints over this almost immediately.
+  }
+  return COLOR_TRANSPARENT;
+}
 const POPUP_MASK_COLOR = 'rgba(0,0,0,0.45)';
 const OVERLAY_MASK_FADE_DURATION = 180;
 
@@ -1047,6 +1069,11 @@ export struct LxAppContainer {
       }
     })
     .pullDownRatio(this.enablePullDownRefresh ? 1 : 0) // Disable pull effect if not enabled
+    // The strip a pull opens above the web stack is this component's own
+    // background: the stack inside is transparent, so without a colour here
+    // the pull bares the ability window, which is system white in both
+    // appearances.
+    .backgroundColor(resolveCanvasColor(this.appearanceDark))
     .width('100%')
     .height('100%')
     // No shared navbar padding here: each webview wrapper reserves its own

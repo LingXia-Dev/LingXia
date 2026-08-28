@@ -169,10 +169,27 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
     /// The canvas transparent-mode pages rubber-band against; it must carry
     /// the lxapp's resolved scheme because the webview above it is clear.
+    /// The colour the canvas behind the page should be.
+    ///
+    /// The host's declared page floor first: it is the colour the lxapp paints
+    /// its own page with, so every strip of canvas the page does not cover —
+    /// the one a pull-to-refresh opens above it, the one a navigation
+    /// transition slides views across — reads as part of the page rather than
+    /// as a seam. WebKit's own `underPageBackgroundColor` comes next, which is
+    /// the real document colour once a page has painted, and `systemBackground`
+    /// last, which is right only for a host that never says otherwise.
     private func resolvedCanvasColor() -> UIColor {
         let dark =
             LxAppCore.currentAppId
             .flatMap { LxAppAppearanceRegistry.resolvedDark(appId: $0) } ?? false
+
+        let declared = pageBackgroundColor(dark).toString()
+        if !declared.isEmpty, let color = UIColor(lingXiaHex: declared) {
+            return color
+        }
+        if let underPage = getCurrentWebView()?.underPageBackgroundColor {
+            return underPage
+        }
         return UIColor.systemBackground.resolvedColor(
             with: UITraitCollection(userInterfaceStyle: dark ? .dark : .light))
     }

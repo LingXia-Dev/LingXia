@@ -2099,13 +2099,7 @@ class LxAppActivity : AppCompatActivity() {
      * container they expose must carry the resolved scheme, not white.
      */
     internal fun applyCanvasBackground() {
-        val value = android.util.TypedValue()
-        if (!theme.resolveAttribute(android.R.attr.colorBackground, value, true)) return
-        val themed = if (value.resourceId != 0) {
-            androidx.core.content.ContextCompat.getColor(this, value.resourceId)
-        } else {
-            value.data
-        }
+        val themed = resolveCanvasColor() ?: return
         // While the launch cover is up, the canvas behind it belongs to the
         // launch, not to the app theme. It is not idle scenery either: a home
         // page that redirects on boot tears its WebView down and builds
@@ -2132,6 +2126,38 @@ class LxAppActivity : AppCompatActivity() {
             // the two surfaces must not part ways, or the stale one shows
             // through wherever the bars and containers move during navigation.
             window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(themed))
+        }
+    }
+
+    /**
+     * The colour the canvas behind the page should be.
+     *
+     * The host's declared page floor first: it is the colour the lxapp paints
+     * its own page with, so every strip of canvas the page does not cover —
+     * the one a pull-to-refresh opens above it, the one a navigation
+     * transition slides views across — reads as part of the page rather than
+     * as a seam. The activity theme is the fallback, and a poor one on its
+     * own: the generated host manifest asks for a light-only AppCompat theme,
+     * so `colorBackground` stays white even in dark mode.
+     *
+     * Null only when neither source resolves, which leaves the canvas alone
+     * rather than painting it a colour we do not believe in.
+     */
+    private fun resolveCanvasColor(): Int? {
+        val dark = (resources.configuration.uiMode and
+            Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        runCatching { NativeApi.pageBackgroundColor(dark) }
+            .getOrNull()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { hex -> runCatching { Color.parseColor(hex) }.getOrNull() }
+            ?.let { return it }
+
+        val value = android.util.TypedValue()
+        if (!theme.resolveAttribute(android.R.attr.colorBackground, value, true)) return null
+        return if (value.resourceId != 0) {
+            androidx.core.content.ContextCompat.getColor(this, value.resourceId)
+        } else {
+            value.data
         }
     }
 
