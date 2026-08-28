@@ -31,6 +31,9 @@ pub struct TabBarState {
     pub is_visible: bool,
     pub items: Vec<TabItem>,
     pub selected_index: i32,
+    /// First item the compact strip folds into its overflow menu, or -1 when
+    /// every item has a slot of its own.
+    pub overflow_start_index: i32,
 }
 
 /// NAPI-compatible TabBar position enum
@@ -429,6 +432,7 @@ fn get_tab_bar(appid: String) -> Option<TabBarState> {
                 is_visible: tabbar.is_effectively_visible(),
                 items,
                 selected_index: tabbar.selected_index,
+                overflow_start_index: tabbar.compact_overflow_start_index(),
             }
         })
     })
