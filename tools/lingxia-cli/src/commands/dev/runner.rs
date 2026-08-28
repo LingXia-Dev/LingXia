@@ -709,9 +709,7 @@ fn windows_runner_ui_json(identity: &WindowsRunnerLxAppIdentity) -> serde_json::
 }
 
 fn installed_windows_runner_exe_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| anyhow!("Failed to resolve home directory"))?;
-    let runner_dir = home
-        .join(".lingxia")
+    let runner_dir = crate::state_root::lingxia_dir()?
         .join("runner")
         .join(REQUIRED_RUNNER_VERSION);
     let exe_path = runner_dir.join(format!("{RUNNER_WINDOWS_BIN_NAME}.exe"));
@@ -1406,9 +1404,7 @@ fn terminate_runner_from_pid_file(pid_file: &Path) {
 }
 
 fn installed_runner_app_path() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| anyhow!("Failed to resolve home directory"))?;
-    let dir = home
-        .join(".lingxia")
+    let dir = crate::state_root::lingxia_dir()?
         .join("runner")
         .join(REQUIRED_RUNNER_VERSION);
     let path = std::fs::read_dir(&dir)

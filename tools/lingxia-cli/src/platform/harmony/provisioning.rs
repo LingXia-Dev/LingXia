@@ -2,10 +2,11 @@ use super::agc::{
     AgcApiCredentials, AgcConnectClient, AgcToken, AppIdInfo, CertInfo, CreateProfileParams,
     ProvisionInfo,
 };
-use super::credentials::AgcCredentialStorage;
 use super::keygen::{self, CsrSubject};
 use super::signer::{SignAlgorithm, SigningConfig};
 use crate::permission_cache::{PermissionCache, PermissionPlatform};
+use crate::resolver::AuthSource;
+use crate::wallet::Wallet;
 use anyhow::{Context, Result, anyhow};
 use base64::Engine as _;
 use openssl::pkcs12::Pkcs12;
@@ -67,24 +68,28 @@ struct SigningPaths {
 pub struct ProvisioningManager {
     client: AgcConnectClient,
     credentials: AgcApiCredentials,
-    storage: AgcCredentialStorage,
+    source: AuthSource,
+    wallet: Wallet,
 }
 
 impl ProvisioningManager {
     pub fn from_storage() -> Result<Self> {
-        let api_storage = AgcCredentialStorage::new()?;
-        let credentials = api_storage.load()?.ok_or_else(|| {
-            anyhow!(
-                "Harmony AGC API credentials are missing. Run `lingxia auth harmony login --mode api` first.\n\
-                 Use AGC Connect API client credentials and set Project to `N/A`."
-            )
-        })?;
-
+        let resolved = crate::resolver::resolve_harmony_agc(true)?;
         Ok(Self {
             client: AgcConnectClient::new(),
-            credentials,
-            storage: api_storage,
+            credentials: resolved.credentials,
+            source: resolved.source,
+            wallet: Wallet::open()?,
         })
+    }
+
+    fn signing_paths(&self, bundle_name: &str, mode: SigningMode) -> Result<SigningPaths> {
+        let root = self
+            .wallet
+            .harmony_signing_dir(&self.credentials.client_id)?
+            .join(sanitize_for_path(bundle_name))
+            .join(mode.as_str());
+        Ok(signing_paths_impl(root))
     }
 
     pub fn prepare_signing_config(
@@ -98,7 +103,7 @@ impl ProvisioningManager {
             .ensure_app_id(bundle_name)
             .with_context(|| format!("Failed to resolve appId for bundle `{bundle_name}`"))?;
 
-        let paths = signing_paths(bundle_name, mode)?;
+        let paths = self.signing_paths(bundle_name, mode)?;
         if let Some(parent) = paths.state_path.parent() {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("Failed to create {}", parent.display()))?;
@@ -125,9 +130,13 @@ impl ProvisioningManager {
 
         if !private_key_matches_certificate(&private_key_pem, &cert_bytes)? {
             return Err(anyhow!(
-                "AGC certificate `{}` does not match local private key even after cert reset. Please clear `~/.lingxia/harmony/signing/{}` and retry.",
+                "AGC certificate `{}` does not match local private key even after cert reset. Please clear `{}` and retry.",
                 cert.id,
-                sanitize_for_path(bundle_name)
+                paths
+                    .state_path
+                    .parent()
+                    .unwrap_or(&paths.state_path)
+                    .display()
             ));
         }
         std::fs::write(&paths.cert_path, &cert_bytes)
@@ -172,26 +181,25 @@ impl ProvisioningManager {
         })
     }
 
-    fn ensure_valid_token(
-        client: &AgcConnectClient,
-        credentials: &mut AgcApiCredentials,
-        storage: &AgcCredentialStorage,
-    ) -> Result<AgcToken> {
-        let token = client.ensure_valid_token(credentials)?;
-        let changed = credentials.token.as_ref().is_none_or(|old| {
+    fn ensure_valid_token(&mut self) -> Result<AgcToken> {
+        let token = self.client.ensure_valid_token(&self.credentials)?;
+        let changed = self.credentials.token.as_ref().is_none_or(|old| {
             old.access_token != token.access_token || old.expires_at != token.expires_at
         });
         if changed {
-            credentials.token = Some(token.clone());
-            storage
-                .save(credentials)
-                .context("Failed to persist refreshed AGC token")?;
+            self.credentials.token = Some(token.clone());
+            // Env-provided credentials have no persistent slot to update.
+            if self.source == AuthSource::Wallet {
+                self.wallet
+                    .save_harmony_agc(&self.credentials)
+                    .context("Failed to persist refreshed AGC token")?;
+            }
         }
         Ok(token)
     }
 
     fn ensure_app_id(&mut self, bundle_name: &str) -> Result<AppIdInfo> {
-        let token = Self::ensure_valid_token(&self.client, &mut self.credentials, &self.storage)?;
+        let token = self.ensure_valid_token()?;
         self.client
             .find_app_id_by_package_name(&token, bundle_name)?
             .ok_or_else(|| {
@@ -217,7 +225,7 @@ impl ProvisioningManager {
             return Ok(Vec::new());
         }
 
-        let token = Self::ensure_valid_token(&self.client, &mut self.credentials, &self.storage)?;
+        let token = self.ensure_valid_token()?;
         let mut current = self.client.query_devices(&token, None)?;
         let mut device_ids = Vec::with_capacity(unique_udids.len());
         for udid in &unique_udids {
@@ -248,7 +256,7 @@ impl ProvisioningManager {
         state: &mut SigningState,
     ) -> Result<CertInfo> {
         let cert_type = mode.cert_type();
-        let token = Self::ensure_valid_token(&self.client, &mut self.credentials, &self.storage)?;
+        let token = self.ensure_valid_token()?;
         let certs = self.client.query_certificates(&token, cert_type)?;
 
         if let Some(cert_id) = state.cert_id.as_ref()
@@ -367,7 +375,7 @@ impl ProvisioningManager {
         };
 
         let profile_name = profile_name_for(&app.package_name, mode);
-        let token = Self::ensure_valid_token(&self.client, &mut self.credentials, &self.storage)?;
+        let token = self.ensure_valid_token()?;
         let profiles =
             self.client
                 .query_profiles(&token, mode.provision_type(), Some(&app.app_id))?;
@@ -418,7 +426,7 @@ impl ProvisioningManager {
     }
 
     fn download_signed_asset(&mut self, target: &str) -> Result<Vec<u8>> {
-        let token = Self::ensure_valid_token(&self.client, &mut self.credentials, &self.storage)?;
+        let token = self.ensure_valid_token()?;
         self.client.download_signed_asset(&token, target)
     }
 }
@@ -431,23 +439,15 @@ fn update_permission_cache(platform: PermissionPlatform, app_id: &str, permissio
     let _ = cache.save();
 }
 
-fn signing_paths(bundle_name: &str, mode: SigningMode) -> Result<SigningPaths> {
-    let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not determine home directory"))?;
-    let root = home
-        .join(".lingxia")
-        .join("harmony")
-        .join("signing")
-        .join(sanitize_for_path(bundle_name))
-        .join(mode.as_str());
-
-    Ok(SigningPaths {
+fn signing_paths_impl(root: std::path::PathBuf) -> SigningPaths {
+    SigningPaths {
         key_path: root.join("signing.key.pem"),
         csr_path: root.join("signing.csr.pem"),
         cert_path: root.join("signing.cer"),
         profile_path: root.join("signing.p7b"),
         keystore_path: root.join("signing.p12"),
         state_path: root.join("state.json"),
-    })
+    }
 }
 
 fn ensure_local_key_material(

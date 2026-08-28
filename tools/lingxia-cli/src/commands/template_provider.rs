@@ -263,12 +263,23 @@ fn require_home() -> Result<PathBuf> {
     dirs::home_dir().ok_or_else(|| anyhow!("Unable to determine the user home directory"))
 }
 
+/// LingXia state under `home`. `home` stays the real home for `.claude` /
+/// `.local/bin` assets; tests pass a temp home, so the `LINGXIA_HOME` override
+/// is ignored there to keep them hermetic.
+fn lingxia_state_root(home: &Path) -> PathBuf {
+    #[cfg(not(test))]
+    if let Some(root) = crate::state_root::lingxia_home_override() {
+        return root;
+    }
+    home.join(".lingxia")
+}
+
 fn templates_root(home: &Path) -> PathBuf {
-    home.join(".lingxia").join("templates")
+    lingxia_state_root(home).join("templates")
 }
 
 fn states_root(home: &Path) -> PathBuf {
-    home.join(".lingxia").join("template-state")
+    lingxia_state_root(home).join("template-state")
 }
 
 fn state_path(home: &Path, slug: &str) -> PathBuf {
@@ -578,7 +589,7 @@ fn sync_assets(
 ) -> Result<()> {
     validate_asset_ownership(home, template, previous)?;
 
-    let transaction_root = home.join(".lingxia");
+    let transaction_root = lingxia_state_root(home);
     fs::create_dir_all(&transaction_root)?;
     let backup = tempfile::Builder::new()
         .prefix(".template-assets-")

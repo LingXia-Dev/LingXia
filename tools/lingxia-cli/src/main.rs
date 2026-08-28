@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, error::ErrorKind};
 
 mod appicon;
+mod binding;
 mod cli_config;
 mod commands;
 mod config;
@@ -18,12 +19,15 @@ mod npm;
 mod path_completion;
 mod permission_cache;
 mod platform;
+mod resolver;
 mod runner_cache;
 mod runtime;
 mod sdk_cache;
 mod splash;
+mod state_root;
 mod update;
 mod versions;
+mod wallet;
 
 #[derive(Parser)]
 #[command(name = "lingxia")]
@@ -469,10 +473,10 @@ enum Commands {
         platform: Vec<String>,
     },
 
-    /// Developer account authentication (Apple/Harmony)
+    /// Developer credentials: log in once, commands pick automatically
     Auth {
         #[command(subcommand)]
-        provider: AuthProvider,
+        action: AuthAction,
     },
 
     /// Interact with developer services (Apple, Harmony, etc.)
@@ -496,13 +500,9 @@ enum Commands {
 
     /// Publish a package to the LingXia server
     ///
-    /// Run with no subcommand to upload; `lingxia publish login` saves the
-    /// server URL + token to `~/.lingxia/cli/config.toml`.
-    #[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
+    /// Tokens come from the wallet (`lingxia auth login lingxia`), keyed by
+    /// the server URL + env.
     Publish {
-        #[command(subcommand)]
-        action: Option<PublishAction>,
-
         #[command(flatten)]
         args: PublishArgs,
     },
@@ -510,8 +510,8 @@ enum Commands {
 
 #[derive(clap::Args)]
 struct PublishArgs {
-    /// Bearer token for authentication. Falls back to `[publish] token` in
-    /// `~/.lingxia/cli/config.toml` when omitted.
+    /// Bearer token for authentication. Falls back to
+    /// `LINGXIA_PUBLISH_TOKEN`, then the LingXia credential wallet.
     #[arg(long)]
     token: Option<String>,
 
@@ -543,28 +543,6 @@ struct PublishArgs {
 }
 
 #[derive(Subcommand)]
-enum PublishAction {
-    /// Save the publish server URL + token to `~/.lingxia/cli/config.toml`
-    ///
-    /// Pass `--env` to target a single channel's `[publish.<env>]` table;
-    /// omit it to set the top-level defaults used by all channels. Existing
-    /// values for other channels are preserved.
-    Login {
-        /// LingXia server URL to save
-        #[arg(long)]
-        server: Option<String>,
-
-        /// Bearer token to save
-        #[arg(long)]
-        token: Option<String>,
-
-        /// Channel to scope these credentials to: developer, preview, release.
-        #[arg(long = "env", alias = "channel", value_parser = ["developer", "dev", "preview", "release"])]
-        env: Option<String>,
-    },
-}
-
-#[derive(Subcommand)]
 enum GenCommand {
     /// Generate i18n resources
     I18n(r#gen::i18n::I18nConfig),
@@ -573,23 +551,35 @@ enum GenCommand {
 }
 
 #[derive(Subcommand)]
-enum AuthProvider {
-    /// Apple Developer authentication (iOS/macOS)
-    Apple {
+enum AuthAction {
+    /// Add or refresh credentials for a provider
+    Login {
         #[command(subcommand)]
-        action: AppleAuthAction,
+        provider: Box<AuthLoginProvider>,
     },
-    /// Harmony authentication
-    Harmony {
+    /// Remove stored credentials for a provider
+    Logout {
         #[command(subcommand)]
-        action: HarmonyAuthAction,
+        provider: AuthLogoutProvider,
+    },
+    /// Show credential status (project view inside a project)
+    Status {
+        /// Machine-readable output
+        #[arg(long)]
+        json: bool,
+    },
+    /// Drop this checkout's automatic credential selection for a channel
+    Forget {
+        /// Channel to re-resolve next time
+        #[arg(long, value_parser = ["ios", "macos", "harmony", "googleplay", "xiaomi", "oppo", "honor", "msstore"])]
+        platform: String,
     },
 }
 
 #[derive(Subcommand)]
-enum AppleAuthAction {
-    /// Login with Apple Developer account
-    Login {
+enum AuthLoginProvider {
+    /// Apple Developer credentials (ASC key, Apple ID, or Developer ID cert)
+    Apple {
         /// Apple ID (email) for password mode
         #[arg(short, long)]
         username: Option<String>,
@@ -598,8 +588,8 @@ enum AppleAuthAction {
         #[arg(short, long)]
         password: Option<String>,
 
-        /// Authentication mode: key or password
-        #[arg(short = 'm', long, value_parser = ["key", "password"])]
+        /// Authentication mode
+        #[arg(short = 'm', long, value_parser = ["key", "password", "developer-id"])]
         mode: Option<String>,
 
         /// App Store Connect API Key ID (for --mode key)
@@ -614,37 +604,28 @@ enum AppleAuthAction {
         #[arg(long)]
         private_key_path: Option<String>,
 
-        /// Apple Developer Team ID (for --mode key)
+        /// Apple Developer Team ID
         #[arg(long)]
         team_id: Option<String>,
+
+        /// Path to a Developer ID Application .p12 (for --mode developer-id)
+        #[arg(long)]
+        p12: Option<String>,
+
+        /// Password of the .p12 (for --mode developer-id; prompts if omitted)
+        #[arg(long)]
+        p12_password: Option<String>,
+
+        /// codesign identity name (for --mode developer-id; auto-detected if omitted)
+        #[arg(long)]
+        identity: Option<String>,
 
         /// Replace existing credentials without interactive confirmation
         #[arg(short = 'y', long)]
         yes: bool,
     },
-    /// Import a Developer ID Application .p12 for macOS signing/notarization
-    ImportDeveloperId {
-        /// Path to the Developer ID Application .p12 certificate
-        p12: String,
-
-        /// Certificate password (will prompt if not provided)
-        #[arg(long)]
-        password: Option<String>,
-
-        /// codesign identity name (auto-detected if not provided)
-        #[arg(long)]
-        identity: Option<String>,
-    },
-    /// Logout and clear stored credentials
-    Logout,
-    /// Show current authentication status
-    Status,
-}
-
-#[derive(Subcommand)]
-enum HarmonyAuthAction {
-    /// Login with Harmony account
-    Login {
+    /// Harmony AGC Connect API credentials
+    Harmony {
         /// Authentication mode: api
         #[arg(short = 'm', long, value_parser = ["api"])]
         mode: Option<String>,
@@ -661,10 +642,126 @@ enum HarmonyAuthAction {
         #[arg(short = 'y', long)]
         yes: bool,
     },
-    /// Logout Harmony credentials
-    Logout,
-    /// Show Harmony authentication status
-    Status,
+    /// Google Play Developer API service account
+    Googleplay {
+        /// Path to the service-account JSON key file
+        #[arg(long)]
+        service_account_json: Option<String>,
+
+        /// Replace existing credentials without interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+    /// Xiaomi GetApps open-platform credentials
+    Xiaomi {
+        #[arg(long)]
+        client_id: Option<String>,
+        #[arg(long)]
+        client_secret: Option<String>,
+        /// Replace existing credentials without interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+    /// OPPO open-platform credentials
+    Oppo {
+        #[arg(long)]
+        client_id: Option<String>,
+        #[arg(long)]
+        client_secret: Option<String>,
+        /// Replace existing credentials without interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+    /// Honor Developer open-platform credentials
+    Honor {
+        #[arg(long)]
+        client_id: Option<String>,
+        #[arg(long)]
+        client_secret: Option<String>,
+        /// Replace existing credentials without interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+    /// Microsoft Store (Partner Center) Azure AD credentials
+    Msstore {
+        #[arg(long)]
+        tenant: Option<String>,
+        #[arg(long)]
+        client_id: Option<String>,
+        #[arg(long)]
+        client_secret: Option<String>,
+        #[arg(long)]
+        seller_id: Option<String>,
+        /// Replace existing credentials without interactive confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+    /// LingXia service credentials (publish token keyed by server URL + env)
+    Lingxia {
+        /// Server URL (defaults to the project / machine-wide server for --env)
+        #[arg(long)]
+        server: Option<String>,
+
+        /// Bearer token to save (prompted when omitted)
+        #[arg(long)]
+        token: Option<String>,
+
+        /// Channel this token is for: developer, preview, release.
+        #[arg(long = "env", alias = "channel", value_parser = ["developer", "dev", "preview", "release"])]
+        env: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum AuthLogoutProvider {
+    /// Remove Apple credentials for one team
+    Apple {
+        /// Team ID to remove (prompted when several are stored)
+        #[arg(long)]
+        team_id: Option<String>,
+    },
+    /// Remove Harmony AGC credentials for one identity
+    Harmony {
+        /// AGC client ID to remove (prompted when several are stored)
+        #[arg(long)]
+        client_id: Option<String>,
+    },
+    /// Remove Google Play credentials
+    Googleplay {
+        /// Identity to remove (prompted when several are stored)
+        #[arg(long)]
+        identity: Option<String>,
+    },
+    /// Remove Xiaomi credentials
+    Xiaomi {
+        #[arg(long)]
+        identity: Option<String>,
+    },
+    /// Remove OPPO credentials
+    Oppo {
+        #[arg(long)]
+        identity: Option<String>,
+    },
+    /// Remove Honor credentials
+    Honor {
+        #[arg(long)]
+        identity: Option<String>,
+    },
+    /// Remove Microsoft Store credentials
+    Msstore {
+        #[arg(long)]
+        identity: Option<String>,
+    },
+    /// Remove LingXia service credentials for a server + env
+    Lingxia {
+        /// Server URL (defaults to the project / machine-wide server for --env)
+        #[arg(long)]
+        server: Option<String>,
+
+        /// Channel: developer, preview, release.
+        #[arg(long = "env", alias = "channel", value_parser = ["developer", "dev", "preview", "release"])]
+        env: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -901,9 +998,9 @@ fn main() -> Result<()> {
                 std::process::exit(code);
             }
         }
-        Commands::Auth { provider } => match provider {
-            AuthProvider::Apple { action } => match action {
-                AppleAuthAction::Login {
+        Commands::Auth { action } => match action {
+            AuthAction::Login { provider } => match *provider {
+                AuthLoginProvider::Apple {
                     username,
                     password,
                     mode,
@@ -911,6 +1008,9 @@ fn main() -> Result<()> {
                     issuer_id,
                     private_key_path,
                     team_id,
+                    p12,
+                    p12_password,
+                    identity,
                     yes,
                 } => {
                     commands::auth::apple_login(commands::auth::AppleLoginOptions {
@@ -921,25 +1021,13 @@ fn main() -> Result<()> {
                         issuer_id,
                         private_key_path,
                         team_id,
+                        p12,
+                        p12_password,
+                        identity,
                         yes,
                     })?;
                 }
-                AppleAuthAction::ImportDeveloperId {
-                    p12,
-                    password,
-                    identity,
-                } => {
-                    commands::auth::apple_import_developer_id(p12, password, identity)?;
-                }
-                AppleAuthAction::Logout => {
-                    commands::auth::apple_logout()?;
-                }
-                AppleAuthAction::Status => {
-                    commands::auth::apple_status()?;
-                }
-            },
-            AuthProvider::Harmony { action } => match action {
-                HarmonyAuthAction::Login {
+                AuthLoginProvider::Harmony {
                     mode,
                     client_id,
                     client_secret,
@@ -952,13 +1040,121 @@ fn main() -> Result<()> {
                         yes,
                     })?;
                 }
-                HarmonyAuthAction::Logout => {
-                    commands::auth::harmony_logout()?;
+                AuthLoginProvider::Googleplay {
+                    service_account_json,
+                    yes,
+                } => {
+                    commands::auth::store_login(
+                        "googleplay",
+                        commands::auth::StoreLoginOptions {
+                            service_account_json,
+                            yes,
+                            ..Default::default()
+                        },
+                    )?;
                 }
-                HarmonyAuthAction::Status => {
-                    commands::auth::harmony_status()?;
+                AuthLoginProvider::Xiaomi {
+                    client_id,
+                    client_secret,
+                    yes,
+                } => {
+                    commands::auth::store_login(
+                        "xiaomi",
+                        commands::auth::StoreLoginOptions {
+                            client_id,
+                            client_secret,
+                            yes,
+                            ..Default::default()
+                        },
+                    )?;
+                }
+                AuthLoginProvider::Oppo {
+                    client_id,
+                    client_secret,
+                    yes,
+                } => {
+                    commands::auth::store_login(
+                        "oppo",
+                        commands::auth::StoreLoginOptions {
+                            client_id,
+                            client_secret,
+                            yes,
+                            ..Default::default()
+                        },
+                    )?;
+                }
+                AuthLoginProvider::Honor {
+                    client_id,
+                    client_secret,
+                    yes,
+                } => {
+                    commands::auth::store_login(
+                        "honor",
+                        commands::auth::StoreLoginOptions {
+                            client_id,
+                            client_secret,
+                            yes,
+                            ..Default::default()
+                        },
+                    )?;
+                }
+                AuthLoginProvider::Msstore {
+                    tenant,
+                    client_id,
+                    client_secret,
+                    seller_id,
+                    yes,
+                } => {
+                    commands::auth::store_login(
+                        "msstore",
+                        commands::auth::StoreLoginOptions {
+                            tenant,
+                            client_id,
+                            client_secret,
+                            seller_id,
+                            yes,
+                            ..Default::default()
+                        },
+                    )?;
+                }
+                AuthLoginProvider::Lingxia { server, token, env } => {
+                    commands::publish::publish_login(server, token, env)?;
                 }
             },
+            AuthAction::Logout { provider } => match provider {
+                AuthLogoutProvider::Apple { team_id } => {
+                    commands::auth::apple_logout(team_id)?;
+                }
+                AuthLogoutProvider::Harmony { client_id } => {
+                    commands::auth::harmony_logout(client_id)?;
+                }
+                AuthLogoutProvider::Googleplay { identity } => {
+                    commands::auth::store_logout("googleplay", identity)?;
+                }
+                AuthLogoutProvider::Xiaomi { identity } => {
+                    commands::auth::store_logout("xiaomi", identity)?;
+                }
+                AuthLogoutProvider::Oppo { identity } => {
+                    commands::auth::store_logout("oppo", identity)?;
+                }
+                AuthLogoutProvider::Honor { identity } => {
+                    commands::auth::store_logout("honor", identity)?;
+                }
+                AuthLogoutProvider::Msstore { identity } => {
+                    commands::auth::store_logout("msstore", identity)?;
+                }
+                AuthLogoutProvider::Lingxia { server, env } => {
+                    commands::publish::publish_logout(server, env)?;
+                }
+            },
+            AuthAction::Status { json } => {
+                if !commands::auth::auth_status(json)? {
+                    std::process::exit(1);
+                }
+            }
+            AuthAction::Forget { platform } => {
+                commands::auth::auth_forget(&platform)?;
+            }
         },
         Commands::Ds { platform } => {
             commands::ds::execute(platform)?;
@@ -974,22 +1170,17 @@ fn main() -> Result<()> {
                 r#gen::icons::run(config)?;
             }
         },
-        Commands::Publish { action, args } => match action {
-            Some(PublishAction::Login { server, token, env }) => {
-                commands::publish::save_login(server, token, env)?;
-            }
-            None => {
-                commands::publish::execute(commands::publish::PublishOptions {
-                    token: args.token,
-                    lingxia_server: args.lingxia_server,
-                    package: args.package_path,
-                    platform: args.platform,
-                    channel: args.channel,
-                    framework: args.framework,
-                    progress: args.progress,
-                })?;
-            }
-        },
+        Commands::Publish { args } => {
+            commands::publish::execute(commands::publish::PublishOptions {
+                token: args.token,
+                lingxia_server: args.lingxia_server,
+                package: args.package_path,
+                platform: args.platform,
+                channel: args.channel,
+                framework: args.framework,
+                progress: args.progress,
+            })?;
+        }
     }
 
     Ok(())
@@ -998,6 +1189,36 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod cli_tests {
     use super::*;
+
+    #[test]
+    fn lingxia_credentials_are_named_for_the_provider_not_the_publish_action() {
+        let cli = Cli::try_parse_from([
+            "lingxia",
+            "auth",
+            "login",
+            "lingxia",
+            "--server",
+            "https://api.lingxia.app",
+            "--token",
+            "token",
+            "--env",
+            "release",
+        ])
+        .unwrap();
+        let Commands::Auth {
+            action: AuthAction::Login {
+                provider: login_provider,
+            },
+        } = cli.command
+        else {
+            panic!("expected LingXia credential login");
+        };
+        assert!(matches!(*login_provider, AuthLoginProvider::Lingxia { .. }));
+
+        assert!(Cli::try_parse_from(["lingxia", "auth", "logout", "lingxia"]).is_ok());
+        assert!(Cli::try_parse_from(["lingxia", "auth", "login", "publish"]).is_err());
+        assert!(Cli::try_parse_from(["lingxia", "auth", "logout", "publish"]).is_err());
+    }
 
     #[test]
     fn new_accepts_git_opt_out() {

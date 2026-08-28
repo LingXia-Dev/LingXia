@@ -105,9 +105,7 @@ impl OmnisetteProvider {
     }
 
     pub fn cache_path() -> Result<PathBuf> {
-        let home = dirs::home_dir().ok_or_else(|| anyhow!("Could not find home directory"))?;
-        Ok(home
-            .join(".lingxia")
+        Ok(crate::state_root::lingxia_dir()?
             .join("apple")
             .join("anisette_cache.json"))
     }

@@ -15,7 +15,6 @@ use std::path::Path;
 
 use super::backend::{SubmitOptions, http};
 use super::creds::OppoCreds;
-use crate::config::OppoStoreConfig;
 
 // TODO: verify OPPO open-platform API base host/path.
 const API: &str = "https://oop-openapi-cn.heytapmobi.com";
@@ -71,11 +70,11 @@ impl Session {
 
 pub fn submit(
     creds: &OppoCreds,
-    cfg: &OppoStoreConfig,
+    pkg: &str,
+    app_id: Option<&str>,
     artifact: &Path,
     opts: &SubmitOptions,
 ) -> Result<()> {
-    let pkg = &cfg.package_name;
     let session = Session::login(creds)?;
     println!("  {} authenticated with OPPO 软件商店", "✓".green());
 
@@ -100,7 +99,7 @@ pub fn submit(
     // 2. Submit the new version for the package.
     // TODO: verify OPPO app-submit endpoint + payload (app id + release notes).
     let mut body = json!({ "pkg_name": pkg, "apk_url": dest });
-    if let Some(app_id) = &cfg.app_id {
+    if let Some(app_id) = app_id {
         body["app_id"] = json!(app_id);
     }
     if let Some(notes) = &opts.release_notes {
@@ -111,18 +110,15 @@ pub fn submit(
     Ok(())
 }
 
-pub fn status(creds: &OppoCreds, cfg: &OppoStoreConfig) -> Result<()> {
+pub fn status(creds: &OppoCreds, pkg: &str) -> Result<()> {
     let session = Session::login(creds)?;
     // TODO: verify OPPO status/query endpoint + response shape.
-    let info = session.get(&format!(
-        "{API}/resource/v1/app/info?pkg_name={}",
-        cfg.package_name
-    ))?;
+    let info = session.get(&format!("{API}/resource/v1/app/info?pkg_name={pkg}"))?;
     let state = info
         .pointer("/data/audit_status")
         .map(|v| v.to_string())
         .unwrap_or_else(|| "unknown".to_string());
-    println!("OPPO 软件商店 {} audit status: {state}", cfg.package_name);
+    println!("OPPO 软件商店 {pkg} audit status: {state}");
     Ok(())
 }
 

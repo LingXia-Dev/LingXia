@@ -57,9 +57,9 @@ impl SdkPlatform {
     }
 }
 
-/// Root of the SDK cache: `~/.lingxia/sdk` (mirrors `update.rs`'s `~/.lingxia/cli`).
+/// Root of the SDK cache: `<state root>/sdk` (mirrors `update.rs`'s `cli/`).
 pub fn sdk_cache_root() -> Option<PathBuf> {
-    Some(dirs::home_dir()?.join(".lingxia").join("sdk"))
+    Some(crate::state_root::lingxia_dir().ok()?.join("sdk"))
 }
 
 /// GitHub release tag for an SDK version (matches `scripts/release/sdk.sh` `GH_TAG`).

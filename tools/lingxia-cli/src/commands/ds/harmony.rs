@@ -1,4 +1,4 @@
-use crate::platform::harmony::{AgcConnectClient, AgcCredentialStorage, AgcToken};
+use crate::platform::harmony::{AgcConnectClient, AgcToken};
 use anyhow::{Context, Result, anyhow};
 use clap::Subcommand;
 use colored::Colorize;
@@ -138,10 +138,8 @@ fn with_client<F>(f: F) -> Result<()>
 where
     F: FnOnce(&AgcConnectClient, &AgcToken) -> Result<()>,
 {
-    let storage = AgcCredentialStorage::new()?;
-    let mut credentials = storage.load()?.ok_or_else(|| {
-        anyhow!("Not logged in with AGC API mode. Run `lingxia auth harmony login --mode api`.")
-    })?;
+    let resolved = crate::resolver::resolve_harmony_agc(true)?;
+    let mut credentials = resolved.credentials;
 
     let client = AgcConnectClient::new();
     let token = client
@@ -151,9 +149,9 @@ where
     let changed = credentials.token.as_ref().is_none_or(|old| {
         old.access_token != token.access_token || old.expires_at != token.expires_at
     });
-    if changed {
+    if changed && resolved.source == crate::resolver::AuthSource::Wallet {
         credentials.token = Some(token.clone());
-        storage.save(&credentials)?;
+        crate::wallet::Wallet::open()?.save_harmony_agc(&credentials)?;
     }
 
     f(&client, &token)

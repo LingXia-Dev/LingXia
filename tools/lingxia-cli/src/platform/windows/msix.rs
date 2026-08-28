@@ -250,7 +250,7 @@ fn four_part_version(version: &str) -> String {
 }
 
 /// MSIX package Identity `Name`: letters, digits, `.` and `-` only.
-fn sanitize_identity(raw: &str) -> String {
+pub(crate) fn sanitize_identity(raw: &str) -> String {
     let cleaned: String = raw
         .chars()
         .map(|c| {

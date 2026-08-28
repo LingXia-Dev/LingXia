@@ -739,15 +739,15 @@ jobs:
       # Generate the gitignored apple SDK assets (resources + swift bindings).
       - uses: ./.github/actions/bootstrap-apple-sdk
 
-      # Restore the Apple credential store so `lingxia build` signs + notarizes
+      # Restore the Apple credential wallet so `lingxia build` signs + notarizes
       # directly from it — same code path as a local signed build, no env
-      # plumbing. The two secrets are base64 of the local store files:
-      #   APPLE_CREDENTIALS_JSON_BASE64    base64 -i ~/.lingxia/apple/credentials.json
-      #   APPLE_DEVELOPER_ID_JSON_BASE64   base64 -i ~/.lingxia/apple/developer-id.json
-      # (the latter is produced by `lingxia auth apple import-developer-id`).
-      # PRs only need an ad-hoc package to prove runner.sh still links. Signing
-      # + notarize stay on main (and the release-cli executor).
-      - name: Restore Apple credential store (if secrets present)
+      # plumbing. The two secrets are base64 of the wallet slot files:
+      #   APPLE_CREDENTIALS_JSON_BASE64    base64 -i ~/.lingxia/credentials/apple/<team>/asc.json
+      #   APPLE_DEVELOPER_ID_JSON_BASE64   base64 -i ~/.lingxia/credentials/apple/<team>/developer-id.json
+      # (produced by `lingxia auth login apple`; the team id is read from
+      # asc.json). PRs only need an ad-hoc package to prove runner.sh still
+      # links. Signing + notarize stay on main (and the release-cli executor).
+      - name: Restore Apple credential wallet (if secrets present)
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         env:
           CREDS_B64: ${{ secrets.APPLE_CREDENTIALS_JSON_BASE64 }}
@@ -755,15 +755,18 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${CREDS_B64:-}" ] || [ -z "${DEVID_B64:-}" ]; then
-            echo "ℹ️ Apple signing store not configured — runner will be ad-hoc signed."
+            echo "ℹ️ Apple signing wallet not configured — runner will be ad-hoc signed."
             exit 0
           fi
           umask 077
-          mkdir -p "$HOME/.lingxia/apple"
-          printf '%s' "$CREDS_B64" | base64 -d > "$HOME/.lingxia/apple/credentials.json"
-          printf '%s' "$DEVID_B64" | base64 -d > "$HOME/.lingxia/apple/developer-id.json"
-          chmod 600 "$HOME/.lingxia/apple/credentials.json" "$HOME/.lingxia/apple/developer-id.json"
-          echo "✅ Apple credential store restored — lingxia build will Developer-ID sign + notarize."
+          printf '%s' "$CREDS_B64" | base64 -d > /tmp/asc.json
+          team="$(python3 -c 'import json; print(json.load(open("/tmp/asc.json"))["team_id"])')"
+          dir="$HOME/.lingxia/credentials/apple/$team"
+          mkdir -p "$dir"
+          mv /tmp/asc.json "$dir/asc.json"
+          printf '%s' "$DEVID_B64" | base64 -d > "$dir/developer-id.json"
+          chmod 600 "$dir/asc.json" "$dir/developer-id.json"
+          echo "✅ Apple wallet restored (team $team) — lingxia build will Developer-ID sign + notarize."
 
       # Inject the private cloud provider when its secrets are present (same-repo
       # only); a no-op on forks, so the runner still builds without it.

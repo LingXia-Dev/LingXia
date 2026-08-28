@@ -17,7 +17,6 @@ use std::path::Path;
 
 use super::backend::{SubmitOptions, http};
 use super::creds::HonorCreds;
-use crate::config::HonorStoreConfig;
 
 // TODO: verify Honor open-platform API base host/path.
 const API: &str = "https://appmarket-openapi-drcn.cloud.honor.com/openapi/v1";
@@ -87,11 +86,10 @@ impl Session {
 
 pub fn submit(
     creds: &HonorCreds,
-    cfg: &HonorStoreConfig,
+    app_id: &str,
     artifact: &Path,
     opts: &SubmitOptions,
 ) -> Result<()> {
-    let app_id = &cfg.app_id;
     let session = Session::login(creds)?;
     println!("  {} authenticated with Honor AppGallery", "✓".green());
 
@@ -141,15 +139,15 @@ pub fn submit(
     Ok(())
 }
 
-pub fn status(creds: &HonorCreds, cfg: &HonorStoreConfig) -> Result<()> {
+pub fn status(creds: &HonorCreds, app_id: &str) -> Result<()> {
     let session = Session::login(creds)?;
     // TODO: verify Honor status/query endpoint + response shape.
-    let info = session.get(&format!("{API}/publish/app-info?appId={}", cfg.app_id))?;
+    let info = session.get(&format!("{API}/publish/app-info?appId={app_id}"))?;
     let state = info
         .pointer("/data/releaseState")
         .map(|v| v.to_string())
         .unwrap_or_else(|| "unknown".to_string());
-    println!("Honor AppGallery app {} release state: {state}", cfg.app_id);
+    println!("Honor AppGallery app {app_id} release state: {state}");
     Ok(())
 }
 

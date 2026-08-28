@@ -24,12 +24,9 @@ const RUNNER_APP_NAME_FALLBACK: &str = "LingXiaRunner.app";
 #[cfg(target_os = "windows")]
 const RUNNER_WINDOWS_BIN_NAME: &str = "lingxia-runner";
 
-/// Root of the runner cache: `~/.lingxia/runner`.
+/// Root of the runner cache: `<state root>/runner`.
 fn runner_root() -> Result<PathBuf> {
-    Ok(dirs::home_dir()
-        .ok_or_else(|| anyhow!("Could not resolve home directory for the runner cache"))?
-        .join(".lingxia")
-        .join("runner"))
+    Ok(crate::state_root::lingxia_dir()?.join("runner"))
 }
 
 /// GitHub release tag carrying the runner (same release as the CLI binary).

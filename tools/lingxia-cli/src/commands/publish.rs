@@ -75,11 +75,12 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
         meta.channel = Some(DEFAULT_PUBLISH_CHANNEL.to_string());
     }
     // Resolve server and token *after* channel is known so per-env config
-    // routes to the package's envVersion.
-    let token = resolve_token(meta.channel.as_deref(), opts.token)?;
+    // routes to the package's envVersion. The server resolves first: the
+    // token is keyed by (canonical server URL, env) in the wallet.
     let lingxia_server =
         resolve_lingxia_server(&cwd, meta.channel.as_deref(), opts.lingxia_server)?;
     let lingxia_server = lingxia_server.trim_end_matches('/').to_string();
+    let token = resolve_token(meta.channel.as_deref(), &lingxia_server, opts.token)?;
     let file_name = package_path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -147,44 +148,91 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     }
 }
 
-/// `lingxia publish login`: persist the publish server URL and/or token to
-/// `~/.lingxia/cli/config.toml`. With `--env`, scopes to that channel's entry
-/// in the per-env map; without it, writes a scalar that applies to every
-/// channel. Other channels' values are preserved.
-pub fn save_login(
+/// `lingxia auth login lingxia`: store the token in the wallet, keyed by the
+/// canonical server URL + env — the project already names the server and env,
+/// so publish never asks which token to use. `--server` also saves the
+/// machine-wide server default for lxapp projects without a `lingxia.yaml`.
+pub fn publish_login(
     server: Option<String>,
     token: Option<String>,
     env: Option<String>,
 ) -> Result<()> {
     let server = clean_arg(server, "--server")?;
-    let token = clean_arg(token, "--token")?;
-    if server.is_none() && token.is_none() {
-        bail!("Provide --server and/or --token to save.");
-    }
     if let Some(server) = server.as_deref() {
         validate_publish_server(server)?;
     }
-    let env = env.as_deref().map(EnvVersion::parse_cli).transpose()?;
+    let env = env
+        .as_deref()
+        .map(EnvVersion::parse_cli)
+        .transpose()?
+        .unwrap_or(EnvVersion::Developer);
 
-    let mut config = CliConfig::load()?;
-    config.set_publish(env, server.clone(), token.clone());
-    config.save()?;
+    // The token is keyed by the server: an explicit --server wins, otherwise
+    // the project / machine default for this env names it.
+    let cwd = env::current_dir()?;
+    let server_url = resolve_lingxia_server(&cwd, Some(env.as_str()), server.clone())
+        .context("cannot determine which server this token is for; pass --server")?;
+    let canonical = crate::wallet::canonical_publish_server(&server_url)?;
 
-    let path = crate::cli_config::config_path()?;
-    let scope = env
-        .map(|e| format!("channel '{}'", e.as_str()))
-        .unwrap_or_else(|| "all channels (default)".to_string());
-    println!(
-        "{} Saved publish credentials for {} to {}",
-        "✓".green().bold(),
-        scope,
-        path.display()
-    );
-    if let Some(server) = server.as_deref() {
-        println!("   Server: {server}");
+    let token = match clean_arg(token, "--token")? {
+        Some(token) => token,
+        None => dialoguer::Password::new()
+            .with_prompt(format!("Publish token for {canonical} ({})", env.as_str()))
+            .interact()?,
+    };
+
+    let wallet = crate::wallet::Wallet::open()?;
+    if let Some(old) = wallet.load_publish_token(&canonical, env.as_str())?
+        && old != token
+    {
+        println!(
+            "{} Rotating the stored token: {} -> {}",
+            "ℹ".blue(),
+            mask_token(&old),
+            mask_token(&token)
+        );
     }
-    if let Some(token) = token.as_deref() {
-        println!("   Token:  {}", mask_token(token));
+    let path = wallet.save_publish_token(&canonical, env.as_str(), &token)?;
+
+    // Persist an explicitly given server as the machine-wide default too.
+    if let Some(server) = server {
+        let mut config = CliConfig::load()?;
+        config.set_publish_server(Some(env), server);
+        config.save()?;
+    }
+
+    println!("{} Saved publish token.", "✓".green().bold());
+    println!("   Server: {canonical}");
+    println!("   Env:    {}", env.as_str());
+    println!("   Token:  {}", mask_token(&token));
+    println!("   Slot:   {}", path.display());
+    Ok(())
+}
+
+/// `lingxia auth logout lingxia`: remove the stored token for (server, env).
+pub fn publish_logout(server: Option<String>, env: Option<String>) -> Result<()> {
+    let env = env
+        .as_deref()
+        .map(EnvVersion::parse_cli)
+        .transpose()?
+        .unwrap_or(EnvVersion::Developer);
+    let cwd = env::current_dir()?;
+    let server_url = resolve_lingxia_server(&cwd, Some(env.as_str()), server)
+        .context("cannot determine which server to log out from; pass --server")?;
+    let canonical = crate::wallet::canonical_publish_server(&server_url)?;
+    let wallet = crate::wallet::Wallet::open()?;
+    if wallet.delete_publish_token(&canonical, env.as_str())? {
+        println!(
+            "{} Removed the publish token for {canonical} ({}).",
+            "✓".green(),
+            env.as_str()
+        );
+    } else {
+        println!(
+            "{} No publish token stored for {canonical} ({}).",
+            "ℹ".blue(),
+            env.as_str()
+        );
     }
     Ok(())
 }
@@ -533,10 +581,9 @@ fn non_empty_str(val: &serde_json::Value, label: &str) -> Result<String> {
     Ok(s)
 }
 
-/// Resolve the bearer token: `--token` flag → `[publish]` token in
-/// `~/.lingxia/cli/config.toml` (scalar or per-env map), routed by `channel`
-/// (defaults to developer) → error.
-fn resolve_token(channel: Option<&str>, token_arg: Option<String>) -> Result<String> {
+/// Resolve the bearer token: `--token` flag → `LINGXIA_PUBLISH_TOKEN` →
+/// wallet slot keyed by (canonical server URL, env) → error.
+fn resolve_token(channel: Option<&str>, server: &str, token_arg: Option<String>) -> Result<String> {
     if let Some(t) = token_arg {
         let trimmed = t.trim();
         if trimmed.is_empty() {
@@ -544,17 +591,25 @@ fn resolve_token(channel: Option<&str>, token_arg: Option<String>) -> Result<Str
         }
         return Ok(trimmed.to_string());
     }
+    if let Ok(token) = env::var("LINGXIA_PUBLISH_TOKEN")
+        && !token.trim().is_empty()
+    {
+        return Ok(token.trim().to_string());
+    }
     let env_version = channel
         .and_then(|c| EnvVersion::parse_cli(c).ok())
         .unwrap_or(EnvVersion::Developer);
-    if let Some(token) = CliConfig::load()
-        .ok()
-        .and_then(|c| c.publish)
-        .and_then(|p| p.token_for(env_version).map(str::to_string))
+    let canonical = crate::wallet::canonical_publish_server(server)?;
+    if let Some(token) =
+        crate::wallet::Wallet::open()?.load_publish_token(&canonical, env_version.as_str())?
     {
         return Ok(token);
     }
-    bail!("Provide --token, or set `[publish] token` in ~/.lingxia/cli/config.toml.");
+    bail!(
+        "No LingXia publish token for {canonical} ({}). Fix: lingxia auth login lingxia --env {} --token <token>",
+        env_version.as_str(),
+        env_version.as_str()
+    );
 }
 
 fn resolve_lingxia_server(

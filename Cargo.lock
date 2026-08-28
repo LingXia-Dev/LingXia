@@ -3288,6 +3288,7 @@ dependencies = [
  "roxmltree 0.21.1",
  "rsa",
  "rustls-native-certs",
+ "schannel",
  "semver",
  "serde",
  "serde_json",

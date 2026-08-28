@@ -13,35 +13,33 @@ Publish a package to the **LingXia server** (not an OS app store — that's
 it. An lxapp publish packages the current project first and defaults to the
 `developer` env when `--env` is omitted; only host-app publish accepts a
 prebuilt package path. Authenticates with a bearer token: the `--token` flag,
-or `[publish] token` in `~/.lingxia/cli/config.toml`.
+`LINGXIA_PUBLISH_TOKEN`, or the LingXia credential wallet.
 
 See `lingxia publish --help` for the flags.
 
-**Machine-wide publish defaults (`~/.lingxia/cli/config.toml`):**
+**Publish tokens (wallet):**
 
-Set per-user defaults so lxapp projects (which have no `lingxia.yaml`) need not
-pass `--token` / `--lingxia-server` on every publish. The flags (and, for the
-server, project `app.lingxiaServer`) take precedence. Publish keys sit under
-`[publish]` (the file holds more areas than publishing), and each value follows
-the same shape as `app.lingxiaServer` in `lingxia.yaml`: a scalar applies to
-every env, an env-keyed map is explicit per env with no fallback for envs it
-omits. The env comes from the package's `--env`/`--channel` (`developer` when
-omitted for lxapp publish; host-app publish reads the package's `app.json
-envVersion`). The file is CLI-managed — `lingxia publish login` writes it, hand
+Store the token once with `lingxia auth login lingxia --env release --token …`;
+it is keyed by the canonical server URL + env, so the project's server and the
+package's `--env`/`--channel` pick the right token automatically (`developer`
+when omitted for lxapp publish; host-app publish reads the package's
+`app.json envVersion`). CI sets `LINGXIA_PUBLISH_TOKEN` instead.
+
+**Machine-wide server default (`~/.lingxia/cli/config.toml`):**
+
+Set a per-user server default so lxapp projects (which have no `lingxia.yaml`)
+need not pass `--lingxia-server` on every publish. The flag (and project
+`app.lingxiaServer`) take precedence. The value follows the same shape as
+`app.lingxiaServer` in `lingxia.yaml`: a scalar applies to every env, an
+env-keyed map is explicit per env with no fallback for envs it omits. The file
+is CLI-managed — `lingxia auth login lingxia --server …` writes it, hand
 comments are lost.
 
 ```toml
-[publish.token]                    # map: explicit per env — each env is a
-developer = "lx_dev_token"         # distinct backend with its own credentials
-release = "lx_prod_token"
-
 [publish.lingxiaServer]
 developer = "http://localhost:8080"
 release = "https://prod.example.com"
 ```
-
-A scalar form covers the single-backend case: `token = "lx_tok"` under
-`[publish]` applies to every env.
 
 ## App signing
 
@@ -67,16 +65,16 @@ Two independent credentials, which **must belong to the same team**:
 
 | Credential | Used for | Stored by |
 |---|---|---|
-| App Store Connect API key | `notarytool submit` notarization | `lingxia auth apple login` |
-| Developer ID Application certificate + key | `codesign` signing | login keychain, or `lingxia auth apple import-developer-id` |
+| App Store Connect API key | `notarytool submit` notarization | `lingxia auth login apple --mode key` |
+| Developer ID Application certificate + key | `codesign` signing | login keychain, or `lingxia auth login apple --mode developer-id` |
 
 ```bash
-lingxia auth apple login --mode key \
+lingxia auth login apple --mode key \
   --key-id <KEY_ID> --issuer-id <ISSUER_ID> \
   --private-key-path AuthKey_XXXX.p8 --team-id <TEAM_ID>
 
-lingxia auth apple import-developer-id DeveloperID.p12   # optional locally —
-# keychain discovery finds an existing Developer ID identity by itself
+lingxia auth login apple --mode developer-id --p12 DeveloperID.p12   # optional
+# locally — keychain discovery finds an existing Developer ID identity by itself
 ```
 
 To export a `.p12`: Xcode → Settings → Accounts → Manage Certificates → **+** →
@@ -84,11 +82,13 @@ Developer ID Application; then in Keychain Access select the certificate *and*
 its private key and export as `.p12`. No private key under the certificate →
 it was created on another Mac; recreate or export it there.
 
-**CI:** either restore the two credential files (`~/.lingxia/apple/credentials.json`,
-`~/.lingxia/apple/developer-id.json`) from secrets before building, or set the
-env overrides `LINGXIA_APPLE_NOTARY_KEY` / `_KEY_ID` / `_ISSUER_ID` and
-`LINGXIA_APPLE_DEVELOPER_ID_P12` / `_P12_PASSWORD` / `_IDENTITY`. Without
-resolvable credentials the build ad-hoc signs and still succeeds.
+**CI:** either restore the two wallet files
+(`~/.lingxia/credentials/apple/<team>/asc.json` and `…/developer-id.json`)
+from secrets before building, or set the env groups
+`LINGXIA_APPLE_KEY_PATH` / `_KEY_ID` / `_ISSUER_ID` (each group must be
+complete) and `LINGXIA_APPLE_DEVELOPER_ID_P12` / `_P12_PASSWORD` /
+`_IDENTITY`. Without resolvable credentials the build ad-hoc signs and still
+succeeds.
 
 **Verify:** `codesign --verify --deep --strict "MyApp.app"`,
 `spctl --assess --type execute "MyApp.app"`, `xcrun stapler validate "MyApp.app"`.
@@ -97,7 +97,7 @@ resolvable credentials the build ad-hoc signs and still succeeds.
 
 Distribution signing uses a **provisioning profile** plus a **distribution
 certificate** from your Apple Developer account, applied at build time. Store
-the account credential with `lingxia auth apple login`; manage profiles and the
+the account credential with `lingxia auth login apple`; manage profiles and the
 certificate through your Apple Developer account / Xcode.
 
 ### Android
@@ -134,21 +134,34 @@ Huawei's own signing material through the Harmony tooling.
 
 ## `lingxia auth`
 
-The credential store behind signing and developer services: `lingxia auth
-apple` (`login`, `import-developer-id`, `logout`, `status`) and
-`lingxia auth harmony` (`login`, `logout`, `status`). The concrete flows are in
-[App signing](#app-signing) above; see `lingxia auth <provider> --help` for
-flags.
+The credential wallet behind signing and developer services. Log in once per
+provider; commands pick the right credential automatically from the project:
+
+- `lingxia auth login apple|harmony` — add or refresh credentials (Apple modes:
+  `key`, `password`, `developer-id`)
+- `lingxia auth login/logout lingxia` — add or remove a LingXia Server publish
+  token; `lingxia publish` consumes it
+- `lingxia auth logout apple|harmony` — remove them
+- `lingxia auth status [--json]` — per-project diagnosis plus the wallet view
+- `lingxia auth forget --platform <channel>` — drop this checkout's automatic
+  credential selection so the next command re-resolves
+
+The concrete flows are in [App signing](#app-signing) above; see
+`lingxia auth login <provider> --help` for flags.
 
 ## `lingxia store`
 
 Submit a built installable to an **OS app store**. Talks to stores only — never
 the LingXia server (that's `publish`) and never builds (run `build`/`package`
 first; `submit` consumes the staged `dist/<platform>/` and fails clearly if it's
-missing). Each platform has a `login` / `logout` / `submit` / `status` flow;
-store identity lives in `lingxia.yaml` and credentials in
-`~/.lingxia/store/credentials.toml`, with **env vars overriding the file** for
-CI.
+missing). The artifact's real bundle/package identity is checked against the
+platform block in `lingxia.yaml` before any credential or network use, so a
+dev-suffixed or wrong-app artifact fails immediately. Credentials come from
+the wallet (`lingxia auth login googleplay|xiaomi|oppo|honor|msstore`, Apple
+and Harmony reuse their `auth login` credentials); each provider's
+`LINGXIA_<PROVIDER>_*` env group overrides the wallet for CI — complete groups
+only, a partial group is an error. Store-record settings (numeric app ids,
+default track) live under the platform blocks in `lingxia.yaml`.
 
 Run `lingxia store --help` for the current set of supported stores and per-action
 flags (`--draft`, release notes, track, etc.).

@@ -207,6 +207,7 @@ mod tests {
             }),
             ios: Some(IosConfig {
                 bundle_id: "app.example.demo".into(),
+                team_id: None,
                 deployment_target: None,
                 swift_version: None,
                 target_name: None,
