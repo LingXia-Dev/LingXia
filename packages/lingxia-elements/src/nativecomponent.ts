@@ -36,19 +36,11 @@ export function registerNativeComponentHandler(
   const registerFn = nativeComponents?.register;
   if (typeof registerFn === "function") {
     const unregister = registerFn(id, handler as Parameters<typeof registerFn>[1]);
-    const platform = window.LingXiaBridge?.platform;
-    const requiresReadyHandshake = !!(
-      platform?.isIOS?.() ||
-      platform?.isAndroid?.() ||
-      platform?.isMacOS?.()
-    );
-    const hasHandler = nativeComponents?.hasHandler;
     const send = nativeComponents?.send;
+    // Always announce ready after the leaf handler is registered, including
+    // Windows: island video queues play/playing until this id's handshake.
     if (typeof send === "function") {
-      const nativeReady = typeof hasHandler === "function" ? hasHandler() : true;
-      if (requiresReadyHandshake || nativeReady) {
-        send({ action: "component.ready", id });
-      }
+      send({ action: "component.ready", id });
     }
     return unregister;
   }

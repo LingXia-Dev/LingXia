@@ -54,6 +54,8 @@ pub(super) struct VideoComponent {
     /// The next island rematerialize re-delivers those events so
     /// `data-lx-playing` can land on the new element.
     pub(super) view_needs_playback_event: bool,
+    /// True once this ready session has been told about live playback.
+    pub(super) view_ack_playing: bool,
 }
 
 /// Mounts a `video.native` component: an MFPlay player rendering into the
@@ -135,6 +137,7 @@ pub(super) fn mount_video_on_ui(
             playing: false,
             resume_on_show: false,
             view_needs_playback_event: false,
+            view_ack_playing: false,
         }),
         swiper: None,
         island_kind: None,
@@ -200,17 +203,19 @@ pub(super) fn mount_windowless_island_video(
             playing: false,
             resume_on_show: false,
             view_needs_playback_event: false,
+            view_ack_playing: false,
         }),
         swiper: None,
         island_kind: Some("video".into()),
         doc_rect,
         state: ComponentProps::default(),
         last_value: String::new(),
-        ready: true,
+        // Same handshake as overlay mount: `play`/`playing` queue until
+        // `lx-video` sends `component.ready` for this author id.
+        ready: ready_keys().contains(&key),
         pending: Vec::new(),
     };
     components().insert(key.clone(), entry);
-    ready_keys().insert(key.clone());
     apply_video_props(&key, &props);
     if should_play {
         player.play();
@@ -220,10 +225,9 @@ pub(super) fn mount_windowless_island_video(
 
 /// Re-issue autoplay / replay `playing` after an island rematerialize.
 ///
-/// A page can be hidden (which pauses and clears `pending_play`) and later
-/// revived with the same component key. `onShow` may resume MFPlay before
-/// `lx-video` has registered its handler, so those events never set
-/// `data-lx-playing`. The commit that rematerializes runs after connect.
+/// `play`/`playing` that landed before `component.ready` sit in `pending`.
+/// A later commit still re-emits them once the view is ready so a leaf
+/// that connected after the first Play still gets `data-lx-playing`.
 pub(super) fn sync_island_video_playback(key: &str, props: &ComponentProps) {
     let (player, should_play_now, should_emit) = {
         let mut components = components();
@@ -242,9 +246,15 @@ pub(super) fn sync_island_video_playback(key: &str, props: &ComponentProps) {
         let wants_autoplay = !src.is_empty() && autoplay != Some(false);
         let resume = std::mem::take(&mut video.resume_on_show);
         let needs_event = std::mem::take(&mut video.view_needs_playback_event);
+        let live = video.playing || video.player.wants_playback();
         let should_play_now = (resume || (video.stopped && wants_autoplay)) && !video.playing;
+        // Re-emit whenever the view is ready and playback is live — not
+        // only after hide/show. Latch so geometry snapshots don't spam.
         let should_emit =
-            !should_play_now && (video.playing || video.player.wants_playback()) && needs_event;
+            !should_play_now && entry.ready && live && (needs_event || !video.view_ack_playing);
+        if should_emit {
+            video.view_ack_playing = true;
+        }
         (video.player.clone(), should_play_now, should_emit)
     };
     if should_play_now {
@@ -252,6 +262,32 @@ pub(super) fn sync_island_video_playback(key: &str, props: &ComponentProps) {
         return;
     }
     if should_emit {
+        emit_event(key, "play", json!({}));
+        emit_event(key, "playing", json!({}));
+    }
+}
+
+/// After `component.ready`, replay live playback so a handler that
+/// registered after the first Play still sees `playing`.
+pub(super) fn replay_island_playback_after_ready(key: &str) {
+    let live = {
+        let mut components = components();
+        let Some(entry) = components.get_mut(key) else {
+            return;
+        };
+        if !super::island::is_island_component_key(key) {
+            return;
+        }
+        let Some(video) = entry.video.as_mut() else {
+            return;
+        };
+        let live = video.playing || video.player.wants_playback();
+        if live {
+            video.view_ack_playing = true;
+        }
+        live
+    };
+    if live {
         emit_event(key, "play", json!({}));
         emit_event(key, "playing", json!({}));
     }

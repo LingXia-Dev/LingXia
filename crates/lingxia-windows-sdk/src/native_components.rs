@@ -525,6 +525,7 @@ fn handle_ready(context: &PageContext, message: &Value) {
     for (event, detail) in pending {
         emit_event(&key, &event, detail);
     }
+    replay_island_playback_after_ready(&key);
 }
 
 fn handle_focus_action(context: &PageContext, message: &Value, focus: bool) {
@@ -634,6 +635,7 @@ fn apply_component_visibility(key: &str, visible: bool) {
                     } else {
                         video.resume_on_show = video.playing || video.player.wants_playback();
                         video.view_needs_playback_event = true;
+                        video.view_ack_playing = false;
                         (video.player.clone(), false)
                     }
                 })
