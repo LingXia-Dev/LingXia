@@ -17,7 +17,7 @@ use super::*;
 fn device_capsule_reserve() -> i32 {
     #[cfg(feature = "device-frame")]
     {
-        crate::device_frame::capsule_reserve_width()
+        crate::device_frame::visible_capsule_reserve_width()
     }
     #[cfg(not(feature = "device-frame"))]
     {

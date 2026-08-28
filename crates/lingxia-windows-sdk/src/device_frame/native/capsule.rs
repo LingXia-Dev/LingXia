@@ -92,8 +92,14 @@ pub(crate) fn capsule_reserve_width() -> i32 {
 /// runtime asks from the Logic executor, not the UI thread.
 pub(super) fn capsule_page_rect(content: HWND) -> Option<String> {
     let handle = hwnd_handle(content);
-    let (capsule, fit) =
-        frame_state(handle, |state| (state.capsule, state.fit_scale)).filter(|(c, _)| *c != 0)?;
+    let (capsule, fit) = frame_state(handle, |state| {
+        (
+            state.capsule,
+            state.fit_scale,
+            super::spec_wants_capsule(&state.spec),
+        )
+    })
+    .and_then(|(capsule, fit, wanted)| (capsule != 0 && wanted).then_some((capsule, fit)))?;
     let capsule = hwnd_from_handle(capsule);
     if !is_window_handle_valid(hwnd_handle(capsule))
         || !unsafe { WindowsAndMessaging::IsWindowVisible(capsule) }.as_bool()

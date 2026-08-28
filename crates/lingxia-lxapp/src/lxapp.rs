@@ -827,7 +827,7 @@ impl LxApp {
         self.session.id
     }
 
-    pub(crate) fn sync_host_ui(&self) {
+    pub fn sync_host_ui(&self) {
         let revision = self.next_page_chrome_revision();
         if let Err(err) = self.runtime.update_navbar_ui(self.appid.clone()) {
             warn!("Failed to update host NavigationBar UI: {}", err).with_appid(self.appid.clone());

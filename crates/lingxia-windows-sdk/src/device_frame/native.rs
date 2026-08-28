@@ -53,7 +53,6 @@ mod info_sheet;
 mod paint;
 mod status_bar;
 
-pub(crate) use capsule::capsule_reserve_width;
 use capsule::{create_capsule_window, destroy_capsule, hide_capsule, reposition_capsule};
 use corner_mask::{
     create_corner_mask, destroy_corner_mask, hide_corner_mask, reposition_corner_mask,
@@ -388,6 +387,53 @@ fn frame_state<T>(content: isize, read: impl FnOnce(&DeviceFrameState) -> T) -> 
         .and_then(|frames| frames.get(&content).map(read))
 }
 
+fn spec_wants_capsule(spec: &WindowsDeviceFrame) -> bool {
+    spec.toolbar
+        .as_ref()
+        .is_some_and(|toolbar| !toolbar.capsule_items.is_empty())
+}
+
+fn capsule_handle_matches_spec(state: &DeviceFrameState) -> bool {
+    let present = state.capsule != 0 && is_window_handle_valid(state.capsule);
+    spec_wants_capsule(&state.spec) == present
+}
+
+/// Copy only the capsule toolbar fields so Page Chrome can observe a toggle
+/// before the UI-thread HWND create/destroy runs. Appearance glyphs stay
+/// unpatched so the toolbar-only paint path still sees a real delta.
+fn adopt_capsule_toolbar(handle: isize, spec: &WindowsDeviceFrame) {
+    let Some(frames) = DEVICE_FRAMES.get() else {
+        return;
+    };
+    let Ok(mut frames) = frames.lock() else {
+        return;
+    };
+    let Some(state) = frames.get_mut(&handle) else {
+        return;
+    };
+    match (state.spec.toolbar.as_mut(), spec.toolbar.as_ref()) {
+        (Some(dst), Some(src)) => {
+            dst.capsule_items = src.capsule_items.clone();
+            dst.capsule_close_command = src.capsule_close_command;
+        }
+        (None, Some(_)) => state.spec.toolbar = spec.toolbar.clone(),
+        _ => {}
+    }
+}
+
+fn sync_capsule_overlay(content: HWND, spec: &WindowsDeviceFrame, existing: isize) -> isize {
+    if spec_wants_capsule(spec) {
+        if existing != 0 && is_window_handle_valid(existing) {
+            existing
+        } else {
+            create_capsule_window(content, spec).unwrap_or(0)
+        }
+    } else {
+        destroy_capsule(existing);
+        0
+    }
+}
+
 /// True while `content` (a top-level host window handle) is wrapped in a
 /// simulator device frame. The shell drops its own window caption on a framed
 /// screen, since the frame's toolbar owns those controls.
@@ -430,12 +476,26 @@ pub(super) fn visible_capsule_page_rect() -> Option<String> {
         .lock()
         .ok()?
         .iter()
-        .filter(|(_, state)| state.capsule != 0)
+        .filter(|(_, state)| spec_wants_capsule(&state.spec) && state.capsule != 0)
         .map(|(handle, _)| *handle)
         .collect();
     handles
         .into_iter()
         .find_map(|handle| capsule::capsule_page_rect(hwnd_from_handle(handle)))
+}
+
+pub(crate) fn visible_capsule_reserve_width() -> i32 {
+    let Some(frames) = DEVICE_FRAMES.get() else {
+        return capsule::capsule_reserve_width();
+    };
+    let Ok(frames) = frames.lock() else {
+        return capsule::capsule_reserve_width();
+    };
+    if frames.is_empty() || frames.values().any(|state| spec_wants_capsule(&state.spec)) {
+        capsule::capsule_reserve_width()
+    } else {
+        0
+    }
 }
 
 /// True while `content`'s frame toolbar carries the close/minimize dots and
@@ -581,6 +641,9 @@ pub(super) fn set_webview_device_frame(
 ) -> Result<(), String> {
     let host_window = find_host_window_for_webview(webtag).map_err(|err| err.to_string())?;
     let handle = host_window.window;
+    if let Some(spec) = frame.as_ref() {
+        adopt_capsule_toolbar(handle, spec);
+    }
     let posted = post_to_window_thread(
         handle,
         Box::new(move || match frame {
@@ -604,6 +667,7 @@ pub(super) fn set_webview_device_frame_and_tabbar_position(
 ) -> Result<(), String> {
     let host_window = find_host_window_for_webview(webtag).map_err(|err| err.to_string())?;
     let handle = host_window.window;
+    adopt_capsule_toolbar(handle, &frame);
     let posted = post_to_window_thread(
         handle,
         Box::new(move || {
@@ -614,6 +678,11 @@ pub(super) fn set_webview_device_frame_and_tabbar_position(
                 tabbar_position,
             );
             request_host_window_layout(content);
+            // Overlay create/destroy has landed; republish so custom-nav
+            // pages drop or restore capsuleRect without waiting for a nav.
+            if let Some(app) = lxapp::try_get(&appid) {
+                app.sync_host_ui();
+            }
         }),
     );
     if posted {
@@ -673,12 +742,15 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
         }
         return;
     }
-    // Same device geometry, different toolbar model (e.g. the appearance glyph
-    // flipping): repaint the existing layered shell in place instead of
+    // Same device geometry, different toolbar model (appearance glyph or
+    // capsule on/off): repaint the existing layered shell in place instead of
     // rebuilding every companion window, which visibly flashes the bezel.
     // Never take this path when the content window no longer matches the
     // spec screen — that is how the selector can say "iPhone 15 Pro" while
-    // the WebView is still a desktop-sized expanded surface.
+    // the WebView is still a desktop-sized expanded surface. Capsule items
+    // live on the toolbar spec, so this path must still create or destroy
+    // the floating overlay — a paint-only update leaves the pill on screen
+    // after `--capsule off`.
     let toolbar_only = frame_state(handle, |state| {
         let mut probe = state.spec.clone();
         probe.toolbar = spec.toolbar.clone();
@@ -687,16 +759,22 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     .unwrap_or(false);
     if toolbar_only
         && content_matches_spec_screen(content, &spec)
-        && let Some((frame, mut layout)) = frame_state(handle, |state| (state.frame, state.layout))
+        && let Some((frame, mut layout, old_capsule)) =
+            frame_state(handle, |state| (state.frame, state.layout, state.capsule))
         && is_window_handle_valid(frame)
     {
         paint_frame_window(hwnd_from_handle(frame), &spec, &mut layout);
+        let capsule = sync_capsule_overlay(content, &spec, old_capsule);
         if let Some(frames) = DEVICE_FRAMES.get()
             && let Ok(mut frames) = frames.lock()
             && let Some(state) = frames.get_mut(&handle)
         {
             state.spec = spec;
             state.layout = layout;
+            state.capsule = capsule;
+        }
+        if capsule != 0 {
+            reposition_capsule(content);
         }
         return;
     }
@@ -1312,11 +1390,19 @@ fn content_matches_spec_screen(hwnd: HWND, spec: &WindowsDeviceFrame) -> bool {
 }
 
 fn device_frame_needs_rebuild(content: HWND, spec: &WindowsDeviceFrame) -> bool {
-    spec_and_window_require_rebuild(
+    if spec_and_window_require_rebuild(
         frame_state(hwnd_handle(content), |state| state.spec.clone()).as_ref(),
         spec,
         content_window_size(content),
-    )
+    ) {
+        return true;
+    }
+    // `adopt_capsule_toolbar` copies capsule fields onto the live spec before
+    // this runs, so spec equality alone would skip overlay create/destroy.
+    !frame_state(hwnd_handle(content), |state| {
+        capsule_handle_matches_spec(state)
+    })
+    .unwrap_or(true)
 }
 
 fn spec_and_window_require_rebuild(
