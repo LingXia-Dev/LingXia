@@ -169,3 +169,22 @@ const accepted = viewAcceptLease(granted);
 assert.ok(accepted);
 assert.equal(viewCanShowFallback(accepted, 0), false);
 assert.equal(viewCanShowFallback(accepted, 8000), true);
+
+// A caption that changes after mount must emit an update: `text` is a sibling of
+// `props` on the core node, but the host reads it from props.
+{
+  const textRoot = (value) => ({
+    rootKey: "player",
+    children: [
+      { kind: "text", authorType: "LxNativeText", authorId: "caption", props: {}, text: value, children: [] },
+    ],
+  });
+  const first = identifyCompiledRoot(textRoot("one"), rootRef, null);
+  const mounted = buildRootCommit(first, null, 1);
+  assert.equal(mounted.operations[0].node.props.text, "one");
+  const second = identifyCompiledRoot(textRoot("two"), rootRef, first);
+  const updated = buildRootCommit(second, first, 2);
+  const patch = updated.operations.find((op) => op.op === "update");
+  assert.ok(patch, "a changed caption must emit an update op");
+  assert.equal(patch.patch.text, "two");
+}
