@@ -1001,20 +1001,19 @@ fn create_tab_bar_item<'a>(
     };
 
     // Create TabBarItem object with actual data
-    env
-        .new_object(
-            tab_item_class,
-            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Z)V"),
-            &[
-                (&page_path).into(),
-                (&text).into(),
-                (&icon_path).into(),
-                selected.into(),
-                (&badge_jstring).into(),
-                item.has_red_dot.into(), // Use actual red dot data from Rust
-            ],
-        )
-        .ok()
+    env.new_object(
+        tab_item_class,
+        jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Z)V"),
+        &[
+            (&page_path).into(),
+            (&text).into(),
+            (&icon_path).into(),
+            selected.into(),
+            (&badge_jstring).into(),
+            item.has_red_dot.into(), // Use actual red dot data from Rust
+        ],
+    )
+    .ok()
 }
 
 /// Handle DeepLink URL by processing the path without host
