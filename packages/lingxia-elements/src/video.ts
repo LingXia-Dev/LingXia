@@ -521,7 +521,7 @@ export class LxVideoElement extends HTMLElement {
       autoplay: this.hasAttribute("autoplay"),
       loop: this.hasAttribute("loop"),
       muted: this.hasAttribute("muted"),
-      controls: this.hasAttribute("controls"),
+      controls: this.getAttribute("controls") !== null && this.getAttribute("controls") !== "false",
       progressBar,
       live: isLive,
       volume: !Number.isNaN(volume ?? NaN) ? volume : undefined,
