@@ -1009,7 +1009,7 @@ fn create_tab_bar_item<'a>(
     env
         .new_object(
             tab_item_class,
-            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Z)V"),
+            jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;ZZ)V"),
             &[
                 (&page_path).into(),
                 (&text).into(),
@@ -1018,6 +1018,7 @@ fn create_tab_bar_item<'a>(
                 selected.into(),
                 (&badge_jstring).into(),
                 item.has_red_dot.into(), // Use actual red dot data from Rust
+                item.has_selected_icon.into(),
             ],
         )
         .ok()

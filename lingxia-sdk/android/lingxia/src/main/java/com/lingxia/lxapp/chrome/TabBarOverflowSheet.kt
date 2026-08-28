@@ -26,6 +26,9 @@ internal object TabBarOverflowSheet {
     private const val CELL_ICON_TEXT_SPACING_DP = 4
     private const val CELL_TEXT_SIZE_SP = 11f
     private const val ENTER_DURATION_MS = 160L
+    private const val CELL_INDICATOR_WIDTH_DP = 40
+    private const val CELL_INDICATOR_HEIGHT_DP = 28
+    private const val CELL_INDICATOR_ALPHA = 0x33
 
     /**
      * @param anchor the tab strip; the panel sits flush on top of it.
@@ -197,6 +200,21 @@ internal object TabBarOverflowSheet {
                 )
                 clipChildren = false
                 clipToPadding = false
+            }
+            // Mirrors the strip: a single-icon item needs chrome to read as
+            // selected, since there is no second drawable to swap in.
+            if (selected && !item.hasSelectedIcon) {
+                iconWrapper.addView(View(activity).apply {
+                    layoutParams = FrameLayout.LayoutParams(
+                        (CELL_INDICATOR_WIDTH_DP * density).toInt(),
+                        (CELL_INDICATOR_HEIGHT_DP * density).toInt()
+                    ).apply { gravity = Gravity.CENTER }
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        setColor((state.selectedColor and 0x00FFFFFF) or (CELL_INDICATOR_ALPHA shl 24))
+                        cornerRadius = CELL_INDICATOR_HEIGHT_DP * density / 2f
+                    }
+                })
             }
             iconWrapper.addView(ImageView(activity).apply {
                 layoutParams = FrameLayout.LayoutParams(iconSize, iconSize).apply {

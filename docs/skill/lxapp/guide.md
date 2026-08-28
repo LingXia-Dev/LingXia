@@ -614,6 +614,23 @@ Rules:
 - The first item is initially selected. Placement and dimensions are host-owned;
   desktop hosts project the same items into their sidebar.
 
+### One icon per tab is enough
+
+`selectedIconPath` is optional, and leaving it out is the cheaper path: ship a
+single `iconPath` and the host marks the active tab with a rounded **active
+indicator** behind the icon, the way a Material navigation bar does. You get a
+working selected state without drawing, exporting, and version-matching a second
+set of artwork.
+
+```json
+{ "text": "Home", "pagePath": "pages/home/index", "iconPath": "public/home.png" }
+```
+
+Supply `selectedIconPath` only when the icon itself should change — a filled
+version of an outlined glyph, say. Then the swap *is* the selected state and no
+indicator is drawn. The choice is per item, so a bar can mix both, though one
+style throughout usually looks better.
+
 ### More than five tabs on a phone
 
 A phone-sized strip only has room for five slots. Declare more than five items

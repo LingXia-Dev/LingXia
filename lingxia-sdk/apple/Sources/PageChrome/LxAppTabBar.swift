@@ -73,6 +73,14 @@ extension TabBarItem {
 }
 
 /// TabBar styling helpers
+/// Active indicator drawn behind the icon of a selected item that ships only
+/// one icon. Sized like the Material navigation-bar pill.
+enum TabBarMetrics {
+    static let activeIndicatorWidth: CGFloat = 40
+    static let activeIndicatorHeight: CGFloat = 28
+    static let activeIndicatorOpacity: CGFloat = 0.2
+}
+
 struct TabBarHelper {
     static func isTransparent(_ colorValue: UInt32) -> Bool {
         return (colorValue >> 24) & 0xFF == 0
@@ -160,6 +168,18 @@ struct LxAppTabBar: View {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
                 // Tab icon with badge and red dot overlay
                 ZStack {
+                    // A single-icon item has no swap to signal selection, so the
+                    // strip draws an active indicator behind it instead.
+                    if isSelected, let rustItem, !rustItem.has_selected_icon {
+                        Capsule()
+                            .fill(Color(PlatformColor(argb: config.selected_color))
+                                .opacity(TabBarMetrics.activeIndicatorOpacity))
+                            .frame(
+                                width: TabBarMetrics.activeIndicatorWidth,
+                                height: TabBarMetrics.activeIndicatorHeight
+                            )
+                    }
+
                     if !item.cachedIconPath.isEmpty {
                         buildTabIcon(item: item, isSelected: isSelected, forceColor: forceColor)
                     }
@@ -825,6 +845,23 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
                 iconView.image = UIImage(systemName: "circle.fill")
                 iconView.tintColor = iconColor
             }
+        }
+
+        // A single-icon item has no swap to signal selection, so the strip
+        // draws a Material-style active indicator behind it instead.
+        if isSelected, !item.has_selected_icon {
+            let indicator = UIView()
+            indicator.backgroundColor = PlatformColor(argb: tabBarConfig?.selected_color ?? 0)
+                .withAlphaComponent(TabBarMetrics.activeIndicatorOpacity)
+            indicator.layer.cornerRadius = TabBarMetrics.activeIndicatorHeight / 2
+            indicator.translatesAutoresizingMaskIntoConstraints = false
+            iconContainer.addSubview(indicator)
+            NSLayoutConstraint.activate([
+                indicator.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
+                indicator.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
+                indicator.widthAnchor.constraint(equalToConstant: TabBarMetrics.activeIndicatorWidth),
+                indicator.heightAnchor.constraint(equalToConstant: TabBarMetrics.activeIndicatorHeight)
+            ])
         }
 
         iconContainer.addSubview(iconView)

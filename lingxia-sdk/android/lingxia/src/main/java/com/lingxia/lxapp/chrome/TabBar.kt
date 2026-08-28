@@ -81,7 +81,10 @@ internal data class TabBarItem(
     val selectedIconPath: String,         // Absolute path to the selected state icon file
     val selected: Boolean = false,        // Whether this tab is selected
     val badge: String? = null,            // Badge text (optional)
-    val hasRedDot: Boolean = false        // Whether to show red dot indicator
+    val hasRedDot: Boolean = false,       // Whether to show red dot indicator
+    // A distinct selected icon was declared, so the icon swap is the selected
+    // state. Without one the strip draws an active indicator instead.
+    val hasSelectedIcon: Boolean = false
 )
 
 /**
@@ -118,6 +121,12 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         private val VERTICAL_SELECTED_ITEM_BACKGROUND_COLOR = 0xFFE6F0FF.toInt()
         private const val SELECTED_ITEM_CORNER_RADIUS_DP = 12f // Unified corner radius for updateTabState
         private const val INITIAL_SELECTED_ITEM_CORNER_RADIUS_DP = 8f // For createTabItem
+
+        // Active indicator drawn behind the icon of a selected item that ships
+        // only one icon. Sized like the Material navigation-bar pill.
+        private const val ACTIVE_INDICATOR_WIDTH_DP = 40
+        private const val ACTIVE_INDICATOR_HEIGHT_DP = 28
+        private const val ACTIVE_INDICATOR_ALPHA = 0x33
     }
 
     /** One rendered strip slot: a declared tab, or the overflow affordance. */
@@ -381,6 +390,23 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         }
     }
 
+    /**
+     * Whether this slot must draw its own selected state. An item with a
+     * distinct selected icon already reads as selected through the swap; one
+     * with a single icon would otherwise look identical to its neighbours.
+     */
+    private fun slotNeedsActiveIndicator(slot: Slot): Boolean = when (slot) {
+        is Slot.Tab -> !items[slot.itemIndex].hasSelectedIcon
+        // "More" has no app-supplied icon pair; its tinted glyph is the state.
+        Slot.More -> false
+    }
+
+    private fun activeIndicatorDrawable(): Drawable = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        setColor((config.selectedColor and 0x00FFFFFF) or (ACTIVE_INDICATOR_ALPHA shl 24))
+        cornerRadius = ACTIVE_INDICATOR_HEIGHT_DP * resources.displayMetrics.density / 2f
+    }
+
     private fun createSlotView(slot: Slot): LinearLayout {
         val isVertical = config.position.value == TabBarState.POSITION_LEFT || config.position.value == TabBarState.POSITION_RIGHT
         val isSelected = isSlotSelected(slot)
@@ -441,6 +467,18 @@ internal class TabBar(context: Context) : LinearLayout(context) {
                 setImageDrawable(slotIcon(slot, isSelected))
             }
 
+            // Behind the icon, so a single-icon item still reads as selected.
+            if (slotNeedsActiveIndicator(slot)) {
+                iconWrapper.addView(View(context).apply {
+                    layoutParams = FrameLayout.LayoutParams(
+                        (ACTIVE_INDICATOR_WIDTH_DP * resources.displayMetrics.density).toInt(),
+                        (ACTIVE_INDICATOR_HEIGHT_DP * resources.displayMetrics.density).toInt()
+                    ).apply { gravity = Gravity.CENTER }
+                    background = activeIndicatorDrawable()
+                    visibility = if (isSelected) View.VISIBLE else View.INVISIBLE
+                })
+            }
+
             iconWrapper.addView(icon)
 
             val badge = slotBadge(slot)
@@ -499,7 +537,12 @@ internal class TabBar(context: Context) : LinearLayout(context) {
 
     private fun updateTabState(tabView: LinearLayout, slot: Slot, selected: Boolean) {
         val iconContainer = tabView.getChildAt(0) as FrameLayout
-        val icon = iconContainer.getChildAt(0) as ImageView
+        // The indicator is added before the icon, so it shifts the icon's index.
+        val hasIndicator = slotNeedsActiveIndicator(slot)
+        if (hasIndicator) {
+            iconContainer.getChildAt(0).visibility = if (selected) View.VISIBLE else View.INVISIBLE
+        }
+        val icon = iconContainer.getChildAt(if (hasIndicator) 1 else 0) as ImageView
         icon.setImageDrawable(slotIcon(slot, selected))
 
         if (tabView.childCount > 1) {
