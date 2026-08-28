@@ -154,6 +154,12 @@ declare module 'liblingxia.so' {
   export function splashSelectCover(dataDir: string, dark: boolean): string;
 
   /**
+   * The host-declared page floor for one appearance, as `#RRGGBB`, or an empty
+   * string when the host declared none.
+   */
+  export function pageBackgroundColor(dark: boolean): string;
+
+  /**
    * Get LxApp information for a specific app
    * @param appid - LxApp ID
    * @returns LxApp information or null if not found

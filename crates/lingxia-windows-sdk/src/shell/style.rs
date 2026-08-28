@@ -284,6 +284,10 @@ mod tests {
             accent_color: color("#304FFE"),
             separator_color: color("#303132"),
             selection_background_color: color("#404142"),
+            // Roles the Windows shell does not consume (the page floor is for
+            // chrome that borders lxapp pages) stay default, so a new role
+            // does not break this exhaustive mapping test.
+            ..ThemeStyle::default()
         };
 
         let palette = palette_for(true, 0xABCDEF, Some(&style));
