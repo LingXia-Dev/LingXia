@@ -4,7 +4,7 @@
 //! without asking. Same-line patch drift is not a new version.
 //!
 //! Pins the project owns, rewritten string-level so formatting stays put:
-//! `@lingxia/*` npm ranges, the `lingxia` crate requirement in
+//! `@lingxia/*` npm ranges, scaffolded LingXia crate requirements in
 //! `native/Cargo.toml`, the `lingxia-windows-sdk` git ref +
 //! `lingxia-windows-build` crate req, and the gradle `lingxia.sdkVersion`
 //! fallback.
@@ -32,6 +32,14 @@ use std::process::Command;
 /// Exit code for `--check` when the project is behind (mirrors the CLI
 /// self-upgrade `--check` convention).
 const EXIT_UPGRADE_AVAILABLE: i32 = 10;
+const EXIT_CONFIRMATION_REQUIRED: i32 = 1;
+
+const NATIVE_LINGXIA_CRATES: &[&str] = &[
+    "lingxia",
+    "lingxia-control-runtime",
+    "lingxia-device-io",
+    "lingxia-native-codegen",
+];
 
 /// Directories never walked when looking for embedded package.json files.
 const SKIP_DIRS: &[&str] = &[
@@ -83,6 +91,13 @@ struct UpgradePlan {
     cli_line: Option<(u64, u64)>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProjectConfirmation {
+    Accepted,
+    Declined,
+    Required,
+}
+
 impl UpgradePlan {
     /// Newer CLI major.minor than the oldest project pin. Same-line patches
     /// (and a project that is ahead) are not a new version.
@@ -109,9 +124,16 @@ pub fn execute(root: &Path, check: bool, yes: bool) -> Result<i32> {
         return Ok(EXIT_UPGRADE_AVAILABLE);
     }
 
-    if !confirm_project_upgrade(prepared.project_line, prepared.cli_line, yes) {
-        println!("  Skipped project pins and SDK packages.");
-        return Ok(0);
+    match confirm_project_upgrade(prepared.project_line, prepared.cli_line, yes) {
+        ProjectConfirmation::Accepted => {}
+        ProjectConfirmation::Declined => {
+            println!("  Skipped project pins and SDK packages.");
+            return Ok(0);
+        }
+        ProjectConfirmation::Required => {
+            println!("  Skipped project pins and SDK packages.");
+            return Ok(EXIT_CONFIRMATION_REQUIRED);
+        }
     }
 
     apply_plan(root, &prepared)?;
@@ -185,25 +207,27 @@ fn confirm_project_upgrade(
     project_line: Option<(u64, u64)>,
     cli_line: Option<(u64, u64)>,
     yes: bool,
-) -> bool {
-    if yes {
-        return true;
+) -> ProjectConfirmation {
+    let stdin_is_terminal = std::io::stdin().is_terminal();
+    if let Some(confirmation) = confirmation_without_prompt(yes, stdin_is_terminal) {
+        if confirmation == ProjectConfirmation::Required
+            && let (Some(project), Some(cli)) = (project_line, cli_line)
+        {
+            println!(
+                "  {} Re-run in a terminal or pass --yes to upgrade pins and SDKs from {}.{} to {}.{}.",
+                "!".yellow(),
+                project.0,
+                project.1,
+                cli.0,
+                cli.1
+            );
+        }
+        return confirmation;
     }
     let (Some(project), Some(cli)) = (project_line, cli_line) else {
-        return false;
+        return ProjectConfirmation::Declined;
     };
-    if !std::io::stdin().is_terminal() {
-        println!(
-            "  {} Re-run in a terminal or pass --yes to upgrade pins and SDKs from {}.{} to {}.{}.",
-            "!".yellow(),
-            project.0,
-            project.1,
-            cli.0,
-            cli.1
-        );
-        return false;
-    }
-    Confirm::with_theme(&ColorfulTheme::default())
+    if Confirm::with_theme(&ColorfulTheme::default())
         .with_prompt(format!(
             "Upgrade this project's pins and SDK packages from {}.{} to {}.{}?",
             project.0, project.1, cli.0, cli.1
@@ -211,11 +235,27 @@ fn confirm_project_upgrade(
         .default(true)
         .interact()
         .unwrap_or(false)
+    {
+        ProjectConfirmation::Accepted
+    } else {
+        ProjectConfirmation::Declined
+    }
+}
+
+fn confirmation_without_prompt(yes: bool, stdin_is_terminal: bool) -> Option<ProjectConfirmation> {
+    if yes {
+        Some(ProjectConfirmation::Accepted)
+    } else if !stdin_is_terminal {
+        Some(ProjectConfirmation::Required)
+    } else {
+        None
+    }
 }
 
 fn apply_plan(root: &Path, prepared: &UpgradePlan) -> Result<()> {
     let mut npm_dirs = Vec::new();
     let mut cargo_dirs: Vec<(PathBuf, Vec<String>)> = Vec::new();
+    let mut refresh_failures = Vec::new();
     for edit in &prepared.edits {
         fs::write(&edit.path, &edit.new_content)
             .with_context(|| format!("write {}", edit.path.display()))?;
@@ -247,11 +287,22 @@ fn apply_plan(root: &Path, prepared: &UpgradePlan) -> Result<()> {
             .status();
         match status {
             Ok(status) if status.success() => {}
-            _ => println!(
-                "  {} `npm install` did not complete in {}; run it manually.",
-                "!".yellow(),
-                dir.display()
-            ),
+            Ok(status) => {
+                println!(
+                    "  {} `npm install` failed with {status} in {}; run it manually.",
+                    "!".yellow(),
+                    dir.display()
+                );
+                refresh_failures.push(format!("npm install in {} ({status})", dir.display()));
+            }
+            Err(err) => {
+                println!(
+                    "  {} Could not run `npm install` in {}: {err}",
+                    "!".yellow(),
+                    dir.display()
+                );
+                refresh_failures.push(format!("npm install in {} ({err})", dir.display()));
+            }
         }
     }
 
@@ -268,15 +319,32 @@ fn apply_plan(root: &Path, prepared: &UpgradePlan) -> Result<()> {
         );
         match cmd.current_dir(&dir).status() {
             Ok(status) if status.success() => {}
-            _ => println!(
-                "  {} `cargo update` did not complete in {}; run it manually.",
-                "!".yellow(),
-                dir.display()
-            ),
+            Ok(status) => {
+                println!(
+                    "  {} `cargo update` failed with {status} in {}; run it manually.",
+                    "!".yellow(),
+                    dir.display()
+                );
+                refresh_failures.push(format!("cargo update in {} ({status})", dir.display()));
+            }
+            Err(err) => {
+                println!(
+                    "  {} Could not run `cargo update` in {}: {err}",
+                    "!".yellow(),
+                    dir.display()
+                );
+                refresh_failures.push(format!("cargo update in {} ({err})", dir.display()));
+            }
         }
     }
 
     apply_sdk_steps(root, &prepared.sdk_steps, &prepared.sdk_version);
+    if !refresh_failures.is_empty() {
+        anyhow::bail!(
+            "Project manifests changed, but dependency refresh failed: {}",
+            refresh_failures.join("; ")
+        );
+    }
     Ok(())
 }
 
@@ -301,17 +369,29 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
 
     let native_cargo = root.join("native").join("Cargo.toml");
     if native_cargo.is_file() {
-        let content = fs::read_to_string(&native_cargo)
+        let mut new_content = fs::read_to_string(&native_cargo)
             .with_context(|| format!("read {}", native_cargo.display()))?;
-        let (new_content, changes) =
-            rewrite_cargo_dep_req(&content, "lingxia", &crate::versions::cargo_compat_req());
+        let mut changes = Vec::new();
+        let mut cargo_update = Vec::new();
+        for crate_name in NATIVE_LINGXIA_CRATES {
+            let (rewritten, crate_changes) = rewrite_cargo_dep_req(
+                &new_content,
+                crate_name,
+                &crate::versions::cargo_compat_req(),
+            );
+            if !crate_changes.is_empty() {
+                cargo_update.push((*crate_name).to_string());
+                changes.extend(crate_changes);
+            }
+            new_content = rewritten;
+        }
         if !changes.is_empty() {
             edits.push(Edit {
                 path: native_cargo,
                 new_content,
                 changes,
                 refresh_npm: false,
-                cargo_update: vec!["lingxia".to_string()],
+                cargo_update,
             });
         }
     }
@@ -562,16 +642,33 @@ fn rewrite_npm_line(line: &str, range: &str, changes: &mut Vec<String>) -> Strin
 }
 
 fn next_npm_entry(line: &str, search_from: usize) -> Option<(&str, &str, usize, usize)> {
-    let key_start = line[search_from..].find("\"@lingxia/")? + search_from;
-    let key_end = line[key_start + 1..].find('"')? + key_start + 1;
-    let value_start = line[key_end + 1..].find('"')? + key_end + 2;
-    let value_end = line[value_start..].find('"')? + value_start;
-    Some((
-        &line[key_start + 1..key_end],
-        &line[value_start..value_end],
-        value_start,
-        value_end,
-    ))
+    let mut cursor = search_from;
+    loop {
+        let key_start = line[cursor..].find("\"@lingxia/")? + cursor;
+        let key_end = line[key_start + 1..].find('"')? + key_start + 1;
+        let after_key = &line[key_end + 1..];
+        let delimiter_offset = after_key.find(|c: char| !c.is_whitespace())?;
+        let delimiter = key_end + 1 + delimiter_offset;
+        if line.as_bytes().get(delimiter) != Some(&b':') {
+            cursor = key_end + 1;
+            continue;
+        }
+        let after_colon = &line[delimiter + 1..];
+        let value_quote_offset = after_colon.find(|c: char| !c.is_whitespace())?;
+        let value_quote = delimiter + 1 + value_quote_offset;
+        if line.as_bytes().get(value_quote) != Some(&b'"') {
+            cursor = key_end + 1;
+            continue;
+        }
+        let value_start = value_quote + 1;
+        let value_end = line[value_start..].find('"')? + value_start;
+        return Some((
+            &line[key_start + 1..key_end],
+            &line[value_start..value_end],
+            value_start,
+            value_end,
+        ));
+    }
 }
 
 /// Whether an npm dependency spec is a plain version range (as opposed to a
@@ -582,6 +679,31 @@ fn is_version_range(spec: &str) -> bool {
         .is_some_and(|c| c.is_ascii_digit() || matches!(c, '^' | '~' | '>' | '<' | '='))
 }
 
+fn cargo_table_name(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    if !trimmed.starts_with('[') {
+        return None;
+    }
+    if let Some(rest) = trimmed.strip_prefix("[[") {
+        let end = rest.find("]]")?;
+        return Some(rest[..end].trim());
+    }
+    let rest = &trimmed[1..];
+    let end = rest.find(']')?;
+    Some(rest[..end].trim())
+}
+
+fn is_cargo_dependency_table(table: &str) -> bool {
+    matches!(
+        table,
+        "dependencies" | "dev-dependencies" | "build-dependencies"
+    ) || table == "workspace.dependencies"
+        || (table.starts_with("target.")
+            && (table.ends_with(".dependencies")
+                || table.ends_with(".dev-dependencies")
+                || table.ends_with(".build-dependencies")))
+}
+
 /// Rewrite `crate_name = "req"` / `{ version = "req", … }` in a Cargo.toml.
 /// Path-only tables have no `version =` and are left untouched.
 fn rewrite_cargo_dep_req(content: &str, crate_name: &str, req: &str) -> (String, Vec<String>) {
@@ -589,9 +711,16 @@ fn rewrite_cargo_dep_req(content: &str, crate_name: &str, req: &str) -> (String,
     let mut out = String::with_capacity(content.len());
     let prefix = format!("{crate_name} =");
     let prefix_nospace = format!("{crate_name}=");
+    let mut in_dependencies = false;
     for line in content.split_inclusive('\n') {
+        if let Some(table) = cargo_table_name(line) {
+            in_dependencies = is_cargo_dependency_table(table);
+            out.push_str(line);
+            continue;
+        }
         let trimmed = line.trim_start();
-        let is_dep = trimmed.starts_with(&prefix) || trimmed.starts_with(&prefix_nospace);
+        let is_dep = in_dependencies
+            && (trimmed.starts_with(&prefix) || trimmed.starts_with(&prefix_nospace));
         if !is_dep {
             out.push_str(line);
             continue;
@@ -619,8 +748,14 @@ fn rewrite_cargo_dep_req(content: &str, crate_name: &str, req: &str) -> (String,
 fn rewrite_windows_sdk_ref(content: &str, git_ref: &str) -> (String, Vec<String>) {
     let mut changes = Vec::new();
     let mut out = String::with_capacity(content.len());
+    let mut in_dependencies = false;
     for line in content.split_inclusive('\n') {
-        if !line.trim_start().starts_with("lingxia-windows-sdk") {
+        if let Some(table) = cargo_table_name(line) {
+            in_dependencies = is_cargo_dependency_table(table);
+            out.push_str(line);
+            continue;
+        }
+        if !in_dependencies || !line.trim_start().starts_with("lingxia-windows-sdk") {
             out.push_str(line);
             continue;
         }
@@ -747,9 +882,7 @@ fn collect_project_versions(root: &Path) -> Vec<String> {
             versions.extend(npm_range_specs(&content));
         }
     }
-    if let Some(version) = pinned_native_crate_req(root) {
-        versions.push(version);
-    }
+    versions.extend(pinned_native_crate_reqs(root));
     if let Some(version) = pinned_gradle_sdk(root) {
         versions.push(version);
     }
@@ -792,8 +925,13 @@ fn pinned_gradle_sdk(root: &Path) -> Option<String> {
 
 fn pinned_windows_sdk_version(root: &Path) -> Option<String> {
     let content = fs::read_to_string(root.join("windows").join("Cargo.toml")).ok()?;
+    let mut in_dependencies = false;
     for line in content.lines() {
-        if !line.trim_start().starts_with("lingxia-windows-sdk") {
+        if let Some(table) = cargo_table_name(line) {
+            in_dependencies = is_cargo_dependency_table(table);
+            continue;
+        }
+        if !in_dependencies || !line.trim_start().starts_with("lingxia-windows-sdk") {
             continue;
         }
         for prefix in ["tag = \"lingxia-crates-v", "tag=\"lingxia-crates-v"] {
@@ -808,17 +946,28 @@ fn pinned_windows_sdk_version(root: &Path) -> Option<String> {
 
 fn pinned_windows_build_req(root: &Path) -> Option<String> {
     let content = fs::read_to_string(root.join("windows").join("Cargo.toml")).ok()?;
+    cargo_dependency_req(&content, "lingxia-windows-build")
+}
+
+fn cargo_dependency_req(content: &str, crate_name: &str) -> Option<String> {
+    let prefix = format!("{crate_name} =");
+    let prefix_nospace = format!("{crate_name}=");
+    let mut in_dependencies = false;
     for line in content.lines() {
+        if let Some(table) = cargo_table_name(line) {
+            in_dependencies = is_cargo_dependency_table(table);
+            continue;
+        }
         let trimmed = line.trim_start();
-        if !(trimmed.starts_with("lingxia-windows-build =")
-            || trimmed.starts_with("lingxia-windows-build="))
+        if !in_dependencies
+            || !(trimmed.starts_with(&prefix) || trimmed.starts_with(&prefix_nospace))
         {
             continue;
         }
         let markers = if trimmed.contains('{') {
             ["version = ", "version="]
         } else {
-            ["lingxia-windows-build = ", "lingxia-windows-build="]
+            [prefix.as_str(), prefix_nospace.as_str()]
         };
         if let Some(old) = markers
             .iter()
@@ -848,27 +997,15 @@ pub fn warn_if_behind(project_root: &Path) {
     }
 }
 
-/// The `lingxia` crate requirement pinned in `native/Cargo.toml`, if any.
-fn pinned_native_crate_req(project_root: &Path) -> Option<String> {
-    let content = fs::read_to_string(project_root.join("native").join("Cargo.toml")).ok()?;
-    for line in content.lines() {
-        let trimmed = line.trim_start();
-        if !(trimmed.starts_with("lingxia =") || trimmed.starts_with("lingxia=")) {
-            continue;
-        }
-        let markers = if trimmed.contains('{') {
-            ["version = ", "version="]
-        } else {
-            ["lingxia = ", "lingxia="]
-        };
-        if let Some(old) = markers
-            .iter()
-            .find_map(|marker| rewrite_quoted_after(line, marker, "").map(|(_, old)| old))
-        {
-            return Some(old);
-        }
-    }
-    None
+/// Version requirements for scaffolded LingXia crates in `native/Cargo.toml`.
+fn pinned_native_crate_reqs(project_root: &Path) -> Vec<String> {
+    let Ok(content) = fs::read_to_string(project_root.join("native").join("Cargo.toml")) else {
+        return Vec::new();
+    };
+    NATIVE_LINGXIA_CRATES
+        .iter()
+        .filter_map(|crate_name| cargo_dependency_req(&content, crate_name))
+        .collect()
 }
 
 #[cfg(test)]
@@ -919,6 +1056,15 @@ mod tests {
     }
 
     #[test]
+    fn npm_scanner_requires_an_object_key() {
+        let content = r#"{"keywords":["@lingxia/react","0.11.0"],"dependencies":{"@lingxia/react":"0.11.0"}}"#;
+        let (out, changes) = rewrite_npm_ranges(content, "~0.13.0");
+        assert_eq!(changes, vec!["@lingxia/react: 0.11.0 -> ~0.13.0"]);
+        assert!(out.contains(r#""keywords":["@lingxia/react","0.11.0"]"#));
+        assert_eq!(npm_range_specs(content), vec!["0.11.0".to_string()]);
+    }
+
+    #[test]
     fn cargo_req_is_rewritten_in_both_forms() {
         let content = "[dependencies]\nlingxia = { version = \"0.11.2\", default-features = false, features = [\"standard\"] }\nserde = \"1\"\n";
         let (out, changes) = rewrite_cargo_dep_req(content, "lingxia", "~0.12.0");
@@ -926,41 +1072,105 @@ mod tests {
         assert!(out.contains("lingxia = { version = \"~0.12.0\", default-features = false"));
         assert!(out.contains("serde = \"1\""));
 
-        let simple = "lingxia = \"0.11\"\n";
+        let simple = "[dependencies]\nlingxia = \"0.11\"\n";
         let (out, changes) = rewrite_cargo_dep_req(simple, "lingxia", "~0.12.0");
         assert_eq!(changes.len(), 1);
-        assert_eq!(out, "lingxia = \"~0.12.0\"\n");
+        assert_eq!(out, "[dependencies]\nlingxia = \"~0.12.0\"\n");
 
-        let path_only = "lingxia = { path = \"../../../crates/lingxia\" }\n";
+        let path_only = "[dependencies]\nlingxia = { path = \"../../../crates/lingxia\" }\n";
         let (out, changes) = rewrite_cargo_dep_req(path_only, "lingxia", "~0.12.0");
         assert!(changes.is_empty());
         assert_eq!(out, path_only);
 
-        let compact = "lingxia={version=\"0.11.2\",default-features=false}\n";
+        let compact = "[dependencies]\nlingxia={version=\"0.11.2\",default-features=false}\n";
         let (out, changes) = rewrite_cargo_dep_req(compact, "lingxia", "~0.13.0");
         assert_eq!(changes, vec!["lingxia: 0.11.2 -> ~0.13.0"]);
         assert_eq!(
             out,
-            "lingxia={version=\"~0.13.0\",default-features=false}\n"
+            "[dependencies]\nlingxia={version=\"~0.13.0\",default-features=false}\n"
         );
 
-        let compact_simple = "lingxia=\"0.11\"\n";
+        let compact_simple = "[dependencies]\nlingxia=\"0.11\"\n";
         let (out, changes) = rewrite_cargo_dep_req(compact_simple, "lingxia", "~0.13.0");
         assert_eq!(changes, vec!["lingxia: 0.11 -> ~0.13.0"]);
-        assert_eq!(out, "lingxia=\"~0.13.0\"\n");
+        assert_eq!(out, "[dependencies]\nlingxia=\"~0.13.0\"\n");
+    }
+
+    #[test]
+    fn cargo_rewrites_only_dependency_tables() {
+        let content = "[features]\nlingxia = [\"dep:lingxia\"]\n\n[package.metadata.dependencies]\nlingxia = \"metadata\"\n\n[target.'cfg(windows)'.dependencies]\nlingxia = { version = \"0.11.2\" }\n\n[[example]]\nlingxia = [\"metadata\"]\n";
+        let (out, changes) = rewrite_cargo_dep_req(content, "lingxia", "~0.13.0");
+        assert_eq!(changes, vec!["lingxia: 0.11.2 -> ~0.13.0"]);
+        assert!(out.contains("[features]\nlingxia = [\"dep:lingxia\"]"));
+        assert!(out.contains("[package.metadata.dependencies]\nlingxia = \"metadata\""));
+        assert!(out.contains("[[example]]\nlingxia = [\"metadata\"]"));
+        assert!(out.contains("lingxia = { version = \"~0.13.0\" }"));
+        assert_eq!(
+            cargo_dependency_req(content, "lingxia").as_deref(),
+            Some("0.11.2")
+        );
+    }
+
+    #[test]
+    fn native_plan_updates_and_diagnoses_every_scaffolded_crate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("native")).unwrap();
+        fs::write(
+            root.join("native/Cargo.toml"),
+            "[features]\nlingxia = [\"dep:lingxia\"]\n\n[dependencies]\nlingxia = { version = \"0.11.2\" }\nlingxia-control-runtime = { version = \"0.10.0\", optional = true }\nlingxia-device-io = { version = \"0.12.0\", optional = true }\n\n[build-dependencies]\nlingxia-native-codegen = { version = \"0.11.0\" }\n",
+        )
+        .unwrap();
+
+        let edits = plan(root).unwrap();
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].changes.len(), NATIVE_LINGXIA_CRATES.len());
+        assert_eq!(
+            edits[0].cargo_update,
+            NATIVE_LINGXIA_CRATES
+                .iter()
+                .map(|name| (*name).to_string())
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            edits[0]
+                .new_content
+                .contains("[features]\nlingxia = [\"dep:lingxia\"]")
+        );
+        assert_eq!(
+            pinned_native_crate_reqs(root),
+            vec!["0.11.2", "0.10.0", "0.12.0", "0.11.0"]
+        );
+        assert_eq!(project_compat_line(root), Some((0, 10)));
+    }
+
+    #[test]
+    fn non_interactive_upgrade_requires_yes() {
+        assert_eq!(
+            confirmation_without_prompt(false, false),
+            Some(ProjectConfirmation::Required)
+        );
+        assert_eq!(
+            confirmation_without_prompt(true, false),
+            Some(ProjectConfirmation::Accepted)
+        );
+        assert_eq!(confirmation_without_prompt(false, true), None);
     }
 
     #[test]
     fn windows_build_crate_req_is_rewritten() {
-        let content = "lingxia-windows-build = { version = \"0.11.2\" }\n";
+        let content = "[build-dependencies]\nlingxia-windows-build = { version = \"0.11.2\" }\n";
         let (out, changes) = rewrite_cargo_dep_req(content, "lingxia-windows-build", "~0.12.0");
         assert_eq!(changes, vec!["lingxia-windows-build: 0.11.2 -> ~0.12.0"]);
-        assert_eq!(out, "lingxia-windows-build = { version = \"~0.12.0\" }\n");
+        assert_eq!(
+            out,
+            "[build-dependencies]\nlingxia-windows-build = { version = \"~0.12.0\" }\n"
+        );
     }
 
     #[test]
     fn windows_git_ref_is_rewritten() {
-        let content = "lingxia-windows-sdk = { git = \"https://github.com/LingXia-Dev/LingXia.git\", tag = \"lingxia-crates-v0.11.2\", package = \"lingxia-windows-sdk\", default-features = false }\n";
+        let content = "[dependencies]\nlingxia-windows-sdk = { git = \"https://github.com/LingXia-Dev/LingXia.git\", tag = \"lingxia-crates-v0.11.2\", package = \"lingxia-windows-sdk\", default-features = false }\n";
         let (out, changes) = rewrite_windows_sdk_ref(content, "rev = \"abc1234\"");
         assert_eq!(changes.len(), 1);
         assert!(out.contains("rev = \"abc1234\", package"));
@@ -971,7 +1181,8 @@ mod tests {
         assert!(changes.is_empty());
         assert_eq!(again, out);
 
-        let compact = "lingxia-windows-sdk={git=\"repo\",tag=\"lingxia-crates-v0.11.2\"}\n";
+        let compact =
+            "[dependencies]\nlingxia-windows-sdk={git=\"repo\",tag=\"lingxia-crates-v0.11.2\"}\n";
         let (out, changes) = rewrite_windows_sdk_ref(compact, "rev = \"abc1234\"");
         assert_eq!(changes.len(), 1);
         assert!(out.contains("rev = \"abc1234\""));
@@ -1063,7 +1274,7 @@ mod tests {
 
     #[test]
     fn windows_git_ref_and_build_crate_compose() {
-        let content = "lingxia-windows-sdk = { git = \"https://github.com/LingXia-Dev/LingXia.git\", tag = \"lingxia-crates-v0.11.2\", package = \"lingxia-windows-sdk\", default-features = false }\nlingxia-windows-build = { version = \"0.11.2\" }\n";
+        let content = "[dependencies]\nlingxia-windows-sdk = { git = \"https://github.com/LingXia-Dev/LingXia.git\", tag = \"lingxia-crates-v0.11.2\", package = \"lingxia-windows-sdk\", default-features = false }\n\n[build-dependencies]\nlingxia-windows-build = { version = \"0.11.2\" }\n";
         let (mid, sdk_changes) = rewrite_windows_sdk_ref(content, "rev = \"abc1234\"");
         let (out, build_changes) = rewrite_cargo_dep_req(&mid, "lingxia-windows-build", "~0.12.0");
         assert_eq!(sdk_changes.len(), 1);
@@ -1105,7 +1316,7 @@ mod tests {
         fs::create_dir_all(root.join("native")).unwrap();
         fs::write(
             root.join("native/Cargo.toml"),
-            "lingxia = { version = \"0.11.2\" }\n",
+            "[dependencies]\nlingxia = { version = \"0.11.2\" }\n",
         )
         .unwrap();
         fs::create_dir_all(root.join("android/app")).unwrap();
@@ -1124,7 +1335,7 @@ mod tests {
         fs::create_dir_all(root.join("windows")).unwrap();
         fs::write(
             root.join("windows/Cargo.toml"),
-            "lingxia-windows-sdk = { git = \"https://github.com/LingXia-Dev/LingXia.git\", tag = \"lingxia-crates-v0.11.2\", package = \"lingxia-windows-sdk\" }\n",
+            "[dependencies]\nlingxia-windows-sdk = { git = \"https://github.com/LingXia-Dev/LingXia.git\", tag = \"lingxia-crates-v0.11.2\", package = \"lingxia-windows-sdk\" }\n",
         )
         .unwrap();
         assert_eq!(pinned_windows_sdk_version(root).as_deref(), Some("0.11.2"));
