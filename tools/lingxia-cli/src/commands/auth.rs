@@ -65,7 +65,7 @@ struct StoreIdentityJson {
 }
 
 #[derive(Serialize)]
-struct PublishEntryJson {
+struct LingxiaCredentialJson {
     server: String,
     env: String,
 }
@@ -79,7 +79,7 @@ struct StatusJson {
     apple_teams: Vec<AppleTeamJson>,
     harmony_identities: Vec<String>,
     store_identities: Vec<StoreIdentityJson>,
-    publish_entries: Vec<PublishEntryJson>,
+    lingxia_credentials: Vec<LingxiaCredentialJson>,
 }
 
 /// `lingxia auth status`: per-channel project view (inside a project) plus the
@@ -143,10 +143,10 @@ pub fn auth_status(json: bool) -> Result<bool> {
                 .collect(),
             harmony_identities: wallet.harmony_identities()?,
             store_identities,
-            publish_entries: wallet
+            lingxia_credentials: wallet
                 .publish_entries()?
                 .into_iter()
-                .map(|(server, env)| PublishEntryJson { server, env })
+                .map(|(server, env)| LingxiaCredentialJson { server, env })
                 .collect(),
         };
         println!("{}", serde_json::to_string_pretty(&payload)?);
@@ -185,10 +185,10 @@ pub fn auth_status(json: bool) -> Result<bool> {
     harmony_status()?;
     println!();
     stores::stores_status()?;
-    let publish_entries = crate::wallet::Wallet::open()?.publish_entries()?;
-    if !publish_entries.is_empty() {
-        println!("{}", "Publish".cyan().bold());
-        for (server, env) in publish_entries {
+    let lingxia_credentials = crate::wallet::Wallet::open()?.publish_entries()?;
+    if !lingxia_credentials.is_empty() {
+        println!("{}", "LingXia".cyan().bold());
+        for (server, env) in lingxia_credentials {
             println!("  {server}  ({env})");
         }
     }

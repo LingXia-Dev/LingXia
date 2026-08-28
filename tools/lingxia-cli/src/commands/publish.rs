@@ -148,7 +148,7 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     }
 }
 
-/// `lingxia auth login publish`: store the token in the wallet, keyed by the
+/// `lingxia auth login lingxia`: store the token in the wallet, keyed by the
 /// canonical server URL + env — the project already names the server and env,
 /// so publish never asks which token to use. `--server` also saves the
 /// machine-wide server default for lxapp projects without a `lingxia.yaml`.
@@ -209,7 +209,7 @@ pub fn publish_login(
     Ok(())
 }
 
-/// `lingxia auth logout publish`: remove the stored token for (server, env).
+/// `lingxia auth logout lingxia`: remove the stored token for (server, env).
 pub fn publish_logout(server: Option<String>, env: Option<String>) -> Result<()> {
     let env = env
         .as_deref()
@@ -606,7 +606,7 @@ fn resolve_token(channel: Option<&str>, server: &str, token_arg: Option<String>)
         return Ok(token);
     }
     bail!(
-        "No publish token for {canonical} ({}). Fix: lingxia auth login publish --env {} --token <token>",
+        "No LingXia publish token for {canonical} ({}). Fix: lingxia auth login lingxia --env {} --token <token>",
         env_version.as_str(),
         env_version.as_str()
     );

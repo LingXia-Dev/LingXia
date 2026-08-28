@@ -13,13 +13,13 @@ Publish a package to the **LingXia server** (not an OS app store — that's
 it. An lxapp publish packages the current project first and defaults to the
 `developer` env when `--env` is omitted; only host-app publish accepts a
 prebuilt package path. Authenticates with a bearer token: the `--token` flag,
-or `[publish] token` in `~/.lingxia/cli/config.toml`.
+`LINGXIA_PUBLISH_TOKEN`, or the LingXia credential wallet.
 
 See `lingxia publish --help` for the flags.
 
 **Publish tokens (wallet):**
 
-Store the token once with `lingxia auth login publish --env release --token …`;
+Store the token once with `lingxia auth login lingxia --env release --token …`;
 it is keyed by the canonical server URL + env, so the project's server and the
 package's `--env`/`--channel` pick the right token automatically (`developer`
 when omitted for lxapp publish; host-app publish reads the package's
@@ -32,7 +32,7 @@ need not pass `--lingxia-server` on every publish. The flag (and project
 `app.lingxiaServer`) take precedence. The value follows the same shape as
 `app.lingxiaServer` in `lingxia.yaml`: a scalar applies to every env, an
 env-keyed map is explicit per env with no fallback for envs it omits. The file
-is CLI-managed — `lingxia auth login publish --server …` writes it, hand
+is CLI-managed — `lingxia auth login lingxia --server …` writes it, hand
 comments are lost.
 
 ```toml
@@ -139,6 +139,8 @@ provider; commands pick the right credential automatically from the project:
 
 - `lingxia auth login apple|harmony` — add or refresh credentials (Apple modes:
   `key`, `password`, `developer-id`)
+- `lingxia auth login/logout lingxia` — add or remove a LingXia Server publish
+  token; `lingxia publish` consumes it
 - `lingxia auth logout apple|harmony` — remove them
 - `lingxia auth status [--json]` — per-project diagnosis plus the wallet view
 - `lingxia auth forget --platform <channel>` — drop this checkout's automatic

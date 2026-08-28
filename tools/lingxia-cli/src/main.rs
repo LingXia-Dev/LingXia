@@ -500,7 +500,7 @@ enum Commands {
 
     /// Publish a package to the LingXia server
     ///
-    /// Tokens come from the wallet (`lingxia auth login publish`), keyed by
+    /// Tokens come from the wallet (`lingxia auth login lingxia`), keyed by
     /// the server URL + env.
     Publish {
         #[command(flatten)]
@@ -510,8 +510,8 @@ enum Commands {
 
 #[derive(clap::Args)]
 struct PublishArgs {
-    /// Bearer token for authentication. Falls back to `[publish] token` in
-    /// `~/.lingxia/cli/config.toml` when omitted.
+    /// Bearer token for authentication. Falls back to
+    /// `LINGXIA_PUBLISH_TOKEN`, then the LingXia credential wallet.
     #[arg(long)]
     token: Option<String>,
 
@@ -696,8 +696,8 @@ enum AuthLoginProvider {
         #[arg(short = 'y', long)]
         yes: bool,
     },
-    /// LingXia server publish token (keyed by server URL + env)
-    Publish {
+    /// LingXia service credentials (publish token keyed by server URL + env)
+    Lingxia {
         /// Server URL (defaults to the project / machine-wide server for --env)
         #[arg(long)]
         server: Option<String>,
@@ -752,8 +752,8 @@ enum AuthLogoutProvider {
         #[arg(long)]
         identity: Option<String>,
     },
-    /// Remove a stored publish token
-    Publish {
+    /// Remove LingXia service credentials for a server + env
+    Lingxia {
         /// Server URL (defaults to the project / machine-wide server for --env)
         #[arg(long)]
         server: Option<String>,
@@ -1117,7 +1117,7 @@ fn main() -> Result<()> {
                         },
                     )?;
                 }
-                AuthLoginProvider::Publish { server, token, env } => {
+                AuthLoginProvider::Lingxia { server, token, env } => {
                     commands::publish::publish_login(server, token, env)?;
                 }
             },
@@ -1143,7 +1143,7 @@ fn main() -> Result<()> {
                 AuthLogoutProvider::Msstore { identity } => {
                     commands::auth::store_logout("msstore", identity)?;
                 }
-                AuthLogoutProvider::Publish { server, env } => {
+                AuthLogoutProvider::Lingxia { server, env } => {
                     commands::publish::publish_logout(server, env)?;
                 }
             },
@@ -1189,6 +1189,36 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod cli_tests {
     use super::*;
+
+    #[test]
+    fn lingxia_credentials_are_named_for_the_provider_not_the_publish_action() {
+        let cli = Cli::try_parse_from([
+            "lingxia",
+            "auth",
+            "login",
+            "lingxia",
+            "--server",
+            "https://api.lingxia.app",
+            "--token",
+            "token",
+            "--env",
+            "release",
+        ])
+        .unwrap();
+        let Commands::Auth {
+            action: AuthAction::Login {
+                provider: login_provider,
+            },
+        } = cli.command
+        else {
+            panic!("expected LingXia credential login");
+        };
+        assert!(matches!(*login_provider, AuthLoginProvider::Lingxia { .. }));
+
+        assert!(Cli::try_parse_from(["lingxia", "auth", "logout", "lingxia"]).is_ok());
+        assert!(Cli::try_parse_from(["lingxia", "auth", "login", "publish"]).is_err());
+        assert!(Cli::try_parse_from(["lingxia", "auth", "logout", "publish"]).is_err());
+    }
 
     #[test]
     fn new_accepts_git_opt_out() {

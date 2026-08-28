@@ -408,7 +408,7 @@ impl Wallet {
             .collect();
         Ok(self
             .root
-            .join("publish")
+            .join("lingxia")
             .join(hash)
             .join(format!("{env}.json")))
     }
@@ -453,7 +453,7 @@ impl Wallet {
 
     /// All stored publish tokens as `(server, env)` pairs, for status output.
     pub fn publish_entries(&self) -> Result<Vec<(String, String)>> {
-        let root = self.root.join("publish");
+        let root = self.root.join("lingxia");
         let mut entries = Vec::new();
         let dirs = match fs::read_dir(&root) {
             Ok(dirs) => dirs,
@@ -728,9 +728,10 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
-        wallet
+        let path = wallet
             .save_publish_token(server, "release", "tok1")
             .unwrap();
+        assert!(path.starts_with(tmp.path().join("credentials").join("lingxia")));
         assert_eq!(
             wallet
                 .load_publish_token(server, "release")
