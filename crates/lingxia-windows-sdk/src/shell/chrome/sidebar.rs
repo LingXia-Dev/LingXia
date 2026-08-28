@@ -116,6 +116,13 @@ fn draw_tab_bar_inner(
             bottom: icon_top + BOTTOM_TAB_ICON_SIZE,
         };
 
+        // The indicator belongs to the bar, not to an item's artwork, so every
+        // slot gets it when selected — "more" included, or a folded selection
+        // would look unlike every other one.
+        if selected {
+            draw_active_indicator(hdc, icon_rect, tabbar);
+        }
+
         let drew_icon = if is_more {
             // The overflow glyph is shell chrome, so it tints with the strip
             // instead of coming from the lxapp's bundle.
@@ -129,11 +136,6 @@ fn draw_tab_bar_inner(
             true
         } else {
             let Some(item) = item else { continue };
-            // The indicator belongs to the bar, not to an item's artwork:
-            // whatever is selected gets it.
-            if selected {
-                draw_active_indicator(hdc, icon_rect, tabbar);
-            }
             // Phone tab cell: the item's single icon stacked over its label,
             // both centered.
             let icon_path = item.icon_path.as_str();

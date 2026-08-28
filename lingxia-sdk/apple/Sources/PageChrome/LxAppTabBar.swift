@@ -85,203 +85,8 @@ struct TabBarHelper {
     }
 }
 
-/// Unified SwiftUI TabBar for iOS and macOS
 /// Badge / red-dot red, unified across iOS, Android, and Harmony (#FA5151).
 let lxBadgeRed = Color(red: 0xFA / 255.0, green: 0x51 / 255.0, blue: 0x51 / 255.0)
-
-struct LxAppTabBar: View {
-    let appId: String
-    let config: TabBar
-    @Binding var selectedIndex: Int
-    let onTabSelected: (Int, String) -> Void
-    // Simple refresh trigger for UI updates
-    @State private var refreshTrigger = false
-
-    init(
-        appId: String,
-        config: TabBar,
-        selectedIndex: Binding<Int>,
-        onTabSelected: @escaping (Int, String) -> Void
-    ) {
-        self.appId = appId
-        self.config = config
-        self._selectedIndex = selectedIndex
-        self.onTabSelected = onTabSelected
-    }
-
-    var body: some View {
-        // Get fresh data from Rust every time body is called
-        let items = config.getItems(appId: appId)
-
-        Group {
-            switch config.positionEnum {
-            case .bottom:
-                buildHorizontalTabBar(items: items)
-                    .frame(height: config.dimensionPoints)
-
-            case .left, .right:
-                buildVerticalTabBar(items: items)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .background(getTabBarBackgroundColor())
-        .id("tabbar-\(selectedIndex)-\(refreshTrigger)")
-    }
-
-    @ViewBuilder
-    private func buildHorizontalTabBar(items: [TabBarItem]) -> some View {
-        HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                buildTabItem(item: item, index: index)
-                    .frame(maxWidth: .infinity)
-            }
-        }
-        .padding(.horizontal, LxAppTheme.Metrics.largeSpacing)
-    }
-
-    @ViewBuilder
-    private func buildVerticalTabBar(items: [TabBarItem]) -> some View {
-        VStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                buildTabItem(item: item, index: index)
-            }
-        }
-        .padding(.vertical, LxAppTheme.Metrics.largeSpacing)
-    }
-
-    @ViewBuilder
-    private func buildTabItem(item: TabBarItem, index: Int) -> some View {
-        let isSelected = (index == selectedIndex)
-        // Get state directly from Rust
-        let rustItem = getTabBarItem(appId, Int32(index))
-
-        let forceColor = isSelected ?
-            Color(PlatformColor(argb: config.selected_color)) :
-            Color(PlatformColor(argb: config.color))
-
-        Button(action: {
-            // Always trigger callback - let parent decide if action is needed
-            onTabSelected(index, item.cachedPagePath)
-        }) {
-            VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
-                // Tab icon with badge and red dot overlay
-                ZStack {
-                    // The indicator belongs to the bar, not to an item's
-                    // artwork: whatever is selected gets it.
-                    if isSelected {
-                        Circle()
-                            .fill(Color(PlatformColor(argb: config.selected_color))
-                                .opacity(TabBarMetrics.activeIndicatorOpacity))
-                            .frame(
-                                width: TabBarMetrics.activeIndicatorSize,
-                                height: TabBarMetrics.activeIndicatorSize
-                            )
-                    }
-
-                    if !item.cachedIconPath.isEmpty {
-                        buildTabIcon(item: item, isSelected: isSelected, forceColor: forceColor)
-                    }
-
-                    // Badge overlay (from Rust state)
-                    if let rustItem = rustItem, !rustItem.badge.toString().isEmpty {
-                        TabBarHelpers.buildBadge(text: rustItem.badge.toString())
-                            .offset(x: 16, y: -6)
-                    }
-                    // Red dot overlay (only show if no badge)
-                    else if let rustItem = rustItem, rustItem.has_red_dot {
-                        TabBarHelpers.buildRedDot()
-                            .offset(x: 16, y: -4)
-                    }
-                }
-
-                // Tab title
-                if !item.cachedText.isEmpty {
-                    Text(item.cachedText)
-                        .font(LxAppTheme.Typography.tabTitle)
-                        .foregroundColor(forceColor)
-                        .lineLimit(1)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, LxAppTheme.Metrics.smallSpacing)
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-
-    @ViewBuilder
-    private func buildTabIcon(item: TabBarItem, isSelected: Bool, forceColor: Color) -> some View {
-        let iconPath = item.cachedIconPath
-
-        let iconColor = forceColor
-
-        if iconPath.hasPrefix("SF:") {
-            let symbolName = String(iconPath.dropFirst(3))
-            Image(systemName: symbolName)
-                .font(.system(size: LxAppTheme.Metrics.tabIconSize))
-                .foregroundColor(iconColor)
-        } else if iconPath.hasPrefix("/") {
-            if let image = loadPlatformImage(from: iconPath) {
-                image
-                    .renderingMode(.template)
-                    .resizable()
-                    .frame(width: LxAppTheme.Metrics.tabIconSize, height: LxAppTheme.Metrics.tabIconSize)
-                    .foregroundColor(iconColor)
-            }
-        } else {
-            if let bundleImage = loadBundleImage(named: iconPath) {
-                bundleImage
-                    .renderingMode(.template)
-                    .resizable()
-                    .frame(width: LxAppTheme.Metrics.tabIconSize, height: LxAppTheme.Metrics.tabIconSize)
-                    .foregroundColor(iconColor)
-            } else {
-                let resourcesPath = getResourcesPath()
-                let fullPath = "\(resourcesPath)/\(appId)/\(iconPath)"
-                if let resourceImage = loadPlatformImage(from: fullPath) {
-                    resourceImage
-                        .resizable()
-                        .frame(width: LxAppTheme.Metrics.tabIconSize, height: LxAppTheme.Metrics.tabIconSize)
-                        .foregroundColor(iconColor)
-                }
-            }
-        }
-    }
-
-    private func getResourcesPath() -> String {
-        return Bundle.main.resourcePath ?? ""
-    }
-
-    private func loadPlatformImage(from path: String) -> Image? {
-        #if os(iOS)
-        if let uiImage = UIImage(contentsOfFile: path) {
-            return Image(uiImage: uiImage)
-        }
-        #else
-        if let nsImage = NSImage(contentsOfFile: path) {
-            return Image(nsImage: nsImage)
-        }
-        #endif
-        return nil
-    }
-
-    private func loadBundleImage(named name: String) -> Image? {
-        #if os(iOS)
-        if let uiImage = UIImage(named: name) {
-            return Image(uiImage: uiImage)
-        }
-        #else
-        if let nsImage = NSImage(named: name) {
-            return Image(nsImage: nsImage)
-        }
-        #endif
-        return nil
-    }
-
-    private func getTabBarBackgroundColor() -> Color {
-        let platformColor = PlatformColor(argb: config.background_color)
-        return Color(platformColor)
-    }
-}
 
 /// macOS TabBar that accepts external state manager
 struct MacOSLxAppTabBar: View {
@@ -445,6 +250,18 @@ struct MacOSLxAppTabBar: View {
         Button(action: onMoreRequested) {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
                 ZStack {
+                    // "More" is a slot like any other: a folded selection must
+                    // not look unlike a direct one.
+                    if isSelected {
+                        Circle()
+                            .fill(Color(PlatformColor(argb: config.selected_color))
+                                .opacity(TabBarMetrics.activeIndicatorOpacity))
+                            .frame(
+                                width: TabBarMetrics.activeIndicatorSize,
+                                height: TabBarMetrics.activeIndicatorSize
+                            )
+                    }
+
                     Image(systemName: "ellipsis")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -744,16 +561,9 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(stackView)
 
-        // Rust caps how many items a compact strip shows; past that the last
-        // slot becomes the overflow affordance and stands in for the rest.
-        let overflowStart = overflowStart(itemCount: items.count, config: config)
-        let stripCount = overflowStart >= 0 ? overflowStart : items.count
-        for index in 0..<stripCount {
-            let tabView = createUIKitTabItem(item: items[index], index: index, config: config)
+        for (index, item) in items.enumerated() {
+            let tabView = createUIKitTabItem(item: item, index: index, config: config)
             stackView.addArrangedSubview(tabView)
-        }
-        if overflowStart >= 0 {
-            stackView.addArrangedSubview(createUIKitMoreItem(config: config, overflowStart: overflowStart))
         }
 
         NSLayoutConstraint.activate([
@@ -773,9 +583,16 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(stackView)
 
-        for (index, item) in items.enumerated() {
-            let tabView = createUIKitTabItem(item: item, index: index, config: config)
+        // Rust caps how many items a compact strip shows; past that the last
+        // slot becomes the overflow affordance and stands in for the rest.
+        let overflowStart = overflowStart(itemCount: items.count, config: config)
+        let stripCount = overflowStart >= 0 ? overflowStart : items.count
+        for index in 0..<stripCount {
+            let tabView = createUIKitTabItem(item: items[index], index: index, config: config)
             stackView.addArrangedSubview(tabView)
+        }
+        if overflowStart >= 0 {
+            stackView.addArrangedSubview(createUIKitMoreItem(config: config, overflowStart: overflowStart))
         }
 
         NSLayoutConstraint.activate([
@@ -969,6 +786,22 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
 
         let iconContainer = UIView()
         iconContainer.translatesAutoresizingMaskIntoConstraints = false
+        // "More" is a slot like any other: a folded selection must not look
+        // unlike a direct one.
+        if isSelected {
+            let indicator = UIView()
+            indicator.backgroundColor = PlatformColor(argb: config.selected_color)
+                .withAlphaComponent(TabBarMetrics.activeIndicatorOpacity)
+            indicator.layer.cornerRadius = TabBarMetrics.activeIndicatorSize / 2
+            indicator.translatesAutoresizingMaskIntoConstraints = false
+            iconContainer.addSubview(indicator)
+            NSLayoutConstraint.activate([
+                indicator.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
+                indicator.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
+                indicator.widthAnchor.constraint(equalToConstant: TabBarMetrics.activeIndicatorSize),
+                indicator.heightAnchor.constraint(equalToConstant: TabBarMetrics.activeIndicatorSize)
+            ])
+        }
         let iconView = UIImageView(image: UIImage(systemName: "ellipsis"))
         iconView.contentMode = .scaleAspectFit
         iconView.tintColor = tint

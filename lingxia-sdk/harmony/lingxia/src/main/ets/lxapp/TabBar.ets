@@ -348,6 +348,16 @@ export struct TabBar {
   buildMoreItem() {
     Column() {
       Stack() {
+        // "More" is a slot like any other: a folded selection must not look
+        // unlike a direct one.
+        if (this.isMoreSelected()) {
+          Circle()
+            .width(TAB_BAR_ACTIVE_INDICATOR_SIZE)
+            .height(TAB_BAR_ACTIVE_INDICATOR_SIZE)
+            .fill(this.getSelectedColor())
+            .opacity(TAB_BAR_ACTIVE_INDICATOR_OPACITY)
+        }
+
         Row({ space: TAB_BAR_MORE_DOT_SPACING }) {
           Circle()
             .width(TAB_BAR_MORE_DOT_SIZE)
