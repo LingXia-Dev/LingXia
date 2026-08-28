@@ -7,7 +7,14 @@ import UIKit
 final class InlineNativeIsland {
     static let allowedKinds: Set<String> = ["root", "view", "text", "tappable", "slider", "video"]
 
+    static func isIslandAction(_ action: String) -> Bool {
+        action == "root.commit" || action == "geometry.snapshot"
+            || action == "root.leaseAccept" || action == "video.command"
+    }
+
     private let container = IslandContainerView()
+    private weak var manager: NativeComponentManager?
+    private weak var host: UIView?
     private var nodes: [String: IslandNode] = [:]
     private(set) var lastAppliedRevision: UInt64 = 0
     private let eventSink: (_ componentId: String, _ event: String, _ detail: [String: Any]) -> Void
@@ -16,20 +23,35 @@ final class InlineNativeIsland {
     private var leaseId = ""
     private var leaseSequence: UInt64 = 1
     private var lastRoot: [String: Any]?
+    private var pageActive = true
     private var pendingOutgoing: [[String: Any]] = []
 
     init(
         host: UIView,
+        manager: NativeComponentManager,
         eventSink: @escaping (_ componentId: String, _ event: String, _ detail: [String: Any]) -> Void
     ) {
+        self.manager = manager
+        self.host = host
         self.eventSink = eventSink
         container.isUserInteractionEnabled = true
-        container.clipsToBounds = true
+        // The overlay host pins to the scroll view's content layout guide, which
+        // resolves empty because nothing sizes it; clipping to it erases the island.
+        container.clipsToBounds = false
         if container.superview == nil {
             host.addSubview(container)
-            container.frame = host.bounds
-            container.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         }
+        syncContainerFrame()
+    }
+
+    /// Cover every committed node so the container both paints and hit-tests.
+    private func syncContainerFrame() {
+        var size = host?.bounds.size ?? .zero
+        for node in nodes.values where node.visible {
+            size.width = max(size.width, node.rect.maxX)
+            size.height = max(size.height, node.rect.maxY)
+        }
+        container.frame = CGRect(origin: .zero, size: size)
     }
 
     func handle(message: [String: Any]) -> Bool {
@@ -56,6 +78,15 @@ final class InlineNativeIsland {
         let outgoing = pendingOutgoing
         pendingOutgoing.removeAll()
         return outgoing
+    }
+
+    /// Hide the island while its page is not the interactive one: a native surface
+    /// outlives the WebView's own visibility, and a visible node on an inactive page
+    /// still answers hit tests meant for the page now on screen.
+    func setPageActive(_ active: Bool) {
+        pageActive = active
+        container.isHidden = !active
+        nodes.values.forEach(applyFrame)
     }
 
     /// Remove the island tree when its WebView is being destroyed.
@@ -102,6 +133,7 @@ final class InlineNativeIsland {
             }
         }
         restack()
+        syncContainerFrame()
         if let revision = message["revision"] as? UInt64 {
             lastAppliedRevision = revision
         } else if let revision = message["revision"] as? Int {
@@ -130,6 +162,7 @@ final class InlineNativeIsland {
             node.visible = entry["visible"] as? Bool ?? true
             applyFrame(node)
         }
+        syncContainerFrame()
     }
 
     private func acceptLease(_ message: [String: Any]) {
@@ -208,6 +241,9 @@ final class InlineNativeIsland {
         }
         applyProps(item)
         applyFrame(item)
+        if item.kind == "tappable" || item.kind == "slider" || item.kind == "video" {
+            manager?.registerIslandTouchTarget(item.view)
+        }
     }
 
     private func update(_ operation: [String: Any]) {
@@ -229,14 +265,17 @@ final class InlineNativeIsland {
     private func factoryView(_ item: IslandNode) {
         switch item.kind {
         case "video":
-            let video = VideoComponent(id: item.authorId, initialProps: item.props) { [weak self] event in
+            // The player retains this sink for its lifetime, so hold the node weakly.
+            let authorId = item.authorId
+            let video = VideoComponent(id: authorId, initialProps: item.props) { [weak self] event in
                 guard let name = event["event"] as? String else { return }
                 let detail = event["detail"] as? [String: Any] ?? [:]
-                self?.eventSink(item.authorId, name, detail)
+                self?.eventSink(authorId, name, detail)
             }
             video.mount(in: container)
             item.video = video
             item.view = video.view
+            manager?.attachIslandVideo(id: item.authorId, component: video)
             return
         case "text":
             let label = UILabel()
@@ -246,7 +285,7 @@ final class InlineNativeIsland {
         case "tappable":
             let button = IslandButton(frame: .zero)
             button.addAction(UIAction { [weak self, weak item] _ in
-                guard let item, !(item.props["disabled"] as? Bool ?? false) else { return }
+                guard let item, !(self?.boolValue(item.props["disabled"]) ?? false) else { return }
                 self?.eventSink(item.authorId, "press", ["source": "pointer"])
             }, for: .touchUpInside)
             item.button = button
@@ -436,10 +475,36 @@ final class InlineNativeIsland {
     }
 
     private func applyFrame(_ item: IslandNode) {
-        item.view.frame = item.rect
-        item.view.isHidden = !item.visible || item.rect.width <= 0 || item.rect.height <= 0
+        // A fullscreen video lives in its own window until it exits; leave its layout alone.
+        guard item.view.superview === container else { return }
+        let rect = textFittedRect(item)
+        if let video = item.video {
+            // The player owns its view's layout: assigning the frame here first makes
+            // its own setFrame a no-op, leaving the player layer at zero bounds.
+            video.setFrame(rect)
+        } else {
+            item.view.frame = rect
+        }
+        item.view.isHidden = !pageActive || !item.visible || item.rect.width <= 0 || item.rect.height <= 0
         item.scrim?.frame = item.view.bounds
-        item.video?.setFrame(item.rect)
+    }
+
+    /// Web and native shapers space the same nominal font differently, so a box the
+    /// page measured can fall a few points short. Widen rather than drop characters.
+    private func textFittedRect(_ item: IslandNode) -> CGRect {
+        guard item.kind == "text", let label = item.label, item.rect.width > 0 else { return item.rect }
+        let fitting = label.sizeThatFits(
+            CGSize(width: CGFloat.greatestFiniteMagnitude, height: item.rect.height)
+        ).width
+        guard fitting > item.rect.width else { return item.rect }
+        var rect = item.rect
+        switch label.textAlignment {
+        case .center: rect.origin.x -= (fitting - rect.width) / 2
+        case .right: rect.origin.x -= fitting - rect.width
+        default: break
+        }
+        rect.size.width = ceil(fitting)
+        return rect
     }
 
     private func restack() {
@@ -447,13 +512,19 @@ final class InlineNativeIsland {
             if lhs.order != rhs.order { return lhs.order < rhs.order }
             return lhs.key < rhs.key
         }
-        for (index, node) in ordered.enumerated() {
+        var index = 0
+        for node in ordered where node.view.superview === container {
             container.insertSubview(node.view, at: index)
+            index += 1
         }
     }
 
     private func removeNode(_ key: String) {
         guard let node = nodes.removeValue(forKey: key) else { return }
+        manager?.unregisterIslandTouchTarget(node.view)
+        if node.video != nil {
+            manager?.detachIslandVideo(id: node.authorId)
+        }
         node.video?.unmount()
         node.view.removeFromSuperview()
     }
@@ -486,12 +557,31 @@ final class InlineNativeIsland {
         return NativeComponentColorStyle.parseColor(raw)
     }
 
+    /// Map the CSS weight onto the full system scale: collapsing everything above
+    /// 500 to `.bold` renders text wider than the CSS box it was measured into.
     private func fontWeight(_ value: Any?) -> UIFont.Weight {
-        if let number = value as? NSNumber {
-            return number.intValue >= 600 ? .bold : .regular
+        switch cssFontWeight(value) {
+        case ..<200: return .ultraLight
+        case ..<300: return .thin
+        case ..<400: return .light
+        case ..<500: return .regular
+        case ..<600: return .medium
+        case ..<700: return .semibold
+        case ..<800: return .bold
+        case ..<900: return .heavy
+        default: return .black
         }
-        let raw = (value as? String)?.lowercased() ?? ""
-        return raw == "bold" || raw == "bolder" || (Int(raw) ?? 400) >= 600 ? .bold : .regular
+    }
+
+    private func cssFontWeight(_ value: Any?) -> Int {
+        if let number = value as? NSNumber { return number.intValue }
+        switch (value as? String)?.lowercased() {
+        case "lighter": return 300
+        case "normal", .none, .some(""): return 400
+        case "bold": return 700
+        case "bolder": return 800
+        case .some(let raw): return Int(raw) ?? 400
+        }
     }
 
     private func sliderValue(_ item: IslandNode, proposed: Double) -> Double {
@@ -556,7 +646,11 @@ final class InlineNativeIsland {
 
     private func boolValue(_ value: Any?) -> Bool {
         if let flag = value as? Bool { return flag }
-        if let text = value as? String { return text == "true" || text == "1" }
+        // `reflectBoolean` writes a bare attribute as "", which parseBooleanAttr reads as true.
+        if let text = value as? String {
+            let normalized = text.trimmingCharacters(in: .whitespaces).lowercased()
+            return normalized == "" || normalized == "true" || normalized == "1"
+        }
         if let number = value as? NSNumber { return number.boolValue }
         return false
     }
