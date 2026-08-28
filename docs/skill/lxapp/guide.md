@@ -587,10 +587,9 @@ Add a `tabBar` block alongside `pages`:
     },
     "items": [
       {
-        "text":             "Home",
-        "pagePath":         "pages/home/index",
-        "iconPath":         "public/home.png",
-        "selectedIconPath": "public/home_selected.png"
+        "text":     "Home",
+        "pagePath": "pages/home/index",
+        "iconPath": "public/home.png"
       },
       {
         "text":     "Profile",
@@ -616,28 +615,42 @@ Rules:
 
 ### One icon per tab is enough
 
-`selectedIconPath` is optional, and leaving it out is the cheaper path: ship a
-single `iconPath` and the host marks the active tab with a rounded **active
-indicator** behind the icon, the way a Material navigation bar does. You get a
-working selected state without drawing, exporting, and version-matching a second
-set of artwork.
-
-```json
-{ "text": "Home", "pagePath": "pages/home/index", "iconPath": "public/home.png" }
-```
+`selectedIconPath` is optional, and leaving it out is the cheaper path — the
+example above does. Ship a single `iconPath` and the host marks the active tab
+with a rounded **active indicator** behind the icon, the way a Material
+navigation bar does. You get a working selected state without drawing,
+exporting, and version-matching a second set of artwork.
 
 Supply `selectedIconPath` only when the icon itself should change — a filled
-version of an outlined glyph, say. Then the swap *is* the selected state and no
-indicator is drawn. The choice is per item, so a bar can mix both, though one
-style throughout usually looks better.
+version of an outlined glyph, say:
+
+```json
+{
+  "text":             "Home",
+  "pagePath":         "pages/home/index",
+  "iconPath":         "public/home.png",
+  "selectedIconPath": "public/home_filled.png"
+}
+```
+
+Then the swap *is* the selected state and no indicator is drawn. The choice is
+per item, so a bar can mix both, though one style throughout usually looks
+better.
 
 ### More than five tabs on a phone
 
 A phone-sized strip only has room for five slots. Declare more than five items
-and the host renders the first four, then a **More** slot that opens the
-remaining items in a panel above the bar; picking one there switches to it like
-any other tab. The split is host-owned — there is nothing to configure and no
-API to open the panel.
+and the host renders the first four, then a **More** slot holding the rest:
+
+- **Phone** hosts (Android, iOS, Harmony, and the runner's phone shapes) open
+  the folded items in a panel above the bar; picking one switches to it like any
+  other tab.
+- **Desktop and tablet** hosts have the room and show every item — macOS and
+  Windows in their sidebar, the runner's pad and desktop shapes likewise. The
+  More slot is a compact-layout affordance only.
+
+The split is host-owned. There is nothing to configure and no API to open the
+panel; a host decides from its own shape whether it is folding at all.
 
 What follows from that:
 
@@ -647,8 +660,9 @@ What follows from that:
   panel marks the active item.
 - A badge or red dot on a folded item shows as a red dot on the More slot, so
   notifications are never hidden.
-- Desktop hosts have room for the whole list and show every item in their
-  sidebar — the More slot is a compact-layout affordance only.
+- Only the items holding a slot are warmed at launch. Folded pages load on
+  first pick, so a ten-tab lxapp starts no slower than a four-tab one — one
+  more reason to order the list by how often a page is used.
 
 ### Switching tabs at runtime
 
