@@ -1201,6 +1201,9 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
 
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
+        // The WebView sibling is layer-backed, and AppKit draws layer-backed
+        // views over non-layer-backed ones whatever the subview order says.
+        container.wantsLayer = true
 
         let scrim = NSView()
         scrim.translatesAutoresizingMaskIntoConstraints = false
@@ -1223,9 +1226,19 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         ) { [weak self] index, _ in
             self?.setSelectedIndex(index, notifyListener: true)
         }
-        let panel = NSHostingView(rootView: grid)
+        // An immersive bar is transparent; the panel is a surface of its own
+        // and needs a plate, or the folded items float over the page.
+        let panel = NSView()
         panel.translatesAutoresizingMaskIntoConstraints = false
+        panel.wantsLayer = true
+        panel.layer?.backgroundColor = TabBarHelper.isTransparent(config.background_color)
+            ? NSColor.windowBackgroundColor.cgColor
+            : PlatformColor(argb: config.background_color).cgColor
         container.addSubview(panel)
+
+        let hosted = NSHostingView(rootView: grid)
+        hosted.translatesAutoresizingMaskIntoConstraints = false
+        panel.addSubview(hosted)
 
         host.addSubview(container, positioned: .above, relativeTo: nil)
         NSLayoutConstraint.activate([
@@ -1241,7 +1254,11 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
             // stays inside the simulated screen rather than the whole window.
             panel.bottomAnchor.constraint(equalTo: topAnchor),
             panel.leadingAnchor.constraint(equalTo: leadingAnchor),
-            panel.trailingAnchor.constraint(equalTo: trailingAnchor)
+            panel.trailingAnchor.constraint(equalTo: trailingAnchor),
+            hosted.topAnchor.constraint(equalTo: panel.topAnchor),
+            hosted.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
+            hosted.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
+            hosted.bottomAnchor.constraint(equalTo: panel.bottomAnchor)
         ])
         overflowPanel = container
     }
