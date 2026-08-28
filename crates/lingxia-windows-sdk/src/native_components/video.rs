@@ -219,6 +219,11 @@ pub(super) fn mount_windowless_island_video(
     apply_video_props(&key, &props);
     if should_play {
         player.play();
+        // `component.ready` often lands before this mount. Replay so
+        // `play`/`playing` are queued or posted without waiting for
+        // `MFP_EVENT_TYPE_PLAY` (the off-screen WS_DISABLED EVR may never
+        // fire it).
+        replay_island_playback_after_ready(&key);
     }
     true
 }
@@ -265,6 +270,39 @@ pub(super) fn sync_island_video_playback(key: &str, props: &ComponentProps) {
         emit_event(key, "play", json!({}));
         emit_event(key, "playing", json!({}));
     }
+}
+
+/// Island autoplay: the disabled off-screen EVR often never delivers PLAY.
+/// If the player already wants playback, mark it playing and emit the
+/// events `lx-video` uses for `data-lx-playing`.
+fn announce_island_autoplay(key: &str, surface: isize) {
+    if !super::island::is_island_component_key(key) {
+        return;
+    }
+    let wants = {
+        let components = components();
+        components
+            .get(key)
+            .and_then(|entry| entry.video.as_ref())
+            .is_some_and(|video| video.playing || video.player.wants_playback())
+    };
+    if !wants {
+        return;
+    }
+    set_video_playing(key, true);
+    set_video_stopped(key, false);
+    if surface != 0 {
+        unsafe {
+            let _ = WindowsAndMessaging::SetTimer(
+                Some(HWND(surface as *mut _)),
+                ISLAND_FRAME_TIMER_ID,
+                ISLAND_FRAME_INTERVAL_MS,
+                None,
+            );
+        }
+    }
+    emit_event(key, "play", json!({}));
+    emit_event(key, "playing", json!({}));
 }
 
 /// After `component.ready`, replay live playback so a handler that
@@ -598,6 +636,9 @@ pub(super) fn video_event_sink(key: String, container: isize, surface: isize) ->
             VideoPlayerEvent::MediaLoaded { duration } => {
                 log::info!("island/video {key} media loaded duration={duration}");
                 emit_event(&key, "loadedmetadata", json!({ "duration": duration }));
+                // Island EVR is WS_DISABLED + off-screen; MFPlay may never
+                // deliver PLAY. Autoplay still owes the view play/playing.
+                announce_island_autoplay(&key, surface);
             }
             VideoPlayerEvent::Play => {
                 set_video_playing(&key, true);

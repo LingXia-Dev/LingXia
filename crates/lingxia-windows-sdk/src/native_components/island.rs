@@ -306,6 +306,7 @@ fn finish_island_commit(
     nodes: &[lxapp::inline_native::IslandPaintNode],
     pending: Vec<PendingAttach>,
 ) {
+    let pending = preserve_measured_rects(&context.page_key, pending);
     let mut specs = Vec::with_capacity(pending.len());
     for attach in &pending {
         let props = nodes
@@ -592,6 +593,34 @@ pub(crate) fn build_island_visual_spec(
     }
 }
 
+fn rect_is_measured(rect: &Rect) -> bool {
+    rect.width >= 2.0 && rect.height >= 2.0
+}
+
+/// A later geometry snapshot can report 0×0 / 1×1 (hidden document, or
+/// measure-before-layout). Keep the last measured dest so the visual does
+/// not collapse.
+fn preserve_measured_rects(page_key: &str, pending: Vec<PendingAttach>) -> Vec<PendingAttach> {
+    let previous = last_attaches()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner())
+        .get(page_key)
+        .cloned()
+        .unwrap_or_default();
+    pending
+        .into_iter()
+        .map(|mut attach| {
+            if !rect_is_measured(&attach.rect)
+                && let Some(prev) = previous.iter().find(|item| item.id == attach.id)
+                && rect_is_measured(&prev.rect)
+            {
+                attach.rect = prev.rect.clone();
+            }
+            attach
+        })
+        .collect()
+}
+
 fn surface_rect(page_key: &str, css: &Rect) -> (f32, f32, i32, i32) {
     let view = super::page_views().get(page_key).copied();
     let scale = view
@@ -814,6 +843,43 @@ mod tests {
                 .collect();
             assert_eq!(kinds, ["video", "view", "text"]);
         }
+        teardown_island(page);
+    }
+
+    #[test]
+    fn preserve_measured_rects_keeps_last_good_size() {
+        let page = "test-page-preserve-rect";
+        teardown_island(page);
+        last_attaches().lock().unwrap().insert(
+            page.to_string(),
+            vec![PendingAttach {
+                id: "lx-video-1".into(),
+                kind: "video".into(),
+                rect: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 640.0,
+                    height: 360.0,
+                },
+                props: json!({}),
+            }],
+        );
+        let next = preserve_measured_rects(
+            page,
+            vec![PendingAttach {
+                id: "lx-video-1".into(),
+                kind: "video".into(),
+                rect: Rect {
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                },
+                props: json!({}),
+            }],
+        );
+        assert_eq!(next[0].rect.width, 640.0);
+        assert_eq!(next[0].rect.height, 360.0);
         teardown_island(page);
     }
 

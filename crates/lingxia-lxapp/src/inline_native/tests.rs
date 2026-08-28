@@ -900,6 +900,66 @@ fn materialize_into_attaches_root_video_cover_in_composition_order() {
     assert!(!session.uses_hwnd_zorder());
 }
 
+#[test]
+fn materialize_into_uses_root_rect_when_node_geometry_is_missing_or_degenerate() {
+    let root = root();
+    let mut session = IslandSession::new();
+    session.set_trusted_domains(vec!["cdn.example.com".into()], true);
+    let mut ops = vec![mount(&root, "lx-video-1", "video", None, 0)];
+    if let NativeRootOperation::Mount { node } = &mut ops[0] {
+        node.props = serde_json::json!({ "src": "https://cdn.example.com/a.mp4" });
+    }
+    assert!(matches!(
+        session.apply_commit(commit(&root, 0, 1, ops)),
+        ApplyCommitOutcome::Applied(_)
+    ));
+    activate_lease(&mut session, &root);
+
+    let root_rect = Rect {
+        x: 8.0,
+        y: 40.0,
+        width: 320.0,
+        height: 180.0,
+    };
+    session.apply_geometry(NativeGeometrySnapshot {
+        action: "geometry.snapshot".into(),
+        surface_instance_id: root.surface_instance_id.clone(),
+        page_instance_id: root.page_instance_id.clone(),
+        document_instance_id: root.document_instance_id.clone(),
+        revision: 2,
+        coordinate_space: "page-unscrolled-css-px".into(),
+        roots: vec![NativeGeometrySnapshotRoot {
+            root_ref: root.clone(),
+            basis_tree_revision: 1,
+            root_order: 0,
+            chain_key: "page".into(),
+            content_rect: root_rect.clone(),
+            visible: true,
+        }],
+        nodes: vec![NativeGeometrySnapshotNode {
+            node_ref: node(&root, "lx-video-1", 1),
+            chain_key: "page".into(),
+            content_rect: Rect {
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height: 0.0,
+            },
+            clip_stack: vec![],
+            visible: true,
+        }],
+        chains: vec![ScrollChain {
+            chain_key: "page".into(),
+            ancestors: vec![],
+        }],
+    });
+
+    let mut recorder = AttachRecorder { calls: Vec::new() };
+    session.materialize_into(&mut recorder);
+    assert_eq!(recorder.calls.len(), 1);
+    assert_eq!(recorder.calls[0].2, root_rect);
+}
+
 fn activate_lease(session: &mut IslandSession, root: &RootRef) {
     let grant = session
         .drain_view_messages()

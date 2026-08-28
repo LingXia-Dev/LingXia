@@ -303,6 +303,8 @@ fn ensure_island_video(
     island::island_component_keys().insert(key.clone());
     if components().contains_key(&key) {
         if let Some(rect) = rect
+            && rect.width >= 2.0
+            && rect.height >= 2.0
             && let Some(entry) = components().get_mut(&key)
         {
             entry.doc_rect = rect;
