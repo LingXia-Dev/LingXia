@@ -231,6 +231,19 @@ impl TabBar {
         self.compact_overflow_start().map_or(-1, |start| start as i32)
     }
 
+    /// Tab pages worth creating up front — exactly those holding a slot of
+    /// their own. Warming a tab costs a page service and a WebView, which only
+    /// pays off for a destination that is one tap away; anything the strip
+    /// folds behind "more" is a tap further out and can load on first pick.
+    pub fn preload_page_paths(&self) -> Vec<String> {
+        let count = self.compact_overflow_start().unwrap_or(self.items.len());
+        self.items
+            .iter()
+            .take(count)
+            .map(|item| item.page_path.clone())
+            .collect()
+    }
+
     pub fn get_item(&self, index: i32) -> Option<&TabBarItem> {
         usize::try_from(index)
             .ok()
@@ -836,6 +849,27 @@ mod tests {
         assert_eq!(items(10).compact_overflow_start(), Some(4));
         assert_eq!(items(5).compact_overflow_start_index(), -1);
         assert_eq!(items(10).compact_overflow_start_index(), 4);
+    }
+
+    #[test]
+    fn preload_covers_the_strip_slots_only() {
+        let items = |count: usize| {
+            manifest(serde_json::json!({
+                "items": (0..count)
+                    .map(|index| serde_json::json!({ "pagePath": format!("pages/p{index}/index") }))
+                    .collect::<Vec<_>>()
+            }))
+        };
+        assert_eq!(items(2).preload_page_paths().len(), 2);
+        assert_eq!(items(5).preload_page_paths().len(), 5);
+        // Past the strip capacity the folded items stop being warmed, so a
+        // 10-tab lxapp costs no more at launch than a 4-tab one.
+        assert_eq!(items(6).preload_page_paths().len(), 4);
+        assert_eq!(items(10).preload_page_paths().len(), 4);
+        assert_eq!(
+            items(10).preload_page_paths().last().map(String::as_str),
+            Some("pages/p3/index")
+        );
     }
 
     #[test]
