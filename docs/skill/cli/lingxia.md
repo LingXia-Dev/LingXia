@@ -247,17 +247,38 @@ lingxia doctor --platform harmony
 
 ### Setup — `upgrade`, `skill`
 
-Low-frequency, and not part of building anything: outside a project, `upgrade`
-moves the CLI, `lxdev` and the Runner to a newer release (which also happens
-on its own, once a day; `--cli` forces this mode anywhere). **Inside a
-project**, `upgrade` brings the project's pinned LingXia versions to this
-CLI's line — the `@lingxia/*` npm ranges (lockfile refreshed via
-`npm install`), the `lingxia` crate requirement in `native/Cargo.toml`, the
-`lingxia-windows-sdk` git ref, and the gradle `lingxia.sdkVersion` fallback.
-`--check` prints the pending changes without writing (exit 10 when behind).
-Platform SDK binaries always follow the CLI at build time and need no project
-change; builds print a one-line hint when the project's line drifts from the
-CLI's. `skill install` writes this skill where an AI coding tool finds it.
+Low-frequency, and not part of building anything: `upgrade` **always** moves
+the CLI, `lxdev` and the Runner to a newer release when one exists (the same
+replace the daily auto-update performs). **Inside a project** it then compares
+the project's LingXia line — npm `@lingxia/*`, native crate, Android
+`sdkVersion`, Apple cached SDK, Windows git/crate pins — with this CLI. The
+safe comparison is **major.minor** (same-line patches are not a new version).
+If the project is on an older line, the pending pin/SDK changes are printed
+and you choose whether to apply them (default yes). `--yes` skips the prompt;
+non-interactive runs skip the project half unless `--yes` is set.
+
+Applying a newer line:
+
+- `@lingxia/*` npm ranges (lockfile refreshed via `npm install`)
+- `lingxia` crate requirement in `native/Cargo.toml` (`cargo update -p lingxia`)
+- **Android:** gradle `lingxia.sdkVersion` fallback, then the Maven zip into
+  `~/.lingxia/sdk/android-maven/<ver>/` (the same artifact `lingxia build`
+  injects as a repo)
+- **Apple (iOS/macOS):** the SDK source zip into `~/.lingxia/sdk/apple/<ver>/`,
+  then `Package.swift` is pointed at that cache via `.package(path:)` (the SDK
+  uses `unsafeFlags`, so it cannot be a remote SwiftPM URL)
+- **Windows:** `lingxia-windows-sdk` git ref (not on crates.io) and
+  `lingxia-windows-build` crate requirement, then
+  `cargo update -p lingxia-windows-sdk` / `-p lingxia-windows-build`
+- **Harmony:** the HAR into `~/.lingxia/sdk/harmony/<ver>/`
+
+In-workspace checkouts already depend on SDK source paths and are not
+re-fetched. `--check` reports CLI *and* project-line drift without writing
+(exit 10 when either half is behind). On Windows a CLI self-replace is
+deferred until the process exits — re-run `lingxia upgrade` after that so
+project pins follow the new CLI's line. Builds print a one-line hint when
+the project's line drifts from the CLI's. `skill install` writes this skill
+where an AI coding tool finds it.
 
 ### Distribution — `publish`, `auth`, `store`, `ds`, signing
 

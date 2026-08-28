@@ -104,7 +104,7 @@ pub fn refresh_installed_skill() {
     }
 }
 
-pub(crate) fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<()> {
+pub(crate) fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<SelfReplace> {
     let asset_name = current_platform_asset_name()?;
     let bytes = github::download_release_asset_from_repo(
         &status.release_repo,
@@ -148,7 +148,7 @@ pub(crate) fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<(
     }
     let replace = install_result?;
 
-    match replace {
+    let kind = match replace {
         #[cfg(not(target_os = "windows"))]
         BinaryReplace::Complete => {
             update_install_metadata_version(exe_path, &status.latest_version.to_string())?;
@@ -158,6 +158,7 @@ pub(crate) fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<(
                 let _ = fs::remove_file(cache_path);
             }
             println!("Updated LingXia CLI to {}", status.latest_version);
+            SelfReplace::Complete
         }
         #[cfg(target_os = "windows")]
         BinaryReplace::Deferred => {
@@ -171,8 +172,9 @@ pub(crate) fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<(
                     log_path.display()
                 );
             }
+            SelfReplace::Deferred
         }
-    }
+    };
 
     // The CLI, lxdev, and the runner ship from one release, so update them
     // together. Both are best-effort: a failure (e.g. offline, or an older
@@ -187,7 +189,7 @@ pub(crate) fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<(
         eprintln!("warning: failed to update the LingXia Runner to {runner_version}: {err}");
         eprintln!("It will be fetched on the next `lingxia dev`.");
     }
-    Ok(())
+    Ok(kind)
 }
 
 /// Best-effort refresh of a sibling release binary (e.g. `lxdev`) next to the
@@ -224,6 +226,16 @@ fn update_sibling_binary(dir: &Path, name: &str, repo: &str, tag: &str) {
         let _ = fs::remove_file(&temp_path);
         eprintln!("warning: failed to update {name}: {err}");
     }
+}
+
+/// How far a self-replace got. Windows cannot overwrite a running `.exe`, so
+/// the swap is handed to a helper that waits for this process to exit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SelfReplace {
+    #[cfg(not(target_os = "windows"))]
+    Complete,
+    #[cfg(target_os = "windows")]
+    Deferred,
 }
 
 enum BinaryReplace {
