@@ -1,7 +1,7 @@
 {
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
-  "version": "1.6.5",
+  "version": "1.6.7",
   "icon": "public/showcase-icon.png",
   "security": {
     "network": {
@@ -143,6 +143,18 @@
         "pagePath": "pages/todo/index",
         "iconPath": "public/todo.png",
         "selectedIconPath": "public/todo_selected.png"
+      },
+      {
+        "text": "Media",
+        "pagePath": "pages/media/index",
+        "iconPath": "public/component.png",
+        "selectedIconPath": "public/component_selected.png"
+      },
+      {
+        "text": "Device",
+        "pagePath": "pages/device/index",
+        "iconPath": "public/api.png",
+        "selectedIconPath": "public/api_selected.png"
       }
     ]
   }
