@@ -247,6 +247,13 @@ pub(crate) fn window_has_device_frame(window: isize) -> bool {
     native::window_has_frame(window)
 }
 
+/// Visible content HWND currently wrapped in a simulator device frame, if any.
+/// Navigation uses this so relaunch/replace cannot escape the runner silhouette.
+#[cfg_attr(not(feature = "shell-chrome"), allow(dead_code))]
+pub(crate) fn first_framed_content_window() -> Option<isize> {
+    native::framed_content_windows().into_iter().next()
+}
+
 /// Screen corner radius + corner style for a framed content window (`None`
 /// when unframed), used by the webview composition corner visuals.
 pub(crate) fn device_frame_screen_clip_style(window: isize) -> Option<(i32, u32)> {
@@ -422,7 +429,18 @@ pub fn set_windows_preferred_color_scheme(
 
 fn current_page_webview(appid: &str) -> Result<std::sync::Arc<lingxia_webview::WebView>, String> {
     let app = lxapp::try_get(appid).ok_or_else(|| format!("lxapp is not active: {appid}"))?;
-    let page = app.current_page().map_err(|err| err.to_string())?;
-    page.webview()
-        .ok_or_else(|| "page WebView is not ready".to_string())
+    if let Ok(page) = app.current_page()
+        && let Some(webview) = page.webview()
+    {
+        return Ok(webview);
+    }
+    for webtag in lingxia_webview::runtime::list_webviews() {
+        if webtag.extract_appid() != appid {
+            continue;
+        }
+        if let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) {
+            return Ok(webview);
+        }
+    }
+    Err("page WebView is not ready".to_string())
 }

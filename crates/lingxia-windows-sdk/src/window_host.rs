@@ -826,7 +826,7 @@ fn present_webview_in_active_group_with_policy(
     presentation: GroupMainPresentation,
 ) -> StdResult<()> {
     let handler = find_webview_handler(webtag).ok_or_else(|| handler_not_ready(webtag))?;
-    let Some(host) = prefer_visible_workspace(active_host_window()) else {
+    let Some(host) = preferred_workspace_host() else {
         let view = handler.native_view();
         let hwnd = hwnd_from_handle(view.window);
         prepare_shell_window_for_presentation(hwnd)?;
@@ -2595,11 +2595,27 @@ pub fn is_panel_visible(panel_id: &str) -> bool {
 }
 
 pub fn find_host_window_for_webview(webtag: &WebTag) -> StdResult<WindowsHostWindow> {
-    let content = find_webview_content_window(webtag).ok_or_else(|| {
+    if let Some(content) = find_webview_content_window(webtag) {
+        return Ok(WindowsHostWindow {
+            window: content.window,
+        });
+    }
+    // reLaunch can create a page whose controller is alive before the host
+    // registry is written. Fall back to the WebView's native parent so the
+    // runner can still wrap that window in a device frame.
+    let handler = find_webview_handler(webtag).ok_or_else(|| {
         WebViewError::WebView(format!("no window registered for {}", webtag.key()))
     })?;
+    let hwnd = hwnd_from_handle(handler.native_view().window);
+    if !is_valid_host_window(hwnd) {
+        return Err(WebViewError::WebView(format!(
+            "no window registered for {}",
+            webtag.key()
+        )));
+    }
+    set_window_handle(webtag.key(), hwnd);
     Ok(WindowsHostWindow {
-        window: content.window,
+        window: hwnd_handle(hwnd),
     })
 }
 
@@ -6047,6 +6063,34 @@ fn window_is_device_framed(hwnd: HWND) -> bool {
     }
 }
 
+fn device_framed_host_window() -> Option<HWND> {
+    #[cfg(feature = "device-frame")]
+    {
+        crate::device_frame::first_framed_content_window()
+            .map(hwnd_from_handle)
+            .filter(|hwnd| is_valid_host_window(*hwnd))
+    }
+    #[cfg(not(feature = "device-frame"))]
+    {
+        None
+    }
+}
+
+/// Prefer a visible simulator silhouette. An unframed duplicate host (a
+/// parked page parent, a relaunch native window) must not win over it —
+/// presenting there escapes the device frame and leaves the toolbar on a
+/// phone while the page stays desktop-sized.
+fn preferred_workspace_host() -> Option<HWND> {
+    let framed = device_framed_host_window();
+    // A framed simulator host wins even when it is momentarily hidden or its
+    // previous page WebView has already been torn down (reLaunch). Preferring
+    // a visible unframed workspace first is how relaunch escaped the bezel.
+    framed
+        .filter(|hwnd| is_window_visible(*hwnd) && !is_minimized(*hwnd))
+        .or(framed)
+        .or_else(|| prefer_visible_workspace(active_host_window()))
+}
+
 fn apply_shell_window_frame(hwnd: HWND) -> StdResult<()> {
     if windows_chrome_renderer().is_none() {
         return Ok(());
@@ -7790,7 +7834,8 @@ fn show_webview_window_replacing(
     // (a stuck white shell) while a duplicate shell window appeared.
     let native_parent = hwnd_from_handle(handler.native_view().window);
     let target = prefer_visible_workspace(
-        stable_host_for_replacement(webtag, &hide_webtags)
+        device_framed_host_window()
+            .or_else(|| stable_host_for_replacement(webtag, &hide_webtags))
             .or_else(|| {
                 window_handle_for_key(webtag.key()).filter(|hwnd| is_valid_host_window(*hwnd))
             })
@@ -7801,7 +7846,9 @@ fn show_webview_window_replacing(
     // retiring: presenting the incoming controller into it races recursive
     // DestroyWindow and produces an invalid-handle warning (or a dead DComp
     // surface). Only reuse a host while its owning WebView is still live.
-    .filter(|candidate| host_window_owner_is_live(*candidate))
+    .filter(|candidate| {
+        window_is_device_framed(*candidate) || host_window_owner_is_live(*candidate)
+    })
     .unwrap_or(native_parent);
     prepare_shell_window_for_presentation(target)?;
     let title = to_wide(title);
@@ -8003,8 +8050,9 @@ pub fn navigate_webview_window(
     // replace path below reparents the page into its own native window and
     // reasserts a plain shell frame, which escapes the device frame entirely
     // (the show path already branches this way; navigation must match).
-    if let Some(host) = active_host_window() {
+    if let Some(host) = preferred_workspace_host() {
         if window_is_device_framed(host) {
+            set_primary_host_window(host);
             return navigate_with_snapshot_slide(host, animation, || {
                 present_webview_in_active_group(webtag)
             });

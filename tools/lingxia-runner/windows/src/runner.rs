@@ -419,21 +419,27 @@ fn apply_device(index: usize, landscape: bool) -> Result<(), String> {
     }
 
     let mut applied = false;
+    let mut last_err = None;
     for app in lxapp::list_lxapps() {
-        if app.status == "opened" {
-            lingxia_windows_sdk::set_windows_shell_tabbar_position(&app.appid, tabbar_position);
-            if let Err(err) = apply_device_to_app(&app.appid, index, landscape) {
+        if app.status == "closed" {
+            continue;
+        }
+        lingxia_windows_sdk::set_windows_shell_tabbar_position(&app.appid, tabbar_position);
+        match apply_device_to_app(&app.appid, index, landscape) {
+            Ok(()) => applied = true,
+            Err(err) => {
                 eprintln!(
                     "lingxia-runner: failed to apply device to {}: {err}",
                     app.appid
                 );
-            } else {
-                applied = true;
+                last_err = Some(err);
             }
         }
     }
     if !applied {
-        return Err("no opened lxapp is ready for device frame".to_string());
+        return Err(
+            last_err.unwrap_or_else(|| "no opened lxapp is ready for device frame".to_string())
+        );
     }
     lingxia_windows_sdk::set_windows_browser_emulation_profile(
         presets()[index].browser_profile(),

@@ -12,6 +12,7 @@
 //! supplied by the host layer through [`WindowsDeviceFrame`]. Dragging the
 //! toolbar or the bezel moves the assembly.
 
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -335,6 +336,11 @@ struct DeviceFrameState {
 /// Active device-frame presentations, keyed by content window handle.
 static DEVICE_FRAMES: OnceLock<Mutex<HashMap<isize, DeviceFrameState>>> = OnceLock::new();
 
+thread_local! {
+    // SetWindowPos re-enters sync_device_frame_for_content via WM_WINDOWPOSCHANGED.
+    static ENFORCING_SPEC_SIZE: Cell<bool> = const { Cell::new(false) };
+}
+
 #[derive(Debug, Clone, Copy)]
 struct DeviceFrameWindowState {
     original_proc: isize,
@@ -644,15 +650,18 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
         new_sb.foreground = old_sb.foreground;
         new_sb.background = old_sb.background;
     }
-    if frame_state(handle, |state| state.spec.clone()) == Some(spec.clone()) {
+    if !device_frame_needs_rebuild(content, &spec) {
         if sync_host_layout {
             sync_device_frame_for_content(content);
         }
         return;
     }
-    // Same device, different toolbar model (e.g. the appearance glyph
+    // Same device geometry, different toolbar model (e.g. the appearance glyph
     // flipping): repaint the existing layered shell in place instead of
     // rebuilding every companion window, which visibly flashes the bezel.
+    // Never take this path when the content window no longer matches the
+    // spec screen — that is how the selector can say "iPhone 15 Pro" while
+    // the WebView is still a desktop-sized expanded surface.
     let toolbar_only = frame_state(handle, |state| {
         let mut probe = state.spec.clone();
         probe.toolbar = spec.toolbar.clone();
@@ -660,6 +669,7 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     })
     .unwrap_or(false);
     if toolbar_only
+        && content_matches_spec_screen(content, &spec)
         && let Some((frame, mut layout)) = frame_state(handle, |state| (state.frame, state.layout))
         && is_window_handle_valid(frame)
     {
@@ -751,20 +761,14 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     }
     let x = rect.left.max(layout.content_offset.0);
     let y = rect.top.max(layout.content_offset.1);
-    unsafe {
-        let _ = WindowsAndMessaging::SetWindowPos(
-            content,
-            None,
-            x,
-            y,
-            spec.screen_width,
-            spec.screen_height,
-            WindowsAndMessaging::SWP_NOZORDER
-                | WindowsAndMessaging::SWP_NOACTIVATE
-                | WindowsAndMessaging::SWP_NOCOPYBITS
-                | WindowsAndMessaging::SWP_FRAMECHANGED,
-        );
-    }
+    // A maximized desktop window ignores a smaller SetWindowPos, and
+    // SW_SHOWNORMAL restores the last 1440-class rectangle — leaving the
+    // toolbar on the new device while the page stays expanded.
+    // Hold the re-entry flag: WM_WINDOWPOSCHANGED sync still sees the
+    // previous spec in DEVICE_FRAMES and would snap the window back.
+    ENFORCING_SPEC_SIZE.with(|flag| flag.set(true));
+    size_content_window_to_spec(content, &spec, Some((x, y)));
+    ENFORCING_SPEC_SIZE.with(|flag| flag.set(false));
     // Composition-hosted webviews clip their own corners, but the host window
     // also paints native shell chrome (notably the phone tab bar). Keep the
     // whole host clipped to the simulated screen or that chrome leaks through
@@ -772,7 +776,6 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
     // WebView edge inside this authoritative window cut.
     let composition_corners =
         lingxia_webview::platform::windows::webview_composition_hosting_enabled();
-    apply_content_screen_region(content, &spec);
 
     let Some((frame, layout)) = create_frame_window(content, &spec, layout) else {
         return;
@@ -936,6 +939,19 @@ fn sync_device_frame_for_content(content: HWND) {
     if !visible {
         hide_device_frame_chrome(content);
         return;
+    }
+    // Something (SW_SHOWNORMAL restore-rect, a persisted shell frame, a
+    // maximize) can stretch the content window after a successful apply.
+    // The bezel bitmap is spec-sized; if we only glue it to a 1440-class
+    // window the selector still says "iPhone 15 Pro" while the page stays
+    // Expanded. Snap back before gluing.
+    if !ENFORCING_SPEC_SIZE.with(Cell::get)
+        && let Some(spec) = frame_state(handle, |state| state.spec.clone())
+        && !content_matches_spec_screen(content, &spec)
+    {
+        ENFORCING_SPEC_SIZE.with(|flag| flag.set(true));
+        size_content_window_to_spec(content, &spec, None);
+        ENFORCING_SPEC_SIZE.with(|flag| flag.set(false));
     }
     let mut content_rect = RECT::default();
     unsafe {
@@ -1193,10 +1209,151 @@ fn foreground_framed_content_window(hwnd: HWND) {
     }
 }
 
+fn restore_zoomed_content_window(hwnd: HWND) {
+    if unsafe { WindowsAndMessaging::IsZoomed(hwnd).as_bool() } {
+        unsafe {
+            let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_RESTORE);
+        }
+    }
+}
+
+/// Un-maximize, set the content HWND to the spec screen, and pin
+/// `WINDOWPLACEMENT.rcNormalPosition` so a later SW_SHOWNORMAL / restore
+/// cannot revive the previous desktop rectangle.
+fn size_content_window_to_spec(
+    content: HWND,
+    spec: &WindowsDeviceFrame,
+    origin: Option<(i32, i32)>,
+) {
+    restore_zoomed_content_window(content);
+    let mut flags = WindowsAndMessaging::SWP_NOZORDER
+        | WindowsAndMessaging::SWP_NOACTIVATE
+        | WindowsAndMessaging::SWP_NOCOPYBITS
+        | WindowsAndMessaging::SWP_FRAMECHANGED;
+    let (x, y) = match origin {
+        Some(origin) => origin,
+        None => {
+            flags |= WindowsAndMessaging::SWP_NOMOVE;
+            (0, 0)
+        }
+    };
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            content,
+            None,
+            x,
+            y,
+            spec.screen_width,
+            spec.screen_height,
+            flags,
+        );
+    }
+    pin_content_window_restore_rect(content, spec);
+    apply_content_screen_region(content, spec);
+}
+
+fn pin_content_window_restore_rect(hwnd: HWND, spec: &WindowsDeviceFrame) {
+    let mut placement = WindowsAndMessaging::WINDOWPLACEMENT {
+        length: std::mem::size_of::<WindowsAndMessaging::WINDOWPLACEMENT>() as u32,
+        ..Default::default()
+    };
+    let mut rect = RECT::default();
+    unsafe {
+        if WindowsAndMessaging::GetWindowPlacement(hwnd, &mut placement).is_err() {
+            return;
+        }
+        if WindowsAndMessaging::GetWindowRect(hwnd, &mut rect).is_err() {
+            return;
+        }
+        placement.rcNormalPosition = RECT {
+            left: rect.left,
+            top: rect.top,
+            right: rect.left + spec.screen_width,
+            bottom: rect.top + spec.screen_height,
+        };
+        // A leftover SW_SHOWMAXIMIZED would ignore the new restore rect and
+        // grow the screen back to the monitor. Apply the spec as the normal
+        // rectangle instead.
+        placement.showCmd = WindowsAndMessaging::SW_SHOWNORMAL.0 as u32;
+        let _ = WindowsAndMessaging::SetWindowPlacement(hwnd, &placement);
+    }
+}
+
+fn content_window_size(hwnd: HWND) -> Option<(i32, i32)> {
+    let mut rect = RECT::default();
+    unsafe {
+        WindowsAndMessaging::GetWindowRect(hwnd, &mut rect).ok()?;
+    }
+    let width = rect.right - rect.left;
+    let height = rect.bottom - rect.top;
+    (width > 0 && height > 0).then_some((width, height))
+}
+
+fn content_matches_spec_screen(hwnd: HWND, spec: &WindowsDeviceFrame) -> bool {
+    content_window_size(hwnd)
+        .is_some_and(|(width, height)| width == spec.screen_width && height == spec.screen_height)
+}
+
+fn device_frame_needs_rebuild(content: HWND, spec: &WindowsDeviceFrame) -> bool {
+    spec_and_window_require_rebuild(
+        frame_state(hwnd_handle(content), |state| state.spec.clone()).as_ref(),
+        spec,
+        content_window_size(content),
+    )
+}
+
+fn spec_and_window_require_rebuild(
+    current: Option<&WindowsDeviceFrame>,
+    next: &WindowsDeviceFrame,
+    window: Option<(i32, i32)>,
+) -> bool {
+    let Some(current) = current else {
+        return true;
+    };
+    if current.screen_width != next.screen_width || current.screen_height != next.screen_height {
+        return true;
+    }
+    if window != Some((next.screen_width, next.screen_height)) {
+        return true;
+    }
+    current != next
+}
+
+pub(super) fn framed_content_windows() -> Vec<isize> {
+    DEVICE_FRAMES
+        .get()
+        .and_then(|frames| frames.lock().ok())
+        .map(|frames| {
+            let mut handles: Vec<isize> = frames
+                .keys()
+                .copied()
+                .filter(|handle| is_window_handle_valid(*handle))
+                .collect();
+            handles.sort_by_key(|handle| {
+                let hwnd = hwnd_from_handle(*handle);
+                let visible = unsafe { WindowsAndMessaging::IsWindowVisible(hwnd).as_bool() };
+                let iconic = unsafe { WindowsAndMessaging::IsIconic(hwnd).as_bool() };
+                if visible && !iconic { 0 } else { 1 }
+            });
+            handles
+        })
+        .unwrap_or_default()
+}
+
 fn foreground_content_window(hwnd: HWND) {
     clear_last_sync_rect(hwnd_handle(hwnd));
+    let iconic = unsafe { WindowsAndMessaging::IsIconic(hwnd).as_bool() };
+    let visible = unsafe { WindowsAndMessaging::IsWindowVisible(hwnd).as_bool() };
     unsafe {
-        let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_SHOWNORMAL);
+        // SW_SHOWNORMAL restores the last "normal" rectangle. After a
+        // programmatic shrink (desktop → phone) that is the previous desktop
+        // size, so it would undo the device switch. Only restore when the
+        // window is actually minimized.
+        if iconic {
+            let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_RESTORE);
+        } else if !visible {
+            let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_SHOWNA);
+        }
         let _ = WindowsAndMessaging::BringWindowToTop(hwnd);
         let _ = WindowsAndMessaging::SetForegroundWindow(hwnd);
         let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(hwnd));
@@ -1322,5 +1479,54 @@ mod tests {
     #[test]
     fn outer_radius_expands_with_visual_bezel() {
         assert_eq!(outer_corner_radius(&phone_frame()), 64);
+    }
+
+    #[test]
+    fn matching_spec_and_window_skips_rebuild() {
+        let spec = phone_frame();
+        assert!(!spec_and_window_require_rebuild(
+            Some(&spec),
+            &spec,
+            Some((spec.screen_width, spec.screen_height)),
+        ));
+    }
+
+    #[test]
+    fn stretched_window_rebuilds_even_when_spec_matches() {
+        let spec = phone_frame();
+        assert!(spec_and_window_require_rebuild(
+            Some(&spec),
+            &spec,
+            Some((1440, 900)),
+        ));
+    }
+
+    #[test]
+    fn switching_screen_size_rebuilds() {
+        let current = phone_frame();
+        let mut next = phone_frame();
+        next.screen_width = 1440;
+        next.screen_height = 900;
+        assert!(spec_and_window_require_rebuild(
+            Some(&current),
+            &next,
+            Some((1440, 900)),
+        ));
+    }
+
+    #[test]
+    fn missing_current_spec_rebuilds() {
+        let spec = phone_frame();
+        assert!(spec_and_window_require_rebuild(
+            None,
+            &spec,
+            Some((spec.screen_width, spec.screen_height)),
+        ));
+    }
+
+    #[test]
+    fn unknown_window_size_rebuilds() {
+        let spec = phone_frame();
+        assert!(spec_and_window_require_rebuild(Some(&spec), &spec, None));
     }
 }
