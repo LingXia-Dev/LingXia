@@ -70,6 +70,12 @@ class LxNativeBaseElement extends HTMLElement {
     ];
   }
 
+  /// Geometry is measured per element id, so every island node needs one —
+  /// without it the host would place this node at the root's rect.
+  connectedCallback(): void {
+    ensureComponentId(this, this.localName);
+  }
+
   get automationId(): string | null {
     return this.getAttribute("automation-id");
   }
@@ -255,6 +261,7 @@ export class LxNativeCoverElement extends LxNativeBaseElement {
   }
 
   connectedCallback(): void {
+    super.connectedCallback();
     if (!this.style.position) this.style.position = "absolute";
     if (!this.style.inset && !this.style.top && !this.style.left) {
       this.style.inset = "0";
@@ -300,6 +307,7 @@ export class LxNativeTextElement extends LxNativeBaseElement {
   }
 
   connectedCallback(): void {
+    super.connectedCallback();
     if (!this.style.pointerEvents) {
       this.style.pointerEvents = "none";
     }
@@ -501,10 +509,8 @@ function measureNativeNodeRects(
       if (isFallbackElement(child)) continue;
       const tag = child.tagName.toLowerCase();
       if (tag.startsWith("lx-native-") || tag === "lx-video") {
-        const id = child.getAttribute("id");
-        if (id) {
-          rects[id] = elementContentRect(child);
-        }
+        const id = ensureComponentId(child as HTMLElement, tag);
+        rects[id] = elementContentRect(child);
         walk(child);
       }
     }
