@@ -177,6 +177,12 @@ import WebKit
         ) {
             LxAppCapsuleButtons.capsuleRectProvider = provider
         }
+
+        /// Recompute and publish Page Chrome after host-owned geometry changes.
+        @discardableResult
+        public static func republish(appId: String) -> Bool {
+            RunnerBridge.syncHostUI(appId: appId)
+        }
     }
 
     @MainActor

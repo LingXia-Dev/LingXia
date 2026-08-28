@@ -73,6 +73,9 @@ public class RunnerApp {
     private init() {
         deviceOrientation = Self.defaultOrientation(for: selectedDeviceSize)
         RunnerUserAgentPolicy.shared.setProfile(selectedDeviceSize.browserProfile)
+        RunnerSupport.PageChrome.setCapsuleRectProvider { [weak self] appId in
+            self?.windowController?.capsuleRect(for: appId)
+        }
     }
 
     /// Pads and desktops read most naturally in landscape; phones in portrait.
@@ -132,7 +135,23 @@ public class RunnerApp {
     public func setCapsuleEnabled(_ enabled: Bool) {
         guard capsuleEnabled != enabled else { return }
         capsuleEnabled = enabled
-        windowController?.applyCapsuleEnabled()
+        for suspended in suspendedPhoneControllers {
+            suspended.applyCapsuleEnabled()
+        }
+        if let active = windowController {
+            refreshCapsulePageChrome(for: active)
+        }
+    }
+
+    func capsuleDidBecomeReady(_ controller: SimulatorWindowController) {
+        guard windowController === controller else { return }
+        refreshCapsulePageChrome(for: controller)
+    }
+
+    private func refreshCapsulePageChrome(for controller: SimulatorWindowController) {
+        controller.applyCapsuleEnabled()
+        guard controller.webTargetTabId == nil else { return }
+        RunnerSupport.PageChrome.republish(appId: controller.appId)
     }
 
     /// Window-level `NSAppearance` reaches every hosted WebView (and the
@@ -219,6 +238,7 @@ public class RunnerApp {
                             previous.window?.appearance = self.simulatedAppearance.nsAppearance
                             previous.window?.makeKeyAndOrderFront(nil)
                             self.alignPhoneHostWithRuntime(previous)
+                            self.refreshCapsulePageChrome(for: previous)
                         } else {
                             phoneHost.closeFromRuntime()
                             self.confirmRuntimeClose(session)
@@ -407,6 +427,7 @@ public class RunnerApp {
             } else {
                 existingController.navigate(to: path)
             }
+            refreshCapsulePageChrome(for: existingController)
             return
         }
 
@@ -421,8 +442,9 @@ public class RunnerApp {
             let resumed = suspendedPhoneControllers.remove(at: index)
             resumed.applyDeviceChange(deviceSize)
             resumed.window?.makeKeyAndOrderFront(nil)
-            resumed.navigate(to: path)
             windowController = resumed
+            resumed.navigate(to: path)
+            refreshCapsulePageChrome(for: resumed)
             return
         }
 
@@ -432,6 +454,7 @@ public class RunnerApp {
         NSApp.activate(ignoringOtherApps: true)
 
         windowController = controller
+        refreshCapsulePageChrome(for: controller)
     }
 
     private func openInSurfaceShell(appId: String, path: String, sessionId: UInt64) {
