@@ -267,10 +267,17 @@ struct LxAppTabBar: View {
 
 /// macOS TabBar that accepts external state manager
 struct MacOSLxAppTabBar: View {
+    private enum Overflow {
+        static let columns = 5
+        static let cellWidth: CGFloat = 64
+    }
+
     let appId: String
     let config: TabBar
     @Binding var selectedIndex: Int
     let onTabSelected: (Int, String) -> Void
+    /// Whether the overflow panel is open above the "more" slot.
+    @State private var showOverflow: Bool = false
 
     init(
         appId: String,
@@ -351,16 +358,107 @@ struct MacOSLxAppTabBar: View {
         .buttonStyle(PlainButtonStyle())
     }
 
+    /// First folded item index, or -1 when every item has its own slot.
+    private func overflowStart(itemCount: Int) -> Int {
+        let start = Int(config.overflow_start_index)
+        return (start >= 0 && start < itemCount) ? start : -1
+    }
+
     @ViewBuilder
     private func buildHorizontalTabBar(items: [TabBarItem]) -> some View {
+        // Rust caps how many items a compact strip shows; past that the last
+        // slot becomes the overflow affordance and stands in for the rest.
+        let start = overflowStart(itemCount: items.count)
+        let stripCount = start >= 0 ? start : items.count
+
         HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
-            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                buildTabItem(item: item, index: index)
+            ForEach(0..<stripCount, id: \.self) { index in
+                buildTabItem(item: items[index], index: index)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            if start >= 0 {
+                buildMoreItem(items: items, overflowStart: start)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .padding(.horizontal, LxAppTheme.Metrics.largeSpacing)
         .contentShape(Rectangle())
+    }
+
+    /// The overflow slot stands in for the folded items, selection included.
+    @ViewBuilder
+    private func buildMoreItem(items: [TabBarItem], overflowStart: Int) -> some View {
+        let isSelected = selectedIndex >= overflowStart
+        let forceColor = isSelected ?
+            Color(PlatformColor(argb: config.selected_color)) :
+            Color(PlatformColor(argb: config.color))
+
+        Button(action: { showOverflow.toggle() }) {
+            VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
+                ZStack {
+                    Image(systemName: "ellipsis")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 24, height: 24)
+                        .foregroundColor(forceColor)
+
+                    // Folded badges still have to surface, so "more" aggregates
+                    // them to a dot.
+                    if overflowHasNotification(from: overflowStart, itemCount: items.count) {
+                        TabBarHelpers.buildRedDot().offset(x: 16, y: -4)
+                    }
+                }
+                Text(L10n.string("lx_tabbar_more"))
+                    .font(LxAppTheme.Typography.tabTitle)
+                    .foregroundColor(forceColor)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.vertical, LxAppTheme.Metrics.smallSpacing)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PlainButtonStyle())
+        .popover(isPresented: $showOverflow, arrowEdge: .top) {
+            buildOverflowPanel(items: items, overflowStart: overflowStart)
+        }
+    }
+
+    private func overflowHasNotification(from start: Int, itemCount: Int) -> Bool {
+        for index in start..<itemCount {
+            guard let rustItem = getTabBarItem(appId, Int32(index)) else { continue }
+            if rustItem.has_red_dot || !rustItem.badge.toString().isEmpty {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// The folded items as a grid; rows keep the strip's column count so a short
+    /// final row stays aligned instead of spreading across the panel.
+    @ViewBuilder
+    private func buildOverflowPanel(items: [TabBarItem], overflowStart: Int) -> some View {
+        let folded = Array(overflowStart..<items.count)
+        let rows = stride(from: 0, to: folded.count, by: Overflow.columns).map { start in
+            Array(folded[start..<min(start + Overflow.columns, folded.count)])
+        }
+
+        VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                HStack(spacing: 0) {
+                    ForEach(row, id: \.self) { index in
+                        buildTabItem(item: items[index], index: index)
+                            .frame(width: Overflow.cellWidth, height: config.dimensionPoints)
+                    }
+                    ForEach(row.count..<Overflow.columns, id: \.self) { _ in
+                        Color.clear.frame(width: Overflow.cellWidth, height: config.dimensionPoints)
+                    }
+                }
+            }
+        }
+        .padding(LxAppTheme.Metrics.smallSpacing)
+        // The cells reuse the strip's own buttons, so the panel closes on the
+        // selection landing rather than on a tap gesture the button would eat.
+        .onChange(of: selectedIndex) { _ in showOverflow = false }
     }
 
     @ViewBuilder
@@ -479,6 +577,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
     var appId: String = ""
     private var selectedIndex: Int = 0
     private var onTabSelectedCallback: ((Int, String) -> Void)?
+    private weak var overflowPanel: LxAppTabBarOverflowPanel?
 
     // Public accessor for tabBarConfig
     var config: TabBar? {
@@ -601,9 +700,16 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(stackView)
 
-        for (index, item) in items.enumerated() {
-            let tabView = createUIKitTabItem(item: item, index: index, config: config)
+        // Rust caps how many items a compact strip shows; past that the last
+        // slot becomes the overflow affordance and stands in for the rest.
+        let overflowStart = overflowStart(itemCount: items.count, config: config)
+        let stripCount = overflowStart >= 0 ? overflowStart : items.count
+        for index in 0..<stripCount {
+            let tabView = createUIKitTabItem(item: items[index], index: index, config: config)
             stackView.addArrangedSubview(tabView)
+        }
+        if overflowStart >= 0 {
+            stackView.addArrangedSubview(createUIKitMoreItem(config: config, overflowStart: overflowStart))
         }
 
         NSLayoutConstraint.activate([
@@ -769,6 +875,119 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         let index = sender.tag
         // Update local UI selection immediately, and notify listener (which routes to Rust)
         setSelectedIndex(index, notifyListener: true)
+    }
+
+    /// First folded item index, or -1 when every item has its own slot.
+    private func overflowStart(itemCount: Int, config: TabBar) -> Int {
+        let start = Int(config.overflow_start_index)
+        return (start >= 0 && start < itemCount) ? start : -1
+    }
+
+    /// The overflow slot stands in for the folded items, selection included.
+    private func createUIKitMoreItem(config: TabBar, overflowStart: Int) -> UIView {
+        let containerView = UIView()
+        containerView.translatesAutoresizingMaskIntoConstraints = false
+
+        let button = UIButton(type: .custom)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.addTarget(self, action: #selector(moreButtonTapped), for: .touchUpInside)
+
+        let isSelected = selectedIndex >= overflowStart
+        let tint = isSelected
+            ? PlatformColor(argb: config.selected_color)
+            : PlatformColor(argb: config.color)
+
+        let stackView = UIStackView()
+        stackView.axis = .vertical
+        stackView.alignment = .center
+        stackView.spacing = 4
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.isUserInteractionEnabled = false
+
+        let iconContainer = UIView()
+        iconContainer.translatesAutoresizingMaskIntoConstraints = false
+        let iconView = UIImageView(image: UIImage(systemName: "ellipsis"))
+        iconView.contentMode = .scaleAspectFit
+        iconView.tintColor = tint
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconContainer.addSubview(iconView)
+        stackView.addArrangedSubview(iconContainer)
+
+        // Folded badges still have to surface, so "more" aggregates them to a dot.
+        if overflowHasNotification(from: overflowStart, config: config) {
+            let dot = createRedDotView()
+            iconContainer.addSubview(dot)
+            NSLayoutConstraint.activate([
+                dot.topAnchor.constraint(equalTo: iconContainer.topAnchor, constant: -4),
+                dot.trailingAnchor.constraint(equalTo: iconContainer.trailingAnchor, constant: 4),
+                dot.widthAnchor.constraint(equalToConstant: 8),
+                dot.heightAnchor.constraint(equalToConstant: 8)
+            ])
+        }
+
+        let textLabel = UILabel()
+        textLabel.text = L10n.string("lx_tabbar_more")
+        textLabel.font = UIFont.systemFont(ofSize: 10, weight: .medium)
+        textLabel.textColor = tint
+        textLabel.textAlignment = .center
+        textLabel.translatesAutoresizingMaskIntoConstraints = false
+        stackView.addArrangedSubview(textLabel)
+
+        button.addSubview(stackView)
+        containerView.addSubview(button)
+
+        NSLayoutConstraint.activate([
+            stackView.centerXAnchor.constraint(equalTo: button.centerXAnchor),
+            stackView.centerYAnchor.constraint(equalTo: button.centerYAnchor),
+            stackView.leadingAnchor.constraint(greaterThanOrEqualTo: button.leadingAnchor, constant: 8),
+            stackView.trailingAnchor.constraint(lessThanOrEqualTo: button.trailingAnchor, constant: -8),
+
+            iconContainer.widthAnchor.constraint(equalToConstant: 32),
+            iconContainer.heightAnchor.constraint(equalToConstant: 32),
+            iconView.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
+            iconView.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 24),
+            iconView.heightAnchor.constraint(equalToConstant: 24),
+
+            button.topAnchor.constraint(equalTo: containerView.topAnchor),
+            button.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            button.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            button.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
+            button.heightAnchor.constraint(equalToConstant: 60),
+            button.widthAnchor.constraint(equalToConstant: 60)
+        ])
+
+        return containerView
+    }
+
+    private func overflowHasNotification(from start: Int, config: TabBar) -> Bool {
+        for index in start..<Int(config.items_count) {
+            guard let item = getTabBarItem(appId, Int32(index)) else { continue }
+            if item.has_red_dot || !item.badge.toString().isEmpty {
+                return true
+            }
+        }
+        return false
+    }
+
+    @objc private func moreButtonTapped() {
+        guard let config = tabBarConfig, let host = superview else { return }
+        let items = config.getItems(appId: appId)
+        let start = overflowStart(itemCount: items.count, config: config)
+        guard start >= 0 else { return }
+
+        overflowPanel?.removeFromSuperview()
+        let panel = LxAppTabBarOverflowPanel(
+            items: items,
+            indices: Array(start..<items.count),
+            config: config,
+            selectedIndex: selectedIndex,
+            appId: appId
+        ) { [weak self] index in
+            self?.setSelectedIndex(index, notifyListener: true)
+        }
+        panel.present(in: host, above: self)
+        overflowPanel = panel
     }
 
     private func createBadgeView(text: String) -> UIView {
