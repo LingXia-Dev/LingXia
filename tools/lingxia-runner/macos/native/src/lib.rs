@@ -12,6 +12,7 @@ unsafe extern "C" {
         id: *const std::ffi::c_char,
         landscape: i32,
         appearance: i32,
+        capsule: i32,
     ) -> *mut std::ffi::c_char;
 }
 
@@ -53,6 +54,7 @@ impl lingxia::dev::DeviceController for MacRunnerDeviceController {
         id: Option<&str>,
         landscape: Option<bool>,
         appearance: Option<lingxia::dev::Appearance>,
+        capsule: Option<bool>,
     ) -> Result<lingxia::dev::DeviceState, String> {
         if let Some(id) = id {
             let entries = self.list()?;
@@ -69,12 +71,14 @@ impl lingxia::dev::DeviceController for MacRunnerDeviceController {
             lingxia::dev::Appearance::Light => 1,
             lingxia::dev::Appearance::Dark => 2,
         });
+        let capsule = capsule.map_or(-1, i32::from);
         parse_runner_json(
             unsafe {
                 lingxia_runner_device_set_json(
                     id.as_ref().map_or(std::ptr::null(), |id| id.as_ptr()),
                     landscape,
                     appearance,
+                    capsule,
                 )
             },
             "update the simulated environment",

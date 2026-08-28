@@ -465,7 +465,6 @@ mod bridge {
 // Re-export the bridge functions for use in other modules
 // macOS-only: `notify_app_update_ready` is consumed only by the macOS updater
 // (`install_update_on_macos`); `reveal_in_file_manager` is macOS-only too.
-#[cfg(target_os = "ios")]
 pub use bridge::get_capsule_rect;
 pub use bridge::{
     ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, activate_browser_tab,

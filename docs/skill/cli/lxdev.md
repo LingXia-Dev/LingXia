@@ -48,7 +48,7 @@ websocket is not a remote machine-management API.
 **`runner`** — the simulated environment (Runner sessions only): device preset, orientation, appearance:
 - `presets` — the device presets the Runner can simulate
 - `get` — current preset, orientation, and appearance in one line
-- `set [--id <preset>] [--landscape|--portrait] [--appearance system|light|dark]` — partial update: only the given properties change. Appearance pins the simulated screen's `prefers-color-scheme` at the host level (never injected into page DOM); `system` follows the OS. Example: `lxdev runner set --appearance dark` before dark-mode assertions or screenshots.
+- `set [--id <preset>] [--landscape|--portrait] [--appearance system|light|dark] [--capsule on|off]` — partial update: only the given properties change. `--capsule off` hides the simulated host capsule (phone presets draw it by default, as a real host does for a non-home lxapp) — use it when developing a home-style lxapp. Appearance pins the simulated screen's `prefers-color-scheme` at the host level (never injected into page DOM); `system` follows the OS. Example: `lxdev runner set --appearance dark` before dark-mode assertions or screenshots.
 
 **`app`** — the selected dev session's host surface. Use this only when the target is the host window rather than an lxapp page:
 - `doctor` — report screenshot/input support, coordinate units, and keyboard-modifier reliability

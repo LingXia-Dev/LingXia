@@ -173,7 +173,7 @@ pub mod methods {
         /// Report the simulated environment (device, orientation, appearance).
         pub const GET: &str = "runner.get";
         /// Update the simulated environment; only provided fields change.
-        /// Args: `{id?, landscape?, appearance?}`.
+        /// Args: `{id?, landscape?, appearance?, capsule?}`.
         pub const SET: &str = "runner.set";
     }
 

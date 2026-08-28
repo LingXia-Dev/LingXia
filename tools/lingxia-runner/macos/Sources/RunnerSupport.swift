@@ -55,6 +55,15 @@ enum RunnerSupport {
     }
 
     @MainActor
+    enum PageChrome {
+        static func setCapsuleRectProvider(
+            _ provider: @escaping (String) -> [String: Double]?
+        ) {
+            LingxiaRunnerSPI.PageChrome.setCapsuleRectProvider(provider)
+        }
+    }
+
+    @MainActor
     enum WebView {
         static func current() -> WKWebView? {
             LingxiaRunnerSPI.WebView.current()

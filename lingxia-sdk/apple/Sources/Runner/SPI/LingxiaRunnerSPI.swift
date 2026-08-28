@@ -168,6 +168,18 @@ import WebKit
     }
 
     @MainActor
+    public enum PageChrome {
+        /// Register the host's capsule geometry, in the lxapp page's CSS pixel
+        /// space (the runtime republishes Page Chrome when it needs it). Return
+        /// nil while the capsule is hidden.
+        public static func setCapsuleRectProvider(
+            _ provider: @escaping (String) -> [String: Double]?
+        ) {
+            LxAppCapsuleButtons.capsuleRectProvider = provider
+        }
+    }
+
+    @MainActor
     public enum Tabs {
         public typealias Config = TabBar
         public static let stateChangedNotification = Notification.Name("TabBarDataChanged")
