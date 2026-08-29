@@ -415,6 +415,21 @@ class LxAppActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Take the page's orientation before the first frame. The manifest
+        // orientation only covers the bootstrap activity; this one would
+        // otherwise be created following the sensor and rotate once the page
+        // opens and applies its config — a flip the user sees through the
+        // launch cover, and one that leaves any WebView warmed while hidden
+        // with a stale visual viewport from the pre-rotation window.
+        intent.getStringExtra(EXTRA_APP_ID)?.let { launchAppId ->
+            runCatching {
+                val path = intent.getStringExtra(EXTRA_PATH).orEmpty()
+                updateRequestedOrientation(
+                    NativeApi.getPageOrientation(launchAppId, normalizePath(path))
+                )
+            }
+        }
+
         if (SplashOverlay.coverActive()) {
             // The bootstrap activity underneath shows the same full-bleed
             // cover; an enter animation would read as the cover flickering.

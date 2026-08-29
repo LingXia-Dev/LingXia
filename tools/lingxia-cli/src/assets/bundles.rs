@@ -146,6 +146,30 @@ fn resource_bundle_has_source(bundle: &ResourceBundleConfig) -> bool {
             .is_some_and(|value| !value.is_empty())
 }
 
+/// Resolve the configured home lxapp source for build-time consumers that
+/// need its manifest before platform packaging. Package sources use the same
+/// resolver and cache as asset preparation, so callers never invent a
+/// path-only approximation of the bundle model.
+pub(crate) fn resolve_home_bundle_dir(
+    project_root: &Path,
+    config: &LingXiaConfig,
+) -> Result<Option<PathBuf>> {
+    let Some(home_app_id) = config
+        .app
+        .as_ref()
+        .and_then(|app| app.home_app_id.as_deref())
+    else {
+        return Ok(None);
+    };
+    let Some(bundle) = resource_bundle_for_app_id(config, home_app_id) else {
+        return Ok(None);
+    };
+    if !resource_bundle_has_source(bundle) {
+        return Ok(None);
+    }
+    resolve_resource_bundle_source(project_root, bundle).map(|source| Some(source.bundle_dir))
+}
+
 fn prepare_resource_bundle(
     project_root: &Path,
     bundle: &ResourceBundleConfig,
