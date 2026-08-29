@@ -1631,6 +1631,49 @@ fn sync_app_shell_layout(appid: &str) {
     }
 }
 
+/// Installs an lxapp page's final shell geometry before its WebView is first
+/// revealed. Startup presentation otherwise falls back to full-client bounds
+/// until the later surface/UI sync catches up.
+pub(crate) fn prime_lxapp_shell_layout(webtag: &WebTag, logical_width: f64) -> bool {
+    let (appid, path) = webtag.extract_parts();
+    if appid.is_empty() || path.is_empty() {
+        return false;
+    }
+    let Some(app) = lxapp::try_get(&appid) else {
+        return false;
+    };
+    // The initial host stays hidden until the home page is ready, so its
+    // WM_SIZE path deliberately does not publish a potentially provisional
+    // width. Presentation has selected and sized the real host by this point;
+    // seed that width now so the first layout does not inherit the graph's
+    // Medium fallback and paint an icon rail before expanding one frame later.
+    update_surface_width(logical_width);
+    install_shell_chrome_event_handler(webtag, &app.appid);
+    match set_webview_window_layout(
+        webtag,
+        WindowsWindowLayout::new(build_window_layout(&app, &path)),
+    ) {
+        Ok(()) => {
+            log::debug!(
+                "primed Windows lxapp shell layout before presentation appid={} path={} webtag={}",
+                appid,
+                path,
+                webtag.key()
+            );
+            true
+        }
+        Err(error) => {
+            log::warn!(
+                "failed to prime Windows lxapp shell layout for {}:{}: {}",
+                appid,
+                path,
+                error
+            );
+            false
+        }
+    }
+}
+
 #[cfg(feature = "terminal-runtime")]
 pub(super) fn on_terminal_panel_active_title_changed(surface_id: &str, title: &str) {
     let Some(owner) = shell_owner_appid().and_then(|appid| lxapp::try_get(&appid)) else {
