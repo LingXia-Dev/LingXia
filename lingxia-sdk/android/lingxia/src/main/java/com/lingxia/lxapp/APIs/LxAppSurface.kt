@@ -2,6 +2,7 @@ package com.lingxia.lxapp.APIs
 
 import android.app.Activity
 import android.graphics.Color
+import android.graphics.Outline
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.RippleDrawable
@@ -12,6 +13,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -414,10 +416,41 @@ internal object LxAppSurface {
             overlay.setOnClickListener { }
         }
 
+        val seatedSheet = request.position == SurfacePosition.BOTTOM && !fillsScreen
         val surface = FrameLayout(activity).apply {
             background = GradientDrawable().apply {
                 setColor(Color.WHITE)
-                cornerRadius = cornerRadiusPx
+                if (seatedSheet) {
+                    // A bottom sheet sits on the screen edge (its background
+                    // runs under the navigation bar), so only the top corners
+                    // are cards' — rounded bottom corners would read as the
+                    // sheet floating above a seam.
+                    cornerRadii = floatArrayOf(
+                        cornerRadiusPx, cornerRadiusPx, cornerRadiusPx, cornerRadiusPx,
+                        0f, 0f, 0f, 0f
+                    )
+                } else {
+                    cornerRadius = cornerRadiusPx
+                }
+            }
+            if (seatedSheet) {
+                // The drawable paints its per-corner radii correctly, but its
+                // outline for them is a path — and clipToOutline silently
+                // refuses to clip a path outline, which would let the WebView
+                // paint the rounded top corners square. Provide the clip shape
+                // explicitly: a round rect run one radius past the bottom
+                // edge, so its bottom curvature never falls inside the view.
+                outlineProvider = object : ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: Outline) {
+                        outline.setRoundRect(
+                            0,
+                            0,
+                            view.width,
+                            view.height + cornerRadiusPx.toInt(),
+                            cornerRadiusPx
+                        )
+                    }
+                }
             }
             clipToOutline = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
             // Full-screen drill-in surfaces are page-like, not cards. Keeping a
@@ -852,7 +885,7 @@ internal object LxAppSurface {
         request: Request,
         rootWidth: Int,
         rootHeight: Int,
-        bottomInset: Int
+        clearance: BottomClearance
     ): FrameLayout.LayoutParams {
         val defaultWidthRatio = 0.90
         val defaultHeightRatio = 0.55
@@ -863,9 +896,12 @@ internal object LxAppSurface {
         // ImmersiveWindowUi expands the decor). Sub-full surfaces keep the
         // 16dp inset that gives the card a visible gap from screen edges.
         val isFull = isFullScreenRequest(request)
+        // How far the card runs past its content to reach the screen edge; the
+        // matching content padding is applied in [applySafeLayout].
+        val seat = seatExtension(request, isFull, clearance)
         return FrameLayout.LayoutParams(
             if (isFull) FrameLayout.LayoutParams.MATCH_PARENT else width,
-            if (isFull) FrameLayout.LayoutParams.MATCH_PARENT else height
+            if (isFull) FrameLayout.LayoutParams.MATCH_PARENT else height + seat
         ).apply {
             gravity = when (request.position) {
                 SurfacePosition.BOTTOM -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
@@ -876,9 +912,22 @@ internal object LxAppSurface {
             }
             val margin = if (isFull) 0 else dp(activity, 16)
             if (request.position != SurfacePosition.BOTTOM) topMargin = margin
-            bottomMargin = if (request.position == SurfacePosition.BOTTOM) bottomInset
-                else if (request.position != SurfacePosition.TOP) margin
-                else 0
+            bottomMargin = when {
+                request.position != SurfacePosition.BOTTOM ->
+                    if (request.position != SurfacePosition.TOP) margin else 0
+                // A bottom surface sits on the screen edge. Its background runs
+                // under the navigation bar — the seat extension below — and the
+                // content is padded above it, the way any bottom sheet meets
+                // the bars; lifting the card instead bared a band of scrim
+                // along the bottom. Full screen draws through like any
+                // edge-to-edge page and the page owns its safe areas.
+                //
+                // The IME is the one thing that does lift the card: the
+                // activity does not resize for it, so a surface left under the
+                // keyboard never relayouts into the visible area — and while
+                // lifted the card is off the edge, so the seat is not needed.
+                else -> clearance.ime
+            }
             if (request.position != SurfacePosition.RIGHT) leftMargin = margin
             if (request.position != SurfacePosition.LEFT) rightMargin = margin
         }
@@ -891,7 +940,7 @@ internal object LxAppSurface {
         surface: FrameLayout,
         request: Request
     ) {
-        val bottomInset = resolveSurfaceBottomInset(activity, rootView, request)
+        val clearance = resolveBottomClearance(activity, rootView, request)
         if (overlay.paddingBottom != 0) overlay.setPadding(0, 0, 0, 0)
 
         val rootWidth = overlay.width
@@ -902,33 +951,72 @@ internal object LxAppSurface {
             .takeIf { it > 0 }
             ?: rootView.height.takeIf { it > 0 }
             ?: activity.resources.displayMetrics.heightPixels
-        val contentHeight = (rootHeight - bottomInset).coerceAtLeast(dp(activity, 160))
-        surface.layoutParams = layoutParams(activity, request, rootWidth, contentHeight, bottomInset)
+        val contentHeight = (rootHeight - clearance.reserved()).coerceAtLeast(dp(activity, 160))
+        surface.layoutParams = layoutParams(activity, request, rootWidth, contentHeight, clearance)
+
+        // The seat is background, not content: the WebView ends where the
+        // navigation bar begins, and the card's ground fills the band below.
+        val seat = seatExtension(request, isFullScreenRequest(request), clearance)
+        if (surface.paddingBottom != seat) {
+            surface.setPadding(0, 0, 0, seat)
+        }
     }
 
-    private fun resolveSurfaceBottomInset(activity: Activity, rootView: ViewGroup, request: Request): Int {
+    /**
+     * How far a seated bottom sheet extends past its content to reach the
+     * screen edge. Zero for everything that is not a resting sub-full bottom
+     * surface: full screen already reaches the edge, and a card lifted above
+     * the keyboard is off the edge for as long as the keyboard is up.
+     */
+    private fun seatExtension(request: Request, isFull: Boolean, clearance: BottomClearance): Int =
+        if (request.position == SurfacePosition.BOTTOM && !isFull && clearance.ime == 0) {
+            clearance.navigation
+        } else {
+            0
+        }
+
+    /**
+     * What has to stay clear below a bottom surface, kept apart because the
+     * two are owed to different things: the navigation area is chrome a
+     * full-screen surface is entitled to draw through, and the keyboard is a
+     * hard limit at any size.
+     */
+    private data class BottomClearance(val navigation: Int, val ime: Int) {
+        /** What a sub-full surface must leave free. */
+        fun reserved(): Int = maxOf(navigation, ime)
+    }
+
+    private fun resolveBottomClearance(
+        activity: Activity,
+        rootView: ViewGroup,
+        request: Request
+    ): BottomClearance {
+        if (request.position != SurfacePosition.BOTTOM) {
+            return BottomClearance(0, 0)
+        }
         val contentInset = (activity as? LxAppActivity)?.getContentBottomInset()
             ?: ViewCompat.getRootWindowInsets(rootView)
                 ?.getInsets(WindowInsetsCompat.Type.navigationBars())
                 ?.bottom
             ?: 0
-        if (request.position != SurfacePosition.BOTTOM) {
-            return 0
-        }
         val navInset = (contentInset - rootView.paddingBottom).coerceAtLeast(0)
+
         // The activity does not resize for the IME, so a full-height WebView
         // renders beneath the keyboard and the page never sees a
         // visualViewport change. Lift the sheet bottom above the IME so the
         // web content relayouts into the visible area.
-        if (request.content == CONTENT_URL) {
+        val imeInset = if (request.content == CONTENT_URL) {
             val insets = ViewCompat.getRootWindowInsets(rootView)
             if (insets?.isVisible(WindowInsetsCompat.Type.ime()) == true) {
-                val imeInset = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom -
-                    rootView.paddingBottom
-                return maxOf(navInset, imeInset.coerceAtLeast(0))
+                (insets.getInsets(WindowInsetsCompat.Type.ime()).bottom - rootView.paddingBottom)
+                    .coerceAtLeast(0)
+            } else {
+                0
             }
+        } else {
+            0
         }
-        return navInset
+        return BottomClearance(navInset, imeInset)
     }
 
     private fun resolveSize(activity: Activity, absoluteDp: Double, ratio: Double, basePx: Int, defaultRatio: Double): Int {
