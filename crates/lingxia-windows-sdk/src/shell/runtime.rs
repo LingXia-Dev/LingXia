@@ -3289,9 +3289,7 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             return;
         }
         chrome_command::TAB_BAR_MORE_CLICK => {
-            let screen_x = payload_i32(&event, "screen_x").unwrap_or(0);
-            let screen_y = payload_i32(&event, "screen_y").unwrap_or(0);
-            show_tabbar_overflow_menu(appid, screen_x, screen_y);
+            show_tabbar_overflow(appid);
             return;
         }
         chrome_command::NAVIGATION_BACK => {
@@ -3761,62 +3759,23 @@ fn chrome_command_is_page_scoped(command: &str) -> bool {
     )
 }
 
-/// The tab items the compact strip folded away, offered as a native menu above
-/// the "more" slot. Picking one switches to it exactly like a strip tab.
-fn show_tabbar_overflow_menu(appid: &str, screen_x: i32, screen_y: i32) {
-    use super::context_menu::ContextMenuEntry;
-
+/// Presents the compact strip's folded items in an in-frame grid sheet.
+fn show_tabbar_overflow(appid: &str) {
     let Some(app) = lxapp::try_get(appid) else {
         return;
     };
-    let Some(tabbar) = app.get_tabbar() else {
+    let Some(tabbar) = build_tab_bar_layout(&app, &[]) else {
         return;
     };
-    let Some(start) = tabbar.compact_overflow_start() else {
+    if !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
+        || tabbar.bottom_overflow_start().is_none()
+    {
         return;
-    };
+    }
     let Some(window) = owner_window_handle(appid) else {
         return;
     };
-
-    let folded: Vec<usize> = (start..tabbar.items.len()).collect();
-    let items: Vec<ContextMenuEntry> = folded
-        .iter()
-        .map(|index| {
-            let item = &tabbar.items[*index];
-            let label = item
-                .text
-                .clone()
-                .filter(|text| !text.trim().is_empty())
-                .unwrap_or_else(|| item.page_path.clone());
-            // The lxapp's icons are bundle PNGs the menu cannot tint, so the
-            // active item is marked with a check instead.
-            ContextMenuEntry {
-                label,
-                enabled: true,
-                checked: tabbar.selected_index == *index as i32,
-                separator: false,
-                icon: None,
-            }
-        })
-        .collect();
-
-    let appid = appid.to_string();
-    super::context_menu::show_context_menu_entries(
-        window,
-        (screen_x, screen_y),
-        items,
-        Arc::new(move |picked| {
-            let Some(index) = folded.get(picked).copied() else {
-                return;
-            };
-            let Some(app) = lxapp::try_get(&appid) else {
-                return;
-            };
-            prime_tabbar_selection(&app, index);
-            let _ = app.on_lxapp_event(LxAppUiEventType::TabBarClick, index.to_string());
-        }),
-    );
+    crate::window_host::toggle_tabbar_overflow(window, tabbar);
 }
 
 fn payload_usize(command: &WindowsChromeCommand, field: &str) -> Option<usize> {
