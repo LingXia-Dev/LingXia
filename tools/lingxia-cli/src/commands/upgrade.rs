@@ -91,6 +91,7 @@ fn should_defer_project_upgrade(cli: &CliStep, check: bool) -> bool {
     matches!(cli, CliStep::Staged) && !check
 }
 
+#[cfg(any(target_os = "windows", test))]
 fn rerun_command(version: Option<&str>, yes: bool) -> String {
     let mut command = "lingxia upgrade".to_string();
     if let Some(version) = version {
