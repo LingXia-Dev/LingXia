@@ -122,7 +122,7 @@ function windowsHost(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefine
     .filter((window) => (
       window.visible
       && window.title === 'LingXia'
-      && window.process.toLocaleLowerCase() !== 'msedgewebview2'
+      && window.process.toLocaleLowerCase().includes('lingxiademo')
     ))
     .sort((left, right) => (
       right.bounds.w * right.bounds.h - left.bounds.w * left.bounds.h
@@ -359,11 +359,11 @@ async function expandMediumSidebar(
         ]) });
       } else {
         // The Windows control is custom-drawn and absent from UI Automation.
-        // Target the center of its bottom cell instead of a fragile edge hit.
+        // Its chrome hit-test constants are physical pixels (34px cell, 4px
+        // bottom gap), while desktop window bounds are physical as well.
         const point: [number, number] = [
-          foreground.bounds.x + nativeWindowExtent(platform, foreground, 22),
-          foreground.bounds.y + foreground.bounds.h
-            - nativeWindowExtent(platform, foreground, 21),
+          foreground.bounds.x + 28,
+          foreground.bounds.y + foreground.bounds.h - 21,
         ];
         await desktop.pointer.move({ at: point });
         await desktop.pointer.click({ at: point });
