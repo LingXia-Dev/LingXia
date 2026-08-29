@@ -636,6 +636,12 @@ pub(crate) fn sdk_package_points_at(package_dir: &Path, sdk_dir: &Path) -> bool 
     content.contains(&abs_str)
 }
 
+pub(crate) fn sdk_package_is_hand_wired(package_dir: &Path) -> bool {
+    let cache_root = sdk_cache_root_string();
+    fs::read_to_string(package_dir.join("Package.swift"))
+        .is_ok_and(|manifest| is_hand_wired(&manifest, cache_root.as_deref()))
+}
+
 fn sdk_cache_root_string() -> Option<String> {
     crate::sdk_cache::sdk_cache_root().map(|root| root.to_string_lossy().replace('\\', "/"))
 }
@@ -690,10 +696,7 @@ pub fn ensure_sdk_package_dependency(project_root: &Path, package_dir: &Path) ->
     }
     // Decide before paying for a release download: a hand-wired manifest is
     // left alone, and vendored-SDK projects should not need the network at all.
-    let cache_root = sdk_cache_root_string();
-    if fs::read_to_string(package_dir.join("Package.swift"))
-        .is_ok_and(|manifest| is_hand_wired(&manifest, cache_root.as_deref()))
-    {
+    if sdk_package_is_hand_wired(package_dir) {
         return Ok(());
     }
     let version = crate::sdk_cache::sdk_version();
