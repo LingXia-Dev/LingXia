@@ -7851,6 +7851,8 @@ fn show_webview_window_replacing(
     })
     .unwrap_or(native_parent);
     prepare_shell_window_for_presentation(target)?;
+    #[cfg(feature = "shell-chrome")]
+    crate::shell::prime_lxapp_shell_layout(webtag, window_logical_client_width(target));
     let title = to_wide(title);
     unsafe {
         let _ = WindowsAndMessaging::SetWindowTextW(target, PCWSTR(title.as_ptr()));
