@@ -46,7 +46,7 @@ transferSpec('download a body and read the bytes back out of the sandbox', {
 
 transferSpec('abort an in-flight download and reject with E_ABORT', {
   id: 'TRANSFER-ABORT-001',
-  covers: ['DownloadTask.abort', 'DownloadTask.catch'],
+  covers: ['DownloadTask.abort'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -62,6 +62,165 @@ transferSpec('abort an in-flight download and reject with E_ABORT', {
 
   expect(outcome.ok).toBeFalsy();
   expect(outcome.code).toBe('E_ABORT');
+});
+
+transferSpec('stream monotonic download progress across pause and resume', {
+  id: 'TRANSFER-PROGRESS-001',
+  covers: ['DownloadTask.next', 'DownloadTask.pause', 'DownloadTask.resume'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app, namespace } = bindFixture(t, 'TRANSFER-PROGRESS-001');
+
+  const outcome = await evalCaught(app, `
+      const task = lx.downloadFile({
+        url: ${JSON.stringify(`${httpBase}/slow.bin?size=1200000&chunks=40&delayMs=60&case=${encodeURIComponent(namespace)}`)},
+      });
+      const events = [];
+      let pauseRequested = false;
+      let resumeRequested = false;
+
+      while (true) {
+        const step = await task.next();
+        if (step.done) break;
+        const event = step.value;
+        events.push({
+          kind: event.kind,
+          downloaded: event.downloadedBytes ?? null,
+          total: event.totalBytes ?? null,
+          progress: event.progress ?? null,
+          resultSize: event.result?.size ?? null,
+        });
+
+        if (event.kind === 'progress' && !pauseRequested) {
+          pauseRequested = true;
+          await task.pause();
+        } else if (event.kind === 'paused' && !resumeRequested) {
+          resumeRequested = true;
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          await task.resume();
+        } else if (event.kind === 'completed') {
+          break;
+        }
+      }
+
+      const waited = await task.wait();
+      return { events, waitedSize: waited.size };
+  `);
+  if (!outcome.ok) {
+    throw new Error(`download progress failed: ${JSON.stringify(outcome)}`);
+  }
+  const result = outcome.value as {
+    events: Array<{
+      kind: string;
+      downloaded: number | null;
+      total: number | null;
+      progress: number | null;
+      resultSize: number | null;
+    }>;
+    waitedSize: number;
+  };
+
+  const kinds = result.events.map((event) => event.kind);
+  const pausedAt = kinds.indexOf('paused');
+  const resumedAt = kinds.indexOf('resumed');
+  expect(pausedAt).toBeGreaterThan(0);
+  expect(resumedAt).toBeGreaterThan(pausedAt);
+  expect(kinds[kinds.length - 1]).toBe('completed');
+
+  const progress = result.events.filter(
+    (event): event is typeof event & { downloaded: number; total: number; progress: number } =>
+      event.kind === 'progress'
+      && event.downloaded !== null
+      && event.total !== null
+      && event.progress !== null,
+  );
+  expect(progress.length).toBeGreaterThan(1);
+  expect(progress.every((event, index) =>
+    index === 0 || event.downloaded >= progress[index - 1].downloaded)).toBeTruthy();
+  expect(progress.every((event) => event.total === 1_200_000)).toBeTruthy();
+  expect(progress.every((event) => event.progress >= 0 && event.progress <= 1)).toBeTruthy();
+
+  const completed = result.events[result.events.length - 1];
+  expect(completed.resultSize).toBe(1_200_000);
+  expect(result.waitedSize).toBe(1_200_000);
+});
+
+transferSpec('stop download iteration without canceling the transfer promise', {
+  id: 'TRANSFER-RETURN-001',
+  covers: ['DownloadTask.next', 'DownloadTask.return', 'DownloadTask.finally'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app, namespace } = bindFixture(t, 'TRANSFER-RETURN-001');
+
+  const outcome = await evalCaught(app, `
+      const task = lx.downloadFile({
+        url: ${JSON.stringify(`${httpBase}/slow.bin?size=131072&chunks=8&delayMs=40&case=${encodeURIComponent(namespace)}`)},
+      });
+      const first = await task.next();
+      const returned = await task.return();
+      const afterReturn = await task.next();
+      let finallyCount = 0;
+      const completed = await task.finally(() => { finallyCount += 1; });
+      return {
+        firstKind: first.value?.kind ?? null,
+        returnedDone: returned.done,
+        afterReturnDone: afterReturn.done,
+        completedSize: completed.size,
+        finallyCount,
+      };
+  `);
+  if (!outcome.ok) {
+    throw new Error(`download iterator return failed: ${JSON.stringify(outcome)}`);
+  }
+  const result = outcome.value as {
+    firstKind: string | null;
+    returnedDone: boolean;
+    afterReturnDone: boolean;
+    completedSize: number;
+    finallyCount: number;
+  };
+
+  expect(result.firstKind).toBe('progress');
+  expect(result.returnedDone).toBeTruthy();
+  expect(result.afterReturnDone).toBeTruthy();
+  expect(result.completedSize).toBe(131_072);
+  expect(result.finallyCount).toBe(1);
+});
+
+transferSpec('cancel a download through its promise helpers', {
+  id: 'TRANSFER-CANCEL-001',
+  covers: ['DownloadTask.cancel', 'DownloadTask.catch', 'DownloadTask.finally'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app, namespace } = bindFixture(t, 'TRANSFER-CANCEL-001');
+
+  const result = await app.eval({
+    timeoutMs: 30_000,
+    script: `
+      const task = lx.downloadFile({
+        url: ${JSON.stringify(`${httpBase}/slow.bin?size=400000&chunks=40&delayMs=100&case=${encodeURIComponent(namespace)}`)},
+      });
+      let finallyCount = 0;
+      const finalized = task.finally(() => { finallyCount += 1; }).catch(() => undefined);
+      setTimeout(() => task.cancel(), 300);
+      const caught = await task.catch((error) => ({
+        code: String(error?.code || ''),
+        message: String(error?.message || error),
+      }));
+      await finalized;
+      return { caught, finallyCount };
+    `,
+  }) as {
+    caught: { code: string; message: string };
+    finallyCount: number;
+  };
+
+  expect(result.caught.code).toBe('E_ABORT');
+  expect(result.caught.message).toContain('canceled');
+  expect(result.finallyCount).toBe(1);
 });
 
 transferSpec('report the server status a failed download saw', {

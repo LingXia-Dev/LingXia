@@ -32,6 +32,22 @@ test('trickles a slow stream so progress is observable', async () => {
   assert.ok(Date.now() - started >= 120, 'the stream must not arrive at once');
 });
 
+test('resumes a slow stream from an HTTP byte range', async () => {
+  const initial = await fetch(`${base}/slow?size=4096&chunks=4&delayMs=1`);
+  const etag = initial.headers.get('etag');
+  await initial.body.cancel();
+
+  const resumed = await fetch(`${base}/slow?size=4096&chunks=4&delayMs=1`, {
+    headers: { range: 'bytes=1024-', 'if-range': etag },
+  });
+  const bytes = Buffer.from(await resumed.arrayBuffer());
+  assert.equal(resumed.status, 206);
+  assert.equal(resumed.headers.get('content-range'), 'bytes 1024-4095/4096');
+  assert.equal(bytes.length, 3072);
+  assert.equal(bytes[0], 1024 % 251);
+  assert.equal(bytes[bytes.length - 1], 4095 % 251);
+});
+
 test('truncates a body that promised more', async () => {
   await assert.rejects(async () => {
     const response = await fetch(`${base}/truncated?size=4096`);
@@ -77,6 +93,15 @@ test('rejects a body that is not multipart', async () => {
     headers: { 'content-type': 'text/plain' },
   });
   assert.equal(response.status, 415);
+});
+
+test('returns an early raw-upload rejection without resetting the socket', async () => {
+  const response = await fetch(`${base}/upload-raw?reject=403`, {
+    method: 'PUT',
+    body: Buffer.alloc(1024 * 1024, 7),
+  });
+  assert.equal(response.status, 403);
+  assert.equal(await response.text(), 'refused 403');
 });
 
 test('stops writing when the client aborts mid-stream', async () => {
