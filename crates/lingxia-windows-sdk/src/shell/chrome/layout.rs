@@ -24,6 +24,9 @@ pub struct WindowsShellNavigationBarLayout {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsShellTabBarItemLayout {
+    /// Index in `lxapp.json`, which selection and clicks key on. The shell is
+    /// given only the items it shows, so this is not the row's position.
+    pub index: usize,
     pub page_path: String,
     pub text: String,
     pub icon_path: String,
@@ -47,19 +50,29 @@ impl WindowsShellTabBarLayout {
     /// has anything to hold.
     pub fn bottom_slot_count(&self) -> usize {
         self.bottom_overflow_start()
-            .map_or(self.items.len(), |start| start + 1)
+            .map_or(self.items.len(), |direct| direct + 1)
+    }
+
+    /// What one bottom-strip cell stands for.
+    pub fn bottom_slot(&self, slot: usize) -> Option<BottomSlot> {
+        match self.bottom_overflow_start() {
+            Some(direct) if slot == direct => Some(BottomSlot::More),
+            _ => (slot < self.items.len()).then_some(BottomSlot::Tab(slot)),
+        }
     }
 
     /// Which strip slot an item paints in. Folded items all share the "more"
     /// slot, so a switch between two of them repaints the same cell.
+    /// The cell a declared item paints in, or `None` when this host does not
+    /// show it. Folded items all share the "more" cell.
     pub fn bottom_slot_for_item(&self, index: i32) -> Option<usize> {
-        let index = usize::try_from(index).ok()?;
-        if index >= self.items.len() {
-            return None;
-        }
+        let slot = self
+            .items
+            .iter()
+            .position(|item| item.index as i32 == index)?;
         Some(match self.bottom_overflow_start() {
-            Some(start) if index >= start => start,
-            _ => index,
+            Some(direct) if slot >= direct => direct,
+            _ => slot,
         })
     }
 
@@ -71,6 +84,15 @@ impl WindowsShellTabBarLayout {
                 .any(|item| item.has_red_dot || item.badge.is_some())
         })
     }
+}
+
+/// One cell of the compact bottom strip.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BottomSlot {
+    /// A tab, by declaration index.
+    Tab(usize),
+    /// The overflow affordance, standing in for every folded item.
+    More,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

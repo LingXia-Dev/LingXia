@@ -75,6 +75,9 @@ internal data class TabBarState(
 }
 
 internal data class TabBarItem(
+    // Index in lxapp.json, which selection and clicks key on. Only the items
+    // this host shows are sent, so this is not the item's position in the list.
+    val index: Int,
     val pagePath: String,                 // Page path to navigate to
     val text: String?,                    // Tab text label (optional, null means no text)
     val iconPath: String,                 // Absolute path to the icon file
@@ -316,18 +319,22 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         config.overflowStartIndex.takeIf { it in 0 until items.size } ?: -1
 
     /** Indices of the items that only the overflow menu can reach. */
+    /** Positions in [items] that only the overflow menu can reach. */
     internal fun overflowItemIndices(): List<Int> {
         val start = overflowStart()
         return if (start < 0) emptyList() else (start until items.size).toList()
     }
 
     private fun isSlotSelected(slot: Slot): Boolean = when (slot) {
-        is Slot.Tab -> slot.itemIndex == config.selectedIndex
-        Slot.More -> overflowStart().let { it >= 0 && config.selectedIndex >= it }
+        is Slot.Tab -> items[slot.itemIndex].index == config.selectedIndex
+        // Any folded item being active lights "more".
+        Slot.More -> overflowItemIndices().any { items[it].index == config.selectedIndex }
     }
 
+    /** [index] is a declaration index, not a position in [items]. */
     fun setSelectedIndex(index: Int, notifyListener: Boolean = true) {
-        if (index < 0 || index >= items.size) {
+        val position = items.indexOfFirst { it.index == index }
+        if (position < 0) {
             return
         }
 
@@ -343,7 +350,7 @@ internal class TabBar(context: Context) : LinearLayout(context) {
 
             // Notify listener
             if (notifyListener) {
-                onTabSelectedListener?.invoke(index, items[index].pagePath)
+                onTabSelectedListener?.invoke(index, items[position].pagePath)
             }
         }
     }
@@ -517,7 +524,7 @@ internal class TabBar(context: Context) : LinearLayout(context) {
             setOnClickListener {
                 when (slot) {
                     is Slot.Tab -> onTabSelectedListener?.invoke(
-                        slot.itemIndex,
+                        items[slot.itemIndex].index,
                         items[slot.itemIndex].pagePath
                     )
                     Slot.More -> onMoreRequestedListener?.invoke(overflowItemIndices())

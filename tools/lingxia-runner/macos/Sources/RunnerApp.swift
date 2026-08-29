@@ -150,6 +150,11 @@ public class RunnerApp {
         RunnerUserAgentPolicy.shared.setProfile(
             selectedDeviceSize.browserProfile
         )
+        // A phone shape stands in for a phone, so `showOn` resolves against the
+        // simulated machine rather than the Mac the runner happens to be.
+        LingxiaRunnerSPI.Tabs.setSimulatedHostClass(
+            mobile: selectedDeviceSize.shape == .phone
+        )
         let effectiveDevice = selectedDeviceSize.oriented(deviceOrientation)
         deviceSize = effectiveDevice
         SimulatorWindowController.setWindowSize(effectiveDevice)

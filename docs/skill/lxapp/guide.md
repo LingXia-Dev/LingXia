@@ -620,6 +620,24 @@ One icon per item, drawn as a **template**: the host tints it with
 circle behind it. Ship a monochrome glyph — a multi-colour PNG is flattened to
 one colour. There is no second "selected" icon to author.
 
+### 只在某类主机上出现的 item
+
+A destination bound to a device — a camera scan, or a desktop-only workspace —
+declares the hosts it belongs on:
+
+```json
+{ "text": "Scan", "pagePath": "pages/scan/index",
+  "iconPath": "public/scan.png", "showOn": ["mobile"] }
+```
+
+`mobile` | `desktop`; omitted means every host. The runtime resolves it from the
+machine, not the window size — a narrowed desktop window is still a desktop —
+and the runner resolves it from the device it is simulating.
+
+Item indices stay as declared, so a badge or `switchTab` targets the same tab on
+every host. Each host is validated on its own: `showOn` may not leave any of
+them fewer than two items.
+
 ### More than five tabs
 
 A phone strip fits five slots. Past that the host shows the first four, then a

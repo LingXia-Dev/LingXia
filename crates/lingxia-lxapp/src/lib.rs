@@ -71,7 +71,7 @@ pub use lxapp::{
     automation_auto_grant, close_lxapp, config::LxAppInfo, create_page_instance,
     dispose_page_instance, dispose_page_instance_by_id, ensure_builtin_lxapp,
     ensure_host_surface_owner, ensure_lxapp, find_page_by_instance_id, get_current_lxapp,
-    get_display_language, get_platform, init, installed_lxapp_path, is_dev_session,
+    get_display_language, get_platform, host_class, init, installed_lxapp_path, is_dev_session,
     is_public_network_address, is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active,
     navbar, notify_lxapp_host_visibility, notify_page_host_visibility, notify_page_instance,
     notify_page_instance_by_id, on_low_memory, open_lxapp, open_region, page_chrome,

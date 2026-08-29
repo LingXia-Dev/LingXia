@@ -218,6 +218,13 @@ import WebKit
             RunnerBridge.setTabBarCompact(view, compact: compact)
         }
 
+        /// Tell the runtime which machine it is standing in for, so a tab item
+        /// declared `showOn: ["mobile"]` appears in a phone shape and not in a
+        /// desktop one. Only the runner simulates a host it was not built for.
+        public static func setSimulatedHostClass(mobile: Bool) {
+            RunnerBridge.setSimulatedHostClass(mobile: mobile)
+        }
+
         public static func setSelectedIndex(
             _ view: NSView?,
             index: Int,

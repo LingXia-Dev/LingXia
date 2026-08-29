@@ -2113,9 +2113,9 @@ fn build_tab_bar_layout(
         .filter(|_| root_owns_lxapp_navigation)
         .map(|tabbar| {
             tabbar
-                .items
-                .iter()
-                .map(|item| WindowsShellTabBarItemLayout {
+                .visible_items()
+                .map(|(index, item)| WindowsShellTabBarItemLayout {
+                    index,
                     page_path: item.page_path.clone(),
                     text: item.text.clone().unwrap_or_default(),
                     icon_path: item.icon_path.clone().unwrap_or_default(),
@@ -2294,7 +2294,7 @@ fn build_tab_bar_layout(
         selected_index: current_tab_index.map(|index| index as i32).unwrap_or(-1),
         overflow_start_index: tabbar
             .as_ref()
-            .map(|tabbar| tabbar.compact_overflow_start_index())
+            .map(|tabbar| tabbar.compact_overflow_slot_index())
             .unwrap_or(-1),
         items,
         auxiliary_items,

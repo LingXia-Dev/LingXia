@@ -915,10 +915,13 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
 
         let tab_items_list = env.new_object(array_list_class, jni_sig!("()V"), &[])?;
 
-        for (index, item) in tab_bar_config.items.iter().enumerate() {
-            if let Some(tab_item) =
-                create_tab_bar_item(env, item, tab_bar_config.selected_index == index as i32)
-            {
+        for (index, item) in tab_bar_config.visible_items() {
+            if let Some(tab_item) = create_tab_bar_item(
+                env,
+                index as i32,
+                item,
+                tab_bar_config.selected_index == index as i32,
+            ) {
                 let _ = env.call_method(
                     &tab_items_list,
                     jni_str!("add"),
@@ -957,7 +960,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
                 (&tab_items_list).into(),
                 tab_bar_config.is_effectively_visible().into(),
                 tab_bar_config.selected_index.into(),
-                tab_bar_config.compact_overflow_start_index().into(),
+                tab_bar_config.compact_overflow_slot_index().into(),
             ],
         )?;
         Ok(obj)
@@ -968,6 +971,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getTabBarState<'a>(
 /// Create TabBarItem with actual badge and red dot data from Rust
 fn create_tab_bar_item<'a>(
     env: &mut Env<'a>,
+    index: i32,
     item: &lxapp::tabbar::TabBarItem,
     selected: bool,
 ) -> Option<JObject<'a>> {
@@ -1003,8 +1007,9 @@ fn create_tab_bar_item<'a>(
     // Create TabBarItem object with actual data
     env.new_object(
         tab_item_class,
-        jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Z)V"),
+        jni_sig!("(ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/lang/String;Z)V"),
         &[
+            index.into(),
             (&page_path).into(),
             (&text).into(),
             (&icon_path).into(),

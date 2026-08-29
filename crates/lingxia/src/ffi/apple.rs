@@ -69,6 +69,10 @@ mod bridge {
     // TabBar item for Swift
     #[swift_bridge(swift_repr = "struct")]
     pub struct TabBarItem {
+        /// Index in `lxapp.json`, which is what selection, badges and
+        /// `switchTab` key on. A host receives only the items it shows, so
+        /// this is not its position in that list.
+        pub index: i32,
         pub page_path: String,
         pub text: String,
         pub icon_path: String,
@@ -237,6 +241,7 @@ mod bridge {
 
         #[swift_bridge(swift_name = "getTabBar")]
         fn get_tab_bar(appid: &str) -> Option<TabBar>;
+        fn set_simulated_host_class(mobile: bool);
 
         #[swift_bridge(swift_name = "getTabBarItem")]
         fn get_tab_bar_item(appid: &str, index: i32) -> Option<TabBarItem>;
@@ -2051,6 +2056,16 @@ fn orientation_to_value(orientation: OrientationConfig) -> i32 {
 }
 
 /// Get TabBar state
+/// Tell the runtime it is standing in for a phone (or stopped doing so). Only
+/// the runner calls this: every shipped host is the machine it was built for.
+pub fn set_simulated_host_class(mobile: bool) {
+    lxapp::host_class::set_host_class(if mobile {
+        lxapp::host_class::HostClass::Mobile
+    } else {
+        lxapp::host_class::HostClass::Desktop
+    });
+}
+
 pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
     lxapp::try_get(appid).and_then(|lxapp| {
         let resolved = lxapp.resolved_tabbar_style()?;
@@ -2070,12 +2085,12 @@ pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
                 tabbar.presentation == lxapp::page_chrome::TabBarPresentation::Immersive,
             ),
             dimension: 64,
-            items_count: tabbar.items.len() as i32,
+            items_count: tabbar.visible_items().count() as i32,
             is_visible: tabbar.is_effectively_visible(),
             is_api_hidden: tabbar.visibility
                 == lxapp::page_chrome::TabBarVisibilityPreference::Hidden,
             selected_index: tabbar.selected_index,
-            overflow_start_index: tabbar.compact_overflow_start_index(),
+            overflow_start_index: tabbar.compact_overflow_slot_index(),
             styled_mask: (tabbar
                 .runtime_style
                 .foreground_color
@@ -2094,15 +2109,19 @@ pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
 }
 
 /// Get TabBar item by index
-pub fn get_tab_bar_item(appid: &str, index: i32) -> Option<self::bridge::TabBarItem> {
+/// The `slot`-th item this host shows, not the `slot`-th declared one.
+pub fn get_tab_bar_item(appid: &str, slot: i32) -> Option<self::bridge::TabBarItem> {
     lxapp::try_get(appid)
         .and_then(|lxapp| lxapp.get_tabbar())
         .and_then(|tabbar| {
-            tabbar.get_item(index).map(|item| self::bridge::TabBarItem {
+            let slot = usize::try_from(slot).ok()?;
+            let (index, item) = tabbar.visible_items().nth(slot)?;
+            Some(self::bridge::TabBarItem {
+                index: index as i32,
                 page_path: item.page_path.clone(),
                 text: item.text.clone().unwrap_or_default(),
                 icon_path: item.icon_path.clone().unwrap_or_default(),
-                selected: tabbar.selected_index == index,
+                selected: tabbar.selected_index == index as i32,
                 badge: item.badge.clone().unwrap_or_default(),
                 has_red_dot: item.has_red_dot,
             })

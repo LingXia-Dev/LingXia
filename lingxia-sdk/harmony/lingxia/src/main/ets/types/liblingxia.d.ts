@@ -70,6 +70,8 @@ declare module 'liblingxia.so' {
    * TabBar item structure
    */
   export interface TabBarItem {
+    /** Index in lxapp.json; only shown items are sent, so not a position. */
+    index: number;
     pagePath: string;
     text: string;
     iconPath: string;

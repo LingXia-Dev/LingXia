@@ -66,6 +66,8 @@ fileprivate struct TabBarHelpers {
 
 /// Extensions for TabBarItem
 extension TabBarItem {
+    /// Declaration index, widened once for the call sites that compare it.
+    var cachedIndex: Int { Int(index) }
     var cachedPagePath: String { page_path.toString() }
     var cachedText: String { text.toString() }
     var cachedIconPath: String { icon_path.toString() }
@@ -151,7 +153,7 @@ struct MacOSLxAppTabBar: View {
 
     @ViewBuilder
     private func buildTabItem(item: TabBarItem, index: Int) -> some View {
-        let isSelected = (index == selectedIndex)
+        let isSelected = (item.cachedIndex == selectedIndex)
         // Get state directly from Rust
         let rustItem = getTabBarItem(appId, Int32(index))
 
@@ -161,7 +163,7 @@ struct MacOSLxAppTabBar: View {
 
         Button(action: {
             // Always trigger callback - let parent decide if action is needed
-            onTabSelected(index, item.cachedPagePath)
+            onTabSelected(item.cachedIndex, item.cachedPagePath)
         }) {
             VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
                 // Tab icon with badge and red dot overlay
@@ -242,7 +244,7 @@ struct MacOSLxAppTabBar: View {
     /// The overflow slot stands in for the folded items, selection included.
     @ViewBuilder
     private func buildMoreItem(items: [TabBarItem], overflowStart: Int) -> some View {
-        let isSelected = selectedIndex >= overflowStart
+        let isSelected = items[overflowStart...].contains { $0.cachedIndex == selectedIndex }
         let forceColor = isSelected ?
             Color(PlatformColor(argb: config.selected_color)) :
             Color(PlatformColor(argb: config.color))
@@ -473,6 +475,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         refreshLayout()
     }
 
+    /// `index` is a declaration index, not a position in the shipped list.
     func setSelectedIndex(_ index: Int, notifyListener: Bool) {
         let previousIndex = Int(tabBarConfig?.selected_index ?? 0)
         self.selectedIndex = index
@@ -483,8 +486,8 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
 
         if notifyListener, let callback = onTabSelectedCallback, let config = tabBarConfig {
             let items = config.getItems(appId: appId)
-            if index < items.count {
-                callback(index, items[index].page_path.toString())
+            if let item = items.first(where: { $0.cachedIndex == index }) {
+                callback(index, item.page_path.toString())
             }
         }
     }
@@ -592,7 +595,9 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             stackView.addArrangedSubview(tabView)
         }
         if overflowStart >= 0 {
-            stackView.addArrangedSubview(createUIKitMoreItem(config: config, overflowStart: overflowStart))
+            stackView.addArrangedSubview(
+                createUIKitMoreItem(items: items, config: config, overflowStart: overflowStart)
+            )
         }
 
         NSLayoutConstraint.activate([
@@ -609,7 +614,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
 
         let button = UIButton(type: .custom)
         button.translatesAutoresizingMaskIntoConstraints = false
-        button.tag = index
+        button.tag = item.cachedIndex
 
         let stackView = UIStackView()
         stackView.axis = .vertical
@@ -618,7 +623,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.isUserInteractionEnabled = false
 
-        let isSelected = (index == selectedIndex)
+        let isSelected = (item.cachedIndex == selectedIndex)
 
         if !item.icon_path.toString().isEmpty {
             let iconView = createUIKitIcon(item: item, index: index, isSelected: isSelected)
@@ -764,7 +769,11 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
     }
 
     /// The overflow slot stands in for the folded items, selection included.
-    private func createUIKitMoreItem(config: TabBar, overflowStart: Int) -> UIView {
+    private func createUIKitMoreItem(
+        items: [TabBarItem],
+        config: TabBar,
+        overflowStart: Int
+    ) -> UIView {
         let containerView = UIView()
         containerView.translatesAutoresizingMaskIntoConstraints = false
 
@@ -772,7 +781,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.addTarget(self, action: #selector(moreButtonTapped), for: .touchUpInside)
 
-        let isSelected = selectedIndex >= overflowStart
+        let isSelected = items[overflowStart...].contains { $0.cachedIndex == selectedIndex }
         let tint = isSelected
             ? PlatformColor(argb: config.selected_color)
             : PlatformColor(argb: config.color)

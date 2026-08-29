@@ -31,8 +31,8 @@ internal object TabBarOverflowSheet {
 
     /**
      * @param anchor the tab strip; the panel sits flush on top of it.
-     * @param indices item indices to offer, in declaration order.
-     * @param onPick receives the picked item's index in the full item list.
+     * @param indices positions in `state.list` to offer, in order.
+     * @param onPick receives the picked item's declaration index.
      */
     fun show(
         activity: Activity,
@@ -155,8 +155,9 @@ internal object TabBarOverflowSheet {
         )
         indices.forEach { index ->
             state.list.getOrNull(index)?.let { item ->
-                addView(buildCell(activity, palette, state, item, index == state.selectedIndex) {
-                    onPick(index)
+                val selected = item.index == state.selectedIndex
+                addView(buildCell(activity, palette, state, item, selected) {
+                    onPick(item.index)
                 })
             }
         }

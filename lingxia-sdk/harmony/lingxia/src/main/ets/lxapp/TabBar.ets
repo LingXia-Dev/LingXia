@@ -185,7 +185,7 @@ export struct TabBar {
       Stack() {
         // The indicator belongs to the bar, not to an item's artwork:
         // whatever is selected gets it.
-        if (this.tabbar.selectedIndex === index) {
+        if (item.index === this.tabbar.selectedIndex) {
           Circle()
             .width(TAB_BAR_ACTIVE_INDICATOR_SIZE)
             .height(TAB_BAR_ACTIVE_INDICATOR_SIZE)
@@ -198,7 +198,7 @@ export struct TabBar {
           Image(this.getIconUrl(item))
             .width(TAB_BAR_ITEM_ICON_SIZE)
             .height(TAB_BAR_ITEM_ICON_SIZE)
-            .fillColor(this.tabbar.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
+            .fillColor(item.index === this.tabbar.selectedIndex ? this.getSelectedColor() : this.getNormalColor())
             .objectFit(ImageFit.Contain)
             .onError((error: ImageError): void => {
               LxLog.e(TAG, `Tab ${index} icon load error: ${JSON.stringify(error)}, path: ${item.iconPath}`);
@@ -241,7 +241,7 @@ export struct TabBar {
       if (item.text) {
         Text(item.text)
           .fontSize(this.isVertical() ? TAB_BAR_ITEM_TEXT_SIZE_VERTICAL : TAB_BAR_ITEM_TEXT_SIZE_HORIZONTAL)
-          .fontColor(this.tabbar.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
+          .fontColor(item.index === this.tabbar.selectedIndex ? this.getSelectedColor() : this.getNormalColor())
           .margin({ top: TAB_BAR_ITEM_ICON_TEXT_SPACING })
           .fontWeight(this.isTransparent() ? FontWeight.Medium : FontWeight.Normal)
           .maxLines(this.isVertical() ? TAB_BAR_ITEM_TEXT_MAX_LINES_VERTICAL : TAB_BAR_ITEM_TEXT_MAX_LINES_HORIZONTAL)
@@ -267,7 +267,7 @@ export struct TabBar {
 
       // Always trigger callback - let parent decide if action is needed
       if (this.onTabSelected) {
-        this.onTabSelected(this.appId, index, item);
+        this.onTabSelected(this.appId, item.index, item);
       }
     })
   }
@@ -328,8 +328,13 @@ export struct TabBar {
 
   /** The overflow slot stands in for the folded items, selection included. */
   private isMoreSelected(): boolean {
-    const start: number = this.overflowStart();
-    return start >= 0 && this.tabbar.selectedIndex >= start;
+    const folded: number[] = this.overflowIndices();
+    for (const slot of folded) {
+      if (this.tabbar.items[slot].index === this.tabbar.selectedIndex) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** Folded badges still have to surface, so "more" aggregates them to a dot. */
@@ -446,7 +451,7 @@ export struct TabBar {
   buildOverflowCell(item: TabBarItem, index: number) {
     Column() {
       Stack() {
-        if (this.tabbar.selectedIndex === index) {
+        if (item.index === this.tabbar.selectedIndex) {
           Circle()
             .width(TAB_BAR_ACTIVE_INDICATOR_SIZE)
             .height(TAB_BAR_ACTIVE_INDICATOR_SIZE)
@@ -457,7 +462,7 @@ export struct TabBar {
         Image(this.getIconUrl(item))
           .width(TAB_BAR_ITEM_ICON_SIZE)
           .height(TAB_BAR_ITEM_ICON_SIZE)
-          .fillColor(this.tabbar.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
+          .fillColor(item.index === this.tabbar.selectedIndex ? this.getSelectedColor() : this.getNormalColor())
           .objectFit(ImageFit.Contain)
 
         if (item.badge) {
@@ -492,7 +497,7 @@ export struct TabBar {
       if (item.text) {
         Text(item.text)
           .fontSize(TAB_BAR_ITEM_TEXT_SIZE_HORIZONTAL)
-          .fontColor(this.tabbar.selectedIndex === index ? this.getSelectedColor() : this.getNormalColor())
+          .fontColor(item.index === this.tabbar.selectedIndex ? this.getSelectedColor() : this.getNormalColor())
           .margin({ top: TAB_BAR_ITEM_ICON_TEXT_SPACING })
           .maxLines(TAB_BAR_ITEM_TEXT_MAX_LINES_HORIZONTAL)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
@@ -505,7 +510,7 @@ export struct TabBar {
     .onClick(() => {
       this.moreVisible = false;
       if (this.onTabSelected) {
-        this.onTabSelected(this.appId, index, item);
+        this.onTabSelected(this.appId, item.index, item);
       }
     })
   }

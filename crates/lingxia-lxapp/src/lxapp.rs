@@ -35,6 +35,7 @@ use crate::{debug, error, info, warn};
 use security::NetworkSecurity;
 
 pub mod config;
+pub mod host_class;
 use config::{LxAppConfig, LxAppLogicEntry, LxAppPageEntry};
 mod content;
 pub(crate) mod metadata;

@@ -2339,7 +2339,6 @@ pub(super) fn chrome_hit_test(
             } else {
                 tabbar.bottom_slot_count()
             };
-            let overflow_start = tabbar.bottom_overflow_start();
             for slot in 0..slot_count {
                 let item_rect = if sidebar {
                     sidebar_item_rect(tabbar_rect, tabbar, slot, scroll_offset)
@@ -2349,16 +2348,26 @@ pub(super) fn chrome_hit_test(
                 if !rect_contains(&item_rect, point) {
                     continue;
                 }
-                if overflow_start == Some(slot) {
-                    return Some(WindowsChromeHit::Command(
-                        WindowsChromeCommand::new(command_id::TAB_BAR_MORE_CLICK)
-                            .with_payload(json!({ "group": tabbar.group_id }))
-                            .with_screen_position(),
-                    ));
-                }
+                // A slot's position is not an item's index once `showOn` drops
+                // one, so the declaration index has to be resolved, not assumed.
+                let index = if sidebar {
+                    slot
+                } else {
+                    match tabbar.bottom_slot(slot) {
+                        Some(BottomSlot::Tab(index)) => index,
+                        Some(BottomSlot::More) => {
+                            return Some(WindowsChromeHit::Command(
+                                WindowsChromeCommand::new(command_id::TAB_BAR_MORE_CLICK)
+                                    .with_payload(json!({ "group": tabbar.group_id }))
+                                    .with_screen_position(),
+                            ));
+                        }
+                        None => continue,
+                    }
+                };
                 return Some(chrome_command(
                     command_id::TAB_BAR_CLICK,
-                    json!({ "group": tabbar.group_id, "index": slot }),
+                    json!({ "group": tabbar.group_id, "index": index }),
                 ));
             }
         }
@@ -2715,6 +2724,7 @@ mod scroll_tests {
             selected_index: 0,
             overflow_start_index: -1,
             items: vec![WindowsShellTabBarItemLayout {
+                index: 0,
                 page_path: "home".to_string(),
                 text: "Home".to_string(),
                 icon_path: String::new(),
@@ -3218,6 +3228,7 @@ mod scroll_tests {
             selected_index: 0,
             overflow_start_index: -1,
             items: vec![WindowsShellTabBarItemLayout {
+                index: 0,
                 page_path: "home".to_string(),
                 text: "Home".to_string(),
                 icon_path: String::new(),
