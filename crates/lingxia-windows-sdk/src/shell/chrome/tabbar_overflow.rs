@@ -170,7 +170,7 @@ pub(crate) fn paint_tabbar_overflow(hdc: HDC, layout: &TabbarOverflowLayout, pan
             continue;
         };
         let icon = translate(cell.icon);
-        let selected = layout.tabbar.selected_index == cell.index as i32;
+        let selected = layout.tabbar.selected_index == item.index as i32;
         let color = if selected {
             layout.tabbar.selected_color
         } else {
@@ -239,6 +239,7 @@ mod tests {
             selected_index,
             items: (0..count)
                 .map(|index| WindowsShellTabBarItemLayout {
+                    index,
                     page_path: format!("pages/p{index}/index"),
                     text: format!("P{index}"),
                     icon_path: String::new(),
