@@ -4,21 +4,14 @@
 export default [
   {
     id: "PEND-TRANSFER-PROGRESS-001",
-    title: "download progress, pause, resume, and the async-iterator form",
+    title: "upload iterator early-return and promise helper forms",
     mode: "external-fixture",
     covers: [
-      "DownloadTask.next",
-      "DownloadTask.return",
-      "DownloadTask.pause",
-      "DownloadTask.resume",
-      "DownloadTask.cancel",
-      "DownloadTask.finally",
-      "UploadTask.next",
       "UploadTask.return",
       "UploadTask.catch",
       "UploadTask.finally",
     ],
-    reason: "the HTTP fixture serves these routes; the specs asserting progress ordering and resume-after-pause are not written yet",
+    reason: "download task iteration is automated; upload early-return and rejected promise helpers still need focused fixture cases",
   },
   {
     id: "PEND-TERMINAL-API-001",

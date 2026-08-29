@@ -5,7 +5,8 @@ param(
   [int]$TimeoutSeconds = 300,
   [int]$DevReadyTimeoutSeconds = 1800,
   [ValidateRange(1, 64)]
-  [int]$BuildJobs = 2
+  [int]$BuildJobs = 2,
+  [string]$Grep
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,6 +16,10 @@ $lxappRoot = Join-Path $showcaseRoot 'lxapp'
 $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
 $installRoot = Join-Path $userProfile '.local\bin'
 $env:CARGO_BUILD_JOBS = $BuildJobs.ToString()
+$fixtureProcess = $null
+$fixtureBase = $null
+$fixtureOutput = $null
+$fixtureError = $null
 
 function Invoke-Checked {
   param(
@@ -93,6 +98,67 @@ function Install-AutomationTools {
 
   Start-Process -FilePath $installedLingXia -ArgumentList 'dev-broker' -WindowStyle Hidden
   Start-Sleep -Milliseconds 500
+}
+
+function Start-HttpFixture {
+  $fixtureScript = Join-Path $lxappRoot 'tests\harness\http-fixture.mjs'
+  $fixtureToken = [Guid]::NewGuid().ToString('N')
+  $script:fixtureOutput = Join-Path ([IO.Path]::GetTempPath()) "lingxia-http-fixture-$fixtureToken.out"
+  $script:fixtureError = Join-Path ([IO.Path]::GetTempPath()) "lingxia-http-fixture-$fixtureToken.err"
+  $script:fixtureProcess = Start-Process `
+    -FilePath 'node' `
+    -ArgumentList @($fixtureScript, '--port', '0') `
+    -RedirectStandardOutput $script:fixtureOutput `
+    -RedirectStandardError $script:fixtureError `
+    -WindowStyle Hidden `
+    -PassThru
+
+  $deadline = [DateTime]::UtcNow.AddSeconds(10)
+  do {
+    Start-Sleep -Milliseconds 100
+    if ($script:fixtureProcess.HasExited) { break }
+    if (Test-Path -LiteralPath $script:fixtureOutput) {
+      $firstLine = Get-Content -LiteralPath $script:fixtureOutput -TotalCount 1
+      if ($firstLine -match '^http://127\.0\.0\.1:\d+$') {
+        $script:fixtureBase = $firstLine
+        Write-Host "HTTP fixture ready at $script:fixtureBase"
+        return
+      }
+    }
+  } while ([DateTime]::UtcNow -lt $deadline)
+
+  $details = if (Test-Path -LiteralPath $script:fixtureError) {
+    (Get-Content -LiteralPath $script:fixtureError -Raw).Trim()
+  } else {
+    ''
+  }
+  Stop-HttpFixture
+  throw "HTTP fixture did not start; transfer contracts cannot run. $details"
+}
+
+function Stop-HttpFixture {
+  if ($null -ne $script:fixtureProcess -and -not $script:fixtureProcess.HasExited) {
+    Stop-Process -Id $script:fixtureProcess.Id -Force
+    Wait-Process -Id $script:fixtureProcess.Id -Timeout 5 -ErrorAction SilentlyContinue
+  }
+  if ($null -ne $script:fixtureProcess) {
+    $script:fixtureProcess.Dispose()
+    $script:fixtureProcess = $null
+  }
+  foreach ($path in @($script:fixtureOutput, $script:fixtureError)) {
+    if ($null -ne $path -and (Test-Path -LiteralPath $path)) {
+      $deadline = [DateTime]::UtcNow.AddSeconds(5)
+      do {
+        try {
+          Remove-Item -LiteralPath $path -Force
+          break
+        } catch [System.IO.IOException] {
+          if ([DateTime]::UtcNow -ge $deadline) { throw }
+          Start-Sleep -Milliseconds 100
+        }
+      } while ($true)
+    }
+  }
 }
 
 function Invoke-SameRouteRelaunchStress {
@@ -192,11 +258,18 @@ function Invoke-ShowcaseSuite {
   # A function returns its whole output stream, so anything lxdev writes to
   # stdout would come back joined to the exit code -- one warning line was
   # enough to fail a suite that had passed. Send the output to the host.
-  & $lxdev test tests/entries/windows.test.ts `
-    --timeout $($TimeoutSeconds.ToString()) `
-    --arg 'platform=windows' `
-    --arg "framework=$Framework" `
-    --output-dir $ResultDirectory | Out-Host
+  $testArguments = @(
+    'test', 'tests/entries/windows.test.ts',
+    '--timeout', $TimeoutSeconds.ToString(),
+    '--arg', 'platform=windows',
+    '--arg', "framework=$Framework",
+    '--arg', "httpBase=$fixtureBase",
+    '--output-dir', $ResultDirectory
+  )
+  if (-not [string]::IsNullOrWhiteSpace($Grep)) {
+    $testArguments += @('--grep', $Grep)
+  }
+  & $lxdev @testArguments | Out-Host
   return $LASTEXITCODE
 }
 
@@ -218,84 +291,89 @@ function Assert-InteractiveDesktop {
   [LingXiaAutomation.NativeDesktop]::CloseDesktop($desktop) | Out-Null
 }
 
-Assert-InteractiveDesktop
-Install-AutomationTools
-$lingxia = Join-Path $installRoot 'lingxia.exe'
-$lxdev = Join-Path $installRoot 'lxdev.exe'
-Write-Host "Installed current automation CLIs to $installRoot"
-
-Invoke-Checked $lingxia @('doctor', '--platform', 'windows')
-
-Push-Location $showcaseRoot
+Start-HttpFixture
 try {
-  $sessionsJson = (& $lingxia dev status --json | Out-String).Trim()
-  if ($LASTEXITCODE -ne 0) { throw 'Could not inspect existing LingXia dev sessions.' }
-  $sessions = $sessionsJson | ConvertFrom-Json
-  if ($sessions.Where({ $_.target -eq 'windows' }).Count -gt 0) {
-    throw 'A Windows dev session already exists for this project. Stop it explicitly before running automation.'
-  }
+  Assert-InteractiveDesktop
+  Install-AutomationTools
+  $lingxia = Join-Path $installRoot 'lingxia.exe'
+  $lxdev = Join-Path $installRoot 'lxdev.exe'
+  Write-Host "Installed current automation CLIs to $installRoot"
 
-  $frameworks = if ($Framework -eq 'all') { @('react', 'vue') } else { @($Framework) }
-  $frameworks = @($frameworks)
-  for ($frameworkIndex = 0; $frameworkIndex -lt $frameworks.Count; $frameworkIndex += 1) {
-    $currentFramework = $frameworks[$frameworkIndex]
-    Write-Host "Starting Windows Showcase ($currentFramework)..."
-    $started = $false
-    try {
-      # React and Vue exercise the same native host. Keep the second pass in
-      # this job and only rebuild its lxapp assets.
-      Start-ShowcaseSession -Framework $currentFramework -SkipNative:($frameworkIndex -gt 0)
-      $started = $true
+  Invoke-Checked $lingxia @('doctor', '--platform', 'windows')
 
-      Push-Location $lxappRoot
+  Push-Location $showcaseRoot
+  try {
+    $sessionsJson = (& $lingxia dev status --json | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Could not inspect existing LingXia dev sessions.' }
+    $sessions = $sessionsJson | ConvertFrom-Json
+    if ($sessions.Where({ $_.target -eq 'windows' }).Count -gt 0) {
+      throw 'A Windows dev session already exists for this project. Stop it explicitly before running automation.'
+    }
+
+    $frameworks = if ($Framework -eq 'all') { @('react', 'vue') } else { @($Framework) }
+    $frameworks = @($frameworks)
+    for ($frameworkIndex = 0; $frameworkIndex -lt $frameworks.Count; $frameworkIndex += 1) {
+      $currentFramework = $frameworks[$frameworkIndex]
+      Write-Host "Starting Windows Showcase ($currentFramework)..."
+      $started = $false
       try {
-        $resultDirectory = "test-results/automation/windows-$currentFramework"
-        $testExitCode = Invoke-ShowcaseSuite -Framework $currentFramework -ResultDirectory $resultDirectory
-        if ($testExitCode -ne 0) {
-          # A wedged WebView UI thread surfaces as `request timed out` and
-          # kills the suite. Recycle the session once before failing the job.
-          Write-Host "Retrying Windows Showcase automation ($currentFramework) after recycling the session..."
-          Set-Location $showcaseRoot
+        # React and Vue exercise the same native host. Keep the second pass in
+        # this job and only rebuild its lxapp assets.
+        Start-ShowcaseSession -Framework $currentFramework -SkipNative:($frameworkIndex -gt 0)
+        $started = $true
+
+        Push-Location $lxappRoot
+        try {
+          $resultDirectory = "test-results/automation/windows-$currentFramework"
+          $testExitCode = Invoke-ShowcaseSuite -Framework $currentFramework -ResultDirectory $resultDirectory
+          if ($testExitCode -ne 0) {
+            # A wedged WebView UI thread surfaces as `request timed out` and
+            # kills the suite. Recycle the session once before failing the job.
+            Write-Host "Retrying Windows Showcase automation ($currentFramework) after recycling the session..."
+            Set-Location $showcaseRoot
+            Write-Host "Stopping Windows Showcase ($currentFramework)..."
+            Stop-ShowcaseSession
+            $started = $false
+            Start-ShowcaseSession -Framework $currentFramework -SkipNative
+            $started = $true
+            Set-Location $lxappRoot
+            $testExitCode = Invoke-ShowcaseSuite -Framework $currentFramework -ResultDirectory $resultDirectory
+          }
+
+          New-Item -ItemType Directory -Force -Path $resultDirectory | Out-Null
+          if ($testExitCode -eq 0 -and [string]::IsNullOrWhiteSpace($Grep)) {
+            Write-Host "Running same-route relaunch stress ($currentFramework)..."
+            Invoke-SameRouteRelaunchStress
+          }
+          Write-Host "Collecting Windows session logs ($currentFramework)..."
+          & $lxdev logs --json --limit 5000 |
+            Set-Content -LiteralPath (Join-Path $resultDirectory 'session.jsonl') -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to collect Windows session logs.' }
+          $errorLogs = (& $lxdev logs --level error --json --limit 1000 | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to inspect Windows error logs.' }
+          $unexpected = Get-UnexpectedWindowsSessionErrors $errorLogs
+          if ($unexpected) {
+            throw "Unexpected error-level Windows session logs:`n$unexpected"
+          }
+          if ($testExitCode -ne 0) {
+            throw "Windows $currentFramework automation exited with code $testExitCode"
+          }
+        } finally {
+          Pop-Location
+        }
+      } finally {
+        if ($started) {
           Write-Host "Stopping Windows Showcase ($currentFramework)..."
           Stop-ShowcaseSession
           $started = $false
-          Start-ShowcaseSession -Framework $currentFramework -SkipNative
-          $started = $true
-          Set-Location $lxappRoot
-          $testExitCode = Invoke-ShowcaseSuite -Framework $currentFramework -ResultDirectory $resultDirectory
         }
-
-        New-Item -ItemType Directory -Force -Path $resultDirectory | Out-Null
-        if ($testExitCode -eq 0) {
-          Write-Host "Running same-route relaunch stress ($currentFramework)..."
-          Invoke-SameRouteRelaunchStress
-        }
-        Write-Host "Collecting Windows session logs ($currentFramework)..."
-        & $lxdev logs --json --limit 5000 |
-          Set-Content -LiteralPath (Join-Path $resultDirectory 'session.jsonl') -Encoding utf8
-        if ($LASTEXITCODE -ne 0) { throw 'Failed to collect Windows session logs.' }
-        $errorLogs = (& $lxdev logs --level error --json --limit 1000 | Out-String).Trim()
-        if ($LASTEXITCODE -ne 0) { throw 'Failed to inspect Windows error logs.' }
-        $unexpected = Get-UnexpectedWindowsSessionErrors $errorLogs
-        if ($unexpected) {
-          throw "Unexpected error-level Windows session logs:`n$unexpected"
-        }
-        if ($testExitCode -ne 0) {
-          throw "Windows $currentFramework automation exited with code $testExitCode"
-        }
-      } finally {
-        Pop-Location
-      }
-    } finally {
-      if ($started) {
-        Write-Host "Stopping Windows Showcase ($currentFramework)..."
-        Stop-ShowcaseSession
-        $started = $false
       }
     }
+  } finally {
+    Pop-Location
   }
-} finally {
-  Pop-Location
-}
 
-Write-Host 'Windows Showcase automation passed using locally installed CLIs.'
+  Write-Host 'Windows Showcase automation passed using locally installed CLIs.'
+} finally {
+  Stop-HttpFixture
+}

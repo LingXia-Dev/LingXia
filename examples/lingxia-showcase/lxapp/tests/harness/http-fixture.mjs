@@ -108,23 +108,34 @@ export function createFixtureServer() {
       }
 
       // Trickled in chunks so a spec can observe progress, pause, and cancel.
-      if (route === '/slow') {
+      if (route === '/slow' || route === '/slow.bin') {
         const bytes = size(url, 'size', 65536);
         const chunks = Math.max(1, size(url, 'chunks', 8));
         const delay = size(url, 'delayMs', 120);
-        const payload = body(bytes);
+        const complete = body(bytes);
+        const etag = `"${digest(bytes)}"`;
+        const range = /^bytes=(\d+)-$/.exec(request.headers.range ?? '');
+        const requestedOffset = range ? Number(range[1]) : 0;
+        const canResume = requestedOffset > 0
+          && requestedOffset < bytes
+          && (!request.headers['if-range'] || request.headers['if-range'] === etag);
+        const offset = canResume ? requestedOffset : 0;
+        const payload = complete.subarray(offset);
         const step = Math.ceil(bytes / chunks);
-        response.writeHead(200, {
+        response.writeHead(canResume ? 206 : 200, {
           'content-type': 'application/octet-stream',
           'content-length': payload.length,
+          'accept-ranges': 'bytes',
+          'etag': etag,
+          ...(canResume ? { 'content-range': `bytes ${offset}-${bytes - 1}/${bytes}` } : {}),
         });
-        for (let offset = 0; offset < bytes; offset += step) {
+        for (let position = 0; position < payload.length; position += step) {
           // `writableEnded` only flips after end(); a client that aborts
           // mid-stream sets `destroyed`, and without this the handler keeps
           // sleeping through every remaining chunk — which is precisely the
           // cancel case this route exists to serve.
           if (response.destroyed) return;
-          response.write(payload.subarray(offset, Math.min(offset + step, bytes)));
+          response.write(payload.subarray(position, Math.min(position + step, payload.length)));
           await sleep(delay);
         }
         response.end();
@@ -188,22 +199,14 @@ export function createFixtureServer() {
       }
 
       if (route === '/upload-raw' && (request.method === 'PUT' || request.method === 'PATCH')) {
-        // Answer and hang up without draining the body, the way object storage
-        // refuses a signature it disagrees with mid-upload.
+        // Answer before consuming the body, the way object storage refuses a
+        // signature it disagrees with. Keep draining rather than resetting the
+        // socket: Windows reports a reset as SendRequest and loses the status.
         const reject = Number(url.searchParams.get('reject') ?? 0);
         if (Number.isInteger(reject) && reject >= 400 && reject <= 599) {
           response.writeHead(reject, { 'content-type': 'text/plain' });
           response.end(`refused ${reject}`);
-          // Resetting a socket that still holds unread data discards whatever
-          // is unread on the peer too, answer included. Absorb a slice so the
-          // client reads the status, while leaving far too much body
-          // outstanding for the upload to finish.
-          let drained = 0;
-          request.on('data', (chunk) => {
-            drained += chunk.length;
-            if (drained >= 256 * 1024) request.socket.destroy();
-          });
-          request.on('end', () => request.socket.destroy());
+          request.resume();
           return;
         }
         // A presigned-style endpoint: the body is the file, nothing else.
