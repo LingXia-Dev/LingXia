@@ -91,6 +91,10 @@ pub(crate) use chrome::{
     paint_collapsed_sidebar_tabbar_popup, paint_collapsed_sidebar_tooltip,
     paint_transparent_tabbar_overlay, transparent_tabbar_overlay_rect,
 };
+pub(crate) use chrome::{
+    TABBAR_OVERFLOW_PANEL_RADIUS, TabbarOverflowHit, TabbarOverflowLayout, paint_tabbar_overflow,
+    tabbar_overflow_hit, tabbar_overflow_layout,
+};
 
 pub(crate) use chrome::{workspace_corner_radii, workspace_silhouette_rect};
 

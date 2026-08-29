@@ -1,5 +1,10 @@
 //! Windows host-window implementation owned by the Windows SDK layer.
 
+#[cfg(feature = "shell-chrome")]
+mod tabbar_overflow;
+#[cfg(feature = "shell-chrome")]
+pub(crate) use tabbar_overflow::toggle_tabbar_overflow;
+
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
@@ -9330,6 +9335,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 destroy_sidebar_tabbar_popup(hwnd);
                 #[cfg(feature = "shell-chrome")]
                 destroy_phone_tab_switcher(hwnd);
+                #[cfg(feature = "shell-chrome")]
+                tabbar_overflow::destroy_tabbar_overflow(hwnd);
                 LRESULT(0)
             }
             WindowsAndMessaging::WM_NCDESTROY => {
@@ -9338,6 +9345,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 destroy_transparent_tabbar_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]
                 destroy_sidebar_tabbar_popup(hwnd);
+                #[cfg(feature = "shell-chrome")]
+                tabbar_overflow::destroy_tabbar_overflow(hwnd);
                 #[cfg(feature = "shell-chrome")]
                 let _ = finish_terminal_selection_drag(hwnd, None);
                 release_chrome_back_buffer(hwnd);
@@ -9389,6 +9398,13 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_KEYDOWN => {
+                #[cfg(feature = "shell-chrome")]
+                if wparam.0 == usize::from(VK_ESCAPE.0)
+                    && tabbar_overflow::dismiss_tabbar_overflow(hwnd)
+                {
+                    suppress_next_escape_char(hwnd);
+                    return LRESULT(0);
+                }
                 #[cfg(all(feature = "shell-chrome", feature = "terminal-runtime"))]
                 if wparam.0 == usize::from(VK_ESCAPE.0)
                     && crate::shell::text_input::close_search_edit(hwnd)

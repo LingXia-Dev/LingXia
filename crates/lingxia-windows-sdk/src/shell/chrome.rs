@@ -38,6 +38,7 @@ mod native_panel;
 mod notice;
 mod phone_bar;
 mod sidebar;
+mod tabbar_overflow;
 mod top_bar;
 use aside_panel::*;
 pub(super) use drawing::*;
@@ -46,6 +47,7 @@ use native_panel::*;
 pub(crate) use notice::paint_shell_notice;
 pub(crate) use phone_bar::*;
 use sidebar::*;
+pub(crate) use tabbar_overflow::*;
 #[cfg(feature = "browser-runtime")]
 pub use top_bar::begin_address_edit;
 use top_bar::*;
