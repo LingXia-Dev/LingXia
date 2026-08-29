@@ -54,10 +54,12 @@
         <input
           class="w-full px-3 py-2 rounded-md bg-surface border border-line-300 text-sm text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
           placeholder="Message to parent page"
-          ref="inputRef"
+          v-model="message"
+          :data-controlled-value="message"
         />
         <button
           type="button"
+          data-testid="surface-send-message"
           @click="handleSend"
           class="w-full h-10 text-sm font-medium rounded-md bg-blue-500 hover:bg-blue-600 text-white transition-colors"
         >
@@ -88,7 +90,7 @@ import '../../tailwind.css';
 const { data, actions } = useLxPage();
 const { logSurfaceMessage, hideSelf, closeSelf } = actions;
 
-const inputRef = ref<HTMLInputElement | null>(null);
+const message = ref('');
 // Counter survives hide() → show() (page mount stays alive) but resets on close().
 const counter = ref(0);
 
@@ -97,14 +99,13 @@ const showCount = computed(() => data.showCount ?? 0);
 const hideCount = computed(() => data.hideCount ?? 0);
 const lastLifecycle = computed(() => data.lastLifecycle ?? 'onLoad');
 
-function handleSend() {
-  const text = (inputRef.value?.value ?? '').trim();
+async function handleSend() {
+  const text = message.value.trim();
   if (!text) return;
 
   try {
-    logSurfaceMessage({ message: text });
-    if (inputRef.value) inputRef.value.value = '';
-    closeSelf?.();
+    await logSurfaceMessage({ message: text });
+    message.value = '';
   } catch (error) {
     console.error('logSurfaceMessage failed:', error);
   }

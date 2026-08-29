@@ -3,17 +3,6 @@
  *  `automated` in logic-api-coverage.mjs. */
 export default [
   {
-    id: "PEND-TRANSFER-PROGRESS-001",
-    title: "upload iterator early-return and promise helper forms",
-    mode: "external-fixture",
-    covers: [
-      "UploadTask.return",
-      "UploadTask.catch",
-      "UploadTask.finally",
-    ],
-    reason: "download task iteration is automated; upload early-return and rejected promise helpers still need focused fixture cases",
-  },
-  {
     id: "PEND-TERMINAL-API-001",
     title: "terminal settings, fonts, colour schemes, and Windows integration",
     mode: "external-fixture",
@@ -147,13 +136,6 @@ export default [
     mode: "external-fixture",
     covers: ["lx.surface.openUrl"],
     reason: "browser tab surface fixture is not wired in Showcase Logic tests",
-  },
-  {
-    id: "PEND-SURFACE-MSG-001",
-    title: "surface onContext and PageSurface onMessage",
-    mode: "external-fixture",
-    covers: ["PageSurface.onMessage"],
-    reason: "ui-to-surface message port needs a dedicated child surface fixture",
   },
   {
     id: "PEND-VIDEO-CTRL-001",

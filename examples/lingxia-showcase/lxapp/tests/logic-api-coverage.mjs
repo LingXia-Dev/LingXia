@@ -106,7 +106,7 @@ export default {
     { "api": "PageSurface.onClose", "mode": "automated", "owner": "DESKTOP-DYNAMIC-MAIN-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.show", "mode": "automated", "owner": "DESKTOP-SURFACE-DECLARED-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.hide", "mode": "automated", "owner": "DESKTOP-SURFACE-DECLARED-001", "targets": ["windows", "macos"] },
-    { "api": "PageSurface.onMessage", "mode": "external-fixture", "owner": "PEND-SURFACE-MSG-001" },
+    { "api": "PageSurface.onMessage", "mode": "automated", "owner": "DESKTOP-SURFACE-MESSAGE-001", "targets": ["windows", "macos"] },
     { "api": "VideoContext.play", "mode": "external-fixture", "owner": "PEND-VIDEO-CTRL-001" },
     { "api": "VideoContext.pause", "mode": "automated", "owner": "NATIVE-VIDEO-001" },
     { "api": "VideoContext.stop", "mode": "external-fixture", "owner": "PEND-VIDEO-CTRL-001" },
