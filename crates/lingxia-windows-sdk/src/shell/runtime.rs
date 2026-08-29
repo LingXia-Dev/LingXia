@@ -1396,6 +1396,17 @@ fn schedule_browser_tabs_changed_sync() {
         crate::window_host::dismiss_phone_tab_switcher(owner);
     }
     let epoch = BROWSER_TAB_SYNC_EPOCH.fetch_add(1, Ordering::Relaxed) + 1;
+    if !has_browser_main_tabs() {
+        // The generic automation close route bypasses the shell command
+        // handler. Do not let unrelated metadata notifications keep pushing
+        // the last-main restoration behind the normal debounce window.
+        std::mem::drop(lingxia::task::spawn(async move {
+            if BROWSER_TAB_SYNC_EPOCH.load(Ordering::Relaxed) == epoch {
+                on_browser_tabs_changed();
+            }
+        }));
+        return;
+    }
     std::mem::drop(lingxia::task::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(
             BROWSER_TAB_SYNC_DEBOUNCE_MS,
@@ -1415,10 +1426,18 @@ fn on_browser_tabs_changed() {
     let recent_tab = lingxia_browser::current_tab().map(|tab| tab.tab_id);
     enforce_browser_tab_memory_limit(recent_tab.as_deref());
     reconcile_declared_browser_surfaces();
-    if let Some(presented) = presented_browser_tab()
+    if !SELF_BROWSER_HOST.load(Ordering::Acquire) && !has_browser_main_tabs() {
+        if clear_browser_presentation() {
+            restore_lxapp_main_after_browser(shell_owner_appid().as_deref());
+        }
+    } else if let Some(presented) = presented_browser_tab()
         && browser_tab_summary(&presented).is_none()
     {
-        set_presented_browser_tab(None);
+        // Devtools can close a tab while an activate/present task is still
+        // waiting for its WebView's first frame. Invalidate that task before
+        // restoring the lxapp; otherwise it can recommit the already-closed
+        // controller over the restored root after this observer returns.
+        clear_browser_presentation();
         if SELF_BROWSER_HOST.load(Ordering::Acquire) {
             if let Some(successor) = lingxia_browser::current_tab()
                 .map(|tab| tab.tab_id)
@@ -1443,6 +1462,14 @@ fn on_browser_tabs_changed() {
     if let Some(appid) = shell_owner_appid() {
         sync_shell_layout(&appid);
     }
+}
+
+#[cfg(feature = "browser-runtime")]
+fn has_browser_main_tabs() -> bool {
+    browser_tabs().iter().any(|tab| {
+        !lingxia_browser::tab_is_aside(&tab.tab_id)
+            && !lingxia_browser::tab_is_standalone(&tab.tab_id)
+    })
 }
 
 #[cfg(feature = "browser-runtime")]
@@ -4108,6 +4135,12 @@ fn handle_browser_tab_close(appid: &str, tab_id: &str) {
     }
     if was_presented {
         activate_main_tab(appid, successor.as_deref());
+    } else if !has_browser_main_tabs() {
+        // Closing tabs in quick succession can remove the successor before
+        // its asynchronous presentation updates PRESENTED_BROWSER_TAB. The
+        // last close must still restore the lxapp that the physical browser
+        // controller covers, even though the state marker names an older tab.
+        return_to_lxapp_from_browser(appid);
     }
     // The tabs-changed observer re-syncs as well; sync directly so the row
     // disappears even if no observer is installed.
