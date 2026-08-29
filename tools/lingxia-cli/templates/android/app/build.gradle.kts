@@ -37,7 +37,15 @@ val lingxiaAppRoundIcon = providers
 // `${lxSplashTheme}` placeholder resolves to the regular app theme.
 val lingxiaSplashTheme = providers
     .gradleProperty("lingxia.splashTheme")
-    .orElse("@style/Theme.AppCompat.Light.DarkActionBar")
+    .orElse("@style/Theme.AppCompat.DayNight.NoActionBar")
+    .get()
+// Launcher activity orientation. `lingxia build` derives it from the home
+// lxapp's entry-page config; the fallback matches the runtime's own page
+// default (portrait), so the OS splash never comes up sideways and rotates
+// mid-launch on a device lying flat.
+val lingxiaLaunchOrientation = providers
+    .gradleProperty("lingxia.launchOrientation")
+    .orElse("portrait")
     .get()
 
 // Release signing — values come from keystore.properties (local) or matching
@@ -101,6 +109,7 @@ android {
         manifestPlaceholders["lxAppIcon"] = lingxiaAppIcon
         manifestPlaceholders["lxAppRoundIcon"] = lingxiaAppRoundIcon
         manifestPlaceholders["lxSplashTheme"] = lingxiaSplashTheme
+        manifestPlaceholders["lxLaunchOrientation"] = lingxiaLaunchOrientation
         minSdk = {{MIN_SDK}}
         targetSdk = {{TARGET_SDK}}
         versionCode = 1

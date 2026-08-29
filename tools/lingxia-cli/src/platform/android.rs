@@ -459,6 +459,10 @@ gradle.settingsEvaluated {{ settings ->
                 ));
             }
         }
+        command.arg(format!(
+            "-Plingxia.launchOrientation={}",
+            launch_orientation(&config.project_root, config.lingxia_config.as_ref())?
+        ));
         let status = command.status().context("Failed to execute gradlew")?;
 
         if !status.success() {
@@ -709,6 +713,64 @@ struct ResOverlay {
 struct LauncherIconNames {
     icon_resource_name: String,
     has_round_icon: bool,
+}
+
+/// The `android:screenOrientation` the launcher activity should declare,
+/// resolved from the home lxapp's entry-page config at build time.
+///
+/// The launch face must come up in the orientation the home page will
+/// actually use: pages default to portrait and apply it once the runtime
+/// opens them, but everything before that — the OS splash window and the
+/// bootstrap activity — follows the manifest, and an unspecified manifest
+/// follows the sensor. A device lying flat then launches landscape and
+/// rotates to portrait mid-splash, which both looks broken and leaves any
+/// WebView warmed while hidden with a stale visual viewport from the
+/// landscape beat.
+///
+/// Every failure path lands on "portrait" because that is the runtime's own
+/// page default; a host whose entry page declares `orientation.mode: auto`
+/// or `landscape` gets the matching manifest value instead.
+fn launch_orientation(
+    project_root: &Path,
+    config: Option<&crate::config::LingXiaConfig>,
+) -> Result<&'static str> {
+    const DEFAULT: &str = "portrait";
+    let Some(config) = config else {
+        return Ok(DEFAULT);
+    };
+    let Some(lxapp_dir) = crate::host_assets::resolve_home_bundle_dir(project_root, config)? else {
+        return Ok(DEFAULT);
+    };
+    let entry_page_config = fs::read_to_string(lxapp_dir.join("lxapp.json"))
+        .ok()
+        .and_then(|manifest| serde_json::from_str::<serde_json::Value>(&manifest).ok())
+        .and_then(|manifest| {
+            // pages[0] is the lxapp's entry page; its config sits next to the
+            // source as `<page dir>/index.json`.
+            let page_path = manifest
+                .get("pages")?
+                .get(0)?
+                .get("path")?
+                .as_str()?
+                .to_string();
+            let page_dir = std::path::Path::new(&page_path).parent()?.to_path_buf();
+            let config_text =
+                fs::read_to_string(lxapp_dir.join(page_dir).join("index.json")).ok()?;
+            serde_json::from_str::<serde_json::Value>(&config_text).ok()
+        });
+    Ok(
+        match entry_page_config
+            .as_ref()
+            .and_then(|page| page.get("pageOrientation")?.as_str())
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .as_deref()
+        {
+            Some("landscape") => "sensorLandscape",
+            Some("auto") => "unspecified",
+            _ => DEFAULT,
+        },
+    )
 }
 
 /// Stage the build-time res overlay (env-version launcher icons and/or splash
@@ -1454,5 +1516,91 @@ mod tests {
         assert_eq!(drawable.matches("android:width=\"20dp\"").count(), 3);
         assert_eq!(drawable.matches("android:bottom=\"18dp\"").count(), 2);
         assert!(drawable.contains("android:viewportWidth=\"42\""));
+    }
+
+    /// The launch orientation resolver reads the home lxapp's entry page.
+    mod launch_orientation {
+        use super::super::launch_orientation;
+        use crate::config::LingXiaConfig;
+
+        /// A host project whose bundled home lxapp's entry page carries the
+        /// given config JSON (or no config file at all, for `None`).
+        fn project(page_config: Option<&str>) -> (tempfile::TempDir, LingXiaConfig) {
+            let dir = tempfile::tempdir().unwrap();
+            let lxapp = dir.path().join("home");
+            std::fs::create_dir_all(lxapp.join("pages/home")).unwrap();
+            std::fs::write(
+                lxapp.join("lxapp.json"),
+                r#"{"appId":"demo.home","pages":[{"name":"home","path":"pages/home/index.tsx"}]}"#,
+            )
+            .unwrap();
+            if let Some(config) = page_config {
+                std::fs::write(lxapp.join("pages/home/index.json"), config).unwrap();
+            }
+
+            let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [android]
+  homeAppId: demo.home
+android:
+  packageId: com.example.demo
+resources:
+  bundles:
+    - type: lxapp
+      appId: demo.home
+      path: home
+"#;
+            std::fs::write(dir.path().join("lingxia.yaml"), yaml).unwrap();
+            let config = LingXiaConfig::load(dir.path()).unwrap();
+            (dir, config)
+        }
+
+        /// Portrait is the runtime's own page default, so it is also what an
+        /// entry page with no orientation config launches in.
+        #[test]
+        fn defaults_to_portrait() {
+            let (dir, config) = project(Some(r#"{"navigationStyle":"custom"}"#));
+            assert_eq!(
+                launch_orientation(dir.path(), Some(&config)).unwrap(),
+                "portrait"
+            );
+            let (dir, config) = project(None);
+            assert_eq!(
+                launch_orientation(dir.path(), Some(&config)).unwrap(),
+                "portrait"
+            );
+        }
+
+        /// An entry page that declares an orientation launches in it — the
+        /// whole point of resolving this at build time is that the OS splash
+        /// window can only be steered through the manifest.
+        #[test]
+        fn respects_the_entry_page_config() {
+            let (dir, config) = project(Some(r#"{"pageOrientation":"landscape"}"#));
+            assert_eq!(
+                launch_orientation(dir.path(), Some(&config)).unwrap(),
+                "sensorLandscape"
+            );
+            let (dir, config) = project(Some(r#"{"pageOrientation":"auto"}"#));
+            assert_eq!(
+                launch_orientation(dir.path(), Some(&config)).unwrap(),
+                "unspecified"
+            );
+        }
+
+        /// Anything unreadable falls back to portrait rather than failing the
+        /// build: the launch orientation is polish, not correctness.
+        #[test]
+        fn malformed_config_falls_back_to_portrait() {
+            let (dir, config) = project(Some("not json"));
+            assert_eq!(
+                launch_orientation(dir.path(), Some(&config)).unwrap(),
+                "portrait"
+            );
+            assert_eq!(launch_orientation(dir.path(), None).unwrap(), "portrait");
+        }
     }
 }

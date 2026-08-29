@@ -3,6 +3,7 @@ use crate::lxapp::ProjectFramework;
 use crate::platform::{self, BuildProfile};
 use crate::runtime;
 use anyhow::{Result, anyhow};
+pub(crate) use bundles::resolve_home_bundle_dir;
 use bundles::{
     prepare_browser_shell_webui_bundle, prepare_home_app_bundle, prepare_resource_lxapp_bundles,
 };
