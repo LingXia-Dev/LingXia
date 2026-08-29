@@ -24,10 +24,12 @@ use crate::sdk_cache::{self, SdkPlatform};
 use anyhow::{Context, Result};
 use colored::Colorize;
 use dialoguer::{Confirm, theme::ColorfulTheme};
+use std::collections::HashSet;
 use std::fs;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 
 /// Exit code for `--check` when the project is behind (mirrors the CLI
 /// self-upgrade `--check` convention).
@@ -52,18 +54,23 @@ const SKIP_DIRS: &[&str] = &[
     ".build",
 ];
 
-/// The project root for upgrade purposes: the nearest ancestor holding a
-/// `lingxia.yaml` (host app) or `lxapp.json` (standalone lxapp).
+/// The project root for upgrade purposes. A host ancestor owns any embedded
+/// lxapp below it; `lxapp.json` is only the fallback for a standalone lxapp.
 pub fn find_project_root() -> Option<PathBuf> {
-    let mut dir = std::env::current_dir().ok()?;
-    loop {
-        if dir.join(crate::config::HOST_CONFIG_FILE).exists() || dir.join("lxapp.json").exists() {
-            return Some(dir);
+    find_project_root_from(&std::env::current_dir().ok()?)
+}
+
+pub(crate) fn find_project_root_from(start: &Path) -> Option<PathBuf> {
+    let mut standalone_lxapp = None;
+    for dir in start.ancestors() {
+        if dir.join(crate::config::HOST_CONFIG_FILE).is_file() {
+            return Some(dir.to_path_buf());
         }
-        if !dir.pop() {
-            return None;
+        if standalone_lxapp.is_none() && dir.join("lxapp.json").is_file() {
+            standalone_lxapp = Some(dir.to_path_buf());
         }
     }
+    standalone_lxapp
 }
 
 /// One planned file rewrite, with human-readable change lines.
@@ -255,7 +262,7 @@ fn confirmation_without_prompt(yes: bool, stdin_is_terminal: bool) -> Option<Pro
 fn apply_plan(root: &Path, prepared: &UpgradePlan) -> Result<()> {
     let mut npm_dirs = Vec::new();
     let mut cargo_dirs: Vec<(PathBuf, Vec<String>)> = Vec::new();
-    let mut refresh_failures = Vec::new();
+    let mut operation_failures = Vec::new();
     for edit in &prepared.edits {
         fs::write(&edit.path, &edit.new_content)
             .with_context(|| format!("write {}", edit.path.display()))?;
@@ -293,7 +300,7 @@ fn apply_plan(root: &Path, prepared: &UpgradePlan) -> Result<()> {
                     "!".yellow(),
                     dir.display()
                 );
-                refresh_failures.push(format!("npm install in {} ({status})", dir.display()));
+                operation_failures.push(format!("npm install in {} ({status})", dir.display()));
             }
             Err(err) => {
                 println!(
@@ -301,7 +308,7 @@ fn apply_plan(root: &Path, prepared: &UpgradePlan) -> Result<()> {
                     "!".yellow(),
                     dir.display()
                 );
-                refresh_failures.push(format!("npm install in {} ({err})", dir.display()));
+                operation_failures.push(format!("npm install in {} ({err})", dir.display()));
             }
         }
     }
@@ -325,7 +332,7 @@ fn apply_plan(root: &Path, prepared: &UpgradePlan) -> Result<()> {
                     "!".yellow(),
                     dir.display()
                 );
-                refresh_failures.push(format!("cargo update in {} ({status})", dir.display()));
+                operation_failures.push(format!("cargo update in {} ({status})", dir.display()));
             }
             Err(err) => {
                 println!(
@@ -333,16 +340,20 @@ fn apply_plan(root: &Path, prepared: &UpgradePlan) -> Result<()> {
                     "!".yellow(),
                     dir.display()
                 );
-                refresh_failures.push(format!("cargo update in {} ({err})", dir.display()));
+                operation_failures.push(format!("cargo update in {} ({err})", dir.display()));
             }
         }
     }
 
-    apply_sdk_steps(root, &prepared.sdk_steps, &prepared.sdk_version);
-    if !refresh_failures.is_empty() {
+    operation_failures.extend(apply_sdk_steps(
+        root,
+        &prepared.sdk_steps,
+        &prepared.sdk_version,
+    ));
+    if !operation_failures.is_empty() {
         anyhow::bail!(
-            "Project manifests changed, but dependency refresh failed: {}",
-            refresh_failures.join("; ")
+            "Project upgrade incomplete: {}",
+            operation_failures.join("; ")
         );
     }
     Ok(())
@@ -465,7 +476,9 @@ fn collect_sdk_steps(root: &Path, in_workspace: bool, version: &str) -> Vec<SdkS
     let mut apple_dirs = Vec::new();
     for name in ["ios", "macos"] {
         let dir = root.join(name);
-        if dir.join("Package.swift").is_file() {
+        if dir.join("Package.swift").is_file()
+            && !crate::platform::apple::sdk_package_is_hand_wired(&dir)
+        {
             apple_dirs.push(dir);
         }
     }
@@ -502,6 +515,9 @@ impl SdkStep {
 }
 
 fn apple_inject_pending(dir: &Path, sdk_version: &str) -> bool {
+    if crate::platform::apple::sdk_package_is_hand_wired(dir) {
+        return false;
+    }
     let Some(sdk_dir) = sdk_cache::cached_sdk_dir(SdkPlatform::Apple, sdk_version) else {
         return true;
     };
@@ -535,25 +551,40 @@ fn print_sdk_step(root: &Path, step: &SdkStep, sdk_version: &str) {
     }
 }
 
-fn apply_sdk_steps(root: &Path, steps: &[SdkStep], sdk_version: &str) {
+fn apply_sdk_steps(root: &Path, steps: &[SdkStep], sdk_version: &str) -> Vec<String> {
+    let mut failures = Vec::new();
     if steps.is_empty() {
-        return;
+        return failures;
     }
     println!();
-    println!("{} Refreshing platform SDKs.", "✓".green());
+    println!("{}", "Refreshing platform SDKs".bold());
     for step in steps {
         match step {
             SdkStep::Fetch { platform, .. } => {
                 println!("  fetching {} {} …", sdk_label(*platform), sdk_version);
                 match sdk_cache::ensure_sdk(*platform, sdk_version) {
                     Ok(path) => println!("    {} {}", "✓".green(), path.display()),
-                    Err(err) => println!(
-                        "    {} {err}\n      Pins are updated; `lingxia build` will retry the fetch.",
-                        "!".yellow()
-                    ),
+                    Err(err) => {
+                        println!(
+                            "    {} {err}\n      Pins are updated; `lingxia build` will retry the fetch.",
+                            "!".yellow()
+                        );
+                        failures.push(format!(
+                            "fetch {} {} ({err:#})",
+                            sdk_label(*platform),
+                            sdk_version
+                        ));
+                    }
                 }
             }
             SdkStep::InjectApple { dir } => {
+                if crate::platform::apple::sdk_package_is_hand_wired(dir) {
+                    println!(
+                        "    keep hand-wired {}/Package.swift",
+                        dir.strip_prefix(root).unwrap_or(dir).display()
+                    );
+                    continue;
+                }
                 let Some(sdk_dir) = sdk_cache::cached_sdk_dir(SdkPlatform::Apple, sdk_version)
                 else {
                     continue;
@@ -566,17 +597,31 @@ fn apply_sdk_steps(root: &Path, steps: &[SdkStep], sdk_version: &str) {
                     );
                     continue;
                 }
+                let relative = dir.strip_prefix(root).unwrap_or(dir);
                 match crate::platform::apple::inject_sdk_package_dependency(dir, &sdk_dir) {
-                    Ok(()) => println!(
-                        "    {} {}/Package.swift",
-                        "✓".green(),
-                        dir.strip_prefix(root).unwrap_or(dir).display()
-                    ),
-                    Err(err) => println!("    {} {err}", "!".yellow()),
+                    Ok(()) if crate::platform::apple::sdk_package_points_at(dir, &sdk_dir) => {
+                        println!("    {} {}/Package.swift", "✓".green(), relative.display());
+                    }
+                    Ok(()) => {
+                        let message = format!(
+                            "{}/Package.swift was not updated to the cached Apple SDK",
+                            relative.display()
+                        );
+                        println!("    {} {message}", "!".yellow());
+                        failures.push(message);
+                    }
+                    Err(err) => {
+                        println!("    {} {err}", "!".yellow());
+                        failures.push(format!(
+                            "inject cached Apple SDK into {}/Package.swift ({err:#})",
+                            relative.display()
+                        ));
+                    }
                 }
             }
         }
     }
+    failures
 }
 
 /// All package.json files that belong to the project (root plus embedded
@@ -982,9 +1027,11 @@ fn cargo_dependency_req(content: &str, crate_name: &str) -> Option<String> {
 /// One-line drift warning at build time: the project's installed/pinned
 /// LingXia line is older than this CLI's. Never fails the build; silent when
 /// nothing is resolvable.
-pub fn warn_if_behind(project_root: &Path) {
-    if let (Some(cli), Some(project)) = (cli_compat_line(), project_compat_line(project_root))
+pub fn warn_if_behind(start: &Path) {
+    let project_root = find_project_root_from(start).unwrap_or_else(|| start.to_path_buf());
+    if let (Some(cli), Some(project)) = (cli_compat_line(), project_compat_line(&project_root))
         && project < cli
+        && claim_drift_warning(&project_root)
     {
         eprintln!(
             "{} This project is on the LingXia {}.{} line, the CLI on {}.{} — run `lingxia upgrade` in the project to align.",
@@ -995,6 +1042,18 @@ pub fn warn_if_behind(project_root: &Path) {
             cli.1
         );
     }
+}
+
+fn claim_drift_warning(project_root: &Path) -> bool {
+    static WARNED_PROJECT_ROOTS: OnceLock<Mutex<HashSet<PathBuf>>> = OnceLock::new();
+    let root = project_root
+        .canonicalize()
+        .unwrap_or_else(|_| project_root.to_path_buf());
+    WARNED_PROJECT_ROOTS
+        .get_or_init(|| Mutex::new(HashSet::new()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(root)
 }
 
 /// Version requirements for scaffolded LingXia crates in `native/Cargo.toml`.
@@ -1145,6 +1204,49 @@ mod tests {
     }
 
     #[test]
+    fn native_upgrade_allow_list_matches_the_scaffold_template() {
+        let template = include_str!("../../templates/native/Cargo.toml.template");
+        let scaffolded = template
+            .lines()
+            .filter(|line| line.contains("version = \"{{LINGXIA_VERSION}}\""))
+            .filter_map(|line| line.split_once('=').map(|(name, _)| name.trim()))
+            .collect::<Vec<_>>();
+        assert_eq!(scaffolded, NATIVE_LINGXIA_CRATES);
+    }
+
+    #[test]
+    fn host_root_wins_over_an_embedded_lxapp() {
+        let tmp = tempfile::tempdir().unwrap();
+        let host = tmp.path().join("host");
+        let embedded = host.join("lxapp");
+        let nested = embedded.join("pages/home");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(host.join(crate::config::HOST_CONFIG_FILE), "app: {}\n").unwrap();
+        fs::write(embedded.join("lxapp.json"), "{}\n").unwrap();
+
+        assert_eq!(
+            find_project_root_from(&nested).as_deref(),
+            Some(host.as_path())
+        );
+
+        let standalone = tmp.path().join("standalone");
+        let standalone_nested = standalone.join("pages/home");
+        fs::create_dir_all(&standalone_nested).unwrap();
+        fs::write(standalone.join("lxapp.json"), "{}\n").unwrap();
+        assert_eq!(
+            find_project_root_from(&standalone_nested).as_deref(),
+            Some(standalone.as_path())
+        );
+    }
+
+    #[test]
+    fn build_drift_warning_is_claimed_once_per_project_root() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(claim_drift_warning(tmp.path()));
+        assert!(!claim_drift_warning(tmp.path()));
+    }
+
+    #[test]
     fn non_interactive_upgrade_requires_yes() {
         assert_eq!(
             confirmation_without_prompt(false, false),
@@ -1270,6 +1372,24 @@ mod tests {
         assert_eq!(injects, 2);
 
         assert!(collect_sdk_steps(root, true, "0.12.0").is_empty());
+    }
+
+    #[test]
+    fn hand_wired_apple_package_needs_no_sdk_step() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::create_dir_all(root.join("ios")).unwrap();
+        fs::write(
+            root.join("ios/Package.swift"),
+            ".package(name: \"lingxia\", path: \"../vendor/lingxia\"),\n.product(name: \"lingxia\", package: \"lingxia\"),\n",
+        )
+        .unwrap();
+
+        assert!(crate::platform::apple::sdk_package_is_hand_wired(
+            &root.join("ios")
+        ));
+        assert!(collect_sdk_steps(root, false, "0.12.0").is_empty());
+        assert!(!apple_inject_pending(&root.join("ios"), "0.12.0"));
     }
 
     #[test]

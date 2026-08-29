@@ -74,7 +74,7 @@ pub fn execute(check: bool, version: Option<String>, yes: bool) -> Result<i32> {
                 "  Re-run `{}` once the new CLI is in place so project pins follow that release.",
                 rerun_command(version.as_deref(), yes)
             );
-            return Ok(cli_exit(&cli));
+            return Ok(deferred_project_exit());
         }
         if blocks_project_upgrade(&cli) {
             return Ok(cli_exit(&cli));
@@ -89,6 +89,11 @@ pub fn execute(check: bool, version: Option<String>, yes: bool) -> Result<i32> {
 #[cfg(target_os = "windows")]
 fn should_defer_project_upgrade(cli: &CliStep, check: bool) -> bool {
     matches!(cli, CliStep::Staged) && !check
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn deferred_project_exit() -> i32 {
+    EXIT_UPDATE_AVAILABLE
 }
 
 #[cfg(any(target_os = "windows", test))]
@@ -354,6 +359,12 @@ mod tests {
             "lingxia upgrade --version 0.12.3 --yes"
         );
         assert_eq!(rerun_command(None, false), "lingxia upgrade");
+    }
+
+    #[test]
+    fn staged_project_deferral_requires_automation_to_retry() {
+        assert_eq!(deferred_project_exit(), EXIT_UPDATE_AVAILABLE);
+        assert_ne!(deferred_project_exit(), 0);
     }
 
     #[cfg(target_os = "windows")]

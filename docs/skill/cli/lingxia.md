@@ -279,13 +279,15 @@ In-workspace checkouts already depend on SDK source paths and are not
 re-fetched. `--check` reports CLI *and* project-line drift without writing
 (exit 10 when either half is behind). On Windows a CLI self-replace is
 deferred until the process exits — re-run `lingxia upgrade` after that so
-project pins follow the new CLI's line. Builds print a one-line hint when
+project pins follow the new CLI's line. When that defers the project half, the
+command exits 10 even with `--yes`, so automation knows it must re-run after
+the swap. Builds print a one-line hint when
 the project's line is older than the CLI's. `skill install` writes this skill
 where an AI coding tool finds it.
 
-Manifest rewrites are followed by their npm/Cargo lockfile refreshes. If a
-refresh command fails, `upgrade` exits nonzero and reports the directory that
-still needs attention.
+Manifest rewrites are followed by their npm/Cargo lockfile and platform SDK
+refreshes. If one fails, `upgrade` exits nonzero and reports what still needs
+attention. A hand-wired Apple `Package.swift` is left alone.
 
 ### Distribution — `publish`, `auth`, `store`, `ds`, signing
 
