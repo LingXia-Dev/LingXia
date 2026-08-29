@@ -391,6 +391,77 @@ transferSpec('stream upload progress that ends on a completed event', {
   expect(result.multipart[0].total).toBeGreaterThan(result.size);
 });
 
+transferSpec('stop upload iteration and observe rejected promise helpers', {
+  id: 'TRANSFER-UPLOAD-HELPERS-001',
+  covers: ['UploadTask.return', 'UploadTask.catch', 'UploadTask.finally'],
+  app: SHOWCASE_APP_ID,
+  ...pending,
+}, async (t) => {
+  const { app, namespace } = bindFixture(t, 'TRANSFER-UPLOAD-HELPERS-001');
+
+  const result = await app.eval({
+    timeoutMs: 60_000,
+    script: `
+      const source = await lx.downloadFile({
+        url: ${JSON.stringify(`${httpBase}/file/helpers.bin?size=1500000&case=${encodeURIComponent(namespace)}`)},
+      });
+
+      const completing = lx.uploadFile({
+        url: ${JSON.stringify(`${httpBase}/upload?holdMs=500&case=${encodeURIComponent(namespace)}`)},
+        filePath: source.tempFilePath,
+      });
+      const first = await completing.next();
+      const returned = await completing.return();
+      const afterReturn = await completing.next();
+      let successFinallyCount = 0;
+      const completed = await completing.finally(() => { successFinallyCount += 1; });
+
+      const rejecting = lx.uploadFile({
+        url: ${JSON.stringify(`${httpBase}/upload-raw?reject=403&case=${encodeURIComponent(namespace)}`)},
+        filePath: source.tempFilePath,
+        method: 'PUT',
+        bodyMode: 'raw',
+      });
+      let rejectFinallyCount = 0;
+      const finalized = rejecting
+        .finally(() => { rejectFinallyCount += 1; })
+        .catch(() => undefined);
+      const caught = await rejecting.catch((error) => ({
+        code: String(error?.code || ''),
+        detail: String(error?.data?.detail || ''),
+      }));
+      await finalized;
+
+      return {
+        firstKind: first.value?.kind ?? null,
+        returnedDone: returned.done,
+        afterReturnDone: afterReturn.done,
+        completedStatus: completed.statusCode,
+        successFinallyCount,
+        caught,
+        rejectFinallyCount,
+      };
+    `,
+  }) as {
+    firstKind: string | null;
+    returnedDone: boolean;
+    afterReturnDone: boolean;
+    completedStatus: number;
+    successFinallyCount: number;
+    caught: { code: string; detail: string };
+    rejectFinallyCount: number;
+  };
+
+  expect(result.firstKind).toBe('progress');
+  expect(result.returnedDone).toBeTruthy();
+  expect(result.afterReturnDone).toBeTruthy();
+  expect(result.completedStatus).toBe(200);
+  expect(result.successFinallyCount).toBe(1);
+  expect(result.caught.code).toBe('E_NETWORK');
+  expect(result.caught.detail).toContain('403');
+  expect(result.rejectFinallyCount).toBe(1);
+});
+
 transferSpec('upload a raw body with PUT for presigned endpoints', {
   id: 'TRANSFER-UPLOAD-RAW-001',
   covers: ['lx.uploadFile'],

@@ -15,20 +15,19 @@ export default function SurfacePage() {
   // which is the visible difference between hide and close.
   const [counter, setCounter] = React.useState(0);
 
-  const handleSend = React.useCallback(() => {
+  const handleSend = React.useCallback(async () => {
     const text = message.trim();
     if (!text) {
       return;
     }
 
     try {
-      logSurfaceMessage({ message: text });
+      await logSurfaceMessage({ message: text });
       setMessage('');
-      closeSelf?.();
     } catch (error) {
       console.error('logSurfaceMessage failed:', error);
     }
-  }, [message, logSurfaceMessage, closeSelf]);
+  }, [message, logSurfaceMessage]);
 
   return (
     <div
@@ -89,11 +88,13 @@ export default function SurfacePage() {
           <input
             className="w-full px-3 py-2 rounded-md bg-surface border border-line-300 text-sm text-gray-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             placeholder="Message to parent page"
+            data-controlled-value={message}
             value={message}
             onChange={(event) => setMessage(event.target.value)}
           />
           <button
             type="button"
+            data-testid="surface-send-message"
             onClick={handleSend}
             className="w-full h-10 text-sm font-medium rounded-md bg-blue-500 hover:bg-blue-600 text-white transition-colors"
           >

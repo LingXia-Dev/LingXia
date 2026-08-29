@@ -1,6 +1,7 @@
 import { expect, spec } from '@lingxia/test';
 import type { DesktopWindowInfo } from 'lingxia-types/automation';
 import { runtimePlatform } from '../../helpers/platform.js';
+import { waitForElementAttribute } from '../../helpers/page.js';
 import { bindFixture, eventually } from '../../helpers/poll.js';
 import { showcaseApp, SHOWCASE_APP_ID } from '../../helpers/app.js';
 
@@ -221,4 +222,87 @@ windowTest('open a page window with system chrome and with full chrome', {
     // size yields a shorter outer frame than system chrome.
     expect(full.window.bounds.h).toBeLessThan(system.window.bounds.h);
   }
+});
+
+windowTest('deliver a child page message to its opener before closing', {
+  id: 'DESKTOP-SURFACE-MESSAGE-001',
+  covers: ['PageSurface.onMessage', 'PageMessagePort.postMessage'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-MESSAGE-001');
+  await desktopPlatform();
+  const key = `${namespace}-message`;
+  const stateKey = `__lingxiaSurfaceMessage_${namespace.replace(/-/g, '_')}`;
+  const marker = `surface-message-${namespace}`;
+
+  defer(() => closeKeyedSurface(app, key));
+  defer(async () => {
+    await app.eval({
+      script: `
+        const state = globalThis[${JSON.stringify(stateKey)}];
+        if (state?.off) state.off();
+        delete globalThis[${JSON.stringify(stateKey)}];
+      `,
+    }).catch(() => undefined);
+  });
+
+  const opened = await openWindow(app, 'system', key);
+  expect(opened.kind).toBe('page');
+  await waitForSurfacePage(app, key, 0);
+
+  await app.eval({
+    script: `
+      const handle = lx.surface.get(${JSON.stringify(key)});
+      if (!handle) throw new Error('message surface was not registered');
+      const state = { messages: [], off: null };
+      state.off = handle.onMessage((message) => state.messages.push(message));
+      globalThis[${JSON.stringify(stateKey)}] = state;
+    `,
+  });
+
+  await app.page.eval({
+    page: 'surface',
+    script: `(() => {
+      const input = document.querySelector('input[placeholder="Message to parent page"]');
+      if (!(input instanceof HTMLInputElement)) throw new Error('surface message input missing');
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      if (!setter) throw new Error('HTMLInputElement value setter missing');
+      setter.call(input, ${JSON.stringify(marker)});
+      input.dispatchEvent(new InputEvent('input', {
+        bubbles: true,
+        data: ${JSON.stringify(marker)},
+        inputType: 'insertText',
+      }));
+      return input.value;
+    })()`,
+  });
+  await waitForElementAttribute(
+    app,
+    'surface',
+    'input[placeholder="Message to parent page"]',
+    'data-controlled-value',
+    marker,
+  );
+  await app.page.click({
+    page: 'surface',
+    css: '[data-testid="surface-send-message"]',
+  });
+
+  const messages = await eventually(
+    () => app.eval({
+      script: `return globalThis[${JSON.stringify(stateKey)}]?.messages ?? []`,
+    }) as Promise<Array<{ message?: string; timestamp?: number }>>,
+    (value) => value.some((message) => message.message === marker),
+    { describe: 'surface message delivered to opener', timeoutMs: 10_000 },
+  );
+  const received = messages.find((message) => message.message === marker);
+  expect(typeof received?.timestamp).toBe('number');
+
+  await eventually(
+    () => app.eval({
+      script: `return lx.surface.get(${JSON.stringify(key)}) == null`,
+    }),
+    (closed) => closed === true,
+    { describe: 'messaging surface to close itself', timeoutMs: 10_000 },
+  );
 });
