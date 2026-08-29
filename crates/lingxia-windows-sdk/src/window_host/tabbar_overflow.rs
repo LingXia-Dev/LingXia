@@ -231,10 +231,15 @@ unsafe extern "system" fn tabbar_overflow_proc(
                     &overlay.layout,
                     lparam_client_point(lparam),
                 ) {
-                    crate::shell::TabbarOverflowHit::Item(index) => {
+                    crate::shell::TabbarOverflowHit::Item(slot) => {
+                        // The hit is a position in the shipped list; the click
+                        // has to name the item's declared index.
+                        let Some(item) = overlay.layout.tabbar.items.get(slot) else {
+                            return LRESULT(0);
+                        };
                         let command = crate::shell::collapsed_sidebar_tabbar_click_command(
                             &overlay.layout.tabbar.group_id,
-                            index,
+                            item.index,
                         );
                         destroy_tabbar_overflow(owner);
                         dispatch_phone_switcher_command(owner, command);
