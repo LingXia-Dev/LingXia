@@ -91,13 +91,20 @@ fn draw_tab_bar_inner(
     let overflow_start = tabbar.bottom_overflow_start();
 
     for slot in 0..count {
+        let Some(kind) = tabbar.bottom_slot(slot) else {
+            continue;
+        };
         let item_rect = tab_item_rect(rect, tabbar.position, count, slot);
-        let item = tabbar.items.get(slot);
-        let is_more = overflow_start.is_some_and(|start| slot == start);
-        let selected = if is_more {
-            overflow_start.is_some_and(|start| tabbar.selected_index >= start as i32)
-        } else {
-            tabbar.selected_index == slot as i32
+        let is_more = kind == BottomSlot::More;
+        let item = match kind {
+            BottomSlot::Tab(index) => tabbar.items.get(index),
+            BottomSlot::More => None,
+        };
+        let selected = match kind {
+            BottomSlot::Tab(index) => tabbar.selected_index == index as i32,
+            BottomSlot::More => {
+                overflow_start.is_some_and(|start| tabbar.selected_index >= start as i32)
+            }
         };
         let color = if selected {
             tabbar.selected_color

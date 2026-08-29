@@ -57,6 +57,9 @@ pub enum UiEventType {
 /// NAPI-compatible TabItem
 #[napi(object)]
 pub struct TabItem {
+    /// Index in `lxapp.json`, which selection, badges and `switchTab` key on.
+    /// A host receives only the items it shows, so this is not its position.
+    pub index: i32,
     pub page_path: String,
     pub text: Option<String>,
     pub icon_path: Option<String>,
@@ -401,10 +404,9 @@ fn get_tab_bar(appid: String) -> Option<TabBarState> {
         let resolved = lxapp.resolved_tabbar_style()?;
         lxapp.get_tabbar().map(|tabbar| {
             let items: Vec<TabItem> = tabbar
-                .items
-                .iter()
-                .enumerate()
+                .visible_items()
                 .map(|(index, item)| TabItem {
+                    index: index as i32,
                     page_path: item.page_path.clone(),
                     text: item.text.clone(),
                     icon_path: item.icon_path.clone(),
@@ -430,7 +432,7 @@ fn get_tab_bar(appid: String) -> Option<TabBarState> {
                 is_visible: tabbar.is_effectively_visible(),
                 items,
                 selected_index: tabbar.selected_index,
-                overflow_start_index: tabbar.compact_overflow_start_index(),
+                overflow_start_index: tabbar.compact_overflow_slot_index(),
             }
         })
     })

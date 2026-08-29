@@ -238,6 +238,10 @@ enum RunnerBridge {
         (view as? LingXiaTabBar)?.setCompact(compact)
     }
 
+    static func setSimulatedHostClass(mobile: Bool) {
+        set_simulated_host_class(mobile)
+    }
+
     static func setTabBarSelectedIndex(
         _ view: NSView?,
         index: Int,

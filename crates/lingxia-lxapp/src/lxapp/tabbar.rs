@@ -1,3 +1,4 @@
+use super::host_class::{HostClass, host_class};
 use super::page_chrome::{
     PageChromeColor, PatchField, TabBarPresentation, TabBarVisibilityPreference, ValuePatchField,
 };
@@ -108,6 +109,11 @@ pub struct TabBarItem {
     /// never ships a second piece of artwork.
     #[serde(default)]
     pub icon_path: Option<String>,
+    /// Hosts this item appears on. Omitted means every host. A destination
+    /// bound to a device — a camera scan, say — declares `["mobile"]` rather
+    /// than shipping a tab that cannot do anything on a desktop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub show_on: Option<Vec<HostClass>>,
 
     #[serde(skip)]
     manifest_text: Option<String>,
@@ -126,6 +132,19 @@ impl TabBarItem {
         self.manifest_icon_path = self.icon_path.clone();
         self.badge = None;
         self.has_red_dot = false;
+    }
+
+    /// Whether this item belongs on `class`. Declaration order is unaffected:
+    /// a hidden item keeps its index so badges and `switchTab` stay stable.
+    pub fn shows_on(&self, class: HostClass) -> bool {
+        self.show_on
+            .as_ref()
+            .is_none_or(|hosts| hosts.contains(&class))
+    }
+
+    /// Whether this item belongs on the host actually running.
+    pub fn is_visible_here(&self) -> bool {
+        self.shows_on(host_class())
     }
 
     fn set_text_override(&mut self, value: Option<String>) {
@@ -171,6 +190,24 @@ impl TabBar {
                 Self::MAX_ITEMS
             ));
         }
+        // `showOn` can starve one host while the declaration as a whole looks
+        // fine, so each host is counted on its own.
+        for class in [HostClass::Mobile, HostClass::Desktop] {
+            let shown = self
+                .items
+                .iter()
+                .filter(|item| item.shows_on(class))
+                .count();
+            if shown < Self::MIN_ITEMS {
+                return Err(format!(
+                    "tabBar.items: {shown} item(s) left for {}; showOn must leave every host at least {}",
+                    serde_json::to_string(&class)
+                        .unwrap_or_default()
+                        .trim_matches('"'),
+                    Self::MIN_ITEMS
+                ));
+            }
+        }
         self.style = self.style.validate(self.presentation)?;
         for (index, item) in self.items.iter_mut().enumerate() {
             item.page_path = item.page_path.trim().trim_start_matches('/').to_string();
@@ -201,31 +238,71 @@ impl TabBar {
         result
     }
 
-    /// First item a compact host must move into its overflow menu, or `None`
-    /// when every item fits the strip. With overflow, the last strip slot is
-    /// the "more" affordance, so one declared item gives up its slot too.
-    pub fn compact_overflow_start(&self) -> Option<usize> {
-        (self.items.len() > Self::COMPACT_SLOTS).then_some(Self::COMPACT_SLOTS - 1)
+    /// Items this host shows, paired with their declaration index. Hidden
+    /// items keep their index, so a badge or `switchTab` targets the same tab
+    /// whichever host is running.
+    pub fn visible_items_for(
+        &self,
+        class: HostClass,
+    ) -> impl Iterator<Item = (usize, &TabBarItem)> {
+        self.items
+            .iter()
+            .enumerate()
+            .filter(move |(_, item)| item.shows_on(class))
     }
 
-    /// [`Self::compact_overflow_start`] flattened for the native bridges: the
-    /// index, or `-1` when the strip shows every item.
-    pub fn compact_overflow_start_index(&self) -> i32 {
-        self.compact_overflow_start()
-            .map_or(-1, |start| start as i32)
+    /// [`Self::visible_items_for`] on the host actually running.
+    pub fn visible_items(&self) -> impl Iterator<Item = (usize, &TabBarItem)> {
+        self.visible_items_for(host_class())
+    }
+
+    /// First item a compact host must move into its overflow menu, as a
+    /// declaration index, or `None` when every visible item fits the strip.
+    /// With overflow, the last strip slot is the "more" affordance, so one
+    /// visible item gives up its slot too.
+    pub fn compact_overflow_start_for(&self, class: HostClass) -> Option<usize> {
+        let visible: Vec<usize> = self.visible_items_for(class).map(|(i, _)| i).collect();
+        (visible.len() > Self::COMPACT_SLOTS)
+            .then(|| visible.get(Self::COMPACT_SLOTS - 1).copied())
+            .flatten()
+    }
+
+    /// [`Self::compact_overflow_start_for`] on the host actually running.
+    pub fn compact_overflow_start(&self) -> Option<usize> {
+        self.compact_overflow_start_for(host_class())
+    }
+
+    /// How many cells a compact strip fills with tabs before the "more" slot,
+    /// or `-1` when everything fits. This counts *shipped* items, not declared
+    /// ones: a host receives only what it shows, so this is a position in that
+    /// list and needs no translation on the far side.
+    pub fn compact_overflow_slot_index(&self) -> i32 {
+        self.compact_overflow_slot_index_for(host_class())
+    }
+
+    pub fn compact_overflow_slot_index_for(&self, class: HostClass) -> i32 {
+        if self.visible_items_for(class).count() > Self::COMPACT_SLOTS {
+            Self::COMPACT_SLOTS as i32 - 1
+        } else {
+            -1
+        }
     }
 
     /// Tab pages worth creating up front — exactly those holding a slot of
     /// their own. Warming a tab costs a page service and a WebView, which only
     /// pays off for a destination that is one tap away; anything the strip
     /// folds behind "more" is a tap further out and can load on first pick.
-    pub fn preload_page_paths(&self) -> Vec<String> {
-        let count = self.compact_overflow_start().unwrap_or(self.items.len());
-        self.items
-            .iter()
-            .take(count)
-            .map(|item| item.page_path.clone())
+    pub fn preload_page_paths_for(&self, class: HostClass) -> Vec<String> {
+        let fold = self.compact_overflow_start_for(class);
+        self.visible_items_for(class)
+            .take_while(|(index, _)| fold.is_none_or(|start| *index < start))
+            .map(|(_, item)| item.page_path.clone())
             .collect()
+    }
+
+    /// [`Self::preload_page_paths_for`] on the host actually running.
+    pub fn preload_page_paths(&self) -> Vec<String> {
+        self.preload_page_paths_for(host_class())
     }
 
     pub fn get_item(&self, index: i32) -> Option<&TabBarItem> {
@@ -810,8 +887,105 @@ mod tests {
         assert_eq!(items(5).compact_overflow_start(), None);
         assert_eq!(items(6).compact_overflow_start(), Some(4));
         assert_eq!(items(10).compact_overflow_start(), Some(4));
-        assert_eq!(items(5).compact_overflow_start_index(), -1);
-        assert_eq!(items(10).compact_overflow_start_index(), 4);
+        assert_eq!(items(5).compact_overflow_slot_index(), -1);
+        assert_eq!(items(10).compact_overflow_slot_index(), 4);
+    }
+
+    #[test]
+    fn show_on_hides_an_item_without_renumbering_the_rest() {
+        let mut tabbar = manifest(serde_json::json!({
+            "items": [
+                { "pagePath": "pages/home/index" },
+                { "pagePath": "pages/scan/index", "showOn": ["mobile"] },
+                { "pagePath": "pages/me/index" }
+            ]
+        }));
+        for item in &mut tabbar.items {
+            item.initialize_runtime(Path::new("/app"));
+        }
+        let seen = |class| {
+            tabbar
+                .visible_items_for(class)
+                .map(|(i, _)| i)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(seen(HostClass::Mobile), vec![0, 1, 2]);
+        // The scan tab is gone, but "me" keeps index 2 so a badge set against
+        // it targets the same tab on either host.
+        assert_eq!(seen(HostClass::Desktop), vec![0, 2]);
+    }
+
+    #[test]
+    fn the_fold_counts_only_what_this_host_shows() {
+        let items: Vec<_> = (0..8)
+            .map(|index| {
+                let mut item = serde_json::json!({ "pagePath": format!("pages/p{index}/index") });
+                // Three desktop-only items sit among the first six.
+                if [1, 3, 5].contains(&index) {
+                    item["showOn"] = serde_json::json!(["desktop"]);
+                }
+                item
+            })
+            .collect();
+        let tabbar = manifest(serde_json::json!({ "items": items }));
+
+        // Desktop sees all 8, so the fold starts at the 5th visible item.
+        assert_eq!(
+            tabbar.compact_overflow_start_for(HostClass::Desktop),
+            Some(4)
+        );
+
+        // Mobile sees only 5 (0,2,4,6,7) — they fit, so nothing folds.
+        assert_eq!(tabbar.compact_overflow_start_for(HostClass::Mobile), None);
+        assert_eq!(tabbar.preload_page_paths_for(HostClass::Mobile).len(), 5);
+    }
+
+    /// The showcase's shape: one mobile-only item in the middle. What each host
+    /// ships, and the indices it carries back, is the whole contract.
+    #[test]
+    fn a_mobile_only_item_ships_to_one_host_and_keeps_its_index() {
+        let tabbar = manifest(serde_json::json!({
+            "items": [
+                { "pagePath": "pages/home/index" },
+                { "pagePath": "pages/api/index" },
+                { "pagePath": "pages/media/index", "showOn": ["mobile"] },
+                { "pagePath": "pages/components/index" },
+                { "pagePath": "pages/todo/index" }
+            ]
+        }));
+        let shipped = |class| {
+            tabbar
+                .visible_items_for(class)
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(shipped(HostClass::Mobile), vec![0, 1, 2, 3, 4]);
+        // Desktop never sees media, and the items after it keep 3 and 4 — a
+        // badge set on index 4 lands on todo whichever host is running.
+        assert_eq!(shipped(HostClass::Desktop), vec![0, 1, 3, 4]);
+        // Five fit the strip, four fit trivially: neither host folds.
+        assert_eq!(
+            tabbar.compact_overflow_slot_index_for(HostClass::Mobile),
+            -1
+        );
+        assert_eq!(
+            tabbar.compact_overflow_slot_index_for(HostClass::Desktop),
+            -1
+        );
+    }
+
+    #[test]
+    fn show_on_may_not_starve_a_host() {
+        let paths: Vec<String> = (0..3).map(|i| format!("pages/p{i}/index")).collect();
+        let mut tabbar = manifest(serde_json::json!({
+            "items": [
+                { "pagePath": "pages/p0/index" },
+                { "pagePath": "pages/p1/index", "showOn": ["mobile"] },
+                { "pagePath": "pages/p2/index", "showOn": ["mobile"] }
+            ]
+        }));
+        let error = tabbar.validate(&paths).unwrap_err();
+        assert!(error.contains("desktop"), "{error}");
     }
 
     #[test]

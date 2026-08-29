@@ -327,7 +327,7 @@ fn validate_page_chrome_manifest(manifest: &Value) -> Result<()> {
         }
         reject_unknown_fields(
             item,
-            &["pagePath", "text", "iconPath"],
+            &["pagePath", "text", "iconPath", "showOn"],
             &format!("tabBar.items[{index}]"),
         )?;
         let page_path = item
