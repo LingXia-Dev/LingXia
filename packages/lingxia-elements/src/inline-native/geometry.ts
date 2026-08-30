@@ -41,6 +41,9 @@ export function buildGeometrySnapshot(options: {
   rootOrder: number;
   rootRect: { x: number; y: number; width: number; height: number };
   nodeRects: Record<string, { x: number; y: number; width: number; height: number }>;
+  nodeVisibility?: Record<string, boolean>;
+  nodeClipStacks?: Record<string, unknown[]>;
+  rootVisible?: boolean;
 }): NativeGeometrySnapshotJson {
   const root = options.identified.rootRef;
   const nodes: NativeGeometrySnapshotJson["nodes"] = [];
@@ -50,8 +53,8 @@ export function buildGeometrySnapshot(options: {
         ref: node.nodeRef,
         chainKey: "page",
         contentRect: options.nodeRects[node.nodeRef.nodeKey] ?? options.rootRect,
-        clipStack: [],
-        visible: true,
+        clipStack: options.nodeClipStacks?.[node.nodeRef.nodeKey] ?? [],
+        visible: options.nodeVisibility?.[node.nodeRef.nodeKey] ?? true,
       });
       walk(node.children);
     }
@@ -71,7 +74,7 @@ export function buildGeometrySnapshot(options: {
         rootOrder: options.rootOrder,
         chainKey: "page",
         contentRect: options.rootRect,
-        visible: true,
+        visible: options.rootVisible ?? true,
       },
     ],
     nodes,

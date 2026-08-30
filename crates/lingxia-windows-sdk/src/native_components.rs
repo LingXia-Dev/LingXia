@@ -341,6 +341,22 @@ fn ensure_island_video(
     }
 }
 
+fn retain_island_videos(page_key: &str, live_ids: &HashSet<String>) {
+    let prefix = format!("{page_key}\u{1}");
+    let stale: Vec<String> = island::island_component_keys()
+        .iter()
+        .filter(|key| key.starts_with(&prefix))
+        .filter_map(|key| {
+            let id = key.strip_prefix(&prefix)?;
+            (!live_ids.contains(id)).then(|| key.clone())
+        })
+        .collect();
+    for key in stale {
+        destroy_component(&key);
+        island::island_component_keys().remove(&key);
+    }
+}
+
 fn handle_mount(context: &PageContext, message: &Value) {
     let Some(component_id) = message_component_id(message) else {
         return;

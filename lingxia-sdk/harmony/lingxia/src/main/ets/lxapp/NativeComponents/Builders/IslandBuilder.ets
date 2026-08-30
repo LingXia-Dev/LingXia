@@ -21,6 +21,27 @@ function cssNumber(value: NativeComponentValue, fallback: number): number {
   return fallback;
 }
 
+class IslandGradientOptions {
+  angle: number = 180;
+  colors: Array<[string, number]> = [];
+
+  constructor(colors: Array<[string, number]>) {
+    this.colors = colors;
+  }
+}
+
+function sourceDetail(source: string): NativeComponentRecord {
+  const detail = new NativeComponentRecord();
+  detail.set('source', source);
+  return detail;
+}
+
+function valueDetail(value: number): NativeComponentRecord {
+  const detail = new NativeComponentRecord();
+  detail.set('value', value);
+  return detail;
+}
+
 @Component
 struct IslandViewNode {
   @Prop params: NativeComponentParams;
@@ -35,16 +56,16 @@ struct IslandViewNode {
     .width('100%')
     .height('100%')
     .id(this.automationId())
-    .backgroundColor(this.backgroundColor())
+    .backgroundColor(this.nodeBackgroundColor())
     .borderRadius(this.styleNumber('borderRadius', 0))
     .opacity(Math.max(0, Math.min(1, this.styleNumber('opacity', 1))))
     .hitTestBehavior(this.hitMode())
     .accessibilityText(this.ariaLabel())
     .accessibilityDescription(this.ariaDescription())
-    .accessibilityLevel(this.accessibilityLevel())
+    .accessibilityLevel(this.nodeAccessibilityLevel())
   }
 
-  private scrimGradient(): { angle: number; colors: Array<[string, number]> } {
+  private scrimGradient(): IslandGradientOptions {
     const props = this.params.props;
     const paint = props?.get('scrimPaint');
     let scrim = 'none';
@@ -62,15 +83,15 @@ struct IslandViewNode {
     }
     const color = `#${Math.round(opacity * 255).toString(16).padStart(2, '0')}000000`;
     if (scrim === 'top') {
-      return { angle: 180, colors: [[color, 0], ['#00000000', 1]] };
+      return new IslandGradientOptions([[color, 0], ['#00000000', 1]]);
     }
     if (scrim === 'bottom') {
-      return { angle: 180, colors: [['#00000000', 0], [color, 1]] };
+      return new IslandGradientOptions([['#00000000', 0], [color, 1]]);
     }
     if (scrim === 'full') {
-      return { angle: 180, colors: [[color, 0], [color, 1]] };
+      return new IslandGradientOptions([[color, 0], [color, 1]]);
     }
-    return { angle: 180, colors: [['#00000000', 0], ['#00000000', 1]] };
+    return new IslandGradientOptions([['#00000000', 0], ['#00000000', 1]]);
   }
 
   private hitMode(): HitTestMode {
@@ -92,7 +113,7 @@ struct IslandViewNode {
     return cssNumber(value, fallback);
   }
 
-  private backgroundColor(): string {
+  private nodeBackgroundColor(): string {
     const record = this.styleRecord();
     const value = record ? record['backgroundColor'] : undefined;
     return typeof value === 'string' && value.length > 0 ? value : '#00000000';
@@ -110,7 +131,7 @@ struct IslandViewNode {
     return getStringProp(this.params.props, 'automationId', '');
   }
 
-  private accessibilityLevel(): string {
+  private nodeAccessibilityLevel(): string {
     return getBooleanProp(this.params.props, 'aria-hidden', false) ||
       getBooleanProp(this.params.props, 'ariaHidden', false) ? 'no-hide-descendants' : 'auto';
   }
@@ -135,8 +156,8 @@ struct IslandTextNode {
       .hitTestBehavior(HitTestMode.None)
       .accessibilityText(this.ariaLabel())
       .accessibilityDescription(this.ariaDescription())
-      .accessibilityLevel(this.accessibilityLevel())
-      .opacity(this.opacity())
+      .accessibilityLevel(this.nodeAccessibilityLevel())
+      .opacity(this.nodeOpacity())
   }
 
   private styleRecord(): Record<string, NativeComponentValue> | undefined {
@@ -192,12 +213,12 @@ struct IslandTextNode {
     return getStringProp(this.params.props, 'automationId', '');
   }
 
-  private accessibilityLevel(): string {
+  private nodeAccessibilityLevel(): string {
     return getBooleanProp(this.params.props, 'aria-hidden', false) ||
       getBooleanProp(this.params.props, 'ariaHidden', false) ? 'no-hide-descendants' : 'auto';
   }
 
-  private opacity(): number {
+  private nodeOpacity(): number {
     return Math.max(0, Math.min(1, this.styleNumber('opacity', 1)));
   }
 }
@@ -211,30 +232,30 @@ struct IslandTappableNode {
       .width('100%')
       .height('100%')
       .id(this.automationId())
-      .backgroundColor(this.backgroundColor())
-      .fontColor(this.foregroundColor())
+      .backgroundColor(this.nodeBackgroundColor())
+      .fontColor(this.nodeForegroundColor())
       .fontSize(getStringProp(this.params.props, 'size', 'regular') === 'compact' ? 12 : 14)
       .fontWeight(FontWeight.Bold)
-      .enabled(this.enabled())
+      .enabled(this.nodeEnabled())
       .hitTestBehavior(this.hitMode())
       .accessibilityText(this.ariaLabel())
       .accessibilityDescription(this.ariaDescription())
-      .accessibilityLevel(this.accessibilityLevel())
+      .accessibilityLevel(this.nodeAccessibilityLevel())
       .onClick(() => {
-        if (!this.enabled()) return;
-        onNativeComponentEventFromBuilder(this.params.componentId, 'press', { source: 'pointer' });
+        if (!this.nodeEnabled()) return;
+        onNativeComponentEventFromBuilder(this.params.componentId, 'press', sourceDetail('pointer'));
       })
       .onFocus(() => {
-        onNativeComponentEventFromBuilder(this.params.componentId, 'focus', { source: 'keyboard' });
+        onNativeComponentEventFromBuilder(this.params.componentId, 'focus', sourceDetail('keyboard'));
       })
       .onBlur(() => {
-        onNativeComponentEventFromBuilder(this.params.componentId, 'blur', { source: 'keyboard' });
+        onNativeComponentEventFromBuilder(this.params.componentId, 'blur', sourceDetail('keyboard'));
       })
       .onHover((hovered: boolean) => {
         onNativeComponentEventFromBuilder(
           this.params.componentId,
           hovered ? 'pointerenter' : 'pointerleave',
-          { source: 'pointer' }
+          sourceDetail('pointer')
         );
       })
   }
@@ -262,7 +283,7 @@ struct IslandTappableNode {
     return getStringProp(props, 'label', getStringProp(props, 'icon', ''));
   }
 
-  private enabled(): boolean {
+  private nodeEnabled(): boolean {
     return !getBooleanProp(this.params.props, 'disabled', false) &&
       !getBooleanProp(this.params.props, 'loading', false);
   }
@@ -288,22 +309,22 @@ struct IslandTappableNode {
     return getStringProp(this.params.props, 'automationId', '');
   }
 
-  private accessibilityLevel(): string {
+  private nodeAccessibilityLevel(): string {
     return getBooleanProp(this.params.props, 'aria-hidden', false) ||
       getBooleanProp(this.params.props, 'ariaHidden', false) ? 'no-hide-descendants' : 'auto';
   }
 
-  private backgroundColor(): string {
+  private nodeBackgroundColor(): string {
     const emphasis = getStringProp(this.params.props, 'emphasis', 'secondary');
     if (emphasis === 'quiet') return '#00000000';
-    if (!this.enabled()) return '#FF9CA3AF';
+    if (!this.nodeEnabled()) return '#FF9CA3AF';
     const intent = getStringProp(this.params.props, 'intent', 'neutral');
     if (intent === 'accent') return emphasis === 'secondary' ? '#502563EB' : '#FF2563EB';
     if (intent === 'destructive') return emphasis === 'secondary' ? '#50DC2626' : '#FFDC2626';
     return emphasis === 'secondary' ? '#50374151' : '#FF374151';
   }
 
-  private foregroundColor(): string {
+  private nodeForegroundColor(): string {
     const emphasis = getStringProp(this.params.props, 'emphasis', 'secondary');
     if (emphasis !== 'quiet') return '#FFFFFFFF';
     const intent = getStringProp(this.params.props, 'intent', 'neutral');
@@ -337,28 +358,28 @@ struct IslandSliderNode {
       .hitTestBehavior(this.hitMode())
       .accessibilityText(this.ariaLabel())
       .accessibilityDescription(this.valueDescription())
-      .accessibilityLevel(this.accessibilityLevel())
+      .accessibilityLevel(this.nodeAccessibilityLevel())
       .onChange((value: number, mode: SliderChangeMode) => {
         this.localValue = value;
         if (mode === SliderChangeMode.Begin || mode === SliderChangeMode.Moving) {
           this.dragging = true;
-          onNativeComponentEventFromBuilder(this.params.componentId, 'valuechange', { value: value });
+          onNativeComponentEventFromBuilder(this.params.componentId, 'valuechange', valueDetail(value));
         } else if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
           this.dragging = false;
-          onNativeComponentEventFromBuilder(this.params.componentId, 'valuecommit', { value: value });
+          onNativeComponentEventFromBuilder(this.params.componentId, 'valuecommit', valueDetail(value));
         }
       })
       .onFocus(() => {
-        onNativeComponentEventFromBuilder(this.params.componentId, 'focus', { source: 'keyboard' });
+        onNativeComponentEventFromBuilder(this.params.componentId, 'focus', sourceDetail('keyboard'));
       })
       .onBlur(() => {
-        onNativeComponentEventFromBuilder(this.params.componentId, 'blur', { source: 'keyboard' });
+        onNativeComponentEventFromBuilder(this.params.componentId, 'blur', sourceDetail('keyboard'));
       })
       .onHover((hovered: boolean) => {
         onNativeComponentEventFromBuilder(
           this.params.componentId,
           hovered ? 'pointerenter' : 'pointerleave',
-          { source: 'pointer' }
+          sourceDetail('pointer')
         );
       })
   }
@@ -383,7 +404,7 @@ struct IslandSliderNode {
     return getStringProp(this.params.props, 'automationId', '');
   }
 
-  private accessibilityLevel(): string {
+  private nodeAccessibilityLevel(): string {
     return getBooleanProp(this.params.props, 'aria-hidden', false) ||
       getBooleanProp(this.params.props, 'ariaHidden', false) ? 'no-hide-descendants' : 'auto';
   }

@@ -115,6 +115,7 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
         let manager = MacNativeComponentManager(
             hostView: host,
             webView: webView,
+            appId: webView.appId ?? "app",
             defaultPageId: pageKey,
             eventSink: { [weak self] payload in
                 self?.sendEventToJavaScript(payload)

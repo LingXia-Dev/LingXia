@@ -1,5 +1,6 @@
 #if os(iOS)
 import UIKit
+import CLingXiaRustAPI
 
 /// One ordered container for an inline native Root on iOS.
 /// Kind-specific views share this container; only public UIKit APIs are used.
@@ -8,15 +9,19 @@ final class InlineNativeIsland {
     static let allowedKinds: Set<String> = ["root", "view", "text", "tappable", "slider", "video"]
 
     static func isIslandAction(_ action: String) -> Bool {
-        action == "root.commit" || action == "geometry.snapshot"
+        action == "root.commit" || action == "root.destroy" || action == "geometry.snapshot"
             || action == "root.leaseAccept" || action == "video.command"
     }
 
     private let container = IslandContainerView()
     private weak var manager: NativeComponentManager?
     private weak var host: UIView?
+    private let appId: String
     private var nodes: [String: IslandNode] = [:]
     private(set) var lastAppliedRevision: UInt64 = 0
+    private var revisions: [String: UInt64] = [:]
+    private var roots: [String: [String: Any]] = [:]
+    private var rootOrders: [String: Int] = [:]
     private let eventSink: (_ componentId: String, _ event: String, _ detail: [String: Any]) -> Void
     /// The lease is per root, not per host: a page may mount several
     /// `LxNativeRoot`s into one island and each negotiates its own.
@@ -28,17 +33,18 @@ final class InlineNativeIsland {
         var root: [String: Any]
     }
     private var leases: [String: RootLease] = [:]
-    private var lastRoot: [String: Any]?
     private var pageActive = true
     private var pendingOutgoing: [[String: Any]] = []
 
     init(
         host: UIView,
         manager: NativeComponentManager,
+        appId: String,
         eventSink: @escaping (_ componentId: String, _ event: String, _ detail: [String: Any]) -> Void
     ) {
         self.manager = manager
         self.host = host
+        self.appId = appId
         self.eventSink = eventSink
         container.isUserInteractionEnabled = true
         // The overlay host pins to the scroll view's content layout guide, which
@@ -65,6 +71,9 @@ final class InlineNativeIsland {
         switch action {
         case "root.commit":
             applyCommit(message)
+            return true
+        case "root.destroy":
+            destroyRoot(message)
             return true
         case "geometry.snapshot":
             applyGeometry(message)
@@ -103,18 +112,61 @@ final class InlineNativeIsland {
         }
         container.removeFromSuperview()
         pendingOutgoing.removeAll()
-        lastRoot = nil
         leases.removeAll()
         lastAppliedRevision = 0
+        revisions.removeAll()
+        roots.removeAll()
+        rootOrders.removeAll()
     }
 
     private func applyCommit(_ message: [String: Any]) {
+        guard let root = message["root"] as? [String: Any],
+              let rootKey = root["rootKey"] as? String
+        else { return }
+        let baseInt = (message["baseRevision"] as? Int) ?? 0
+        let revisionInt = (message["revision"] as? Int) ?? 0
+        let base = (message["baseRevision"] as? UInt64) ?? (baseInt >= 0 ? UInt64(baseInt) : 0)
+        let revision = (message["revision"] as? UInt64) ?? (revisionInt >= 0 ? UInt64(revisionInt) : 0)
+        guard revision > base, revision > 0 else {
+            pendingOutgoing.append([
+                "action": "root.error", "id": rootKey, "root": root,
+                "message": "commit revision must be greater than baseRevision", "recoverable": true,
+            ])
+            return
+        }
+        let policyError = validateMediaURLs(in: message)
+        guard policyError.isEmpty else {
+            pendingOutgoing.append([
+                "action": "root.error", "id": rootKey, "root": root,
+                "message": policyError, "recoverable": true,
+            ])
+            return
+        }
+        let last = revisions[rootKey] ?? 0
+        if let existingRoot = roots[rootKey], !sameRootGeneration(existingRoot, root) {
+            pendingOutgoing.append([
+                "action": "root.error", "id": rootKey, "root": root,
+                "message": "root generation changed without destroy", "recoverable": true,
+            ])
+            return
+        }
+        if base == 0 {
+            nodes.values.filter { $0.rootKey == rootKey }.map(\.key).forEach(removeNode)
+            revisions.removeValue(forKey: rootKey)
+            leases.removeValue(forKey: rootKey)
+        } else if base != last {
+            pendingOutgoing.append([
+                "action": "root.resyncRequired", "id": rootKey, "root": root,
+                "lastAppliedRevision": last,
+            ])
+            return
+        }
         guard let operations = message["operations"] as? [[String: Any]] else { return }
         for operation in operations {
             switch operation["op"] as? String {
             case "mount":
                 if let node = operation["node"] as? [String: Any] {
-                    mount(node)
+                    mount(node, expectedRootKey: rootKey)
                 }
             case "update":
                 update(operation)
@@ -122,6 +174,7 @@ final class InlineNativeIsland {
                 if let ref = operation["node"] as? [String: Any],
                    let key = nodeKey(ref)
                 {
+                    guard (ref["rootKey"] as? String) == rootKey else { continue }
                     removeNode(key)
                 }
             case "reorder":
@@ -129,7 +182,17 @@ final class InlineNativeIsland {
                    let key = nodeKey(ref),
                    let order = operation["order"] as? Int
                 {
+                    guard (ref["rootKey"] as? String) == rootKey else { continue }
                     nodes[key]?.order = order
+                }
+            case "reparent":
+                if let ref = operation["node"] as? [String: Any],
+                   let key = nodeKey(ref)
+                {
+                    guard (ref["rootKey"] as? String) == rootKey else { continue }
+                    let parent = operation["parent"] as? [String: Any]
+                    guard parent == nil || (parent?["rootKey"] as? String) == rootKey else { continue }
+                    nodes[key]?.parentKey = parent?["nodeKey"] as? String
                 }
             default:
                 break
@@ -137,23 +200,44 @@ final class InlineNativeIsland {
         }
         restack()
         syncContainerFrame()
-        if let revision = message["revision"] as? UInt64 {
-            lastAppliedRevision = revision
-        } else if let revision = message["revision"] as? Int {
-            lastAppliedRevision = UInt64(revision)
-        }
-        if let root = message["root"] as? [String: Any] {
-            lastRoot = root
-            grantLeaseIfNeeded(root)
-        }
+        revisions[rootKey] = revision
+        roots[rootKey] = root
+        lastAppliedRevision = revisions.values.max() ?? 0
+        pendingOutgoing.append([
+            "action": "root.applied", "id": rootKey, "root": root, "revision": revision,
+        ])
+        grantLeaseIfNeeded(root)
+    }
+
+    private func destroyRoot(_ message: [String: Any]) {
+        guard let root = message["root"] as? [String: Any],
+              let rootKey = root["rootKey"] as? String
+        else { return }
+        guard let current = roots[rootKey], sameRootGeneration(current, root) else { return }
+        nodes.values.filter { $0.rootKey == rootKey }.map(\.key).forEach(removeNode)
+        revisions.removeValue(forKey: rootKey)
+        roots.removeValue(forKey: rootKey)
+        rootOrders.removeValue(forKey: rootKey)
+        leases.removeValue(forKey: rootKey)
+        lastAppliedRevision = revisions.values.max() ?? 0
+        restack()
+        syncContainerFrame()
     }
 
     private func applyGeometry(_ message: [String: Any]) {
+        for entry in message["roots"] as? [[String: Any]] ?? [] {
+            guard let ref = entry["ref"] as? [String: Any],
+                  let rootKey = ref["rootKey"] as? String,
+                  let current = roots[rootKey], sameRootGeneration(current, ref)
+            else { continue }
+            rootOrders[rootKey] = entry["rootOrder"] as? Int ?? Int.max
+        }
         guard let entries = message["nodes"] as? [[String: Any]] else { return }
         for entry in entries {
             guard let ref = entry["ref"] as? [String: Any],
                   let key = ref["nodeKey"] as? String,
                   let node = nodes[key],
+                  (ref["rootKey"] as? String) == node.rootKey,
                   let rect = entry["contentRect"] as? [String: Any]
             else { continue }
             node.rect = CGRect(
@@ -165,6 +249,7 @@ final class InlineNativeIsland {
             node.visible = entry["visible"] as? Bool ?? true
             applyFrame(node)
         }
+        restack()
         syncContainerFrame()
     }
 
@@ -204,6 +289,7 @@ final class InlineNativeIsland {
     }
 
     private func applyVideoCommand(_ message: [String: Any]) {
+        guard validateMediaURLs(in: message).isEmpty else { return }
         let owner = message["owner"] as? [String: Any]
         let key = owner?["nodeKey"] as? String
         let node = key.flatMap { nodes[$0] } ?? nodes.values.first(where: { $0.kind == "video" })
@@ -220,22 +306,63 @@ final class InlineNativeIsland {
         video.handleCommand(name: name, params: params)
     }
 
-    private func mount(_ node: [String: Any]) {
+    private func validateMediaURLs(in value: Any) -> String {
+        var urls: [String] = []
+        func collect(_ current: Any, key: String? = nil) {
+            if let dictionary = current as? [String: Any] {
+                dictionary.forEach { collect($0.value, key: $0.key) }
+            } else if let list = current as? [Any] {
+                list.forEach { collect($0, key: key) }
+            } else if let text = current as? String,
+                      ["src", "url", "uri", "poster"].contains(key ?? "") {
+                urls.append(text)
+            }
+        }
+        collect(value)
+        guard let data = try? JSONSerialization.data(withJSONObject: urls),
+              let json = String(data: data, encoding: .utf8)
+        else { return "invalid media URL list" }
+        return validateInlineNativeMediaUrls(appId, json).toString()
+    }
+
+    private func sameRootGeneration(_ lhs: [String: Any], _ rhs: [String: Any]) -> Bool {
+        func epoch(_ root: [String: Any]) -> UInt64? {
+            if let value = root["rootEpoch"] as? UInt64 { return value }
+            if let value = root["rootEpoch"] as? Int { return UInt64(value) }
+            return nil
+        }
+        return lhs["surfaceInstanceId"] as? String == rhs["surfaceInstanceId"] as? String
+            && lhs["pageInstanceId"] as? String == rhs["pageInstanceId"] as? String
+            && lhs["documentInstanceId"] as? String == rhs["documentInstanceId"] as? String
+            && lhs["rootKey"] as? String == rhs["rootKey"] as? String
+            && epoch(lhs) == epoch(rhs)
+    }
+
+    private func mount(_ node: [String: Any], expectedRootKey: String) {
         guard let ref = node["ref"] as? [String: Any],
               let key = ref["nodeKey"] as? String,
+              let rootKey = ref["rootKey"] as? String,
               let kind = node["kind"] as? String,
               Self.allowedKinds.contains(kind)
         else { return }
+        guard rootKey == expectedRootKey else { return }
         let authorId = (node["authorId"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? key
         let automationId = (node["automationId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         let props = node["props"] as? [String: Any] ?? [:]
         let order = node["order"] as? Int ?? 0
+        let parentKey = (node["parent"] as? [String: Any])?["nodeKey"] as? String
+        guard (node["parent"] as? [String: Any])?["rootKey"] as? String == nil
+            || (node["parent"] as? [String: Any])?["rootKey"] as? String == rootKey
+        else { return }
+        if let existing = nodes[key], existing.rootKey != rootKey { return }
         removeNode(key)
         let item = IslandNode(
             key: key,
+            rootKey: rootKey,
             kind: kind,
             authorId: authorId,
             automationId: automationId,
+            parentKey: parentKey,
             order: order,
             props: props
         )
@@ -256,6 +383,7 @@ final class InlineNativeIsland {
               let key = nodeKey(ref),
               let item = nodes[key]
         else { return }
+        guard (ref["rootKey"] as? String) == item.rootKey else { return }
         let patch = operation["patch"] as? [String: Any] ?? [:]
         for (name, value) in patch {
             if value is NSNull {
@@ -513,10 +641,23 @@ final class InlineNativeIsland {
     }
 
     private func restack() {
-        let ordered = nodes.values.sorted { lhs, rhs in
-            if lhs.order != rhs.order { return lhs.order < rhs.order }
-            return lhs.key < rhs.key
+        var ordered: [IslandNode] = []
+        func append(parentKey: String?) {
+            let children = nodes.values.filter { $0.parentKey == parentKey }.sorted { lhs, rhs in
+                if parentKey == nil {
+                    let lhsRoot = rootOrders[lhs.rootKey] ?? Int.max
+                    let rhsRoot = rootOrders[rhs.rootKey] ?? Int.max
+                    if lhsRoot != rhsRoot { return lhsRoot < rhsRoot }
+                }
+                if lhs.order != rhs.order { return lhs.order < rhs.order }
+                return lhs.key < rhs.key
+            }
+            for child in children {
+                ordered.append(child)
+                append(parentKey: child.key)
+            }
         }
+        append(parentKey: nil)
         var index = 0
         for node in ordered where node.view.superview === container {
             container.insertSubview(node.view, at: index)
@@ -663,9 +804,11 @@ final class InlineNativeIsland {
     @MainActor
     private final class IslandNode {
         let key: String
+        let rootKey: String
         let kind: String
         let authorId: String
         let automationId: String?
+        var parentKey: String?
         var order: Int
         var props: [String: Any]
         var view = UIView()
@@ -680,16 +823,20 @@ final class InlineNativeIsland {
 
         init(
             key: String,
+            rootKey: String,
             kind: String,
             authorId: String,
             automationId: String?,
+            parentKey: String?,
             order: Int,
             props: [String: Any]
         ) {
             self.key = key
+            self.rootKey = rootKey
             self.kind = kind
             self.authorId = authorId
             self.automationId = automationId
+            self.parentKey = parentKey
             self.order = order
             self.props = props
         }

@@ -132,12 +132,18 @@ const published = publishCompiledRoot({
   state: createRootRuntimeState(),
   rootRect: { x: 0, y: 10, width: 320, height: 180 },
   nodeRects: { hero: { x: 0, y: 10, width: 320, height: 180 } },
+  nodeVisibility: { hero: false },
+  nodeClipStacks: { hero: [{ x: 0, y: 10, width: 300, height: 160 }] },
+  rootOrder: 3,
 });
 assert.ok(published.messages.commit, "first tick must send root.commit");
 assert.equal(published.messages.geometry.action, "geometry.snapshot");
 assert.equal(published.messages.geometry.coordinateSpace, "page-unscrolled-css-px");
 assert.equal(published.messages.geometry.roots[0].basisTreeRevision, published.messages.commit.revision);
 assert.equal(published.messages.geometry.nodes[0].contentRect.width, 320);
+assert.equal(published.messages.geometry.nodes[0].visible, false);
+assert.equal(published.messages.geometry.nodes[0].clipStack.length, 1);
+assert.equal(published.messages.geometry.roots[0].rootOrder, 3);
 const scrolled = publishCompiledRoot({
   compiled: compiled.root,
   rootRef,
@@ -160,6 +166,7 @@ assert.equal(leased.leaseAccept.action, "root.leaseAccept");
 assert.equal(leased.ready, false);
 const activated = applyHostLeaseMessage(leased.state, { action: "root.leaseActive" }, 0);
 assert.equal(activated.ready, true);
+assert.equal(viewCanShowFallback(activated.state.lease, 100_000), false);
 
 const none = emptyViewLease();
 assert.equal(viewCanShowFallback(none, 0), true);

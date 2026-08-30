@@ -46,6 +46,10 @@ export function publishCompiledRoot(options: {
   state: RootRuntimeState;
   rootRect: { x: number; y: number; width: number; height: number };
   nodeRects: Record<string, { x: number; y: number; width: number; height: number }>;
+  nodeVisibility?: Record<string, boolean>;
+  nodeClipStacks?: Record<string, unknown[]>;
+  rootVisible?: boolean;
+  rootOrder?: number;
   nowMs?: number;
 }): { state: RootRuntimeState; messages: RootHostMessages } {
   const identified = identifyCompiledRoot(
@@ -72,13 +76,18 @@ export function publishCompiledRoot(options: {
   }
   const geometryRevision = options.state.geometryRevision + 1;
   const nodeRects = mapRectsToNodeKeys(identified, options.nodeRects);
+  const nodeVisibility = mapValuesToNodeKeys(identified, options.nodeVisibility ?? {});
+  const nodeClipStacks = mapValuesToNodeKeys(identified, options.nodeClipStacks ?? {});
   const geometry = buildGeometrySnapshot({
     identified,
     basisTreeRevision: Math.max(treeRevision, 1),
     geometryRevision,
-    rootOrder: 0,
+    rootOrder: options.rootOrder ?? 0,
     rootRect: options.rootRect,
     nodeRects,
+    nodeVisibility,
+    nodeClipStacks,
+    rootVisible: options.rootVisible,
   });
   const state: RootRuntimeState = {
     identified,
@@ -94,6 +103,24 @@ export function publishCompiledRoot(options: {
       ready: state.lease.phase === "active",
     },
   };
+}
+
+function mapValuesToNodeKeys<T>(
+  identified: IdentifiedRoot,
+  values: Record<string, T>
+): Record<string, T> {
+  const mapped: Record<string, T> = { ...values };
+  const walk = (nodes: IdentifiedRoot["children"]) => {
+    for (const node of nodes) {
+      const authorId = node.node.authorId;
+      if (authorId && values[authorId] !== undefined) {
+        mapped[node.nodeRef.nodeKey] = values[authorId];
+      }
+      walk(node.children);
+    }
+  };
+  walk(identified.children);
+  return mapped;
 }
 
 export function applyHostLeaseMessage(

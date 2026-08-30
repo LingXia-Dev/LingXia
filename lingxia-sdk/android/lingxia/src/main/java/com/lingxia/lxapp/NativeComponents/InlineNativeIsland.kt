@@ -17,6 +17,7 @@ import android.widget.FrameLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import com.lingxia.lxapp.NativeComponents.Components.VideoComponent
+import com.lingxia.app.NativeApi
 import org.json.JSONArray
 import org.json.JSONObject
 import kotlin.math.roundToInt
@@ -30,6 +31,7 @@ import kotlin.math.roundToInt
  */
 internal class InlineNativeIsland(
     private val host: ViewGroup,
+    private val appId: String,
     private val eventSink: (componentId: String, event: String, detail: Map<String, Any?>) -> Unit
 ) {
     private val density = host.resources.displayMetrics.density
@@ -41,14 +43,18 @@ internal class InlineNativeIsland(
     }
     private val nodes = linkedMapOf<String, IslandNode>()
     private val touchDelegates = CompositeTouchDelegate(container).also { container.touchDelegate = it }
-    private var lastAppliedRevision = 0L
+    private val revisions = mutableMapOf<String, Long>()
+    private val roots = mutableMapOf<String, Map<String, Any?>>()
+    private val rootOrders = mutableMapOf<String, Int>()
     private var scrollXPx = 0
     private var scrollYPx = 0
-    private var leaseGranted = false
-    private var leaseActive = false
-    private var leaseId = ""
-    private var leaseSequence = 1L
-    private var lastRoot: Map<String, Any?>? = null
+    private data class RootLease(
+        val root: Map<String, Any?>,
+        val id: String,
+        val sequence: Long = 1,
+        var active: Boolean = false
+    )
+    private val leases = mutableMapOf<String, RootLease>()
     private val pendingOutgoing = mutableListOf<Map<String, Any?>>()
 
     init {
@@ -67,6 +73,10 @@ internal class InlineNativeIsland(
         return when (message["action"] as? String) {
             "root.commit" -> {
                 applyCommit(message)
+                true
+            }
+            "root.destroy" -> {
+                destroyRoot(message)
                 true
             }
             "geometry.snapshot" -> {
@@ -97,53 +107,147 @@ internal class InlineNativeIsland(
         nodes.values.forEach { applyFrame(it) }
     }
 
-    fun lastAppliedRevision(): Long = lastAppliedRevision
+    fun lastAppliedRevision(): Long = revisions.values.maxOrNull() ?: 0L
+
+    fun videoComponent(componentId: String): VideoComponent? =
+        nodes.values.firstOrNull { it.authorId == componentId }?.video
+
+    fun videoIds(): Set<String> = nodes.values.filter { it.video != null }.map { it.authorId }.toSet()
 
     fun teardown() {
         nodes.keys.toList().forEach(::removeNode)
         (container.parent as? ViewGroup)?.removeView(container)
         pendingOutgoing.clear()
-        lastRoot = null
-        leaseGranted = false
-        leaseActive = false
+        revisions.clear()
+        roots.clear()
+        rootOrders.clear()
+        leases.clear()
     }
 
     private fun applyCommit(message: Map<String, Any?>) {
+        val root = asMap(message["root"]) ?: return
+        val rootKey = root["rootKey"] as? String ?: return
+        val base = (message["baseRevision"] as? Number)?.toLong() ?: return
+        val revision = (message["revision"] as? Number)?.toLong() ?: return
+        if (revision <= base || revision == 0L) {
+            pendingOutgoing += mapOf(
+                "action" to "root.error",
+                "id" to rootKey,
+                "root" to root,
+                "message" to "commit revision must be greater than baseRevision",
+                "recoverable" to true
+            )
+            return
+        }
+        val policyError = NativeApi.validateInlineNativeMediaUrls(
+            appId,
+            JSONArray(mediaUrlsFromCommit(message)).toString()
+        )
+        if (policyError != null) {
+            pendingOutgoing += mapOf(
+                "action" to "root.error",
+                "id" to rootKey,
+                "root" to root,
+                "message" to policyError,
+                "recoverable" to true
+            )
+            return
+        }
+        val last = revisions[rootKey] ?: 0L
+        val existingRoot = roots[rootKey]
+        if (existingRoot != null && !sameRootGeneration(existingRoot, root)) {
+            pendingOutgoing += mapOf(
+                "action" to "root.error",
+                "id" to rootKey,
+                "root" to root,
+                "message" to "root generation changed without destroy",
+                "recoverable" to true
+            )
+            return
+        }
+        if (base == 0L) {
+            nodes.values.filter { it.rootKey == rootKey }.map { it.key }.forEach(::removeNode)
+            revisions.remove(rootKey)
+            leases.remove(rootKey)
+        } else if (base != last) {
+            pendingOutgoing += mapOf(
+                "action" to "root.resyncRequired",
+                "id" to rootKey,
+                "root" to root,
+                "lastAppliedRevision" to last
+            )
+            return
+        }
         val operations = message["operations"] as? List<*> ?: return
         for (raw in operations) {
             val op = asMap(raw) ?: continue
             when (op["op"] as? String) {
-                "mount" -> mount(asMap(op["node"]) ?: continue)
+                "mount" -> mount(asMap(op["node"]) ?: continue, rootKey)
                 "update" -> update(op)
                 "unmount" -> {
                     val node = asMap(op["node"]) ?: continue
+                    if ((asMap(node["ref"]) ?: node)["rootKey"] != rootKey) continue
                     val key = nodeKey(node) ?: continue
                     removeNode(key)
                 }
                 "reorder" -> {
                     val node = asMap(op["node"]) ?: continue
+                    if ((asMap(node["ref"]) ?: node)["rootKey"] != rootKey) continue
                     val key = nodeKey(node) ?: continue
                     val order = (op["order"] as? Number)?.toInt() ?: continue
                     nodes[key]?.order = order
                 }
+                "reparent" -> {
+                    val node = asMap(op["node"]) ?: continue
+                    if ((asMap(node["ref"]) ?: node)["rootKey"] != rootKey) continue
+                    val key = nodeKey(node) ?: continue
+                    val parent = asMap(op["parent"])
+                    if (parent != null && parent["rootKey"] != rootKey) continue
+                    nodes[key]?.parentKey = parent?.get("nodeKey") as? String
+                }
             }
         }
         restack()
-        lastAppliedRevision = (message["revision"] as? Number)?.toLong() ?: lastAppliedRevision
-        val root = asMap(message["root"])
-        if (root != null) {
-            lastRoot = root
-            grantLeaseIfNeeded(root)
-        }
+        revisions[rootKey] = revision
+        roots[rootKey] = root
+        pendingOutgoing += mapOf(
+            "action" to "root.applied",
+            "id" to rootKey,
+            "root" to root,
+            "revision" to revision
+        )
+        grantLeaseIfNeeded(root)
+    }
+
+    private fun destroyRoot(message: Map<String, Any?>) {
+        val root = asMap(message["root"]) ?: return
+        val rootKey = root["rootKey"] as? String ?: return
+        val current = roots[rootKey] ?: return
+        if (!sameRootGeneration(current, root)) return
+        nodes.values.filter { it.rootKey == rootKey }.map { it.key }.forEach(::removeNode)
+        revisions.remove(rootKey)
+        roots.remove(rootKey)
+        rootOrders.remove(rootKey)
+        leases.remove(rootKey)
+        restack()
     }
 
     private fun applyGeometry(message: Map<String, Any?>) {
+        (message["roots"] as? List<*>)?.forEach { raw ->
+            val entry = asMap(raw) ?: return@forEach
+            val ref = asMap(entry["ref"]) ?: return@forEach
+            val rootKey = ref["rootKey"] as? String ?: return@forEach
+            if (roots[rootKey]?.let { sameRootGeneration(it, ref) } == true) {
+                rootOrders[rootKey] = (entry["rootOrder"] as? Number)?.toInt() ?: Int.MAX_VALUE
+            }
+        }
         val entries = message["nodes"] as? List<*> ?: return
         for (raw in entries) {
             val entry = asMap(raw) ?: continue
             val ref = asMap(entry["ref"]) ?: continue
             val key = ref["nodeKey"] as? String ?: continue
             val node = nodes[key] ?: continue
+            if ((ref["rootKey"] as? String) != node.rootKey) continue
             val rect = asMap(entry["contentRect"]) ?: continue
             node.rectX = number(rect["x"])
             node.rectY = number(rect["y"])
@@ -152,37 +256,40 @@ internal class InlineNativeIsland(
             node.visible = entry["visible"] as? Boolean ?: true
             applyFrame(node)
         }
+        restack()
     }
 
     private fun acceptLease(message: Map<String, Any?>) {
-        if (!leaseGranted || leaseActive) return
+        val rootKey = (message["id"] as? String)
+            ?: asMap(message["root"])?.get("rootKey") as? String
+            ?: return
+        val lease = leases[rootKey] ?: return
+        if (lease.active) return
         val incomingId = message["leaseId"] as? String ?: ""
         val incomingSeq = (message["sequence"] as? Number)?.toLong() ?: 0L
-        if (incomingId.isNotEmpty() && incomingId != leaseId) return
-        if (incomingSeq > 0 && incomingSeq != leaseSequence) return
-        leaseActive = true
-        val rootKey = lastRoot?.get("rootKey") as? String ?: "island"
+        if (incomingId.isNotEmpty() && incomingId != lease.id) return
+        if (incomingSeq > 0 && incomingSeq != lease.sequence) return
+        lease.active = true
         pendingOutgoing += mapOf(
             "action" to "root.leaseActive",
             "id" to rootKey,
-            "root" to lastRoot,
-            "leaseId" to leaseId,
-            "sequence" to leaseSequence
+            "root" to lease.root,
+            "leaseId" to lease.id,
+            "sequence" to lease.sequence
         )
     }
 
     private fun grantLeaseIfNeeded(root: Map<String, Any?>) {
-        if (leaseGranted) return
         val rootKey = root["rootKey"] as? String ?: "island"
-        leaseGranted = true
-        leaseId = "lease-$rootKey"
-        leaseSequence = 1
+        if (leases.containsKey(rootKey)) return
+        val lease = RootLease(root, "lease-$rootKey")
+        leases[rootKey] = lease
         pendingOutgoing += mapOf(
             "action" to "root.leaseGranted",
             "id" to rootKey,
             "root" to root,
-            "leaseId" to leaseId,
-            "sequence" to leaseSequence,
+            "leaseId" to lease.id,
+            "sequence" to lease.sequence,
             "leaseDurationMs" to 8000
         )
     }
@@ -193,6 +300,11 @@ internal class InlineNativeIsland(
         val node = key?.let { nodes[it] } ?: nodes.values.firstOrNull { it.kind == "video" }
         val video = node?.video ?: return
         val command = asMap(message["command"]) ?: return
+        val policyError = NativeApi.validateInlineNativeMediaUrls(
+            appId,
+            JSONArray(mediaUrlsFromValue(command)).toString()
+        )
+        if (policyError != null) return
         val name = command["name"] as? String ?: return
         val params = when (name) {
             "seek" -> mapOf("time" to number(command["seconds"]))
@@ -202,19 +314,24 @@ internal class InlineNativeIsland(
         video.handleCommand(name, params)
     }
 
-    private fun mount(node: Map<*, *>) {
+    private fun mount(node: Map<*, *>, expectedRootKey: String) {
         val ref = asMap(node["ref"]) ?: return
         val key = ref["nodeKey"] as? String ?: return
+        val rootKey = ref["rootKey"] as? String ?: return
+        if (rootKey != expectedRootKey) return
         val kind = node["kind"] as? String ?: return
         if (kind !in ALLOWED_KINDS) return
         val authorId = (node["authorId"] as? String)?.takeIf { it.isNotEmpty() } ?: key
         val automationId = (node["automationId"] as? String)?.takeIf { it.isNotEmpty() }
         val props = asMap(node["props"]) ?: emptyMap()
         val order = (node["order"] as? Number)?.toInt() ?: 0
+        val parentKey = asMap(node["parent"])?.get("nodeKey") as? String
+        if (asMap(node["parent"])?.get("rootKey")?.let { it != rootKey } == true) return
+        if (nodes[key]?.rootKey?.let { it != rootKey } == true) return
         if (nodes.containsKey(key)) {
             removeNode(key)
         }
-        val item = factoryNode(key, kind, authorId, automationId, order, props)
+        val item = factoryNode(key, rootKey, kind, authorId, automationId, parentKey, order, props)
         nodes[key] = item
         if (item.view.parent == null) {
             container.addView(item.view)
@@ -226,6 +343,7 @@ internal class InlineNativeIsland(
         val ref = asMap(op["node"]) ?: return
         val key = nodeKey(ref) ?: return
         val existing = nodes[key] ?: return
+        if ((ref["rootKey"] as? String) != existing.rootKey) return
         val patch = asMap(op["patch"]) ?: return
         existing.props = existing.props + patch
         applyProps(existing)
@@ -233,17 +351,21 @@ internal class InlineNativeIsland(
 
     private fun factoryNode(
         key: String,
+        rootKey: String,
         kind: String,
         authorId: String,
         automationId: String?,
+        parentKey: String?,
         order: Int,
         props: Map<String, Any?>
     ): IslandNode {
         val item = IslandNode(
             key,
+            rootKey,
             kind,
             authorId,
             automationId,
+            parentKey,
             order,
             props,
             FrameLayout(host.context)
@@ -587,7 +709,20 @@ internal class InlineNativeIsland(
     }
 
     private fun restack() {
-        val ordered = nodes.values.sortedWith(compareBy({ it.order }, { it.key }))
+        val ordered = mutableListOf<IslandNode>()
+        fun append(parentKey: String?) {
+            nodes.values.filter { it.parentKey == parentKey }
+                .sortedWith(compareBy(
+                    { if (parentKey == null) rootOrders[it.rootKey] ?: Int.MAX_VALUE else 0 },
+                    { it.order },
+                    { it.key }
+                ))
+                .forEach { node ->
+                    ordered += node
+                    append(node.key)
+                }
+        }
+        append(null)
         ordered.forEachIndexed { index, node ->
             container.bringChildToFront(node.view)
             node.view.z = index.toFloat()
@@ -605,11 +740,44 @@ internal class InlineNativeIsland(
         return (asMap(node["ref"])?.get("nodeKey") as? String) ?: node["nodeKey"] as? String
     }
 
+    private fun sameRootGeneration(a: Map<String, Any?>, b: Map<String, Any?>): Boolean =
+        a["surfaceInstanceId"] == b["surfaceInstanceId"] &&
+            a["pageInstanceId"] == b["pageInstanceId"] &&
+            a["documentInstanceId"] == b["documentInstanceId"] &&
+            a["rootKey"] == b["rootKey"] &&
+            (a["rootEpoch"] as? Number)?.toLong() == (b["rootEpoch"] as? Number)?.toLong()
+
+    private fun mediaUrlsFromCommit(message: Map<String, Any?>): List<String> {
+        val urls = mutableListOf<String>()
+        val operations = message["operations"] as? List<*> ?: return urls
+        for (raw in operations) {
+            val operation = asMap(raw) ?: continue
+            mediaUrlsFromValue(operation["node"]).forEach(urls::add)
+            mediaUrlsFromValue(operation["patch"]).forEach(urls::add)
+        }
+        return urls
+    }
+
+    private fun mediaUrlsFromValue(value: Any?): List<String> {
+        val urls = mutableListOf<String>()
+        fun walk(current: Any?, key: String? = null) {
+            when (current) {
+                is Map<*, *> -> current.forEach { (childKey, child) -> walk(child, childKey?.toString()) }
+                is List<*> -> current.forEach { walk(it, key) }
+                is String -> if (key in setOf("src", "url", "uri", "poster")) urls += current
+            }
+        }
+        walk(value)
+        return urls
+    }
+
     private class IslandNode(
         val key: String,
+        val rootKey: String,
         val kind: String,
         val authorId: String,
         val automationId: String?,
+        var parentKey: String?,
         var order: Int,
         var props: Map<String, Any?>,
         var view: View,
