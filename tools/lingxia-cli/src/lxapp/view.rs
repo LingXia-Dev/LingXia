@@ -1044,11 +1044,28 @@ mod tests {
             framework,
             output_dir: root.join("dist"),
             pages: vec![page.to_string()],
-            logic_entry: None,
+            logic_entry: Some("logic.js".to_string()),
             plugin_id: None,
             package_name: None,
             version: "1.0.0".to_string(),
         }
+    }
+
+    #[test]
+    fn logic_disabled_react_view_ignores_component_action_props() {
+        let temp = tempdir().unwrap();
+        let page_path = "pages/workspace/index.tsx";
+        write_whitelist_entry(
+            temp.path(),
+            page_path,
+            &["openWorkspace"],
+            "actions.addEntry()",
+        );
+
+        let mut project = create_project(temp.path(), ProjectFramework::React, page_path);
+        project.logic_entry = None;
+        validate_component_view_bindings(&project, page_path, &[])
+            .expect("logic-disabled views have no Page actions to forward");
     }
 
     #[test]
@@ -1207,17 +1224,11 @@ mod tests {
         )
         .unwrap();
 
-        let project = create_project(temp.path(), ProjectFramework::React, page_path);
-        let error = validate_component_view_bindings(
-            &project,
-            page_path,
-            &[PageAction {
-                name: "showToast".to_string(),
-                mode: PageActionMode::Notify,
-            }],
-        )
-        .unwrap_err()
-        .to_string();
+        let mut project = create_project(temp.path(), ProjectFramework::React, page_path);
+        project.logic_entry = None;
+        let error = validate_component_view_bindings(&project, page_path, &[])
+            .unwrap_err()
+            .to_string();
 
         assert!(error.contains("must not call lx.* directly"));
         assert!(error.contains("lx.showToast"));
