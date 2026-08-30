@@ -199,11 +199,10 @@ impl LxApp {
             (None, resolved_path.to_string())
         };
 
-        let config = if self.logic_enabled() {
-            PageConfig::from_json(self, &config_path).unwrap_or_default()
-        } else {
-            PageConfig::default()
-        };
+        // Page configuration belongs to the native presenter as well as to a
+        // PageSvc. A logic-disabled host still needs its declared chrome and
+        // orientation represented in automation/runtime records.
+        let config = PageConfig::from_json(self, &config_path).unwrap_or_default();
 
         PageDefinition {
             name,
@@ -343,6 +342,7 @@ impl LxApp {
     fn create_isolated_page_instance(&self, path: &str) -> PageInstance {
         let appid = self.appid.clone();
         let lxapp_arc = self.clone_arc();
+        let waits_for_page_service = isolated_page_waits_for_page_service(self.logic_enabled());
         let page = PageInstance::new_with_isolation(
             appid.clone(),
             path.to_string(),
@@ -352,10 +352,12 @@ impl LxApp {
                 let lxapp_arc = lxapp_arc.clone();
                 let page_clone = page.clone();
                 async move {
-                    // The opener creates PageSvc on the JS worker (the same
-                    // worker that is awaiting this page). Posting CreatePage
-                    // from here would sit behind that wait forever.
-                    page_clone.wait_page_svc_ready().await?;
+                    if waits_for_page_service {
+                        // The opener creates PageSvc on the JS worker (the same
+                        // worker that is awaiting this page). Posting CreatePage
+                        // from here would sit behind that wait forever.
+                        page_clone.wait_page_svc_ready().await?;
+                    }
 
                     page_clone
                         .load_html()
@@ -1126,6 +1128,13 @@ impl LxApp {
     }
 }
 
+fn isolated_page_waits_for_page_service(logic_enabled: bool) -> bool {
+    // Shape C has no AppService or PageSvc. Its surface-owned View must load as
+    // soon as the WebView exists instead of waiting on a service that cannot be
+    // created.
+    logic_enabled
+}
+
 fn effective_page_instance_lifecycle(
     recorded: Option<PageInstanceLifecycleState>,
     current: bool,
@@ -1204,7 +1213,7 @@ fn plugin_page_map_contains(
 mod tests {
     use super::{
         PAGE_STACK_MAX, PageInstanceLifecycleState, effective_page_instance_lifecycle,
-        find_matching_page_path, validate_navigation_stack,
+        find_matching_page_path, isolated_page_waits_for_page_service, validate_navigation_stack,
     };
     use crate::NavigationType;
 
@@ -1237,6 +1246,12 @@ mod tests {
             find_matching_page_path(&pages, "pages/home/index.tsx"),
             Some("pages/home/index")
         );
+    }
+
+    #[test]
+    fn logic_disabled_isolated_page_does_not_wait_for_page_service() {
+        assert!(!isolated_page_waits_for_page_service(false));
+        assert!(isolated_page_waits_for_page_service(true));
     }
 
     fn navigation_reason(error: crate::LxAppError) -> String {
