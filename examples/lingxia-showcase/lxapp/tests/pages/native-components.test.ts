@@ -35,16 +35,31 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
   await app.nav.relaunch({ page: 'video' });
   await waitForCurrentPage(app, 'video');
   await app.page.waitFor({ page: 'video', css: 'lx-native-root', state: 'attached' });
-  const wrapped = await app.page.eval({
-    page: 'video',
-    script:
-      '(() => { const root = document.querySelector("lx-native-root"); const video = document.querySelector("lx-native-root > lx-video"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; return { hasRoot: !!root, videoIsDirectChild: !!video, videoId: video && video.getAttribute("id"), compileOk: !!(compiled && compiled.ok), kinds: compiled && compiled.ok ? compiled.root.children.map((child) => child.kind) : [] }; })()',
-  }) as {
+  const wrapped = await eventually(
+    () => app.page.eval({
+      page: 'video',
+      script:
+        '(() => { const root = document.querySelector("#video-native-root"); const video = root && root.querySelector(":scope > lx-video"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const children = compiled && compiled.ok ? compiled.root.children : []; const cover = children.find((child) => child.authorType === "LxNativeCover"); return { hasRoot: !!root, videoIsDirectChild: !!video, videoId: video && video.getAttribute("id"), compileOk: !!(compiled && compiled.ok), kinds: children.map((child) => child.kind), cover: cover && { authorType: cover.authorType, automationId: cover.automationId, pointerEvents: cover.props.pointerEvents, scrim: cover.props.scrimPaint && cover.props.scrimPaint.scrim, scrimOpacity: cover.props.scrimPaint && cover.props.scrimPaint.opacity, coverPosition: cover.props.coverPreset && cover.props.coverPreset.position, coverInset: cover.props.coverPreset && cover.props.coverPreset.inset, childKinds: cover.children.map((child) => child.kind), childText: cover.children.map((child) => child.text) } }; })()',
+    }),
+    (value) => (value as { cover?: { scrim?: unknown } } | null)?.cover?.scrim === 'bottom',
+    { timeoutMs: 5_000, describe: 'NativeCover compiled recipe' },
+  ) as {
     hasRoot: boolean;
     videoIsDirectChild: boolean;
     videoId: string | null;
     compileOk: boolean;
     kinds: string[];
+    cover: {
+      authorType: string;
+      automationId: string;
+      pointerEvents: string;
+      scrim: string;
+      scrimOpacity: number;
+      coverPosition: string;
+      coverInset: number;
+      childKinds: string[];
+      childText: string[];
+    };
   };
   expect(wrapped.hasRoot).toBeTruthy();
   expect(wrapped.videoIsDirectChild).toBeTruthy();
@@ -52,15 +67,72 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
   expect(wrapped.compileOk).toBeTruthy();
   expect(wrapped.kinds[0]).toBe('video');
   expect(wrapped.kinds[1]).toBe('view');
+  expect(wrapped.cover.authorType).toBe('LxNativeCover');
+  expect(wrapped.cover.automationId).toBe('video-native-cover');
+  expect(wrapped.cover.pointerEvents).toBe('box-none');
+  expect(wrapped.cover.scrim).toBe('bottom');
+  expect(wrapped.cover.scrimOpacity).toBe(0.72);
+  expect(wrapped.cover.coverPosition).toBe('absolute');
+  expect(wrapped.cover.coverInset).toBe(0);
+  expect(wrapped.cover.childKinds.join(',')).toBe('text,text');
+  expect(wrapped.cover.childText.join(' ')).toContain('video stays interactive');
+
+  await app.page.click({ page: 'video', css: '[data-testid="native-cover-toggle"]' });
+  expect(await waitForElementText(
+    app,
+    'video',
+    '[data-testid="native-cover-state"]',
+    (text) => text === 'hidden',
+    5_000,
+  )).toBe('hidden');
+  const coverHidden = await eventually(
+    () => app.page.eval({
+      page: 'video',
+      script:
+        '(() => { const root = document.querySelector("#video-native-root"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const children = compiled && compiled.ok ? compiled.root.children : []; return { compileOk: !!(compiled && compiled.ok), kinds: children.map((child) => child.kind), hasCover: children.some((child) => child.authorType === "LxNativeCover") }; })()',
+    }),
+    (value) => (value as { compileOk?: boolean; hasCover?: boolean } | null)?.compileOk === true
+      && (value as { hasCover: boolean }).hasCover === false,
+    { timeoutMs: 5_000, describe: 'NativeCover removed from compiled island' },
+  ) as { compileOk: boolean; kinds: string[]; hasCover: boolean };
+  expect(coverHidden.kinds.join(',')).toBe('video');
+
+  await app.page.click({ page: 'video', css: '[data-testid="native-cover-toggle"]' });
+  expect(await waitForElementText(
+    app,
+    'video',
+    '[data-testid="native-cover-state"]',
+    (text) => text === 'visible',
+    5_000,
+  )).toBe('visible');
+  const coverRestored = await eventually(
+    () => app.page.eval({
+      page: 'video',
+      script:
+        '(() => { const root = document.querySelector("#video-native-root"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const children = compiled && compiled.ok ? compiled.root.children : []; const cover = children.find((child) => child.authorType === "LxNativeCover"); return cover && cover.props.scrimPaint && cover.props.scrimPaint.scrim; })()',
+    }),
+    (value) => value === 'bottom',
+    { timeoutMs: 5_000, describe: 'NativeCover restored to compiled island' },
+  );
+  expect(coverRestored).toBe('bottom');
+
   const chrome = await app.page.eval({
     page: 'video',
     script:
-      '(() => { const root = document.querySelector("#island-controls"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const kids = compiled && compiled.ok ? compiled.root.children : []; const kinds = []; const flat = []; const walk = (nodes) => { for (const node of nodes || []) { kinds.push(node.kind); flat.push(node); walk(node.children); } }; walk(kids); const button = flat.find((node) => node.authorId === "island-play"); const slider = flat.find((node) => node.authorId === "island-seek"); return { compileOk: !!(compiled && compiled.ok), kinds, hasPlay: !!document.querySelector("#island-play"), hasSeek: !!document.querySelector("#island-seek"), button: button && { automationId: button.automationId, intent: button.props.intent, emphasis: button.props.emphasis, hitSlop: button.props.hitSlop, ariaLabel: button.props["aria-label"], ariaDescription: button.props["aria-description"], nativeStyle: button.props.nativeStyle }, slider: slider && { value: slider.props.value, step: slider.props.step, bufferedValue: slider.props.bufferedValue, valueLabel: slider.props.valueLabel, nativeStyle: slider.props.nativeStyle } }; })()',
+      '(() => { const root = document.querySelector("#island-controls"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const kids = compiled && compiled.ok ? compiled.root.children : []; const kinds = []; const flat = []; const walk = (nodes) => { for (const node of nodes || []) { kinds.push(node.kind); flat.push(node); walk(node.children); } }; walk(kids); const view = flat.find((node) => node.authorId === "island-controls-view"); const status = flat.find((node) => node.authorId === "island-controls-status"); const button = flat.find((node) => node.authorId === "island-play"); const slider = flat.find((node) => node.authorId === "island-seek"); return { compileOk: !!(compiled && compiled.ok), kinds, hasPlay: !!document.querySelector("#island-play"), hasSeek: !!document.querySelector("#island-seek"), view: view && { authorType: view.authorType, automationId: view.automationId, pointerEvents: view.props.pointerEvents, nativeStyle: view.props.nativeStyle, childKinds: view.children.map((child) => child.kind) }, statusText: status && status.text, button: button && { automationId: button.automationId, intent: button.props.intent, emphasis: button.props.emphasis, hitSlop: button.props.hitSlop, ariaLabel: button.props["aria-label"], ariaDescription: button.props["aria-description"], nativeStyle: button.props.nativeStyle }, slider: slider && { value: slider.props.value, step: slider.props.step, bufferedValue: slider.props.bufferedValue, valueLabel: slider.props.valueLabel, nativeStyle: slider.props.nativeStyle } }; })()',
   }) as {
     compileOk: boolean;
     kinds: string[];
     hasPlay: boolean;
     hasSeek: boolean;
+    view: {
+      authorType: string;
+      automationId: string;
+      pointerEvents: string;
+      nativeStyle: Record<string, string>;
+      childKinds: string[];
+    };
+    statusText: string;
     button: {
       automationId: string;
       intent: string;
@@ -81,6 +153,15 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
   expect(chrome.compileOk).toBeTruthy();
   expect(chrome.hasPlay).toBeTruthy();
   expect(chrome.hasSeek).toBeTruthy();
+  expect(chrome.view.authorType).toBe('LxNativeView');
+  expect(chrome.view.automationId).toBe('island-controls-view');
+  expect(chrome.view.pointerEvents).toBe('auto');
+  expect(chrome.view.nativeStyle.backgroundColor).toContain('15');
+  expect(chrome.view.nativeStyle.borderColor).toContain('51');
+  expect(chrome.view.nativeStyle.borderWidth).toBe('1px');
+  expect(chrome.view.nativeStyle.borderRadius).toBe('14px');
+  expect(chrome.view.childKinds.join(',')).toBe('text,text,tappable,slider');
+  expect(chrome.statusText).toBe('waiting for native input');
   expect(chrome.kinds.includes('tappable')).toBeTruthy();
   expect(chrome.kinds.includes('slider')).toBeTruthy();
   expect(chrome.button.automationId).toBe('island-play-button');
@@ -93,7 +174,7 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
   expect(chrome.slider.step).toBe(1);
   expect(chrome.slider.bufferedValue >= chrome.slider.value).toBeTruthy();
   expect(chrome.slider.valueLabel).toBe('value');
-  expect(chrome.slider.nativeStyle.accentColor).toContain('37');
+  expect(chrome.slider.nativeStyle.accentColor).toContain('59');
   const playing = await eventually(
     () =>
       app.page.eval({

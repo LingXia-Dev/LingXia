@@ -70,6 +70,7 @@ export default function App() {
   const eventLog = data?.eventLog || 'Ready';
   const [islandPlaying, setIslandPlaying] = React.useState(false);
   const [nativePressSource, setNativePressSource] = React.useState('none');
+  const [coverVisible, setCoverVisible] = React.useState(true);
   const currentTime = typeof data?.currentTime === 'number' ? data.currentTime : 0;
   const duration = typeof data?.duration === 'number' ? data.duration : 0;
 
@@ -122,7 +123,7 @@ export default function App() {
         </div>
 
         <div className="bg-black rounded-xl overflow-hidden">
-          <LxNativeRoot className="block w-full" style={{ aspectRatio: '16 / 9' }} data-testid="inline-native-root">
+          <LxNativeRoot id="video-native-root" className="block w-full" style={{ aspectRatio: '16 / 9' }} data-testid="inline-native-root">
             <LxVideo
               id={video.id}
               data-testid="native-video"
@@ -140,7 +141,10 @@ export default function App() {
                 onPlaying(event);
               }}
               onError={actions.onError}
-              onPause={onPause}
+              onPause={(event) => {
+                setIslandPlaying(false);
+                onPause(event);
+              }}
               onStop={onStop}
               onEnded={onEnded}
               onWaiting={onWaiting}
@@ -149,25 +153,83 @@ export default function App() {
               onQualityChange={onQualityChange}
               onRateChange={onRateChange}
             />
-            <LxNativeCover pointerEvents="none" data-testid="inline-native-cover">
-              <LxNativeText
-                className="absolute left-3 top-3 text-white text-xs font-semibold"
-                fontSize={12}
-                fontWeight={600}
-                color="#ffffff"
-                maxLines={1}
+            {coverVisible ? (
+              <LxNativeCover
+                id="video-native-cover"
+                automationId="video-native-cover"
+                data-testid="inline-native-cover"
+                scrim="bottom"
+                scrimOpacity={0.72}
+                role="presentation"
               >
-                Inline native
-              </LxNativeText>
-            </LxNativeCover>
+                <LxNativeText
+                  id="video-cover-title"
+                  className="absolute bottom-10 left-3 text-white text-sm font-semibold"
+                  fontSize={14}
+                  fontWeight={600}
+                  color="#ffffff"
+                  maxLines={1}
+                >
+                  NativeCover · bottom scrim
+                </LxNativeText>
+                <LxNativeText
+                  id="video-cover-detail"
+                  className="absolute bottom-5 left-3 text-white/80 text-xs"
+                  fontSize={11}
+                  color="rgba(255, 255, 255, 0.8)"
+                  maxLines={1}
+                >
+                  box-none overlay · video stays interactive
+                </LxNativeText>
+              </LxNativeCover>
+            ) : null}
           </LxNativeRoot>
         </div>
 
-        <LxNativeRoot id="island-controls" className="block w-full" style={{ height: 56 }}>
-          <LxNativeView
-            className="flex h-full w-full items-center gap-3 px-3"
-            style={{ height: 56 }}
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
+          <div className="min-w-0">
+            <div className="text-xs font-semibold text-blue-900">Native island primitives</div>
+            <div className="text-[11px] leading-4 text-blue-700">Cover layers over video; View groups native controls.</div>
+          </div>
+          <button
+            type="button"
+            data-testid="native-cover-toggle"
+            aria-pressed={coverVisible}
+            onClick={() => setCoverVisible((visible) => !visible)}
+            className="shrink-0 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white active:scale-95"
           >
+            {coverVisible ? 'Hide cover' : 'Show cover'}
+          </button>
+          <span data-testid="native-cover-state" className="sr-only">{coverVisible ? 'visible' : 'hidden'}</span>
+        </div>
+
+        <LxNativeRoot id="island-controls" className="block w-full" style={{ height: 82 }} data-testid="island-controls-root">
+          <LxNativeView
+            id="island-controls-view"
+            automationId="island-controls-view"
+            data-testid="island-controls-view"
+            className="relative block h-full w-full border border-slate-700 bg-slate-900"
+            style={{ height: 82, borderRadius: 14, backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1 }}
+          >
+            <LxNativeText
+              id="island-controls-label"
+              className="absolute left-3 top-2 text-xs font-semibold text-slate-200"
+              fontSize={11}
+              fontWeight={600}
+              color="#e2e8f0"
+              maxLines={1}
+            >
+              NativeView controls
+            </LxNativeText>
+            <LxNativeText
+              id="island-controls-status"
+              className="absolute right-3 top-2 text-xs text-slate-400"
+              fontSize={11}
+              color="#94a3b8"
+              maxLines={1}
+            >
+              {nativePressSource === 'none' ? 'waiting for native input' : `last input: ${nativePressSource}`}
+            </LxNativeText>
             <LxNativeButton
               id="island-play"
               automationId="island-play-button"
@@ -179,6 +241,7 @@ export default function App() {
               hitSlop={8}
               aria-label={islandPlaying ? 'Pause island video' : 'Play island video'}
               aria-description="Controls the native video player"
+              className="absolute left-3 top-[32px]"
               style={{ width: 96, height: 40, borderRadius: 10, color: '#ffffff' }}
               onPress={({ source }) => {
                 setNativePressSource(source);
@@ -195,7 +258,8 @@ export default function App() {
               value={duration > 0 ? Math.min(100, Math.round((currentTime / duration) * 100)) : 0}
               bufferedValue={duration > 0 ? Math.min(100, Math.round((currentTime / duration) * 100) + 15) : 15}
               valueLabel="value"
-              style={{ flex: 1, height: 28, minWidth: 160, accentColor: '#2563eb' }}
+              className="absolute left-[120px] right-3 top-[38px]"
+              style={{ height: 28, accentColor: '#3b82f6' }}
               onValueCommit={({ value }) => {
                 if (duration > 0) {
                   seek((value / 100) * duration);
