@@ -22,6 +22,12 @@ pub(super) fn validate_react_bindings(
     let analyzer = analyze_script_bindings(&source, source_type, None)
         .with_context(|| format!("Failed to analyze {}", source_path.display()))?;
     ensure_no_direct_lx_usage(page_path, &source, &analyzer.direct_lx_uses, "script")?;
+    if project.logic_entry.is_none() {
+        return Ok(ViewUsageAudit {
+            used_actions: Default::default(),
+            unused_reportable: false,
+        });
+    }
     let mut used_actions = analyzer.used_actions;
     mark_channel_topic_actions(&source, actions, &mut used_actions);
     ensure_used_actions_exist(page_path, actions, &used_actions)?;

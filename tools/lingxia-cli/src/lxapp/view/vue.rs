@@ -45,7 +45,6 @@ pub(super) fn validate_vue_bindings(
         &script_analyzer.direct_lx_uses,
         "script",
     )?;
-
     let mut used_actions = script_analyzer.used_actions.clone();
     let mut actions_escaped = script_analyzer.actions_escaped;
     mark_channel_topic_actions(&sections.script, actions, &mut used_actions);
@@ -92,6 +91,13 @@ pub(super) fn validate_vue_bindings(
         // In an SFC the object is handed to a child from the template, so the
         // template is where the escape shows up.
         actions_escaped |= template_analyzer.actions_escaped;
+    }
+
+    if project.logic_entry.is_none() {
+        return Ok(ViewUsageAudit {
+            used_actions: Default::default(),
+            unused_reportable: false,
+        });
     }
 
     ensure_used_actions_exist(page_path, actions, &used_actions)?;
