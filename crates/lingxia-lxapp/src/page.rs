@@ -404,20 +404,18 @@ impl PageInstance {
     /// Build PageState from JSON config
     /// PageConfig is the single source of truth for configuration.
     fn build_page_state(lxapp: &lxapp::LxApp, path: &str) -> PageState {
-        let (page_config, config_load_error) = if lxapp.logic_enabled() {
-            match PageConfig::from_json(lxapp, path) {
-                Ok(config) => (config, None),
-                Err(error) => {
-                    error!("Page config load failed for {}: {}", path, error)
-                        .with_appid(lxapp.appid.clone())
-                        .with_path(path.to_string());
-                    (PageConfig::default(), Some(error.to_string()))
-                }
+        // Page JSON describes native page presentation, not just PageSvc
+        // behavior. Shape C Views still need custom navigation chrome,
+        // orientation, and pull-to-refresh even though they have no Logic
+        // runtime. Only the service lifecycle is conditional on `logic`.
+        let (page_config, config_load_error) = match PageConfig::from_json(lxapp, path) {
+            Ok(config) => (config, None),
+            Err(error) => {
+                error!("Page config load failed for {}: {}", path, error)
+                    .with_appid(lxapp.appid.clone())
+                    .with_path(path.to_string());
+                (PageConfig::default(), Some(error.to_string()))
             }
-        } else {
-            // When logic is disabled, page.json is intentionally ignored.
-            // In this mode pages talk directly to Rust without JS/page config.
-            (PageConfig::default(), None)
         };
         PageState {
             event: None,
