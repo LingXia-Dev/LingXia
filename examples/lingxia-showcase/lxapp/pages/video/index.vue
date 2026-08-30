@@ -25,10 +25,9 @@
       </div>
 
       <div class="bg-black rounded-xl overflow-hidden">
-        <LxNativeRoot id="video-native-root" class="block w-full" :style="{ aspectRatio: '16 / 9' }" data-testid="inline-native-root">
+        <LxNativeRoot id="video-native-root" class="block w-full" :style="{ aspectRatio: '16 / 9' }">
           <LxVideo
             :id="video.id"
-            data-testid="native-video"
             :src="video.src"
             :poster="video.poster"
             :qualities="video.qualities"
@@ -53,7 +52,6 @@
             v-if="nativeMenuOpen"
             id="video-native-cover"
             automation-id="video-native-cover"
-            data-testid="inline-native-cover"
             scrim="none"
             role="presentation"
           >
@@ -110,7 +108,7 @@
       <div class="flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
         <div class="min-w-0">
           <div class="text-xs font-semibold text-blue-900">H5 → native overlay</div>
-          <div class="text-[11px] leading-4 text-blue-700">Tap the H5 burger to mount a NativeView above video.</div>
+          <div data-testid="native-menu-js-result" class="text-[11px] leading-4 text-blue-700">{{ nativeMenuResult }}</div>
         </div>
         <button
           type="button"
@@ -118,7 +116,7 @@
           :aria-label="nativeMenuOpen ? 'Close native menu' : 'Open native menu'"
           :aria-expanded="nativeMenuOpen"
           class="flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white active:scale-95"
-          @click="nativeMenuOpen = !nativeMenuOpen"
+          @click="toggleNativeMenu"
         >
           <svg viewBox="0 0 20 20" fill="none" class="h-4 w-4" aria-hidden="true">
             <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
@@ -128,11 +126,10 @@
         <span data-testid="native-menu-state" class="sr-only">{{ nativeMenuOpen ? 'open' : 'closed' }}</span>
       </div>
 
-      <LxNativeRoot id="island-controls" class="block w-full" :style="{ height: '82px' }" data-testid="island-controls-root">
+      <LxNativeRoot id="island-controls" class="block w-full" :style="{ height: '82px' }">
         <LxNativeView
           id="island-controls-view"
           automation-id="island-controls-view"
-          data-testid="island-controls-view"
           class="relative block h-full w-full border border-slate-700 bg-slate-900"
           :style="{ height: '82px', borderRadius: '14px', backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: '1px' }"
         >
@@ -327,6 +324,7 @@ const duration = computed(() => (typeof data?.duration === 'number' ? data.durat
 const islandPlaying = ref(false);
 const nativePressSource = ref('none');
 const nativeMenuOpen = ref(false);
+const nativeMenuResult = ref('Tap the H5 burger to mount a NativeView above video.');
 const islandProgress = computed(() => duration.value > 0
   ? Math.min(100, Math.round((currentTime.value / duration.value) * 100))
   : 0);
@@ -350,13 +348,23 @@ function onIslandPress(payload: { source?: string }) {
   else play();
 }
 
+function toggleNativeMenu() {
+  nativeMenuOpen.value = !nativeMenuOpen.value;
+  nativeMenuResult.value = nativeMenuOpen.value
+    ? 'H5 mounted the native menu.'
+    : 'H5 removed the native menu.';
+}
+
 function onNativeMenuMore(payload: { source?: string }) {
   nativePressSource.value = payload?.source || 'unknown';
+  nativeMenuOpen.value = false;
+  nativeMenuResult.value = 'More handled by View JS.';
 }
 
 function onNativeMenuClose(payload: { source?: string }) {
   nativePressSource.value = payload?.source || 'unknown';
   nativeMenuOpen.value = false;
+  nativeMenuResult.value = 'Close handled by View JS.';
 }
 
 function seekBackward(seconds: number) {
