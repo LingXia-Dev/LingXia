@@ -1426,7 +1426,6 @@ impl LxApp {
     ///
     /// Decoration stays outside [`PageSurfaceRequest`] so provider crates that
     /// construct that public request remain source-compatible.
-    #[doc(hidden)]
     pub fn open_surface_with_chrome(
         &self,
         request: PageSurfaceRequest,

@@ -52,6 +52,7 @@ pub use lifecycle::{
     AppServiceEvent, AppServiceEventArgs, AppServiceEventReason, AppServiceEventSource,
     PageLifecycleEvent,
 };
+pub use lingxia_platform::traits::ui::WindowChrome;
 pub use lingxia_surface;
 pub use lingxia_surface::{FloatDismiss, SurfaceInteraction};
 pub use lingxia_update::host_channel;
