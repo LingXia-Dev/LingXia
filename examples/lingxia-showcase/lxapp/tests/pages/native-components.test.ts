@@ -22,7 +22,7 @@ async function attachWindow(t: Fixture, name: string): Promise<void> {
   await attachShot(t, name, { mimeType: 'image/png', base64: screenshot.base64 });
 }
 
-spec("wrap the showcase player in LxNativeRoot so island video is the live path", { id: "NATIVE-ISLAND-001", covers: ['lx.createVideoContext', 'NavDriver.to'], app: SHOWCASE_APP_ID, timeout: 30_000 }, async (t) => {
+spec("hand an H5 burger press to a native menu above the island video", { id: "NATIVE-ISLAND-001", covers: ['lx.createVideoContext', 'NavDriver.to'], app: SHOWCASE_APP_ID, timeout: 30_000 }, async (t) => {
   const { app, defer } = bindFixture(t, "NATIVE-ISLAND-001");
   const current = await currentPageOrNull(app);
   if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
@@ -65,6 +65,13 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
     (text) => text === 'closed',
     5_000,
   )).toBe('closed');
+  expect(await waitForElementText(
+    app,
+    'video',
+    '[data-testid="native-menu-js-result"]',
+    (text) => text.includes('Tap the H5 burger'),
+    5_000,
+  )).toContain('Tap the H5 burger');
 
   await app.page.click({ page: 'video', css: '[data-testid="native-menu-toggle"]' });
   expect(await waitForElementText(
@@ -74,6 +81,13 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
     (text) => text === 'open',
     5_000,
   )).toBe('open');
+  expect(await waitForElementText(
+    app,
+    'video',
+    '[data-testid="native-menu-js-result"]',
+    (text) => text === 'H5 mounted the native menu.',
+    5_000,
+  )).toBe('H5 mounted the native menu.');
   const nativeMenu = await eventually(
     () => app.page.eval({
       page: 'video',
@@ -127,7 +141,12 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
   expect(nativeMenu.close.icon).toBe('close');
   expect(nativeMenu.close.label).toBe('Close');
 
-  await app.page.click({ page: 'video', css: '[data-testid="native-menu-toggle"]' });
+  const moreDispatched = await app.page.eval({
+    page: 'video',
+    script:
+      '(() => { const more = document.querySelector("#video-native-menu-more"); if (!more) return false; more.dispatchEvent(new CustomEvent("press", { bubbles: true, detail: { source: "automation" } })); return true; })()',
+  });
+  expect(moreDispatched).toBeTruthy();
   expect(await waitForElementText(
     app,
     'video',
@@ -135,6 +154,13 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
     (text) => text === 'closed',
     5_000,
   )).toBe('closed');
+  expect(await waitForElementText(
+    app,
+    'video',
+    '[data-testid="native-menu-js-result"]',
+    (text) => text === 'More handled by View JS.',
+    5_000,
+  )).toBe('More handled by View JS.');
   const menuRemoved = await eventually(
     () => app.page.eval({
       page: 'video',
@@ -192,7 +218,7 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
   expect(chrome.view.nativeStyle.borderWidth).toBe('1px');
   expect(chrome.view.nativeStyle.borderRadius).toBe('14px');
   expect(chrome.view.childKinds.join(',')).toBe('text,text,tappable,slider');
-  expect(chrome.statusText).toBe('waiting for native input');
+  expect(chrome.statusText).toBe('last input: automation');
   expect(chrome.kinds.includes('tappable')).toBeTruthy();
   expect(chrome.kinds.includes('slider')).toBeTruthy();
   expect(chrome.button.automationId).toBe('island-play-button');

@@ -71,6 +71,7 @@ export default function App() {
   const [islandPlaying, setIslandPlaying] = React.useState(false);
   const [nativePressSource, setNativePressSource] = React.useState('none');
   const [nativeMenuOpen, setNativeMenuOpen] = React.useState(false);
+  const [nativeMenuResult, setNativeMenuResult] = React.useState('Tap the H5 burger to mount a NativeView above video.');
   const currentTime = typeof data?.currentTime === 'number' ? data.currentTime : 0;
   const duration = typeof data?.duration === 'number' ? data.duration : 0;
 
@@ -91,6 +92,24 @@ export default function App() {
     },
     [currentTime, duration, seek],
   );
+
+  const toggleNativeMenu = () => {
+    const open = !nativeMenuOpen;
+    setNativeMenuOpen(open);
+    setNativeMenuResult(open ? 'H5 mounted the native menu.' : 'H5 removed the native menu.');
+  };
+
+  const handleNativeMenuMore = ({ source }: { source?: string }) => {
+    setNativePressSource(source || 'unknown');
+    setNativeMenuOpen(false);
+    setNativeMenuResult('More handled by View JS.');
+  };
+
+  const handleNativeMenuClose = ({ source }: { source?: string }) => {
+    setNativePressSource(source || 'unknown');
+    setNativeMenuOpen(false);
+    setNativeMenuResult('Close handled by View JS.');
+  };
 
   if (!video) {
     return (
@@ -123,10 +142,9 @@ export default function App() {
         </div>
 
         <div className="bg-black rounded-xl overflow-hidden">
-          <LxNativeRoot id="video-native-root" className="block w-full" style={{ aspectRatio: '16 / 9' }} data-testid="inline-native-root">
+          <LxNativeRoot id="video-native-root" className="block w-full" style={{ aspectRatio: '16 / 9' }}>
             <LxVideo
               id={video.id}
-              data-testid="native-video"
               src={video.src}
               poster={video.poster}
               qualities={video.qualities}
@@ -157,7 +175,6 @@ export default function App() {
               <LxNativeCover
                 id="video-native-cover"
                 automationId="video-native-cover"
-                data-testid="inline-native-cover"
                 scrim="none"
                 role="presentation"
               >
@@ -196,7 +213,7 @@ export default function App() {
                     aria-label="More native menu actions"
                     className="absolute bottom-3 left-3"
                     style={{ width: 88, height: 36, borderRadius: 9 }}
-                    onPress={({ source }) => setNativePressSource(source)}
+                    onPress={handleNativeMenuMore}
                   />
                   <LxNativeButton
                     id="video-native-menu-close"
@@ -208,10 +225,7 @@ export default function App() {
                     aria-label="Close native menu"
                     className="absolute bottom-3 right-3"
                     style={{ width: 88, height: 36, borderRadius: 9 }}
-                    onPress={({ source }) => {
-                      setNativePressSource(source);
-                      setNativeMenuOpen(false);
-                    }}
+                    onPress={handleNativeMenuClose}
                   />
                 </LxNativeView>
               </LxNativeCover>
@@ -222,14 +236,14 @@ export default function App() {
         <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
           <div className="min-w-0">
             <div className="text-xs font-semibold text-blue-900">H5 → native overlay</div>
-            <div className="text-[11px] leading-4 text-blue-700">Tap the H5 burger to mount a NativeView above video.</div>
+            <div data-testid="native-menu-js-result" className="text-[11px] leading-4 text-blue-700">{nativeMenuResult}</div>
           </div>
           <button
             type="button"
             data-testid="native-menu-toggle"
             aria-label={nativeMenuOpen ? 'Close native menu' : 'Open native menu'}
             aria-expanded={nativeMenuOpen}
-            onClick={() => setNativeMenuOpen((open) => !open)}
+            onClick={toggleNativeMenu}
             className="flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white active:scale-95"
           >
             <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
@@ -240,11 +254,10 @@ export default function App() {
           <span data-testid="native-menu-state" className="sr-only">{nativeMenuOpen ? 'open' : 'closed'}</span>
         </div>
 
-        <LxNativeRoot id="island-controls" className="block w-full" style={{ height: 82 }} data-testid="island-controls-root">
+        <LxNativeRoot id="island-controls" className="block w-full" style={{ height: 82 }}>
           <LxNativeView
             id="island-controls-view"
             automationId="island-controls-view"
-            data-testid="island-controls-view"
             className="relative block h-full w-full border border-slate-700 bg-slate-900"
             style={{ height: 82, borderRadius: 14, backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1 }}
           >
