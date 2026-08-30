@@ -250,6 +250,22 @@ fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
 }
 
 #[napi]
+fn validate_inline_native_media_urls(appid: String, urls_json: String) -> String {
+    let result = serde_json::from_str::<Vec<String>>(&urls_json)
+        .map_err(|err| format!("invalid media URL list: {err}"))
+        .and_then(|urls| {
+            let app = lxapp::try_get(&appid)
+                .ok_or_else(|| format!("LxApp is not registered: {appid}"))?;
+            lxapp::inline_native::validate_media_urls(
+                &urls,
+                &app.trusted_network_domains(),
+                lxapp::is_dev_session(),
+            )
+        });
+    result.err().unwrap_or_default()
+}
+
+#[napi]
 fn get_lx_app_more_actions(appid: String) -> String {
     lxapp::try_get(&appid)
         .map(|app| app.more_actions_json())

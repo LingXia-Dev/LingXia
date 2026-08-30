@@ -84,19 +84,23 @@ enum MediaKind {
     VideoElement,
     AudioElement,
     NewAudio,
+    BareLxVideo,
 }
 
 impl MediaKind {
     fn message(self) -> &'static str {
         match self {
             Self::VideoElement => {
-                "`<video>` is not allowed in an lxapp View. Use `<lx-video>`; live/pushed streams go through `lx.createVideoContext(id).setStreamSource(...)`"
+                "`<video>` is not allowed in an lxapp View. Use `<lx-video>` as a direct child of `<lx-native-root>`; live/pushed streams go through `lx.createVideoContext(id).setStreamSource(...)`"
             }
             Self::AudioElement => {
                 "`<audio>` is not allowed in an lxapp View. Audio playback is not available yet; `lx.audio` is planned"
             }
             Self::NewAudio => {
                 "`new Audio()` is not allowed in an lxapp View. Audio playback is not available yet; `lx.audio` is planned"
+            }
+            Self::BareLxVideo => {
+                "bare `<lx-video>` is not allowed. Make it a direct child of `<lx-native-root>`"
             }
         }
     }
@@ -112,6 +116,7 @@ struct Finding {
 fn scan_html(path: &str, source: &str, findings: &mut Vec<Finding>, unscannable: &mut Vec<String>) {
     let bytes = source.as_bytes();
     let mut i = 0;
+    let mut stack: Vec<String> = Vec::new();
     while i < bytes.len() {
         if bytes[i] != b'<' {
             i += 1;
@@ -144,41 +149,60 @@ fn scan_html(path: &str, source: &str, findings: &mut Vec<Finding>, unscannable:
         }
         let name_lower = name.to_ascii_lowercase();
 
-        if !is_close {
-            match name_lower.as_str() {
-                "video" => findings.push(Finding {
+        if is_close {
+            if let Some(position) = stack.iter().rposition(|open| open == &name_lower) {
+                stack.truncate(position);
+            }
+            i += 1;
+            continue;
+        }
+
+        match name_lower.as_str() {
+            "video" => findings.push(Finding {
+                path: path.to_string(),
+                line: line_number(source, i),
+                kind: MediaKind::VideoElement,
+            }),
+            "audio" => findings.push(Finding {
+                path: path.to_string(),
+                line: line_number(source, i),
+                kind: MediaKind::AudioElement,
+            }),
+            "lx-video" if stack.last().map(String::as_str) != Some("lx-native-root") => findings
+                .push(Finding {
                     path: path.to_string(),
                     line: line_number(source, i),
-                    kind: MediaKind::VideoElement,
+                    kind: MediaKind::BareLxVideo,
                 }),
-                "audio" => findings.push(Finding {
-                    path: path.to_string(),
-                    line: line_number(source, i),
-                    kind: MediaKind::AudioElement,
-                }),
-                "script" => {
-                    if let Some(content) = script_body(source, name_start) {
-                        scan_javascript(
-                            path,
-                            content.body,
-                            content.start,
-                            source,
-                            findings,
-                            unscannable,
-                        );
-                        i = content.end;
-                        continue;
-                    }
+            "script" => {
+                if let Some(content) = script_body(source, name_start) {
+                    scan_javascript(
+                        path,
+                        content.body,
+                        content.start,
+                        source,
+                        findings,
+                        unscannable,
+                    );
+                    i = content.end;
+                    continue;
                 }
-                "style" => {
-                    // `<style/>` closes itself; skipping to the next `</style>`
-                    // would step over everything between the two.
-                    if let Some(end) = style_body_end(source, name_start) {
-                        i = end;
-                        continue;
-                    }
+            }
+            "style" => {
+                // `<style/>` closes itself; skipping to the next `</style>`
+                // would step over everything between the two.
+                if let Some(end) = style_body_end(source, name_start) {
+                    i = end;
+                    continue;
                 }
-                _ => {}
+            }
+            _ => {}
+        }
+
+        if let Some(tag_end) = source[name_start..].find('>') {
+            let open_end = name_start + tag_end;
+            if !source[..open_end].trim_end().ends_with('/') {
+                stack.push(name_lower);
             }
         }
 
@@ -848,13 +872,15 @@ mod tests {
     }
 
     #[test]
-    fn allows_lx_video_and_media_swiper_type() {
-        audit_one(
+    fn rejects_bare_lx_video_but_not_media_swiper_data() {
+        let err = audit_one(
             "index.html",
             r#"<lx-video id="hero" src="./clip.mp4"></lx-video>
 <script>const item = { type: "video", src: "./clip.mp4" };</script>"#,
         )
-        .unwrap();
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("direct child"), "{err}");
     }
 
     #[test]

@@ -11,13 +11,16 @@ import {
 } from './NativeComponentNodeController';
 import { NativeComponentRecord, NativeComponentValue } from './NativeComponentTypes';
 import { LxNativeVideoPlayer } from '../APIs/media/player/LxNativeVideoPlayer';
+import { validateInlineNativeMediaUrls } from 'liblingxia.so';
 
 const ALLOWED_KINDS: string[] = ['root', 'view', 'text', 'tappable', 'slider', 'video'];
 
 export class IslandNode {
   key: string = '';
+  rootKey: string = '';
   kind: string = '';
   authorId: string = '';
+  parentKey: string = '';
   order: number = 0;
   controller: NativeComponentNodeController = new NativeComponentNodeController();
   props: NativeComponentRecord = new NativeComponentRecord();
@@ -29,21 +32,36 @@ export class IslandNode {
   visible: boolean = true;
 }
 
+class IslandLease {
+  root: Record<string, Object> = {};
+  id: string = '';
+  sequence: number = 1;
+  active: boolean = false;
+}
+
 export class InlineNativeIslandHost {
+  private appId: string;
   private nodes: Map<string, IslandNode> = new Map();
   private lastRevision: number = 0;
+  private revisions: Map<string, number> = new Map();
+  private roots: Map<string, Record<string, Object>> = new Map();
+  private rootOrders: Map<string, number> = new Map();
   private compositionOrder: string[] = [];
   private nodeContainers: NativeComponentNodeController[] = [];
   private pendingOutgoing: NativeComponentRecord[] = [];
-  private leaseGranted: boolean = false;
-  private leaseActive: boolean = false;
-  private leaseId: string = '';
-  private leaseSequence: number = 1;
-  private lastRoot: Record<string, Object> | undefined = undefined;
+  private leases: Map<string, IslandLease> = new Map();
+
+  constructor(appId: string = 'app') {
+    this.appId = appId;
+  }
 
   handle(action: string, payload: Record<string, Object>): boolean {
     if (action === 'root.commit') {
       this.applyCommit(payload);
+      return true;
+    }
+    if (action === 'root.destroy') {
+      this.destroyRoot(payload);
       return true;
     }
     if (action === 'geometry.snapshot') {
@@ -74,7 +92,9 @@ export class InlineNativeIslandHost {
   }
 
   canDisplay(): boolean {
-    return this.leaseActive;
+    let active = false;
+    this.leases.forEach((lease: IslandLease) => { active = active || lease.active; });
+    return active;
   }
 
   drainOutgoing(): NativeComponentRecord[] {
@@ -95,11 +115,10 @@ export class InlineNativeIslandHost {
     this.compositionOrder = [];
     this.nodeContainers = [];
     this.pendingOutgoing = [];
-    this.leaseGranted = false;
-    this.leaseActive = false;
-    this.leaseId = '';
-    this.leaseSequence = 1;
-    this.lastRoot = undefined;
+    this.leases.clear();
+    this.revisions.clear();
+    this.roots.clear();
+    this.rootOrders.clear();
     this.lastRevision = 0;
   }
 
@@ -116,7 +135,7 @@ export class InlineNativeIslandHost {
   adoptEntries(): IslandNode[] {
     const values: IslandNode[] = [];
     this.nodes.forEach((node: IslandNode) => {
-      values.push(node);
+      if (this.leases.get(node.rootKey)?.active) values.push(node);
     });
     values.sort((a: IslandNode, b: IslandNode) => {
       if (a.order !== b.order) {
@@ -138,6 +157,70 @@ export class InlineNativeIslandHost {
   }
 
   private applyCommit(payload: Record<string, Object>): void {
+    const root = payload['root'] as Record<string, Object> | undefined;
+    if (!root) {
+      return;
+    }
+    const rootKey = (root['rootKey'] as string) ?? '';
+    const baseRevision = (payload['baseRevision'] as number) ?? 0;
+    const revision = (payload['revision'] as number) ?? 0;
+    if (revision <= baseRevision || revision === 0) {
+      const error = new NativeComponentRecord();
+      error.set('action', 'root.error');
+      error.set('id', rootKey);
+      error.set('root', root);
+      error.set('message', 'commit revision must be greater than baseRevision');
+      error.set('recoverable', true);
+      this.pendingOutgoing.push(error);
+      return;
+    }
+    const policyError: string = validateInlineNativeMediaUrls(
+      this.appId,
+      JSON.stringify(this.mediaUrls(payload))
+    ) as string;
+    if (policyError.length > 0) {
+      const error = new NativeComponentRecord();
+      error.set('action', 'root.error');
+      error.set('id', rootKey);
+      error.set('root', root);
+      error.set('message', policyError);
+      error.set('recoverable', true);
+      this.pendingOutgoing.push(error);
+      return;
+    }
+    const last = this.revisions.get(rootKey) ?? 0;
+    const existingRoot = this.roots.get(rootKey);
+    if (existingRoot && !this.sameRootGeneration(existingRoot, root)) {
+      const error = new NativeComponentRecord();
+      error.set('action', 'root.error');
+      error.set('id', rootKey);
+      error.set('root', root);
+      error.set('message', 'root generation changed without destroy');
+      error.set('recoverable', true);
+      this.pendingOutgoing.push(error);
+      return;
+    }
+    if (baseRevision === 0) {
+      const stale: string[] = [];
+      this.nodes.forEach((node: IslandNode, key: string) => {
+        if (node.rootKey === rootKey) stale.push(key);
+      });
+      stale.forEach((key: string) => {
+        const node = this.nodes.get(key);
+        if (node) this.releaseNode(node);
+        this.nodes.delete(key);
+      });
+      this.revisions.delete(rootKey);
+      this.leases.delete(rootKey);
+    } else if (baseRevision !== last) {
+      const resync = new NativeComponentRecord();
+      resync.set('action', 'root.resyncRequired');
+      resync.set('id', rootKey);
+      resync.set('root', root);
+      resync.set('lastAppliedRevision', last);
+      this.pendingOutgoing.push(resync);
+      return;
+    }
     const operations = payload['operations'] as Object[] | undefined;
     if (!operations) {
       return;
@@ -146,12 +229,13 @@ export class InlineNativeIslandHost {
       const op = operations[i] as Record<string, Object>;
       const kind = op['op'] as string;
       if (kind === 'mount') {
-        this.mount(op['node'] as Record<string, Object>);
+        this.mount(op['node'] as Record<string, Object>, rootKey);
       } else if (kind === 'update') {
         this.updateNode(op);
       } else if (kind === 'unmount') {
         const node = op['node'] as Record<string, Object>;
         const ref = (node['ref'] as Record<string, Object>) ?? node;
+        if (((ref['rootKey'] as string) ?? '') !== rootKey) continue;
         const key = (ref['nodeKey'] as string) ?? '';
         const existing = this.nodes.get(key);
         if (existing) {
@@ -161,26 +245,71 @@ export class InlineNativeIslandHost {
       } else if (kind === 'reorder') {
         const node = op['node'] as Record<string, Object>;
         const ref = (node['ref'] as Record<string, Object>) ?? node;
+        if (((ref['rootKey'] as string) ?? '') !== rootKey) continue;
         const key = (ref['nodeKey'] as string) ?? '';
         const existing = this.nodes.get(key);
         if (existing) {
           existing.order = op['order'] as number;
         }
+      } else if (kind === 'reparent') {
+        const node = op['node'] as Record<string, Object>;
+        const ref = (node['ref'] as Record<string, Object>) ?? node;
+        if (((ref['rootKey'] as string) ?? '') !== rootKey) continue;
+        const key = (ref['nodeKey'] as string) ?? '';
+        const existing = this.nodes.get(key);
+        const parent = op['parent'] as Record<string, Object> | undefined;
+        if (parent && ((parent['rootKey'] as string) ?? '') !== rootKey) continue;
+        if (existing) existing.parentKey = parent ? ((parent['nodeKey'] as string) ?? '') : '';
       }
     }
     this.restack();
-    const revision = payload['revision'] as number;
-    if (revision !== undefined) {
-      this.lastRevision = revision;
-    }
+    this.revisions.set(rootKey, revision);
+    this.roots.set(rootKey, root);
+    this.lastRevision = Math.max(...Array.from(this.revisions.values()));
+    const applied = new NativeComponentRecord();
+    applied.set('action', 'root.applied');
+    applied.set('id', rootKey);
+    applied.set('root', root);
+    applied.set('revision', revision);
+    this.pendingOutgoing.push(applied);
+    this.grantLeaseIfNeeded(root);
+  }
+
+  private destroyRoot(payload: Record<string, Object>): void {
     const root = payload['root'] as Record<string, Object> | undefined;
-    if (root) {
-      this.lastRoot = root;
-      this.grantLeaseIfNeeded(root);
-    }
+    const rootKey = root ? ((root['rootKey'] as string) ?? '') : '';
+    const current = this.roots.get(rootKey);
+    if (!root || !current || !this.sameRootGeneration(current, root)) return;
+    const stale: string[] = [];
+    this.nodes.forEach((node: IslandNode, key: string) => {
+      if (node.rootKey === rootKey) stale.push(key);
+    });
+    stale.forEach((key: string) => {
+      const node = this.nodes.get(key);
+      if (node) this.releaseNode(node);
+      this.nodes.delete(key);
+    });
+    this.revisions.delete(rootKey);
+    this.roots.delete(rootKey);
+    this.rootOrders.delete(rootKey);
+    this.leases.delete(rootKey);
+    this.lastRevision = this.revisions.size > 0 ? Math.max(...Array.from(this.revisions.values())) : 0;
+    this.restack();
   }
 
   private applyGeometry(payload: Record<string, Object>): void {
+    const roots = payload['roots'] as Object[] | undefined;
+    if (roots) {
+      roots.forEach((raw: Object) => {
+        const entry = raw as Record<string, Object>;
+        const ref = entry['ref'] as Record<string, Object> | undefined;
+        const rootKey = ref ? ((ref['rootKey'] as string) ?? '') : '';
+        const current = this.roots.get(rootKey);
+        if (ref && current && this.sameRootGeneration(current, ref)) {
+          this.rootOrders.set(rootKey, (entry['rootOrder'] as number) ?? Number.MAX_SAFE_INTEGER);
+        }
+      });
+    }
     const nodes = payload['nodes'] as Object[] | undefined;
     if (!nodes) {
       return;
@@ -194,7 +323,7 @@ export class InlineNativeIslandHost {
       const key = (ref['nodeKey'] as string) ?? '';
       const existing = this.nodes.get(key);
       const rect = entry['contentRect'] as Record<string, Object> | undefined;
-      if (!existing || !rect) {
+      if (!existing || !rect || ((ref['rootKey'] as string) ?? '') !== existing.rootKey) {
         continue;
       }
       existing.rectX = (rect['x'] as number) ?? 0;
@@ -209,34 +338,42 @@ export class InlineNativeIslandHost {
       update.height = existing.visible ? Math.max(existing.rectH, 1) : 0;
       existing.controller.updateRenderOption(update);
     }
+    this.restack();
   }
 
   private acceptLease(payload: Record<string, Object>): void {
-    if (!this.leaseGranted || this.leaseActive) {
+    const root = payload['root'] as Record<string, Object> | undefined;
+    const rootKey = (payload['id'] as string) ?? (root ? (root['rootKey'] as string) : '');
+    const lease = this.leases.get(rootKey);
+    if (!lease || lease.active) {
       return;
     }
     const incomingId = (payload['leaseId'] as string) ?? '';
     const incomingSeq = (payload['sequence'] as number) ?? 0;
-    if (incomingId.length > 0 && incomingId !== this.leaseId) {
+    if (incomingId.length > 0 && incomingId !== lease.id) {
       return;
     }
-    if (incomingSeq > 0 && incomingSeq !== this.leaseSequence) {
+    if (incomingSeq > 0 && incomingSeq !== lease.sequence) {
       return;
     }
-    this.leaseActive = true;
+    lease.active = true;
     const active = new NativeComponentRecord();
     active.set('action', 'root.leaseActive');
-    const rootKey = this.lastRoot ? (this.lastRoot['rootKey'] as string) : 'island';
     active.set('id', rootKey);
-    if (this.lastRoot) {
-      active.set('root', this.lastRoot);
-    }
-    active.set('leaseId', this.leaseId);
-    active.set('sequence', this.leaseSequence);
+    active.set('root', lease.root);
+    active.set('leaseId', lease.id);
+    active.set('sequence', lease.sequence);
     this.pendingOutgoing.push(active);
   }
 
   private applyVideoCommand(payload: Record<string, Object>): void {
+    const policyError: string = validateInlineNativeMediaUrls(
+      this.appId,
+      JSON.stringify(this.mediaUrls(payload))
+    ) as string;
+    if (policyError.length > 0) {
+      return;
+    }
     const command = payload['command'] as Record<string, Object> | undefined;
     const owner = payload['owner'] as Record<string, Object> | undefined;
     const name = command ? (command['name'] as string) : '';
@@ -277,41 +414,68 @@ export class InlineNativeIslandHost {
   }
 
   private grantLeaseIfNeeded(root: Record<string, Object>): void {
-    if (this.leaseGranted) {
-      return;
-    }
     const rootKey = (root['rootKey'] as string) ?? 'island';
-    this.leaseGranted = true;
-    this.leaseId = `lease-${rootKey}`;
-    this.leaseSequence = 1;
+    if (this.leases.has(rootKey)) return;
+    const lease = new IslandLease();
+    lease.root = root;
+    lease.id = `lease-${rootKey}`;
+    this.leases.set(rootKey, lease);
     const grant = new NativeComponentRecord();
     grant.set('action', 'root.leaseGranted');
     grant.set('id', rootKey);
     grant.set('root', root);
-    grant.set('leaseId', this.leaseId);
-    grant.set('sequence', this.leaseSequence);
+    grant.set('leaseId', lease.id);
+    grant.set('sequence', lease.sequence);
     grant.set('leaseDurationMs', 8000);
     this.pendingOutgoing.push(grant);
   }
 
-  private mount(node: Record<string, Object>): void {
+  private mediaUrls(value: Object): string[] {
+    const urls: string[] = [];
+    const walk = (current: Object, key: string = ''): void => {
+      if (typeof current === 'string') {
+        if (['src', 'url', 'uri', 'poster'].indexOf(key) >= 0) urls.push(current);
+        return;
+      }
+      if (Array.isArray(current)) {
+        current.forEach((item: Object) => walk(item, key));
+        return;
+      }
+      if (current && typeof current === 'object') {
+        Object.keys(current).forEach((childKey: string) => {
+          walk((current as Record<string, Object>)[childKey], childKey);
+        });
+      }
+    };
+    walk(value);
+    return urls;
+  }
+
+  private mount(node: Record<string, Object>, expectedRootKey: string): void {
     const ref = node['ref'] as Record<string, Object>;
     if (!ref) {
       return;
     }
     const key = ref['nodeKey'] as string;
+    const rootKey = (ref['rootKey'] as string) ?? '';
+    if (rootKey !== expectedRootKey) return;
     const kind = node['kind'] as string;
     if (ALLOWED_KINDS.indexOf(kind) < 0) {
       return;
     }
     const previous = this.nodes.get(key);
+    if (previous && previous.rootKey !== rootKey) return;
     if (previous) {
       this.releaseNode(previous);
     }
     const item = new IslandNode();
     item.key = key;
+    item.rootKey = (ref['rootKey'] as string) ?? '';
     item.kind = kind;
     item.authorId = (node['authorId'] as string) ?? '';
+    const parent = node['parent'] as Record<string, Object> | undefined;
+    if (parent && ((parent['rootKey'] as string) ?? '') !== rootKey) return;
+    item.parentKey = parent ? ((parent['nodeKey'] as string) ?? '') : '';
     item.order = (node['order'] as number) ?? 0;
     const params = new NodeControllerParams();
     params.componentId = item.authorId.length > 0 ? item.authorId : key;
@@ -342,7 +506,7 @@ export class InlineNativeIslandHost {
     const ref = (node['ref'] as Record<string, Object>) ?? node;
     const key = (ref['nodeKey'] as string) ?? '';
     const existing = this.nodes.get(key);
-    if (!existing) {
+    if (!existing || ((ref['rootKey'] as string) ?? '') !== existing.rootKey) {
       return;
     }
     const patch = op['patch'] as Record<string, Object> | undefined;
@@ -369,15 +533,26 @@ export class InlineNativeIslandHost {
 
   private restack(): void {
     const values: IslandNode[] = [];
-    this.nodes.forEach((node: IslandNode) => {
-      values.push(node);
-    });
-    values.sort((a: IslandNode, b: IslandNode) => {
-      if (a.order !== b.order) {
-        return a.order - b.order;
-      }
-      return a.key < b.key ? -1 : 1;
-    });
+    const append = (parentKey: string): void => {
+      const children: IslandNode[] = [];
+      this.nodes.forEach((node: IslandNode) => {
+        if (node.parentKey === parentKey) children.push(node);
+      });
+      children.sort((a: IslandNode, b: IslandNode) => {
+        if (parentKey.length === 0) {
+          const rootOrder = (this.rootOrders.get(a.rootKey) ?? Number.MAX_SAFE_INTEGER) -
+            (this.rootOrders.get(b.rootKey) ?? Number.MAX_SAFE_INTEGER);
+          if (rootOrder !== 0) return rootOrder;
+        }
+        if (a.order !== b.order) return a.order - b.order;
+        return a.key < b.key ? -1 : 1;
+      });
+      children.forEach((node: IslandNode) => {
+        values.push(node);
+        append(node.key);
+      });
+    };
+    append('');
     this.compositionOrder = [];
     this.nodeContainers = [];
     for (let i = 0; i < values.length; i++) {
@@ -385,6 +560,17 @@ export class InlineNativeIslandHost {
       this.compositionOrder.push(values[i].key);
       this.nodeContainers.push(values[i].controller);
     }
+  }
+
+  private sameRootGeneration(
+    lhs: Record<string, Object>,
+    rhs: Record<string, Object>
+  ): boolean {
+    return lhs['surfaceInstanceId'] === rhs['surfaceInstanceId'] &&
+      lhs['pageInstanceId'] === rhs['pageInstanceId'] &&
+      lhs['documentInstanceId'] === rhs['documentInstanceId'] &&
+      lhs['rootKey'] === rhs['rootKey'] &&
+      lhs['rootEpoch'] === rhs['rootEpoch'];
   }
 
   private releaseNode(node: IslandNode): void {

@@ -33,15 +33,16 @@ export function viewAcceptLease(state: ViewLeaseState): ViewLeaseState | null {
 }
 
 export function viewMarkActive(state: ViewLeaseState): ViewLeaseState {
-  return { ...state, phase: "active" };
+  return { ...state, phase: "active", deadlineTickMs: undefined };
 }
 
 export function viewCanShowFallback(state: ViewLeaseState, nowMs: number): boolean {
   if (state.phase === "none" || state.phase === "granted" || state.phase === "revoked" || state.phase === "expired") {
     return true;
   }
-  if (state.phase === "accept-sent" || state.phase === "active") {
+  if (state.phase === "accept-sent") {
     return state.deadlineTickMs !== undefined && nowMs >= state.deadlineTickMs;
   }
+  if (state.phase === "active") return false;
   return false;
 }

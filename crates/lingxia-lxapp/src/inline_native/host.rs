@@ -19,6 +19,7 @@ use super::video::{
     VideoCommand, VideoCommandOutcome, VideoCommandQueue, VideoCommandRequest, apply_video_command,
 };
 use serde_json::Value;
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone)]
@@ -59,7 +60,7 @@ pub struct IslandSession {
     trusted_domains: Vec<String>,
     dev_session: bool,
     pending_view_messages: Vec<Value>,
-    last_geometry: Option<NativeGeometrySnapshot>,
+    geometry_by_root: HashMap<String, NativeGeometrySnapshot>,
     pointer: IslandPointerTracker,
 }
 
@@ -74,7 +75,7 @@ impl IslandSession {
             trusted_domains: Vec::new(),
             dev_session: false,
             pending_view_messages: Vec::new(),
-            last_geometry: None,
+            geometry_by_root: HashMap::new(),
             pointer: IslandPointerTracker::default(),
         }
     }
@@ -92,14 +93,16 @@ impl IslandSession {
 
     pub fn apply_commit(&mut self, commit: NativeRootCommit) -> ApplyCommitOutcome {
         if let Err(message) = self.validate_commit_urls(&commit) {
-            return ApplyCommitOutcome::Rejected(Box::new(super::types::NativeError {
+            let error = Box::new(super::types::NativeError {
                 code: super::types::NativeErrorCode::InvalidProps,
                 scope: super::types::ErrorScope::Root,
                 recoverable: true,
                 root: commit.root.clone(),
                 node: None,
                 message,
-            }));
+            });
+            self.queue_error(&commit.root, &error);
+            return ApplyCommitOutcome::Rejected(error);
         }
         if commit.base_revision == 0 {
             self.leases
@@ -118,6 +121,14 @@ impl IslandSession {
             }
             flush_pending_geometry(&mut self.registry, &mut self.geometry, &commit.root);
         }
+        match &outcome {
+            ApplyCommitOutcome::Applied(ack) | ApplyCommitOutcome::ResyncRequired(ack) => {
+                self.queue_ack(ack);
+            }
+            ApplyCommitOutcome::Rejected(error) => {
+                self.queue_error(&commit.root, error);
+            }
+        }
         outcome
     }
 
@@ -129,12 +140,17 @@ impl IslandSession {
 
     pub fn apply_geometry(&mut self, snapshot: NativeGeometrySnapshot) -> NativeGeometryResult {
         let result = apply_geometry_snapshot(&mut self.registry, &mut self.geometry, &snapshot);
-        self.last_geometry = Some(snapshot);
+        for root in &result.roots {
+            if root.status == super::types::GeometryRootStatus::Applied {
+                self.geometry_by_root
+                    .insert(RootRegistry::slot_key(&root.root), snapshot.clone());
+            }
+        }
         result
     }
 
     pub fn last_node_rect(&self, node_key: &str) -> Option<Rect> {
-        self.last_geometry.as_ref().and_then(|snapshot| {
+        self.geometry_by_root.values().find_map(|snapshot| {
             snapshot
                 .nodes
                 .iter()
@@ -147,7 +163,7 @@ impl IslandSession {
     /// a missing or degenerate (0×0 / 1×1) node rect falls back to the
     /// root content rect so the first attach is not a 1×1 placeholder.
     pub fn paint_rect_for_node(&self, node: &IslandPaintNode) -> Rect {
-        if let Some(rect) = self.last_node_rect(&node.node_ref.node_key)
+        if let Some(rect) = self.node_rect(&node.node_ref)
             && rect.is_measured()
         {
             return rect;
@@ -155,17 +171,16 @@ impl IslandSession {
         if let Some(rect) = self.last_root_content_rect(&node.node_ref) {
             return rect;
         }
-        self.last_node_rect(&node.node_ref.node_key)
-            .unwrap_or(Rect {
-                x: 0.0,
-                y: 0.0,
-                width: 0.0,
-                height: 0.0,
-            })
+        self.node_rect(&node.node_ref).unwrap_or(Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 0.0,
+            height: 0.0,
+        })
     }
 
     fn last_root_content_rect(&self, node: &NodeRef) -> Option<Rect> {
-        self.last_geometry.as_ref().and_then(|snapshot| {
+        self.geometry_for_root(&node.root()).and_then(|snapshot| {
             snapshot
                 .roots
                 .iter()
@@ -173,6 +188,36 @@ impl IslandSession {
                 .map(|root| root.content_rect.clone())
                 .filter(Rect::is_measured)
         })
+    }
+
+    fn node_rect(&self, node: &NodeRef) -> Option<Rect> {
+        self.geometry_for_root(&node.root()).and_then(|snapshot| {
+            snapshot
+                .nodes
+                .iter()
+                .find(|entry| entry.node_ref == *node)
+                .map(|entry| entry.content_rect.clone())
+        })
+    }
+
+    fn geometry_for_root(&self, root: &RootRef) -> Option<&NativeGeometrySnapshot> {
+        self.geometry_by_root.get(&RootRegistry::slot_key(root))
+    }
+
+    pub fn destroy_root(&mut self, root: &RootRef) -> bool {
+        let destroyed = self.registry.destroy(root).is_some();
+        self.geometry_by_root.remove(&RootRegistry::slot_key(root));
+        self.leases
+            .retain(|(candidate, _)| !candidate.same_generation(root));
+        if self
+            .fullscreen_root
+            .as_ref()
+            .is_some_and(|candidate| candidate.same_generation(root))
+        {
+            self.fullscreen_root = None;
+        }
+        self.pointer.cancel();
+        destroyed
     }
 
     pub fn accept_lease(&mut self, root: &RootRef, lease_id: &str, sequence: u64) -> bool {
@@ -212,6 +257,15 @@ impl IslandSession {
                     return true;
                 }
                 false
+            }
+            Some("root.destroy") => {
+                let Some(root) = value
+                    .get("root")
+                    .and_then(|raw| serde_json::from_value::<RootRef>(raw.clone()).ok())
+                else {
+                    return false;
+                };
+                self.destroy_root(&root)
             }
             _ => false,
         }
@@ -316,19 +370,12 @@ impl IslandSession {
                 .as_ref()
                 .is_some_and(|root| root.same_generation(&b.root));
             a_fs.cmp(&b_fs)
+                .then_with(|| self.root_order(&a.root).cmp(&self.root_order(&b.root)))
                 .then_with(|| a.root.root_key.cmp(&b.root.root_key))
         });
         let mut order = Vec::new();
         for state in roots {
-            let mut nodes: Vec<&super::apply::ShadowNode> = state.nodes.values().collect();
-            nodes.sort_by_key(|node| {
-                (
-                    parent_rank(node),
-                    node.order,
-                    node.node_ref.node_key.clone(),
-                )
-            });
-            order.extend(nodes.into_iter().map(|node| node.node_ref.clone()));
+            append_children_in_order(state, None, &mut order);
         }
         order
     }
@@ -407,7 +454,7 @@ impl IslandSession {
                     .clone()
                     .unwrap_or_else(|| node.node_ref.node_key.clone());
                 let rect = self.paint_rect_for_node(&node);
-                let visible = self.last_node_visible(&node.node_ref.node_key);
+                let visible = self.last_node_visible(&node.node_ref);
                 IslandHitTarget {
                     id,
                     kind: node.kind.clone(),
@@ -420,17 +467,53 @@ impl IslandSession {
             .collect()
     }
 
-    fn last_node_visible(&self, node_key: &str) -> bool {
-        self.last_geometry
-            .as_ref()
+    fn last_node_visible(&self, node: &NodeRef) -> bool {
+        self.geometry_for_root(&node.root())
             .and_then(|snapshot| {
                 snapshot
                     .nodes
                     .iter()
-                    .find(|node| node.node_ref.node_key == node_key)
-                    .map(|node| node.visible)
+                    .find(|entry| entry.node_ref == *node)
+                    .map(|entry| entry.visible)
             })
             .unwrap_or(true)
+    }
+
+    fn root_order(&self, root: &RootRef) -> u32 {
+        self.geometry_for_root(root)
+            .and_then(|snapshot| {
+                snapshot
+                    .roots
+                    .iter()
+                    .find(|entry| entry.root_ref == *root)
+                    .map(|entry| entry.root_order)
+            })
+            .unwrap_or(u32::MAX)
+    }
+
+    fn queue_ack(&mut self, ack: &NativeRootAck) {
+        let Ok(mut value) = serde_json::to_value(ack) else {
+            return;
+        };
+        if let Some(object) = value.as_object_mut()
+            && let Some(key) = object
+                .get("root")
+                .and_then(|root| root.get("rootKey"))
+                .cloned()
+        {
+            object.insert("id".to_string(), key);
+        }
+        self.pending_view_messages.push(value);
+    }
+
+    fn queue_error(&mut self, root: &RootRef, error: &super::types::NativeError) {
+        if let Ok(mut value) = serde_json::to_value(error) {
+            if let Some(object) = value.as_object_mut() {
+                object.insert("action".into(), Value::String("root.error".into()));
+                object.insert("id".into(), Value::String(root.root_key.clone()));
+            }
+            self.pending_view_messages.push(value);
+        }
     }
 
     fn queue_view_message(&mut self, message: &super::types::NativeRootLeaseMessage) {
@@ -485,8 +568,21 @@ impl Default for IslandSession {
     }
 }
 
-fn parent_rank(node: &super::apply::ShadowNode) -> u32 {
-    if node.parent_key.is_none() { 0 } else { 1 }
+fn append_children_in_order(
+    state: &super::apply::RootState,
+    parent_key: Option<&str>,
+    order: &mut Vec<NodeRef>,
+) {
+    let mut children: Vec<&super::apply::ShadowNode> = state
+        .nodes
+        .values()
+        .filter(|node| node.parent_key.as_deref() == parent_key)
+        .collect();
+    children.sort_by_key(|node| (node.order, node.node_ref.node_key.clone()));
+    for child in children {
+        order.push(child.node_ref.clone());
+        append_children_in_order(state, Some(&child.node_ref.node_key), order);
+    }
 }
 
 fn now_ms() -> u64 {
@@ -500,6 +596,7 @@ pub fn is_island_action(action: &str) -> bool {
     matches!(
         action,
         "root.commit"
+            | "root.destroy"
             | "geometry.snapshot"
             | "root.leaseAccept"
             | "root.leaseRenew"

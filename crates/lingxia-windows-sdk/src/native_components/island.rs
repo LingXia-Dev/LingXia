@@ -220,7 +220,7 @@ pub(super) fn handle_island_message(context: &PageContext, message: &Value) -> b
                 materialize_island(context, session);
             }
         }
-        "root.leaseAccept" | "video.command" => {
+        "root.destroy" | "root.leaseAccept" | "video.command" => {
             let _ = session.handle_view_json(message);
             materialize_island(context, session);
         }
@@ -250,7 +250,8 @@ pub(super) fn teardown_island(page_key: &str) {
         .lock()
         .unwrap_or_else(|poison| poison.into_inner())
         .remove(page_key);
-    island_component_keys().retain(|key| !key.starts_with(page_key));
+    let prefix = format!("{page_key}\u{1}");
+    island_component_keys().retain(|key| !key.starts_with(&prefix));
 }
 
 fn materialize_island(context: &PageContext, session: &IslandSession) {
@@ -343,9 +344,6 @@ fn finish_island_commit(
         "queued {queued} island visuals for {} (deferred apply)",
         context.page_key
     );
-    if queued == 0 {
-        return;
-    }
     schedule_island_apply(context.clone(), nodes.to_vec(), pending);
 }
 
@@ -418,9 +416,6 @@ fn schedule_island_apply(
 
 fn apply_queued_island_visuals(page_key: &str) {
     let visuals = queued_island_visuals(page_key);
-    if visuals.is_empty() {
-        return;
-    }
     let Some(handler) = find_webview_handler(&WebTag::from(page_key)) else {
         log::debug!("no webview handler for {page_key}; island visuals stay queued");
         return;
@@ -439,6 +434,12 @@ fn mount_pending_island_videos(
     nodes: &[lxapp::inline_native::IslandPaintNode],
     pending: &[PendingAttach],
 ) {
+    let live_ids: HashSet<String> = pending
+        .iter()
+        .filter(|attach| attach.kind == "video")
+        .map(|attach| attach.id.clone())
+        .collect();
+    super::retain_island_videos(&context.page_key, &live_ids);
     for attach in pending {
         if attach.kind != "video" {
             continue;

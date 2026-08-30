@@ -10,6 +10,7 @@ import {
   applyHostLeaseMessage,
   createRootRuntimeState,
   publishCompiledRoot,
+  rootFallbackAllowed,
   type RootRuntimeState,
 } from "./runtime.js";
 import { isFallbackElement } from "./structure.js";
@@ -105,11 +106,14 @@ export class LxNativeRootElement extends LxNativeBaseElement {
 
   private pending: PendingCompile = { frame: null, timer: null };
   private observer?: MutationObserver;
+  private documentObserver?: MutationObserver;
+  private resizeObserver?: ResizeObserver;
   private lastResult: CompileInlineNativeResult | null = null;
   private rootKey = nextOpaqueKey("root");
   private rootEpoch = 1;
   private runtime: RootRuntimeState = createRootRuntimeState();
   private unregisterHost?: () => void;
+  private fallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
   get fullscreenScope(): string {
     return this.getAttribute("fullscreen-scope") ?? "root";
@@ -131,26 +135,57 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     this.style.display = this.style.display || "block";
     this.style.position = this.style.position || "relative";
     this.unregisterHost = registerNativeComponentHandler(this.rootKey, (message) => {
-      this.onHostMessage(message as { action?: string; leaseId?: string; sequence?: number; leaseDurationMs?: number });
+      this.onHostMessage(message as {
+        action?: string;
+        root?: RootRef;
+        leaseId?: string;
+        sequence?: number;
+        leaseDurationMs?: number;
+        message?: string;
+      });
     });
+    this.updateFallbackVisibility(true);
     sendNativeComponentMessage({ id: this.rootKey, action: "component.ready" });
-    this.observer = new MutationObserver(() => this.scheduleCompile());
-    this.observer.observe(this, { childList: true, subtree: true, attributes: true });
+    this.observer = new MutationObserver(() => {
+      this.syncResizeObservation();
+      this.scheduleCompile();
+    });
+    this.observer.observe(this, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      characterData: true,
+    });
+    this.documentObserver = new MutationObserver((records) => {
+      if (records.some((record) => Array.from(record.addedNodes).concat(Array.from(record.removedNodes)).some(containsNativeRoot))) {
+        this.scheduleCompile();
+      }
+    });
+    this.documentObserver.observe(document.documentElement, { childList: true, subtree: true });
     if (typeof ResizeObserver !== "undefined") {
-      const resize = new ResizeObserver(() => this.scheduleCompile());
-      resize.observe(this);
-      (this as HTMLElement & { __lxResize?: ResizeObserver }).__lxResize = resize;
+      this.resizeObserver = new ResizeObserver(() => this.scheduleCompile());
+      this.syncResizeObservation();
     }
+    document.addEventListener("scroll", this.onViewportGeometryChanged, true);
+    window.addEventListener("resize", this.onViewportGeometryChanged);
     this.scheduleCompile();
   }
 
   disconnectedCallback(): void {
+    const root = this.runtime.identified?.rootRef ?? this.rootRef();
+    sendNativeComponentMessage({ id: this.rootKey, action: "root.destroy", root });
+    this.runtime = createRootRuntimeState();
+    this.rootEpoch += 1;
     this.observer?.disconnect();
     this.observer = undefined;
+    this.documentObserver?.disconnect();
+    this.documentObserver = undefined;
     this.unregisterHost?.();
     this.unregisterHost = undefined;
-    const resize = (this as HTMLElement & { __lxResize?: ResizeObserver }).__lxResize;
-    resize?.disconnect();
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = undefined;
+    document.removeEventListener("scroll", this.onViewportGeometryChanged, true);
+    window.removeEventListener("resize", this.onViewportGeometryChanged);
     if (this.pending.frame != null && typeof cancelAnimationFrame === "function") {
       cancelAnimationFrame(this.pending.frame);
       this.pending.frame = null;
@@ -158,6 +193,10 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     if (this.pending.timer != null) {
       clearTimeout(this.pending.timer);
       this.pending.timer = null;
+    }
+    if (this.fallbackTimer != null) {
+      clearTimeout(this.fallbackTimer);
+      this.fallbackTimer = null;
     }
   }
 
@@ -190,6 +229,8 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     const result = compileInlineNativeRoot(author);
     this.lastResult = result;
     if (!result.ok) {
+      this.destroyPublishedRoot();
+      this.updateFallbackVisibility(true);
       this.dispatchEvent(
         new CustomEvent(ROOT_INVALID_EVENT, {
           detail: result.error,
@@ -197,12 +238,17 @@ export class LxNativeRootElement extends LxNativeBaseElement {
         })
       );
     } else {
+      const geometry = measureNativeNodeGeometry(this);
       const published = publishCompiledRoot({
         compiled: result.root,
         rootRef: this.rootRef(),
         state: this.runtime,
         rootRect: elementContentRect(this),
-        nodeRects: measureNativeNodeRects(this, result.root),
+        rootVisible: elementIsVisible(this),
+        nodeRects: geometry.rects,
+        nodeVisibility: geometry.visibility,
+        nodeClipStacks: geometry.clipStacks,
+        rootOrder: nativeRootOrder(this),
       });
       // Adopt the published state only once the host has actually been told about
       // it: a dropped first commit carries every mount operation, and the next
@@ -227,11 +273,33 @@ export class LxNativeRootElement extends LxNativeBaseElement {
 
   private onHostMessage(message: {
     action?: string;
+    root?: RootRef;
     leaseId?: string;
     sequence?: number;
     leaseDurationMs?: number;
+    message?: string;
   }): void {
+    const currentRoot = this.runtime.identified?.rootRef ?? this.rootRef();
+    if (message.root && !sameRootGeneration(message.root, currentRoot)) {
+      return;
+    }
     if (applyIslandHostEvent(this, message)) {
+      return;
+    }
+    if (message.action === "root.resyncRequired") {
+      this.runtime = createRootRuntimeState();
+      this.updateFallbackVisibility(true);
+      this.scheduleCompile();
+      return;
+    }
+    if (message.action === "root.error") {
+      this.destroyPublishedRoot();
+      this.updateFallbackVisibility(true);
+      this.dispatchEvent(
+        new CustomEvent(ROOT_INVALID_EVENT, {
+          detail: nativeError("NATIVE_ROOT_FAILED", message.message ?? "native Root rejected"),
+        })
+      );
       return;
     }
     const applied = applyHostLeaseMessage(this.runtime, message, Date.now());
@@ -240,12 +308,58 @@ export class LxNativeRootElement extends LxNativeBaseElement {
       sendNativeComponentMessage(applied.leaseAccept);
     }
     if (applied.ready) {
+      if (this.fallbackTimer != null) {
+        clearTimeout(this.fallbackTimer);
+        this.fallbackTimer = null;
+      }
+      this.updateFallbackVisibility(false);
       this.dispatchEvent(new CustomEvent("ready", { detail: {} }));
+    } else {
+      this.armFallbackDeadline();
+    }
+  }
+
+  private armFallbackDeadline(): void {
+    if (this.fallbackTimer != null) clearTimeout(this.fallbackTimer);
+    const deadline = this.runtime.lease.deadlineTickMs;
+    if (deadline === undefined) return;
+    this.fallbackTimer = setTimeout(() => {
+      this.fallbackTimer = null;
+      if (rootFallbackAllowed(this.runtime, Date.now())) {
+        this.updateFallbackVisibility(true);
+      }
+    }, Math.max(0, deadline - Date.now()));
+  }
+
+  private updateFallbackVisibility(show: boolean): void {
+    for (const fallback of Array.from(this.querySelectorAll("[data-lx-native-fallback]"))) {
+      if (fallback instanceof HTMLElement && fallback.closest("lx-native-root") === this) {
+        fallback.hidden = !show;
+      }
     }
   }
 
   private rootRef(): RootRef {
     return pageRootScope(this.rootKey, this.rootEpoch);
+  }
+
+  private destroyPublishedRoot(): void {
+    const root = this.runtime.identified?.rootRef;
+    if (!root) return;
+    sendNativeComponentMessage({ id: this.rootKey, action: "root.destroy", root });
+    this.runtime = createRootRuntimeState();
+    this.rootEpoch += 1;
+  }
+
+  private onViewportGeometryChanged = (): void => this.scheduleCompile();
+
+  private syncResizeObservation(): void {
+    if (!this.resizeObserver) return;
+    this.resizeObserver.disconnect();
+    this.resizeObserver.observe(this);
+    for (const element of nativeDescendants(this)) {
+      this.resizeObserver.observe(element);
+    }
   }
 }
 
@@ -499,24 +613,86 @@ function elementContentRect(el: Element): { x: number; y: number; width: number;
   };
 }
 
-function measureNativeNodeRects(
-  root: Element,
-  _compiled: { children: unknown }
-): Record<string, { x: number; y: number; width: number; height: number }> {
+function measureNativeNodeGeometry(root: Element): {
+  rects: Record<string, { x: number; y: number; width: number; height: number }>;
+  visibility: Record<string, boolean>;
+  clipStacks: Record<string, unknown[]>;
+} {
   const rects: Record<string, { x: number; y: number; width: number; height: number }> = {};
-  const walk = (el: Element) => {
-    for (const child of Array.from(el.children)) {
-      if (isFallbackElement(child)) continue;
-      const tag = child.tagName.toLowerCase();
-      if (tag.startsWith("lx-native-") || tag === "lx-video") {
-        const id = ensureComponentId(child as HTMLElement, tag);
-        rects[id] = elementContentRect(child);
-        walk(child);
-      }
-    }
-  };
-  walk(root);
-  return rects;
+  const visibility: Record<string, boolean> = {};
+  const clipStacks: Record<string, unknown[]> = {};
+  for (const child of nativeDescendants(root)) {
+    const tag = child.tagName.toLowerCase();
+    const id = ensureComponentId(child as HTMLElement, tag);
+    const rect = elementContentRect(child);
+    const clips = overflowClipStack(child, root);
+    rects[id] = rect;
+    visibility[id] = elementIsVisible(child) && clips.every((clip) => rectsIntersect(rect, clip));
+    clipStacks[id] = clips;
+  }
+  return { rects, visibility, clipStacks };
+}
+
+function nativeDescendants(root: Element): Element[] {
+  return Array.from(root.querySelectorAll("lx-native-view,lx-native-cover,lx-native-text,lx-native-button,lx-native-slider,lx-video"))
+    .filter((element) => !isFallbackElement(element) && element.closest("lx-native-root") === root);
+}
+
+function elementIsVisible(element: Element): boolean {
+  const html = element as HTMLElement;
+  if (typeof getComputedStyle !== "function") return true;
+  const style = getComputedStyle(html);
+  if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+    return false;
+  }
+  const rect = html.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0 && html.getClientRects().length > 0;
+}
+
+function overflowClipStack(
+  element: Element,
+  root: Element
+): Array<{ x: number; y: number; width: number; height: number }> {
+  if (typeof getComputedStyle !== "function") return [];
+  const clips: Array<{ x: number; y: number; width: number; height: number }> = [];
+  for (let ancestor = element.parentElement; ancestor && ancestor !== root.parentElement; ancestor = ancestor.parentElement) {
+    const style = getComputedStyle(ancestor);
+    const clipsX = style.overflowX !== "visible";
+    const clipsY = style.overflowY !== "visible";
+    if (clipsX || clipsY) clips.push(elementContentRect(ancestor));
+    if (ancestor === root) break;
+  }
+  return clips;
+}
+
+function rectsIntersect(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number }
+): boolean {
+  return a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y;
+}
+
+function nativeRootOrder(root: LxNativeRootElement): number {
+  if (typeof document === "undefined") return 0;
+  const roots = Array.from(document.querySelectorAll("lx-native-root"));
+  const index = roots.indexOf(root);
+  return index < 0 ? 0 : index;
+}
+
+function containsNativeRoot(node: Node): boolean {
+  return node instanceof Element &&
+    (node.localName === "lx-native-root" || node.querySelector("lx-native-root") !== null);
+}
+
+function sameRootGeneration(a: RootRef, b: RootRef): boolean {
+  return a.surfaceInstanceId === b.surfaceInstanceId &&
+    a.pageInstanceId === b.pageInstanceId &&
+    a.documentInstanceId === b.documentInstanceId &&
+    a.rootKey === b.rootKey &&
+    a.rootEpoch === b.rootEpoch;
 }
 
 function pageRootScope(rootKey: string, rootEpoch: number): RootRef {

@@ -240,6 +240,9 @@ mod bridge {
         #[swift_bridge(swift_name = "getLxAppInfo")]
         fn get_lxapp_info(appid: &str) -> LxAppInfo;
 
+        #[swift_bridge(swift_name = "validateInlineNativeMediaUrls")]
+        fn validate_inline_native_media_urls(appid: &str, urls_json: &str) -> String;
+
         #[swift_bridge(swift_name = "getLxAppMoreActions")]
         fn get_lxapp_more_actions(appid: &str) -> String;
 
@@ -2089,6 +2092,21 @@ pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
             icon: String::new(),
         }
     }
+}
+
+pub fn validate_inline_native_media_urls(appid: &str, urls_json: &str) -> String {
+    let result = serde_json::from_str::<Vec<String>>(urls_json)
+        .map_err(|err| format!("invalid media URL list: {err}"))
+        .and_then(|urls| {
+            let app =
+                lxapp::try_get(appid).ok_or_else(|| format!("LxApp is not registered: {appid}"))?;
+            lxapp::inline_native::validate_media_urls(
+                &urls,
+                &app.trusted_network_domains(),
+                lxapp::is_dev_session(),
+            )
+        });
+    result.err().unwrap_or_default()
 }
 
 pub fn get_lxapp_more_actions(appid: &str) -> String {

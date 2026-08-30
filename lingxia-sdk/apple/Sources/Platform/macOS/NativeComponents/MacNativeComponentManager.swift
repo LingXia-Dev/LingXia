@@ -41,6 +41,7 @@ final class MacNativeComponentManager {
     private var pageComponents: [String: Set<String>] = [:]
     private var componentCallbacks: [String: UInt64] = [:]
     private let defaultPageId: String
+    private let appId: String
     private var factories: [String: MacNativeComponentFactory] = [:]
     private let eventSink: (_ payload: [String: Any]) -> Void
 
@@ -62,11 +63,13 @@ final class MacNativeComponentManager {
     init(
         hostView: NSView,
         webView: WKWebView,
+        appId: String,
         defaultPageId: String,
         eventSink: @escaping (_ payload: [String: Any]) -> Void
     ) {
         self.hostView = hostView
         self.webView = webView
+        self.appId = appId
         self.defaultPageId = defaultPageId
         self.eventSink = eventSink
     }
@@ -92,7 +95,7 @@ final class MacNativeComponentManager {
     func handle(message: [String: Any]) {
         guard let action = message["action"] as? String else { return }
         if island == nil, MacInlineNativeIsland.isIslandAction(action), let hostView {
-            island = MacInlineNativeIsland(host: hostView, manager: self) { [weak self] id, event, detail in
+            island = MacInlineNativeIsland(host: hostView, manager: self, appId: appId) { [weak self] id, event, detail in
                 self?.emitIslandEvent(componentId: id, event: event, detail: detail)
             }
         }

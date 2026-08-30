@@ -110,16 +110,17 @@ pub struct NativeRootCommit {
     pub operations: Vec<NativeRootOperation>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "action")]
 pub enum NativeRootAck {
-    Applied {
-        root: RootRef,
-        revision: u64,
-    },
+    #[serde(rename = "root.applied", rename_all = "camelCase")]
+    Applied { root: RootRef, revision: u64 },
+    #[serde(rename = "root.resyncRequired", rename_all = "camelCase")]
     ResyncRequired {
         root: RootRef,
         last_applied_revision: u64,
     },
+    #[serde(rename = "root.quiesced", rename_all = "camelCase")]
     Quiesced {
         root: RootRef,
         lease_id: Option<String>,

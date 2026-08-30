@@ -10,7 +10,8 @@ pub fn validate_media_urls(
     let mut security = NetworkSecurity::new();
     security.set_domains(trusted_domains);
     for url in urls {
-        if let Some(host) = media_url_host(url)
+        let host = media_url_host(url)?;
+        if let Some(host) = host
             && !security.is_domain_allowed_in(&host, dev_session)
         {
             return Err(format!(
@@ -58,10 +59,10 @@ fn push_string(out: &mut Vec<String>, value: Option<&Value>) {
     }
 }
 
-fn media_url_host(url: &str) -> Option<String> {
+fn media_url_host(url: &str) -> Result<Option<String>, String> {
     let trimmed = url.trim();
     if trimmed.is_empty() {
-        return None;
+        return Ok(None);
     }
     let lower = trimmed.to_ascii_lowercase();
     if lower.starts_with("lx:")
@@ -69,24 +70,41 @@ fn media_url_host(url: &str) -> Option<String> {
         || lower.starts_with("data:")
         || lower.starts_with("blob:")
     {
-        return None;
+        return Ok(None);
     }
-    let scheme_end = trimmed.find("://")?;
-    let rest = &trimmed[scheme_end + 3..];
+    let rest = if let Some(rest) = trimmed.strip_prefix("//") {
+        rest
+    } else if let Some(scheme_end) = trimmed.find("://") {
+        let scheme = &lower[..scheme_end];
+        if scheme != "http" && scheme != "https" {
+            return Err(format!("unsupported media URL scheme: {url}"));
+        }
+        &trimmed[scheme_end + 3..]
+    } else {
+        if trimmed
+            .find(':')
+            .is_some_and(|colon| !trimmed[..colon].contains(['/', '?', '#']))
+        {
+            return Err(format!("unsupported media URL scheme: {url}"));
+        }
+        return Ok(None);
+    };
     let host_port = rest.split(['/', '?', '#']).next().unwrap_or(rest);
     let host = host_port
         .rsplit_once('@')
         .map(|(_, host)| host)
         .unwrap_or(host_port);
-    let host = host
-        .split(':')
-        .next()
-        .unwrap_or(host)
-        .trim_matches(['[', ']']);
-    if host.is_empty() {
-        None
+    let host = if let Some(ipv6) = host.strip_prefix('[') {
+        ipv6.split_once(']')
+            .map(|(address, _)| address)
+            .unwrap_or("")
     } else {
-        Some(host.to_string())
+        host.split(':').next().unwrap_or(host)
+    };
+    if host.is_empty() {
+        Err(format!("media URL has no host: {url}"))
+    } else {
+        Ok(Some(host.to_ascii_lowercase()))
     }
 }
 
@@ -127,6 +145,17 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("trustedDomains"), "{err}");
+        assert!(err.contains("evil.example"), "{err}");
+    }
+
+    #[test]
+    fn ipv6_and_unsupported_schemes_fail_closed() {
+        let err =
+            validate_media_urls(&["https://[2001:db8::1]/a.mp4".into()], &[], false).unwrap_err();
+        assert!(err.contains("2001:db8::1"), "{err}");
+        let err = validate_media_urls(&["javascript:alert(1)".into()], &[], false).unwrap_err();
+        assert!(err.contains("unsupported media URL scheme"), "{err}");
+        let err = validate_media_urls(&["//evil.example/a.mp4".into()], &[], false).unwrap_err();
         assert!(err.contains("evil.example"), "{err}");
     }
 

@@ -551,9 +551,6 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     properties: [],
     optionalProperties: [],
     fixture: 'runtime-safe',
-    // Android exposes the native video island, but not VideoContext command
-    // binding yet; keep this returned-object surface pending on mobile.
-    optional: true,
     factory: 'lx.createVideoContext',
   },
   {

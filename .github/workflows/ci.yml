@@ -1334,6 +1334,10 @@ jobs:
         working-directory: packages
         run: npm test --workspace @lingxia/test
 
+      - name: Test inline native protocol (@lingxia/elements)
+        working-directory: packages
+        run: npm run test:inline-native --workspace @lingxia/elements
+
   # The release scripts have their own tests but no change signal of their own:
   # they used to ride on the showcase automation job, which a release-plumbing
   # PR never triggers.

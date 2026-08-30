@@ -140,9 +140,9 @@ The island is one native composition tree laid out by CSS. The page still has ex
 
 `LxVideo` is a **direct** child of `LxNativeRoot`. Nested Root, DOM inside Root, a bare `LxVideo`, or Video inside View/Cover is `NATIVE_ROOT_INVALID_STRUCTURE`. `controls={true}` cannot share a Root with `LxNativeSlider` or a play/pause/mute/fullscreen `LxNativeButton`.
 
-**Lifecycle:** the host owns the island container. When a page/WebView is destroyed
-or replaced, the host unmounts every island node, stops native video resources, and
-resets the root lease before accepting a new commit. Navigating back therefore
+**Lifecycle:** the host owns the island container. Removing an `LxNativeRoot`, or
+destroying/replacing its page WebView, unmounts every node owned by that Root, stops
+its native video resources, and resets its lease before accepting a new commit. Navigating back therefore
 cannot leave a stale video surface or an invisible touch-blocking overlay behind.
 
 Cover and Button are author recipes: they expand to `view` / `tappable` before the host commit. Host factories are only `root`, `view`, `text`, `tappable`, `slider`, and `video`. `LxPicker` / `LxMediaSwiper` / `LxNavigator` stay on the presenter overlay channel.
@@ -160,7 +160,8 @@ available yet.
 
 The full attribute list (`src`, `poster`, `objectFit`, `controls`, `qualities`,
 `playbackRates`, …) is the exported `LxVideoAttributes` from `@lingxia/elements`;
-remote `src` must be under `security.network.trustedDomains`. Two pieces of
+every remote media URL (`src`, `poster`, watermark/quality URLs, and
+`setStreamSource`) must be under `security.network.trustedDomains`. Two pieces of
 behavior are doc-only: event reshaping and imperative control.
 
 **Events** — React/Vue handlers receive the **payload** (`onTimeUpdate` →

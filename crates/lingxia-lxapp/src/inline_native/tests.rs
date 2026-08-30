@@ -1088,7 +1088,10 @@ fn paints_cover_button_slider_and_dispatches_pointer() {
                 visible: true,
             },
         ],
-        chains: vec![],
+        chains: vec![ScrollChain {
+            chain_key: "page".into(),
+            ancestors: vec![],
+        }],
     });
 
     let mut recorder = AttachRecorder { calls: Vec::new() };
@@ -1177,6 +1180,117 @@ fn paints_cover_button_slider_and_dispatches_pointer() {
         matches!(through_cover, IslandHit::Video { ref id } if id == "hero"),
         "Cover box-none must not swallow hits meant for video, got {through_cover:?}"
     );
+}
+
+#[test]
+fn island_session_orders_roots_from_geometry_and_destroys_one_generation() {
+    let first = root();
+    let mut second = root();
+    second.root_key = "second".into();
+    let mut session = IslandSession::new();
+    assert!(matches!(
+        session.apply_commit(commit(
+            &first,
+            0,
+            1,
+            vec![mount(&first, "first-node", "view", None, 0)]
+        )),
+        ApplyCommitOutcome::Applied(_)
+    ));
+    assert!(matches!(
+        session.apply_commit(commit(
+            &second,
+            0,
+            1,
+            vec![mount(&second, "second-node", "view", None, 0)]
+        )),
+        ApplyCommitOutcome::Applied(_)
+    ));
+    session.apply_geometry(NativeGeometrySnapshot {
+        action: "geometry.snapshot".into(),
+        surface_instance_id: first.surface_instance_id.clone(),
+        page_instance_id: first.page_instance_id.clone(),
+        document_instance_id: first.document_instance_id.clone(),
+        revision: 1,
+        coordinate_space: "page-unscrolled-css-px".into(),
+        roots: vec![
+            NativeGeometrySnapshotRoot {
+                root_ref: first.clone(),
+                basis_tree_revision: 1,
+                root_order: 9,
+                chain_key: "page".into(),
+                content_rect: rect(),
+                visible: true,
+            },
+            NativeGeometrySnapshotRoot {
+                root_ref: second.clone(),
+                basis_tree_revision: 1,
+                root_order: 2,
+                chain_key: "page".into(),
+                content_rect: rect(),
+                visible: true,
+            },
+        ],
+        nodes: vec![
+            NativeGeometrySnapshotNode {
+                node_ref: node(&first, "first-node", 1),
+                chain_key: "page".into(),
+                content_rect: rect(),
+                clip_stack: vec![],
+                visible: true,
+            },
+            NativeGeometrySnapshotNode {
+                node_ref: node(&second, "second-node", 1),
+                chain_key: "page".into(),
+                content_rect: rect(),
+                clip_stack: vec![],
+                visible: true,
+            },
+        ],
+        chains: vec![ScrollChain {
+            chain_key: "page".into(),
+            ancestors: vec![],
+        }],
+    });
+    let order: Vec<String> = session
+        .composition_order()
+        .into_iter()
+        .map(|node| node.node_key)
+        .collect();
+    assert_eq!(order, ["second-node", "first-node"]);
+
+    assert!(
+        session.handle_view_json(&serde_json::json!({ "action": "root.destroy", "root": second }))
+    );
+    let order: Vec<String> = session
+        .composition_order()
+        .into_iter()
+        .map(|node| node.node_key)
+        .collect();
+    assert_eq!(order, ["first-node"]);
+}
+
+#[test]
+fn stale_destroy_cannot_remove_a_new_root_generation() {
+    let old = root();
+    let mut current = old.clone();
+    current.root_epoch = 2;
+    let mut session = IslandSession::new();
+    assert!(matches!(
+        session.apply_commit(commit(
+            &current,
+            0,
+            1,
+            vec![mount(&current, "current-node", "view", None, 0)]
+        )),
+        ApplyCommitOutcome::Applied(_)
+    ));
+
+    assert!(!session.handle_view_json(&serde_json::json!({
+        "action": "root.destroy",
+        "root": old,
+    })));
+    assert_eq!(session.composition_order()[0].node_key, "current-node");
 }
 
 #[test]

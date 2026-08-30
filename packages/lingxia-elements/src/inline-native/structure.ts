@@ -817,12 +817,17 @@ export function isFallbackElement(element: Element): boolean {
 
 function readElementProps(element: Element): Record<string, unknown> {
   const props: Record<string, unknown> = {};
+  const dataset: Record<string, string> = {};
   for (const attr of Array.from(element.attributes)) {
     const name = attr.name;
     if (name === "id" || name === "automation-id" || name === "class" || name === "style") {
       continue;
     }
     props[camelize(name)] = attr.value;
+    if (name.startsWith("data-") && name !== "data-lx-component-id") {
+      const key = camelize(name.slice(5));
+      if (key) dataset[key] = attr.value;
+    }
     if (name.startsWith("aria-")) {
       props[name] = attr.value;
     }
@@ -860,6 +865,8 @@ function readElementProps(element: Element): Record<string, unknown> {
     "muted",
     "volume",
     "progressBar",
+    "pageFuncBindings",
+    "pageFuncBindingsJson",
     "intent",
     "emphasis",
     "size",
@@ -881,6 +888,10 @@ function readElementProps(element: Element): Record<string, unknown> {
     if (key in anyEl && anyEl[key] !== undefined && anyEl[key] !== null) {
       props[key] = anyEl[key];
     }
+  }
+  if (Object.keys(dataset).length > 0) {
+    props.dataset = dataset;
+    props.datasetJson = JSON.stringify(dataset);
   }
   const ariaLabel = element.getAttribute("aria-label");
   if (ariaLabel) {

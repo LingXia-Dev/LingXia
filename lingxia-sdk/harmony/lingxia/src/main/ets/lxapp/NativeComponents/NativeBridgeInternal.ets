@@ -18,7 +18,7 @@ export function handleIslandMessage(webTag: string, action: string, payload: Rec
   const hostKey = resolveManagerKey(webTag) ?? webTag;
   let host = islandHosts.get(hostKey);
   if (!host) {
-    host = new InlineNativeIslandHost();
+    host = new InlineNativeIslandHost(hostKey.split(':')[0]);
     islandHosts.set(hostKey, host);
   }
   const handled = host.handle(action, payload);
@@ -29,9 +29,7 @@ export function handleIslandMessage(webTag: string, action: string, payload: Rec
   for (let i = 0; i < outgoing.length; i++) {
     sendEventToJavaScript(webTag, outgoing[i]);
   }
-  if (host.canDisplay()) {
-    adoptIslandNodes(webTag, host);
-  }
+  adoptIslandNodes(webTag, host);
   return true;
 }
 

@@ -126,11 +126,18 @@ impl RootRegistry {
     }
 
     pub fn destroy(&mut self, root: &RootRef) -> Option<RootState> {
-        if let Some(state) = self.roots.get_mut(&Self::slot_key(root)) {
-            state.lifecycle = RootLifecycle::Destroyed;
-            state.nodes.clear();
+        let key = Self::slot_key(root);
+        if !self
+            .roots
+            .get(&key)
+            .is_some_and(|state| state.root.same_generation(root))
+        {
+            return None;
         }
-        self.roots.remove(&Self::slot_key(root))
+        let mut state = self.roots.remove(&key)?;
+        state.lifecycle = RootLifecycle::Destroyed;
+        state.nodes.clear();
+        Some(state)
     }
 
     pub fn roots(&self) -> impl Iterator<Item = &RootState> {
