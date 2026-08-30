@@ -50,46 +50,82 @@
             @rate-change="onRateChange"
           />
           <LxNativeCover
-            v-if="coverVisible"
+            v-if="nativeMenuOpen"
             id="video-native-cover"
             automation-id="video-native-cover"
             data-testid="inline-native-cover"
-            scrim="bottom"
-            :scrim-opacity="0.72"
+            scrim="none"
             role="presentation"
           >
-            <LxNativeText
-              id="video-cover-title"
-              class="absolute bottom-10 left-3 text-white text-sm font-semibold"
-              :font-size="14"
-              :font-weight="600"
-              color="#ffffff"
-              :max-lines="1"
-            >NativeCover · bottom scrim</LxNativeText>
-            <LxNativeText
-              id="video-cover-detail"
-              class="absolute bottom-5 left-3 text-white/80 text-xs"
-              :font-size="11"
-              color="rgba(255, 255, 255, 0.8)"
-              :max-lines="1"
-            >box-none overlay · video stays interactive</LxNativeText>
+            <LxNativeView
+              id="video-native-menu"
+              automation-id="video-native-menu"
+              class="absolute right-3 top-3 border border-slate-600 bg-slate-900"
+              :style="{ width: '210px', height: '132px', borderRadius: '12px', backgroundColor: '#0f172a', borderColor: '#475569', borderWidth: '1px' }"
+            >
+              <LxNativeText
+                id="video-native-menu-title"
+                class="absolute left-3 top-3 text-sm font-semibold text-white"
+                :font-size="14"
+                :font-weight="600"
+                color="#ffffff"
+                :max-lines="1"
+              >Native menu</LxNativeText>
+              <LxNativeText
+                id="video-native-menu-detail"
+                class="absolute left-3 right-3 top-9 text-xs text-slate-300"
+                :font-size="11"
+                color="#cbd5e1"
+                :max-lines="1"
+              >NativeView above native video</LxNativeText>
+              <LxNativeButton
+                id="video-native-menu-more"
+                automation-id="video-native-menu-more"
+                label="More"
+                icon="more"
+                emphasis="secondary"
+                size="compact"
+                aria-label="More native menu actions"
+                class="absolute bottom-3 left-3"
+                :style="{ width: '88px', height: '36px', borderRadius: '9px' }"
+                @press="onNativeMenuMore"
+              />
+              <LxNativeButton
+                id="video-native-menu-close"
+                automation-id="video-native-menu-close"
+                label="Close"
+                icon="close"
+                emphasis="primary"
+                size="compact"
+                aria-label="Close native menu"
+                class="absolute bottom-3 right-3"
+                :style="{ width: '88px', height: '36px', borderRadius: '9px' }"
+                @press="onNativeMenuClose"
+              />
+            </LxNativeView>
           </LxNativeCover>
         </LxNativeRoot>
       </div>
 
       <div class="flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
         <div class="min-w-0">
-          <div class="text-xs font-semibold text-blue-900">Native island primitives</div>
-          <div class="text-[11px] leading-4 text-blue-700">Cover layers over video; View groups native controls.</div>
+          <div class="text-xs font-semibold text-blue-900">H5 → native overlay</div>
+          <div class="text-[11px] leading-4 text-blue-700">Tap the H5 burger to mount a NativeView above video.</div>
         </div>
         <button
           type="button"
-          data-testid="native-cover-toggle"
-          :aria-pressed="coverVisible"
-          class="shrink-0 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white active:scale-95"
-          @click="coverVisible = !coverVisible"
-        >{{ coverVisible ? 'Hide cover' : 'Show cover' }}</button>
-        <span data-testid="native-cover-state" class="sr-only">{{ coverVisible ? 'visible' : 'hidden' }}</span>
+          data-testid="native-menu-toggle"
+          :aria-label="nativeMenuOpen ? 'Close native menu' : 'Open native menu'"
+          :aria-expanded="nativeMenuOpen"
+          class="flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white active:scale-95"
+          @click="nativeMenuOpen = !nativeMenuOpen"
+        >
+          <svg viewBox="0 0 20 20" fill="none" class="h-4 w-4" aria-hidden="true">
+            <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          {{ nativeMenuOpen ? 'Close' : 'Menu' }}
+        </button>
+        <span data-testid="native-menu-state" class="sr-only">{{ nativeMenuOpen ? 'open' : 'closed' }}</span>
       </div>
 
       <LxNativeRoot id="island-controls" class="block w-full" :style="{ height: '82px' }" data-testid="island-controls-root">
@@ -290,7 +326,7 @@ const currentTime = computed(() => (typeof data?.currentTime === 'number' ? data
 const duration = computed(() => (typeof data?.duration === 'number' ? data.duration : 0));
 const islandPlaying = ref(false);
 const nativePressSource = ref('none');
-const coverVisible = ref(true);
+const nativeMenuOpen = ref(false);
 const islandProgress = computed(() => duration.value > 0
   ? Math.min(100, Math.round((currentTime.value / duration.value) * 100))
   : 0);
@@ -312,6 +348,15 @@ function onIslandPress(payload: { source?: string }) {
   nativePressSource.value = payload?.source || 'unknown';
   if (islandPlaying.value) pause();
   else play();
+}
+
+function onNativeMenuMore(payload: { source?: string }) {
+  nativePressSource.value = payload?.source || 'unknown';
+}
+
+function onNativeMenuClose(payload: { source?: string }) {
+  nativePressSource.value = payload?.source || 'unknown';
+  nativeMenuOpen.value = false;
 }
 
 function seekBackward(seconds: number) {

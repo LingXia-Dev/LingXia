@@ -39,14 +39,50 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
     () => app.page.eval({
       page: 'video',
       script:
-        '(() => { const root = document.querySelector("#video-native-root"); const video = root && root.querySelector(":scope > lx-video"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const children = compiled && compiled.ok ? compiled.root.children : []; const cover = children.find((child) => child.authorType === "LxNativeCover"); return { hasRoot: !!root, videoIsDirectChild: !!video, videoId: video && video.getAttribute("id"), compileOk: !!(compiled && compiled.ok), kinds: children.map((child) => child.kind), cover: cover && { authorType: cover.authorType, automationId: cover.automationId, pointerEvents: cover.props.pointerEvents, scrim: cover.props.scrimPaint && cover.props.scrimPaint.scrim, scrimOpacity: cover.props.scrimPaint && cover.props.scrimPaint.opacity, coverPosition: cover.props.coverPreset && cover.props.coverPreset.position, coverInset: cover.props.coverPreset && cover.props.coverPreset.inset, childKinds: cover.children.map((child) => child.kind), childText: cover.children.map((child) => child.text) } }; })()',
+        '(() => { const root = document.querySelector("#video-native-root"); const video = root && root.querySelector(":scope > lx-video"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const children = compiled && compiled.ok ? compiled.root.children : []; return { hasRoot: !!root, videoIsDirectChild: !!video, videoId: video && video.getAttribute("id"), compileOk: !!(compiled && compiled.ok), kinds: children.map((child) => child.kind), hasCover: children.some((child) => child.authorType === "LxNativeCover") }; })()',
     }),
-    (value) => (value as { cover?: { scrim?: unknown } } | null)?.cover?.scrim === 'bottom',
-    { timeoutMs: 5_000, describe: 'NativeCover compiled recipe' },
+    (value) => (value as { compileOk?: boolean; kinds?: string[] } | null)?.compileOk === true
+      && (value as { kinds: string[] }).kinds.join(',') === 'video',
+    { timeoutMs: 5_000, describe: 'native video without the default overlay' },
   ) as {
     hasRoot: boolean;
     videoIsDirectChild: boolean;
     videoId: string | null;
+    compileOk: boolean;
+    kinds: string[];
+    hasCover: boolean;
+  };
+  expect(wrapped.hasRoot).toBeTruthy();
+  expect(wrapped.videoIsDirectChild).toBeTruthy();
+  expect(wrapped.videoId).toBe('lx-video-1');
+  expect(wrapped.compileOk).toBeTruthy();
+  expect(wrapped.kinds.join(',')).toBe('video');
+  expect(wrapped.hasCover).toBeFalsy();
+  expect(await waitForElementText(
+    app,
+    'video',
+    '[data-testid="native-menu-state"]',
+    (text) => text === 'closed',
+    5_000,
+  )).toBe('closed');
+
+  await app.page.click({ page: 'video', css: '[data-testid="native-menu-toggle"]' });
+  expect(await waitForElementText(
+    app,
+    'video',
+    '[data-testid="native-menu-state"]',
+    (text) => text === 'open',
+    5_000,
+  )).toBe('open');
+  const nativeMenu = await eventually(
+    () => app.page.eval({
+      page: 'video',
+      script:
+        '(() => { const root = document.querySelector("#video-native-root"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const children = compiled && compiled.ok ? compiled.root.children : []; const cover = children.find((child) => child.authorType === "LxNativeCover"); const menu = cover && cover.children.find((child) => child.authorId === "video-native-menu"); const more = menu && menu.children.find((child) => child.authorId === "video-native-menu-more"); const close = menu && menu.children.find((child) => child.authorId === "video-native-menu-close"); return { compileOk: !!(compiled && compiled.ok), kinds: children.map((child) => child.kind), cover: cover && { authorType: cover.authorType, automationId: cover.automationId, pointerEvents: cover.props.pointerEvents, scrim: cover.props.scrimPaint && cover.props.scrimPaint.scrim, coverPosition: cover.props.coverPreset && cover.props.coverPreset.position, coverInset: cover.props.coverPreset && cover.props.coverPreset.inset, childKinds: cover.children.map((child) => child.kind) }, menu: menu && { authorType: menu.authorType, automationId: menu.automationId, pointerEvents: menu.props.pointerEvents, nativeStyle: menu.props.nativeStyle, childKinds: menu.children.map((child) => child.kind), childText: menu.children.filter((child) => child.kind === "text").map((child) => child.text) }, more: more && { icon: more.props.content && more.props.content.icon && more.props.content.icon.name, label: more.props.content && more.props.content.text }, close: close && { icon: close.props.content && close.props.content.icon && close.props.content.icon.name, label: close.props.content && close.props.content.text } }; })()',
+    }),
+    (value) => (value as { menu?: { authorType?: unknown } } | null)?.menu?.authorType === 'LxNativeView',
+    { timeoutMs: 5_000, describe: 'H5 burger mounted the native menu view' },
+  ) as {
     compileOk: boolean;
     kinds: string[];
     cover: {
@@ -54,67 +90,62 @@ spec("wrap the showcase player in LxNativeRoot so island video is the live path"
       automationId: string;
       pointerEvents: string;
       scrim: string;
-      scrimOpacity: number;
       coverPosition: string;
       coverInset: number;
       childKinds: string[];
+    };
+    menu: {
+      authorType: string;
+      automationId: string;
+      pointerEvents: string;
+      nativeStyle: Record<string, string>;
+      childKinds: string[];
       childText: string[];
     };
+    more: { icon: string; label: string };
+    close: { icon: string; label: string };
   };
-  expect(wrapped.hasRoot).toBeTruthy();
-  expect(wrapped.videoIsDirectChild).toBeTruthy();
-  expect(wrapped.videoId).toBe('lx-video-1');
-  expect(wrapped.compileOk).toBeTruthy();
-  expect(wrapped.kinds[0]).toBe('video');
-  expect(wrapped.kinds[1]).toBe('view');
-  expect(wrapped.cover.authorType).toBe('LxNativeCover');
-  expect(wrapped.cover.automationId).toBe('video-native-cover');
-  expect(wrapped.cover.pointerEvents).toBe('box-none');
-  expect(wrapped.cover.scrim).toBe('bottom');
-  expect(wrapped.cover.scrimOpacity).toBe(0.72);
-  expect(wrapped.cover.coverPosition).toBe('absolute');
-  expect(wrapped.cover.coverInset).toBe(0);
-  expect(wrapped.cover.childKinds.join(',')).toBe('text,text');
-  expect(wrapped.cover.childText.join(' ')).toContain('video stays interactive');
+  expect(nativeMenu.compileOk).toBeTruthy();
+  expect(nativeMenu.kinds.join(',')).toBe('video,view');
+  expect(nativeMenu.cover.authorType).toBe('LxNativeCover');
+  expect(nativeMenu.cover.automationId).toBe('video-native-cover');
+  expect(nativeMenu.cover.pointerEvents).toBe('box-none');
+  expect(nativeMenu.cover.scrim).toBe('none');
+  expect(nativeMenu.cover.coverPosition).toBe('absolute');
+  expect(nativeMenu.cover.coverInset).toBe(0);
+  expect(nativeMenu.cover.childKinds.join(',')).toBe('view');
+  expect(nativeMenu.menu.authorType).toBe('LxNativeView');
+  expect(nativeMenu.menu.automationId).toBe('video-native-menu');
+  expect(nativeMenu.menu.pointerEvents).toBe('auto');
+  expect(nativeMenu.menu.nativeStyle.backgroundColor).toContain('15');
+  expect(nativeMenu.menu.nativeStyle.borderColor).toContain('71');
+  expect(nativeMenu.menu.nativeStyle.borderRadius).toBe('12px');
+  expect(nativeMenu.menu.childKinds.join(',')).toBe('text,text,tappable,tappable');
+  expect(nativeMenu.menu.childText.join(' ')).toContain('NativeView above native video');
+  expect(nativeMenu.more.icon).toBe('more');
+  expect(nativeMenu.more.label).toBe('More');
+  expect(nativeMenu.close.icon).toBe('close');
+  expect(nativeMenu.close.label).toBe('Close');
 
-  await app.page.click({ page: 'video', css: '[data-testid="native-cover-toggle"]' });
+  await app.page.click({ page: 'video', css: '[data-testid="native-menu-toggle"]' });
   expect(await waitForElementText(
     app,
     'video',
-    '[data-testid="native-cover-state"]',
-    (text) => text === 'hidden',
+    '[data-testid="native-menu-state"]',
+    (text) => text === 'closed',
     5_000,
-  )).toBe('hidden');
-  const coverHidden = await eventually(
+  )).toBe('closed');
+  const menuRemoved = await eventually(
     () => app.page.eval({
       page: 'video',
       script:
-        '(() => { const root = document.querySelector("#video-native-root"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const children = compiled && compiled.ok ? compiled.root.children : []; return { compileOk: !!(compiled && compiled.ok), kinds: children.map((child) => child.kind), hasCover: children.some((child) => child.authorType === "LxNativeCover") }; })()',
+        '(() => { const root = document.querySelector("#video-native-root"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const children = compiled && compiled.ok ? compiled.root.children : []; return { compileOk: !!(compiled && compiled.ok), kinds: children.map((child) => child.kind), hasMenu: children.some((child) => child.authorType === "LxNativeCover") }; })()',
     }),
-    (value) => (value as { compileOk?: boolean; hasCover?: boolean } | null)?.compileOk === true
-      && (value as { hasCover: boolean }).hasCover === false,
-    { timeoutMs: 5_000, describe: 'NativeCover removed from compiled island' },
-  ) as { compileOk: boolean; kinds: string[]; hasCover: boolean };
-  expect(coverHidden.kinds.join(',')).toBe('video');
-
-  await app.page.click({ page: 'video', css: '[data-testid="native-cover-toggle"]' });
-  expect(await waitForElementText(
-    app,
-    'video',
-    '[data-testid="native-cover-state"]',
-    (text) => text === 'visible',
-    5_000,
-  )).toBe('visible');
-  const coverRestored = await eventually(
-    () => app.page.eval({
-      page: 'video',
-      script:
-        '(() => { const root = document.querySelector("#video-native-root"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const children = compiled && compiled.ok ? compiled.root.children : []; const cover = children.find((child) => child.authorType === "LxNativeCover"); return cover && cover.props.scrimPaint && cover.props.scrimPaint.scrim; })()',
-    }),
-    (value) => value === 'bottom',
-    { timeoutMs: 5_000, describe: 'NativeCover restored to compiled island' },
-  );
-  expect(coverRestored).toBe('bottom');
+    (value) => (value as { compileOk?: boolean; hasMenu?: boolean } | null)?.compileOk === true
+      && (value as { hasMenu: boolean }).hasMenu === false,
+    { timeoutMs: 5_000, describe: 'native menu removed from compiled island' },
+  ) as { compileOk: boolean; kinds: string[]; hasMenu: boolean };
+  expect(menuRemoved.kinds.join(',')).toBe('video');
 
   const chrome = await app.page.eval({
     page: 'video',
