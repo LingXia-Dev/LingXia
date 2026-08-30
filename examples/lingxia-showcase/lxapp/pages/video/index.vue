@@ -25,7 +25,7 @@
       </div>
 
       <div class="bg-black rounded-xl overflow-hidden">
-        <LxNativeRoot class="block w-full" :style="{ aspectRatio: '16 / 9' }" data-testid="inline-native-root">
+        <LxNativeRoot id="video-native-root" class="block w-full" :style="{ aspectRatio: '16 / 9' }" data-testid="inline-native-root">
           <LxVideo
             :id="video.id"
             data-testid="native-video"
@@ -49,23 +49,72 @@
             @quality-change="onQualityChange"
             @rate-change="onRateChange"
           />
-          <LxNativeCover pointer-events="none" data-testid="inline-native-cover">
+          <LxNativeCover
+            v-if="coverVisible"
+            id="video-native-cover"
+            automation-id="video-native-cover"
+            data-testid="inline-native-cover"
+            scrim="bottom"
+            :scrim-opacity="0.72"
+            role="presentation"
+          >
             <LxNativeText
-              class="absolute left-3 top-3 text-white text-xs font-semibold"
-              :font-size="12"
+              id="video-cover-title"
+              class="absolute bottom-10 left-3 text-white text-sm font-semibold"
+              :font-size="14"
               :font-weight="600"
               color="#ffffff"
               :max-lines="1"
-            >Inline native</LxNativeText>
+            >NativeCover · bottom scrim</LxNativeText>
+            <LxNativeText
+              id="video-cover-detail"
+              class="absolute bottom-5 left-3 text-white/80 text-xs"
+              :font-size="11"
+              color="rgba(255, 255, 255, 0.8)"
+              :max-lines="1"
+            >box-none overlay · video stays interactive</LxNativeText>
           </LxNativeCover>
         </LxNativeRoot>
       </div>
 
-      <LxNativeRoot id="island-controls" class="block w-full" :style="{ height: '56px' }">
+      <div class="flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
+        <div class="min-w-0">
+          <div class="text-xs font-semibold text-blue-900">Native island primitives</div>
+          <div class="text-[11px] leading-4 text-blue-700">Cover layers over video; View groups native controls.</div>
+        </div>
+        <button
+          type="button"
+          data-testid="native-cover-toggle"
+          :aria-pressed="coverVisible"
+          class="shrink-0 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white active:scale-95"
+          @click="coverVisible = !coverVisible"
+        >{{ coverVisible ? 'Hide cover' : 'Show cover' }}</button>
+        <span data-testid="native-cover-state" class="sr-only">{{ coverVisible ? 'visible' : 'hidden' }}</span>
+      </div>
+
+      <LxNativeRoot id="island-controls" class="block w-full" :style="{ height: '82px' }" data-testid="island-controls-root">
         <LxNativeView
-          class="flex h-full w-full items-center gap-3 px-3"
-          :style="{ height: '56px' }"
+          id="island-controls-view"
+          automation-id="island-controls-view"
+          data-testid="island-controls-view"
+          class="relative block h-full w-full border border-slate-700 bg-slate-900"
+          :style="{ height: '82px', borderRadius: '14px', backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: '1px' }"
         >
+          <LxNativeText
+            id="island-controls-label"
+            class="absolute left-3 top-2 text-xs font-semibold text-slate-200"
+            :font-size="11"
+            :font-weight="600"
+            color="#e2e8f0"
+            :max-lines="1"
+          >NativeView controls</LxNativeText>
+          <LxNativeText
+            id="island-controls-status"
+            class="absolute right-3 top-2 text-xs text-slate-400"
+            :font-size="11"
+            color="#94a3b8"
+            :max-lines="1"
+          >{{ nativePressSource === 'none' ? 'waiting for native input' : `last input: ${nativePressSource}` }}</LxNativeText>
           <LxNativeButton
             id="island-play"
             automation-id="island-play-button"
@@ -77,6 +126,7 @@
             :hit-slop="8"
             :aria-label="islandPlaying ? 'Pause island video' : 'Play island video'"
             aria-description="Controls the native video player"
+            class="absolute left-3 top-[32px]"
             :style="{ width: '96px', height: '40px', borderRadius: '10px', color: '#ffffff' }"
             @press="onIslandPress"
           />
@@ -89,7 +139,8 @@
             :value="islandProgress"
             :buffered-value="islandBufferedProgress"
             value-label="value"
-            :style="{ flex: 1, height: '28px', minWidth: '160px', accentColor: '#2563eb' }"
+            class="absolute left-[120px] right-3 top-[38px]"
+            :style="{ height: '28px', accentColor: '#3b82f6' }"
             @value-commit="onIslandSeek"
           />
         </LxNativeView>
@@ -239,6 +290,7 @@ const currentTime = computed(() => (typeof data?.currentTime === 'number' ? data
 const duration = computed(() => (typeof data?.duration === 'number' ? data.duration : 0));
 const islandPlaying = ref(false);
 const nativePressSource = ref('none');
+const coverVisible = ref(true);
 const islandProgress = computed(() => duration.value > 0
   ? Math.min(100, Math.round((currentTime.value / duration.value) * 100))
   : 0);
