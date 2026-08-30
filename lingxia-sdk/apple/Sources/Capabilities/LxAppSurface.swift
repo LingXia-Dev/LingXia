@@ -323,6 +323,7 @@ enum LxAppSurface {
                 // A float's visibility is owned by the layout plan reconciler;
                 // present only re-asserts that content exists.
             } else {
+                LxAppMacAppUIRuntime.dismissIndependentPanelsForSurfaceWindow()
                 existing.window?.makeKeyAndOrderFront(nil)
             }
             return true
@@ -590,6 +591,7 @@ enum LxAppSurface {
         if kind != kindWindow, let parentWindow = context.parentWindow, let window {
             parentWindow.addChildWindow(window, ordered: .above)
         }
+        LxAppMacAppUIRuntime.dismissIndependentPanelsForSurfaceWindow()
         window?.makeKeyAndOrderFront(nil)
         return true
     }
@@ -1096,6 +1098,7 @@ enum LxAppSurface {
             LXLog.error("show: surface has no window id=\(id) app=\(appId)", category: "Surface", appId: appId)
             return false
         }
+        LxAppMacAppUIRuntime.dismissIndependentPanelsForSurfaceWindow()
         // Defense in depth — JS-side already short-circuits on no-op.
         if window.isVisible { return true }
         if let parentWindow = entry.parentWindow, window.parent == nil {

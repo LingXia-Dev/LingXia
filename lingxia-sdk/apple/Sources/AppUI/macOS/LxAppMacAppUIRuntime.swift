@@ -282,6 +282,13 @@ final class LxAppMacAppUIRuntime: NSObject {
         active?.refreshChromeActions()
     }
 
+    /// A top-level surface window supersedes transient tray UI. This is also
+    /// called when an existing window is shown, because a nonactivating panel
+    /// can otherwise remain above a window that was already key.
+    static func dismissIndependentPanelsForSurfaceWindow() {
+        active?.dismissVisibleIndependentPanels()
+    }
+
     // MARK: - Tray runtime updates (lx.tray.*)
 
     func setTrayBadge(_ text: String?) { trayController.setBadge(text) }
@@ -297,7 +304,8 @@ final class LxAppMacAppUIRuntime: NSObject {
         sessionId: UInt64,
         panelId: String
     ) -> Bool {
-        guard let surface = surfaceById[panelId], effectiveRole(for: surface) == .aside else {
+        guard let surface = surfaceById[panelId],
+              effectiveRole(for: surface) == .aside || isIndependentPanelSurface(surface) else {
             // An UNDECLARED lxapp opened with panel presentation (privileged
             // openSurface / activator): dock it as a runtime aside keyed by
             // its appId. Returning false here would fall through to the main
@@ -1751,6 +1759,12 @@ final class LxAppMacAppUIRuntime: NSObject {
                 return false
             }
             return independentPanelWindows[id]?.isVisible == true
+        }
+    }
+
+    private func dismissVisibleIndependentPanels() {
+        for id in visibleIndependentPanelIDs() {
+            _ = hideManagedSurface(id: id, updateGraph: true)
         }
     }
 
