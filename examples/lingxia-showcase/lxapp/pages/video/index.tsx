@@ -70,7 +70,7 @@ export default function App() {
   const eventLog = data?.eventLog || 'Ready';
   const [islandPlaying, setIslandPlaying] = React.useState(false);
   const [nativePressSource, setNativePressSource] = React.useState('none');
-  const [coverVisible, setCoverVisible] = React.useState(true);
+  const [nativeMenuOpen, setNativeMenuOpen] = React.useState(false);
   const currentTime = typeof data?.currentTime === 'number' ? data.currentTime : 0;
   const duration = typeof data?.duration === 'number' ? data.duration : 0;
 
@@ -153,34 +153,67 @@ export default function App() {
               onQualityChange={onQualityChange}
               onRateChange={onRateChange}
             />
-            {coverVisible ? (
+            {nativeMenuOpen ? (
               <LxNativeCover
                 id="video-native-cover"
                 automationId="video-native-cover"
                 data-testid="inline-native-cover"
-                scrim="bottom"
-                scrimOpacity={0.72}
+                scrim="none"
                 role="presentation"
               >
-                <LxNativeText
-                  id="video-cover-title"
-                  className="absolute bottom-10 left-3 text-white text-sm font-semibold"
-                  fontSize={14}
-                  fontWeight={600}
-                  color="#ffffff"
-                  maxLines={1}
+                <LxNativeView
+                  id="video-native-menu"
+                  automationId="video-native-menu"
+                  className="absolute right-3 top-3 border border-slate-600 bg-slate-900"
+                  style={{ width: 210, height: 132, borderRadius: 12, backgroundColor: '#0f172a', borderColor: '#475569', borderWidth: 1 }}
                 >
-                  NativeCover · bottom scrim
-                </LxNativeText>
-                <LxNativeText
-                  id="video-cover-detail"
-                  className="absolute bottom-5 left-3 text-white/80 text-xs"
-                  fontSize={11}
-                  color="rgba(255, 255, 255, 0.8)"
-                  maxLines={1}
-                >
-                  box-none overlay · video stays interactive
-                </LxNativeText>
+                  <LxNativeText
+                    id="video-native-menu-title"
+                    className="absolute left-3 top-3 text-sm font-semibold text-white"
+                    fontSize={14}
+                    fontWeight={600}
+                    color="#ffffff"
+                    maxLines={1}
+                  >
+                    Native menu
+                  </LxNativeText>
+                  <LxNativeText
+                    id="video-native-menu-detail"
+                    className="absolute left-3 right-3 top-9 text-xs text-slate-300"
+                    fontSize={11}
+                    color="#cbd5e1"
+                    maxLines={1}
+                  >
+                    NativeView above native video
+                  </LxNativeText>
+                  <LxNativeButton
+                    id="video-native-menu-more"
+                    automationId="video-native-menu-more"
+                    label="More"
+                    icon="more"
+                    emphasis="secondary"
+                    size="compact"
+                    aria-label="More native menu actions"
+                    className="absolute bottom-3 left-3"
+                    style={{ width: 88, height: 36, borderRadius: 9 }}
+                    onPress={({ source }) => setNativePressSource(source)}
+                  />
+                  <LxNativeButton
+                    id="video-native-menu-close"
+                    automationId="video-native-menu-close"
+                    label="Close"
+                    icon="close"
+                    emphasis="primary"
+                    size="compact"
+                    aria-label="Close native menu"
+                    className="absolute bottom-3 right-3"
+                    style={{ width: 88, height: 36, borderRadius: 9 }}
+                    onPress={({ source }) => {
+                      setNativePressSource(source);
+                      setNativeMenuOpen(false);
+                    }}
+                  />
+                </LxNativeView>
               </LxNativeCover>
             ) : null}
           </LxNativeRoot>
@@ -188,19 +221,23 @@ export default function App() {
 
         <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
           <div className="min-w-0">
-            <div className="text-xs font-semibold text-blue-900">Native island primitives</div>
-            <div className="text-[11px] leading-4 text-blue-700">Cover layers over video; View groups native controls.</div>
+            <div className="text-xs font-semibold text-blue-900">H5 → native overlay</div>
+            <div className="text-[11px] leading-4 text-blue-700">Tap the H5 burger to mount a NativeView above video.</div>
           </div>
           <button
             type="button"
-            data-testid="native-cover-toggle"
-            aria-pressed={coverVisible}
-            onClick={() => setCoverVisible((visible) => !visible)}
-            className="shrink-0 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white active:scale-95"
+            data-testid="native-menu-toggle"
+            aria-label={nativeMenuOpen ? 'Close native menu' : 'Open native menu'}
+            aria-expanded={nativeMenuOpen}
+            onClick={() => setNativeMenuOpen((open) => !open)}
+            className="flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white active:scale-95"
           >
-            {coverVisible ? 'Hide cover' : 'Show cover'}
+            <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
+              <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            {nativeMenuOpen ? 'Close' : 'Menu'}
           </button>
-          <span data-testid="native-cover-state" className="sr-only">{coverVisible ? 'visible' : 'hidden'}</span>
+          <span data-testid="native-menu-state" className="sr-only">{nativeMenuOpen ? 'open' : 'closed'}</span>
         </div>
 
         <LxNativeRoot id="island-controls" className="block w-full" style={{ height: 82 }} data-testid="island-controls-root">
