@@ -33,8 +33,8 @@ pub use lxapp::set_automation_auto_grant;
 pub use lxapp::LxApp;
 pub use lxapp::{
     FloatDismiss, LxAppSecurityPrivilege, PageQueryInput, PageSurface, PageSurfaceRequest,
-    PageSurfaceTarget, SurfaceInteraction, SurfaceKind, SurfacePosition, SurfaceRole,
-    UrlCallbackSurface, UrlCallbackWaitError,
+    PageSurfaceTarget, PageTarget, SurfaceInteraction, SurfaceKind, SurfacePosition, SurfaceRole,
+    UrlCallbackSurface, UrlCallbackWaitError, WindowChrome,
 };
 
 /// Result of successfully initializing a LingXia host runtime.
