@@ -591,7 +591,7 @@ internal class InlineNativeIsland(
         } else {
             node.view.alpha = 1f
         }
-        if (node.kind == "view" && style["backgroundColor"] != null) {
+        if ((node.kind == "view" || node.kind == "tappable") && style["backgroundColor"] != null) {
             val background = parseCssColor(style["backgroundColor"], Color.TRANSPARENT)
             val radius = cssNumber(style["borderRadius"], 0f) * density
             val width = cssNumber(style["borderWidth"], 0f).roundToInt()

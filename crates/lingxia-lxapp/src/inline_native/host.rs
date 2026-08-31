@@ -396,6 +396,9 @@ impl IslandSession {
             return;
         }
         for node in self.composition_nodes() {
+            if !self.last_node_visible(&node.node_ref) {
+                continue;
+            }
             let id = node
                 .author_id
                 .clone()

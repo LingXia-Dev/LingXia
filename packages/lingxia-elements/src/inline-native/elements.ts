@@ -216,11 +216,26 @@ export class LxNativeRootElement extends LxNativeBaseElement {
       }, 0);
       return;
     }
-    if (this.pending.frame != null) return;
+    if (this.pending.frame != null || this.pending.timer != null) return;
     this.pending.frame = requestAnimationFrame(() => {
       this.pending.frame = null;
+      if (this.pending.timer != null) {
+        clearTimeout(this.pending.timer);
+        this.pending.timer = null;
+      }
       this.compileNow();
     });
+    // Browsers may defer animation frames while a window is occluded or while
+    // automation owns the frame clock. Geometry must still reach the native
+    // island or its visual and hit target remain at the pre-scroll position.
+    this.pending.timer = setTimeout(() => {
+      this.pending.timer = null;
+      if (this.pending.frame != null) {
+        cancelAnimationFrame(this.pending.frame);
+        this.pending.frame = null;
+      }
+      this.compileNow();
+    }, 50);
   }
 
   compileNow(): CompileInlineNativeResult {
@@ -249,6 +264,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
         nodeVisibility: geometry.visibility,
         nodeClipStacks: geometry.clipStacks,
         rootOrder: nativeRootOrder(this),
+        viewportOffset: pageViewportOffset(),
       });
       // Adopt the published state only once the host has actually been told about
       // it: a dropped first commit carries every mount operation, and the next
@@ -440,17 +456,50 @@ export class LxNativeTextElement extends LxNativeBaseElement {
 
 export class LxNativeButtonElement extends LxNativeBaseElement {
   private unregisterHost?: () => void;
+  private dispatchAccessiblePress(source: "keyboard" | "pointer"): void {
+    if (this.disabled || this.loading) return;
+    this.dispatchEvent(new CustomEvent("press", {
+      bubbles: true,
+      detail: { source },
+    }));
+  }
+  private readonly onAccessibleClick = (event: MouseEvent): void => {
+    this.dispatchAccessiblePress(event.detail === 0 ? "keyboard" : "pointer");
+  };
+  private readonly onAccessibleKeyDown = (event: KeyboardEvent): void => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    this.dispatchAccessiblePress("keyboard");
+  };
 
   connectedCallback(): void {
+    super.connectedCallback();
     const id = ensureComponentId(this, "lx-native-button");
+    if (!this.hasAttribute("role")) this.setAttribute("role", "button");
+    if (!this.hasAttribute("tabindex")) this.tabIndex = 0;
+    this.syncAccessibility();
+    this.addEventListener("click", this.onAccessibleClick);
+    this.addEventListener("keydown", this.onAccessibleKeyDown);
     this.unregisterHost = registerNativeComponentHandler(id, (message) => {
       applyIslandHostEvent(this, message as { event?: string; action?: string; detail?: unknown });
     });
   }
 
   disconnectedCallback(): void {
+    this.removeEventListener("click", this.onAccessibleClick);
+    this.removeEventListener("keydown", this.onAccessibleKeyDown);
     this.unregisterHost?.();
     this.unregisterHost = undefined;
+  }
+
+  attributeChangedCallback(): void {
+    this.syncAccessibility();
+  }
+
+  private syncAccessibility(): void {
+    this.setAttribute("aria-disabled", String(this.disabled || this.loading));
+    this.setAttribute("aria-pressed", String(this.pressed));
+    this.setAttribute("aria-expanded", String(this.expanded));
   }
 
   static get observedAttributes(): string[] {
@@ -521,17 +570,65 @@ export class LxNativeButtonElement extends LxNativeBaseElement {
 
 export class LxNativeSliderElement extends LxNativeBaseElement {
   private unregisterHost?: () => void;
+  private readonly onAccessibleKeyDown = (event: KeyboardEvent): void => {
+    if (this.disabled) return;
+    const min = Math.min(this.min, this.max);
+    const max = Math.max(this.min, this.max);
+    const step = this.step > 0 ? this.step : 1;
+    let next: number;
+    switch (event.key) {
+      case "ArrowLeft":
+      case "ArrowDown":
+        next = this.value - step;
+        break;
+      case "ArrowRight":
+      case "ArrowUp":
+        next = this.value + step;
+        break;
+      case "Home":
+        next = min;
+        break;
+      case "End":
+        next = max;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    const value = Math.min(max, Math.max(min, next));
+    this.value = value;
+    const detail = { value, source: "keyboard" };
+    this.dispatchEvent(new CustomEvent("valuechange", { bubbles: true, detail }));
+    this.dispatchEvent(new CustomEvent("valuecommit", { bubbles: true, detail }));
+  };
 
   connectedCallback(): void {
+    super.connectedCallback();
     const id = ensureComponentId(this, "lx-native-slider");
+    if (!this.hasAttribute("role")) this.setAttribute("role", "slider");
+    if (!this.hasAttribute("tabindex")) this.tabIndex = 0;
+    this.syncAccessibility();
+    this.addEventListener("keydown", this.onAccessibleKeyDown);
     this.unregisterHost = registerNativeComponentHandler(id, (message) => {
       applyIslandHostEvent(this, message as { event?: string; action?: string; detail?: unknown });
     });
   }
 
   disconnectedCallback(): void {
+    this.removeEventListener("keydown", this.onAccessibleKeyDown);
     this.unregisterHost?.();
     this.unregisterHost = undefined;
+  }
+
+  attributeChangedCallback(): void {
+    this.syncAccessibility();
+  }
+
+  private syncAccessibility(): void {
+    this.setAttribute("aria-disabled", String(this.disabled));
+    this.setAttribute("aria-valuemin", String(this.min));
+    this.setAttribute("aria-valuemax", String(this.max));
+    this.setAttribute("aria-valuenow", String(this.value));
   }
 
   static get observedAttributes(): string[] {
@@ -613,6 +710,11 @@ function elementContentRect(el: Element): { x: number; y: number; width: number;
   };
 }
 
+function pageViewportOffset(): { x: number; y: number } {
+  if (typeof window === "undefined") return { x: 0, y: 0 };
+  return { x: window.scrollX || 0, y: window.scrollY || 0 };
+}
+
 function measureNativeNodeGeometry(root: Element): {
   rects: Record<string, { x: number; y: number; width: number; height: number }>;
   visibility: Record<string, boolean>;
@@ -646,7 +748,11 @@ function elementIsVisible(element: Element): boolean {
     return false;
   }
   const rect = html.getBoundingClientRect();
-  return rect.width > 0 && rect.height > 0 && html.getClientRects().length > 0;
+  if (rect.width <= 0 || rect.height <= 0 || html.getClientRects().length === 0) {
+    return false;
+  }
+  if (typeof window === "undefined") return true;
+  return rect.right > 0 && rect.bottom > 0 && rect.left < window.innerWidth && rect.top < window.innerHeight;
 }
 
 function overflowClipStack(

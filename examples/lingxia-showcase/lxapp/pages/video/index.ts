@@ -106,7 +106,11 @@ Page({
 
   seek: function (position) {
     const time = typeof position === "number" ? position : Number(position) || 0;
-    this._getContext()?.seek(time);
+    try {
+      this._getContext()?.seek(time);
+    } catch {
+      /* island player may not be mounted yet */
+    }
   },
 
   requestFullScreen: function () {

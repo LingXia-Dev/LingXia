@@ -50,6 +50,8 @@ export class InlineNativeIslandHost {
   private nodeContainers: NativeComponentNodeController[] = [];
   private pendingOutgoing: NativeComponentRecord[] = [];
   private leases: Map<string, IslandLease> = new Map();
+  private viewportOffsetX: number = 0;
+  private viewportOffsetY: number = 0;
 
   constructor(appId: string = 'app') {
     this.appId = appId;
@@ -298,6 +300,12 @@ export class InlineNativeIslandHost {
   }
 
   private applyGeometry(payload: Record<string, Object>): void {
+    const viewportOffset = payload['viewportOffset'] as Record<string, Object> | undefined;
+    if (viewportOffset) {
+      this.viewportOffsetX = (viewportOffset['x'] as number) ?? 0;
+      this.viewportOffsetY = (viewportOffset['y'] as number) ?? 0;
+      this.repositionNodesForViewport();
+    }
     const roots = payload['roots'] as Object[] | undefined;
     if (roots) {
       roots.forEach((raw: Object) => {
@@ -332,13 +340,22 @@ export class InlineNativeIslandHost {
       existing.rectH = (rect['height'] as number) ?? 0;
       existing.visible = (entry['visible'] as boolean) ?? true;
       const update = new NodeControllerUpdateParams();
-      update.x = existing.rectX;
-      update.y = existing.rectY;
+      update.x = existing.rectX - this.viewportOffsetX;
+      update.y = existing.rectY - this.viewportOffsetY;
       update.width = existing.visible ? Math.max(existing.rectW, 1) : 0;
       update.height = existing.visible ? Math.max(existing.rectH, 1) : 0;
       existing.controller.updateRenderOption(update);
     }
     this.restack();
+  }
+
+  private repositionNodesForViewport(): void {
+    this.nodes.forEach((node: IslandNode) => {
+      const update = new NodeControllerUpdateParams();
+      update.x = node.rectX - this.viewportOffsetX;
+      update.y = node.rectY - this.viewportOffsetY;
+      node.controller.updateRenderOption(update);
+    });
   }
 
   private acceptLease(payload: Record<string, Object>): void {

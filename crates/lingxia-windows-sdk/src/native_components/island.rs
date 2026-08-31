@@ -19,9 +19,11 @@ use lingxia_webview::platform::windows::{
 use lxapp::inline_native::{
     ApplyCommitOutcome, IslandCompositor, IslandPointerPhase, IslandSession,
     NativeGeometrySnapshot, NativeRootAck, Rect, is_island_action, plan_island_visual,
-    props_with_slider_value, rasterize_island_kind,
+    props_with_slider_value, rasterize_island_background, rasterize_island_kind,
 };
 use serde_json::{Value, json};
+use windows::Win32::Foundation::RECT;
+use windows::Win32::Graphics::Gdi::{GetDC, ReleaseDC};
 
 use super::{DocRect, PageContext};
 
@@ -531,6 +533,10 @@ fn rematerialize_pending(page_key: &str, latch: Option<(&str, f64)>) {
     apply_queued_island_visuals(page_key);
 }
 
+pub(super) fn refresh_scroll_layout(page_key: &str) {
+    rematerialize_pending(page_key, None);
+}
+
 fn island_visuals_from_pending(
     page_key: &str,
     pending: &[PendingAttach],
@@ -576,6 +582,14 @@ pub(crate) fn build_island_visual_spec(
     let height = dest_height.round().clamp(1.0, 360.0) as i32;
     let pixels = match kind {
         "video" => None,
+        "text" | "tappable" => Some(rasterize_windows_text_node(
+            kind,
+            width,
+            height,
+            css,
+            props,
+            plan.text.as_deref(),
+        )),
         _ => Some(rasterize_island_kind(kind, width, height, props)),
     };
     IslandVisualSpec {
@@ -592,6 +606,166 @@ pub(crate) fn build_island_visual_spec(
         hwnd: None,
         pixels,
     }
+}
+
+fn rasterize_windows_text_node(
+    kind: &str,
+    width: i32,
+    height: i32,
+    css: &Rect,
+    props: &Value,
+    text: Option<&str>,
+) -> Vec<u32> {
+    let mut pixels = rasterize_island_background(kind, width, height, props);
+    let Some(text) = text.filter(|text| !text.is_empty()) else {
+        return pixels;
+    };
+    let css_scale = if css.width > 0.0 {
+        f64::from(width) / css.width
+    } else {
+        1.0
+    };
+    let fallback_font_size = if kind == "tappable" {
+        if props.get("size").and_then(Value::as_str) == Some("compact") {
+            12.0
+        } else {
+            14.0
+        }
+    } else {
+        12.0
+    };
+    let font_size = number_prop(props, "fontSize")
+        .or_else(|| style_number_prop(props, "fontSize"))
+        .unwrap_or(fallback_font_size);
+    let font_weight = number_prop(props, "fontWeight")
+        .or_else(|| style_number_prop(props, "fontWeight"))
+        .unwrap_or(if kind == "tappable" { 600.0 } else { 400.0 })
+        .round() as i32;
+    let centered = kind == "tappable"
+        || props.get("textAlign").and_then(Value::as_str) == Some("center")
+        || props
+            .get("nativeStyle")
+            .and_then(|style| style.get("textAlign"))
+            .and_then(Value::as_str)
+            == Some("center");
+    let foreground = windows_text_color(kind, props);
+    unsafe {
+        let screen = GetDC(None);
+        if !screen.is_invalid() {
+            crate::layered_text::draw_supersampled_text_mask_over(
+                screen,
+                &mut pixels,
+                width,
+                height,
+                text,
+                RECT {
+                    left: 0,
+                    top: 0,
+                    right: width,
+                    bottom: height,
+                },
+                foreground,
+                (font_size * css_scale).round().max(1.0) as i32,
+                font_weight,
+                centered,
+            );
+            let _ = ReleaseDC(None, screen);
+        }
+    }
+    pixels
+}
+
+fn number_prop(props: &Value, key: &str) -> Option<f64> {
+    props.get(key).and_then(css_number)
+}
+
+fn style_number_prop(props: &Value, key: &str) -> Option<f64> {
+    props
+        .get("nativeStyle")
+        .and_then(|style| style.get(key))
+        .and_then(css_number)
+}
+
+fn css_number(value: &Value) -> Option<f64> {
+    value.as_f64().or_else(|| {
+        let raw = value.as_str()?.trim();
+        let numeric = raw
+            .chars()
+            .take_while(|ch| ch.is_ascii_digit() || matches!(ch, '-' | '+' | '.'))
+            .collect::<String>();
+        numeric.parse().ok()
+    })
+}
+
+fn windows_text_color(kind: &str, props: &Value) -> u32 {
+    if let Some(color) = props.get("color").and_then(parse_css_color) {
+        return color;
+    }
+    if let Some(color) = props
+        .get("nativeStyle")
+        .and_then(|style| style.get("color"))
+        .and_then(parse_css_color)
+    {
+        return color;
+    }
+    if kind == "tappable" && props.get("emphasis").and_then(Value::as_str) == Some("quiet") {
+        return match props
+            .get("intent")
+            .and_then(Value::as_str)
+            .unwrap_or("neutral")
+        {
+            "accent" => 0xff25_63eb,
+            "destructive" => 0xffdc_2626,
+            _ => 0xff11_1827,
+        };
+    }
+    0xffff_ffff
+}
+
+fn parse_css_color(value: &Value) -> Option<u32> {
+    let raw = value.as_str()?.trim().to_ascii_lowercase();
+    match raw.as_str() {
+        "transparent" => return Some(0),
+        "black" => return Some(0xff00_0000),
+        "white" => return Some(0xffff_ffff),
+        _ => {}
+    }
+    if let Some(hex) = raw.strip_prefix('#') {
+        return match hex.len() {
+            3 => {
+                let value = u32::from_str_radix(hex, 16).ok()?;
+                let r = (value >> 8) & 0xf;
+                let g = (value >> 4) & 0xf;
+                let b = value & 0xf;
+                Some(0xff00_0000 | (r * 17) << 16 | (g * 17) << 8 | (b * 17))
+            }
+            6 => Some(0xff00_0000 | u32::from_str_radix(hex, 16).ok()?),
+            8 => Some(u32::from_str_radix(hex, 16).ok()?),
+            _ => None,
+        };
+    }
+    let body = raw
+        .strip_prefix("rgba(")
+        .or_else(|| raw.strip_prefix("rgb("))?
+        .strip_suffix(')')?;
+    let parts = body.split(',').map(str::trim).collect::<Vec<_>>();
+    if parts.len() < 3 {
+        return None;
+    }
+    let channel = |part: &str| {
+        part.parse::<f64>()
+            .ok()
+            .map(|value| value.round().clamp(0.0, 255.0) as u32)
+    };
+    let r = channel(parts[0])?;
+    let g = channel(parts[1])?;
+    let b = channel(parts[2])?;
+    let alpha = parts
+        .get(3)
+        .and_then(|part| part.parse::<f64>().ok())
+        .map(|value| (value.clamp(0.0, 1.0) * 255.0).round() as u32)
+        .unwrap_or(255);
+    Some(alpha << 24 | r << 16 | g << 8 | b)
 }
 
 fn rect_is_measured(rect: &Rect) -> bool {
@@ -886,6 +1060,13 @@ mod tests {
 
     #[test]
     fn island_visual_builder_uses_committed_css_rects() {
+        assert_eq!(
+            windows_text_color(
+                "tappable",
+                &json!({ "nativeStyle": { "color": "#123456" } })
+            ),
+            0xff12_3456
+        );
         let rect = Rect {
             x: 0.0,
             y: 40.0,

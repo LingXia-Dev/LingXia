@@ -917,6 +917,7 @@ function readComputedNativeStyle(element: Element): Record<string, unknown> {
   const view = element.ownerDocument?.defaultView;
   if (!view || typeof view.getComputedStyle !== "function") return {};
   const style = view.getComputedStyle(element);
+  const inherited = element.parentElement ? view.getComputedStyle(element.parentElement) : null;
   const out: Record<string, unknown> = {};
   const put = (key: string, value: string, skip?: (value: string) => boolean) => {
     const normalized = value.trim();
@@ -924,16 +925,16 @@ function readComputedNativeStyle(element: Element): Record<string, unknown> {
     out[key] = normalized;
   };
   put("backgroundColor", style.backgroundColor, (value) => value === "transparent" || value === "rgba(0, 0, 0, 0)");
-  put("color", style.color);
+  put("color", style.color, (value) => value === inherited?.color);
   put("accentColor", style.accentColor, (value) => value === "auto");
   put("opacity", style.opacity, (value) => value === "1");
-  put("borderColor", style.borderTopColor);
+  put("borderColor", style.borderTopColor, (value) => style.borderTopWidth === "0px" && value === inherited?.color);
   put("borderWidth", style.borderTopWidth, (value) => value === "0px");
   put("borderStyle", style.borderTopStyle, (value) => value === "none");
   put("borderRadius", style.borderTopLeftRadius, (value) => value === "0px");
-  put("fontSize", style.fontSize);
-  put("fontWeight", style.fontWeight);
-  put("lineHeight", style.lineHeight, (value) => value === "normal");
+  put("fontSize", style.fontSize, (value) => value === inherited?.fontSize);
+  put("fontWeight", style.fontWeight, (value) => value === inherited?.fontWeight);
+  put("lineHeight", style.lineHeight, (value) => value === "normal" || value === inherited?.lineHeight);
   put("textAlign", style.textAlign, (value) => value === "start");
   put("dir", style.direction, (value) => value === "ltr");
   return out;
