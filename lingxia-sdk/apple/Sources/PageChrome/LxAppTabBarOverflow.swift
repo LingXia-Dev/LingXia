@@ -9,6 +9,8 @@ final class LxAppTabBarOverflowPanel: UIView {
         static let columns = 5
         static let cornerRadius: CGFloat = 16
         static let panelPadding: CGFloat = 8
+        static let horizontalInset: CGFloat = 12
+        static let bottomGap: CGFloat = 8
         static let cellHeight: CGFloat = 64
         static let iconSize: CGFloat = 24
         static let enterDuration: TimeInterval = 0.16
@@ -18,21 +20,24 @@ final class LxAppTabBarOverflowPanel: UIView {
     private let scrim = UIView()
     private let indices: [Int]
     private let onPick: (Int) -> Void
+    private let onDismiss: () -> Void
+    private var didDismiss = false
 
     /// - Parameters:
-    ///   - anchor: the tab strip; the panel sits flush on top of it.
-    ///   - indices: item indices to offer, in declaration order.
-    ///   - onPick: receives the picked item's index in the full item list.
+    ///   - indices: positions in `items` to offer, in declaration order.
+    ///   - onPick: receives the picked item's declaration index.
     init(
         items: [TabBarItem],
         indices: [Int],
         config: TabBar,
         selectedIndex: Int,
         appId: String,
-        onPick: @escaping (Int) -> Void
+        onPick: @escaping (Int) -> Void,
+        onDismiss: @escaping () -> Void
     ) {
         self.indices = indices
         self.onPick = onPick
+        self.onDismiss = onDismiss
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         buildScrim()
@@ -43,6 +48,10 @@ final class LxAppTabBarOverflowPanel: UIView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        panel.frame.contains(point) || scrim.frame.contains(point)
+    }
+
     /// Installs the panel over `host`, resting on top of `anchor`.
     func present(in host: UIView, above anchor: UIView) {
         host.addSubview(self)
@@ -51,9 +60,10 @@ final class LxAppTabBarOverflowPanel: UIView {
             leadingAnchor.constraint(equalTo: host.leadingAnchor),
             trailingAnchor.constraint(equalTo: host.trailingAnchor),
             bottomAnchor.constraint(equalTo: host.bottomAnchor),
-            panel.leadingAnchor.constraint(equalTo: leadingAnchor),
-            panel.trailingAnchor.constraint(equalTo: trailingAnchor),
-            panel.bottomAnchor.constraint(equalTo: anchor.topAnchor)
+            scrim.bottomAnchor.constraint(equalTo: anchor.topAnchor),
+            panel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Metrics.horizontalInset),
+            panel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Metrics.horizontalInset),
+            panel.bottomAnchor.constraint(equalTo: anchor.topAnchor, constant: -Metrics.bottomGap)
         ])
 
         scrim.alpha = 0
@@ -66,19 +76,29 @@ final class LxAppTabBarOverflowPanel: UIView {
     }
 
     @objc private func dismiss() {
+        finishDismiss()
+    }
+
+    func dismissPanel() {
+        finishDismiss()
+    }
+
+    private func finishDismiss() {
+        guard !didDismiss else { return }
+        didDismiss = true
         removeFromSuperview()
+        onDismiss()
     }
 
     private func buildScrim() {
         scrim.translatesAutoresizingMaskIntoConstraints = false
-        scrim.backgroundColor = UIColor.black.withAlphaComponent(0.4)
+        scrim.backgroundColor = UIColor.clear
         scrim.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(dismiss)))
         addSubview(scrim)
         NSLayoutConstraint.activate([
             scrim.topAnchor.constraint(equalTo: topAnchor),
             scrim.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrim.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrim.bottomAnchor.constraint(equalTo: bottomAnchor)
+            scrim.trailingAnchor.constraint(equalTo: trailingAnchor)
         ])
     }
 
@@ -86,7 +106,10 @@ final class LxAppTabBarOverflowPanel: UIView {
         panel.translatesAutoresizingMaskIntoConstraints = false
         panel.backgroundColor = UIColor.secondarySystemBackground
         panel.layer.cornerRadius = Metrics.cornerRadius
-        panel.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        panel.layer.shadowColor = UIColor.black.cgColor
+        panel.layer.shadowOpacity = 0.16
+        panel.layer.shadowRadius = 12
+        panel.layer.shadowOffset = CGSize(width: 0, height: 4)
         // The panel is the modal surface; taps must not fall through to the scrim.
         panel.isUserInteractionEnabled = true
         addSubview(panel)
@@ -138,7 +161,7 @@ final class LxAppTabBarOverflowPanel: UIView {
                     index: index,
                     item: items[index],
                     config: config,
-                    selected: index == selectedIndex,
+                    selected: items[index].cachedIndex == selectedIndex,
                     appId: appId
                 )
             )
@@ -157,7 +180,7 @@ final class LxAppTabBarOverflowPanel: UIView {
         appId: String
     ) -> UIView {
         let button = UIButton(type: .custom)
-        button.tag = index
+        button.tag = item.cachedIndex
         button.addTarget(self, action: #selector(cellTapped(_:)), for: .touchUpInside)
         button.heightAnchor.constraint(equalToConstant: Metrics.cellHeight).isActive = true
 
@@ -235,8 +258,8 @@ final class LxAppTabBarOverflowPanel: UIView {
 
     @objc private func cellTapped(_ sender: UIButton) {
         let index = sender.tag
-        removeFromSuperview()
         onPick(index)
+        finishDismiss()
     }
 
     private static func icon(for item: TabBarItem) -> UIImage? {

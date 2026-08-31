@@ -859,13 +859,21 @@ class LxAppActivity : AppCompatActivity() {
                 }
                 setOnMoreRequestedListener { indices ->
                     val bar = this@apply
-                    TabBarOverflowSheet.show(this@LxAppActivity, bar, bar.config, indices) { index ->
-                        NativeApi.onLxappEvent(
-                            appId,
-                            NativeApi.UI_EVENT_TABBAR_CLICK,
-                            index.toString()
-                        )
-                    }
+                    TabBarOverflowSheet.show(
+                        this@LxAppActivity,
+                        bar,
+                        bar.config,
+                        indices,
+                        onPick = { index ->
+                            bar.setSelectedIndex(index, notifyListener = false)
+                            NativeApi.onLxappEvent(
+                                appId,
+                                NativeApi.UI_EVENT_TABBAR_CLICK,
+                                index.toString()
+                            )
+                        },
+                        onDismiss = { bar.setMoreOpen(false) }
+                    )
                 }
                 applyTabBarLayoutParams(this, config)
             }

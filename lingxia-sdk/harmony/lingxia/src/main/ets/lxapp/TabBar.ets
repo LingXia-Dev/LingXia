@@ -49,10 +49,12 @@ const TAB_BAR_ACTIVE_INDICATOR_OPACITY = 0.2;
 const TAB_BAR_MORE_DOT_SIZE = 4;
 const TAB_BAR_MORE_DOT_SPACING = 3;
 const TAB_BAR_OVERFLOW_COLUMNS = 5;
-const TAB_BAR_OVERFLOW_CELL_WIDTH = 64;
+const TAB_BAR_OVERFLOW_CELL_HEIGHT = 64;
 const TAB_BAR_OVERFLOW_CELL_PADDING = 10;
 const TAB_BAR_OVERFLOW_PANEL_PADDING = 8;
 const TAB_BAR_OVERFLOW_RADIUS = 16;
+const TAB_BAR_OVERFLOW_HORIZONTAL_MARGIN = 12;
+const TAB_BAR_OVERFLOW_BOTTOM_GAP = 8;
 
 // Text max lines
 const TAB_BAR_ITEM_TEXT_MAX_LINES_VERTICAL = 2;
@@ -185,7 +187,7 @@ export struct TabBar {
       Stack() {
         // The indicator belongs to the bar, not to an item's artwork:
         // whatever is selected gets it.
-        if (item.index === this.tabbar.selectedIndex) {
+        if (this.isDirectItemSelected(item)) {
           Circle()
             .width(TAB_BAR_ACTIVE_INDICATOR_SIZE)
             .height(TAB_BAR_ACTIVE_INDICATOR_SIZE)
@@ -198,7 +200,7 @@ export struct TabBar {
           Image(this.getIconUrl(item))
             .width(TAB_BAR_ITEM_ICON_SIZE)
             .height(TAB_BAR_ITEM_ICON_SIZE)
-            .fillColor(item.index === this.tabbar.selectedIndex ? this.getSelectedColor() : this.getNormalColor())
+            .fillColor(this.isDirectItemSelected(item) ? this.getSelectedColor() : this.getNormalColor())
             .objectFit(ImageFit.Contain)
             .onError((error: ImageError): void => {
               LxLog.e(TAG, `Tab ${index} icon load error: ${JSON.stringify(error)}, path: ${item.iconPath}`);
@@ -241,7 +243,7 @@ export struct TabBar {
       if (item.text) {
         Text(item.text)
           .fontSize(this.isVertical() ? TAB_BAR_ITEM_TEXT_SIZE_VERTICAL : TAB_BAR_ITEM_TEXT_SIZE_HORIZONTAL)
-          .fontColor(item.index === this.tabbar.selectedIndex ? this.getSelectedColor() : this.getNormalColor())
+          .fontColor(this.isDirectItemSelected(item) ? this.getSelectedColor() : this.getNormalColor())
           .margin({ top: TAB_BAR_ITEM_ICON_TEXT_SPACING })
           .fontWeight(this.isTransparent() ? FontWeight.Medium : FontWeight.Normal)
           .maxLines(this.isVertical() ? TAB_BAR_ITEM_TEXT_MAX_LINES_VERTICAL : TAB_BAR_ITEM_TEXT_MAX_LINES_HORIZONTAL)
@@ -265,6 +267,9 @@ export struct TabBar {
     .onClick(() => {
       hilog.info(DOMAIN, TAG, `Tab clicked: ${index}, current: ${this.tabbar.selectedIndex}, appId: ${this.appId}, path: ${item.pagePath}`);
 
+      if (this.moreVisible) {
+        this.moreVisible = false;
+      }
       // Always trigger callback - let parent decide if action is needed
       if (this.onTabSelected) {
         this.onTabSelected(this.appId, item.index, item);
@@ -327,7 +332,14 @@ export struct TabBar {
   }
 
   /** The overflow slot stands in for the folded items, selection included. */
+  private isDirectItemSelected(item: TabBarItem): boolean {
+    return !this.moreVisible && item.index === this.tabbar.selectedIndex;
+  }
+
   private isMoreSelected(): boolean {
+    if (this.moreVisible) {
+      return true;
+    }
     const folded: number[] = this.overflowIndices();
     for (const slot of folded) {
       if (this.tabbar.items[slot].index === this.tabbar.selectedIndex) {
@@ -394,7 +406,7 @@ export struct TabBar {
       .width(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
       .height(TAB_BAR_ITEM_ICON_SIZE)
 
-      Text($r('app.string.lx_tabbar_more'))
+      Text(this.getMoreLabel())
         .fontSize(TAB_BAR_ITEM_TEXT_SIZE_HORIZONTAL)
         .fontColor(this.isMoreSelected() ? this.getSelectedColor() : this.getNormalColor())
         .margin({ top: TAB_BAR_ITEM_ICON_TEXT_SPACING })
@@ -416,19 +428,59 @@ export struct TabBar {
     .onClick(() => {
       this.moreVisible = !this.moreVisible;
     })
-    .bindPopup(this.moreVisible, {
-      builder: (): void => this.buildOverflowPanel(),
-      placement: Placement.Top,
-      enableArrow: true,
-      popupColor: this.getOverflowPanelColor(),
-      radius: TAB_BAR_OVERFLOW_RADIUS,
-      onStateChange: (event: PopupStateChangeParam): void => {
-        // Tapping outside closes the popup natively; mirror that into our state.
-        if (!event.isVisible) {
-          this.moreVisible = false;
-        }
+    .bindSheet(this.moreVisible, this.buildOverflowSheet(), {
+      height: this.getOverflowSheetHeight(),
+      width: '100%',
+      dragBar: false,
+      showClose: false,
+      preferType: SheetType.BOTTOM,
+      maskColor: COLOR_TRANSPARENT,
+      backgroundColor: COLOR_TRANSPARENT,
+      onDisappear: (): void => {
+        this.moreVisible = false;
       }
     })
+  }
+
+  /** Keep the overflow block independent from the transparent strip. */
+  @Builder
+  buildOverflowSheet() {
+    Column() {
+      this.buildOverflowPanel()
+      Blank()
+        .height(TAB_BAR_OVERFLOW_BOTTOM_GAP)
+      this.buildOverflowBarHitTargets()
+    }
+    .width('100%')
+    .height(this.getOverflowSheetHeight())
+  }
+
+  /** The system sheet consumes bar taps, so mirror only its hit targets. */
+  @Builder
+  buildOverflowBarHitTargets() {
+    Row() {
+      ForEach(this.stripIndices(), (index: number) => {
+        Blank()
+          .layoutWeight(1)
+          .height('100%')
+          .onClick(() => {
+            const item: TabBarItem = this.tabbar.items[index];
+            this.moreVisible = false;
+            if (this.onTabSelected) {
+              this.onTabSelected(this.appId, item.index, item);
+            }
+          })
+      })
+      Blank()
+        .layoutWeight(1)
+        .height('100%')
+        .onClick(() => {
+          this.moreVisible = false;
+        })
+    }
+    .width('100%')
+    .height(this.getTabBarSize() + this.extraBottomHeight())
+    .padding(this.getHorizontalPadding())
   }
 
   /**
@@ -437,14 +489,25 @@ export struct TabBar {
    */
   @Builder
   buildOverflowPanel() {
-    Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Start }) {
+    Grid() {
       ForEach(this.overflowIndices(), (index: number) => {
-        this.buildOverflowCell(this.tabbar.items[index], index)
+        GridItem() {
+          this.buildOverflowCell(this.tabbar.items[index], index)
+        }
       })
     }
-    .width(TAB_BAR_OVERFLOW_CELL_WIDTH * Math.min(this.overflowIndices().length, TAB_BAR_OVERFLOW_COLUMNS) +
-      TAB_BAR_OVERFLOW_PANEL_PADDING * 2)
+    .columnsTemplate('1fr 1fr 1fr 1fr 1fr')
+    .width(`calc(100% - ${TAB_BAR_OVERFLOW_HORIZONTAL_MARGIN * 2}vp)`)
+    .height(this.getOverflowPanelHeight() - TAB_BAR_OVERFLOW_PANEL_PADDING * 2)
     .padding(TAB_BAR_OVERFLOW_PANEL_PADDING)
+    .backgroundColor(this.getOverflowPanelColor())
+    .borderRadius({
+      topLeft: TAB_BAR_OVERFLOW_RADIUS,
+      topRight: TAB_BAR_OVERFLOW_RADIUS,
+      bottomLeft: TAB_BAR_OVERFLOW_RADIUS,
+      bottomRight: TAB_BAR_OVERFLOW_RADIUS
+    })
+    .shadow({ radius: 12, color: '#29000000', offsetX: 0, offsetY: 4 })
   }
 
   @Builder
@@ -504,7 +567,8 @@ export struct TabBar {
           .textAlign(TextAlign.Center)
       }
     }
-    .width(TAB_BAR_OVERFLOW_CELL_WIDTH)
+    .width('100%')
+    .height(TAB_BAR_OVERFLOW_CELL_HEIGHT)
     .padding({ top: TAB_BAR_OVERFLOW_CELL_PADDING, bottom: TAB_BAR_OVERFLOW_CELL_PADDING })
     .alignItems(HorizontalAlign.Center)
     .onClick(() => {
@@ -515,7 +579,46 @@ export struct TabBar {
     })
   }
 
-  /** Popup plate colour; follows the bar so the panel reads as part of it. */
+  private getOverflowPanelHeight(): number {
+    const rows: number = Math.ceil(this.overflowIndices().length / TAB_BAR_OVERFLOW_COLUMNS);
+    return rows * TAB_BAR_OVERFLOW_CELL_HEIGHT + TAB_BAR_OVERFLOW_PANEL_PADDING * 2;
+  }
+
+  private getOverflowSheetHeight(): number {
+    return this.getOverflowPanelHeight() + TAB_BAR_OVERFLOW_BOTTOM_GAP +
+      this.getTabBarSize() + this.extraBottomHeight();
+  }
+
+  /** Keep the host-owned slot in the same language as its sibling labels. */
+  private getMoreLabel(): string {
+    let chineseLabels: number = 0;
+    let otherLabels: number = 0;
+    for (let index: number = 0; index < this.tabbar.items.length; index++) {
+      const item: TabBarItem = this.tabbar.items[index];
+      const text: string = item.text?.trim() ?? '';
+      if (text.length === 0) {
+        continue;
+      }
+      if (this.containsHanCharacter(text)) {
+        chineseLabels++;
+      } else {
+        otherLabels++;
+      }
+    }
+    return chineseLabels > otherLabels ? '更多' : 'More';
+  }
+
+  private containsHanCharacter(text: string): boolean {
+    for (let index: number = 0; index < text.length; index++) {
+      const code: number = text.charCodeAt(index);
+      if ((code >= 0x3400 && code <= 0x4DBF) || (code >= 0x4E00 && code <= 0x9FFF)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Overflow surface colour; keeps the floating block legible. */
   private getOverflowPanelColor(): ResourceColor {
     const background: number = this.tabbar.backgroundColor ?? 0;
     // A transparent/immersive bar has no plate of its own to borrow.
