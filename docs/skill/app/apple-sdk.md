@@ -17,6 +17,8 @@ sidebar items, toolbar items, titlebar items, startup behavior, and the home
 surface are configured in `lingxia.yaml`.
 
 For `lingxia.yaml` configuration, see [App Project Configuration](../app/project.md).
+Packet Tunnel packaging is a CLI build convention rather than an Apple SDK API;
+see [`lingxia build` → iOS Packet Tunnel extensions](../cli/lingxia.md#ios-packet-tunnel-extensions).
 
 ## Quick Start
 
