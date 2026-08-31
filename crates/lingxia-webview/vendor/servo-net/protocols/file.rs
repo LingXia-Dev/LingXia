@@ -81,8 +81,8 @@ impl ProtocolHandler for FileProtocolHander {
                     response
                         .headers
                         .typed_insert(ContentLength(end_byte - start_byte));
-                    if is_range_request
-                        && let Ok(content_range) =
+                    if is_range_request &&
+                        let Ok(content_range) =
                             ContentRange::bytes(start_byte..end_byte, file_size)
                     {
                         response.headers.typed_insert(content_range);

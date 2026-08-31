@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.88.0"
 name = "servo-storage"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["The Servo Project Developers"]
 build = false
 publish = true
@@ -43,14 +43,14 @@ version = "0.2"
 version = "0.4.32"
 
 [dependencies.malloc_size_of]
-version = "=0.4.0"
+version = "=0.5.0"
 package = "servo-malloc-size-of"
 
 [dependencies.malloc_size_of_derive]
 version = "0.1"
 
 [dependencies.net_traits]
-version = "=0.4.0"
+version = "=0.5.0"
 package = "servo-net-traits"
 
 [dependencies.postcard]
@@ -59,7 +59,7 @@ features = ["use-std"]
 default-features = false
 
 [dependencies.profile_traits]
-version = "=0.4.0"
+version = "=0.5.0"
 package = "servo-profile-traits"
 
 [dependencies.rusqlite]
@@ -70,7 +70,7 @@ features = ["bundled"]
 version = "2.1.2"
 
 [dependencies.sea-query]
-version = "1.0.0"
+version = "1.0.1"
 features = [
     "backend-sqlite",
     "derive",
@@ -84,16 +84,16 @@ version = "0.8.0"
 version = "1.0.228"
 
 [dependencies.servo-base]
-version = "=0.4.0"
+version = "=0.5.0"
 
 [dependencies.servo-config]
-version = "=0.4.0"
+version = "=0.5.0"
 
 [dependencies.servo-url]
-version = "=0.4.0"
+version = "=0.5.0"
 
 [dependencies.storage_traits]
-version = "=0.4.0"
+version = "=0.5.0"
 package = "servo-storage-traits"
 
 [dependencies.tempfile]
@@ -107,11 +107,11 @@ features = [
 ]
 
 [dev-dependencies.profile]
-version = "=0.4.0"
+version = "=0.5.0"
 package = "servo-profile"
 
 [dev-dependencies.servo-default-resources]
-version = "=0.4.0"
+version = "=0.5.0"
 
 [dev-dependencies.url]
 version = "2.5"

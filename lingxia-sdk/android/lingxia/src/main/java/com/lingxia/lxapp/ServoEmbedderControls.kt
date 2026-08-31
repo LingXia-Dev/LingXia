@@ -166,18 +166,19 @@ internal object ServoEmbedderControls {
                 putExtra(Intent.EXTRA_ALLOW_MULTIPLE, data.optBoolean("multiple"))
                 if (mimeTypes.size > 1) putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
             }
-            if (!host.openHostFileDialog(intent) { uris ->
-                    if (uris == null) {
-                        cancel(requestId)
-                        return@openHostFileDialog
+            if (!host.openHostFileDialog(intent) { result ->
+                    when (result) {
+                        is HostFileDialogResult.Selected -> Thread {
+                            val paths = materializeFiles(host, requestId, result.paths)
+                            host.runOnUiThread {
+                                if (paths.isEmpty()) cancel(requestId)
+                                else complete(requestId, JSONArray(paths).toString())
+                            }
+                        }.start()
+
+                        HostFileDialogResult.Canceled,
+                        HostFileDialogResult.Failed -> cancel(requestId)
                     }
-                    Thread {
-                        val paths = materializeFiles(host, requestId, uris)
-                        host.runOnUiThread {
-                            if (paths.isEmpty()) cancel(requestId)
-                            else complete(requestId, JSONArray(paths).toString())
-                        }
-                    }.start()
                 }) {
                 cancel(requestId)
             }

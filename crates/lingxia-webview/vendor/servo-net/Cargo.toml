@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.88.0"
 name = "servo-net"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["The Servo Project Developers"]
 build = false
 publish = true
@@ -42,6 +42,10 @@ path = "lib.rs"
 test = false
 doctest = false
 
+[[test]]
+name = "main"
+path = "tests/main.rs"
+
 [dependencies.async-compression]
 version = "0.4.12"
 features = [
@@ -57,11 +61,11 @@ default-features = false
 version = "1.1"
 
 [dependencies.async-tungstenite]
-version = "0.34"
+version = "0.35"
 features = ["tokio-rustls-webpki-roots"]
 
 [dependencies.base64]
-version = "0.22.1"
+version = "0.23.0"
 
 [dependencies.bytes]
 version = "1.0"
@@ -71,7 +75,7 @@ version = "0.4"
 features = ["serde"]
 
 [dependencies.content-security-policy]
-version = "0.8.0"
+version = "0.8.1"
 features = ["serde"]
 
 [dependencies.cookie]
@@ -85,12 +89,16 @@ version = "0.5"
 version = "0.3"
 
 [dependencies.devtools_traits]
-version = "=0.4.0"
+version = "=0.5.0"
 package = "servo-devtools-traits"
 
 [dependencies.embedder_traits]
-version = "=0.4.0"
+version = "=0.5.0"
 package = "servo-embedder-traits"
+
+[dependencies.fonts]
+version = "=0.5.0"
+package = "servo-fonts"
 
 [dependencies.fst]
 version = "0.4"
@@ -145,7 +153,7 @@ features = [
 ]
 
 [dependencies.hyper_serde]
-version = "=0.4.0"
+version = "=0.5.0"
 package = "servo-hyper-serde"
 
 [dependencies.imsz]
@@ -161,7 +169,7 @@ version = "0.15"
 version = "0.4.32"
 
 [dependencies.malloc_size_of]
-version = "=0.4.0"
+version = "=0.5.0"
 package = "servo-malloc-size-of"
 
 [dependencies.malloc_size_of_derive]
@@ -174,14 +182,14 @@ version = "0.3.13"
 version = "2.0.5"
 
 [dependencies.net_traits]
-version = "=0.4.0"
+version = "=0.5.0"
 package = "servo-net-traits"
 
 [dependencies.nom]
 version = "8.0.0"
 
 [dependencies.paint_api]
-version = "=0.4.0"
+version = "=0.5.0"
 package = "servo-paint-api"
 
 [dependencies.parking_lot]
@@ -189,11 +197,11 @@ version = "0.12"
 features = ["serde"]
 
 [dependencies.pixels]
-version = "=0.4.0"
+version = "=0.5.0"
 package = "servo-pixels"
 
 [dependencies.profile_traits]
-version = "=0.4.0"
+version = "=0.5.0"
 package = "servo-profile-traits"
 
 [dependencies.quick_cache]
@@ -201,11 +209,14 @@ version = "0.6.18"
 features = ["ahash"]
 default-features = false
 
+[dependencies.rand]
+version = "0.10"
+
 [dependencies.regex]
 version = "1.12"
 
 [dependencies.resvg]
-version = "0.47.0"
+version = "0.48.1"
 
 [dependencies.rustc-hash]
 version = "2.1.2"
@@ -230,20 +241,20 @@ version = "0.7.0"
 version = "1.0.228"
 
 [dependencies.servo-base]
-version = "=0.4.0"
+version = "=0.5.0"
 
 [dependencies.servo-config]
-version = "=0.4.0"
+version = "=0.5.0"
 
 [dependencies.servo-default-resources]
-version = "=0.4.0"
+version = "=0.5.0"
 optional = true
 
 [dependencies.servo-tracing]
-version = "=0.4.0"
+version = "=0.5.0"
 
 [dependencies.servo-url]
-version = "=0.4.0"
+version = "=0.5.0"
 
 [dependencies.servo_arc]
 version = "0.4.3"
@@ -302,7 +313,7 @@ version = "0.1.44"
 optional = true
 
 [dependencies.tungstenite]
-version = "0.29"
+version = "0.30"
 
 [dependencies.url]
 version = "2.5"
@@ -318,7 +329,7 @@ features = [
 version = "1.0"
 
 [dependencies.webrender_api]
-version = "0.69"
+version = "0.70"
 
 [dev-dependencies.flate2]
 version = "1.1"
@@ -351,4 +362,4 @@ features = [
 default-features = false
 
 [dev-dependencies.servo-default-resources]
-version = "=0.4.0"
+version = "=0.5.0"

@@ -80,7 +80,7 @@ impl ProtocolHandler for BlobProtocolHander {
                 BlobURLStoreError::InvalidRange => {
                     range_not_satisfiable_error(&mut response);
                     return Box::pin(ready(response));
-                }
+                },
                 _ => format!("{:?}", err),
             };
             return Box::pin(ready(Response::network_error(

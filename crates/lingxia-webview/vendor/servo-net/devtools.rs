@@ -158,7 +158,7 @@ pub(crate) fn send_response_to_devtools(
             notify_failure(request, &error);
             log::warn!("No metadata available, skipping devtools response.");
             return;
-        }
+        },
     };
     send_response_values_to_devtools(
         meta.headers.map(Serde::into_inner),
@@ -181,8 +181,7 @@ pub(crate) fn send_response_values_to_devtools(
     devtools_chan: Option<Sender<DevtoolsControlMsg>>,
     completed: bool,
 ) {
-    if let (Some(pipeline_id), Some(webview_id)) = (request.pipeline_id, request.target_webview_id)
-    {
+    if let (Some(pipeline_id), Some(webview_id)) = (request.pipeline_id, request.target_webview_id) {
         let browsing_context_id = webview_id.into();
         let from_cache = matches!(cache_state, CacheState::Local | CacheState::Validated);
 
@@ -217,7 +216,7 @@ pub(crate) fn send_security_info_to_devtools(
         Err(_) => {
             log::warn!("No metadata available, skipping devtools security info.");
             return;
-        }
+        },
     };
 
     if let (Some(devtools_chan), Some(security_info), Some(webview_id)) = (
