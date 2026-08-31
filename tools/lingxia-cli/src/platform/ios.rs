@@ -312,6 +312,7 @@ impl Platform for IosPlatform {
         // Create .app bundle using AppBundler (converts library to executable app)
         let app_path =
             self.create_app_bundle(&ios_dir, &config.project_root, config, ios_config)?;
+        embed_packet_tunnel_extension_if_present(&ios_dir, &app_path, config.profile)?;
 
         // Compile asset catalog (includes AppIcon) and merge generated plist
         let deployment_target = ios_config
@@ -516,6 +517,106 @@ impl Platform for IosPlatform {
     }
 }
 
+/// Embed the convention-based Packet Tunnel product when the host declares
+/// `ios/PacketTunnel/Info.plist`.
+///
+/// SwiftPM builds the sibling executable target during `swift build`; this step
+/// gives that executable the `.appex` structure Xcode would normally create.
+/// Projects without the directory keep the existing build path unchanged.
+fn embed_packet_tunnel_extension_if_present(
+    ios_dir: &Path,
+    app_path: &Path,
+    profile: BuildProfile,
+) -> Result<()> {
+    let source_dir = ios_dir.join("PacketTunnel");
+    let source_plist = source_dir.join("Info.plist");
+    if !source_plist.is_file() {
+        return Ok(());
+    }
+
+    let build_config = if matches!(profile, BuildProfile::Release) {
+        "release"
+    } else {
+        "debug"
+    };
+    let executable_name = "PacketTunnel";
+    let executable = ios_dir
+        .join(".build")
+        .join("arm64-apple-ios")
+        .join(build_config)
+        .join(executable_name);
+    if !executable.is_file() {
+        return Err(anyhow!(
+            "Packet Tunnel source exists, but SwiftPM did not build the `{executable_name}` executable product at {}",
+            executable.display()
+        ));
+    }
+
+    let main_plist = plist::Value::from_file(app_path.join("Info.plist"))
+        .context("Failed to read the generated iOS app Info.plist")?;
+    let main = main_plist
+        .as_dictionary()
+        .ok_or_else(|| anyhow!("Generated iOS app Info.plist is not a dictionary"))?;
+    let app_bundle_id = plist_string(main, "CFBundleIdentifier")?;
+
+    let mut extension_plist = plist::Value::from_file(&source_plist)
+        .with_context(|| format!("Failed to read {}", source_plist.display()))?;
+    let extension = extension_plist
+        .as_dictionary_mut()
+        .ok_or_else(|| anyhow!("{} is not a dictionary", source_plist.display()))?;
+    extension.insert(
+        "CFBundleIdentifier".into(),
+        plist::Value::String(format!("{app_bundle_id}.PacketTunnel")),
+    );
+    extension.insert(
+        "CFBundleExecutable".into(),
+        plist::Value::String(executable_name.into()),
+    );
+    for key in [
+        "CFBundleVersion",
+        "CFBundleShortVersionString",
+        "MinimumOSVersion",
+    ] {
+        if let Some(value) = main.get(key) {
+            extension.insert(key.into(), value.clone());
+        }
+    }
+    if let Some(plist::Value::Dictionary(nsextension)) = extension.get_mut("NSExtension") {
+        nsextension.insert(
+            "NSExtensionPrincipalClass".into(),
+            plist::Value::String("PacketTunnel.PacketTunnelProvider".into()),
+        );
+    }
+
+    let destination = app_path.join("PlugIns").join("PacketTunnel.appex");
+    if destination.exists() {
+        fs::remove_dir_all(&destination)?;
+    }
+    fs::create_dir_all(&destination)?;
+    fs::copy(&executable, destination.join(executable_name)).with_context(|| {
+        format!(
+            "Failed to copy Packet Tunnel executable from {}",
+            executable.display()
+        )
+    })?;
+    extension_plist
+        .to_file_xml(destination.join("Info.plist"))
+        .context("Failed to write Packet Tunnel Info.plist")?;
+    let entitlements = source_dir.join("PacketTunnel.entitlements");
+    if entitlements.is_file() {
+        fs::copy(&entitlements, destination.join("PacketTunnel.entitlements"))?;
+    }
+    println!("  {} Embedded PacketTunnel.appex", "✓".green());
+    Ok(())
+}
+
+fn plist_string<'a>(dictionary: &'a plist::Dictionary, key: &str) -> Result<&'a str> {
+    dictionary
+        .get(key)
+        .and_then(plist::Value::as_string)
+        .ok_or_else(|| anyhow!("Generated iOS app Info.plist has no {key}"))
+}
+
 fn load_cached_apple_entitlements(platform: PermissionPlatform, bundle_id: &str) -> Vec<String> {
     let Ok(cache) = PermissionCache::load() else {
         return Vec::new();
@@ -609,4 +710,69 @@ pub fn get_resources_dir(
         app_project_name,
         "ios",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn embeds_packet_tunnel_with_environment_specific_identity() {
+        let root = tempfile::tempdir().unwrap();
+        let ios = root.path().join("ios");
+        let packet_tunnel = ios.join("PacketTunnel");
+        let binary_dir = ios.join(".build/arm64-apple-ios/debug");
+        let app = root.path().join("Farshore.app");
+        fs::create_dir_all(&packet_tunnel).unwrap();
+        fs::create_dir_all(&binary_dir).unwrap();
+        fs::create_dir_all(&app).unwrap();
+        fs::write(binary_dir.join("PacketTunnel"), b"mach-o").unwrap();
+        fs::write(
+            packet_tunnel.join("PacketTunnel.entitlements"),
+            b"entitlements",
+        )
+        .unwrap();
+
+        plist::Value::Dictionary(plist::Dictionary::from_iter([
+            (
+                String::from("CFBundleIdentifier"),
+                plist::Value::String("com.example.app.dev".into()),
+            ),
+            (
+                String::from("CFBundleVersion"),
+                plist::Value::String("42".into()),
+            ),
+        ]))
+        .to_file_xml(app.join("Info.plist"))
+        .unwrap();
+        plist::Value::Dictionary(plist::Dictionary::from_iter([
+            (
+                String::from("CFBundleIdentifier"),
+                plist::Value::String("stale.identifier".into()),
+            ),
+            (
+                String::from("NSExtension"),
+                plist::Value::Dictionary(plist::Dictionary::new()),
+            ),
+        ]))
+        .to_file_xml(packet_tunnel.join("Info.plist"))
+        .unwrap();
+
+        embed_packet_tunnel_extension_if_present(&ios, &app, BuildProfile::Debug).unwrap();
+
+        let appex = app.join("PlugIns/PacketTunnel.appex");
+        let embedded = plist::Value::from_file(appex.join("Info.plist")).unwrap();
+        let embedded = embedded.as_dictionary().unwrap();
+        assert_eq!(
+            embedded["CFBundleIdentifier"].as_string(),
+            Some("com.example.app.dev.PacketTunnel")
+        );
+        assert_eq!(
+            embedded["CFBundleExecutable"].as_string(),
+            Some("PacketTunnel")
+        );
+        assert_eq!(embedded["CFBundleVersion"].as_string(), Some("42"));
+        assert!(appex.join("PacketTunnel").is_file());
+        assert!(appex.join("PacketTunnel.entitlements").is_file());
+    }
 }

@@ -180,8 +180,17 @@ impl Signer {
                 if path.extension().map(|e| e == "appex").unwrap_or(false) {
                     // Sign frameworks in extension first
                     Self::sign_frameworks(&path, identity, keychain_path)?;
+                    let extension_entitlements = take_extension_entitlements(&path)?;
                     // Then sign the extension
-                    Self::codesign(&path, identity, entitlements, keychain_path)?;
+                    Self::codesign(
+                        &path,
+                        identity,
+                        extension_entitlements
+                            .as_ref()
+                            .map(NamedTempFile::path)
+                            .or(entitlements),
+                        keychain_path,
+                    )?;
                 }
             }
         }
@@ -288,6 +297,25 @@ impl Signer {
 
         Ok(())
     }
+}
+
+/// Move build-only extension entitlements outside the bundle before signing.
+fn take_extension_entitlements(extension: &Path) -> Result<Option<NamedTempFile>> {
+    let Some(source) = fs::read_dir(extension)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|ext| ext == "entitlements"))
+    else {
+        return Ok(None);
+    };
+    let bytes = fs::read(&source).context("Failed to read extension entitlements")?;
+    let mut temporary = NamedTempFile::new().context("Failed to stage extension entitlements")?;
+    use std::io::Write;
+    temporary
+        .write_all(&bytes)
+        .context("Failed to stage extension entitlements")?;
+    fs::remove_file(source).context("Failed to remove staged extension entitlements")?;
+    Ok(Some(temporary))
 }
 
 /// Information about an app's signature
@@ -517,5 +545,17 @@ mod tests {
             generate_new_bundle_id("org.company.app.name", "TEAMID"),
             "com.TEAMID.app-name"
         );
+    }
+
+    #[test]
+    fn extension_entitlements_are_removed_from_bundle_before_signing() {
+        let bundle = tempfile::tempdir().unwrap();
+        let source = bundle.path().join("PacketTunnel.entitlements");
+        fs::write(&source, b"extension-only").unwrap();
+
+        let staged = take_extension_entitlements(bundle.path()).unwrap().unwrap();
+
+        assert!(!source.exists());
+        assert_eq!(fs::read(staged.path()).unwrap(), b"extension-only");
     }
 }
