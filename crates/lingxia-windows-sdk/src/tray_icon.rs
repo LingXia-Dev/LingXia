@@ -50,6 +50,8 @@ static TRAY_CLICK_INTERCEPT: AtomicBool = AtomicBool::new(false);
 struct TrayItem {
     surface_id: String,
     app_id: String,
+    page: Option<String>,
+    query: Option<serde_json::Value>,
     action_kind: String,
     tooltip: String,
     icon_path: Option<PathBuf>,
@@ -218,8 +220,11 @@ fn tray_item_from_ui(asset_dir: &Path) -> Result<Option<TrayItem>, String> {
         // Menu / left-click events route to the lxapp backing the tray's
         // surface. Resolve it from `surfaces[].content.appId`, falling back to
         // the surface id (they coincide for a single-app tray surface).
-        let app_id =
-            resolve_surface_app_id(&ui, surface_id).unwrap_or_else(|| surface_id.to_string());
+        let target = resolve_surface_lxapp_target(&ui, surface_id);
+        let app_id = target
+            .as_ref()
+            .map(|target| target.app_id.clone())
+            .unwrap_or_else(|| surface_id.to_string());
         let action_kind = action
             .get("kind")
             .and_then(serde_json::Value::as_str)
@@ -248,6 +253,8 @@ fn tray_item_from_ui(asset_dir: &Path) -> Result<Option<TrayItem>, String> {
         return Ok(Some(TrayItem {
             surface_id: surface_id.to_string(),
             app_id,
+            page: target.as_ref().and_then(|target| target.page.clone()),
+            query: target.and_then(|target| target.query),
             action_kind: action_kind.to_string(),
             tooltip,
             icon_path,
@@ -257,18 +264,43 @@ fn tray_item_from_ui(asset_dir: &Path) -> Result<Option<TrayItem>, String> {
     Ok(None)
 }
 
-/// Resolve the lxapp id that backs `surface_id` from `ui.surfaces[].content`.
-fn resolve_surface_app_id(ui: &serde_json::Value, surface_id: &str) -> Option<String> {
-    ui.get("surfaces")
+#[derive(Debug, Clone, PartialEq)]
+struct SurfaceLxappTarget {
+    app_id: String,
+    page: Option<String>,
+    query: Option<serde_json::Value>,
+}
+
+/// Resolve the lxapp target that backs `surface_id` from `ui.surfaces[].content`.
+fn resolve_surface_lxapp_target(
+    ui: &serde_json::Value,
+    surface_id: &str,
+) -> Option<SurfaceLxappTarget> {
+    let content = ui
+        .get("surfaces")
         .and_then(serde_json::Value::as_array)?
         .iter()
         .find(|surface| surface.get("id").and_then(serde_json::Value::as_str) == Some(surface_id))
         .and_then(|surface| surface.get("content"))
-        .and_then(|content| content.get("appId"))
+        .and_then(serde_json::Value::as_object)?;
+    let app_id = content
+        .get("appId")
         .and_then(serde_json::Value::as_str)
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .map(str::to_string)
+        .map(str::to_string)?;
+    let page = content
+        .get("page")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    let query = content.get("query").cloned();
+    Some(SurfaceLxappTarget {
+        app_id,
+        page,
+        query,
+    })
 }
 
 fn resolve_asset_path(asset_dir: &Path, value: &str) -> PathBuf {
@@ -396,7 +428,12 @@ fn activate_tray_item() {
         lxapp::publish_app_event(&item.app_id, "lx.tray.click", None);
         return;
     }
-    if !crate::shell::handle_menu_bar_surface_action(&item.surface_id, &item.action_kind) {
+    if !crate::shell::handle_menu_bar_surface_action(
+        &item.surface_id,
+        &item.action_kind,
+        item.page.as_deref(),
+        item.query.as_ref(),
+    ) {
         log::warn!(
             "Windows tray activator could not handle {} for surface {}",
             item.action_kind,
@@ -486,5 +523,35 @@ fn destroy_icon(handle: isize) {
     }
     unsafe {
         let _ = WindowsAndMessaging::DestroyIcon(HICON(handle as *mut c_void));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SurfaceLxappTarget, resolve_surface_lxapp_target};
+    use serde_json::json;
+
+    #[test]
+    fn tray_target_keeps_page_name_and_structured_query() {
+        let ui = json!({
+            "surfaces": [{
+                "id": "home",
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "home",
+                    "page": "tray",
+                    "query": { "source": "tray", "compact": true }
+                }
+            }]
+        });
+
+        assert_eq!(
+            resolve_surface_lxapp_target(&ui, "home"),
+            Some(SurfaceLxappTarget {
+                app_id: "home".to_string(),
+                page: Some("tray".to_string()),
+                query: Some(json!({ "source": "tray", "compact": true })),
+            })
+        );
     }
 }

@@ -1,4 +1,5 @@
 use crate::lxapp::ReleaseType;
+use crate::{LxApp, LxAppError};
 use lingxia_platform::traits::app_runtime::LxAppOpenMode;
 use lingxia_update::host_channel;
 use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
@@ -29,6 +30,10 @@ impl From<i32> for Scene {
 pub struct LxAppStartupOptions {
     pub path: String,
     pub query: String,
+    /// Author-facing page selector. Resolved against `lxapp.json` when the app
+    /// opens; native renderers continue to receive the resolved internal path.
+    #[serde(skip)]
+    pub page: Option<String>,
     pub release_type: ReleaseType,
     pub scene: Scene,
     #[serde(skip)]
@@ -160,6 +165,51 @@ impl LxAppStartupOptions {
         }
     }
 
+    /// Creates startup options from the public page-name + query contract.
+    /// Omit `page` to target the app's configured initial page.
+    pub fn for_page(page: Option<&str>, query: Option<&Value>) -> Result<Self, String> {
+        let page = page
+            .map(str::trim)
+            .map(|page| {
+                if page.is_empty() {
+                    Err("page must be a non-empty configured page name".to_string())
+                } else {
+                    Ok(page.to_string())
+                }
+            })
+            .transpose()?;
+        let query = match query {
+            Some(query) => append_page_query(String::new(), query)?
+                .strip_prefix('?')
+                .unwrap_or_default()
+                .to_string(),
+            None => String::new(),
+        };
+        Ok(Self {
+            page,
+            query,
+            ..Self::new("")
+        })
+    }
+
+    /// Resolves an author-facing page selector into the internal URL consumed
+    /// by native renderers. Query stays separate until this boundary.
+    pub fn resolved_url(&self, app: &LxApp) -> Result<String, LxAppError> {
+        let path = match self.page.as_deref() {
+            Some(page) => app
+                .find_page_path_by_name(page)
+                .ok_or_else(|| LxAppError::ResourceNotFound(format!("page name: {page}")))?,
+            None if self.path.is_empty() => app.initial_route(),
+            None => self.path.clone(),
+        };
+        if self.query.is_empty() {
+            Ok(path)
+        } else {
+            let separator = if path.contains('?') { '&' } else { '?' };
+            Ok(format!("{path}{separator}{}", self.query))
+        }
+    }
+
     /// Sets the release type for the startup options.
     pub fn set_release_type(mut self, release_type: ReleaseType) -> Self {
         self.release_type = release_type;
@@ -193,10 +243,23 @@ impl LxAppStartupOptions {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_query_string;
+    use super::{LxAppStartupOptions, parse_query_string};
 
     #[test]
     fn empty_query_is_an_options_object() {
         assert_eq!(parse_query_string("").unwrap(), serde_json::json!({}));
+    }
+
+    #[test]
+    fn page_startup_keeps_name_and_encodes_query_separately() {
+        let options = LxAppStartupOptions::for_page(
+            Some(" tray "),
+            Some(&serde_json::json!({ "source": "menu bar", "compact": true })),
+        )
+        .unwrap();
+
+        assert_eq!(options.page.as_deref(), Some("tray"));
+        assert_eq!(options.path, "");
+        assert_eq!(options.query, "compact=true&source=menu%20bar");
     }
 }

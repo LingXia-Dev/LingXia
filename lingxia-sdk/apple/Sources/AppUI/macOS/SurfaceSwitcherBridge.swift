@@ -198,7 +198,7 @@ enum SurfaceSwitcherBridge {
             guard let appId = surface.content.appId, !appId.isEmpty else {
                 throw LxAppUIError.invalidConfig("main surface \(surface.id) has no appId")
             }
-            content = .lxapp(appId: appId, path: surface.content.path)
+            content = .lxapp(appId: appId, path: try surface.content.resolvedLxAppPath())
             presentation = Presentation(
                 automaticTitle: appId,
                 icon: .providerAsset(provider: "lxapp", key: appId),

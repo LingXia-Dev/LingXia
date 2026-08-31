@@ -140,7 +140,7 @@ pub(crate) use runtime::open_declared_browser;
 #[cfg(feature = "terminal-runtime")]
 pub(crate) use runtime::open_declared_terminal;
 pub(crate) use runtime::{
-    open_home_app, open_self_browser, prime_lxapp_shell_layout, set_shell_owner_app_id,
+    open_home_app_with_target, open_self_browser, prime_lxapp_shell_layout, set_shell_owner_app_id,
     update_surface_width,
 };
 

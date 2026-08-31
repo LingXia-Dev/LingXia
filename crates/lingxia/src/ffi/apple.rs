@@ -1,8 +1,8 @@
 use lingxia_messaging::invoke_callback;
 use lxapp::{
-    CloseReason, CreatePageInstanceRequest, LxAppDelegate, LxAppUiEventType, OrientationConfig,
-    PageInstanceEvent, PageInstanceId, PageOrientation, PageOwner, PageQueryInput, PageTarget,
-    PresentationKind, SceneId,
+    CloseReason, CreatePageInstanceRequest, LxAppDelegate, LxAppStartupOptions, LxAppUiEventType,
+    OrientationConfig, PageInstanceEvent, PageInstanceId, PageOrientation, PageOwner,
+    PageQueryInput, PageTarget, PresentationKind, SceneId,
 };
 #[cfg(all(target_os = "macos", feature = "browser-shell"))]
 use std::sync::Arc;
@@ -129,6 +129,13 @@ mod bridge {
         pub webview_ptr: usize,
     }
 
+    #[swift_bridge(swift_repr = "struct")]
+    pub struct ResolvePageTargetResult {
+        pub ok: bool,
+        pub path: String,
+        pub error: String,
+    }
+
     // One terminal frame, addressed by pointer so the render path copies
     // no per-cell data and builds no JSON. The buffers belong to the
     // session and stay valid until the next `terminalSessionFrame` call
@@ -251,6 +258,13 @@ mod bridge {
 
         #[swift_bridge(swift_name = "resolvePageBinding")]
         fn resolve_page_binding(appid: &str, path: &str, session_id: u64) -> PageBindingResult;
+
+        #[swift_bridge(swift_name = "resolveLxAppPageTarget")]
+        fn resolve_lxapp_page_target(
+            appid: &str,
+            page: &str,
+            query_json: &str,
+        ) -> ResolvePageTargetResult;
 
         #[swift_bridge(swift_name = "createPageInstance")]
         fn create_page_instance_for_open(
@@ -1812,6 +1826,50 @@ pub fn resolve_page_binding(
     self::bridge::PageBindingResult {
         page_instance_id,
         webview_ptr,
+    }
+}
+
+pub fn resolve_lxapp_page_target(
+    appid: &str,
+    page: &str,
+    query_json: &str,
+) -> self::bridge::ResolvePageTargetResult {
+    let Some(app) = lxapp::try_get(appid) else {
+        return self::bridge::ResolvePageTargetResult {
+            ok: false,
+            path: String::new(),
+            error: format!("lxapp not found: {appid}"),
+        };
+    };
+    let query = if query_json.trim().is_empty() {
+        None
+    } else {
+        match serde_json::from_str::<serde_json::Value>(query_json) {
+            Ok(query) => Some(query),
+            Err(error) => {
+                return self::bridge::ResolvePageTargetResult {
+                    ok: false,
+                    path: String::new(),
+                    error: format!("invalid page query: {error}"),
+                };
+            }
+        }
+    };
+    let page = (!page.trim().is_empty()).then_some(page);
+    match LxAppStartupOptions::for_page(page, query.as_ref())
+        .map_err(lxapp::LxAppError::InvalidParameter)
+        .and_then(|options| options.resolved_url(&app))
+    {
+        Ok(path) => self::bridge::ResolvePageTargetResult {
+            ok: true,
+            path,
+            error: String::new(),
+        },
+        Err(error) => self::bridge::ResolvePageTargetResult {
+            ok: false,
+            path: String::new(),
+            error: error.to_string(),
+        },
     }
 }
 

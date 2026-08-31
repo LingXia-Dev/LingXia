@@ -2659,11 +2659,8 @@ impl LxApp {
 
         // Record startup options on this instance
         // Resolve path early so we can keep native/view/AppService consistent.
-        let raw_url = if startup_options.path.is_empty() {
-            self.config.get_initial_route()
-        } else {
-            startup_options.path.clone()
-        };
+        let raw_url = startup_options.resolved_url(self)?;
+        startup_options.page = None;
 
         let resolved = crate::route::resolve_route(self, &raw_url).unwrap_or_else(|e| {
             error!("Failed to resolve startup url '{}': {}", raw_url, e)

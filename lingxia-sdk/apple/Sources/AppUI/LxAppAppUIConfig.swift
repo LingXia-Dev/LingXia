@@ -89,6 +89,10 @@ struct LxAppUIConfig: Decodable, Sendable {
     struct Content: Decodable, Sendable {
         let kind: Kind
         let appId: String?
+        let page: String?
+        let query: [String: LxAppJSONValue]?
+        /// Resolved runtime route retained for compatibility with internal
+        /// registrations; generated host config uses `page` + `query`.
         let path: String?
         let url: String?
         let name: NativeName?
@@ -108,6 +112,28 @@ struct LxAppUIConfig: Decodable, Sendable {
 
         var isNativeTerminal: Bool { kind == .native && name == .terminal }
         var isNativeBrowser: Bool { kind == .native && name == .browser }
+
+        func resolvedLxAppPath() throws -> String {
+            guard kind == .lxapp else { return "" }
+            guard page != nil || query != nil else { return path ?? "" }
+            guard let appId, !appId.isEmpty else {
+                throw LxAppUIError.invalidConfig("lxapp content has no appId")
+            }
+            let queryJSON: String
+            if let query {
+                let data = try JSONEncoder().encode(query)
+                queryJSON = String(data: data, encoding: .utf8) ?? ""
+            } else {
+                queryJSON = ""
+            }
+            let result = resolveLxAppPageTarget(appId, page ?? "", queryJSON)
+            guard result.ok else {
+                throw LxAppUIError.invalidConfig(
+                    "cannot resolve page \(page ?? "<initial>") for \(appId): \(result.error.toString())"
+                )
+            }
+            return result.path.toString()
+        }
     }
 
     struct Activator: Decodable, Sendable {

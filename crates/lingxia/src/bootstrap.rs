@@ -171,6 +171,13 @@ fn panel_item_from_surface(
         .map(str::trim)
         .filter(|path| !path.is_empty())
         .map(ToOwned::to_owned);
+    let page = content
+        .get("page")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|page| !page.is_empty())
+        .map(ToOwned::to_owned);
+    let query = content.get("query").cloned();
 
     Some(PanelItem {
         id: surface_id.to_string(),
@@ -181,6 +188,8 @@ fn panel_item_from_surface(
             kind: content_kind,
             app_id: app_id.unwrap_or_default().to_string(),
             path,
+            page,
+            query,
         },
     })
 }
@@ -323,7 +332,12 @@ mod tests {
                 "role": "aside",
                 "attachTo": "main",
                 "edge": "right",
-                "content": { "kind": "lxapp", "appId": "lingxia-chat", "path": "pages/chat/index" }
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "lingxia-chat",
+                    "page": "chat",
+                    "query": { "source": "sidebar" }
+                }
             }],
             "activators": [{
                 "id": "assistantSidebar",
@@ -342,9 +356,10 @@ mod tests {
         assert_eq!(panels.items[0].icon, "icons/chat.pdf");
         assert_eq!(panels.items[0].position, PanelPosition::Right);
         assert_eq!(panels.items[0].content.app_id, "lingxia-chat");
+        assert_eq!(panels.items[0].content.page.as_deref(), Some("chat"));
         assert_eq!(
-            panels.items[0].content.path.as_deref(),
-            Some("pages/chat/index")
+            panels.items[0].content.query,
+            Some(serde_json::json!({ "source": "sidebar" }))
         );
     }
 
