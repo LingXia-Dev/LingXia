@@ -35,7 +35,7 @@ pub(crate) async fn fetch(request: &mut Request, url: ServoUrl, path_buf: PathBu
             return Response::network_error(NetworkError::ResourceLoadError(format!(
                 "Unable to access directory: {error}"
             )));
-        }
+        },
     };
 
     let output = build_html_directory_listing(url.as_url(), path_buf, directory_contents).await;

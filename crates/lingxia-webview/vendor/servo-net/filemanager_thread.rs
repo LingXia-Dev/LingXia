@@ -166,25 +166,25 @@ impl FileManager {
                         .await;
                     response_sender.send(embedder_control_msg).unwrap();
                 });
-            }
+            },
             FileManagerThreadMsg::ReadFile(sender, id, origin) => {
                 self.read_file(sender, id, origin);
-            }
+            },
             FileManagerThreadMsg::PromoteMemory(id, blob_buf, set_valid, origin) => {
                 self.promote_memory(id, blob_buf, set_valid, origin);
-            }
+            },
             FileManagerThreadMsg::AddSlicedURLEntry(id, rel_pos, sender, origin) => {
                 self.store.add_sliced_url_entry(id, rel_pos, sender, origin);
-            }
+            },
             FileManagerThreadMsg::DecRef(id, origin, sender) => {
                 let _ = sender.send(self.store.dec_ref(&id, &origin));
-            }
+            },
             FileManagerThreadMsg::RevokeBlobURL(id, origin, sender) => {
                 let _ = sender.send(self.store.set_blob_url_validity(false, &id, &origin));
-            }
+            },
             FileManagerThreadMsg::ActivateBlobURL(id, sender, origin) => {
                 let _ = sender.send(self.store.set_blob_url_validity(true, &id, &origin));
-            }
+            },
             FileManagerThreadMsg::GetTokenForFile(id, _origin, sender) => {
                 let token = match self.get_token_for_file(&id, false) {
                     FileTokenCheck::Required(token) => Some(token),
@@ -197,10 +197,10 @@ impl FileManager {
                     revoke_sender: communicator.revoke_sender.clone(),
                     refresh_sender: communicator.refresh_token_sender.clone(),
                 });
-            }
+            },
             FileManagerThreadMsg::RevokeTokenForFile(token, id) => {
                 self.invalidate_token(&FileTokenCheck::Required(token), &id);
-            }
+            },
         }
     }
 
@@ -292,7 +292,7 @@ impl FileManager {
                             is_range_requested = true;
                         }
                         get_range_request_bounds(range, buf.size)
-                    }
+                    },
                     BlobBounds::Resolved(bounds) => bounds,
                 };
                 let range = bounds
@@ -321,7 +321,7 @@ impl FileManager {
                 let _ = done_sender.send(Data::Done);
 
                 Ok(())
-            }
+            },
             FileImpl::MetaDataOnly(metadata) => {
                 /* XXX: Snapshot state check (optional) https://w3c.github.io/FileAPI/#snapshot-state.
                         Concretely, here we create another file, and this file might not
@@ -338,7 +338,7 @@ impl FileManager {
                             is_range_requested = true;
                         }
                         get_range_request_bounds(range, metadata.size)
-                    }
+                    },
                     BlobBounds::Resolved(bounds) => bounds,
                 };
                 let range = bounds
@@ -377,7 +377,7 @@ impl FileManager {
                 );
 
                 Ok(())
-            }
+            },
             FileImpl::Sliced(parent_id, inner_rel_pos) => {
                 // Next time we don't need to check validity since
                 // we have already done that for requesting URL if necessary.
@@ -393,7 +393,7 @@ impl FileManager {
                     BlobBounds::Resolved(bounds),
                     response,
                 )
-            }
+            },
         }
     }
 }
@@ -436,11 +436,11 @@ impl FileManagerStore {
                                 return Ok(entry.file_impl.clone());
                             }
                             Err(BlobURLStoreError::InvalidFileID)
-                        }
+                        },
                         FileTokenCheck::ShouldFail => Err(BlobURLStoreError::InvalidFileID),
                     }
                 }
-            }
+            },
             None => Err(BlobURLStoreError::InvalidFileID),
         }
     }
@@ -479,7 +479,7 @@ impl FileManagerStore {
                 } else {
                     None
                 }
-            }
+            },
             None => return FileTokenCheck::ShouldFail,
         };
         let file_id = parent_id.as_ref().unwrap_or(file_id);
@@ -513,7 +513,7 @@ impl FileManagerStore {
                 } else {
                     Err(BlobURLStoreError::InvalidOrigin)
                 }
-            }
+            },
             None => Err(BlobURLStoreError::InvalidFileID),
         }
     }
@@ -543,10 +543,10 @@ impl FileManagerStore {
 
                 // We assume that the returned id will be held by BlobImpl::File
                 let _ = sender.send(Ok(new_id));
-            }
+            },
             Err(e) => {
                 let _ = sender.send(Err(e));
-            }
+            },
         }
     }
 
@@ -569,11 +569,11 @@ impl FileManagerStore {
             Ok(Some(result)) => result,
             Ok(None) => {
                 return EmbedderControlResponse::FilePicker(None);
-            }
+            },
             Err(error) => {
                 warn!("Failed to receive files from embedder ({:?}).", error);
                 return EmbedderControlResponse::FilePicker(None);
-            }
+            },
         };
 
         let mut failed = false;
@@ -585,7 +585,7 @@ impl FileManagerStore {
                     failed = true;
                     warn!("Failed to create entry for selected file: {error:?}");
                     None
-                }
+                },
             })
             .collect();
 
@@ -681,7 +681,7 @@ impl FileManagerStore {
                 let _ = sender.send(Ok(ReadFileProgress::EOF));
 
                 Ok(())
-            }
+            },
             FileImpl::MetaDataOnly(metadata) => {
                 /* XXX: Snapshot state check (optional) https://w3c.github.io/FileAPI/#snapshot-state.
                         Concretely, here we create another file, and this file might not
@@ -717,7 +717,7 @@ impl FileManagerStore {
                 } else {
                     Err(BlobURLStoreError::InvalidEntry)
                 }
-            }
+            },
             FileImpl::Sliced(parent_id, inner_rel_pos) => {
                 // Next time we don't need to check validity since
                 // we have already done that for requesting URL if necessary
@@ -729,7 +729,7 @@ impl FileManagerStore {
                     rel_pos.slice_inner(&inner_rel_pos),
                 ))
                 .await
-            }
+            },
         }
     }
 
@@ -779,7 +779,7 @@ impl FileManagerStore {
                 } else {
                     return Err(BlobURLStoreError::InvalidOrigin);
                 }
-            }
+            },
             None => return Err(BlobURLStoreError::InvalidFileID),
         };
 
@@ -850,7 +850,7 @@ impl FileManagerStore {
                 } else {
                     (false, None, Err(BlobURLStoreError::InvalidOrigin))
                 }
-            }
+            },
             None => (false, None, Err(BlobURLStoreError::InvalidFileID)),
         };
 
@@ -885,11 +885,11 @@ async fn read_file_in_chunks(
                 bytes: buf,
             };
             let _ = sender.send(Ok(ReadFileProgress::Meta(blob_buf)));
-        }
+        },
         Err(e) => {
             let _ = sender.send(Err(FileManagerThreadError::FileSystemError(e.to_string())));
             return;
-        }
+        },
     }
 
     // Send the remaining chunks
@@ -899,15 +899,15 @@ async fn read_file_in_chunks(
             Ok(0) => {
                 let _ = sender.send(Ok(ReadFileProgress::EOF));
                 return;
-            }
+            },
             Ok(n) => {
                 buf.truncate(n);
                 let _ = sender.send(Ok(ReadFileProgress::Partial(buf)));
-            }
+            },
             Err(e) => {
                 let _ = sender.send(Err(FileManagerThreadError::FileSystemError(e.to_string())));
                 return;
-            }
+            },
         }
     }
 }

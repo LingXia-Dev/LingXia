@@ -235,7 +235,7 @@ where
                 Err(_) => {
                     eprintln!("Error handling TLS stream.");
                     continue;
-                }
+                },
             };
 
             let _ = http1::Builder::new()

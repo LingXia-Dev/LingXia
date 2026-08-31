@@ -62,10 +62,10 @@ impl RequestInterceptor {
                         webresource_response.status_message,
                     );
                     *response = Some(response_override);
-                }
+                },
                 WebResourceResponseMsg::SendBodyData(data) => {
                     accumulated_body.push(data);
-                }
+                },
                 WebResourceResponseMsg::FinishLoad => {
                     if accumulated_body.is_empty() {
                         break;
@@ -77,11 +77,11 @@ impl RequestInterceptor {
                     *response.body.lock() =
                         ResponseBody::Done(accumulated_body.into_iter().flatten().collect());
                     break;
-                }
+                },
                 WebResourceResponseMsg::CancelLoad => {
                     *response = Some(Response::network_error(NetworkError::LoadCancelled));
                     break;
-                }
+                },
                 WebResourceResponseMsg::DoNotIntercept => break,
             }
         }

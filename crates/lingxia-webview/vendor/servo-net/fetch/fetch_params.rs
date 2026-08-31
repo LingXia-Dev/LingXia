@@ -26,7 +26,7 @@ impl PreloadResponseCandidate {
             // Step 2. Assert: fetchParams’s preloaded response candidate is a response.
             PreloadResponseCandidate::Response(response, preload_id) => {
                 Some((*response.clone(), preload_id.clone()))
-            }
+            },
             // Step 1. Wait until fetchParams’s preloaded response candidate is not "pending".
             PreloadResponseCandidate::Pending(receiver, preload_id) => receiver
                 .await
