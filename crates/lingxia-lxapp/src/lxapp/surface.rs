@@ -1714,6 +1714,27 @@ impl LxApp {
             );
         }
 
+        // The isolated page can finish mounting before its surface record is
+        // inserted. Its mount-time chrome publication then sees no full-chrome
+        // owner and publishes a zero inset. Publish once more after the record
+        // becomes authoritative; whichever task runs last now sees the record.
+        if chrome == WindowChrome::Full
+            && let Some(page) = self.get_page_by_instance_id_str(&page_instance_id)
+        {
+            let revision = self.next_page_chrome_revision();
+            let appearance = self.appearance_state().resolved;
+            let app = self.clone_arc();
+            std::mem::drop(crate::executor::spawn(async move {
+                if let Err(err) = app
+                    .publish_realized_page_chrome(&page, revision, appearance)
+                    .await
+                {
+                    warn!("Failed to publish window Page Chrome snapshot: {}", err)
+                        .with_appid(app.appid.clone());
+                }
+            }));
+        }
+
         // Present directly with the authoritative window mapping; do NOT consult
         // the graph (no open_node / present_params_for_role / commit).
         let present_result = self.runtime.present_surface(PlatformSurfaceRequest {
