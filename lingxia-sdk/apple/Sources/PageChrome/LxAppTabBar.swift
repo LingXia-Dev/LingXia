@@ -73,6 +73,18 @@ extension TabBarItem {
     var cachedIconPath: String { icon_path.toString() }
 }
 
+/// Keep the host-owned slot in the same language as its sibling labels.
+fileprivate func tabBarMoreLabel(for items: [TabBarItem]) -> String {
+    let labels = items.map(\.cachedText).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    let chineseLabels = labels.filter { text in
+        text.unicodeScalars.contains { scalar in
+            (0x3400...0x4DBF).contains(scalar.value)
+                || (0x4E00...0x9FFF).contains(scalar.value)
+        }
+    }.count
+    return chineseLabels > labels.count - chineseLabels ? "更多" : "More"
+}
+
 /// TabBar styling helpers
 /// Circle drawn behind the icon of a selected item that ships only one icon,
 /// standing in for the selected artwork it does not have.
@@ -111,6 +123,8 @@ struct MacOSLxAppTabBar: View {
     /// When set, render these item indices as the overflow grid instead of the
     /// strip. The host uses this for the panel above the bar.
     let overflowGrid: [Int]?
+    /// While the panel is open, it owns selection instead of the prior tab.
+    let overflowPresented: Bool
 
     init(
         appId: String,
@@ -118,6 +132,7 @@ struct MacOSLxAppTabBar: View {
         selectedIndex: Binding<Int>,
         compact: Bool = true,
         overflowGrid: [Int]? = nil,
+        overflowPresented: Bool = false,
         onMoreRequested: @escaping () -> Void = {},
         onTabSelected: @escaping (Int, String) -> Void
     ) {
@@ -126,6 +141,7 @@ struct MacOSLxAppTabBar: View {
         self._selectedIndex = selectedIndex
         self.compact = compact
         self.overflowGrid = overflowGrid
+        self.overflowPresented = overflowPresented
         self.onMoreRequested = onMoreRequested
         self.onTabSelected = onTabSelected
     }
@@ -153,7 +169,7 @@ struct MacOSLxAppTabBar: View {
 
     @ViewBuilder
     private func buildTabItem(item: TabBarItem, index: Int) -> some View {
-        let isSelected = (item.cachedIndex == selectedIndex)
+        let isSelected = (overflowGrid != nil || !overflowPresented) && item.cachedIndex == selectedIndex
         // Get state directly from Rust
         let rustItem = getTabBarItem(appId, Int32(index))
 
@@ -244,7 +260,9 @@ struct MacOSLxAppTabBar: View {
     /// The overflow slot stands in for the folded items, selection included.
     @ViewBuilder
     private func buildMoreItem(items: [TabBarItem], overflowStart: Int) -> some View {
-        let isSelected = items[overflowStart...].contains { $0.cachedIndex == selectedIndex }
+        let isSelected = overflowPresented || items[overflowStart...].contains {
+            $0.cachedIndex == selectedIndex
+        }
         let forceColor = isSelected ?
             Color(PlatformColor(argb: config.selected_color)) :
             Color(PlatformColor(argb: config.color))
@@ -276,7 +294,7 @@ struct MacOSLxAppTabBar: View {
                         TabBarHelpers.buildRedDot().offset(x: 16, y: -4)
                     }
                 }
-                Text(L10n.string("lx_tabbar_more"))
+                Text(tabBarMoreLabel(for: items))
                     .font(LxAppTheme.Typography.tabTitle)
                     .foregroundColor(forceColor)
                     .lineLimit(1)
@@ -441,6 +459,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
     private var selectedIndex: Int = 0
     private var onTabSelectedCallback: ((Int, String) -> Void)?
     private weak var overflowPanel: LxAppTabBarOverflowPanel?
+    private var morePresented = false
 
     // Public accessor for tabBarConfig
     var config: TabBar? {
@@ -477,11 +496,11 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
 
     /// `index` is a declaration index, not a position in the shipped list.
     func setSelectedIndex(_ index: Int, notifyListener: Bool) {
-        let previousIndex = Int(tabBarConfig?.selected_index ?? 0)
+        let previousIndex = selectedIndex
         self.selectedIndex = index
 
-        if previousIndex != index {
-            refreshLayout()
+        if previousIndex != index, let config = tabBarConfig {
+            setupUIKitLayout(items: config.getItems(appId: appId), config: config)
         }
 
         if notifyListener, let callback = onTabSelectedCallback, let config = tabBarConfig {
@@ -506,7 +525,6 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         // Update selected index from fresh config
         self.selectedIndex = Int(freshConfig.selected_index)
 
-        // Apply background color from config
         let bgColor = PlatformColor(argb: freshConfig.background_color)
         self.backgroundColor = bgColor
         self.layer.backgroundColor = bgColor.cgColor
@@ -623,7 +641,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         stackView.translatesAutoresizingMaskIntoConstraints = false
         stackView.isUserInteractionEnabled = false
 
-        let isSelected = (item.cachedIndex == selectedIndex)
+        let isSelected = !morePresented && item.cachedIndex == selectedIndex
 
         if !item.icon_path.toString().isEmpty {
             let iconView = createUIKitIcon(item: item, index: index, isSelected: isSelected)
@@ -758,6 +776,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
 
     @objc private func uikitTabButtonTapped(_ sender: UIButton) {
         let index = sender.tag
+        overflowPanel?.dismissPanel()
         // Update local UI selection immediately, and notify listener (which routes to Rust)
         setSelectedIndex(index, notifyListener: true)
     }
@@ -781,7 +800,9 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.addTarget(self, action: #selector(moreButtonTapped), for: .touchUpInside)
 
-        let isSelected = items[overflowStart...].contains { $0.cachedIndex == selectedIndex }
+        let isSelected = morePresented || items[overflowStart...].contains {
+            $0.cachedIndex == selectedIndex
+        }
         let tint = isSelected
             ? PlatformColor(argb: config.selected_color)
             : PlatformColor(argb: config.color)
@@ -831,7 +852,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         }
 
         let textLabel = UILabel()
-        textLabel.text = L10n.string("lx_tabbar_more")
+        textLabel.text = tabBarMoreLabel(for: items)
         textLabel.font = UIFont.systemFont(ofSize: 10, weight: .medium)
         textLabel.textColor = tint
         textLabel.textAlignment = .center
@@ -881,16 +902,29 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         let start = overflowStart(itemCount: items.count, config: config)
         guard start >= 0 else { return }
 
-        overflowPanel?.removeFromSuperview()
+        if let overflowPanel {
+            overflowPanel.dismissPanel()
+            return
+        }
+        morePresented = true
+        setupUIKitLayout(items: items, config: config)
         let panel = LxAppTabBarOverflowPanel(
             items: items,
             indices: Array(start..<items.count),
             config: config,
             selectedIndex: selectedIndex,
-            appId: appId
-        ) { [weak self] index in
-            self?.setSelectedIndex(index, notifyListener: true)
-        }
+            appId: appId,
+            onPick: { [weak self] index in
+                self?.setSelectedIndex(index, notifyListener: true)
+            },
+            onDismiss: { [weak self] in
+                guard let self else { return }
+                self.morePresented = false
+                if let config = self.tabBarConfig {
+                    self.setupUIKitLayout(items: config.getItems(appId: self.appId), config: config)
+                }
+            }
+        )
         panel.present(in: host, above: self)
         overflowPanel = panel
     }
@@ -939,6 +973,7 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     /// Phone-shaped host; see `MacOSLxAppTabBar.compact`. Republished so a
     /// simulated device change re-lays the strip.
     @Published private var compact: Bool = true
+    @Published private var morePresented = false
     private var onTabSelectedCallback: ((Int, String) -> Void)?
     /// Panel above the strip listing the folded items, while it is open.
     private weak var overflowPanel: NSView?
@@ -1025,6 +1060,7 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         let start = Int(config.overflow_start_index)
         let count = Int(config.items_count)
         guard start >= 0, start < count else { return }
+        morePresented = true
 
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
@@ -1097,6 +1133,7 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     private func dismissOverflowPanel() {
         overflowPanel?.removeFromSuperview()
         overflowPanel = nil
+        morePresented = false
     }
 
     /// Follow the host's size class: a phone-shaped runner folds extra items
@@ -1171,6 +1208,7 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
                 config: config,
                 selectedIndex: $wrapper.selectedIndex,
                 compact: wrapper.compact,
+                overflowPresented: wrapper.morePresented,
                 onMoreRequested: { wrapper.toggleOverflowPanel() }
             ) { index, path in
                 wrapper.setSelectedIndex(index, notifyListener: true)

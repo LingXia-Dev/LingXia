@@ -3,6 +3,7 @@ package com.lingxia.lxapp.chrome
 import com.lingxia.lxapp.R
 
 import android.content.Context
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
@@ -21,6 +22,7 @@ import android.util.Log
 import com.lingxia.app.LxLog
 import android.util.TypedValue
 import android.widget.FrameLayout
+import java.util.Locale
 
 internal data class TabBarState(
     val backgroundColor: Int = Color.WHITE,          // Background color, default white
@@ -141,6 +143,7 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     private var itemsContainer: LinearLayout? = null
     private var onTabSelectedListener: ((Int, String) -> Unit)? = null
     private var onMoreRequestedListener: ((List<Int>) -> Unit)? = null
+    private var moreOpen = false
 
 
     init {
@@ -288,6 +291,9 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     fun setItems(newItems: List<TabBarItem>) {
         items = newItems  // Use all items from configuration
         slots = buildSlots()
+        if (Slot.More !in slots) {
+            moreOpen = false
+        }
 
         itemsContainer?.let { container ->
             container.removeAllViews()
@@ -326,9 +332,22 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     }
 
     private fun isSlotSelected(slot: Slot): Boolean = when (slot) {
-        is Slot.Tab -> items[slot.itemIndex].index == config.selectedIndex
+        is Slot.Tab -> !moreOpen && items[slot.itemIndex].index == config.selectedIndex
         // Any folded item being active lights "more".
-        Slot.More -> overflowItemIndices().any { items[it].index == config.selectedIndex }
+        Slot.More -> moreOpen || overflowItemIndices().any { items[it].index == config.selectedIndex }
+    }
+
+    /** While the panel is open it, rather than the previous tab, owns selection. */
+    internal fun setMoreOpen(open: Boolean) {
+        if (moreOpen == open) {
+            return
+        }
+        moreOpen = open
+        tabViews.forEachIndexed { slotIndex, tabView ->
+            slots.getOrNull(slotIndex)?.let { slot ->
+                updateTabState(tabView, slot, isSlotSelected(slot))
+            }
+        }
     }
 
     /** [index] is a declaration index, not a position in [items]. */
@@ -367,7 +386,24 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     /** Label a slot renders: the item's own text, or the overflow label. */
     private fun slotText(slot: Slot): String? = when (slot) {
         is Slot.Tab -> items[slot.itemIndex].text
-        Slot.More -> context.getString(R.string.lx_tabbar_more)
+        Slot.More -> moreLabel()
+    }
+
+    /** Keep the host-owned slot in the same language as its sibling labels. */
+    private fun moreLabel(): String {
+        val labels = items.mapNotNull { it.text?.trim()?.takeIf(String::isNotEmpty) }
+        val chineseLabels = labels.count { text ->
+            text.any { character ->
+                character.code in 0x3400..0x4DBF || character.code in 0x4E00..0x9FFF
+            }
+        }
+        val locale = if (chineseLabels > labels.size - chineseLabels) {
+            Locale.SIMPLIFIED_CHINESE
+        } else {
+            Locale.ENGLISH
+        }
+        val localized = Configuration(resources.configuration).apply { setLocale(locale) }
+        return context.createConfigurationContext(localized).getString(R.string.lx_tabbar_more)
     }
 
     private fun slotIcon(slot: Slot, selected: Boolean): Drawable = when (slot) {
@@ -523,11 +559,28 @@ internal class TabBar(context: Context) : LinearLayout(context) {
 
             setOnClickListener {
                 when (slot) {
-                    is Slot.Tab -> onTabSelectedListener?.invoke(
-                        items[slot.itemIndex].index,
-                        items[slot.itemIndex].pagePath
-                    )
-                    Slot.More -> onMoreRequestedListener?.invoke(overflowItemIndices())
+                    is Slot.Tab -> {
+                        if (moreOpen) {
+                            TabBarOverflowSheet.dismiss(this@TabBar)
+                        }
+                        onTabSelectedListener?.invoke(
+                            items[slot.itemIndex].index,
+                            items[slot.itemIndex].pagePath
+                        )
+                    }
+                    Slot.More -> {
+                        if (moreOpen) {
+                            TabBarOverflowSheet.dismiss(this@TabBar)
+                        } else {
+                            onMoreRequestedListener?.let { listener ->
+                                val indices = overflowItemIndices()
+                                if (indices.isNotEmpty()) {
+                                    setMoreOpen(true)
+                                    listener(indices)
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

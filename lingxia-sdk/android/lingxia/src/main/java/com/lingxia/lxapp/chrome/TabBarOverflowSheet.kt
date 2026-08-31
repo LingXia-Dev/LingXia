@@ -20,6 +20,8 @@ import java.io.File
 internal object TabBarOverflowSheet {
     private const val COLUMNS = 5
     private const val PANEL_CORNER_RADIUS_DP = 16f
+    private const val PANEL_HORIZONTAL_MARGIN_DP = 12
+    private const val PANEL_BOTTOM_GAP_DP = 8
     private const val PANEL_PADDING_DP = 8
     private const val CELL_VERTICAL_PADDING_DP = 12
     private const val CELL_ICON_SIZE_DP = 24
@@ -28,24 +30,36 @@ internal object TabBarOverflowSheet {
     private const val ENTER_DURATION_MS = 160L
     private const val CELL_INDICATOR_SIZE_DP = 36
     private const val CELL_INDICATOR_ALPHA = 0x33
+    private var activeAnchor: View? = null
+    private var activeDismiss: (() -> Unit)? = null
+
+    fun dismiss(anchor: View) {
+        if (activeAnchor === anchor) {
+            activeDismiss?.invoke()
+        }
+    }
 
     /**
-     * @param anchor the tab strip; the panel sits flush on top of it.
+     * @param anchor the tab strip; the panel floats just above it.
      * @param indices positions in `state.list` to offer, in order.
      * @param onPick receives the picked item's declaration index.
+     * @param onDismiss mirrors every exit path back into the strip's state.
      */
     fun show(
         activity: Activity,
         anchor: View,
         state: TabBarState,
         indices: List<Int>,
-        onPick: (Int) -> Unit
+        onPick: (Int) -> Unit,
+        onDismiss: () -> Unit
     ) {
         if (indices.isEmpty()) {
+            onDismiss()
             return
         }
         val palette = OverlayPalette.of(activity)
         val rootView = activity.window.decorView as ViewGroup
+        val gapBelowAnchor = gapBelowAnchorTop(rootView, anchor)
 
         val container = FrameLayout(activity).apply {
             layoutParams = FrameLayout.LayoutParams(
@@ -56,29 +70,47 @@ internal object TabBarOverflowSheet {
             // instead of leaving the lxapp behind it.
             isFocusableInTouchMode = true
         }
-        val dismiss = { rootView.removeView(container) }
+        var dismissed = false
+        val dismiss = {
+            if (!dismissed) {
+                dismissed = true
+                rootView.removeView(container)
+                if (activeAnchor === anchor) {
+                    activeAnchor = null
+                    activeDismiss = null
+                }
+                onDismiss()
+            }
+        }
+        activeDismiss?.invoke()
+        activeAnchor = anchor
+        activeDismiss = dismiss
 
         container.addView(View(activity).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
-            )
-            setBackgroundColor(palette.scrim)
-            alpha = 0f
+            ).apply {
+                gravity = Gravity.TOP
+                bottomMargin = gapBelowAnchor
+            }
+            setBackgroundColor(Color.TRANSPARENT)
             setOnClickListener { dismiss() }
-            animate().alpha(1f).setDuration(ENTER_DURATION_MS).start()
         })
 
         val panel = buildPanel(activity, palette, state, indices) { index ->
-            dismiss()
             onPick(index)
+            dismiss()
         }
         panel.layoutParams = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
             gravity = Gravity.BOTTOM
-            bottomMargin = gapBelowAnchorTop(rootView, anchor)
+            val density = activity.resources.displayMetrics.density
+            leftMargin = (PANEL_HORIZONTAL_MARGIN_DP * density).toInt()
+            rightMargin = (PANEL_HORIZONTAL_MARGIN_DP * density).toInt()
+            bottomMargin = gapBelowAnchor + (PANEL_BOTTOM_GAP_DP * density).toInt()
         }
         container.addView(panel)
 
@@ -123,7 +155,7 @@ internal object TabBarOverflowSheet {
             background = GradientDrawable().apply {
                 setColor(palette.surface)
                 val radius = PANEL_CORNER_RADIUS_DP * density
-                cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
+                cornerRadius = radius
             }
             elevation = 8f * density
             val padding = (PANEL_PADDING_DP * density).toInt()
