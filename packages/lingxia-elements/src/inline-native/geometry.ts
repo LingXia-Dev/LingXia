@@ -8,6 +8,7 @@ export interface NativeGeometrySnapshotJson {
   documentInstanceId: string;
   revision: number;
   coordinateSpace: "page-unscrolled-css-px";
+  viewportOffset: { x: number; y: number };
   roots: Array<{
     ref: RootRef;
     basisTreeRevision: number;
@@ -44,6 +45,7 @@ export function buildGeometrySnapshot(options: {
   nodeVisibility?: Record<string, boolean>;
   nodeClipStacks?: Record<string, unknown[]>;
   rootVisible?: boolean;
+  viewportOffset?: { x: number; y: number };
 }): NativeGeometrySnapshotJson {
   const root = options.identified.rootRef;
   const nodes: NativeGeometrySnapshotJson["nodes"] = [];
@@ -67,6 +69,7 @@ export function buildGeometrySnapshot(options: {
     documentInstanceId: root.documentInstanceId,
     revision: options.geometryRevision,
     coordinateSpace: "page-unscrolled-css-px",
+    viewportOffset: options.viewportOffset ?? { x: 0, y: 0 },
     roots: [
       {
         ref: root,

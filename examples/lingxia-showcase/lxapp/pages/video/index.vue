@@ -24,6 +24,27 @@
         <div data-testid="native-press-source" class="sr-only">{{ nativePressSource }}</div>
       </div>
 
+      <div class="flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
+        <div class="min-w-0">
+          <div class="text-xs font-semibold text-blue-900">H5 → native video menu</div>
+          <div data-testid="native-menu-js-result" class="text-[11px] leading-4 text-blue-700">{{ nativeMenuResult }}</div>
+        </div>
+        <button
+          type="button"
+          data-testid="native-menu-toggle"
+          :aria-label="nativeMenuOpen ? 'Close native menu' : 'Open native menu'"
+          :aria-expanded="nativeMenuOpen"
+          class="flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white active:scale-95"
+          @click="toggleNativeMenu"
+        >
+          <svg viewBox="0 0 20 20" fill="none" class="h-4 w-4" aria-hidden="true">
+            <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          {{ nativeMenuOpen ? 'Close' : 'Menu' }}
+        </button>
+        <span data-testid="native-menu-state" class="sr-only">{{ nativeMenuOpen ? 'open' : 'closed' }}</span>
+      </div>
+
       <div class="bg-black rounded-xl overflow-hidden">
         <LxNativeRoot id="video-native-root" class="block w-full" :style="{ aspectRatio: '16 / 9' }">
           <LxVideo
@@ -58,12 +79,14 @@
             <LxNativeView
               id="video-native-menu"
               automation-id="video-native-menu"
-              class="absolute right-3 top-3 border border-slate-600 bg-slate-900"
-              :style="{ width: '210px', height: '132px', borderRadius: '12px', backgroundColor: '#0f172a', borderColor: '#475569', borderWidth: '1px' }"
+              role="menu"
+              aria-label="Native video menu"
+              class="absolute right-3 top-3 border border-slate-500 bg-slate-900"
+              :style="{ width: '240px', height: '144px', borderRadius: '14px', backgroundColor: '#0f172a', borderColor: '#64748b', borderWidth: '1px' }"
             >
               <LxNativeText
                 id="video-native-menu-title"
-                class="absolute left-3 top-3 text-sm font-semibold text-white"
+                class="absolute left-4 right-4 top-4 text-sm font-semibold text-white"
                 :font-size="14"
                 :font-weight="600"
                 color="#ffffff"
@@ -71,7 +94,7 @@
               >Native menu</LxNativeText>
               <LxNativeText
                 id="video-native-menu-detail"
-                class="absolute left-3 right-3 top-9 text-xs text-slate-300"
+                class="absolute left-4 right-4 top-11 text-xs text-slate-300"
                 :font-size="11"
                 color="#cbd5e1"
                 :max-lines="1"
@@ -81,11 +104,12 @@
                 automation-id="video-native-menu-more"
                 label="More"
                 icon="more"
-                emphasis="secondary"
+                intent="accent"
+                emphasis="primary"
                 size="compact"
                 aria-label="More native menu actions"
-                class="absolute bottom-3 left-3"
-                :style="{ width: '88px', height: '36px', borderRadius: '9px' }"
+                class="absolute bottom-4 left-4"
+                :style="{ width: '96px', height: '40px', borderRadius: '10px' }"
                 @press="onNativeMenuMore"
               />
               <LxNativeButton
@@ -93,37 +117,16 @@
                 automation-id="video-native-menu-close"
                 label="Close"
                 icon="close"
-                emphasis="primary"
+                emphasis="secondary"
                 size="compact"
                 aria-label="Close native menu"
-                class="absolute bottom-3 right-3"
-                :style="{ width: '88px', height: '36px', borderRadius: '9px' }"
+                class="absolute bottom-4 right-4"
+                :style="{ width: '96px', height: '40px', borderRadius: '10px' }"
                 @press="onNativeMenuClose"
               />
             </LxNativeView>
           </LxNativeCover>
         </LxNativeRoot>
-      </div>
-
-      <div class="flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5">
-        <div class="min-w-0">
-          <div class="text-xs font-semibold text-blue-900">H5 → native overlay</div>
-          <div data-testid="native-menu-js-result" class="text-[11px] leading-4 text-blue-700">{{ nativeMenuResult }}</div>
-        </div>
-        <button
-          type="button"
-          data-testid="native-menu-toggle"
-          :aria-label="nativeMenuOpen ? 'Close native menu' : 'Open native menu'"
-          :aria-expanded="nativeMenuOpen"
-          class="flex shrink-0 items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white active:scale-95"
-          @click="toggleNativeMenu"
-        >
-          <svg viewBox="0 0 20 20" fill="none" class="h-4 w-4" aria-hidden="true">
-            <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-          </svg>
-          {{ nativeMenuOpen ? 'Close' : 'Menu' }}
-        </button>
-        <span data-testid="native-menu-state" class="sr-only">{{ nativeMenuOpen ? 'open' : 'closed' }}</span>
       </div>
 
       <LxNativeRoot id="island-controls" class="block w-full" :style="{ height: '82px' }">
@@ -324,7 +327,7 @@ const duration = computed(() => (typeof data?.duration === 'number' ? data.durat
 const islandPlaying = ref(false);
 const nativePressSource = ref('none');
 const nativeMenuOpen = ref(false);
-const nativeMenuResult = ref('Tap the H5 burger to mount a NativeView above video.');
+const nativeMenuResult = ref('Tap Menu to mount native actions above the video.');
 const islandProgress = computed(() => duration.value > 0
   ? Math.min(100, Math.round((currentTime.value / duration.value) * 100))
   : 0);

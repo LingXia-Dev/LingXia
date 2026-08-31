@@ -374,6 +374,37 @@ pub fn rasterize_island_kind(kind: &str, width: i32, height: i32, props: &Value)
     pixels
 }
 
+/// Paints only the non-text portion of a node. Native hosts that have a real
+/// system text stack can layer shaped glyphs over this surface without also
+/// inheriting the portable diagnostic bitmap font.
+pub fn rasterize_island_background(kind: &str, width: i32, height: i32, props: &Value) -> Vec<u32> {
+    let width = width.max(1);
+    let height = height.max(1);
+    let mut pixels = vec![0; (width * height) as usize];
+    match kind {
+        "view" => {
+            paint_rounded_background(
+                &mut pixels,
+                width,
+                height,
+                base_fill_color(kind, props, &tappable_content_from_props(props)),
+                props,
+            );
+            paint_scrim(&mut pixels, width, height, props);
+        }
+        "tappable" => paint_rounded_background(
+            &mut pixels,
+            width,
+            height,
+            base_fill_color(kind, props, &tappable_content_from_props(props)),
+            props,
+        ),
+        _ => {}
+    }
+    apply_raster_opacity(&mut pixels, style_number(props, "opacity").unwrap_or(1.0));
+    pixels
+}
+
 pub fn hit_test_island(targets: &[IslandHitTarget], x: f64, y: f64) -> IslandHit {
     for target in targets.iter().rev() {
         if !target.visible || !contains(&target.rect, x, y) {
@@ -866,20 +897,31 @@ fn glyph_5x7(ch: char) -> Option<[u8; 7]> {
     })
 }
 
-fn tappable_display_text(content: &TappableContent, _props: &Value) -> Option<String> {
+fn tappable_display_text(content: &TappableContent, props: &Value) -> Option<String> {
     let icon = content.icon_name.as_deref().and_then(semantic_icon);
-    content.text.clone().or_else(|| icon.map(str::to_string))
+    match (icon, content.text.as_deref()) {
+        (Some(icon), Some(text)) if !text.is_empty() => {
+            if string_field(props, "iconPosition") == Some("end") {
+                Some(format!("{text}  {icon}"))
+            } else {
+                Some(format!("{icon}  {text}"))
+            }
+        }
+        (Some(icon), _) => Some(icon.to_string()),
+        (_, Some(text)) if !text.is_empty() => Some(text.to_string()),
+        _ => None,
+    }
 }
 
 fn semantic_icon(name: &str) -> Option<&'static str> {
     match name {
-        "close" => Some("X"),
-        "play" => Some(">"),
-        "pause" => Some("II"),
-        "mute" => Some("MUTE"),
-        "unmute" => Some("SOUND"),
-        "fullscreen" => Some("FULL"),
-        "more" => Some("..."),
+        "close" => Some("×"),
+        "play" => Some("▶"),
+        "pause" => Some("Ⅱ"),
+        "mute" => Some("🔇"),
+        "unmute" => Some("🔊"),
+        "fullscreen" => Some("⛶"),
+        "more" => Some("⋯"),
         _ => None,
     }
 }
@@ -1206,7 +1248,7 @@ mod paint_tests {
             &rect,
             &json!({ "label": "Play", "intent": "accent", "emphasis": "quiet" }),
         );
-        assert_eq!(primary.text.as_deref(), Some("Play"));
+        assert_eq!(primary.text.as_deref(), Some("▶  Play"));
         assert_eq!(primary.color, 0xff25_63eb);
         assert_eq!(quiet.color, 0);
     }

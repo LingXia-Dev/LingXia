@@ -791,6 +791,7 @@ fn materialize_into_attaches_root_video_cover_in_composition_order() {
         mount(&root, "lx-video-1", "video", None, 0),
         mount(&root, "cover", "view", None, 1),
         mount(&root, "title", "text", Some(node(&root, "cover", 1)), 0),
+        mount(&root, "offscreen", "text", None, 2),
     ];
     if let NativeRootOperation::Mount { node } = &mut ops[0] {
         node.props = serde_json::json!({ "src": "https://cdn.example.com/a.mp4" });
@@ -871,6 +872,18 @@ fn materialize_into_attaches_root_video_cover_in_composition_order() {
                 content_rect: text_rect.clone(),
                 clip_stack: vec![],
                 visible: true,
+            },
+            NativeGeometrySnapshotNode {
+                node_ref: node(&root, "offscreen", 1),
+                chain_key: "page".into(),
+                content_rect: Rect {
+                    x: 8.0,
+                    y: -200.0,
+                    width: 120.0,
+                    height: 18.0,
+                },
+                clip_stack: vec![],
+                visible: false,
             },
         ],
         chains: vec![ScrollChain {
@@ -1122,7 +1135,7 @@ fn paints_cover_button_slider_and_dispatches_pointer() {
         (16, 16)
     );
     let button_plan = plan_island_visual("tappable", &button_rect, &recorder.calls[2].3);
-    assert_eq!(button_plan.text.as_deref(), Some("Play"));
+    assert_eq!(button_plan.text.as_deref(), Some("▶  Play"));
     let slider_plan = plan_island_visual("slider", &slider_rect, &recorder.calls[3].3);
     assert_eq!(slider_plan.text.as_deref(), Some("10"));
     let pixels = rasterize_island_kind("slider", 80, 16, &recorder.calls[3].3);

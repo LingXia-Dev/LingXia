@@ -598,6 +598,7 @@ fn handle_page_scroll(context: &PageContext, message: &Value) {
         for key in keys {
             apply_layout(&key);
         }
+        island::refresh_scroll_layout(&page_key);
     });
 }
 

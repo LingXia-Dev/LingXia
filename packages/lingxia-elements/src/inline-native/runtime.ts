@@ -50,6 +50,7 @@ export function publishCompiledRoot(options: {
   nodeClipStacks?: Record<string, unknown[]>;
   rootVisible?: boolean;
   rootOrder?: number;
+  viewportOffset?: { x: number; y: number };
   nowMs?: number;
 }): { state: RootRuntimeState; messages: RootHostMessages } {
   const identified = identifyCompiledRoot(
@@ -88,6 +89,7 @@ export function publishCompiledRoot(options: {
     nodeVisibility,
     nodeClipStacks,
     rootVisible: options.rootVisible,
+    viewportOffset: options.viewportOffset,
   });
   const state: RootRuntimeState = {
     identified,

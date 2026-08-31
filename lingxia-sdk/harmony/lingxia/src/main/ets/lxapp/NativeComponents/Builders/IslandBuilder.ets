@@ -58,6 +58,10 @@ struct IslandViewNode {
     .id(this.automationId())
     .backgroundColor(this.nodeBackgroundColor())
     .borderRadius(this.styleNumber('borderRadius', 0))
+    .border({
+      width: this.styleNumber('borderWidth', 0),
+      color: this.styleString('borderColor', '#00000000')
+    })
     .opacity(Math.max(0, Math.min(1, this.styleNumber('opacity', 1))))
     .hitTestBehavior(this.hitMode())
     .accessibilityText(this.ariaLabel())
@@ -111,6 +115,12 @@ struct IslandViewNode {
     const record = this.styleRecord();
     const value = record ? record[key] : undefined;
     return cssNumber(value, fallback);
+  }
+
+  private styleString(key: string, fallback: string): string {
+    const record = this.styleRecord();
+    const value = record ? record[key] : undefined;
+    return typeof value === 'string' && value.length > 0 ? value : fallback;
   }
 
   private nodeBackgroundColor(): string {
@@ -232,10 +242,18 @@ struct IslandTappableNode {
       .width('100%')
       .height('100%')
       .id(this.automationId())
-      .backgroundColor(this.nodeBackgroundColor())
-      .fontColor(this.nodeForegroundColor())
-      .fontSize(getStringProp(this.params.props, 'size', 'regular') === 'compact' ? 12 : 14)
+      .backgroundColor(this.styleString('backgroundColor', this.nodeBackgroundColor()))
+      .fontColor(this.styleString('color', this.nodeForegroundColor()))
+      .fontSize(this.styleNumber(
+        'fontSize',
+        getStringProp(this.params.props, 'size', 'regular') === 'compact' ? 12 : 14
+      ))
       .fontWeight(FontWeight.Bold)
+      .borderRadius(this.styleNumber('borderRadius', 10))
+      .border({
+        width: this.styleNumber('borderWidth', 0),
+        color: this.styleString('borderColor', '#00000000')
+      })
       .enabled(this.nodeEnabled())
       .hitTestBehavior(this.hitMode())
       .accessibilityText(this.ariaLabel())
@@ -265,22 +283,57 @@ struct IslandTappableNode {
       return '…';
     }
     const props = this.params.props;
+    let text = getStringProp(props, 'label', '');
+    let iconName = getStringProp(props, 'icon', '');
     const content = props?.get('content');
     if (content && typeof content === 'object') {
       const record = content as Record<string, Object>;
-      const text = record['text'];
-      if (typeof text === 'string' && text.length > 0) {
-        return text;
+      const contentText = record['text'];
+      if (typeof contentText === 'string') {
+        text = contentText;
       }
       const icon = record['icon'];
       if (icon && typeof icon === 'object') {
         const name = (icon as Record<string, Object>)['name'];
         if (typeof name === 'string') {
-          return name;
+          iconName = name;
         }
       }
     }
-    return getStringProp(props, 'label', getStringProp(props, 'icon', ''));
+    const icon = this.semanticIcon(iconName);
+    if (icon.length > 0 && text.length > 0) {
+      return getStringProp(props, 'iconPosition', 'start') === 'end'
+        ? `${text}  ${icon}`
+        : `${icon}  ${text}`;
+    }
+    return text.length > 0 ? text : icon;
+  }
+
+  private semanticIcon(name: string): string {
+    if (name === 'close') return '\u00D7';
+    if (name === 'play') return '\u25B6';
+    if (name === 'pause') return '\u2161';
+    if (name === 'mute') return '\uD83D\uDD07';
+    if (name === 'unmute') return '\uD83D\uDD0A';
+    if (name === 'fullscreen') return '\u26F6';
+    if (name === 'more') return '\u22EF';
+    return '';
+  }
+
+  private styleRecord(): Record<string, NativeComponentValue> | undefined {
+    const value = this.params.props?.get('nativeStyle');
+    return value && typeof value === 'object' ? value as Record<string, NativeComponentValue> : undefined;
+  }
+
+  private styleNumber(key: string, fallback: number): number {
+    const record = this.styleRecord();
+    return cssNumber(record ? record[key] : undefined, fallback);
+  }
+
+  private styleString(key: string, fallback: string): string {
+    const record = this.styleRecord();
+    const value = record ? record[key] : undefined;
+    return typeof value === 'string' && value.length > 0 ? value : fallback;
   }
 
   private nodeEnabled(): boolean {

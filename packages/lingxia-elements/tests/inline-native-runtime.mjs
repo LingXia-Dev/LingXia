@@ -58,6 +58,7 @@ const geometry = buildGeometrySnapshot({
   nodeRects: {},
 });
 assert.equal(geometry.coordinateSpace, "page-unscrolled-css-px");
+assert.deepEqual(geometry.viewportOffset, { x: 0, y: 0 });
 assert.equal(geometry.revision, 7);
 assert.equal(geometry.roots[0].basisTreeRevision, 1);
 assert.notEqual(geometry.revision, commit.revision);

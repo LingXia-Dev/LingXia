@@ -33,8 +33,9 @@ pub use paint::{
     IslandHit, IslandHitTarget, IslandHostEvent, IslandPointerPhase, IslandPointerTracker,
     IslandVisualPlan, PointerEventsMode, ScrimPaint, SliderPaint, TappableContent,
     cover_scrim_from_props, dispatch_pointer, format_value_label, hit_test_island,
-    plan_island_visual, pointer_events_from_props, props_with_slider_value, rasterize_island_kind,
-    slider_paint_from_props, slider_value_from_x, tappable_content_from_props,
+    plan_island_visual, pointer_events_from_props, props_with_slider_value,
+    rasterize_island_background, rasterize_island_kind, slider_paint_from_props,
+    slider_value_from_x, tappable_content_from_props,
 };
 pub use resource::{media_urls_from_command_options, media_urls_from_props, validate_media_urls};
 pub use types::{

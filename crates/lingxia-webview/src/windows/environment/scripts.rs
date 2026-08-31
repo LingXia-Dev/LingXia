@@ -70,6 +70,8 @@ pub(crate) fn install_document_scripts(
             if (!window.NativeComponentBridge) {
                 var lxNcActive = false;
                 var lxNcScrollScheduled = false;
+                var lxNcScrollFrame = 0;
+                var lxNcScrollTimer = 0;
                 var lxNcPost = function(payload) {
                     try {
                         window.chrome && window.chrome.webview && window.chrome.webview.postMessage(JSON.stringify({
@@ -80,6 +82,14 @@ pub(crate) fn install_document_scripts(
                 };
                 var lxNcPostScroll = function() {
                     lxNcScrollScheduled = false;
+                    if (lxNcScrollFrame) {
+                        window.cancelAnimationFrame(lxNcScrollFrame);
+                        lxNcScrollFrame = 0;
+                    }
+                    if (lxNcScrollTimer) {
+                        window.clearTimeout(lxNcScrollTimer);
+                        lxNcScrollTimer = 0;
+                    }
                     lxNcPost(JSON.stringify({
                         action: 'page.scroll',
                         x: window.scrollX || 0,
@@ -89,7 +99,8 @@ pub(crate) fn install_document_scripts(
                 var lxNcScheduleScroll = function() {
                     if (!lxNcActive || lxNcScrollScheduled) return;
                     lxNcScrollScheduled = true;
-                    window.requestAnimationFrame(lxNcPostScroll);
+                    lxNcScrollFrame = window.requestAnimationFrame(lxNcPostScroll);
+                    lxNcScrollTimer = window.setTimeout(lxNcPostScroll, 50);
                 };
                 window.addEventListener('scroll', lxNcScheduleScroll, { passive: true });
                 window.addEventListener('resize', lxNcScheduleScroll);
@@ -154,6 +165,15 @@ mod tests {
         assert!(
             source.contains("__LingXiaEarlyNativeMessages.push(payload)"),
             "WebView2 inject script must queue inbound payloads until the bridge binds"
+        );
+    }
+
+    #[test]
+    fn native_component_scroll_has_timer_fallback() {
+        let source = include_str!("scripts.rs");
+        assert!(
+            source.contains("lxNcScrollTimer = window.setTimeout(lxNcPostScroll, 50)"),
+            "native component scroll must not depend solely on animation frames"
         );
     }
 }

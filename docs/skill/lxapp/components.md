@@ -145,6 +145,10 @@ destroying/replacing its page WebView, unmounts every node owned by that Root, s
 its native video resources, and resets its lease before accepting a new commit. Navigating back therefore
 cannot leave a stale video surface or an invisible touch-blocking overlay behind.
 
+**Scrolling:** layout snapshots use unscrolled document CSS coordinates plus the
+current page viewport offset. The host moves native visuals with top-level and
+nested scrolling, and removes fully offscreen nodes from paint and hit testing.
+
 Cover and Button are author recipes: they expand to `view` / `tappable` before the host commit. Host factories are only `root`, `view`, `text`, `tappable`, `slider`, and `video`. `LxPicker` / `LxMediaSwiper` / `LxNavigator` stay on the presenter overlay channel.
 
 ## `LxVideo`
