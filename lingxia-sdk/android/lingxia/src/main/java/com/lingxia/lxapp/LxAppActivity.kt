@@ -1067,7 +1067,7 @@ class LxAppActivity : AppCompatActivity() {
             // localNightMode override never reaches their theme resolution;
             // feed them the activity configuration once they join the tree so
             // prefers-color-scheme matches the resolved appearance.
-            view.dispatchConfigurationChanged(resources.configuration)
+            view.hostView.dispatchConfigurationChanged(resources.configuration)
 
             // Attach native bridge for component overlay
             NativeBridge.attachIfNeeded(view)

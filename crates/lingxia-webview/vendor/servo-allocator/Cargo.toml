@@ -13,7 +13,7 @@
 edition = "2024"
 rust-version = "1.88.0"
 name = "servo-allocator"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["The Servo Project Developers"]
 build = false
 publish = true

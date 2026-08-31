@@ -56,11 +56,8 @@ zstd = "0.13"
 ctrlc = "3.4"
 libc = "0.2"
 
-# Apple signing and API.
-# Servo 0.4 pins p256 0.14.0-rc.14 / ecdsa 0.17.0-rc.22, which Cargo cannot
-# unify with stable p256 0.14.0. Stay on 0.13 so both versions can coexist
-# until Servo 0.5 (p256 0.14 / ecdsa 0.17) is adopted.
-p256 = { version = "0.13", features = ["ecdsa", "pkcs8", "pem"] }
+# Apple signing and API
+p256 = { version = "0.14", features = ["ecdsa", "pkcs8", "pem"] }
 base64 = "0.22"
 rcgen = { workspace = true }
 rsa = { version = "0.9", features = ["pem"] }

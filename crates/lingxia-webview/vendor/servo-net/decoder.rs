@@ -39,6 +39,43 @@ use crate::connector::BoxedBody;
 
 pub const DECODER_BUFFER_SIZE: usize = 8192;
 
+/// Marker wrapper for errors that originate from the network body stream
+#[derive(Debug)]
+pub struct BodyStreamError(pub Box<dyn Error + Send + Sync>);
+
+impl fmt::Display for BodyStreamError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl Error for BodyStreamError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(self.0.as_ref())
+    }
+}
+
+/// Normalize errors produced by the decompressors to `ErrorKind::InvalidData`
+/// so that `http_loader` reports them as `NetworkError::DecompressionError`.
+pub fn map_decode_error(err: io::Error) -> io::Error {
+    if err.kind() == io::ErrorKind::InvalidData {
+        return err;
+    }
+
+    let mut source: Option<&(dyn Error + 'static)> = err.get_ref().map(|e| e as _);
+    while let Some(e) = source {
+        if e.is::<BodyStreamError>() {
+            return err;
+        }
+
+        source = match e.downcast_ref::<io::Error>() {
+            Some(io_error) => io_error.get_ref().map(|e| e as _),
+            None => e.source(),
+        };
+    }
+    io::Error::new(io::ErrorKind::InvalidData, err)
+}
+
 /// A response decompressor over a non-blocking stream of bytes.
 ///
 /// The inner decoder may be constructed asynchronously.
@@ -145,7 +182,7 @@ impl Decoder {
         match decoder {
             Some(type_) => {
                 response.map(|r| Decoder::pending(r, type_, is_secure_scheme, content_length))
-            }
+            },
             None => response.map(|r| Decoder::plain_text(r, is_secure_scheme, content_length)),
         }
     }
@@ -162,38 +199,38 @@ impl Stream for Decoder {
                 Ok(inner) => {
                     self.inner = inner;
                     self.poll_next(cx)
-                }
+                },
                 Err(e) => Poll::Ready(Some(Err(e))),
             },
             Inner::PlainText(ref mut body) => Pin::new(body).poll_next(cx),
             Inner::Gzip(ref mut decoder) => {
                 match futures_core::ready!(Pin::new(decoder).poll_next(cx)) {
                     Some(Ok(bytes)) => Poll::Ready(Some(Ok(bytes.freeze()))),
-                    Some(Err(err)) => Poll::Ready(Some(Err(err))),
+                    Some(Err(err)) => Poll::Ready(Some(Err(map_decode_error(err)))),
                     None => Poll::Ready(None),
                 }
-            }
+            },
             Inner::Brotli(ref mut decoder) => {
                 match futures_core::ready!(Pin::new(decoder).poll_next(cx)) {
                     Some(Ok(bytes)) => Poll::Ready(Some(Ok(bytes.freeze()))),
-                    Some(Err(err)) => Poll::Ready(Some(Err(err))),
+                    Some(Err(err)) => Poll::Ready(Some(Err(map_decode_error(err)))),
                     None => Poll::Ready(None),
                 }
-            }
+            },
             Inner::Deflate(ref mut decoder) => {
                 match futures_core::ready!(Pin::new(decoder).poll_next(cx)) {
                     Some(Ok(bytes)) => Poll::Ready(Some(Ok(bytes.freeze()))),
-                    Some(Err(err)) => Poll::Ready(Some(Err(err))),
+                    Some(Err(err)) => Poll::Ready(Some(Err(map_decode_error(err)))),
                     None => Poll::Ready(None),
                 }
-            }
+            },
             Inner::Zstd(ref mut decoder) => {
                 match futures_core::ready!(Pin::new(decoder).poll_next(cx)) {
                     Some(Ok(bytes)) => Poll::Ready(Some(Ok(bytes.freeze()))),
-                    Some(Err(err)) => Poll::Ready(Some(Err(err))),
+                    Some(Err(err)) => Poll::Ready(Some(Err(map_decode_error(err)))),
                     None => Poll::Ready(None),
                 }
-            }
+            },
         }
     }
 }
@@ -205,7 +242,7 @@ impl Future for Pending {
         match futures_core::ready!(Pin::new(&mut self.body).poll_peek(cx)) {
             Some(Ok(_)) => {
                 // fallthrough
-            }
+            },
             Some(Err(_e)) => {
                 // error was just a ref, so we need to really poll to move it
                 return Poll::Ready(Err(futures_core::ready!(
@@ -213,7 +250,7 @@ impl Future for Pending {
                 )
                 .expect("just peeked Some")
                 .unwrap_err()));
-            }
+            },
             None => return Poll::Ready(Ok(Inner::PlainText(BodyStream::empty()))),
         };
 
@@ -284,7 +321,7 @@ impl Stream for BodyStream {
                 };
                 self.total_read += bytes.len() as u64;
                 Poll::Ready(Some(Ok(bytes)))
-            }
+            },
             Some(Err(err)) => {
                 // To prevent truncation attacks rustls treats close connection without a close_notify as
                 // an error of type std::io::Error with ErrorKind::UnexpectedEof.
@@ -302,8 +339,8 @@ impl Stream for BodyStream {
                         return Poll::Ready(None);
                     }
                 }
-                Poll::Ready(Some(Err(io::Error::other(err))))
-            }
+                Poll::Ready(Some(Err(io::Error::other(BodyStreamError(err.into())))))
+            },
             None => Poll::Ready(None),
         }
     }
