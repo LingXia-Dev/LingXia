@@ -1861,7 +1861,12 @@ final class LxAppMacAppUIRuntime: NSObject {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.hasShadow = true
-        panel.backgroundColor = LxAppHostTheme.surfaceBackground
+        // The rounded content view defines the panel silhouette. Keeping an
+        // opaque window background paints the rectangular pixels exposed by
+        // its clipped corners (most visibly at the bottom edge) and gives the
+        // borderless tray panel a square shadow. A clear backing lets AppKit
+        // derive both the visible shape and shadow from the rounded content.
+        panel.backgroundColor = .clear
         panel.isOpaque = false
         if resizable {
             panel.contentMinSize = CGSize(width: 240, height: 180)
