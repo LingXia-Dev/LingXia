@@ -1,3 +1,6 @@
+const ONLINE_DEMO_VIDEO =
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
+
 Page({
   data: {
     videos: [],
@@ -6,7 +9,6 @@ Page({
     duration: 0,
   },
   videoContext: null,
-  usedLocalFallback: false,
 
   onLoad: function (options = {}) {
     if (options.automationFixture === "video-context-shape") {
@@ -42,25 +44,10 @@ Page({
       videos: [
         {
           id: "lx-video-1",
-          // Big Buck Bunny — (c) Blender Foundation, CC-BY 3.0,
-          // https://peach.blender.org — served from Blender's official mirror.
-          src: "public/island-sample.mp4",
-          poster:
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/640px-Big_buck_bunny_poster_big.jpg",
-          qualities: [
-            {
-              label: "1080P",
-              url: "https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_1080p_h264.mov",
-            },
-            {
-              label: "720P",
-              url: "https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_720p_h264.mov",
-            },
-            {
-              label: "480P",
-              url: "https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_480p_h264.mov",
-            },
-          ],
+          // MDN's compact CC0 demo supports byte-range playback.
+          src: ONLINE_DEMO_VIDEO,
+          poster: "",
+          qualities: [],
           playbackRates: [1.0, 0.5, 1.5, 2.0],
         },
       ],
@@ -118,19 +105,7 @@ Page({
   },
 
   onError: function () {
-    if (this.usedLocalFallback) return;
-    this.usedLocalFallback = true;
-    this.videoContext = null;
-    this.setData({
-      eventLog: "Fallback",
-      videos: [{
-        id: "lx-video-1",
-        src: "public/island-sample.mp4",
-        poster: "",
-        qualities: [],
-        playbackRates: [1.0],
-      }],
-    });
+    this.setData({ eventLog: "Playback error" });
   },
 
   onPlaying: function () {
