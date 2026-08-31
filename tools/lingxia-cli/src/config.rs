@@ -3,7 +3,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use serde_yaml_ng as yaml;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
@@ -217,8 +217,8 @@ pub enum SurfaceRole {
     Float,
 }
 
-/// One `surfaces:` entry, keyed by content: exactly one of `lxapp` / `page` /
-/// `url` / `native` names the content, and that key doubles as the surface's
+/// One `surfaces:` entry, keyed by content: exactly one of `lxapp` / `url` /
+/// `native` names the content, and that key doubles as the surface's
 /// identity — there is no separate `id` and no `render` discriminator.
 ///
 /// Admission is target-aware. Desktop targets accept content-agnostic mains;
@@ -229,9 +229,12 @@ pub struct SurfaceDecl {
     /// Content key: an lxapp, by appId.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lxapp: Option<String>,
-    /// Content key: a home-lxapp page, by page name.
+    /// Optional configured page name for lxapp content.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page: Option<String>,
+    /// Optional query passed to the selected lxapp page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<BTreeMap<String, Value>>,
     /// Content key: a URL opened in the in-app browser.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
@@ -264,7 +267,6 @@ pub struct SurfaceDecl {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SurfaceContent<'a> {
     Lxapp(&'a str),
-    Page(&'a str),
     Url(&'a str),
     Native(&'a str),
 }
@@ -298,7 +300,6 @@ impl<'a> SurfaceContent<'a> {
     fn kind(self) -> &'static str {
         match self {
             SurfaceContent::Lxapp(_) => "lxapp",
-            SurfaceContent::Page(_) => "page",
             SurfaceContent::Url(_) => "url",
             SurfaceContent::Native(_) => "native",
         }
@@ -307,7 +308,6 @@ impl<'a> SurfaceContent<'a> {
     fn name(self) -> &'a str {
         match self {
             SurfaceContent::Lxapp(name)
-            | SurfaceContent::Page(name)
             | SurfaceContent::Url(name)
             | SurfaceContent::Native(name) => name,
         }
@@ -316,7 +316,6 @@ impl<'a> SurfaceContent<'a> {
     fn trimmed(self) -> Self {
         match self {
             SurfaceContent::Lxapp(name) => SurfaceContent::Lxapp(name.trim()),
-            SurfaceContent::Page(name) => SurfaceContent::Page(name.trim()),
             SurfaceContent::Url(name) => SurfaceContent::Url(name.trim()),
             SurfaceContent::Native(name) => SurfaceContent::Native(name.trim()),
         }
@@ -331,12 +330,11 @@ impl<'a> SurfaceContent<'a> {
 }
 
 impl SurfaceDecl {
-    /// Resolve the content key. Exactly one of `lxapp` / `page` / `url` /
-    /// `native` must be set to a non-empty value.
+    /// Resolve the content key. Exactly one of `lxapp` / `url` / `native` must
+    /// be set to a non-empty value.
     pub fn content(&self) -> Result<SurfaceContent<'_>> {
         let keys = [
             self.lxapp.as_deref().map(SurfaceContent::Lxapp),
-            self.page.as_deref().map(SurfaceContent::Page),
             self.url.as_deref().map(SurfaceContent::Url),
             self.native.as_deref().map(SurfaceContent::Native),
         ];
@@ -354,10 +352,10 @@ impl SurfaceDecl {
         match (set.next(), set.next()) {
             (Some(one), None) => Ok(one.trimmed()),
             (None, _) => Err(anyhow!(
-                "surfaces[]: each entry must set exactly one content key (lxapp | page | url | native)"
+                "surfaces[]: each entry must set exactly one content key (lxapp | url | native)"
             )),
             (Some(_), Some(_)) => Err(anyhow!(
-                "surfaces[]: entry sets more than one content key; use exactly one of lxapp | page | url | native"
+                "surfaces[]: entry sets more than one content key; use exactly one of lxapp | url | native"
             )),
         }
     }
@@ -456,25 +454,10 @@ fn surfaces_to_ui_for_target(
     let desktop = DESKTOP_SURFACE_PLATFORMS.contains(&platform);
     let content_agnostic_main = CONTENT_AGNOSTIC_MAIN_PLATFORMS.contains(&platform);
     let mut resolved: Vec<(SurfaceContent<'_>, &SurfaceDecl)> = Vec::new();
-    let mut seen_names = HashSet::new();
     for surface in surfaces {
         let content = surface.content()?;
         content.native_name()?;
-        if !seen_names.insert(content.name().to_string()) {
-            return Err(anyhow!(
-                "surfaces: duplicate declaration for '{}' (surface ids share one namespace across content kinds)",
-                content.name()
-            ));
-        }
         resolved.push((content, surface));
-    }
-
-    let tray_surfaces = surfaces
-        .iter()
-        .filter(|surface| surface.tray.is_some())
-        .count();
-    if tray_surfaces > 1 {
-        return Err(anyhow!("surfaces: at most one surface may declare tray"));
     }
 
     for (content, surface) in &resolved {
@@ -491,6 +474,24 @@ fn surfaces_to_ui_for_target(
             return Err(anyhow!(
                 "surface '{name}': edge is only valid on an aside surface"
             ));
+        }
+        if let Some(page) = surface.page.as_deref() {
+            if !matches!(content, SurfaceContent::Lxapp(_)) {
+                return Err(anyhow!(
+                    "surface '{name}': page is only valid for lxapp content"
+                ));
+            }
+            if page.trim().is_empty() {
+                return Err(anyhow!("surface '{name}': page must not be empty"));
+            }
+        }
+        if let Some(query) = surface.query.as_ref() {
+            if !matches!(content, SurfaceContent::Lxapp(_)) {
+                return Err(anyhow!(
+                    "surface '{name}': query is only valid for lxapp content"
+                ));
+            }
+            validate_surface_query(name, query)?;
         }
         if surface.size.is_some() && surface.role != SurfaceRole::Aside {
             return Err(anyhow!(
@@ -509,6 +510,28 @@ fn surfaces_to_ui_for_target(
         .copied()
         .filter(|(_, surface)| surface_available_for_target(surface, platform))
         .collect::<Vec<_>>();
+    if effective
+        .iter()
+        .filter(|(_, surface)| surface.tray.is_some())
+        .count()
+        > 1
+    {
+        return Err(anyhow!(
+            "surfaces: at most one surface may declare tray on {platform}"
+        ));
+    }
+    // The same content may legitimately be the mobile main and the desktop
+    // tray float. Platform filters make those declarations mutually exclusive,
+    // so enforce the surface-id namespace after target admission, not before it.
+    let mut seen_names = HashSet::new();
+    for (content, _) in &effective {
+        if !seen_names.insert(content.name().to_string()) {
+            return Err(anyhow!(
+                "surfaces: duplicate declaration for '{}' on {platform} (surface ids share one namespace across content kinds)",
+                content.name()
+            ));
+        }
+    }
     if effective.is_empty() {
         return Err(anyhow!(
             "surfaces: no surface is available on target {platform}"
@@ -519,11 +542,6 @@ fn surfaces_to_ui_for_target(
         let name = content.name();
         match (*content, surface.role) {
             (SurfaceContent::Lxapp(_), _) => {}
-            (SurfaceContent::Page(_), _) => {
-                return Err(anyhow!(
-                    "surface '{name}': declarative page surfaces are not supported on {platform}"
-                ));
-            }
             (SurfaceContent::Url(_), SurfaceRole::Main) if !content_agnostic_main => {
                 return Err(anyhow!(
                     "surface '{name}': url main surfaces are currently supported only on macOS and Windows"
@@ -733,7 +751,14 @@ fn surfaces_to_ui_for_target(
                 // presents it as an auto-dismissing panel under the icon.
                 out.insert("role".into(), json!("float"));
                 out.insert("anchor".into(), json!("activator"));
-                out.insert("content".into(), surface_content_json(*content)?);
+                out.insert(
+                    "content".into(),
+                    surface_content_json(
+                        *content,
+                        surface.page.as_deref(),
+                        surface.query.as_ref(),
+                    )?,
+                );
                 if let Some(size) = surface
                     .tray
                     .as_ref()
@@ -745,7 +770,14 @@ fn surfaces_to_ui_for_target(
             }
             SurfaceRole::Main => {
                 out.insert("role".into(), json!("main"));
-                out.insert("content".into(), surface_content_json(*content)?);
+                out.insert(
+                    "content".into(),
+                    surface_content_json(
+                        *content,
+                        surface.page.as_deref(),
+                        surface.query.as_ref(),
+                    )?,
+                );
             }
             SurfaceRole::Aside => {
                 let default_edge = match content {
@@ -783,7 +815,14 @@ fn surfaces_to_ui_for_target(
                 if let Some(size) = size {
                     out.insert("size".into(), size);
                 }
-                out.insert("content".into(), surface_content_json(*content)?);
+                out.insert(
+                    "content".into(),
+                    surface_content_json(
+                        *content,
+                        surface.page.as_deref(),
+                        surface.query.as_ref(),
+                    )?,
+                );
             }
         }
         out_surfaces.push(Value::Object(out));
@@ -864,10 +903,39 @@ fn validate_declared_surface_url(url: &str) -> Result<()> {
     Ok(())
 }
 
-fn surface_content_json(content: SurfaceContent<'_>) -> Result<Value> {
+fn validate_surface_query(name: &str, query: &BTreeMap<String, Value>) -> Result<()> {
+    for (key, value) in query {
+        if key.trim().is_empty() {
+            return Err(anyhow!("surface '{name}': query keys must not be empty"));
+        }
+        if !matches!(
+            value,
+            Value::String(_) | Value::Number(_) | Value::Bool(_) | Value::Null
+        ) {
+            return Err(anyhow!(
+                "surface '{name}': query value for '{key}' must be a string, number, boolean, or null"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn surface_content_json(
+    content: SurfaceContent<'_>,
+    page: Option<&str>,
+    query: Option<&BTreeMap<String, Value>>,
+) -> Result<Value> {
     Ok(match content {
-        SurfaceContent::Lxapp(app_id) => json!({ "kind": "lxapp", "appId": app_id }),
-        SurfaceContent::Page(page) => json!({ "kind": "page", "page": page }),
+        SurfaceContent::Lxapp(app_id) => {
+            let mut value = json!({ "kind": "lxapp", "appId": app_id });
+            if let Some(page) = page {
+                value["page"] = json!(page.trim());
+            }
+            if let Some(query) = query {
+                value["query"] = json!(query);
+            }
+            value
+        }
         SurfaceContent::Url(url) => json!({ "kind": "url", "url": url }),
         SurfaceContent::Native(capability) => {
             let name = NativeSurfaceName::parse(capability)?.as_str();
@@ -3590,6 +3658,7 @@ surfaces:
         SurfaceDecl {
             lxapp: None,
             page: None,
+            query: None,
             url: None,
             native: None,
             role,
@@ -3877,13 +3946,14 @@ surfaces:
     }
 
     #[test]
-    fn surfaces_rejects_page_float_for_now() {
+    fn surfaces_rejects_page_selector_without_lxapp_content() {
         let surfaces = vec![
             SurfaceDecl {
                 launch: true,
                 ..lxapp_decl("home", SurfaceRole::Main)
             },
             SurfaceDecl {
+                url: Some("https://example.com".into()),
                 page: Some("inspector".into()),
                 tray: Some(SurfaceTray {
                     icon: None,
@@ -3899,7 +3969,7 @@ surfaces:
             .unwrap_err()
             .to_string();
         assert!(
-            err.contains("declarative page surfaces are not supported"),
+            err.contains("page is only valid for lxapp content"),
             "{err}"
         );
     }
@@ -4153,6 +4223,123 @@ surfaces:
         assert_eq!(macos["launch"]["initialSurface"], "browser");
         assert_eq!(android["launch"]["initialSurface"], "home");
         assert_eq!(android["surfaces"][0]["content"]["appId"], "home");
+    }
+
+    #[test]
+    fn surfaces_allow_same_home_lxapp_for_disjoint_platform_roots() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos, windows, ios, android, harmony]
+  homeAppId: home
+surfaces:
+  - lxapp: home
+    role: float
+    platforms: [macos, windows]
+    page: tray
+    query:
+      source: tray
+      compact: true
+    tray:
+      action: toggle
+  - lxapp: home
+    role: main
+    launch: true
+    platforms: [ios, android, harmony]
+"#;
+
+        let config = load_config_yaml(yaml).unwrap();
+        for platform in ["macos", "windows"] {
+            let ui = config.resolved_ui_for_platform(platform).unwrap().unwrap();
+            assert_eq!(ui["surfaces"][0]["role"], "float");
+            assert_eq!(ui["surfaces"][0]["content"]["page"], "tray");
+            assert_eq!(ui["surfaces"][0]["content"]["query"]["source"], "tray");
+            assert_eq!(ui["surfaces"][0]["content"]["query"]["compact"], true);
+            assert_eq!(ui["launch"]["openOnLaunch"], false);
+        }
+        for platform in ["ios", "android", "harmony"] {
+            let ui = config.resolved_ui_for_platform(platform).unwrap().unwrap();
+            assert_eq!(ui["surfaces"][0]["role"], "main");
+            assert_eq!(ui["launch"]["openOnLaunch"], true);
+        }
+    }
+
+    #[test]
+    fn surfaces_reject_nested_lxapp_query_values() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos]
+  homeAppId: home
+surfaces:
+  - lxapp: home
+    role: main
+    launch: true
+    page: home
+    query:
+      nested: { value: unsupported }
+"#;
+
+        let error = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(
+            error.contains("query value for 'nested' must be a string, number, boolean, or null"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn surfaces_still_reject_duplicate_ids_on_one_platform() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos]
+  homeAppId: home
+surfaces:
+  - lxapp: home
+    role: main
+    launch: true
+  - lxapp: home
+    role: main
+"#;
+
+        let error = load_config_yaml(yaml).unwrap_err().to_string();
+        assert!(
+            error.contains("duplicate declaration for 'home' on macos"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn surfaces_allow_platform_specific_trays() {
+        let yaml = r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [macos, windows]
+  homeAppId: home
+surfaces:
+  - lxapp: home
+    role: float
+    platforms: [macos]
+    tray: { action: toggle }
+  - lxapp: home
+    role: float
+    platforms: [windows]
+    tray: { action: toggle }
+"#;
+
+        let config = load_config_yaml(yaml).unwrap();
+        for platform in ["macos", "windows"] {
+            let ui = config.resolved_ui_for_platform(platform).unwrap().unwrap();
+            assert_eq!(ui["surfaces"].as_array().unwrap().len(), 1);
+        }
     }
 
     #[test]

@@ -13,6 +13,8 @@
 #           terminal defaults to bottom)
 #   size    aside preferred size hint, e.g. { width: 320 }
 #   launch  open on start; at most one main has launch (none = launch from tray)
+#   page    optional configured page name for lxapp content (never a route path)
+#   query   optional page parameters, e.g. { source: tray }
 #   tray    menu bar (macOS) / system tray (Windows) entry; required on float
 surfaces:
   - {{MAIN_SURFACE_CONTENT}}
@@ -47,6 +49,8 @@ surfaces:
   # as an auto-dismissing popover anchored under the icon).
   # - lxapp: panel
   #   role: float
+  #   page: tray
+  #   query: { source: tray }
   #   tray:
   #     # icon: icons/status.svg
   #     action: toggle

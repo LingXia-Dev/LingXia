@@ -402,6 +402,10 @@ pub struct PanelContent {
     pub app_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<serde_json::Value>,
 }
 
 fn default_cache_max_size_mb() -> u64 {

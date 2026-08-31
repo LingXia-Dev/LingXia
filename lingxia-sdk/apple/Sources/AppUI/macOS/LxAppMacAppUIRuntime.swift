@@ -682,6 +682,8 @@ final class LxAppMacAppUIRuntime: NSObject {
                     content: LxAppUIConfig.Content(
                         kind: template.content.kind,
                         appId: template.content.appId,
+                        page: template.content.page,
+                        query: template.content.query,
                         path: template.content.path,
                         url: template.content.url,
                         name: template.content.name,
@@ -1131,7 +1133,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             hostView.unmount()
         }
 
-        let path = normalizedPath(surface.content.path)
+        let path = normalizedPath(try surface.content.resolvedLxAppPath())
         let surfaceID = surface.id
         let requestedSourceActivatorID = sourceActivatorID
         independentPanelDisplayTasks[surface.id]?.cancel()
@@ -1208,7 +1210,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             guard let appId = surface.content.appId, !appId.isEmpty else {
                 throw LxAppUIError.invalidConfig("surface \(surface.id) requires content.appId for lxapp content")
             }
-            openPanelLxapp(surface.id, appId, normalizedPath(surface.content.path))
+            openPanelLxapp(surface.id, appId, normalizedPath(try surface.content.resolvedLxAppPath()))
         case .native:
             guard surface.content.isNativeTerminal else {
                 throw LxAppUIError.unsupported("surface \(surface.id) uses native content that cannot be presented as an aside")
@@ -1228,7 +1230,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             guard let appId = surface.content.appId, !appId.isEmpty else {
                 throw LxAppUIError.invalidConfig("surface \(surface.id) requires content.appId for lxapp content")
             }
-            let path = normalizedPath(surface.content.path)
+            let path = normalizedPath(try surface.content.resolvedLxAppPath())
             let panelID: String?
             if case .panel = presentation {
                 panelID = surface.id
@@ -1906,7 +1908,8 @@ final class LxAppMacAppUIRuntime: NSObject {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !appId.isEmpty else { return nil }
 
-        let normalized = normalizedPath(pathHint ?? surface.content.path)
+        let configuredPath = pathHint ?? (try? surface.content.resolvedLxAppPath())
+        let normalized = normalizedPath(configuredPath)
         let sessionId = sessionIdHint ?? shell.resolvedSessionId(for: appId) ?? 0
         guard sessionId > 0 else { return nil }
 

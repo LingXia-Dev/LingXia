@@ -445,93 +445,99 @@ pub fn start_default_host(app: WindowsApp) -> Result<WindowsHost> {
     let runtime = init_runtime(app)?;
     let configured_lxapp = runtime.lxapp_id();
     present_default_host(configured_lxapp, &asset_dir)?;
-    let content =
-        match content {
-            WindowsContent::LxApp => {
-                let mains = generated_main_surfaces(&asset_dir, configured_lxapp)?;
-                let owner = match configured_lxapp {
-                    Some(owner) => owner.to_string(),
-                    None => lxapp::ensure_host_surface_owner()
-                        .map_err(|error| WindowsHostError::InvalidUi(error.to_string()))?
-                        .appid
-                        .clone(),
-                };
-                #[cfg(feature = "shell-chrome")]
-                shell::set_shell_owner_app_id(&owner);
-                register_generated_native_asides(&asset_dir, &owner)?;
-                register_generated_mains(&owner, &mains.items)?;
-                match mains.initial_surface_id.as_deref().and_then(|initial_id| {
-                    mains.items.iter().find(|surface| surface.id == initial_id)
-                }) {
-                    Some(main) => {
-                        let mounted = match &main.content {
-                            lingxia_surface::SurfaceContent::Lxapp { app_id, .. } => {
-                                if configured_lxapp.is_none() {
-                                    return Err(WindowsHostError::InvalidUi(
-                                        "an lxapp main requires app.homeAppId".to_string(),
-                                    ));
-                                }
-                                open_home_app(app_id).map_err(WindowsHostError::OpenLxApp)?;
-                                if configured_lxapp.is_some_and(|home| app_id != home) {
-                                    lingxia::windows::launch_home_control_logic()?;
-                                }
-                                MountedContent::LxApp(app_id.clone())
+    let content = match content {
+        WindowsContent::LxApp => {
+            let mains = generated_main_surfaces(&asset_dir, configured_lxapp)?;
+            let owner = match configured_lxapp {
+                Some(owner) => owner.to_string(),
+                None => lxapp::ensure_host_surface_owner()
+                    .map_err(|error| WindowsHostError::InvalidUi(error.to_string()))?
+                    .appid
+                    .clone(),
+            };
+            #[cfg(feature = "shell-chrome")]
+            shell::set_shell_owner_app_id(&owner);
+            register_generated_native_asides(&asset_dir, &owner)?;
+            register_generated_mains(&owner, &mains.items)?;
+            match mains
+                .initial_surface_id
+                .as_deref()
+                .and_then(|initial_id| mains.items.iter().find(|surface| surface.id == initial_id))
+            {
+                Some(main) => {
+                    let mounted = match &main.content {
+                        lingxia_surface::SurfaceContent::Lxapp { app_id, .. } => {
+                            if configured_lxapp.is_none() {
+                                return Err(WindowsHostError::InvalidUi(
+                                    "an lxapp main requires app.homeAppId".to_string(),
+                                ));
                             }
-                            lingxia_surface::SurfaceContent::Browser { initial_url, .. } => {
-                                open_declared_browser(&owner, &main.id, initial_url)
-                                    .map_err(WindowsHostError::OpenBrowser)?;
-                                if configured_lxapp.is_some() {
-                                    lingxia::windows::launch_home_control_logic()?;
-                                }
-                                MountedContent::Browser
+                            open_home_app_target(app_id, main.page.as_deref(), main.query.as_ref())
+                                .map_err(WindowsHostError::OpenLxApp)?;
+                            if configured_lxapp.is_some_and(|home| app_id != home) {
+                                lingxia::windows::launch_home_control_logic()?;
                             }
-                            lingxia_surface::SurfaceContent::Native { capability, .. }
-                                if capability == "terminal" =>
-                            {
-                                open_declared_terminal(&owner, &main.id)
-                                    .map_err(WindowsHostError::OpenTerminal)?;
-                                if configured_lxapp.is_some() {
-                                    lingxia::windows::launch_home_control_logic()?;
-                                }
-                                MountedContent::Terminal
-                            }
-                            lingxia_surface::SurfaceContent::Native { capability, .. }
-                                if capability == "browser" =>
-                            {
-                                open_declared_browser(&owner, &main.id, "about:blank")
-                                    .map_err(WindowsHostError::OpenBrowser)?;
-                                if configured_lxapp.is_some() {
-                                    lingxia::windows::launch_home_control_logic()?;
-                                }
-                                MountedContent::Browser
-                            }
-                            other => {
-                                return Err(WindowsHostError::InvalidUi(format!(
-                                    "unsupported main surface content: {other:?}"
-                                )));
-                            }
-                        };
-                        Some(mounted)
-                    }
-                    None => {
-                        if configured_lxapp.is_some() {
-                            lingxia::windows::launch_home_control_logic()?;
+                            MountedContent::LxApp(app_id.clone())
                         }
-                        None
+                        lingxia_surface::SurfaceContent::Browser { initial_url, .. } => {
+                            open_declared_browser(&owner, &main.id, initial_url)
+                                .map_err(WindowsHostError::OpenBrowser)?;
+                            if configured_lxapp.is_some() {
+                                lingxia::windows::launch_home_control_logic()?;
+                            }
+                            MountedContent::Browser
+                        }
+                        lingxia_surface::SurfaceContent::Native { capability, .. }
+                            if capability == "terminal" =>
+                        {
+                            open_declared_terminal(&owner, &main.id)
+                                .map_err(WindowsHostError::OpenTerminal)?;
+                            if configured_lxapp.is_some() {
+                                lingxia::windows::launch_home_control_logic()?;
+                            }
+                            MountedContent::Terminal
+                        }
+                        lingxia_surface::SurfaceContent::Native { capability, .. }
+                            if capability == "browser" =>
+                        {
+                            open_declared_browser(&owner, &main.id, "about:blank")
+                                .map_err(WindowsHostError::OpenBrowser)?;
+                            if configured_lxapp.is_some() {
+                                lingxia::windows::launch_home_control_logic()?;
+                            }
+                            MountedContent::Browser
+                        }
+                        other => {
+                            return Err(WindowsHostError::InvalidUi(format!(
+                                "unsupported main surface content: {other:?}"
+                            )));
+                        }
+                    };
+                    Some(mounted)
+                }
+                None => {
+                    if configured_lxapp.is_some() {
+                        lingxia::windows::launch_home_control_logic()?;
                     }
+                    None
                 }
             }
-            WindowsContent::Browser(url) => {
-                open_browser(&url).map_err(WindowsHostError::OpenBrowser)?;
-                Some(MountedContent::Browser)
-            }
-        };
+        }
+        WindowsContent::Browser(url) => {
+            open_browser(&url).map_err(WindowsHostError::OpenBrowser)?;
+            Some(MountedContent::Browser)
+        }
+    };
     Ok(WindowsHost { runtime, content })
 }
 
 #[cfg(all(target_os = "windows", feature = "shell-chrome"))]
-fn open_home_app(appid: &str) -> std::result::Result<(), String> {
-    shell::open_home_app(appid)
+fn open_home_app_target(
+    appid: &str,
+    page: Option<&str>,
+    query: Option<&serde_json::Value>,
+) -> std::result::Result<(), String> {
+    shell::open_home_app_with_target(appid, page, query)
 }
 
 #[cfg(all(
@@ -539,8 +545,15 @@ fn open_home_app(appid: &str) -> std::result::Result<(), String> {
     feature = "runtime",
     not(feature = "shell-chrome")
 ))]
-fn open_home_app(appid: &str) -> std::result::Result<(), String> {
-    lingxia::windows::open_home_app(appid)
+fn open_home_app_target(
+    appid: &str,
+    page: Option<&str>,
+    query: Option<&serde_json::Value>,
+) -> std::result::Result<(), String> {
+    let options = lxapp::LxAppStartupOptions::for_page(page, query)?;
+    lxapp::open_lxapp(appid, options)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(all(target_os = "windows", feature = "shell-chrome"))]
@@ -731,6 +744,8 @@ fn should_hide_taskbar(asset_dir: &Path) -> bool {
 struct GeneratedMainSurface {
     id: String,
     content: lingxia_surface::SurfaceContent,
+    page: Option<String>,
+    query: Option<serde_json::Value>,
 }
 
 #[cfg(all(target_os = "windows", feature = "runtime"))]
@@ -756,6 +771,8 @@ fn generated_main_surfaces(
                         app_id: app_id.to_string(),
                         path: None,
                     },
+                    page: None,
+                    query: None,
                 }],
             },
             None => GeneratedMainSurfaces {
@@ -833,16 +850,19 @@ fn generated_main_surface_from_value(surface: &serde_json::Value) -> Result<Gene
         .ok_or_else(|| {
             WindowsHostError::InvalidUi(format!("surface '{surface_id}' has no content"))
         })?;
+    let mut page = None;
+    let mut query = None;
     let content = match content.get("kind").and_then(serde_json::Value::as_str) {
         Some("lxapp") => {
             let app_id = required_content_string(content, "appId", surface_id)?;
-            lingxia_surface::SurfaceContent::Lxapp {
-                app_id,
-                path: content
-                    .get("path")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_string),
-            }
+            page = content
+                .get("page")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            query = content.get("query").cloned();
+            lingxia_surface::SurfaceContent::Lxapp { app_id, path: None }
         }
         Some("url") => lingxia_surface::SurfaceContent::Browser {
             initial_url: required_content_string(content, "url", surface_id)?,
@@ -869,6 +889,8 @@ fn generated_main_surface_from_value(surface: &serde_json::Value) -> Result<Gene
     Ok(GeneratedMainSurface {
         id: surface_id.to_string(),
         content,
+        page,
+        query,
     })
 }
 
@@ -897,7 +919,31 @@ fn register_generated_mains(owner_app_id: &str, mains: &[GeneratedMainSurface]) 
     let registrations = mains
         .iter()
         .map(|main| {
-            let mut presentation = lingxia_surface::SurfacePresentation::for_content(&main.content);
+            let content = match &main.content {
+                lingxia_surface::SurfaceContent::Lxapp { app_id, .. }
+                    if main.page.is_some() || main.query.is_some() =>
+                {
+                    if app_id != owner_app_id {
+                        return Err(WindowsHostError::InvalidUi(format!(
+                            "lxapp main '{app_id}' must match the ready home app '{owner_app_id}' before its page can be resolved"
+                        )));
+                    }
+                    let options = lxapp::LxAppStartupOptions::for_page(
+                        main.page.as_deref(),
+                        main.query.as_ref(),
+                    )
+                    .map_err(WindowsHostError::InvalidUi)?;
+                    let path = options
+                        .resolved_url(&app)
+                        .map_err(|error| WindowsHostError::InvalidUi(error.to_string()))?;
+                    lingxia_surface::SurfaceContent::Lxapp {
+                        app_id: app_id.clone(),
+                        path: Some(path),
+                    }
+                }
+                _ => main.content.clone(),
+            };
+            let mut presentation = lingxia_surface::SurfacePresentation::for_content(&content);
             if let lingxia_surface::SurfaceContent::Native { capability, .. } = &main.content {
                 presentation.automatic_title = Some(match capability.as_str() {
                     "terminal" => "Terminal".to_string(),
@@ -911,13 +957,13 @@ fn register_generated_mains(owner_app_id: &str, mains: &[GeneratedMainSurface]) 
             ) {
                 presentation.capabilities.rename = true;
             }
-            lxapp::HostMainSurfaceRegistration {
+            Ok(lxapp::HostMainSurfaceRegistration {
                 id: main.id.clone(),
-                content: main.content.clone(),
+                content,
                 presentation,
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
     app.replace_host_mains(registrations)
         .map_err(|error| WindowsHostError::InvalidUi(error.to_string()))?;
     Ok(())
@@ -998,6 +1044,8 @@ mod tests {
                         initial_url: "https://example.com/docs".to_string(),
                         reuse_by_url: true,
                     },
+                    page: None,
+                    query: None,
                 }],
             }
         );
@@ -1023,6 +1071,8 @@ mod tests {
                         capability: "terminal".to_string(),
                         instance_key: None,
                     },
+                    page: None,
+                    query: None,
                 }],
             }
         );
@@ -1048,6 +1098,8 @@ mod tests {
                         app_id: "home".to_string(),
                         path: None,
                     },
+                    page: None,
+                    query: None,
                 }],
             }
         );
@@ -1084,6 +1136,34 @@ mod tests {
                 .map(|surface| surface.id.as_str())
                 .collect::<Vec<_>>(),
             ["terminal", "home"]
+        );
+    }
+
+    #[test]
+    fn generated_lxapp_main_keeps_page_name_and_query_until_runtime_resolution() {
+        let ui = json!({
+            "launch": { "initialSurface": "home", "openOnLaunch": true },
+            "surfaces": [{
+                "id": "home",
+                "role": "main",
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "home",
+                    "page": "tray",
+                    "query": { "source": "tray" }
+                }
+            }]
+        });
+
+        let mains = generated_main_surfaces_from_ui(&ui).unwrap();
+        assert_eq!(mains.items[0].page.as_deref(), Some("tray"));
+        assert_eq!(mains.items[0].query, Some(json!({ "source": "tray" })));
+        assert_eq!(
+            mains.items[0].content,
+            SurfaceContent::Lxapp {
+                app_id: "home".to_string(),
+                path: None,
+            }
         );
     }
 }

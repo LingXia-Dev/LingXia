@@ -626,14 +626,18 @@ fn is_shell_owner_appid(appid: &str) -> bool {
         .unwrap_or(false)
 }
 
-pub(crate) fn open_home_app(appid: &str) -> Result<(), String> {
+pub(crate) fn open_home_app_with_target(
+    appid: &str,
+    page: Option<&str>,
+    query: Option<&serde_json::Value>,
+) -> Result<(), String> {
     set_shell_owner_appid(appid);
     #[cfg(feature = "terminal-runtime")]
     if lingxia_app_context::terminal_enabled() {
         super::terminal_panel::ensure_configuration_loaded();
     }
-    let app =
-        lxapp::open_lxapp(appid, LxAppStartupOptions::new("")).map_err(|err| err.to_string())?;
+    let options = LxAppStartupOptions::for_page(page, query)?;
+    let app = lxapp::open_lxapp(appid, options).map_err(|err| err.to_string())?;
     // A restarted lxapp cannot reuse browser WebViews attached to its previous
     // session. Persistent pins remain in the bookmark store and reopen cleanly.
     // If the presented tab is among the pruned, the tabs-changed handler drops
@@ -1018,6 +1022,8 @@ enum PanelTarget {
     LxApp {
         appid: String,
         path: String,
+        page: Option<String>,
+        query: Option<serde_json::Value>,
         position: lingxia_app_context::PanelPosition,
     },
     Terminal(TerminalPanelRequest),
@@ -5007,22 +5013,35 @@ fn activate_main_tab(owner_appid: &str, tab_id: Option<&str>) {
 fn open_lxapp_panel_now(
     target_appid: &str,
     path: &str,
+    page: Option<&str>,
+    query: Option<&serde_json::Value>,
     panel_id: &str,
 ) -> Result<(), lxapp::LxAppError> {
-    let path = lxapp::try_get(target_appid)
-        .map(|panel| {
-            panel
-                .peek_current_page()
-                .unwrap_or_else(|| non_empty(Some(path)).unwrap_or_else(|| panel.initial_route()))
-        })
-        .unwrap_or_else(|| path.to_string());
+    let options = panel_startup_options(target_appid, path, page, query)?;
     lxapp::open_lxapp(
         target_appid,
-        LxAppStartupOptions::new(&path)
+        options
             .set_open_mode(LxAppOpenMode::Panel)
             .set_panel_id(panel_id.to_string()),
     )
     .map(|_| ())
+}
+
+fn panel_startup_options(
+    target_appid: &str,
+    path: &str,
+    page: Option<&str>,
+    query: Option<&serde_json::Value>,
+) -> Result<LxAppStartupOptions, lxapp::LxAppError> {
+    if let Some(current) = lxapp::try_get(target_appid).and_then(|panel| panel.peek_current_page())
+    {
+        return Ok(LxAppStartupOptions::new(&current));
+    }
+    if page.is_some() || query.is_some() {
+        return LxAppStartupOptions::for_page(page, query)
+            .map_err(lxapp::LxAppError::InvalidParameter);
+    }
+    Ok(LxAppStartupOptions::new(path))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -5815,7 +5834,7 @@ fn to_wide(value: &str) -> Vec<u16> {
 }
 
 /// Trims `value` and returns it owned only when non-empty.
-#[cfg(feature = "shell-chrome")]
+#[cfg(feature = "browser-shell")]
 fn non_empty(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -6443,7 +6462,12 @@ fn toggle_managed_surface(panel_id: &str) -> bool {
 }
 
 #[cfg(feature = "browser-shell")]
-pub(crate) fn handle_menu_bar_surface_action(surface_id: &str, action_kind: &str) -> bool {
+pub(crate) fn handle_menu_bar_surface_action(
+    surface_id: &str,
+    action_kind: &str,
+    page: Option<&str>,
+    query: Option<&serde_json::Value>,
+) -> bool {
     if panel_target_for_id(surface_id).is_some() {
         return match action_kind {
             "openSurface" | "focusSurface" => set_managed_surface_visible(surface_id, true, "", ""),
@@ -6482,7 +6506,7 @@ pub(crate) fn handle_menu_bar_surface_action(surface_id: &str, action_kind: &str
     {
         return true;
     }
-    let opened = open_home_app(&owner_appid).is_ok();
+    let opened = open_home_app_with_target(&owner_appid, page, query).is_ok();
     if let Some(window) = crate::window_host::primary_host_window_handle()
         .or_else(|| owner_window_handle(&owner_appid))
     {
@@ -6538,12 +6562,16 @@ fn show_panel_target_inner(
         PanelTarget::LxApp {
             appid: panel_appid,
             path,
+            page,
+            query,
             position,
         } => show_lxapp_panel(
             appid,
             panel_id,
             &panel_appid,
             &path,
+            page.as_deref(),
+            query.as_ref(),
             position_override.unwrap_or(position),
             position_override.is_some(),
             completion,
@@ -6603,6 +6631,8 @@ fn show_lxapp_panel(
     panel_id: &str,
     panel_appid: &str,
     path: &str,
+    page: Option<&str>,
+    query: Option<&serde_json::Value>,
     position: lingxia_app_context::PanelPosition,
     has_position_override: bool,
     completion: Option<ManagedSurfaceCompletion>,
@@ -6623,7 +6653,7 @@ fn show_lxapp_panel(
     }
 
     if lxapp::try_get(panel_appid).is_some() {
-        if let Err(err) = open_lxapp_panel_now(panel_appid, path, panel_id) {
+        if let Err(err) = open_lxapp_panel_now(panel_appid, path, page, query, panel_id) {
             log::error!("failed to show Windows panel lxapp {panel_appid}: {err}");
             crate::window_host::set_panel_position_override(panel_id, None);
             unregister_managed_aside(owner_appid, panel_id);
@@ -6641,6 +6671,8 @@ fn show_lxapp_panel(
     let panel_id = panel_id.to_string();
     let panel_appid = panel_appid.to_string();
     let path = path.to_string();
+    let page = page.map(str::to_string);
+    let query = query.cloned();
     if !pending_panel_opens().insert(panel_id.clone()) {
         if let Some(completion) = completion
             && let Ok(mut pending) = PENDING_PANEL_COMPLETIONS
@@ -6665,7 +6697,14 @@ fn show_lxapp_panel(
 
     let owner_appid = owner_appid.to_string();
     std::mem::drop(lingxia::task::spawn(async move {
-        let result = open_panel_lxapp(&panel_id, &panel_appid, &path).await;
+        let result = open_panel_lxapp(
+            &panel_id,
+            &panel_appid,
+            &path,
+            page.as_deref(),
+            query.as_ref(),
+        )
+        .await;
         pending_panel_opens().remove(&panel_id);
         let completions = PENDING_PANEL_COMPLETIONS
             .get_or_init(|| Mutex::new(HashMap::new()))
@@ -6702,6 +6741,8 @@ fn panel_target_for_id(panel_id: &str) -> Option<PanelTarget> {
             Some(PanelTarget::LxApp {
                 appid: item.content.app_id,
                 path: item.content.path.unwrap_or_default(),
+                page: item.content.page,
+                query: item.content.query,
                 position: item.position,
             })
         } else {
@@ -6720,6 +6761,8 @@ fn panel_target_for_id(panel_id: &str) -> Option<PanelTarget> {
             .then(|| PanelTarget::LxApp {
                 appid: app.appid.clone(),
                 path: String::new(),
+                page: None,
+                query: None,
                 position: lingxia_app_context::PanelPosition::Right,
             })
     })
@@ -6840,12 +6883,15 @@ async fn open_panel_lxapp(
     panel_id: &str,
     appid: &str,
     path: &str,
+    page: Option<&str>,
+    query: Option<&serde_json::Value>,
 ) -> Result<(), lxapp::LxAppError> {
     let channel = lxapp::host_channel();
     lxapp::prepare_lxapp_open(appid, channel).await?;
+    let options = panel_startup_options(appid, path, page, query)?;
     let _ = lxapp::open_lxapp(
         appid,
-        LxAppStartupOptions::new(path)
+        options
             .set_release_type(channel)
             .set_open_mode(LxAppOpenMode::Panel)
             .set_panel_id(panel_id.to_string()),

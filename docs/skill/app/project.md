@@ -386,6 +386,8 @@ Each entry starts with its **content key** — exactly one of `lxapp` / `url` / 
 | `native` | string | one content key | A built-in host surface: `terminal` or `browser`. On macOS and Windows, terminal supports `main` / `aside`; browser supports `main`. |
 | `role` | `main` \| `aside` \| `float` | Yes | `main` = a switchable primary surface; `aside` = a docked companion; `float` = a tray-anchored popover (requires a `tray:`). |
 | `launch` | bool | No | Open on start. At most one `main` may set `launch: true` (the initial surface). Omit on all mains for a tray-launched app. |
+| `page` | string | No | Configured page name from the lxapp's `lxapp.json`. Omit it to open the initial page; full routes are internal and are not accepted. |
+| `query` | object | No | Parameters passed to the selected lxapp page. Values may be strings, numbers, booleans, or null. |
 | `edge` | `left`\|`right`\|`top`\|`bottom` | No | Preferred docking side for an aside. `role: aside` chooses the companion region; `edge` places that region when the Host has room to dock it. Defaults to `right`; terminal defaults to `bottom` and accepts only `top`/`bottom`. Compact Hosts may reproject it as a full-screen overlay. |
 | `size` | object | No | Aside preferred-size hint, e.g. `{ width: 320 }`. The shell clamps it at layout time. |
 | `tray` | object | No | Adds a menu-bar (macOS) / system-tray (Windows) entry: `{ icon?, label?, action?, exclusive?, size? }`. `action`: `toggle` (visible→hide, hidden→show) or `activate` (show + bring to front). `exclusive: true` → no dock / taskbar icon. `size: { width, height }` (on a `role: float` popover) sets the popover content size. |
@@ -400,11 +402,12 @@ There is **no `sidebar:` entry field**: app-owned sidebar actions are declared a
 - macOS and Windows admit exactly one declared `main`, whose content may be `lxapp`, `url`, `native: terminal`, or `native: browser`. Other targets still require the home lxapp as their initial main until their native presenters implement this contract. A pure desktop popover app may instead declare one `role: float` surface with a `tray:` and no main. Additional browser/terminal main entries are runtime workspace Surfaces, not extra YAML main declarations.
 - After `platforms` filtering, at most one `main` may set `launch: true`; `launch` is invalid on a non-main. macOS and Windows allow it on any admitted main content; other targets currently allow it only on their home lxapp main.
 - `edge` and `size` are only valid on `aside`.
+- `page` and `query` are valid only with `lxapp` content. Page selection uses the configured page name, matching `lx.navigateTo`, `lx.navigateToApp`, `lx.shell.openApp`, and `lx.surface.openPage`; parameters stay separate in `query`.
 - A `url` surface requires `capabilities.browser: true`; declarative URL main is supported on macOS and Windows.
 - `native: terminal` requires `capabilities.terminal: true`; an aside uses `edge: top | bottom`. `native: browser` requires `capabilities.browser: true` and supports a macOS or Windows main.
-- The same content key may be declared at most once.
+- The same content key may be repeated only when its `platforms` filters are mutually exclusive; after filtering, surface identities remain unique on every target.
 - `role: float` requires a `tray:` (it is a tray-anchored popover); a bare `role: float` is rejected.
-- At most one surface may declare `tray:`.
+- At most one effective surface may declare `tray:` on each target platform.
 
 ### Example — main + assistant aside + terminal
 
@@ -506,6 +509,8 @@ A `tray:` entry adds a menu-bar item (macOS) / system-tray icon (Windows). The s
 surfaces:
   - lxapp: my-panel
     role: float            # tray-anchored popover
+    page: tray             # configured page name, not pages/tray/index
+    query: { source: tray }
     tray:
       icon: icons/tray.svg
       exclusive: true       # no dock / taskbar icon
