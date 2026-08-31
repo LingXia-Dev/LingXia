@@ -43,14 +43,15 @@ runs:
         repository: ${{ inputs.repository }}
         ref: ${{ inputs.ref }}
         token: ${{ inputs.github-token }}
-        path: ${{ runner.temp }}/lingxia-cloud-client
+        # actions/checkout requires repositories to stay under GITHUB_WORKSPACE.
+        path: .ci/lingxia-cloud-client
         persist-credentials: false
 
     - if: steps.gate.outputs.enabled == 'true'
       shell: bash
       run: |
         set -euo pipefail
-        dest="${RUNNER_TEMP}/lingxia-cloud-client"
+        dest="${GITHUB_WORKSPACE}/.ci/lingxia-cloud-client"
         test -f "$dest/Cargo.toml" || {
           echo "cloud client checkout missing Cargo.toml at $dest" >&2
           exit 1
