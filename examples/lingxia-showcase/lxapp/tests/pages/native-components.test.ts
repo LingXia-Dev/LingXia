@@ -312,32 +312,36 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
   }
   const beforeScrollCenterY = nativeButton.rect.center_y;
   const starveAnimationFrames = testArgs.platform?.toLocaleLowerCase() === 'windows';
-  const scrollY = await app.page.eval({
-    page: 'video',
-    script: starveAnimationFrames
-      ? 'globalThis.__nativeIslandScrollCompiles = 0; document.querySelector("#island-controls")?.addEventListener("lxnativecompiled", () => { globalThis.__nativeIslandScrollCompiles += 1; }); globalThis.__nativeIslandOriginalRaf = window.requestAnimationFrame; globalThis.__nativeIslandDeferredRafs = []; window.requestAnimationFrame = (callback) => { globalThis.__nativeIslandDeferredRafs.push(callback); return 2147483647 + globalThis.__nativeIslandDeferredRafs.length; }; window.scrollTo(0, Math.min(200, document.documentElement.scrollHeight - window.innerHeight)); window.scrollY'
-      : 'globalThis.__nativeIslandScrollCompiles = 0; document.querySelector("#island-controls")?.addEventListener("lxnativecompiled", () => { globalThis.__nativeIslandScrollCompiles += 1; }); window.scrollTo(0, Math.min(200, document.documentElement.scrollHeight - window.innerHeight)); window.scrollY',
-  });
-  nativeButton = await eventually(
-    async () => ({
-      button: await app.page.query({ page: 'video', css: '#island-play' }),
-      compiles: await app.page.eval({ page: 'video', script: 'globalThis.__nativeIslandScrollCompiles' }),
-    }),
-    (value) => value.button.exists
-      && value.button.visible
-      && Math.abs(value.button.rect.center_y - beforeScrollCenterY) >= 80
-      && typeof value.compiles === 'number'
-      && value.compiles > 0,
-    {
-      timeoutMs: 5_000,
-      describe: `native island geometry published after scroll${starveAnimationFrames ? ' without an animation frame' : ''} (scrollY=${scrollY})`,
-    },
-  ).then((value) => value.button);
   if (starveAnimationFrames) {
+    const scrollY = await app.page.eval({
+      page: 'video',
+      script: 'globalThis.__nativeIslandScrollCompiles = 0; document.querySelector("#island-controls")?.addEventListener("lxnativecompiled", () => { globalThis.__nativeIslandScrollCompiles += 1; }); globalThis.__nativeIslandOriginalRaf = window.requestAnimationFrame; globalThis.__nativeIslandDeferredRafs = []; window.requestAnimationFrame = (callback) => { globalThis.__nativeIslandDeferredRafs.push(callback); return 2147483647 + globalThis.__nativeIslandDeferredRafs.length; }; window.scrollTo(0, Math.min(200, document.documentElement.scrollHeight - window.innerHeight)); window.scrollY',
+    });
+    nativeButton = await eventually(
+      async () => ({
+        button: await app.page.query({ page: 'video', css: '#island-play' }),
+        compiles: await app.page.eval({ page: 'video', script: 'globalThis.__nativeIslandScrollCompiles' }),
+      }),
+      (value) => value.button.exists
+        && value.button.visible
+        && Math.abs(value.button.rect.center_y - beforeScrollCenterY) >= 80
+        && typeof value.compiles === 'number'
+        && value.compiles > 0,
+      { timeoutMs: 5_000, describe: `native island geometry published without an animation frame (scrollY=${scrollY})` },
+    ).then((value) => value.button);
     await app.page.eval({
       page: 'video',
       script: 'const deferred = globalThis.__nativeIslandDeferredRafs || []; window.requestAnimationFrame = globalThis.__nativeIslandOriginalRaf; delete globalThis.__nativeIslandOriginalRaf; delete globalThis.__nativeIslandDeferredRafs; deferred.forEach((callback) => callback(performance.now()));',
     });
+  } else {
+    await app.page.scroll({ page: 'video', dy: 120 });
+    nativeButton = await eventually(
+      () => app.page.query({ page: 'video', css: '#island-play' }),
+      (button) => button.exists
+        && button.visible
+        && Math.abs(button.rect.center_y - beforeScrollCenterY) >= 80,
+      { timeoutMs: 5_000, describe: 'native island element followed cross-platform page scroll' },
+    );
   }
   if (!nativeButton.exists) throw new Error('native island play button disappeared after scroll');
   const automation = lx.automation();
