@@ -93,6 +93,20 @@ ABIs / macOS arch. When a host project has `lingxia.yaml`, `build` additionally
 prepares configured host assets; lxapp builds generate the Native client when
 `lxapp.config.ts` declares `native`.
 
+#### iOS Packet Tunnel extensions
+
+During an iOS host build, `ios/PacketTunnel/Info.plist` opts the project into
+convention-based Packet Tunnel packaging. Provide a SwiftPM executable
+product/target named `PacketTunnel`; the CLI embeds its arm64 iOS executable as
+`PlugIns/PacketTunnel.appex` and derives the extension bundle ID from the
+environment-specific app bundle ID by appending `.PacketTunnel`.
+
+Put extension entitlements at
+`ios/PacketTunnel/PacketTunnel.entitlements` when needed. The signer uses them
+for the extension instead of the app entitlements. Device builds still require
+the Apple Network Extension capability and matching provisioning for both the
+app and extension.
+
 `build` also enforces the View/Logic boundary — see
 [LxApp → Build](../lxapp/guide.md#build).
 

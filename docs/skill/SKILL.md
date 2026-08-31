@@ -141,6 +141,7 @@ Every published package and what to import from each. Don't guess imports from t
 | Need | File |
 |---|---|
 | The `lingxia` CLI — daily commands (build, dev, package, install) | [`./cli/lingxia.md`](./cli/lingxia.md) |
+| iOS Packet Tunnel / Network Extension packaging | [`./cli/lingxia.md`](./cli/lingxia.md#ios-packet-tunnel-extensions) |
 | Drive a running `lingxia dev` session — `lxdev` (browser/app/lxapp/logs automation; run `lxdev <cmd> --help` for exact flags) | [`./cli/lxdev.md`](./cli/lxdev.md) |
 | Ship it: publish to the LingXia server, platform signing, app-store submission, developer accounts | [`./cli/distribution.md`](./cli/distribution.md) |
 | Page authoring: `Page({})`, `useLxPage`, events | [`./lxapp/guide.md`](./lxapp/guide.md) |

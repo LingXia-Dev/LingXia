@@ -151,14 +151,6 @@ three ids must line up or the wrong app launches, and the build enforces it:
 
 `homeAppVersion` is not configured here; the CLI derives it from the matching `resources.bundles` source. The full, current field set is in a freshly scaffolded `lingxia.yaml`.
 
-### iOS Packet Tunnel
-
-For full-device VPN, add a SwiftPM executable product/target named
-`PacketTunnel` and `ios/PacketTunnel/Info.plist` (plus provider source and
-optional entitlements). This opts into `PlugIns/PacketTunnel.appex`; the CLI
-derives its environment-specific bundle ID. Device builds still require Apple
-Network Extension capability and matching app/extension provisioning.
-
 ---
 
 ## `theme` Section
