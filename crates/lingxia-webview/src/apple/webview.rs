@@ -3932,18 +3932,6 @@ impl WebViewInner {
         }
     }
 
-    pub(crate) async fn scroll_inner(
-        &self,
-        dx: f64,
-        dy: f64,
-        _options: ScrollOptions,
-    ) -> Result<(), WebViewInputError> {
-        self.focus_webview_for_input().await?;
-        let point = self.webview_center_screen_point().await?;
-        self.post_scroll_at(point, dx, dy).await?;
-        Ok(())
-    }
-
     pub(crate) async fn scroll_to_inner(
         &self,
         selector: &str,
