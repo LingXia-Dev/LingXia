@@ -1,37 +1,62 @@
 name: Enable cloud provider (if configured)
 description: >
-  If the private Gitea cloud secrets are present, configure HTTPS token auth for
-  the cloud client and export LINGXIA_WITH_PROVIDERS=cloud so a following
-  `lingxia build`/`package` injects it. A no-op (build without the provider) when
-  the secrets are absent — i.e. on forks or an unconfigured repo. Both the clone
-  URL and the token come from secrets, so neither the Gitea host nor the token is
-  committed; the token is injected only for that host.
+  If a GitHub token that can read the private cloud client is present, check
+  that repo out and export LINGXIA_WITH_PROVIDERS=cloud plus
+  LINGXIA_PROVIDER_CLOUD_PATH so a following `lingxia build`/`package` injects
+  it. A no-op (build without the provider) when the token is absent — i.e. on
+  forks or an unconfigured repo. The clone URL is not a secret (github.com);
+  only the token is. GITHUB_TOKEN cannot be used: it is scoped to this public
+  repository and cannot clone LingXia-Dev/lingxia-device-cloud.
 inputs:
-  gitea-token:
-    description: Read-only Gitea access token (secret).
+  github-token:
+    description: >
+      Fine-grained PAT (resource owner LingXia-Dev, Contents: Read, repository
+      LingXia-Dev/lingxia-device-cloud only).
     required: false
-  provider-cloud-git:
-    description: HTTPS clone URL for the private cloud client (secret).
+  repository:
+    description: GitHub owner/name of the private cloud client.
     required: false
+    default: LingXia-Dev/lingxia-device-cloud
+  ref:
+    description: Branch or SHA to check out.
+    required: false
+    default: main
 runs:
   using: composite
   steps:
-    - shell: bash
+    - id: gate
+      shell: bash
       env:
-        GITEA_TOKEN: ${{ inputs.gitea-token }}
-        PROVIDER_CLOUD_GIT: ${{ inputs.provider-cloud-git }}
+        TOKEN: ${{ inputs.github-token }}
       run: |
         set -euo pipefail
-        if [ -z "${GITEA_TOKEN:-}" ] || [ -z "${PROVIDER_CLOUD_GIT:-}" ]; then
-          echo "ℹ️ cloud provider secrets absent — building without the provider."
+        if [ -z "${TOKEN:-}" ]; then
+          echo "ℹ️ cloud provider token absent — building without the provider."
+          echo "enabled=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
-        host=$(printf '%s' "$PROVIDER_CLOUD_GIT" | sed -E 's#^[a-z]+://([^@]+@)?([^/:]+).*#\2#')
-        git config --global \
-          url."https://oauth2:${GITEA_TOKEN}@${host}/".insteadOf \
-          "https://${host}/"
+        echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+    - if: steps.gate.outputs.enabled == 'true'
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ inputs.repository }}
+        ref: ${{ inputs.ref }}
+        token: ${{ inputs.github-token }}
+        path: ${{ runner.temp }}/lingxia-cloud-client
+        persist-credentials: false
+
+    - if: steps.gate.outputs.enabled == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        dest="${RUNNER_TEMP}/lingxia-cloud-client"
+        test -f "$dest/Cargo.toml" || {
+          echo "cloud client checkout missing Cargo.toml at $dest" >&2
+          exit 1
+        }
         {
           echo "LINGXIA_WITH_PROVIDERS=cloud"
-          echo "LINGXIA_PROVIDER_CLOUD_GIT=$PROVIDER_CLOUD_GIT"
+          echo "LINGXIA_PROVIDER_CLOUD_PATH=$dest"
         } >> "$GITHUB_ENV"
-        echo "✅ cloud provider enabled for $host."
+        echo "✅ cloud provider enabled from ${{ inputs.repository }}@${{ inputs.ref }}."

@@ -229,12 +229,11 @@ jobs:
           chmod 600 "$dir/asc.json" "$dir/developer-id.json"
           echo "✅ Apple wallet restored (team $team) — lingxia build will Developer-ID sign + notarize."
 
-      # Inject the private cloud provider when its secrets are present (same-repo
-      # only); a no-op on forks, so the runner still builds without it.
+      # Inject the private GitHub cloud client when its token is present
+      # (same-repo only); a no-op on forks, so the runner still builds without it.
       - uses: ./.github/actions/cloud-provider-env
         with:
-          gitea-token: ${{ secrets.GITEA_TOKEN }}
-          provider-cloud-git: ${{ secrets.LINGXIA_PROVIDER_CLOUD_GIT }}
+          github-token: ${{ secrets.LINGXIA_CLOUD_CLIENT_TOKEN }}
 
       - name: Build macOS Runner (${{ matrix.arch }})
         run: bash scripts/release/runner.sh --out dist/runner-release --macos-arch ${{ matrix.arch }}
@@ -271,13 +270,12 @@ jobs:
       # lingxia / lingxia-platform build.rs embed the bridge/polyfills JS runtime.
       - uses: ./.github/actions/build-web-runtime
 
-      # Inject the private cloud provider when its secrets are present. The
-      # Windows runner build uses install-local-runner.ps1 below so the same
+      # Inject the private GitHub cloud client when its token is present.
+      # The Windows runner build uses install-local-runner.ps1 below so the same
       # provider injection path is exercised as local runner installs.
       - uses: ./.github/actions/cloud-provider-env
         with:
-          gitea-token: ${{ secrets.GITEA_TOKEN }}
-          provider-cloud-git: ${{ secrets.LINGXIA_PROVIDER_CLOUD_GIT }}
+          github-token: ${{ secrets.LINGXIA_CLOUD_CLIENT_TOKEN }}
 
       - name: Verify tag matches CLI package version
         shell: bash
