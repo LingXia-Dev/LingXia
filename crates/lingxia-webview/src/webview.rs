@@ -1636,11 +1636,13 @@ impl WebViewInputController for WebView {
         _dy: f64,
         _options: ScrollOptions,
     ) -> Result<(), WebViewInputError> {
-        // A synthesized AppKit wheel can be dropped while an attached WKWebView
-        // is settling focus, even though dispatch reports success. Use the same
-        // deterministic DOM scroller as detached AppUI pages.
+        // AppUI renders lxapp pages as native surfaces with the WKWebView
+        // detached, so native scroll wheel events can't reach the DOM — use JS.
         #[cfg(all(feature = "webview-input", target_os = "macos"))]
         {
+            if self.inner.is_window_attached().await {
+                return self.inner.scroll_inner(_dx, _dy, _options).await;
+            }
             return self.scroll_via_js(None, _dx, _dy).await;
         }
         #[cfg(all(feature = "webview-input", target_os = "windows"))]

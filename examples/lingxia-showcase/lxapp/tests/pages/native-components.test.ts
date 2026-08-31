@@ -334,7 +334,7 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
       script: 'const deferred = globalThis.__nativeIslandDeferredRafs || []; window.requestAnimationFrame = globalThis.__nativeIslandOriginalRaf; delete globalThis.__nativeIslandOriginalRaf; delete globalThis.__nativeIslandDeferredRafs; deferred.forEach((callback) => callback(performance.now()));',
     });
   } else {
-    await app.page.scroll({ page: 'video', dy: 120 });
+    await app.page.scroll({ page: 'video', dy: -120 });
     nativeButton = await eventually(
       () => app.page.query({ page: 'video', css: '#island-play' }),
       (button) => button.exists
