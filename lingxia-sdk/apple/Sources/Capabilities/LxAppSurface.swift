@@ -190,6 +190,11 @@ enum LxAppSurface {
     private final class WindowDragStrip: NSView {
         override var mouseDownCanMoveWindow: Bool { true }
         override var isOpaque: Bool { false }
+
+        override func mouseDown(with event: NSEvent) {
+            window?.performDrag(with: event)
+        }
+
         // Only the strip itself drags; the traffic lights sit above it in the
         // window's own titlebar view and keep their own hit testing.
         override func hitTest(_ point: NSPoint) -> NSView? {
