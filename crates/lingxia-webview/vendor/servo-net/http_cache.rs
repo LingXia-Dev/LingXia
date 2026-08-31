@@ -8,6 +8,7 @@
 //! and <http://tools.ietf.org/html/rfc7232>.
 
 use std::ops::Bound;
+use std::sync::Arc as StdArc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -19,7 +20,7 @@ use log::{debug, error};
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use malloc_size_of_derive::MallocSizeOf;
 use net_traits::http_status::HttpStatus;
-use net_traits::request::Request;
+use net_traits::request::{CacheMode, Request};
 use net_traits::response::{Response, ResponseBody};
 use net_traits::{CacheEntryDescriptor, FetchMetadata, Metadata, ResourceFetchTiming};
 use parking_lot::Mutex as ParkingLotMutex;
@@ -69,6 +70,9 @@ pub struct CachedResource {
     status: HttpStatus,
     url_list: Vec<ServoUrl>,
     expires: Duration,
+    stale_while_revalidate: Duration,
+    #[conditional_malloc_size_of]
+    revalidating: StdArc<AtomicBool>,
     last_validated: Instant,
 }
 
@@ -87,12 +91,28 @@ struct CachedMetadata {
     /// HTTP Status
     pub status: HttpStatus,
 }
+
+/// Whether a cached response is fresh or requires validation before or after use.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ValidationStatus {
+    /// The response is fresh and can be used without any revalidation.
+    Valid,
+    /// The response is stale.
+    Stale {
+        /// Whether the stale response can be served immediately, leaving the
+        /// caller responsible for revalidating it in the background.
+        revalidate_in_background: bool,
+    },
+}
+
 /// Wrapper around a cached response, including information on re-validation needs
 pub(crate) struct CachedResponse {
     /// The response constructed from the cached resource
     pub response: Response,
-    /// The revalidation flag for the stored response
-    pub needs_validation: bool,
+    /// Whether the stored response is fresh or stale
+    pub validation_status: ValidationStatus,
+    /// Single-flight guard for the background revalidation.
+    pub revalidation_guard: StdArc<AtomicBool>,
 }
 
 type CacheEntry = std::sync::Arc<TokioRwLock<Vec<CachedResource>>>;
@@ -147,9 +167,9 @@ fn response_is_cacheable(metadata: &Metadata) -> bool {
     // 2. check for absence of the Authorization header field.
     let mut is_cacheable = false;
     let headers = metadata.headers.as_ref().unwrap();
-    if headers.contains_key(header::EXPIRES)
-        || headers.contains_key(header::LAST_MODIFIED)
-        || headers.contains_key(header::ETAG)
+    if headers.contains_key(header::EXPIRES) ||
+        headers.contains_key(header::LAST_MODIFIED) ||
+        headers.contains_key(header::ETAG)
     {
         is_cacheable = true;
     }
@@ -157,17 +177,17 @@ fn response_is_cacheable(metadata: &Metadata) -> bool {
         if directive.no_store() {
             return false;
         }
-        if directive.public()
-            || directive.s_max_age().is_some()
-            || directive.max_age().is_some()
-            || directive.no_cache()
+        if directive.public() ||
+            directive.s_max_age().is_some() ||
+            directive.max_age().is_some() ||
+            directive.no_cache()
         {
             // If cache-control is understood, we can use it and ignore pragma.
             return true;
         }
     }
-    if let Some(pragma) = headers.typed_get::<Pragma>()
-        && pragma.is_no_cache()
+    if let Some(pragma) = headers.typed_get::<Pragma>() &&
+        pragma.is_no_cache()
     {
         return false;
     }
@@ -208,10 +228,10 @@ fn get_response_expiry(response: &Response) -> Duration {
             // this whole thing return `Duration::ZERO`.
             let expiry_time: SystemTime = expiry.into();
             return expiry_time.duration_since(now).unwrap_or(Duration::ZERO);
-        }
+        },
         // Malformed Expires header, shouldn't be used to construct a valid response.
         None if response.headers.contains_key(header::EXPIRES) => return Duration::ZERO,
-        _ => {}
+        _ => {},
     }
     // Calculating Heuristic Freshness
     // <https://tools.ietf.org/html/rfc7234#section-4.2.2>
@@ -239,21 +259,72 @@ fn get_response_expiry(response: &Response) -> Duration {
                 max_heuristic
             }
         } else {
-            max_heuristic
+            // Compatible with other browsers.
+            Duration::ZERO
         };
         if is_cacheable_by_default(*code) {
             // Status codes that are cacheable by default can use heuristics to determine freshness.
             return heuristic_freshness;
         }
         // Other status codes can only use heuristic freshness if the public cache directive is present.
-        if let Some(ref directives) = response.headers.typed_get::<CacheControl>()
-            && directives.public()
+        if let Some(ref directives) = response.headers.typed_get::<CacheControl>() &&
+            directives.public()
         {
             return heuristic_freshness;
         }
     }
     // Requires validation upon first use as default.
     Duration::ZERO
+}
+
+/// The `headers` crate's `CacheControl` does not understand `stale-while-revalidate` directive,
+/// so we need to parse the raw `Cache-Control` header values.
+/// <https://datatracker.ietf.org/doc/html/rfc5861#section-3>
+fn get_stale_while_revalidate(headers: &HeaderMap) -> Duration {
+    for value in headers.get_all(header::CACHE_CONTROL) {
+        let Ok(value) = value.to_str() else {
+            continue;
+        };
+        for directive in value.split(',') {
+            let directive = directive.trim();
+            let Some((name, argument)) = directive.split_once('=') else {
+                continue;
+            };
+            if !name.trim().eq_ignore_ascii_case("stale-while-revalidate") {
+                continue;
+            }
+            // The argument is a number of seconds, optionally quoted.
+            let argument = argument.trim().trim_matches('"');
+            if let Ok(seconds) = argument.parse::<u64>() {
+                return Duration::from_secs(seconds);
+            }
+        }
+    }
+    Duration::ZERO
+}
+
+/// Determine whether the request itself demands revalidation.
+/// <https://www.rfc-editor.org/rfc/rfc9111.html#section-5.2.1>
+fn request_demands_revalidation(request: &Request) -> bool {
+    if matches!(
+        request.cache_mode,
+        CacheMode::NoCache | CacheMode::Reload | CacheMode::NoStore
+    ) {
+        return true;
+    }
+    if let Some(directive) = request.headers.typed_get::<CacheControl>() {
+        // The request's `no-store` directive is deliberately *not* treated as
+        // demanding revalidation: https://www.rfc-editor.org/rfc/rfc9111.html#section-5.2.1.5
+        // > "does not apply to the already stored response".
+        if directive.no_cache() {
+            return true;
+        }
+
+        if directive.max_age() == Some(Duration::ZERO) {
+            return true;
+        }
+    }
+    false
 }
 
 /// Request Cache-Control Directives
@@ -270,7 +341,7 @@ fn get_expiry_adjustment_from_request_headers(request: &Request, expires: Durati
     match directive.max_age() {
         Some(max_age) if expires > max_age => return Duration::ZERO,
         Some(max_age) => return expires - max_age,
-        None => {}
+        None => {},
     };
 
     if let Some(min_fresh) = directive.min_fresh() {
@@ -325,9 +396,27 @@ fn create_cached_response(
     // TODO: if this cache is to be considered shared, take proxy-revalidate into account
     // <https://tools.ietf.org/html/rfc7234#section-5.2.2.7>
     let has_expired = adjusted_expires <= time_since_validated;
+
+    // - fresh: return immediately, no validation.
+    // - stale:
+    //    - within the stale-while-revalidate window: return immediately + revalidate in the background
+    //    - beyond the stale-while-revalidate window: synchronous validation is required.
+    let stale_for = time_since_validated.saturating_sub(adjusted_expires);
+    let within_stale_while_revalidate_window = stale_for <= cached_resource.stale_while_revalidate;
+    let validation_status = if !has_expired {
+        ValidationStatus::Valid
+    } else {
+        ValidationStatus::Stale {
+            revalidate_in_background: within_stale_while_revalidate_window &&
+                !cached_resource.stale_while_revalidate.is_zero() &&
+                !request_demands_revalidation(request),
+        }
+    };
+
     let cached_response = CachedResponse {
         response,
-        needs_validation: has_expired,
+        validation_status,
+        revalidation_guard: cached_resource.revalidating.clone(),
     };
     Some(cached_response)
 }
@@ -348,6 +437,8 @@ fn create_resource_with_bytes_from_resource(
         status: StatusCode::PARTIAL_CONTENT.into(),
         url_list: resource.url_list.clone(),
         expires: resource.expires,
+        stale_while_revalidate: resource.stale_while_revalidate,
+        revalidating: resource.revalidating.clone(),
         last_validated: resource.last_validated,
     }
 }
@@ -407,7 +498,7 @@ fn handle_range_request(
                         }
                     }
                 }
-            }
+            },
             (Bound::Included(beginning), Bound::Unbounded) => {
                 if let ResponseBody::Done(ref body) = *complete_resource.body.lock() {
                     let b = beginning as usize;
@@ -427,7 +518,7 @@ fn handle_range_request(
                         }
                     }
                 }
-            }
+            },
             _ => return None,
         }
     } else {
@@ -447,7 +538,7 @@ fn handle_range_request(
                             } else {
                                 continue;
                             }
-                        }
+                        },
                         _ => continue,
                     };
                     if res_beginning <= beginning && res_end >= end {
@@ -457,7 +548,7 @@ fn handle_range_request(
                                 let b = beginning as usize - res_beginning as usize;
                                 let e = end as usize - res_beginning as usize + 1;
                                 body.get(b..e)
-                            }
+                            },
                             _ => continue,
                         };
                         if let Some(bytes) = requested {
@@ -470,14 +561,14 @@ fn handle_range_request(
                             }
                         }
                     }
-                }
+                },
 
                 (Bound::Included(beginning), Bound::Unbounded) => {
                     let (res_beginning, res_end, total) = if let Some(range) = content_range {
                         match (range.bytes_range(), range.bytes_len()) {
                             (Some(bytes_range), Some(total)) => {
                                 (bytes_range.0, bytes_range.1, total)
-                            }
+                            },
                             _ => continue,
                         }
                     } else {
@@ -493,7 +584,7 @@ fn handle_range_request(
                             ResponseBody::Done(body) => {
                                 let from_byte = beginning as usize - res_beginning as usize;
                                 body.get(from_byte..)
-                            }
+                            },
                             _ => continue,
                         };
                         if let Some(bytes) = requested {
@@ -510,7 +601,7 @@ fn handle_range_request(
                             }
                         }
                     }
-                }
+                },
 
                 _ => continue,
             }
@@ -569,7 +660,7 @@ pub(crate) fn construct_response(
                                     break;
                                 }
                             }
-                        }
+                        },
                         None => {
                             // If a header field is absent from a request,
                             // it can only match a stored response if those headers,
@@ -578,7 +669,7 @@ pub(crate) fn construct_response(
                             if !can_be_constructed {
                                 debug!("vary header present, not caching");
                             }
-                        }
+                        },
                     }
                     if !can_be_constructed {
                         break;
@@ -611,7 +702,7 @@ pub(crate) fn construct_response(
                 if *code == StatusCode::PARTIAL_CONTENT {
                     continue;
                 }
-            }
+            },
             None => continue,
         }
         // Returning a response that can be constructed
@@ -657,7 +748,7 @@ pub fn refresh(
             Some((done_sender, done_receiver)) => {
                 *done_chan = Some((done_sender.clone(), done_receiver));
                 cached_resource.awaiting_body.lock().push(done_sender);
-            }
+            },
             None => *done_chan = None,
         }
         // Received a response with 304 status code, in response to a request that matches a cached resource.
@@ -685,10 +776,16 @@ pub fn refresh(
 
     // Update cached Resource with response and constructed response.
     if let Some(constructed_response) = constructed_response.as_mut() {
+        // Bracket is to minimize lock duration.
+        {
+            let mut stored_headers = cached_resource.metadata.headers.lock();
+            stored_headers.extend(response.headers);
+            constructed_response.headers = stored_headers.clone();
+        }
         cached_resource.expires = get_response_expiry(constructed_response);
-        let mut stored_headers = cached_resource.metadata.headers.lock();
-        stored_headers.extend(response.headers);
-        constructed_response.headers = stored_headers.clone();
+        cached_resource.stale_while_revalidate =
+            get_stale_while_revalidate(&constructed_response.headers);
+        cached_resource.last_validated = Instant::now();
     }
 
     constructed_response
@@ -752,7 +849,7 @@ impl HttpCache {
                     ResponseBody::Done(_) | ResponseBody::Empty => Data::Done,
                     ResponseBody::Receiving(_) => {
                         continue;
-                    }
+                    },
                 }
             };
             for done_sender in awaiting_consumers.drain(..) {
@@ -790,6 +887,20 @@ impl HttpCache {
         let cached_resources = entry.read().await;
         construct_response(request, done_chan, cached_resources.as_slice())
             .map(|cached| cached.response)
+    }
+
+    /// Like [`construct_response`](Self::construct_response), but additionally
+    /// reports the [`ValidationStatus`] of the constructed response.
+    #[cfg(feature = "test-util")]
+    pub async fn construct_response_freshness(
+        &self,
+        request: &Request,
+        done_chan: &mut DoneChannel,
+    ) -> Option<ValidationStatus> {
+        let entry = self.entries.get(&CacheKey::new(request))?;
+        let cached_resources = entry.read().await;
+        construct_response(request, done_chan, cached_resources.as_slice())
+            .map(|cached| cached.validation_status)
     }
 
     /// Invalidate cache entries referenced by Location/Content-Location headers.
@@ -860,14 +971,15 @@ impl<'a> CachedResourcesOrGuard<'a> {
             Ok(FetchMetadata::Filtered {
                 filtered: _,
                 unsafe_: metadata,
-            })
-            | Ok(FetchMetadata::Unfiltered(metadata)) => metadata,
+            }) |
+            Ok(FetchMetadata::Unfiltered(metadata)) => metadata,
             _ => return,
         };
         if !response_is_cacheable(&metadata) {
             return;
         }
         let expiry = get_response_expiry(response);
+        let stale_while_revalidate = get_stale_while_revalidate(&response.headers);
         let cacheable_metadata = CachedMetadata {
             headers: Arc::new(ParkingLotMutex::new(response.headers.clone())),
             final_url: metadata.final_url,
@@ -885,13 +997,15 @@ impl<'a> CachedResourcesOrGuard<'a> {
             status: response.status.clone(),
             url_list: response.url_list.clone(),
             expires: expiry,
+            stale_while_revalidate,
+            revalidating: StdArc::new(AtomicBool::new(false)),
             last_validated: Instant::now(),
         };
 
         match self {
             CachedResourcesOrGuard::Value(mut owned_rw_lock_write_guard) => {
                 owned_rw_lock_write_guard.push(entry_resource);
-            }
+            },
             CachedResourcesOrGuard::Guard(placeholder_guard) => {
                 if placeholder_guard
                     .insert(std::sync::Arc::new(TokioRwLock::new(vec![entry_resource])))
@@ -899,7 +1013,7 @@ impl<'a> CachedResourcesOrGuard<'a> {
                 {
                     error!("Could not insert into cache");
                 }
-            }
+            },
         }
     }
 
@@ -908,7 +1022,7 @@ impl<'a> CachedResourcesOrGuard<'a> {
         match self {
             CachedResourcesOrGuard::Value(owned_rw_lock_write_guard) => {
                 Some(owned_rw_lock_write_guard.as_mut())
-            }
+            },
             CachedResourcesOrGuard::Guard(_) => None,
         }
     }

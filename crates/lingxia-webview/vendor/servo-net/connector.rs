@@ -205,7 +205,7 @@ where
                     inner: MaybeHttpsStream::Https(tls_stream),
                     tls_info: Some(tls_info),
                 }
-            }
+            },
         }
     }
 }
@@ -224,7 +224,7 @@ where
                 } else {
                     tcp.inner().connected()
                 }
-            }
+            },
         };
         if let Some(info) = &self.tls_info {
             connected.extra(info.clone())
@@ -355,7 +355,7 @@ impl CertificateErrorOverrideManager {
             Err(error) => {
                 warn!("Could not convert host string into RustTLS ServerName: {error:?}");
                 return None;
-            }
+            },
         };
         self.0
             .lock()
@@ -495,21 +495,21 @@ impl CertificateVerificationOverrideVerifier {
                         .expect("Could not initialize platform certificate verifier");
                         Arc::new(verifier)
                     }
-                }
+                },
             };
             verifier as Arc<dyn ServerCertVerifier>
         } else {
             let mut root_store =
                 rustls::RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
             match ca_certficates {
-                CACertificates::Default => {}
+                CACertificates::Default => {},
                 CACertificates::Override(certificates) => {
                     for certificate in certificates {
                         if root_store.add(certificate).is_err() {
                             log::error!("Could not add an override certificate.");
                         }
                     }
-                }
+                },
             }
             rustls::client::WebPkiServerVerifier::builder(root_store.into())
                 .build()
@@ -645,11 +645,17 @@ impl Service<Destination> for ProxyConnector {
 
     fn call(&mut self, req: Destination) -> Self::Future {
         match self.matcher.intercept(&req) {
-            Some(intercept) => Box::pin(
-                Tunnel::new(intercept.uri().clone(), self.client.clone())
-                    .call(req)
-                    .map_err(|e| ConnectionError::ProxyError(format!("{e}"))),
-            ),
+            Some(intercept) => {
+                let mut tunnel = Tunnel::new(intercept.uri().clone(), self.client.clone());
+                let final_tunnel = if let Some(auth) = intercept.basic_auth() {
+                    tunnel.with_auth(auth.clone())
+                } else {
+                    tunnel
+                }
+                .call(req)
+                .map_err(|e| ConnectionError::ProxyError(format!("{e}")));
+                Box::pin(final_tunnel)
+            },
             None => Box::pin(
                 self.client
                     .call(req)

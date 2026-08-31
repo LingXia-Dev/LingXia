@@ -249,10 +249,10 @@ pub fn get_range_request_bounds(range: Option<Range>, len: u64) -> RangeRequestB
             Some((Bound::Included(start), Bound::Included(end))) => {
                 // `end` should be less or equal to `start`.
                 (start, Some(i64::max(start as i64, end as i64)))
-            }
+            },
             Some((Bound::Unbounded, Bound::Included(offset))) => {
                 return RangeRequestBounds::Pending(offset);
-            }
+            },
             _ => (0, None),
         };
         RangeRequestBounds::Final(RelativePos::from_opts(Some(start as i64), end))

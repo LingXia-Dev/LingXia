@@ -27,7 +27,7 @@ use net_traits::response::{Response, ResponseInit};
 use net_traits::{
     AsyncRuntime, CookieAsyncResponse, CookieData, CookieSource, CoreResourceMsg,
     CoreResourceThread, CustomResponseMediator, DiscardFetch, FetchChannels, FetchTaskTarget,
-    ResourceFetchTiming, ResourceThreads, ResourceTimingType, WebSocketDomAction,
+    NetworkError, ResourceFetchTiming, ResourceThreads, ResourceTimingType, WebSocketDomAction,
     WebSocketNetworkEvent,
 };
 use parking_lot::{Mutex, RwLock};
@@ -282,7 +282,7 @@ impl ResourceChannelManager {
                     GenericSelectionResult::ChannelClosed(_) => continue,
                     GenericSelectionResult::Error(error) => {
                         log::error!("Found selection error: {error}")
-                    }
+                    },
                     GenericSelectionResult::MessageReceived(id, msg) => {
                         if id == revoker_id {
                             let CoreResourceMsg::RevokeTokenForFile(revocation_request) = msg
@@ -330,7 +330,7 @@ impl ResourceChannelManager {
                                 return;
                             }
                         }
-                    }
+                    },
                 }
             }
         }
@@ -419,7 +419,7 @@ impl ResourceChannelManager {
                         cancellation_listener,
                         protocols,
                     );
-                }
+                },
                 FetchChannels::WebSocket {
                     event_sender,
                     action_receiver,
@@ -435,7 +435,7 @@ impl ResourceChannelManager {
                         cancellation_listener,
                         protocols,
                     )
-                }
+                },
                 FetchChannels::Prefetch => self.resource_manager.fetch(
                     request_builder,
                     None,
@@ -452,18 +452,18 @@ impl ResourceChannelManager {
                 {
                     cancellation_listener.cancel();
                 }
-            }
+            },
             CoreResourceMsg::DeleteCookiesForSites(sites, sender) => {
                 http_state
                     .cookie_jar
                     .write()
                     .delete_cookies_for_sites(&sites);
                 let _ = sender.send(());
-            }
+            },
             CoreResourceMsg::DeleteSessionCookies(sender) => {
                 http_state.cookie_jar.write().clear_session_cookies();
                 let _ = sender.send(());
-            }
+            },
             CoreResourceMsg::DeleteCookies(request, sender) => {
                 http_state
                     .cookie_jar
@@ -473,21 +473,21 @@ impl ResourceChannelManager {
                     let _ = sender.send(());
                 }
                 return true;
-            }
+            },
             CoreResourceMsg::DeleteCookie(request, name) => {
                 http_state
                     .cookie_jar
                     .write()
                     .delete_cookie_with_name(&request, name);
                 return true;
-            }
+            },
             CoreResourceMsg::DeleteCookieAsync(cookie_store_id, url, name) => {
                 http_state
                     .cookie_jar
                     .write()
                     .delete_cookie_with_name(&url, name);
                 self.send_cookie_response(cookie_store_id, CookieData::Delete(Ok(())));
-            }
+            },
             CoreResourceMsg::FetchRedirect(request_builder, res_init, sender) => {
                 let cancellation_listener =
                     self.get_or_create_cancellation_listener(request_builder.id);
@@ -499,7 +499,7 @@ impl ResourceChannelManager {
                     cancellation_listener,
                     protocols,
                 )
-            }
+            },
             CoreResourceMsg::SetCookieForUrl(request, cookie, source, sender) => {
                 self.resource_manager.set_cookie_for_url(
                     &request,
@@ -510,7 +510,7 @@ impl ResourceChannelManager {
                 if let Some(sender) = sender {
                     let _ = sender.send(());
                 }
-            }
+            },
             CoreResourceMsg::SetCookiesForUrl(request, cookies, source) => {
                 for cookie in cookies {
                     self.resource_manager.set_cookie_for_url(
@@ -520,7 +520,7 @@ impl ResourceChannelManager {
                         http_state,
                     );
                 }
-            }
+            },
             CoreResourceMsg::SetCookieForUrlAsync(cookie_store_id, url, cookie, source) => {
                 self.resource_manager.set_cookie_for_url(
                     &url,
@@ -529,12 +529,12 @@ impl ResourceChannelManager {
                     http_state,
                 );
                 self.send_cookie_response(cookie_store_id, CookieData::Set(Ok(())));
-            }
+            },
             CoreResourceMsg::GetCookieStringForUrl(url, consumer, source) => {
                 let mut cookie_jar = http_state.cookie_jar.write();
                 cookie_jar.remove_expired_cookies_for_url(&url);
                 consumer.send_or_ignore(cookie_jar.cookies_for_url(&url, source));
-            }
+            },
             CoreResourceMsg::GetCookiesForUrl(url, consumer, source) => {
                 let mut cookie_jar = http_state.cookie_jar.write();
                 cookie_jar.remove_expired_cookies_for_url(&url);
@@ -543,7 +543,7 @@ impl ResourceChannelManager {
                     .map(Serde)
                     .collect();
                 consumer.send_or_ignore(cookies);
-            }
+            },
             CoreResourceMsg::GetCookieDataForUrlAsync(cookie_store_id, url, name) => {
                 let mut cookie_jar = http_state.cookie_jar.write();
                 cookie_jar.remove_expired_cookies_for_url(&url);
@@ -553,7 +553,7 @@ impl ResourceChannelManager {
                     .map(Serde)
                     .next();
                 self.send_cookie_response(cookie_store_id, CookieData::Get(cookie));
-            }
+            },
             CoreResourceMsg::GetAllCookieDataForUrlAsync(cookie_store_id, url, name) => {
                 let mut cookie_jar = http_state.cookie_jar.write();
                 cookie_jar.remove_expired_cookies_for_url(&url);
@@ -563,7 +563,7 @@ impl ResourceChannelManager {
                     .map(Serde)
                     .collect();
                 self.send_cookie_response(cookie_store_id, CookieData::GetAll(cookies));
-            }
+            },
             CoreResourceMsg::EmbedderGetCookiesForUrl(operation_id, url, source) => {
                 let mut cookie_jar = http_state.cookie_jar.write();
                 cookie_jar.remove_expired_cookies_for_url(&url);
@@ -575,7 +575,7 @@ impl ResourceChannelManager {
                         cookies,
                     ),
                 );
-            }
+            },
             CoreResourceMsg::EmbedderSetCookieForUrl(operation_id, url, cookie, source) => {
                 self.resource_manager.set_cookie_for_url(
                     &url,
@@ -588,7 +588,7 @@ impl ResourceChannelManager {
                     .send(NetToEmbedderMsg::EmbedderCookieOperationResponse(
                         operation_id,
                     ));
-            }
+            },
             CoreResourceMsg::EmbedderClearCookies(operation_id) => {
                 http_state.cookie_jar.write().clear_storage(None);
                 http_state
@@ -596,7 +596,7 @@ impl ResourceChannelManager {
                     .send(NetToEmbedderMsg::EmbedderCookieOperationResponse(
                         operation_id,
                     ));
-            }
+            },
             CoreResourceMsg::EmbedderClearSessionCookies(operation_id) => {
                 http_state.cookie_jar.write().clear_session_cookies();
                 http_state
@@ -604,51 +604,48 @@ impl ResourceChannelManager {
                     .send(NetToEmbedderMsg::EmbedderCookieOperationResponse(
                         operation_id,
                     ));
-            }
+            },
             CoreResourceMsg::NewCookieListener(cookie_store_id, callback, _url) => {
                 // TODO: Use the URL for setting up the actual monitoring
                 self.cookie_listeners.insert(cookie_store_id, callback);
-            }
+            },
             CoreResourceMsg::RemoveCookieListener(cookie_store_id) => {
                 self.cookie_listeners.remove(&cookie_store_id);
-            }
+            },
             CoreResourceMsg::NetworkMediator(mediator_chan, origin) => {
                 self.resource_manager
                     .sw_managers
                     .insert(origin, mediator_chan);
-            }
+            },
             CoreResourceMsg::ListCookies(sender) => {
                 let mut cookie_jar = http_state.cookie_jar.write();
                 cookie_jar.remove_all_expired_cookies();
                 sender.send_or_ignore(cookie_jar.cookie_site_descriptors());
-            }
+            },
             CoreResourceMsg::GetHistoryState(history_state_id, consumer) => {
                 let history_states = http_state.history_states.read();
                 consumer.send_or_ignore(history_states.get(&history_state_id).cloned());
-            }
+            },
             CoreResourceMsg::SetHistoryState(history_state_id, structured_data) => {
                 let mut history_states = http_state.history_states.write();
                 history_states.insert(history_state_id, structured_data);
-            }
+            },
             CoreResourceMsg::RemoveHistoryStates(states_to_remove) => {
                 let mut history_states = http_state.history_states.write();
                 for history_state in states_to_remove {
                     history_states.remove(&history_state);
                 }
-            }
+            },
             CoreResourceMsg::GetCacheEntries(sender) => {
                 sender.send_or_ignore(http_state.http_cache.cache_entry_descriptors());
-            }
+            },
             CoreResourceMsg::ClearCache(sender) => {
                 http_state.http_cache.clear();
                 if let Some(sender) = sender {
                     sender.send_or_ignore(());
                 }
-            }
+            },
             CoreResourceMsg::ToFileManager(msg) => self.resource_manager.filemanager.handle(msg),
-            CoreResourceMsg::StorePreloadedResponse(preload_id, response) => self
-                .resource_manager
-                .handle_preloaded_response(preload_id, response),
             CoreResourceMsg::TotalSizeOfInFlightKeepAliveRecords(pipeline_id, sender) => {
                 let total = self
                     .resource_manager
@@ -663,7 +660,7 @@ impl ResourceChannelManager {
                     })
                     .unwrap_or_default();
                 sender.send_or_ignore(total);
-            }
+            },
             CoreResourceMsg::Exit(sender) => {
                 if let Some(ref config_dir) = self.config_dir {
                     let auth_cache = http_state.auth_cache.read();
@@ -676,11 +673,11 @@ impl ResourceChannelManager {
                 self.resource_manager.exit();
                 let _ = sender.send(());
                 return false;
-            }
+            },
             // Ignore these messages as they are only sent on very specific channels.
-            CoreResourceMsg::CollectMemoryReport(_)
-            | CoreResourceMsg::RevokeTokenForFile(..)
-            | CoreResourceMsg::RefreshTokenForFile(..) => {}
+            CoreResourceMsg::CollectMemoryReport(_) |
+            CoreResourceMsg::RevokeTokenForFile(..) |
+            CoreResourceMsg::RefreshTokenForFile(..) => {},
         }
         true
     }
@@ -740,8 +737,23 @@ impl CoreResourceManager {
         }
     }
 
-    fn handle_preloaded_response(&self, preload_id: PreloadId, response: Response) {
-        let mut preloaded_resources = self.preloaded_resources.lock().unwrap();
+    fn handle_preloaded_response(
+        preloaded_resources: SharedPreloadedResources,
+        preload_id: PreloadId,
+        response: Response,
+    ) {
+        // https://html.spec.whatwg.org/multipage/#preload
+        // Step 11.1. If bodyBytes is a byte sequence, then set response's body to bodyBytes as a body.
+        // Step 11.2. Otherwise, set response to a network error.
+        let response = response
+            .get_network_error()
+            .map(|_| {
+                Response::network_error(NetworkError::ResourceLoadError("Failed to preload".into()))
+            })
+            .unwrap_or(response);
+        let mut preloaded_resources = preloaded_resources.lock().unwrap();
+        // Step 11.5. If entry's on response available is null, then set entry's response to response;
+        // otherwise call entry's on response available given response.
         if let Some(entry) = preloaded_resources.get_mut(&preload_id) {
             entry.with_response(response);
         }
@@ -805,7 +817,7 @@ impl CoreResourceManager {
                 } else {
                     (FileTokenCheck::ShouldFail, None)
                 }
-            }
+            },
             _ => (FileTokenCheck::NotRequired, None),
         };
 
@@ -837,7 +849,7 @@ impl CoreResourceManager {
                 websocket_chan: None,
                 ca_certificates,
                 ignore_certificate_errors,
-                preloaded_resources,
+                preloaded_resources: preloaded_resources.clone(),
                 in_flight_keep_alive_records,
             };
 
@@ -864,10 +876,14 @@ impl CoreResourceManager {
                     ) {
                         request_body_stream_closer.disarm();
                     }
-                }
+                },
                 None => {
-                    fetch(request, &mut sender, &context).await;
-                }
+                    let preload_id = request.preload_id.clone();
+                    let response = fetch(request, &mut sender, &context).await;
+                    if let Some(preload_id) = preload_id {
+                        Self::handle_preloaded_response(preloaded_resources, preload_id, response);
+                    }
+                },
             };
 
             // Remove token after fetch.
@@ -936,11 +952,11 @@ impl CoreResourceManager {
                         in_flight_keep_alive_records,
                     };
                     fetch(request, &mut event_sender, &context).await;
-                }
+                },
                 Err(e) => {
                     trace!("unable to create websocket handshake request {:?}", e);
                     let _ = event_sender.send(WebSocketNetworkEvent::Fail);
-                }
+                },
             }
         });
     }

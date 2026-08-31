@@ -1,4 +1,4 @@
-This is `servo-net` 0.4.0 with a minimal read-only network observer for
+This is `servo-net` 0.5.0 with a minimal read-only network observer for
 embedders. Servo's public embedding API currently exposes request interception,
 while its response and failure data remain internal to the network/devtools
 pipeline.
