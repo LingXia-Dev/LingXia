@@ -9,6 +9,7 @@
 //! the app's databases and a command must not collide with an instance already
 //! running. It returns `None` when the process should carry on and be the app.
 
+use std::ffi::{OsStr, OsString};
 use std::io::IsTerminal;
 use std::path::Path;
 
@@ -18,7 +19,7 @@ use lingxia_control_protocol::invocation;
 #[cfg(feature = "desktop")]
 use crate::desktop;
 use crate::transport::ControlSocket;
-use crate::{app, browser, skills};
+use crate::{app, browser, extra};
 
 #[derive(Parser)]
 #[command(
@@ -49,8 +50,6 @@ enum Command {
     /// Automate the machine: windows, capture, input, accessibility, clipboard
     #[cfg(feature = "desktop")]
     Computer(desktop::DesktopOptions),
-    /// Write an agent skill describing these commands
-    Skills(skills::SkillsOptions),
     /// Turn the automation interface on or off, and report it
     Control {
         #[command(subcommand)]
@@ -77,7 +76,10 @@ pub enum ControlAction {
 
 /// Run the command line and return its exit code, or `None` to become the app.
 pub fn run_if_invoked(state_dir: &Path) -> Option<i32> {
-    if !invoked_as_command() && !first_argument_is_a_command() {
+    let (explicit, args) = invocation_args();
+    if !invocation_is_command(explicit, cfg!(windows), std::io::stdin().is_terminal())
+        && !first_argument_is_a_command(&args)
+    {
         // The OS launched the product. Without this check an unrecognized
         // argument would fall through to startup and die against a running
         // instance's databases.
@@ -87,12 +89,22 @@ pub fn run_if_invoked(state_dir: &Path) -> Option<i32> {
 
     let endpoint = crate::transport::endpoint_in(state_dir);
     let transport = ControlSocket::at(endpoint);
-    let cli = match Cli::try_parse() {
+    if let Some(command) = args
+        .get(1)
+        .and_then(|arg| arg.to_str())
+        .and_then(extra::get)
+    {
+        return Some((command.execute)(&transport, &args[2..]));
+    }
+    let cli = match Cli::try_parse_from(&args) {
         Ok(cli) => cli,
         // `try_parse` hands back help and usage rather than printing them, and
         // the host exits on our code — so nothing else will ever show them.
         Err(error) => {
             let _ = error.print();
+            if is_top_level_help(&args) {
+                print_extra_commands();
+            }
             return Some(error.exit_code());
         }
     };
@@ -107,7 +119,6 @@ pub fn run_if_invoked(state_dir: &Path) -> Option<i32> {
         }
         #[cfg(feature = "desktop")]
         Command::Computer(options) => desktop::execute(&desktop::Backend::App(&transport), options),
-        Command::Skills(options) => skills::execute::<Cli>(&manifest(&transport), options),
         Command::Control { action } => control(state_dir, &transport, action),
         Command::Own(command) => {
             let context = app::AppContext {
@@ -274,7 +285,8 @@ fn report(outcome: anyhow::Result<()>) -> i32 {
 
 /// Whether the first argument names one of our subcommands.
 ///
-/// The marker covers anything launched through our own shim; this covers
+/// The explicit launcher argument covers anything launched through our own
+/// shim; this covers
 /// someone running the executable inside the bundle directly, which is what a
 /// developer does and what a `--help` in a bug report looks like.
 const COMMANDS: &[&str] = &[
@@ -282,7 +294,6 @@ const COMMANDS: &[&str] = &[
     #[cfg(feature = "desktop")]
     "computer",
     "control",
-    "skills",
     "doctor",
     "screenshot",
     "windows",
@@ -293,47 +304,66 @@ const COMMANDS: &[&str] = &[
     "-h",
 ];
 
-fn first_argument_is_a_command() -> bool {
-    std::env::args()
-        .nth(1)
-        .is_some_and(|first| COMMANDS.contains(&first.as_str()))
+pub(crate) fn is_builtin_command_name(name: &str) -> bool {
+    COMMANDS.contains(&name)
 }
 
-/// What the product says about itself in a generated skill.
-///
-/// The command name comes from the executable actually running, so a skill
-/// written by a development build names that build rather than a constant
-/// baked in somewhere else.
-fn manifest(transport: &dyn crate::transport::Transport) -> skills::Manifest {
-    let executable = std::env::current_exe().unwrap_or_default();
-    let stem = executable
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("app")
-        .strip_suffix(std::env::consts::EXE_SUFFIX)
-        .unwrap_or("app")
-        .to_string();
-    skills::manifest_for_running(invocation::command_name(&stem), stem, transport)
+fn first_argument_is_a_command(args: &[OsString]) -> bool {
+    args.get(1)
+        .and_then(|first| first.to_str())
+        .is_some_and(|first| COMMANDS.contains(&first) || extra::is_registered(first))
 }
 
-/// Whether this process was started through the product's own launcher.
-///
-/// The marker is authoritative. A tty check remains as the fallback for a
-/// direct invocation, which on Unix still tells app from command line — on
-/// Windows it cannot, because a host spawned by a console tool inherits that
-/// console.
-fn invoked_as_command() -> bool {
-    invocation_is_command(
-        std::env::var_os(invocation::MARKER).is_some(),
-        cfg!(windows),
-        std::io::stdin().is_terminal(),
-    )
+fn is_top_level_help(args: &[OsString]) -> bool {
+    let args = args
+        .iter()
+        .skip(1)
+        .filter_map(|arg| arg.to_str())
+        .collect::<Vec<_>>();
+    match args.as_slice() {
+        [] => true,
+        [help] => matches!(*help, "--help" | "-h" | "help"),
+        _ => false,
+    }
 }
 
-fn invocation_is_command(marked: bool, windows: bool, stdin_is_terminal: bool) -> bool {
+fn print_extra_commands() {
+    let extras = extra::all();
+    if extras.is_empty() {
+        return;
+    }
+    eprintln!();
+    for command in extras {
+        eprintln!("  {:<12} {}", command.name, command.about);
+    }
+}
+
+/// Remove the launcher's private argument before clap or a provider sees argv.
+fn invocation_args() -> (bool, Vec<OsString>) {
+    strip_cli_argument(std::env::args_os().collect())
+}
+
+fn strip_cli_argument(mut args: Vec<OsString>) -> (bool, Vec<OsString>) {
+    let argument = OsStr::new(invocation::CLI_ARGUMENT);
+    let position = args
+        .iter()
+        .skip(1)
+        .position(|arg| arg == argument)
+        .map(|i| i + 1);
+    if let Some(position) = position {
+        args.remove(position);
+        (true, args)
+    } else {
+        (false, args)
+    }
+}
+
+/// The launcher argument is authoritative. TTY remains a Unix fallback for a
+/// direct invocation, including commands typed in a product-hosted terminal.
+fn invocation_is_command(explicit: bool, windows: bool, stdin_is_terminal: bool) -> bool {
     // GUI dev launchers detach stdin but keep stdout/stderr attached for logs.
     // Output alone therefore cannot distinguish a GUI from an interactive CLI.
-    marked || (!windows && stdin_is_terminal)
+    explicit || (!windows && stdin_is_terminal)
 }
 
 #[cfg(test)]
@@ -373,6 +403,25 @@ mod tests {
         assert!(invocation_is_command(true, false, false));
         assert!(invocation_is_command(false, false, true));
         assert!(!invocation_is_command(false, true, true));
+    }
+
+    #[test]
+    fn launcher_argument_is_removed_before_command_parsing() {
+        let args = vec![
+            OsString::from("product"),
+            OsString::from("screenshot"),
+            OsString::from(invocation::CLI_ARGUMENT),
+            OsString::from("--json"),
+        ];
+        let (explicit, args) = strip_cli_argument(args);
+        assert!(explicit);
+        assert_eq!(
+            args,
+            ["product", "screenshot", "--json"]
+                .into_iter()
+                .map(OsString::from)
+                .collect::<Vec<_>>()
+        );
     }
 
     /// The subcommands this recognizes before clap runs. That check is what

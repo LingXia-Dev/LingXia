@@ -16,13 +16,18 @@ For host project configuration, see [App Project](../app/project.md).
 ## Host Addon
 
 Every native host library registers a `HostAddon` before runtime initialization.
-The addon is the place to install native routes, optional JS extensions, and
-background services.
+The addon is the place to declare product CLI commands, install native routes,
+add optional JS extensions, and start background services.
 
 ```rust
 struct AppHostAddon;
 
 impl lingxia::HostAddon for AppHostAddon {
+    #[cfg(feature = "control")]
+    fn install_product_cli(&self, cli: &mut lingxia::product_cli::ProductCli) {
+        cli.command("workspace", "Manage workspaces", workspace_cli);
+    }
+
     fn install_host_apis(&self) {
         // For each #[lingxia::native] fn, call the macro-generated companion
         // `<fn>_host()` and pass it to register_host_entry. See "The
@@ -43,9 +48,15 @@ impl lingxia::HostAddon for AppHostAddon {
 }
 
 fn register_host_addon() {
-    lingxia::register_host_addon(Box::new(AppHostAddon));
+    static REGISTER: std::sync::Once = std::sync::Once::new();
+    REGISTER.call_once(|| lingxia::register_host_addon(Box::new(AppHostAddon)));
 }
 ```
+
+`install_product_cli` is the only pre-runtime command-registration hook. Put
+the matching local-control request handler in `install_host_apis`; put neither
+half in `start_services`. See [Driving a Shipped Product](../app/agent-control.md)
+for the command and transport contract.
 
 Platform entrypoints call that registration function:
 

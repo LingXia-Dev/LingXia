@@ -41,18 +41,31 @@ where a leaf offers it. Failures use stable exit codes — 2 usage, 3 not found,
 4 ambiguous, 5 timeout, 6 permission or refusal, 7 unsupported, 8 unavailable,
 9 stale handle, 10 failure after the target resolved.
 
-## Generate a skill from the running build
+## Integrate the product's agent tooling
 
-```text
-<product> skills show
-<product> skills install --agent claude   # or --agent codex
-```
+LingXia supplies the launcher and local command transport, but the host product
+owns its Codex, Claude, or other agent integration. A host UI or installer can
+obtain the launcher with
+`lingxia_control_runtime::local_control::launcher_path()` and publish that
+absolute path through a product-owned locator. For example, an npm-distributed
+integration may let `npx <product> install` write one path line to
+`~/.<product>/path`.
 
-The generated skill contains only the entry points the running build actually
-allows, so it cannot advertise a capability the product refuses. If the product
-cannot be reached, `show` and `install` fail rather than guessing. Installing
-writes into another agent's configuration directory, so it stays an explicit
-user command.
+LingXia does not choose that locator or generate a skill whose business rules
+would drift from the host product. The host installer updates both. Agent
+tooling should invoke the launcher rather than the GUI executable and query the
+running product before advertising capabilities.
+
+Providers declare commands with `cli.command(name, about, handler)` from
+`HostAddon::install_product_cli`. LingXia runs that hook before parsing the
+separate CLI process and before initializing UI, services, or databases. The
+matching in-app request namespace belongs in `install_host_apis`; registering
+either half from `start_services` is too late.
+
+The product launcher adds the framework-reserved `--cli` discriminator and
+LingXia removes it before built-in or provider command parsing. This keeps
+non-TTY agent launches in CLI mode without exposing framework plumbing to the
+product command.
 
 ## Permissions and disclosure
 

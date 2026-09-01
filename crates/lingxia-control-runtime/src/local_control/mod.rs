@@ -2,8 +2,8 @@
 //!
 //! This is not the development websocket. That one exists so `lingxia dev` can
 //! drive an app across a network to a phone; this one exists so a *shipped*
-//! product can offer a command line and agent skills that drive its declared
-//! product surface, reached without a dev session, over an IPC that never
+//! product can offer a command line that drives its declared product surface,
+//! reached without a dev session, over an IPC that never
 //! leaves the machine.
 //!
 //! Each platform gets its native mechanism rather than one forced everywhere.
@@ -35,6 +35,17 @@ pub use platform::endpoint_name;
 /// Where this product's endpoint lives, once [`install`] has run.
 static STATE_DIR: OnceLock<PathBuf> = OnceLock::new();
 static RUNNING: Mutex<Option<Running>> = Mutex::new(None);
+
+/// Return this product's launcher path after local control has been installed.
+///
+/// A host or its installer may publish this path in a product-owned locator.
+/// LingXia deliberately does not choose that locator or generate agent skills.
+pub fn launcher_path() -> std::io::Result<PathBuf> {
+    let state_dir = STATE_DIR
+        .get()
+        .ok_or_else(|| std::io::Error::other("control socket is not installed"))?;
+    launcher::path(state_dir)
+}
 
 struct Running {
     endpoint: String,
@@ -370,6 +381,15 @@ fn refuse_unless_declared(method: &str) -> Option<String> {
     ) {
         return None;
     }
+    let namespace = method
+        .split_once('.')
+        .map(|(head, _)| head)
+        .unwrap_or(method);
+    // A provider registers extra namespaces at startup. Shipping the handler
+    // is the declaration, so this does not wait for YAML or app.json.
+    if crate::extra::is_registered_host_namespace(namespace) {
+        return None;
+    }
     // Every gate below closes when it cannot prove otherwise. A product whose
     // configuration has not loaded yet, or one carrying a namespace nobody has
     // added a row for, must refuse rather than hand a local process the whole
@@ -398,6 +418,9 @@ fn refuse_for_product(
         .split_once('.')
         .map(|(head, _)| head)
         .unwrap_or(method);
+    if crate::extra::is_registered_host_namespace(namespace) {
+        return None;
+    }
     let Some(capabilities) = capabilities else {
         return Some(format!("{namespace} is not declared by this product"));
     };
@@ -510,6 +533,23 @@ mod tests {
     }
 
     #[test]
+    fn a_host_namespace_cannot_shadow_a_privileged_framework_namespace() {
+        let registration = std::panic::catch_unwind(|| {
+            crate::register_control_namespace("desktop", |_, _| Some(Ok(None)));
+        });
+        assert!(registration.is_err());
+
+        let capabilities = lingxia_app_context::CapabilitiesConfig::default();
+        assert!(
+            refuse_for_product(
+                lingxia_control_protocol::methods::desktop::pointer::CLICK,
+                Some(&capabilities),
+            )
+            .is_some()
+        );
+    }
+
+    #[test]
     fn product_control_exposes_only_explicit_host_app_methods() {
         use lingxia_control_protocol::methods;
 
@@ -550,6 +590,17 @@ mod tests {
         }
 
         assert!(refuse_for_product("app.future_method", Some(&capabilities)).is_some());
+
+        crate::register_control_namespace("allowlist_extra_test", |_, _| Some(Ok(None)));
+        assert_eq!(
+            refuse_for_product("allowlist_extra_test.ping", Some(&capabilities)),
+            None,
+            "a registered extra namespace is admitted because a handler exists"
+        );
+        assert!(
+            crate::app::declared_capabilities().contains(&"allowlist_extra_test"),
+            "registering the handler is what control.status reports"
+        );
 
         // The shared dispatcher is also the dev websocket's entry point. It
         // remains unfiltered; only the shipped-product transport applies the

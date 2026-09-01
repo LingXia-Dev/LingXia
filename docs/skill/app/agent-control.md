@@ -51,25 +51,40 @@ when the user's current request authorizes the state change. Add
 destructive effect, such as closing a window, quitting an app, or clearing the
 clipboard or cookies.
 
-## Generate an agent skill
+## Host-owned agent integration
 
-Run `show` and `install` while the product is open so it can report its declared
-capabilities. `remove` only touches the installed files and also works offline.
+LingXia provides the product launcher and command transport. The host owns its
+Codex, Claude, or other agent skills because they evolve with product commands,
+not with the framework.
 
-```text
-<product> skills show
-<product> skills install --agent claude   # or --agent codex
-<product> skills remove --agent claude
+A host can obtain the launcher from
+`lingxia_control_runtime::local_control::launcher_path()` after installing
+local control. Its installer may publish that path as one line in a
+product-owned locator such as `~/.<product>/path`; LingXia does not choose or
+write it. Agent tooling invokes the launcher, not the GUI executable, and asks
+the running product which capabilities are available.
+
+Declare a host command and its matching in-app request namespace from the two
+early `HostAddon` hooks:
+
+```rust
+impl lingxia::HostAddon for AppHostAddon {
+    #[cfg(feature = "control")]
+    fn install_product_cli(&self, cli: &mut lingxia::product_cli::ProductCli) {
+        cli.command("cloud", "Manage cloud workspaces", cloud_cli);
+    }
+
+    fn install_host_apis(&self) {
+        #[cfg(feature = "control")]
+        lingxia_control_runtime::register_control_namespace("cloud", handle_cloud_control);
+    }
+}
 ```
 
-The generated skill contains only agent-facing entry points allowed by that
-running build. It excludes human administration (`control` and `skills`) and
-uses `--help` for leaf syntax instead of copying the full CLI tree. If the
-product cannot be reached, `show` and `install` fail rather than writing a skill
-that guesses its capabilities.
-
-Installation writes into another agent's configuration directory, so it is an
-explicit user command rather than a side effect of enabling automation.
+`install_product_cli` only declares commands; its handler receives the supplied
+`product_cli::Transport` and arguments after the command name. Register the
+matching request handler in `install_host_apis`. `start_services` is too late
+for either registration.
 
 ## Desktop permissions and viewer
 

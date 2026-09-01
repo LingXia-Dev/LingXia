@@ -105,6 +105,10 @@ public enum Lingxia {
     ///
     /// Returns normally when the process should carry on and become the app.
     public static func runProductCommandIfInvoked() {
+        // Registration only publishes the linked host addon. It does not
+        // initialize AppKit or LingXia, and lets Rust install host-owned CLI
+        // commands before it classifies and parses this process's arguments.
+        LxAppCore.registerNativeHostAddonOnce()
         let directories = LxAppDirectoryFactory.createDirectoryConfig()
         let code = productRunCliIfInvoked(directories.dataPath)
         if code >= 0 {

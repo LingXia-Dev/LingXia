@@ -120,27 +120,31 @@ fn build_app_doctor() -> Value {
         "coordinate_spaces": {
             "window": app_window_coordinate_space(),
         },
-        // What this build declared an agent may drive. A generated skill reads
-        // it so it cannot describe a namespace the socket would refuse.
+        // What this build declared an integration may drive. Host-owned tools
+        // can use it without guessing what the socket will accept.
         "declared": declared_capabilities(),
     })
 }
 
 pub(crate) fn declared_capabilities() -> Vec<&'static str> {
-    let Some(capabilities) =
-        lingxia_app_context::app_config().and_then(|c| c.capabilities.as_ref())
-    else {
-        return Vec::new();
-    };
     let mut declared = Vec::new();
-    if capabilities.app_use_effective() {
-        declared.push("appUse");
+    if let Some(capabilities) =
+        lingxia_app_context::app_config().and_then(|c| c.capabilities.as_ref())
+    {
+        if capabilities.app_use_effective() {
+            declared.push("appUse");
+        }
+        if capabilities.computer_use {
+            declared.push("computerUse");
+        }
+        if capabilities.browser_use {
+            declared.push("browserUse");
+        }
     }
-    if capabilities.computer_use {
-        declared.push("computerUse");
-    }
-    if capabilities.browser_use {
-        declared.push("browserUse");
+    for name in crate::extra::registered_names() {
+        if !declared.contains(&name) {
+            declared.push(name);
+        }
     }
     declared
 }
