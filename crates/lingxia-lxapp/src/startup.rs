@@ -121,8 +121,10 @@ pub fn append_page_query(path: String, query: &Value) -> Result<String, String> 
     let Some(object) = query.as_object() else {
         return Err("query must be an object".to_string());
     };
+    let mut entries = object.iter().collect::<Vec<_>>();
+    entries.sort_unstable_by_key(|(key, _)| *key);
     let mut pairs = Vec::new();
-    for (key, value) in object {
+    for (key, value) in entries {
         if value.is_null() {
             continue;
         }

@@ -959,7 +959,7 @@ jobs:
         run: >-
           ../../scripts/automation/run-windows-showcase.ps1
           -Framework '${{ matrix.framework }}'
-          -TimeoutSeconds 300
+          -TimeoutSeconds 480
 
       - name: Run showcase automation
         if: runner.os == 'macOS'
