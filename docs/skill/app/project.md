@@ -346,7 +346,7 @@ The cache cap has the one non-obvious behavior worth knowing: cleanup triggers a
 
 ## `splash` Section
 
-Optional launch screen, generated per platform from a few fields — no hand-built launch UI. The launch experience is "tap the icon, see the art": `image` (PNG, full-screen aspect-fill) is the app's first frame on every cold start, held until the home page first renders, then fading into real content. Where the platform allows it the OS launch frame carries that same art — HarmonyOS's start window, iOS's `UILaunchScreen` — so the two frames are one picture and the handoff has nothing to change.
+Optional launch screen, generated per platform from a few fields — no hand-built launch UI. The launch experience is "tap the icon, see the art": `image` (PNG, full-screen aspect-fill) is the app's first frame on every cold start, held until the home page first renders, then fading into real content. Where the platform allows it the OS launch frame carries that same art — HarmonyOS's start window, a generated iOS launch storyboard — so the two frames are one picture and the handoff has nothing to change.
 
 Android is the exception: its 12+ system splash offers a colour and an icon slot and nothing else, so there the OS beat is `background` (required, `#RRGGBB`) and the art arrives on the app's first frame. Pick the art's own ground for `background` and that beat reads as the art's entrance rather than as a flash. On Android the icon slot follows from whether art is configured: with art it is blanked, since the art is the app's real first face and an icon before it would be a second one; without art the platform draws the real app icon, preserving the launcher's zoom morph. HarmonyOS follows the same rule with a generated transparent icon.
 
@@ -358,14 +358,17 @@ The launch face is this configured art and nothing else. A host's Rust addon can
 
 `minDuration` (ms, default 600) is the minimum the launch face stays on screen, measured from process start — the OS frame is already showing the same art, so the user has been looking at it since before this process could count. The maximum is a framework constant.
 
-An iOS release-environment build fails when the asset catalog cannot compile:
-without `Assets.car`, `UILaunchScreen` normally cannot resolve the configured
-face and iOS would ship a white system frame. There is one narrow device-build
-fallback when Xcode has the iOS SDK but no simulator runtime: with a full cover,
-the CLI installs that cover under the raw resource name used by
-`UILaunchScreen` and keeps the legacy icon output that `actool` did produce. A
-mark-only face still requires the iOS platform (`xcodebuild -downloadPlatform
-iOS`); developer/preview builds warn when neither path is available.
+iOS composes its launch frame with a generated storyboard rather than the
+`UILaunchScreen` Info.plist dictionary. That dictionary has no content mode: it
+centres the image at its natural *point* size, so a full-screen cover lands
+oversized and the app's own first frame then snaps it back — one launch, two
+sizes of the same picture. A storyboard fills, exactly as the app's frame does.
+
+Compiling it needs the iOS platform installed (`xcodebuild -downloadPlatform
+iOS`), like the asset catalog. Without it a developer build degrades to the
+`background` alone, and the art arrives on the app's first frame — the Android
+beat — while a release build fails outright, since it would also ship with no
+app icon.
 
 ---
 

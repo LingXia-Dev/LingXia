@@ -27,28 +27,10 @@ pub struct AppBundleConfig {
     /// Path to custom Info.plist (merged with generated one)
     pub info_plist_path: Option<PathBuf>,
     /// Splash background color (`#RRGGBB`). Present when `splash:` is
-    /// configured: `UILaunchScreen` points at the catalog color, and the raw
-    /// value is also written to Info.plist so the runtime overlay never
-    /// depends on the catalog being compiled.
+    /// configured, and written to Info.plist so the runtime overlay always
+    /// has the ground. The OS launch face itself is installed into the built
+    /// bundle by `splash::install_apple_launch_screen`.
     pub splash_background: Option<String>,
-    /// What `UILaunchScreen` draws over the ground. The art wins when the
-    /// host configures it: the OS frame is then the same picture the SDK's
-    /// own layer draws over it, so the handoff has nothing to change. The
-    /// mark is the placeholder-only launch's face, and is drawn only when
-    /// there is no art to show.
-    pub splash_launch_image: LaunchImage,
-}
-
-/// What the OS launch frame draws over the brand ground.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LaunchImage {
-    /// The configured launch art, full bleed — identical to the frame the SDK
-    /// draws over it.
-    Art,
-    /// The placeholder mark, centered, for a launch with no art configured.
-    Mark,
-    /// Ground only.
-    None,
 }
 
 /// App bundle packager
@@ -377,38 +359,18 @@ let package = Package(
             "UISupportedInterfaceOrientations".into(),
             plist::Value::Array(vec!["UIInterfaceOrientationPortrait".into()]),
         );
-        // Splash: the OS launch frame carries the configured launch art, or —
-        // with no art — the placeholder's centered mark on the brand ground.
-        // Both resolve from the compiled catalog; the raw color also lands in
-        // Info.plist so the runtime overlay never depends on `actool` having
-        // succeeded.
-        let mut launch_screen = plist::Dictionary::new();
-        if let Some(background) = &config.splash_background {
-            launch_screen.insert(
-                "UIColorName".into(),
-                crate::splash::APPLE_COLOR_ASSET.into(),
-            );
-            info.insert("LingXiaSplashBackground".into(), background.clone().into());
-        }
-        match config.splash_launch_image {
-            LaunchImage::Art => {
-                launch_screen.insert(
-                    "UIImageName".into(),
-                    crate::splash::APPLE_IMAGE_ASSET.into(),
-                );
-                // Edge to edge: the frame this hands over to is full bleed, and
-                // an inset copy of the same art would move on the handoff.
-                launch_screen.insert("UIImageRespectsSafeAreaInsets".into(), false.into());
-            }
-            LaunchImage::Mark => {
-                launch_screen.insert("UIImageName".into(), crate::splash::APPLE_MARK_ASSET.into());
-            }
-            LaunchImage::None => {}
-        }
+        // An empty `UILaunchScreen` is the baseline declaration that keeps the
+        // app out of iOS's letterboxed compatibility mode; a configured splash
+        // replaces it with the real face once the bundle exists and it is known
+        // what this machine's Interface Builder tooling can produce. The ground
+        // also goes in raw, for the runtime overlay to paint its window with.
         info.insert(
             "UILaunchScreen".into(),
-            plist::Value::Dictionary(launch_screen),
+            plist::Value::Dictionary(plist::Dictionary::new()),
         );
+        if let Some(background) = &config.splash_background {
+            info.insert("LingXiaSplashBackground".into(), background.clone().into());
+        }
 
         // Merge with custom Info.plist if provided
         if let Some(ref plist_path) = config.info_plist_path {

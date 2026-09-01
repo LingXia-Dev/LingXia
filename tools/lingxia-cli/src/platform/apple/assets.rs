@@ -1,7 +1,6 @@
 //! Apple asset catalog compilation utilities.
 
 use anyhow::{Context, Result, anyhow};
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -150,44 +149,6 @@ fn is_missing_ios_runtime(actool_output: &str) -> bool {
         || actool_output.contains("Platform Not Installed")
 }
 
-pub fn is_missing_ios_runtime_error(error: &anyhow::Error) -> bool {
-    error.chain().any(|cause| {
-        cause
-            .to_string()
-            .contains("actool needs the iOS platform installed")
-    })
-}
-
-/// Preserve a configured cover when Xcode has the device SDK but no simulator
-/// runtime. actool still emits the legacy icon PNGs and partial icon plist in
-/// that state, but cannot create Assets.car. A loose image named by
-/// UILaunchScreen gives the OS the same full-bleed cover; removing the
-/// unresolved catalog color prevents it from painting white over the image.
-pub fn install_ios_launch_fallback(app_bundle: &Path) -> Result<()> {
-    let source = app_bundle.join(crate::splash::APPLE_BUNDLE_IMAGE);
-    if !source.is_file() {
-        anyhow::bail!("No loose splash cover is available at {}", source.display());
-    }
-    let destination = app_bundle.join(format!("{}.png", crate::splash::APPLE_IMAGE_ASSET));
-    fs::copy(&source, &destination).with_context(|| {
-        format!(
-            "Failed to install raw iOS launch cover {}",
-            destination.display()
-        )
-    })?;
-
-    let info_path = app_bundle.join("Info.plist");
-    let mut info: plist::Dictionary =
-        plist::from_file(&info_path).context("Failed to read Info.plist for launch fallback")?;
-    let launch = info
-        .get_mut("UILaunchScreen")
-        .and_then(plist::Value::as_dictionary_mut)
-        .context("Info.plist has no UILaunchScreen dictionary")?;
-    launch.remove("UIColorName");
-    plist::to_file_xml(&info_path, &info).context("Failed to write Info.plist launch fallback")?;
-    Ok(())
-}
-
 fn sanitize_actool_output(raw: &str) -> String {
     raw.lines()
         .map(str::trim)
@@ -196,44 +157,6 @@ fn sanitize_actool_output(raw: &str) -> String {
         .map(ToString::to_string)
         .collect::<Vec<_>>()
         .join(" | ")
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn raw_launch_fallback_names_the_cover_and_removes_the_catalog_color() {
-        let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join(crate::splash::APPLE_BUNDLE_IMAGE), b"png").unwrap();
-        let mut launch = plist::Dictionary::new();
-        launch.insert(
-            "UIImageName".into(),
-            crate::splash::APPLE_IMAGE_ASSET.into(),
-        );
-        launch.insert(
-            "UIColorName".into(),
-            crate::splash::APPLE_COLOR_ASSET.into(),
-        );
-        let mut info = plist::Dictionary::new();
-        info.insert("UILaunchScreen".into(), launch.into());
-        plist::to_file_xml(dir.path().join("Info.plist"), &info).unwrap();
-
-        install_ios_launch_fallback(dir.path()).unwrap();
-
-        assert!(
-            dir.path()
-                .join(format!("{}.png", crate::splash::APPLE_IMAGE_ASSET))
-                .is_file()
-        );
-        let info: plist::Dictionary = plist::from_file(dir.path().join("Info.plist")).unwrap();
-        let launch = info["UILaunchScreen"].as_dictionary().unwrap();
-        assert_eq!(
-            launch["UIImageName"].as_string(),
-            Some(crate::splash::APPLE_IMAGE_ASSET)
-        );
-        assert!(!launch.contains_key("UIColorName"));
-    }
 }
 
 pub fn merge_assetcatalog_plist_with_platform(
