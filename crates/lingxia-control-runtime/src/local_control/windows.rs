@@ -26,53 +26,20 @@ use windows::Win32::System::Pipes::{
     ConnectNamedPipe, CreateNamedPipeW, DisconnectNamedPipe, PIPE_READMODE_BYTE,
     PIPE_REJECT_REMOTE_CLIENTS, PIPE_TYPE_BYTE, PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
 };
-use windows::Win32::System::Threading::{GetCurrentProcess, GetCurrentProcessId, OpenProcessToken};
+use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use windows::core::{HSTRING, PCWSTR};
 
 const BUFFER_BYTES: u32 = 64 * 1024;
 
 /// Where the endpoint lives, so a client can find it without being told.
 ///
-/// Takes the state dir for signature parity with the Unix half; a pipe lives
-/// in the kernel namespace, not the filesystem.
-pub fn endpoint_name(_state_dir: &Path) -> String {
-    endpoint_name_for_epoch(super::EPOCH.load(Ordering::SeqCst))
-}
-
-fn endpoint_name_for_epoch(epoch: u64) -> String {
-    let app_id = lingxia_app_context::app_config()
-        .map(|config| {
-            config
-                .lingxia_id
-                .clone()
-                .unwrap_or_else(|| config.product_name.clone())
-        })
-        .unwrap_or_default();
-    let app_id = sanitize(&app_id);
-    if app_id.is_empty() {
-        // No app id yet — fall back to something unique to this process rather
-        // than a shared name two products could both claim.
-        format!(r"\\.\pipe\lingxia-{}-{epoch}", unsafe {
-            GetCurrentProcessId()
-        })
-    } else {
-        format!(r"\\.\pipe\lingxia-{app_id}-{epoch}")
-    }
-}
-
-/// Pipe names may not contain a backslash and are otherwise free-form; keeping
-/// it to the id alphabet avoids surprises either way.
-fn sanitize(value: &str) -> String {
-    value
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
+/// A pipe lives in the kernel namespace; the shared protocol derives its
+/// stable name from this environment's LingXia runtime directory.
+pub fn endpoint_name(control_dir: &Path) -> String {
+    lingxia_control_protocol::local_control::endpoint(
+        control_dir,
+        super::EPOCH.load(Ordering::SeqCst),
+    )
 }
 
 pub(super) struct Stream {
@@ -141,7 +108,7 @@ pub(super) fn split_writer(stream: &Stream) -> std::io::Result<Stream> {
 
 /// Nothing to clear: a pipe lives in the kernel namespace and disappears with
 /// the process that made it, which is half of why it is a pipe here.
-pub(super) fn clear_stale(_state_dir: &Path) {}
+pub(super) fn clear_stale(_control_dir: &Path) {}
 
 /// Unblock a pending `ConnectNamedPipe` by opening the pipe once.
 pub(super) fn poke(endpoint: &str) {
@@ -163,8 +130,8 @@ pub(super) struct Listener {
 }
 
 impl Listener {
-    pub(super) fn bind(_state_dir: &Path, epoch: u64) -> std::io::Result<Self> {
-        let name = endpoint_name_for_epoch(epoch);
+    pub(super) fn bind(control_dir: &Path, epoch: u64) -> std::io::Result<Self> {
+        let name = lingxia_control_protocol::local_control::endpoint(control_dir, epoch);
         let descriptor = SecurityDescriptor::for_current_user()?;
         // Claim the name, and keep the instance. Asking for the first instance
         // fails outright if anyone already owns this name, which is the point:

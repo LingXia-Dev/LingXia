@@ -30,7 +30,7 @@ fn registrations() -> &'static Mutex<Vec<Registration>> {
 /// Publish a method prefix on the shared dispatcher.
 ///
 /// `namespace` is the prefix (`plug` for `plug.ping`) and what
-/// `control.status` reports to host-owned integrations.
+/// the local-control allowlist exposes to host-owned integrations.
 /// Registering twice for the same prefix replaces the handler.
 ///
 /// Panics when a host tries to shadow a framework-owned namespace. This is a
@@ -119,5 +119,22 @@ mod tests {
     #[should_panic(expected = "reserved by LingXia")]
     fn framework_namespaces_cannot_be_shadowed() {
         register_control_namespace("desktop", |_, _| Some(Ok(None)));
+    }
+
+    #[test]
+    fn tagged_handler_error_becomes_the_control_code() {
+        register_control_namespace("tag_err_test", |method, _| {
+            (method == "tag_err_test.missing").then_some(Err(
+                "(not_found): Cloud function 'ping' is unavailable.".into(),
+            ))
+        });
+        let response = crate::dispatch(lingxia_control_protocol::ControlRequest {
+            id: "1".into(),
+            method: "tag_err_test.missing".into(),
+            params: None,
+        });
+        let error = response.error.expect("tagged handler should error");
+        assert_eq!(error.code, "not_found");
+        assert_eq!(error.message, "Cloud function 'ping' is unavailable.");
     }
 }

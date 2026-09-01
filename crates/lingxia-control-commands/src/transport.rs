@@ -32,22 +32,22 @@ pub struct ControlSocket {
     endpoint: String,
 }
 
-/// Where the product's endpoint lives.
-///
-/// The command line runs before the runtime initializes, so it cannot ask a
-/// runtime that is not up. On Unix the socket is a file in the state directory
-/// and that is enough. A Windows pipe is a kernel name derived from the app
-/// id, which is not readable this early — so the launcher, written by the app
-/// that already opened it, carries the name.
-pub fn endpoint_in(state_dir: &std::path::Path) -> String {
-    if let Ok(endpoint) = std::env::var(lingxia_control_protocol::invocation::ENDPOINT) {
-        return endpoint;
+/// Where the product's endpoint lives. The command process and the running app
+/// derive it independently from the same environment-specific app-data path.
+pub fn endpoint_in(app_data_dir: &std::path::Path) -> String {
+    let control_dir = lingxia_control_protocol::local_control::directory(app_data_dir);
+    let published = lingxia_control_protocol::local_control::endpoint_file(&control_dir);
+    if let Ok(endpoint) = std::fs::read_to_string(published) {
+        let endpoint = endpoint.trim();
+        if !endpoint.is_empty() {
+            return endpoint.to_string();
+        }
     }
-    state_dir.join("control.sock").display().to_string()
+    lingxia_control_protocol::local_control::endpoint(&control_dir, 0)
 }
 
 impl ControlSocket {
-    /// Point at an endpoint reported by the product's `local_control::endpoint_name`.
+    /// Point at an endpoint derived for this product build.
     pub fn at(endpoint: impl Into<String>) -> Self {
         Self {
             endpoint: endpoint.into(),
@@ -186,5 +186,25 @@ mod tests {
             serde_json::to_string(&control_request("echo", None)).unwrap(),
             r#"{"type":"request","id":"1","method":"echo","params":null}"#
         );
+    }
+
+    #[test]
+    fn command_reads_the_runtime_published_endpoint() {
+        let data_dir = std::env::temp_dir().join(format!(
+            "lingxia-control-discovery-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let control_dir = lingxia_control_protocol::local_control::directory(&data_dir);
+        std::fs::create_dir_all(&control_dir).unwrap();
+        std::fs::write(
+            lingxia_control_protocol::local_control::endpoint_file(&control_dir),
+            "published-endpoint\n",
+        )
+        .unwrap();
+
+        assert_eq!(endpoint_in(&data_dir), "published-endpoint");
+
+        let _ = std::fs::remove_dir_all(data_dir);
     }
 }

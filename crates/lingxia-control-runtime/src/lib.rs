@@ -49,11 +49,6 @@ pub fn dispatch(request: ControlRequest) -> ControlResponse {
         return response;
     }
 
-    #[cfg(feature = "local-control")]
-    if let Some(result) = local_control::handle_control_command(&method) {
-        return command_result(id, result);
-    }
-
     if let Some(result) = app::handle_app_command(&method, params.clone()) {
         command_result(id, result)
     } else if let Some(result) = browser::handle_browser_command(&method, params.clone()) {
@@ -91,6 +86,33 @@ fn command_result(
 ) -> ControlResponse {
     match result {
         Ok(data) => ControlResponse::success(command_id, data),
-        Err(error) => ControlResponse::error(command_id, "request_failed", error),
+        Err(error) => {
+            let (code, message) = tagged_handler_error(&error);
+            ControlResponse::error(command_id, code, message)
+        }
     }
+}
+
+/// Handlers may prefix `Err` with `(slug): ` using the same slugs the CLI
+/// already branches on (`usage`, `not_found`, `permission`, …). Untagged
+/// strings stay `request_failed` so built-in prose errors do not change.
+fn tagged_handler_error(error: &str) -> (&'static str, String) {
+    const TAGS: &[&str] = &[
+        "usage",
+        "not_found",
+        "ambiguous",
+        "timeout",
+        "permission",
+        "unsupported",
+        "unavailable",
+        "stale",
+        "failed",
+    ];
+    for tag in TAGS {
+        let prefix = format!("({tag}): ");
+        if let Some(rest) = error.strip_prefix(&prefix) {
+            return (*tag, rest.to_string());
+        }
+    }
+    ("request_failed", error.to_string())
 }

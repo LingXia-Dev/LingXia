@@ -28,13 +28,19 @@ is final.
 ## The product is its own command
 
 The endpoint is local to the user who launched the app, answers only while the
-app is running, and stays closed until the user enables it.
+app is running, and exposes only the surfaces the product declared. LingXia
+does not expose `control enable`, `control disable`, or another agent-callable
+way to grant access. The product owns that decision and its trusted settings
+UI.
 
-```text
-<product> control enable    # prints the launcher path and the PATH line to add
-<product> control status    # live listener vs. a setting that applies next start
-<product> control disable   # stops the listener, persists it, removes the socket
-```
+Call `lingxia_control_runtime::local_control::install(enabled)` from
+`HostAddon::start_services`, passing the product-owned preference. A product
+that has not shipped that UI yet may explicitly use `true` as its transitional
+default. Later changes apply immediately through `local_control::set_enabled`,
+and `local_control::is_enabled` reports the live state.
+
+LingXia keeps the endpoint under `<app_data>/lingxia/control`; it never writes
+an executable, locator, or socket into the host-owned `app_state`.
 
 Leaf commands document their own syntax through `--help`, and prefer `--json`
 where a leaf offers it. Failures use stable exit codes — 2 usage, 3 not found,
@@ -43,18 +49,21 @@ where a leaf offers it. Failures use stable exit codes — 2 usage, 3 not found,
 
 ## Integrate the product's agent tooling
 
-LingXia supplies the launcher and local command transport, but the host product
-owns its Codex, Claude, or other agent integration. A host UI or installer can
-obtain the launcher with
-`lingxia_control_runtime::local_control::launcher_path()` and publish that
-absolute path through a product-owned locator. For example, an npm-distributed
-integration may let `npx <product> install` write one path line to
-`~/.<product>/path`.
+LingXia supplies local command transport, but the host product owns its Codex,
+Claude, or other agent integration. Agent tooling invokes the exact product
+executable with the private `--cli` marker; there is no framework launcher and
+no assumption that an agent can see the user's shell `PATH`.
 
-LingXia does not choose that locator or generate a skill whose business rules
-would drift from the host product. The host installer updates both. Agent
-tooling should invoke the launcher rather than the GUI executable and query the
-running product before advertising capabilities.
+A release build may atomically publish `current_exe()` as one line in a
+product-owned locator such as `~/.<product>/path`. Developer builds should not
+replace that release locator; the product's skill can resolve one explicit
+environment override such as `<PRODUCT>_PATH` first, then the release locator.
+Release, preview, and developer endpoints are already isolated by their
+environment-specific app-data directories.
+
+LingXia does not choose the locator or generate a skill whose business rules
+would drift from the product. The host owns and distributes both, and its agent
+tooling should query the running product before advertising capabilities.
 
 Providers declare commands with `cli.command(name, about, handler)` from
 `HostAddon::install_product_cli`. LingXia runs that hook before parsing the
@@ -62,8 +71,8 @@ separate CLI process and before initializing UI, services, or databases. The
 matching in-app request namespace belongs in `install_host_apis`; registering
 either half from `start_services` is too late.
 
-The product launcher adds the framework-reserved `--cli` discriminator and
-LingXia removes it before built-in or provider command parsing. This keeps
+The product skill adds the framework-reserved `--cli` discriminator and LingXia
+removes it before built-in or provider command parsing. This keeps
 non-TTY agent launches in CLI mode without exposing framework plumbing to the
 product command.
 

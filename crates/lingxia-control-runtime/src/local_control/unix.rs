@@ -1,4 +1,4 @@
-//! Unix domain socket, in the app's own state directory.
+//! Unix domain socket, in LingXia-owned runtime state.
 
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -9,12 +9,15 @@ pub(super) type Stream = UnixStream;
 /// Where the endpoint lives, so a client can find it without being told.
 /// A string on both platforms: what a client passes to `connect` is a path
 /// here and a kernel name on Windows, and no shared type covers both.
-pub fn endpoint_name(state_dir: &Path) -> String {
-    socket_path(state_dir).display().to_string()
+pub fn endpoint_name(control_dir: &Path) -> String {
+    lingxia_control_protocol::local_control::endpoint(
+        control_dir,
+        super::EPOCH.load(std::sync::atomic::Ordering::SeqCst),
+    )
 }
 
-fn socket_path(state_dir: &Path) -> PathBuf {
-    state_dir.join("control.sock")
+fn socket_path(control_dir: &Path) -> PathBuf {
+    PathBuf::from(endpoint_name(control_dir))
 }
 
 pub(super) fn split_writer(stream: &Stream) -> std::io::Result<Stream> {
@@ -23,8 +26,8 @@ pub(super) fn split_writer(stream: &Stream) -> std::io::Result<Stream> {
 
 /// Remove a socket file left by a process that was killed. Turning the
 /// capability off should leave nothing that looks like it is still on.
-pub(super) fn clear_stale(state_dir: &Path) {
-    let _ = std::fs::remove_file(socket_path(state_dir));
+pub(super) fn clear_stale(control_dir: &Path) {
+    let _ = std::fs::remove_file(socket_path(control_dir));
 }
 
 /// Unblock a pending `accept` by connecting to it once.
@@ -38,8 +41,8 @@ pub(super) struct Listener {
 }
 
 impl Listener {
-    pub(super) fn bind(state_dir: &Path, _epoch: u64) -> std::io::Result<Self> {
-        let path = socket_path(state_dir);
+    pub(super) fn bind(control_dir: &Path, _epoch: u64) -> std::io::Result<Self> {
+        let path = socket_path(control_dir);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
             // The directory carries the real guarantee: a socket's own mode is

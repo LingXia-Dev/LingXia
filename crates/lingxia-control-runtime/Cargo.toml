@@ -11,7 +11,7 @@ default = ["dev-bridge"]
 # The `lingxia dev` websocket. Development hosts only — it is what drags in
 # tungstenite and rustls, which a shipped product has no reason to carry.
 dev-bridge = ["dep:tungstenite", "dep:rustls"]
-# The product's local control socket (UDS / named pipe). Opt-in per host,
+# The product's local control endpoint (UDS / named pipe). Opt-in per host,
 # derived from appUse/computerUse/browserUse in lingxia.yaml.
 local-control = []
 browser = ["dep:lingxia-browser", "lingxia/browser-runtime"]
@@ -31,7 +31,6 @@ test-runtime = ["dep:lingxia-automation"]
 lingxia-control-protocol = { workspace = true }
 lingxia = { workspace = true, default-features = false, features = ["devtool"] }
 lingxia-app-context = { workspace = true }
-lingxia-settings = { workspace = true }
 lingxia-browser = { workspace = true, optional = true }
 lingxia-device-io = { workspace = true, optional = true }
 lingxia-log = { workspace = true }

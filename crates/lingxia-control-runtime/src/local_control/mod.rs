@@ -24,7 +24,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use lingxia_control_protocol::{ControlMessage, ControlRequest, ControlResponse};
 
-pub mod launcher;
+mod legacy;
 
 #[cfg_attr(unix, path = "unix.rs")]
 #[cfg_attr(windows, path = "windows.rs")]
@@ -32,20 +32,9 @@ mod platform;
 
 pub use platform::endpoint_name;
 
-/// Where this product's endpoint lives, once [`install`] has run.
-static STATE_DIR: OnceLock<PathBuf> = OnceLock::new();
+/// LingXia-owned runtime directory for this product, once [`install`] has run.
+static CONTROL_DIR: OnceLock<PathBuf> = OnceLock::new();
 static RUNNING: Mutex<Option<Running>> = Mutex::new(None);
-
-/// Return this product's launcher path after local control has been installed.
-///
-/// A host or its installer may publish this path in a product-owned locator.
-/// LingXia deliberately does not choose that locator or generate agent skills.
-pub fn launcher_path() -> std::io::Result<PathBuf> {
-    let state_dir = STATE_DIR
-        .get()
-        .ok_or_else(|| std::io::Error::other("control socket is not installed"))?;
-    launcher::path(state_dir)
-}
 
 struct Running {
     endpoint: String,
@@ -82,44 +71,30 @@ impl Drop for MarkStoppedOnDrop {
 /// an older epoch is closed before its next request can be answered.
 static EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// Make the control socket available, and start it if the user has said yes.
+/// Install the product's local control service in its desired startup state.
 ///
 /// A host calls this from `start_services` when it ships the capability.
-/// Shipping the capability is not the same as switching it on: this endpoint
-/// hands any local process the product's declared automation surface, so the
-/// build decides whether the ability exists and the user decides whether it
-/// listens. It is off until they say otherwise, and [`set_enabled`] flips it
-/// while the app runs — no restart, because a settings toggle that needs one
-/// is a toggle people stop trusting.
-pub fn install() -> std::io::Result<()> {
-    let state_dir =
+/// Product-owned UI may later call [`set_enabled`] to apply its own access
+/// preference without a restart. LingXia neither chooses nor persists that
+/// preference and exposes no command that can grant its own access.
+pub fn install(enabled: bool) -> std::io::Result<()> {
+    let app_state_dir =
         lingxia::app::state_dir().map_err(|error| std::io::Error::other(error.to_string()))?;
-    let enabled = lingxia_settings::control_enabled(
-        state_dir
-            .parent()
-            .ok_or_else(|| std::io::Error::other("app state directory has no parent"))?,
-    );
-    let _ = STATE_DIR.set(state_dir);
-    if enabled {
-        set_enabled(true)?;
-    } else {
-        // Not just "do not start": a launcher left from a previous run would
-        // still be on `PATH`, pointing at an endpoint nobody is listening on.
-        // Turning the capability off between runs has to clean up too.
-        let state_dir = STATE_DIR.get().expect("just set");
-        if let Err(error) = launcher::remove(state_dir) {
-            log::warn!("stale product command not removed: {error}");
-        }
-        platform::clear_stale(state_dir);
-        log::info!("control socket available but switched off");
+    let app_data_dir = app_state_dir
+        .parent()
+        .ok_or_else(|| std::io::Error::other("app state directory has no parent"))?;
+    let control_dir = lingxia_control_protocol::local_control::directory(app_data_dir);
+    let _ = CONTROL_DIR.set(control_dir);
+    if let Err(error) = legacy::cleanup(&app_state_dir) {
+        log::warn!("legacy product launcher cleanup failed: {error}");
     }
-    Ok(())
+    set_enabled(enabled)
 }
 
 /// Start or stop listening. Persisting the choice is the caller's job — the
 /// settings surface owns that, and this stays callable from a test.
 pub fn set_enabled(enabled: bool) -> std::io::Result<()> {
-    let state_dir = STATE_DIR
+    let control_dir = CONTROL_DIR
         .get()
         .ok_or_else(|| std::io::Error::other("control socket is not installed"))?;
     let mut running = RUNNING.lock().unwrap_or_else(|error| error.into_inner());
@@ -134,15 +109,12 @@ pub fn set_enabled(enabled: bool) -> std::io::Result<()> {
             if let Some(mut stopped) = running.take() {
                 let _ = stop_accepting(&mut stopped);
             }
-            let started = start(state_dir, crate::dispatch_line)?;
-            // Opening the endpoint and making the command typable are the same
-            // decision; splitting them would leave a product that answers but
-            // that nobody can address.
-            let started = publish_started_listener(
-                started,
-                |endpoint| launcher::install(state_dir, endpoint).map(|_| ()),
-                || launcher::remove(state_dir),
-            )?;
+            let mut started = start(control_dir, crate::dispatch_line)?;
+            if let Err(error) = publish_endpoint(control_dir, &started.endpoint) {
+                let _ = stop_accepting(&mut started);
+                clear_published_endpoint(control_dir);
+                return Err(error);
+            }
             *running = Some(started);
             Ok(())
         }
@@ -152,28 +124,102 @@ pub fn set_enabled(enabled: bool) -> std::io::Result<()> {
             if let Some(mut existing) = running.take() {
                 let _ = stop_accepting(&mut existing);
             }
-            if let Err(error) = launcher::remove(state_dir) {
-                log::warn!("product command not removed: {error}");
-            }
+            clear_published_endpoint(control_dir);
+            platform::clear_stale(control_dir);
             log::info!("control socket switched off");
             Ok(())
         }
     }
 }
 
-fn publish_started_listener(
-    mut started: Running,
-    publish: impl FnOnce(&str) -> std::io::Result<()>,
-    rollback: impl FnOnce() -> std::io::Result<()>,
-) -> std::io::Result<Running> {
-    if let Err(error) = publish(&started.endpoint) {
-        let _ = stop_accepting(&mut started);
-        if let Err(rollback_error) = rollback() {
-            log::warn!("partial product command not removed: {rollback_error}");
+fn publish_endpoint(control_dir: &Path, endpoint: &str) -> std::io::Result<()> {
+    std::fs::create_dir_all(control_dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(control_dir, std::fs::Permissions::from_mode(0o700))?;
+    }
+    let destination = lingxia_control_protocol::local_control::endpoint_file(control_dir);
+    write_endpoint_atomically(&destination, endpoint.as_bytes())
+}
+
+fn clear_published_endpoint(control_dir: &Path) {
+    let path = lingxia_control_protocol::local_control::endpoint_file(control_dir);
+    let _ = std::fs::remove_file(path);
+}
+
+fn create_endpoint_temporary(path: &Path) -> std::io::Result<(PathBuf, std::fs::File)> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_TEMPORARY: AtomicU64 = AtomicU64::new(0);
+    for _ in 0..32 {
+        let sequence = NEXT_TEMPORARY.fetch_add(1, Ordering::Relaxed);
+        let temporary = path.with_extension(format!("tmp-{}-{sequence}", std::process::id()));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+        {
+            Ok(file) => return Ok((temporary, file)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
         }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        format!(
+            "cannot reserve a temporary endpoint file for {}",
+            path.display()
+        ),
+    ))
+}
+
+#[cfg(not(windows))]
+fn write_endpoint_atomically(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let (temporary, mut file) = create_endpoint_temporary(path)?;
+    let result = file.write_all(contents).and_then(|()| file.sync_all());
+    drop(file);
+    if let Err(error) = result {
+        let _ = std::fs::remove_file(&temporary);
         return Err(error);
     }
-    Ok(started)
+    if let Err(error) = std::fs::rename(&temporary, path) {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error);
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn write_endpoint_atomically(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use windows::Win32::Storage::FileSystem::{
+        MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    };
+    use windows::core::HSTRING;
+
+    let (temporary, mut file) = create_endpoint_temporary(path)?;
+    let result = file.write_all(contents).and_then(|()| file.sync_all());
+    drop(file);
+    if let Err(error) = result {
+        let _ = std::fs::remove_file(&temporary);
+        return Err(error);
+    }
+    let from = HSTRING::from(temporary.as_os_str());
+    let to = HSTRING::from(path.as_os_str());
+    if let Err(error) = unsafe {
+        MoveFileExW(
+            &from,
+            &to,
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    } {
+        let _ = std::fs::remove_file(temporary);
+        return Err(std::io::Error::other(error.to_string()));
+    }
+    Ok(())
 }
 
 fn stop_accepting(running: &mut Running) -> bool {
@@ -202,52 +248,20 @@ fn stop_accepting(running: &mut Running) -> bool {
     }
 }
 
-/// The interface answering questions about itself.
-///
-/// Both are reachable without a declared capability. `status` reveals only
-/// what a successful connect already reveals, and `disable` can only take
-/// automation away — a switch that needed permission to turn *off* would be
-/// the wrong way round.
-pub(crate) fn handle_control_command(
-    method: &str,
-) -> Option<Result<Option<serde_json::Value>, String>> {
-    use lingxia_control_protocol::methods::control as name;
-    match method {
-        // The declared list rides here rather than on `app.doctor`, which is
-        // itself behind `appUse` — a product that declared only `browserUse`
-        // could not have answered, and a skill written against "unknown" then
-        // describes every namespace the product will refuse.
-        name::STATUS => Some(Ok(Some(serde_json::json!({
-            "listening": is_listening(),
-            "declared": crate::app::declared_capabilities(),
-        })))),
-        name::DISABLE => {
-            // Stop now, and persist it, so the answer does not depend on which
-            // of the two a later question happens to ask.
-            let persisted = STATE_DIR
-                .get()
-                .and_then(|state_dir| state_dir.parent())
-                .map(|app_data_dir| lingxia_settings::set_control_enabled(app_data_dir, false));
-            let stopped = set_enabled(false);
-            Some(match (stopped, persisted) {
-                (Err(error), _) => Err(error.to_string()),
-                (_, Some(Err(error))) => Err(error.to_string()),
-                _ => Ok(Some(serde_json::json!({ "listening": false }))),
-            })
-        }
-        _ => None,
-    }
-}
-
-/// Whether the endpoint is listening right now.
-pub fn is_listening() -> bool {
+/// Whether product-owned agent access is enabled right now.
+pub fn is_enabled() -> bool {
     let running = RUNNING.lock().unwrap_or_else(|error| error.into_inner());
     listener_is_live(running.as_ref())
 }
 
-fn start(state_dir: &Path, handle: Handler) -> std::io::Result<Running> {
+/// Backward-compatible name for [`is_enabled`].
+pub fn is_listening() -> bool {
+    is_enabled()
+}
+
+fn start(control_dir: &Path, handle: Handler) -> std::io::Result<Running> {
     let epoch = EPOCH.load(Ordering::SeqCst);
-    let listener = platform::Listener::bind(state_dir, epoch)?;
+    let listener = platform::Listener::bind(control_dir, epoch)?;
     let endpoint = listener.name();
     log::info!("control socket listening on {endpoint}");
     let listening = Arc::new(AtomicBool::new(true));
@@ -370,15 +384,8 @@ pub(crate) fn reply_with(
 /// it declared are what a user consented to. A namespace that is merely
 /// compiled in must not therefore be reachable.
 fn refuse_unless_declared(method: &str) -> Option<String> {
-    // The liveness probe, and the two methods that only ever reduce what is
-    // possible: a client has to be able to ask whether anyone is home, and
-    // switching automation off must never itself need permission.
-    if matches!(
-        method,
-        lingxia_control_protocol::methods::ECHO
-            | lingxia_control_protocol::methods::control::STATUS
-            | lingxia_control_protocol::methods::control::DISABLE
-    ) {
+    // A client has to be able to ask whether anyone is home.
+    if method == lingxia_control_protocol::methods::ECHO {
         return None;
     }
     let namespace = method
@@ -408,10 +415,7 @@ fn refuse_for_product(
 ) -> Option<String> {
     use lingxia_control_protocol::methods;
 
-    if matches!(
-        method,
-        methods::ECHO | methods::control::STATUS | methods::control::DISABLE
-    ) {
+    if method == methods::ECHO {
         return None;
     }
     let namespace = method
@@ -499,6 +503,42 @@ mod tests {
                 Some(code)
             );
         }
+    }
+
+    #[test]
+    fn endpoint_publication_atomically_replaces_the_previous_value() {
+        let control_dir = std::env::temp_dir().join(format!(
+            "lingxia-control-publish-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&control_dir);
+        std::fs::create_dir_all(&control_dir).unwrap();
+        let endpoint = lingxia_control_protocol::local_control::endpoint_file(&control_dir);
+        std::fs::write(&endpoint, "old-endpoint").unwrap();
+
+        publish_endpoint(&control_dir, "new-endpoint").unwrap();
+
+        assert_eq!(std::fs::read_to_string(&endpoint).unwrap(), "new-endpoint");
+        assert_eq!(
+            std::fs::read_dir(&control_dir).unwrap().count(),
+            1,
+            "temporary endpoint publication files must not remain"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&control_dir)
+                    .unwrap()
+                    .permissions()
+                    .mode()
+                    & 0o777,
+                0o700
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(control_dir);
     }
 
     fn stub_line(line: &str) -> ControlResponse {
@@ -599,7 +639,7 @@ mod tests {
         );
         assert!(
             crate::app::declared_capabilities().contains(&"allowlist_extra_test"),
-            "registering the handler is what control.status reports"
+            "registering the handler declares the host namespace"
         );
 
         // The shared dispatcher is also the dev websocket's entry point. It
@@ -639,63 +679,6 @@ mod tests {
         assert!(!listener_is_live(Some(&running)));
         assert!(running.accepting.take().unwrap().join().is_ok());
         assert!(running.accepting.is_none());
-    }
-
-    #[test]
-    fn a_launcher_publish_failure_rolls_back_the_listener() {
-        let _lifecycle = LIFECYCLE_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        let state_dir = std::env::temp_dir().join(format!(
-            "lingxia-control-publish-failure-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&state_dir);
-        std::fs::create_dir_all(&state_dir).unwrap();
-        let listening = Arc::new(AtomicBool::new(true));
-        let thread_flag = Arc::clone(&listening);
-        let finished = Arc::new(AtomicBool::new(false));
-        let thread_finished = Arc::clone(&finished);
-        let accepting = std::thread::spawn(move || {
-            while thread_flag.load(Ordering::SeqCst) {
-                std::thread::yield_now();
-            }
-            thread_finished.store(true, Ordering::SeqCst);
-        });
-        let started = Running {
-            endpoint: "injected-endpoint".to_string(),
-            listening: Arc::clone(&listening),
-            accepting: Some(accepting),
-        };
-        let installed = std::cell::RefCell::new(None);
-        let result = publish_started_listener(
-            started,
-            |endpoint| {
-                let path = launcher::install(&state_dir, endpoint)?;
-                *installed.borrow_mut() = Some(path);
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::PermissionDenied,
-                    "injected failure after publishing the launcher",
-                ))
-            },
-            || launcher::remove(&state_dir),
-        );
-
-        let error = match result {
-            Ok(_) => panic!("listener stayed published after its launcher failed"),
-            Err(error) => error,
-        };
-        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
-        assert!(!listening.load(Ordering::SeqCst));
-        assert!(finished.load(Ordering::SeqCst));
-        let launcher = installed
-            .into_inner()
-            .expect("the injected failure happens after publication");
-        assert!(!launcher.exists());
-        #[cfg(windows)]
-        assert!(!launcher.with_extension("control").exists());
-        let _ = std::fs::remove_dir_all(state_dir);
     }
 
     /// The real listener, over a real socket, switched off the way the

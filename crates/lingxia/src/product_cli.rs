@@ -10,7 +10,7 @@ pub type CommandHandler = fn(&dyn Transport, &[OsString]) -> i32;
 /// Command registry supplied to [`crate::HostAddon::install_product_cli`].
 ///
 /// Hosts declare their commands here; LingXia owns when registration runs and
-/// strips its launcher argument before invoking a handler.
+/// strips its private `--cli` argument before invoking a handler.
 ///
 /// ```no_run
 /// use std::ffi::OsString;
@@ -88,15 +88,14 @@ fn valid_command_name(name: &str) -> bool {
 ///
 /// Call it as the first thing in `main`: initialization opens the app's
 /// databases, and a command must not collide with an instance already running.
-/// The state directory is resolved from packaged assets rather than the runtime
-/// precisely so this can run before any of it.
+/// The app-data directory is resolved from packaged assets rather than the
+/// runtime precisely so this can run before any of it.
 #[cfg(target_os = "windows")]
 pub fn run_if_invoked() -> Option<i32> {
     crate::host_addon::run_install_product_cli(&mut ProductCli::new());
     use lingxia_platform::traits::app_runtime::AppRuntime;
     let platform = lingxia_platform::Platform::from_env().ok()?;
-    let state_dir = lingxia_app_context::app_state_dir(&platform.app_data_dir());
-    lingxia_control_commands::entry::run_if_invoked(&state_dir)
+    lingxia_control_commands::entry::run_if_invoked(&platform.app_data_dir())
 }
 
 /// The data directory is handed in by the platform layer on Apple, which knows
@@ -104,8 +103,7 @@ pub fn run_if_invoked() -> Option<i32> {
 #[cfg(not(target_os = "windows"))]
 pub fn run_if_invoked_in(data_dir: &std::path::Path) -> Option<i32> {
     crate::host_addon::run_install_product_cli(&mut ProductCli::new());
-    let state_dir = lingxia_app_context::app_state_dir(data_dir);
-    lingxia_control_commands::entry::run_if_invoked(&state_dir)
+    lingxia_control_commands::entry::run_if_invoked(data_dir)
 }
 
 #[cfg(test)]

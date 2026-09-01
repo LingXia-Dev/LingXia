@@ -15,6 +15,8 @@ use std::sync::OnceLock;
 
 use lingxia_platform::traits::app_runtime::AppRuntime;
 
+pub use lingxia_app_context::EnvVersion;
+
 static APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 pub(crate) fn set_data_dir(path: PathBuf) {
@@ -29,6 +31,11 @@ pub fn product_name() -> Option<&'static str> {
 /// Returns the host app version from the initialized app config.
 pub fn product_version() -> Option<&'static str> {
     lingxia_app_context::product_version()
+}
+
+/// Returns the build environment baked into the running product.
+pub fn env_version() -> EnvVersion {
+    lingxia_app_context::env_version()
 }
 
 /// Returns the configured home LxApp id from the initialized app config.

@@ -17,7 +17,7 @@ impl Drop for ConsoleGuard {
     }
 }
 
-/// Borrow the launcher's console for a GUI-subsystem product command.
+/// Borrow the parent process's console for a GUI-subsystem product command.
 #[cfg(target_os = "windows")]
 pub(crate) fn attach_parent() -> ConsoleGuard {
     use windows::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE};
