@@ -567,12 +567,10 @@ impl LxApp {
 
     /// Push the app's appearance into the platform's own night mode.
     ///
-    /// The launch face — the OS frame and the frame the SDK draws over it —
-    /// is resolved from platform resources, so the only way an in-app choice
-    /// can reach it is through the platform's own per-app setting. Android
-    /// persists one, so its next launch resolves this appearance for both
-    /// frames; Harmony's is process-scoped and iOS has none, and there a
-    /// pinned app still launches through the system's face.
+    /// Not for the launch face — that is one picture in every appearance and
+    /// resolves the same either way. It is for everything the platform draws
+    /// from its own night mode: the activity theme, and the canvas the host
+    /// paints behind a page.
     ///
     /// Only the home lxapp speaks for the app: it is the one whose appearance
     /// the user sees at launch.

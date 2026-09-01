@@ -24,10 +24,7 @@
 //!   background image, and a blanked icon slot, synced into the committed
 //!   entry module.
 //!
-//! One face, drawn in every appearance. The launch screen is a brand asset,
-//! not a UI surface that follows the system: a single picture is the same on
-//! every launch and cannot land half-light, and it is the only thing that can
-//! be identical to a frame composed before any code ran.
+//! One face, drawn in every appearance — see the `splash:` reference for why.
 //!
 //! The resource names are looked up at runtime by the SDK splash overlay, so
 //! generation here is the single source of truth for them.
@@ -78,22 +75,12 @@ const HARMONY_MARK_RES: &str = "lingxia_splash_mark";
 const HARMONY_BLANK_RES: &str = "lingxia_splash_blank";
 const HARMONY_IMAGE_RES: &str = "lingxia_splash";
 
-/// The default launch face: the ground, and the two images drawn on it.
-struct Face {
+/// The launch face, resolved against the project root: images loaded, colors
+/// normalized to `#RRGGBB`. The ground, and the two images drawn on it.
+pub struct ResolvedSplash {
     image: Option<DynamicImage>,
     mark: Option<DynamicImage>,
     background: String,
-}
-
-/// Splash config resolved against the project root: images loaded, colors
-/// normalized to `#RRGGBB`.
-///
-/// One face, drawn in every appearance. The launch screen is a brand asset,
-/// not a UI surface that follows the system: it has to be identical to a
-/// frame the OS composed from build-time resources before this process
-/// existed, and one picture is the only thing that always is.
-pub struct ResolvedSplash {
-    face: Face,
 }
 
 impl ResolvedSplash {
@@ -110,27 +97,25 @@ impl ResolvedSplash {
             }
         };
 
-        let face = Face {
+        Ok(Self {
             image: open(&config.image, "image")?,
             mark: open(&config.mark, "mark")?,
             background: normalize_hex_rgb(&config.background)
                 .with_context(|| "Invalid splash.background".to_string())?,
-        };
-
-        Ok(Self { face })
+        })
     }
 
     /// The ground every launch frame is painted with.
     pub fn background(&self) -> &str {
-        &self.face.background
+        &self.background
     }
 
     pub fn has_image(&self) -> bool {
-        self.face.image.is_some()
+        self.image.is_some()
     }
 
     pub fn has_mark(&self) -> bool {
-        self.face.mark.is_some()
+        self.mark.is_some()
     }
 }
 
@@ -207,12 +192,29 @@ fn write_if_changed(dest: &Path, content: &[u8]) -> Result<bool> {
 ///
 /// One bucket, so the frame is the same picture in every appearance.
 pub fn stage_android_res(splash: &ResolvedSplash, res_dir: &Path) -> Result<()> {
-    stage_android_face(
-        splash.face.image.as_ref(),
-        Some(splash.face.background.as_str()),
-        res_dir,
-        "",
-    )?;
+    if let Some(image) = &splash.image {
+        save_png(
+            &fit_splash(image),
+            &res_dir.join(format!("drawable-nodpi/{ANDROID_IMAGE_RES}.png")),
+        )?;
+    }
+    let values = format!(
+        r#"<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="{ANDROID_COLOR_RES}">{background}</color>
+    <bool name="{ANDROID_LIGHT_BARS_RES}">{light_bars}</bool>
+    <style name="{ANDROID_SPLASH_THEME}" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/{ANDROID_COLOR_RES}</item>{bars}
+    </style>
+</resources>
+"#,
+        background = splash.background,
+        light_bars = is_light_ground(&splash.background)?,
+        bars = android_bar_items(),
+    );
+    let values_path = res_dir.join("values/lingxia_splash.xml");
+    fs::create_dir_all(values_path.parent().unwrap())?;
+    fs::write(&values_path, values)?;
 
     // API 31+: the system splash window takes over the launch frame and cannot
     // render the cover, so what belongs in its icon slot depends on whether a
@@ -280,56 +282,6 @@ fn is_light_ground(hex_rgb: &str) -> Result<bool> {
     Ok(luminance > 127.5)
 }
 
-/// Stage one appearance's Android resources. `qualifier` is empty for the
-/// default bucket and `-night` for the dark one.
-///
-/// A `None` piece writes nothing: the qualified bucket is an override, and
-/// leaving a resource out of it is how the platform is told to keep resolving
-/// the default one.
-fn stage_android_face(
-    image: Option<&DynamicImage>,
-    background: Option<&str>,
-    res_dir: &Path,
-    qualifier: &str,
-) -> Result<()> {
-    if let Some(image) = image {
-        save_png(
-            &fit_splash(image),
-            &res_dir.join(format!("drawable{qualifier}-nodpi/{ANDROID_IMAGE_RES}.png")),
-        )?;
-    }
-
-    // The style lives only in the default bucket; the qualified buckets flip
-    // the colour and bool resources it points at rather than redeclaring it.
-    let style = if qualifier.is_empty() {
-        format!(
-            r#"
-    <style name="{ANDROID_SPLASH_THEME}" parent="Theme.AppCompat.DayNight.NoActionBar">
-        <item name="android:windowBackground">@color/{ANDROID_COLOR_RES}</item>{}
-    </style>"#,
-            android_bar_items()
-        )
-    } else {
-        String::new()
-    };
-    let Some(background) = background else {
-        return Ok(());
-    };
-    let values = format!(
-        r#"<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <color name="{ANDROID_COLOR_RES}">{background}</color>
-    <bool name="{ANDROID_LIGHT_BARS_RES}">{light_bars}</bool>{style}
-</resources>
-"#,
-        light_bars = is_light_ground(background)?,
-    );
-    let values_path = res_dir.join(format!("values{qualifier}/lingxia_splash.xml"));
-    fs::create_dir_all(values_path.parent().unwrap())?;
-    fs::write(&values_path, values)?;
-    Ok(())
-}
-
 // ---------------------------------------------------------------------------
 // Apple: asset-catalog entries in a staged catalog copy
 // ---------------------------------------------------------------------------
@@ -388,10 +340,10 @@ pub const APPLE_BUNDLE_GROUND: &str = "LingXiaSplashGround.png";
 
 /// Copy the splash images into a built `.app` as plain bundle resources.
 pub fn install_apple_bundle_images(app_bundle: &Path, splash: &ResolvedSplash) -> Result<()> {
-    if let Some(image) = &splash.face.image {
+    if let Some(image) = &splash.image {
         save_png(&fit_splash(image), &app_bundle.join(APPLE_BUNDLE_IMAGE))?;
     }
-    if let Some(mark) = &splash.face.mark {
+    if let Some(mark) = &splash.mark {
         save_png(mark, &app_bundle.join(APPLE_BUNDLE_MARK))?;
     }
     Ok(())
@@ -531,7 +483,7 @@ fn compile_apple_launch_storyboard(
 fn apple_launch_storyboard_xml(splash: &ResolvedSplash) -> Result<String> {
     let [r, g, b, _] = crate::appicon::parse_hex_color(splash.background())?;
     let component = |value: u8| format!("{:.10}", f64::from(value) / 255.0);
-    let (subview, constraints, resource) = match (&splash.face.image, &splash.face.mark) {
+    let (subview, constraints, resource) = match (&splash.image, &splash.mark) {
         (Some(image), _) => {
             let fitted = fit_splash(image);
             (
@@ -681,16 +633,10 @@ pub fn sync_harmony_splash(splash: &ResolvedSplash, harmony_dir: &Path) -> Resul
     let resources_dir = harmony_dir.join("entry/src/main/resources");
     let mut changed = false;
 
-    changed |= sync_harmony_face(
-        splash.face.image.as_ref(),
-        splash.face.mark.as_ref(),
-        Some(splash.face.background.as_str()),
-        &resources_dir,
-        "base",
-    )?;
+    changed |= sync_harmony_face(splash, &resources_dir)?;
     // A `dark` bucket would be a second face; clear whatever a previous build
     // left there so the qualifier falls back to `base` in every appearance.
-    changed |= sync_harmony_face(None, None, None, &resources_dir, "dark")?;
+    changed |= clear_harmony_dark_face(&resources_dir)?;
 
     // The OS frame carries the launch art itself. It can, because the art is
     // build-time: the frame the OS composes before the process exists and the
@@ -713,10 +659,7 @@ pub fn sync_harmony_splash(splash: &ResolvedSplash, harmony_dir: &Path) -> Resul
     Ok(changed)
 }
 
-/// `FOLLOW_SYSTEM` is what makes the start window resolve out of the `dark`
-/// qualifier, so the OS frame lands on the same appearance as the rest of the
-/// launch face.
-/// The 1×1 transparent PNG the blanked icon slot points at.
+/// The 1x1 transparent PNG the blanked icon slot points at.
 fn sync_harmony_blank_icon(resources_dir: &Path, has_image: bool) -> Result<bool> {
     let path = resources_dir.join(format!("base/media/{HARMONY_BLANK_RES}.png"));
     if !has_image {
@@ -753,51 +696,55 @@ fn harmony_start_window_profile(has_image: bool) -> Value {
     Value::Object(profile)
 }
 
-/// Sync one appearance's Harmony resources into `resources/<qualifier>`.
-///
-/// `None` and "the host removed it" are the same instruction here — leave the
-/// qualified resource absent — so a dark half that inherits from `base` and
-/// one that was just deleted both converge on the same tree.
-fn sync_harmony_face(
-    image: Option<&DynamicImage>,
-    mark: Option<&DynamicImage>,
-    background: Option<&str>,
-    resources_dir: &Path,
-    qualifier: &str,
-) -> Result<bool> {
+/// Write the `base` bucket: the cover the overlay reads, the start window's
+/// mark, and the ground colour element.
+fn sync_harmony_face(splash: &ResolvedSplash, resources_dir: &Path) -> Result<bool> {
     let mut changed = false;
 
     // The overlay reads the cover by name as raw bytes and decodes it
     // itself, so density qualifiers never touch it.
-    let image_path = resources_dir.join(format!("{qualifier}/media/{HARMONY_IMAGE_RES}.png"));
-    match image {
+    let image_path = resources_dir.join(format!("base/media/{HARMONY_IMAGE_RES}.png"));
+    match &splash.image {
         Some(image) => changed |= write_if_changed(&image_path, &png_bytes(&fit_splash(image))?)?,
-        None if image_path.exists() => {
-            fs::remove_file(&image_path)?;
-            changed = true;
-        }
-        None => {}
+        None => changed |= remove_if_present(&image_path)?,
     }
 
     // The mark ships at its authored pixels: the start window draws icons
     // unscaled, which is exactly what keeps it sharp where a full-bleed
     // image cannot be.
-    let mark_path = resources_dir.join(format!("{qualifier}/media/{HARMONY_MARK_RES}.png"));
-    match mark {
+    let mark_path = resources_dir.join(format!("base/media/{HARMONY_MARK_RES}.png"));
+    match &splash.mark {
         Some(mark) => changed |= write_if_changed(&mark_path, &png_bytes(mark)?)?,
-        None if mark_path.exists() => {
-            fs::remove_file(&mark_path)?;
-            changed = true;
-        }
-        None => {}
+        None => changed |= remove_if_present(&mark_path)?,
     }
 
-    let color_path = resources_dir.join(format!("{qualifier}/element/color.json"));
-    changed |= match background {
-        Some(background) => upsert_harmony_color(&color_path, HARMONY_COLOR_RES, background)?,
-        None => remove_harmony_color(&color_path, HARMONY_COLOR_RES)?,
-    };
+    changed |= upsert_harmony_color(
+        &resources_dir.join("base/element/color.json"),
+        HARMONY_COLOR_RES,
+        &splash.background,
+    )?;
     Ok(changed)
+}
+
+/// Remove whatever a build that still staged a dark face left behind.
+fn clear_harmony_dark_face(resources_dir: &Path) -> Result<bool> {
+    let mut changed = false;
+    for res in [HARMONY_IMAGE_RES, HARMONY_MARK_RES] {
+        changed |= remove_if_present(&resources_dir.join(format!("dark/media/{res}.png")))?;
+    }
+    changed |= remove_harmony_color(
+        &resources_dir.join("dark/element/color.json"),
+        HARMONY_COLOR_RES,
+    )?;
+    Ok(changed)
+}
+
+fn remove_if_present(path: &Path) -> Result<bool> {
+    if path.exists() {
+        fs::remove_file(path)?;
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 /// Insert or update one `{name, value}` entry in a Harmony color.json.
@@ -932,21 +879,17 @@ mod tests {
 
     fn splash(with_cover: bool) -> ResolvedSplash {
         ResolvedSplash {
-            face: Face {
-                image: with_cover.then(art),
-                mark: None,
-                background: "#130CA2".to_string(),
-            },
+            image: with_cover.then(art),
+            mark: None,
+            background: "#130CA2".to_string(),
         }
     }
 
     fn splash_with_mark() -> ResolvedSplash {
         ResolvedSplash {
-            face: Face {
-                image: Some(art()),
-                mark: Some(art()),
-                background: "#F4F2ED".to_string(),
-            },
+            image: Some(art()),
+            mark: Some(art()),
+            background: "#F4F2ED".to_string(),
         }
     }
 
@@ -1011,8 +954,8 @@ mod tests {
     #[test]
     fn launch_storyboard_centers_the_mark_at_overlay_size() {
         let mut mark_only = splash_with_mark();
-        mark_only.face.image = None;
-        mark_only.face.mark = Some(DynamicImage::ImageRgba8(RgbaImage::new(885, 885)));
+        mark_only.image = None;
+        mark_only.mark = Some(DynamicImage::ImageRgba8(RgbaImage::new(885, 885)));
         let xml = apple_launch_storyboard_xml(&mark_only).unwrap();
         assert!(
             xml.contains(r#"constant="295""#),

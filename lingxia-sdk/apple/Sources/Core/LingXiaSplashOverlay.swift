@@ -7,13 +7,12 @@ import UIKit
 private let splashLog = OSLog(subsystem: "LingXia", category: "Splash")
 
 /// Runtime half of the launch screen: covers the screen from the home app's
-/// cold start until its page first renders, drawing the bundled launch art
-/// over the `UILaunchScreen` placeholder it reproduces (background color +
-/// centered mark), so the launch reads "tap the icon, see the art". The art
-/// is build-time, deliberately — only art that shipped with the app can match
-/// a frame the OS composed before this process existed. Dismissed by the
-/// runtime's onHomeFirstReady signal, or handed to the host's campaign screen
-/// first, with a timeout fallback so a broken page never leaves it stuck.
+/// cold start until its page first renders, drawing the same composition the
+/// generated launch storyboard just handed over — the bundled art, filled, on
+/// the brand ground — so there is nothing to see at the handoff. Dismissed by
+/// the runtime's onHomeFirstReady signal, or handed to the host's campaign
+/// screen first, with a timeout fallback so a broken page never leaves it
+/// stuck.
 ///
 /// It lives in its own window above the app's: the host swaps the app
 /// window's `rootViewController` (and may present the lxapp manager modally)
@@ -24,9 +23,8 @@ private let splashLog = OSLog(subsystem: "LingXia", category: "Splash")
 /// `LingXiaSplashMark` mark); when the color is absent the overlay is
 /// disabled entirely.
 ///
-/// One face, drawn in every appearance: the launch screen is a brand asset,
-/// and only one picture can be identical to the `UILaunchScreen` frame the OS
-/// composed before this process existed.
+/// One face, drawn in every appearance: only one picture can be identical to
+/// a frame the OS composed before this process existed.
 @MainActor
 enum LingXiaSplashOverlay {
     private static let timeoutSeconds: TimeInterval = 6
@@ -156,6 +154,7 @@ enum LingXiaSplashOverlay {
     /// stays up and takes the campaign's art with a skippable countdown, so
     /// there is never a gap between the two.
     static func showCampaign(path: String, durationMs: UInt32) {
+        homeReadySeen = true
         guard let splash = splashWindow, let host = splash.rootViewController,
               let art = UIImage(contentsOfFile: path)
         else {
@@ -163,7 +162,6 @@ enum LingXiaSplashOverlay {
             dismiss()
             return
         }
-        homeReadySeen = true
 
         let view = UIImageView(image: art)
         view.frame = host.view.bounds

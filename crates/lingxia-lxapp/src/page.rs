@@ -80,13 +80,13 @@ fn notify_home_first_ready_once(appid: &str) {
     // worse than not having one. The platform-side timeout still caps the
     // wait.
     //
-    // Measured from when the face reached the screen, not from process
-    // start: the two differ by the whole runtime boot, which the user spends
-    // looking at the OS placeholder, and charging that to the hold is what
-    // made a fast boot flash the art it was supposed to show. A process that
-    // never marked a launch face — desktop, where this signal reveals the
-    // first window — has nothing to hold for, and waiting would only delay
-    // real content.
+    // Measured from process start: the OS launch frame already carries the
+    // same art, so runtime boot is time the user has genuinely spent looking
+    // at this face. Android cannot put full-bleed art in its system frame, so
+    // its overlay separately enforces the visible hold from its own first
+    // draw. A process that never marked a launch face — desktop, where this
+    // signal reveals the first window — has nothing to hold for, and waiting
+    // would only delay real content.
     let remaining = lingxia_app_context::splash_visible_for()
         .map(|visible| lingxia_app_context::splash_min_duration().saturating_sub(visible))
         .unwrap_or_default();

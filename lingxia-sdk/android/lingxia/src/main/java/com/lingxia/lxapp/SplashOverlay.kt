@@ -71,6 +71,9 @@ internal object SplashOverlay {
     /** Uptime when the cover became visible; unset while the system splash covers it. */
     private var visibleAt = -1L
 
+    /** Whether a placeholder-only launch is still holding the system splash. */
+    private var placeholderActive = false
+
     /** Whether this cold start is showing a cover (drives seamless activity handoff). */
     fun coverActive(): Boolean = launchCover != null && !homeReadySeen
 
@@ -175,9 +178,14 @@ internal object SplashOverlay {
             dismiss()
             return
         }
-        val frame = (overlay as? ViewGroup) ?: createCampaignFrame()
+        val frame = (overlay as? ViewGroup) ?: if (placeholderActive && !homeReadySeen) {
+            createCampaignFrame()
+        } else {
+            null
+        }
         if (frame == null) {
             homeReadySeen = true
+            placeholderActive = false
             dismiss()
             return
         }
@@ -186,6 +194,7 @@ internal object SplashOverlay {
         // that hold: the system frame exits directly onto the campaign rather
         // than silently dropping a valid host choice.
         homeReadySeen = true
+        placeholderActive = false
         val image = ImageView(frame.context).apply {
             setImageDrawable(art)
             scaleType = ImageView.ScaleType.CENTER_CROP
@@ -273,7 +282,8 @@ internal object SplashOverlay {
             // (brand color + app icon) stays on screen until the home page
             // is ready — the launcher zoom, the splash, and its exit into
             // real content are then all composed by the OS.
-            holdFirstDraw(activity)
+            placeholderActive = true
+            holdFirstDraw(activity, trackPlaceholder = true)
             shownThisProcess = true
             android.util.Log.i("SplashOverlay", "holding system splash until home ready")
             return
@@ -301,6 +311,7 @@ internal object SplashOverlay {
     /** Runtime signal (via [LxApp.onHomeFirstReady]): home page rendered its first frame. */
     fun notifyHomeReady() {
         homeReadySeen = true
+        placeholderActive = false
         mainHandler.post { dismiss() }
     }
 
@@ -370,7 +381,7 @@ internal object SplashOverlay {
     }
 
     /** Suspend an activity's first draw until home is ready (or the timeout). */
-    private fun holdFirstDraw(activity: Activity) {
+    private fun holdFirstDraw(activity: Activity, trackPlaceholder: Boolean = false) {
         val content = activity.findViewById<View>(android.R.id.content)
         val start = android.os.SystemClock.uptimeMillis()
         content.viewTreeObserver.addOnPreDrawListener(
@@ -379,6 +390,7 @@ internal object SplashOverlay {
                     val timedOut =
                         android.os.SystemClock.uptimeMillis() - start > TIMEOUT_MS
                     if (homeReadySeen || timedOut) {
+                        if (trackPlaceholder) placeholderActive = false
                         content.viewTreeObserver.removeOnPreDrawListener(this)
                         return true
                     }
@@ -409,12 +421,6 @@ internal object SplashOverlay {
         .coerceAtLeast(0L)
 
     private fun dismiss(force: Boolean = false) {
-        campaignTick?.let { mainHandler.removeCallbacks(it) }
-        campaignTick = null
-        campaignDismiss?.let { mainHandler.removeCallbacks(it) }
-        campaignDismiss = null
-        watchdog?.let { mainHandler.removeCallbacks(it) }
-        watchdog = null
         val view = overlay ?: return
         if (!force) {
             // Hold until the cover has been on screen long enough — the
@@ -427,6 +433,12 @@ internal object SplashOverlay {
                 return
             }
         }
+        campaignTick?.let { mainHandler.removeCallbacks(it) }
+        campaignTick = null
+        campaignDismiss?.let { mainHandler.removeCallbacks(it) }
+        campaignDismiss = null
+        watchdog?.let { mainHandler.removeCallbacks(it) }
+        watchdog = null
         overlay = null
         lifting = true
         onCoverGone.forEach { it() }
@@ -495,11 +507,7 @@ internal object SplashOverlay {
  * generous tap target, clear of the status bar.
  */
 private class SplashSkipButton(context: Context) : android.widget.TextView(context) {
-    private val skipLabel: String = context.resources
-        .getIdentifier("lx_splash_skip", "string", context.packageName)
-        .takeIf { it != 0 }
-        ?.let { context.getString(it) }
-        ?: "Skip"
+    private val skipLabel: String = context.getString(R.string.lx_splash_skip)
 
     var seconds: Int = 0
         set(value) {
