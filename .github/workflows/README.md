@@ -9,12 +9,15 @@ Release / 2. Publish Workspace Component (same version)      → publish all or 
 
 1. **Release / 1. Prepare Version PR** takes `component=all` or `component=cli`.
    `all` moves every Rust workspace crate, SDK, CLI/Runner, and npm package to
-   one version. `cli` moves only the CLI patch line and the Runner that tracks
-   it, for a fix that needs no base release. Either way it opens a PR.
+   one version and generates both the exhaustive `CHANGELOG.md` section and
+   reviewed notes under `docs/releases/`. `cli` moves only the CLI patch line
+   and the Runner that tracks it, for a fix that needs no base release, and
+   writes its own reviewed notes file. Either way it opens a PR.
 2. **Release / 2. Publish Workspace Component** verifies that same unified
    version on `main`, then publishes `all`, `crates`, `sdk`, `cli`, or `npm`.
    `all` remains the recommended default and runs crates → SDKs → CLIs/Runners
-   → all npm packages in order.
+   → all npm packages in order. GitHub Releases use the notes committed by the
+   version PR; the publish step never regenerates prose after review.
 
 Apart from the CLI patch line, component selection controls what is published,
 never its version: everything else moves together at the workspace version, and

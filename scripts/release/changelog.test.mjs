@@ -4,7 +4,13 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { lastReleaseTag, parseCommit, renderChangelog, renderNotes } from './changelog.mjs';
+import {
+  insertChangelogSection,
+  lastReleaseTag,
+  parseCommit,
+  renderChangelog,
+  renderNotes,
+} from './changelog.mjs';
 
 /** A throwaway repo, so tag discovery is exercised against real git. */
 function repo() {
@@ -87,6 +93,24 @@ test('an empty range says so rather than rendering an empty section', () => {
   assert.match(out, /_No user-visible changes\._/);
 });
 
+test('inserts a generated release directly below the changelog marker', () => {
+  const document = '# Changelog\n\n<!-- releases below -->\n\n## 0.13.0 — 2026-01-01\n';
+  const section = '## 0.14.0 — 2026-02-01\n\n- New';
+  assert.equal(
+    insertChangelogSection(document, section, '0.14.0'),
+    '# Changelog\n\n<!-- releases below -->\n\n## 0.14.0 — 2026-02-01\n\n- New\n\n## 0.13.0 — 2026-01-01\n',
+  );
+});
+
+test('refuses a duplicate release or a changelog without its marker', () => {
+  const section = '## 0.14.0 — 2026-02-01\n';
+  assert.throws(
+    () => insertChangelogSection(`<!-- releases below -->\n\n${section}`, section, '0.14.0'),
+    /already contains/,
+  );
+  assert.throws(() => insertChangelogSection('# Changelog\n', section, '0.14.0'), /missing/);
+});
+
 test('release notes carry only what an author wrote a note for', () => {
   const out = renderNotes(
     [
@@ -109,8 +133,8 @@ test('release notes explain the trailer when nobody used one', () => {
 
 test('finds the last release tag reachable from HEAD', () => {
   const r = repo();
-  // Releases are tagged per artifact in lockstep, never as a bare `v0.11.2`.
-  r.git('tag', 'lingxia-types-v0.11.1');
+  // Component and CLI-only tags are not base-workspace boundaries.
+  r.git('tag', 'lingxia-crates-v0.11.1');
   r.git('tag', 'lingxia-cli-v0.11.1');
   writeFileSync(path.join(r.dir, 'seed.txt'), 'next\n');
   r.git('add', '.');
@@ -120,8 +144,8 @@ test('finds the last release tag reachable from HEAD', () => {
   r.git('add', '.');
   r.git('commit', '-qm', 'feat(cli): not yet released');
 
-  // The nearest release, so the range covers only what shipped since.
-  assert.equal(lastReleaseTag(r.dir), 'lingxia-cli-v0.11.2');
+  // The CLI patch stays inside the next base changelog range.
+  assert.equal(lastReleaseTag(r.dir), 'lingxia-crates-v0.11.1');
 
   const out = execFileSync(
     process.execPath,
@@ -129,7 +153,7 @@ test('finds the last release tag reachable from HEAD', () => {
     { cwd: r.dir, encoding: 'utf8' },
   );
   assert.match(out, /not yet released/);
-  assert.doesNotMatch(out, /released later/);
+  assert.match(out, /released later/);
 });
 
 test('reports no tag rather than guessing on a repo that never released', () => {

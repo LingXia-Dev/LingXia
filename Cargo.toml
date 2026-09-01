@@ -48,7 +48,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.13.0"
+version = "0.14.0"
 edition = "2024"
 repository = "https://github.com/LingXia-Dev/LingXia"
 
@@ -77,39 +77,39 @@ windows = { version = "0.62.2", default-features = false }
 windows-core = { version = "0.62.2", default-features = false }
 
 # Workspace-local crates
-lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.13.0", default-features = false }
-lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.13.0", default-features = false }
-lingxia-control-runtime = { path = "crates/lingxia-control-runtime", version = "0.13.0" }
-lingxia-control-protocol = { path = "crates/lingxia-control-protocol", version = "0.13.0" }
-lingxia-device-io = { path = "crates/lingxia-device-io", version = "0.13.0", default-features = false }
-lingxia-control-commands = { path = "crates/lingxia-control-commands", version = "0.13.0" }
-lingxia-log = { path = "crates/lingxia-log", version = "0.13.0" }
-lingxia-provider = { path = "crates/lingxia-provider", version = "0.13.0" }
-lingxia-update = { path = "crates/lingxia-update", version = "0.13.0" }
-lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.13.0" }
-lingxia-media = { path = "crates/lingxia-media", version = "0.13.0" }
-lingxia-webview = { path = "crates/lingxia-webview", version = "0.13.0" }
-lingxia-automation = { path = "crates/lingxia-automation", version = "0.13.0" }
-lingxia-windows-contract = { path = "crates/lingxia-windows-contract", version = "0.13.0" }
-lingxia-windows-sdk = { path = "crates/lingxia-windows-sdk", version = "0.13.0", default-features = false }
-lingxia-windows-build = { path = "crates/lingxia-windows-build", version = "0.13.0" }
-lingxia-platform = { path = "crates/lingxia-platform", version = "0.13.0" }
-lingxia-shell = { path = "crates/lingxia-shell", version = "0.13.0" }
-lingxia-surface = { path = "crates/lingxia-surface", version = "0.13.0" }
-lingxia-messaging = { path = "crates/lingxia-messaging", version = "0.13.0" }
-lingxia-logic = { path = "crates/lingxia-logic", version = "0.13.0" }
-lingxia = { path = "crates/lingxia", version = "0.13.0", default-features = false }
-lingxia-native-codegen = { path = "crates/lingxia-native-codegen", version = "0.13.0" }
-lingxia-proxy = { path = "crates/lingxia-proxy", version = "0.13.0" }
-lingxia-native-macros = { path = "crates/lingxia-native-macros", version = "0.13.0" }
-lingxia-browser = { path = "crates/lingxia-browser", version = "0.13.0" }
-lingxia-service = { path = "crates/lingxia-service", version = "0.13.0" }
-lingxia-transfer = { path = "crates/lingxia-transfer", version = "0.13.0" }
-lingxia-terminal = { path = "crates/lingxia-terminal", version = "0.13.0" }
-lingxia-terminal-config = { path = "crates/lingxia-terminal-config", version = "0.13.0" }
-lingxia-settings = { path = "crates/lingxia-settings", version = "0.13.0" }
-lingxia-browser-shell = { path = "crates/lingxia-browser-shell", version = "0.13.0" }
-lingxia-runner-config = { path = "tools/lingxia-runner/config", version = "0.13.1" }
+lingxia-lxapp = { path = "crates/lingxia-lxapp", version = "0.14.0", default-features = false }
+lxapp = { package = "lingxia-lxapp", path = "crates/lingxia-lxapp", version = "0.14.0", default-features = false }
+lingxia-control-runtime = { path = "crates/lingxia-control-runtime", version = "0.14.0" }
+lingxia-control-protocol = { path = "crates/lingxia-control-protocol", version = "0.14.0" }
+lingxia-device-io = { path = "crates/lingxia-device-io", version = "0.14.0", default-features = false }
+lingxia-control-commands = { path = "crates/lingxia-control-commands", version = "0.14.0" }
+lingxia-log = { path = "crates/lingxia-log", version = "0.14.0" }
+lingxia-provider = { path = "crates/lingxia-provider", version = "0.14.0" }
+lingxia-update = { path = "crates/lingxia-update", version = "0.14.0" }
+lingxia-app-context = { path = "crates/lingxia-app-context", version = "0.14.0" }
+lingxia-media = { path = "crates/lingxia-media", version = "0.14.0" }
+lingxia-webview = { path = "crates/lingxia-webview", version = "0.14.0" }
+lingxia-automation = { path = "crates/lingxia-automation", version = "0.14.0" }
+lingxia-windows-contract = { path = "crates/lingxia-windows-contract", version = "0.14.0" }
+lingxia-windows-sdk = { path = "crates/lingxia-windows-sdk", version = "0.14.0", default-features = false }
+lingxia-windows-build = { path = "crates/lingxia-windows-build", version = "0.14.0" }
+lingxia-platform = { path = "crates/lingxia-platform", version = "0.14.0" }
+lingxia-shell = { path = "crates/lingxia-shell", version = "0.14.0" }
+lingxia-surface = { path = "crates/lingxia-surface", version = "0.14.0" }
+lingxia-messaging = { path = "crates/lingxia-messaging", version = "0.14.0" }
+lingxia-logic = { path = "crates/lingxia-logic", version = "0.14.0" }
+lingxia = { path = "crates/lingxia", version = "0.14.0", default-features = false }
+lingxia-native-codegen = { path = "crates/lingxia-native-codegen", version = "0.14.0" }
+lingxia-proxy = { path = "crates/lingxia-proxy", version = "0.14.0" }
+lingxia-native-macros = { path = "crates/lingxia-native-macros", version = "0.14.0" }
+lingxia-browser = { path = "crates/lingxia-browser", version = "0.14.0" }
+lingxia-service = { path = "crates/lingxia-service", version = "0.14.0" }
+lingxia-transfer = { path = "crates/lingxia-transfer", version = "0.14.0" }
+lingxia-terminal = { path = "crates/lingxia-terminal", version = "0.14.0" }
+lingxia-terminal-config = { path = "crates/lingxia-terminal-config", version = "0.14.0" }
+lingxia-settings = { path = "crates/lingxia-settings", version = "0.14.0" }
+lingxia-browser-shell = { path = "crates/lingxia-browser-shell", version = "0.14.0" }
+lingxia-runner-config = { path = "tools/lingxia-runner/config", version = "0.14.0" }
 
 # Harmony NAPI bindings
 napi-ohos = "1.1.0"

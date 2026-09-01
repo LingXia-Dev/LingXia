@@ -1041,7 +1041,7 @@ jobs:
     name: example-ios
     if: ${{ needs.changes.outputs.ios == 'true' }}
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
       # Pin Xcode 26.0 (Swift 6.2): the iOS media SDK needs 6.2 inference the

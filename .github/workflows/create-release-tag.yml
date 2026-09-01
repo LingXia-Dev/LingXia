@@ -228,6 +228,24 @@ jobs:
             echo "Created and pushed tag: $tag"
           }
 
+          sync_github_release_notes() {
+            local tag="$1"
+            local title="$2"
+            local notes_file="$3"
+
+            if [[ ! -f "$notes_file" ]]; then
+              echo "Missing reviewed release notes: $notes_file" >&2
+              echo "Did the version PR generate and commit them?" >&2
+              exit 1
+            fi
+
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release edit "$tag" --title "$title" --notes-file "$notes_file"
+            else
+              gh release create "$tag" --title "$title" --notes-file "$notes_file"
+            fi
+          }
+
           dispatch_and_wait() {
             local workflow="$1"
             local label="$2"
@@ -303,6 +321,7 @@ jobs:
           publish_sdk() {
             local tag="lingxia-sdk-v$VERSION"
             create_or_reuse_tag "$tag" "Release sdk v$VERSION"
+            sync_github_release_notes "$tag" "LingXia SDK v$VERSION" "docs/releases/${VERSION}.md"
             dispatch_and_wait "sdk-release.yml" "SDK v$VERSION" \
               -f tag="$tag" \
               -f android=true \
@@ -313,7 +332,12 @@ jobs:
 
           publish_cli() {
             local tag="lingxia-cli-v$VERSION"
+            local notes_file="docs/releases/cli-${VERSION}.md"
+            if [[ "$COMPONENT" == "all" ]]; then
+              notes_file="docs/releases/${VERSION}.md"
+            fi
             create_or_reuse_tag "$tag" "Release cli v$VERSION"
+            sync_github_release_notes "$tag" "LingXia CLI v$VERSION" "$notes_file"
             dispatch_and_wait "release-cli.yml" "CLI v$VERSION" -f tag="$tag" -f dry_run=false
           }
 

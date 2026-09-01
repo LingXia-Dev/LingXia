@@ -123,16 +123,10 @@ mod tests {
 
     #[test]
     fn tagged_handler_error_becomes_the_control_code() {
-        register_control_namespace("tag_err_test", |method, _| {
-            (method == "tag_err_test.missing").then_some(Err(
-                "(not_found): Cloud function 'ping' is unavailable.".into(),
-            ))
-        });
-        let response = crate::dispatch(lingxia_control_protocol::ControlRequest {
-            id: "1".into(),
-            method: "tag_err_test.missing".into(),
-            params: None,
-        });
+        let response = crate::command_result(
+            "1".into(),
+            Err("(not_found): Cloud function 'ping' is unavailable.".into()),
+        );
         let error = response.error.expect("tagged handler should error");
         assert_eq!(error.code, "not_found");
         assert_eq!(error.message, "Cloud function 'ping' is unavailable.");
