@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// Fail a change to the public lx API that ships without a release note.
+// Fail a breaking change or a public lx API change that ships without a note.
 //
 // `packages/lingxia-types/src/testing/public-api.ts` is not a hand-kept list:
 // 51 compile-time assertions tie it to the real types, so a public API cannot
 // be added or removed without touching it. That makes it an exact signal —
 // nobody has to remember to declare "this is public".
 //
-// The note is required on the range, not on every commit: a refactor may span
-// several commits and still be one thing worth telling a reader about.
+// A public API refactor may span several commits and carry one note for the
+// range. A breaking commit is different: each one must state its own migration.
 import { execFileSync } from 'node:child_process';
 import process from 'node:process';
 import { readCommits } from '../release/changelog.mjs';
@@ -65,6 +65,19 @@ function main(argv) {
     return 2;
   }
   const range = `${shared}..${head}`;
+  const commits = readCommits(range);
+  const unnotedBreaking = commits.filter((commit) => commit.breaking && !commit.note);
+  if (unnotedBreaking.length > 0) {
+    process.stderr.write(
+      [
+        'Every breaking commit must carry its own Release-Note trailer with',
+        'the migration a caller needs:',
+        ...unnotedBreaking.map((commit) => `  ${commit.hash.slice(0, 9)} ${commit.subject}`),
+        '',
+      ].join('\n'),
+    );
+    return 1;
+  }
 
   const touching = touchedBy(range, PUBLIC_SURFACE);
   if (touching.length === 0) {
@@ -72,7 +85,6 @@ function main(argv) {
     return 0;
   }
 
-  const commits = readCommits(range);
   const noted = commits.filter((commit) => commit.note);
   if (noted.length > 0) {
     process.stdout.write(

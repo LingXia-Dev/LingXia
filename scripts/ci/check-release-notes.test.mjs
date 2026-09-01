@@ -44,6 +44,29 @@ test('ignores a change that leaves the public surface alone', () => {
   assert.deepEqual(touchedBy(`${base}..HEAD`, PUBLIC_SURFACE, r.dir), []);
 });
 
+test('rejects an unnoted breaking commit outside the typed lx API', () => {
+  const r = repo();
+  const base = r.git('rev-parse', 'HEAD').trim();
+  writeFileSync(path.join(r.dir, 'seed.txt'), 'breaking\n');
+  r.git('add', '.');
+  r.git('commit', '-qm', 'feat(cli)!: remove the old command');
+
+  const script = path.resolve('scripts/ci/check-release-notes.mjs');
+  assert.throws(
+    () => execFileSync(process.execPath, [script, base, 'HEAD'], {
+      cwd: r.dir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }),
+    (error) => {
+      assert.equal(error.status, 1);
+      assert.match(error.stderr, /Every breaking commit/);
+      assert.match(error.stderr, /remove the old command/);
+      return true;
+    },
+  );
+});
+
 test('a rename of the file still counts as touching it', () => {
   const r = repo();
   commitPublicSurface(r, 'feat(lxapp): add an api');

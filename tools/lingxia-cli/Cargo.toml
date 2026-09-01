@@ -10,7 +10,7 @@ name = "lingxia-cli"
 # (packages/lingxia-bridge), which is version-locked to the workspace, and
 # build.rs fails the build on a mismatch. A CLI release is "the CLI for base
 # runtime X.Y" — so bump to the workspace's major.minor whenever it moves.
-version = "0.13.1"
+version = "0.14.0"
 edition.workspace = true
 build = "build.rs"
 
@@ -18,10 +18,10 @@ build = "build.rs"
 # Only what this binary embeds or downloads by exact name. Published
 # @lingxia/* app packages resolve to the rust-crate-version major.minor
 # line at use time — do not add per-package pins here.
-bridge-version = "0.13.0"
-polyfills-version = "0.13.0"
-rust-crate-version = "0.13.0"
-sdk-version = "0.13.0"
+bridge-version = "0.14.0"
+polyfills-version = "0.14.0"
+rust-crate-version = "0.14.0"
+sdk-version = "0.14.0"
 
 [[bin]]
 name = "lingxia"

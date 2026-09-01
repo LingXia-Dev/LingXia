@@ -11,6 +11,7 @@
 // Nothing here is hand-maintained: a commit subject is its changelog entry, so
 // the quality gate is code review, not a scramble on release day.
 import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const UNIT = '\x1f';
@@ -29,6 +30,7 @@ export const AUDIENCES = [
       'lxapp', 'logic', 'page', 'bridge', 'react', 'vue', 'html', 'elements',
       'runtime', 'api', 'capability', 'webview', 'surface', 'splash', 'test',
       'update', 'upload', 'download', 'storage', 'i18n', 'theme',
+      'tabbar',
     ],
   },
   {
@@ -37,10 +39,11 @@ export const AUDIENCES = [
     scopes: [
       'app', 'sdk', 'apple', 'ios', 'macos', 'android', 'windows', 'harmony',
       'shell', 'browser', 'terminal', 'desktop', 'platform', 'media', 'device-io',
+      'config',
     ],
   },
-  { id: 'native', title: 'Rust native extensions', scopes: ['native', 'control', 'automation'] },
-  { id: 'tooling', title: 'CLI and CI', scopes: ['cli', 'lxdev', 'devtool', 'ci', 'release', 'skill'] },
+  { id: 'native', title: 'Rust native extensions', scopes: ['native', 'control', 'automation', 'lingxia'] },
+  { id: 'tooling', title: 'CLI and CI', scopes: ['cli', 'lxdev', 'devtool', 'ci', 'release', 'skill', 'runner'] },
   { id: 'docs', title: 'Docs and examples', scopes: ['docs', 'showcase', 'examples', 'types'] },
 ];
 
@@ -191,12 +194,29 @@ export function renderNotes(commits, { version }) {
   return parts.join('\n');
 }
 
+export function insertChangelogSection(document, section, version) {
+  const heading = `## ${version} — `;
+  if (document.split('\n').some((line) => line.startsWith(heading))) {
+    throw new Error(`CHANGELOG already contains a ${version} section`);
+  }
+
+  const marker = '<!-- releases below -->';
+  const markerIndex = document.indexOf(marker);
+  if (markerIndex === -1) throw new Error(`CHANGELOG is missing ${marker}`);
+  if (document.indexOf(marker, markerIndex + marker.length) !== -1) {
+    throw new Error(`CHANGELOG contains more than one ${marker}`);
+  }
+
+  const before = document.slice(0, markerIndex + marker.length);
+  const after = document.slice(markerIndex + marker.length).replace(/^\n*/, '');
+  return `${before}\n\n${section.trim()}\n\n${after}`;
+}
+
 /**
- * The last release tag reachable from `ref`. Releases are tagged per artifact
- * and in lockstep (`lingxia-cli-v0.11.2`, `lingxia-types-v0.11.2`, …), so any
- * of them marks the same release; `describe` walks back through history, which
- * is what "since the last release" means and does not depend on tag dates or
- * on how the names sort.
+ * The last base-workspace release tag reachable from `ref`. CLI patches have
+ * their own train, and component executors may land tags at different commits,
+ * so an arbitrary nearest tag is not a stable changelog boundary. Crates move
+ * only with the unified workspace version and are therefore canonical here.
  *
  * Returns null on a repo that has never released. The caller must not fall
  * back to the whole history — that printed 3138 entries here, which is not a
@@ -206,7 +226,7 @@ export function lastReleaseTag(cwd = process.cwd(), ref = 'HEAD') {
   try {
     return execFileSync(
       'git',
-      ['describe', '--tags', '--abbrev=0', '--match=*-v[0-9]*', ref],
+      ['describe', '--tags', '--abbrev=0', '--match=lingxia-crates-v[0-9]*', ref],
       { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
     ).trim() || null;
   } catch {
@@ -241,9 +261,25 @@ function main(argv) {
   const version = at('--version', 'Unreleased');
   const date = at('--date', new Date().toISOString().slice(0, 10));
   const commits = readCommits(range);
-  process.stdout.write(
-    mode === 'notes' ? renderNotes(commits, { version }) : renderChangelog(commits, { version, date }),
-  );
+  const rendered = mode === 'notes'
+    ? renderNotes(commits, { version })
+    : renderChangelog(commits, { version, date });
+  const writeTo = at('--write', null);
+  if (writeTo) {
+    if (mode !== 'changelog') {
+      process.stderr.write('--write is only supported for changelog output\n');
+      return 2;
+    }
+    try {
+      const document = readFileSync(writeTo, 'utf8');
+      writeFileSync(writeTo, insertChangelogSection(document, rendered, version));
+    } catch (error) {
+      process.stderr.write(`${error.message}\n`);
+      return 2;
+    }
+  } else {
+    process.stdout.write(rendered);
+  }
   return 0;
 }
 

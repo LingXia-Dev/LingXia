@@ -42,6 +42,9 @@ jobs:
       COMPONENT: ${{ inputs.component }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Configure git
         run: |
@@ -76,19 +79,37 @@ jobs:
           echo "BRANCH=$branch" >> "$GITHUB_ENV"
           echo "REMOTE_BRANCH_SHA=$remote_sha" >> "$GITHUB_ENV"
 
-      - name: Bump version
+      - name: Bump version and changelog
         run: |
           set -euo pipefail
           bash scripts/release/version.sh "$VERSION" --component "$COMPONENT"
+          if [[ "$COMPONENT" == "all" ]]; then
+            notes_file="docs/releases/${VERSION}.md"
+            bash scripts/release/main.sh changelog \
+              --version "$VERSION" \
+              --write CHANGELOG.md
+            mkdir -p "$(dirname "$notes_file")"
+            bash scripts/release/main.sh notes \
+              --version "$VERSION" > "$notes_file"
+          else
+            notes_file="docs/releases/cli-${VERSION}.md"
+            previous_cli_tag="$(git describe --tags --abbrev=0 --match='lingxia-cli-v*')"
+            mkdir -p "$(dirname "$notes_file")"
+            bash scripts/release/main.sh notes \
+              --from "$previous_cli_tag" \
+              --version "$VERSION" > "$notes_file"
+          fi
+          echo "RELEASE_NOTES_FILE=$notes_file" >> "$GITHUB_ENV"
 
       - name: Commit version bump
         run: |
           set -euo pipefail
-          if git diff --quiet; then
+          if [[ -z "$(git status --porcelain)" ]]; then
             echo "No version changes to commit. The selected component already appears to be at ${VERSION}." >&2
             exit 1
           fi
-          git commit -am "chore(release): bump ${COMPONENT} version to ${VERSION}"
+          git add -A
+          git commit -m "chore(release): bump ${COMPONENT} version to ${VERSION}"
 
       - name: Push branch
         run: |
@@ -118,6 +139,9 @@ jobs:
         run: |
           set -euo pipefail
           version="$VERSION"
+          # The file is a standalone document. In the PR it sits under the
+          # release-notes section, so drop its title and demote its headings.
+          release_notes="$(sed '1d; s/^#/##/' "$RELEASE_NOTES_FILE")"
           if [[ "$COMPONENT" == "cli" ]]; then
             pr_title="Release CLI v${version}"
           else
@@ -138,6 +162,10 @@ jobs:
           The workspace, the crates, the SDK and every npm package stay where they
           are, and the component versions the CLI embeds still name the base
           release it was built against.
+
+          ### Release notes
+
+          ${release_notes}
 
           ### After merge
 
@@ -160,6 +188,11 @@ jobs:
           - CLI/Runner and embedded component metadata
           - every \`packages/*/package.json\` version
           - root and example lockfile workspace entries
+          - the generated \`CHANGELOG.md\` section for this release
+
+          ### Release notes
+
+          ${release_notes}
 
           ### After merge
 
@@ -180,6 +213,7 @@ jobs:
           existing_pr="$(gh pr list --base main --head "$BRANCH" --state open --json url --jq '.[0].url')"
           if [ -n "$existing_pr" ]; then
             pr_url="$existing_pr"
+            gh pr edit "$pr_url" --title "$pr_title" --body "$pr_body"
             echo "Release PR already exists: $pr_url"
           else
             pr_url="$(gh pr create \
