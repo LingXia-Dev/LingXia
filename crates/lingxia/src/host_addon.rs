@@ -2,6 +2,13 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 /// Host lifecycle extension points that can register additional runtime behavior.
 pub trait HostAddon: Send + Sync {
+    /// Registers product CLI commands before command-line arguments are parsed.
+    ///
+    /// This runs before runtime initialization, so it must only publish command
+    /// definitions. Register the matching in-app control handlers from
+    /// [`Self::install_host_apis`].
+    #[cfg(feature = "product-cli")]
+    fn install_product_cli(&self, _cli: &mut crate::product_cli::ProductCli) {}
     /// Runs before LingXia initialization begins.
     fn before_init(&self) {}
     /// Registers JS logic extensions when the `standard` feature is enabled.
@@ -47,6 +54,14 @@ fn snapshot_host_addons() -> Vec<Arc<dyn HostAddon>> {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .clone()
+}
+
+#[cfg(feature = "product-cli")]
+pub(crate) fn run_install_product_cli(cli: &mut crate::product_cli::ProductCli) {
+    let installed = snapshot_host_addons();
+    for addon in installed.iter() {
+        addon.install_product_cli(cli);
+    }
 }
 
 pub(crate) fn run_before_init() {
@@ -102,5 +117,29 @@ pub(crate) fn run_start_services() {
     let installed = snapshot_host_addons();
     for addon in installed.iter() {
         addon.start_services();
+    }
+}
+
+#[cfg(all(test, feature = "product-cli"))]
+mod tests {
+    use super::{HostAddon, register_host_addon, run_install_product_cli};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static PRODUCT_CLI_INSTALLS: AtomicUsize = AtomicUsize::new(0);
+
+    struct ProductCliAddon;
+
+    impl HostAddon for ProductCliAddon {
+        fn install_product_cli(&self, _cli: &mut crate::product_cli::ProductCli) {
+            PRODUCT_CLI_INSTALLS.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn registered_addons_install_product_cli_before_runtime_startup() {
+        let before = PRODUCT_CLI_INSTALLS.load(Ordering::SeqCst);
+        register_host_addon(Box::new(ProductCliAddon));
+        run_install_product_cli(&mut crate::product_cli::ProductCli::new());
+        assert_eq!(PRODUCT_CLI_INSTALLS.load(Ordering::SeqCst), before + 1);
     }
 }

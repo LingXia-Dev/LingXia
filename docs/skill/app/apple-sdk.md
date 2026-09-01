@@ -126,7 +126,7 @@ request/event/id types):
 
 | Symbol | Role |
 |---|---|
-| `Lingxia` | Entry points and host state: `quickStart()`, `handleAppActivation()`, `initializeRuntime()`, `activate(controller:)`, `enableWebViewDebugging()`, `handleAppLink(url:)`, `displayLanguage` |
+| `Lingxia` | Entry points and host state: `runProductCommandIfInvoked()`, `quickStart()`, `handleAppActivation()`, `initializeRuntime()`, `activate(controller:)`, `enableWebViewDebugging()`, `handleAppLink(url:)`, `displayLanguage` |
 | `LxAppController` | Session lifecycle for advanced embedding: `open` / `openHomeApp` / `navigate` / `close`, `events` stream, interceptors |
 | `LxAppHostView` | The embeddable native view: `mount` / `unmount` / `dispatch`, `events` stream (`LxAppHostViewRepresentable` wraps it for SwiftUI) |
 | `L10n` | SDK localization lookup for host-owned native chrome: `string(_:)` and formatted `string(_:_:)` |
@@ -137,6 +137,10 @@ request/event/id types):
 
 Semantics the signatures can't convey:
 
+- `runProductCommandIfInvoked()` must remain the first call in a macOS product
+  entrypoint. It registers the linked host addon so
+  `HostAddon::install_product_cli` runs before CLI parsing, then returns without
+  runtime initialization when this is a GUI launch.
 - Controller events: `didOpen` / `didClose` carry the affected `LxAppSession`;
   `.mountInHost(id:)` mounts the opened session into the registered
   `LxAppHostView`.

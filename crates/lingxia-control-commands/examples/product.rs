@@ -11,7 +11,7 @@
 //! ```
 
 use clap::{Parser, Subcommand};
-use lingxia_control_commands::{app, desktop, skills, transport::ControlSocket};
+use lingxia_control_commands::{app, desktop, transport::ControlSocket};
 
 #[derive(Parser)]
 #[command(name = "product", about = "A product's own command line")]
@@ -30,8 +30,6 @@ enum Command {
     Desktop(desktop::DesktopOptions),
     /// Drive this product's own windows.
     App(app::AppOptions),
-    /// Write an agent skill describing these commands.
-    Skills(skills::SkillsOptions),
 }
 
 fn main() -> anyhow::Result<()> {
@@ -46,10 +44,6 @@ fn main() -> anyhow::Result<()> {
         // running them in this process would borrow the terminal's grants.
         Command::Desktop(options) => std::process::exit(desktop::execute(
             &desktop::Backend::App(&transport),
-            options,
-        )),
-        Command::Skills(options) => std::process::exit(skills::execute::<Cli>(
-            &skills::manifest_for_running("product", "Product", &transport),
             options,
         )),
         Command::App(options) => {

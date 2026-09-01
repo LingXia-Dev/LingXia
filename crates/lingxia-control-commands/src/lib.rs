@@ -3,7 +3,7 @@
 //! `lxdev` is a development tool and always will be — it dials a `lingxia dev`
 //! session over the network to drive a phone. But the commands it offers are
 //! not its own: they belong to the platform, and a shipped product that wants
-//! a command line or agent skills needs the same ones. Keeping one definition
+//! a command line needs the same ones. Keeping one definition
 //! here is what stops the two from drifting the moment a flag is added to one.
 //!
 //! Not every command needs a transport. `desktop` automates the local OS
@@ -18,7 +18,15 @@ mod console;
 #[cfg(feature = "desktop")]
 pub mod desktop;
 pub mod entry;
+mod extra;
 pub mod guard;
 pub mod output;
-pub mod skills;
 pub mod transport;
+
+#[doc(hidden)]
+pub use extra::{ExtraProductCommand, register_extra_product_command};
+
+#[doc(hidden)]
+pub fn is_builtin_product_command(name: &str) -> bool {
+    entry::is_builtin_command_name(name)
+}

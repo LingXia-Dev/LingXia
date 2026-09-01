@@ -34,7 +34,8 @@ impl lingxia::HostAddon for ExampleHostAddon {
 }
 
 fn register_host_addon() {
-    lingxia::register_host_addon(Box::new(ExampleHostAddon));
+    static REGISTER: std::sync::Once = std::sync::Once::new();
+    REGISTER.call_once(|| lingxia::register_host_addon(Box::new(ExampleHostAddon)));
 }
 
 /// Answer as this product's command line if that is what this invocation is,
@@ -43,6 +44,7 @@ fn register_host_addon() {
 /// The Windows executable calls this as the first thing in `main`.
 #[cfg(all(feature = "control", target_os = "windows"))]
 pub fn run_cli_if_invoked() -> Option<i32> {
+    register_host_addon();
     lingxia::product_cli::run_if_invoked()
 }
 

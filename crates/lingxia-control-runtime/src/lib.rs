@@ -5,8 +5,8 @@
 //!
 //! Two transports reach the same methods. The `dev-bridge` feature dials a
 //! `lingxia dev` session over a websocket; the `local-control` feature listens
-//! on a local IPC endpoint so a shipped product can offer a command line and
-//! agent skills. Both funnel through [`dispatch`], and a host enables only
+//! on a local IPC endpoint so a shipped product can offer a command line to
+//! its own integrations. Both funnel through [`dispatch`], and a host enables only
 //! what it ships.
 
 mod app;
@@ -15,6 +15,7 @@ mod bridge;
 mod browser;
 #[cfg(feature = "computer-use")]
 mod desktop;
+mod extra;
 #[cfg(feature = "local-control")]
 pub mod local_control;
 mod lxapp;
@@ -28,6 +29,7 @@ mod util;
 #[cfg(feature = "dev-bridge")]
 pub use bridge::start_dev_session_bridge_from_env;
 
+pub use extra::register_control_namespace;
 pub use lingxia_control_protocol::{
     ControlError, ControlRequest, ControlResponse, dev_session, methods,
 };
@@ -63,6 +65,8 @@ pub fn dispatch(request: ControlRequest) -> ControlResponse {
     } else if let Some(result) = runner::handle_runner_command(&method, params.clone()) {
         command_result(id, result)
     } else if let Some(result) = lxapp::handle_lxapp_command(&method, params.clone()) {
+        command_result(id, result)
+    } else if let Some(result) = extra::handle(&method, params.clone()) {
         command_result(id, result)
     } else {
         match method.as_str() {

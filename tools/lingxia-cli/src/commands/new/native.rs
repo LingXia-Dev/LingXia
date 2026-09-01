@@ -343,6 +343,24 @@ mod tests {
         assert!(source.contains("log::warn!"));
     }
 
+    #[test]
+    fn native_template_registers_the_host_once_before_product_cli_parsing() {
+        let source = include_str!("../../../templates/native/src/lib.rs");
+        assert!(source.contains("static REGISTER: std::sync::Once"));
+
+        let wrapper = source
+            .split("pub fn run_cli_if_invoked() -> Option<i32>")
+            .nth(1)
+            .expect("native template must expose the Windows CLI wrapper");
+        let register = wrapper
+            .find("register_host_addons();")
+            .expect("CLI wrapper must register the host addon");
+        let parse = wrapper
+            .find("lingxia::product_cli::run_if_invoked()")
+            .expect("CLI wrapper must classify the invocation");
+        assert!(register < parse);
+    }
+
     /// One declared capability must not need two SDK features kept in sync by
     /// hand: forgetting the second builds a host whose `computer` commands work
     /// while `lx.automation().desktop` throws at the first call.

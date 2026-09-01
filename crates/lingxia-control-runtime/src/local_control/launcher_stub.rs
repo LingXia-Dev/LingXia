@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::Command;
 
 const MAGIC: &[u8] = b"LXCL\x01\r\n";
-const MARKER: &str = "LINGXIA_CLI_INVOCATION";
+const CLI_ARGUMENT: &str = "--cli";
 const ENDPOINT: &str = "LINGXIA_CONTROL_ENDPOINT";
 
 fn main() {
@@ -28,7 +28,7 @@ fn run() -> Result<i32, String> {
     let (target, endpoint) = decode_config(&contents)?;
     let status = Command::new(Path::new(&target))
         .args(std::env::args_os().skip(1))
-        .env(MARKER, "1")
+        .arg(CLI_ARGUMENT)
         .env(ENDPOINT, endpoint)
         .status()
         .map_err(|error| format!("cannot start the product: {error}"))?;

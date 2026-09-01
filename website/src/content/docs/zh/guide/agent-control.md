@@ -37,16 +37,26 @@ Safari 进程：那些是普通的机器窗口，需要 `computerUse`。被拒�
 退出码——2 用法错误、3 未找到、4 有歧义、5 超时、6 权限或拒绝、7 不支持、8 不可用、
 9 句柄失效、10 目标已解析但执行失败。
 
-## 从运行中的构建生成技能
+## 接入产品自己的 Agent 工具
 
-```text
-<product> skills show
-<product> skills install --agent claude   # 或 --agent codex
-```
+LingXia 提供 launcher 与本地命令传输，但 Codex、Claude 或其他 Agent 集成由宿主产品
+自己负责。宿主 UI 或安装器可通过
+`lingxia_control_runtime::local_control::launcher_path()` 取得 launcher，再把它的绝对
+路径发布到产品自己的 locator。例如，通过 npm 分发的集成可以让
+`npx <product> install` 向 `~/.<product>/path` 写入唯一一行路径。
 
-生成的技能只包含当前构建真正允许的入口，因此不会宣传产品拒绝提供的能力。连不上产品
-时，`show` 与 `install` 会直接失败，而不是靠猜写出一份技能。安装会写入另一个 agent
-的配置目录，所以它始终是一条显式的用户命令。
+LingXia 不选择 locator，也不生成会与产品业务规则发生漂移的 skill；二者都由宿主
+安装器更新。Agent 工具应执行 launcher，而不是 GUI executable，并在描述能力前查询
+运行中的产品。
+
+Provider 应在 `HostAddon::install_product_cli` 中通过
+`cli.command(name, about, handler)` 声明命令。LingXia 会在独立 CLI 进程解析参数之前
+调用该 hook，此时 UI、service 与数据库都尚未初始化。对应的 App 内请求 namespace
+放在 `install_host_apis`；等到 `start_services` 再注册任一侧都太晚。
+
+产品 launcher 会添加框架保留的 `--cli` 判别参数，LingXia 在内置命令或 provider
+解析参数前将其移除。这样无 TTY 的 Agent 启动也会保持 CLI 模式，同时不会把框架参数
+泄漏给产品命令。
 
 ## 权限与告知
 

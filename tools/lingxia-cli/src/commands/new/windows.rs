@@ -75,4 +75,16 @@ mod tests {
                 .all(|line| line.contains("{{WINDOWS_RS_REV}}"))
         );
     }
+
+    #[test]
+    fn windows_registers_the_host_before_product_cli_parsing() {
+        let source = include_str!("../../../templates/windows/src/main.rs");
+        let register = source
+            .find("host::lingxia_register_host_addon();")
+            .expect("Windows entrypoint must register its host addon");
+        let parse = source
+            .find("host::run_cli_if_invoked()")
+            .expect("Windows entrypoint must classify product CLI invocations");
+        assert!(register < parse);
+    }
 }

@@ -1,15 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-/// Names the launcher sets so the product's own executable knows it was typed
-/// rather than launched, and where to reach the app it belongs to.
+/// Values the launcher carries so the product's own executable knows it was
+/// typed rather than launched, and where to reach the app it belongs to.
 ///
 /// A contract between two sides that share no code: the app writes the
 /// launcher, a separate process reads it back.
 pub mod invocation {
-    /// Set by the launcher. Guessing from the standard streams cannot work: a
-    /// GUI-subsystem binary has no console until it borrows one, and a host
-    /// started by a console tool then looks exactly like a typed command.
-    pub const MARKER: &str = "LINGXIA_CLI_INVOCATION";
+    /// Inserted into argv by the product launcher and consumed before clap or
+    /// a provider sees it. Unlike an environment marker, it is part of the
+    /// invocation itself and cannot disappear when an agent sanitizes env.
+    pub const CLI_ARGUMENT: &str = "--cli";
 
     /// The control endpoint. A Windows pipe is a kernel name derived from the
     /// app id, which a client cannot read before the runtime is up, so the
