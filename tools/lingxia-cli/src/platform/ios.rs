@@ -206,15 +206,6 @@ impl IosPlatform {
             deployment_target,
             info_plist_path: info_plist,
             splash_background: splash.as_ref().map(|s| s.background().to_string()),
-            splash_launch_image: match splash.as_ref() {
-                Some(splash) if splash.has_image() => {
-                    crate::platform::apple::app_bundle::LaunchImage::Art
-                }
-                Some(splash) if splash.has_mark() => {
-                    crate::platform::apple::app_bundle::LaunchImage::Mark
-                }
-                _ => crate::platform::apple::app_bundle::LaunchImage::None,
-            },
         };
 
         AppBundler::create_app_bundle(
@@ -368,6 +359,33 @@ impl Platform for IosPlatform {
                 // runtime overlay reads those, so it survives an actool
                 // failure that would leave the compiled catalog missing.
                 crate::splash::install_apple_bundle_images(&app_path, &resolved)?;
+                // The OS launch face, composed the way the overlay composes
+                // it. Without Interface Builder only the ground can be drawn
+                // and the art arrives on the app's first frame instead — the
+                // Android beat, fine for a dev build and not for a shipped one.
+                let face = crate::splash::install_apple_launch_screen(
+                    &app_path,
+                    &resolved,
+                    &deployment_target,
+                )?;
+                if face == crate::splash::AppleLaunchFace::Ground {
+                    if matches!(
+                        config.resolved_env.version,
+                        crate::config::EnvVersion::Release
+                    ) {
+                        anyhow::bail!(
+                            "Release iOS build requires a compiled launch storyboard; \
+                             `ibtool` needs the iOS platform installed — run \
+                             `xcodebuild -downloadPlatform iOS`"
+                        );
+                    }
+                    eprintln!(
+                        "  {} No launch storyboard: `ibtool` needs the iOS platform installed, so\n     \
+                         the OS launch frame is the splash background alone and the art arrives\n     \
+                         with the app's first frame. Fix with: xcodebuild -downloadPlatform iOS",
+                        "Warning:".yellow()
+                    );
+                }
                 crate::splash::stage_apple_splash_resources(
                     &staging_base,
                     &resources_dir,
@@ -383,15 +401,7 @@ impl Platform for IosPlatform {
             &deployment_target,
             apple::assets::AssetPlatform::Ios,
         ) {
-            let raw_launch_fallback = apple::assets::is_missing_ios_runtime_error(&err)
-                && splash_config.is_some_and(|splash| splash.image.is_some())
-                && apple::assets::install_ios_launch_fallback(&app_path).is_ok();
-            if raw_launch_fallback {
-                eprintln!(
-                    "  {} No iOS simulator runtime; using the configured cover as a raw OS launch resource.",
-                    "Warning:".yellow()
-                );
-            } else if matches!(
+            if matches!(
                 config.resolved_env.version,
                 crate::config::EnvVersion::Release
             ) {
@@ -404,14 +414,12 @@ impl Platform for IosPlatform {
                     "Warning:".yellow(),
                     err
                 );
-                // Without a compiled catalog or the cover fallback, the app
-                // icon is missing and UILaunchScreen's color cannot resolve.
-                if splash_config.is_some() {
-                    eprintln!(
-                        "  {} No Assets.car: the launch frame may not match the configured splash.",
-                        "Warning:".yellow()
-                    );
-                }
+                // The launch face is a bundle resource of its own, so this
+                // costs the app its icon and nothing else.
+                eprintln!(
+                    "  {} No Assets.car: the app icon is missing.",
+                    "Warning:".yellow()
+                );
             }
         }
         if let Err(err) = apple::assets::merge_assetcatalog_plist_with_platform(
