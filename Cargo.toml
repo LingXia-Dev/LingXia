@@ -40,6 +40,10 @@ members = [
 exclude = [
     "examples/lingxia-showcase/native",
     "examples/lingxia-showcase/windows",
+    # Private provider crates CI checks out into the tree. `actions/checkout`
+    # cannot place them outside `GITHUB_WORKSPACE`, and each carries its own
+    # workspace root, which cargo refuses to nest inside this one.
+    ".ci",
 ]
 resolver = "2"
 
