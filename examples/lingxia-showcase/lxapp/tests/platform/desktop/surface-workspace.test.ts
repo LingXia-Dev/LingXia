@@ -625,6 +625,9 @@ function pinnedShortcutPoint(
 /// declaring another without updating this clicks a different action, and the
 /// test then waits for a surface that was never opened.
 const DESKTOP_FOOTER_ACTION_COUNT = 4;
+// The mobile-only Device item is filtered out; every other declared tab is a
+// root page row above dynamic workspaces in the expanded desktop sidebar.
+const SHOWCASE_DESKTOP_TAB_COUNT = 6;
 
 function firstRailFooterActionPoint(
   host: DesktopWindowInfo,
@@ -2406,10 +2409,10 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     // affordance must open the native lifecycle menu. This checks both
     // discoverability and routing instead of relying on an invisible right-click.
     const workspacePoint = firstLxappWorkspacePoint(
-      host, coldPins.length, 4, chatWorkspaceIndex,
+      host, coldPins.length, SHOWCASE_DESKTOP_TAB_COUNT, chatWorkspaceIndex,
     );
     const workspaceMenuRegion = firstLxappWorkspaceMenuRegion(
-      host, coldPins.length, 4, chatWorkspaceIndex,
+      host, coldPins.length, SHOWCASE_DESKTOP_TAB_COUNT, chatWorkspaceIndex,
     );
     const workspaceMenuPoint = regionCenter(workspaceMenuRegion);
     await waitForNativeHover(
@@ -2482,7 +2485,9 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       desktop,
       host,
       workspacePoint,
-      firstLxappWorkspaceRegion(host, coldPins.length, 4, chatWorkspaceIndex),
+      firstLxappWorkspaceRegion(
+        host, coldPins.length, SHOWCASE_DESKTOP_TAB_COUNT, chatWorkspaceIndex,
+      ),
       'hovered Chat workspace before selection',
     );
     await desktop.pointer.click({ at: workspacePoint });
@@ -2505,7 +2510,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     ]);
 
     const workspaceClosePoint = firstLxappWorkspaceClosePoint(
-      host, coldPins.length, 4, chatWorkspaceIndex,
+      host, coldPins.length, SHOWCASE_DESKTOP_TAB_COUNT, chatWorkspaceIndex,
     );
     host = await ensureHostForeground(desktop, host);
     await desktop.pointer.move({ at: workspaceClosePoint });
@@ -2665,7 +2670,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     const remainingWorkspacePoint = firstLxappWorkspacePoint(
       host,
       pinsAfterMenu.length,
-      4,
+      SHOWCASE_DESKTOP_TAB_COUNT,
       chatWorkspaceIndex,
     );
     host = await ensureHostForeground(desktop, host);
@@ -2673,7 +2678,9 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       desktop,
       host,
       remainingWorkspacePoint,
-      firstLxappWorkspaceRegion(host, pinsAfterMenu.length, 4, chatWorkspaceIndex),
+      firstLxappWorkspaceRegion(
+        host, pinsAfterMenu.length, SHOWCASE_DESKTOP_TAB_COUNT, chatWorkspaceIndex,
+      ),
       'hovered remaining Chat workspace before selection',
     );
     await desktop.pointer.click({ at: remainingWorkspacePoint });

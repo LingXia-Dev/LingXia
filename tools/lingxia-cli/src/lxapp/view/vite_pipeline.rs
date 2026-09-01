@@ -594,15 +594,7 @@ fn write_vite_config_with_target(
 ) -> Result<PathBuf> {
     let config_path = build_dir.join("vite.config.mts");
 
-    let plugin_import = match framework {
-        ProjectFramework::React => {
-            "import react from '@vitejs/plugin-react';\nconst frameworkPlugins = [react()];"
-        }
-        ProjectFramework::Vue => {
-            "import vue from '@vitejs/plugin-vue';\nconst frameworkPlugins = [vue()];"
-        }
-        ProjectFramework::Html => "const frameworkPlugins = [];",
-    };
+    let plugin_import = framework_plugin_import(framework);
 
     let lxapp_config_path = project.root.join("lxapp.config.ts");
     let maybe_config_import = if lxapp_config_path.exists() {
@@ -672,6 +664,26 @@ fn write_vite_config_with_target(
     Ok(config_path)
 }
 
+fn framework_plugin_import(framework: ProjectFramework) -> &'static str {
+    match framework {
+        ProjectFramework::React => {
+            "import react from '@vitejs/plugin-react';\nconst frameworkPlugins = [react()];"
+        }
+        ProjectFramework::Vue => {
+            "import vue from '@vitejs/plugin-vue';\n\
+             const vueTypeFs = {\n\
+               fileExists: fs.existsSync,\n\
+               readFile: (file) => {\n\
+                 try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; }\n\
+               },\n\
+               realpath: fs.realpathSync,\n\
+             };\n\
+             const frameworkPlugins = [vue({ script: { fs: vueTypeFs } })];"
+        }
+        ProjectFramework::Html => "const frameworkPlugins = [];",
+    }
+}
+
 fn relative_import_path(from_dir: &Path, target: &Path) -> Result<String> {
     let from_components = from_dir.components().collect::<Vec<_>>();
     let target_components = target.components().collect::<Vec<_>>();
@@ -725,6 +737,15 @@ mod tests {
     use super::*;
     use crate::lxapp::project::ProjectKind;
     use tempfile::tempdir;
+
+    #[test]
+    fn vue_plugin_can_resolve_imported_types_without_typescript_sys() {
+        let plugin = framework_plugin_import(ProjectFramework::Vue);
+
+        assert!(plugin.contains("fileExists: fs.existsSync"));
+        assert!(plugin.contains("readFile: (file)"));
+        assert!(plugin.contains("vue({ script: { fs: vueTypeFs } })"));
+    }
 
     #[test]
     fn component_finalize_preserves_canonical_vite_entry_for_lazy_chunks() {

@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import ts from 'typescript';
+import { API as TypeScriptAPI } from 'typescript/unstable/sync';
+import * as ts from 'typescript/unstable/ast';
 import {
   LX_RETURNED_OBJECT_SURFACES,
   LX_RUNTIME_SURFACES,
@@ -9,6 +10,22 @@ import {
 import manifest from '../logic-api-coverage.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
+const compilerApi = new TypeScriptAPI({ cwd: root });
+const compilerSnapshot = compilerApi.updateSnapshot({
+  openProjects: [
+    path.join(root, 'tsconfig.json'),
+    path.join(root, 'tests/tsconfig.json'),
+  ],
+});
+const compilerProjects = compilerSnapshot.getProjects();
+
+function sourceFile(file) {
+  for (const project of compilerProjects) {
+    const ast = project.program.getSourceFile(file);
+    if (ast) return ast;
+  }
+  throw new Error(`TypeScript project does not contain ${file}`);
+}
 
 function logicFiles() {
   const pages = path.join(root, 'pages');
@@ -36,8 +53,7 @@ function directLxPath(node) {
 function scan() {
   const usages = new Map();
   for (const file of logicFiles()) {
-    const source = fs.readFileSync(file, 'utf8');
-    const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+    const ast = sourceFile(file);
     const visit = (node) => {
       if (ts.isPropertyAccessExpression(node)) {
         const isNestedExpression = ts.isPropertyAccessExpression(node.parent)
@@ -53,7 +69,7 @@ function scan() {
           }
         }
       }
-      ts.forEachChild(node, visit);
+      node.forEachChild(visit);
     };
     visit(ast);
   }
@@ -63,8 +79,7 @@ function scan() {
 function unsupportedLxSyntax() {
   const issues = [];
   for (const file of logicFiles()) {
-    const source = fs.readFileSync(file, 'utf8');
-    const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+    const ast = sourceFile(file);
     const visit = (node) => {
       if (ts.isIdentifier(node)
         && node.text === 'lx'
@@ -73,7 +88,7 @@ function unsupportedLxSyntax() {
         const location = ast.getLineAndCharacterOfPosition(node.getStart(ast));
         issues.push(`${path.relative(root, file).replaceAll('\\', '/')}:${location.line + 1}`);
       }
-      ts.forEachChild(node, visit);
+      node.forEachChild(visit);
     };
     visit(ast);
   }
@@ -108,7 +123,7 @@ function receiverKey(node, ast) {
   const current = unwrapExpression(node);
   if (ts.isIdentifier(current)) return current.text;
   if (ts.isPropertyAccessExpression(current)
-    && (ts.isThis(current.expression) || ts.isIdentifier(current.expression))) {
+    && (ts.isThisExpression(current.expression) || ts.isIdentifier(current.expression))) {
     return current.getText(ast);
   }
   return null;
@@ -117,8 +132,7 @@ function receiverKey(node, ast) {
 function scanReturnedObjects() {
   const usages = new Map();
   for (const file of logicFiles()) {
-    const source = fs.readFileSync(file, 'utf8');
-    const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+    const ast = sourceFile(file);
     const aliases = new Map();
     const methodReturns = new Map();
 
@@ -167,7 +181,7 @@ function scanReturnedObjects() {
                 const surfaces = inferred(candidate.expression);
                 if (surfaces) methodReturns.set(`this.${methodName}`, surfaces);
               }
-              ts.forEachChild(candidate, inspectReturn);
+              candidate.forEachChild(inspectReturn);
             };
             inspectReturn(body);
           }
@@ -196,7 +210,7 @@ function scanReturnedObjects() {
             }
           }
         }
-        ts.forEachChild(node, discover);
+        node.forEachChild(discover);
       };
       discover(ast);
     }
@@ -216,7 +230,7 @@ function scanReturnedObjects() {
           }
         }
       }
-      ts.forEachChild(node, record);
+      node.forEachChild(record);
     };
     record(ast);
   }
@@ -234,8 +248,7 @@ function filesBelow(directory, suffix) {
 function specCoverage() {
   const result = new Map();
   for (const file of filesBelow(path.join(root, 'tests'), '.test.ts')) {
-    const source = fs.readFileSync(file, 'utf8');
-    const ast = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
+    const ast = sourceFile(file);
     const visit = (node) => {
       if (ts.isCallExpression(node) && node.arguments.length >= 2) {
         const options = node.arguments.find((argument) => ts.isObjectLiteralExpression(argument));
@@ -250,7 +263,7 @@ function specCoverage() {
           }
         }
       }
-      ts.forEachChild(node, visit);
+      node.forEachChild(visit);
     };
     visit(ast);
   }
