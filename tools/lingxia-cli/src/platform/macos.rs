@@ -382,6 +382,10 @@ impl Platform for MacosPlatform {
             Self::rust_lib_path(&config.project_root, arch, config.profile)
         };
 
+        // SwiftPM takes its minimum OS from Package.swift even when --triple
+        // includes a newer version, so keep it aligned with lingxia.yaml.
+        apple::sync_macos_deployment_target(&macos_dir, &deployment_target)?;
+
         // Point Package.swift at the cached Apple SDK (no-op in-workspace).
         apple::ensure_sdk_package_dependency(&config.project_root, &macos_dir)?;
 

@@ -544,6 +544,75 @@ fn is_apple_junk_entry(name: &std::ffi::OsStr) -> bool {
 /// appending duplicate dependencies.
 const SDK_PACKAGE_MARKER: &str = "// lingxia-sdk: managed by `lingxia build`";
 
+/// Keep SwiftPM's link target aligned with the deployment target selected from
+/// `lingxia.yaml`. `swift build --triple` chooses the architecture, but SwiftPM
+/// still takes the minimum macOS version from `Package.swift`.
+pub(crate) fn sync_macos_deployment_target(
+    package_dir: &Path,
+    deployment_target: &str,
+) -> Result<()> {
+    if deployment_target.is_empty()
+        || !deployment_target
+            .split('.')
+            .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()))
+    {
+        return Err(anyhow!(
+            "Invalid macOS deployment target `{deployment_target}`"
+        ));
+    }
+
+    let manifest_path = package_dir.join("Package.swift");
+    let original = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Failed to read Package.swift: {}", manifest_path.display()))?;
+    let replacement = match deployment_target {
+        "10.10" => ".macOS(.v10_10)".to_string(),
+        "10.11" => ".macOS(.v10_11)".to_string(),
+        "10.12" => ".macOS(.v10_12)".to_string(),
+        "10.13" => ".macOS(.v10_13)".to_string(),
+        "10.14" => ".macOS(.v10_14)".to_string(),
+        "10.15" => ".macOS(.v10_15)".to_string(),
+        "11.0" => ".macOS(.v11)".to_string(),
+        "12.0" => ".macOS(.v12)".to_string(),
+        "13.0" => ".macOS(.v13)".to_string(),
+        "14.0" => ".macOS(.v14)".to_string(),
+        "15.0" => ".macOS(.v15)".to_string(),
+        _ => format!(".macOS(\"{deployment_target}\")"),
+    };
+
+    let mut rewritten = String::with_capacity(original.len());
+    let mut matches = 0;
+    for line in original.lines() {
+        let trimmed = line.trim_start();
+        if !trimmed.starts_with("//")
+            && let Some(start) = line.find(".macOS(")
+            && let Some(relative_end) = line[start..].find(')')
+        {
+            let end = start + relative_end + 1;
+            rewritten.push_str(&line[..start]);
+            rewritten.push_str(&replacement);
+            rewritten.push_str(&line[end..]);
+            rewritten.push('\n');
+            matches += 1;
+            continue;
+        }
+        rewritten.push_str(line);
+        rewritten.push('\n');
+    }
+
+    if matches != 1 {
+        return Err(anyhow!(
+            "Expected exactly one macOS platform declaration in {}, found {matches}",
+            manifest_path.display()
+        ));
+    }
+    if rewritten != original {
+        fs::write(&manifest_path, rewritten).with_context(|| {
+            format!("Failed to write Package.swift: {}", manifest_path.display())
+        })?;
+    }
+    Ok(())
+}
+
 /// Idempotently rewrite the app's `Package.swift` so it depends on the cached
 /// LingXia Apple SDK via a local `.package(path:)`.
 ///
@@ -726,6 +795,31 @@ mod tests {
         assert!(is_apple_junk_entry(std::ffi::OsStr::new("._Icon")));
         assert!(!is_apple_junk_entry(std::ffi::OsStr::new(".well-known")));
         assert!(!is_apple_junk_entry(std::ffi::OsStr::new(".config")));
+    }
+
+    #[test]
+    fn sync_macos_target_rewrites_the_swiftpm_platform() {
+        let pkg = TempDir::new().unwrap();
+        write_manifest(pkg.path(), MACOS_TEMPLATE);
+
+        sync_macos_deployment_target(pkg.path(), "14.0").unwrap();
+        let once = fs::read_to_string(pkg.path().join("Package.swift")).unwrap();
+        assert!(once.contains(".macOS(.v14)"));
+        assert!(!once.contains(".macOS(.v12)"));
+
+        sync_macos_deployment_target(pkg.path(), "14.0").unwrap();
+        let twice = fs::read_to_string(pkg.path().join("Package.swift")).unwrap();
+        assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn sync_macos_target_supports_custom_versions() {
+        let pkg = TempDir::new().unwrap();
+        write_manifest(pkg.path(), MACOS_TEMPLATE);
+
+        sync_macos_deployment_target(pkg.path(), "14.2").unwrap();
+        let manifest = fs::read_to_string(pkg.path().join("Package.swift")).unwrap();
+        assert!(manifest.contains(".macOS(\"14.2\")"));
     }
 
     /// The shipped templates are the real input to the injector; matching on a
