@@ -77,13 +77,10 @@ pub struct SplashConfig {
     /// The launch art (PNG), path relative to the project root. Rendered
     /// full-screen (aspect-fill) as the app's first frame on every cold
     /// start, and carried by the OS launch frame itself where the platform
-    /// allows it (HarmonyOS start window, iOS `UILaunchScreen`) — so the
+    /// allows it (HarmonyOS start window, iOS launch storyboard) — so the
     /// launch reads as "tap the icon, see the art", with no handoff to see.
-    /// Omit for a placeholder-only launch.
-    ///
-    /// One image, drawn in every appearance: it has to be identical to a
-    /// frame the OS composed from build-time resources before this process
-    /// existed, and one picture is the only thing that always is.
+    /// Omit for a placeholder-only launch. One image, drawn in every
+    /// appearance.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
     /// The brand mark (PNG) shown centered on the launch placeholder, at the

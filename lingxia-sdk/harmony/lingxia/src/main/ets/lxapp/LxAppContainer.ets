@@ -53,22 +53,22 @@ const canvasColorCache: Map<boolean, ResourceColor> = new Map<boolean, ResourceC
 function resolveCanvasColor(dark: boolean): ResourceColor {
   // Memoized per appearance: this is read from a @Builder, which ArkUI re-runs
   // on every state change around it, and the answer comes from app config that
-  // cannot change while the process lives. Misses stay unmemoized so a call
-  // made before the runtime is up does not poison the slot.
+  // cannot change while the process lives. "No colour declared" is memoized
+  // too — it is the default, and the common case. Only the pre-runtime throw
+  // stays unmemoized, so an early call cannot poison the slot.
   const cached: ResourceColor | undefined = canvasColorCache.get(dark);
   if (cached !== undefined) {
     return cached;
   }
   try {
     const declared: string = pageBackgroundColor(dark);
-    if (declared.length > 0) {
-      canvasColorCache.set(dark, declared);
-      return declared;
-    }
+    const answer: ResourceColor = declared.length > 0 ? declared : COLOR_TRANSPARENT;
+    canvasColorCache.set(dark, answer);
+    return answer;
   } catch (_error) {
     // Runtime not up yet; the page paints over this almost immediately.
+    return COLOR_TRANSPARENT;
   }
-  return COLOR_TRANSPARENT;
 }
 
 const POPUP_MASK_COLOR = 'rgba(0,0,0,0.45)';

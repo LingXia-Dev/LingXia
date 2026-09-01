@@ -299,10 +299,10 @@ pub trait UIUpdate: Send + Sync + 'static {
     /// — the runtime has already said everything it knows.
     fn show_splash_campaign(&self, _image_path: String, _duration_ms: u32) {}
 
-    /// Persist the appearance the app draws in, so the *next* launch frame —
-    /// composed by the OS before any code runs — resolves the same one. `None`
-    /// follows the system again. No-op where the platform has no such lever
-    /// (iOS: a launch frame there can only follow the system).
+    /// Persist the appearance the app draws in, so what the platform itself
+    /// draws from its night mode — the activity theme, the canvas behind a
+    /// page — matches. `None` follows the system again. No-op where the
+    /// platform has no such lever (iOS).
     fn set_host_color_mode(&self, _dark: Option<bool>) {}
 
     /// Measure the visible capsule after native Page Chrome has laid out.

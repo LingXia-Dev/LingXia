@@ -524,10 +524,9 @@ pub fn since_startup() -> std::time::Duration {
     STARTUP.elapsed()
 }
 
-/// When the launch cover reached the screen, as an offset from [`STARTUP`]
-/// in milliseconds (`u64::MAX` = it has not).
-static SPLASH_VISIBLE_AT_MS: std::sync::atomic::AtomicU64 =
-    std::sync::atomic::AtomicU64::new(u64::MAX);
+/// Whether this launch has a launch face. Its visible time starts at
+/// [`STARTUP`], because the OS frame already carries the same art.
+static SPLASH_VISIBLE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Note that this launch has a launch face, so the hold applies to it.
 ///
@@ -537,16 +536,10 @@ static SPLASH_VISIBLE_AT_MS: std::sync::atomic::AtomicU64 =
 /// *learned* about it would hold a picture that is already several hundred
 /// milliseconds old — which is the launch feeling slow for no reason.
 ///
-/// Idempotent by first-writer-wins: a warm relaunch that marks a second time
-/// must not restart the hold, or the face would outstay a launch the user is
-/// already past.
+/// Idempotent: a warm relaunch that marks a second time must not restart the
+/// hold, or the face would outstay a launch the user is already past.
 pub fn mark_splash_visible() {
-    let _ = SPLASH_VISIBLE_AT_MS.compare_exchange(
-        u64::MAX,
-        0,
-        std::sync::atomic::Ordering::Relaxed,
-        std::sync::atomic::Ordering::Relaxed,
-    );
+    SPLASH_VISIBLE.store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
 /// How long the launch face has been on screen, or `None` when this launch
@@ -562,12 +555,9 @@ pub fn mark_splash_visible() {
 /// begin at the app's own first draw, and that platform's overlay measures
 /// its own hold from there.
 pub fn splash_visible_for() -> Option<std::time::Duration> {
-    match SPLASH_VISIBLE_AT_MS.load(std::sync::atomic::Ordering::Relaxed) {
-        u64::MAX => None,
-        shown_at => {
-            Some(since_startup().saturating_sub(std::time::Duration::from_millis(shown_at)))
-        }
-    }
+    SPLASH_VISIBLE
+        .load(std::sync::atomic::Ordering::Relaxed)
+        .then(since_startup)
 }
 
 const SPLASH_HOLD_CAP_MS: u32 = 6_000;

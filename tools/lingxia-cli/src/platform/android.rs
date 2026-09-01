@@ -715,6 +715,24 @@ struct LauncherIconNames {
     has_round_icon: bool,
 }
 
+/// Convert an lxapp page path to its adjacent JSON config path using the same
+/// rule as the runtime.
+fn page_config_path(page_path: &str) -> PathBuf {
+    if page_path.is_empty() || page_path == "/" {
+        return PathBuf::from("pages/index/index.json");
+    }
+    let mut trimmed = page_path.trim_start_matches('/').to_string();
+    if trimmed.is_empty() {
+        return PathBuf::from("pages/index/index.json");
+    }
+    if let Some(dot) = trimmed.rfind('.')
+        && trimmed.rfind('/').is_none_or(|slash| dot > slash)
+    {
+        trimmed.truncate(dot);
+    }
+    PathBuf::from(format!("{trimmed}.json"))
+}
+
 /// The `android:screenOrientation` the launcher activity should declare,
 /// resolved from the home lxapp's entry-page config at build time.
 ///
@@ -745,17 +763,12 @@ fn launch_orientation(
         .ok()
         .and_then(|manifest| serde_json::from_str::<serde_json::Value>(&manifest).ok())
         .and_then(|manifest| {
-            // pages[0] is the lxapp's entry page; its config sits next to the
-            // source as `<page dir>/index.json`.
-            let page_path = manifest
-                .get("pages")?
-                .get(0)?
-                .get("path")?
-                .as_str()?
-                .to_string();
-            let page_dir = std::path::Path::new(&page_path).parent()?.to_path_buf();
+            // pages[0] is the lxapp's entry page. Match the runtime's
+            // path-to-config rule exactly: strip a final extension, then add
+            // `.json` to the whole page path.
+            let page_path = manifest.get("pages")?.get(0)?.get("path")?.as_str()?;
             let config_text =
-                fs::read_to_string(lxapp_dir.join(page_dir).join("index.json")).ok()?;
+                fs::read_to_string(lxapp_dir.join(page_config_path(page_path))).ok()?;
             serde_json::from_str::<serde_json::Value>(&config_text).ok()
         });
     Ok(
@@ -1525,17 +1538,25 @@ mod tests {
 
         /// A host project whose bundled home lxapp's entry page carries the
         /// given config JSON (or no config file at all, for `None`).
-        fn project(page_config: Option<&str>) -> (tempfile::TempDir, LingXiaConfig) {
+        fn project_at(
+            page_path: &str,
+            config_path: &str,
+            page_config: Option<&str>,
+        ) -> (tempfile::TempDir, LingXiaConfig) {
             let dir = tempfile::tempdir().unwrap();
             let lxapp = dir.path().join("home");
             std::fs::create_dir_all(lxapp.join("pages/home")).unwrap();
             std::fs::write(
                 lxapp.join("lxapp.json"),
-                r#"{"appId":"demo.home","pages":[{"name":"home","path":"pages/home/index.tsx"}]}"#,
+                serde_json::json!({
+                    "appId": "demo.home",
+                    "pages": [{"name": "home", "path": page_path}]
+                })
+                .to_string(),
             )
             .unwrap();
             if let Some(config) = page_config {
-                std::fs::write(lxapp.join("pages/home/index.json"), config).unwrap();
+                std::fs::write(lxapp.join(config_path), config).unwrap();
             }
 
             let yaml = r#"
@@ -1556,6 +1577,10 @@ resources:
             std::fs::write(dir.path().join("lingxia.yaml"), yaml).unwrap();
             let config = LingXiaConfig::load(dir.path()).unwrap();
             (dir, config)
+        }
+
+        fn project(page_config: Option<&str>) -> (tempfile::TempDir, LingXiaConfig) {
+            project_at("pages/home/index.tsx", "pages/home/index.json", page_config)
         }
 
         /// Portrait is the runtime's own page default, so it is also what an
@@ -1589,6 +1614,24 @@ resources:
                 launch_orientation(dir.path(), Some(&config)).unwrap(),
                 "unspecified"
             );
+        }
+
+        /// Runtime page lookup does not require the conventional `index`
+        /// basename. The manifest path itself names the adjacent JSON file,
+        /// with or without a view-source extension.
+        #[test]
+        fn follows_the_runtime_page_config_path_rule() {
+            for page_path in ["pages/home/main", "pages/home/main.tsx"] {
+                let (dir, config) = project_at(
+                    page_path,
+                    "pages/home/main.json",
+                    Some(r#"{"pageOrientation":"landscape"}"#),
+                );
+                assert_eq!(
+                    launch_orientation(dir.path(), Some(&config)).unwrap(),
+                    "sensorLandscape"
+                );
+            }
         }
 
         /// Anything unreadable falls back to portrait rather than failing the

@@ -93,9 +93,8 @@ internal object NativeApi {
     external fun getDisplayLanguage(): String
 
     /**
-     * Resolve this launch's splash cover via the host's Rust hook, before the
-     * overlay attaches and before runtime initialization. Empty means the
-     * bundled cover.
+     * Tell the runtime this launch has a face, and which appearance the OS
+     * frame resolved to, so a campaign can match it.
      */
     @JvmStatic
     external fun splashMarkLaunchFace(dark: Boolean)

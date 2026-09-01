@@ -1,21 +1,11 @@
 # Launch Screen
 
-The `splash:` config gives a host its launch screen (see the `splash`
-section of the host project reference). That art is fixed: it ships inside
-the app, and it is what the OS launch frame hands over to. Nothing picks it
-at runtime, because nothing can — the OS composes the first frame from
-build-time resources before your process exists, so art chosen later could
-only ever disagree with the frame the user is already looking at. A "white
-flash" or a mid-launch image swap is exactly that disagreement.
+This page covers the **campaign**: a screen of your own, shown after the
+launch face, with a countdown the user can skip.
 
-There is deliberately no dark counterpart. An appearance pair can only ever
-follow the *system*, never an in-app appearance choice — HarmonyOS's colour
-mode does not survive process death and iOS has no such lever at all — so
-the pair's halves are what end up disagreeing at launch. One picture, every
-appearance, is the version that always holds.
-
-This page covers the native half: the **campaign**, a screen of your own
-shown after the launch face, with a countdown the user can skip.
+The launch face itself is not on this page and is not yours to pick at
+runtime — it is the fixed `splash:` art, one picture in every appearance.
+See the `splash` section of the host project reference for why.
 
 ```rust
 impl lingxia::HostAddon for AppHostAddon {
@@ -48,10 +38,8 @@ impl lingxia::HostAddon for AppHostAddon {
 
 Three rules the design rests on:
 
-- **The launch face is not yours to choose.** It is the configured art in
-  every appearance, identical to what the OS frame handed over. The campaign is a
-  second screen, and it fades in — the user reads it as content arriving,
-  not as the launch stuttering.
+- **The campaign is a second screen, not the launch face.** It fades in, so
+  the user reads it as content arriving rather than the launch stuttering.
 - **Selection decides *this* launch.** It runs once the runtime is up, not
   on the cold-start path, so reading a file or checking a clock costs the
   launch nothing. It may only name files already on disk:
