@@ -6,7 +6,7 @@
 //!
 //! ```text
 //! cargo run -p lingxia-control-commands --example product -- \
-//!     --endpoint "$HOME/Library/Application Support/<app-id>/app_state/control.sock" \
+//!     --endpoint "$HOME/Library/Application Support/<app-id>/lingxia/control/control.sock" \
 //!     app doctor
 //! ```
 

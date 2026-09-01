@@ -1,37 +1,50 @@
 use serde::{Deserialize, Serialize};
 
-/// Values the launcher carries so the product's own executable knows it was
-/// typed rather than launched, and where to reach the app it belongs to.
-///
-/// A contract between two sides that share no code: the app writes the
-/// launcher, a separate process reads it back.
+/// Values that distinguish a product command from a normal app launch.
 pub mod invocation {
-    /// Inserted into argv by the product launcher and consumed before clap or
-    /// a provider sees it. Unlike an environment marker, it is part of the
-    /// invocation itself and cannot disappear when an agent sanitizes env.
+    /// Inserted into argv by host-owned agent tooling and consumed before clap
+    /// or a provider sees it.
     pub const CLI_ARGUMENT: &str = "--cli";
+}
 
-    /// The control endpoint. A Windows pipe is a kernel name derived from the
-    /// app id, which a client cannot read before the runtime is up, so the
-    /// launcher carries it.
-    pub const ENDPOINT: &str = "LINGXIA_CONTROL_ENDPOINT";
+/// Filesystem and endpoint names shared by the shipped-product client and
+/// server. Both processes know the product's app-data directory, so discovery
+/// needs no generated launcher or environment-carried endpoint.
+pub mod local_control {
+    use std::path::{Path, PathBuf};
 
-    /// Normalize a product name to the unquoted command written by its launcher.
-    pub fn command_name(product_name: &str) -> String {
-        let mut name = String::new();
-        for character in product_name.chars() {
-            if character.is_ascii_alphanumeric() {
-                name.push(character.to_ascii_lowercase());
-            } else if !name.is_empty() && !name.ends_with('-') {
-                name.push('-');
-            }
+    /// LingXia-owned runtime state, separate from the host-owned `app_state`.
+    pub fn directory(app_data_dir: &Path) -> PathBuf {
+        app_data_dir.join("lingxia").join("control")
+    }
+
+    /// Runtime-published endpoint name. This matters on Windows, where an
+    /// enable generation must move to a fresh pipe while old clients unwind.
+    pub fn endpoint_file(control_dir: &Path) -> PathBuf {
+        control_dir.join("endpoint")
+    }
+
+    /// The endpoint both halves derive before the runtime is initialized.
+    #[cfg(unix)]
+    pub fn endpoint(control_dir: &Path, _epoch: u64) -> String {
+        control_dir.join("control.sock").display().to_string()
+    }
+
+    /// Windows named pipes do not live on disk. Hashing the environment-specific
+    /// app-data path gives release, preview, and developer builds stable,
+    /// distinct names without needing initialized app config.
+    #[cfg(windows)]
+    pub fn endpoint(control_dir: &Path, epoch: u64) -> String {
+        let normalized = control_dir
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_ascii_lowercase();
+        let mut hash = 0xcbf29ce484222325u64;
+        for byte in normalized.bytes() {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x100000001b3);
         }
-        let name = name.trim_end_matches('-');
-        if name.is_empty() {
-            "app".to_string()
-        } else {
-            name.to_string()
-        }
+        format!(r"\\.\pipe\lingxia-control-{hash:016x}-{epoch}")
     }
 
     #[cfg(test)]
@@ -39,26 +52,16 @@ pub mod invocation {
         use super::*;
 
         #[test]
-        fn command_names_are_typable_without_quoting() {
-            assert_eq!(command_name("LingXia Demo"), "lingxia-demo");
-            assert_eq!(command_name("My_App"), "my-app");
-            assert_eq!(command_name("My  Term!!"), "my-term");
-            assert_eq!(command_name("!!!"), "app");
+        fn framework_control_state_is_not_host_app_state() {
+            let data = Path::new("/tmp/product");
+            assert_eq!(directory(data), data.join("lingxia/control"));
+            assert!(!directory(data).starts_with(data.join("app_state")));
         }
     }
 }
 
 pub mod methods {
     pub const ECHO: &str = "echo";
-
-    /// The automation interface talking about itself. Both are answered
-    /// without a capability declaration: they reveal only whether anyone is
-    /// listening, which a connect already reveals, and the only power they
-    /// offer is taking automation *away*.
-    pub mod control {
-        pub const STATUS: &str = "control.status";
-        pub const DISABLE: &str = "control.disable";
-    }
 
     pub mod session {
         /// Prepare an optional supervised session participant. The response is

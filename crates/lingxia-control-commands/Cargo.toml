@@ -35,9 +35,6 @@ required-features = ["desktop"]
 [dependencies]
 lingxia-device-io = { workspace = true, optional = true }
 lingxia-control-protocol = { workspace = true }
-# The persisted "is the automation interface on" answer, so a product without a
-# settings screen still has a way to switch it.
-lingxia-settings = { workspace = true }
 anyhow = "1.0"
 log = { workspace = true }
 clap = { version = "4.5", features = ["derive"] }

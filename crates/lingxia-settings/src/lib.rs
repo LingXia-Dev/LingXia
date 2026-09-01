@@ -32,12 +32,6 @@ pub struct Settings {
     /// `lingxia-lxapp`; unknown historical values fall back to the manifest.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub lxapp_appearances: BTreeMap<String, String>,
-    /// Whether the local control socket is listening. Absent means off: a
-    /// product declaring the capability ships the ability, not the decision —
-    /// this endpoint hands any local process the product's full automation
-    /// surface, so it waits for the user to say yes.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub control_enabled: Option<bool>,
 }
 
 static SETTINGS_CACHE: OnceLock<DashMap<String, Settings>> = OnceLock::new();
@@ -158,21 +152,6 @@ pub fn set_display_language(
     let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
     let mut settings = load(app_data_dir)?;
     settings.display_language = language.map(str::to_string);
-    save(app_data_dir, &settings)
-}
-
-/// Whether the user has turned the control socket on. Off unless they have.
-pub fn control_enabled(app_data_dir: &Path) -> bool {
-    load(app_data_dir)
-        .ok()
-        .and_then(|settings| settings.control_enabled)
-        .unwrap_or(false)
-}
-
-pub fn set_control_enabled(app_data_dir: &Path, enabled: bool) -> Result<(), SettingsError> {
-    let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
-    let mut settings = load(app_data_dir)?;
-    settings.control_enabled = enabled.then_some(true);
     save(app_data_dir, &settings)
 }
 

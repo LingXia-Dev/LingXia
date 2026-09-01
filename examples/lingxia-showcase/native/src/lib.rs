@@ -27,8 +27,8 @@ impl lingxia::HostAddon for ExampleHostAddon {
         #[cfg(feature = "devtools")]
         lingxia_control_runtime::start_dev_session_bridge_from_env();
         #[cfg(feature = "control")]
-        if let Err(error) = lingxia_control_runtime::local_control::install() {
-            log::warn!("control socket unavailable: {error}");
+        if let Err(error) = lingxia_control_runtime::local_control::install(true) {
+            log::warn!("local control unavailable: {error}");
         }
     }
 }

@@ -1,140 +1,70 @@
 # Driving a Shipped Product
 
-Use this reference when a host app lets a local command line or agent drive
-the product. The product decides which surfaces exist; the user decides whether
-the local interface is enabled.
+Use this reference when a host app exposes local automation on macOS or
+Windows. The product declares the surface and owns user consent.
 
-## Declare the surfaces
+## Capabilities
 
 ```yaml
 capabilities:
-  appUse: true       # this product's own windows
-  computerUse: true  # the whole machine
-  browserUse: true   # this product's in-app browser (requires `browser`)
+  appUse: true       # this product's windows
+  computerUse: true  # the machine; implies appUse
+  browserUse: true   # this product's in-app browser; requires browser
 ```
 
-These capabilities are available on macOS and Windows and are enforced by the
-running product:
+- `browserUse` never reaches external browser processes; those require
+  `computerUse`.
+- A refused namespace is final. Do not route around it.
 
-- `computerUse` implies `appUse` because machine-wide control can already reach
-  the product's windows.
-- `browserUse` is independent; a browser-only product need not expose its
-  window chrome.
-- `browserUse` never reaches an external Chrome, Edge, or Safari process.
-  External browsers are ordinary machine windows and require `computerUse`.
-- A refused namespace is final. An agent must not route around it.
+## Access lifecycle
 
-## User control and command discovery
+LingXia exposes no agent-callable access toggle. From
+`HostAddon::start_services`, call `local_control::install(enabled)` with the
+product preference. Use `set_enabled(bool)` for live changes and `is_enabled()`
+for live state. A product without settings UI may temporarily default to
+`true`. IPC lives under `<app_data>/lingxia/control`, never under host-owned
+`app_state`.
 
-The endpoint is local to the user who launched the app, answers only while the
-app is running, and stays closed until the user enables it.
+`--allow-control` acknowledges an authorized mutation; it does not grant
+access. Use `--allow-destructive` only when the request explicitly authorizes
+the destructive effect.
 
-The product executable is also its command. Enabling the interface writes a
-small launcher into the product's state directory. `<product> control enable`
-prints that path and the shell-profile line needed to put it on `PATH`.
+## Product command discovery
 
-The control commands report and change real state:
+Invoke the exact product executable as `<executable> --cli ...`; LingXia has no
+launcher and does not rely on shell `PATH`.
 
-- `control status` distinguishes a live listener from a setting that takes
-  effect at the next start.
-- `control disable` stops a live listener when present, persists the disabled
-  state, and removes its socket and launcher.
+The product owns its agent skill and locator. A release build may atomically
+write `current_exe()` to `~/.<product>/path`. Developer builds must not replace
+that locator; the skill resolves one product-owned environment override first,
+then the release locator. Use `lingxia::app::{env_version, EnvVersion}` to
+distinguish builds. Their app-data paths already isolate their IPC endpoints.
 
-Use `<product> --help` and leaf-command `--help` for exact syntax. Prefer
-`--json` when the leaf offers it. Failures use stable exits: 2 usage, 3 not
-found, 4 ambiguous, 5 timeout, 6 permission or refusal, 7 unsupported,
-8 unavailable, 9 stale handle, and 10 failure after target resolution.
-
-`--allow-control` is an acknowledgement, not a permission grant. Add it only
-when the user's current request authorizes the state change. Add
-`--allow-destructive` only when that request explicitly authorizes the
-destructive effect, such as closing a window, quitting an app, or clearing the
-clipboard or cookies.
-
-## Host-owned agent integration
-
-LingXia provides the product launcher and command transport. The host owns its
-Codex, Claude, or other agent skills because they evolve with product commands,
-not with the framework.
-
-A host can obtain the launcher from
-`lingxia_control_runtime::local_control::launcher_path()` after installing
-local control. Its installer may publish that path as one line in a
-product-owned locator such as `~/.<product>/path`; LingXia does not choose or
-write it. Agent tooling invokes the launcher, not the GUI executable, and asks
-the running product which capabilities are available.
-
-Declare a host command and its matching in-app request namespace from the two
-early `HostAddon` hooks:
+Register a command and its matching request namespace before services start:
 
 ```rust
 impl lingxia::HostAddon for AppHostAddon {
-    #[cfg(feature = "control")]
     fn install_product_cli(&self, cli: &mut lingxia::product_cli::ProductCli) {
         cli.command("cloud", "Manage cloud workspaces", cloud_cli);
     }
 
     fn install_host_apis(&self) {
-        #[cfg(feature = "control")]
         lingxia_control_runtime::register_control_namespace("cloud", handle_cloud_control);
     }
 }
 ```
 
-`install_product_cli` only declares commands; its handler receives the supplied
-`product_cli::Transport` and arguments after the command name. Register the
-matching request handler in `install_host_apis`. `start_services` is too late
-for either registration.
+The CLI handler receives `product_cli::Transport` and arguments after its
+command name. `start_services` is too late for registration; use it to start
+local control and publish the release locator.
 
-## Desktop permissions and viewer
+## Agent behavior
 
-On macOS, `computerUse` needs Accessibility and Screen Recording. Commands
-execute inside the product, so macOS attributes both grants to the installed
-product rather than the terminal that invoked it.
-
-Before machine-wide work, the agent should run:
-
-```text
-<product> computer permissions --json
-```
-
-If a grant is missing, the agent asks the user to grant it and stops retrying.
-Screen capture without Screen Recording can otherwise look like an empty
-desktop. Signed builds retain grants across matching updates; unsigned rebuilt
-apps may prompt again.
-
-The first mutating `computerUse` command on macOS or Windows opens a visible
-activity indicator. It follows the work, avoids the pointer target, hides after
-roughly twelve seconds of inactivity, and returns on the next mutation.
-Read-only commands do not open it.
-
-Each product process owns at most one viewer. Separate running products do not
-coordinate a machine-wide viewer; the viewer always represents the mutations
-performed through its own product process. Its identity bar always names both
-ends of the relationship (`<product> controls <target>`), including above
-an expanded preview, so the preview is never an anonymous floating capture.
-
-On both desktop platforms, a foreground target uses a compact control bar
-because the target itself is already visible. Background work expands to a
-live preview; work with no window target mirrors the visible display. On
-Windows, compact mode also requires the product and target to be visible on the
-same monitor. When the product has a visible window, the Windows indicator
-stays on that window's monitor even if the controlled window is on another
-monitor. macOS follows the display containing the controlled target. Both
-layouts use platform-native DPI/point sizing and keep the preview aspect ratio.
-
-Windows input still uses the active desktop. A `--window` or unambiguous `--pid`
-input target is activated before pointer or keyboard input, so the product may
-remain visible on another monitor but is not the focused window while the
-input is delivered. This is different from macOS process-directed background
-input.
-
-The activity indicator is not an agent command. It ignores mouse input so it
-cannot block the underlying target. A product that offers a human dismiss
-control calls the host-side viewer API; an agent must never hide or dismiss it.
-
-An observed or controlled product session also keeps a persistent disclosure
-visible for the whole session, including read-only periods. The activity
-preview may auto-hide; disclosure does not. Only local UI or trusted host
-lifecycle can end it. Ordinary snapshot and capture APIs do not turn
-supervision on.
+- Read `<product> --help` and leaf `--help`; prefer `--json`.
+- Stable exits are: 2 usage, 3 not found, 4 ambiguous, 5 timeout, 6 permission
+  or refusal, 7 unsupported, 8 unavailable, 9 stale handle, 10 resolved-target
+  failure.
+- Before `computerUse` on macOS, run
+  `<product> computer permissions --json`. If a grant is missing, ask the user
+  and stop retrying.
+- Never hide or dismiss activity indicators or persistent control disclosure.

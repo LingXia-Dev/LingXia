@@ -15,7 +15,7 @@ pub struct ExtraProductCommand {
     pub name: &'static str,
     pub about: &'static str,
     /// Execute with the provider arguments after the top-level command name.
-    /// The launcher's private discriminator has already been removed.
+    /// The agent integration's private discriminator has already been removed.
     pub execute: fn(&dyn Transport, &[OsString]) -> i32,
 }
 
