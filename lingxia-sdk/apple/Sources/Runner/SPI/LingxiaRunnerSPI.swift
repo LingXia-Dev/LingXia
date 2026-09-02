@@ -18,12 +18,6 @@ import WebKit
 
         /// Handler receives `(appId, path, refreshing)` when the Runner owns
         /// the lxapp surface instead of the SDK's standard host controller.
-        public static func setPullDownRefreshHandler(
-            _ handler: @escaping (String, String, Bool) -> Bool
-        ) {
-            RunnerBridge.setPullDownRefreshHandler(handler)
-        }
-
         public static func sessionId(for appId: String) -> UInt64? {
             RunnerBridge.sessionId(for: appId)
         }

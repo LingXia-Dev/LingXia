@@ -16,7 +16,6 @@ class macOSLxApp: ObservableObject {
     static let shared = macOSLxApp()
     private static var isInitialized = false
     private static let log = OSLog(subsystem: "LingXia", category: "macOSLxApp")
-    static var runnerPullDownRefreshHandler: ((String, String, Bool) -> Bool)?
 
     nonisolated(unsafe) private static var lifecycleObservers: [NSObjectProtocol] = []
     nonisolated(unsafe) private static var hasResignedActive = false
@@ -251,11 +250,10 @@ extension LxApp {
         let pathStr = path.toString()
 
         Task { @MainActor in
-            if let manager = macOSLxApp.getViewController(for: appIdStr) {
-                manager.startPullDownRefreshProgrammatically()
-            } else {
-                _ = macOSLxApp.runnerPullDownRefreshHandler?(appIdStr, pathStr, true)
-            }
+            // Addressed by page, not by host: the indicator belongs to the web
+            // view, so every host that mounts one drives the same controller.
+            MacPullToRefreshController.controller(appId: appIdStr, path: pathStr)?
+                .startRefreshing()
             os_log("startPullDownRefresh called for %@:%@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appIdStr, pathStr)
         }
         return true
@@ -266,11 +264,8 @@ extension LxApp {
         let pathStr = path.toString()
 
         Task { @MainActor in
-            if let manager = macOSLxApp.getViewController(for: appIdStr) {
-                manager.stopPullDownRefreshProgrammatically()
-            } else {
-                _ = macOSLxApp.runnerPullDownRefreshHandler?(appIdStr, pathStr, false)
-            }
+            MacPullToRefreshController.controller(appId: appIdStr, path: pathStr)?
+                .endRefreshing()
             os_log("stopPullDownRefresh called for %@:%@", log: OSLog(subsystem: "LingXia", category: "PullToRefresh"), type: .info, appIdStr, pathStr)
         }
         return true

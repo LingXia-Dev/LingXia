@@ -70,6 +70,16 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
         webView.lxMacNativeComponentBridge = bridge
     }
 
+    /// Offset the overlay the same way the page is offset, so native
+    /// components stay registered with the content they sit on while a pull is
+    /// open. Nothing to do for a container that has no components.
+    static func setOverlayOffset(_ offset: CGFloat, in container: NSView) {
+        guard let host = container.subviews
+            .compactMap({ $0 as? MacNativeComponentOverlayHost }).first
+        else { return }
+        host.verticalOffset = offset
+    }
+
     private static func ensureOverlayHostOnTop(in container: NSView) {
         guard container.subviews.contains(where: { $0 is MacNativeComponentOverlayHost }) else { return }
         container.sortSubviews({ (a, b, _) -> ComparisonResult in
@@ -139,21 +149,59 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
     }
 
     private func injectScrollTracker(into webView: WKWebView) {
+        // Two consumers, one answer: the component layer's scroll offset, and
+        // whether a pull-to-refresh gesture may start. The gesture itself is
+        // read natively; only "is anything scrolled" has to come from the page,
+        // because WebKit owns scrolling and never reports its position.
+        //
+        // `atTop` walks the scrollable ancestors of the element under the
+        // pointer rather than trusting the document: a page whose content lives
+        // in its own scroller leaves `window.scrollY` at 0 forever, and a pull
+        // must not arm while the thing being scrolled is part-way down.
         let script = WKUserScript(source: """
         (function(){
           if (window.__lxScrollTrackerInstalled) return;
           window.__lxScrollTrackerInstalled = true;
-          var lastX = -1, lastY = -1;
+          var lastX = -1, lastY = -1, lastTop = null, scroller = null;
+          var pointerX = -1, pointerY = -1;
+          function chainAtTop(node) {
+            while (node && node !== document) {
+              if (node.scrollTop > 0) return false;
+              node = node.parentElement;
+            }
+            return true;
+          }
+          function atTop() {
+            if (window.scrollY > 0) return false;
+            // Resolve the element under the pointer now rather than caching it:
+            // a trackpad scrolls without moving the pointer, so a cached node
+            // outlives the list that recycled or re-rendered it and would
+            // answer for a chain that is no longer in the document.
+            var under = pointerX >= 0 ? document.elementFromPoint(pointerX, pointerY) : null;
+            // The element under the pointer decides, not whichever element
+            // scrolled last: a page with a scrolled list beside a horizontal
+            // strip would otherwise report the strip's position for the list.
+            return chainAtTop(under || scroller);
+          }
           function send() {
-            var x = window.scrollX, y = window.scrollY;
-            if (x !== lastX || y !== lastY) {
-              lastX = x; lastY = y;
+            var x = window.scrollX, y = window.scrollY, top = atTop();
+            if (x !== lastX || y !== lastY || top !== lastTop) {
+              lastX = x; lastY = y; lastTop = top;
               window.webkit.messageHandlers.NativeComponent.postMessage({
-                action: 'scroll.update', scrollX: x, scrollY: y
+                action: 'scroll.update', scrollX: x, scrollY: y, atTop: top
               });
             }
           }
-          window.addEventListener('scroll', send, { passive: true, capture: true });
+          window.addEventListener('mousemove', function(event) {
+            if (event.clientX === pointerX && event.clientY === pointerY) return;
+            pointerX = event.clientX;
+            pointerY = event.clientY;
+            send();
+          }, { passive: true, capture: true });
+          window.addEventListener('scroll', function(event) {
+            scroller = event.target;
+            send();
+          }, { passive: true, capture: true });
           send();
         })();
         """, injectionTime: .atDocumentEnd, forMainFrameOnly: true)
@@ -177,11 +225,15 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
 
         container.addSubview(host, positioned: .above, relativeTo: container.subviews.last)
 
+        let top = host.topAnchor.constraint(equalTo: container.topAnchor)
+        let bottom = host.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        host.top = top
+        host.bottom = bottom
         NSLayoutConstraint.activate([
-            host.topAnchor.constraint(equalTo: container.topAnchor),
+            top,
             host.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             host.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            host.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+            bottom
         ])
 
         return host
@@ -208,6 +260,9 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
             let scrollX = CGFloat((payload["scrollX"] as? Double) ?? 0)
             let scrollY = CGFloat((payload["scrollY"] as? Double) ?? 0)
             componentManager?.updateScrollOffset(x: scrollX, y: scrollY)
+            if let atTop = payload["atTop"] as? Bool {
+                webView?.lxPullToRefreshController?.setAtTop(atTop)
+            }
             return
         }
 
@@ -318,6 +373,18 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
 
 private final class MacNativeComponentOverlayHost: NSView {
     nonisolated override var isFlipped: Bool { true }
+
+    /// Kept with the page while pull-to-refresh holds it open. Constraints
+    /// rather than a layer transform, so hit-testing follows the pixels.
+    var top: NSLayoutConstraint?
+    var bottom: NSLayoutConstraint?
+    var verticalOffset: CGFloat = 0 {
+        didSet {
+            guard verticalOffset != oldValue else { return }
+            top?.constant = verticalOffset
+            bottom?.constant = verticalOffset
+        }
+    }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         let hit = super.hitTest(point)
