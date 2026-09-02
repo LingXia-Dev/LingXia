@@ -151,6 +151,35 @@ rong::js_api! {
     setEnabled(on: boolean): Promise<void>;
 }"###;
 
+        /// The product-wide cache a settings screen reports and clears.
+        ///
+        /// App-scoped, not lxapp-scoped: the figure covers every lxapp the host
+        /// has run, which is why — like `checkUpdate` and `screenshot` — it is
+        /// available only to the home lxapp and other lxapps get a permission
+        /// error.
+        ///
+        type AppCacheApi = r###"{
+    /**
+     * Bytes currently held by LingXia-managed caches: every lxapp's
+     * `lx://usercache`, every idle session's temp, and shared runtime artwork.
+     *
+     * Excludes the WebView's own HTTP cache, which the platform reports as a
+     * site count rather than a byte total — `clear()` still drops it, so present
+     * this as a lower bound rather than an exact total.
+     */
+    size(): Promise<number>;
+    /**
+     * Clear those caches plus the WebView's regenerable cache, resolving with
+     * the bytes freed from LingXia-managed storage.
+     *
+     * Never touches `lx://userdata`, the `lx.getStorage` key-value store, the
+     * user's downloads, or installed lxapp packages — none are regenerable, so
+     * dropping them behind a "clear cache" control is data loss. Cookies and
+     * logins survive: this clears caches, it does not sign anyone out.
+     */
+    clear(): Promise<number>;
+}"###;
+
         type TerminalThemeMode = r###"'system' | 'light' | 'dark'"###;
 
         type TerminalFontSettings = r###"{

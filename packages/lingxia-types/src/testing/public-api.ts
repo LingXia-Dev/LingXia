@@ -23,6 +23,7 @@ import type {
 } from '../automation/index.js';
 import type {
   AppearanceApi,
+  AppCacheApi,
   AutostartApi,
   CompressVideoTask,
   DownloadTask,
@@ -122,6 +123,7 @@ export const LX_API_NAMES = [
 
 const HOST_APP_API = [
   'autostart',
+  'cache',
   'checkUpdate',
   'envVersion',
   'exit',
@@ -132,6 +134,7 @@ const HOST_APP_API = [
 ] as const;
 const HOST_APP_RUNTIME_API = HOST_APP_API.filter((name) => name !== 'autostart');
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
+const APP_CACHE_API = ['clear', 'size'] as const;
 const APPEARANCE_API = ['get', 'set'] as const;
 const NAVIGATION_BAR_API = ['update'] as const;
 const TAB_BAR_API = ['update'] as const;
@@ -333,6 +336,12 @@ export const LX_RUNTIME_SURFACES = [
     expression: 'lx.app.autostart',
     members: AUTOSTART_API,
     optional: true,
+  },
+  {
+    name: 'lx.app.cache',
+    layer: 'logic',
+    expression: 'lx.app.cache',
+    members: APP_CACHE_API,
   },
   {
     name: 'lx.appearance',
@@ -665,6 +674,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<PublishedLx, typeof LX_API_NAMES>>,
   AssertTrue<Exact<HostAppApi, typeof HOST_APP_API>>,
   AssertTrue<Exact<AutostartApi, typeof AUTOSTART_API>>,
+  AssertTrue<Exact<AppCacheApi, typeof APP_CACHE_API>>,
   AssertTrue<Exact<AppearanceApi, typeof APPEARANCE_API>>,
   AssertTrue<Exact<NavigationBarApi, typeof NAVIGATION_BAR_API>>,
   AssertTrue<Exact<TabBarApi, typeof TAB_BAR_API>>,
