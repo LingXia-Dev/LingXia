@@ -52,8 +52,10 @@ playbackSpec('drive native playback through VideoContext against a local clip', 
   await waitForCurrentPage(app, 'video');
   await app.page.waitFor({ page: 'video', css: '[data-testid="video-page"]', state: 'visible' });
   await app.page.waitFor({ page: 'video', css: `#${VIDEO_ID}`, state: 'visible' });
-  // Autoplay is off for this fixture: nothing may move before play().
-  expect((await readState()).eventLog).toBe('Ready');
+  // Autoplay is off for this fixture, so the clock has not started. The event
+  // label is not the invariant: a native player may already report buffering
+  // as it opens the source.
+  expect((await readState()).currentTime).toBe(0);
 
   await t.step('play() starts the clock and reports the clip length', async () => {
     await command('play()');

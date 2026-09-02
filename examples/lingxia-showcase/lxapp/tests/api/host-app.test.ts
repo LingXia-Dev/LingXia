@@ -171,6 +171,17 @@ spec('report autostart state and accept an idempotent write', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-AUTOSTART-001');
 
+  // Autostart is a login-item concept the inventory marks optional; a phone
+  // host does not build it, and asking is how a caller finds out.
+  const offered = await app.eval({
+    script: `return !!(lx.app.autostart && typeof lx.app.autostart.isEnabled === 'function')`,
+  }) as boolean;
+  if (!offered) {
+    const supported = await app.eval({ script: `return !!lx.supports({ capability: 'autostart' })` });
+    expect(supported).toBe(false);
+    return;
+  }
+
   // Writing the value the host already holds proves the setter without
   // registering or removing a real login item on the developer's machine.
   const result = await app.eval({
