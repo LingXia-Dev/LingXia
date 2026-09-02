@@ -123,6 +123,10 @@ pub fn sync_installed_skill(create: bool) {
 /// Self-update replaces the executable but cannot write the new skill in the
 /// same run -- this process is still executing the old code, and the skill it
 /// carries describes the release being replaced.
+///
+/// Windows stages the replacement until this process exits, so there is no new
+/// binary to run yet; the skill follows on that binary's next command.
+#[cfg(not(target_os = "windows"))]
 pub(crate) fn sync_skill_through(exe: &Path) {
     match std::process::Command::new(exe).arg("__sync-skill").status() {
         Ok(status) if status.success() => {}
