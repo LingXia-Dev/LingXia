@@ -123,6 +123,19 @@ spec("reLaunch from Logic and reject invalid navigation", {
     await app.eval({
       script: `void lx.redirectTo({ page: 'ui', query: { type: 'navbar' } }); return 'scheduled';`,
     });
+    // `ui` is already current, so waiting on the route alone would pass before
+    // the scheduled redirect lands and leave it in flight for the next case.
+    // The page's own query is what proves it arrived.
+    await eventually(
+      () => app.eval({
+        script: `
+          const page = getCurrentPages().find((candidate) => candidate.route.includes('/ui/'));
+          return String(page?.data?.currentType ?? '');
+        `,
+      }),
+      (currentType) => currentType === 'navbar',
+      { describe: 'the scheduled redirect to land on the ui page', timeoutMs: 15_000 },
+    );
     await waitForCurrent(app, 'ui');
     expect((await app.nav.stack()).map((page) => page.name)).toEqual(['ui']);
   });
