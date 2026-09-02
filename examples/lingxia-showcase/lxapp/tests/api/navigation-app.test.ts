@@ -22,7 +22,18 @@ spec('hop to the bundled chat lxapp and back', {
   const rows = (): Promise<LxAppRuntimeInfo[]> => manager.list();
   const currentApp = async (): Promise<string> => (await manager.current()).appid;
 
-  await app.nav.relaunch({ page: 'home' });
+  // A navigation another case scheduled but did not wait for can land here and
+  // take the route back, so settle on home rather than assuming one relaunch wins.
+  await eventually(
+    async () => {
+      const current = await app.nav.current().catch(() => null);
+      if (current?.name === 'home' && current.current) return 'home';
+      await app.nav.relaunch({ page: 'home' }).catch(() => undefined);
+      return current?.name ?? 'unknown';
+    },
+    (name) => name === 'home',
+    { describe: 'home to stay the current page before the hop', timeoutMs: 30_000 },
+  );
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   defer(async () => {
     if (isOpen(await rows(), CHAT_APP_ID)) {
