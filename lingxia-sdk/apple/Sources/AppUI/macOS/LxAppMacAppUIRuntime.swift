@@ -893,7 +893,13 @@ final class LxAppMacAppUIRuntime: NSObject {
             try openSurface(id: id)
             return true
         } catch {
-            LXLog.error("AppUI failed to open managed surface=\(id)", category: "MacAppUI", error: error)
+            // Every caller treats `false` as "this id is not a managed surface"
+            // and rolls back or takes another route — opening an lxapp the host
+            // bundles but never declared lands here and still succeeds. Logging
+            // a recovered attempt as an error reports a failure that did not
+            // happen, and a session that must stay error-free cannot tell it
+            // apart from one that did.
+            LXLog.debug("AppUI could not open managed surface=\(id): \(error)", category: "MacAppUI")
             return false
         }
     }

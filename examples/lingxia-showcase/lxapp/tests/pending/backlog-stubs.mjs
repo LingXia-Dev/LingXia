@@ -147,6 +147,20 @@ export default [
     reason: "Windows leaves the target current after navigateBackApp instead of returning to the caller, and on both desktops the hop leaves the bundled chat lxapp in a state the workspace cases cannot reuse; NAV-APP-001 proves the contract on Android",
   },
   {
+    id: "PEND-VIDEO-FS-WINDOWS-001",
+    title: "native video fullscreen on Windows",
+    mode: "planned",
+    covers: ["VideoContext.requestFullScreen"],
+    reason: "requestFullScreen rejects with an internal error on Windows while playback itself works; DESKTOP-VIDEO-FULLSCREEN-001 proves the contract on macOS",
+  },
+  {
+    id: "PEND-PREVIEW-DISMISS-001",
+    title: "dismissing the native preview settles completed",
+    mode: "external-ui",
+    covers: ["PreviewMediaHandle.completed"],
+    reason: "the panel closes on a real gesture only: it outlives the page that opened it, an in-process AX invoke does not reach the host's own window, and a synthetic key lands wherever desktop focus is — DESKTOP-PREVIEW-MEDIA-001 proves presentation and the close control",
+  },
+  {
     id: "PEND-KEYS-001",
     title: "onKeyDown and onKeyUp fire from PageDriver.key",
     mode: "planned",

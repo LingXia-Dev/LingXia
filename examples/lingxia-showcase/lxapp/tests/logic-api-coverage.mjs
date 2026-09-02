@@ -90,7 +90,7 @@ export default {
     { "api": "DownloadTask.cancel", "mode": "automated", "owner": "TRANSFER-CANCEL-001" },
     { "api": "PreviewMediaHandle.presented", "mode": "automated", "owner": "DESKTOP-PREVIEW-MEDIA-001", "targets": ["macos"] },
     { "api": "PreviewMediaHandle.onChange", "mode": "automated", "owner": "DESKTOP-PREVIEW-MEDIA-001", "targets": ["macos"] },
-    { "api": "PreviewMediaHandle.completed", "mode": "automated", "owner": "DESKTOP-PREVIEW-MEDIA-001", "targets": ["macos"] },
+    { "api": "PreviewMediaHandle.completed", "mode": "external-ui", "owner": "PEND-PREVIEW-DISMISS-001" },
     { "api": "CompressVideoTask.wait", "mode": "automated", "owner": "MEDIA-PROCESS-001" },
     { "api": "CompressVideoTask.cancel", "mode": "automated", "owner": "MEDIA-PROCESS-CANCEL-001" },
     { "api": "Storage.get", "mode": "automated", "owner": "TODO-001" },
@@ -111,6 +111,6 @@ export default {
     { "api": "VideoContext.pause", "mode": "automated", "owner": "NATIVE-VIDEO-001" },
     { "api": "VideoContext.stop", "mode": "automated", "owner": "NATIVE-VIDEO-PLAYBACK-001" },
     { "api": "VideoContext.seek", "mode": "automated", "owner": "NATIVE-VIDEO-PLAYBACK-001" },
-    { "api": "VideoContext.requestFullScreen", "mode": "automated", "owner": "DESKTOP-VIDEO-FULLSCREEN-001", "targets": ["windows", "macos"] }
+    { "api": "VideoContext.requestFullScreen", "mode": "automated", "owner": "DESKTOP-VIDEO-FULLSCREEN-001", "targets": ["macos"] }
   ]
 };

@@ -7,7 +7,10 @@ import { bindFixture, eventually } from '../../helpers/poll.js';
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const httpBase = testArgs.httpBase;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
-const fullscreenSpec = httpBase && !selectedGate ? spec : spec.skip;
+// Windows rejects `requestFullScreen` with an internal error, so the contract
+// is proven where the host implements it; PEND-VIDEO-FS-WINDOWS-001 owns the gap.
+const targetPlatform = testArgs.platform?.toLowerCase();
+const fullscreenSpec = httpBase && !selectedGate && targetPlatform !== 'windows' ? spec : spec.skip;
 const VIDEO_ID = 'lx-video-source-fixture';
 
 fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
