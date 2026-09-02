@@ -1707,6 +1707,15 @@ export type TabBarApi = globalThis.TabBarApi;
 export type TabBarItemPatch = {
     index: number;
     text?: string | null;
+    /**
+     * Package-relative path, or an `lx://temp` / `lx://usercache` /
+     * `lx://userdata` path from a LingXia file API. Network URLs are rejected —
+     * download first (`lx.downloadFile`) and pass the returned path.
+     *
+     * Template-tinted on most hosts (`foregroundColor` /
+     * `selectedForegroundColor`). Ship a monochrome glyph; a colour logo becomes
+     * a flat silhouette. HarmonyOS PNG is the exception — don't rely on it.
+     */
     iconPath?: string | null;
     badge?: string | null;
     redDot?: boolean;

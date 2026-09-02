@@ -176,6 +176,29 @@ fn error_data_to_json(data: &ErrorData) -> Value {
     }
 }
 
+impl LxAppError {
+    /// The message without the variant's prefix.
+    ///
+    /// Every variant's `Display` prepends or appends its own label, which reads
+    /// as noise once the caller has already framed the failure: nesting them
+    /// produces "Invalid parameter: iconPath: Invalid parameter: …", and the
+    /// variants that append produce "directory traversal not allowed not
+    /// found". Use this when embedding one error's reason inside another's
+    /// sentence.
+    pub fn detail(&self) -> Option<&str> {
+        match self {
+            Self::WebView(detail)
+            | Self::ResourceNotFound(detail)
+            | Self::InvalidJsonFile(detail)
+            | Self::InvalidParameter(detail)
+            | Self::UnsupportedOperation(detail)
+            | Self::IoError(detail)
+            | Self::Runtime(detail) => Some(detail),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::LxAppError;
