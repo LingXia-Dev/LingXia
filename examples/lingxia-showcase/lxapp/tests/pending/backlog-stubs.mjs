@@ -34,10 +34,10 @@ export default [
   },
   {
     id: "PEND-DESTRUCTIVE-001",
-    title: "exit, navigateBackApp, and applyUpdate end the session under test",
+    title: "exit and applyUpdate end the host process under test",
     mode: "planned",
-    covers: ["lx.app.exit", "lx.navigateBackApp", "UpdateManager.applyUpdate"],
-    reason: "each tears down the lxapp the suite is driving; they need a throwaway session per case",
+    covers: ["lx.app.exit", "UpdateManager.applyUpdate"],
+    reason: "lx.app.exit exits the whole host (proven: calling it inside the bundled chat lxapp killed the dev session), so it needs an outer lane that owns the process, not an in-suite spec",
   },
   {
     id: "PEND-UPDATE-INFO-001",
@@ -122,13 +122,6 @@ export default [
     mode: "external-ui",
     covers: ["lx.createVideoContext", "VideoContext.requestFullScreen"],
     reason: "fullscreen is a host chrome transition, not an in-page control",
-  },
-  {
-    id: "PEND-NAVAPP-001",
-    title: "navigateToApp opens or rejects with a stable code",
-    mode: "external-fixture",
-    covers: ["lx.navigateToApp"],
-    reason: "needs a second-lxapp fixture beyond the live Showcase session",
   },
   {
     id: "PEND-VIDEO-STREAM-001",
