@@ -566,7 +566,7 @@ fn apply_sdk_steps(root: &Path, steps: &[SdkStep], sdk_version: &str) -> Vec<Str
                     Ok(path) => println!("    {} {}", "✓".green(), path.display()),
                     Err(err) => {
                         println!(
-                            "    {} {err}\n      Pins are updated; `lingxia build` will retry the fetch.",
+                            "    {} {err}\n      Pins are updated; re-run `lingxia upgrade`, or `lingxia build`, to retry the fetch.",
                             "!".yellow()
                         );
                         failures.push(format!(
