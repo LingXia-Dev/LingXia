@@ -80,10 +80,15 @@ const targetPlatform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Re
 const locationTest = targetPlatform && targetPlatform !== 'macos' ? spec.skip : spec;
 const promptAppearanceGraceMs = 5_000;
 
-locationTest('handles the macOS location permission sheet when it appears', async (t) => {
+locationTest('handles the macOS location permission sheet when it appears', {
+  id: 'MACOS-LOCATION-001',
+  covers: ['lx.getLocation', 'DesktopDriver.windows', 'DesktopAx.query', 'DesktopAx.invoke'],
+}, async (t) => {
   const auto = lx.automation();
   const app = auto.lxapp();
-  if (await runtimePlatform(app) !== 'macos') return;
+  // This case claims lx.getLocation; a silent pass elsewhere would credit it falsely.
+  const platform = await runtimePlatform(app);
+  if (platform !== 'macos') throw new Error(`macOS location case ran against ${platform || 'unknown'}`);
   const doctor = await auto.desktop.doctor();
   const { permissions } = doctor;
 
