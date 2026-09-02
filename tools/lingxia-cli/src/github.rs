@@ -77,24 +77,16 @@ pub fn download_release_asset_from_repo(
         repo, tag
     );
 
-    let mut request = agent
-        .get(&release_url)
-        .header("User-Agent", "lingxia-cli")
-        .header("Accept", "application/vnd.github+json");
+    let response =
+        get_api_text(&release_url, token.as_deref(), DOWNLOAD_TIMEOUT_SECS).map_err(|e| {
+            anyhow!(
+                "Failed to fetch release info\n  Tag: {}\n  Cause: {}",
+                tag,
+                e
+            )
+        })?;
 
-    if let Some(ref token) = token {
-        request = request.header("Authorization", &format!("Bearer {}", token));
-    }
-
-    let mut response = request.call().map_err(|e| {
-        anyhow!(
-            "Failed to fetch release info\n  Tag: {}\n  Cause: {}",
-            tag,
-            e
-        )
-    })?;
-
-    let status = response.status().as_u16();
+    let status = response.status;
     if status != 200 {
         let hint = match status {
             404 => {
@@ -111,12 +103,8 @@ pub fn download_release_asset_from_repo(
         ));
     }
 
-    let body = response
-        .body_mut()
-        .read_to_string()
-        .context("Failed to read release info")?;
     let release: GitHubRelease =
-        serde_json::from_str(&body).context("Failed to parse release info")?;
+        serde_json::from_str(&response.body).context("Failed to parse release info")?;
 
     // Step 2: Find the asset by name
     let asset = release
@@ -185,6 +173,162 @@ pub fn download_release_asset_from_repo(
         .body_mut()
         .read_to_vec()
         .context("Failed to read asset data")
+}
+
+/// A GitHub API response body plus the status it came back with.
+struct ApiText {
+    status: u16,
+    body: String,
+}
+
+/// GET a GitHub API endpoint as text.
+///
+/// Falls back to the system `curl`/`wget` the way asset downloads do: a
+/// transport failure here is almost always a TLS trust problem (intercepting
+/// proxy, custom root) that the system tools are already configured for, and
+/// without the fallback it takes down the whole release lookup — the step every
+/// SDK fetch and update check starts with.
+fn get_api_text(url: &str, token: Option<&str>, timeout_secs: u64) -> Result<ApiText> {
+    let agent = create_agent(timeout_secs);
+    let mut request = agent
+        .get(url)
+        .header("User-Agent", "lingxia-cli")
+        .header("Accept", "application/vnd.github+json");
+    if let Some(token) = token {
+        request = request.header("Authorization", &format!("Bearer {}", token));
+    }
+
+    let transport_err = match request.call() {
+        Ok(mut response) => {
+            let status = response.status().as_u16();
+            match response.body_mut().read_to_string() {
+                Ok(body) => return Ok(ApiText { status, body }),
+                Err(err) => err,
+            }
+        }
+        Err(err) => err,
+    };
+
+    match get_api_text_with_system_tool(url, token, timeout_secs) {
+        Ok(Some(text)) => Ok(text),
+        Ok(None) => Err(anyhow!("{transport_err}{}", transport_hint(&transport_err))),
+        Err(system_err) => Err(anyhow!(
+            "{transport_err}{}\n  Fallback: {system_err}",
+            transport_hint(&transport_err)
+        )),
+    }
+}
+
+/// Extra guidance for the failure mode we cannot work around ourselves.
+fn transport_hint(err: &ureq::Error) -> String {
+    if err.to_string().contains("certificate") {
+        "\n  Hint: TLS trust failure. If this network inspects TLS, install its root CA in the \
+         system trust store or point SSL_CERT_FILE at it."
+            .to_string()
+    } else {
+        String::new()
+    }
+}
+
+fn get_api_text_with_system_tool(
+    url: &str,
+    token: Option<&str>,
+    timeout_secs: u64,
+) -> Result<Option<ApiText>> {
+    if let Some(text) = get_api_text_with_curl(url, token, timeout_secs)? {
+        return Ok(Some(text));
+    }
+    get_api_text_with_wget(url, token, timeout_secs)
+}
+
+fn get_api_text_with_curl(
+    url: &str,
+    token: Option<&str>,
+    timeout_secs: u64,
+) -> Result<Option<ApiText>> {
+    let mut command = Command::new("curl");
+    // The fallback inherits the caller's budget: the update check gives this
+    // whole lookup a few seconds and must not hang on a dead network.
+    command.args(["--max-time", &timeout_secs.to_string()]);
+    command.args([
+        "--silent",
+        "--show-error",
+        "--location",
+        "--http1.1",
+        "-H",
+        "User-Agent: lingxia-cli",
+        "-H",
+        "Accept: application/vnd.github+json",
+        // Keep the status: the callers branch on 404/403 rather than on failure.
+        "-w",
+        "\n%{http_code}",
+    ]);
+    if let Some(token) = token {
+        command.args(["-H", &format!("Authorization: Bearer {token}")]);
+    }
+    command.arg(url);
+
+    match command.output() {
+        Ok(output) if output.status.success() => {
+            split_status_suffix(&String::from_utf8_lossy(&output.stdout)).map(Some)
+        }
+        Ok(output) => Err(anyhow!(
+            "curl failed to fetch {url}\n  Status: {}\n  Stderr: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        )),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err).context("Failed to invoke curl for GitHub API request"),
+    }
+}
+
+fn get_api_text_with_wget(
+    url: &str,
+    token: Option<&str>,
+    timeout_secs: u64,
+) -> Result<Option<ApiText>> {
+    let mut command = Command::new("wget");
+    command.args(["--tries=1", &format!("--timeout={timeout_secs}")]);
+    command.args([
+        "-qO-",
+        "--header=User-Agent: lingxia-cli",
+        "--header=Accept: application/vnd.github+json",
+    ]);
+    if let Some(token) = token {
+        command.arg(format!("--header=Authorization: Bearer {token}"));
+    }
+    command.arg(url);
+
+    match command.output() {
+        // wget has no cheap way to hand back the status, and it only exits 0 on
+        // a 2xx, so a success is a 200 as far as the callers are concerned.
+        Ok(output) if output.status.success() => Ok(Some(ApiText {
+            status: 200,
+            body: String::from_utf8_lossy(&output.stdout).into_owned(),
+        })),
+        Ok(output) => Err(anyhow!(
+            "wget failed to fetch {url}\n  Status: {}\n  Stderr: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        )),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err).context("Failed to invoke wget for GitHub API request"),
+    }
+}
+
+/// Split curl's `-w '\n%{http_code}'` suffix off the response body.
+fn split_status_suffix(raw: &str) -> Result<ApiText> {
+    let (body, status) = raw
+        .rsplit_once('\n')
+        .ok_or_else(|| anyhow!("curl returned no status code"))?;
+    let status = status
+        .trim()
+        .parse::<u16>()
+        .with_context(|| format!("curl returned an unreadable status code {status:?}"))?;
+    Ok(ApiText {
+        status,
+        body: body.to_string(),
+    })
 }
 
 fn download_release_asset_with_system_tool(
@@ -256,44 +400,30 @@ fn download_with_wget(asset_url: &str, token: Option<&str>) -> Result<Option<Vec
 
 pub fn latest_cli_release_from_repo(repo: &str) -> Result<CliReleaseTag> {
     let token = get_token();
-    let agent = create_agent(RELEASE_INFO_TIMEOUT_SECS);
     let releases_url = format!(
         "https://api.github.com/repos/{}/releases?per_page=100",
         repo
     );
 
-    let mut request = agent
-        .get(&releases_url)
-        .header("User-Agent", "lingxia-cli")
-        .header("Accept", "application/vnd.github+json");
+    let response = get_api_text(&releases_url, token.as_deref(), RELEASE_INFO_TIMEOUT_SECS)
+        .map_err(|e| {
+            anyhow!(
+                "Failed to fetch release list\n  Repo: {}\n  Cause: {}",
+                repo,
+                e
+            )
+        })?;
 
-    if let Some(ref token) = token {
-        request = request.header("Authorization", &format!("Bearer {}", token));
-    }
-
-    let mut response = request.call().map_err(|e| {
-        anyhow!(
-            "Failed to fetch release list\n  Repo: {}\n  Cause: {}",
-            repo,
-            e
-        )
-    })?;
-
-    let status = response.status().as_u16();
-    if status != 200 {
+    if response.status != 200 {
         return Err(anyhow!(
             "Failed to fetch release list (HTTP {})\n  Repo: {}\n  Hint: set GITHUB_TOKEN for private repos",
-            status,
+            response.status,
             repo
         ));
     }
 
-    let body = response
-        .body_mut()
-        .read_to_string()
-        .context("Failed to read release list")?;
     let releases: Vec<GitHubReleaseSummary> =
-        serde_json::from_str(&body).context("Failed to parse release list")?;
+        serde_json::from_str(&response.body).context("Failed to parse release list")?;
 
     select_latest_cli_release(releases)
         .ok_or_else(|| anyhow!("No valid CLI release found in GitHub release list"))
@@ -339,6 +469,26 @@ fn download_url_direct(url: &str) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn split_status_suffix_keeps_a_multiline_body() {
+        let parsed = split_status_suffix("{\n  \"tag_name\": \"v1\"\n}\n200").unwrap();
+        assert_eq!(parsed.status, 200);
+        assert_eq!(parsed.body, "{\n  \"tag_name\": \"v1\"\n}");
+    }
+
+    #[test]
+    fn split_status_suffix_reports_an_error_status() {
+        let parsed = split_status_suffix("Not Found\n404").unwrap();
+        assert_eq!(parsed.status, 404);
+        assert_eq!(parsed.body, "Not Found");
+    }
+
+    #[test]
+    fn split_status_suffix_rejects_output_without_a_status() {
+        assert!(split_status_suffix("no status here").is_err());
+        assert!(split_status_suffix("body\nnot-a-status").is_err());
+    }
 
     #[test]
     fn select_latest_cli_release_uses_highest_semver() {
