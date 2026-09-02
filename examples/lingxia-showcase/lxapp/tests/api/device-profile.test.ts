@@ -50,28 +50,50 @@ desktopSpec('reject haptics and the dialer with E_NOT_SUPPORTED on a desktop', {
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(stackBefore);
 });
 
+/** Orientation is a real setting on a phone and on macOS, and absent on Windows. */
+const ORIENTATION_SUPPORT: Record<string, boolean> = {
+  macos: true,
+  android: true,
+  ios: true,
+  harmony: true,
+  windows: false,
+};
+
 spec('accept both device orientations and reject an unknown one', {
   id: 'DEVICE-ORIENTATION-001',
   covers: ['lx.setDeviceOrientation'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'DEVICE-ORIENTATION-001');
+  const supported = ORIENTATION_SUPPORT[platform ?? ''] ?? true;
   defer(async () => {
     await app.eval({ script: `lx.setDeviceOrientation('portrait'); return true;` }).catch(() => undefined);
   });
 
   const result = await app.eval({
     script: `
-      const landscape = lx.setDeviceOrientation('landscape');
-      const portrait = lx.setDeviceOrientation('portrait');
-      let invalid = null;
-      try { lx.setDeviceOrientation('sideways'); }
-      catch (error) { invalid = error && error.code; }
-      return { landscape, portrait, invalid };
+      const attempt = (value) => {
+        try { return { ok: true, value: lx.setDeviceOrientation(value) }; }
+        catch (error) { return { ok: false, code: error && error.code }; }
+      };
+      return {
+        landscape: attempt('landscape'),
+        portrait: attempt('portrait'),
+        invalid: attempt('sideways'),
+      };
     `,
-  }) as { landscape: boolean; portrait: boolean; invalid: string | null };
+  }) as Record<'landscape' | 'portrait' | 'invalid', { ok: boolean; value?: unknown; code?: string }>;
 
-  expect(result.landscape).toBe(true);
-  expect(result.portrait).toBe(true);
-  expect(result.invalid).toBe('E_INVALID_ARG');
+  if (!supported) {
+    // Absent-proven: a host without orientation rejects with a stable code
+    // rather than silently pretending it rotated.
+    expect(result.landscape.ok).toBe(false);
+    expect(result.landscape.code).toBe('E_NOT_SUPPORTED');
+    expect(result.portrait.code).toBe('E_NOT_SUPPORTED');
+    return;
+  }
+  expect(result.landscape.value).toBe(true);
+  expect(result.portrait.value).toBe(true);
+  expect(result.invalid.ok).toBe(false);
+  expect(result.invalid.code).toBe('E_INVALID_ARG');
 });

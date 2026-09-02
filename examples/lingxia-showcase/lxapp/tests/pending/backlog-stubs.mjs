@@ -140,6 +140,13 @@ export default [
     reason: "a phone draws these natively, outside the page: the page cannot read them and only a system tap answers them; dismissing one with the system Back leaves the promise pending, so a spec that opened one would leak it",
   },
   {
+    id: "PEND-NAVAPP-DESKTOP-001",
+    title: "the cross-lxapp hop on a desktop host",
+    mode: "planned",
+    covers: ["lx.navigateToApp", "lx.navigateBackApp"],
+    reason: "Windows leaves the target current after navigateBackApp instead of returning to the caller, and on both desktops the hop leaves the bundled chat lxapp in a state the workspace cases cannot reuse; NAV-APP-001 proves the contract on Android",
+  },
+  {
     id: "PEND-KEYS-001",
     title: "onKeyDown and onKeyUp fire from PageDriver.key",
     mode: "planned",

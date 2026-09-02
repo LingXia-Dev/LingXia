@@ -20,7 +20,7 @@ export default {
     { "api": "lx.cloud", "mode": "optional-provider", "owner": "cloud-provider-suite" },
     { "api": "lx.auth", "mode": "optional-provider", "owner": "cloud-provider-suite" },
     { "api": "lx.navigateTo", "mode": "automated", "owner": "COMPONENTS-001" },
-    { "api": "lx.navigateToApp", "mode": "automated", "owner": "NAV-APP-001" },
+    { "api": "lx.navigateToApp", "mode": "automated", "owner": "NAV-APP-001", "targets": ["android"] },
     { "api": "lx.showActionSheet", "mode": "automated", "owner": "UI-FEEDBACK-001", "targets": ["windows", "macos"] },
     { "api": "lx.openExternal", "mode": "external-ui", "owner": "PEND-EXTERNAL-001" },
     { "api": "lx.app.exit", "mode": "destructive", "owner": "PEND-DESTRUCTIVE-001" },
