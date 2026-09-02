@@ -171,7 +171,7 @@ pub fn execute(
             template_provider::run_create(provider, &staged_dir, &template_args, !yes)?;
             template_provider::write_project_lock(provider, &staged_dir)?;
         }
-        setup_ai_tooling(&staged_dir, yes);
+        setup_ai_tooling(&staged_dir);
         std::fs::rename(&staged_dir, &target_dir).with_context(|| {
             format!(
                 "Failed to activate generated project at {}",
@@ -270,7 +270,7 @@ pub fn execute(
         None
     };
     generate_config_file(&config, lxapp_info.as_ref(), main, app_service)?;
-    setup_ai_tooling(&config.target_dir, yes);
+    setup_ai_tooling(&config.target_dir);
     setup_git_repository(&config.target_dir, no_git);
 
     println!();
@@ -351,58 +351,21 @@ fn select_template_provider(name: Option<&str>, yes: bool) -> Result<Option<Inst
 }
 
 /// Set up AI tooling (the LingXia agent skill) in the freshly created project.
-/// Opt-out: installs by default, including in non-interactive/`--yes` mode. A
-/// declined prompt or a failed install never fails `lingxia new` — we fall back
-/// to printing the manual one-liners.
-fn setup_ai_tooling(project_dir: &std::path::Path, yes: bool) {
-    // The skill body is shared by every project. Once it is in the home
-    // directory there is nothing to decide: the rest is the project's own
-    // AGENTS.md pointer, which belongs to the scaffold like any other file.
-    let already_installed = crate::commands::skill::user_install_exists();
-    let proceed = if yes || already_installed {
-        true
-    } else {
-        Confirm::with_theme(&ColorfulTheme::default())
-            .with_prompt("Set up AI tooling (installs the LingXia agent skill)?")
-            .default(true)
-            .interact()
-            .unwrap_or(false)
-    };
-
-    if !proceed {
-        print_manual_skill_hint();
-        return;
-    }
-
-    if let Err(err) = run_skill_install(project_dir) {
+///
+/// Not a choice to make: the skill body goes to `~/.claude/skills/` (shared by
+/// every LingXia project, discovered by Claude Code) rather than being vendored
+/// per repo, and the project gets a small, committable `AGENTS.md` pointer for
+/// tools that only read a project-level AGENTS.md. Both belong to the scaffold
+/// like any other generated file, and every later CLI run keeps the skill in
+/// step on its own. A failure never fails `lingxia new`.
+fn setup_ai_tooling(project_dir: &std::path::Path) {
+    println!("{}", "Setting up AI tooling...".bold());
+    if let Err(err) = crate::commands::skill::install_for_new_project(project_dir) {
         eprintln!(
             "{}",
             format!("warning: AI tooling setup did not complete: {err}").yellow()
         );
-        print_manual_skill_hint();
     }
-}
-
-/// Write the skill this binary carries into `~/.claude/skills/` (shared by
-/// every LingXia project, discovered by Claude Code) instead of vendoring a
-/// copy per repo, plus a small, committable `AGENTS.md` pointer in the project
-/// for tools that only read a project-level AGENTS.md.
-fn run_skill_install(project_dir: &std::path::Path) -> Result<()> {
-    println!("{}", "Setting up AI tooling...".bold());
-    crate::commands::skill::install_for_new_project(project_dir)
-}
-
-fn print_manual_skill_hint() {
-    println!("{}", "AI tooling (install later):".bold());
-    println!(
-        "  {}              # for Claude Code / Anthropic Skills",
-        "lingxia skill install".cyan()
-    );
-    println!(
-        "  {}  # for Codex CLI / AGENTS.md tools",
-        "lingxia skill install --agents-md".cyan()
-    );
-    println!();
 }
 
 // Platform-specific helpers are in `commands/new/*`.

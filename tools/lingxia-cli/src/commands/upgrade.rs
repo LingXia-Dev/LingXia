@@ -52,8 +52,14 @@ pub fn execute(check: bool, version: Option<String>, yes: bool) -> Result<i32> {
 
     let cli = run_cli_step(check, version.as_deref(), project_root.is_some())?;
 
-    if should_refresh_skill(&cli, check) {
-        crate::update::refresh_installed_skill();
+    if should_sync_skill(&cli, check) {
+        crate::update::sync_installed_skill(true);
+    }
+    // A replaced binary carries a skill this process cannot produce, so the new
+    // executable writes it before anything else runs.
+    #[cfg(not(target_os = "windows"))]
+    if let CliStep::Replaced { exe } = &cli {
+        crate::update::sync_skill_through(exe);
     }
 
     if let Some(root) = project_root.as_deref() {
@@ -109,7 +115,10 @@ fn rerun_command(version: Option<&str>, yes: bool) -> String {
     command
 }
 
-fn should_refresh_skill(cli: &CliStep, check: bool) -> bool {
+/// Whether this process writes the skill itself. It may only do so when the
+/// binary on disk is the one running: a replaced binary carries a different
+/// skill, and `--check` promises to install nothing.
+fn should_sync_skill(cli: &CliStep, check: bool) -> bool {
     !check && matches!(cli, CliStep::UpToDate)
 }
 
@@ -184,10 +193,7 @@ fn run_cli_step(check: bool, version: Option<&str>, in_project: bool) -> Result<
     );
     match kind {
         #[cfg(not(target_os = "windows"))]
-        SelfReplace::Complete => {
-            println!("  The installed agent skill refreshes on the next run of this CLI.");
-            Ok(CliStep::Replaced { exe: exe_path })
-        }
+        SelfReplace::Complete => Ok(CliStep::Replaced { exe: exe_path }),
         #[cfg(target_os = "windows")]
         SelfReplace::Deferred => Ok(CliStep::Staged),
     }
@@ -346,10 +352,18 @@ mod tests {
     }
 
     #[test]
-    fn check_never_refreshes_the_installed_skill() {
-        assert!(!should_refresh_skill(&CliStep::UpToDate, true));
-        assert!(should_refresh_skill(&CliStep::UpToDate, false));
-        assert!(!should_refresh_skill(&CliStep::Unavailable, false));
+    fn only_the_binary_that_carries_the_skill_writes_it() {
+        assert!(!should_sync_skill(&CliStep::UpToDate, true));
+        assert!(should_sync_skill(&CliStep::UpToDate, false));
+        assert!(!should_sync_skill(&CliStep::Unavailable, false));
+        // A replaced binary is a different skill; the new executable writes it.
+        #[cfg(not(target_os = "windows"))]
+        assert!(!should_sync_skill(
+            &CliStep::Replaced {
+                exe: PathBuf::from("lingxia")
+            },
+            false
+        ));
     }
 
     #[test]
