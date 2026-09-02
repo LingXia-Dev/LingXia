@@ -80,8 +80,12 @@ pub use lxapp::{
     open_lxapp, open_region, page_chrome, refresh_auto_appearances, register_builtin_asset_bundle,
     register_dev_bundle_source, register_surface_active_main_observer,
     register_surface_close_observer, register_surface_context_observer,
-    register_surface_visibility_observer, register_synthetic_lxapp, restart_lxapp,
-    set_automation_auto_grant, set_display_language, set_display_language_in, tabbar,
+    register_surface_visibility_observer, register_synthetic_lxapp,
+    registry::{
+        display_icon_path as lxapp_display_icon_path, display_name as lxapp_display_name,
+        display_status as lxapp_registry_status, refresh_registry as refresh_lxapp_registry,
+    },
+    restart_lxapp, set_automation_auto_grant, set_display_language, set_display_language_in, tabbar,
     touch_page_instance_by_id, try_get, uninstall_lxapp,
 };
 pub use native_component::{

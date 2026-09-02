@@ -43,6 +43,7 @@ pub(crate) mod metadata;
 pub mod navbar;
 pub mod page_chrome;
 mod page_instance_host;
+pub(crate) mod registry;
 mod runtime_bootstrap;
 mod runtime_ops;
 pub(crate) mod runtime_registry;

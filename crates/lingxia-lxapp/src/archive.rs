@@ -87,7 +87,7 @@ pub fn verify_sha256(path: &Path, expected_hex: &str) -> Result<(), LxAppError> 
     if expected_hex.is_empty() {
         return Ok(());
     }
-    let actual = compute_sha256_hex(path)?;
+    let actual = sha256_hex(path)?;
     if actual.eq_ignore_ascii_case(expected_hex) {
         Ok(())
     } else {
@@ -99,7 +99,7 @@ pub fn verify_sha256(path: &Path, expected_hex: &str) -> Result<(), LxAppError> 
 }
 
 /// Compute SHA-256 of a file and return lowercase hex string.
-fn compute_sha256_hex(path: &Path) -> Result<String, LxAppError> {
+pub fn sha256_hex(path: &Path) -> Result<String, LxAppError> {
     use std::fmt::Write;
 
     let mut file = fs::File::open(path)?;
