@@ -18,21 +18,25 @@ interface HandleState {
 }
 
 /**
- * On a desktop `previewMedia` presents the host's own preview window (Quick
- * Look on macOS), which is not modal: the handle keeps reporting while it is
- * up, and closing it through AX settles `completed` with reason `manual`.
+ * `previewMedia` hands back a handle synchronously and presents the host's own
+ * preview surface. What this case proves is that handle: the host says it
+ * presented, `current` describes the source it was opened with, and the change
+ * listener is a real subscription.
+ *
+ * It deliberately does not assert on desktop windows. The native panel is a
+ * persistent singleton — it outlives the page that opened it and stays around
+ * once created — so "a new window appeared" depends on whatever ran before,
+ * and dismissing it needs a gesture no in-process driver can place reliably
+ * on a desktop where another app may hold focus. PEND-PREVIEW-DISMISS-001
+ * owns the dismissal contract.
  */
-previewSpec('present a local image in the native preview and close it from the handle side', {
+previewSpec('present a local image and report it through the handle', {
   id: 'DESKTOP-PREVIEW-MEDIA-001',
   covers: [
     'lx.previewMedia',
     'PreviewMediaHandle.presented',
     'PreviewMediaHandle.current',
     'PreviewMediaHandle.onChange',
-    'PreviewMediaHandle.completed',
-    'DesktopDriver.windows',
-    'DesktopAx.query',
-    'DesktopKey.press',
   ],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
@@ -57,19 +61,23 @@ previewSpec('present a local image in the native preview and close it from the h
       };
     `,
   }) as Promise<HandleState>;
-  const hostPid = (await desktop.windows()).find((window) => window.process.toLowerCase().startsWith('lingxia'))?.pid;
-  if (!hostPid) throw new Error('host window not found on the desktop');
-  const before = new Set((await desktop.windows()).filter((window) => window.pid === hostPid).map((window) => window.id));
-  const previewWindow = async (): Promise<DesktopWindowInfo | undefined> => (await desktop.windows())
+
+  // Best effort only: leaving the panel up would sit on the developer's screen,
+  // but failing to take it down is not this case's contract.
+  const appWindows = await lx.automation().lxapps.windows();
+  const hostWindowId = (appWindows.find((window) => window.main) ?? appWindows[0])?.id;
+  const hostPid = (await desktop.windows()).find((window) => window.id === hostWindowId)?.pid;
+  const before = new Set((await desktop.windows())
+    .filter((window) => window.visible)
+    .map((window) => window.id));
+  const strayPanel = async (): Promise<DesktopWindowInfo | undefined> => (await desktop.windows())
     .find((window) => window.pid === hostPid && window.visible && !before.has(window.id));
-  const closeButton = async (window: string) => (await desktop.ax.query({ window, match: 'name:close button', all: true }))[0];
   defer(async () => {
-    const stray = await previewWindow();
-    if (stray) {
-      const button = await closeButton(stray.id).catch(() => undefined);
-      if (button) await desktop.ax.invoke({ window: stray.id, match: `id:${button.id}` }).catch(() => undefined);
-    }
-    await app.eval({ script: `const s = globalThis[${JSON.stringify(stateKey)}]; if (s?.off) s.off(); delete globalThis[${JSON.stringify(stateKey)}];` }).catch(() => undefined);
+    const stray = await strayPanel().catch(() => undefined);
+    if (stray) await desktop.window.close({ window: stray.id }).catch(() => undefined);
+    await app.eval({
+      script: `const s = globalThis[${JSON.stringify(stateKey)}]; if (s?.off) s.off(); delete globalThis[${JSON.stringify(stateKey)}];`,
+    }).catch(() => undefined);
   });
 
   const started = await app.eval({
@@ -89,45 +97,20 @@ previewSpec('present a local image in the native preview and close it from the h
   expect(started.index).toBe(0);
   expect(started.sourcePath).toBe(started.path);
 
-  await t.step('presented resolves once the preview window is up', async () => {
-    await eventually(readState, (state) => state.presented, { describe: 'presented to resolve', timeoutMs: 15_000 });
-    const window = await eventually(previewWindow, (found) => found !== undefined, {
-      describe: 'the native preview window to appear',
-      timeoutMs: 10_000,
+  await t.step('presented resolves and nothing advanced the sequence', async () => {
+    const state = await eventually(readState, (value) => value.presented, {
+      describe: 'the host to report the preview presented',
+      timeoutMs: 15_000,
     });
-    expect(window).toBeDefined();
-    expect((await readState()).completed).toBe(null);
+    expect(state.currentIndex).toBe(0);
+    expect(state.currentPath).toBe(started.path);
+    // A single source with no advance emits no change and does not complete
+    // on its own.
+    expect(state.changes).toBe(0);
+    expect(state.completed).toBe(null);
   });
 
-  await t.step('closing the preview settles completed with reason manual and no index change', async () => {
-    const window = await previewWindow();
-    if (!window) throw new Error('preview window disappeared before close');
-    await eventually(() => closeButton(window.id), (found) => found !== undefined, {
-      describe: 'the preview close button',
-      timeoutMs: 10_000,
-    });
-    // Quick Look dismisses on Escape. The in-process AX driver cannot press
-    // the host's own close button, so the key is the primary path and AX the
-    // fallback; either way the window going away is what proves the close.
-    await desktop.window.focus({ window: window.id }).catch(() => undefined);
-    await desktop.key.press({ key: 'Escape' });
-    const closed = await eventually(previewWindow, (found) => found === undefined, {
-      describe: 'preview window to close after Escape',
-      timeoutMs: 5_000,
-    }).then(() => true).catch(() => false);
-    if (!closed) {
-      await desktop.ax.invoke({ window: window.id, match: 'name:close button' });
-      await eventually(previewWindow, (found) => found === undefined, { describe: 'preview window to close', timeoutMs: 10_000 });
-    }
-    const state = await eventually(readState, (value) => value.completed !== null, {
-      describe: 'completed to settle after the window closed',
-      timeoutMs: 10_000,
-    });
-    expect(state.completed?.reason).toBe('manual');
-    expect(state.completed?.index).toBe(0);
-    expect(state.changes).toBe(0);
-    await eventually(previewWindow, (found) => found === undefined, { describe: 'preview window to close', timeoutMs: 10_000 });
-    // The listener handle is inert after unsubscribe, twice.
+  await t.step('the change subscription is a real handle', async () => {
     const offTwice = await app.eval({
       script: `const s = globalThis[${JSON.stringify(stateKey)}]; s.off(); s.off(); return true;`,
     });

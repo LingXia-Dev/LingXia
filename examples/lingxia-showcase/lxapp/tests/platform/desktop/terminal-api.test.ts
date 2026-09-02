@@ -61,9 +61,17 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
   const currentApp = async (): Promise<string> => (await manager.current()).appid;
   const stateKey = `__lingxiaTerminal_${namespace.replace(/-/g, '_')}`;
 
+  // The automation manager resolves an lxapp from the dev directory, which a
+  // host-bundled one is not in, so the shell is the way to open this.
+  // Keep the handle: closing the lxapp leaves its entry in the main switcher,
+  // and the surface handle is what closes the workspace with it.
+  const surfaceKey = `${stateKey}_surface`;
   await app.eval({
     timeoutMs: 20_000,
-    script: `await lx.shell.openApp(${JSON.stringify(TERMINAL_APP_ID)}, { as: 'main' });`,
+    script: `
+      globalThis[${JSON.stringify(surfaceKey)}] =
+        await lx.shell.openApp(${JSON.stringify(TERMINAL_APP_ID)}, { as: 'main' });
+    `,
   });
   await eventually(currentApp, (appid) => appid === TERMINAL_APP_ID, {
     describe: 'terminal settings to become the current lxapp',
@@ -75,25 +83,11 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
     timeoutMs: 20_000,
     retryIf: () => true,
   });
+  // Handing the workspace back is asserted at the end of the body, where it has
+  // the case's own budget; the cleanup hook is only the safety net for a body
+  // that failed earlier, and it must stay inside the short defer budget.
   defer(async () => {
-    // Put the host's own overrides back, then leave the way we came in.
-    await terminal.eval({
-      timeoutMs: 15_000,
-      script: `
-        const state = globalThis[${JSON.stringify(stateKey)}];
-        if (state?.off) state.off();
-        if (state?.overrides) {
-          const latest = await lx.terminal.settings.get();
-          await lx.terminal.settings.update(state.overrides, { ifRevision: latest.revision });
-        }
-        delete globalThis[${JSON.stringify(stateKey)}];
-      `,
-    }).catch(() => undefined);
     await manager.close({ app: TERMINAL_APP_ID }).catch(() => undefined);
-    await eventually(currentApp, (appid) => appid === SHOWCASE_APP_ID, {
-      describe: 'showcase to be current again after closing terminal settings',
-      timeoutMs: 15_000,
-    });
   });
 
   const result = await terminal.eval({
@@ -183,5 +177,42 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
 
   await t.step('the Windows-only integration namespace follows the platform', async () => {
     expect(result.windows).toBe(platform === 'windows' ? 'object' : 'undefined');
+  });
+
+  await t.step('hand the host back its own settings and its root main', async () => {
+    await terminal.eval({
+      timeoutMs: 15_000,
+      script: `
+        const state = globalThis[${JSON.stringify(stateKey)}];
+        if (state?.off) state.off();
+        if (state?.overrides) {
+          const latest = await lx.terminal.settings.get();
+          await lx.terminal.settings.update(state.overrides, { ifRevision: latest.revision });
+        }
+        delete globalThis[${JSON.stringify(stateKey)}];
+      `,
+    });
+    await app.eval({
+      timeoutMs: 20_000,
+      script: `
+        const surface = globalThis[${JSON.stringify(surfaceKey)}];
+        if (surface) await surface.close();
+        delete globalThis[${JSON.stringify(surfaceKey)}];
+      `,
+    });
+    await eventually(currentApp, (appid) => appid === SHOWCASE_APP_ID, {
+      describe: 'showcase to be current again after closing terminal settings',
+      timeoutMs: 15_000,
+    });
+    // Opening an lxapp as a main puts it in the host's main switcher, and the
+    // current-lxapp answer returns to the Showcase before that switcher does.
+    // Every workspace case after this one starts from the root main, so this
+    // case has to hand it back — or say plainly that it could not.
+    const layout = await eventually(
+      () => app.surfaceLayout(),
+      (snapshot) => snapshot.activeMainId === snapshot.mainSwitcher.rootSurfaceId,
+      { describe: 'the root main to be active again after closing terminal settings', timeoutMs: 20_000 },
+    );
+    expect(layout.mains.includes(TERMINAL_APP_ID)).toBe(false);
   });
 });
