@@ -2324,12 +2324,12 @@ fn build_tab_bar_layout(
         },
         position,
         dimension,
-        app_name: root
-            .map(surface_switcher_title)
-            .unwrap_or(runtime_info.app_name),
+        app_name: root.map(surface_switcher_title).unwrap_or_else(|| {
+            lxapp::lxapp_display_name(&app.appid).unwrap_or(runtime_info.app_name)
+        }),
         app_icon_path: root
             .map(|item| surface_switcher_icon_path(switcher_app, item))
-            .unwrap_or_else(|| app.get_lxapp_info().icon),
+            .unwrap_or_else(|| lxapp::lxapp_display_icon_path(&app.appid).unwrap_or_default()),
         group_id: app.appid.clone(),
         group_target_id,
         group_active,
@@ -2736,7 +2736,7 @@ fn build_pinned_bookmark_item(
 
 fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLayout> {
     let current_appid = active_main_lxapp_id();
-    lxapp::list_lxapps()
+    let listed: Vec<lxapp::LxAppRuntimeInfo> = lxapp::list_lxapps()
         .into_iter()
         .filter(|info| info.appid != owner_appid)
         .filter(|info| !is_builtin_browser_appid(&info.appid))
@@ -2746,12 +2746,20 @@ fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLay
         // but leaves the navigation stack; the sidebar lists only apps the
         // user still has open.
         .filter(|info| info.in_stack)
+        .collect();
+
+    // Populating the list is the trigger for a registry refresh: names and
+    // icons change without any package changing, so nothing else would notice.
+    // It returns immediately; this paint uses whatever is already cached.
+    let appids: Vec<String> = listed.iter().map(|info| info.appid.clone()).collect();
+    lxapp::refresh_lxapp_registry(&appids);
+
+    listed
+        .into_iter()
         .map(|info| {
-            let title = if info.app_name.trim().is_empty() {
-                info.appid.clone()
-            } else {
-                info.app_name
-            };
+            let title = lxapp::lxapp_display_name(&info.appid)
+                .or_else(|| Some(info.app_name.clone()).filter(|name| !name.trim().is_empty()))
+                .unwrap_or_else(|| info.appid.clone());
             let icon_path = lxapp_auxiliary_icon_path(&info.appid);
             WindowsShellAuxiliaryItemLayout {
                 id: format!("{AUX_LXAPP_PREFIX}{}", info.appid),
@@ -2767,14 +2775,12 @@ fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLay
         .collect()
 }
 
-/// Sidebar row icon for an open lxapp: the lxapp's own declared icon, else
-/// the icon of its configured surface/panel slot (matching the panel
-/// footer action), else empty so the row falls back to the LingXia mark.
+/// Sidebar row icon for an open lxapp: the registry's cached artwork, else the
+/// icon the package declares, else the icon of its configured surface/panel
+/// slot (matching the panel footer action), else empty so the row falls back to
+/// the LingXia mark.
 fn lxapp_auxiliary_icon_path(appid: &str) -> String {
-    let own_icon = lxapp::try_get(appid)
-        .map(|app| app.get_lxapp_info().icon)
-        .filter(|icon| !icon.trim().is_empty());
-    if let Some(icon) = own_icon {
+    if let Some(icon) = lxapp::lxapp_display_icon_path(appid) {
         return icon;
     }
     let panel_icon = lingxia_app_context::app_config()
