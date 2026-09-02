@@ -57,10 +57,10 @@ export default [
   },
   {
     id: "PEND-PHOTOS-001",
-    title: "save image and video into the photos album",
+    title: "save into the photos album on iOS, where the permission sheet gates it",
     mode: "external-ui",
     covers: ["lx.saveImageToPhotosAlbum", "lx.saveVideoToPhotosAlbum"],
-    reason: "photos-library permission sheet is OS UI",
+    reason: "Android is proven by ANDROID-PHOTOS-001 (MediaStore needs no prompt); iOS still shows the photos permission sheet",
   },
   {
     id: "PEND-ORIENT-001",
@@ -120,17 +120,10 @@ export default [
   },
   {
     id: "PEND-WIFI-001",
-    title: "wifi start/stop/list/connect and onWifiConnected",
+    title: "connectWifi joins a network",
     mode: "external-fixture",
-    covers: [
-      "lx.onWifiConnected",
-      "lx.startWifi",
-      "lx.stopWifi",
-      "lx.getWifiList",
-      "lx.getConnectedWifi",
-      "lx.connectWifi",
-    ],
-    reason: "android wifi fixture; desktop has no joinable radio in this suite",
+    covers: ["lx.connectWifi"],
+    reason: "ANDROID-WIFI-001 covers the rest on a real radio; joining opens the system NetworkRequestDialog and would change the device's network, so it needs a lab access point",
   },
   {
     id: "PEND-APPLINK-001",
@@ -138,6 +131,13 @@ export default [
     mode: "external-fixture",
     covers: ["lx.navigateToApp"],
     reason: "needs an /lxapp/open?appId= fixture host",
+  },
+  {
+    id: "PEND-NATIVE-OVERLAY-001",
+    title: "native modal and action sheet on a phone host",
+    mode: "external-ui",
+    covers: ["lx.showModal", "lx.showActionSheet"],
+    reason: "a phone draws these natively, outside the page: the page cannot read them and only a system tap answers them; dismissing one with the system Back leaves the promise pending, so a spec that opened one would leak it",
   },
   {
     id: "PEND-KEYS-001",
