@@ -17,7 +17,7 @@ spec('hop to the bundled chat lxapp and back', {
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
-  const { app, defer } = bindFixture(t, 'NAV-APP-001');
+  const { app, namespace, defer } = bindFixture(t, 'NAV-APP-001');
   const manager = lx.automation().lxapps;
   const rows = (): Promise<LxAppRuntimeInfo[]> => manager.list();
   const currentApp = async (): Promise<string> => (await manager.current()).appid;
@@ -33,15 +33,41 @@ spec('hop to the bundled chat lxapp and back', {
     });
   });
 
+  // An earlier spec may have left chat parked; start from a closed target so
+  // this proves an open, not a switch to something already running.
+  if (isOpen(await rows(), CHAT_APP_ID)) {
+    await manager.close({ app: CHAT_APP_ID });
+    await eventually(rows, (list) => !isOpen(list, CHAT_APP_ID), { describe: 'parked chat to close first' });
+  }
+  const stateKey = `__lingxiaNavApp_${namespace.replace(/-/g, '_')}`;
+  defer(async () => {
+    await app.eval({ script: `delete globalThis[${JSON.stringify(stateKey)}]` }).catch(() => undefined);
+  });
+
   await t.step('navigateToApp makes the target current and keeps the caller alive', async () => {
     // Fire without awaiting: the promise settles after the main switches away
-    // from the caller, which is the transition this eval is part of.
+    // from the caller, which is the transition this eval is part of. Keep the
+    // rejection, so a failure names the cause instead of just timing out.
     await app.eval({
-      script: `void lx.navigateToApp({ appId: ${JSON.stringify(CHAT_APP_ID)} }); return 'scheduled';`,
+      script: `
+        const state = { settled: null };
+        globalThis[${JSON.stringify(stateKey)}] = state;
+        lx.navigateToApp({ appId: ${JSON.stringify(CHAT_APP_ID)} })
+          .then(() => { state.settled = { ok: true }; })
+          .catch((error) => { state.settled = { ok: false, code: error && error.code, message: String(error && error.message) }; });
+        return 'scheduled';
+      `,
     });
-    await eventually(currentApp, (appid) => appid === CHAT_APP_ID, {
-      describe: 'chat to become the current lxapp',
-      timeoutMs: 20_000,
+    await eventually(
+      async () => ({
+        current: await currentApp(),
+        settled: await app.eval({ script: `return globalThis[${JSON.stringify(stateKey)}]?.settled ?? null` }) as
+          { ok: boolean; code?: string; message?: string } | null,
+      }),
+      ({ current, settled }) => current === CHAT_APP_ID || (settled !== null && !settled.ok),
+      { describe: 'chat to become the current lxapp', timeoutMs: 20_000 },
+    ).then(({ settled }) => {
+      if (settled && !settled.ok) throw new Error(`navigateToApp rejected: ${settled.code} ${settled.message}`);
     });
     const list = await rows();
     expect(isOpen(list, CHAT_APP_ID)).toBe(true);
