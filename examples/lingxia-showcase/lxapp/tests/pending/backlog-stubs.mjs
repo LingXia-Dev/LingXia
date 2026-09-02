@@ -201,13 +201,6 @@ export default [
     reason: "needs an /lxapp/open?appId= fixture host",
   },
   {
-    id: "PEND-NAV-QUERY-001",
-    title: "navigateTo query plus PageMessagePort",
-    mode: "planned",
-    covers: ["lx.navigateTo"],
-    reason: "PageMessagePort is unused in Showcase Logic",
-  },
-  {
     id: "PEND-KEYS-001",
     title: "onKeyDown and onKeyUp fire from PageDriver.key",
     mode: "planned",
