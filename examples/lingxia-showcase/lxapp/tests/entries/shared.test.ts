@@ -18,6 +18,7 @@ import '../pages/bridge-repro.test.js';
 import '../pages/stream.test.js';
 import '../pages/surface-port.test.js';
 import '../pages/video-playback.test.js';
+import '../pages/media-info.test.js';
 import '../pages/channel.test.js';
 import '../pages/components.test.js';
 import '../pages/native-components.test.js';

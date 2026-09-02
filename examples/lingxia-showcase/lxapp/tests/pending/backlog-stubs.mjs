@@ -166,20 +166,6 @@ export default [
     reason: "android wifi fixture; desktop has no joinable radio in this suite",
   },
   {
-    id: "PEND-MEDIA-INFO-001",
-    title: "compress, thumbnail, getVideoInfo, and CompressVideoTask",
-    mode: "external-fixture",
-    covers: [
-      "lx.getVideoInfo",
-      "lx.extractVideoThumbnail",
-      "lx.compressVideo",
-      "lx.compressImage",
-      "CompressVideoTask.wait",
-      "CompressVideoTask.cancel",
-    ],
-    reason: "needs a checked-in media fixture larger than the shape check",
-  },
-  {
     id: "PEND-APPLINK-001",
     title: "inbound App Link opens the declared lxapp",
     mode: "external-fixture",
