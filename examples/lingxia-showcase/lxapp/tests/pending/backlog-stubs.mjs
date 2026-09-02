@@ -55,10 +55,10 @@ export default [
   },
   {
     id: "PEND-LOCATION-001",
-    title: "read coordinates or a stable deny code from getLocation",
+    title: "getLocation through the Android / iOS permission sheet",
     mode: "external-ui",
     covers: ["lx.getLocation"],
-    reason: "permission sheet / location grant is host OS UI",
+    reason: "macOS is proven by MACOS-LOCATION-001 over AX; the mobile permission sheet still needs a device-lab UI driver",
   },
   {
     id: "PEND-MEDIA-PICK-001",
