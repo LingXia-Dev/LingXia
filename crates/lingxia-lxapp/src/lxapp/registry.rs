@@ -166,6 +166,33 @@ fn attempt_key(appid: &str, locale: &str) -> String {
     format!("{}::{}", appid, locale)
 }
 
+type RegistryChangeListener = Box<dyn Fn(&[String]) + Send + Sync>;
+
+fn change_listener() -> &'static Mutex<Option<RegistryChangeListener>> {
+    static LISTENER: OnceLock<Mutex<Option<RegistryChangeListener>>> = OnceLock::new();
+    LISTENER.get_or_init(|| Mutex::new(None))
+}
+
+/// Install the hook a host uses to repaint after a refresh lands.
+///
+/// Refreshes are asynchronous and nothing else observes them: a sidebar that
+/// asked for a refresh while painting has already finished painting by the time
+/// the answer arrives, so without this the new name or icon waits for whatever
+/// unrelated event next triggers a relayout.
+pub fn set_registry_change_listener(listener: RegistryChangeListener) {
+    *change_listener().lock().unwrap_or_else(|e| e.into_inner()) = Some(listener);
+}
+
+fn notify_changed(appids: &[String]) {
+    if appids.is_empty() {
+        return;
+    }
+    let guard = change_listener().lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(listener) = guard.as_ref() {
+        listener(appids);
+    }
+}
+
 fn record(appid: &str, locale: &str) -> Option<RegistryRecord> {
     metadata::registry_get(appid, locale).ok().flatten()
 }
@@ -247,8 +274,11 @@ pub(crate) fn ensure_fresh(appids: &[String]) {
         let Some(_guard) = RefreshGuard::acquire(key) else {
             return;
         };
-        if let Err(err) = fetch_into_cache(&stale, &locale).await {
-            crate::warn!("lxapp registry refresh failed: {}", err);
+        match fetch_records(&stale, &locale).await {
+            Ok(infos) => fetch_icons(&infos, &locale).await,
+            Err(err) => {
+                crate::warn!("lxapp registry refresh failed: {}", err);
+            }
         }
     })));
 }
@@ -272,13 +302,22 @@ pub(crate) async fn ensure_open_allowed(appid: &str) -> Result<(), LxAppError> {
         Some(status) => status,
         None => {
             let appids = [appid.to_string()];
-            match tokio::time::timeout(OPEN_GATE_TIMEOUT, fetch_into_cache(&appids, &locale)).await
-            {
-                Ok(Ok(infos)) => infos
-                    .into_iter()
-                    .find(|info| info.appid == appid)
-                    .map(|info| info.status)
-                    .unwrap_or_default(),
+            match tokio::time::timeout(OPEN_GATE_TIMEOUT, fetch_records(&appids, &locale)).await {
+                Ok(Ok(infos)) => {
+                    // Artwork is fetched outside the deadline: it is not what
+                    // the gate is waiting for, and awaiting it here would let a
+                    // slow image expire a check that already had its answer.
+                    let detached = infos.clone();
+                    let detached_locale = locale.clone();
+                    std::mem::drop(crate::executor::spawn(Box::pin(async move {
+                        fetch_icons(&detached, &detached_locale).await;
+                    })));
+                    infos
+                        .into_iter()
+                        .find(|info| info.appid == appid)
+                        .map(|info| info.status)
+                        .unwrap_or_default()
+                }
                 // Unreachable registry keeps the standing local permission.
                 Ok(Err(err)) => {
                     crate::warn!("Registry status check failed for {}: {}", appid, err)
@@ -302,13 +341,14 @@ pub(crate) async fn ensure_open_allowed(appid: &str) -> Result<(), LxAppError> {
     Ok(())
 }
 
-/// Fetch the registry's answer, store it, then bring the artwork up to date.
+/// Fetch the registry's answer and store it. Artwork is *not* fetched here.
 ///
-/// The two happen in that order because the status is the gating fact: caching
-/// it behind an icon body would let one slow image stall the pre-open check
-/// past its timeout, which fails open — and, because the timeout cancels the
-/// future, would leave nothing cached to make the next attempt any faster.
-pub(crate) async fn fetch_into_cache(
+/// The status is the gating fact, and [`ensure_open_allowed`] bounds this call
+/// with a deadline it fails open on. If an icon body were awaited inside that
+/// deadline, a slow image would expire a check that had already been told the
+/// app is suspended — and the drop would cancel the download too, so the next
+/// attempt would be no faster.
+pub(crate) async fn fetch_records(
     appids: &[String],
     locale: &str,
 ) -> Result<Vec<LxAppRegistryInfo>, LxAppError> {
@@ -333,16 +373,22 @@ pub(crate) async fn fetch_into_cache(
         // or a bundled builtin pays a fresh round trip — and a record that once
         // said `suspended` would keep saying so after the registry stopped
         // listing the app.
+        let icon_hash = info.and_then(|info| info.icon_hash.clone());
         let record = RegistryRecord {
             appid: appid.clone(),
             locale: locale.to_string(),
             name: info.and_then(|info| info.name.clone()),
             description: info.and_then(|info| info.description.clone()),
-            icon_hash: info.and_then(|info| info.icon_hash.clone()),
-            // Artwork is replaced below. Carrying the old file over meanwhile
-            // keeps a row showing a slightly stale icon rather than blanking it
-            // for the duration of a download.
-            icon_file: previous.and_then(|previous| previous.icon_file),
+            icon_hash: icon_hash.clone(),
+            // Artwork is replaced by `fetch_icons`. Carrying the old file over
+            // meanwhile keeps a row showing a slightly stale icon rather than
+            // blanking it for the duration of a download — but an app that no
+            // longer advertises an icon drops it, so an icon can be withdrawn
+            // and not merely replaced.
+            icon_file: match info {
+                Some(info) if info.icon_url.is_none() => None,
+                _ => previous.and_then(|previous| previous.icon_file),
+            },
             status: info
                 .map(|info| info.status)
                 .unwrap_or_default()
@@ -354,9 +400,15 @@ pub(crate) async fn fetch_into_cache(
             crate::warn!("Failed to cache registry record for {}: {}", appid, err);
         }
     }
+    notify_changed(appids);
+    Ok(infos)
+}
 
+/// Bring cached artwork in line with records already stored by [`fetch_records`].
+async fn fetch_icons(infos: &[LxAppRegistryInfo], locale: &str) {
     sweep_staging_files();
-    for info in &infos {
+    let mut changed = Vec::new();
+    for info in infos {
         let Some(icon_file) = resolve_icon_file(info).await else {
             continue;
         };
@@ -369,9 +421,13 @@ pub(crate) async fn fetch_into_cache(
         record.icon_file = Some(icon_file);
         if let Err(err) = metadata::registry_upsert(&record) {
             crate::warn!("Failed to cache registry icon for {}: {}", info.appid, err);
+            continue;
         }
+        changed.push(info.appid.clone());
     }
-    Ok(infos)
+    if !changed.is_empty() {
+        notify_changed(&changed);
+    }
 }
 
 /// Returns the cached file name for this info's icon, downloading it only when
@@ -520,14 +576,13 @@ pub fn display_name(appid: &str) -> Option<String> {
         .filter(|name| !name.trim().is_empty())
 }
 
-/// The icon to show for an lxapp: the cached registry artwork, else the one the
-/// installed package ships. The packaged icon still covers what the registry
-/// cannot reach — an unpublished project under `lingxia dev`, a cold start
-/// before the first fetch lands, and any offline launch.
+/// The icon to show for an lxapp: the cached registry artwork, or nothing.
+///
+/// The registry is the only source — a package declares no icon. Before the
+/// first fetch lands, and for a local project the registry has never heard of,
+/// callers get `None` and draw their own default mark.
 pub fn display_icon_path(appid: &str) -> Option<String> {
-    icon_path(appid)
-        .or_else(|| runtime_registry::try_get(appid).map(|app| app.get_lxapp_info().icon))
-        .filter(|path| !path.trim().is_empty())
+    icon_path(appid).filter(|path| !path.trim().is_empty())
 }
 
 /// Registry state for an lxapp, for callers deciding whether to still offer it.
