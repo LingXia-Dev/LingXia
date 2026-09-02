@@ -55,8 +55,10 @@ Not all npm packages may drift from the workspace. They split into three tiers:
 
 ### The agent skill (no tier — it is not a package)
 The skill describes what the CLI can do, so it is compiled into the CLI and
-written out by `lingxia skill install`. It has no version of its own and no
-release train: an installed copy always came from the binary that wrote it.
+written out by the CLI itself — there is no install command. It has no version
+of its own and no release train: an installed copy always came from the binary
+that wrote it, and every run rewrites it when its content digest differs from
+the embedded one, so a development build's edits land as soon as it runs.
 
 Giving it a version of its own would reintroduce the only failure it can have:
 a skill describing calls the runtime it is paired with does not provide.

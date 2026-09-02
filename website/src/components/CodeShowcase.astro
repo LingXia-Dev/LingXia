@@ -36,13 +36,15 @@ const samples: Record<string, { copy: string; lines: Line[] }> = {
     ],
   },
   skill: {
-    copy: 'lingxia skill install\nlingxia skill install --agents-md',
+    copy: 'lingxia new my-app',
     lines: [
-      { kind: 'comment', text: '# Claude Code, Claude Agent SDK' },
-      { kind: 'cmd', text: 'lingxia skill install' },
-      { kind: 'out', text: 'Skill written to .claude/skills/lingxia/' },
-      { kind: 'comment', text: '# OpenAI Codex CLI (also writes AGENTS.md)' },
-      { kind: 'cmd', text: 'lingxia skill install --agents-md' },
+      { kind: 'comment', text: '# Claude Code, Claude Agent SDK, Codex CLI' },
+      { kind: 'cmd', text: 'lingxia new my-app' },
+      { kind: 'out', text: 'Installed the LingXia skill to ~/.claude/skills/lingxia' },
+      { kind: 'out', text: 'Pointed my-app/AGENTS.md at the skill' },
+      { kind: 'comment', text: '# every later command keeps it in step' },
+      { kind: 'cmd', text: 'lingxia upgrade' },
+      { kind: 'out', text: 'Updated the installed LingXia agent skill (0.13.1 -> 0.14.0).' },
     ],
   },
 };

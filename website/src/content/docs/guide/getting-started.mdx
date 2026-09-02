@@ -103,16 +103,12 @@ See [Development workflow](../development-workflow/) for the edit → reload →
 
 LingXia's deep reference lives as a portable markdown **skill** — the decision tree, every CLI command, page authoring, native components, the `lx.*` Logic API, and the Rust surface, organized so an agent routes to the right section.
 
-The skill ships inside the CLI, so the copy it writes always matches the `lingxia` you are running:
+The skill ships inside the CLI, so the copy it writes always matches the `lingxia` you are running. There is nothing to install: `lingxia new` writes it to `~/.claude/skills/lingxia/`, and every later command rewrites it whenever it differs from the one that CLI carries — after an upgrade, or after you build a CLI yourself.
 
 ```bash
-lingxia skill install              # ./.claude/skills/lingxia/
-lingxia skill install --user       # ~/.claude/skills/lingxia/
-lingxia skill install --agents-md  # also writes AGENTS.md for Codex-style tools
+lingxia version --verbose   # ends with: skill: <path> (in sync)
 ```
 
-A copy under `~/.claude/skills/` is rewritten when a newer `lingxia` runs, so upgrading the CLI upgrades the skill with it.
-
-- **Claude Code / Claude Agent SDK** — `lingxia skill install`; Claude discovers `.claude/skills/lingxia/SKILL.md`.
-- **OpenAI Codex CLI** — add `--agents-md`; Codex reads `<project>/AGENTS.md`.
-- **Cursor, Copilot, and other markdown agents** — point the tool at `.claude/skills/lingxia/SKILL.md`.
+- **Claude Code / Claude Agent SDK** — discovered at `~/.claude/skills/lingxia/SKILL.md`.
+- **OpenAI Codex CLI** — reads `<project>/AGENTS.md`, which `lingxia new` points at the skill.
+- **Cursor, Copilot, and other markdown agents** — point the tool at `~/.claude/skills/lingxia/SKILL.md`.

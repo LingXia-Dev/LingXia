@@ -15,7 +15,6 @@ export const GITHUB_URL = 'https://github.com/LingXia-Dev/LingXia';
 export const GITHUB_RAW =
   'https://raw.githubusercontent.com/LingXia-Dev/LingXia/main';
 export const INSTALL_CMD = `curl -fsSL ${GITHUB_RAW}/install.sh | sh`;
-export const SKILL_INSTALL = 'lingxia skill install';
 
 /** Link to a repository document that is not part of the website guide. */
 export function repositoryDocUrl(rel: string): string {

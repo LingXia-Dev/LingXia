@@ -1,7 +1,5 @@
 ---
 import Icon from './Icon.astro';
-import CopyCommand from './CopyCommand.astro';
-import { SKILL_INSTALL } from '~/lib/url';
 import type { Lang, T } from '~/i18n/ui';
 
 interface Props {
@@ -38,8 +36,11 @@ const { t } = Astro.props;
           }
         </ul>
 
-        <div class="mt-8 max-w-md">
-          <CopyCommand command={SKILL_INSTALL} copyLabel={t.hero.copy} copiedLabel={t.hero.copied} prompt="$" />
+        <div class="mt-8 flex max-w-md items-start gap-3 rounded-xl border border-jade-400/25 bg-jade-400/[0.06] px-4 py-3">
+          <span class="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-jade-400/15 text-jade-700">
+            <Icon name="check" size={13} />
+          </span>
+          <p class="text-[0.97rem] leading-relaxed text-fg-muted">{t.ai.setupNote}</p>
         </div>
         <p class="mt-4 text-sm text-fg-dim">{t.ai.tools}</p>
       </div>

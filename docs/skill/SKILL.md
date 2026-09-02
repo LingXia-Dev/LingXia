@@ -132,7 +132,7 @@ Every published package and what to import from each. Don't guess imports from t
 | `@lingxia/bridge` | Bridge runtime + low-level invocation helpers | rarely direct (advanced) | only when bypassing the framework wrappers |
 | `@lingxia/native` | Virtual module — points at the **CLI-generated** native client (`#[lingxia::native]` routes) | lxapp View | `import { native } from '@lingxia/native'` — only after a native build runs |
 | `@lingxia/page-runtime` | Internal — shared impl behind react/vue/html | **don't import directly** | — |
-| — | This skill itself | ships in the CLI; install via `lingxia skill install` | not imported in code |
+| — | This skill itself | ships in the CLI; written and kept current by any `lingxia` command | not imported in code |
 
 **Logic-side typing**: install `@lingxia/types` as a devDependency (declarations are global — no `import`). Runtime boundaries and typing setup: [`./lxapp/lx-api.md`](./lxapp/lx-api.md).
 
