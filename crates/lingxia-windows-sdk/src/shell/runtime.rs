@@ -5689,14 +5689,15 @@ fn show_app_menu(appid: &str, app: &LxApp, screen_x: i32, screen_y: i32) {
         // lxapp's name/version/icon. Falls back to the lxapp's values only when
         // the app config is unavailable.
         let lxapp_info = app.get_lxapp_info();
-        let app_name =
-            non_empty(lingxia_app_context::product_name()).unwrap_or(lxapp_info.app_name);
+        let app_name = non_empty(lingxia_app_context::product_name())
+            .or_else(|| lxapp::lxapp_display_name(&app.appid))
+            .unwrap_or(lxapp_info.app_name);
         let version =
             non_empty(lingxia_app_context::product_version()).unwrap_or(lxapp_info.version);
         let icon_path = crate::app_icon::current_app_icon_path()
             .map(|path| path.to_string_lossy().into_owned())
             .filter(|path| !path.is_empty())
-            .unwrap_or(lxapp_info.icon);
+            .unwrap_or_else(|| lxapp::lxapp_display_icon_path(&app.appid).unwrap_or_default());
         let about_label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonAbout);
         let exit_label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonExit);
         let version_label = lingxia_logic::i18n::t(lingxia_logic::I18nKey::CommonVersion);
