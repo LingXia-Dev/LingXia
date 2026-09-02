@@ -1233,6 +1233,14 @@ class SidebarView: NSView {
     }
 
     /// Rebuild the rail's icon buttons from the current lxapps + browser tabs.
+    /// Redraw everything that shows an lxapp's registry-owned name or icon.
+    /// Called when a refresh lands; the records are already cached, so this is
+    /// a repaint, not a fetch.
+    func reloadLxAppPresentation() {
+        rebuildRail()
+        rebuildAppGroups()
+    }
+
     private func rebuildRail() {
         closeRailHoverPanel()
         railStack.arrangedSubviews.forEach {
@@ -1247,7 +1255,7 @@ class SidebarView: NSView {
             switch pin.kind {
             case "lxapp":
                 let info = getLxAppInfo(pin.key)
-                let iconPath = info.icon.toString()
+                let iconPath = getLxAppDisplayIconPath(pin.key).toString()
                 let image = (iconPath.isEmpty ? nil : NSImage(contentsOfFile: iconPath))
                     ?? Self.defaultAppIcon
                 let name = info.app_name.toString()
@@ -1318,7 +1326,7 @@ class SidebarView: NSView {
                 image = group.managedIcon ?? Self.defaultAppIcon
             } else {
                 let info = getLxAppInfo(group.appId)
-                let iconPath = info.icon.toString()
+                let iconPath = getLxAppDisplayIconPath(group.appId).toString()
                 tooltip = info.app_name.toString()
                 if !iconPath.isEmpty, let img = NSImage(contentsOfFile: iconPath) {
                     image = img

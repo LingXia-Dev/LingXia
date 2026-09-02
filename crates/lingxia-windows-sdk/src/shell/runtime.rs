@@ -1090,6 +1090,14 @@ pub(super) fn install() {
             sync_shell_layout(&appid);
         }
     }));
+    // A registry refresh landed after the paint that asked for it. Rows draw an
+    // lxapp's server-owned name and icon, so without this a rename or a new
+    // icon waits for whatever unrelated event next triggers a relayout.
+    lxapp::set_lxapp_registry_change_listener(Box::new(|_appids| {
+        if let Some(appid) = shell_owner_appid() {
+            sync_shell_layout(&appid);
+        }
+    }));
     #[cfg(feature = "browser-runtime")]
     lingxia_browser::set_tab_present_handler(Arc::new(|tab_id| {
         let Some(owner_appid) = shell_owner_appid() else {

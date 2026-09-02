@@ -370,7 +370,7 @@ final class LxappPinTileView: NSView {
         addSubview(background)
 
         let info = getLxAppInfo(appId)
-        let iconPath = info.icon.toString()
+        let iconPath = getLxAppDisplayIconPath(appId).toString()
         let icon = (iconPath.isEmpty ? nil : NSImage(contentsOfFile: iconPath))
             ?? Bundle.lingxiaResources.url(
                 forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")

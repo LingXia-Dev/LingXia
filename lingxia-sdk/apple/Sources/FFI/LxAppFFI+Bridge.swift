@@ -47,6 +47,15 @@ extension LxApp {
         }
     }
 
+    nonisolated static func lxappRegistryChanged() {
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: Lingxia.lxAppRegistryDidChangeNotification,
+                object: nil
+            )
+        }
+    }
+
     nonisolated static func openExternalUrlString(_ urlString: String) -> Bool {
         guard let url = URL(string: urlString) else { return false }
         #if os(iOS)

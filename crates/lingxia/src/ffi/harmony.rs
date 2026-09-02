@@ -241,7 +241,9 @@ fn get_lx_app_info(appid: String) -> Option<LxAppInfo> {
     lxapp::try_get(&appid).map(|lxapp| {
         let rust_app_info = lxapp.get_lxapp_info();
         LxAppInfo {
-            app_name: rust_app_info.app_name,
+            // Registry name when there is one, so a renamed app reads the same
+            // here as it does on every other host.
+            app_name: lxapp::lxapp_display_name(&appid).unwrap_or(rust_app_info.app_name),
             version: rust_app_info.version,
             release_type: rust_app_info.release_type,
             cache_dir: lxapp.user_cache_dir.to_string_lossy().into_owned(),

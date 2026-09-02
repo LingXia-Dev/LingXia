@@ -2,7 +2,6 @@
   "appId": "lingxia-chat",
   "appName": "LingXia Chat",
   "version": "1.0.12",
-  "icon": "public/chat.svg",
   "security": {
     "network": {
       "trustedDomains": ["www.deepseek.com"]

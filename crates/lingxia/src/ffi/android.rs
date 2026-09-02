@@ -858,8 +858,11 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getLxAppInfo<'a>(
         // Find the LxAppInfo class
         let lxapp_info_class = env.find_class(jni_str!("com/lingxia/lxapp/LxAppInfo"))?;
 
-        // Create Java strings
-        let app_name_str = env.new_string(&lxapp_info.app_name)?;
+        // Create Java strings. The name resolves through the registry first, so
+        // a renamed app reads the same here as it does on every other host.
+        let app_name =
+            lxapp::lxapp_display_name(&appid).unwrap_or_else(|| lxapp_info.app_name.clone());
+        let app_name_str = env.new_string(&app_name)?;
         let version_str = env.new_string(&lxapp_info.version)?;
         let release_type_str = env.new_string(&lxapp_info.release_type)?;
         let cache_dir_str = env.new_string(lxapp.user_cache_dir.to_string_lossy())?;

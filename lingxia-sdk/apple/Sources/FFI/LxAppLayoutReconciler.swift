@@ -270,7 +270,7 @@ enum LxAppLayoutReconciler {
             let tabs = slot.children.map { child -> AsideSlotTab in
                 let info = getLxAppInfo(child)
                 let name = info.app_name.toString()
-                let icon = info.icon.toString()
+                let icon = getLxAppDisplayIconPath(child).toString()
                 return AsideSlotTab(
                     id: child,
                     title: name.isEmpty ? child : name,
