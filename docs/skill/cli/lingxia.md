@@ -93,6 +93,11 @@ ABIs / macOS arch. When a host project has `lingxia.yaml`, `build` additionally
 prepares configured host assets; lxapp builds generate the Native client when
 `lxapp.config.ts` declares `native`.
 
+Apple host builds temporarily point `Package.swift` at the cached local SDK
+while SwiftPM runs, then restore the manifest after success or failure. A normal
+`build` or `dev` therefore does not leave machine-specific SDK paths or a synced
+macOS deployment target in the project source.
+
 #### iOS Packet Tunnel extensions
 
 During an iOS host build, `ios/PacketTunnel/Info.plist` opts the project into

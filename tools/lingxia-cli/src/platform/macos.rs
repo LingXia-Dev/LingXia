@@ -382,23 +382,6 @@ impl Platform for MacosPlatform {
             Self::rust_lib_path(&config.project_root, arch, config.profile)
         };
 
-        // SwiftPM takes its minimum OS from Package.swift even when --triple
-        // includes a newer version, so keep it aligned with lingxia.yaml.
-        apple::sync_macos_deployment_target(&macos_dir, &deployment_target)?;
-
-        // Point Package.swift at the cached Apple SDK (no-op in-workspace).
-        apple::ensure_sdk_package_dependency(&config.project_root, &macos_dir)?;
-
-        // Build Swift Package and get bin dir
-        let mut bin_dir = self.swift_build_and_get_bin_dir(
-            &macos_dir,
-            &config.project_root,
-            config.profile,
-            arch,
-            &deployment_target,
-            &config.native_features,
-        )?;
-
         let mut preferred = Vec::new();
         if let Some(macos) = &macos_config
             && let Some(ref name) = macos.executable_name
@@ -414,24 +397,46 @@ impl Platform for MacosPlatform {
             preferred.push(dir_name.to_string());
         }
 
-        let mut executable_path = self.find_executable_in_bin_dir(&bin_dir, &preferred)?;
-        if config.build_native && executable_needs_native_relink(&executable_path, &native_lib_path)
-        {
-            println!(
-                "  {} Swift executable is older than native library; forcing relink",
-                "ℹ".blue()
-            );
-            let _ = fs::remove_dir_all(macos_dir.join(".build"));
-            bin_dir = self.swift_build_and_get_bin_dir(
-                &macos_dir,
-                &config.project_root,
-                config.profile,
-                arch,
-                &deployment_target,
-                &config.native_features,
-            )?;
-            executable_path = self.find_executable_in_bin_dir(&bin_dir, &preferred)?;
-        }
+        let (bin_dir, executable_path) =
+            apple::with_temporary_package_manifest(&macos_dir, || {
+                // SwiftPM takes its minimum OS from Package.swift even when --triple
+                // includes a newer version, so align the build-time manifest with
+                // lingxia.yaml without changing the project copy.
+                apple::sync_macos_deployment_target(&macos_dir, &deployment_target)?;
+
+                // Point the build-time manifest at the cached Apple SDK (no-op
+                // in-workspace), then restore it after the final SwiftPM command.
+                apple::ensure_sdk_package_dependency(&config.project_root, &macos_dir)?;
+
+                let mut bin_dir = self.swift_build_and_get_bin_dir(
+                    &macos_dir,
+                    &config.project_root,
+                    config.profile,
+                    arch,
+                    &deployment_target,
+                    &config.native_features,
+                )?;
+                let mut executable_path = self.find_executable_in_bin_dir(&bin_dir, &preferred)?;
+                if config.build_native
+                    && executable_needs_native_relink(&executable_path, &native_lib_path)
+                {
+                    println!(
+                        "  {} Swift executable is older than native library; forcing relink",
+                        "ℹ".blue()
+                    );
+                    let _ = fs::remove_dir_all(macos_dir.join(".build"));
+                    bin_dir = self.swift_build_and_get_bin_dir(
+                        &macos_dir,
+                        &config.project_root,
+                        config.profile,
+                        arch,
+                        &deployment_target,
+                        &config.native_features,
+                    )?;
+                    executable_path = self.find_executable_in_bin_dir(&bin_dir, &preferred)?;
+                }
+                Ok((bin_dir, executable_path))
+            })?;
 
         let product_name = config
             .lingxia_config

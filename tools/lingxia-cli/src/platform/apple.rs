@@ -544,6 +544,46 @@ fn is_apple_junk_entry(name: &std::ffi::OsStr) -> bool {
 /// appending duplicate dependencies.
 const SDK_PACKAGE_MARKER: &str = "// lingxia-sdk: managed by `lingxia build`";
 
+/// Run SwiftPM preparation/build work without leaving its machine-specific
+/// `Package.swift` edits in the app project.
+///
+/// The Apple SDK must remain a local path dependency because it uses
+/// `unsafeFlags`. Builds may therefore rewrite the template to the cached SDK
+/// path (and macOS may align its deployment target), but those are build inputs,
+/// not project changes. Restore the manifest after both success and ordinary
+/// errors so `lingxia build` leaves the source tree as it found it.
+pub(crate) fn with_temporary_package_manifest<T>(
+    package_dir: &Path,
+    operation: impl FnOnce() -> Result<T>,
+) -> Result<T> {
+    let manifest_path = package_dir.join("Package.swift");
+    let original = fs::read(&manifest_path)
+        .with_context(|| format!("Failed to read Package.swift: {}", manifest_path.display()))?;
+
+    let result = operation();
+    let restore = (|| -> Result<()> {
+        let current = fs::read(&manifest_path).ok();
+        if current.as_deref() != Some(original.as_slice()) {
+            fs::write(&manifest_path, &original).with_context(|| {
+                format!(
+                    "Failed to restore Package.swift: {}",
+                    manifest_path.display()
+                )
+            })?;
+        }
+        Ok(())
+    })();
+
+    match (result, restore) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(_), Err(error)) => Err(error),
+        (Err(error), Err(restore_error)) => Err(error).context(format!(
+            "Build failed and Package.swift could not be restored: {restore_error:#}"
+        )),
+    }
+}
+
 /// Keep SwiftPM's link target aligned with the deployment target selected from
 /// `lingxia.yaml`. `swift build --triple` chooses the architecture, but SwiftPM
 /// still takes the minimum macOS version from `Package.swift`.
@@ -756,9 +796,10 @@ fn is_hand_wired(manifest: &str, cache_root: Option<&str>) -> bool {
 /// shared cache first. Shared by the iOS and macOS build paths.
 ///
 /// The SDK uses `unsafeFlags`, so SwiftPM accepts it only as a local path
-/// dependency; that path is absolute and machine-specific, which is why it is
-/// rewritten on every build instead of being committed. In-workspace projects
-/// already point at the SDK source, so this is a no-op there.
+/// dependency. Apple build paths apply that absolute, machine-specific path to
+/// a temporary manifest edit and restore the project copy after SwiftPM exits.
+/// In-workspace projects already point at the SDK source, so this is a no-op
+/// there.
 pub fn ensure_sdk_package_dependency(project_root: &Path, package_dir: &Path) -> Result<()> {
     if super::is_inside_lingxia_workspace(project_root) {
         return Ok(());
@@ -820,6 +861,50 @@ mod tests {
         sync_macos_deployment_target(pkg.path(), "14.2").unwrap();
         let manifest = fs::read_to_string(pkg.path().join("Package.swift")).unwrap();
         assert!(manifest.contains(".macOS(\"14.2\")"));
+    }
+
+    #[test]
+    fn temporary_manifest_restores_after_success() {
+        let pkg = TempDir::new().unwrap();
+        let sdk = TempDir::new().unwrap();
+        write_manifest(pkg.path(), MACOS_TEMPLATE);
+        let original = fs::read(pkg.path().join("Package.swift")).unwrap();
+
+        let value = with_temporary_package_manifest(pkg.path(), || {
+            sync_macos_deployment_target(pkg.path(), "14.0")?;
+            inject_sdk_package_dependency(pkg.path(), sdk.path())?;
+            assert!(sdk_package_points_at(pkg.path(), sdk.path()));
+            Ok(42)
+        })
+        .unwrap();
+
+        assert_eq!(value, 42);
+        assert_eq!(
+            fs::read(pkg.path().join("Package.swift")).unwrap(),
+            original
+        );
+    }
+
+    #[test]
+    fn temporary_manifest_restores_after_error() {
+        let pkg = TempDir::new().unwrap();
+        let sdk = TempDir::new().unwrap();
+        write_manifest(pkg.path(), MACOS_TEMPLATE);
+        let original = fs::read(pkg.path().join("Package.swift")).unwrap();
+
+        let error = with_temporary_package_manifest(pkg.path(), || -> Result<()> {
+            sync_macos_deployment_target(pkg.path(), "14.0")?;
+            inject_sdk_package_dependency(pkg.path(), sdk.path())?;
+            assert!(sdk_package_points_at(pkg.path(), sdk.path()));
+            Err(anyhow!("swift build failed"))
+        })
+        .unwrap_err();
+
+        assert!(error.to_string().contains("swift build failed"));
+        assert_eq!(
+            fs::read(pkg.path().join("Package.swift")).unwrap(),
+            original
+        );
     }
 
     /// The shipped templates are the real input to the injector; matching on a

@@ -15,9 +15,9 @@ let package = Package(
     ],
     dependencies: [
         // Add the LingXia Swift package dependency here before building.
-        // `lingxia build` injects it: a local `.package(path:)` to the cached SDK
-        // (unsafeFlags rules out a remote URL). The path is machine-local and is
-        // rewritten on every build, so this line always shows as a local diff.
+        // `lingxia build` temporarily injects a local `.package(path:)` to the
+        // cached SDK (unsafeFlags rules out a remote URL), then restores this
+        // manifest so machine-local paths never remain in the source tree.
     ],
     targets: [
         .target(
