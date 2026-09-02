@@ -50,17 +50,10 @@ export default [
   },
   {
     id: "PEND-MEDIA-PICK-001",
-    title: "chooseMedia, scanCode, and previewMedia through the real OS UI",
+    title: "chooseMedia and scanCode pick a real file through the OS panel",
     mode: "external-ui",
-    covers: [
-      "lx.chooseMedia",
-      "lx.scanCode",
-      "lx.previewMedia",
-      "PreviewMediaHandle.presented",
-      "PreviewMediaHandle.onChange",
-      "PreviewMediaHandle.completed",
-    ],
-    reason: "camera, picker, and native preview are OS dialogs",
+    covers: ["lx.chooseMedia", "lx.scanCode"],
+    reason: "the desktop file panel starves the in-process driver and hides its file rows from AX; previewMedia is DESKTOP-PREVIEW-MEDIA-001",
   },
   {
     id: "PEND-PHOTOS-001",
