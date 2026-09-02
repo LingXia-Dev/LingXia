@@ -13,6 +13,7 @@ const FULL_DRAG_STRIP_HEIGHT = 28;
 
 interface OpenedWindow {
   id: string;
+  key: string | undefined;
   kind: string;
   realized: string;
   visible: boolean;
@@ -67,6 +68,7 @@ async function openWindow(
       });
       return {
         id: handle.id,
+        key: handle.key,
         kind: handle.kind,
         realized: handle.realized,
         visible: handle.visible,
@@ -149,6 +151,9 @@ windowTest('open a page window with system chrome and with full chrome', {
     'PageSurface.kind',
     'PageSurface.realized',
     'PageSurface.id',
+    'PageSurface.key',
+    'PageSurface.alive',
+    'PageSurface.visible',
   ],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
@@ -171,6 +176,7 @@ windowTest('open a page window with system chrome and with full chrome', {
     const opened = await openWindow(app, chrome, key);
     expect(opened.kind).toBe('page');
     expect(opened.realized).toBe('window');
+    expect(opened.key).toBe(key);
     expect(opened.visible).toBeTruthy();
     expect(opened.alive).toBeTruthy();
 
@@ -305,4 +311,70 @@ windowTest('deliver a child page message to its opener before closing', {
     (closed) => closed === true,
     { describe: 'messaging surface to close itself', timeoutMs: 10_000 },
   );
+});
+
+windowTest('push a message from the opener into its page window', {
+  id: 'DESKTOP-SURFACE-POST-001',
+  covers: ['PageSurface.postMessage', 'PageSurface.close', 'PageSurface.onClose', 'PageSurface.alive'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-POST-001');
+  await desktopPlatform();
+  const key = `${namespace}-post`;
+  const stateKey = `__lingxiaSurfacePost_${namespace.replace(/-/g, '_')}`;
+  defer(() => closeKeyedSurface(app, key));
+
+  const opened = await openWindow(app, 'system', key);
+  expect(opened.alive).toBeTruthy();
+  await waitForSurfacePage(app, key, 0);
+
+  await app.eval({
+    script: `
+      const handle = lx.surface.get(${JSON.stringify(key)});
+      if (!handle) throw new Error('post surface was not registered');
+      handle.postMessage({ ping: ${JSON.stringify(namespace)} });
+    `,
+  });
+  const inbound = await eventually(
+    () => app.page.eval({
+      page: 'surface',
+      script: `(() => {
+        const text = document.querySelector('[data-testid="surface-inbound"]');
+        const count = document.querySelector('[data-testid="surface-inbound-count"]');
+        return { text: text ? text.textContent.trim() : '', count: count ? count.textContent.trim() : '' };
+      })()`,
+    }) as Promise<{ text: string; count: string }>,
+    (value) => value.text.includes(namespace),
+    { describe: 'opener message to reach the surface page', timeoutMs: 10_000 },
+  );
+  expect(JSON.parse(inbound.text)).toEqual({ ping: namespace });
+  expect(inbound.count).toBe('1');
+
+  // Closing from the opener flips `alive` on the same handle once the native
+  // close lands — after close() itself resolves, so observe rather than read.
+  await app.eval({
+    timeoutMs: 15_000,
+    script: `
+      const handle = lx.surface.get(${JSON.stringify(key)});
+      const state = { handle, closed: [] };
+      handle.onClose((event) => state.closed.push(event));
+      globalThis[${JSON.stringify(stateKey)}] = state;
+      await handle.close();
+    `,
+  });
+  defer(async () => {
+    await app.eval({ script: `delete globalThis[${JSON.stringify(stateKey)}]` }).catch(() => undefined);
+  });
+  const closed = await eventually(
+    () => app.eval({
+      script: `
+        const state = globalThis[${JSON.stringify(stateKey)}];
+        return { alive: state.handle.alive, visible: state.handle.visible, closed: state.closed };
+      `,
+    }) as Promise<{ alive: boolean; visible: boolean; closed: Array<{ id?: string }> }>,
+    (state) => !state.alive && !state.visible && state.closed.length >= 1,
+    { describe: 'closed surface handle to report alive=false, visible=false, and fire onClose', timeoutMs: 10_000 },
+  );
+  expect(closed.closed.length).toBe(1);
+  expect(closed.closed[0]?.id).toBe(opened.id);
 });
