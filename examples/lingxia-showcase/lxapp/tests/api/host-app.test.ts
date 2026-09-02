@@ -221,6 +221,57 @@ spec('report autostart state and accept an idempotent write', {
   expect(result.after).toBe(result.before);
 });
 
+spec('report cache size and clear caches without touching user data', {
+  id: 'HOSTAPP-CACHE-001',
+  covers: ['lx.app.cache', 'lx.app.cache.size', 'lx.app.cache.clear'],
+  app: SHOWCASE_APP_ID,
+  // A clear walks every lxapp's storage and asks the WebView store to drop its
+  // cache; both are slower than a plain property read.
+  timeout: 90_000,
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-CACHE-001');
+
+  const result = await app.eval({
+    timeoutMs: 60_000,
+    script: `
+      // Big enough that the assertions below cannot pass on rounding noise.
+      const payload = 'x'.repeat(256 * 1024);
+      const cached = lx.env.USER_CACHE_PATH + '/automation/cache-probe.txt';
+      const durable = 'automation/cache-probe.txt';
+      await lx.fs.write(cached, payload, { overwrite: true });
+      await lx.fs.write(durable, payload, { overwrite: true });
+
+      const before = await lx.app.cache.size();
+      const freed = await lx.app.cache.clear();
+      const after = await lx.app.cache.size();
+
+      const cachedSurvived = await lx.fs.exists(cached);
+      const durableSurvived = await lx.fs.exists(durable);
+      await lx.fs.remove(durable);
+
+      return { before, freed, after, cachedSurvived, durableSurvived };
+    `,
+  }) as {
+    before: number;
+    freed: number;
+    after: number;
+    cachedSurvived: boolean;
+    durableSurvived: boolean;
+  };
+
+  // The probe alone accounts for 256 KiB, so the reported size has to see it.
+  expect(result.before).toBeGreaterThanOrEqual(256 * 1024);
+  expect(result.freed).toBeGreaterThanOrEqual(256 * 1024);
+  expect(result.after).toBeLessThan(result.before);
+
+  // usercache is regenerable by contract, so a clear is allowed to drop it.
+  expect(result.cachedSurvived).toBe(false);
+  // The assertion that matters: userdata is not a cache. A "clear cache"
+  // control that deletes it is data loss, and nothing else in the suite would
+  // notice if that regressed.
+  expect(result.durableSurvived).toBe(true);
+});
+
 spec('show, label, and retract the host tray item', {
   id: 'HOSTAPP-TRAY-001',
   covers: [

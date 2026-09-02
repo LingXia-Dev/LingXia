@@ -64,3 +64,37 @@ spec("render host app and system information through page actions", { id: "SYSTE
   });
   expect(settingResult.exists && settingResult.text).toContain('WiFi Enabled');
 });
+
+spec('opens the product cache panel from the rendered API menu', {
+  id: 'SYSTEM-CACHE-001',
+  app: SHOWCASE_APP_ID,
+  timeout: 60_000,
+}, async (t) => {
+  const { app } = bindFixture(t, 'SYSTEM-CACHE-001');
+
+  await app.nav.relaunch({ page: 'api' });
+  await app.page.waitFor({
+    page: 'api',
+    css: '[data-testid="api-system-section"]',
+    state: 'visible',
+  });
+  await app.page.click({ page: 'api', css: '[data-testid="api-system-section"]' });
+  await app.page.waitFor({
+    page: 'api',
+    css: '[data-testid="api-system-cache"]',
+    state: 'visible',
+  });
+  await app.page.click({ page: 'api', css: '[data-testid="api-system-cache"]' });
+  await app.page.waitFor({
+    page: 'system',
+    css: '[data-testid="system-cache-panel"]',
+    state: 'visible',
+  });
+
+  const panel = await app.page.query({
+    page: 'system',
+    css: '[data-testid="system-cache-panel"]',
+    full: true,
+  });
+  expect(panel.exists && panel.text).toContain('Product Cache');
+});

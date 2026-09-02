@@ -170,6 +170,71 @@
           </div>
         </div>
       </template>
+
+      <!-- Product cache -->
+      <template v-if="currentType === 'cache'">
+        <div class="mb-6 text-center">
+          <h1 class="text-2xl font-light text-gray-800 mb-2">app.cache</h1>
+          <div class="w-16 h-0.5 bg-surface-400 mx-auto"></div>
+        </div>
+
+        <div
+          data-testid="system-cache-panel"
+          class="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden"
+        >
+          <div class="flex items-center gap-4 px-5 py-5 border-b border-line-100">
+            <div class="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-sky-50 to-blue-50">
+              <span class="text-2xl">🧹</span>
+            </div>
+            <div class="flex-1">
+              <div class="text-sm text-gray-800 font-semibold">Product Cache</div>
+              <div class="text-xs text-gray-500 mt-0.5">
+                Every lxapp's cache, not just this one — home lxapp only
+              </div>
+            </div>
+            <button
+              :disabled="cacheBusy"
+              class="px-4 py-2 text-xs font-medium bg-sky-500 hover:bg-sky-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
+              @click="clearCache"
+            >
+              {{ cacheBusy ? 'Clearing…' : 'Clear' }}
+            </button>
+          </div>
+
+          <div class="p-5">
+            <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
+              <div class="flex items-center gap-2 mb-4">
+                <span class="w-1 h-4 bg-sky-500 rounded-full"></span>
+                <h4 class="text-sm font-semibold text-gray-700">State</h4>
+              </div>
+              <div class="flex items-center justify-between py-2">
+                <span class="text-xs text-gray-500">Size</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ formatBytes(cacheBytes) }}</span>
+              </div>
+              <div class="flex items-center justify-between py-2">
+                <span class="text-xs text-gray-500">Last Freed</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ formatBytes(cacheFreedBytes) }}</span>
+              </div>
+              <div v-if="cacheError" class="flex items-center justify-between py-2">
+                <span class="text-xs text-gray-500">Error</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ cacheError }}</span>
+              </div>
+              <div class="pt-3 text-xs text-gray-500">
+                Size counts LingXia-managed files only; a clear also drops the
+                WebView cache, so it usually frees more than this shows.
+              </div>
+              <div class="pt-3">
+                <button
+                  class="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
+                  @click="refreshCacheSize"
+                >
+                  Re-read Size
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -180,7 +245,14 @@ import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
 const { data, actions } = useLxPage();
-const { getBaseInfo, getSystemSetting, toggleAutostart, refreshAutostart } = actions;
+const {
+  getBaseInfo,
+  getSystemSetting,
+  toggleAutostart,
+  refreshAutostart,
+  refreshCacheSize,
+  clearCache,
+} = actions;
 
 const currentType = computed(() => data.currentType ?? 'appBaseInfo');
 const appBaseInfo = computed(() => data.appBaseInfo ?? null);
@@ -188,6 +260,27 @@ const systemSetting = computed(() => data.systemSetting ?? null);
 const autostartSupported = computed(() => data.autostartSupported ?? false);
 const autostartEnabled = computed(() => data.autostartEnabled ?? null);
 const autostartError = computed(() => data.autostartError ?? '');
+const cacheBytes = computed(() => data.cacheBytes ?? null);
+const cacheFreedBytes = computed(() => data.cacheFreedBytes ?? null);
+const cacheBusy = computed(() => data.cacheBusy ?? false);
+const cacheError = computed(() => data.cacheError ?? '');
+
+function formatBytes(value: number | null): string {
+  if (typeof value !== 'number') {
+    return '--';
+  }
+  if (value < 1024) {
+    return `${value} B`;
+  }
+  const units = ['KB', 'MB', 'GB'];
+  let size = value / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size.toFixed(1)} ${units[unit]}`;
+}
 
 function formatBool(value: boolean | undefined): string {
   if (value === undefined || value === null) {
