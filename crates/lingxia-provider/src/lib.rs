@@ -137,3 +137,90 @@ pub trait PushNotificationProvider: Send + Sync + 'static {
         Box::pin(async { Ok(()) })
     }
 }
+
+/// Server-owned lifecycle state of an lxapp.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LxAppStatus {
+    /// The registry reported nothing for this app — an older server, an app it
+    /// does not know, or a check that never reached it.
+    #[default]
+    Unknown,
+    Published,
+    /// No longer offered. An already-installed copy keeps working.
+    Delisted,
+    /// Blocked by the operator. Must not open, installed or not.
+    Suspended,
+}
+
+impl LxAppStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Published => "published",
+            Self::Delisted => "delisted",
+            Self::Suspended => "suspended",
+        }
+    }
+
+    /// Unrecognized values read as `Unknown` so a newer server cannot brick an
+    /// older client by inventing a state it never blocks on.
+    pub fn from_str_lossy(value: &str) -> Self {
+        match value {
+            "published" => Self::Published,
+            "delisted" => Self::Delisted,
+            "suspended" => Self::Suspended,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub const fn blocks_open(self) -> bool {
+        matches!(self, Self::Suspended)
+    }
+}
+
+impl std::fmt::Display for LxAppStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// The registry's record for one lxapp: the facts the server owns.
+///
+/// Deliberately carries nothing about a *package* — version, url, checksum,
+/// `minRuntimeVersion` all belong to `UpdatePackageInfo` and travel the update
+/// path. Server-owned facts in, package facts out; the two must never become
+/// two answers to the same question.
+#[derive(Debug, Clone, Default)]
+pub struct LxAppRegistryInfo {
+    pub appid: String,
+    /// Already resolved for the requested locale.
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub icon_url: Option<String>,
+    /// Content hash of the icon `icon_url` points at. The client caches by this
+    /// value, so an unchanged icon costs no request at all.
+    pub icon_hash: Option<String>,
+    pub status: LxAppStatus,
+}
+
+/// Lookup of registry records, separate from `UpdateProvider` on purpose: an
+/// app's name, icon, and status change without any package changing, and the
+/// update path is gated (OTA-managed only, deduped, force-update aware) in ways
+/// that would silently strand them.
+pub trait LxAppRegistryProvider: Send + Sync + 'static {
+    /// Resolve `appids` for `locale`, in one batch.
+    ///
+    /// The locale fallback chain (`zh-Hant` → `zh-Hans` → `en`) is the server's
+    /// to run: `name` and `description` come back resolved to one language, not
+    /// as a map, so the chain has one implementation rather than one per client.
+    ///
+    /// Apps the registry does not know are omitted from the reply rather than
+    /// returned as an error.
+    fn fetch_registry_info<'a>(
+        &'a self,
+        _appids: &'a [String],
+        _locale: &'a str,
+    ) -> BoxFuture<'a, Result<Vec<LxAppRegistryInfo>, ProviderError>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
