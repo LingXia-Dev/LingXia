@@ -117,13 +117,6 @@ export default [
     reason: "OS file picker and viewer stay external-ui",
   },
   {
-    id: "PEND-VIDEO-FS-001",
-    title: "VideoContext requestFullScreen and exitFullScreen",
-    mode: "external-ui",
-    covers: ["lx.createVideoContext", "VideoContext.requestFullScreen"],
-    reason: "fullscreen is a host chrome transition, not an in-page control",
-  },
-  {
     id: "PEND-VIDEO-STREAM-001",
     title: "VideoContext setStreamSource against a stream provider",
     mode: "external-fixture",

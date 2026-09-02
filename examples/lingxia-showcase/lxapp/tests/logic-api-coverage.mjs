@@ -111,6 +111,6 @@ export default {
     { "api": "VideoContext.pause", "mode": "automated", "owner": "NATIVE-VIDEO-001" },
     { "api": "VideoContext.stop", "mode": "automated", "owner": "NATIVE-VIDEO-PLAYBACK-001" },
     { "api": "VideoContext.seek", "mode": "automated", "owner": "NATIVE-VIDEO-PLAYBACK-001" },
-    { "api": "VideoContext.requestFullScreen", "mode": "external-ui", "owner": "PEND-VIDEO-FS-001" }
+    { "api": "VideoContext.requestFullScreen", "mode": "automated", "owner": "DESKTOP-VIDEO-FULLSCREEN-001", "targets": ["windows", "macos"] }
   ]
 };
