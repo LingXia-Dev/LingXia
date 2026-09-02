@@ -4,26 +4,14 @@
 export default [
   {
     id: "PEND-TERMINAL-API-001",
-    title: "terminal settings, fonts, colour schemes, and Windows integration",
+    title: "Windows terminal integration runtime status, install, and setEnabled",
     mode: "external-fixture",
     covers: [
-      "lx.terminal.settings",
-      "lx.terminal.settings.get",
-      "lx.terminal.settings.update",
-      "lx.terminal.settings.reset",
-      "lx.terminal.settings.onChange",
-      "lx.terminal.fonts",
-      "lx.terminal.fonts.list",
-      "lx.terminal.colorSchemes",
-      "lx.terminal.colorSchemes.list",
-      "lx.terminal.colorSchemes.import",
-      "lx.terminal.colorSchemes.createPreview",
-      "lx.terminal.windows",
       "lx.terminal.windows.status",
       "lx.terminal.windows.install",
       "lx.terminal.windows.setEnabled",
     ],
-    reason: "lx.terminal is present only in the host-bundled Terminal Settings lxapp; the Showcase cannot reach it",
+    reason: "TERMINAL-API-001 covers the rest inside the bundled settings lxapp; the Windows-only integration needs a Windows run with an installable runtime",
   },
   {
     id: "PEND-DIRPICK-001",
@@ -304,13 +292,6 @@ export default [
     mode: "planned",
     covers: ["lx.startPullDownRefresh"],
     reason: "page JSON vs app.info() is not asserted",
-  },
-  {
-    id: "PEND-TERM-PREVIEW-001",
-    title: "TerminalPreviewController createPreview, clear, show, close",
-    mode: "planned",
-    covers: ["lx.terminal"],
-    reason: "typed controller has no SHAPE or behavior spec",
   },
   {
     id: "PEND-CLOUD-TESTID-001",

@@ -5,6 +5,7 @@ import '../platform/desktop/surface-workspace.test.js';
 import '../platform/desktop/surface-window.test.js';
 import '../platform/desktop/surface-tab.test.js';
 import '../platform/desktop/video-fullscreen.test.js';
+import '../platform/desktop/terminal-api.test.js';
 import '../platform/desktop/terminal.test.js';
 import '../platform/macos/location-permission.test.js';
 
