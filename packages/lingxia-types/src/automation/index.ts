@@ -538,6 +538,8 @@ export interface LxAppRuntimeInfo {
   release_type: string;
   session_id: number;
   status: string;
+  /** True while the lxapp holds a place in the host's page stack. */
+  in_stack: boolean;
   is_home: boolean;
   current_page: string | null;
   initial_route: string;
