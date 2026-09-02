@@ -47,16 +47,20 @@ lingxia dev status
 
 完整原生宿主画面使用 `lxdev app screenshot`，单个页面 WebView 使用 `lxdev lxapp page screenshot`。预期结果不是视觉效果时，优先断言具体值而不是看截图猜测。
 
-## 六个命令家族
+## 八个命令家族
 
 | 家族 | 目标 |
 |---|---|
 | `lxapp` | lxapp 生命周期、导航、页面自动化、Logic 与 View evaluation |
 | `app` | 原生宿主窗口、全画面截图、底层鼠标与键盘输入 |
+| `desktop` | 桌面本身：窗口、无障碍树、指针、键盘、剪贴板、像素 |
 | `browser` | 应用内浏览器标签、DOM 自动化、cookie、截图 |
 | `test` | 可重复的 API、页面与跨页面测试 case |
 | `logs` | native、lxview、lxlogic、browser 与 automation 汇总日志 |
+| `runner` | 桌面 Runner 呈现的模拟设备与外框 |
 | `session` | 发现并选择 live sessions |
+
+`desktop` 伸到应用之外——用例靠它回应系统对话框，或证明某个窗口真的占满了屏幕。
 
 命令集合会随项目类型变化。精确 flags 始终以 `lxdev <family> <command> --help` 的当前安装版本输出为准。
 

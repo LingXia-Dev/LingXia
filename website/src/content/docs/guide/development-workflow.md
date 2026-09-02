@@ -47,16 +47,21 @@ A successful build is only the start:
 
 Use `lxdev app screenshot` for the full native host surface and `lxdev lxapp page screenshot` for one page WebView. Prefer assertable values over screenshots when the expected result is not visual.
 
-## Six command families
+## Eight command families
 
 | Family | Target |
 |---|---|
 | `lxapp` | lxapp lifecycle, navigation, page automation, Logic and View evaluation |
 | `app` | native host windows, full-surface screenshots, raw mouse and keyboard input |
+| `desktop` | the desktop itself: windows, accessibility tree, pointer, keyboard, clipboard, pixels |
 | `browser` | in-app browser tabs, DOM automation, cookies, screenshots |
 | `test` | repeatable API, page, and cross-page test cases |
 | `logs` | combined native, lxview, lxlogic, browser, and automation logs |
+| `runner` | the simulated device and frame the desktop Runner presents |
 | `session` | discovery and selection of live sessions |
+
+`desktop` reaches outside the app — it is how a case answers a system dialog or
+proves that a window really took the screen.
 
 The command set is dynamic by project type. Use `lxdev <family> <command> --help` for exact, installed-version flags.
 
