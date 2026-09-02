@@ -92,8 +92,10 @@ pub fn configure_and_apply_icons(
     Ok(())
 }
 
-/// The icon every scaffolded lxapp ends up with. The `lxapp-create` manifests
-/// declare this path, so the two must stay in step.
+/// The icon every scaffolded lxapp ends up with. Not declared in `lxapp.json`
+/// — an lxapp's on-screen icon comes from the registry now. This is the path
+/// the Windows runtime looks up by convention for a host that ships no launcher
+/// icon of its own, so the two must stay in step.
 pub const LXAPP_PUBLIC_ICON: &str = "public/AppIcon.png";
 
 pub fn ensure_lxapp_public_icon(target_dir: &Path) -> Result<()> {

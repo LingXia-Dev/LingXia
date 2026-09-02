@@ -502,7 +502,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         }
         let info = getLxAppInfo(providerAppId)
         appNameLabel.stringValue = info.app_name.toString().uppercased()
-        loadAppIcon(path: info.icon.toString())
+        loadAppIcon(path: getLxAppDisplayIconPath(providerAppId).toString())
 
         // Hide close button for home lxapp
         let isHome = LxAppCore.isHomeLxApp(providerAppId)

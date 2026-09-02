@@ -181,7 +181,7 @@ enum SurfaceSwitcherBridge {
             return (URL(string: uri) ?? URL(fileURLWithPath: uri), nil)
         case "providerAsset":
             guard icon.provider == "lxapp", let appId = icon.key else { return (nil, nil) }
-            let path = getLxAppInfo(appId).icon.toString()
+            let path = getLxAppDisplayIconPath(appId).toString()
             return (path.isEmpty ? nil : URL(fileURLWithPath: path), nil)
         default:
             return (nil, nil)
