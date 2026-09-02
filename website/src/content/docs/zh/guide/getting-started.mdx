@@ -103,14 +103,12 @@ lxdev lxapp reload    # 原地重建并重载当前 lxapp
 
 LingXia 的深度参考以可移植的 markdown **技能**形式分发——决策树、每条 CLI 命令、页面编写、原生组件、`lx.*` 逻辑 API 与 Rust 接口，经过编排，让助手直接路由到所需章节。
 
-技能为**可选**，以 npm 包分发：
+技能编译在 CLI 内部，写出的副本永远对应你正在运行的那个 `lingxia`。无需安装：`lingxia new` 会把它写入 `~/.claude/skills/lingxia/`，之后任意一条命令只要发现磁盘上的副本与自己携带的不一致就会重写——升级之后如此，你自己编译一个 CLI 之后同样如此。
 
 ```bash
-lingxia skill install              # ./.claude/skills/lingxia/
-lingxia skill install --user       # ~/.claude/skills/lingxia/
-lingxia skill install --agents-md  # 同时为 Codex 类工具写入 AGENTS.md
+lingxia version --verbose   # 末尾一行：skill: <path> (in sync)
 ```
 
-- **Claude Code / Claude Agent SDK** —— `lingxia skill install`；Claude 会发现 `.claude/skills/lingxia/SKILL.md`。
-- **OpenAI Codex CLI** —— 加 `--agents-md`；Codex 读取 `<project>/AGENTS.md`。
-- **Cursor、Copilot 及其他读 markdown 的助手** —— 把工具指向 `.claude/skills/lingxia/SKILL.md`。
+- **Claude Code / Claude Agent SDK** —— 自动发现 `~/.claude/skills/lingxia/SKILL.md`。
+- **OpenAI Codex CLI** —— 读取 `<project>/AGENTS.md`，`lingxia new` 已把它指向该技能。
+- **Cursor、Copilot 及其他读 markdown 的助手** —— 把工具指向 `~/.claude/skills/lingxia/SKILL.md`。

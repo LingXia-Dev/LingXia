@@ -187,7 +187,8 @@ export const ui = {
         'Native component docs and the Rust native development guide',
         'Agent control for shipped products: appUse, computerUse, browserUse',
       ],
-      installLabel: 'Install the skill',
+      setupNote:
+        'Nothing to install: the CLI writes it to ~/.claude/skills/lingxia/ and rewrites it whenever the two differ.',
       tools: 'Claude Code · OpenAI Codex CLI · Cursor · any markdown-reading agent',
       codexLabel: 'For Codex-style tools (writes AGENTS.md)',
     },
@@ -414,7 +415,8 @@ export const ui = {
         '原生组件文档与 Rust 原生开发指南',
         '交付产品的 agent 控制面：appUse、computerUse、browserUse',
       ],
-      installLabel: '安装技能',
+      setupNote:
+        '无需安装：CLI 会把它写入 ~/.claude/skills/lingxia/，两者一旦不一致就重写。',
       tools: 'Claude Code · OpenAI Codex CLI · Cursor · 任意读 markdown 的助手',
       codexLabel: '面向 Codex 类工具（会写入 AGENTS.md）',
     },

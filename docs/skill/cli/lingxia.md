@@ -264,7 +264,7 @@ lingxia doctor
 lingxia doctor --platform harmony
 ```
 
-### Setup — `upgrade`, `skill`
+### Setup — `upgrade`
 
 Low-frequency, and not part of building anything: `upgrade` **always** moves
 the CLI, `lxdev` and the Runner to a newer release when one exists (the same
@@ -301,8 +301,9 @@ deferred until the process exits — re-run `lingxia upgrade` after that so
 project pins follow the new CLI's line. When that defers the project half, the
 command exits 10 even with `--yes`, so automation knows it must re-run after
 the swap. Builds print a one-line hint when
-the project's line is older than the CLI's. `skill install` writes this skill
-where an AI coding tool finds it.
+the project's line is older than the CLI's. Upgrading also hands this skill to
+the newly installed binary, which writes its own copy where an AI coding tool
+finds it.
 
 Manifest rewrites are followed by their npm/Cargo lockfile and platform SDK
 refreshes. If one fails, `upgrade` exits nonzero and reports what still needs
