@@ -24,23 +24,6 @@ pub(crate) fn get_lxapps_manager() -> Option<Arc<LxApps>> {
     LXAPPS_MANAGER.get().cloned()
 }
 
-/// Temp directories of the sessions that are still running.
-///
-/// A product-wide cache clear must leave these alone: their files back
-/// in-flight work — an upload body, a preview being written — and the app that
-/// owns them has no way to notice they vanished.
-pub(crate) fn live_temp_dirs() -> Vec<std::path::PathBuf> {
-    let Some(manager) = get_lxapps_manager() else {
-        return Vec::new();
-    };
-    manager
-        .lxapps
-        .iter()
-        .map(|entry| entry.value().temp_dir.clone())
-        .filter(|dir| !dir.as_os_str().is_empty())
-        .collect()
-}
-
 /// Get the platform runtime instance.
 /// Returns None if the SDK has not been initialized.
 pub fn get_platform() -> Option<Arc<Platform>> {

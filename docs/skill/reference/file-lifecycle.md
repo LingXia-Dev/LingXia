@@ -235,6 +235,7 @@ What `clear()` drops:
 | every **idle** session's temp | disposable by definition |
 | shared runtime artwork | re-fetched on demand |
 | the WebView's regenerable HTTP cache | re-fetched on demand; cookies and logins are untouched |
+| orphaned lxapp installs and staged update archives | referenced by no record, so nothing can load them |
 
 What it never touches — none of these are regenerable, so removing them behind
 a "clear cache" control is data loss, not maintenance:
@@ -243,7 +244,14 @@ a "clear cache" control is data loss, not maintenance:
 - the `lx.getStorage` key-value store
 - files in the user's Downloads directory
 - installed lxapp packages
-- cookies and site data, so nobody is signed out
+- cookies and site data, so nobody is signed out — clearing those logs the user
+  out of every site, which is a different control with a different name; the
+  browser shell exposes it separately as `privacy.clearBrowsingData`
+- any install or staged archive a record still points at, or anything written in
+  the last hour: an install is unpacked before its record is written, so a
+  narrower rule would delete the very update the user is waiting for
+- install, download, and session paths currently owned by active runtime work;
+  unreadable or future timestamps are kept rather than guessed to be garbage
 
 The **live session's temp is preserved** for every lxapp that is currently
 running: those files back in-flight work — an upload body, a preview being
@@ -253,7 +261,10 @@ written — and the app that owns them has no way to notice they vanished.
 excluded because the platform stores report a site count rather than a byte
 total, and any figure would be invented — so `clear()` usually frees more than
 `size()` reported. Present the number as a lower bound. Platforms without a
-WebView cache API simply skip that part rather than failing the call.
+WebView cache API simply skip that part rather than failing the call. If any
+LingXia-managed path cannot be removed, `clear()` still attempts the remaining
+categories and then rejects so the UI cannot mistake a partial clear for full
+success.
 
 ## Storage Summary
 

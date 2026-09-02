@@ -187,6 +187,7 @@ impl UpdateManager {
             .join(LINGXIA_DIR)
             .join(LXAPPS_DIR)
             .join(&dir_name);
+        let _cleanup_protection = crate::cache::protect_from_cleanup([destination.clone()]);
 
         if destination.exists() {
             fs::remove_dir_all(&destination)?;
@@ -210,6 +211,7 @@ impl UpdateManager {
             reader.read_to_end(&mut buffer)?;
             fs::write(&target, buffer)?;
         }
+        crate::cache::touch_modified_time(&destination);
 
         if let Err(e) = Self::validate_installed_lxapp_manifest(&destination) {
             let _ = fs::remove_dir_all(&destination);
@@ -231,7 +233,7 @@ impl UpdateManager {
         let previous_path =
             metadata::get(lxappid, release_type)?.map(|rec| PathBuf::from(rec.install_path));
 
-        let install_path = Self::install_archive_to_dir(
+        let (install_path, _cleanup_protection) = Self::install_archive_to_dir(
             &self.lxapp.runtime,
             lxappid,
             release_type,
@@ -297,7 +299,7 @@ impl UpdateManager {
         release_type: ReleaseType,
         version: &str,
         archive_path: &Path,
-    ) -> Result<PathBuf, LxAppError> {
+    ) -> Result<(PathBuf, crate::cache::CleanupProtection), LxAppError> {
         let dir_name = Self::versioned_install_dir_name(lxappid, release_type, version)?;
         let destination = runtime
             .app_data_dir()
@@ -305,8 +307,12 @@ impl UpdateManager {
             .join(LXAPPS_DIR)
             .join(dir_name);
 
+        let cleanup_protection = crate::cache::protect_from_cleanup([destination.clone()]);
         archive::extract_tar_zst(archive_path, &destination)?;
-        Ok(destination)
+        // Refresh the root timestamp so the grace period covers the short gap
+        // between extraction returning and the caller committing metadata.
+        crate::cache::touch_modified_time(&destination);
+        Ok((destination, cleanup_protection))
     }
 
     fn versioned_install_dir_name(
@@ -436,6 +442,8 @@ impl UpdateManager {
         version: &str,
     ) -> Result<PathBuf, LxAppError> {
         let dest = self.dest_path_for_url(url);
+        let _cleanup_protection =
+            crate::cache::protect_from_cleanup([dest.clone(), dest.with_extension("part")]);
         if dest.exists() {
             let _ = fs::remove_file(&dest);
         }
