@@ -1,6 +1,8 @@
 use lxapp::LxApp;
 use rong::{JSContext, JSFunc, JSObject, JSResult};
 
+use crate::i18n::js_error_from_lxapp_error;
+
 /// `lx.app.cache` — the product-wide cache a settings screen reports and
 /// clears.
 ///
@@ -37,9 +39,13 @@ async fn cache_size(ctx: JSContext) -> JSResult<f64> {
 /// Never touches userdata, the `lx.getStorage` key-value store, the user's
 /// downloads, or installed lxapp packages: none of those are regenerable, so
 /// removing them behind a "clear cache" control is data loss. Cookies and
-/// logins survive too — this clears caches, it does not sign anyone out.
+/// logins survive too — this clears caches, it does not sign anyone out. A
+/// partial LingXia-managed clear rejects after attempting every category.
 async fn cache_clear(ctx: JSContext) -> JSResult<f64> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     super::ensure_home_lxapp(&lxapp, "lx.app.cache.clear")?;
-    Ok(lxapp::clear_product_cache().await as f64)
+    lxapp::clear_product_cache()
+        .await
+        .map(|bytes| bytes as f64)
+        .map_err(|err| js_error_from_lxapp_error(&err))
 }

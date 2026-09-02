@@ -237,6 +237,8 @@ export type AppCacheApi = {
      * user's downloads, or installed lxapp packages — none are regenerable, so
      * dropping them behind a "clear cache" control is data loss. Cookies and
      * logins survive: this clears caches, it does not sign anyone out.
+     * Rejects after attempting every category if any LingXia-managed path could
+     * not be removed, so the UI does not report a partial clear as successful.
      */
     clear(): Promise<number>;
 };
