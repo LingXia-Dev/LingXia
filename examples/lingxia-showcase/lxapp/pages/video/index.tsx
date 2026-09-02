@@ -7,6 +7,7 @@ type VideoConfig = {
   id: string;
   src: string;
   poster?: string;
+  autoplay?: boolean;
   qualities?: Array<{ label: string; url?: string }>;
   playbackRates?: number[];
 };
@@ -115,7 +116,7 @@ export default function App() {
             poster={video.poster}
             qualities={video.qualities}
             playbackRates={video.playbackRates}
-            autoplay={Boolean(video.src)}
+            autoplay={video.autoplay ?? Boolean(video.src)}
             controls
             volume="0.8"
             className="block w-full rounded-lg bg-black"
