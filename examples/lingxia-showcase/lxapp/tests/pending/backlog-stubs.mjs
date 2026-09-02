@@ -131,13 +131,6 @@ export default [
     reason: "needs a second-lxapp fixture beyond the live Showcase session",
   },
   {
-    id: "PEND-OPENURL-001",
-    title: "surface.openUrl and TabSurface activate/scope",
-    mode: "external-fixture",
-    covers: ["lx.surface.openUrl"],
-    reason: "browser tab surface fixture is not wired in Showcase Logic tests",
-  },
-  {
     id: "PEND-VIDEO-CTRL-001",
     title: "VideoContext play, stop, seek, and setStreamSource",
     mode: "external-fixture",
