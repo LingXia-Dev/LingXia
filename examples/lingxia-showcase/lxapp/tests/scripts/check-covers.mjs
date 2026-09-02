@@ -25,9 +25,13 @@ if (report.filtered) {
 
 const passing = (report.cases ?? []).filter((item) => item.status === 'passed');
 const covered = new Set(passing.flatMap((item) => item.covers ?? []));
+// A requirement with `targets` is owed only by those platforms; a run on any
+// other platform neither proves nor fails it.
+const platform = String(report.meta?.platform ?? '').toLowerCase();
 
 const missingLogic = manifest.apis.flatMap((requirement) => {
   if (requirement.mode !== 'automated') return [];
+  if (requirement.targets && platform && !requirement.targets.includes(platform)) return [];
   return covered.has(requirement.api) ? [] : [requirement.api];
 });
 const missingShapes = LX_REQUIRED_RUNTIME_SHAPE_NAMES.filter((name) => !covered.has(name));
