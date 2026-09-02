@@ -1,35 +1,54 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
+/// Root certificates shared by every agent below.
+///
+/// ureq defaults to the bundled Mozilla roots, which reject any chain issued by
+/// a root that only lives in the machine's trust store — corporate proxies, TLS
+/// inspection appliances, self-managed CAs. Those are exactly the networks where
+/// `lingxia upgrade`/`build` still has to reach GitHub, and every other dev tool
+/// on the machine (curl, cargo, git) already trusts that root, so load the
+/// platform roots and keep the bundled set only as the fallback for hosts that
+/// ship none (minimal containers). `rustls-native-certs` also honours
+/// `SSL_CERT_FILE`/`SSL_CERT_DIR`, which gives a way in when the root is a file
+/// rather than an installed trust anchor.
+fn native_root_certs() -> Option<&'static ureq::tls::RootCerts> {
+    static ROOTS: OnceLock<Option<ureq::tls::RootCerts>> = OnceLock::new();
+    ROOTS
+        .get_or_init(|| {
+            let loaded = rustls_native_certs::load_native_certs();
+            let certs: Vec<ureq::tls::Certificate<'static>> = loaded
+                .certs
+                .into_iter()
+                .map(|c| ureq::tls::Certificate::from_der(c.as_ref()).to_owned())
+                .collect();
+            (!certs.is_empty()).then(|| ureq::tls::RootCerts::from(certs))
+        })
+        .as_ref()
+}
+
+fn build_agent(timeout: Option<Duration>) -> ureq::Agent {
+    let mut tls = ureq::tls::TlsConfig::builder();
+    if let Some(roots) = native_root_certs() {
+        tls = tls.root_certs(roots.clone());
+    }
+
+    ureq::Agent::config_builder()
+        .timeout_global(timeout)
+        .http_status_as_error(false)
+        .tls_config(tls.build())
+        .build()
+        .new_agent()
+}
+
 /// Create a standard ureq agent with LingXia defaults.
 pub fn create_agent(timeout_secs: u64) -> ureq::Agent {
-    ureq::Agent::config_builder()
-        .timeout_global(Some(Duration::from_secs(timeout_secs)))
-        .http_status_as_error(false)
-        .build()
-        .into()
+    build_agent(Some(Duration::from_secs(timeout_secs)))
 }
 
 /// Create a ureq agent that uses native root certificates.
 pub fn create_native_roots_agent() -> ureq::Agent {
-    use ureq::tls::{RootCerts, TlsConfig};
-
-    let native_certs = rustls_native_certs::load_native_certs();
-    let certs: Vec<ureq::tls::Certificate<'static>> = native_certs
-        .certs
-        .into_iter()
-        .map(|c| ureq::tls::Certificate::from_der(c.as_ref()).to_owned())
-        .collect();
-
-    ureq::Agent::config_builder()
-        .http_status_as_error(false)
-        .tls_config(
-            TlsConfig::builder()
-                .root_certs(RootCerts::from(certs))
-                .build(),
-        )
-        .build()
-        .new_agent()
+    build_agent(None)
 }
 
 /// Shared native-roots agent for Apple/Harmony API calls.
