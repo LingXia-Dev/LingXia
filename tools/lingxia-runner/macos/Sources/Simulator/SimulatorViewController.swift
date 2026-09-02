@@ -303,15 +303,20 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
             }
         }
         
-        // Add TabBar state change observer
+        // Add TabBar state change observer. Opening a second lxapp leaves the
+        // first window alive but hidden, so an unfiltered observer would have
+        // every suspended window tear down and rebuild its tab-bar and
+        // web-view constraints on another app's notification.
         tabBarObserver = NotificationCenter.default.addObserver(
             forName: RunnerSupport.TabBar.stateChangedNotification,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
-            guard let self = self else { return }
-            
+        ) { [weak self] notification in
+            // Posters name the app they changed; an unnamed one is broadcast.
+            let changed = notification.object as? String
             Task { @MainActor in
+                guard let self = self else { return }
+                if let changed, changed != self.appId { return }
                 self.updateTabBar()
                 // Applied: resolve any awaited lx.tabBar.update().
                 LingxiaRunnerSPI.Tabs.updateApplied(appId: self.appId)

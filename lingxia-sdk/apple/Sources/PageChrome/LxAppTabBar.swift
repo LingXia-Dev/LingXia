@@ -977,6 +977,9 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     private var onTabSelectedCallback: ((Int, String) -> Void)?
     /// Panel above the strip listing the folded items, while it is open.
     private weak var overflowPanel: NSView?
+    /// The plate behind the folded items, kept so its colour can follow a
+    /// change of appearance -- a CGColor is resolved once and never again.
+    private weak var overflowPlate: NSView?
 
     var config: TabBar? {
         return tabBarConfig
@@ -1056,7 +1059,13 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
             dismissOverflowPanel()
             return
         }
+        // Hosted in the window, because a WKWebView sibling draws over anything
+        // placed beside it whatever the subview order says. The *scrim* is what
+        // gets confined to the strip's own parent below: a runner window also
+        // holds a toolbar and the device frame, and a click-catcher spanning
+        // those would swallow clicks that never belonged to the panel.
         guard let host = window?.contentView, let config = tabBarConfig else { return }
+        let screen = superview ?? host
         let start = Int(config.overflow_start_index)
         let count = Int(config.items_count)
         guard start >= 0, start < count else { return }
@@ -1071,7 +1080,9 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         let scrim = NSView()
         scrim.translatesAutoresizingMaskIntoConstraints = false
         scrim.wantsLayer = true
-        scrim.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.4).cgColor
+        // Invisible, like the phone hosts': it exists to catch the click that
+        // dismisses the panel, not to dim the page behind it.
+        scrim.layer?.backgroundColor = NSColor.clear.cgColor
         scrim.addGestureRecognizer(
             NSClickGestureRecognizer(target: self, action: #selector(overflowScrimClicked))
         )
@@ -1094,28 +1105,30 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         let panel = NSView()
         panel.translatesAutoresizingMaskIntoConstraints = false
         panel.wantsLayer = true
-        panel.layer?.backgroundColor = TabBarHelper.isTransparent(config.background_color)
-            ? NSColor.windowBackgroundColor.cgColor
-            : PlatformColor(argb: config.background_color).cgColor
         container.addSubview(panel)
+        overflowPlate = panel
+        paintOverflowPlate()
 
         let hosted = NSHostingView(rootView: grid)
         hosted.translatesAutoresizingMaskIntoConstraints = false
         panel.addSubview(hosted)
 
         host.addSubview(container, positioned: .above, relativeTo: nil)
+        // Held so the panel can start below the strip and slide up.
+        let offset = panel.bottomAnchor.constraint(equalTo: topAnchor)
         NSLayoutConstraint.activate([
             container.topAnchor.constraint(equalTo: host.topAnchor),
             container.leadingAnchor.constraint(equalTo: host.leadingAnchor),
             container.trailingAnchor.constraint(equalTo: host.trailingAnchor),
             container.bottomAnchor.constraint(equalTo: host.bottomAnchor),
-            scrim.topAnchor.constraint(equalTo: container.topAnchor),
-            scrim.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            scrim.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-            scrim.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            // Only over the screen the strip belongs to, not the whole window.
+            scrim.topAnchor.constraint(equalTo: screen.topAnchor),
+            scrim.leadingAnchor.constraint(equalTo: screen.leadingAnchor),
+            scrim.trailingAnchor.constraint(equalTo: screen.trailingAnchor),
+            scrim.bottomAnchor.constraint(equalTo: screen.bottomAnchor),
             // Flush on top of the strip, and no wider than it, so the panel
             // stays inside the simulated screen rather than the whole window.
-            panel.bottomAnchor.constraint(equalTo: topAnchor),
+            offset,
             panel.leadingAnchor.constraint(equalTo: leadingAnchor),
             panel.trailingAnchor.constraint(equalTo: trailingAnchor),
             hosted.topAnchor.constraint(equalTo: panel.topAnchor),
@@ -1124,6 +1137,41 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
             hosted.bottomAnchor.constraint(equalTo: panel.bottomAnchor)
         ])
         overflowPanel = container
+
+        // The panel has no height of its own -- it takes the hosting view's
+        // intrinsic size, which is only known after a layout pass. Without
+        // this the first frame draws it collapsed and the second jumps it to
+        // full height. Lay out, park it below the strip, then slide it up;
+        // the phone hosts open the same way.
+        container.layoutSubtreeIfNeeded()
+        offset.constant = panel.frame.height
+        container.layoutSubtreeIfNeeded()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.16
+            context.allowsImplicitAnimation = true
+            offset.animator().constant = 0
+            container.layoutSubtreeIfNeeded()
+        }
+    }
+
+    /// `windowBackgroundColor` resolves against the appearance in force when it
+    /// is read, and a CGColor keeps that answer forever -- the runner pins the
+    /// window's appearance after the window is up, so the plate has to be
+    /// repainted rather than baked.
+    private func paintOverflowPlate() {
+        guard let plate = overflowPlate, let config = tabBarConfig else { return }
+        guard TabBarHelper.isTransparent(config.background_color) else {
+            plate.layer?.backgroundColor = PlatformColor(argb: config.background_color).cgColor
+            return
+        }
+        plate.effectiveAppearance.performAsCurrentDrawingAppearance {
+            plate.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        paintOverflowPlate()
     }
 
     @objc private func overflowScrimClicked() {
@@ -1133,6 +1181,7 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     private func dismissOverflowPanel() {
         overflowPanel?.removeFromSuperview()
         overflowPanel = nil
+        overflowPlate = nil
         morePresented = false
     }
 
@@ -1145,6 +1194,11 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     }
 
     func refreshLayout() {
+        // The panel lists items from the config about to be replaced, and it
+        // hangs off a strip that is about to be re-laid out: an open panel
+        // cannot survive the rebuild intact.
+        dismissOverflowPanel()
+
         // Get fresh config from Rust instead of using cached tabBarConfig
         guard let freshConfig = getTabBar(appId) else {
             // If no config exists, hide the view.
