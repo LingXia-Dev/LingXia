@@ -15,6 +15,10 @@ const pending = { reason: 'needs the HTTP fixture: node tests/harness/http-fixtu
 interface MediaResult {
   lastProgress: number;
   progressTicks: number;
+  viaThen: number;
+  finallyRan: boolean;
+  caught: string | null;
+  returnedDone: boolean;
   video: { width: number; height: number; durationMs: number; size: number; type: string };
   thumb: { tempFilePath: string; width: number; height: number };
   compressedImage: { tempFilePath: string };
@@ -30,6 +34,10 @@ mediaSpec('read info, thumbnail, and compress local media', {
     'lx.compressVideo',
     'CompressVideoTask.wait',
     'CompressVideoTask.next',
+    'CompressVideoTask.return',
+    'CompressVideoTask.then',
+    'CompressVideoTask.catch',
+    'CompressVideoTask.finally',
     'lx.downloadFile',
   ],
   app: SHOWCASE_APP_ID,
@@ -53,9 +61,26 @@ mediaSpec('read info, thumbnail, and compress local media', {
       for await (const tick of lx.compressVideo({ path: vid.tempFilePath, quality: 'low' })) {
         if (typeof tick.progress === 'number') { lastProgress = tick.progress; progressTicks += 1; }
       }
+      // The task is a thenable too: then/finally on success, catch on a bad
+      // path, and an early iterator return leaves nothing dangling.
+      let finallyRan = false;
+      const viaThen = await lx.compressVideo({ path: vid.tempFilePath, quality: 'low' })
+        .then((r) => r.size)
+        .finally(() => { finallyRan = true; });
+      // A missing source throws synchronously; an aborted task rejects, which
+      // is the path .catch() is for.
+      const cancelled = lx.compressVideo({ path: vid.tempFilePath, quality: 'high' });
+      cancelled.cancel();
+      const caught = await cancelled.then(() => null).catch((error) => error && error.code);
+      const iterator = lx.compressVideo({ path: vid.tempFilePath, quality: 'low' })[Symbol.asyncIterator]();
+      const returned = await iterator.return();
       return {
         lastProgress,
         progressTicks,
+        viaThen,
+        finallyRan,
+        caught,
+        returnedDone: returned.done === true,
         video: { width: video.width, height: video.height, durationMs: video.durationMs, size: video.size, type: video.type },
         thumb: { tempFilePath: thumb.tempFilePath, width: thumb.width, height: thumb.height },
         compressedImage: { tempFilePath: compressedImage.tempFilePath },
@@ -74,6 +99,11 @@ mediaSpec('read info, thumbnail, and compress local media', {
   // The progress iterator ran and finished at 100.
   expect(result.progressTicks).toBeGreaterThanOrEqual(1);
   expect(result.lastProgress).toBe(100);
+  // Thenable and iterator protocol.
+  expect(result.viaThen).toBeGreaterThan(0);
+  expect(result.finallyRan).toBe(true);
+  expect(typeof result.caught).toBe('string');
+  expect(result.returnedDone).toBe(true);
 
   // A thumbnail is a real image the lxapp can read back.
   expect(result.thumb.tempFilePath.startsWith('lx://')).toBeTruthy();
