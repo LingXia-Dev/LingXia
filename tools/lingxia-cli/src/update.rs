@@ -75,32 +75,59 @@ pub fn maybe_auto_update() {
             "Updating LingXia CLI {} -> {}...",
             status.current_version, status.latest_version
         );
-        if let Err(err) = install_update(&exe_path, &status) {
-            eprintln!("warning: automatic CLI update failed: {err}");
-            eprintln!("Continuing with the current CLI version.");
+        match install_update(&exe_path, &status) {
+            // The binary on disk is now a different release, so its skill is
+            // the one that should be installed -- and only it can write it.
+            #[cfg(not(target_os = "windows"))]
+            Ok(SelfReplace::Complete) => sync_skill_through(&exe_path),
+            #[cfg(target_os = "windows")]
+            Ok(SelfReplace::Deferred) => {}
+            Err(err) => {
+                eprintln!("warning: automatic CLI update failed: {err}");
+                eprintln!("Continuing with the current CLI version.");
+            }
         }
     }
 }
 
-/// Bring a skill installed under the home directory up to this binary.
+/// Bring the skill installed under the home directory in step with this binary.
 ///
-/// Called after argument parsing, not from `maybe_auto_update`: this writes to
-/// the filesystem, and `skill install --dry-run` promises it will not.
-///
-/// The skill ships inside the CLI, so there is no version to look up and no
-/// network call: a copy on disk either came from this binary or predates it.
-pub fn refresh_installed_skill() {
-    let Ok(dest) = crate::commands::skill::user_destination() else {
-        return;
-    };
-    match crate::commands::skill::refresh_if_stale(&dest) {
-        Ok(Some(previous)) => println!(
-            "Updated the installed LingXia skill ({} -> {}).",
+/// The skill ships inside the CLI, so this costs one small file read and no
+/// network call: the copy on disk either holds what this binary carries or it
+/// does not. `create` is for a run that is itself a request for the skill --
+/// `lingxia new`, `lingxia upgrade` -- and writes one where none exists.
+pub fn sync_installed_skill(create: bool) {
+    use crate::commands::skill::Sync;
+
+    match crate::commands::skill::sync_home_skill(create) {
+        Ok(Sync::Skipped | Sync::Current) => {}
+        Ok(Sync::Created) => println!(
+            "Installed the LingXia agent skill ({}).",
+            env!("CARGO_PKG_VERSION")
+        ),
+        Ok(Sync::Rewritten { previous }) if previous == env!("CARGO_PKG_VERSION") => println!(
+            "Refreshed the installed LingXia agent skill ({}).",
+            env!("CARGO_PKG_VERSION")
+        ),
+        Ok(Sync::Rewritten { previous }) => println!(
+            "Updated the installed LingXia agent skill ({} -> {}).",
             previous,
             env!("CARGO_PKG_VERSION")
         ),
-        Ok(None) => crate::commands::skill::notify_pinned_skill(),
-        Err(err) => eprintln!("warning: could not refresh the installed skill: {err}"),
+        Err(err) => eprintln!("warning: could not sync the installed skill: {err}"),
+    }
+}
+
+/// Hand the skill to the binary that was just installed.
+///
+/// Self-update replaces the executable but cannot write the new skill in the
+/// same run -- this process is still executing the old code, and the skill it
+/// carries describes the release being replaced.
+pub(crate) fn sync_skill_through(exe: &Path) {
+    match std::process::Command::new(exe).arg("__sync-skill").status() {
+        Ok(status) if status.success() => {}
+        Ok(status) => eprintln!("warning: the new CLI could not write its skill ({status})"),
+        Err(err) => eprintln!("warning: could not run the new CLI to write its skill: {err}"),
     }
 }
 

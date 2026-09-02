@@ -431,11 +431,17 @@ enum Commands {
         action: Option<commands::runner::RunnerAction>,
     },
 
-    /// Install the LingXia agent skill shipped inside this CLI
-    Skill {
-        #[command(subcommand)]
-        action: commands::skill::SkillAction,
-    },
+    /// Write this binary's agent skill over the installed copy. Run by
+    /// `upgrade` through the newly installed binary, which is the only process
+    /// that carries the new skill.
+    #[command(name = "__sync-skill", hide = true)]
+    SyncSkill,
+
+    /// Fetch the named templates. Started detached by any command that finds
+    /// one due, so nobody waits for git. Name kept in step with
+    /// `template_provider`.
+    #[command(name = "__refresh-templates", hide = true)]
+    RefreshTemplates { slugs: Vec<String> },
 
     /// Update the CLI, and inside a project offer to upgrade pins and SDKs
     Upgrade {
@@ -765,8 +771,16 @@ enum AuthLogoutProvider {
 fn main() -> Result<()> {
     let raw_args: Vec<String> = std::env::args().collect();
     // Skipped for `upgrade`, which does this deliberately and with the user's
-    // arguments: running both would download twice and race on the binary.
-    if !raw_args.iter().any(|arg| arg == "upgrade") {
+    // arguments: running both would download twice and race on the binary. Also
+    // skipped for the internal helpers the CLI starts on its own -- each does
+    // the one job it was started for, and a detached worker must never replace
+    // the binary out from under the command that spawned it.
+    if !raw_args.iter().any(|arg| {
+        matches!(
+            arg.as_str(),
+            "upgrade" | "__sync-skill" | "__refresh-templates"
+        )
+    }) {
         update::maybe_auto_update();
     }
 
@@ -782,14 +796,18 @@ fn main() -> Result<()> {
         }
     };
 
-    // After parsing, so a command that promises not to write -- `skill install
-    // --dry-run` -- is not undercut by a refresh that already wrote. Skipped for
-    // `skill` itself, which is the command that manages the install.
+    // Every run reconciles the installed skill with the one this binary
+    // carries, so the two cannot drift. `upgrade` and `__sync-skill` do it
+    // themselves: one hands the job to the binary it just installed, the other
+    // is that job.
     if !matches!(
         cli.command,
-        Commands::Skill { .. } | Commands::Upgrade { .. }
+        Commands::SyncSkill | Commands::RefreshTemplates { .. } | Commands::Upgrade { .. }
     ) {
-        update::refresh_installed_skill();
+        update::sync_installed_skill(false);
+        // Templates come from git, so this only reads state and hands any
+        // fetching to a detached worker.
+        commands::template_provider::refresh_due_in_background();
     }
 
     match cli.command {
@@ -984,8 +1002,11 @@ fn main() -> Result<()> {
         Commands::Doctor { platform } => {
             commands::doctor::execute(platform)?;
         }
-        Commands::Skill { action } => {
-            commands::skill::execute(action)?;
+        Commands::SyncSkill => {
+            update::sync_installed_skill(true);
+        }
+        Commands::RefreshTemplates { slugs } => {
+            commands::template_provider::refresh_now(&slugs);
         }
         Commands::Upgrade {
             check,

@@ -1,6 +1,7 @@
 use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Read as _;
@@ -10,7 +11,18 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const MANIFEST_FILE: &str = "lingxia-template.json";
 const SKILL_OWNER_FILE: &str = ".lingxia-template-owner";
-const CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+/// How long a template may go unchecked when its source is a remote the check
+/// has to reach over the network.
+const REMOTE_CHECK_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+/// A source on this machine costs a local `git ls-remote` and no network, so a
+/// template developed next door follows its repository within the minute
+/// instead of within the day.
+const LOCAL_CHECK_INTERVAL: Duration = Duration::from_secs(60);
+/// Overrides both intervals, in seconds. `0` checks on every command.
+const CHECK_INTERVAL_ENV: &str = "LINGXIA_TEMPLATE_TTL";
+/// Argv the detached refresh worker is started with. Kept in step with the
+/// hidden `__refresh-templates` command in `main.rs`.
+const REFRESH_ARG: &str = "__refresh-templates";
 const REMOTE_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -120,7 +132,7 @@ pub fn execute_update(name: Option<&str>) -> Result<()> {
     }
     for name in names {
         let before = load_from(&home, &name)?;
-        let after = update_from(&home, &name, true)?;
+        let after = update_from(&home, &name)?;
         if before.commit == after.commit {
             println!("  {} {} is current", "✓".green(), name);
         } else {
@@ -150,11 +162,10 @@ pub fn list_installed() -> Result<Vec<InstalledTemplate>> {
 pub fn resolve_for_new(name: &str) -> Result<InstalledTemplate> {
     let home = require_home()?;
     let current = load_from(&home, name)?;
-    let state = read_state(&home, &current.slug)?;
-    if now().saturating_sub(state.last_checked) < CHECK_INTERVAL.as_secs() {
-        return Ok(current);
-    }
-    match update_from(&home, &current.slug, false) {
+    // Scaffolding is the one moment worth waiting for git: a project generated
+    // from a stale template carries that staleness for its whole life, and the
+    // background refresh may have stamped a check it has not finished yet.
+    match update_from(&home, &current.slug) {
         Ok(updated) => Ok(updated),
         Err(error) => {
             eprintln!(
@@ -168,6 +179,128 @@ pub fn resolve_for_new(name: &str) -> Result<InstalledTemplate> {
             );
             Ok(current)
         }
+    }
+}
+
+/// Keep installed templates current without making anyone wait for git.
+///
+/// Runs from every command, so the decision has to be cheap: it reads the state
+/// files and nothing else, and only a template that is actually due starts a
+/// detached child to do the git work. The command in the foreground never
+/// blocks on the refresh and never fails because of it.
+///
+/// The due templates are stamped *before* the child starts. A second command a
+/// moment later then finds nothing due and spawns nothing, and a source that is
+/// unreachable cannot make every command spawn a worker that fails.
+pub fn refresh_due_in_background() {
+    let Ok(home) = require_home() else {
+        return;
+    };
+    let due = due_slugs(&home);
+    if due.is_empty() {
+        return;
+    }
+    for slug in &due {
+        let _ = stamp_checked(&home, slug);
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let mut command = Command::new(exe);
+    command
+        .arg(REFRESH_ARG)
+        .args(&due)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // Detached and windowless: the worker outlives this command and must
+        // not flash a console over whatever the user is doing.
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW);
+    }
+    let _ = command.spawn();
+}
+
+/// The detached worker `refresh_due_in_background` starts, given the templates
+/// the parent found due. It cannot ask whether they are due -- the parent
+/// already stamped them -- so it fetches what it was handed. Output goes
+/// nowhere, so a failure here is silent by design: the next check tries again.
+pub fn refresh_now(slugs: &[String]) {
+    let Ok(home) = require_home() else {
+        return;
+    };
+    for slug in slugs {
+        let _ = update_from(&home, slug);
+    }
+}
+
+/// Templates whose next check has come due. Unreadable state and half-installed
+/// templates are skipped rather than reported: this runs beside every command
+/// and must never be the reason one fails.
+fn due_slugs(home: &Path) -> Vec<String> {
+    installed_states(home)
+        .into_iter()
+        .filter(|(_, state)| is_due(state))
+        .map(|(slug, _)| slug)
+        .collect()
+}
+
+fn installed_states(home: &Path) -> Vec<(String, TemplateState)> {
+    let root = states_root(home);
+    let Ok(entries) = fs::read_dir(&root) else {
+        return Vec::new();
+    };
+    let mut states = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+            continue;
+        }
+        let Some(slug) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        if !templates_root(home).join(slug).is_dir() {
+            continue;
+        }
+        let Ok(state) = read_state(home, slug) else {
+            continue;
+        };
+        states.push((slug.to_string(), state));
+    }
+    states
+}
+
+/// Record that a check happened without claiming the template moved.
+fn stamp_checked(home: &Path, slug: &str) -> Result<()> {
+    let state = read_state(home, slug)?;
+    write_state(
+        home,
+        slug,
+        &TemplateState {
+            last_checked: now(),
+            ..state
+        },
+    )
+}
+
+fn is_due(state: &TemplateState) -> bool {
+    now().saturating_sub(state.last_checked) >= check_interval(&state.source).as_secs()
+}
+
+fn check_interval(source: &str) -> Duration {
+    if let Ok(seconds) = std::env::var(CHECK_INTERVAL_ENV)
+        && let Ok(seconds) = seconds.trim().parse::<u64>()
+    {
+        return Duration::from_secs(seconds);
+    }
+    if Path::new(source).is_dir() {
+        LOCAL_CHECK_INTERVAL
+    } else {
+        REMOTE_CHECK_INTERVAL
     }
 }
 
@@ -371,13 +504,12 @@ fn load_from(home: &Path, name: &str) -> Result<InstalledTemplate> {
     })
 }
 
-fn update_from(home: &Path, name: &str, force: bool) -> Result<InstalledTemplate> {
+/// Fetch a template's source and adopt it if it moved. Always reaches for git,
+/// so callers decide when that is worth doing -- `is_due` for the background
+/// path, unconditionally for a scaffold or an explicit `template update`.
+fn update_from(home: &Path, name: &str) -> Result<InstalledTemplate> {
     let current = load_from(home, name)?;
     let state = read_state(home, &current.slug)?;
-    if !force && now().saturating_sub(state.last_checked) < CHECK_INTERVAL.as_secs() {
-        return Ok(current);
-    }
-
     let remote_commit = git_remote_commit(&state.source)?;
     if remote_commit == current.commit {
         sync_assets(home, &current, Some(&current))?;
@@ -588,6 +720,12 @@ fn sync_assets(
     previous: Option<&InstalledTemplate>,
 ) -> Result<()> {
     validate_asset_ownership(home, template, previous)?;
+    // Now that a check runs beside every command, the common outcome is that
+    // nothing moved. Answer that before staging: the staging below moves every
+    // target aside, so once it starts there is no cheap way back.
+    if assets_are_current(home, template, previous)? {
+        return Ok(());
+    }
 
     let transaction_root = lingxia_state_root(home);
     fs::create_dir_all(&transaction_root)?;
@@ -645,6 +783,52 @@ fn sync_assets(
         return Err(error);
     }
     Ok(())
+}
+
+/// Whether every asset this template owns already holds what the template
+/// carries: launchers byte for byte, skills by content rather than by the
+/// commit that installed them. A copy something else edited reads as not
+/// current and is repaired, and an untouched one is left alone rather than
+/// rewritten underneath whatever agent is reading it.
+fn assets_are_current(
+    home: &Path,
+    template: &InstalledTemplate,
+    previous: Option<&InstalledTemplate>,
+) -> Result<bool> {
+    // A previous install that owned different assets leaves files to retire.
+    if let Some(previous) = previous
+        && (previous.manifest.skills != template.manifest.skills
+            || previous.manifest.commands != template.manifest.commands)
+    {
+        return Ok(false);
+    }
+
+    let bin = home.join(".local").join("bin");
+    for (name, entry) in &template.manifest.commands {
+        let entry = resolve_owned_path(&template.root, entry, "command")?;
+        if fs::read_to_string(launcher_path(&bin, name)).unwrap_or_default()
+            != launcher_contents(&template.slug, &entry)
+        {
+            return Ok(false);
+        }
+    }
+
+    for skill in &template.manifest.skills {
+        let source = resolve_owned_path(&template.root, skill, "skill")?;
+        let Some(name) = source.file_name() else {
+            return Ok(false);
+        };
+        let target = home.join(".claude").join("skills").join(name);
+        if !skill_is_owned_by(&target, &template.slug) {
+            return Ok(false);
+        }
+        if directory_digest(&target, Some(SKILL_OWNER_FILE)).ok()
+            != Some(directory_digest(&source, None)?)
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn asset_targets(
@@ -832,13 +1016,54 @@ fn install_skills(home: &Path, template: &InstalledTemplate) -> Result<()> {
     Ok(())
 }
 
+fn skill_is_owned_by(path: &Path, slug: &str) -> bool {
+    fs::read_to_string(path.join(SKILL_OWNER_FILE)).is_ok_and(|owner| owner.trim() == slug)
+}
+
 fn ensure_skill_owned(path: &Path, slug: &str) -> Result<()> {
-    let owner = fs::read_to_string(path.join(SKILL_OWNER_FILE)).unwrap_or_default();
-    if owner.trim() != slug {
+    if !skill_is_owned_by(path, slug) {
         bail!(
             "Cannot manage template skill {} because it is not owned by template `{slug}`",
             path.display()
         );
+    }
+    Ok(())
+}
+
+/// Content hash of a directory tree, so an installed skill copy can be compared
+/// with the one the template now carries. `skip` drops a file from the hash --
+/// the installed copy carries an ownership marker the source does not.
+fn directory_digest(root: &Path, skip: Option<&str>) -> Result<String> {
+    let mut files = Vec::new();
+    collect_relative_files(root, Path::new(""), &mut files)?;
+    files.sort();
+    let mut hasher = Sha256::new();
+    for relative in files {
+        if skip.is_some_and(|skip| relative.as_os_str() == skip) {
+            continue;
+        }
+        let contents = fs::read(root.join(&relative))?;
+        hasher.update(relative.to_string_lossy().replace('\\', "/").as_bytes());
+        hasher.update([0]);
+        hasher.update((contents.len() as u64).to_le_bytes());
+        hasher.update(&contents);
+    }
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
+}
+
+fn collect_relative_files(root: &Path, prefix: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    for entry in fs::read_dir(root.join(prefix))? {
+        let entry = entry?;
+        let relative = prefix.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            collect_relative_files(root, &relative, out)?;
+        } else {
+            out.push(relative);
+        }
     }
     Ok(())
 }
@@ -1328,7 +1553,7 @@ mod tests {
         fs::write(source.path().join("skills/example/SKILL.md"), "second\n").unwrap();
         git(source.path(), &["add", "."]);
         git(source.path(), &["commit", "-q", "-m", "update"]);
-        let second = update_from(home.path(), "example", true).unwrap();
+        let second = update_from(home.path(), "example").unwrap();
         assert_ne!(first.commit, second.commit);
         assert_eq!(
             fs::read_to_string(home.path().join(".claude/skills/example/SKILL.md"))
@@ -1347,7 +1572,7 @@ mod tests {
         .unwrap();
         git(source.path(), &["add", "."]);
         git(source.path(), &["commit", "-q", "-m", "remove assets"]);
-        update_from(home.path(), "example", true).unwrap();
+        update_from(home.path(), "example").unwrap();
         assert!(!launcher.exists());
         assert!(!home.path().join(".claude/skills/example").exists());
 
@@ -1355,5 +1580,53 @@ mod tests {
         assert!(!home.path().join(".lingxia/templates/example").exists());
         assert!(!launcher.exists());
         assert!(!home.path().join(".claude/skills/example").exists());
+    }
+
+    #[test]
+    fn a_source_on_this_machine_is_checked_far_more_often_than_a_remote() {
+        if std::env::var_os(CHECK_INTERVAL_ENV).is_some() {
+            return;
+        }
+        let local = tempdir().unwrap();
+        assert!(
+            check_interval(&local.path().to_string_lossy())
+                < check_interval("https://example.com/kit.git")
+        );
+    }
+
+    #[test]
+    fn an_unchanged_skill_is_left_alone_and_an_edited_one_is_repaired() {
+        let root = tempdir().unwrap();
+        fs::create_dir_all(root.path().join("template")).unwrap();
+        fs::create_dir_all(root.path().join("skills/example")).unwrap();
+        fs::write(root.path().join("template/package.json"), "{}").unwrap();
+        fs::write(root.path().join("template/lxapp.json"), "{}").unwrap();
+        fs::write(root.path().join("skills/example/SKILL.md"), "first\n").unwrap();
+        fs::write(
+            root.path().join(MANIFEST_FILE),
+            r#"{
+  "name": "Example",
+  "template": "template",
+  "skills": ["skills/example"]
+}"#,
+        )
+        .unwrap();
+        let home = tempdir().unwrap();
+        let template = InstalledTemplate {
+            slug: "example".to_owned(),
+            root: root.path().to_path_buf(),
+            manifest: load_manifest(root.path()).unwrap(),
+            source: "test".to_owned(),
+            commit: "test".to_owned(),
+        };
+
+        sync_assets(home.path(), &template, None).unwrap();
+        let installed = home.path().join(".claude/skills/example/SKILL.md");
+        assert!(assets_are_current(home.path(), &template, Some(&template)).unwrap());
+
+        fs::write(&installed, "edited by hand\n").unwrap();
+        assert!(!assets_are_current(home.path(), &template, Some(&template)).unwrap());
+        sync_assets(home.path(), &template, Some(&template)).unwrap();
+        assert_eq!(fs::read_to_string(&installed).unwrap(), "first\n");
     }
 }

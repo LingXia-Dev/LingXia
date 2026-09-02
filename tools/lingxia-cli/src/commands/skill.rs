@@ -1,274 +1,99 @@
-//! Install the LingXia agent skill from this binary.
+//! Keep the agent skill this binary carries in step with the copy on disk.
 //!
 //! The skill describes what this CLI can do, so it ships inside the CLI rather
 //! than as a package fetched separately: an installed copy always came from the
 //! binary that wrote it, and cannot describe a version the CLI is not.
+//!
+//! There is no command to install it. Every run reconciles the copy under the
+//! home directory with the one compiled in, so an edit to the skill reaches the
+//! agent as soon as the CLI that carries it runs.
 
-use anyhow::{Context, Result, bail};
-use clap::Subcommand;
+use anyhow::{Context, Result};
 use include_dir::{Dir, include_dir};
-use semver::Version;
-use std::fmt;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use tempfile::TempDir;
 
 static EMBEDDED_SKILL: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/../../docs/skill");
 
 /// Directory name the agent tooling expects inside a skills root.
 const SKILL_DIR_NAME: &str = "lingxia";
-/// Records which CLI wrote the installed skill, so a later CLI can tell that
-/// the copy on disk is not its own and rewrite it.
-pub const MANIFEST_NAME: &str = "skill-manifest.json";
+/// Records which skill an install holds, so a later run can tell whether the
+/// copy on disk is still the one this binary carries.
+const MANIFEST_NAME: &str = "skill-manifest.json";
 
-/// Where an installed copy came from. Recorded so `status` reports the truth
-/// and so the auto-refresh leaves a deliberately overridden install alone.
-enum Source {
-    /// The copy compiled into this binary.
-    Embedded,
-    /// A directory on disk, for editing the skill without rebuilding the CLI.
-    Directory(PathBuf),
-}
-
-impl Source {
-    fn manifest(&self) -> serde_json::Value {
-        match self {
-            Source::Embedded => serde_json::json!({
-                "version": env!("CARGO_PKG_VERSION"),
-                "source": "cli",
-            }),
-            Source::Directory(path) => serde_json::json!({
-                "version": env!("CARGO_PKG_VERSION"),
-                "source": "directory",
-                "sourcePath": path.display().to_string(),
-            }),
-        }
-    }
-}
-
-impl fmt::Display for Source {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Source::Embedded => write!(f, "this CLI ({})", env!("CARGO_PKG_VERSION")),
-            Source::Directory(path) => write!(f, "{}", path.display()),
-        }
-    }
-}
-
-#[derive(Subcommand)]
-pub enum SkillAction {
-    /// Write the skill into a project, the home directory, or a chosen path
-    Install {
-        /// Install for every project under the home directory
-        #[arg(long)]
-        user: bool,
-
-        /// Skills root to install into; the skill lands in <PATH>/lingxia
-        #[arg(long, value_name = "PATH", conflicts_with = "user")]
-        target: Option<PathBuf>,
-
-        /// Also write an AGENTS.md at the project root pointing at the skill
-        #[arg(long)]
-        agents_md: bool,
-
-        /// Install from a skill directory on disk instead of the embedded copy.
-        /// Editing the skill does not require rebuilding the CLI.
-        #[arg(long, value_name = "PATH")]
-        from: Option<PathBuf>,
-
-        /// Report what would be written without touching the filesystem
-        #[arg(long, short = 'n')]
-        dry_run: bool,
-    },
-
-    /// Print where an installed skill is and which version wrote it
-    Status {
-        /// Inspect the home-directory install instead of this project's
-        #[arg(long)]
-        user: bool,
-
-        /// Skills root to inspect; the skill is read from <PATH>/lingxia
-        #[arg(long, value_name = "PATH", conflicts_with = "user")]
-        target: Option<PathBuf>,
+/// What reconciling the installed copy did.
+pub enum Sync {
+    /// Nothing on disk, and no skills root that asks for one.
+    Skipped,
+    /// The copy on disk is already this binary's.
+    Current,
+    Created,
+    /// Replaced a copy another build wrote; carries the version it claimed.
+    Rewritten {
+        previous: String,
     },
 }
 
-pub fn execute(action: SkillAction) -> Result<()> {
-    match action {
-        SkillAction::Install {
-            user,
-            target,
-            agents_md,
-            from,
-            dry_run,
-        } => install(user, target, agents_md, from, dry_run),
-        SkillAction::Status { user, target } => status(user, target),
-    }
+/// Reconcile the copy under the home directory with the embedded skill.
+///
+/// `create_if_missing` is for the moments where the user asked for the skill by
+/// asking for something that contains it -- `lingxia new`, `lingxia upgrade`.
+/// Every other run only corrects a copy that already exists, or writes one when
+/// a skills root is already there to receive it: a machine that has never run
+/// an agent does not grow a `~/.claude` because a build ran.
+pub fn sync_home_skill(create_if_missing: bool) -> Result<Sync> {
+    sync(&user_destination()?, create_if_missing)
 }
 
-/// Install the embedded skill for a freshly scaffolded project: the body in the
-/// home directory, a committable pointer in the project.
+fn sync(dest: &Path, create_if_missing: bool) -> Result<Sync> {
+    let installed = dest.join("SKILL.md").is_file();
+    if !installed && !create_if_missing && !skills_root_exists(dest) {
+        return Ok(Sync::Skipped);
+    }
+
+    let manifest = read_manifest(dest);
+    let field = |key: &str| {
+        manifest
+            .as_ref()
+            .and_then(|value| value.get(key))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
+    };
+    if installed && field("digest").as_deref() == Some(embedded_digest()) {
+        return Ok(Sync::Current);
+    }
+
+    write_skill(dest, &embedded_files())?;
+    Ok(if installed {
+        Sync::Rewritten {
+            previous: field("version").unwrap_or_else(|| "unknown".to_string()),
+        }
+    } else {
+        Sync::Created
+    })
+}
+
+/// Whether the agent tooling's skills root is already on this machine. Its
+/// presence is the standing answer to "may I write outside the project".
+fn skills_root_exists(dest: &Path) -> bool {
+    dest.parent().is_some_and(Path::is_dir)
+}
+
+/// Install the skill for a freshly scaffolded project: the body in the home
+/// directory, a committable pointer in the project.
 pub fn install_for_new_project(project_dir: &Path) -> Result<()> {
-    let dest = home_dir()?
-        .join(".claude")
-        .join("skills")
-        .join(SKILL_DIR_NAME);
-    write_skill(&dest, &embedded_files(), &Source::Embedded)?;
-    println!("Installed the LingXia skill to {}", dest.display());
+    let dest = user_destination()?;
+    match sync(&dest, true)? {
+        Sync::Current => println!("The LingXia skill at {} is current", dest.display()),
+        _ => println!("Installed the LingXia skill to {}", dest.display()),
+    }
     write_agents_pointer(project_dir, &dest)
 }
 
-/// Resolve the directory the skill itself lives in (`.../lingxia`).
-fn resolve_destination(user: bool, target: Option<PathBuf>) -> Result<PathBuf> {
-    let root = match (user, target) {
-        (_, Some(path)) => path,
-        (true, None) => home_dir()?.join(".claude").join("skills"),
-        (false, None) => std::env::current_dir()
-            .context("Failed to read the current directory")?
-            .join(".claude")
-            .join("skills"),
-    };
-    Ok(root.join(SKILL_DIR_NAME))
-}
-
-fn home_dir() -> Result<PathBuf> {
-    dirs::home_dir().context("Could not resolve the home directory")
-}
-
-fn install(
-    user: bool,
-    target: Option<PathBuf>,
-    agents_md: bool,
-    from: Option<PathBuf>,
-    dry_run: bool,
-) -> Result<()> {
-    let dest = resolve_destination(user, target)?;
-    let (source, files) = match from {
-        Some(dir) => {
-            let files = read_skill_dir(&dir)?;
-            (Source::Directory(dir), files)
-        }
-        None => (Source::Embedded, embedded_files()),
-    };
-    if files.is_empty() {
-        bail!("No skill files found in {source}.");
-    }
-
-    if dry_run {
-        println!("Would write {} file(s) to {}", files.len(), dest.display());
-        for (path, _) in &files {
-            println!("  {}", path.display());
-        }
-        if agents_md {
-            println!(
-                "Would write {}",
-                project_root()?.join("AGENTS.md").display()
-            );
-        }
-        return Ok(());
-    }
-
-    write_skill(&dest, &files, &source)?;
-
-    println!(
-        "Installed the LingXia skill ({} files) from {} to {}",
-        files.len(),
-        source,
-        dest.display()
-    );
-
-    if agents_md {
-        write_agents_pointer(&project_root()?, &dest)?;
-    }
-    Ok(())
-}
-
-/// Rewrite a skill an older CLI installed. Returns the version it replaced.
-///
-/// The skill describes this binary's capabilities, so a copy left by an older
-/// CLI describes commands and APIs that may no longer exist. Self-update
-/// replaces the binary but cannot refresh the skill in the same run -- the
-/// process is still executing the old code -- so the new binary does it here.
-///
-/// Only ever moves forward: an older CLI run beside a newer one must not
-/// downgrade the skill, and a copy installed from a directory is a deliberate
-/// override this must not undo.
-pub fn refresh_if_stale(dest: &Path) -> Result<Option<String>> {
-    if !dest.join("SKILL.md").is_file() {
-        return Ok(None);
-    }
-    let manifest = read_manifest(dest);
-    if manifest
-        .as_ref()
-        .and_then(|m| m.get("source"))
-        .and_then(serde_json::Value::as_str)
-        == Some("directory")
-    {
-        return Ok(None);
-    }
-    let installed = manifest
-        .as_ref()
-        .and_then(|m| m.get("version"))
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string);
-    let current =
-        Version::parse(env!("CARGO_PKG_VERSION")).context("Failed to parse this CLI's version")?;
-    let is_older = match installed.as_deref().map(Version::parse) {
-        Some(Ok(existing)) => existing < current,
-        // An unreadable or unparseable manifest predates this scheme.
-        _ => true,
-    };
-    if !is_older {
-        return Ok(None);
-    }
-    write_skill(dest, &embedded_files(), &Source::Embedded)?;
-    Ok(Some(installed.unwrap_or_else(|| "unknown".to_string())))
-}
-
-/// Say once that a home install pinned with `--from` has fallen behind this
-/// CLI. The refresh deliberately leaves such a copy alone, so without this the
-/// pin is invisible to whoever set it months ago.
-pub fn notify_pinned_skill() {
-    let Ok(dest) = user_destination() else {
-        return;
-    };
-    let Some(manifest) = read_manifest(&dest) else {
-        return;
-    };
-    let field = |key: &str| manifest.get(key).and_then(serde_json::Value::as_str);
-    if field("source") != Some("directory") {
-        return;
-    }
-    if field("version") == Some(env!("CARGO_PKG_VERSION")) {
-        return;
-    }
-    println!(
-        "The installed skill is pinned to {} and predates this CLI ({}). \
-         Run `lingxia skill install --user` to follow the CLI again.",
-        field("sourcePath").unwrap_or("a directory"),
-        env!("CARGO_PKG_VERSION")
-    );
-}
-
-fn embedded_files() -> Vec<(PathBuf, Vec<u8>)> {
-    collect_files(&EMBEDDED_SKILL)
-        .into_iter()
-        .map(|(path, contents)| (path, contents.to_vec()))
-        .collect()
-}
-
-/// Whether the home directory already carries the skill.
-///
-/// Presence only, deliberately not the version: the body is shared by every
-/// project, so the question "may I write outside this project" is asked once
-/// and answered forever. An older copy is not a reason to ask again -- the
-/// refresh brings it forward on its own.
-pub fn user_install_exists() -> bool {
-    user_destination().is_ok_and(|dest| dest.join("SKILL.md").is_file())
-}
-
-/// The home-directory skills root, where an install shared by every project
-/// lives.
+/// The home-directory skill, shared by every project.
 pub fn user_destination() -> Result<PathBuf> {
     Ok(home_dir()?
         .join(".claude")
@@ -276,21 +101,99 @@ pub fn user_destination() -> Result<PathBuf> {
         .join(SKILL_DIR_NAME))
 }
 
+/// One line for `lingxia version --verbose`: where the skill is, and whether it
+/// is this binary's. This is what the removed status command reported.
+pub fn install_summary() -> String {
+    let Ok(dest) = user_destination() else {
+        return "unknown".to_string();
+    };
+    if !dest.join("SKILL.md").is_file() {
+        return format!("{} (not installed)", dest.display());
+    }
+    let digest = read_manifest(&dest)
+        .and_then(|manifest| {
+            manifest
+                .get("digest")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
+        .unwrap_or_default();
+    let state = if digest == embedded_digest() {
+        "in sync"
+    } else {
+        "stale"
+    };
+    format!("{} ({state})", dest.display())
+}
+
+/// The skill's identity, and the only thing a sync compares.
+///
+/// A version number cannot serve: a development build edits the skill without
+/// moving the version, two branches share a version while carrying different
+/// docs, and an older binary must still be able to correct a copy a newer one
+/// left behind -- the installed skill has to describe the CLI you are running,
+/// not the newest one that ever ran here.
+fn embedded_digest() -> &'static str {
+    static DIGEST: OnceLock<String> = OnceLock::new();
+    DIGEST.get_or_init(|| digest_of(&embedded_files()))
+}
+
+fn digest_of(files: &[(PathBuf, Vec<u8>)]) -> String {
+    let mut hasher = Sha256::new();
+    for (path, contents) in files {
+        // Path and length go in too, so moving bytes between files or renaming
+        // one cannot land on the same digest.
+        hasher.update(path.to_string_lossy().replace('\\', "/").as_bytes());
+        hasher.update([0]);
+        hasher.update((contents.len() as u64).to_le_bytes());
+        hasher.update(contents);
+    }
+    hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+fn embedded_files() -> Vec<(PathBuf, Vec<u8>)> {
+    let mut files: Vec<(PathBuf, Vec<u8>)> = collect_files(&EMBEDDED_SKILL)
+        .into_iter()
+        .map(|(path, contents)| (path, contents.to_vec()))
+        .collect();
+    // The digest must not depend on the order the macro expanded the tree in.
+    files.sort_by(|left, right| left.0.cmp(&right.0));
+    files
+}
+
+fn home_dir() -> Result<PathBuf> {
+    dirs::home_dir().context("Could not resolve the home directory")
+}
+
 fn read_manifest(dest: &Path) -> Option<serde_json::Value> {
     let text = fs::read_to_string(dest.join(MANIFEST_NAME)).ok()?;
     serde_json::from_str(&text).ok()
 }
 
+fn manifest(files: &[(PathBuf, Vec<u8>)]) -> serde_json::Value {
+    serde_json::json!({
+        "version": env!("CARGO_PKG_VERSION"),
+        "digest": digest_of(files),
+        "writtenBy": std::env::current_exe()
+            .map(|path| path.display().to_string())
+            .unwrap_or_else(|_| "unknown".to_string()),
+    })
+}
+
 /// Replace the destination wholesale, and only once it is complete.
 ///
 /// A file dropped from the skill must not survive in an install that claims to
-/// be this version, so this cannot merge into the existing directory. It stages
+/// be this build, so this cannot merge into the existing directory. It stages
 /// into a sibling and renames: an interrupted run leaves the previous install
 /// untouched rather than an empty directory that nothing would restore, and two
 /// processes racing here (`lingxia dev` beside the broker `lxdev` spawns) each
 /// stage separately, so the last rename wins instead of one failing on a
 /// directory the other just removed.
-fn write_skill(dest: &Path, files: &[(PathBuf, Vec<u8>)], source: &Source) -> Result<()> {
+fn write_skill(dest: &Path, files: &[(PathBuf, Vec<u8>)]) -> Result<()> {
     let parent = dest
         .parent()
         .context("The skill destination has no parent directory")?;
@@ -308,7 +211,7 @@ fn write_skill(dest: &Path, files: &[(PathBuf, Vec<u8>)], source: &Source) -> Re
     }
     fs::write(
         staged.path().join(MANIFEST_NAME),
-        format!("{}\n", serde_json::to_string_pretty(&source.manifest())?),
+        format!("{}\n", serde_json::to_string_pretty(&manifest(files))?),
     )
     .context("Failed to write the skill manifest")?;
 
@@ -330,58 +233,15 @@ fn write_skill(dest: &Path, files: &[(PathBuf, Vec<u8>)], source: &Source) -> Re
     Ok(())
 }
 
-fn status(user: bool, target: Option<PathBuf>) -> Result<()> {
-    let dest = resolve_destination(user, target)?;
-    let entry = dest.join("SKILL.md");
-    if !entry.is_file() {
-        println!("No skill installed at {}", dest.display());
-        println!("Run `lingxia skill install` to write it there.");
-        return Ok(());
-    }
-    println!("Skill installed at {}", dest.display());
-    let manifest = read_manifest(&dest);
-    let field = |key: &str| {
-        manifest
-            .as_ref()
-            .and_then(|m| m.get(key))
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("unknown")
-            .to_string()
-    };
-    println!("Installed version: {}", field("version"));
-    match field("source").as_str() {
-        "directory" => println!("Installed from: {}", field("sourcePath")),
-        "cli" => println!("Installed from: the CLI binary"),
-        _ => println!("Installed from: unknown"),
-    }
-    println!("This CLI: {}", env!("CARGO_PKG_VERSION"));
-
-    // Only the home install is refreshed automatically, so say plainly when a
-    // copy this CLI will not touch has fallen behind it.
-    let installed = field("version");
-    if field("source") != "directory" && installed != env!("CARGO_PKG_VERSION") {
-        println!();
-        println!(
-            "This copy is out of step with the CLI. Run `lingxia skill install{}` to rewrite it.",
-            if user { " --user" } else { "" }
-        );
-    }
-    Ok(())
-}
-
-fn project_root() -> Result<PathBuf> {
-    std::env::current_dir().context("Failed to read the current directory")
-}
-
-/// Marks the block this writes, so a re-install replaces it instead of
+/// Marks the block this writes, so a later scaffold replaces it instead of
 /// appending a second copy.
 const AGENTS_MARKER: &str = "<!-- lingxia skill: AGENTS.md pointer -->";
 
 /// Point tools that read a single root file at the installed skill.
 ///
 /// AGENTS.md is meant to be committed, so the reference must not be a path that
-/// only resolves on this machine: project-relative when the skill lives inside
-/// the project, `~`-relative for a home install, absolute only as a fallback.
+/// only resolves on this machine: `~`-relative for the home install, absolute
+/// only as a fallback.
 fn write_agents_pointer(project_dir: &Path, dest: &Path) -> Result<()> {
     let path = project_dir.join("AGENTS.md");
     let block = agents_block(&portable_reference(project_dir, dest));
@@ -431,8 +291,8 @@ This project uses the LingXia cross-platform app framework. The development\n\
 skill -- decision tree, recipes, CLI / component / native API references --\n\
 lives at:\n\n\
     {skill_ref}/SKILL.md\n\n\
-If that file is not present, write it there with:\n\n\
-    lingxia skill install --user\n\n\
+The `lingxia` CLI writes it there and rewrites it whenever it changes, so it\n\
+always describes the CLI installed on this machine.\n\n\
 Start there. Sub-references are linked from that file using relative paths.\n\
 {AGENTS_MARKER}\n"
     )
@@ -453,40 +313,6 @@ fn replace_block(existing: &str, block: &str) -> String {
     format!("{}{}{}", &existing[..start], block, &existing[end..])
 }
 
-/// Read a skill directory from disk, mirroring the embedded layout.
-fn read_skill_dir(dir: &Path) -> Result<Vec<(PathBuf, Vec<u8>)>> {
-    if !dir.join("SKILL.md").is_file() {
-        bail!(
-            "{} does not look like a skill directory (no SKILL.md).",
-            dir.display()
-        );
-    }
-    let mut out = Vec::new();
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(current) = stack.pop() {
-        let entries = fs::read_dir(&current)
-            .with_context(|| format!("Failed to read {}", current.display()))?;
-        for entry in entries {
-            let path = entry
-                .with_context(|| format!("Failed to read an entry in {}", current.display()))?
-                .path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            let rel = path
-                .strip_prefix(dir)
-                .expect("walked paths stay under the root")
-                .to_path_buf();
-            let contents =
-                fs::read(&path).with_context(|| format!("Failed to read {}", path.display()))?;
-            out.push((rel, contents));
-        }
-    }
-    out.sort_by(|a, b| a.0.cmp(&b.0));
-    Ok(out)
-}
-
 /// Flatten the embedded tree into (relative path, contents) pairs.
 fn collect_files<'a>(dir: &'a Dir<'a>) -> Vec<(PathBuf, &'a [u8])> {
     let mut out = Vec::new();
@@ -497,4 +323,70 @@ fn collect_files<'a>(dir: &'a Dir<'a>) -> Vec<(PathBuf, &'a [u8])> {
         out.extend(collect_files(sub));
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn skill_dir(root: &Path) -> PathBuf {
+        root.join(".claude").join("skills").join(SKILL_DIR_NAME)
+    }
+
+    #[test]
+    fn a_missing_skill_is_left_alone_without_a_skills_root() {
+        let home = TempDir::new().unwrap();
+        let dest = skill_dir(home.path());
+        assert!(matches!(sync(&dest, false).unwrap(), Sync::Skipped));
+        assert!(!dest.exists());
+    }
+
+    #[test]
+    fn an_existing_skills_root_is_standing_consent_to_write_one() {
+        let home = TempDir::new().unwrap();
+        let dest = skill_dir(home.path());
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        assert!(matches!(sync(&dest, false).unwrap(), Sync::Created));
+        assert!(dest.join("SKILL.md").is_file());
+        assert!(matches!(sync(&dest, false).unwrap(), Sync::Current));
+    }
+
+    #[test]
+    fn a_copy_another_build_wrote_is_replaced_at_the_same_version() {
+        let home = TempDir::new().unwrap();
+        let dest = skill_dir(home.path());
+        sync(&dest, true).unwrap();
+        // Same version, different content: a version comparison cannot see this.
+        fs::write(dest.join("SKILL.md"), "stale").unwrap();
+        fs::write(
+            dest.join(MANIFEST_NAME),
+            serde_json::json!({ "version": env!("CARGO_PKG_VERSION"), "digest": "stale" })
+                .to_string(),
+        )
+        .unwrap();
+        assert!(matches!(
+            sync(&dest, false).unwrap(),
+            Sync::Rewritten { .. }
+        ));
+        assert_ne!(fs::read_to_string(dest.join("SKILL.md")).unwrap(), "stale");
+    }
+
+    #[test]
+    fn a_file_the_skill_dropped_does_not_survive_the_rewrite() {
+        let home = TempDir::new().unwrap();
+        let dest = skill_dir(home.path());
+        sync(&dest, true).unwrap();
+        let orphan = dest.join("orphan.md");
+        fs::write(&orphan, "gone next time").unwrap();
+        fs::write(dest.join(MANIFEST_NAME), r#"{"digest":"stale"}"#).unwrap();
+        sync(&dest, false).unwrap();
+        assert!(!orphan.exists());
+    }
+
+    #[test]
+    fn the_digest_covers_paths_not_just_bytes() {
+        let one = vec![(PathBuf::from("a.md"), b"x".to_vec())];
+        let two = vec![(PathBuf::from("b.md"), b"x".to_vec())];
+        assert_ne!(digest_of(&one), digest_of(&two));
+    }
 }

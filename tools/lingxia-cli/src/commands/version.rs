@@ -31,6 +31,12 @@ pub(crate) fn render(verbose: bool) -> String {
     output.push_str(&format!("runner: {}\n", env!("CARGO_PKG_VERSION")));
     output.push_str(&format!("bridge: {}\n", env!("LINGXIA_BRIDGE_VERSION")));
     output.push_str(&format!("rong: {}\n", env!("LINGXIA_RONG_VERSION")));
+    // The agent skill has no version of its own -- it is whatever this binary
+    // carries -- so what matters is whether the installed copy is still it.
+    output.push_str(&format!(
+        "skill: {}\n",
+        crate::commands::skill::install_summary()
+    ));
     output
 }
 
@@ -86,6 +92,7 @@ mod tests {
             "runner:",
             "bridge:",
             "rong:",
+            "skill:",
         ] {
             assert!(
                 output.contains(expected),
