@@ -1,6 +1,7 @@
 use lingxia_update::{ReleaseType, SemanticVersion};
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fmt;
 use std::fs;
 use std::path::PathBuf;
@@ -11,6 +12,7 @@ use crate::LxAppError;
 
 const INSTALLED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("installed");
 const DOWNLOADED_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("downloaded");
+const REGISTRY_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("registry");
 
 static DATABASE: OnceLock<Arc<Database>> = OnceLock::new();
 
@@ -73,6 +75,9 @@ pub(crate) fn init(db_path: PathBuf) -> Result<(), LxAppError> {
         let _downloaded = write_txn
             .open_table(DOWNLOADED_TABLE)
             .map_err(|e| metadata_error("open downloaded table", e))?;
+        let _registry = write_txn
+            .open_table(REGISTRY_TABLE)
+            .map_err(|e| metadata_error("open registry table", e))?;
     }
     write_txn
         .commit()
@@ -314,4 +319,164 @@ pub(crate) fn downloaded_upsert(
     txn.commit()
         .map_err(|e| metadata_error("commit downloaded write", e))?;
     Ok(())
+}
+
+/// One cached registry answer, scoped to the locale it was resolved for.
+///
+/// `icon_file` names a content-addressed file in the icon cache, so records for
+/// different locales that resolved to the same artwork share one file on disk.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct RegistryRecord {
+    pub appid: String,
+    pub locale: String,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub icon_hash: Option<String>,
+    pub icon_file: Option<String>,
+    /// `LxAppStatus::as_str`; stored as text so the contract crate stays free of
+    /// serde and an unknown value from a newer server degrades instead of failing.
+    pub status: String,
+    pub fetched_at: i64,
+}
+
+fn registry_key(appid: &str, locale: &str) -> String {
+    format!("{}::{}", appid, locale)
+}
+
+pub(crate) fn registry_get(
+    appid: &str,
+    locale: &str,
+) -> Result<Option<RegistryRecord>, LxAppError> {
+    let key = registry_key(appid, locale);
+    let db = database()?;
+    let txn = db
+        .begin_read()
+        .map_err(|e| metadata_error("begin read transaction", e))?;
+    let table = txn
+        .open_table(REGISTRY_TABLE)
+        .map_err(|e| metadata_error("open registry table", e))?;
+    let Some(value) = table
+        .get(key.as_str())
+        .map_err(|e| metadata_error("read registry record", e))?
+    else {
+        return Ok(None);
+    };
+    Ok(Some(serde_json::from_slice(value.value())?))
+}
+
+/// The freshest record for this app in any locale. Backs the name fallback: a
+/// name in the previous language beats a blank row when the current locale has
+/// never been fetched and the network is gone.
+pub(crate) fn registry_any_locale(appid: &str) -> Result<Option<RegistryRecord>, LxAppError> {
+    let prefix = format!("{}::", appid);
+    let db = database()?;
+    let txn = db
+        .begin_read()
+        .map_err(|e| metadata_error("begin read transaction", e))?;
+    let table = txn
+        .open_table(REGISTRY_TABLE)
+        .map_err(|e| metadata_error("open registry table", e))?;
+    let mut best: Option<RegistryRecord> = None;
+    for entry in table
+        .iter()
+        .map_err(|e| metadata_error("iterate registry records", e))?
+    {
+        let (key, value) = entry.map_err(|e| metadata_error("read registry record", e))?;
+        if !key.value().starts_with(&prefix) {
+            continue;
+        }
+        let record: RegistryRecord = serde_json::from_slice(value.value())?;
+        if best
+            .as_ref()
+            .is_none_or(|current| record.fetched_at > current.fetched_at)
+        {
+            best = Some(record);
+        }
+    }
+    Ok(best)
+}
+
+pub(crate) fn registry_upsert(record: &RegistryRecord) -> Result<(), LxAppError> {
+    let key = registry_key(&record.appid, &record.locale);
+    let db = database()?;
+    let txn = db
+        .begin_write()
+        .map_err(|e| metadata_error("begin write transaction", e))?;
+    {
+        let mut table = txn
+            .open_table(REGISTRY_TABLE)
+            .map_err(|e| metadata_error("open registry table", e))?;
+        let serialized = serde_json::to_vec(record)?;
+        table
+            .insert(key.as_str(), serialized.as_slice())
+            .map_err(|e| metadata_error("write registry record", e))?;
+    }
+    txn.commit()
+        .map_err(|e| metadata_error("commit registry write", e))?;
+    Ok(())
+}
+
+/// Drop every locale's record for one app, returning the icon files they
+/// referenced so the caller can delete the artwork they were the last user of.
+pub(crate) fn registry_remove_all(appid: &str) -> Result<Vec<String>, LxAppError> {
+    let prefix = format!("{}::", appid);
+    let db = database()?;
+    let txn = db
+        .begin_write()
+        .map_err(|e| metadata_error("begin write transaction", e))?;
+    let mut icon_files = Vec::new();
+    {
+        let mut table = txn
+            .open_table(REGISTRY_TABLE)
+            .map_err(|e| metadata_error("open registry table", e))?;
+        let mut keys_to_remove = Vec::new();
+        for entry in table
+            .iter()
+            .map_err(|e| metadata_error("iterate registry records", e))?
+        {
+            let (key, value) = entry.map_err(|e| metadata_error("read registry record", e))?;
+            if !key.value().starts_with(&prefix) {
+                continue;
+            }
+            keys_to_remove.push(key.value().to_string());
+            if let Ok(record) = serde_json::from_slice::<RegistryRecord>(value.value())
+                && let Some(file) = record.icon_file
+            {
+                icon_files.push(file);
+            }
+        }
+        for key in keys_to_remove {
+            table
+                .remove(key.as_str())
+                .map_err(|e| metadata_error("delete registry record", e))?;
+        }
+    }
+    txn.commit()
+        .map_err(|e| metadata_error("commit registry delete", e))?;
+    Ok(icon_files)
+}
+
+/// Every icon file still referenced by some app's records — the survivor set
+/// when deciding which artwork an uninstall may delete.
+pub(crate) fn registry_referenced_icon_files() -> Result<BTreeSet<String>, LxAppError> {
+    let db = database()?;
+    let txn = db
+        .begin_read()
+        .map_err(|e| metadata_error("begin read transaction", e))?;
+    let table = txn
+        .open_table(REGISTRY_TABLE)
+        .map_err(|e| metadata_error("open registry table", e))?;
+    let mut files = BTreeSet::new();
+    for entry in table
+        .iter()
+        .map_err(|e| metadata_error("iterate registry records", e))?
+    {
+        let (_, value) = entry.map_err(|e| metadata_error("read registry record", e))?;
+        if let Ok(record) = serde_json::from_slice::<RegistryRecord>(value.value())
+            && let Some(file) = record.icon_file
+        {
+            files.insert(file);
+        }
+    }
+    Ok(files)
 }

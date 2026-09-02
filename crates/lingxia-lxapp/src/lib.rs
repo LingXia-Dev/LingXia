@@ -69,8 +69,9 @@ pub use lxapp::{
     PageInstanceEvent, PageInstanceRuntimeInfo, PageOwner, PageQueryInput, PageSurface,
     PageSurfaceRequest, PageSurfaceTarget, PageTarget, PresentationKind, ResolvedPage, SceneId,
     SurfaceKind, SurfacePosition, SurfaceRole, UrlCallbackSurface, UrlCallbackWaitError,
-    automation_auto_grant, close_lxapp, config::LxAppInfo, create_page_instance,
-    dispose_page_instance, dispose_page_instance_by_id, ensure_builtin_lxapp,
+    automation_auto_grant, close_lxapp,
+    config::LxAppInfo,
+    create_page_instance, dispose_page_instance, dispose_page_instance_by_id, ensure_builtin_lxapp,
     ensure_host_surface_owner, ensure_lxapp, find_page_by_instance_id, get_current_lxapp,
     get_display_language, get_platform, host_class, init, installed_lxapp_path, is_dev_session,
     is_public_network_address, is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active,
@@ -79,8 +80,13 @@ pub use lxapp::{
     refresh_auto_appearances, register_builtin_asset_bundle, register_dev_bundle_source,
     register_surface_active_main_observer, register_surface_close_observer,
     register_surface_context_observer, register_surface_visibility_observer,
-    register_synthetic_lxapp, restart_lxapp, set_automation_auto_grant, set_display_language,
-    tabbar, touch_page_instance_by_id, try_get, uninstall_lxapp,
+    register_synthetic_lxapp,
+    registry::{
+        display_icon_path as lxapp_display_icon_path, display_name as lxapp_display_name,
+        display_status as lxapp_registry_status, refresh_registry as refresh_lxapp_registry,
+    },
+    restart_lxapp, set_automation_auto_grant, set_display_language, tabbar,
+    touch_page_instance_by_id, try_get, uninstall_lxapp,
 };
 pub use native_component::{
     NativeComponentHost, on_native_component_event, register_native_component_host,

@@ -535,6 +535,9 @@ pub async fn prepare_lxapp_open(
         LxAppError::ResourceNotFound(format!("home lxapp '{home_appid}' not found"))
     })?;
 
+    // A suspended app must not open, installed or not, so the registry gate
+    // runs before the installer would otherwise fetch it to disk.
+    lxapp_runtime::registry::ensure_open_allowed(target_appid).await?;
     // First install and any mandatory update complete before presentation.
     ensure_first_install(&home_lxapp, target_appid, release_type).await?;
     // Server-mandated updates are admission gates, not freshness hints.
