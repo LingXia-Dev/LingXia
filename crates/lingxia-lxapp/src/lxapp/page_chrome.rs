@@ -468,7 +468,23 @@ impl LxApp {
                 tabbar.apply_patch_transactionally(&patch, |value, path| {
                     self.resolve_accessible_path(value)
                         .map(|path| path.to_string_lossy().into_owned())
-                        .map_err(|_| format!("{path}: path must stay within the lxapp package"))
+                        // Keep the reason. Collapsing every failure into one
+                        // sentence about packaging hid what actually went
+                        // wrong — a network URL, a missing file, a traversal
+                        // attempt all read identically, and only one of them
+                        // was about packaging.
+                        //
+                        // `detail()`, not `Display`: this sentence already says
+                        // which field failed, and the variant labels would
+                        // stack into "Invalid parameter: iconPath: Invalid
+                        // parameter: …" or "traversal not allowed not found".
+                        .map_err(|error| {
+                            let reason = error
+                                .detail()
+                                .map(str::to_string)
+                                .unwrap_or_else(|| error.to_string());
+                            format!("{path}: {reason}")
+                        })
                 })
             })
             .ok_or_else(|| LxAppError::ResourceNotFound("declared tabbar".to_string()))?

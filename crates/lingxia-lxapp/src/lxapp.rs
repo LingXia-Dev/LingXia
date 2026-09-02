@@ -1995,7 +1995,19 @@ impl LxApp {
 
         let path_ref = Path::new(path);
 
-        // 2. Prevent traversal for relative logical paths on every platform,
+        // 2. A network URL is the one wrong answer worth naming. It trips the
+        // traversal rule below purely because it contains a colon, and being
+        // told a URL is directory traversal sends the caller hunting for a path
+        // bug that is not there. Native chrome cannot fetch, so the remedy is
+        // always the same and belongs in the message.
+        if let Some(scheme) = uri::network_scheme(path) {
+            return Err(LxAppError::InvalidParameter(format!(
+                "{scheme} URLs are not supported here: download the file first \
+                 (for example with lx.downloadFile) and pass the returned lx:// path"
+            )));
+        }
+
+        // 3. Prevent traversal for relative logical paths on every platform,
         // and catch native parent components in absolute chooser paths.
         if path_ref
             .components()
@@ -2007,7 +2019,7 @@ impl LxApp {
             ));
         }
 
-        // 3. Handle Relative path: search in order user data -> user cache -> package
+        // 4. Handle Relative path: search in order user data -> user cache -> package
         if !path_ref.is_absolute() && !path.contains(':') {
             let rel = path.trim_start_matches('/');
 
@@ -2024,7 +2036,7 @@ impl LxApp {
             return Ok(self.lxapp_dir.join(rel));
         }
 
-        // 4. Handle Absolute paths: Must start with one of the trusted roots.
+        // 5. Handle Absolute paths: Must start with one of the trusted roots.
         //
         // On Apple platforms, the same sandbox path may appear with different
         // spellings (for example `/var/...` vs `/private/var/...`). When the
