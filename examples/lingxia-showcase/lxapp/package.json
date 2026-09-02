@@ -21,7 +21,7 @@
     "test:automation:logic-coverage": "node tests/scripts/check-logic-api-coverage.mjs",
     "test:automation:backlog-stubs": "node tests/scripts/check-backlog-stubs.mjs",
     "test:automation:covers": "node tests/scripts/check-covers.mjs",
-    "test:automation:types": "npm run test:automation:logic-coverage && tsc -p tests/tsconfig.json",
+    "test:automation:types": "npm run test:automation:logic-coverage && npm run test:automation:backlog-stubs && tsc -p tests/tsconfig.json",
     "test:harness": "node --test tests/harness/*.test.mjs"
   },
   "dependencies": {
