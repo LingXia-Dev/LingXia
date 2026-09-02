@@ -111,6 +111,14 @@ impl UpgradePlan {
     fn line_behind(&self) -> bool {
         is_line_behind(self.project_line, self.cli_line)
     }
+
+    /// An SDK package the pins already name is missing from the cache, or an
+    /// Apple manifest still has to be pointed at it.
+    fn sdk_pending(&self) -> bool {
+        self.sdk_steps
+            .iter()
+            .any(|step| step.is_pending(&self.sdk_version))
+    }
 }
 
 pub fn execute(root: &Path, check: bool, yes: bool) -> Result<i32> {
@@ -118,7 +126,25 @@ pub fn execute(root: &Path, check: bool, yes: bool) -> Result<i32> {
     report_plan(root, &prepared);
 
     if !prepared.line_behind() {
-        println!("  {}", "up to date".green());
+        if !prepared.sdk_pending() {
+            println!("  {}", "up to date".green());
+            return Ok(0);
+        }
+        // The pins are current but a platform SDK the project already names is
+        // not in the cache — an earlier fetch failed. Finish it: there is no
+        // version change here to report or confirm.
+        if check {
+            println!();
+            println!(
+                "{} A pinned SDK package is missing; run `lingxia upgrade` to fetch it.",
+                "!".yellow()
+            );
+            return Ok(EXIT_UPGRADE_AVAILABLE);
+        }
+        let failures = apply_sdk_steps(root, &prepared.sdk_steps, &prepared.sdk_version);
+        if !failures.is_empty() {
+            anyhow::bail!("Project upgrade incomplete: {}", failures.join("; "));
+        }
         return Ok(0);
     }
 
@@ -174,7 +200,8 @@ fn report_plan(root: &Path, prepared: &UpgradePlan) {
         _ => {}
     }
 
-    if !prepared.line_behind() {
+    let pending_sdk = prepared.sdk_pending();
+    if !prepared.line_behind() && !pending_sdk {
         return;
     }
 
@@ -194,10 +221,6 @@ fn report_plan(root: &Path, prepared: &UpgradePlan) {
         }
     }
 
-    let pending_sdk = prepared
-        .sdk_steps
-        .iter()
-        .any(|step| step.is_pending(&prepared.sdk_version));
     if pending_sdk {
         println!();
         println!("  {}", "SDK packages".bold());
@@ -1326,6 +1349,24 @@ mod tests {
         assert_eq!(major_minor("0.11.2"), Some((0, 11)));
         assert_eq!(major_minor("^1.2.3"), Some((1, 2)));
         assert_eq!(major_minor("garbage"), None);
+    }
+
+    #[test]
+    fn a_current_project_still_has_work_while_an_sdk_is_uncached() {
+        let plan = |cached| UpgradePlan {
+            edits: Vec::new(),
+            sdk_steps: vec![SdkStep::Fetch {
+                platform: SdkPlatform::Android,
+                cached,
+            }],
+            sdk_version: "0.14.0".to_string(),
+            project_line: Some((0, 14)),
+            cli_line: Some((0, 14)),
+        };
+        assert!(!plan(true).line_behind());
+        assert!(!plan(true).sdk_pending());
+        // Same pins, but the fetch never landed: upgrade has to run it.
+        assert!(plan(false).sdk_pending());
     }
 
     #[test]
