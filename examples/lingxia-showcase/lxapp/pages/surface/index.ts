@@ -8,7 +8,11 @@ Page({
     showCount: 0,
     hideCount: 0,
     lastLifecycle: "onLoad",
+    // Messages the opener pushed down through its PageSurface / PageMessagePort.
+    inboundCount: 0,
+    lastInbound: "",
   },
+  _offInbound: [],
 
   onLoad: async function (options) {
     const entries = Object.entries(options || {}).map(([key, value]) => ({
@@ -23,6 +27,31 @@ Page({
     this.setData({
       queryString,
     });
+    this._listenInbound();
+  },
+
+  onUnload: function () {
+    this._stopInbound();
+  },
+
+  _listenInbound: function () {
+    this._stopInbound();
+    const receive = (message) => {
+      const next = (this.data.inboundCount || 0) + 1;
+      this.setData({
+        inboundCount: next,
+        lastInbound: JSON.stringify(message ?? null),
+      });
+    };
+    // A page opened as a surface hears its opener on `surface`; one pushed by
+    // navigateTo hears it on `opener`. Both are absent for a plain tab/stack page.
+    const ports = [this.surface, this.opener].filter(Boolean);
+    this._offInbound = ports.map((port) => port.onMessage(receive));
+  },
+
+  _stopInbound: function () {
+    for (const off of this._offInbound || []) off();
+    this._offInbound = [];
   },
 
   onShow: function () {
@@ -54,8 +83,15 @@ Page({
 
     const payload = { message, timestamp: Date.now() };
     console.log("surface page message:", payload);
-    this.surface.postMessage(payload);
-    await this.closeSelf();
+    if (this.surface) {
+      this.surface.postMessage(payload);
+      await this.closeSelf();
+      return;
+    }
+    if (this.opener) {
+      this.opener.postMessage(payload);
+      await lx.navigateBack();
+    }
   },
 
   hideSelf: async function () {

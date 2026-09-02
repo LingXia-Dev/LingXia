@@ -9,6 +9,8 @@ export default function SurfacePage() {
   const showCount = data.showCount ?? 0;
   const hideCount = data.hideCount ?? 0;
   const lastLifecycle = data.lastLifecycle ?? 'onLoad';
+  const inboundCount = data.inboundCount ?? 0;
+  const lastInbound = data.lastInbound ?? '';
   const [message, setMessage] = React.useState('');
   // The counter survives hide() → show() round-trips because the page mount
   // is preserved. After close() the page is destroyed and the counter resets,
@@ -81,6 +83,16 @@ export default function SurfacePage() {
           >
             Increment
           </button>
+        </section>
+
+        <section className="bg-surface rounded-xl border border-line-200 p-4 space-y-2 shadow-sm">
+          <div className="text-xs uppercase text-gray-500 tracking-wide">From opener</div>
+          <div className="text-xs text-gray-500">
+            Received: <span data-testid="surface-inbound-count" className="font-mono text-gray-800">{inboundCount}</span>
+          </div>
+          <div data-testid="surface-inbound" className="font-mono text-sm text-gray-800 break-words">
+            {lastInbound || '(none)'}
+          </div>
         </section>
 
         <section className="bg-surface rounded-xl border border-line-200 p-4 space-y-3 shadow-sm">

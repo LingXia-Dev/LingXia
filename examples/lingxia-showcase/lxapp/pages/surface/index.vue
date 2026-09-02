@@ -49,6 +49,16 @@
         </button>
       </section>
 
+      <section class="bg-surface rounded-xl border border-line-200 p-4 space-y-2 shadow-sm">
+        <div class="text-xs uppercase text-gray-500 tracking-wide">From opener</div>
+        <div class="text-xs text-gray-500">
+          Received: <span data-testid="surface-inbound-count" class="font-mono text-gray-800">{{ inboundCount }}</span>
+        </div>
+        <div data-testid="surface-inbound" class="font-mono text-sm text-gray-800 break-words">
+          {{ lastInbound || '(none)' }}
+        </div>
+      </section>
+
       <section class="bg-surface rounded-xl border border-line-200 p-4 space-y-3 shadow-sm">
         <div class="text-xs uppercase text-gray-500 tracking-wide">Message</div>
         <input
@@ -98,6 +108,8 @@ const queryString = computed(() => data.queryString ?? '');
 const showCount = computed(() => data.showCount ?? 0);
 const hideCount = computed(() => data.hideCount ?? 0);
 const lastLifecycle = computed(() => data.lastLifecycle ?? 'onLoad');
+const inboundCount = computed(() => data.inboundCount ?? 0);
+const lastInbound = computed(() => data.lastInbound ?? '');
 
 async function handleSend() {
   const text = message.value.trim();
