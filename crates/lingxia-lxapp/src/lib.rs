@@ -45,6 +45,7 @@ pub use appservice::event_bus::{
 pub use appservice::event_bus::{
     BROWSER_TAB_CLOSED_EVENT, DISPLAY_LANGUAGE_CHANGE_EVENT, publish_app_event, publish_page_event,
 };
+pub use cache::product::{clear as clear_product_cache, usage_bytes as product_cache_usage_bytes};
 pub use cache::touch_access_time;
 pub use delegate::{LxAppDelegate, LxAppUiEventType};
 pub use error::LxAppError;

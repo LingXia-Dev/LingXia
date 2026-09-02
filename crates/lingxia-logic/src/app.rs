@@ -11,6 +11,7 @@ use std::cell::Cell;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod autostart;
+mod cache;
 mod screenshot;
 mod update;
 
@@ -133,6 +134,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     register_app_controls(ctx)?;
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     autostart::init(ctx, &app)?;
+    cache::init(ctx, &app)?;
     screenshot::init(ctx)?;
     update::init(ctx)?;
 

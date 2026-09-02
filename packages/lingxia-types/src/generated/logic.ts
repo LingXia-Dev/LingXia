@@ -130,6 +130,12 @@ declare global {
      * agree, so `lx.app.autostart?.…` and the query are interchangeable.
      */
     autostart?: AutostartApi;
+
+    /**
+     * Product-wide cache reporting and clearing for a settings screen.
+     * Restricted to the home lxapp; other lxapps get a permission error.
+     */
+    cache: AppCacheApi;
   }
 
   /** Runtime environment constants backed by abstract `lx://` paths. */
@@ -205,6 +211,35 @@ export type ActionSheetResult = {
 
 /** Every surface handle, narrowable by `kind`. */
 export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface | BuiltinSurface;
+
+/**
+ * The product-wide cache a settings screen reports and clears.
+ * App-scoped, not lxapp-scoped: the figure covers every lxapp the host
+ * has run, which is why — like `checkUpdate` and `screenshot` — it is
+ * available only to the home lxapp and other lxapps get a permission
+ * error.
+ */
+export type AppCacheApi = {
+    /**
+     * Bytes currently held by LingXia-managed caches: every lxapp's
+     * `lx://usercache`, every idle session's temp, and shared runtime artwork.
+     *
+     * Excludes the WebView's own HTTP cache, which the platform reports as a
+     * site count rather than a byte total — `clear()` still drops it, so present
+     * this as a lower bound rather than an exact total.
+     */
+    size(): Promise<number>;
+    /**
+     * Clear those caches plus the WebView's regenerable cache, resolving with
+     * the bytes freed from LingXia-managed storage.
+     *
+     * Never touches `lx://userdata`, the `lx.getStorage` key-value store, the
+     * user's downloads, or installed lxapp packages — none are regenerable, so
+     * dropping them behind a "clear cache" control is data loss. Cookies and
+     * logins survive: this clears caches, it does not sign anyone out.
+     */
+    clear(): Promise<number>;
+};
 
 export type AppConfig = {
     globalData?: Record<string, unknown>;
