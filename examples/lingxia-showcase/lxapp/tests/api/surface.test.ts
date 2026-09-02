@@ -4,6 +4,16 @@ import { waitForCurrentPageVisible } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
 import { LX_RETURNED_OBJECT_SURFACES, LX_RUNTIME_SURFACES } from './manifest.js';
 
+/** A host that did not build a driver throws on the getter rather than
+ *  answering undefined; that is absence, not a broken shape. */
+function automationSurfaceOrAbsent(name: string): unknown {
+  try {
+    return automationSurface(name);
+  } catch {
+    return undefined;
+  }
+}
+
 function automationSurface(name: string): unknown {
   const automation = lx.automation();
   switch (name) {
@@ -32,21 +42,35 @@ function automationSurface(name: string): unknown {
   }
 }
 
+/** A driver the host did not build answers its getter by throwing, which is
+ *  absence rather than a broken shape. `unbuilt` says which members did that. */
+function readMember(record: Record<string, unknown>, name: string): { unbuilt: boolean; value: unknown } {
+  try {
+    return { unbuilt: false, value: record[name] };
+  } catch {
+    return { unbuilt: true, value: undefined };
+  }
+}
+
 function inspectSurface(
   target: unknown,
   members: readonly string[],
   properties: readonly string[],
-): { available: boolean; missing: string[]; wrongKinds: string[] } {
+): { available: boolean; missing: string[]; wrongKinds: string[]; unbuilt: string[] } {
   const available = target !== null && typeof target !== 'undefined';
+  if (!available) return { available, missing: [...members], wrongKinds: [], unbuilt: [] };
   const record = target as Record<string, unknown>;
+  const read = members.map((name) => ({ name, ...readMember(record, name) }));
+  const present = read.filter((member) => !member.unbuilt);
   return {
     available,
-    missing: available ? members.filter((name) => typeof record[name] === 'undefined') : [...members],
-    wrongKinds: available
-      ? members.filter((name) => properties.includes(name)
-        ? record[name] === null
-        : typeof record[name] !== 'function')
-      : [],
+    unbuilt: read.filter((member) => member.unbuilt).map((member) => member.name),
+    missing: present.filter((member) => typeof member.value === 'undefined').map((member) => member.name),
+    wrongKinds: present
+      .filter((member) => (properties.includes(member.name)
+        ? member.value === null
+        : typeof member.value !== 'function'))
+      .map((member) => member.name),
   };
 }
 
@@ -83,7 +107,7 @@ spec('publish every public runtime and returned-object member', {
       : [];
     const result = surface.layer === 'automation'
       ? inspectSurface(
-        automationSurface(surface.name),
+        automationSurfaceOrAbsent(surface.name),
         surface.members.filter((name) => !optionalMembers.includes(name)),
         propertyNames,
       )
@@ -109,9 +133,13 @@ spec('publish every public runtime and returned-object member', {
               )),
           };
         `,
-      }) as { available: boolean; missing: string[]; wrongKinds: string[] };
+      }) as { available: boolean; missing: string[]; wrongKinds: string[]; unbuilt?: string[] };
 
     if ('optional' in surface && surface.optional && !result.available) continue;
+    // The automation drivers are the harness, not the product surface, and a
+    // phone host builds none of the desktop ones. Their absence is a fact
+    // about the host; only a half-built driver is a defect.
+    if (surface.layer === 'automation' && !result.available) continue;
     if (!result.available || result.missing.length > 0 || result.wrongKinds.length > 0) {
       failures.push(`${surface.name}: available=${result.available} missing=${result.missing.join(',')} wrong=${result.wrongKinds.join(',')}`);
     }

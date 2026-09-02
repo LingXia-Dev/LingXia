@@ -3,6 +3,7 @@ import type { LxAppDriver, LxAppRuntimeNavigationBarInfo, LxAppRuntimeTabBarInfo
 import { bindFixture, evalCaught, eventually, relaunchFromLogic } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPage } from '../helpers/page.js';
+import { runtimePlatform } from '../helpers/platform.js';
 
 function hex(value: string | null | undefined): string {
   return (value ?? '').replace(/\\/g, '/').toUpperCase();
@@ -198,6 +199,20 @@ spec("round-trip appearance preference through the ui controls", {
   });
 });
 
+/**
+ * Where the feedback overlays live differs by host, so the scenario is one and
+ * the difference is a profile: a desktop draws them in the page from
+ * `@lingxia/bridge`, a phone draws native ones the page cannot see and only a
+ * system tap can answer.
+ */
+const OVERLAY_SURFACE: Record<string, 'dom' | 'native'> = {
+  macos: 'dom',
+  windows: 'dom',
+  android: 'native',
+  ios: 'native',
+  harmony: 'native',
+};
+
 spec("show, hide, confirm, and cancel in-app feedback overlays", {
   id: "UI-FEEDBACK-001",
   covers: ['lx.showToast', 'lx.hideToast', 'lx.showModal', 'lx.showActionSheet'],
@@ -205,6 +220,8 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
   timeout: 60_000,
 }, async (t) => {
   const { app } = bindFixture(t, "UI-FEEDBACK-001");
+  const platform = await runtimePlatform(app);
+  const overlays = OVERLAY_SURFACE[platform] ?? 'dom';
 
   await t.step('show and hide a toast', async () => {
     await app.nav.relaunch({ page: 'ui', query: { type: 'toast' } });
@@ -212,22 +229,39 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
     await app.eval({
       script: `await lx.showToast({ title: 'Coverage toast', icon: 'none', duration: 8000 });`,
     });
-    await app.page.waitFor({ page: 'ui', css: '.lx-toast-title', state: 'visible' });
-    const shown = await app.page.eval({
-      page: 'ui',
-      script: `document.querySelector('.lx-toast-title')?.textContent ?? ''`,
-    });
-    expect(shown).toBe('Coverage toast');
-    await app.eval({ script: `await lx.hideToast();` });
-    await eventually(
-      () => app.page.eval({
+    if (overlays === 'dom') {
+      await app.page.waitFor({ page: 'ui', css: '.lx-toast-title', state: 'visible' });
+      const shown = await app.page.eval({
+        page: 'ui',
+        script: `document.querySelector('.lx-toast-title')?.textContent ?? ''`,
+      });
+      expect(shown).toBe('Coverage toast');
+    } else {
+      // A native toast is not in the page; what a caller can rely on is that
+      // showing it does not put anything in the page either.
+      const leaked = await app.page.eval({
         page: 'ui',
         script: `document.querySelector('.lx-toast-title') ? 'yes' : 'no'`,
-      }),
-      (value) => value === 'no',
-      { describe: 'toast to disappear after hideToast' },
-    );
+      });
+      expect(leaked).toBe('no');
+    }
+    await app.eval({ script: `await lx.hideToast();` });
+    if (overlays === 'dom') {
+      await eventually(
+        () => app.page.eval({
+          page: 'ui',
+          script: `document.querySelector('.lx-toast-title') ? 'yes' : 'no'`,
+        }),
+        (value) => value === 'no',
+        { describe: 'toast to disappear after hideToast' },
+      );
+    }
   });
+
+  // A native modal or action sheet only answers a system tap, and this suite
+  // has no driver for one; on those hosts the dialogs stay unproven rather
+  // than leaving a pending promise and a dialog on screen.
+  if (overlays !== 'dom') return;
 
   await t.step('confirm and cancel a modal', async () => {
     const confirmed = app.eval({
