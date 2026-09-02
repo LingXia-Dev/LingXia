@@ -83,10 +83,10 @@ export default [
   },
   {
     id: "PEND-ORIENT-001",
-    title: "setDeviceOrientation and observe the host rotate",
+    title: "observe the host physically rotate after setDeviceOrientation",
     mode: "external-ui",
     covers: ["lx.setDeviceOrientation"],
-    reason: "host rotation / orientation lock is device-lab",
+    reason: "the return and argument contract is DEVICE-ORIENTATION-001; seeing the frame rotate is device-lab",
   },
   {
     id: "PEND-EXTERNAL-001",
@@ -97,10 +97,10 @@ export default [
   },
   {
     id: "PEND-DEVICE-FB-001",
-    title: "vibrate and makePhoneCall, or reject with unsupported",
+    title: "vibrate and makePhoneCall on a phone",
     mode: "external-ui",
     covers: ["lx.vibrateShort", "lx.vibrateLong", "lx.makePhoneCall"],
-    reason: "haptics and the dialer are platform UI / unsupported on desktop",
+    reason: "desktop is proven absent by DEVICE-ABSENT-001; the real haptics and dialer are device-lab",
   },
   {
     id: "PEND-MORE-ACTIONS-001",
