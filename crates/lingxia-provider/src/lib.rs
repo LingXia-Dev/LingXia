@@ -164,8 +164,12 @@ impl LxAppStatus {
 
     /// Unrecognized values read as `Unknown` so a newer server cannot brick an
     /// older client by inventing a state it never blocks on.
+    ///
+    /// Case- and whitespace-insensitive: `Unknown` does not block, so a server
+    /// sending `"Suspended"` against a case-sensitive match would degrade in
+    /// the unsafe direction on the one field that gates opening.
     pub fn from_str_lossy(value: &str) -> Self {
-        match value {
+        match value.trim().to_ascii_lowercase().as_str() {
             "published" => Self::Published,
             "delisted" => Self::Delisted,
             "suspended" => Self::Suspended,
@@ -222,5 +226,34 @@ pub trait LxAppRegistryProvider: Send + Sync + 'static {
         _locale: &'a str,
     ) -> BoxFuture<'a, Result<Vec<LxAppRegistryInfo>, ProviderError>> {
         Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+#[cfg(test)]
+mod registry_tests {
+    use super::LxAppStatus;
+
+    #[test]
+    fn status_parsing_is_case_insensitive_because_unknown_never_blocks() {
+        assert_eq!(
+            LxAppStatus::from_str_lossy("suspended"),
+            LxAppStatus::Suspended
+        );
+        assert_eq!(
+            LxAppStatus::from_str_lossy("Suspended"),
+            LxAppStatus::Suspended
+        );
+        assert_eq!(
+            LxAppStatus::from_str_lossy(" SUSPENDED "),
+            LxAppStatus::Suspended
+        );
+        assert!(LxAppStatus::from_str_lossy("SUSPENDED").blocks_open());
+
+        assert_eq!(
+            LxAppStatus::from_str_lossy("Delisted"),
+            LxAppStatus::Delisted
+        );
+        assert_eq!(LxAppStatus::from_str_lossy(""), LxAppStatus::Unknown);
+        assert_eq!(LxAppStatus::from_str_lossy("retired"), LxAppStatus::Unknown);
     }
 }
