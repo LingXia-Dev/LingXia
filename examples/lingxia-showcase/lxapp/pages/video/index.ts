@@ -20,6 +20,22 @@ Page({
       });
       return;
     }
+    // A deterministic local source (the automation HTTP fixture) so playback
+    // commands can be asserted without the public internet; autoplay stays off
+    // so the spec owns every transition.
+    if (options.automationFixture === "video-source") {
+      this.setData({
+        videos: [{
+          id: "lx-video-source-fixture",
+          src: String(options.src || ""),
+          poster: "",
+          autoplay: false,
+          qualities: [],
+          playbackRates: [1.0],
+        }],
+      });
+      return;
+    }
 
     this.setData({
       videos: [

@@ -131,11 +131,11 @@ export default [
     reason: "needs a second-lxapp fixture beyond the live Showcase session",
   },
   {
-    id: "PEND-VIDEO-CTRL-001",
-    title: "VideoContext play, stop, seek, and setStreamSource",
+    id: "PEND-VIDEO-STREAM-001",
+    title: "VideoContext setStreamSource against a stream provider",
     mode: "external-fixture",
-    covers: ["VideoContext.play", "VideoContext.stop", "VideoContext.seek"],
-    reason: "needs a real media source fixture; NATIVE-VIDEO-001 only hides overlay",
+    covers: ["VideoContext.setStreamSource"],
+    reason: "needs a host stream provider addon; the Showcase has none",
   },
   {
     id: "PEND-NET-FIRE-001",
@@ -178,13 +178,6 @@ export default [
       "CompressVideoTask.cancel",
     ],
     reason: "needs a checked-in media fixture larger than the shape check",
-  },
-  {
-    id: "PEND-VIDEO-EVT-001",
-    title: "LxVideo play, pause, timeupdate, and ended events",
-    mode: "external-fixture",
-    covers: ["lx.createVideoContext"],
-    reason: "empty video fixture cannot emit real playback events",
   },
   {
     id: "PEND-APPLINK-001",
