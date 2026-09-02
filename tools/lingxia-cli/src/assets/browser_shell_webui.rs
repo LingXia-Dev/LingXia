@@ -53,20 +53,17 @@ pub(super) fn resolve_browser_shell_webui_dir(
         });
     }
 
-    // There is no default. The browser shell webui is a prebuilt lxapp that
-    // lives in this repo and is deliberately not published to npm, so a host
-    // enabling the browser has to say where its copy is. Saying so here is the
-    // whole error: the alternative was a default that pointed at a package the
-    // registry has never had, which failed at `npm pack` with nothing to act on.
+    // There is no default: the CLI ships no webui, and none is published to
+    // npm, so a host enabling the browser has to say where its own copy is.
+    // Saying so here is the whole error — the alternative was a default that
+    // pointed at a package the registry has never had, which failed at
+    // `npm pack` with nothing to act on.
     Err(anyhow!(
         "capabilities.browser is on, but browser.webui is not set.\n\n\
-         The webui is the browser's face — newtab, settings, downloads — so it \
-         ships as a starting point you own rather than a package you depend on. \
-         Take a copy:\n\n  \
-         lingxia browser-shell eject\n\n\
-         then point the host at it:\n\n  \
-         browser:\n    webui:\n      path: browser-shell-webui\n\n\
-         `browser.webui.package`/`version` still works for a fork you publish \
-         yourself."
+         The webui is the browser's face — newtab, settings, downloads — so \
+         every host that ships a browser owns its own. Point the host at \
+         it:\n\n  \
+         browser:\n    webui:\n      path: <your webui lxapp>\n\n\
+         `browser.webui.package`/`version` takes one you publish yourself."
     ))
 }
