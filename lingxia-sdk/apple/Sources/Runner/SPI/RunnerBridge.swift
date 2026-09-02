@@ -27,10 +27,6 @@ enum RunnerBridge {
         }
     }
 
-    static func setPullDownRefreshHandler(_ handler: @escaping (String, String, Bool) -> Bool) {
-        macOSLxApp.runnerPullDownRefreshHandler = handler
-    }
-
     static func sessionId(for appId: String) -> UInt64? {
         if let sessionId = LxAppCore.sessionId(for: appId) {
             return sessionId
@@ -106,9 +102,7 @@ enum RunnerBridge {
     }
 
     static func attachLxAppWebView(_ webView: WKWebView, to container: NSView) {
-        WebViewManager.attachWebViewToContainer(webView, container: container)
-        MacNativeBridge.attachIfNeeded(to: webView, in: container)
-        webView.resumeWebView()
+        WebViewManager.attachLxAppWebView(webView, to: container)
     }
 
     static func configureUserAgentOverride(_ userAgent: String?, reloadExisting: Bool) -> Bool {

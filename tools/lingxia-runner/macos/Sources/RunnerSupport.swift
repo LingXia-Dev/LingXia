@@ -13,12 +13,6 @@ enum RunnerSupport {
             LingxiaRunnerSPI.Runtime.setOpenUrlHandler(handler)
         }
 
-        static func setPullDownRefreshHandler(
-            _ handler: @escaping (String, String, Bool) -> Bool
-        ) {
-            LingxiaRunnerSPI.Runtime.setPullDownRefreshHandler(handler)
-        }
-
         static func sessionId(for appId: String) -> UInt64? {
             LingxiaRunnerSPI.Runtime.sessionId(for: appId)
         }

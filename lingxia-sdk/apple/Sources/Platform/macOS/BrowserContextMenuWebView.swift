@@ -39,6 +39,18 @@ final class BrowserContextMenuWebView: WKWebView {
 
     private var pendingDownloadCandidate: DownloadCandidate?
 
+    /// Pull-to-refresh owns the scroll only while the page is at its top and a
+    /// pull is under way; every other event goes to WebKit untouched. A browser
+    /// surface never pulls.
+    override func scrollWheel(with event: NSEvent) {
+        if !isBrowserSurface,
+           let controller = lxPullToRefreshController,
+           controller.handleScrollWheel(event) {
+            return
+        }
+        super.scrollWheel(with: event)
+    }
+
     override func rightMouseDown(with event: NSEvent) {
         guard let currentPath, currentPath.hasPrefix("/tabs/") else {
             super.rightMouseDown(with: event)
@@ -506,8 +518,7 @@ final class BrowserContextMenuWebView: WKWebView {
 
     @objc private func handleLxAppPullDownRefresh(_ sender: Any?) {
         _ = sender
-        guard let appId, !appId.isEmpty else { return }
-        macOSLxApp.getViewController(for: appId)?.startPullDownRefreshProgrammatically()
+        lxPullToRefreshController?.startRefreshing()
     }
 
     /// AppKit appends a "Services" submenu to context menus after `willOpenMenu`, based on the

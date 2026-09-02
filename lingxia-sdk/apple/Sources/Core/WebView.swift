@@ -67,6 +67,11 @@ extension WKWebView {
         self.appId = appId
         self.currentPath = path
         LxAppAppearanceRegistry.register(self, appId: appId)
+        #if os(macOS)
+        // The page decides whether it can be pulled, so the answer is re-read
+        // here rather than per scroll event.
+        lxPullToRefreshController?.refreshEnabledFlag()
+        #endif
     }
 
     /// Registration state
@@ -199,6 +204,23 @@ final class WebViewManager {
     static func switchWebView(from current: WKWebView?, to new: WKWebView?) {
         current?.pauseWebView()
         new?.resumeWebView()
+    }
+
+    /// Mount an lxapp page's web view: the view itself, the native-component
+    /// bridge, and — on macOS — pull-to-refresh. One call, so every host that
+    /// shows a page gets the same set instead of assembling it by hand.
+    @MainActor
+    static func attachLxAppWebView(_ webView: WKWebView, to container: PlatformView) {
+        #if os(macOS)
+        // Pull-to-refresh moves the page by its own vertical constraints, so it
+        // supplies them here instead of the default full-container pinning.
+        let pullToRefresh = MacPullToRefreshController.attachIfNeeded(to: webView, in: container)
+        attachWebViewToContainer(
+            webView, container: container, constraints: pullToRefresh.pageConstraints(in: container))
+        MacNativeBridge.attachIfNeeded(to: webView, in: container)
+        #else
+        attachWebViewToContainer(webView, container: container)
+        #endif
     }
 
     /// Shared WebView attachment logic

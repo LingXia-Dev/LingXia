@@ -1,9 +1,10 @@
 #if os(macOS)
 import AppKit
 
-/// Animated three-dot pull-to-refresh indicator. Hosted inside the view controller's
-/// in-layout refresh strip (between the navigation bar and the web view), not as a
-/// floating overlay, so an active refresh pushes the web content down.
+/// Animated three-dot pull-to-refresh indicator. Sits behind the page and is
+/// revealed by translating the page down (`MacPullToRefreshController`), so a
+/// refresh never resizes the web view — a resize is a WebKit relayout and a new
+/// viewport for the lxapp.
 @MainActor
 final class MacRefreshIndicatorView: NSView {
     private let dots: [CALayer] = (0..<3).map { _ in CALayer() }
