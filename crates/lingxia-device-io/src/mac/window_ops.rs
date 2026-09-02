@@ -126,19 +126,20 @@ fn focus_self_window(window_id: &str) -> Result<()> {
                     continue;
                 }
                 let _: () = msg_send![app, activateIgnoringOtherApps: true];
-                // A panel (Quick Look, sheets) refuses main/key status, and
-                // AppKit asserts — fatally — instead of ignoring the request.
+                // `makeMainWindow` asserts inside `_changeJustMain` when the
+                // window refuses main status — a panel such as Quick Look does
+                // — and an uncaught ObjC exception here takes the host down.
+                // `makeKeyAndOrderFront` has no such trap: it orders a window
+                // that cannot become key to the front and leaves key alone. It
+                // must stay unconditional, because a window that is ordered
+                // front but never key does not expose its web content to the
+                // accessibility tree, and focus is what callers ask for.
                 let can_main: bool = msg_send![window, canBecomeMainWindow];
                 if can_main {
                     let _: () = msg_send![window, makeMainWindow];
                 }
-                let can_key: bool = msg_send![window, canBecomeKeyWindow];
-                if can_key {
-                    let _: () =
-                        msg_send![window, makeKeyAndOrderFront: std::ptr::null_mut::<AnyObject>()];
-                } else {
-                    let _: () = msg_send![window, orderFront: std::ptr::null_mut::<AnyObject>()];
-                }
+                let _: () =
+                    msg_send![window, makeKeyAndOrderFront: std::ptr::null_mut::<AnyObject>()];
                 return Ok(());
             }
         }
