@@ -302,16 +302,22 @@ impl Platform for IosPlatform {
             }
         }
 
-        // Point Package.swift at the cached Apple SDK (no-op in-workspace).
-        apple::ensure_sdk_package_dependency(&config.project_root, &ios_dir)?;
+        let app_path = apple::with_temporary_package_manifest(&ios_dir, || {
+            // Point the build-time manifest at the cached Apple SDK (no-op
+            // in-workspace), then restore it after every SwiftPM consumer has
+            // finished with the package.
+            apple::ensure_sdk_package_dependency(&config.project_root, &ios_dir)?;
 
-        // Build Swift Package (library dependencies first)
-        self.swift_build(&ios_dir, &config.project_root, config.profile)?;
+            // Build Swift Package (library dependencies first).
+            self.swift_build(&ios_dir, &config.project_root, config.profile)?;
 
-        // Create .app bundle using AppBundler (converts library to executable app)
-        let app_path =
-            self.create_app_bundle(&ios_dir, &config.project_root, config, ios_config)?;
-        embed_packet_tunnel_extension_if_present(&ios_dir, &app_path, config.profile)?;
+            // Create .app bundle using AppBundler (converts library to an
+            // executable app) and consume any sibling Packet Tunnel product.
+            let app_path =
+                self.create_app_bundle(&ios_dir, &config.project_root, config, ios_config)?;
+            embed_packet_tunnel_extension_if_present(&ios_dir, &app_path, config.profile)?;
+            Ok(app_path)
+        })?;
 
         // Compile asset catalog (includes AppIcon) and merge generated plist
         let deployment_target = ios_config
