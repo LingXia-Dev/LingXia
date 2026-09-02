@@ -7,7 +7,7 @@ export default {
     { "api": "lx.fs.write", "mode": "automated", "owner": "LOGIC-004" },
     { "api": "lx.app.getBaseInfo", "mode": "automated", "owner": "SYSTEM-001" },
     { "api": "lx.surface.openPage", "mode": "automated", "owner": "DESKTOP-SURFACE-WINDOW-001", "targets": ["windows", "macos"] },
-    { "api": "lx.surface.openUrl", "mode": "external-fixture", "owner": "PEND-OPENURL-001" },
+    { "api": "lx.surface.openUrl", "mode": "automated", "owner": "DESKTOP-SURFACE-TAB-001", "targets": ["windows", "macos"] },
     { "api": "lx.surface.openDeclared", "mode": "automated", "owner": "DESKTOP-SURFACE-DECLARED-001", "targets": ["windows", "macos"] },
     { "api": "lx.surface.get", "mode": "automated", "owner": "DESKTOP-SURFACE-WINDOW-001", "targets": ["windows", "macos"] },
     { "api": "lx.shell.openApp", "mode": "automated", "owner": "DESKTOP-DYNAMIC-MAIN-001", "targets": ["windows", "macos"] },
