@@ -205,6 +205,18 @@ fn is_expired(record: &RegistryRecord, ttl: Duration) -> bool {
     now < record.fetched_at || now - record.fetched_at > ttl.as_secs() as i64
 }
 
+/// A record naming artwork that is no longer on disk. Records live in the data
+/// directory and icons in the cache directory, so the OS can drop the artwork
+/// and leave the record behind — and that record still looks fresh, which would
+/// otherwise mean up to a full listing TTL with no icon and no attempt to get
+/// one back.
+fn cached_icon_is_gone(record: &RegistryRecord, icons_dir: &Path) -> bool {
+    record
+        .icon_file
+        .as_ref()
+        .is_some_and(|file| !icons_dir.join(file).exists())
+}
+
 /// The registry's name for this app in the current locale, else the freshest
 /// name it has in any locale.
 ///
@@ -254,11 +266,19 @@ pub(crate) fn ensure_fresh(appids: &[String]) {
         return;
     }
     let locale = current_locale();
+    let icons_dir = icons_dir();
     let stale: Vec<String> = appids
         .iter()
         .filter(|appid| {
-            record(appid, &locale).is_none_or(|record| is_expired(&record, LISTING_TTL))
-                && !attempted_recently(appid, &locale)
+            let cached = record(appid, &locale);
+            let needs_fetch = match (&cached, &icons_dir) {
+                (None, _) => true,
+                (Some(cached), Some(icons_dir)) => {
+                    is_expired(cached, LISTING_TTL) || cached_icon_is_gone(cached, icons_dir)
+                }
+                (Some(cached), None) => is_expired(cached, LISTING_TTL),
+            };
+            needs_fetch && !attempted_recently(appid, &locale)
         })
         .cloned()
         .collect();
@@ -733,6 +753,28 @@ mod tests {
             sweep_orphan_icons(&orphans, icons);
             assert!(!icons.join(shared).exists());
         });
+    }
+
+    #[test]
+    fn artwork_the_os_purged_counts_as_stale_however_fresh_the_record_is() {
+        let dir = std::env::temp_dir().join(format!("lx-icon-gone-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let present = "kept.png";
+        fs::write(dir.join(present), b"art").unwrap();
+
+        let mut record = record_for("demo", "en-US", Some(present));
+        assert!(!cached_icon_is_gone(&record, &dir));
+
+        // Records live in the data dir and icons in the cache dir; a cache
+        // purge leaves this record fresh but pointing at nothing.
+        record.icon_file = Some("purged.png".to_string());
+        assert!(!is_expired(&record, LISTING_TTL));
+        assert!(cached_icon_is_gone(&record, &dir));
+
+        // A record that never named artwork is not stale for this reason.
+        record.icon_file = None;
+        assert!(!cached_icon_is_gone(&record, &dir));
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
