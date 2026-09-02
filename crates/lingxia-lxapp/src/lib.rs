@@ -84,6 +84,7 @@ pub use lxapp::{
     registry::{
         display_icon_path as lxapp_display_icon_path, display_name as lxapp_display_name,
         display_status as lxapp_registry_status, refresh_registry as refresh_lxapp_registry,
+        set_registry_change_listener as set_lxapp_registry_change_listener,
     },
     restart_lxapp, set_automation_auto_grant, set_display_language, tabbar,
     touch_page_instance_by_id, try_get, uninstall_lxapp,
