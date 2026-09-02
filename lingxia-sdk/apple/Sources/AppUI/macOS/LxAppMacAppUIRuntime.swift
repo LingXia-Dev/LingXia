@@ -167,9 +167,6 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.onMainWillSwitch = { [weak self] in
             self?.collapseExpandedAsides()
         }
-        shell.setSidebarHostActionHandler { [weak self] generation, actionID in
-            self?.performRuntimeSidebarAction(generation: generation, id: actionID)
-        }
         shell.setToolbarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
         }
@@ -437,57 +434,8 @@ final class LxAppMacAppUIRuntime: NSObject {
         refreshChromeActions()
     }
 
-    private struct ResolvedRuntimeSidebarAction: Codable {
-        let generation: UInt64
-        let id: String
-        let placement: String
-        let label: String
-        let iconPath: String?
-        let disabled: Bool
-    }
-
-    private var runtimeSidebarActions: [ResolvedRuntimeSidebarAction] = []
-
-    func setRuntimeSidebarActions(_ json: String) {
-        guard let data = json.data(using: .utf8),
-              let items = try? JSONDecoder().decode([ResolvedRuntimeSidebarAction].self, from: data)
-        else {
-            LXLog.error("setSidebarActions: bad payload", category: "MacAppUI")
-            return
-        }
-        runtimeSidebarActions = items
-        refreshChromeActions()
-    }
-
-    func setShellPins(_ json: String) {
-        shell.updateShellPins(json)
-    }
-
     func openBuiltinBrowserPage(id: String) -> Bool {
         shell.openBuiltinShellSurface(id: id)
-    }
-
-    private func runtimeSidebarActionItems(placement: String) -> [LxAppUIActionItem] {
-        return runtimeSidebarActions.filter { $0.placement == placement }.map { item in
-            return LxAppUIActionItem(
-                generation: item.generation,
-                id: item.id,
-                label: item.label,
-                iconURL: runtimeItemIconURL(item),
-                disabled: item.disabled
-            )
-        }
-    }
-
-    private func runtimeItemIconURL(_ item: ResolvedRuntimeSidebarAction) -> URL? {
-        guard let icon = item.iconPath, !icon.isEmpty else { return nil }
-        if let url = URL(string: icon), url.isFileURL { return url }
-        if icon.hasPrefix("/") { return URL(fileURLWithPath: icon) }
-        return LxAppAppUIBundleLoader.resolveRelativeResource(icon, baseURL: uiConfigURL)
-    }
-
-    private func performRuntimeSidebarAction(generation: UInt64, id: String) {
-        _ = shellActivate(generation, id)
     }
 
     private func performActivator(id: String) {
@@ -1466,8 +1414,6 @@ final class LxAppMacAppUIRuntime: NSObject {
             }
             .map(makeChromeActionItem)
 
-        shell.updateSidebarHeaderActions(runtimeSidebarActionItems(placement: "header"))
-        shell.updateSidebarHostActions(runtimeSidebarActionItems(placement: "footer"))
         let switcher = graphOwnerAppId.flatMap(SurfaceSwitcherBridge.snapshot)
         shell.updateManagedMainSurfaces(
             mainSidebarItems(from: switcher),

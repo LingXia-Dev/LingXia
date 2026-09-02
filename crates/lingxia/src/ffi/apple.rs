@@ -368,6 +368,12 @@ mod bridge {
         #[swift_bridge(swift_name = "shellActivate")]
         fn shell_activate(generation: u64, item_id: &str) -> bool;
 
+        // A shell that appears after the home lxapp declared its chrome asks
+        // for the declaration again; declarations are process-local and are
+        // otherwise pushed exactly once, when nothing was there to receive it.
+        #[swift_bridge(swift_name = "shellReapplyChrome")]
+        fn shell_reapply_chrome() -> bool;
+
         // Open (or focus) an lxapp as a MAIN — the pinned-lxapp tile's click.
         #[swift_bridge(swift_name = "shellOpenLxappMain")]
         fn shell_open_lxapp_main(app_id: &str) -> bool;
@@ -1468,6 +1474,24 @@ pub fn rename_surface(appid: &str, surface_id: &str, title: &str) -> bool {
     ffi_catch_unwind!("rename_surface", false, || {
         let title = (!title.trim().is_empty()).then_some(title);
         lxapp::try_get(appid).is_some_and(|app| app.rename_shell_surface(surface_id, title))
+    })
+}
+
+/// Re-push the home lxapp's sidebar actions to a host that just built a sidebar.
+///
+/// A declaration is pushed once, when it is made, so a shell created afterwards
+/// — the Runner switching to a desktop shape, a window opened later — would
+/// otherwise show an empty sidebar until the lxapp declared again, which it
+/// only does on its next launch. The Windows shell runtime replays the same way
+/// when it installs.
+///
+/// Pins need no equivalent here: the Apple sidebar reads them itself when it is
+/// built (`shell_pins`), so only the push path for later changes matters.
+pub fn shell_reapply_chrome() -> bool {
+    ffi_catch_unwind!("shell_reapply_chrome", false, || {
+        let declared = lingxia_shell::manager()
+            .is_ok_and(|manager| manager.snapshot().sidebar_actions.declared());
+        !declared || lingxia_shell::apply_current_sidebar_actions().is_ok()
     })
 }
 
