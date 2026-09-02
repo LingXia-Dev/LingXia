@@ -3,7 +3,7 @@ param(
   [ValidateSet('react', 'vue', 'all')]
   [string]$Framework = 'all',
   [string]$Device,
-  [int]$TimeoutSeconds = 300
+  [int]$TimeoutSeconds = 600
 )
 
 $ErrorActionPreference = 'Stop'

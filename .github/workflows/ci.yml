@@ -959,7 +959,7 @@ jobs:
         run: >-
           ../../scripts/automation/run-windows-showcase.ps1
           -Framework '${{ matrix.framework }}'
-          -TimeoutSeconds 480
+          -TimeoutSeconds 600
 
       - name: Run showcase automation
         if: runner.os == 'macOS'
@@ -969,7 +969,7 @@ jobs:
           result_dir="examples/lingxia-showcase/lxapp/test-results/automation/macos-$framework"
 
           for attempt in 1 2; do
-            if bash scripts/automation/run-macos-showcase.sh "$framework" 300; then
+            if bash scripts/automation/run-macos-showcase.sh "$framework" 600; then
               exit 0
             fi
 

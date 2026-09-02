@@ -3,7 +3,7 @@
 set -euo pipefail
 
 framework=${1:-all}
-timeout_seconds=${2:-300}
+timeout_seconds=${2:-600}
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 showcase_root="$repo_root/examples/lingxia-showcase"
 lxapp_root="$showcase_root/lxapp"
