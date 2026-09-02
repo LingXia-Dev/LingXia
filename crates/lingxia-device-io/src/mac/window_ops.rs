@@ -126,9 +126,19 @@ fn focus_self_window(window_id: &str) -> Result<()> {
                     continue;
                 }
                 let _: () = msg_send![app, activateIgnoringOtherApps: true];
-                let _: () = msg_send![window, makeMainWindow];
-                let _: () =
-                    msg_send![window, makeKeyAndOrderFront: std::ptr::null_mut::<AnyObject>()];
+                // A panel (Quick Look, sheets) refuses main/key status, and
+                // AppKit asserts — fatally — instead of ignoring the request.
+                let can_main: bool = msg_send![window, canBecomeMainWindow];
+                if can_main {
+                    let _: () = msg_send![window, makeMainWindow];
+                }
+                let can_key: bool = msg_send![window, canBecomeKeyWindow];
+                if can_key {
+                    let _: () =
+                        msg_send![window, makeKeyAndOrderFront: std::ptr::null_mut::<AnyObject>()];
+                } else {
+                    let _: () = msg_send![window, orderFront: std::ptr::null_mut::<AnyObject>()];
+                }
                 return Ok(());
             }
         }
