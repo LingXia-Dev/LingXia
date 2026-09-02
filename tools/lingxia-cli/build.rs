@@ -91,7 +91,6 @@ fn run() -> Result<(), String> {
     fs::copy(&polyfills_src, &polyfills_out)
         .map_err(|e| format!("failed to copy {}: {e}", polyfills_src.display()))?;
     generate_windows_design_icons(repo_root, &out_dir)?;
-    stage_browser_shell_webui(repo_root, &out_dir)?;
 
     println!(
         "cargo:rustc-env=LINGXIA_BRIDGE_RUNTIME_ES2020={}",
@@ -425,13 +424,6 @@ fn emit_rerun_markers(
     // or removing one does not re-expand the macro -- the binary would keep
     // shipping the previous file list.
     emit_rerun_for_dir(&repo_root.join("docs").join("skill"))?;
-    // Same reason, for the webui `browser-shell eject` hands out.
-    emit_rerun_for_dir(
-        &repo_root
-            .join("crates")
-            .join("lingxia-browser-shell")
-            .join("webui"),
-    )?;
     let git_head = repo_root.join(".git").join("HEAD");
     if git_head.exists() {
         println!("cargo:rerun-if-changed={}", git_head.display());
@@ -557,53 +549,4 @@ fn optional_file_mtime(path: &Path) -> Result<SystemTime, String> {
     } else {
         Ok(SystemTime::UNIX_EPOCH)
     }
-}
-
-/// Stage the browser shell webui's *source* for embedding.
-///
-/// `lingxia browser-shell eject` hands a host its own copy to brand, so the
-/// CLI carries one. Embedding the crate directory directly would also swallow
-/// whatever a local build left there — `dist/`, `node_modules/`, `.lingxia/`
-/// — and those are megabytes of nothing the eject wants. Copy the source, and
-/// only the source.
-fn stage_browser_shell_webui(repo_root: &Path, out_dir: &Path) -> Result<(), String> {
-    const SKIP: [&str; 4] = ["dist", "node_modules", ".lingxia", ".git"];
-
-    let src = repo_root
-        .join("crates")
-        .join("lingxia-browser-shell")
-        .join("webui");
-    let dest = out_dir.join("browser-shell-webui");
-    if dest.exists() {
-        fs::remove_dir_all(&dest)
-            .map_err(|e| format!("failed to clear {}: {e}", dest.display()))?;
-    }
-    copy_source_tree(&src, &dest, &SKIP)?;
-    println!(
-        "cargo:rustc-env=LINGXIA_BROWSER_SHELL_WEBUI_DIR={}",
-        dest.display()
-    );
-    Ok(())
-}
-
-fn copy_source_tree(src: &Path, dest: &Path, skip: &[&str]) -> Result<(), String> {
-    fs::create_dir_all(dest).map_err(|e| format!("failed to create {}: {e}", dest.display()))?;
-    let entries =
-        fs::read_dir(src).map_err(|e| format!("failed to read {}: {e}", src.display()))?;
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("failed to read {}: {e}", src.display()))?;
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if skip.contains(&name.as_ref()) {
-            continue;
-        }
-        let from = entry.path();
-        let to = dest.join(name.as_ref());
-        if from.is_dir() {
-            copy_source_tree(&from, &to, skip)?;
-        } else {
-            fs::copy(&from, &to).map_err(|e| format!("failed to copy {}: {e}", from.display()))?;
-        }
-    }
-    Ok(())
 }
