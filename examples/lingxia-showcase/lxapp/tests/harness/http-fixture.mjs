@@ -8,6 +8,7 @@
 // Start it before `lxdev test` and pass the base URL through:
 //   node tests/harness/http-fixture.mjs --port 0 --print-base
 //   lxdev test tests/ --arg httpBase=http://127.0.0.1:<port>
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -221,6 +222,56 @@ export function createFixtureServer() {
           firstBytes: buffer.subarray(0, 8).toString('hex'),
           headerEcho: request.headers['x-lx-test'] ?? null,
         });
+        return;
+      }
+
+      // A checked-in clip for native video playback contracts. Native players
+      // probe with byte ranges before they play, so 206 is not optional.
+      if (route === '/media/sample.mp4') {
+        const media = readFileSync(new URL('../fixtures/media/sample.mp4', import.meta.url));
+        const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.range ?? '');
+        const start = range && range[1] !== '' ? Number(range[1]) : 0;
+        const end = range && range[2] !== '' ? Math.min(Number(range[2]), media.length - 1) : media.length - 1;
+        if (range && (start > end || start >= media.length)) {
+          response.writeHead(416, { 'content-range': `bytes */${media.length}` });
+          response.end();
+          return;
+        }
+        const payload = media.subarray(start, end + 1);
+        response.writeHead(range ? 206 : 200, {
+          'content-type': 'video/mp4',
+          'content-length': payload.length,
+          'accept-ranges': 'bytes',
+          ...(range ? { 'content-range': `bytes ${start}-${end}/${media.length}` } : {}),
+        });
+        response.end(request.method === 'HEAD' ? undefined : payload);
+        return;
+      }
+
+      // A real decodable image for the compress / info contracts. Unlike
+      // `/file/*.png`, these bytes are a valid PNG, so a native image decoder
+      // accepts them.
+      if (route === '/media/sample.png') {
+        const image = readFileSync(new URL('../fixtures/media/sample.png', import.meta.url));
+        response.writeHead(200, {
+          'content-type': 'image/png',
+          'content-length': image.length,
+        });
+        response.end(request.method === 'HEAD' ? undefined : image);
+        return;
+      }
+
+      // A titled HTML page, so a browser-tab contract has something to open
+      // and a title to find it by.
+      if (route.startsWith('/page/')) {
+        const name = decodeURIComponent(route.slice('/page/'.length));
+        const html = `<!doctype html><html><head><meta charset="utf-8"><title>fixture ${name}</title></head>`
+          + `<body><h1 data-fixture-page="${name}">${name}</h1></body></html>`;
+        response.writeHead(200, {
+          'content-type': 'text/html; charset=utf-8',
+          'content-length': Buffer.byteLength(html),
+        });
+        response.end(html);
         return;
       }
 
