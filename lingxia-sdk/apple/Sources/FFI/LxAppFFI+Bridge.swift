@@ -395,13 +395,17 @@ extension LxApp {
 
     nonisolated static func setSidebarActions(items_json: RustStr) -> Bool {
         let json = items_json.toString()
+        // Delivered to the shell, not to the AppUI runtime: the sidebar is the
+        // shell's, and a host that builds a shell without an AppUI bundle (the
+        // Runner) used to drop every declaration while showing the sidebar.
+        //
         // Render-only (the Rust caller discards the result): hop instead of
         // blocking a JS worker on the main queue — during a synchronous open
         // the main thread is itself waiting on that worker, so a synchronous
         // wait here deadlocks startup.
         dispatchOnMain {
             #if os(macOS)
-            LxAppMacAppUIRuntime.active?.setRuntimeSidebarActions(json)
+            LxAppActiveHost.activeShell?.setRuntimeSidebarActions(json)
             #endif
         }
         return true
@@ -409,10 +413,10 @@ extension LxApp {
 
     nonisolated static func setShellPins(items_json: RustStr) -> Bool {
         let json = items_json.toString()
-        // Render-only: same async-hop rationale as setSidebarActions.
+        // Same routing and the same async-hop rationale as setSidebarActions.
         dispatchOnMain {
             #if os(macOS)
-            LxAppMacAppUIRuntime.active?.setShellPins(json)
+            LxAppActiveHost.activeShell?.updateShellPins(json)
             #endif
         }
         return true

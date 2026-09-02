@@ -230,7 +230,6 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var controllerEventsTask: Task<Void, Never>?
     private var didRequestHomeOpen = false
     private let startupBehavior: LxAppShellStartupBehavior
-    private var sidebarHostActionHandler: ((UInt64, String) -> Void)?
     private var toolbarHostActionHandler: ((String) -> Void)?
     private var titlebarHostActionHandler: ((String) -> Void)?
     private var appUIRuntimeRef: AnyObject?
@@ -245,6 +244,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// can read them without re-querying the runtime.
     private var lastSidebarHostActions: [LxAppUIActionItem] = []
     private var lastSidebarHeaderActions: [LxAppUIActionItem] = []
+    /// The home lxapp's `lx.shell.sidebarActions` declaration, as Rust resolved
+    /// it. Owned here rather than by the AppUI runtime: the sidebar is the
+    /// shell's, and a shell without an AppUI bundle (the Runner's) has one too.
+    private var runtimeSidebarActions: [ResolvedRuntimeSidebarAction] = []
     /// Latest browser entries rendered in the sidebar. Browser tabs are sidebar
     /// content too, so the shell can auto-show when they exist and auto-hide
     /// again when they are gone.
@@ -588,8 +591,11 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onBrowserTabCloseTabsBelowRequested = { [weak self] id in
             self?.browserCoordinator.closeTabsBelow(id: id)
         }
-        sidebar.onPanelItemToggled = { [weak self] generation, actionID in
-            self?.sidebarHostActionHandler?(generation, actionID)
+        sidebar.onPanelItemToggled = { generation, actionID in
+            // The runtime publishes the app event the declaring lxapp is
+            // listening for; no host sits in between, and one that tried would
+            // only be able to forward this call unchanged.
+            _ = shellActivate(generation, actionID)
         }
         sidebar.onUpdateActionRequested = { [weak self] state in
             switch state {
@@ -602,6 +608,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
         sidebarView = sidebar
         contentView.addSubview(sidebar)
+        // A declaration that arrived before this view existed is held on the
+        // shell, not lost; project it now that there is something to draw it.
+        applyRuntimeSidebarActions()
 
         // Base layer — solid color fills entire window, visible through padding gaps
         let base = LxAppHostThemeLayerView(role: .windowBackground)
@@ -1717,16 +1726,69 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         browserCoordinator.setCompactProjection(enabled && surfaceSizeClass == .compact)
     }
 
-    func setSidebarHostActionHandler(_ handler: @escaping (UInt64, String) -> Void) {
-        sidebarHostActionHandler = handler
-    }
-
     func setToolbarHostActionHandler(_ handler: @escaping (String) -> Void) {
         toolbarHostActionHandler = handler
     }
 
     func setTitlebarHostActionHandler(_ handler: @escaping (String) -> Void) {
         titlebarHostActionHandler = handler
+    }
+
+    /// A sidebar action as Rust resolved it: icons are already absolute paths
+    /// (`resolve_declared_icon`), so nothing here needs an app bundle to read.
+    struct ResolvedRuntimeSidebarAction: Codable, Equatable {
+        let generation: UInt64
+        let id: String
+        let placement: String
+        let label: String
+        let iconPath: String?
+        let disabled: Bool
+    }
+
+    /// Take the home lxapp's declaration and project it into the sidebar.
+    ///
+    /// The shell is the only thing that can render these, so it is the only
+    /// thing that should hold them: routing through the AppUI runtime instead
+    /// meant a host that never built one -- the Runner -- dropped every
+    /// declaration while showing the sidebar they belong in.
+    func setRuntimeSidebarActions(_ json: String) {
+        guard let data = json.data(using: .utf8),
+              let items = try? JSONDecoder().decode([ResolvedRuntimeSidebarAction].self, from: data)
+        else {
+            LXLog.error("setSidebarActions: bad payload", category: "LxAppShell")
+            return
+        }
+        // A host re-activates its shell on every open, and each one replays the
+        // declaration; rebuilding an identical header would re-decode its icons
+        // for nothing.
+        guard items != runtimeSidebarActions else { return }
+        runtimeSidebarActions = items
+        applyRuntimeSidebarActions()
+    }
+
+    private func applyRuntimeSidebarActions() {
+        // Before the sidebar exists there is nothing to project into, and the
+        // recompute this drives would run against a half-built shell. The
+        // declaration is held; `setupSidebarInterface` projects it.
+        guard sidebarView != nil else { return }
+        updateSidebarHeaderActions(runtimeSidebarActionItems(placement: "header"))
+        updateSidebarHostActions(runtimeSidebarActionItems(placement: "footer"))
+    }
+
+    private func runtimeSidebarActionItems(placement: String) -> [LxAppUIActionItem] {
+        runtimeSidebarActions
+            .filter { $0.placement == placement }
+            .map { item in
+                LxAppUIActionItem(
+                    generation: item.generation,
+                    id: item.id,
+                    label: item.label,
+                    iconURL: item.iconPath.flatMap { icon in
+                        icon.isEmpty ? nil : URL(fileURLWithPath: icon)
+                    },
+                    disabled: item.disabled
+                )
+            }
     }
 
     func updateSidebarHostActions(_ items: [LxAppUIActionItem]) {
