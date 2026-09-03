@@ -37,6 +37,7 @@ err_code:
   4001: "Location services disabled"
   4002: "Bluetooth disabled"
   4003: "NFC disabled"
+  4004: "Feature not enabled"
 
   # 5xxx - Network errors
   5000: "Network error"

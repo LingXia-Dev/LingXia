@@ -100,6 +100,7 @@ export const I18N_KEYS = [
   "err_code_4001",
   "err_code_4002",
   "err_code_4003",
+  "err_code_4004",
   "err_code_5000",
   "err_code_5001",
   "err_code_5002",

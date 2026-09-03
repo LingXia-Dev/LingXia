@@ -2624,6 +2624,8 @@ declare global {
      * lx.startPullDownRefresh()
      * Programmatically start the pull-to-refresh animation.
      * This will show the refresh indicator and trigger the onPullDownRefresh lifecycle method.
+     * Throws `E_INVALID_STATE` (`data.bizCode === 4004`) unless the current page
+     * config sets `enablePullDownRefresh: true`.
      */
     startPullDownRefresh(): void;
     /**
