@@ -2884,7 +2884,7 @@ fn show_lxapp_unavailable_notice(status: lxapp::LxAppStatus) {
         }
         _ => return,
     };
-    let window = lingxia_app_context::home_app_id().and_then(|id| owner_window_handle(&id));
+    let window = lingxia_app_context::home_app_id().and_then(owner_window_handle);
     if let Some(window) = window {
         crate::window_host::show_shell_notice(window, title, message);
     }
@@ -5070,23 +5070,6 @@ fn activate_main_tab(owner_appid: &str, tab_id: Option<&str>) {
         Some(tab_id) => handle_browser_tab_click(owner_appid, tab_id),
         None => return_to_lxapp_from_browser(owner_appid),
     }
-}
-
-fn open_lxapp_panel_now(
-    target_appid: &str,
-    path: &str,
-    page: Option<&str>,
-    query: Option<&serde_json::Value>,
-    panel_id: &str,
-) -> Result<(), lxapp::LxAppError> {
-    let options = panel_startup_options(target_appid, path, page, query)?;
-    lxapp::open_lxapp(
-        target_appid,
-        options
-            .set_open_mode(LxAppOpenMode::Panel)
-            .set_panel_id(panel_id.to_string()),
-    )
-    .map(|_| ())
 }
 
 fn panel_startup_options(
