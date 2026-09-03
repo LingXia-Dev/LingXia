@@ -12,7 +12,6 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     private static let navigationRetryDelayNs: UInt64 = 80_000_000
     private static let navigationRetryCount = 20
     /// Page-navigation slide duration; matches the iOS/Android 300ms transition.
-    private static let navTransitionDuration: CFTimeInterval = 0.3
 
     var appId: String
     internal var currentPath: String
@@ -23,15 +22,9 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     /// WKWebView's pre-commit frame is white, which reads as a flash.
     private var loadingPlaceholder: NSView?
     private var loadingObservation: NSKeyValueObservation?
-    /// When the running navigation transition finishes, in `CACurrentMediaTime`.
-    /// The placeholder reveal consults it so the two never animate at once.
-    private var navigationTransitionEndsAt: CFTimeInterval = 0
-    /// Observation for a swap deferred until the incoming page can draw itself.
-    private var firstPaintObservation: NSKeyValueObservation?
-    /// How long a navigation will hold the outgoing page waiting for the
-    /// incoming one to paint. Past this the swap proceeds covered, because a
-    /// tap that does nothing for longer than this reads as a dropped input.
-    private static let firstPaintGrace: TimeInterval = 0.2
+    /// Owns when and how a page slides. Shared with the runner so the two
+    /// hosts cannot drift apart again.
+    private let pageTransition = LxAppPageTransition()
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
 
@@ -48,7 +41,6 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     deinit {
         closeAppObserver.map(NotificationCenter.default.removeObserver)
-        firstPaintObservation?.invalidate()
     }
 
     override func loadView() {
@@ -146,44 +138,29 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         // already moving. Hold the outgoing page instead and slide once the
         // incoming one can draw itself; nothing moves while we wait, so this
         // reads as the animation starting a moment later rather than as a stall.
-        if animation != .none,
-           activeWebView !== webView,
-           webView.isLoading || webView.url == nil {
-            waitForFirstPaint(webView, path: path, animation: animation)
+        if activeWebView !== webView,
+           LxAppPageTransition.needsPaintWait(webView, animation: animation) {
+            let sessionId = self.sessionId
+            pageTransition.whenPagePaints(
+                webView,
+                stillCurrent: { [weak self] in
+                    guard let self else { return false }
+                    return self.sessionId == sessionId && self.currentPath == path
+                        && self.activeWebView !== webView
+                },
+                swap: { [weak self] in
+                    self?.performWebViewSwap(webView, animation: animation)
+                }
+            )
             return
         }
 
         performWebViewSwap(webView, animation: animation)
     }
 
-    /// Defer the swap until the incoming page reports it has finished loading,
-    /// or until the grace period runs out.
-    private func waitForFirstPaint(
-        _ webView: WKWebView,
-        path: String,
-        animation: LxAppAnimation
-    ) {
-        firstPaintObservation?.invalidate()
-        let sessionId = self.sessionId
-        let commit: () -> Void = { [weak self] in
-            guard let self,
-                  self.sessionId == sessionId,
-                  self.currentPath == path,
-                  self.activeWebView !== webView else { return }
-            self.firstPaintObservation?.invalidate()
-            self.firstPaintObservation = nil
-            self.performWebViewSwap(webView, animation: animation)
-        }
-        firstPaintObservation = webView.observe(\.isLoading, options: [.new]) { _, change in
-            guard change.newValue == false else { return }
-            Task { @MainActor in commit() }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.firstPaintGrace) { commit() }
-    }
-
     private func performWebViewSwap(_ webView: WKWebView, animation: LxAppAnimation) {
-        if animation != .none, activeWebView !== webView {
-            applyNavigationTransition(animation)
+        if activeWebView !== webView {
+            pageTransition.install(animation, on: webViewContainer)
         }
 
         if let old = activeWebView, old !== webView {
@@ -266,7 +243,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         loadingObservation = nil
         guard let placeholder = loadingPlaceholder else { return }
         loadingPlaceholder = nil
-        guard CACurrentMediaTime() >= navigationTransitionEndsAt else {
+        guard !pageTransition.isRunning else {
             placeholder.removeFromSuperview()
             return
         }
@@ -276,31 +253,6 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }, completionHandler: {
             placeholder.removeFromSuperview()
         })
-    }
-
-    /// Slide the container's contents in the navigation direction (mirrors the
-    /// iOS/Android 300ms page transition). A layer `CATransition` animates the
-    /// swap of the old webview subview for the new one; no per-webview transform
-    /// or constraint juggling, and it survives Auto Layout re-pinning.
-    private func applyNavigationTransition(_ animation: LxAppAnimation) {
-        guard let layer = webViewContainer.layer else { return }
-        let transition = CATransition()
-        transition.duration = Self.navTransitionDuration
-        transition.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        switch animation {
-        case .push:
-            transition.type = .push
-            transition.subtype = .fromRight
-        case .pop:
-            transition.type = .push
-            transition.subtype = .fromLeft
-        case .fade:
-            transition.type = .fade
-        case .none:
-            return
-        }
-        layer.add(transition, forKey: "lxNavTransition")
-        navigationTransitionEndsAt = CACurrentMediaTime() + Self.navTransitionDuration
     }
 
     /// Navigating to the page already on screen (same WKWebView instance): the
@@ -343,7 +295,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
                     let fade = CABasicAnimation(keyPath: "opacity")
                     fade.fromValue = 1.0
                     fade.toValue = 0.0
-                    fade.duration = Self.navTransitionDuration
+                    fade.duration = LxAppPageTransition.duration
                     snap.layer?.add(fade, forKey: "lxFadeOut")
                     snap.layer?.opacity = 0.0
                 } else {
@@ -364,7 +316,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         let anim = CABasicAnimation(keyPath: "transform.translation.x")
         anim.fromValue = from
         anim.toValue = to
-        anim.duration = Self.navTransitionDuration
+        anim.duration = LxAppPageTransition.duration
         anim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         anim.fillMode = .forwards
         layer.add(anim, forKey: "lxSlide")

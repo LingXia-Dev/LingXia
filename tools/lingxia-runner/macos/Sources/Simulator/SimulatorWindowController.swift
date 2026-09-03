@@ -17,25 +17,6 @@ private final class CapsuleSheetDismissView: NSView {
     override func mouseDown(with event: NSEvent) { onMouseDown?() }
 }
 
-private struct RunnerMoreActionItem: Decodable {
-    let label: String
-    let iconPath: String
-}
-
-private struct RunnerMoreActionSnapshot: Decodable {
-    let generation: UInt64
-    let items: [RunnerMoreActionItem]
-
-    static func load(appId: String) -> Self {
-        let json = getLxAppMoreActions(appId).toString()
-        guard let data = json.data(using: .utf8),
-              let snapshot = try? JSONDecoder().decode(Self.self, from: data) else {
-            return Self(generation: 0, items: [])
-        }
-        return Self(generation: snapshot.generation, items: Array(snapshot.items.prefix(7)))
-    }
-}
-
 /// Window controller for Runner Simulator mode
 /// Provides Xcode-like simulator interface with toolbar and device frame
 @MainActor
@@ -1185,14 +1166,14 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
 
         let clean = makeCapsuleSheetButton(symbol: "trash", title: "Clear cache", action: #selector(capsuleCleanTapped))
         let restart = makeCapsuleSheetButton(symbol: "arrow.clockwise", title: "Restart", action: #selector(capsuleRestartTapped))
-        let snapshot = RunnerMoreActionSnapshot.load(appId: appId)
+        let snapshot = RunnerSupport.MoreActions.load(appId: appId)
         let customButtons = snapshot.items.enumerated().map { index, item -> NSView in
             let button = makeCapsuleSheetButton(
                 imagePath: item.iconPath,
                 title: item.label,
                 action: #selector(capsuleMoreTapped(_:))
             )
-            button.identifier = NSUserInterfaceItemIdentifier("more:\(snapshot.generation):\(index)")
+            button.identifier = NSUserInterfaceItemIdentifier(snapshot.token(at: index))
             return button
         }
         let actionButtons: [NSView] = [clean, restart] + customButtons

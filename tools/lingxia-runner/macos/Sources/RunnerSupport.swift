@@ -4,8 +4,19 @@ import WebKit
 
 typealias RunnerTabBarConfig = TabBar
 typealias RunnerNavigationBarState = NavigationBarState
+/// The SDK's page transition. The runner draws its own phone chrome but shares
+/// this, so a fix to how a page slides lands on both hosts at once.
+typealias RunnerPageTransition = LingxiaRunnerSPI.PageTransition
 
 enum RunnerSupport {
+    /// The lxapp's capsule actions, decoded by the SDK so the runner cannot
+    /// drift from the token format only the SDK defines.
+    enum MoreActions {
+        static func load(appId: String) -> LingxiaRunnerSPI.MoreActions.Snapshot {
+            LingxiaRunnerSPI.MoreActions.load(appId: appId)
+        }
+    }
+
     @MainActor
     enum Runtime {
         /// Handler receives `(ownerAppId, ownerSessionId, url, aside)`.

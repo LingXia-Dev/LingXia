@@ -1,15 +1,15 @@
 import Foundation
 
-struct LxAppMoreActionItem: Decodable {
-    let label: String
-    let iconPath: String
+public struct LxAppMoreActionItem: Decodable {
+    public let label: String
+    public let iconPath: String
 }
 
-struct LxAppMoreActionSnapshot: Decodable {
-    let generation: UInt64
-    let items: [LxAppMoreActionItem]
+public struct LxAppMoreActionSnapshot: Decodable {
+    public let generation: UInt64
+    public let items: [LxAppMoreActionItem]
 
-    static func load(appId: String) -> Self {
+    public static func load(appId: String) -> Self {
         let json = getLxAppMoreActions(appId).toString()
         guard let data = json.data(using: .utf8),
               let snapshot = try? JSONDecoder().decode(Self.self, from: data) else {
@@ -18,7 +18,7 @@ struct LxAppMoreActionSnapshot: Decodable {
         return Self(generation: snapshot.generation, items: Array(snapshot.items.prefix(7)))
     }
 
-    func token(at index: Int) -> String {
+    public func token(at index: Int) -> String {
         "more:\(generation):\(index)"
     }
 }
