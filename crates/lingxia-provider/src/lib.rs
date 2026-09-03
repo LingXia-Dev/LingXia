@@ -146,6 +146,10 @@ pub enum LxAppStatus {
     #[default]
     Unknown,
     Published,
+    /// Temporarily unavailable while the operator works on it. Must not open,
+    /// but says something different to the user than `Suspended` does: one is
+    /// "come back later", the other is "this is not yours to open".
+    Maintain,
     /// No longer offered. An already-installed copy keeps working.
     Delisted,
     /// Blocked by the operator. Must not open, installed or not.
@@ -157,6 +161,7 @@ impl LxAppStatus {
         match self {
             Self::Unknown => "unknown",
             Self::Published => "published",
+            Self::Maintain => "maintain",
             Self::Delisted => "delisted",
             Self::Suspended => "suspended",
         }
@@ -171,14 +176,21 @@ impl LxAppStatus {
     pub fn from_str_lossy(value: &str) -> Self {
         match value.trim().to_ascii_lowercase().as_str() {
             "published" => Self::Published,
+            "maintain" => Self::Maintain,
             "delisted" => Self::Delisted,
             "suspended" => Self::Suspended,
             _ => Self::Unknown,
         }
     }
 
+    /// Whether opening must be refused.
+    ///
+    /// `Delisted` does not: it means the app is no longer offered, while an
+    /// installed copy keeps working. `Maintain` does, because the operator has
+    /// taken it down on purpose and a half-working app is worse than a clear
+    /// message.
     pub const fn blocks_open(self) -> bool {
-        matches!(self, Self::Suspended)
+        matches!(self, Self::Suspended | Self::Maintain)
     }
 }
 
@@ -200,10 +212,11 @@ pub struct LxAppRegistryInfo {
     /// Already resolved for the requested locale.
     pub name: Option<String>,
     pub description: Option<String>,
+    /// Where the icon lives. Also the cache key: the client re-fetches when
+    /// this changes and not otherwise, so a server that edits the artwork
+    /// behind a stable URL will never be picked up. Change the URL — a content
+    /// path, or a version query — when the image changes.
     pub icon_url: Option<String>,
-    /// Content hash of the icon `icon_url` points at. The client caches by this
-    /// value, so an unchanged icon costs no request at all.
-    pub icon_hash: Option<String>,
     pub status: LxAppStatus,
 }
 
@@ -232,6 +245,23 @@ pub trait LxAppRegistryProvider: Send + Sync + 'static {
 #[cfg(test)]
 mod registry_tests {
     use super::LxAppStatus;
+
+    #[test]
+    fn only_the_states_that_mean_do_not_open_block() {
+        // Two states block, and they say different things to a user: one is
+        // "come back later", the other is "this is not yours to open".
+        assert!(LxAppStatus::Suspended.blocks_open());
+        assert!(LxAppStatus::Maintain.blocks_open());
+        // Delisted is not offered any more, but an installed copy keeps working.
+        assert!(!LxAppStatus::Delisted.blocks_open());
+        assert!(!LxAppStatus::Published.blocks_open());
+        // An unrecognized state must never lock a user out.
+        assert!(!LxAppStatus::Unknown.blocks_open());
+        assert_eq!(
+            LxAppStatus::from_str_lossy("maintain"),
+            LxAppStatus::Maintain
+        );
+    }
 
     #[test]
     fn status_parsing_is_case_insensitive_because_unknown_never_blocks() {

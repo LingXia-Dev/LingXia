@@ -331,7 +331,9 @@ pub(crate) struct RegistryRecord {
     pub locale: String,
     pub name: Option<String>,
     pub description: Option<String>,
-    pub icon_hash: Option<String>,
+    /// Where the artwork came from. The cache key: a record whose URL still
+    /// matches the registry's needs no request at all.
+    pub icon_url: Option<String>,
     pub icon_file: Option<String>,
     /// `LxAppStatus::as_str`; stored as text so the contract crate stays free of
     /// serde and an unknown value from a newer server degrades instead of failing.
