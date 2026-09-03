@@ -85,19 +85,6 @@ export interface LxNativeButtonProps {
   size?: 'compact' | 'regular';
 }
 
-export interface LxNativeSliderProps {
-  id?: string;
-  class?: string;
-  style?: CSSProperties;
-  value?: number;
-  min?: number;
-  max?: number;
-  step?: number;
-  bufferedValue?: number;
-  valueLabel?: 'none' | 'value' | 'time';
-  disabled?: boolean;
-}
-
 type LxMediaSwiperItem =
   | { id?: string; type: 'image'; src: string }
   | {

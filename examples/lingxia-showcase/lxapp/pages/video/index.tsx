@@ -4,7 +4,6 @@ import {
   LxNativeButton,
   LxNativeCover,
   LxNativeRoot,
-  LxNativeSlider,
   LxNativeText,
   LxNativeView,
   LxVideo,
@@ -256,71 +255,6 @@ export default function App() {
             ) : null}
           </LxNativeRoot>
         </div>
-
-        <LxNativeRoot id="island-controls" className="block w-full" style={{ height: 82 }}>
-          <LxNativeView
-            id="island-controls-view"
-            automationId="island-controls-view"
-            className="relative block h-full w-full border border-slate-700 bg-slate-900"
-            style={{ height: 82, borderRadius: 14, backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1 }}
-          >
-            <LxNativeText
-              id="island-controls-label"
-              className="absolute left-3 top-2 text-xs font-semibold text-slate-200"
-              fontSize={11}
-              fontWeight={600}
-              color="#e2e8f0"
-              maxLines={1}
-            >
-              NativeView controls
-            </LxNativeText>
-            <LxNativeText
-              id="island-controls-status"
-              className="absolute right-3 top-2 text-xs text-slate-400"
-              fontSize={11}
-              color="#94a3b8"
-              maxLines={1}
-            >
-              {nativePressSource === 'none' ? 'waiting for native input' : `last input: ${nativePressSource}`}
-            </LxNativeText>
-            <LxNativeButton
-              id="island-play"
-              automationId="island-play-button"
-              label={islandPlaying ? 'Pause' : 'Play'}
-              icon={islandPlaying ? 'pause' : 'play'}
-              intent="accent"
-              emphasis="primary"
-              size="regular"
-              hitSlop={8}
-              aria-label={islandPlaying ? 'Pause island video' : 'Play island video'}
-              aria-description="Controls the native video player"
-              className="absolute left-3 top-[32px]"
-              style={{ width: 96, height: 40, borderRadius: 10, color: '#ffffff' }}
-              onPress={({ source }) => {
-                setNativePressSource(source);
-                if (islandPlaying) pause();
-                else play();
-              }}
-            />
-            <LxNativeSlider
-              id="island-seek"
-              aria-label="Island value"
-              min={0}
-              max={100}
-              step={1}
-              value={duration > 0 ? Math.min(100, Math.round((currentTime / duration) * 100)) : 0}
-              bufferedValue={duration > 0 ? Math.min(100, Math.round((currentTime / duration) * 100) + 15) : 15}
-              valueLabel="value"
-              className="absolute left-[120px] right-3 top-[38px]"
-              style={{ height: 28, accentColor: '#3b82f6' }}
-              onValueCommit={({ value }) => {
-                if (duration > 0) {
-                  seek((value / 100) * duration);
-                }
-              }}
-            />
-          </LxNativeView>
-        </LxNativeRoot>
 
         {/* Controls */}
         <div className="bg-surface/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 p-5">

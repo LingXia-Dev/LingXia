@@ -568,133 +568,6 @@ export class LxNativeButtonElement extends LxNativeBaseElement {
   }
 }
 
-export class LxNativeSliderElement extends LxNativeBaseElement {
-  private unregisterHost?: () => void;
-  private readonly onAccessibleKeyDown = (event: KeyboardEvent): void => {
-    if (this.disabled) return;
-    const min = Math.min(this.min, this.max);
-    const max = Math.max(this.min, this.max);
-    const step = this.step > 0 ? this.step : 1;
-    let next: number;
-    switch (event.key) {
-      case "ArrowLeft":
-      case "ArrowDown":
-        next = this.value - step;
-        break;
-      case "ArrowRight":
-      case "ArrowUp":
-        next = this.value + step;
-        break;
-      case "Home":
-        next = min;
-        break;
-      case "End":
-        next = max;
-        break;
-      default:
-        return;
-    }
-    event.preventDefault();
-    const value = Math.min(max, Math.max(min, next));
-    this.value = value;
-    const detail = { value, source: "keyboard" };
-    this.dispatchEvent(new CustomEvent("valuechange", { bubbles: true, detail }));
-    this.dispatchEvent(new CustomEvent("valuecommit", { bubbles: true, detail }));
-  };
-
-  connectedCallback(): void {
-    super.connectedCallback();
-    const id = ensureComponentId(this, "lx-native-slider");
-    if (!this.hasAttribute("role")) this.setAttribute("role", "slider");
-    if (!this.hasAttribute("tabindex")) this.tabIndex = 0;
-    this.syncAccessibility();
-    this.addEventListener("keydown", this.onAccessibleKeyDown);
-    this.unregisterHost = registerNativeComponentHandler(id, (message) => {
-      applyIslandHostEvent(this, message as { event?: string; action?: string; detail?: unknown });
-    });
-  }
-
-  disconnectedCallback(): void {
-    this.removeEventListener("keydown", this.onAccessibleKeyDown);
-    this.unregisterHost?.();
-    this.unregisterHost = undefined;
-  }
-
-  attributeChangedCallback(): void {
-    this.syncAccessibility();
-  }
-
-  private syncAccessibility(): void {
-    this.setAttribute("aria-disabled", String(this.disabled));
-    this.setAttribute("aria-valuemin", String(this.min));
-    this.setAttribute("aria-valuemax", String(this.max));
-    this.setAttribute("aria-valuenow", String(this.value));
-  }
-
-  static get observedAttributes(): string[] {
-    return [
-      ...LxNativeBaseElement.observedAttributes,
-      "value",
-      "min",
-      "max",
-      "step",
-      "buffered-value",
-      "value-label",
-      "disabled",
-    ];
-  }
-
-  get value(): number {
-    const raw = this.getAttribute("value");
-    const parsed = raw == null ? 0 : Number(raw);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  set value(next: number | string | null | undefined) {
-    reflectString(this, "value", next == null ? null : String(next));
-  }
-
-  get min(): number {
-    const raw = this.getAttribute("min");
-    const parsed = raw == null ? 0 : Number(raw);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  set min(next: number | string | null | undefined) {
-    reflectString(this, "min", next == null ? null : String(next));
-  }
-
-  get max(): number {
-    const raw = this.getAttribute("max");
-    const parsed = raw == null ? 100 : Number(raw);
-    return Number.isFinite(parsed) ? parsed : 100;
-  }
-  set max(next: number | string | null | undefined) {
-    reflectString(this, "max", next == null ? null : String(next));
-  }
-
-  get step(): number {
-    const raw = this.getAttribute("step");
-    const parsed = raw == null ? 0 : Number(raw);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  set step(next: number | string | null | undefined) {
-    reflectString(this, "step", next == null ? null : String(next));
-  }
-
-  get valueLabel(): string {
-    return this.getAttribute("value-label") ?? "none";
-  }
-  set valueLabel(value: string | null | undefined) {
-    reflectString(this, "value-label", value);
-  }
-
-  get disabled(): boolean {
-    return parseBooleanAttr(this.getAttribute("disabled"), false);
-  }
-  set disabled(value: unknown) {
-    reflectBoolean(this, "disabled", value);
-  }
-}
-
 function elementContentRect(el: Element): { x: number; y: number; width: number; height: number } {
   if (typeof (el as HTMLElement).getBoundingClientRect !== "function") {
     return { x: 0, y: 0, width: 0, height: 0 };
@@ -736,7 +609,7 @@ function measureNativeNodeGeometry(root: Element): {
 }
 
 function nativeDescendants(root: Element): Element[] {
-  return Array.from(root.querySelectorAll("lx-native-view,lx-native-cover,lx-native-text,lx-native-button,lx-native-slider,lx-video"))
+  return Array.from(root.querySelectorAll("lx-native-view,lx-native-cover,lx-native-text,lx-native-button,lx-video"))
     .filter((element) => !isFallbackElement(element) && element.closest("lx-native-root") === root);
 }
 
@@ -839,9 +712,6 @@ export function registerNativeTextComponent(): void {
 export function registerNativeButtonComponent(): void {
   defineOnce("lx-native-button", LxNativeButtonElement);
 }
-export function registerNativeSliderComponent(): void {
-  defineOnce("lx-native-slider", LxNativeSliderElement);
-}
 
 export function registerInlineNativeAuthorComponents(): void {
   registerNativeRootComponent();
@@ -849,7 +719,6 @@ export function registerInlineNativeAuthorComponents(): void {
   registerNativeCoverComponent();
   registerNativeTextComponent();
   registerNativeButtonComponent();
-  registerNativeSliderComponent();
 }
 
 export function structureErrorFromUnknown(message: string): NativeError {
@@ -863,6 +732,5 @@ declare global {
     "lx-native-cover": LxNativeCoverElement;
     "lx-native-text": LxNativeTextElement;
     "lx-native-button": LxNativeButtonElement;
-    "lx-native-slider": LxNativeSliderElement;
   }
 }

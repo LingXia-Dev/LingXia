@@ -39,7 +39,6 @@ fn mount(
             author_type: match kind {
                 "video" => "LxVideo",
                 "tappable" => "LxNativeButton",
-                "slider" => "LxNativeSlider",
                 "text" => "LxNativeText",
                 _ => "LxNativeView",
             }
@@ -996,7 +995,7 @@ fn activate_lease(session: &mut IslandSession, root: &RootRef) {
 }
 
 #[test]
-fn paints_cover_button_slider_and_dispatches_pointer() {
+fn paints_cover_button_and_dispatches_pointer() {
     let root = root();
     let mut session = IslandSession::new();
     session.set_trusted_domains(vec!["cdn.example.com".into()], true);
@@ -1004,7 +1003,6 @@ fn paints_cover_button_slider_and_dispatches_pointer() {
         mount(&root, "hero", "video", None, 0),
         mount(&root, "cover", "view", None, 1),
         mount(&root, "play", "tappable", Some(node(&root, "cover", 1)), 0),
-        mount(&root, "seek", "slider", Some(node(&root, "cover", 1)), 1),
     ];
     if let NativeRootOperation::Mount { node } = &mut ops[0] {
         node.props = serde_json::json!({ "src": "https://cdn.example.com/a.mp4" });
@@ -1019,16 +1017,6 @@ fn paints_cover_button_slider_and_dispatches_pointer() {
     if let NativeRootOperation::Mount { node } = &mut ops[2] {
         node.props = serde_json::json!({
             "content": { "icon": { "kind": "semantic", "name": "play" }, "text": "Play" },
-            "pointerEvents": "auto"
-        });
-    }
-    if let NativeRootOperation::Mount { node } = &mut ops[3] {
-        node.props = serde_json::json!({
-            "min": 0,
-            "max": 100,
-            "value": 10,
-            "step": 5,
-            "valueLabel": "value",
             "pointerEvents": "auto"
         });
     }
@@ -1049,12 +1037,6 @@ fn paints_cover_button_slider_and_dispatches_pointer() {
         y: 180.0,
         width: 48.0,
         height: 32.0,
-    };
-    let slider_rect = Rect {
-        x: 80.0,
-        y: 188.0,
-        width: 200.0,
-        height: 16.0,
     };
     session.apply_geometry(NativeGeometrySnapshot {
         action: "geometry.snapshot".into(),
@@ -1093,13 +1075,6 @@ fn paints_cover_button_slider_and_dispatches_pointer() {
                 clip_stack: vec![],
                 visible: true,
             },
-            NativeGeometrySnapshotNode {
-                node_ref: node(&root, "seek", 1),
-                chain_key: "page".into(),
-                content_rect: slider_rect.clone(),
-                clip_stack: vec![],
-                visible: true,
-            },
         ],
         chains: vec![ScrollChain {
             chain_key: "page".into(),
@@ -1114,10 +1089,9 @@ fn paints_cover_button_slider_and_dispatches_pointer() {
         .iter()
         .map(|(_, kind, _, _)| kind.as_str())
         .collect();
-    assert_eq!(kinds, ["video", "view", "tappable", "slider"]);
+    assert_eq!(kinds, ["video", "view", "tappable"]);
     assert_eq!(recorder.calls[1].2.width, 320.0);
     assert_eq!(recorder.calls[2].2, button_rect);
-    assert_eq!(recorder.calls[3].2, slider_rect);
     assert!(
         recorder.calls[1].3.get("scrimPaint").is_some(),
         "Cover wire field must reach the compositor"
@@ -1136,13 +1110,6 @@ fn paints_cover_button_slider_and_dispatches_pointer() {
     );
     let button_plan = plan_island_visual("tappable", &button_rect, &recorder.calls[2].3);
     assert_eq!(button_plan.text.as_deref(), Some("▶  Play"));
-    let slider_plan = plan_island_visual("slider", &slider_rect, &recorder.calls[3].3);
-    assert_eq!(slider_plan.text.as_deref(), Some("10"));
-    let pixels = rasterize_island_kind("slider", 80, 16, &recorder.calls[3].3);
-    assert!(
-        pixels.contains(&0xffff_ffff),
-        "slider raster must paint a thumb or valueLabel"
-    );
 
     let press = session.handle_pointer(IslandPointerPhase::Down, 24.0, 190.0);
     assert!(press.is_empty());
@@ -1151,42 +1118,6 @@ fn paints_cover_button_slider_and_dispatches_pointer() {
     assert_eq!(press[0].id, "play");
     assert_eq!(press[0].event, "press");
     assert_eq!(press[0].detail["source"], "pointer");
-
-    let start = session.handle_pointer(IslandPointerPhase::Down, 180.0, 196.0);
-    assert_eq!(start.len(), 1);
-    assert_eq!(start[0].event, "valuechange");
-    let start_value = start[0].detail["value"].as_f64().unwrap();
-    let drag = session.handle_pointer(IslandPointerPhase::Move, 280.0, 196.0);
-    assert_eq!(drag.len(), 1);
-    let drag_value = drag[0].detail["value"].as_f64().unwrap();
-    assert!(drag_value > start_value);
-    let (latch_id, latch_value) = session
-        .latched_slider()
-        .expect("slider drag must latch locally");
-    assert_eq!(latch_id, "seek");
-    assert_eq!(latch_value, drag_value);
-    let latched_props = session
-        .paint_props_for("seek")
-        .expect("slider paint props during drag");
-    assert_eq!(latched_props["value"].as_f64(), Some(drag_value));
-    assert_ne!(
-        latched_props["value"].as_f64(),
-        recorder.calls[3].3.get("value").and_then(Value::as_f64),
-        "latched paint must not wait on the committed Logic value"
-    );
-    let latched_plan = plan_island_visual("slider", &slider_rect, &latched_props);
-    let committed_plan = plan_island_visual("slider", &slider_rect, &recorder.calls[3].3);
-    assert_ne!(latched_plan.text, committed_plan.text);
-    let latched_pixels = rasterize_island_kind("slider", 80, 16, &latched_props);
-    let committed_pixels = rasterize_island_kind("slider", 80, 16, &recorder.calls[3].3);
-    assert_ne!(
-        latched_pixels, committed_pixels,
-        "raster must move the thumb from the latched value without a new commit"
-    );
-    let commit_events = session.handle_pointer(IslandPointerPhase::Up, 280.0, 196.0);
-    assert_eq!(commit_events.len(), 1);
-    assert_eq!(commit_events[0].event, "valuecommit");
-    assert_eq!(commit_events[0].detail["value"], drag[0].detail["value"]);
 
     let through_cover = hit_test_island(&session.hit_targets(), 40.0, 80.0);
     assert!(

@@ -17,9 +17,9 @@ const compiled = compileInlineNativeRoot({
           props: { icon: "play", "aria-label": "Play" },
         },
         {
-          type: "LxNativeSlider",
-          authorId: "seek",
-          props: { value: 12, max: 100, "aria-label": "Position", valueLabel: "time" },
+          type: "LxNativeButton",
+          authorId: "more",
+          props: { icon: "more", "aria-label": "More" },
         },
       ],
     },
@@ -32,7 +32,7 @@ assert.deepEqual(compiled.root.children[1].children[0].props.content.icon, {
   kind: "semantic",
   name: "play",
 });
-assert.equal(compiled.root.children[1].children[1].kind, "slider");
+assert.equal(compiled.root.children[1].children[1].kind, "tappable");
 
 class FakeElement {
   events = [];
@@ -51,16 +51,5 @@ assert.equal(button.events.length, 1);
 assert.equal(button.events[0].type, "press");
 assert.deepEqual(button.events[0].detail, { source: "pointer" });
 
-const slider = new FakeElement();
-assert.equal(
-  applyIslandHostEvent(slider, { event: "valuechange", detail: { value: 40 } }),
-  true
-);
-assert.equal(
-  applyIslandHostEvent(slider, { event: "valuecommit", detail: { value: 45 } }),
-  true
-);
-assert.equal(slider.events.map((event) => event.type).join(","), "valuechange,valuecommit");
-assert.equal(slider.events[1].detail.value, 45);
-assert.equal(applyIslandHostEvent(slider, { event: "playing" }), false);
-assert.equal(slider.events.length, 2);
+assert.equal(applyIslandHostEvent(button, { event: "playing" }), false);
+assert.equal(button.events.length, 1);

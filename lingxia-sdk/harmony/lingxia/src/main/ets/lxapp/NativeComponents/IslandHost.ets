@@ -13,7 +13,7 @@ import { NativeComponentRecord, NativeComponentValue } from './NativeComponentTy
 import { LxNativeVideoPlayer } from '../APIs/media/player/LxNativeVideoPlayer';
 import { validateInlineNativeMediaUrls } from 'liblingxia.so';
 
-const ALLOWED_KINDS: string[] = ['root', 'view', 'text', 'tappable', 'slider', 'video'];
+const ALLOWED_KINDS: string[] = ['root', 'view', 'text', 'tappable', 'video'];
 
 export class IslandNode {
   key: string = '';

@@ -2,7 +2,7 @@
 
 LingXia ships two native-backed families:
 
-- **Inline native island** (this page's player contract): `LxNativeRoot`, `LxNativeView`, `LxNativeCover`, `LxNativeText`, `LxNativeButton`, `LxNativeSlider`, and `LxVideo`. `LxVideo` must be a **direct child** of an explicit `LxNativeRoot`. There is no implicit root.
+- **Inline native island** (this page's player contract): `LxNativeRoot`, `LxNativeView`, `LxNativeCover`, `LxNativeText`, `LxNativeButton`, and `LxVideo`. `LxVideo` must be a **direct child** of an explicit `LxNativeRoot`. There is no implicit root. Seek stays on `LxVideo` `controls` / `progressBar`.
 - **Presenters / wrappers** (not on the island): `LxPicker`, `LxMediaSwiper`, `LxNavigator`.
 
 Text input is deliberately **not** a component: use plain `<input>` / `<textarea>` (see [Text inputs](#text-inputs--use-plain-input--textarea)).
@@ -19,7 +19,7 @@ For framework wiring (event short-path vs. View DOM path, `useLxPage` shape) see
 // React
 import {
   LxNativeRoot, LxNativeCover, LxNativeView, LxNativeText,
-  LxNativeButton, LxNativeSlider, LxVideo,
+  LxNativeButton, LxVideo,
   LxPicker, LxMediaSwiper, LxNavigator,
 } from '@lingxia/react';
 
@@ -41,7 +41,7 @@ A common source of confusion: not every component passes the same thing to its e
 
 | Component | What the handler receives | Example |
 |---|---|---|
-| Island nodes (`LxNativeButton`, `LxNativeSlider`, `LxVideo`, Root) | **Payload first** in React/Vue; HTML still reads `CustomEvent.detail` | `onPress(({ source }) => …)`, `onValueCommit(({ value }) => …)`, `onTimeUpdate(({ currentTime }) => …)` |
+| Island nodes (`LxNativeButton`, `LxVideo`, Root) | **Payload first** in React/Vue; HTML still reads `CustomEvent.detail` | `onPress(({ source }) => …)`, `onTimeUpdate(({ currentTime }) => …)` |
 | `LxPicker` | **Resolved value directly** — `string \| string[]` | `onConfirm(value)`, `onColumnChange(value)` |
 | `LxMediaSwiper` | **Raw DOM `CustomEvent`** with a typed `detail` | `onChange(event)` → `event.detail.index` |
 | `LxNavigator` | Raw DOM `CustomEvent` | `onSuccess(event)` → `event.detail.success` |
@@ -138,7 +138,7 @@ The island is one native composition tree laid out by CSS. The page still has ex
 </LxNativeRoot>
 ```
 
-`LxVideo` is a **direct** child of `LxNativeRoot`. Nested Root, DOM inside Root, a bare `LxVideo`, or Video inside View/Cover is `NATIVE_ROOT_INVALID_STRUCTURE`. `controls={true}` cannot share a Root with `LxNativeSlider` or a play/pause/mute/fullscreen `LxNativeButton`.
+`LxVideo` is a **direct** child of `LxNativeRoot`. Nested Root, DOM inside Root, a bare `LxVideo`, or Video inside View/Cover is `NATIVE_ROOT_INVALID_STRUCTURE`. `controls={true}` cannot share a Root with a play/pause/mute/fullscreen `LxNativeButton`. Seek is the video leaf's built-in progress bar, not a separate island slider.
 
 **Lifecycle:** the host owns the island container. Removing an `LxNativeRoot`, or
 destroying/replacing its page WebView, unmounts every node owned by that Root, stops
@@ -149,7 +149,7 @@ cannot leave a stale video surface or an invisible touch-blocking overlay behind
 current page viewport offset. The host moves native visuals with top-level and
 nested scrolling, and removes fully offscreen nodes from paint and hit testing.
 
-Cover and Button are author recipes: they expand to `view` / `tappable` before the host commit. Host factories are only `root`, `view`, `text`, `tappable`, `slider`, and `video`. `LxPicker` / `LxMediaSwiper` / `LxNavigator` stay on the presenter overlay channel.
+Cover and Button are author recipes: they expand to `view` / `tappable` before the host commit. Host factories are only `root`, `view`, `text`, `tappable`, and `video`. `LxPicker` / `LxMediaSwiper` / `LxNavigator` stay on the presenter overlay channel.
 
 ## `LxVideo`
 

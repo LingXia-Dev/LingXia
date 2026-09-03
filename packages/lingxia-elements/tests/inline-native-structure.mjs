@@ -10,11 +10,10 @@ assert.deepEqual(
     "LxNativeCover",
     "LxNativeText",
     "LxNativeButton",
-    "LxNativeSlider",
     "LxVideo",
   ]
 );
-assert.deepEqual([...INLINE_NATIVE_SCHEMA.coreKinds], ["root", "view", "text", "tappable", "slider"]);
+assert.deepEqual([...INLINE_NATIVE_SCHEMA.coreKinds], ["root", "view", "text", "tappable"]);
 assert.ok(INLINE_NATIVE_SCHEMA.hostFactoryKinds.includes("video"));
 assert.equal(INLINE_NATIVE_SCHEMA.recipes.LxNativeCover.expandsTo, "view");
 assert.equal(INLINE_NATIVE_SCHEMA.recipes.LxNativeButton.expandsTo, "tappable");
@@ -42,8 +41,8 @@ const valid = compileInlineNativeRoot({
               props: { icon: "play", "aria-label": "Play" },
             },
             {
-              type: "LxNativeSlider",
-              props: { value: 12, max: 100, "aria-label": "Playback position", valueLabel: "time" },
+              type: "LxNativeButton",
+              props: { icon: "more", "aria-label": "More" },
             },
           ],
         },
@@ -72,9 +71,9 @@ const bar = coverKids[1].children;
 assert.equal(bar[0].kind, "tappable");
 assert.equal(bar[0].authorType, "LxNativeButton");
 assert.deepEqual(bar[0].props.content.icon, { kind: "semantic", name: "play" });
-assert.equal(bar[1].kind, "slider");
-assert.equal(bar[1].authorType, "LxNativeSlider");
-assert.equal(bar[1].props.valueLabel, "time");
+assert.equal(bar[1].kind, "tappable");
+assert.equal(bar[1].authorType, "LxNativeButton");
+assert.deepEqual(bar[1].props.content.icon, { kind: "semantic", name: "more" });
 
 const bareVideo = compileInlineNativeRoot({
   type: "LxVideo",
@@ -131,19 +130,19 @@ assert.equal(domChild.ok, false);
 assert.equal(domChild.error.code, "NATIVE_ROOT_INVALID_STRUCTURE");
 assert.match(domChild.error.message, /DOM or unregistered/);
 
-const controlsPlusSlider = compileInlineNativeRoot({
+const unknownSlider = compileInlineNativeRoot({
   type: "LxNativeRoot",
   children: [
-    { type: "LxVideo", props: { src: "x" } },
+    { type: "LxVideo", props: { src: "x", controls: false } },
     {
       type: "LxNativeCover",
       children: [{ type: "LxNativeSlider", props: { "aria-label": "Seek" } }],
     },
   ],
 });
-assert.equal(controlsPlusSlider.ok, false);
-assert.equal(controlsPlusSlider.error.code, "NATIVE_ROOT_INVALID_STRUCTURE");
-assert.match(controlsPlusSlider.error.message, /Slider/);
+assert.equal(unknownSlider.ok, false);
+assert.equal(unknownSlider.error.code, "NATIVE_ROOT_INVALID_STRUCTURE");
+assert.match(unknownSlider.error.message, /DOM or unregistered/);
 
 const controlsPlusPlay = compileInlineNativeRoot({
   type: "LxNativeRoot",

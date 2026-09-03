@@ -129,59 +129,6 @@
         </LxNativeRoot>
       </div>
 
-      <LxNativeRoot id="island-controls" class="block w-full" :style="{ height: '82px' }">
-        <LxNativeView
-          id="island-controls-view"
-          automation-id="island-controls-view"
-          class="relative block h-full w-full border border-slate-700 bg-slate-900"
-          :style="{ height: '82px', borderRadius: '14px', backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: '1px' }"
-        >
-          <LxNativeText
-            id="island-controls-label"
-            class="absolute left-3 top-2 text-xs font-semibold text-slate-200"
-            :font-size="11"
-            :font-weight="600"
-            color="#e2e8f0"
-            :max-lines="1"
-          >NativeView controls</LxNativeText>
-          <LxNativeText
-            id="island-controls-status"
-            class="absolute right-3 top-2 text-xs text-slate-400"
-            :font-size="11"
-            color="#94a3b8"
-            :max-lines="1"
-          >{{ nativePressSource === 'none' ? 'waiting for native input' : `last input: ${nativePressSource}` }}</LxNativeText>
-          <LxNativeButton
-            id="island-play"
-            automation-id="island-play-button"
-            :label="islandPlaying ? 'Pause' : 'Play'"
-            :icon="islandPlaying ? 'pause' : 'play'"
-            intent="accent"
-            emphasis="primary"
-            size="regular"
-            :hit-slop="8"
-            :aria-label="islandPlaying ? 'Pause island video' : 'Play island video'"
-            aria-description="Controls the native video player"
-            class="absolute left-3 top-[32px]"
-            :style="{ width: '96px', height: '40px', borderRadius: '10px', color: '#ffffff' }"
-            @press="onIslandPress"
-          />
-          <LxNativeSlider
-            id="island-seek"
-            aria-label="Island value"
-            :min="0"
-            :max="100"
-            :step="1"
-            :value="islandProgress"
-            :buffered-value="islandBufferedProgress"
-            value-label="value"
-            class="absolute left-[120px] right-3 top-[38px]"
-            :style="{ height: '28px', accentColor: '#3b82f6' }"
-            @value-commit="onIslandSeek"
-          />
-        </LxNativeView>
-      </LxNativeRoot>
-
       <!-- Controls -->
       <div class="bg-surface/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 p-5">
         <div class="text-xs text-gray-400 uppercase tracking-wider mb-4 font-semibold">Playback Controls</div>
@@ -279,7 +226,6 @@ import {
   LxNativeButton,
   LxNativeCover,
   LxNativeRoot,
-  LxNativeSlider,
   LxNativeText,
   LxNativeView,
   LxVideo,
@@ -328,10 +274,6 @@ const islandPlaying = ref(false);
 const nativePressSource = ref('none');
 const nativeMenuOpen = ref(false);
 const nativeMenuResult = ref('Tap Menu to mount native actions above the video.');
-const islandProgress = computed(() => duration.value > 0
-  ? Math.min(100, Math.round((currentTime.value / duration.value) * 100))
-  : 0);
-const islandBufferedProgress = computed(() => Math.min(100, islandProgress.value + 15));
 
 const video = computed(() => data?.videos?.[0]);
 
@@ -343,12 +285,6 @@ function onNativePlaying(payload: unknown) {
 function onNativePause(payload: unknown) {
   islandPlaying.value = false;
   onPause(payload);
-}
-
-function onIslandPress(payload: { source?: string }) {
-  nativePressSource.value = payload?.source || 'unknown';
-  if (islandPlaying.value) pause();
-  else play();
 }
 
 function toggleNativeMenu() {
@@ -379,11 +315,5 @@ function seekForward(seconds: number) {
   const maxTime = duration.value > 0 ? duration.value : Number.POSITIVE_INFINITY;
   const newTime = Math.min(maxTime, currentTime.value + seconds);
   seek(newTime);
-}
-
-function onIslandSeek(payload: { value: number }) {
-  if (duration.value > 0) {
-    seek((payload.value / 100) * duration.value);
-  }
 }
 </script>

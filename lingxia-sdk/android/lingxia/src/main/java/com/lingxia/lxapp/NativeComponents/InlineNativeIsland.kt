@@ -3,7 +3,6 @@ package com.lingxia.lxapp.NativeComponents
 import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.Typeface
-import android.content.res.ColorStateList
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.text.TextUtils
@@ -14,7 +13,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.FrameLayout
-import android.widget.SeekBar
 import android.widget.TextView
 import com.lingxia.lxapp.NativeComponents.Components.VideoComponent
 import com.lingxia.app.NativeApi
@@ -414,31 +412,6 @@ internal class InlineNativeIsland(
                 }
                 installInteractiveEvents(item.view, authorId)
             }
-            "slider" -> {
-                val seek = SeekBar(host.context).apply {
-                    max = 1000
-                    setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                        override fun onProgressChanged(bar: SeekBar?, progress: Int, fromUser: Boolean) {
-                            if (!fromUser || !item.dragging) return
-                            eventSink(authorId, "valuechange", mapOf("value" to sliderValue(item, progress)))
-                        }
-                        override fun onStartTrackingTouch(bar: SeekBar?) {
-                            item.dragging = true
-                        }
-                        override fun onStopTrackingTouch(bar: SeekBar?) {
-                            item.dragging = false
-                            eventSink(
-                                authorId,
-                                "valuecommit",
-                                mapOf("value" to sliderValue(item, bar?.progress ?: 0))
-                            )
-                        }
-                    })
-                }
-                item.seek = seek
-                item.view = seek
-                installInteractiveEvents(item.view, authorId)
-            }
             else -> {
                 item.view = FrameLayout(host.context).apply { isClickable = false }
             }
@@ -452,7 +425,6 @@ internal class InlineNativeIsland(
             "video" -> node.video?.update(node.props)
             "text" -> applyText(node)
             "tappable" -> applyButton(node)
-            "slider" -> applySlider(node)
             "view" -> applyScrim(node)
         }
         applyNativeStyle(node)
@@ -533,37 +505,6 @@ internal class InlineNativeIsland(
         }
     }
 
-    private fun applySlider(node: IslandNode) {
-        val seek = node.seek ?: return
-        if (node.dragging) return
-        val min = number(node.props["min"])
-        val max = number(node.props["max"]).let { if (it <= min) min + 1.0 else it }
-        val value = number(node.props["value"]).coerceIn(min, max)
-        val t = ((value - min) / (max - min)).coerceIn(0.0, 1.0)
-        seek.progress = (t * 1000.0).roundToInt()
-        val buffered = number(node.props["bufferedValue"]).coerceIn(min, max)
-        seek.secondaryProgress = (((buffered - min) / (max - min)).coerceIn(0.0, 1.0) * 1000.0).roundToInt()
-        seek.isEnabled = !boolProp(node.props, "disabled")
-        val accent = readStyleColor(node.props, "accentColor", 0xFF3B82F6.toInt())
-        seek.progressTintList = ColorStateList.valueOf(accent)
-        seek.thumbTintList = ColorStateList.valueOf(accent)
-        seek.secondaryProgressTintList = ColorStateList.valueOf(withAlpha(accent, 112))
-        seek.progressBackgroundTintList = ColorStateList.valueOf(0x665F6368)
-        val label = formatSliderValue(node.props, value)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            seek.stateDescription = label
-        }
-    }
-
-    private fun sliderValue(node: IslandNode, progress: Int): Double {
-        val min = number(node.props["min"])
-        val max = number(node.props["max"]).let { if (it <= min) min + 1.0 else it }
-        val step = number(node.props["step"])
-        val raw = min + (progress / 1000.0) * (max - min)
-        val snapped = if (step > 0) min + kotlin.math.round((raw - min) / step) * step else raw
-        return snapped.coerceIn(min, max)
-    }
-
     private fun applyScrim(node: IslandNode) {
         val view = node.view
         val paint = asMap(node.props["scrimPaint"]) ?: return
@@ -607,7 +548,7 @@ internal class InlineNativeIsland(
         val hidden = boolProp(node.props, "aria-hidden") || boolProp(node.props, "ariaHidden")
         node.view.importantForAccessibility = when {
             hidden -> View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
-            node.kind in setOf("tappable", "slider", "video", "text") -> View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            node.kind in setOf("tappable", "video", "text") -> View.IMPORTANT_FOR_ACCESSIBILITY_YES
             else -> View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
         }
         val ariaLabel = node.props["aria-label"]?.toString()
@@ -619,7 +560,7 @@ internal class InlineNativeIsland(
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!description.isNullOrBlank()) {
                 node.view.stateDescription = description
-            } else if (node.kind != "slider") {
+            } else {
                 node.view.stateDescription = null
             }
         }
@@ -628,7 +569,6 @@ internal class InlineNativeIsland(
                 super.onInitializeAccessibilityNodeInfo(host, info)
                 info.className = when (node.kind) {
                     "tappable" -> "android.widget.Button"
-                    "slider" -> "android.widget.SeekBar"
                     "text" -> "android.widget.TextView"
                     else -> info.className
                 }
@@ -654,7 +594,7 @@ internal class InlineNativeIsland(
     private fun applyPointerEvents(node: IslandNode) {
         val mode = node.props["pointerEvents"] as? String
             ?: if (node.kind == "text" || node.kind == "view") "box-none" else "auto"
-        val interactive = node.kind == "tappable" || node.kind == "slider" || node.kind == "video"
+        val interactive = node.kind == "tappable" || node.kind == "video"
         val acceptsPointer = mode == "auto" || mode == "box-only"
         node.view.isClickable = interactive && acceptsPointer
         if (interactive) {
@@ -783,17 +723,15 @@ internal class InlineNativeIsland(
         var view: View,
         var video: VideoComponent? = null,
         var label: TextView? = null,
-        var seek: SeekBar? = null,
         var rectX: Double = 0.0,
         var rectY: Double = 0.0,
         var rectW: Double = 0.0,
         var rectH: Double = 0.0,
-        var visible: Boolean = true,
-        var dragging: Boolean = false
+        var visible: Boolean = true
     )
 
     companion object {
-        val ALLOWED_KINDS = setOf("root", "view", "text", "tappable", "slider", "video")
+        val ALLOWED_KINDS = setOf("root", "view", "text", "tappable", "video")
     }
 
     private class CompositeTouchDelegate(owner: View) : TouchDelegate(Rect(), owner) {
@@ -934,21 +872,6 @@ private fun semanticIcon(name: String?): String? = when (name) {
     "fullscreen" -> "⛶"
     "more" -> "⋯"
     else -> null
-}
-
-private fun formatSliderValue(props: Map<String, Any?>, value: Double): String? {
-    return when (props["valueLabel"]?.toString()) {
-        "value" -> if (value % 1.0 == 0.0) value.roundToInt().toString() else "%.1f".format(value)
-        "time" -> {
-            val total = value.coerceAtLeast(0.0).roundToInt()
-            val hours = total / 3600
-            val minutes = (total % 3600) / 60
-            val seconds = total % 60
-            if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
-            else "%d:%02d".format(minutes, seconds)
-        }
-        else -> null
-    }
 }
 
 internal fun jsonObjectToMap(value: JSONObject): Map<String, Any?> {

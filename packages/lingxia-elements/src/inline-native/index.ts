@@ -88,13 +88,11 @@ export {
   LxNativeCoverElement,
   LxNativeTextElement,
   LxNativeButtonElement,
-  LxNativeSliderElement,
   registerNativeRootComponent,
   registerNativeViewComponent,
   registerNativeCoverComponent,
   registerNativeTextComponent,
   registerNativeButtonComponent,
-  registerNativeSliderComponent,
   registerInlineNativeAuthorComponents,
 } from "./elements.js";
 

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub const ALLOWED_HOST_KINDS: &[&str] = &["root", "view", "text", "tappable", "slider", "video"];
+pub const ALLOWED_HOST_KINDS: &[&str] = &["root", "view", "text", "tappable", "video"];
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -338,7 +338,6 @@ pub enum HostFactoryKind {
     View,
     Text,
     Tappable,
-    Slider,
     Video,
 }
 
@@ -349,7 +348,6 @@ impl HostFactoryKind {
             Self::View => "view",
             Self::Text => "text",
             Self::Tappable => "tappable",
-            Self::Slider => "slider",
             Self::Video => "video",
         }
     }
@@ -360,7 +358,6 @@ impl HostFactoryKind {
             "view" => Some(Self::View),
             "text" => Some(Self::Text),
             "tappable" => Some(Self::Tappable),
-            "slider" => Some(Self::Slider),
             "video" => Some(Self::Video),
             _ => None,
         }

@@ -240,7 +240,6 @@ function validateRootAuthorChildren(
   defaultVideoControls: boolean
 ): NativeError | undefined {
   let hasControlsVideo = false;
-  let hasSlider = false;
   let conflictingButton: string | undefined;
 
   for (const child of children) {
@@ -259,13 +258,6 @@ function validateRootAuthorChildren(
 
   walkForConflicts(children);
 
-  if (hasControlsVideo && hasSlider) {
-    return nativeError(
-      "NATIVE_ROOT_INVALID_STRUCTURE",
-      "controls={true} cannot share a Root with LxNativeSlider; set controls={false} or drop the Slider",
-      { root: rootRef }
-    );
-  }
   if (hasControlsVideo && conflictingButton) {
     return nativeError(
       "NATIVE_ROOT_INVALID_STRUCTURE",
@@ -278,9 +270,6 @@ function validateRootAuthorChildren(
   function walkForConflicts(nodes: readonly AuthorNode[]): void {
     for (const node of nodes) {
       const type = normalizeAuthorType(node.type);
-      if (type === "LxNativeSlider") {
-        hasSlider = true;
-      }
       if (type === "LxNativeButton") {
         const icon = readButtonIcon(node.props);
         if (icon && CONFLICTING_ICON_SET.has(icon)) {
@@ -465,44 +454,6 @@ function expandAuthorNode(
         props: { ...(author.props ?? {}), pointerEvents: author.props?.pointerEvents ?? "none" },
         children: [],
         text,
-      },
-      diagnostics: [],
-    };
-  }
-
-  if (type === "LxNativeSlider") {
-    const nested = flattenAuthorChildren(author.children);
-    if (nested.length > 0) {
-      return {
-        ok: false,
-        error: nativeError(
-          "NATIVE_ROOT_INVALID_STRUCTURE",
-          "LxNativeSlider cannot have children",
-          { root: rootRef }
-        ),
-        diagnostics: [],
-      };
-    }
-    if (!nonEmptyAriaLabel(author.props)) {
-      return {
-        ok: false,
-        error: nativeError(
-          "NATIVE_COMPONENT_INVALID_PROPS",
-          "LxNativeSlider requires a non-empty aria-label",
-          { root: rootRef, scope: "node", recoverable: true }
-        ),
-        diagnostics: [],
-      };
-    }
-    return {
-      ok: true,
-      node: {
-        kind: "slider",
-        authorType: "LxNativeSlider",
-        authorId: author.authorId,
-        automationId: author.automationId,
-        props: normalizeSliderProps(author.props),
-        children: [],
       },
       diagnostics: [],
     };
@@ -734,19 +685,6 @@ function normalizeButtonProps(props: Record<string, unknown> | undefined): Recor
   return next;
 }
 
-function normalizeSliderProps(props: Record<string, unknown> | undefined): Record<string, unknown> {
-  const next = { ...(props ?? {}) };
-  for (const key of ["value", "min", "max", "step", "bufferedValue"] as const) {
-    normalizeNumberField(next, key);
-  }
-  if (next.min === undefined) next.min = 0;
-  if (next.max === undefined) next.max = 100;
-  if (next.step === undefined) next.step = 0;
-  if (next.valueLabel === undefined) next.valueLabel = "none";
-  if (next.pointerEvents === undefined) next.pointerEvents = "auto";
-  return next;
-}
-
 function normalizeNumberField(props: Record<string, unknown>, key: string): void {
   if (typeof props[key] !== "string" || props[key] === "") return;
   const parsed = Number(props[key]);
@@ -841,12 +779,6 @@ function readElementProps(element: Element): Record<string, unknown> {
     "scrimOpacity",
     "icon",
     "label",
-    "value",
-    "min",
-    "max",
-    "step",
-    "bufferedValue",
-    "valueLabel",
     "pointerEvents",
     "hidden",
     "hiddenTransition",
