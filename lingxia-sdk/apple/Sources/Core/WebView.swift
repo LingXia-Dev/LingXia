@@ -332,12 +332,37 @@ final class WebViewManager {
             appId.flatMap { LxAppAppearanceRegistry.resolvedDark(appId: $0) }
             ?? (NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua)
         let appearance = NSAppearance(named: dark ? .darkAqua : .aqua)!
+
+        // The host declares what the page actually paints, so prefer it over a
+        // system colour that only happens to look plausible. `controlBackground`
+        // is pure white, and a page on a tinted canvas — the showcase paints
+        // #f2f2f7 — then flashes white before its own background arrives. iOS
+        // already resolves the canvas this way; macOS was the one host reading
+        // the declaration and never using it.
+        if let declared = pageBackgroundHex(dark: dark) {
+            return (appearance, declared)
+        }
+
         var backgroundColor = NSColor.clear
         appearance.performAsCurrentDrawingAppearance {
             let color = NSColor.controlBackgroundColor
             backgroundColor = NSColor(cgColor: color.cgColor) ?? color
         }
         return (appearance, backgroundColor)
+    }
+
+    /// `#RRGGBB` from the host theme, as the CLI writes it into `app.json`.
+    private static func pageBackgroundHex(dark: Bool) -> NSColor? {
+        var value = pageBackgroundColor(dark).toString()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("#") { value.removeFirst() }
+        guard value.count == 6, let rgb = UInt32(value, radix: 16) else { return nil }
+        return NSColor(
+            srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255,
+            green: CGFloat((rgb >> 8) & 0xFF) / 255,
+            blue: CGFloat(rgb & 0xFF) / 255,
+            alpha: 1
+        )
     }
     #endif
 
