@@ -109,6 +109,7 @@ pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     ) {
         eprintln!("lingxia-runner: failed to configure initial browser profile: {err}");
     }
+    apply_simulated_host_class(default_device);
     lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position_for_device(
         default_device,
     ));
@@ -430,6 +431,7 @@ fn apply_device(index: usize, landscape: bool) -> Result<(), String> {
     let profile_changed =
         presets()[previous_index].browser_profile() != presets()[index].browser_profile();
     let tabbar_position = tabbar_position_for_device(index);
+    apply_simulated_host_class(index);
     lingxia_windows_sdk::set_windows_default_shell_tabbar_position(tabbar_position);
 
     if let Some(host) = BROWSER_HOST.get() {
@@ -478,6 +480,23 @@ fn apply_device_to_app(appid: &str, index: usize, landscape: bool) -> Result<(),
         frame_spec(index, landscape),
         tabbar_position_for_device(index),
     )
+}
+
+/// Tell the runtime which kind of machine the selected frame stands in for.
+/// The runner is a desktop binary, so without this a phone frame answers
+/// `desktop` to everything that asks — the tab bar's `showOn` list included.
+/// The macOS runner does the same through its own SPI.
+///
+/// Tablets count as mobile, as they do there: an iPad build targets iOS, so a
+/// real one reports mobile. A tablet's wide, desktop-like layout follows from
+/// its width, which the frame spec decides separately.
+fn apply_simulated_host_class(index: usize) {
+    let mobile = is_phone(index) || is_tablet(index);
+    lxapp::host_class::set_host_class(if mobile {
+        lxapp::host_class::HostClass::Mobile
+    } else {
+        lxapp::host_class::HostClass::Desktop
+    });
 }
 
 fn tabbar_position_for_device(index: usize) -> WindowsShellTabBarPosition {
