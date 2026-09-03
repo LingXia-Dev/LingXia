@@ -2,7 +2,6 @@
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
   "version": "1.6.11",
-  "icon": "public/showcase-icon.png",
   "security": {
     "network": {
       "trustedDomains": [

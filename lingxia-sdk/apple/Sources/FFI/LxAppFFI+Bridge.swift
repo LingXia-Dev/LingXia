@@ -47,6 +47,47 @@ extension LxApp {
         }
     }
 
+    nonisolated static func lxappRegistryChanged() {
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(
+                name: Lingxia.lxAppRegistryDidChangeNotification,
+                object: nil
+            )
+        }
+    }
+
+    nonisolated static func showLxappUnavailable(status: RustStr) {
+        let status = status.toString()
+        executeOnMain {
+            let message: String
+            switch status {
+            case "maintain":
+                message = L10n.string("lx_lxapp_unavailable_maintain")
+            case "suspended":
+                message = L10n.string("lx_lxapp_unavailable_suspended")
+            default:
+                return
+            }
+            #if os(macOS)
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = L10n.string("lx_lxapp_unavailable_title")
+            alert.informativeText = message
+            alert.addButton(withTitle: L10n.string("lx_common_ok"))
+            alert.runModal()
+            #else
+            LxAppToast.showToast(
+                title: message,
+                icon: .None,
+                image: nil,
+                duration: 2,
+                mask: false,
+                position: .Center
+            )
+            #endif
+        }
+    }
+
     nonisolated static func openExternalUrlString(_ urlString: String) -> Bool {
         guard let url = URL(string: urlString) else { return false }
         #if os(iOS)

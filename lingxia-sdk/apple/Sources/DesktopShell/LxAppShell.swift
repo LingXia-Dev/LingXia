@@ -225,6 +225,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     internal var autoRevealOnClose = true
     internal let workspaceManager = WorkspaceManager()
     nonisolated(unsafe) private var sidebarRefreshObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var lxAppRegistryObserver: NSObjectProtocol?
     nonisolated(unsafe) private var tabBarStateObserver: NSObjectProtocol?
     nonisolated(unsafe) private var automationWindowMutationObserver: NSObjectProtocol?
     private var controllerEventsTask: Task<Void, Never>?
@@ -353,6 +354,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     deinit {
         sidebarRefreshObserver.map(NotificationCenter.default.removeObserver)
+        lxAppRegistryObserver.map(NotificationCenter.default.removeObserver)
         tabBarStateObserver.map(NotificationCenter.default.removeObserver)
         automationWindowMutationObserver.map(NotificationCenter.default.removeObserver)
         controllerEventsTask?.cancel()
@@ -826,6 +828,19 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 if let activeAppId = self.tabManager.activeTab?.appId, activeAppId == appId {
                     self.sidebarView?.setActiveHighlight(appId: appId)
                 }
+            }
+        }
+        // A registry answer landed after the paint that asked for it: rebuild
+        // the rows so a renamed app or a new icon appears without waiting for
+        // some unrelated event to trigger the next relayout.
+        lxAppRegistryObserver = NotificationCenter.default.addObserver(
+            forName: Lingxia.lxAppRegistryDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.sidebarView?.reloadLxAppPresentation()
+                LxAppLayoutReconciler.refreshVisibleSlotTabs()
             }
         }
         tabBarStateObserver = NotificationCenter.default.addObserver(

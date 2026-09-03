@@ -42,6 +42,7 @@ pub(crate) mod metadata;
 pub mod navbar;
 pub mod page_chrome;
 mod page_instance_host;
+pub(crate) mod registry;
 mod runtime_bootstrap;
 mod runtime_ops;
 pub(crate) mod runtime_registry;
@@ -2937,17 +2938,7 @@ impl LxApp {
     }
 
     pub fn get_lxapp_info(&self) -> config::LxAppInfo {
-        let mut info = self.config.get_lxapp_info(self.release_type.as_str());
-        // Resolve the icon path relative to the lxapp directory, mirroring the
-        // tabbar icon handling. Empty = the lxapp declared no icon.
-        if !info.icon.is_empty() {
-            info.icon = self
-                .lxapp_dir
-                .join(&info.icon)
-                .to_string_lossy()
-                .into_owned();
-        }
-        info
+        self.config.get_lxapp_info(self.release_type.as_str())
     }
 }
 

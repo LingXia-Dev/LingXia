@@ -1233,6 +1233,23 @@ class SidebarView: NSView {
     }
 
     /// Rebuild the rail's icon buttons from the current lxapps + browser tabs.
+    /// Redraw everything that shows an lxapp's registry-owned name or icon.
+    /// Called when a refresh lands; the records are already cached, so this is
+    /// a repaint, not a fetch.
+    func reloadLxAppPresentation() {
+        rebuildRail()
+        rebuildAppGroups()
+        // `rebuildAppGroups` only writes the model. Existing group views keep
+        // the name/icon they loaded on creation unless refreshed; `render`
+        // then relayouts the list and pin tiles against that model.
+        if !appUIOnlyMode {
+            for view in groupViews.values {
+                view.refreshFromRust()
+            }
+        }
+        render()
+    }
+
     private func rebuildRail() {
         closeRailHoverPanel()
         railStack.arrangedSubviews.forEach {
@@ -1247,7 +1264,7 @@ class SidebarView: NSView {
             switch pin.kind {
             case "lxapp":
                 let info = getLxAppInfo(pin.key)
-                let iconPath = info.icon.toString()
+                let iconPath = getLxAppDisplayIconPath(pin.key).toString()
                 let image = (iconPath.isEmpty ? nil : NSImage(contentsOfFile: iconPath))
                     ?? Self.defaultAppIcon
                 let name = info.app_name.toString()
@@ -1318,7 +1335,7 @@ class SidebarView: NSView {
                 image = group.managedIcon ?? Self.defaultAppIcon
             } else {
                 let info = getLxAppInfo(group.appId)
-                let iconPath = info.icon.toString()
+                let iconPath = getLxAppDisplayIconPath(group.appId).toString()
                 tooltip = info.app_name.toString()
                 if !iconPath.isEmpty, let img = NSImage(contentsOfFile: iconPath) {
                     image = img
@@ -2559,9 +2576,12 @@ class SidebarView: NSView {
             view.removeFromSuperview()
             lxappPinTiles.removeValue(forKey: id)
         }
-        for id in pinnedLxappIds where lxappPinTiles[id] == nil {
-            let tile = LxappPinTileView(appId: id)
-            lxappPinTiles[id] = tile
+        for id in pinnedLxappIds {
+            if let existing = lxappPinTiles[id] {
+                existing.refreshFromRust()
+            } else {
+                lxappPinTiles[id] = LxappPinTileView(appId: id)
+            }
         }
 
         let pinned = pinnedBookmarkEntries

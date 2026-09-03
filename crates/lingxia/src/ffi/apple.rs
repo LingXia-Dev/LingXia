@@ -16,8 +16,6 @@ mod bridge {
         pub version: String,
         pub release_type: String,
         pub cache_dir: String,
-        // Absolute path to the lxapp icon, or empty (host uses default mark).
-        pub icon: String,
     }
 
     // NavigationBar state for Swift
@@ -239,6 +237,9 @@ mod bridge {
 
         #[swift_bridge(swift_name = "getLxAppInfo")]
         fn get_lxapp_info(appid: &str) -> LxAppInfo;
+
+        #[swift_bridge(swift_name = "getLxAppDisplayIconPath")]
+        fn get_lxapp_display_icon_path(appid: &str) -> String;
 
         #[swift_bridge(swift_name = "getLxAppMoreActions")]
         fn get_lxapp_more_actions(appid: &str) -> String;
@@ -755,6 +756,17 @@ mod bridge {
         // Display language changed — host-owned native chrome re-localizes.
         #[swift_bridge(swift_name = "LxApp.displayLanguageChanged")]
         fn display_language_changed();
+
+        // A registry refresh landed — rows showing an lxapp's name or icon
+        // repaint. Refreshes are asynchronous, so the paint that asked for one
+        // is long finished by the time the answer arrives.
+        #[swift_bridge(swift_name = "LxApp.lxappRegistryChanged")]
+        fn lxapp_registry_changed();
+
+        // Pin / App Link refused to open because the registry said maintain or
+        // suspended. Host chrome shows the notice; there is no JS catch here.
+        #[swift_bridge(swift_name = "LxApp.showLxappUnavailable")]
+        fn show_lxapp_unavailable(status: &str);
     }
 }
 
@@ -814,6 +826,12 @@ fn product_run_cli_if_invoked(data_dir: &str) -> i32 {
 pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::LingxiaInitResult {
     crate::logging::init();
     install_browser_native_input_host();
+    lxapp::set_lxapp_registry_change_listener(Box::new(|_appids| {
+        self::bridge::lxapp_registry_changed();
+    }));
+    lxapp::set_lxapp_open_blocked_listener(Box::new(|status| {
+        self::bridge::show_lxapp_unavailable(status.as_str());
+    }));
 
     log::info!(
         "Initializing Lingxia SDK with data_dir: {}, cache_dir: {}",
@@ -1519,7 +1537,7 @@ pub fn shell_open_lxapp_main(app_id: &str) -> bool {
         std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
             let channel = lxapp::host_channel();
             if let Err(err) = lxapp::prepare_lxapp_open(&app_id, channel).await {
-                log::error!("pin open failed for {app_id}: {err}");
+                lxapp::notify_lxapp_open_blocked(&err);
                 return;
             }
             if let Err(err) = lxapp::open_lxapp(
@@ -2074,11 +2092,12 @@ pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
     if let Some(lxapp) = lxapp::try_get(appid) {
         let lxapp_info = lxapp.get_lxapp_info();
         self::bridge::LxAppInfo {
-            app_name: lxapp_info.app_name,
+            // Registry name when there is one, so a sidebar row and a window
+            // title never disagree about what this app is called.
+            app_name: lxapp::lxapp_display_name(appid).unwrap_or(lxapp_info.app_name),
             version: lxapp_info.version,
             release_type: lxapp_info.release_type,
             cache_dir: lxapp.user_cache_dir.to_string_lossy().into_owned(),
-            icon: lxapp_info.icon,
         }
     } else {
         self::bridge::LxAppInfo {
@@ -2086,9 +2105,23 @@ pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
             version: String::new(),
             release_type: String::new(),
             cache_dir: String::new(),
-            icon: String::new(),
         }
     }
+}
+
+/// Absolute path to the icon to show for an lxapp, or empty when none is
+/// cached yet and the host should draw its default mark.
+///
+/// Separate from `getLxAppInfo` because the icon is no longer part of the
+/// package the way the name and version are: it comes from the registry, and a
+/// running app is not a precondition for having one.
+pub fn get_lxapp_display_icon_path(appid: &str) -> String {
+    // Asking for the icon is also what schedules the refresh that keeps it
+    // current — the native chrome has no other moment that would notice a
+    // rename or a new icon. `refresh_lxapp_registry` returns immediately and
+    // rate-limits itself, so calling it per row per repaint is safe.
+    lxapp::refresh_lxapp_registry(std::slice::from_ref(&appid.to_string()));
+    lxapp::lxapp_display_icon_path(appid).unwrap_or_default()
 }
 
 pub fn get_lxapp_more_actions(appid: &str) -> String {

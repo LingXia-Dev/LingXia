@@ -109,6 +109,11 @@ enum LxAppLayoutReconciler {
         let id: String
     }
 
+    /// Last aside-slot plan applied while a desktop shell was up. Registry
+    /// artwork lands after the paint that asked for it; without this the
+    /// visible tab strip would keep the titles/icons from that first pass.
+    private static var lastAsideSlots: [PlanAsideSlot] = []
+
     static func reconcile(windowId: String, json: String) -> Bool {
         return reconcile(windowId: windowId, label: "window=\(windowId)", json: json)
     }
@@ -262,38 +267,8 @@ enum LxAppLayoutReconciler {
         // (the next plan swaps the visible child); closing destroys that child;
         // collapsing puts the region away with every child still open. The strip
         // remains visible for a single child as its close affordance.
-        for slot in slots where slot.visible && slot.kind == "lxapp" {
-            guard let active = slot.activeChild ?? slot.children.last,
-                  workspace.isPanelRegistered(id: active) else { continue }
-            // An lxapp aside's surface id IS its app id — resolve the
-            // human-facing app name + icon for the tab; fall back to the raw id.
-            let tabs = slot.children.map { child -> AsideSlotTab in
-                let info = getLxAppInfo(child)
-                let name = info.app_name.toString()
-                let icon = info.icon.toString()
-                return AsideSlotTab(
-                    id: child,
-                    title: name.isEmpty ? child : name,
-                    iconPath: icon.isEmpty ? nil : icon
-                )
-            }
-            let focusAppId = shell.attachedMainAppId ?? active
-            workspace.setSlotTabs(
-                panelId: active,
-                tabs: tabs,
-                activeId: active,
-                onSelect: { childId in
-                    guard childId != active else { return }
-                    _ = focusSurface(focusAppId, childId)
-                },
-                onClose: { childId in
-                    _ = LxAppMacAppUIRuntime.handleAsideSlotClose(surfaceId: childId)
-                },
-                onCollapse: {
-                    _ = collapseAsideSlot(focusAppId, "lxapp")
-                }
-            )
-        }
+        lastAsideSlots = slots
+        applyLxappSlotTabs(slots, shell: shell, workspace: workspace)
 
         // Float pass — popups above the layout. The reconciler is the single
         // authority for float visibility, mirroring the aside pass above: the
@@ -329,6 +304,58 @@ enum LxAppLayoutReconciler {
         LxAppMacAppUIRuntime.refreshSurfaceSwitcherProjection()
 
         return true
+    }
+
+    /// Re-bind visible lxapp aside tabs from the last plan, resolving names
+    /// and icons against the current registry cache. The initial lookup
+    /// schedules an asynchronous fetch; without this the strip stays on the
+    /// titles/icons from that first pass until an unrelated layout commit.
+    static func refreshVisibleSlotTabs() {
+        guard let shell = LxAppActiveHost.activeShell else { return }
+        applyLxappSlotTabs(
+            lastAsideSlots,
+            shell: shell,
+            workspace: shell.workspaceManager
+        )
+    }
+
+    private static func applyLxappSlotTabs(
+        _ slots: [PlanAsideSlot],
+        shell: LxAppShell,
+        workspace: WorkspaceManager
+    ) {
+        for slot in slots where slot.visible && slot.kind == "lxapp" {
+            guard let active = slot.activeChild ?? slot.children.last,
+                  workspace.isPanelRegistered(id: active) else { continue }
+            // An lxapp aside's surface id IS its app id — resolve the
+            // human-facing app name + icon for the tab; fall back to the raw id.
+            let tabs = slot.children.map { child -> AsideSlotTab in
+                let info = getLxAppInfo(child)
+                let name = info.app_name.toString()
+                let icon = getLxAppDisplayIconPath(child).toString()
+                return AsideSlotTab(
+                    id: child,
+                    title: name.isEmpty ? child : name,
+                    iconPath: icon.isEmpty ? nil : icon
+                )
+            }
+            let focusAppId = shell.attachedMainAppId ?? active
+            workspace.setSlotTabs(
+                panelId: active,
+                tabs: tabs,
+                activeId: active,
+                onSelect: { childId in
+                    guard childId != active else { return }
+                    _ = focusSurface(focusAppId, childId)
+                },
+                onClose: { childId in
+                    _ = LxAppMacAppUIRuntime.handleAsideSlotClose(surfaceId: childId)
+                },
+                onCollapse: {
+                    _ = collapseAsideSlot(focusAppId, "lxapp")
+                }
+            )
+        }
     }
 
     /// Map a serde `Edge` ("left"/"right"/"top"/"bottom") to a dock edge.

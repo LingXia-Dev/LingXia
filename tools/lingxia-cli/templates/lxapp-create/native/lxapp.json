@@ -2,7 +2,6 @@
   "appId": "__APP_ID__",
   "appName": "__APP_DISPLAY_NAME__",
   "version": "0.0.1",
-  "icon": "public/AppIcon.png",
   "framework": "{{FRAMEWORK}}",
   "logic": false,
   "security": {

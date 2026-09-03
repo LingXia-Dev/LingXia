@@ -369,22 +369,12 @@ final class LxappPinTileView: NSView {
         background.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(0.06).cgColor
         addSubview(background)
 
-        let info = getLxAppInfo(appId)
-        let iconPath = info.icon.toString()
-        let icon = (iconPath.isEmpty ? nil : NSImage(contentsOfFile: iconPath))
-            ?? Bundle.lingxiaResources.url(
-                forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
-                .flatMap { NSImage(contentsOf: $0) }
-        iconView.image = icon
         iconView.imageScaling = .scaleProportionallyDown
         iconView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(iconView)
-
-        let name = info.app_name.toString()
-        toolTip = name.isEmpty ? appId : name
+        refreshFromRust()
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityLabel(toolTip ?? appId)
 
         NSLayoutConstraint.activate([
             widthAnchor.constraint(equalToConstant: SidebarPinTileView.Layout.size),
@@ -401,6 +391,20 @@ final class LxappPinTileView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    /// Reload the registry-owned name and icon. Pin tiles are created once
+    /// and reused; without this a later registry refresh leaves them stale.
+    func refreshFromRust() {
+        let info = getLxAppInfo(appId)
+        let iconPath = getLxAppDisplayIconPath(appId).toString()
+        iconView.image = (iconPath.isEmpty ? nil : NSImage(contentsOfFile: iconPath))
+            ?? Bundle.lingxiaResources.url(
+                forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
+                .flatMap { NSImage(contentsOf: $0) }
+        let name = info.app_name.toString()
+        toolTip = name.isEmpty ? appId : name
+        setAccessibilityLabel(toolTip ?? appId)
+    }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()

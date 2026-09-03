@@ -9,6 +9,13 @@ public enum Lingxia {
     public nonisolated static let displayLanguageDidChangeNotification =
         Notification.Name("LingxiaDisplayLanguageDidChange")
 
+    /// Posted on the main thread after an lxapp registry refresh lands — the
+    /// server's name or icon for some app changed. Chrome that draws lxapp rows
+    /// observes this and repaints; the refresh is asynchronous, so the paint
+    /// that triggered it has already finished by the time the answer arrives.
+    public nonisolated static let lxAppRegistryDidChangeNotification =
+        Notification.Name("LingxiaLxAppRegistryDidChange")
+
     /// Effective display language selected by the runtime. A saved user
     /// choice takes precedence over the locale supplied during
     /// initialization.
