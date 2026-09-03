@@ -9,6 +9,7 @@ import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import android.widget.FrameLayout
 import kotlin.math.abs
@@ -78,12 +79,24 @@ internal class PullToRefreshHelper(
             // Explicitly set transparent background
             setBackgroundColor(Color.TRANSPARENT)
         }
-        // Add indicator to webViewContainer at index 0 (behind WebView)
-        webViewContainer.addView(refreshIndicator, 0)
+        ensureIndicatorAttached()
+    }
+
+    // The container is not ours: opening or closing an lxapp empties it
+    // (prepareLxApp, closeLxApp), which takes the indicator out of the tree
+    // while this helper survives. Own the attachment rather than relying on
+    // the one-time add, or every later pull reveals an empty gap.
+    private fun ensureIndicatorAttached() {
+        val indicator = refreshIndicator ?: return
+        if (indicator.parent === webViewContainer) return
+        (indicator.parent as? ViewGroup)?.removeView(indicator)
+        // Index 0 keeps it behind the WebView, which slides down to reveal it.
+        webViewContainer.addView(indicator, 0)
     }
 
     fun attachToWebView(webView: View) {
         this.webView = webView
+        ensureIndicatorAttached()
 
         if (webView is com.lingxia.lxapp.WebView) {
             webView.pullToRefreshCallback = { event ->
