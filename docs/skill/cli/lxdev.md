@@ -75,7 +75,7 @@ Mobile reports one host window. Desktop hosts may report several (for example ma
 - `test.args` — strings from repeatable `--arg key=value`; `test.attach(name, { mimeType, base64 })` — save an artifact, downloaded into `--output-dir` (default `test-results/<run-id>`).
 - `console`, timers, and host-device `fetch`
 
-There is no appid-scoped `lx.*`, filesystem, environment, or dynamic `import()`. Cases run sequentially; async hooks/cases are awaited. `--timeout` bounds the run, Ctrl-C cancels it, `--json` emits one final report, and failures map back to source files. `lingxia dev` and the Runner include the required runtime.
+There is no appid-scoped `lx.*`, filesystem, environment, or dynamic `import()`. Cases run sequentially; async hooks/cases are awaited. `--timeout-secs` bounds the run, Ctrl-C cancels it, `--json` emits one final report, and failures map back to source files. `lingxia dev` and the Runner include the required runtime.
 
 **`logs [ORIGIN]`** — the session's JSONL log stream: tail or `-f` follow;
 filter by a dynamic origin prefix plus `--level`, `--path`, `--grep`, or
