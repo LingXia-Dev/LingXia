@@ -104,7 +104,13 @@ final class LxAppTabBarOverflowPanel: UIView {
 
     private func buildPanel(items: [TabBarItem], config: TabBar, selectedIndex: Int, appId: String) {
         panel.translatesAutoresizingMaskIntoConstraints = false
-        panel.backgroundColor = UIColor.secondarySystemBackground
+        // The bar itself is drawn with the lxapp's declared colour; the panel
+        // was asking the system instead, so the two disagreed whenever the app
+        // and the system disagreed. Follow the bar, and fall back to the page
+        // only where the bar is transparent and there is nothing to follow.
+        panel.backgroundColor = TabBarHelper.isTransparent(config.background_color)
+            ? WebViewManager.overflowPanelColor(appId: appId)
+            : PlatformColor(argb: config.background_color)
         panel.layer.cornerRadius = Metrics.cornerRadius
         panel.layer.shadowColor = UIColor.black.cgColor
         panel.layer.shadowOpacity = 0.16

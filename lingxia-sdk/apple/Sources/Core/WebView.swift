@@ -353,18 +353,62 @@ final class WebViewManager {
 
     /// `#RRGGBB` from the host theme, as the CLI writes it into `app.json`.
     private static func pageBackgroundHex(dark: Bool) -> NSColor? {
+        declaredPageColor(dark: dark).map { NSColor(cgColor: $0.cgColor) ?? $0 }
+    }
+    #endif
+
+    /// The colour the page itself paints, as the host declared it.
+    ///
+    /// Chrome that sits over the page — a load placeholder, an overflow panel,
+    /// the ground behind a transition — has to match this, not a system colour
+    /// that merely looks like a surface. Every platform had invented its own
+    /// answer here and they disagreed with each other and with the page.
+    ///
+    /// Returns `nil` when the host declares nothing, leaving the caller to pick
+    /// a platform default rather than guessing on its behalf.
+    static func declaredPageColor(dark: Bool) -> PlatformColor? {
         var value = pageBackgroundColor(dark).toString()
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if value.hasPrefix("#") { value.removeFirst() }
         guard value.count == 6, let rgb = UInt32(value, radix: 16) else { return nil }
-        return NSColor(
-            srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255,
-            green: CGFloat((rgb >> 8) & 0xFF) / 255,
-            blue: CGFloat(rgb & 0xFF) / 255,
-            alpha: 1
-        )
+        let red = CGFloat((rgb >> 16) & 0xFF) / 255
+        let green = CGFloat((rgb >> 8) & 0xFF) / 255
+        let blue = CGFloat(rgb & 0xFF) / 255
+        #if os(macOS)
+        return NSColor(srgbRed: red, green: green, blue: blue, alpha: 1)
+        #else
+        return UIColor(red: red, green: green, blue: blue, alpha: 1)
+        #endif
     }
-    #endif
+
+    /// Whether the lxapp is presenting dark, falling back to the system.
+    static func resolvedDarkAppearance(appId: String?) -> Bool {
+        if let appId, let resolved = LxAppAppearanceRegistry.resolvedDark(appId: appId) {
+            return resolved
+        }
+        #if os(macOS)
+        return NSApp?.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        #else
+        return UITraitCollection.current.userInterfaceStyle == .dark
+        #endif
+    }
+
+    /// The plate behind a tab bar overflow panel when the bar is transparent.
+    ///
+    /// The panel floats over the page, so the page's colour is what makes it
+    /// read as part of the same surface. Only when the host declares nothing
+    /// does a system colour make sense.
+    static func overflowPanelColor(appId: String?) -> PlatformColor {
+        let dark = resolvedDarkAppearance(appId: appId)
+        if let declared = declaredPageColor(dark: dark) {
+            return declared
+        }
+        #if os(macOS)
+        return NSColor.windowBackgroundColor
+        #else
+        return UIColor.secondarySystemBackground
+        #endif
+    }
 
     /// Enable WebView debugging globally
     static func enableDebugging() {
