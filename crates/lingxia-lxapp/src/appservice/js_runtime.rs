@@ -144,6 +144,8 @@ pub(crate) enum ServiceMessage {
         event: event_bus::AppBusEvent,
     },
     Eval {
+        /// Report which `lx.*` members the script reached, alongside its value.
+        capture_calls: bool,
         lxapp: Arc<LxApp>,
         script: String,
         tx: oneshot::Sender<Result<String, LxAppError>>,
@@ -263,24 +265,88 @@ pub(crate) fn eval_error_from_rong(ctx: &JSContext, error: RongJSError) -> LxApp
     LxAppError::from(error)
 }
 
-async fn eval_logic_script(ctx: &JSContext, script: &str) -> Result<String, LxAppError> {
+/// Wraps the caller's script so that `lx` inside it is a recording proxy.
+///
+/// The binding is **local**, which is the whole point: a direct `eval` inherits
+/// the enclosing scope, so the evaluated script sees the proxy while the lxapp's
+/// own concurrently running code still sees the real global `lx`. Swapping the
+/// global instead would record every background call the app happened to make
+/// and credit it to whatever spec was running.
+const RECORDER_PRELUDE: &str = r#"
+const __lxCalls = new Set();
+const __lxRecord = (target, path) => {
+  if (target === null || (typeof target !== "object" && typeof target !== "function")) {
+    return target;
+  }
+  return new Proxy(target, {
+    get(obj, key, receiver) {
+      const value = Reflect.get(obj, key, receiver);
+      if (typeof key === "symbol") return value;
+      const next = path + "." + String(key);
+      if (typeof value === "function") {
+        __lxCalls.add(next);
+        return (...args) => Reflect.apply(value, obj, args);
+      }
+      if (value && typeof value === "object") {
+        __lxCalls.add(next);
+        return __lxRecord(value, next);
+      }
+      return value;
+    },
+  });
+};
+const lx = __lxRecord(globalThis.lx, "lx");
+"#;
+
+async fn eval_logic_script_inner(
+    ctx: &JSContext,
+    script: &str,
+    capture_calls: bool,
+) -> Result<String, LxAppError> {
     let expression_json = serde_json::to_string(script).map_err(LxAppError::from)?;
-    let expression = format!(
-        r#"(async () => {{
+    let (prelude, wrap_result) = if capture_calls {
+        (RECORDER_PRELUDE, true)
+    } else {
+        ("", false)
+    };
+    let expression = if wrap_result {
+        format!(
+            r#"(async () => {{
+{prelude}
+  const __lxValue = await eval({expression_json});
+  return {{ value: __lxValue, calls: [...__lxCalls] }};
+}})()"#
+        )
+    } else {
+        format!(
+            r#"(async () => {{
   return await eval({expression_json});
 }})()"#
-    );
+        )
+    };
     match ctx
         .eval_async::<JSValue>(Source::from_bytes(expression))
         .await
     {
         Ok(value) => js_value_to_json_string(value),
         Err(expression_error) if script_may_be_function_body(ctx, script, &expression_error) => {
-            let body = format!(
-                r#"(async () => {{
+            let body = if wrap_result {
+                format!(
+                    r#"(async () => {{
+{prelude}
+  const __lxValue = await (async () => {{
+{script}
+  }})();
+  return {{ value: __lxValue, calls: [...__lxCalls] }};
+}})()"#
+                )
+            } else {
+                format!(
+                    r#"(async () => {{
 {script}
 }})()"#
-            );
+                )
+            };
             let value = ctx
                 .eval_async::<JSValue>(Source::from_bytes(body))
                 .await
@@ -862,13 +928,18 @@ pub(crate) async fn lxapp_service_handler(
                 }
             }
         }
-        ServiceMessage::Eval { lxapp, script, tx } => {
+        ServiceMessage::Eval {
+            capture_calls,
+            lxapp,
+            script,
+            tx,
+        } => {
             let result = if let Some(ctx) = current_ctx.as_ref() {
                 let same_app = LxApp::from_ctx(ctx)
                     .map(|ctx_app| ctx_app.session.id == lxapp.session.id)
                     .unwrap_or(false);
                 if same_app {
-                    eval_logic_script(ctx, &script).await
+                    eval_logic_script_inner(ctx, &script, capture_calls).await
                 } else {
                     Err(LxAppError::Runtime(format!(
                         "logic runtime is bound to a different lxapp than {}",

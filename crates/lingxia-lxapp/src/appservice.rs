@@ -155,6 +155,7 @@ mod no_js_runtime {
             &self,
             _lxapp: Arc<crate::lxapp::LxApp>,
             _script: String,
+            _capture_calls: bool,
         ) -> Result<String, LxAppError> {
             Err(unsupported_js_runtime())
         }
