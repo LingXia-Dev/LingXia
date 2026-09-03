@@ -1151,7 +1151,22 @@ impl LxApp {
     pub async fn eval_logic(&self, script: String) -> Result<serde_json::Value, LxAppError> {
         let json = self
             .executor
-            .eval_app_service(self.clone_arc(), script)
+            .eval_app_service(self.clone_arc(), script, false)
+            .await?;
+        serde_json::from_str(&json).map_err(LxAppError::from)
+    }
+
+    /// Evaluate, and report which `lx.*` members the script reached.
+    ///
+    /// Resolves to `{ value, calls }`. The test runner uses `calls` to tell a
+    /// spec that exercised an API from one that only declared it covered.
+    pub async fn eval_logic_capturing_calls(
+        &self,
+        script: String,
+    ) -> Result<serde_json::Value, LxAppError> {
+        let json = self
+            .executor
+            .eval_app_service(self.clone_arc(), script, true)
             .await?;
         serde_json::from_str(&json).map_err(LxAppError::from)
     }

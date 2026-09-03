@@ -472,10 +472,15 @@ impl LxAppWorkers {
         &self,
         lxapp: Arc<crate::lxapp::LxApp>,
         script: String,
+        capture_calls: bool,
     ) -> Result<String, LxAppError> {
         let (tx, rx) = oneshot::channel();
-        self.sender
-            .send(ServiceMessage::Eval { lxapp, script, tx })?;
+        self.sender.send(ServiceMessage::Eval {
+            capture_calls,
+            lxapp,
+            script,
+            tx,
+        })?;
         rx.await
             .map_err(|err| LxAppError::ChannelError(err.to_string()))?
     }

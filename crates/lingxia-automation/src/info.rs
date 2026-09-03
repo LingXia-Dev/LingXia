@@ -53,6 +53,11 @@ struct JSEvalOptions {
     script: String,
     #[js_name = "timeoutMs"]
     timeout_ms: Option<u64>,
+    /// Resolve to `{ value, calls }`, where `calls` lists the `lx.*` members the
+    /// script reached. Off by default: it changes the shape of the result, and
+    /// only the test runner has a use for it.
+    #[js_name = "captureCalls"]
+    capture_calls: Option<bool>,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
@@ -130,7 +135,16 @@ impl JSLxAppDriver {
         let app = upgrade(&self.lxapp)?;
         host::reject_self(&ctx, &app, "eval")?;
         let timeout = Duration::from_millis(options.timeout_ms.unwrap_or(5_000));
-        let value = tokio::time::timeout(timeout, app.eval_logic(options.script))
+        let capture_calls = options.capture_calls.unwrap_or(false);
+        let script = options.script;
+        let evaluation = async move {
+            if capture_calls {
+                app.eval_logic_capturing_calls(script).await
+            } else {
+                app.eval_logic(script).await
+            }
+        };
+        let value = tokio::time::timeout(timeout, evaluation)
             .await
             .map_err(|_| crate::auto_err("lxapp eval timed out"))?
             .map_err(|err| crate::auto_err(err.to_string()))?;
