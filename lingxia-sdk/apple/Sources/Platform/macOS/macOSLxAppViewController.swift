@@ -26,6 +26,12 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     /// When the running navigation transition finishes, in `CACurrentMediaTime`.
     /// The placeholder reveal consults it so the two never animate at once.
     private var navigationTransitionEndsAt: CFTimeInterval = 0
+    /// Observation for a swap deferred until the incoming page can draw itself.
+    private var firstPaintObservation: NSKeyValueObservation?
+    /// How long a navigation will hold the outgoing page waiting for the
+    /// incoming one to paint. Past this the swap proceeds covered, because a
+    /// tap that does nothing for longer than this reads as a dropped input.
+    private static let firstPaintGrace: TimeInterval = 0.2
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
 
@@ -42,6 +48,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     deinit {
         closeAppObserver.map(NotificationCenter.default.removeObserver)
+        firstPaintObservation?.invalidate()
     }
 
     override func loadView() {
@@ -134,6 +141,47 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             performSameWebViewTransition(webView: webView, animation: animation)
             return
         }
+        // Sliding a page that has not painted yet shows its content settling —
+        // React mounting, images and fonts landing — inside a frame that is
+        // already moving. Hold the outgoing page instead and slide once the
+        // incoming one can draw itself; nothing moves while we wait, so this
+        // reads as the animation starting a moment later rather than as a stall.
+        if animation != .none,
+           activeWebView !== webView,
+           webView.isLoading || webView.url == nil {
+            waitForFirstPaint(webView, path: path, animation: animation)
+            return
+        }
+
+        performWebViewSwap(webView, animation: animation)
+    }
+
+    /// Defer the swap until the incoming page reports it has finished loading,
+    /// or until the grace period runs out.
+    private func waitForFirstPaint(
+        _ webView: WKWebView,
+        path: String,
+        animation: LxAppAnimation
+    ) {
+        firstPaintObservation?.invalidate()
+        let sessionId = self.sessionId
+        let commit: () -> Void = { [weak self] in
+            guard let self,
+                  self.sessionId == sessionId,
+                  self.currentPath == path,
+                  self.activeWebView !== webView else { return }
+            self.firstPaintObservation?.invalidate()
+            self.firstPaintObservation = nil
+            self.performWebViewSwap(webView, animation: animation)
+        }
+        firstPaintObservation = webView.observe(\.isLoading, options: [.new]) { _, change in
+            guard change.newValue == false else { return }
+            Task { @MainActor in commit() }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.firstPaintGrace) { commit() }
+    }
+
+    private func performWebViewSwap(_ webView: WKWebView, animation: LxAppAnimation) {
         if animation != .none, activeWebView !== webView {
             applyNavigationTransition(animation)
         }
