@@ -243,6 +243,28 @@ test("a passing spec that never reaches its tag is not credited with it", async 
   assert.match(html, /but no eval in those specs reached it/);
 });
 
+test("an eval whose script returns undefined yields undefined, not the envelope", async () => {
+  const world = createWorld();
+  installFakeHost(world);
+  // The capture envelope carries no `value` key when the script returns
+  // undefined, so recognising it by shape handed the envelope back as the
+  // result and every `result == null` assertion downstream flipped.
+  world.setEval("returns undefined", undefined);
+  world.setCalls("returns undefined", ["lx.getStorage"]);
+
+  let seen = "unset";
+  let observed = null;
+  spec("reads an undefined result", { id: "COV-UNDEF", covers: ["lx.getStorage"] }, async (t) => {
+    seen = await t.app.eval({ script: "returns undefined" });
+    observed = [...t.observed];
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.strictEqual(seen, undefined);
+  // The calls still land, so the value fix does not cost the measurement.
+  assert.deepStrictEqual(observed, ["lx.getStorage"]);
+});
+
 test("a spec that runs no eval keeps its declared coverage", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
