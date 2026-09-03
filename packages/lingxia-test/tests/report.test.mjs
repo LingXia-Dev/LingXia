@@ -243,6 +243,75 @@ test("a passing spec that never reaches its tag is not credited with it", async 
   assert.match(html, /but no eval in those specs reached it/);
 });
 
+test("returned-object tags are not claimed against lx.* call records", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+  world.setCalls("probe", ["lx.getStorage", "lx.downloadFile", "lx.fs.file"]);
+
+  // The recorder never emits `Storage.set` / `DownloadTask.wait` / `LxFile.text`.
+  // Matching those strings against `calls` would paint every eval-driven
+  // object cover as claimed, including LOGIC-003 and TRANSFER-DOWNLOAD-001.
+  spec("uses returned objects", {
+    id: "COV-OBJ",
+    covers: ["lx.getStorage", "Storage.set", "DownloadTask.wait", "LxFile.text"],
+  }, async (t) => {
+    await t.app.eval({ script: "probe" });
+    expect(1).toBe(1);
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const html = decodeAttachment(attachments, "report.html");
+
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.getStorage</);
+  assert.match(html, /class="cover cover-ok"[^>]*>Storage\.set</);
+  assert.match(html, /class="cover cover-ok"[^>]*>DownloadTask\.wait</);
+  assert.match(html, /class="cover cover-ok"[^>]*>LxFile\.text</);
+  assert.doesNotMatch(html, /class="cover cover-claimed"[^>]*>Storage\.set</);
+  assert.doesNotMatch(html, /class="cover cover-claimed"[^>]*>DownloadTask\.wait</);
+  assert.doesNotMatch(html, /class="cover cover-claimed"[^>]*>LxFile\.text</);
+});
+
+test("a parent lx.* path does not prove a primitive member", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+  world.setCalls("probe", ["lx.env"]);
+
+  spec("reads env", {
+    id: "COV-ENV-PARENT",
+    covers: ["lx.env", "lx.env.USER_DATA_PATH"],
+  }, async (t) => {
+    await t.app.eval({ script: "probe" });
+    expect(1).toBe(1);
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const html = decodeAttachment(attachments, "report.html");
+
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.env</);
+  assert.match(html, /class="cover cover-claimed"[^>]*>lx\.env\.USER_DATA_PATH</);
+});
+
+test("a primitive lx.* member path in calls is behaviour", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+  world.setCalls("probe", ["lx.env", "lx.env.USER_DATA_PATH"]);
+
+  spec("reads the sandbox root", {
+    id: "COV-ENV-MEMBER",
+    covers: ["lx.env", "lx.env.USER_DATA_PATH"],
+  }, async (t) => {
+    await t.app.eval({ script: "probe" });
+    expect(1).toBe(1);
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const html = decodeAttachment(attachments, "report.html");
+
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.env</);
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.env\.USER_DATA_PATH</);
+  assert.doesNotMatch(html, /class="cover cover-claimed"[^>]*>lx\.env\.USER_DATA_PATH</);
+});
+
 test("an eval whose script returns undefined yields undefined, not the envelope", async () => {
   const world = createWorld();
   installFakeHost(world);
