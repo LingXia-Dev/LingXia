@@ -1,4 +1,4 @@
-const HOST_EVENTS = new Set(["press", "valuechange", "valuecommit"]);
+const HOST_EVENTS = new Set(["press"]);
 
 export type IslandHostMessage = {
   event?: string;
@@ -10,7 +10,7 @@ export type IslandEventTarget = {
   dispatchEvent(event: Event): boolean;
 };
 
-/** Dispatch a host press / valueChange / valueCommit onto an author element. */
+/** Dispatch a host press onto an author element. */
 export function applyIslandHostEvent(
   target: IslandEventTarget,
   message: IslandHostMessage

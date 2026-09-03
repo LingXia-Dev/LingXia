@@ -6,7 +6,7 @@ import CLingXiaRustAPI
 /// Sibling order comes from the committed tree, never from message arrival.
 @MainActor
 final class MacInlineNativeIsland {
-    static let allowedKinds: Set<String> = ["root", "view", "text", "tappable", "slider", "video"]
+    static let allowedKinds: Set<String> = ["root", "view", "text", "tappable", "video"]
 
     static func isIslandAction(_ action: String) -> Bool {
         action == "root.commit" || action == "root.destroy" || action == "geometry.snapshot"
@@ -430,21 +430,6 @@ final class MacInlineNativeIsland {
             }
             item.button = button
             item.view = button
-        case "slider":
-            let slider = IslandSlider()
-            slider.minValue = 0
-            slider.maxValue = 100
-            slider.target = item
-            slider.action = #selector(IslandNode.sliderChanged)
-            item.onSliderChange = { [weak self, weak item] value, commit in
-                guard let item else { return }
-                let event = commit ? "valuecommit" : "valuechange"
-                let snapped = self?.sliderValue(item, proposed: value) ?? value
-                item.slider?.doubleValue = snapped
-                self?.eventSink(item.authorId, event, ["value": snapped])
-            }
-            item.slider = slider
-            item.view = slider
         default:
             let view = IslandPassthroughView()
             view.wantsLayer = true
@@ -462,16 +447,6 @@ final class MacInlineNativeIsland {
             applyText(item)
         case "tappable":
             applyButton(item)
-        case "slider":
-            if let slider = item.slider, !item.dragging {
-                let minimum = Double(cg(item.props["min"], fallback: 0))
-                let maximum = Swift.max(Double(cg(item.props["max"], fallback: 100)), minimum + 1)
-                slider.minValue = minimum
-                slider.maxValue = maximum
-                slider.doubleValue = Swift.min(Swift.max(Double(cg(item.props["value"], fallback: CGFloat(minimum))), minimum), maximum)
-                slider.isEnabled = !boolValue(item.props["disabled"])
-                slider.setAccessibilityValue(formatSliderValue(item.props, value: slider.doubleValue))
-            }
         case "view":
             applyScrim(item)
         default:
@@ -487,7 +462,6 @@ final class MacInlineNativeIsland {
             ?? ((item.kind == "text" || item.kind == "view") ? "box-none" : "auto")
         (item.view as? IslandPassthroughView)?.pointerEvents = mode
         (item.view as? IslandButton)?.pointerEvents = mode
-        (item.view as? IslandSlider)?.pointerEvents = mode
         container.setPointerEvents(mode, for: item.view)
     }
 
@@ -583,7 +557,7 @@ final class MacInlineNativeIsland {
 
     private func applyAccessibility(_ item: IslandNode) {
         let hidden = boolValue(item.props["aria-hidden"]) || boolValue(item.props["ariaHidden"])
-        item.view.setAccessibilityElement(!hidden && ["text", "tappable", "slider", "video"].contains(item.kind))
+        item.view.setAccessibilityElement(!hidden && ["text", "tappable", "video"].contains(item.kind))
         if let automationId = item.automationId {
             item.view.identifier = NSUserInterfaceItemIdentifier(automationId)
         }
@@ -596,7 +570,6 @@ final class MacInlineNativeIsland {
         )
         switch item.kind {
         case "tappable": item.view.setAccessibilityRole(.button)
-        case "slider": item.view.setAccessibilityRole(.slider)
         case "text": item.view.setAccessibilityRole(.staticText)
         default: break
         }
@@ -754,29 +727,6 @@ final class MacInlineNativeIsland {
         }
     }
 
-    private func sliderValue(_ item: IslandNode, proposed: Double) -> Double {
-        let minimum = Double(cg(item.props["min"], fallback: 0))
-        let maximum = max(Double(cg(item.props["max"], fallback: 100)), minimum + 1)
-        let step = Double(cg(item.props["step"]))
-        let snapped = step > 0 ? minimum + ((proposed - minimum) / step).rounded() * step : proposed
-        return min(max(snapped, minimum), maximum)
-    }
-
-    private func formatSliderValue(_ props: [String: Any], value: Double) -> String? {
-        switch props["valueLabel"] as? String {
-        case "value": return value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
-        case "time":
-            let total = max(Int(value.rounded()), 0)
-            let hours = total / 3600
-            let minutes = (total % 3600) / 60
-            let seconds = total % 60
-            return hours > 0
-                ? String(format: "%d:%02d:%02d", hours, minutes, seconds)
-                : String(format: "%d:%02d", minutes, seconds)
-        default: return nil
-        }
-    }
-
     private func semanticIcon(_ name: String?) -> String? {
         switch name {
         case "close": return "×"
@@ -837,13 +787,10 @@ final class MacInlineNativeIsland {
         var video: MacVideoComponent?
         var label: NSTextField?
         var button: NSButton?
-        var slider: NSSlider?
         var scrim: CAGradientLayer?
         var rect: NSRect = .zero
         var visible = true
-        var dragging = false
         var onPress: (() -> Void)?
-        var onSliderChange: ((Double, Bool) -> Void)?
 
         init(
             key: String,
@@ -867,12 +814,6 @@ final class MacInlineNativeIsland {
 
         @objc func press() {
             onPress?()
-        }
-
-        @objc func sliderChanged(_ sender: NSSlider) {
-            let commit = NSEvent.pressedMouseButtons == 0
-            dragging = !commit
-            onSliderChange?(sender.doubleValue, commit)
         }
     }
 }
@@ -940,15 +881,6 @@ private final class IslandTextField: NSTextField {
 private final class IslandButton: NSButton {
     var pointerEvents: String = "auto"
     var hitSlop: CGFloat = 0
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        guard pointerEvents == "auto" || pointerEvents == "box-only" else { return nil }
-        return super.hitTest(point)
-    }
-}
-
-private final class IslandSlider: NSSlider {
-    var pointerEvents: String = "auto"
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard pointerEvents == "auto" || pointerEvents == "box-only" else { return nil }

@@ -146,7 +146,7 @@ Every published package and what to import from each. Don't guess imports from t
 | Ship it: publish to the LingXia server, platform signing, app-store submission, developer accounts | [`./cli/distribution.md`](./cli/distribution.md) |
 | Page authoring: `Page({})`, `useLxPage`, events | [`./lxapp/guide.md`](./lxapp/guide.md) |
 | Adaptive Views: surface size classes, runtime switching, Runner device frames | [`./lxapp/adaptive-ui.md`](./lxapp/adaptive-ui.md) |
-| **Inline native island: `LxNativeRoot` wraps `LxVideo`; plus Cover/View/Text/Button/Slider. Presenters: `LxPicker`, `LxMediaSwiper`, `LxNavigator`. Text input is plain `<input>`/`<textarea>`** | [`./lxapp/components.md`](./lxapp/components.md) |
+| **Inline native island: `LxNativeRoot` wraps `LxVideo`; plus Cover/View/Text/Button. Presenters: `LxPicker`, `LxMediaSwiper`, `LxNavigator`. Text input is plain `<input>`/`<textarea>`** | [`./lxapp/components.md`](./lxapp/components.md) |
 | **Logic runtime globals and typing setup** | [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
 | Bridge mechanics: `setData`, stream, channel | [`./lxapp/bridge.md`](./lxapp/bridge.md) |
 | Host project: `lingxia.yaml` reference, adaptive `surfaces` | [`./app/project.md`](./app/project.md) |

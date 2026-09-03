@@ -19,7 +19,7 @@ use lingxia_webview::platform::windows::{
 use lxapp::inline_native::{
     ApplyCommitOutcome, IslandCompositor, IslandPointerPhase, IslandSession,
     NativeGeometrySnapshot, NativeRootAck, Rect, is_island_action, plan_island_visual,
-    props_with_slider_value, rasterize_island_background, rasterize_island_kind,
+    rasterize_island_background, rasterize_island_kind,
 };
 use serde_json::{Value, json};
 use windows::Win32::Foundation::RECT;
@@ -86,28 +86,7 @@ fn route_island_pointer(page_key: &str, phase: SurfacePointerPhase, x: f32, y: f
         "inline native pointer {session_phase:?} on {page_key}: surface=({x:.1},{y:.1}) css=({css_x:.1},{css_y:.1}) active={was_active} events={} consumed={consumed}",
         events.len(),
     );
-    let latched = session.latched_slider().or_else(|| {
-        events.iter().rev().find_map(|event| {
-            if event.event == "valuechange" || event.event == "valuecommit" {
-                event
-                    .detail
-                    .get("value")
-                    .and_then(Value::as_f64)
-                    .map(|value| (event.id.clone(), value))
-            } else {
-                None
-            }
-        })
-    });
     drop(sessions);
-    match session_phase {
-        IslandPointerPhase::Cancel => rematerialize_pending(page_key, None),
-        _ => {
-            if let Some((id, value)) = latched {
-                rematerialize_pending(page_key, Some((id.as_str(), value)));
-            }
-        }
-    }
     if let Some(context) = contexts()
         .lock()
         .unwrap_or_else(|poison| poison.into_inner())
@@ -518,7 +497,7 @@ pub(super) fn present_decoded_island_frame(
     });
 }
 
-fn rematerialize_pending(page_key: &str, latch: Option<(&str, f64)>) {
+fn rematerialize_pending(page_key: &str) {
     let pending = last_attaches()
         .lock()
         .unwrap_or_else(|poison| poison.into_inner())
@@ -528,36 +507,26 @@ fn rematerialize_pending(page_key: &str, latch: Option<(&str, f64)>) {
     if pending.is_empty() {
         return;
     }
-    let specs = island_visuals_from_pending(page_key, &pending, latch);
+    let specs = island_visuals_from_pending(page_key, &pending);
     queue_island_visuals(page_key, specs);
     apply_queued_island_visuals(page_key);
 }
 
 pub(super) fn refresh_scroll_layout(page_key: &str) {
-    rematerialize_pending(page_key, None);
+    rematerialize_pending(page_key);
 }
 
-fn island_visuals_from_pending(
-    page_key: &str,
-    pending: &[PendingAttach],
-    latch: Option<(&str, f64)>,
-) -> Vec<IslandVisualSpec> {
+fn island_visuals_from_pending(page_key: &str, pending: &[PendingAttach]) -> Vec<IslandVisualSpec> {
     pending
         .iter()
         .map(|attach| {
-            let props = match latch {
-                Some((id, value)) if attach.id == id && attach.kind == "slider" => {
-                    props_with_slider_value(&attach.props, value)
-                }
-                _ => attach.props.clone(),
-            };
             let (offset_x, offset_y, dest_width, dest_height) =
                 surface_rect(page_key, &attach.rect);
             build_island_visual_spec(
                 &attach.id,
                 &attach.kind,
                 &attach.rect,
-                &props,
+                &attach.props,
                 offset_x,
                 offset_y,
                 dest_width as f32,
@@ -1110,52 +1079,6 @@ mod tests {
         );
         assert!((button.dest_width - 48.0).abs() < f32::EPSILON);
         assert_eq!(button.text.as_deref(), Some("Play"));
-
-        let slider = build_island_visual_spec(
-            "seek",
-            "slider",
-            &Rect {
-                x: 80.0,
-                y: 188.0,
-                width: 200.0,
-                height: 16.0,
-            },
-            &json!({ "min": 0, "max": 100, "value": 25, "step": 1, "valueLabel": "value" }),
-            80.0,
-            188.0,
-            200.0,
-            16.0,
-        );
-        assert!((slider.dest_width - 200.0).abs() < f32::EPSILON);
-        assert_ne!((slider.width, slider.height), (16, 16));
-        assert_eq!(slider.text.as_deref(), Some("25"));
-
-        let committed =
-            json!({ "min": 0, "max": 100, "value": 10, "step": 1, "valueLabel": "value" });
-        let pending = vec![PendingAttach {
-            id: "seek".into(),
-            kind: "slider".into(),
-            rect: Rect {
-                x: 80.0,
-                y: 188.0,
-                width: 200.0,
-                height: 16.0,
-            },
-            props: committed.clone(),
-        }];
-        let latched =
-            island_visuals_from_pending("test-page-latch", &pending, Some(("seek", 80.0)));
-        let committed_specs = island_visuals_from_pending("test-page-latch", &pending, None);
-        assert_eq!(latched[0].text.as_deref(), Some("80"));
-        assert_eq!(committed_specs[0].text.as_deref(), Some("10"));
-        assert_ne!(
-            latched[0].pixels.as_ref(),
-            committed_specs[0].pixels.as_ref(),
-            "latched slider raster must move the thumb without a new root.commit"
-        );
-        let overlaid = props_with_slider_value(&committed, 80.0);
-        let planned = plan_island_visual("slider", &pending[0].rect, &overlaid);
-        assert_eq!(planned.text.as_deref(), Some("80"));
     }
 
     struct AttachRecorder {

@@ -6,7 +6,7 @@ Companion pages in this skill:
 
 - [Adaptive UI](./adaptive-ui.md) - surface size classes, dynamic View
   selection, and Runner device-frame testing.
-- [Components](./components.md) — inline native island (`LxNativeRoot` wraps `LxVideo`, plus Cover/View/Text/Button/Slider) and presenters (`LxPicker`, `LxMediaSwiper`, `LxNavigator`); text input is plain `<input>` / `<textarea>`.
+- [Components](./components.md) — inline native island (`LxNativeRoot` wraps `LxVideo`, plus Cover/View/Text/Button) and presenters (`LxPicker`, `LxMediaSwiper`, `LxNavigator`); text input is plain `<input>` / `<textarea>`.
 - [Logic runtime and typings](./lx-api.md) — runtime globals and typing wiring; signatures and behavior live in the generated `@lingxia/types` declarations.
 - [Bridge Guide](./bridge.md) — `setData`, stream, channel mechanics in depth.
 - [App Project](../app/project.md) — host app setup (`lingxia.yaml`, adaptive `surfaces`).
@@ -444,7 +444,7 @@ The same shape covers `onNetworkChange`, `onWifiConnected`,
 
 ### Native component events
 
-LingXia ships the inline native island (`LxNativeRoot` + `LxVideo` and the Cover/View/Text/Button/Slider recipes) plus presenters (`LxPicker`, `LxMediaSwiper`, `LxNavigator`) from `@lingxia/react` and `@lingxia/vue` (HTML views use the raw `<lx-*>` tags); text input is a plain `<input>` / `<textarea>`. `LxVideo` must sit inside `LxNativeRoot`. Handlers use standard framework-native syntax:
+LingXia ships the inline native island (`LxNativeRoot` + `LxVideo` and the Cover/View/Text/Button recipes) plus presenters (`LxPicker`, `LxMediaSwiper`, `LxNavigator`) from `@lingxia/react` and `@lingxia/vue` (HTML views use the raw `<lx-*>` tags); text input is a plain `<input>` / `<textarea>`. `LxVideo` must sit inside `LxNativeRoot`. Handlers use standard framework-native syntax:
 
 **React:**
 

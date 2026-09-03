@@ -21,7 +21,6 @@ export const PUBLIC_COMPONENT_NAMES = [
   "LxNativeCover",
   "LxNativeText",
   "LxNativeButton",
-  "LxNativeSlider",
   "LxVideo",
 ] as const;
 
@@ -31,13 +30,12 @@ export const PUBLIC_ELEMENT_TAGS = [
   "lx-native-cover",
   "lx-native-text",
   "lx-native-button",
-  "lx-native-slider",
   "lx-video",
 ] as const;
 
-export const CORE_KINDS = ["root", "view", "text", "tappable", "slider"] as const;
+export const CORE_KINDS = ["root", "view", "text", "tappable"] as const;
 
-export const HOST_FACTORY_KINDS = ["root", "view", "text", "tappable", "slider", "video"] as const;
+export const HOST_FACTORY_KINDS = ["root", "view", "text", "tappable", "video"] as const;
 
 export const AUTHOR_COMPONENT_TO_TAG = {
   LxNativeRoot: "lx-native-root",
@@ -45,7 +43,6 @@ export const AUTHOR_COMPONENT_TO_TAG = {
   LxNativeCover: "lx-native-cover",
   LxNativeText: "lx-native-text",
   LxNativeButton: "lx-native-button",
-  LxNativeSlider: "lx-native-slider",
   LxVideo: "lx-video",
 } as const;
 
@@ -55,7 +52,6 @@ export const TAG_TO_AUTHOR_COMPONENT = {
   "lx-native-cover": "LxNativeCover",
   "lx-native-text": "LxNativeText",
   "lx-native-button": "LxNativeButton",
-  "lx-native-slider": "LxNativeSlider",
   "lx-video": "LxVideo",
 } as const;
 
@@ -101,8 +97,6 @@ export const BUTTON_EMPHASIS_VALUES = ["primary", "secondary", "quiet"] as const
 export const BUTTON_SIZE_VALUES = ["compact", "regular"] as const;
 
 export const BUTTON_ICON_POSITION_VALUES = ["start", "end"] as const;
-
-export const SLIDER_VALUE_LABEL_VALUES = ["none", "value", "time"] as const;
 
 export const VIDEO_OBJECT_FIT_VALUES = ["contain", "cover", "fill", "none"] as const;
 
@@ -210,7 +204,6 @@ export const TEXT_STYLE_PROP_FIELDS = [
 
 export const INTERACTIVE_AUTHOR_COMPONENTS = [
   "LxNativeButton",
-  "LxNativeSlider",
   "LxVideo",
 ] as const;
 
@@ -240,7 +233,6 @@ export const INLINE_NATIVE_SCHEMA = {
   buttonEmphasis: BUTTON_EMPHASIS_VALUES,
   buttonSize: BUTTON_SIZE_VALUES,
   buttonIconPosition: BUTTON_ICON_POSITION_VALUES,
-  sliderValueLabel: SLIDER_VALUE_LABEL_VALUES,
   videoObjectFit: VIDEO_OBJECT_FIT_VALUES,
   videoContentRotate: VIDEO_CONTENT_ROTATE_VALUES,
   watermarkCorners: WATERMARK_CORNER_VALUES,

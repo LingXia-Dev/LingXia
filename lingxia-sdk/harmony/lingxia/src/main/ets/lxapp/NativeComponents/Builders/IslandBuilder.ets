@@ -1,7 +1,7 @@
 /**
  * Kind-specific ArkUI nodes for the inline native island.
  * Cover/Button stay recipes on the wire (view/tappable); hosts factory
- * only root/view/text/tappable/slider plus video.native.
+ * only root/view/text/tappable plus video.native.
  */
 import { NativeComponentParams, registerNativeComponentBuilder } from '../NativeComponentNodeController';
 import { NativeComponentRecord, NativeComponentValue } from '../NativeComponentTypes';
@@ -33,12 +33,6 @@ class IslandGradientOptions {
 function sourceDetail(source: string): NativeComponentRecord {
   const detail = new NativeComponentRecord();
   detail.set('source', source);
-  return detail;
-}
-
-function valueDetail(value: number): NativeComponentRecord {
-  const detail = new NativeComponentRecord();
-  detail.set('value', value);
   return detail;
 }
 
@@ -387,102 +381,6 @@ struct IslandTappableNode {
   }
 }
 
-@Component
-struct IslandSliderNode {
-  @Prop params: NativeComponentParams;
-  @State private dragging: boolean = false;
-  @State private localValue: number = 0;
-
-  aboutToAppear(): void {
-    this.localValue = getNumberProp(this.params.props, 'value', 0);
-  }
-
-  build() {
-    Slider({
-      value: this.currentValue(),
-      min: getNumberProp(this.params.props, 'min', 0),
-      max: Math.max(getNumberProp(this.params.props, 'max', 100), getNumberProp(this.params.props, 'min', 0) + 1),
-      step: Math.max(getNumberProp(this.params.props, 'step', 1), 0.01),
-      style: SliderStyle.OutSet
-    })
-      .width('100%')
-      .id(this.automationId())
-      .enabled(!getBooleanProp(this.params.props, 'disabled', false))
-      .hitTestBehavior(this.hitMode())
-      .accessibilityText(this.ariaLabel())
-      .accessibilityDescription(this.valueDescription())
-      .accessibilityLevel(this.nodeAccessibilityLevel())
-      .onChange((value: number, mode: SliderChangeMode) => {
-        this.localValue = value;
-        if (mode === SliderChangeMode.Begin || mode === SliderChangeMode.Moving) {
-          this.dragging = true;
-          onNativeComponentEventFromBuilder(this.params.componentId, 'valuechange', valueDetail(value));
-        } else if (mode === SliderChangeMode.End || mode === SliderChangeMode.Click) {
-          this.dragging = false;
-          onNativeComponentEventFromBuilder(this.params.componentId, 'valuecommit', valueDetail(value));
-        }
-      })
-      .onFocus(() => {
-        onNativeComponentEventFromBuilder(this.params.componentId, 'focus', sourceDetail('keyboard'));
-      })
-      .onBlur(() => {
-        onNativeComponentEventFromBuilder(this.params.componentId, 'blur', sourceDetail('keyboard'));
-      })
-      .onHover((hovered: boolean) => {
-        onNativeComponentEventFromBuilder(
-          this.params.componentId,
-          hovered ? 'pointerenter' : 'pointerleave',
-          sourceDetail('pointer')
-        );
-      })
-  }
-
-  private currentValue(): number {
-    if (this.dragging) {
-      return this.localValue;
-    }
-    return getNumberProp(this.params.props, 'value', this.localValue);
-  }
-
-  private hitMode(): HitTestMode {
-    const mode = getStringProp(this.params.props, 'pointerEvents', 'auto');
-    return mode === 'none' || mode === 'box-none' ? HitTestMode.None : HitTestMode.Default;
-  }
-
-  private ariaLabel(): string {
-    return getStringProp(this.params.props, 'aria-label', getStringProp(this.params.props, 'ariaLabel', ''));
-  }
-
-  private automationId(): string {
-    return getStringProp(this.params.props, 'automationId', '');
-  }
-
-  private nodeAccessibilityLevel(): string {
-    return getBooleanProp(this.params.props, 'aria-hidden', false) ||
-      getBooleanProp(this.params.props, 'ariaHidden', false) ? 'no-hide-descendants' : 'auto';
-  }
-
-  private valueDescription(): string {
-    const explicit = getStringProp(
-      this.params.props,
-      'aria-description',
-      getStringProp(this.params.props, 'ariaDescription', '')
-    );
-    if (explicit.length > 0) return explicit;
-    const value = this.currentValue();
-    if (getStringProp(this.params.props, 'valueLabel', 'none') === 'time') {
-      const total = Math.max(0, Math.round(value));
-      const hours = Math.floor(total / 3600);
-      const minutes = Math.floor((total % 3600) / 60);
-      const seconds = total % 60;
-      const mm = minutes.toString().padStart(hours > 0 ? 2 : 1, '0');
-      const ss = seconds.toString().padStart(2, '0');
-      return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
-    }
-    return getStringProp(this.params.props, 'valueLabel', 'none') === 'value' ? value.toString() : '';
-  }
-}
-
 @Builder
 function islandViewBuilder(params: NativeComponentParams) {
   IslandViewNode({ params: params })
@@ -498,15 +396,9 @@ function islandTappableBuilder(params: NativeComponentParams) {
   IslandTappableNode({ params: params })
 }
 
-@Builder
-function islandSliderBuilder(params: NativeComponentParams) {
-  IslandSliderNode({ params: params })
-}
-
 export function registerIslandBuilders(): void {
   registerNativeComponentBuilder('island/root', wrapBuilder(islandViewBuilder));
   registerNativeComponentBuilder('island/view', wrapBuilder(islandViewBuilder));
   registerNativeComponentBuilder('island/text', wrapBuilder(islandTextBuilder));
   registerNativeComponentBuilder('island/tappable', wrapBuilder(islandTappableBuilder));
-  registerNativeComponentBuilder('island/slider', wrapBuilder(islandSliderBuilder));
 }

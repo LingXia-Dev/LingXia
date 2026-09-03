@@ -427,7 +427,7 @@ fn forward_mouse_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -
 
     // Native islands own their pointer sequence. Do this before WebView2
     // focus/capture bookkeeping: MoveFocus may transfer capture to an engine
-    // input window, which would cancel a button/slider between its down and
+    // input window, which would cancel a button between its down and
     // up messages. Physical island input keeps capture on the composition
     // surface until its sequence completes; deterministic injected input is
     // already directed to this HWND and must not mix in physical-cursor moves.

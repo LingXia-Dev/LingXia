@@ -1,8 +1,8 @@
-//! Shared island paint, hit-test, and slider math.
+//! Shared island paint, hit-test, and pointer routing.
 //!
 //! Platforms and unit tests call these functions so Cover scrim, tappable
-//! content, slider latch, and pointer routing are not reimplemented inside
-//! a DComp / UIView callback.
+//! content, and pointer routing are not reimplemented inside a DComp / UIView
+//! callback.
 
 use super::types::Rect;
 use serde_json::Value;
@@ -52,17 +52,6 @@ pub struct TappableContent {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SliderPaint {
-    pub min: f64,
-    pub max: f64,
-    pub value: f64,
-    pub buffered_value: f64,
-    pub step: f64,
-    pub value_label: String,
-    pub disabled: bool,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct IslandVisualPlan {
     pub kind: String,
     pub rect: Rect,
@@ -90,7 +79,6 @@ pub enum IslandHit {
     Miss,
     Swallow { id: String, kind: String },
     Tappable { id: String },
-    Slider { id: String, value: f64 },
     Video { id: String },
 }
 
@@ -122,43 +110,17 @@ impl IslandPointerTracker {
     pub fn cancel(&mut self) {
         self.down = None;
     }
-
-    /// Slider thumb value latched for the current drag, if any.
-    pub fn latched_slider(&self) -> Option<(String, f64)> {
-        let down = self.down.as_ref()?;
-        if down.kind != PointerKind::Slider {
-            return None;
-        }
-        Some((down.id.clone(), down.latched?))
-    }
-}
-
-/// Overlay a locally latched slider value onto committed props so paint does
-/// not wait on a Logic `root.commit` to move the thumb.
-pub fn props_with_slider_value(props: &Value, value: f64) -> Value {
-    let mut next = props.clone();
-    match &mut next {
-        Value::Object(map) => {
-            map.insert("value".to_string(), serde_json::json!(value));
-        }
-        _ => next = serde_json::json!({ "value": value }),
-    }
-    next
 }
 
 #[derive(Debug, Clone)]
 struct PointerDown {
     id: String,
     kind: PointerKind,
-    slider: Option<SliderPaint>,
-    rect: Rect,
-    latched: Option<f64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PointerKind {
     Tappable,
-    Slider,
     Video,
     Swallow,
 }
@@ -211,30 +173,6 @@ pub fn tappable_content_from_props(props: &Value) -> TappableContent {
     }
 }
 
-pub fn slider_paint_from_props(props: &Value) -> SliderPaint {
-    let min = number_field(props, "min").unwrap_or(0.0);
-    let mut max = number_field(props, "max").unwrap_or(100.0);
-    if max < min {
-        max = min;
-    }
-    let value = number_field(props, "value").unwrap_or(min).clamp(min, max);
-    SliderPaint {
-        min,
-        max,
-        value,
-        buffered_value: number_field(props, "bufferedValue")
-            .unwrap_or(value)
-            .clamp(min, max),
-        step: number_field(props, "step").unwrap_or(0.0).max(0.0),
-        value_label: props
-            .get("valueLabel")
-            .and_then(Value::as_str)
-            .unwrap_or("none")
-            .to_string(),
-        disabled: bool_field(props, "disabled"),
-    }
-}
-
 pub fn pointer_events_from_props(kind: &str, props: &Value) -> PointerEventsMode {
     if let Some(mode) = props
         .get("pointerEvents")
@@ -250,30 +188,12 @@ pub fn pointer_events_from_props(kind: &str, props: &Value) -> PointerEventsMode
     }
 }
 
-pub fn slider_value_from_x(slider: &SliderPaint, x: f64, width: f64) -> f64 {
-    let span = (slider.max - slider.min).max(0.0);
-    if width <= 0.0 || span == 0.0 {
-        return slider.min;
-    }
-    let t = (x / width).clamp(0.0, 1.0);
-    snap_slider_value(slider, slider.min + t * span)
-}
-
-pub fn format_value_label(slider: &SliderPaint) -> Option<String> {
-    match slider.value_label.as_str() {
-        "value" => Some(format_numeric_value(slider)),
-        "time" => Some(format_time_value(slider.value)),
-        _ => None,
-    }
-}
-
 pub fn plan_island_visual(kind: &str, rect: &Rect, props: &Value) -> IslandVisualPlan {
     let dest_width = rect.width.max(1.0) as f32;
     let dest_height = rect.height.max(1.0) as f32;
     let texture_width = dest_width.round().clamp(1.0, 640.0) as i32;
     let texture_height = dest_height.round().clamp(1.0, 360.0) as i32;
     let content = tappable_content_from_props(props);
-    let slider = slider_paint_from_props(props);
     let text = match kind {
         "text" => props
             .get("text")
@@ -287,7 +207,6 @@ pub fn plan_island_visual(kind: &str, rect: &Rect, props: &Value) -> IslandVisua
                 tappable_display_text(&content, props)
             }
         }
-        "slider" => format_value_label(&slider),
         _ => None,
     };
     IslandVisualPlan {
@@ -328,13 +247,6 @@ pub fn rasterize_island_kind(kind: &str, width: i32, height: i32, props: &Value)
             );
             paint_scrim(&mut pixels, width, height, props);
         }
-        "slider" => paint_slider(
-            &mut pixels,
-            width,
-            height,
-            &slider_paint_from_props(props),
-            props,
-        ),
         "tappable" => {
             paint_rounded_background(
                 &mut pixels,
@@ -413,7 +325,7 @@ pub fn hit_test_island(targets: &[IslandHitTarget], x: f64, y: f64) -> IslandHit
         match target.pointer_events {
             PointerEventsMode::None | PointerEventsMode::BoxNone => continue,
             PointerEventsMode::Auto | PointerEventsMode::BoxOnly => {
-                return hit_for_target(target, x);
+                return hit_for_target(target);
             }
         }
     }
@@ -429,7 +341,7 @@ pub fn dispatch_pointer(
 ) -> Vec<IslandHostEvent> {
     match phase {
         IslandPointerPhase::Down => pointer_down(tracker, targets, x, y),
-        IslandPointerPhase::Move => pointer_move(tracker, x),
+        IslandPointerPhase::Move => pointer_move(tracker),
         IslandPointerPhase::Up => pointer_up(tracker, targets, x, y),
         IslandPointerPhase::Cancel => {
             tracker.cancel();
@@ -451,14 +363,6 @@ fn pointer_down(
             tracker.down = Some(PointerDown {
                 id,
                 kind: PointerKind::Swallow,
-                slider: None,
-                rect: Rect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: 0.0,
-                    height: 0.0,
-                },
-                latched: None,
             });
             Vec::new()
         }
@@ -466,14 +370,6 @@ fn pointer_down(
             tracker.down = Some(PointerDown {
                 id,
                 kind: PointerKind::Tappable,
-                slider: None,
-                rect: Rect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: 0.0,
-                    height: 0.0,
-                },
-                latched: None,
             });
             Vec::new()
         }
@@ -481,64 +377,14 @@ fn pointer_down(
             tracker.down = Some(PointerDown {
                 id,
                 kind: PointerKind::Video,
-                slider: None,
-                rect: Rect {
-                    x: 0.0,
-                    y: 0.0,
-                    width: 0.0,
-                    height: 0.0,
-                },
-                latched: None,
             });
             Vec::new()
-        }
-        IslandHit::Slider { id, value } => {
-            let target = targets.iter().rev().find(|item| item.id == id);
-            let slider = target
-                .map(|item| slider_paint_from_props(&item.props))
-                .unwrap_or(SliderPaint {
-                    min: 0.0,
-                    max: 100.0,
-                    value,
-                    buffered_value: value,
-                    step: 0.0,
-                    value_label: "none".into(),
-                    disabled: false,
-                });
-            let rect = target.map(|item| item.rect.clone()).unwrap_or(Rect {
-                x: 0.0,
-                y: 0.0,
-                width: 1.0,
-                height: 1.0,
-            });
-            tracker.down = Some(PointerDown {
-                id: id.clone(),
-                kind: PointerKind::Slider,
-                slider: Some(slider),
-                rect,
-                latched: Some(value),
-            });
-            vec![value_event(&id, "valuechange", value)]
         }
     }
 }
 
-fn pointer_move(tracker: &mut IslandPointerTracker, x: f64) -> Vec<IslandHostEvent> {
-    let Some(down) = tracker.down.as_mut() else {
-        return Vec::new();
-    };
-    if down.kind != PointerKind::Slider {
-        return Vec::new();
-    }
-    let Some(slider) = down.slider.clone() else {
-        return Vec::new();
-    };
-    let value = slider_value_from_x(&slider, x - down.rect.x, down.rect.width);
-    if down.latched == Some(value) {
-        return Vec::new();
-    }
-    down.latched = Some(value);
-    vec![value_event(&down.id, "valuechange", value)]
+fn pointer_move(_tracker: &mut IslandPointerTracker) -> Vec<IslandHostEvent> {
+    Vec::new()
 }
 
 fn pointer_up(
@@ -551,15 +397,6 @@ fn pointer_up(
         return Vec::new();
     };
     match down.kind {
-        PointerKind::Slider => {
-            let value = down.latched.unwrap_or_else(|| {
-                down.slider
-                    .as_ref()
-                    .map(|slider| slider_value_from_x(slider, x - down.rect.x, down.rect.width))
-                    .unwrap_or(0.0)
-            });
-            vec![value_event(&down.id, "valuecommit", value)]
-        }
         PointerKind::Tappable | PointerKind::Video => match hit_test_island(targets, x, y) {
             IslandHit::Tappable { id } | IslandHit::Video { id } if id == down.id => {
                 vec![press_event(&id)]
@@ -570,25 +407,11 @@ fn pointer_up(
     }
 }
 
-fn hit_for_target(target: &IslandHitTarget, x: f64) -> IslandHit {
+fn hit_for_target(target: &IslandHitTarget) -> IslandHit {
     match target.kind.as_str() {
         "tappable" if !tappable_content_from_props(&target.props).disabled => IslandHit::Tappable {
             id: target.id.clone(),
         },
-        "slider" => {
-            let slider = slider_paint_from_props(&target.props);
-            if slider.disabled {
-                IslandHit::Swallow {
-                    id: target.id.clone(),
-                    kind: target.kind.clone(),
-                }
-            } else {
-                IslandHit::Slider {
-                    id: target.id.clone(),
-                    value: slider_value_from_x(&slider, x - target.rect.x, target.rect.width),
-                }
-            }
-        }
         "video" => IslandHit::Video {
             id: target.id.clone(),
         },
@@ -630,7 +453,6 @@ fn base_fill_color(kind: &str, props: &Value, content: &TappableContent) -> u32 
                 _ => base,
             }
         }
-        "slider" => 0x0000_0000,
         "text" => 0x0000_0000,
         "view" => match cover_scrim_from_props(props) {
             Some(scrim) if scrim.scrim != "none" => {
@@ -726,67 +548,6 @@ fn paint_scrim(pixels: &mut [u32], width: i32, height: i32, props: &Value) {
         if let Some(row) = pixels.get_mut(start..end) {
             row.fill(color);
         }
-    }
-}
-
-fn paint_slider(pixels: &mut [u32], width: i32, height: i32, slider: &SliderPaint, props: &Value) {
-    let track_y = (height / 2).clamp(0, height.saturating_sub(1));
-    let accent = style_color(props, "accentColor").unwrap_or(0xff3b_82f6);
-    let track = premultiply(style_color(props, "backgroundColor").unwrap_or(0x665f_6368));
-    let buffered = premultiply(with_alpha(accent, 112));
-    let fill = premultiply(if slider.disabled { 0xff9c_a3af } else { accent });
-    let thumb = premultiply(text_color("slider", props));
-    let t = if slider.max > slider.min {
-        ((slider.value - slider.min) / (slider.max - slider.min)).clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
-    let buffered_t = if slider.max > slider.min {
-        ((slider.buffered_value - slider.min) / (slider.max - slider.min)).clamp(0.0, 1.0)
-    } else {
-        0.0
-    };
-    let thumb_x = ((width - 1) as f64 * t).round() as i32;
-    let buffered_x = ((width - 1) as f64 * buffered_t).round() as i32;
-    let half_track = (height / 12).clamp(1, 3);
-    for y in (track_y - half_track).max(0)..=(track_y + half_track).min(height - 1) {
-        for x in 0..width {
-            let idx = (y * width + x) as usize;
-            if idx < pixels.len() {
-                pixels[idx] = if x <= thumb_x {
-                    fill
-                } else if x <= buffered_x {
-                    buffered
-                } else {
-                    track
-                };
-            }
-        }
-    }
-    let thumb_radius = (height / 4).clamp(3, 7);
-    for dy in -thumb_radius..=thumb_radius {
-        for dx in -thumb_radius..=thumb_radius {
-            if dx * dx + dy * dy > thumb_radius * thumb_radius {
-                continue;
-            }
-            let x = thumb_x + dx;
-            let y = track_y + dy;
-            if x < 0 || y < 0 || x >= width || y >= height {
-                continue;
-            }
-            pixels[(y * width + x) as usize] = thumb;
-        }
-    }
-    if let Some(label) = format_value_label(slider) {
-        blit_text(
-            pixels,
-            width,
-            height,
-            &label,
-            text_color("slider", props),
-            1,
-            TextAlign::End,
-        );
     }
 }
 
@@ -1091,36 +852,6 @@ fn apply_raster_opacity(pixels: &mut [u32], opacity: f64) {
     }
 }
 
-fn snap_slider_value(slider: &SliderPaint, raw: f64) -> f64 {
-    let snapped = if slider.step > 0.0 {
-        let steps = ((raw - slider.min) / slider.step).round();
-        slider.min + steps * slider.step
-    } else {
-        raw
-    };
-    snapped.clamp(slider.min, slider.max)
-}
-
-fn format_numeric_value(slider: &SliderPaint) -> String {
-    if slider.step >= 1.0 {
-        format!("{}", slider.value.round() as i64)
-    } else {
-        format!("{:.1}", slider.value)
-    }
-}
-
-fn format_time_value(seconds: f64) -> String {
-    let total = seconds.max(0.0).round() as u64;
-    let hours = total / 3600;
-    let minutes = (total % 3600) / 60;
-    let secs = total % 60;
-    if hours > 0 {
-        format!("{hours}:{minutes:02}:{secs:02}")
-    } else {
-        format!("{minutes}:{secs:02}")
-    }
-}
-
 fn contains(rect: &Rect, x: f64, y: f64) -> bool {
     x >= rect.x && y >= rect.y && x < rect.x + rect.width && y < rect.y + rect.height
 }
@@ -1130,14 +861,6 @@ fn press_event(id: &str) -> IslandHostEvent {
         id: id.to_string(),
         event: "press".into(),
         detail: serde_json::json!({ "source": "pointer" }),
-    }
-}
-
-fn value_event(id: &str, event: &str, value: f64) -> IslandHostEvent {
-    IslandHostEvent {
-        id: id.to_string(),
-        event: event.into(),
-        detail: serde_json::json!({ "value": value }),
     }
 }
 
@@ -1205,25 +928,6 @@ mod paint_tests {
         assert_eq!(pixels[0], 0, "rounded corners stay transparent");
         assert!(pixels.iter().any(|pixel| *pixel != 0));
         assert!(pixels.iter().all(|pixel| pixel >> 24 <= 128));
-    }
-
-    #[test]
-    fn slider_paints_committed_buffer_before_remaining_track() {
-        let props = json!({
-            "min": 0,
-            "max": 100,
-            "value": 20,
-            "bufferedValue": 70,
-            "valueLabel": "none",
-            "nativeStyle": { "accentColor": "#ff0000" }
-        });
-        let slider = slider_paint_from_props(&props);
-        assert_eq!(slider.buffered_value, 70.0);
-        let pixels = rasterize_island_kind("slider", 101, 24, &props);
-        let y = 12;
-        assert_eq!(pixels[y * 101 + 10], premultiply(0xffff_0000));
-        assert_eq!(pixels[y * 101 + 50], premultiply(0x70ff_0000));
-        assert_eq!(pixels[y * 101 + 90], premultiply(0x665f_6368));
     }
 
     #[test]

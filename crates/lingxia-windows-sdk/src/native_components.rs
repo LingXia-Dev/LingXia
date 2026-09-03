@@ -131,7 +131,7 @@ struct ComponentEntry {
     video: Option<VideoComponent>,
     /// Paged carousel of a `media-swiper.native` component, `None` otherwise.
     swiper: Option<MediaSwiperComponent>,
-    /// Core island kind (`view` / `text` / `tappable` / `slider`) when this
+    /// Core island kind (`view` / `text` / `tappable`) when this
     /// container is an overlay node in the inline native tree.
     island_kind: Option<String>,
     doc_rect: DocRect,

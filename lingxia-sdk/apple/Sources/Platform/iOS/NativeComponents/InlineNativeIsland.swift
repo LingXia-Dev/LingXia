@@ -6,7 +6,7 @@ import CLingXiaRustAPI
 /// Kind-specific views share this container; only public UIKit APIs are used.
 @MainActor
 final class InlineNativeIsland {
-    static let allowedKinds: Set<String> = ["root", "view", "text", "tappable", "slider", "video"]
+    static let allowedKinds: Set<String> = ["root", "view", "text", "tappable", "video"]
 
     static func isIslandAction(_ action: String) -> Bool {
         action == "root.commit" || action == "root.destroy" || action == "geometry.snapshot"
@@ -373,7 +373,7 @@ final class InlineNativeIsland {
         }
         applyProps(item)
         applyFrame(item)
-        if item.kind == "tappable" || item.kind == "slider" || item.kind == "video" {
+        if item.kind == "tappable" || item.kind == "video" {
             manager?.registerIslandTouchTarget(item.view)
         }
     }
@@ -423,30 +423,12 @@ final class InlineNativeIsland {
             }, for: .touchUpInside)
             item.button = button
             item.view = button
-        case "slider":
-            let slider = UISlider()
-            slider.addAction(UIAction { [weak self, weak item] _ in
-                guard let item, let slider = item.slider else { return }
-                item.dragging = true
-                let value = self?.sliderValue(item, proposed: Double(slider.value)) ?? Double(slider.value)
-                slider.value = Float(value)
-                self?.eventSink(item.authorId, "valuechange", ["value": value])
-            }, for: .valueChanged)
-            slider.addAction(UIAction { [weak self, weak item] _ in
-                guard let item, let slider = item.slider else { return }
-                item.dragging = false
-                let value = self?.sliderValue(item, proposed: Double(slider.value)) ?? Double(slider.value)
-                slider.value = Float(value)
-                self?.eventSink(item.authorId, "valuecommit", ["value": value])
-            }, for: [.touchUpInside, .touchUpOutside, .touchCancel])
-            item.slider = slider
-            item.view = slider
         default:
             let view = UIView()
             view.isUserInteractionEnabled = false
             item.view = view
         }
-        item.view.isUserInteractionEnabled = item.kind == "tappable" || item.kind == "slider" || item.kind == "video"
+        item.view.isUserInteractionEnabled = item.kind == "tappable" || item.kind == "video"
     }
 
     private func applyProps(_ item: IslandNode) {
@@ -457,16 +439,6 @@ final class InlineNativeIsland {
             applyText(item)
         case "tappable":
             applyButton(item)
-        case "slider":
-            if let slider = item.slider, !item.dragging {
-                let minimum = cg(item.props["min"], fallback: 0)
-                let maximum = Swift.max(cg(item.props["max"], fallback: 100), minimum + 1)
-                slider.minimumValue = Float(minimum)
-                slider.maximumValue = Float(maximum)
-                slider.value = Float(Swift.min(Swift.max(cg(item.props["value"], fallback: minimum), minimum), maximum))
-                slider.isEnabled = !boolValue(item.props["disabled"])
-                slider.accessibilityValue = formatSliderValue(item.props, value: Double(slider.value))
-            }
         case "view":
             applyScrim(item)
         default:
@@ -566,7 +538,7 @@ final class InlineNativeIsland {
 
     private func applyAccessibility(_ item: IslandNode) {
         let hidden = boolValue(item.props["aria-hidden"]) || boolValue(item.props["ariaHidden"])
-        item.view.isAccessibilityElement = !hidden && ["text", "tappable", "slider", "video"].contains(item.kind)
+        item.view.isAccessibilityElement = !hidden && ["text", "tappable", "video"].contains(item.kind)
         item.view.accessibilityElementsHidden = hidden
         item.view.accessibilityIdentifier = item.automationId
         item.view.accessibilityLabel = (item.props["aria-label"] as? String)
@@ -581,7 +553,7 @@ final class InlineNativeIsland {
 
     private func applyPointerEvents(_ item: IslandNode) {
         let mode = item.props["pointerEvents"] as? String ?? ((item.kind == "text" || item.kind == "view") ? "box-none" : "auto")
-        let interactive = item.kind == "tappable" || item.kind == "slider" || item.kind == "video"
+        let interactive = item.kind == "tappable" || item.kind == "video"
         item.view.isUserInteractionEnabled = interactive && (mode == "auto" || mode == "box-only")
     }
 
@@ -730,31 +702,6 @@ final class InlineNativeIsland {
         }
     }
 
-    private func sliderValue(_ item: IslandNode, proposed: Double) -> Double {
-        let minimum = Double(cg(item.props["min"], fallback: 0))
-        let maximum = max(Double(cg(item.props["max"], fallback: 100)), minimum + 1)
-        let step = Double(cg(item.props["step"]))
-        let snapped = step > 0 ? minimum + ((proposed - minimum) / step).rounded() * step : proposed
-        return min(max(snapped, minimum), maximum)
-    }
-
-    private func formatSliderValue(_ props: [String: Any], value: Double) -> String? {
-        switch props["valueLabel"] as? String {
-        case "value":
-            return value.rounded() == value ? String(Int(value)) : String(format: "%.1f", value)
-        case "time":
-            let total = max(Int(value.rounded()), 0)
-            let hours = total / 3600
-            let minutes = (total % 3600) / 60
-            let seconds = total % 60
-            return hours > 0
-                ? String(format: "%d:%02d:%02d", hours, minutes, seconds)
-                : String(format: "%d:%02d", minutes, seconds)
-        default:
-            return nil
-        }
-    }
-
     private func semanticIcon(_ name: String?) -> String? {
         switch name {
         case "close": return "×"
@@ -815,11 +762,9 @@ final class InlineNativeIsland {
         var video: VideoComponent?
         var label: UILabel?
         var button: UIButton?
-        var slider: UISlider?
         var scrim: CAGradientLayer?
         var rect: CGRect = .zero
         var visible = true
-        var dragging = false
 
         init(
             key: String,
