@@ -1154,10 +1154,10 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         }
     }
 
-    /// `windowBackgroundColor` resolves against the appearance in force when it
-    /// is read, and a CGColor keeps that answer forever -- the runner pins the
-    /// window's appearance after the window is up, so the plate has to be
-    /// repainted rather than baked.
+    /// A CGColor keeps the colour that was current when it was read. The runner
+    /// pins the window's appearance after the window is up, so the plate has to
+    /// be repainted rather than baked. For a transparent bar the plate sits on
+    /// the page, so use the page's declared colour rather than window chrome.
     private func paintOverflowPlate() {
         guard let plate = overflowPlate, let config = tabBarConfig else { return }
         guard TabBarHelper.isTransparent(config.background_color) else {
@@ -1165,7 +1165,7 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
             return
         }
         plate.effectiveAppearance.performAsCurrentDrawingAppearance {
-            plate.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+            plate.layer?.backgroundColor = WebViewManager.overflowPanelColor(appId: appId).cgColor
         }
     }
 

@@ -133,6 +133,20 @@ pub(crate) fn tabbar_overflow_hit(
 
 /// Paints the final panel translated down by `panel_offset` pixels. The host
 /// animates that offset while separately fading the scrim alpha.
+/// The page floor the host declared, as the chrome's `0xRRGGBB`.
+///
+/// `None` when the host declares nothing, leaving the caller on its own system
+/// colour rather than guessing a page colour on the app's behalf.
+fn declared_page_background() -> Option<u32> {
+    let dark = crate::shell::theme::is_dark();
+    let declared = lingxia_app_context::page_background_color(dark)?;
+    let hex = declared.trim().trim_start_matches('#');
+    if hex.len() != 6 {
+        return None;
+    }
+    u32::from_str_radix(hex, 16).ok()
+}
+
 pub(crate) fn paint_tabbar_overflow(hdc: HDC, layout: &TabbarOverflowLayout, panel_offset: i32) {
     fill_rect(
         hdc,
@@ -153,8 +167,12 @@ pub(crate) fn paint_tabbar_overflow(hdc: HDC, layout: &TabbarOverflowLayout, pan
     };
     let sheet = translate(layout.sheet);
     let palette = shell_palette();
+    // A transparent bar lets the page through, so the panel's plate has to be
+    // the page's own colour. `panel_background` is shell chrome and follows the
+    // system, so a light page under a dark system produced a dark panel sitting
+    // over a light strip.
     let surface = if layout.tabbar.background_transparent || layout.tabbar.background_color == 0 {
-        palette.panel_background
+        declared_page_background().unwrap_or(palette.panel_background)
     } else {
         layout.tabbar.background_color
     };

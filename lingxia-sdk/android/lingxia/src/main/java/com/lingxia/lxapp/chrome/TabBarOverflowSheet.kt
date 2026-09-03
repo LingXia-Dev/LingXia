@@ -1,6 +1,7 @@
 package com.lingxia.lxapp.chrome
 
 import android.app.Activity
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
@@ -11,6 +12,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.lingxia.app.NativeApi
 import java.io.File
 
 /**
@@ -142,6 +144,32 @@ internal object TabBarOverflowSheet {
         return (rootLocation[1] + rootView.height - anchorLocation[1]).coerceAtLeast(0)
     }
 
+    /**
+     * The plate behind the folded items.
+     *
+     * The bar itself is drawn with the lxapp's declared colour, so the panel has
+     * to follow it or the two disagree whenever the app and the system do — a
+     * light bar with a dark panel over it. Where the bar is transparent there is
+     * nothing to follow and the panel floats over the page, so the page's own
+     * colour is what makes it read as one surface; the overlay palette is the
+     * last resort, for a host that declares neither.
+     */
+    private fun panelSurface(
+        activity: Activity,
+        palette: OverlayPalette,
+        state: TabBarState
+    ): Int {
+        if (!state.isBackgroundTransparent()) return state.backgroundColor
+        val dark = (activity.resources.configuration.uiMode and
+            Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        runCatching { NativeApi.pageBackgroundColor(dark) }
+            .getOrNull()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { hex -> runCatching { Color.parseColor(hex) }.getOrNull() }
+            ?.let { return it }
+        return palette.surface
+    }
+
     private fun buildPanel(
         activity: Activity,
         palette: OverlayPalette,
@@ -153,7 +181,7 @@ internal object TabBarOverflowSheet {
         return LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                setColor(palette.surface)
+                setColor(panelSurface(activity, palette, state))
                 val radius = PANEL_CORNER_RADIUS_DP * density
                 cornerRadius = radius
             }
