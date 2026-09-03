@@ -839,6 +839,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.sidebarView?.reloadLxAppPresentation()
+                LxAppLayoutReconciler.refreshVisibleSlotTabs()
             }
         }
         tabBarStateObserver = NotificationCenter.default.addObserver(
