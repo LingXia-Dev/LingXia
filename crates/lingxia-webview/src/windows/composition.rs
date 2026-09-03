@@ -17,6 +17,99 @@ mod pointer;
 mod surface_window;
 
 use dcomp::DcompTree;
+pub use dcomp::{CompositionSurfacePixels, IslandVideoFrame, IslandVisualSpec};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
+
+type IslandPointerFilter = Arc<dyn Fn(&str, IslandPointerPhase, f32, f32) -> bool + Send + Sync>;
+
+static ISLAND_VISUALS: OnceLock<Mutex<HashMap<String, Vec<IslandVisualSpec>>>> = OnceLock::new();
+static SURFACE_WEBTAGS: OnceLock<Mutex<HashMap<isize, String>>> = OnceLock::new();
+static ISLAND_POINTER_FILTER: OnceLock<Mutex<Option<IslandPointerFilter>>> = OnceLock::new();
+
+/// High-word marker used by LingXia's deterministic `PostMessage` input.
+/// Synthetic moves must not arm `TrackMouseEvent`, whose hover state follows
+/// the unrelated physical cursor and would immediately emit `WM_MOUSELEAVE`.
+pub const SYNTHETIC_MOUSE_WPARAM_MARKER: usize = 0x4c58_0000;
+
+fn island_visuals() -> &'static Mutex<HashMap<String, Vec<IslandVisualSpec>>> {
+    ISLAND_VISUALS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn surface_webtags() -> &'static Mutex<HashMap<isize, String>> {
+    SURFACE_WEBTAGS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn island_pointer_filter() -> &'static Mutex<Option<IslandPointerFilter>> {
+    ISLAND_POINTER_FILTER.get_or_init(|| Mutex::new(None))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IslandPointerPhase {
+    Down,
+    Move,
+    Up,
+    Cancel,
+}
+
+pub fn register_surface_webtag(hwnd: isize, webtag: &str) {
+    if webtag.is_empty() {
+        return;
+    }
+    if let Ok(mut tags) = surface_webtags().lock() {
+        tags.insert(hwnd, webtag.to_string());
+    }
+}
+
+pub fn unregister_surface_webtag(hwnd: isize) {
+    if let Ok(mut tags) = surface_webtags().lock() {
+        tags.remove(&hwnd);
+    }
+}
+
+pub fn set_island_pointer_filter(
+    filter: impl Fn(&str, IslandPointerPhase, f32, f32) -> bool + Send + Sync + 'static,
+) {
+    if let Ok(mut slot) = island_pointer_filter().lock() {
+        *slot = Some(Arc::new(filter));
+    }
+}
+
+pub fn consume_island_pointer(
+    hwnd: windows::Win32::Foundation::HWND,
+    phase: IslandPointerPhase,
+    x: f32,
+    y: f32,
+) -> bool {
+    let tag = surface_webtags()
+        .lock()
+        .ok()
+        .and_then(|tags| tags.get(&(hwnd.0 as isize)).cloned());
+    let Some(tag) = tag else {
+        return false;
+    };
+    let filter = island_pointer_filter()
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone());
+    filter.is_some_and(|filter| filter(&tag, phase, x, y))
+}
+
+/// Stores island visuals for the next [`CompositionSurface::set_geometry`]
+/// commit. No DComp calls — apply happens on WebView2's own composition pass.
+pub fn queue_island_visuals(webtag_key: &str, visuals: Vec<IslandVisualSpec>) {
+    if let Ok(mut queued) = island_visuals().lock() {
+        queued.insert(webtag_key.to_string(), visuals);
+    }
+}
+
+pub fn queued_island_visuals(webtag_key: &str) -> Vec<IslandVisualSpec> {
+    island_visuals()
+        .lock()
+        .ok()
+        .and_then(|queued| queued.get(webtag_key).cloned())
+        .unwrap_or_default()
+}
 
 /// How a webview's controller is attached to the host window tree.
 pub(crate) enum HostingMode {
@@ -48,8 +141,10 @@ pub(crate) struct CompositionSurface {
     /// Last applied wedge backdrop color (`0xAARGB`; alpha 0 = no wedges).
     corner_color: u32,
     /// Last applied bounds/visibility, replayed after a recreation.
-    bounds: RECT,
+    pub(crate) bounds: RECT,
     visible: bool,
+    /// WebTag key used to look up queued island visuals on each geometry commit.
+    webtag_key: String,
 }
 
 static COMPOSITION_HOSTING: std::sync::atomic::AtomicBool =
@@ -134,6 +229,7 @@ fn create_composition_surface(
                 corner_color: 0,
                 bounds,
                 visible: false,
+                webtag_key: String::new(),
             }),
         ))
     })();
@@ -244,7 +340,7 @@ impl CompositionSurface {
         self.input_tokens = tokens;
         self.parent = parent;
         let bounds = self.bounds;
-        self.set_geometry(base, bounds, None)?;
+        self.set_geometry(base, bounds, None, &self.webtag_key.clone())?;
         if self.visible {
             self.set_visible(base, true)?;
         }
@@ -260,6 +356,7 @@ impl CompositionSurface {
         base: &ICoreWebView2Controller,
         bounds: RECT,
         corners: Option<([i32; 4], u32)>,
+        webtag_key: &str,
     ) -> StdResult<()> {
         // Self-heal here too: the main surface's own parent window never gets
         // a reparent command, so a surface killed elsewhere would otherwise
@@ -271,8 +368,15 @@ impl CompositionSurface {
                 self.corner_color = corner_color;
             }
             let parent = self.parent;
+            if !webtag_key.is_empty() {
+                self.webtag_key = webtag_key.to_string();
+            }
             return self.ensure_alive(parent, base).map(|_| ());
         }
+        if !webtag_key.is_empty() {
+            self.webtag_key = webtag_key.to_string();
+        }
+        register_surface_webtag(self.hwnd.0 as isize, &self.webtag_key);
         let (radii, corner_color) = corners.unwrap_or((self.radii, self.corner_color));
         let width = (bounds.right - bounds.left).max(0);
         let height = (bounds.bottom - bounds.top).max(0);
@@ -298,8 +402,17 @@ impl CompositionSurface {
         self.bounds = bounds;
         self.radii = radii;
         self.corner_color = corner_color;
+        let island = queued_island_visuals(webtag_key);
         self.dcomp
-            .apply_geometry(width, height, radii, corner_color)
+            .apply_geometry(width, height, radii, corner_color, &island)
+    }
+
+    /// Blits a decoded frame onto the island video visual. No DComp Commit.
+    pub(crate) fn present_island_video_frame(
+        &mut self,
+        frame: &dcomp::IslandVideoFrame,
+    ) -> StdResult<()> {
+        self.dcomp.present_island_video_frame(frame)
     }
 
     /// Visibility is window-level first: hiding only hides the surface
@@ -388,8 +501,130 @@ impl CompositionSurface {
     /// window's owner); called from `cleanup_state` after `Controller.Close`.
     /// The wndproc's WM_DESTROY arm revokes the OLE drop target.
     pub(crate) fn destroy(&self) {
+        unregister_surface_webtag(self.hwnd.0 as isize);
         unsafe {
             let _ = WindowsAndMessaging::DestroyWindow(self.hwnd);
         }
+    }
+}
+
+/// Finds the `LingXiaWebViewSurface` child of `parent` (host client HWND).
+pub fn find_composition_surface_hwnd(parent: isize) -> Option<isize> {
+    unsafe {
+        let found = WindowsAndMessaging::FindWindowExW(
+            Some(HWND(parent as *mut _)),
+            None,
+            windows::core::w!("LingXiaWebViewSurface"),
+            None,
+        )
+        .ok()?;
+        if found.0.is_null() {
+            None
+        } else {
+            Some(found.0 as isize)
+        }
+    }
+}
+
+/// `PrintWindow(PW_RENDERFULLCONTENT)` of the DComp target HWND so island
+/// visuals above `webview_visual` are in the buffer. Plain BitBlt misses
+/// `WS_EX_NOREDIRECTIONBITMAP` surfaces.
+pub fn capture_composition_surface_bgra(hwnd: isize) -> StdResult<CompositionSurfacePixels> {
+    use windows::Win32::Graphics::Gdi::{
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateCompatibleBitmap, CreateCompatibleDC,
+        DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC, SelectObject,
+    };
+    use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
+    use windows::Win32::UI::WindowsAndMessaging::PW_RENDERFULLCONTENT;
+
+    unsafe {
+        let hwnd = HWND(hwnd as *mut _);
+        let mut rect = RECT::default();
+        WindowsAndMessaging::GetClientRect(hwnd, &mut rect).map_err(|err| {
+            WebViewError::WebView(format!("GetClientRect composition surface failed: {err}"))
+        })?;
+        let width = (rect.right - rect.left).max(0);
+        let height = (rect.bottom - rect.top).max(0);
+        if width == 0 || height == 0 {
+            return Err(WebViewError::WebView(
+                "composition surface has zero size".to_string(),
+            ));
+        }
+        let screen = GetDC(None);
+        let memdc = CreateCompatibleDC(Some(screen));
+        let bmp = CreateCompatibleBitmap(screen, width, height);
+        let old = SelectObject(memdc, bmp.into());
+        let printed = PrintWindow(hwnd, memdc, PRINT_WINDOW_FLAGS(PW_RENDERFULLCONTENT)).as_bool();
+        let mut info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bgra = vec![0u8; (width * height * 4) as usize];
+        let copied = if printed {
+            GetDIBits(
+                memdc,
+                bmp,
+                0,
+                height as u32,
+                Some(bgra.as_mut_ptr() as *mut _),
+                &mut info,
+                DIB_RGB_COLORS,
+            )
+        } else {
+            0
+        };
+        SelectObject(memdc, old);
+        let _ = DeleteObject(bmp.into());
+        let _ = DeleteDC(memdc);
+        ReleaseDC(None, screen);
+        if copied == 0 {
+            return Err(WebViewError::WebView(
+                "PrintWindow/GetDIBits of LingXiaWebViewSurface failed".to_string(),
+            ));
+        }
+        Ok(CompositionSurfacePixels {
+            width: width as u32,
+            height: height as u32,
+            bgra,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{IslandVisualSpec, queue_island_visuals, queued_island_visuals};
+
+    #[test]
+    fn queued_island_visuals_are_visible_to_the_geometry_commit() {
+        queue_island_visuals(
+            "test-island-queue",
+            vec![IslandVisualSpec {
+                id: "lx-video-1".into(),
+                kind: "video".into(),
+                offset_x: 8.0,
+                offset_y: 40.0,
+                width: 8,
+                height: 8,
+                dest_width: 8.0,
+                dest_height: 8.0,
+                color: 0xff10_1010,
+                text: None,
+                hwnd: None,
+                pixels: None,
+            }],
+        );
+        let queued = queued_island_visuals("test-island-queue");
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0].id, "lx-video-1");
+        assert_eq!(queued[0].kind, "video");
+        assert!(queued[0].hwnd.is_none());
     }
 }

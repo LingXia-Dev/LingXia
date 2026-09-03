@@ -42,6 +42,49 @@ export interface LxVideoProps {
   pageBindings?: Record<string, string>;
 }
 
+export interface LxNativeRootProps {
+  id?: string;
+  automationId?: string;
+  class?: string;
+  style?: CSSProperties;
+  fullscreenScope?: 'root' | 'none';
+  pointerEvents?: 'auto' | 'none' | 'box-only' | 'box-none';
+  hidden?: boolean;
+  hiddenTransition?: 'none' | 'fade';
+}
+
+export interface LxNativeViewProps {
+  id?: string;
+  class?: string;
+  style?: CSSProperties;
+  pointerEvents?: 'auto' | 'none' | 'box-only' | 'box-none';
+  role?: 'group' | 'region' | 'status' | 'presentation' | 'none';
+}
+
+export interface LxNativeCoverProps extends LxNativeViewProps {
+  scrim?: 'none' | 'top' | 'bottom' | 'full';
+  scrimOpacity?: number;
+}
+
+export interface LxNativeTextProps {
+  id?: string;
+  class?: string;
+  style?: CSSProperties;
+  maxLines?: number;
+  dir?: 'ltr' | 'rtl' | 'auto';
+}
+
+export interface LxNativeButtonProps {
+  id?: string;
+  class?: string;
+  style?: CSSProperties;
+  label?: string;
+  icon?: string | { resource: unknown };
+  intent?: 'neutral' | 'accent' | 'destructive';
+  emphasis?: 'primary' | 'secondary' | 'quiet';
+  size?: 'compact' | 'regular';
+}
+
 type LxMediaSwiperItem =
   | { id?: string; type: 'image'; src: string }
   | {

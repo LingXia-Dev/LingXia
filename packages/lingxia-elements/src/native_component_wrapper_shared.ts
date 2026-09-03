@@ -238,7 +238,8 @@ export function buildVideoNativeAttrs(
   if (options.autoplay) result.autoplay = "";
   if (options.loop) result.loop = "";
   if (options.muted) result.muted = "";
-  if (options.controls) result.controls = "";
+  if (options.controls === false) result.controls = "false";
+  else if (options.controls) result.controls = "";
   if (options.progressBar === false) result["progress-bar"] = "false";
   if (options.live) result.live = "";
   if (options.volume !== undefined) result.volume = options.volume;

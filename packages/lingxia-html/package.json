@@ -16,16 +16,18 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "npm run clean && npm --prefix ../lingxia-bridge run build && npm --prefix ../lingxia-page-runtime run build && tsc -p tsconfig.json && node ./scripts/build-html-global.mjs",
+    "build": "npm run clean && npm --prefix ../lingxia-bridge run build && npm --prefix ../lingxia-elements run build && npm --prefix ../lingxia-page-runtime run build && tsc -p tsconfig.json && node ./scripts/build-html-global.mjs",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@lingxia/bridge": "~0.14.0",
+    "@lingxia/elements": "~0.14.0",
     "@lingxia/page-runtime": "~0.14.0"
   },
   "devDependencies": {
     "@lingxia/bridge": "file:../lingxia-bridge",
+    "@lingxia/elements": "file:../lingxia-elements",
     "@lingxia/page-runtime": "file:../lingxia-page-runtime",
     "rolldown": "^1.2.4",
     "typescript": "^5.7.2"

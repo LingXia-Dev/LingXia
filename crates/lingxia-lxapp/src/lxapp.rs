@@ -47,7 +47,7 @@ mod runtime_bootstrap;
 mod runtime_ops;
 pub(crate) mod runtime_registry;
 mod scheme;
-mod security;
+pub(crate) mod security;
 mod surface;
 pub use security::{LxAppSecurityPrivilege, is_public_network_address};
 pub mod tabbar;
@@ -2240,6 +2240,11 @@ impl LxApp {
             scripts.extend(app_scripts.iter().cloned());
         }
         scripts
+    }
+
+    /// Hosts apply this list to island media URLs (`src` / `poster` / quality / commands).
+    pub fn trusted_network_domains(&self) -> Vec<String> {
+        self.config.trusted_domains().to_vec()
     }
 
     /// Check if a domain is allowed for network access

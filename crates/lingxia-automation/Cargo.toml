@@ -70,6 +70,9 @@ rong_modules = { workspace = true, optional = true, default-features = false, fe
 rong = { workspace = true, features = ["quickjs"] }
 rong_modules = { workspace = true, optional = true, default-features = false, features = ["quickjs", "tls-aws-lc"] }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+lingxia-windows-contract = { workspace = true }
+
 [target.'cfg(target_os = "ios")'.dependencies]
 rong_modules = { workspace = true, optional = true, default-features = false, features = ["tls-ring"] }
 

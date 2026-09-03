@@ -78,19 +78,42 @@ function createDebugObject(flags: typeof debugFlags): typeof debugFlags {
   return target;
 }
 
+function drainHostEarlyNativeMessages(): void {
+  if (typeof window === "undefined") return;
+  const hostQueue = window.__LingXiaEarlyNativeMessages;
+  if (!Array.isArray(hostQueue) || hostQueue.length === 0) return;
+  window.__LingXiaEarlyNativeMessages = [];
+  for (const message of hostQueue) {
+    if (typeof message === "string") {
+      earlyNativeMessages.push(message);
+    }
+  }
+}
+
 function installEarlyReceiver(): void {
   if (typeof window === "undefined") return;
-  if (typeof window[GLOBAL_RECEIVER_NAME] === "function") return;
+  drainHostEarlyNativeMessages();
+  const existing = window[GLOBAL_RECEIVER_NAME];
+  if (typeof existing === "function") {
+    if (earlyNativeMessages.length === 0) return;
+    const queued = earlyNativeMessages.splice(0, earlyNativeMessages.length);
+    for (const message of queued) {
+      try {
+        existing(message);
+      } catch (err) {
+        warn("Failed to replay queued native message:", err);
+      }
+    }
+    return;
+  }
   window[GLOBAL_RECEIVER_NAME] = (message: string): void => {
     earlyNativeMessages.push(message);
   };
 }
 
-function activateReceiver(receiver: (message: string) => void): void {
-  if (typeof window === "undefined") return;
-  window[GLOBAL_RECEIVER_NAME] = receiver;
+function flushEarlyNativeMessages(receiver: (message: string) => void): void {
+  drainHostEarlyNativeMessages();
   if (earlyNativeMessages.length === 0) return;
-
   const queued = earlyNativeMessages.splice(0, earlyNativeMessages.length);
   for (const message of queued) {
     try {
@@ -99,6 +122,17 @@ function activateReceiver(receiver: (message: string) => void): void {
       warn("Failed to replay queued native message:", err);
     }
   }
+}
+
+function activateReceiver(receiver: (message: string) => void): void {
+  if (typeof window === "undefined") return;
+  // Drain the inject-script queue on every inbound call so late
+  // `__LingXiaEarlyNativeMessages` items flush without rebinding.
+  window[GLOBAL_RECEIVER_NAME] = (message: string): void => {
+    flushEarlyNativeMessages(receiver);
+    receiver(message);
+  };
+  flushEarlyNativeMessages(receiver);
 }
 
 function isDebugEnabled(flag: keyof typeof debugFlags): boolean {
@@ -1615,7 +1649,8 @@ function hasNativeComponentHandler(): boolean {
   if (typeof window === "undefined") return false;
   return !!(
     window.webkit?.messageHandlers?.NativeComponent ||
-    window.NativeComponentBridge?.postMessage
+    window.NativeComponentBridge?.postMessage ||
+    window.LingXiaProxy?.nativeComponentUpdate
   );
 }
 
@@ -1627,6 +1662,21 @@ function postNativeComponentMessage(message: NativeComponentMessage): void {
     }
     if (window.NativeComponentBridge?.postMessage) {
       window.NativeComponentBridge.postMessage(stringifyForNative(message));
+      return;
+    }
+    const update = window.LingXiaProxy?.nativeComponentUpdate;
+    if (typeof update === "function") {
+      const componentId = message.id || "island";
+      const payload = stringifyForNative({ ...message, componentId });
+      try {
+        (update as (payload: string) => void).call(window.LingXiaProxy, payload);
+      } catch {
+        (update as (componentId: string, payload: string) => void).call(
+          window.LingXiaProxy,
+          componentId,
+          payload
+        );
+      }
       return;
     }
   } catch (e) {

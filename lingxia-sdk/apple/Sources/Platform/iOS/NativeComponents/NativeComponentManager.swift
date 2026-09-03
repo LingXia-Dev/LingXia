@@ -57,6 +57,7 @@ final class NativeComponentManager {
     // Rust callback IDs for VideoContext event forwarding
     private var componentCallbacks: [String: UInt64] = [:]
     private let defaultPageId: String
+    private let appId: String
     private var factories: [String: LxNativeComponentFactory] = [:]
     private let eventSink: (_ payload: [String: Any]) -> Void
 
@@ -74,12 +75,14 @@ final class NativeComponentManager {
         scrollView: UIScrollView,
         hostView: UIView,
         webView: WKWebView,
+        appId: String,
         defaultPageId: String,
         eventSink: @escaping (_ payload: [String: Any]) -> Void
     ) {
         self.scrollView = scrollView
         self.hostView = hostView
         self.webView = webView
+        self.appId = appId
         self.defaultPageId = defaultPageId
         self.eventSink = eventSink
     }
@@ -88,8 +91,24 @@ final class NativeComponentManager {
         factories[type] = factory
     }
 
+    private var island: InlineNativeIsland?
+    /// Island video leaves, keyed by author id: they answer `lx.createVideoContext`
+    /// commands and callbacks exactly like a legacy overlay component.
+    private var islandVideos: [String: VideoComponent] = [:]
+
     func handle(message: [String: Any]) {
         guard let action = message["action"] as? String else { return }
+        if island == nil, InlineNativeIsland.isIslandAction(action), let hostView {
+            island = InlineNativeIsland(host: hostView, manager: self, appId: appId) { [weak self] id, event, detail in
+                self?.emitIslandEvent(componentId: id, event: event, detail: detail)
+            }
+        }
+        if island?.handle(message: message) == true {
+            island?.drainOutgoing().forEach { payload in
+                emitIslandPayload(payload)
+            }
+            return
+        }
 
         switch action {
         case "component.mount":
@@ -364,7 +383,75 @@ final class NativeComponentManager {
     }
 
     func componentView(componentId: String) -> UIView? {
-        return components[componentId]?.view
+        return components[componentId]?.view ?? islandVideos[componentId]?.view
+    }
+
+    func emitIslandEvent(componentId: String, event: String, detail: [String: Any] = [:]) {
+        updatePlaybackIntent(componentId: componentId, event: event)
+        let payload: [String: Any] = [
+            "action": "component.event",
+            "id": componentId,
+            "componentId": componentId,
+            "event": event,
+            "detail": detail,
+            "pageId": componentPage[componentId] ?? defaultPageId,
+        ]
+        emitEventToView(componentId: componentId, payload: payload)
+        forwardEventToCallback(componentId: componentId, payload: payload)
+    }
+
+    private func emitIslandPayload(_ payload: [String: Any]) {
+        if let id = payload["id"] as? String {
+            emitEventToView(componentId: id, payload: payload)
+            return
+        }
+        eventSink(payload)
+    }
+
+    /// Bind an island video leaf to the command/callback registry so
+    /// `lx.createVideoContext(id)` reaches it.
+    func attachIslandVideo(id: String, component: VideoComponent) {
+        islandVideos[id] = component
+        ComponentRouter.shared.register(componentId: id, manager: self)
+    }
+
+    func detachIslandVideo(id: String) {
+        guard islandVideos.removeValue(forKey: id) != nil else { return }
+        ComponentRouter.shared.unregister(componentId: id)
+        componentCallbacks.removeValue(forKey: id)
+        componentsPendingAutoResume.remove(id)
+        componentPlaybackIntent.removeValue(forKey: id)
+    }
+
+    /// WebKit can stack a WKChildScrollView above the overlay host at any time;
+    /// the hit-test swizzler reclaims taps for island leaves the same way it does
+    /// for overlay components.
+    func registerIslandTouchTarget(_ view: UIView) {
+        guard let scrollView else { return }
+        WKContentViewHitTestSwizzler.shared.registerNativeView(view, in: scrollView)
+    }
+
+    func unregisterIslandTouchTarget(_ view: UIView) {
+        WKContentViewHitTestSwizzler.shared.unregisterNativeView(view)
+    }
+
+    private func pauseIslandVideos() {
+        for (id, video) in islandVideos {
+            if componentsPendingAutoResume.contains(id) || componentPlaybackIntent[id] == true {
+                componentsPendingAutoResume.insert(id)
+            } else {
+                componentsPendingAutoResume.remove(id)
+            }
+            video.handleCommand(name: "pause", params: nil)
+        }
+        island?.setPageActive(false)
+    }
+
+    private func resumeIslandVideos() {
+        island?.setPageActive(true)
+        for (id, video) in islandVideos where componentsPendingAutoResume.remove(id) != nil {
+            video.handleCommand(name: "play", params: nil)
+        }
     }
 
     func emitComponentEvent(componentId: String, event: String, detail: [String: Any] = [:]) {
@@ -375,7 +462,8 @@ final class NativeComponentManager {
     }
 
     func setStreamDecoderActive(componentId: String, active: Bool) {
-        (components[componentId] as? VideoComponent)?.setStreamDecoderActive(active)
+        let video = (components[componentId] as? VideoComponent) ?? islandVideos[componentId]
+        video?.setStreamDecoderActive(active)
     }
 
     private func handlePageLifecycle(_ parameters: [String: Any]) {
@@ -385,13 +473,17 @@ final class NativeComponentManager {
         case "inactive":
             if inactivePages.insert(pageId).inserted {
                 pausePage(pageId)
+                pauseIslandVideos()
             }
         case "active":
             inactivePages.remove(pageId)
             resumePage(pageId)
+            resumeIslandVideos()
         case "destroyed":
             inactivePages.remove(pageId)
             unmountPage(pageId)
+            island?.teardown()
+            island = nil
         default:
             break
         }
@@ -402,6 +494,8 @@ final class NativeComponentManager {
         inactivePages.removeAll()
         componentsPendingAutoResume.removeAll()
         componentPlaybackIntent.removeAll()
+        island?.teardown()
+        island = nil
         let allIds = Array(components.keys)
         allIds.forEach { id in
             unmountComponent(id: id, pageId: componentPage[id])
@@ -428,31 +522,30 @@ final class NativeComponentManager {
         emitEventToView(componentId: componentId, payload: payload)
         dispatchPageFunc(componentId: componentId, payload: payload)
 
-        // Also forward to Rust callback if registered (for VideoContext)
-        let eventName = payload["event"] as? String
-        let shouldForwardToCallback: Bool = {
-            switch eventName {
-            case "waiting", "playrequest", "playing", "pause", "stop", "ended", "error", "seeked", "seeking":
-                return true
-            default:
-                return false
-            }
-        }()
+        forwardEventToCallback(componentId: componentId, payload: payload)
+    }
 
-        if shouldForwardToCallback, let callbackId = componentCallbacks[componentId] {
-            if let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
-               let enrichedJson = String(data: data, encoding: .utf8) {
-                os_log(
-                    "NativeComponent callback event componentId=%{public}@ event=%{public}@ callbackId=%{public}@",
-                    log: nativeComponentLog,
-                    type: .debug,
-                    componentId,
-                    String(payload["event"] as? String ?? ""),
-                    String(callbackId)
-                )
-                _ = onCallback(callbackId, true, enrichedJson)
-            }
+    /// Forward playback events to the Rust callback backing `lx.createVideoContext`.
+    private func forwardEventToCallback(componentId: String, payload: [String: Any]) {
+        switch payload["event"] as? String {
+        case "waiting", "playrequest", "playing", "pause", "stop", "ended", "error", "seeked", "seeking":
+            break
+        default:
+            return
         }
+        guard let callbackId = componentCallbacks[componentId],
+              let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
+              let enrichedJson = String(data: data, encoding: .utf8)
+        else { return }
+        os_log(
+            "NativeComponent callback event componentId=%{public}@ event=%{public}@ callbackId=%{public}@",
+            log: nativeComponentLog,
+            type: .debug,
+            componentId,
+            String(payload["event"] as? String ?? ""),
+            String(callbackId)
+        )
+        _ = onCallback(callbackId, true, enrichedJson)
     }
 
     private func emitEventToView(componentId: String, payload: [String: Any]) {
@@ -718,8 +811,12 @@ final class NativeComponentManager {
     }
 
     func dispatchCommand(componentId: String, name: String, params: [String: Any]?) -> Bool {
-        guard let component = components[componentId] else { return false }
-        component.handleCommand(name: name, params: params)
+        if let component = components[componentId] {
+            component.handleCommand(name: name, params: params)
+            return true
+        }
+        guard let video = islandVideos[componentId] else { return false }
+        video.handleCommand(name: name, params: params)
         return true
     }
 
@@ -983,12 +1080,25 @@ final class WKContentViewHitTestSwizzler {
             guard let superview = view.superview else { continue }
             // Convert point to the native view's coordinate space
             let pointInView = contentView.convert(point, to: superview)
-            if view.frame.contains(pointInView) && !view.isHidden && view.alpha > 0.01 && view.isUserInteractionEnabled {
+            if view.frame.contains(pointInView) && Self.isEffectivelyVisible(view) && view.isUserInteractionEnabled {
                 // Return the view that should receive touches
                 return view.hitTest(superview.convert(pointInView, to: view), with: nil) ?? view
             }
         }
         return nil
+    }
+
+    /// A view on a page that is merely inactive stays registered, so checking the
+    /// view's own flag is not enough: a hidden ancestor must disqualify it too, or
+    /// it steals touches meant for the page now on screen.
+    private static func isEffectivelyVisible(_ view: UIView) -> Bool {
+        guard view.window != nil else { return false }
+        var node: UIView? = view
+        while let current = node {
+            if current.isHidden || current.alpha <= 0.01 { return false }
+            node = current.superview
+        }
+        return true
     }
 
     private static func performSwizzle() {

@@ -474,6 +474,7 @@ pub(super) fn mount_swiper_on_ui(
             anim: None,
             load_seq: 0,
         }),
+        island_kind: None,
         doc_rect,
         state,
         last_value: String::new(),
@@ -746,7 +747,7 @@ fn build_video_player(
     config_muted: bool,
 ) -> Option<Arc<VideoPlayer>> {
     let sink = swiper_video_sink(key, index);
-    let player = VideoPlayer::new(window, sink)?;
+    let player = VideoPlayer::new(Some(window), sink)?;
     player.set_looping(false);
     player.set_muted(item.muted.unwrap_or(config_muted));
     if let Some(source) = resolve_native_media_source(appid, &item.src) {

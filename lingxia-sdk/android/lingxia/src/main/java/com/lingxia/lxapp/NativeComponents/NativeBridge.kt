@@ -45,6 +45,7 @@ internal class NativeBridge private constructor(
 
         val manager = NativeComponentManager(
             hostView = host,
+            appId = webView.appId ?: "app",
             defaultPageId = pageKey,
             eventSink = { sendEventToView(it) },
             webView = webView

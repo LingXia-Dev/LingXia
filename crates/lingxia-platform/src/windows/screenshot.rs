@@ -421,6 +421,33 @@ async fn visible_webview_screenshots_for_window(
             _ => continue,
         };
 
+        let composition_capture = lingxia_webview::platform::windows::find_webview_handler(&webtag)
+            .filter(|handler| handler.is_composition_hosted())
+            .map(|handler| {
+                handler
+                    .capture_composition_surface()
+                    .map_err(|err| err.to_string())
+                    .and_then(|capture| {
+                        bgra_top_down_image(capture.width, capture.height, &capture.bgra)
+                            .and_then(|image| encode_rgba_png(capture.width, capture.height, image))
+                            .map_err(|err| err.to_string())
+                    })
+            })
+            .transpose();
+
+        match composition_capture {
+            Ok(Some(bytes)) => {
+                captures.push((snapshot, bytes));
+                continue;
+            }
+            Ok(None) => {}
+            Err(err) => log::warn!(
+                "failed to capture Windows composition surface for {}; falling back to WebView CapturePreview: {}",
+                webtag.key(),
+                err
+            ),
+        }
+
         let Some(webview) = webview_runtime::find_webview(&webtag) else {
             continue;
         };

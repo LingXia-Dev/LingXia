@@ -881,6 +881,35 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getLxAppInfo<'a>(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_validateInlineNativeMediaUrls<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+    urls_json: JString<'a>,
+) -> JString<'a> {
+    env.with_env(|env| -> Result<JString, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let urls_json: String = urls_json.try_to_string(env)?;
+        let result = serde_json::from_str::<Vec<String>>(&urls_json)
+            .map_err(|err| format!("invalid media URL list: {err}"))
+            .and_then(|urls| {
+                let app = lxapp::try_get(&appid)
+                    .ok_or_else(|| format!("LxApp is not registered: {appid}"))?;
+                lxapp::inline_native::validate_media_urls(
+                    &urls,
+                    &app.trusted_network_domains(),
+                    lxapp::is_dev_session(),
+                )
+            });
+        match result {
+            Ok(()) => Ok(JString::null()),
+            Err(message) => env.new_string(message),
+        }
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_getLxAppMoreActions<'a>(
     mut env: EnvUnowned<'a>,
     _class: JClass<'a>,

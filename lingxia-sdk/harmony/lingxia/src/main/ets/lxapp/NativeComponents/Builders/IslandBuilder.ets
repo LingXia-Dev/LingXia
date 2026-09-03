@@ -1,0 +1,404 @@
+/**
+ * Kind-specific ArkUI nodes for the inline native island.
+ * Cover/Button stay recipes on the wire (view/tappable); hosts factory
+ * only root/view/text/tappable plus video.native.
+ */
+import { NativeComponentParams, registerNativeComponentBuilder } from '../NativeComponentNodeController';
+import { NativeComponentRecord, NativeComponentValue } from '../NativeComponentTypes';
+import { onNativeComponentEventFromBuilder } from '../NativeBridgeInternal';
+import { getBooleanProp, getNumberProp, getStringProp } from './BuilderUtils';
+
+function cssNumber(value: NativeComponentValue, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return fallback;
+}
+
+class IslandGradientOptions {
+  angle: number = 180;
+  colors: Array<[string, number]> = [];
+
+  constructor(colors: Array<[string, number]>) {
+    this.colors = colors;
+  }
+}
+
+function sourceDetail(source: string): NativeComponentRecord {
+  const detail = new NativeComponentRecord();
+  detail.set('source', source);
+  return detail;
+}
+
+@Component
+struct IslandViewNode {
+  @Prop params: NativeComponentParams;
+
+  build() {
+    Stack() {
+      Column()
+        .width('100%')
+        .height('100%')
+        .linearGradient(this.scrimGradient())
+    }
+    .width('100%')
+    .height('100%')
+    .id(this.automationId())
+    .backgroundColor(this.nodeBackgroundColor())
+    .borderRadius(this.styleNumber('borderRadius', 0))
+    .border({
+      width: this.styleNumber('borderWidth', 0),
+      color: this.styleString('borderColor', '#00000000')
+    })
+    .opacity(Math.max(0, Math.min(1, this.styleNumber('opacity', 1))))
+    .hitTestBehavior(this.hitMode())
+    .accessibilityText(this.ariaLabel())
+    .accessibilityDescription(this.ariaDescription())
+    .accessibilityLevel(this.nodeAccessibilityLevel())
+  }
+
+  private scrimGradient(): IslandGradientOptions {
+    const props = this.params.props;
+    const paint = props?.get('scrimPaint');
+    let scrim = 'none';
+    let opacity = 0.6;
+    if (paint && typeof paint === 'object') {
+      const record = paint as Record<string, Object>;
+      const name = record['scrim'];
+      if (typeof name === 'string') {
+        scrim = name;
+      }
+      const rawOpacity = record['opacity'];
+      if (typeof rawOpacity === 'number') {
+        opacity = rawOpacity;
+      }
+    }
+    const color = `#${Math.round(opacity * 255).toString(16).padStart(2, '0')}000000`;
+    if (scrim === 'top') {
+      return new IslandGradientOptions([[color, 0], ['#00000000', 1]]);
+    }
+    if (scrim === 'bottom') {
+      return new IslandGradientOptions([['#00000000', 0], [color, 1]]);
+    }
+    if (scrim === 'full') {
+      return new IslandGradientOptions([[color, 0], [color, 1]]);
+    }
+    return new IslandGradientOptions([['#00000000', 0], ['#00000000', 1]]);
+  }
+
+  private hitMode(): HitTestMode {
+    const mode = getStringProp(this.params.props, 'pointerEvents', 'box-none');
+    if (mode === 'none' || mode === 'box-none') {
+      return HitTestMode.None;
+    }
+    return HitTestMode.Default;
+  }
+
+  private styleRecord(): Record<string, NativeComponentValue> | undefined {
+    const value = this.params.props?.get('nativeStyle');
+    return value && typeof value === 'object' ? value as Record<string, NativeComponentValue> : undefined;
+  }
+
+  private styleNumber(key: string, fallback: number): number {
+    const record = this.styleRecord();
+    const value = record ? record[key] : undefined;
+    return cssNumber(value, fallback);
+  }
+
+  private styleString(key: string, fallback: string): string {
+    const record = this.styleRecord();
+    const value = record ? record[key] : undefined;
+    return typeof value === 'string' && value.length > 0 ? value : fallback;
+  }
+
+  private nodeBackgroundColor(): string {
+    const record = this.styleRecord();
+    const value = record ? record['backgroundColor'] : undefined;
+    return typeof value === 'string' && value.length > 0 ? value : '#00000000';
+  }
+
+  private ariaLabel(): string {
+    return getStringProp(this.params.props, 'aria-label', getStringProp(this.params.props, 'ariaLabel', ''));
+  }
+
+  private ariaDescription(): string {
+    return getStringProp(this.params.props, 'aria-description', getStringProp(this.params.props, 'ariaDescription', ''));
+  }
+
+  private automationId(): string {
+    return getStringProp(this.params.props, 'automationId', '');
+  }
+
+  private nodeAccessibilityLevel(): string {
+    return getBooleanProp(this.params.props, 'aria-hidden', false) ||
+      getBooleanProp(this.params.props, 'ariaHidden', false) ? 'no-hide-descendants' : 'auto';
+  }
+}
+
+@Component
+struct IslandTextNode {
+  @Prop params: NativeComponentParams;
+
+  build() {
+    Text(getStringProp(this.params.props, 'text', ''))
+      .fontColor(this.styleString('color', '#FFFFFF'))
+      .fontSize(this.styleNumber('fontSize', 12))
+      .lineHeight(this.styleNumber('lineHeight', this.styleNumber('fontSize', 12) * 1.2))
+      .fontWeight(this.fontWeight())
+      .maxLines(Math.max(1, Math.round(getNumberProp(this.params.props, 'maxLines', 1000))))
+      .textOverflow({ overflow: TextOverflow.Ellipsis })
+      .textAlign(this.textAlign())
+      .width('100%')
+      .height('100%')
+      .id(this.automationId())
+      .hitTestBehavior(HitTestMode.None)
+      .accessibilityText(this.ariaLabel())
+      .accessibilityDescription(this.ariaDescription())
+      .accessibilityLevel(this.nodeAccessibilityLevel())
+      .opacity(this.nodeOpacity())
+  }
+
+  private styleRecord(): Record<string, NativeComponentValue> | undefined {
+    const value = this.params.props?.get('nativeStyle');
+    return value && typeof value === 'object' ? value as Record<string, NativeComponentValue> : undefined;
+  }
+
+  private styleString(key: string, fallback: string): string {
+    const direct = this.params.props?.get(key);
+    if (typeof direct === 'string' && direct.length > 0) {
+      return direct;
+    }
+    const record = this.styleRecord();
+    const value = record ? record[key] : undefined;
+    return typeof value === 'string' && value.length > 0 ? value : fallback;
+  }
+
+  private styleNumber(key: string, fallback: number): number {
+    const direct = this.params.props?.get(key);
+    const directNumber = cssNumber(direct, Number.NaN);
+    if (Number.isFinite(directNumber)) {
+      return directNumber;
+    }
+    const record = this.styleRecord();
+    const value = record ? record[key] : undefined;
+    return cssNumber(value, fallback);
+  }
+
+  private fontWeight(): FontWeight {
+    const value = this.params.props?.get('fontWeight');
+    if ((typeof value === 'number' && value >= 600) || value === 'bold' || value === 'bolder') {
+      return FontWeight.Bold;
+    }
+    return FontWeight.Normal;
+  }
+
+  private textAlign(): TextAlign {
+    const value = getStringProp(this.params.props, 'textAlign', 'start');
+    if (value === 'center') return TextAlign.Center;
+    if (value === 'end') return TextAlign.End;
+    return TextAlign.Start;
+  }
+
+  private ariaLabel(): string {
+    return getStringProp(this.params.props, 'aria-label', getStringProp(this.params.props, 'ariaLabel', ''));
+  }
+
+  private ariaDescription(): string {
+    return getStringProp(this.params.props, 'aria-description', getStringProp(this.params.props, 'ariaDescription', ''));
+  }
+
+  private automationId(): string {
+    return getStringProp(this.params.props, 'automationId', '');
+  }
+
+  private nodeAccessibilityLevel(): string {
+    return getBooleanProp(this.params.props, 'aria-hidden', false) ||
+      getBooleanProp(this.params.props, 'ariaHidden', false) ? 'no-hide-descendants' : 'auto';
+  }
+
+  private nodeOpacity(): number {
+    return Math.max(0, Math.min(1, this.styleNumber('opacity', 1)));
+  }
+}
+
+@Component
+struct IslandTappableNode {
+  @Prop params: NativeComponentParams;
+
+  build() {
+    Button(this.label())
+      .width('100%')
+      .height('100%')
+      .id(this.automationId())
+      .backgroundColor(this.styleString('backgroundColor', this.nodeBackgroundColor()))
+      .fontColor(this.styleString('color', this.nodeForegroundColor()))
+      .fontSize(this.styleNumber(
+        'fontSize',
+        getStringProp(this.params.props, 'size', 'regular') === 'compact' ? 12 : 14
+      ))
+      .fontWeight(FontWeight.Bold)
+      .borderRadius(this.styleNumber('borderRadius', 10))
+      .border({
+        width: this.styleNumber('borderWidth', 0),
+        color: this.styleString('borderColor', '#00000000')
+      })
+      .enabled(this.nodeEnabled())
+      .hitTestBehavior(this.hitMode())
+      .accessibilityText(this.ariaLabel())
+      .accessibilityDescription(this.ariaDescription())
+      .accessibilityLevel(this.nodeAccessibilityLevel())
+      .onClick(() => {
+        if (!this.nodeEnabled()) return;
+        onNativeComponentEventFromBuilder(this.params.componentId, 'press', sourceDetail('pointer'));
+      })
+      .onFocus(() => {
+        onNativeComponentEventFromBuilder(this.params.componentId, 'focus', sourceDetail('keyboard'));
+      })
+      .onBlur(() => {
+        onNativeComponentEventFromBuilder(this.params.componentId, 'blur', sourceDetail('keyboard'));
+      })
+      .onHover((hovered: boolean) => {
+        onNativeComponentEventFromBuilder(
+          this.params.componentId,
+          hovered ? 'pointerenter' : 'pointerleave',
+          sourceDetail('pointer')
+        );
+      })
+  }
+
+  private label(): string {
+    if (getBooleanProp(this.params.props, 'loading', false)) {
+      return '…';
+    }
+    const props = this.params.props;
+    let text = getStringProp(props, 'label', '');
+    let iconName = getStringProp(props, 'icon', '');
+    const content = props?.get('content');
+    if (content && typeof content === 'object') {
+      const record = content as Record<string, Object>;
+      const contentText = record['text'];
+      if (typeof contentText === 'string') {
+        text = contentText;
+      }
+      const icon = record['icon'];
+      if (icon && typeof icon === 'object') {
+        const name = (icon as Record<string, Object>)['name'];
+        if (typeof name === 'string') {
+          iconName = name;
+        }
+      }
+    }
+    const icon = this.semanticIcon(iconName);
+    if (icon.length > 0 && text.length > 0) {
+      return getStringProp(props, 'iconPosition', 'start') === 'end'
+        ? `${text}  ${icon}`
+        : `${icon}  ${text}`;
+    }
+    return text.length > 0 ? text : icon;
+  }
+
+  private semanticIcon(name: string): string {
+    if (name === 'close') return '\u00D7';
+    if (name === 'play') return '\u25B6';
+    if (name === 'pause') return '\u2161';
+    if (name === 'mute') return '\uD83D\uDD07';
+    if (name === 'unmute') return '\uD83D\uDD0A';
+    if (name === 'fullscreen') return '\u26F6';
+    if (name === 'more') return '\u22EF';
+    return '';
+  }
+
+  private styleRecord(): Record<string, NativeComponentValue> | undefined {
+    const value = this.params.props?.get('nativeStyle');
+    return value && typeof value === 'object' ? value as Record<string, NativeComponentValue> : undefined;
+  }
+
+  private styleNumber(key: string, fallback: number): number {
+    const record = this.styleRecord();
+    return cssNumber(record ? record[key] : undefined, fallback);
+  }
+
+  private styleString(key: string, fallback: string): string {
+    const record = this.styleRecord();
+    const value = record ? record[key] : undefined;
+    return typeof value === 'string' && value.length > 0 ? value : fallback;
+  }
+
+  private nodeEnabled(): boolean {
+    return !getBooleanProp(this.params.props, 'disabled', false) &&
+      !getBooleanProp(this.params.props, 'loading', false);
+  }
+
+  private hitMode(): HitTestMode {
+    const mode = getStringProp(this.params.props, 'pointerEvents', 'auto');
+    return mode === 'none' || mode === 'box-none' ? HitTestMode.None : HitTestMode.Default;
+  }
+
+  private ariaLabel(): string {
+    return getStringProp(
+      this.params.props,
+      'aria-label',
+      getStringProp(this.params.props, 'ariaLabel', this.label())
+    );
+  }
+
+  private ariaDescription(): string {
+    return getStringProp(this.params.props, 'aria-description', getStringProp(this.params.props, 'ariaDescription', ''));
+  }
+
+  private automationId(): string {
+    return getStringProp(this.params.props, 'automationId', '');
+  }
+
+  private nodeAccessibilityLevel(): string {
+    return getBooleanProp(this.params.props, 'aria-hidden', false) ||
+      getBooleanProp(this.params.props, 'ariaHidden', false) ? 'no-hide-descendants' : 'auto';
+  }
+
+  private nodeBackgroundColor(): string {
+    const emphasis = getStringProp(this.params.props, 'emphasis', 'secondary');
+    if (emphasis === 'quiet') return '#00000000';
+    if (!this.nodeEnabled()) return '#FF9CA3AF';
+    const intent = getStringProp(this.params.props, 'intent', 'neutral');
+    if (intent === 'accent') return emphasis === 'secondary' ? '#502563EB' : '#FF2563EB';
+    if (intent === 'destructive') return emphasis === 'secondary' ? '#50DC2626' : '#FFDC2626';
+    return emphasis === 'secondary' ? '#50374151' : '#FF374151';
+  }
+
+  private nodeForegroundColor(): string {
+    const emphasis = getStringProp(this.params.props, 'emphasis', 'secondary');
+    if (emphasis !== 'quiet') return '#FFFFFFFF';
+    const intent = getStringProp(this.params.props, 'intent', 'neutral');
+    if (intent === 'accent') return '#FF2563EB';
+    if (intent === 'destructive') return '#FFDC2626';
+    return '#FF111827';
+  }
+}
+
+@Builder
+function islandViewBuilder(params: NativeComponentParams) {
+  IslandViewNode({ params: params })
+}
+
+@Builder
+function islandTextBuilder(params: NativeComponentParams) {
+  IslandTextNode({ params: params })
+}
+
+@Builder
+function islandTappableBuilder(params: NativeComponentParams) {
+  IslandTappableNode({ params: params })
+}
+
+export function registerIslandBuilders(): void {
+  registerNativeComponentBuilder('island/root', wrapBuilder(islandViewBuilder));
+  registerNativeComponentBuilder('island/view', wrapBuilder(islandViewBuilder));
+  registerNativeComponentBuilder('island/text', wrapBuilder(islandTextBuilder));
+  registerNativeComponentBuilder('island/tappable', wrapBuilder(islandTappableBuilder));
+}

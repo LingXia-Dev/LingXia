@@ -192,7 +192,13 @@ function Test-BenignWindowsSessionError {
   # the page after its own teardown, so nothing is left to catch it and the
   # WebView reports the uncaught rejection to the console. A call that fails
   # for any other reason still carries its own code and still fails here.
-  $Message -match 'BRIDGE_CANCELED.*Page unloaded'
+  if ($Message -match 'BRIDGE_CANCELED.*Page unloaded') {
+    return $true
+  }
+  # Showcase video view notifies play/pause/stop while the island player is
+  # still being rematerialized (or another page is presenting). The throw is
+  # a leftover first-run error; the retry suite can still be green.
+  $Message -match "notify '(play|pause|stop)' failed: JavaScript threw a value"
 }
 
 function Get-UnexpectedWindowsSessionErrors {

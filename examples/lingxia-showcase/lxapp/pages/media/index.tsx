@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLxPage } from '@lingxia/react';
-import { LxVideo } from '@lingxia/react';
+import { LxNativeRoot, LxVideo } from '@lingxia/react';
 import '../../tailwind.css';
 
 const SOURCE_OPTIONS = [
@@ -638,25 +638,32 @@ export default function MediaPage() {
                 </div>
               </div>
             </div>
-            <LxVideo
-              id={`media-video-${index}`}
-              src={item.path}
-              contentRotate={componentRotateValue}
-              objectFit={componentObjectFitValue}
-              controls
-              autoplay
-              muted
-              loop
+            <LxNativeRoot
               style={{
                 width: '100%',
-                display: 'block',
-                backgroundColor: 'black',
                 height:
                   item.displayWidth && item.displayHeight && item.displayHeight > item.displayWidth
                     ? '300px'
                     : '220px',
               }}
-            />
+            >
+              <LxVideo
+                id={`media-video-${index}`}
+                src={item.path}
+                contentRotate={componentRotateValue}
+                objectFit={componentObjectFitValue}
+                controls
+                autoplay
+                muted
+                loop
+                style={{
+                  width: '100%',
+                  display: 'block',
+                  backgroundColor: 'black',
+                  height: '100%',
+                }}
+              />
+            </LxNativeRoot>
           </Card>
         ))}
         {canAddMore ? renderAddTile() : null}

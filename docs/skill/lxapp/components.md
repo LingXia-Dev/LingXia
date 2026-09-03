@@ -1,8 +1,13 @@
 # Native Components
 
-LingXia ships native-backed components for lxapp views: `LxPicker`, `LxVideo`, `LxMediaSwiper`, `LxNavigator` — reserved for capabilities the web platform cannot deliver. Text input is deliberately **not** a component: use plain `<input>` / `<textarea>` (see [Text inputs](#text-inputs--use-plain-input--textarea)).
+LingXia ships two native-backed families:
 
-The components live in `@lingxia/elements` (the pure-JS custom elements) and are re-exported as framework-friendly wrappers from `@lingxia/react` and `@lingxia/vue`. **In React/Vue, almost always import from the framework package**, not from `@lingxia/elements`. HTML views skip the wrappers and use the raw custom-element tags (`<lx-video>`, …) once `@lingxia/elements` has registered them; `@lingxia/html` itself exports only page-runtime utilities (`getActions` / `subscribe`).
+- **Inline native island** (this page's player contract): `LxNativeRoot`, `LxNativeView`, `LxNativeCover`, `LxNativeText`, `LxNativeButton`, and `LxVideo`. `LxVideo` must be a **direct child** of an explicit `LxNativeRoot`. There is no implicit root. Seek stays on `LxVideo` `controls` / `progressBar`.
+- **Presenters / wrappers** (not on the island): `LxPicker`, `LxMediaSwiper`, `LxNavigator`.
+
+Text input is deliberately **not** a component: use plain `<input>` / `<textarea>` (see [Text inputs](#text-inputs--use-plain-input--textarea)).
+
+The components live in `@lingxia/elements` (the pure-JS custom elements) and are re-exported as framework-friendly wrappers from `@lingxia/react` and `@lingxia/vue`. **In React/Vue, almost always import from the framework package**, not from `@lingxia/elements`. HTML views skip the wrappers and use the raw custom-element tags (`<lx-native-root>`, `<lx-video>`, …) once `@lingxia/elements` has registered them; `@lingxia/html` re-exports `registerInlineNativeComponents`.
 
 For framework wiring (event short-path vs. View DOM path, `useLxPage` shape) see [`./guide.md`](./guide.md).
 
@@ -12,13 +17,18 @@ For framework wiring (event short-path vs. View DOM path, `useLxPage` shape) see
 
 ```ts
 // React
-import { LxVideo, LxPicker, LxMediaSwiper, LxNavigator } from '@lingxia/react';
+import {
+  LxNativeRoot, LxNativeCover, LxNativeView, LxNativeText,
+  LxNativeButton, LxVideo,
+  LxPicker, LxMediaSwiper, LxNavigator,
+} from '@lingxia/react';
 
-// Vue
-import { LxVideo, LxPicker, LxMediaSwiper, LxNavigator } from '@lingxia/vue';
+// Vue — same names from '@lingxia/vue'
 
-// HTML — no wrapper import; the raw tags are registered by @lingxia/elements.
-// Use the tag names directly in markup: <lx-video>, <lx-picker>, <lx-media-swiper>, <lx-navigator>
+// HTML — register once, then use the raw tags:
+// <lx-native-root>, <lx-video>, <lx-native-cover>, …
+import { registerInlineNativeComponents } from '@lingxia/html';
+registerInlineNativeComponents();
 ```
 
 The React/Vue wrappers accept all the underlying attributes (camelCase or kebab-case where noted) plus the framework's standard `className` / `class` / `style` / `ref`.
@@ -31,8 +41,8 @@ A common source of confusion: not every component passes the same thing to its e
 
 | Component | What the handler receives | Example |
 |---|---|---|
+| Island nodes (`LxNativeButton`, `LxVideo`, Root) | **Payload first** in React/Vue; HTML still reads `CustomEvent.detail` | `onPress(({ source }) => …)`, `onTimeUpdate(({ currentTime }) => …)` |
 | `LxPicker` | **Resolved value directly** — `string \| string[]` | `onConfirm(value)`, `onColumnChange(value)` |
-| `LxVideo` | **Raw DOM `CustomEvent`** | `onPlaying(event)` → `event.detail` |
 | `LxMediaSwiper` | **Raw DOM `CustomEvent`** with a typed `detail` | `onChange(event)` → `event.detail.index` |
 | `LxNavigator` | Raw DOM `CustomEvent` | `onSuccess(event)` → `event.detail.success` |
 
@@ -118,9 +128,32 @@ Native picker — modal column/date/time selection the web platform can't render
 
 ---
 
+## Inline native island
+
+The island is one native composition tree laid out by CSS. The page still has exactly one View WebView. Standard playback is:
+
+```tsx
+<LxNativeRoot className="player">
+  <LxVideo src={data.src} aria-label={data.title} controls />
+</LxNativeRoot>
+```
+
+`LxVideo` is a **direct** child of `LxNativeRoot`. Nested Root, DOM inside Root, a bare `LxVideo`, or Video inside View/Cover is `NATIVE_ROOT_INVALID_STRUCTURE`. `controls={true}` cannot share a Root with a play/pause/mute/fullscreen `LxNativeButton`. Seek is the video leaf's built-in progress bar, not a separate island slider.
+
+**Lifecycle:** the host owns the island container. Removing an `LxNativeRoot`, or
+destroying/replacing its page WebView, unmounts every node owned by that Root, stops
+its native video resources, and resets its lease before accepting a new commit. Navigating back therefore
+cannot leave a stale video surface or an invisible touch-blocking overlay behind.
+
+**Scrolling:** layout snapshots use unscrolled document CSS coordinates plus the
+current page viewport offset. The host moves native visuals with top-level and
+nested scrolling, and removes fully offscreen nodes from paint and hit testing.
+
+Cover and Button are author recipes: they expand to `view` / `tappable` before the host commit. Host factories are only `root`, `view`, `text`, `tappable`, and `video`. `LxPicker` / `LxMediaSwiper` / `LxNavigator` stay on the presenter overlay channel.
+
 ## `LxVideo`
 
-Native video player with quality/rate switching, fullscreen, and live mode.
+Native video player with quality/rate switching, fullscreen, and live mode. Always wrap it in `LxNativeRoot`.
 
 Video is native-owned: a page `<video>` opens a second decode-and-surface stack
 that shares no z-order, clip, fullscreen, or lifecycle with this one. `<video>`,
@@ -131,25 +164,27 @@ available yet.
 
 The full attribute list (`src`, `poster`, `objectFit`, `controls`, `qualities`,
 `playbackRates`, …) is the exported `LxVideoAttributes` from `@lingxia/elements`;
-remote `src` must be under `security.network.trustedDomains`. Two pieces of
+every remote media URL (`src`, `poster`, watermark/quality URLs, and
+`setStreamSource`) must be under `security.network.trustedDomains`. Two pieces of
 behavior are doc-only: event reshaping and imperative control.
 
-**Events** — every handler receives a **raw DOM `CustomEvent`**; the native player
-encodes payloads on `event.detail` (e.g. `onTimeUpdate` →
-`event.detail.currentTime`, `onError` → `event.detail.code` / `.message`,
-`onLoadedMetadata` → `.duration` / `.width` / `.height`, `onFullscreenChange` →
-`.fullScreen`). Lifecycle events (`onPlayRequest`, `onPlay`, `onPlaying`,
-`onPause`, `onStop`, `onEnded`, `onWaiting`, `onQualityChange`, `onRateChange`)
-carry no required detail.
+**Events** — React/Vue handlers receive the **payload** (`onTimeUpdate` →
+`{ currentTime }`, `onError` → `{ code, message, recoverable }`,
+`onLoadedMetadata` → `{ duration, width, height }`, `onFullscreenChange` →
+`{ fullscreen }`). HTML still reads `CustomEvent.detail`. Lifecycle events
+(`onPlayRequest`, `onPlay`, `onPlaying`, `onPause`, `onStop`, `onEnded`,
+`onWaiting`) carry `{}`.
 
 ```tsx
-<LxVideo
-  id="hero"
-  src="https://cdn.example.com/intro.mp4"
-  controls
-  onTimeUpdate={actions.onProgress}     // (event) => { event.detail.currentTime }
-  onError={actions.onVideoError}
-/>
+<LxNativeRoot>
+  <LxVideo
+    id="hero"
+    src="https://cdn.example.com/intro.mp4"
+    controls
+    onTimeUpdate={actions.onProgress}     // ({ currentTime }) => …
+    onError={actions.onVideoError}
+  />
+</LxNativeRoot>
 ```
 
 **Imperative control from Logic** (`pages/.../index.ts`) — give the element an

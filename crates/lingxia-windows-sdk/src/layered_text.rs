@@ -193,6 +193,62 @@ pub(crate) fn draw_supersampled_text_mask(
     }
 }
 
+/// Draws the same antialiased system-font mask over an existing premultiplied
+/// surface. Inline native controls use this instead of the diagnostic 5x7
+/// raster font so labels match the rest of the Windows UI.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn draw_supersampled_text_mask_over(
+    reference_dc: HDC,
+    pixels: &mut [u32],
+    canvas_width: i32,
+    canvas_height: i32,
+    text: &str,
+    rect: RECT,
+    foreground: u32,
+    font_height: i32,
+    font_weight: i32,
+    centered: bool,
+) {
+    let Some(pixel_count) =
+        (canvas_width.max(0) as usize).checked_mul(canvas_height.max(0) as usize)
+    else {
+        return;
+    };
+    let mut glyphs = vec![0; pixel_count];
+    draw_supersampled_text_mask(
+        reference_dc,
+        &mut glyphs,
+        canvas_width,
+        canvas_height,
+        text,
+        rect,
+        foreground,
+        font_height,
+        font_weight,
+        centered,
+    );
+    for (target, glyph) in pixels.iter_mut().zip(glyphs) {
+        composite_premultiplied(target, glyph);
+    }
+}
+
+fn composite_premultiplied(target: &mut u32, source: u32) {
+    let source_alpha = source >> 24;
+    if source_alpha == 0 {
+        return;
+    }
+    let inverse = 255 - source_alpha;
+    let target_alpha = *target >> 24;
+    let blend = |source_channel: u32, target_channel: u32| {
+        (source_channel + (target_channel * inverse + 127) / 255).min(255)
+    };
+    let alpha = blend(source_alpha, target_alpha);
+    let red = blend((source >> 16) & 0xff, (*target >> 16) & 0xff);
+    let green = blend((source >> 8) & 0xff, (*target >> 8) & 0xff);
+    let blue = blend(source & 0xff, *target & 0xff);
+    *target = (alpha << 24) | (red << 16) | (green << 8) | blue;
+}
+
 fn downsample_coverage(mask: &[u32], mask_width: i32, left: i32, top: i32) -> u32 {
     let mut coverage = 0;
     for y in top..top + TEXT_MASK_SCALE {
@@ -375,5 +431,14 @@ mod tests {
         mask[..8].fill(0x00ff_ffff);
 
         assert_eq!(downsample_coverage(&mask, 4, 0, 0), 128);
+    }
+
+    #[test]
+    fn text_mask_composites_over_opaque_background() {
+        let mut pixel = 0xff10_2030;
+
+        composite_premultiplied(&mut pixel, 0x80_808080);
+
+        assert_eq!(pixel, 0xff88_9098);
     }
 }

@@ -28,6 +28,7 @@ import kotlin.math.roundToInt
  */
 internal class NativeComponentManager(
     hostView: ViewGroup,
+    private val appId: String,
     private val defaultPageId: String,
     private val eventSink: (Map<String, Any>) -> Unit,
     webView: LingXiaWebView? = null
@@ -62,6 +63,8 @@ internal class NativeComponentManager(
     // Monotonic generation per component id. Used to drop stale async events from old instances.
     private val componentEpochs = mutableMapOf<String, Long>()
     private val factories = mutableMapOf<String, LxNativeComponentFactory>()
+    private var island: InlineNativeIsland? = null
+    private val registeredIslandVideos = mutableSetOf<String>()
 
     private val webOverlayCoverageRestore: MutableMap<String, Int> = mutableMapOf()
 
@@ -78,6 +81,35 @@ internal class NativeComponentManager(
     }
 
     fun handle(message: Map<String, Any?>) {
+        val host = hostViewRef.get()
+        if (host != null && island == null) {
+            island = InlineNativeIsland(host, appId) { componentId, event, detail ->
+                // Island nodes never go through component.ready, so the overlay
+                // pending-event gate would queue press/value forever.
+                val payload = mutableMapOf<String, Any>(
+                    "action" to "component.event",
+                    "id" to componentId,
+                    "componentId" to componentId,
+                    "event" to event,
+                    "detail" to detail
+                )
+                eventSink(payload)
+                forwardIslandEventToCallback(componentId, event, payload)
+            }
+        }
+        if (island?.handle(message) == true) {
+            syncIslandVideoRoutes()
+            island?.drainOutgoing()?.forEach { payload ->
+                val outgoing = mutableMapOf<String, Any>()
+                payload.forEach { (key, value) ->
+                    if (value != null) {
+                        outgoing[key] = value
+                    }
+                }
+                eventSink(outgoing)
+            }
+            return
+        }
         when (message["action"] as? String) {
             "component.mount" -> handleMount(message)
             "component.update" -> handleUpdate(message)
@@ -264,6 +296,8 @@ internal class NativeComponentManager(
         pageInactiveStopRunnables.clear()
         componentsPendingAutoResume.clear()
         componentPlaybackIntent.clear()
+        island?.teardown()
+        island = null
         val allIds = components.keys.toList()
         allIds.forEach { id ->
             unmountComponent(id, componentPage[id])
@@ -293,6 +327,7 @@ internal class NativeComponentManager(
             )
             component.setFrame(screenRect)
         }
+        island?.onWebViewScroll(scrollX, scrollY)
     }
 
     /**
@@ -394,13 +429,13 @@ internal class NativeComponentManager(
      * Returns true if component exists and command was dispatched.
      */
     fun dispatchCommand(componentId: String, name: String, params: Map<String, Any?>?): Boolean {
-        val component = components[componentId] ?: return false
+        val component = components[componentId] ?: island?.videoComponent(componentId) ?: return false
         component.handleCommand(name, params)
         return true
     }
 
     internal fun getVideoComponent(componentId: String): VideoComponent? {
-        return components[componentId] as? VideoComponent
+        return (components[componentId] as? VideoComponent) ?: island?.videoComponent(componentId)
     }
 
     internal fun deliverStreamDecoderEvent(
@@ -408,8 +443,33 @@ internal class NativeComponentManager(
         event: String,
         detail: Map<String, Any?> = emptyMap()
     ) {
-        val videoComponent = components[componentId] as? VideoComponent ?: return
+        val videoComponent = (components[componentId] as? VideoComponent)
+            ?: island?.videoComponent(componentId)
+            ?: return
         videoComponent.handleStreamDecoderEvent(event, detail)
+    }
+
+    private fun syncIslandVideoRoutes() {
+        val current = island?.videoIds().orEmpty()
+        (registeredIslandVideos - current).forEach {
+            ComponentRouter.unregister(it)
+            componentCallbacks.remove(it)
+            componentsPendingAutoResume.remove(it)
+            componentPlaybackIntent.remove(it)
+        }
+        (current - registeredIslandVideos).forEach { ComponentRouter.register(it, this) }
+        registeredIslandVideos.clear()
+        registeredIslandVideos.addAll(current)
+    }
+
+    private fun forwardIslandEventToCallback(
+        componentId: String,
+        event: String,
+        payload: MutableMap<String, Any>
+    ) {
+        if (event !in setOf("waiting", "playrequest", "playing", "pause", "stop", "ended", "error", "seeked", "seeking")) return
+        val callbackId = componentCallbacks[componentId] ?: return
+        NativeApi.onCallback(callbackId, true, JSONObject(payload as Map<*, *>).toString())
     }
 
     internal fun emitComponentEvent(
