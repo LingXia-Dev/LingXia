@@ -5,7 +5,16 @@ import {
 } from "./nativecomponent.js";
 import { ensureComponentId } from "./component.js";
 import { measureElement } from "./dom.js";
-import { isAndroid, isHarmony, isDesktop } from "./platform.js";
+import { isAndroid, isHarmony, isIOS } from "./platform.js";
+
+// Which hosts register a `picker.native` component. A capability question, not
+// a form-factor one: macOS and Windows have no picker factory, so they draw the
+// web picker even in the Runner's phone frame, where the host class is mobile
+// but the machine underneath is still a Mac or a PC. Harmony has its own embed
+// path and never reaches either branch.
+function hasNativePicker(): boolean {
+  return isIOS() || isAndroid();
+}
 
 const HARMONY_PROPS_PREFIX = "data:application/json,";
 
@@ -90,7 +99,7 @@ export class LxPickerElement extends HTMLElement {
   private removeLayoutInvalidationListener?: () => void;
   private readonly layoutInvalidationListener: EventListenerObject = {
     handleEvent: () => {
-      if (!this.isConnected || isHarmony() || isDesktop()) return;
+      if (!this.isConnected || isHarmony() || !hasNativePicker()) return;
       void this.mountPicker();
     }
   };
@@ -146,7 +155,7 @@ export class LxPickerElement extends HTMLElement {
     this.removeLayoutInvalidationListener?.();
     this.removeLayoutInvalidationListener = undefined;
 
-    if (this.componentId && !isHarmony() && !isDesktop()) {
+    if (this.componentId && !isHarmony() && hasNativePicker()) {
       sendNativeComponentMessage({
         action: "component.unmount",
         id: this.componentId
@@ -301,7 +310,7 @@ export class LxPickerElement extends HTMLElement {
       return;
     }
 
-    if (isDesktop()) {
+    if (!hasNativePicker()) {
       if (this.webCleanup) return;
       const { renderWebPicker } = await import('./picker-web.js');
       if (!this.isConnected || !this.componentId || this.webCleanup) return;

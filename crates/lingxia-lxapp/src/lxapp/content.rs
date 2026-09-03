@@ -284,9 +284,20 @@ fn build_bridge_config_script(bridge_nonce: Option<&str>) -> String {
         ""
     };
 
+    // Which kind of machine this is, mobile or desktop — the product
+    // property a page branches on. Deliberately separate from `os` (which
+    // names the actual system, and so the bridge transport) and from the
+    // surface size class (which answers how much room there is): the runner
+    // simulating a phone is still macOS, and a narrowed desktop window is
+    // still a desktop.
+    let host_class_kv = format!(
+        r#",hostClass:"{}""#,
+        super::host_class::host_class().as_str()
+    );
+
     let generated_kv = format!(
-        r#",displayLanguage:"{}"{}{}"#,
-        display_language, nonce_kv, apple_downstream_kv
+        r#",displayLanguage:"{}"{}{}{}"#,
+        display_language, host_class_kv, nonce_kv, apple_downstream_kv
     );
 
     // Merge rather than overwrite so developer-provided config can coexist.

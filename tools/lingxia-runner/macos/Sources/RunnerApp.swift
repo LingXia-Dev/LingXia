@@ -169,10 +169,13 @@ public class RunnerApp {
         RunnerUserAgentPolicy.shared.setProfile(
             selectedDeviceSize.browserProfile
         )
-        // A phone shape stands in for a phone, so `showOn` resolves against the
-        // simulated machine rather than the Mac the runner happens to be.
+        // Resolve `showOn` against the simulated machine rather than the Mac the
+        // runner happens to be. A tablet counts as mobile: an iPad build is
+        // `target_os = "ios"`, so a real one reports mobile, and the simulator
+        // has to agree with the device. Its desktop-like sidebar comes from the
+        // width, which `usesSurfaceShell` decides separately.
         LingxiaRunnerSPI.Tabs.setSimulatedHostClass(
-            mobile: selectedDeviceSize.shape == .phone
+            mobile: selectedDeviceSize.shape != .desktop
         )
         let effectiveDevice = selectedDeviceSize.oriented(deviceOrientation)
         deviceSize = effectiveDevice

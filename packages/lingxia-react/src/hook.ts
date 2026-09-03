@@ -338,12 +338,19 @@ export interface LxPlatform {
   isAndroid: boolean;
   isHarmony: boolean;
   isWindows: boolean;
+  /**
+   * Form factor, not OS. This, not `isMacOS`/`isWindows`, is what a layout
+   * decision is usually about: the Runner reports macOS while simulating a
+   * phone, and a narrowed desktop window is still a desktop.
+   */
   isDesktop: boolean;
+  isMobile: boolean;
   isRunner: boolean;
 }
 
 function readPlatform(): LxPlatform {
   const p = window.LingXiaBridge?.platform;
+  const desktop = p?.isDesktop() ?? false;
   return {
     os: p?.getOS() ?? "unknown",
     isIOS: p?.isIOS() ?? false,
@@ -352,13 +359,17 @@ function readPlatform(): LxPlatform {
     isAndroid: p?.isAndroid() ?? false,
     isHarmony: p?.isHarmony() ?? false,
     isWindows: p?.isWindows() ?? false,
-    isDesktop: p?.isDesktop() ?? false,
+    isDesktop: desktop,
+    // Derived, not read, so that a host too old to answer `isMobile` reports
+    // one of the two rather than neither.
+    isMobile: p?.isMobile?.() ?? !desktop,
     isRunner: p?.isRunner() ?? false,
   };
 }
 
 // Typed platform detection for pages, so they never reach for the window global
-// or hand-roll an OS check. Fixed for the session, so it resolves once.
+// or hand-roll an OS check. Fixed for the session, so it resolves once — the
+// Runner re-serves the page when its simulated device changes form factor.
 export function usePlatform(): LxPlatform {
   return React.useMemo(readPlatform, []);
 }

@@ -1,5 +1,11 @@
 export interface BridgeConfig {
   os?: 'Harmony' | 'iOS' | 'Android' | 'macOS' | 'Windows';
+  /**
+   * Transport for the host's form factor, read through `isMobile()` /
+   * `isDesktop()` rather than directly. Distinct from `os`, which names the
+   * actual system: the Runner simulating a phone is still macOS or Windows.
+   */
+  hostClass?: 'mobile' | 'desktop';
   /** Effective host display language; distinct from the raw system locale. */
   displayLanguage?: string;
   nonce?: string;
@@ -189,6 +195,7 @@ export interface LingXiaBridgeInterface {
     isMacOS(): boolean;
     isWindows(): boolean;
     isDesktop(): boolean;
+    isMobile(): boolean;
     isApple(): boolean;
     isRunner(): boolean;
     getOS(): string;
