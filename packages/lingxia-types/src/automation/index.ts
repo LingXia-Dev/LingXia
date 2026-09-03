@@ -409,6 +409,15 @@ export interface LxAppEvalOptions {
   /** JavaScript expression or function body run in the selected Logic runtime. */
   script: string;
   timeoutMs?: number;
+  /**
+   * Resolve to `{ value, calls }`, where `calls` lists the `lx.*` members the
+   * script reached, instead of the bare value.
+   *
+   * The test runner sets this so a report can tell a capability a spec
+   * exercised from one it merely declared. Only the evaluated script is
+   * observed — the lxapp's own concurrent work is not.
+   */
+  captureCalls?: boolean;
 }
 
 export type SurfaceLayoutSizeClass = 'compact' | 'medium' | 'expanded';

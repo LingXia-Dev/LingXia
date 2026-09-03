@@ -218,6 +218,65 @@ test("declared tags are the default coverage scope", async () => {
   assert.doesNotMatch(html, /lx API coverage/);
 });
 
+test("a passing spec that never reaches its tag is not credited with it", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+  world.setCalls("probe", ["lx.getStorage"]);
+
+  // Declares two capabilities and only ever touches one of them.
+  spec("claims more than it does", {
+    id: "COV-CLAIM",
+    covers: ["lx.getStorage", "lx.tray"],
+  }, async (t) => {
+    await t.app.eval({ script: "probe" });
+    expect(1).toBe(1);
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const html = decodeAttachment(attachments, "report.html");
+
+  // Reached, so proven.
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.getStorage</);
+  // Declared by a passing spec, never called: the whole point is that this
+  // does not read the same as the one above.
+  assert.match(html, /class="cover cover-claimed"[^>]*>lx\.tray</);
+  assert.match(html, /but no eval in those specs reached it/);
+});
+
+test("a spec that runs no eval keeps its declared coverage", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+
+  // Driving through the page or native chrome is a legitimate way to exercise
+  // an API, and it produces no eval to observe. Absence of observation must not
+  // read as absence of coverage, or every DOM-driven spec regresses at once.
+  spec("drives without eval", { id: "COV-NOEVAL", covers: ["lx.getStorage"] }, async () => {
+    expect(1).toBe(1);
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const html = decodeAttachment(attachments, "report.html");
+  assert.match(html, /class="cover cover-ok"[^>]*>lx\.getStorage</);
+  // The legend and stylesheet always mention the class; what must not appear is
+  // this capability wearing it.
+  assert.doesNotMatch(html, /class="cover cover-claimed"[^>]*>lx\.getStorage</);
+});
+
+test("an expected failure is not coverage", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+
+  // xfail records a known-broken outcome. Counting it credits the suite for
+  // the one result it has already admitted does not work.
+  spec.fail("known broken", { id: "COV-XFAIL", covers: ["lx.share"], reason: "upstream" }, async () => {
+    expect(1).toBe(2);
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const html = decodeAttachment(attachments, "report.html");
+  assert.doesNotMatch(html, /class="cover cover-ok"[^>]*>lx\.share</);
+});
+
 test("a conformance suite opts into the whole published surface", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);

@@ -400,6 +400,7 @@ async function run(): Promise<ProtocolReport> {
     record.duration_ms = Date.now() - caseStarted;
     record.steps = fixture.steps;
     record.assertions = fixture.assertions;
+    if (fixture.observed.size > 0) record.observed = [...fixture.observed].sort();
     record.attachments = fixture.attachments;
     setAssertionSink();
     if (error && status !== "xfail") {
