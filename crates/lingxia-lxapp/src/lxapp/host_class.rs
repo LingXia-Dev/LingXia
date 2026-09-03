@@ -16,6 +16,15 @@ pub enum HostClass {
 }
 
 impl HostClass {
+    /// The wire value shared by the bridge config, `lx.app.getBaseInfo()` and
+    /// the tab-bar `showOn` list, so the three can never disagree.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Mobile => "mobile",
+            Self::Desktop => "desktop",
+        }
+    }
+
     /// What the build targets. The runner overrides this per simulated device.
     const fn built_for() -> Self {
         if cfg!(any(
@@ -48,7 +57,17 @@ pub fn host_class() -> HostClass {
 
 /// Simulate a host. The runner is a desktop binary standing in for a phone, so
 /// the build target alone would answer for the wrong machine.
+///
+/// Changing it reloads open pages: a page is handed its class in the bridge
+/// config at load, so one that is already rendering would otherwise keep the
+/// layout for the machine the developer just switched away from. Switching
+/// device frames within one class (iPhone to iPhone SE) is not a change and
+/// reloads nothing.
 pub fn set_host_class(class: HostClass) {
+    // Against the effective class, not the stored override: the runner's first
+    // call replaces `built_for()` with the same answer on a desktop preset, and
+    // that is not a change.
+    let changed = host_class() != class;
     OVERRIDE.store(
         match class {
             HostClass::Mobile => MOBILE,
@@ -56,6 +75,9 @@ pub fn set_host_class(class: HostClass) {
         },
         Ordering::Relaxed,
     );
+    if changed {
+        super::runtime_registry::reload_pages_for_host_class_change();
+    }
 }
 
 #[cfg(test)]
@@ -68,6 +90,8 @@ mod tests {
         assert_eq!(host_class(), HostClass::Mobile);
         set_host_class(HostClass::Desktop);
         assert_eq!(host_class(), HostClass::Desktop);
+        assert_eq!(HostClass::Mobile.as_str(), "mobile");
+        assert_eq!(HostClass::Desktop.as_str(), "desktop");
         // Restore so a shared-process test run does not inherit a simulated host.
         OVERRIDE.store(UNSET, Ordering::Relaxed);
         assert_eq!(host_class(), HostClass::built_for());

@@ -451,10 +451,19 @@ For streams, check `chat.error` after `chat.streaming` becomes `false`. For chan
 
 ## Platform Detection
 
-- **View (React/Vue)**: `usePlatform()` from `@lingxia/react` / `@lingxia/vue` → `{ isApple, isIOS, isMacOS, isAndroid, isHarmony, isWindows, isDesktop, isRunner, os }` (typed, sync, resolved once).
-- **View (any framework)**: `window.LingXiaBridge.platform` — `isApple()`, `isIOS()`, `isMacOS()`, `isDesktop()`, `getOS()`, … (sync; read the global, never import). It is already typed in pages that import `@lingxia/react` / `@lingxia/vue`, so no cast is needed.
-- `isApple()` is `iOS || macOS` (the WKWebView group); `isDesktop()` is `macOS || Windows`.
-- **Logic**: `lx.device.getDeviceInfo()` → `osName` (async).
+Two different questions, answered separately:
+
+- **Which machine is this?** `isMobile()` / `isDesktop()` — the form factor. Branch on these for anything a phone should not show at all.
+- **Which system is this?** `os` is `'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony'`. Use it only for genuinely OS-specific behaviour, such as a feature that exists on one platform.
+
+Neither is a size class. `lx.surface.onContext` answers "how much room is there"; a narrowed desktop window is still a desktop.
+
+- **View (React/Vue)**: `usePlatform()` from `@lingxia/react` / `@lingxia/vue` → `{ isMobile, isDesktop, isApple, isIOS, isMacOS, isAndroid, isHarmony, isWindows, isRunner, os }` (typed, sync).
+- **View (any framework)**: `window.LingXiaBridge.platform` — `isMobile()`, `isDesktop()`, `isApple()`, `isIOS()`, `getOS()`, … (sync; read the global, never import). It is already typed in pages that import `@lingxia/react` / `@lingxia/vue`, so no cast is needed.
+- `isApple()` is `iOS || macOS`, the WKWebView group — a transport question, not a form-factor one.
+- **Logic**: `lx.device.getDeviceInfo()` → `osName` (async); the tab bar's `showOn: ['mobile' | 'desktop']` picks destinations by form factor declaratively.
+
+All of these are fixed for the life of a page, so they resolve once. In the `lingxia dev` simulator a phone frame reports `isMobile()` while `os` still names the desktop the simulator runs on, so a mobile layout can be checked without a device; picking a frame of a different form factor re-serves the page, the way a browser's device mode reloads on an emulation toggle.
 
 ## Display Language
 

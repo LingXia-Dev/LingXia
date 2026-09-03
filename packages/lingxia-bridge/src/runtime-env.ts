@@ -88,6 +88,26 @@ export function getPlatformOS(): PlatformOS {
   return BRIDGE_CONFIG.os || 'unknown';
 }
 
+type HostClass = 'mobile' | 'desktop';
+
+/**
+ * Which kind of machine this is, mobile or desktop. Read through `isMobile()`
+ * and `isDesktop()`; the class itself is host vocabulary, not lxapp API.
+ *
+ * Fixed for the life of the document. A shipped host is one machine; the
+ * Runner re-serves the page when its simulated device changes class, so this
+ * never has to change under a page that is already rendering.
+ *
+ * Hosts from before this config key shipped send nothing, so fall back to the
+ * OS: every one of them is the machine it names.
+ */
+function hostClass(): HostClass {
+  if (BRIDGE_CONFIG.hostClass === 'mobile' || BRIDGE_CONFIG.hostClass === 'desktop') {
+    return BRIDGE_CONFIG.hostClass;
+  }
+  return BRIDGE_CONFIG.os === 'macOS' || BRIDGE_CONFIG.os === 'Windows' ? 'desktop' : 'mobile';
+}
+
 export function isHarmony(): boolean {
   return BRIDGE_CONFIG.os === 'Harmony';
 }
@@ -108,8 +128,14 @@ export function isWindows(): boolean {
   return BRIDGE_CONFIG.os === 'Windows';
 }
 
+// Form factor, not OS: the Runner shows a real macOS/Windows build inside a
+// phone frame, and a page that keyed off the OS would keep its desktop layout.
 export function isDesktop(): boolean {
-  return isMacOS() || isWindows();
+  return hostClass() === 'desktop';
+}
+
+export function isMobile(): boolean {
+  return hostClass() === 'mobile';
 }
 
 // iOS and macOS share the WKWebView transport, so features scoped to it (e.g.

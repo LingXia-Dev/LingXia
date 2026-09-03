@@ -82,6 +82,50 @@ fn publish_display_language(language: &str) {
     }
 }
 
+/// Re-serve every open page after the simulated host class changed.
+///
+/// A page reads its class from the bridge config the host writes into the
+/// document at load, so a page that is already rendering carries the old one.
+/// Only the runner ever changes the class, and only when the developer picks a
+/// device frame of a different shape — the same gesture that reloads the page
+/// in a browser's device mode, and the same result as picking a different
+/// simulator. A shipped host is one machine for its whole life and never
+/// reaches this.
+///
+/// `load_html` rather than `WebView::reload`, for the reason the in-place
+/// restart gives: these pages come from `loadHTMLString` with a logical base
+/// URL, and reloading requests that URL's raw source, dropping the injected
+/// config entirely.
+pub(crate) fn reload_pages_for_host_class_change() {
+    let Some(manager) = get_lxapps_manager() else {
+        return;
+    };
+    // Collect first, for the same reason `publish_display_language` does.
+    let apps: Vec<Arc<LxApp>> = manager
+        .lxapps
+        .iter()
+        .map(|entry| entry.value().clone())
+        .collect();
+    for app in apps {
+        for page in app.live_page_instances() {
+            // Only documents that are actually on screen. A page that left the
+            // stack is parked awaiting re-entry and a headless or LRU-detached
+            // one has no WebView at all; serving either would un-park it and
+            // run its code off-screen against a service that is gone.
+            if page.webview().is_none() || page.document_is_departing() {
+                continue;
+            }
+            // The old document's in-flight view calls and channels belong to a
+            // page that is about to be replaced.
+            page.cancel_bridge_work();
+            if let Err(error) = page.load_html() {
+                warn!("failed to re-serve page after a host class change: {error}")
+                    .with_appid(app.appid.clone());
+            }
+        }
+    }
+}
+
 /// Get the product display language: the user override when set, else the
 /// system locale. Returns "en-US" if the SDK has not been initialized.
 pub fn get_display_language() -> String {
