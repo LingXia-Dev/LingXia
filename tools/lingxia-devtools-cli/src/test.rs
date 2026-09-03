@@ -38,9 +38,9 @@ pub struct TestOptions {
     /// Test entry file, or a directory of `*.test.ts` files
     pub entry: PathBuf,
 
-    /// Overall registration timeout in seconds
+    /// Whole-run budget in seconds
     #[arg(long, default_value_t = 60, value_parser = clap::value_parser!(u64).range(1..=3600))]
-    timeout: u64,
+    timeout_secs: u64,
 
     /// Key=value string exposed as test.args (repeatable)
     #[arg(long = "arg", value_name = "KEY=VALUE", value_parser = parse_key_value)]
@@ -135,7 +135,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         &TestStartArgs {
             source: bundle.code.clone(),
             source_name: Some(bundle.bundle_name.clone()),
-            timeout_ms: Some(options.timeout * 1000),
+            timeout_ms: Some(options.timeout_secs * 1000),
             args: args.clone(),
         },
     )?;
@@ -145,7 +145,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
             "{} run {} started (timeout {}s)",
             "test".cyan(),
             run_id,
-            options.timeout
+            options.timeout_secs
         );
     }
 
@@ -172,7 +172,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         &output_dir,
         machine,
         &interrupts,
-        Duration::from_secs(options.timeout),
+        Duration::from_secs(options.timeout_secs),
         &args,
     )?;
     if outcome.partial && !machine {

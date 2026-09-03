@@ -74,7 +74,7 @@ for framework_index in "${!frameworks[@]}"; do
   (
     cd "$lxapp_root"
     "$lxdev" test tests/entries/macos.test.ts \
-      --timeout "$timeout_seconds" \
+      --timeout-secs "$timeout_seconds" \
       --arg platform=macos \
       --arg "framework=$current_framework" \
       ${fixture_base:+--arg "httpBase=$fixture_base"} \

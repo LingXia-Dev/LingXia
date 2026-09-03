@@ -260,7 +260,7 @@ function Invoke-ShowcaseSuite {
   # enough to fail a suite that had passed. Send the output to the host.
   $testArguments = @(
     'test', 'tests/entries/windows.test.ts',
-    '--timeout', $TimeoutSeconds.ToString(),
+    '--timeout-secs', $TimeoutSeconds.ToString(),
     '--arg', 'platform=windows',
     '--arg', "framework=$Framework",
     '--arg', "httpBase=$fixtureBase",
