@@ -1125,6 +1125,9 @@ pub(super) fn install() {
     lingxia_platform::set_windows_sidebar_actions_handler(Arc::new(set_runtime_sidebar_actions));
     lingxia_platform::set_windows_builtin_browser_page_handler(Arc::new(open_builtin_browser_page));
     lingxia_platform::set_windows_shell_pins_handler(Arc::new(set_runtime_shell_pins));
+    lxapp::set_lxapp_open_blocked_listener(Box::new(|status| {
+        show_lxapp_unavailable_notice(status);
+    }));
     lingxia_platform::set_windows_lxapp_main_activation_handler(Arc::new(
         request_lxapp_main_activation,
     ));
@@ -2866,6 +2869,23 @@ fn show_pin_limit_message(appid: &str) {
     let title = lingxia_logic::i18n::t(lingxia_logic::I18nKey::ShellPinLimitTitle);
     let message = lingxia_logic::i18n::t(lingxia_logic::I18nKey::ShellPinLimitMessage);
     if let Some(window) = owner_window_handle(appid) {
+        crate::window_host::show_shell_notice(window, title, message);
+    }
+}
+
+fn show_lxapp_unavailable_notice(status: lxapp::LxAppStatus) {
+    let title = lingxia_logic::i18n::t(lingxia_logic::I18nKey::LxappUnavailableTitle);
+    let message = match status {
+        lxapp::LxAppStatus::Maintain => {
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::LxappUnavailableMaintain)
+        }
+        lxapp::LxAppStatus::Suspended => {
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::LxappUnavailableSuspended)
+        }
+        _ => return,
+    };
+    let window = lingxia_app_context::home_app_id().and_then(|id| owner_window_handle(&id));
+    if let Some(window) = window {
         crate::window_host::show_shell_notice(window, title, message);
     }
 }
@@ -4762,18 +4782,38 @@ fn present_main_surface_inner(
             // with its declaration path creates an initial-route WebView beside
             // the retained navigation stack and can leave that stale generation
             // intercepting the shell after the outgoing workspace closes.
-            let app = match lxapp::try_get(&app_id) {
-                Some(app) => app,
-                None => lxapp::open_lxapp(
-                    &app_id,
-                    LxAppStartupOptions::new(path.as_deref().unwrap_or_default()),
-                )
-                .map_err(|error| error.to_string())?,
-            };
-            if !present_current_lxapp_main(&app) {
-                return Err(format!("lxapp main is not ready: {app_id}"));
+            if let Some(app) = lxapp::try_get(&app_id) {
+                if !present_current_lxapp_main(&app) {
+                    return Err(format!("lxapp main is not ready: {app_id}"));
+                }
+                hide_inactive_native_main_panels(owner, surface_id);
+                return Ok(());
             }
-            hide_inactive_native_main_panels(owner, surface_id);
+            let app_id = app_id.clone();
+            let path = path.as_deref().unwrap_or_default().to_string();
+            let owner_id = owner.appid.clone();
+            let surface_id = surface_id.to_string();
+            std::mem::drop(lingxia::task::spawn(async move {
+                let channel = lxapp::host_channel();
+                if let Err(err) = lxapp::prepare_lxapp_open(&app_id, channel).await {
+                    lxapp::notify_lxapp_open_blocked(&err);
+                    return;
+                }
+                let _ = crate::window_host::with_host_layout_batch(|| {
+                    let app = lxapp::open_lxapp(
+                        &app_id,
+                        LxAppStartupOptions::new(&path).set_release_type(channel),
+                    )
+                    .map_err(|error| error.to_string())?;
+                    if !present_current_lxapp_main(&app) {
+                        return Err(format!("lxapp main is not ready: {app_id}"));
+                    }
+                    if let Some(owner) = lxapp::try_get(&owner_id) {
+                        hide_inactive_native_main_panels(&owner, &surface_id);
+                    }
+                    Ok(())
+                });
+            }));
             Ok(())
         }
         #[cfg(feature = "browser-runtime")]
@@ -4952,13 +4992,21 @@ fn focus_or_open_lxapp(_owner_appid: &str, target_appid: &str) {
 }
 
 fn open_pinned_lxapp_main(target_appid: &str) {
-    match lxapp::open_lxapp(
-        target_appid,
-        LxAppStartupOptions::default().set_release_type(lxapp::host_channel()),
-    ) {
-        Ok(_) => focus_existing_main_lxapp(target_appid),
-        Err(err) => log::warn!("failed to open pinned lxapp {target_appid}: {err}"),
-    }
+    let appid = target_appid.to_string();
+    std::mem::drop(lingxia::task::spawn(async move {
+        let channel = lxapp::host_channel();
+        if let Err(err) = lxapp::prepare_lxapp_open(&appid, channel).await {
+            lxapp::notify_lxapp_open_blocked(&err);
+            return;
+        }
+        match lxapp::open_lxapp(
+            &appid,
+            LxAppStartupOptions::default().set_release_type(channel),
+        ) {
+            Ok(_) => focus_existing_main_lxapp(&appid),
+            Err(err) => log::warn!("failed to open pinned lxapp {appid}: {err}"),
+        }
+    }));
 }
 
 /// Focus an already-open main without running its startup path again. Reopening
@@ -6667,22 +6715,6 @@ fn show_lxapp_panel(
         return true;
     }
 
-    if lxapp::try_get(panel_appid).is_some() {
-        if let Err(err) = open_lxapp_panel_now(panel_appid, path, page, query, panel_id) {
-            log::error!("failed to show Windows panel lxapp {panel_appid}: {err}");
-            crate::window_host::set_panel_position_override(panel_id, None);
-            unregister_managed_aside(owner_appid, panel_id);
-            drop(completion);
-            return false;
-        }
-        sync_shell_layout(owner_appid);
-        sync_shell_layout(panel_appid);
-        if let Some(completion) = completion {
-            completion(Ok(()));
-        }
-        return true;
-    }
-
     let panel_id = panel_id.to_string();
     let panel_appid = panel_appid.to_string();
     let path = path.to_string();
@@ -6736,7 +6768,7 @@ fn show_lxapp_panel(
             );
         }
         if let Err(err) = result {
-            log::error!("failed to open Windows panel lxapp {panel_appid}: {err}");
+            lxapp::notify_lxapp_open_blocked(&err);
             crate::window_host::set_panel_position_override(&panel_id, None);
             unregister_managed_aside(&owner_appid, &panel_id);
             return;

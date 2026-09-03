@@ -83,7 +83,10 @@ pub use lxapp::{
     register_synthetic_lxapp,
     registry::{
         display_icon_path as lxapp_display_icon_path, display_name as lxapp_display_name,
-        display_status as lxapp_registry_status, refresh_registry as refresh_lxapp_registry,
+        display_status as lxapp_registry_status, ensure_open_allowed,
+        notify_open_blocked as notify_lxapp_open_blocked,
+        refresh_registry as refresh_lxapp_registry, registry_unavailable_status,
+        set_open_blocked_listener as set_lxapp_open_blocked_listener,
         set_registry_change_listener as set_lxapp_registry_change_listener,
     },
     restart_lxapp, set_automation_auto_grant, set_display_language, tabbar,
@@ -99,9 +102,9 @@ pub use page::{
 };
 pub use plugin::{build_plugin_page_path, parse_plugin_page_path, parse_plugin_url};
 pub use provider::{
-    BoxFuture, FingerprintProvider, LxAppUpdateQuery, NoOpProvider, Provider, ProviderError,
-    ProviderErrorCode, ProviderErrorExt, PushNotificationProvider, UpdatePackageInfo,
-    UpdateProvider, UpdateTarget, register_provider,
+    BoxFuture, FingerprintProvider, LxAppStatus, LxAppUpdateQuery, NoOpProvider, Provider,
+    ProviderError, ProviderErrorCode, ProviderErrorExt, PushNotificationProvider,
+    UpdatePackageInfo, UpdateProvider, UpdateTarget, register_provider,
 };
 pub use startup::{
     LxAppStartupOptions, Scene, append_page_query, parse_env_release_type,

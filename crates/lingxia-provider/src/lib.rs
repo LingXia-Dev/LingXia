@@ -209,7 +209,7 @@ impl std::fmt::Display for LxAppStatus {
 #[derive(Debug, Clone, Default)]
 pub struct LxAppRegistryInfo {
     pub appid: String,
-    /// Already resolved for the requested locale.
+    /// Display name as the backend defined it.
     pub name: Option<String>,
     pub description: Option<String>,
     /// Where the icon lives. Also the cache key: the client re-fetches when
@@ -225,20 +225,18 @@ pub struct LxAppRegistryInfo {
 /// update path is gated (OTA-managed only, deduped, force-update aware) in ways
 /// that would silently strand them.
 pub trait LxAppRegistryProvider: Send + Sync + 'static {
-    /// Resolve `appids` for `locale`, in one batch.
+    /// Resolve one app's registry record.
     ///
-    /// The locale fallback chain (`zh-Hant` → `zh-Hans` → `en`) is the server's
-    /// to run: `name` and `description` come back resolved to one language, not
-    /// as a map, so the chain has one implementation rather than one per client.
+    /// `name` and `description` are the strings the backend stored. The client
+    /// does not send a locale; localization, if any, is a server concern.
     ///
-    /// Apps the registry does not know are omitted from the reply rather than
-    /// returned as an error.
+    /// `Ok(None)` means the registry does not know the app (HTTP 404). That is
+    /// a negative listing, not a transport failure.
     fn fetch_registry_info<'a>(
         &'a self,
-        _appids: &'a [String],
-        _locale: &'a str,
-    ) -> BoxFuture<'a, Result<Vec<LxAppRegistryInfo>, ProviderError>> {
-        Box::pin(async { Ok(Vec::new()) })
+        _appid: &'a str,
+    ) -> BoxFuture<'a, Result<Option<LxAppRegistryInfo>, ProviderError>> {
+        Box::pin(async { Ok(None) })
     }
 }
 
