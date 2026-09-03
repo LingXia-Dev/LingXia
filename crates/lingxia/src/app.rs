@@ -8,6 +8,8 @@
 //!
 //! - read product metadata such as `product_version` and `lingxia_id`;
 //! - resolve host-owned state paths such as `state_dir` and `state_file`;
+//! - read or set the host display language (`display_language`,
+//!   `set_display_language`);
 //! - request host app termination with `exit`.
 
 use std::path::{Component, Path, PathBuf};
@@ -16,6 +18,7 @@ use std::sync::OnceLock;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 
 pub use lingxia_app_context::EnvVersion;
+pub use lxapp::DisplayLanguage;
 
 static APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -67,11 +70,19 @@ pub fn notifications_enabled() -> bool {
 
 /// Returns the effective host display language.
 ///
-/// A saved user language takes precedence over the locale supplied by the
-/// native host during runtime initialization. Clearing the saved language
-/// returns this value to the initialization locale.
+/// A pinned [`DisplayLanguage`] takes precedence over the locale supplied
+/// by the native host during runtime initialization. `Auto` follows that
+/// locale.
 pub fn display_language() -> String {
-    lxapp::get_display_language()
+    lxapp::display_language()
+}
+
+/// Set the host display language and persist it.
+///
+/// [`DisplayLanguage::Auto`] follows the system locale. Every lxapp inherits
+/// the resolved tag from [`display_language`].
+pub fn set_display_language(language: DisplayLanguage) -> crate::Result<()> {
+    lxapp::set_display_language_in(&data_dir()?, language).map_err(Into::into)
 }
 
 pub(crate) fn data_dir() -> crate::Result<PathBuf> {

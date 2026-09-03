@@ -783,9 +783,6 @@ fn install_browser_native_input_host() {
     lingxia_browser::set_tabs_changed_handler(Arc::new(|| {
         self::bridge::browser_tabs_changed();
     }));
-    lingxia_browser_shell::set_display_language_change_listener(Box::new(|| {
-        self::bridge::display_language_changed();
-    }));
 }
 
 #[cfg(not(all(target_os = "macos", feature = "browser-shell")))]
@@ -814,6 +811,9 @@ fn product_run_cli_if_invoked(data_dir: &str) -> i32 {
 pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::LingxiaInitResult {
     crate::logging::init();
     install_browser_native_input_host();
+    lxapp::add_display_language_change_listener(Box::new(|| {
+        self::bridge::display_language_changed();
+    }));
 
     log::info!(
         "Initializing Lingxia SDK with data_dir: {}, cache_dir: {}",
