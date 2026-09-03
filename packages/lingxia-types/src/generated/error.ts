@@ -23,6 +23,7 @@ export const ERR_CODE_INFO_BY_CODE = {
   4001: { code: 4001, key: "err_code_4001" },
   4002: { code: 4002, key: "err_code_4002" },
   4003: { code: 4003, key: "err_code_4003" },
+  4004: { code: 4004, key: "err_code_4004" },
   5000: { code: 5000, key: "err_code_5000" },
   5001: { code: 5001, key: "err_code_5001" },
   5002: { code: 5002, key: "err_code_5002" },
