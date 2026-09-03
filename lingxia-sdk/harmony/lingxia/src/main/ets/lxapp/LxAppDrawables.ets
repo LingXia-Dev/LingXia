@@ -2,6 +2,8 @@
  * Custom drawable components for LingXia navigation buttons
  */
 
+import { noteCapsuleFrame } from './capsuleGeometry';
+
 // Capsule button constants
 const CAPSULE_BUTTON_TOTAL_WIDTH = 84.5;
 const CAPSULE_BUTTON_HEIGHT = 32;
@@ -12,6 +14,15 @@ const CAPSULE_BUTTON_DIVIDER_HEIGHT = 20;
 const CAPSULE_BUTTON_BORDER_RADIUS = 16;
 const CAPSULE_BUTTON_BORDER_WIDTH = 0.5;
 const CAPSULE_BUTTON_Z_INDEX = 9999;
+const CAPSULE_TRAILING_MARGIN = 12;
+// Keep in sync with NavigationBar.NAVIGATION_BAR_CONTENT_HEIGHT.
+const NAV_BAR_CONTENT_HEIGHT = 44;
+
+// Capsule centerY matches the navbar title centerY:
+// top = statusBar + (navBarContentHeight - capsuleHeight) / 2
+export function calculateCapsuleTop(statusBarHeight: number): number {
+  return statusBarHeight + (NAV_BAR_CONTENT_HEIGHT - CAPSULE_BUTTON_HEIGHT) / 2;
+}
 
 // Common colors
 const COLOR_TRANSPARENT = Color.Transparent;
@@ -140,8 +151,8 @@ export struct CapsuleButton {
     Stack() {
       this.buildCapsuleRow()
     }
-    .position({ x: '100%', y: SYSTEM_STATUS_BAR_HEIGHT })
-    .translate({ x: -CAPSULE_BUTTON_TOTAL_WIDTH, y: 8 })
+    .position({ x: '100%', y: calculateCapsuleTop(this.statusBarHeight) })
+    .translate({ x: -(CAPSULE_BUTTON_TOTAL_WIDTH + CAPSULE_TRAILING_MARGIN), y: 0 })
     .width(CAPSULE_BUTTON_TOTAL_WIDTH)
     .height(CAPSULE_BUTTON_HEIGHT)
     .zIndex(CAPSULE_BUTTON_Z_INDEX)
@@ -152,7 +163,7 @@ export struct CapsuleButton {
     Row() {
       Blank()
 
-      this.buildCapsuleRow(this.statusBarHeight + 8, 12)
+      this.buildCapsuleRow(calculateCapsuleTop(this.statusBarHeight), CAPSULE_TRAILING_MARGIN)
     }
     .width('100%')
     .height(CAPSULE_BUTTON_HEIGHT) // Just the button height, not including margin
@@ -214,6 +225,14 @@ export struct CapsuleButton {
     .margin({
       top: marginTop,
       right: marginRight
+    })
+    .onAreaChange((_, area) => {
+      noteCapsuleFrame(
+        Number((area.globalPosition?.x as number) ?? 0),
+        Number((area.globalPosition?.y as number) ?? 0),
+        Number(area.width),
+        Number(area.height)
+      )
     })
   }
 }

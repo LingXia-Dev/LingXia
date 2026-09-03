@@ -121,6 +121,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        LxAppCapsuleButtons.syncCapsuleTop()
         reportSurfaceWidth()
     }
 

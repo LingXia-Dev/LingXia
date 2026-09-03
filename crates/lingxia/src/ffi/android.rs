@@ -1107,6 +1107,24 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getLxAppSessionId<'a>(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// Re-measure host chrome and publish the Page Chrome View snapshot.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_syncLxAppHostUI<'a>(
+    mut env: EnvUnowned<'a>,
+    _class: JClass<'a>,
+    appid: JString<'a>,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let Some(lxapp) = lxapp::try_get(&appid) else {
+            return Ok(false);
+        };
+        lxapp.sync_host_ui();
+        Ok(true)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 /// Callback from platform (called from Kotlin via NativeAPI)
 ///
 /// # Parameters

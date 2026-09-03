@@ -341,6 +341,11 @@ declare module 'liblingxia.so' {
   export function getLxappSessionId(appid: string): number;
 
   /**
+   * Re-measure host chrome and publish the Page Chrome snapshot the View reads.
+   */
+  export function syncLxappHostUI(appid: string): boolean;
+
+  /**
    * Resolve runtime page instance id for app/path/session.
    * Returns empty string when not available.
    */
