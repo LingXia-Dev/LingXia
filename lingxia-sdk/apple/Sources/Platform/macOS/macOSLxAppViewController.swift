@@ -56,7 +56,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     override func loadView() {
         view = NSView()
         view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        applyPageCanvasBackground()
     }
 
     override func viewDidLoad() {
@@ -78,7 +78,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
 
     private func setupLayout() {
         view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        applyPageCanvasBackground()
 
         setupRefreshStrip()
         setupWebViewContainer()
@@ -194,6 +194,13 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         webView.resumeWebView()
         activeWebView = webView
         coverUntilContentPaints(webView)
+    }
+
+    /// The ground behind the page. Anything that exposes it — a fade, a seam
+    /// during a swap, rubber-band overscroll — should show the page's own
+    /// canvas rather than the window chrome colour, which is a different grey.
+    private func applyPageCanvasBackground() {
+        WebViewManager.configureOpaquePagePlaceholder(view, appId: appId)
     }
 
     /// While the incoming webview still loads its document, show the page's
