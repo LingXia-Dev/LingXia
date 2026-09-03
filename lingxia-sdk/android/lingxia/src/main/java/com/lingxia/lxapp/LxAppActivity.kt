@@ -2512,15 +2512,23 @@ class LxAppActivity : AppCompatActivity() {
         currentWebView = null
         pullToRefreshHelper?.setEnabled(false)
 
-        // Build tab bar configuration for new app (tabbar is dynamic)
+        // Build tab bar configuration for new app (tabbar is dynamic).
+        //
+        // The same setup the first lxapp gets, not just a new config: this app
+        // may be the first to declare a strip at all, and the strip's height
+        // and the page's bottom margin are both derived here. Setting only the
+        // config left the second lxapp laid out for the first one's strip until
+        // some later window-insets pass corrected it — and adding the "more"
+        // panel to the decor view is exactly such a pass, so the page jumped
+        // under the panel the moment it opened.
         val tabBarConfig = NativeApi.getTabBarState(appId)
-        if (tabBarConfig != null) {
-            tabBar?.setConfig(tabBarConfig)
-            // Reflect visibility from Rust state, not inferred by presence
-            showTabBar(tabBarConfig.visible)
-        } else {
-            showTabBar(false)
-        }
+        setupTabBar(tabBarConfig)
+        // Reflect visibility from Rust state, not inferred by presence
+        showTabBar(tabBarConfig?.visible == true)
+        // Re-measure with the visibility this app actually asked for: the
+        // margins above were computed while the previous app's strip was still
+        // the one on screen.
+        updateLayoutMargins()
     }
 
     /**
