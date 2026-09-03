@@ -314,7 +314,7 @@ async fn eval_logic_script_inner(
             r#"(async () => {{
 {prelude}
   const __lxValue = await eval({expression_json});
-  return {{ value: __lxValue, calls: [...__lxCalls] }};
+  return {{ __lxEval: 1, value: __lxValue, calls: [...__lxCalls] }};
 }})()"#
         )
     } else {
@@ -337,7 +337,7 @@ async fn eval_logic_script_inner(
   const __lxValue = await (async () => {{
 {script}
   }})();
-  return {{ value: __lxValue, calls: [...__lxCalls] }};
+  return {{ __lxEval: 1, value: __lxValue, calls: [...__lxCalls] }};
 }})()"#
                 )
             } else {

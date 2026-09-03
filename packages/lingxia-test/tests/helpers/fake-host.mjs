@@ -122,7 +122,12 @@ export function createWorld(options = {}) {
       }
       // Mirror the runtime: with `captureCalls` the result is wrapped and
       // carries what the script reached. Tests seed that through `setCalls`.
-      if (captureCalls) return { value, calls: evalCalls.get(script) ?? [] };
+      if (captureCalls) {
+        // Mirror the runtime: `value` is absent when the script returns undefined.
+        const envelope = { __lxEval: 1, calls: evalCalls.get(script) ?? [] };
+        if (value !== undefined) envelope.value = value;
+        return envelope;
+      }
       return value;
     },
   };

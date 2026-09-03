@@ -447,8 +447,11 @@ export class LiveFixture implements Fixture {
             ...this.withEvalBudget(options),
             captureCalls: true,
           })) as unknown;
-          if (result && typeof result === "object" && "calls" in result && "value" in result) {
-            const { calls, value } = result as { calls?: unknown; value: unknown };
+          // The marker, not the shape, identifies the envelope: a script that
+          // returns undefined loses its `value` key on the wire, and sniffing
+          // for that key handed the envelope itself back as the result.
+          if (result && typeof result === "object" && (result as { __lxEval?: unknown }).__lxEval === 1) {
+            const { calls, value } = result as { calls?: unknown; value?: unknown };
             if (Array.isArray(calls)) {
               for (const call of calls) {
                 if (typeof call === "string") this.observed.add(call);
