@@ -321,6 +321,15 @@ async fn cache_state(app: Arc<lingxia::LxApp>) -> lingxia::Result<String> {
 }
 ```
 
+Host display language is a product preference on that same facade — `Auto`
+follows the system locale; `EnUs` / `ZhCn` pin the catalogs native chrome
+ships. Every lxapp inherits the resolved tag from `display_language()`.
+
+```rust
+lingxia::app::set_display_language(lingxia::app::DisplayLanguage::ZhCn)?;
+let tag = lingxia::app::display_language();
+```
+
 For exact function names, parameters, and return types, read the crate docs
 rather than relying on a list here — they track the code:
 

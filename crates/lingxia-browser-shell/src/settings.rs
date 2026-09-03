@@ -1,6 +1,7 @@
 use crate::host::{HostCancel, HostResult, StreamContext, await_or_cancel};
 use crate::platform_error::map_platform_error;
 use lingxia_app_context::app_config;
+use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_service::file::ChooseDirectoryRequest;
 use lxapp::LxApp;
 use serde::{Deserialize, Serialize};
@@ -47,10 +48,8 @@ fn language_channel() -> &'static broadcast::Sender<LanguageSettingsResult> {
 /// Native chrome hook fired after the display language changes, so platform
 /// shells can re-render translated labels (webui pages follow the
 /// `settings.watchLanguage` stream instead).
-static LANGUAGE_CHANGE_LISTENER: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLock::new();
-
 pub fn set_display_language_change_listener(listener: Box<dyn Fn() + Send + Sync>) {
-    let _ = LANGUAGE_CHANGE_LISTENER.set(listener);
+    lxapp::add_display_language_change_listener(listener);
 }
 
 fn language_settings_result(app: &LxApp) -> HostResult<LanguageSettingsResult> {
@@ -138,7 +137,8 @@ fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResul
 
 /// Readable by any lxapp: the host's display language is what every screen has
 /// to render in, and a Logic worker already reads it from `lx.app` base info.
-/// Only the write path stays browser-private.
+/// This write path stays browser-private; the home lxapp writes through
+/// `lx.app.setDisplayLanguage`.
 #[lingxia::native("settings.getLanguage")]
 fn get_display_language(app: Arc<LxApp>) -> HostResult<LanguageSettingsResult> {
     language_settings_result(&app)
@@ -150,21 +150,12 @@ fn set_display_language(
     input: SetLanguageInput,
 ) -> HostResult<LanguageSettingsResult> {
     crate::require_builtin_browser(&app)?;
-    if input.language != "auto" && input.language != "en-US" && input.language != "zh-CN" {
-        return Err(lxapp::LxAppError::InvalidParameter(
-            "language must be auto, en-US, or zh-CN".to_string(),
-        ));
-    }
-    let language = (input.language != "auto").then_some(input.language);
-    lingxia_service::settings::set_display_language(&app.app_data_dir(), language.as_deref())
-        .map_err(|error| lxapp::LxAppError::Runtime(error.to_string()))?;
-    lxapp::set_display_language(language.clone());
-    if let Some(listener) = LANGUAGE_CHANGE_LISTENER.get() {
-        listener();
-    }
-    let result = LanguageSettingsResult { language };
-    let _ = language_channel().send(result.clone());
-    Ok(result)
+    let language = input
+        .language
+        .parse::<lxapp::DisplayLanguage>()
+        .map_err(lxapp::LxAppError::InvalidParameter)?;
+    lxapp::set_display_language(language)?;
+    language_settings_result(&app)
 }
 
 #[lingxia::native("settings.watchLanguage", stream)]
@@ -198,4 +189,14 @@ pub(crate) fn register() {
     lxapp::host::register_host_entry(get_display_language_host());
     lxapp::host::register_host_entry(set_display_language_host());
     lxapp::host::register_host_entry(watch_display_language_host());
+    lxapp::add_display_language_change_listener(Box::new(|| {
+        let Some(runtime) = lxapp::get_platform() else {
+            return;
+        };
+        let Ok(language) = lingxia_service::settings::display_language(&runtime.app_data_dir())
+        else {
+            return;
+        };
+        let _ = language_channel().send(LanguageSettingsResult { language });
+    }));
 }

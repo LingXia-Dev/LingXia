@@ -139,6 +139,28 @@ spec('answer checkUpdate with a decision instead of throwing', {
   else expect(result.version).toBe(null);
 });
 
+spec('reject an invalid host display language', {
+  id: 'HOSTAPP-LANG-002',
+  covers: ['lx.app.setDisplayLanguage'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-LANG-002');
+
+  const offered = await app.eval({
+    script: `return typeof lx.app.setDisplayLanguage`,
+  }) as string;
+  expect(offered).toBe('function');
+
+  for (const language of ['', 'ja-JP']) {
+    const rejected = await evalCaught(
+      app,
+      `lx.app.setDisplayLanguage(${JSON.stringify(language)})`,
+    );
+    expect(rejected.ok).toBe(false);
+    expect(String(rejected.code)).toBe('E_INVALID_ARG');
+  }
+});
+
 spec('subscribe to and release the display language listener', {
   id: 'HOSTAPP-LANG-001',
   covers: ['lx.app.onDisplayLanguageChange'],

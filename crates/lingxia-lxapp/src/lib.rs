@@ -62,17 +62,18 @@ pub use lingxia_update::{
 pub use lingxia_webview::url_callback;
 pub use lxapp::set_num_workers;
 pub use lxapp::{
-    CloseReason, CreatePageInstanceRequest, CreatedPageInstance, HOST_SURFACE_OWNER_APP_ID,
-    HostMainSurfaceRegistration, HostSurfaceMenuExecution, LXAPP_MORE_ACTION_LIMIT, LxApp,
-    LxAppMoreAction, LxAppMoreActions, LxAppOpenRegion, LxAppRuntimeInfo, LxAppRuntimePageInfo,
-    LxAppRuntimeSurfaceInfo, LxAppSecurityPrivilege, ManagedNativeSurface, PageDefinition,
-    PageInstanceEvent, PageInstanceRuntimeInfo, PageOwner, PageQueryInput, PageSurface,
-    PageSurfaceRequest, PageSurfaceTarget, PageTarget, PresentationKind, ResolvedPage, SceneId,
-    SurfaceKind, SurfacePosition, SurfaceRole, UrlCallbackSurface, UrlCallbackWaitError,
-    automation_auto_grant, close_lxapp, config::LxAppInfo, create_page_instance,
-    dispose_page_instance, dispose_page_instance_by_id, ensure_builtin_lxapp,
-    ensure_host_surface_owner, ensure_lxapp, find_page_by_instance_id, get_current_lxapp,
-    get_display_language, get_platform, host_class, init, installed_lxapp_path, is_dev_session,
+    CloseReason, CreatePageInstanceRequest, CreatedPageInstance, DisplayLanguage,
+    HOST_SURFACE_OWNER_APP_ID, HostMainSurfaceRegistration, HostSurfaceMenuExecution,
+    LXAPP_MORE_ACTION_LIMIT, LxApp, LxAppMoreAction, LxAppMoreActions, LxAppOpenRegion,
+    LxAppRuntimeInfo, LxAppRuntimePageInfo, LxAppRuntimeSurfaceInfo, LxAppSecurityPrivilege,
+    ManagedNativeSurface, PageDefinition, PageInstanceEvent, PageInstanceRuntimeInfo, PageOwner,
+    PageQueryInput, PageSurface, PageSurfaceRequest, PageSurfaceTarget, PageTarget,
+    PresentationKind, ResolvedPage, SceneId, SurfaceKind, SurfacePosition, SurfaceRole,
+    UrlCallbackSurface, UrlCallbackWaitError, add_display_language_change_listener,
+    apply_display_language_override, automation_auto_grant, close_lxapp, config::LxAppInfo,
+    create_page_instance, display_language, dispose_page_instance, dispose_page_instance_by_id,
+    ensure_builtin_lxapp, ensure_host_surface_owner, ensure_lxapp, find_page_by_instance_id,
+    get_current_lxapp, get_platform, host_class, init, installed_lxapp_path, is_dev_session,
     is_public_network_address, is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active,
     navbar, notify_lxapp_host_visibility, notify_page_host_visibility, notify_page_instance,
     notify_page_instance_by_id, on_low_memory, open_lxapp, open_region, page_chrome,
@@ -80,7 +81,7 @@ pub use lxapp::{
     register_surface_active_main_observer, register_surface_close_observer,
     register_surface_context_observer, register_surface_visibility_observer,
     register_synthetic_lxapp, restart_lxapp, set_automation_auto_grant, set_display_language,
-    tabbar, touch_page_instance_by_id, try_get, uninstall_lxapp,
+    set_display_language_in, tabbar, touch_page_instance_by_id, try_get, uninstall_lxapp,
 };
 pub use native_component::{
     NativeComponentHost, on_native_component_event, register_native_component_host,

@@ -1,6 +1,6 @@
 use crate::i18n::{
-    js_error_from_business_code_with_detail, js_error_from_platform_error,
-    js_service_unavailable_error,
+    js_error_from_business_code_with_detail, js_error_from_lxapp_error,
+    js_error_from_platform_error, js_invalid_parameter_error, js_service_unavailable_error,
 };
 use lingxia_app_context::{app_config, env_version, home_app_id};
 use lingxia_platform::traits::app_runtime::AppRuntime;
@@ -45,7 +45,7 @@ fn get_app_base_info(ctx: JSContext) -> JSResult<AppBaseInfo> {
         app_config().ok_or_else(|| js_service_unavailable_error("app config not available"))?;
     Ok(AppBaseInfo {
         locale: locale.to_string(),
-        display_language: lxapp::get_display_language(),
+        display_language: lxapp::display_language(),
         os: lingxia_platform::os_label().to_string(),
         product_name: app_cfg.product_name.clone(),
         version: app_cfg.product_version.clone(),
@@ -153,6 +153,18 @@ rong::js_api! {
     }
 }
 
+/// Set the host display language. `"auto"` follows the system locale;
+/// `"en-US"` and `"zh-CN"` pin the product. Every lxapp inherits the resolved
+/// tag from `getBaseInfo().displayLanguage`. Restricted to the home lxapp.
+fn set_js_display_language(ctx: JSContext, language: String) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    ensure_home_lxapp(&lxapp, "lx.app.setDisplayLanguage")?;
+    let language = language
+        .parse::<lxapp::DisplayLanguage>()
+        .map_err(js_invalid_parameter_error)?;
+    lxapp::set_display_language(language).map_err(|error| js_error_from_lxapp_error(&error))
+}
+
 /// Follow the host's effective display language.
 ///
 /// `getBaseInfo().displayLanguage` answers what it is now; this answers when it
@@ -162,7 +174,7 @@ rong::js_api! {
 fn on_display_language_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
     // Invoke immediately with the current value, like every other `on*`
     // subscription, so a caller never needs a separate read to get started.
-    let _ = callback.call::<_, ()>(None, (lxapp::get_display_language(),));
+    let _ = callback.call::<_, ()>(None, (lxapp::display_language(),));
     let token = register_app_handler(&ctx, DISPLAY_LANGUAGE_CHANGE_EVENT, callback)?;
     let off_ctx = ctx.clone();
     let unsubscribed = Cell::new(false);
@@ -192,5 +204,7 @@ rong::js_api! {
         namespace HostAppApi = app_namespace(ctx)?;
         fn exit = exit_app;
         fn setBadge(ts_params = "value: string | number | null") = set_app_badge;
+        fn setDisplayLanguage(ts_params = "language: DisplayLanguageSetting") =
+            set_js_display_language;
     }
 }

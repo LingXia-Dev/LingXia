@@ -47,7 +47,7 @@ fn normalize_locale(locale: &str) -> String {
 /// ```
 #[inline]
 pub fn t(key: I18nKey) -> String {
-    let locale = lxapp::get_display_language();
+    let locale = lxapp::display_language();
     let normalized = normalize_locale(&locale);
     key.get(&normalized).to_string()
 }

@@ -246,7 +246,7 @@ fn build_connect_src_policy() -> String {
 
 fn build_bridge_config_script(bridge_nonce: Option<&str>) -> String {
     let bridge_os = lingxia_platform::os_label();
-    let display_language = escape_js_string(&super::get_display_language());
+    let display_language = escape_js_string(&super::display_language());
 
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     let apple_downstream_url = Some(escape_js_string(

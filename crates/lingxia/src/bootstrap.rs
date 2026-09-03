@@ -222,7 +222,7 @@ fn resolved_display_language_seed(
 
 fn seed_display_language(app_data_dir: &std::path::Path) {
     match lingxia_service::settings::display_language(app_data_dir) {
-        Ok(saved) => lxapp::set_display_language(resolved_display_language_seed(
+        Ok(saved) => lxapp::apply_display_language_override(resolved_display_language_seed(
             saved,
             std::env::var(RUNNER_DISPLAY_LANGUAGE_ENV).ok().as_deref(),
         )),
@@ -303,7 +303,7 @@ mod tests {
         seed_display_language(dir.path());
 
         assert_eq!(crate::app::display_language(), "zh-CN");
-        lxapp::set_display_language(None);
+        lxapp::apply_display_language_override(None);
     }
 
     #[test]

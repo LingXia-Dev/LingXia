@@ -33,55 +33,6 @@ pub fn get_platform() -> Option<Arc<Platform>> {
         .or_else(|| LXAPPS_MANAGER.get().map(|manager| manager.runtime.clone()))
 }
 
-/// User override for the product display language (the settings-page
-/// "Language" choice). `None` follows the system locale.
-static DISPLAY_LANGUAGE: Mutex<Option<String>> = Mutex::new(None);
-
-/// Set (or clear) the display-language override. The shell that owns the
-/// language setting seeds this at startup and updates it on change so every
-/// `get_display_language` consumer — native chrome i18n included — follows
-/// the user's choice without re-reading the settings store.
-pub fn set_display_language(language: Option<String>) {
-    let normalized = language.filter(|value| !value.trim().is_empty());
-    *DISPLAY_LANGUAGE.lock().unwrap_or_else(|e| e.into_inner()) = normalized;
-    publish_display_language(&get_display_language());
-}
-
-/// Push the language to both halves of every running lxapp.
-///
-/// The native chrome reads `get_display_language` live, but a page WebView only
-/// ever received the value its bootstrap was written with, and Logic only ever
-/// read it on demand — so without this a language switch relabels the chrome
-/// and leaves the content it frames, plus every title the app set itself, in
-/// the previous language until the page is recreated.
-fn publish_display_language(language: &str) {
-    let Some(manager) = get_lxapps_manager() else {
-        return;
-    };
-    let quoted = serde_json::to_string(language).unwrap_or_else(|_| "\"en-US\"".to_string());
-    let script = format!("var f = globalThis.__lingxiaApplyDisplayLanguage; if (f) f({quoted});");
-    use lingxia_webview::WebViewController;
-    // Collect first: `publish_app_event` looks the appid up in this same map,
-    // and a re-entrant read while a writer is queued deadlocks the caller.
-    let apps: Vec<(String, Arc<LxApp>)> = manager
-        .lxapps
-        .iter()
-        .map(|entry| (entry.key().clone(), entry.value().clone()))
-        .collect();
-    for (appid, app) in apps {
-        for page in app.live_page_instances() {
-            if let Some(webview) = page.webview() {
-                let _ = webview.exec_js(&script);
-            }
-        }
-        crate::appservice::event_bus::publish_app_event(
-            &appid,
-            crate::DISPLAY_LANGUAGE_CHANGE_EVENT,
-            Some(quoted.clone()),
-        );
-    }
-}
-
 /// Re-serve every open page after the simulated host class changed.
 ///
 /// A page reads its class from the bridge config the host writes into the
@@ -100,7 +51,8 @@ pub(crate) fn reload_pages_for_host_class_change() {
     let Some(manager) = get_lxapps_manager() else {
         return;
     };
-    // Collect first, for the same reason `publish_display_language` does.
+    // Collect first: looking the appid up in this same map while a writer is
+    // queued deadlocks the caller.
     let apps: Vec<Arc<LxApp>> = manager
         .lxapps
         .iter()
@@ -124,22 +76,6 @@ pub(crate) fn reload_pages_for_host_class_change() {
             }
         }
     }
-}
-
-/// Get the product display language: the user override when set, else the
-/// system locale. Returns "en-US" if the SDK has not been initialized.
-pub fn get_display_language() -> String {
-    if let Some(language) = DISPLAY_LANGUAGE
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone()
-    {
-        return language;
-    }
-    RUNTIME
-        .get()
-        .map(|runtime| runtime.get_system_locale().to_string())
-        .unwrap_or_else(|| "en-US".to_string())
 }
 
 /// Try to get a specific LxApp instance by lxappid

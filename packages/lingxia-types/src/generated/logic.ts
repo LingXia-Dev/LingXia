@@ -534,6 +534,9 @@ export type DeviceOrientationChangeEvent = {
     value: DeviceOrientation;
 };
 
+/** Host display-language setting. `"auto"` follows the system locale. */
+export type DisplayLanguageSetting = 'auto' | 'en-US' | 'zh-CN';
+
 export type DownloadDestination = 'app' | 'downloads';
 
 export type DownloadOptionsBase = {
@@ -2416,6 +2419,12 @@ declare global {
      * the call as a no-op.
      */
     setBadge(value: string | number | null): void;
+    /**
+     * Set the host display language. `"auto"` follows the system locale;
+     * `"en-US"` and `"zh-CN"` pin the product. Every lxapp inherits the resolved
+     * tag from `getBaseInfo().displayLanguage`. Restricted to the home lxapp.
+     */
+    setDisplayLanguage(language: DisplayLanguageSetting): void;
   }
 }
 

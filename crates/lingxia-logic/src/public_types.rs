@@ -314,6 +314,8 @@ rong::js_api! {
         type BinaryFileData = r###"ArrayBuffer | ArrayBufferView"###;
 
         type AppearancePreference = r###"'auto' | 'light' | 'dark'"###;
+        /// Host display-language setting. `"auto"` follows the system locale.
+        type DisplayLanguageSetting = r###"'auto' | 'en-US' | 'zh-CN'"###;
         type ResolvedAppearance = r###"'light' | 'dark'"###;
         type VisibilityPreference = r###"'auto' | 'hidden'"###;
         type TabBarVisibilityPreference = r###"'auto' | 'visible' | 'hidden'"###;

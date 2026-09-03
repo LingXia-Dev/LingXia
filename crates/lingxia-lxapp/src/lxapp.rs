@@ -38,6 +38,7 @@ pub mod config;
 pub mod host_class;
 use config::{LxAppConfig, LxAppLogicEntry, LxAppPageEntry};
 mod content;
+mod display_language;
 pub(crate) mod metadata;
 pub mod navbar;
 pub mod page_chrome;
@@ -61,6 +62,10 @@ pub use crate::page::runtime::{
 use crate::page::runtime::{
     PageInstanceLifecycleState, PageInstanceRuntimeRecord, transition_page_instance_lifecycle,
 };
+pub use display_language::{
+    DisplayLanguage, add_display_language_change_listener, apply_display_language_override,
+    display_language, set_display_language, set_display_language_in,
+};
 pub use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 pub use lingxia_surface::Role as SurfaceRole;
 pub use lingxia_update::ReleaseType;
@@ -78,9 +83,7 @@ pub use runtime_ops::{
     refresh_auto_appearances, restart_lxapp, touch_page_instance_by_id, uninstall_lxapp,
 };
 pub(crate) use runtime_registry::get_lxapps_manager;
-pub use runtime_registry::{
-    find_page_by_instance_id, get_display_language, get_platform, set_display_language, try_get,
-};
+pub use runtime_registry::{find_page_by_instance_id, get_platform, try_get};
 pub(crate) use surface::SurfaceRecords;
 pub use surface::{
     HostMainSurfaceRegistration, HostSurfaceMenuExecution, LxAppRuntimeSurfaceInfo,
