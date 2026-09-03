@@ -1271,7 +1271,9 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         button.isBordered = false
         button.imagePosition = .imageAbove
         button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 20, weight: .regular))
+            .withSymbolConfiguration(
+                NSImage.SymbolConfiguration(pointSize: Self.capsuleActionIconSize, weight: .regular)
+            )
         button.title = title
         button.contentTintColor = NSColor(white: 0.2, alpha: 1)
         button.font = .systemFont(ofSize: 11)
@@ -1287,7 +1289,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.isBordered = false
         button.imagePosition = .imageAbove
-        button.image = NSImage(contentsOfFile: imagePath)
+        button.image = Self.capsuleActionIcon(contentsOfFile: imagePath)
+        button.imageScaling = .scaleProportionallyUpOrDown
         button.title = title
         button.contentTintColor = NSColor(white: 0.2, alpha: 1)
         button.font = .systemFont(ofSize: 11)
@@ -1296,6 +1299,29 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         button.target = self
         button.action = action
         return button
+    }
+
+    /// One size for every capsule action, built-in or lxapp-supplied.
+    private static let capsuleActionIconSize: CGFloat = 20
+
+    /// Fit an lxapp's own icon into the box the built-in actions occupy.
+    ///
+    /// Those are SF Symbols created at an explicit 20pt. An lxapp's icon is a
+    /// file, and `NSImage(contentsOfFile:)` reports the artwork's own pixel
+    /// size, which `NSButton` then draws at — so a 512px source rendered
+    /// twenty-five times larger than the symbols beside it. Scale to fit rather
+    /// than forcing a square, so a non-square icon is not stretched.
+    private static func capsuleActionIcon(contentsOfFile path: String) -> NSImage? {
+        guard let image = NSImage(contentsOfFile: path) else { return nil }
+        let box = capsuleActionIconSize
+        let size = image.size
+        guard size.width > 0, size.height > 0 else {
+            image.size = NSSize(width: box, height: box)
+            return image
+        }
+        let scale = min(box / size.width, box / size.height)
+        image.size = NSSize(width: size.width * scale, height: size.height * scale)
+        return image
     }
 
     @objc private func capsuleCleanTapped() {
