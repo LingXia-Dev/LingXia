@@ -330,6 +330,9 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
     );
     expect(accentSamples >= 4).toBeTruthy();
     nativeButton = await app.page.query({ page: 'video', css: '#video-native-menu-more' });
+    if (!nativeButton.exists) {
+      throw new Error('native menu More button disappeared before pointer click');
+    }
     await automation.lxapp(SHOWCASE_APP_ID).page.pointer.click({
       window: host.id,
       at: [nativeButton.rect.center_x, nativeButton.rect.center_y],
