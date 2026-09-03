@@ -769,6 +769,16 @@ fn get_lxapp_session_id(appid: String) -> i64 {
         .unwrap_or(0)
 }
 
+/// Re-measure host chrome and publish the Page Chrome View snapshot.
+#[napi]
+fn sync_lxapp_host_ui(appid: String) -> bool {
+    let Some(lxapp) = lxapp::try_get(&appid) else {
+        return false;
+    };
+    lxapp.sync_host_ui();
+    true
+}
+
 /// Callback from platform (called from ArkTS)
 ///
 /// # Parameters

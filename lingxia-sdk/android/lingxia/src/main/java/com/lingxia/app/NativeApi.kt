@@ -403,6 +403,13 @@ internal object NativeApi {
     external fun getLxAppSessionId(appId: String): Long
 
     /**
+     * Re-measure host chrome (navbar, tab bar, capsule) and publish the
+     * Page Chrome snapshot the View reads.
+     */
+    @JvmStatic
+    external fun syncLxAppHostUI(appId: String): Boolean
+
+    /**
      * Callback function for async operations
      * @param id Callback ID for correlating with pending operation
      * @param success Whether the operation completed successfully

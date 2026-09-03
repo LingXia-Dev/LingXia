@@ -23,7 +23,8 @@ import { NavigationBar, NavigationBarState, NAVBAR_TOTAL_HEIGHT, isColorDark } f
 import { NavigationButton, CapsuleButton } from './LxAppDrawables';
 import { TabBar, tabBarExtraBottomHeight } from './TabBar';
 import { TabBarPosition, TabBarItem, UiEventType } from 'liblingxia.so';
-import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor } from 'liblingxia.so';
+import liblingxia, { TabBarState, getNavigationBarState, isPullDownRefreshEnabled, onPageShow, onLxappEvent, setSurfaceViewport, setSurfaceWidth, pageBackgroundColor, syncLxappHostUI } from 'liblingxia.so';
+import { notePageOrigin, setCapsuleGeometryListener } from './capsuleGeometry';
 import { NAVIGATION_ACTION_BACK, NAVIGATION_ACTION_HOME, CAPSULE_ACTION_CLOSE } from '../app/NativeBridge';
 import { AnimationType } from './LxAppNavigation';
 import { LxNativeVideoPlayer } from './APIs/media/player/LxNativeVideoPlayer';
@@ -230,6 +231,9 @@ export struct LxAppContainer {
 
     // Register this container for TabBar updates
     LxAppContainer.activeContainers.set(this.appId, this);
+    setCapsuleGeometryListener(() => {
+      syncLxappHostUI(this.appId);
+    });
 
     // Initialize animation type from static registry
     const storedAnimationType: AnimationType | undefined = LxAppContainer.animationTypes.get(this.appId);
@@ -1094,6 +1098,10 @@ export struct LxAppContainer {
     .onAreaChange((_, newValue) => {
       this.webAreaWidthVp = Number(newValue.width) || 0;
       this.webAreaHeightVp = Number(newValue.height) || 0;
+      notePageOrigin(
+        Number((newValue.globalPosition?.x as number) ?? 0),
+        Number((newValue.globalPosition?.y as number) ?? 0)
+      );
       this.reportCurrentPageViewport();
     })
     .hitTestBehavior(HitTestMode.Transparent)

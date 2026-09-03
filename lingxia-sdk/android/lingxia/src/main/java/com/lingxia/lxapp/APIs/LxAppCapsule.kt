@@ -21,16 +21,23 @@ internal object LxAppCapsule {
         activity.runOnUiThread {
             try {
                 Log.i(TAG, "Running getCapsuleRect on UI thread")
-
-                val jsonString = activity.getCapsuleRectJSON(appId)
-                if (jsonString.isEmpty() || jsonString == "{}") {
-                    LxLog.e(TAG, "Invalid capsule rect payload")
-                    NativeApi.onCallback(callbackId, false, "2001")
-                    return@runOnUiThread
+                fun send(jsonString: String) {
+                    if (jsonString.isEmpty() || jsonString == "{}") {
+                        LxLog.e(TAG, "Invalid capsule rect payload")
+                        NativeApi.onCallback(callbackId, false, "2001")
+                        return
+                    }
+                    Log.i(TAG, "Capsule rect (dp): $jsonString")
+                    NativeApi.onCallback(callbackId, true, jsonString)
                 }
-
-                Log.i(TAG, "Capsule rect (dp): $jsonString")
-                NativeApi.onCallback(callbackId, true, jsonString)
+                val jsonString = activity.getCapsuleRectJSON(appId)
+                if (jsonString == "null") {
+                    // One frame later the pill and page have usually been measured.
+                    activity.window?.decorView?.post { send(activity.getCapsuleRectJSON(appId)) }
+                        ?: send(jsonString)
+                } else {
+                    send(jsonString)
+                }
             } catch (e: Exception) {
                 LxLog.e(TAG, "getCapsuleRect error", e)
                 NativeApi.onCallback(callbackId, false, "2001") // System error
