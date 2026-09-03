@@ -101,6 +101,12 @@ pub struct ResolvedTabBarStyle {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TabBarItem {
+    /// Configured page name from `pages[]`. The join key with the catalog;
+    /// same token `lx.switchTab({ page })` takes.
+    pub page: String,
+    /// Resolved `pages[].path`. Empty until [`TabBar::validate`]; matching
+    /// treats an empty path as no page.
+    #[serde(skip, default)]
     pub page_path: String,
     #[serde(default)]
     pub text: Option<String>,
@@ -182,7 +188,7 @@ impl TabBar {
     /// becomes an overflow affordance instead of a tab.
     pub const COMPACT_SLOTS: usize = 5;
 
-    pub fn validate(&mut self, page_paths: &[String]) -> Result<(), String> {
+    pub fn validate(&mut self, pages: &[(&str, &str)]) -> Result<(), String> {
         if !(Self::MIN_ITEMS..=Self::MAX_ITEMS).contains(&self.items.len()) {
             return Err(format!(
                 "tabBar.items: expected {} to {} items",
@@ -210,13 +216,22 @@ impl TabBar {
         }
         self.style = self.style.validate(self.presentation)?;
         for (index, item) in self.items.iter_mut().enumerate() {
-            item.page_path = item.page_path.trim().trim_start_matches('/').to_string();
-            if !page_paths.iter().any(|path| path == &item.page_path) {
+            let name = item.page.trim().to_string();
+            if name.is_empty() {
                 return Err(format!(
-                    "tabBar.items[{index}].pagePath: '{}' is not a registered page",
-                    item.page_path
+                    "tabBar.items[{index}].page: expected a non-empty configured page name"
                 ));
             }
+            let Some(path) = pages
+                .iter()
+                .find_map(|(page, path)| (*page == name).then_some(*path))
+            else {
+                return Err(format!(
+                    "tabBar.items[{index}].page: '{name}' is not a registered page name"
+                ));
+            };
+            item.page = name;
+            item.page_path = path.trim().trim_start_matches('/').to_string();
             validate_asset_path(item.icon_path.as_deref(), index, "iconPath")?;
         }
         Ok(())
@@ -410,6 +425,9 @@ impl TabBar {
     }
 
     pub fn find_index_by_path(&self, path: &str) -> Option<i32> {
+        if path.is_empty() {
+            return None;
+        }
         self.items
             .iter()
             .position(|item| item.page_path == path)
@@ -417,7 +435,7 @@ impl TabBar {
     }
 
     pub fn is_tabbar_page(&self, path: &str) -> bool {
-        self.items.iter().any(|item| item.page_path == path)
+        !path.is_empty() && self.items.iter().any(|item| item.page_path == path)
     }
 
     pub fn get_tabbar_pages(&self) -> Vec<String> {
@@ -692,8 +710,8 @@ mod patch_tests {
     fn tabbar() -> TabBar {
         serde_json::from_value::<TabBar>(serde_json::json!({
             "items": [
-                {"pagePath": "pages/home/index", "text": "Home"},
-                {"pagePath": "pages/profile/index", "text": "Profile"}
+                {"page": "home", "text": "Home"},
+                {"page": "profile", "text": "Profile"}
             ]
         }))
         .unwrap()
@@ -844,26 +862,47 @@ mod tests {
         serde_json::from_value(value).unwrap()
     }
 
+    fn validate_self(tabbar: &mut TabBar) -> Result<(), String> {
+        let owned: Vec<(String, String)> = tabbar
+            .items
+            .iter()
+            .map(|item| (item.page.clone(), format!("pages/{}/index", item.page)))
+            .collect();
+        let pages: Vec<_> = owned
+            .iter()
+            .map(|(name, path)| (name.as_str(), path.as_str()))
+            .collect();
+        tabbar.validate(&pages)
+    }
+
     #[test]
     fn immersive_rejects_surface_colors_with_exact_path() {
         let mut tabbar = manifest(serde_json::json!({
             "presentation": "immersive",
             "style": { "backgroundColor": "#FFFFFF" },
             "items": [
-                { "pagePath": "pages/home/index" },
-                { "pagePath": "pages/settings/index" }
+                { "page": "home" },
+                { "page": "settings" }
             ]
         }));
-        let error = tabbar
-            .validate(&["pages/home/index".into(), "pages/settings/index".into()])
-            .unwrap_err();
+        let error = validate_self(&mut tabbar).unwrap_err();
         assert!(error.starts_with("tabBar.style.backgroundColor:"));
+    }
+
+    #[test]
+    fn unvalidated_items_do_not_match_a_path() {
+        let tabbar = manifest(serde_json::json!({
+            "items": [{ "page": "home" }, { "page": "settings" }]
+        }));
+        assert!(!tabbar.is_tabbar_page(""));
+        assert!(!tabbar.is_tabbar_page("pages/home/index"));
+        assert!(tabbar.find_index_by_path("").is_none());
     }
 
     #[test]
     fn runtime_null_reveals_manifest_item() {
         let mut item: TabBarItem = serde_json::from_value(serde_json::json!({
-            "pagePath": "pages/home/index",
+            "page": "home",
             "text": "Home"
         }))
         .unwrap();
@@ -879,7 +918,7 @@ mod tests {
         let items = |count: usize| {
             manifest(serde_json::json!({
                 "items": (0..count)
-                    .map(|index| serde_json::json!({ "pagePath": format!("pages/p{index}/index") }))
+                    .map(|index| serde_json::json!({ "page": format!("p{index}") }))
                     .collect::<Vec<_>>()
             }))
         };
@@ -895,9 +934,9 @@ mod tests {
     fn show_on_hides_an_item_without_renumbering_the_rest() {
         let mut tabbar = manifest(serde_json::json!({
             "items": [
-                { "pagePath": "pages/home/index" },
-                { "pagePath": "pages/scan/index", "showOn": ["mobile"] },
-                { "pagePath": "pages/me/index" }
+                { "page": "home" },
+                { "page": "scan", "showOn": ["mobile"] },
+                { "page": "me" }
             ]
         }));
         for item in &mut tabbar.items {
@@ -919,7 +958,7 @@ mod tests {
     fn the_fold_counts_only_what_this_host_shows() {
         let items: Vec<_> = (0..8)
             .map(|index| {
-                let mut item = serde_json::json!({ "pagePath": format!("pages/p{index}/index") });
+                let mut item = serde_json::json!({ "page": format!("p{index}") });
                 // Three desktop-only items sit among the first six.
                 if [1, 3, 5].contains(&index) {
                     item["showOn"] = serde_json::json!(["desktop"]);
@@ -946,11 +985,11 @@ mod tests {
     fn a_mobile_only_item_ships_to_one_host_and_keeps_its_index() {
         let tabbar = manifest(serde_json::json!({
             "items": [
-                { "pagePath": "pages/home/index" },
-                { "pagePath": "pages/api/index" },
-                { "pagePath": "pages/media/index", "showOn": ["mobile"] },
-                { "pagePath": "pages/components/index" },
-                { "pagePath": "pages/todo/index" }
+                { "page": "home" },
+                { "page": "api" },
+                { "page": "media", "showOn": ["mobile"] },
+                { "page": "components" },
+                { "page": "todo" }
             ]
         }));
         let shipped = |class| {
@@ -976,26 +1015,27 @@ mod tests {
 
     #[test]
     fn show_on_may_not_starve_a_host() {
-        let paths: Vec<String> = (0..3).map(|i| format!("pages/p{i}/index")).collect();
         let mut tabbar = manifest(serde_json::json!({
             "items": [
-                { "pagePath": "pages/p0/index" },
-                { "pagePath": "pages/p1/index", "showOn": ["mobile"] },
-                { "pagePath": "pages/p2/index", "showOn": ["mobile"] }
+                { "page": "p0" },
+                { "page": "p1", "showOn": ["mobile"] },
+                { "page": "p2", "showOn": ["mobile"] }
             ]
         }));
-        let error = tabbar.validate(&paths).unwrap_err();
+        let error = validate_self(&mut tabbar).unwrap_err();
         assert!(error.contains("desktop"), "{error}");
     }
 
     #[test]
     fn preload_covers_the_strip_slots_only() {
         let items = |count: usize| {
-            manifest(serde_json::json!({
+            let mut tabbar = manifest(serde_json::json!({
                 "items": (0..count)
-                    .map(|index| serde_json::json!({ "pagePath": format!("pages/p{index}/index") }))
+                    .map(|index| serde_json::json!({ "page": format!("p{index}") }))
                     .collect::<Vec<_>>()
-            }))
+            }));
+            validate_self(&mut tabbar).unwrap();
+            tabbar
         };
         assert_eq!(items(2).preload_page_paths().len(), 2);
         assert_eq!(items(5).preload_page_paths().len(), 5);
@@ -1011,25 +1051,24 @@ mod tests {
 
     #[test]
     fn ten_items_validate_but_eleven_do_not() {
-        let paths: Vec<String> = (0..11).map(|i| format!("pages/p{i}/index")).collect();
         let of = |count: usize| {
             manifest(serde_json::json!({
                 "items": (0..count)
-                    .map(|index| serde_json::json!({ "pagePath": format!("pages/p{index}/index") }))
+                    .map(|index| serde_json::json!({ "page": format!("p{index}") }))
                     .collect::<Vec<_>>()
             }))
         };
-        assert!(of(10).validate(&paths).is_ok());
-        assert!(of(11).validate(&paths).is_err());
-        assert!(of(1).validate(&paths).is_err());
+        assert!(validate_self(&mut of(10)).is_ok());
+        assert!(validate_self(&mut of(11)).is_err());
+        assert!(validate_self(&mut of(1)).is_err());
     }
 
     #[test]
     fn badge_and_red_dot_clear_each_other() {
         let mut tabbar = manifest(serde_json::json!({
             "items": [
-                { "pagePath": "pages/home/index" },
-                { "pagePath": "pages/settings/index" }
+                { "page": "home" },
+                { "page": "settings" }
             ]
         }));
         tabbar.set_badge(0, Some("3".into()));

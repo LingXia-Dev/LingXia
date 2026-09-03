@@ -2128,8 +2128,8 @@ fn contrasting_text_color(background: u32) -> u32 {
 }
 
 /// Strips a leading `/` and a framework file extension so a page route
-/// (`pages/home/index.tsx`) compares equal to a tab-bar `pagePath`
-/// (`pages/home/index`).
+/// (`pages/home/index.tsx`) compares equal to a tab item's resolved path
+/// (`pages/home/index`). The manifest names the page; this is the catalog path.
 fn normalize_tab_path(path: &str) -> &str {
     let path = path.strip_prefix('/').unwrap_or(path);
     for ext in [".tsx", ".ts", ".jsx", ".js", ".vue", ".html"] {
