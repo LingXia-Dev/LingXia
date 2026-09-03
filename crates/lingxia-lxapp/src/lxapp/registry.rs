@@ -393,13 +393,12 @@ pub(crate) async fn fetch_records(
         // or a bundled builtin pays a fresh round trip — and a record that once
         // said `suspended` would keep saying so after the registry stopped
         // listing the app.
-        let icon_hash = info.and_then(|info| info.icon_hash.clone());
         let record = RegistryRecord {
             appid: appid.clone(),
             locale: locale.to_string(),
             name: info.and_then(|info| info.name.clone()),
             description: info.and_then(|info| info.description.clone()),
-            icon_hash: icon_hash.clone(),
+            icon_url: info.and_then(|info| info.icon_url.clone()),
             // Artwork is replaced by `fetch_icons`. Carrying the old file over
             // meanwhile keeps a row showing a slightly stale icon rather than
             // blanking it for the duration of a download — but an app that no
@@ -429,10 +428,11 @@ async fn fetch_icons(infos: &[LxAppRegistryInfo], locale: &str) {
     sweep_staging_files();
     let mut changed = Vec::new();
     for info in infos {
-        let Some(icon_file) = resolve_icon_file(info).await else {
+        let cached = record(&info.appid, locale);
+        let Some(icon_file) = resolve_icon_file(info, cached.as_ref()).await else {
             continue;
         };
-        let Some(mut record) = record(&info.appid, locale) else {
+        let Some(mut record) = cached else {
             continue;
         };
         if record.icon_file.as_deref() == Some(icon_file.as_str()) {
@@ -450,20 +450,27 @@ async fn fetch_icons(infos: &[LxAppRegistryInfo], locale: &str) {
     }
 }
 
-/// Returns the cached file name for this info's icon, downloading it only when
-/// its content is not already on disk. A server-sent hash makes the steady
-/// state cost zero requests; without one we download and address by the hash we
-/// compute, so the cache stays content-addressed either way.
-async fn resolve_icon_file(info: &LxAppRegistryInfo) -> Option<String> {
+/// Returns the cached file name for this info's icon, downloading only when the
+/// URL it came from has changed.
+///
+/// The URL is the cache key, so a registry that edits artwork behind a stable
+/// URL is never picked up — the contract requires the URL to change with the
+/// image. The file is still named by the bytes' own hash, so the same artwork
+/// reached through two URLs, or by two lxapps, is one file on disk.
+async fn resolve_icon_file(
+    info: &LxAppRegistryInfo,
+    cached: Option<&RegistryRecord>,
+) -> Option<String> {
     let url = info.icon_url.as_deref().filter(|url| !url.is_empty())?;
     let dir = ensure_icons_dir()?;
     let extension = icon_extension(url);
 
-    if let Some(hash) = info.icon_hash.as_deref().filter(|hash| !hash.is_empty()) {
-        let file = format!("{}.{}", hash.to_ascii_lowercase(), extension);
-        if dir.join(&file).exists() {
-            return Some(file);
-        }
+    if let Some(cached) = cached
+        && cached.icon_url.as_deref() == Some(url)
+        && let Some(file) = cached.icon_file.as_deref()
+        && dir.join(file).exists()
+    {
+        return Some(file.to_string());
     }
 
     let staging = dir.join(format!(
@@ -488,14 +495,6 @@ async fn resolve_icon_file(info: &LxAppRegistryInfo) -> Option<String> {
             let _ = fs::remove_file(&staging);
             return None;
         }
-    }
-
-    if let Some(hash) = info.icon_hash.as_deref().filter(|hash| !hash.is_empty())
-        && let Err(err) = archive::verify_sha256(&staging, hash)
-    {
-        crate::warn!("Icon checksum mismatch for {}: {}", info.appid, err);
-        let _ = fs::remove_file(&staging);
-        return None;
     }
 
     let digest = archive::sha256_hex(&staging).ok()?;
@@ -639,7 +638,7 @@ mod tests {
             locale: locale.to_string(),
             name: Some(format!("{appid}-{locale}")),
             description: None,
-            icon_hash: None,
+            icon_url: None,
             icon_file: icon_file.map(str::to_string),
             status: LxAppStatus::Published.as_str().to_string(),
             fetched_at: now_secs(),
