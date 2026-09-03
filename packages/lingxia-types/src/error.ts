@@ -84,6 +84,45 @@ export function surfaceErrorCode(error: unknown): SurfaceErrorCode | null {
     : null;
 }
 
+/**
+ * Why an lxapp refused to open, when the operator took it down.
+ *
+ * Both values block the open and mean opposite things to a user, so a caller
+ * that shows one message for both is showing the wrong one half the time.
+ */
+export type LxAppUnavailableReason = 'maintain' | 'suspended';
+
+/** Every member of `LxAppUnavailableReason`, for runtime narrowing. */
+export const LXAPP_UNAVAILABLE_REASONS = ['maintain', 'suspended'] as const;
+
+/**
+ * Read why an open was refused, or `null` when it failed for another reason.
+ *
+ * Navigation rejects like any other `lx` API; the reason rides on `data.code`,
+ * the same way a surface error carries its own. Branch on it rather than on the
+ * message: `maintain` deserves "try again later" and `suspended` does not.
+ *
+ * ```ts
+ * try {
+ *   await lx.navigateToApp({ appId })
+ * } catch (error) {
+ *   const reason = lxAppUnavailableReason(error)
+ *   if (reason === 'maintain') showMaintenanceNotice()
+ *   else if (reason === 'suspended') showUnavailableNotice()
+ *   else throw error
+ * }
+ * ```
+ */
+export function lxAppUnavailableReason(error: unknown): LxAppUnavailableReason | null {
+  const root = toRecord(error);
+  const data = root ? toRecord(root.data) : null;
+  const code = data?.code;
+  return typeof code === 'string' &&
+    (LXAPP_UNAVAILABLE_REASONS as readonly string[]).includes(code)
+    ? (code as LxAppUnavailableReason)
+    : null;
+}
+
 /** Every member of `SurfaceErrorCode`, for runtime narrowing. */
 export const SURFACE_ERROR_CODES = [
   'unsupported_placement',

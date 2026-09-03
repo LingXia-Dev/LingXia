@@ -353,12 +353,28 @@ pub(crate) async fn ensure_open_allowed(appid: &str) -> Result<(), LxAppError> {
     };
 
     if status.blocks_open() {
-        return Err(LxAppError::Runtime(format!(
-            "lxapp {} is {} and cannot be opened",
-            appid, status
-        )));
+        return Err(unavailable_error(appid, status));
     }
     Ok(())
+}
+
+/// The refusal a blocked open reports, typed so a caller can act on it.
+///
+/// `maintain` and `suspended` both stop the open and mean opposite things to a
+/// user — "come back later" against "this is not yours to open" — so the status
+/// travels in `data.code` rather than only inside a sentence. Callers branch on
+/// it the way they branch on a surface error code; the message is a fallback for
+/// a host that shows the raw text.
+fn unavailable_error(appid: &str, status: LxAppStatus) -> LxAppError {
+    LxAppError::RongJSHost {
+        code: "3000".to_string(),
+        message: format!("lxapp {appid} is {status} and cannot be opened"),
+        data: Some(serde_json::json!({
+            "bizCode": 3000,
+            "code": status.as_str(),
+            "appId": appid,
+        })),
+    }
 }
 
 /// Fetch the registry's answer and store it. Artwork is *not* fetched here.
@@ -774,6 +790,23 @@ mod tests {
         record.icon_file = None;
         assert!(!cached_icon_is_gone(&record, &dir));
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_blocked_open_reports_which_state_blocked_it() {
+        // The two blocking states need different messages to a user, so the
+        // status has to survive as data rather than only inside a sentence.
+        for status in [LxAppStatus::Suspended, LxAppStatus::Maintain] {
+            let error = unavailable_error("com.example.app", status);
+            let LxAppError::RongJSHost { data, message, .. } = error else {
+                panic!("a blocked open must carry structured data, got a bare error");
+            };
+            let data = data.expect("blocked open carries data");
+            assert_eq!(data["code"], status.as_str());
+            assert_eq!(data["appId"], "com.example.app");
+            // The message stays useful for a host that only shows raw text.
+            assert!(message.contains("com.example.app"));
+        }
     }
 
     #[test]
