@@ -1,4 +1,4 @@
-export const VERSION = "0.13.0";
+export const VERSION = "0.14.0";
 export const PACKAGE_NAME = "@lingxia/test";
 
 export const DEFAULT_ACTION_TIMEOUT_MS = 5_000;

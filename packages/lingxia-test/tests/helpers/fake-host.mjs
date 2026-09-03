@@ -9,6 +9,7 @@ function testIdFromCss(css) {
 export function createWorld(options = {}) {
   const elements = options.elements ? [...options.elements] : [];
   const evalResults = new Map();
+  const evalCalls = new Map();
   let currentPage = { name: "home", path: "pages/home/index", current: true, inStack: true, ready: true };
   const stack = [currentPage];
   let blocked = false;
@@ -112,14 +113,17 @@ export function createWorld(options = {}) {
     async surfaceLayout() {
       return { sizeClass: "compact", mains: ["main"] };
     },
-    async eval({ script }) {
+    async eval({ script, captureCalls }) {
       if (blocked) throw new Error("fixture should not reach the app after abort");
+      let value = script;
       if (evalResults.has(script)) {
-        const value = evalResults.get(script);
+        value = evalResults.get(script);
         if (value instanceof Error) throw value;
-        return value;
       }
-      return script;
+      // Mirror the runtime: with `captureCalls` the result is wrapped and
+      // carries what the script reached. Tests seed that through `setCalls`.
+      if (captureCalls) return { value, calls: evalCalls.get(script) ?? [] };
+      return value;
     },
   };
 
@@ -156,6 +160,10 @@ export function createWorld(options = {}) {
     },
     setEval(script, value) {
       evalResults.set(script, value);
+    },
+    /** What the runtime should report the script reached. */
+    setCalls(script, calls) {
+      evalCalls.set(script, calls);
     },
     block() {
       blocked = true;

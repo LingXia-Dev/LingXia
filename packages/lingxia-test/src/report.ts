@@ -49,6 +49,14 @@ interface CoverState {
   specs: string[];
   /** Declared somewhere, but only by a pending or failing spec. */
   declared: boolean;
+  /**
+   * Declared by a passing spec that never actually reached the capability.
+   *
+   * This is the difference between a suite that proves something and one that
+   * says it does: a spec can subscribe to a listener, unsubscribe, pass, and
+   * claim the API — the runtime's own call record is what separates the two.
+   */
+  claimedOnly: boolean;
 }
 
 interface CoverGroup {
@@ -319,7 +327,7 @@ function renderPill(filter: string, label: string, pressed: boolean, toneClass: 
 /* ------------------------------------------------------------------ */
 
 function emptyState(): CoverState {
-  return { behaviour: false, shape: false, specs: [], declared: false };
+  return { behaviour: false, shape: false, specs: [], declared: false, claimedOnly: false };
 }
 
 function collectCovers(report: JsonReport, seedSurface: boolean): Map<string, CoverState> {
@@ -341,7 +349,12 @@ function collectCovers(report: JsonReport, seedSurface: boolean): Map<string, Co
     }
   }
   for (const item of report.cases) {
-    const proven = item.status === "passed" || item.status === "xfail";
+    // `xfail` is a known failure, not a demonstration. Counting it as coverage
+    // credits the suite for the one outcome it has recorded as broken.
+    const proven = item.status === "passed";
+    // Older runs carry no observation; treat them as unmeasured rather than
+    // as uncovered, so an upgrade does not read as a mass regression.
+    const observed = item.observed;
     for (const tag of item.covers) {
       const shapeOnly = tag.startsWith("shape:");
       const name = shapeOnly ? tag.slice("shape:".length) : tag;
@@ -352,8 +365,17 @@ function collectCovers(report: JsonReport, seedSurface: boolean): Map<string, Co
       state.declared = true;
       if (!state.specs.includes(item.id)) state.specs.push(item.id);
       if (!proven) continue;
-      if (shapeOnly) state.shape = true;
-      else state.behaviour = true;
+      // A `shape:` tag claims only that the member exists, which reading it is
+      // enough to establish; behaviour has to have been exercised.
+      if (shapeOnly) {
+        state.shape = true;
+        continue;
+      }
+      if (observed && !observed.some((call) => call === name || call.startsWith(`${name}.`))) {
+        state.claimedOnly = true;
+        continue;
+      }
+      state.behaviour = true;
     }
   }
   return states;
@@ -439,6 +461,7 @@ function renderCoverage(report: JsonReport): string {
       <ul class="legend">
         <li><span class="cover cover-ok">behaviour</span> a passing spec asserted it</li>
         <li><span class="cover cover-shape">shape</span> proven only to exist</li>
+        <li><span class="cover cover-claimed">claimed</span> a passing spec declared it but never called it</li>
         <li><span class="cover cover-pending">declared</span> claimed by a pending or failing spec</li>
         ${surface ? `<li><span class="cover cover-none">uncovered</span> no spec at all</li>` : ""}
       </ul>
@@ -470,10 +493,16 @@ function renderCoverageSection(
         ? "cover-ok"
         : state.shape
           ? "cover-shape"
-          : state.declared
-            ? "cover-pending"
-            : "cover-none";
-      const hint = state.specs.length > 0 ? `covered by ${state.specs.join(", ")}` : "no spec declares this tag";
+          : state.claimedOnly
+            ? "cover-claimed"
+            : state.declared
+              ? "cover-pending"
+              : "cover-none";
+      const hint = state.claimedOnly && !state.behaviour
+        ? `declared by ${state.specs.join(", ")}, but no eval in those specs reached it`
+        : state.specs.length > 0
+          ? `covered by ${state.specs.join(", ")}`
+          : "no spec declares this tag";
       return `<span class="cover ${klass}" title="${escapeHtml(hint)}"
         data-search="${escapeHtml(`${name} ${state.specs.join(" ")}`)}">${escapeHtml(name)}</span>`;
     }).join("");
@@ -867,6 +896,8 @@ h1 { margin:2px 0 4px; font-size:30px; line-height:1.15; letter-spacing:-.02em; 
 .cover { font-size:11px; font-family:var(--mono); padding:2px 7px; border-radius:6px; border:1px solid var(--line); }
 .cover-ok { background:var(--pass-soft); color:var(--pass); border-color:color-mix(in srgb, var(--pass) 30%, var(--line)); }
 .cover-shape { background:transparent; color:var(--pass); border-style:dashed; }
+.cover-claimed { background:var(--fail-soft); color:var(--fail); border-style:dashed;
+  border-color:color-mix(in srgb, var(--fail) 30%, var(--line)); }
 .cover-pending { background:var(--skip-soft); color:var(--skip); }
 .cover-none { color:var(--muted); opacity:.6; }
 .legend { margin:0 0 14px; padding:0; list-style:none; color:var(--muted); font-size:12px;

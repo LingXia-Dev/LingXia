@@ -54,6 +54,11 @@ export class LiveFixture implements Fixture {
   readonly apps: Apps;
   readonly args: Record<string, string>;
   readonly steps: StepRecord[] = [];
+  /**
+   * `lx.*` members this spec's evals actually reached. Collected so the report
+   * can tell an exercised capability from a declared one.
+   */
+  readonly observed = new Set<string>();
   readonly assertions: AssertionRecord[] = [];
   readonly attachments: AttachmentRef[] = [];
   readonly defers: Array<() => void | Promise<void>> = [];
@@ -433,7 +438,27 @@ export class LiveFixture implements Fixture {
       pages: () => this.act("app.pages", "", () => driver.pages()),
       surfaceLayout: () => this.act("app.surfaceLayout", "", () => driver.surfaceLayout()),
       eval: (options) =>
-        this.act("app.eval", summarise(options), () => driver.eval(this.withEvalBudget(options))),
+        this.act("app.eval", summarise(options), async () => {
+          // Ask the runtime which `lx.*` the script reached, and hand the
+          // caller only the value — the observation is the report's business,
+          // not the spec author's, and specs must not have to opt in for their
+          // coverage to be measured.
+          const result = (await driver.eval({
+            ...this.withEvalBudget(options),
+            captureCalls: true,
+          })) as unknown;
+          if (result && typeof result === "object" && "calls" in result && "value" in result) {
+            const { calls, value } = result as { calls?: unknown; value: unknown };
+            if (Array.isArray(calls)) {
+              for (const call of calls) {
+                if (typeof call === "string") this.observed.add(call);
+              }
+            }
+            return value;
+          }
+          // An older runtime ignores `captureCalls` and returns the bare value.
+          return result;
+        }),
     } as TestApp;
   }
 

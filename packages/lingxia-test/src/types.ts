@@ -184,6 +184,12 @@ export interface CaseRecord {
   status: SpecStatus;
   duration_ms: number;
   covers: string[];
+  /**
+   * `lx.*` members the spec's evals actually reached, observed by the runtime
+   * rather than declared. A `covers` tag absent from here was claimed but never
+   * exercised.
+   */
+  observed?: string[];
   steps: StepRecord[];
   assertions: AssertionRecord[];
   attachments: AttachmentRef[];
