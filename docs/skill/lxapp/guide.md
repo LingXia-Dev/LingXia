@@ -588,12 +588,12 @@ Add a `tabBar` block alongside `pages`:
     "items": [
       {
         "text":     "Home",
-        "pagePath": "pages/home/index",
+        "page":     "home",
         "iconPath": "public/home.png"
       },
       {
         "text":     "Profile",
-        "pagePath": "pages/profile/index",
+        "page":     "profile",
         "iconPath": "public/profile.png"
       }
     ]
@@ -608,7 +608,8 @@ behind it). An immersive bar must omit `backgroundColor` and `dividerColor`.
 Rules:
 
 - `items` holds **2 to 10** entries.
-- Every `items[].pagePath` must match a registered page path under `pages[]`.
+- Every `items[].page` must match a `pages[].name`. Paths stay in the catalog;
+  the tab bar does not repeat them.
 - `iconPath` is project-relative — usually under `public/`, so the default
   static-assets rule copies it verbatim into `dist/`.
 - The first item is initially selected. Placement and dimensions are host-owned.
@@ -626,7 +627,7 @@ A destination bound to a device — a camera scan, or a desktop-only workspace �
 declares the hosts it belongs on:
 
 ```json
-{ "text": "Scan", "pagePath": "pages/scan/index",
+{ "text": "Scan", "page": "scan",
   "iconPath": "public/scan.png", "showOn": ["mobile"] }
 ```
 
@@ -796,7 +797,9 @@ are exported by `@lingxia/react`, `@lingxia/vue`, and `@lingxia/html`.
 This contract is a breaking replacement rather than a compatibility layer.
 Move flat page navigation fields into `navigationBar`, rename `tabBar.list` to
 `tabBar.items`, and move tab colors into `tabBar.style`; app-controlled tab
-placement and dimensions are gone. Replace the flat mutation functions with a
+placement and dimensions are gone. Rename `tabBar.items[].pagePath` to
+`page` and pass the configured `pages[].name` — the same token
+`lx.switchTab({ page })` takes. Replace the flat mutation functions with a
 `lx.navigationBar.update()` or `lx.tabBar.update()` patch. The CLI rejects
 removed configuration fields with the complete field path and its replacement.
 

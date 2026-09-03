@@ -276,11 +276,13 @@ impl LxAppConfig {
 
         validate_security_config(&mut self.security)?;
 
-        let page_paths = self.page_paths();
+        let pages: Vec<(&str, &str)> = self
+            .pages
+            .iter()
+            .map(|page| (page.name.as_str(), page.path.as_str()))
+            .collect();
         if let Some(tabbar) = &mut self.tabBar {
-            tabbar
-                .validate(&page_paths)
-                .map_err(serde_json::Error::custom)?;
+            tabbar.validate(&pages).map_err(serde_json::Error::custom)?;
         }
 
         Ok(())
@@ -306,6 +308,15 @@ fn validate_removed_tabbar_fields(
             return Err(serde_json::Error::custom(format!(
                 "tabBar.{field}: removed; use {replacement}"
             )));
+        }
+    }
+    if let Some(items) = tabbar.get("items").and_then(Value::as_array) {
+        for (index, item) in items.iter().enumerate() {
+            if item.get("pagePath").is_some() {
+                return Err(serde_json::Error::custom(format!(
+                    "tabBar.items[{index}].pagePath: removed; use page (the configured page name from pages[].name)"
+                )));
+            }
         }
     }
     Ok(())
@@ -465,6 +476,79 @@ mod tests {
         .unwrap_err();
 
         assert!(err.to_string().contains("\"security\" must be declared"));
+    }
+
+    #[test]
+    fn rejects_removed_tab_item_page_path() {
+        let err = LxAppConfig::from_value(serde_json::json!({
+            "appId": "demo",
+            "appName": "Demo",
+            "version": "1.0.0",
+            "security": {"network":{"trustedDomains":[]},"privileges":[]},
+            "pages": [
+                {"name":"home","path":"pages/home/index"},
+                {"name":"profile","path":"pages/profile/index"}
+            ],
+            "tabBar": {
+                "items": [
+                    {"pagePath":"pages/home/index"},
+                    {"pagePath":"pages/profile/index"}
+                ]
+            }
+        }))
+        .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("tabBar.items[0].pagePath: removed; use page"),
+            "{err}"
+        );
+    }
+
+    fn tabbar_config(pages: serde_json::Value, items: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({
+            "appId": "demo",
+            "appName": "Demo",
+            "version": "1.0.0",
+            "security": {"network":{"trustedDomains":[]},"privileges":[]},
+            "pages": pages,
+            "tabBar": { "items": items }
+        })
+    }
+
+    #[test]
+    fn tab_item_page_resolves_to_the_catalog_path() {
+        let config = LxAppConfig::from_value(tabbar_config(
+            serde_json::json!([
+                {"name":"home","path":"pages/home/index.tsx"},
+                {"name":"settings","path":"pages/settings/index"}
+            ]),
+            serde_json::json!([{ "page": "home" }, { "page": "settings" }]),
+        ))
+        .unwrap();
+        let tabbar = config.tabBar.as_ref().unwrap();
+        assert_eq!(tabbar.items[0].page, "home");
+        assert_eq!(tabbar.items[0].page_path, "pages/home/index.tsx");
+        assert_eq!(tabbar.items[1].page, "settings");
+        assert_eq!(tabbar.items[1].page_path, "pages/settings/index");
+    }
+
+    #[test]
+    fn tab_item_page_must_be_a_configured_name() {
+        let err = LxAppConfig::from_value(tabbar_config(
+            serde_json::json!([
+                {"name":"home","path":"pages/home/index"},
+                {"name":"profile","path":"pages/profile/index"}
+            ]),
+            serde_json::json!([{ "page": "pages/home/index" }, { "page": "profile" }]),
+        ))
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("not a registered page name"), "{err}");
+        assert!(
+            !err.contains("pages[].name, not path"),
+            "path hint is CLI-only: {err}"
+        );
     }
 
     #[test]

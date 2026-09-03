@@ -2036,11 +2036,14 @@ mod tests {
     fn back_to_tab_page_restores_the_selected_item() {
         let mut tabbar: crate::lxapp::tabbar::TabBar = serde_json::from_value(serde_json::json!({
             "items": [
-                { "pagePath": "pages/home/index" },
-                { "pagePath": "pages/api/index" }
+                { "page": "home" },
+                { "page": "api" }
             ]
         }))
         .unwrap();
+        tabbar
+            .validate(&[("home", "pages/home/index"), ("api", "pages/api/index")])
+            .unwrap();
         tabbar.clear_selected_index();
         tabbar.set_visible(false);
 

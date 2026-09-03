@@ -122,38 +122,38 @@
     "items": [
       {
         "text": "Home",
-        "pagePath": "pages/home/index",
+        "page": "home",
         "iconPath": "public/home.png"
       },
       {
         "text": "API",
-        "pagePath": "pages/API/index",
+        "page": "api",
         "iconPath": "public/api.png"
       },
       {
         "text": "Components",
-        "pagePath": "pages/components/index",
+        "page": "components",
         "iconPath": "public/component.png"
       },
       {
         "text": "ToDo",
-        "pagePath": "pages/todo/index",
+        "page": "todo",
         "iconPath": "public/todo.png"
       },
       {
         "text": "Media",
-        "pagePath": "pages/media/index",
+        "page": "media",
         "iconPath": "public/component.png"
       },
       {
         "text": "Device",
-        "pagePath": "pages/device/index",
+        "page": "device",
         "iconPath": "public/api.png",
         "showOn": ["mobile"]
       },
       {
         "text": "Surface",
-        "pagePath": "pages/surface/index",
+        "page": "surface",
         "iconPath": "public/home.png",
         "showOn": ["desktop"]
       }

@@ -311,12 +311,12 @@ fn validate_page_chrome_manifest(manifest: &Value) -> Result<()> {
             "tabBar.items: expected {MIN_TAB_ITEMS} to {MAX_TAB_ITEMS} items"
         ));
     }
-    let page_paths: BTreeSet<&str> = manifest
+    let page_names: BTreeSet<&str> = manifest
         .get("pages")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|page| page.get("path").and_then(Value::as_str))
+        .filter_map(|page| page.get("name").and_then(Value::as_str))
         .collect();
     for (index, item) in items.iter().enumerate() {
         let item = item
@@ -325,18 +325,32 @@ fn validate_page_chrome_manifest(manifest: &Value) -> Result<()> {
         if item.contains_key("selected") {
             return Err(anyhow!("tabBar.items[{index}].selected: removed"));
         }
+        if item.contains_key("pagePath") {
+            return Err(anyhow!(
+                "tabBar.items[{index}].pagePath: removed; use page (the configured page name from pages[].name)"
+            ));
+        }
         reject_unknown_fields(
             item,
-            &["pagePath", "text", "iconPath", "showOn"],
+            &["page", "text", "iconPath", "showOn"],
             &format!("tabBar.items[{index}]"),
         )?;
-        let page_path = item
-            .get("pagePath")
+        let page = item
+            .get("page")
             .and_then(Value::as_str)
-            .ok_or_else(|| anyhow!("tabBar.items[{index}].pagePath: expected a string"))?;
-        if !page_paths.contains(page_path) {
+            .map(str::trim)
+            .filter(|page| !page.is_empty())
+            .ok_or_else(|| {
+                anyhow!("tabBar.items[{index}].page: expected a non-empty configured page name")
+            })?;
+        if !page_names.contains(page) {
+            let hint = if page.contains('/') {
+                " (pass pages[].name, not path)"
+            } else {
+                ""
+            };
             return Err(anyhow!(
-                "tabBar.items[{index}].pagePath: '{page_path}' is not a registered page"
+                "tabBar.items[{index}].page: '{page}' is not a registered page name{hint}"
             ));
         }
         for field in ["text", "iconPath"] {
@@ -684,7 +698,7 @@ mod tests {
             })
             .collect();
         let items: Vec<Value> = (0..count)
-            .map(|index| serde_json::json!({ "pagePath": format!("pages/p{index}/index") }))
+            .map(|index| serde_json::json!({ "page": format!("p{index}") }))
             .collect();
         serde_json::json!({ "pages": pages, "tabBar": { "items": items } })
     }
@@ -1326,8 +1340,8 @@ mod tests {
             ],
             "tabBar": {
                 "items": [
-                    {"pagePath":"pages/home/index", "selected": true},
-                    {"pagePath":"pages/profile/index"}
+                    {"page":"home", "selected": true},
+                    {"page":"profile"}
                 ]
             }
         });
@@ -1351,12 +1365,59 @@ mod tests {
                 "presentation": "immersive",
                 "style": {"foregroundColor":"#FFFFFF"},
                 "items": [
+                    {"page":"home"},
+                    {"page":"profile"}
+                ]
+            }
+        });
+
+        validate_lxapp_manifest(&manifest).unwrap();
+    }
+
+    #[test]
+    fn rejects_removed_tab_item_page_path_with_replacement() {
+        let manifest = serde_json::json!({
+            "appId": "demo",
+            "version": "1.0.0",
+            "security": {"network":{"trustedDomains":[]},"privileges":[]},
+            "pages": [
+                {"name":"home","path":"pages/home/index"},
+                {"name":"profile","path":"pages/profile/index"}
+            ],
+            "tabBar": {
+                "items": [
                     {"pagePath":"pages/home/index"},
                     {"pagePath":"pages/profile/index"}
                 ]
             }
         });
 
-        validate_lxapp_manifest(&manifest).unwrap();
+        let error = validate_lxapp_manifest(&manifest).unwrap_err().to_string();
+        assert!(
+            error.contains("tabBar.items[0].pagePath: removed; use page"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn tab_item_page_must_be_a_configured_name() {
+        let manifest = serde_json::json!({
+            "appId": "demo",
+            "version": "1.0.0",
+            "security": {"network":{"trustedDomains":[]},"privileges":[]},
+            "pages": [
+                {"name":"home","path":"pages/home/index"},
+                {"name":"profile","path":"pages/profile/index"}
+            ],
+            "tabBar": {
+                "items": [
+                    {"page":"pages/home/index"},
+                    {"page":"profile"}
+                ]
+            }
+        });
+
+        let error = validate_lxapp_manifest(&manifest).unwrap_err().to_string();
+        assert!(error.contains("pages[].name, not path"), "{error}");
     }
 }

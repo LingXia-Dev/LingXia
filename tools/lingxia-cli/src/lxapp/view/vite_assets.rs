@@ -32,21 +32,6 @@ pub(super) fn write_root_manifest(project: &Project) -> Result<()> {
 
             rewrite_manifest_pages(value.get_mut("pages"), &page_map)?;
 
-            if let Some(list) = value
-                .get_mut("tabBar")
-                .and_then(|value| value.get_mut("items"))
-                .and_then(Value::as_array_mut)
-            {
-                for item in list.iter_mut() {
-                    if let Some(page_path) = item.get("pagePath").and_then(Value::as_str)
-                        && let Some(resolved) = page_map.get(&strip_ext(page_path))
-                        && let Some(object) = item.as_object_mut()
-                    {
-                        object.insert("pagePath".to_string(), Value::String(resolved.clone()));
-                    }
-                }
-            }
-
             // Stamp the @lingxia line compiled into the page bundles so a
             // loading runtime can check compatibility.
             if let Some(sdk_version) =
@@ -474,7 +459,7 @@ mod tests {
   ],
   "tabBar": {
     "items": [
-      { "pagePath": "pages/home/index", "text": "Home" }
+      { "page": "home", "text": "Home" }
     ]
   }
 }"#,
@@ -496,9 +481,10 @@ mod tests {
             Some("pages/settings/index.tsx")
         );
         assert_eq!(
-            manifest["tabBar"]["items"][0]["pagePath"].as_str(),
-            Some("pages/home/index.tsx")
+            manifest["tabBar"]["items"][0]["page"].as_str(),
+            Some("home")
         );
+        assert!(manifest["tabBar"]["items"][0].get("pagePath").is_none());
         // No node_modules in this fixture: nothing to stamp.
         assert!(manifest.get("sdkVersion").is_none());
     }

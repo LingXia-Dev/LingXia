@@ -189,12 +189,12 @@ The old flat shape is replaced by separate layout, style, and items:
     "items": [
       {
         "text": "Home",
-        "pagePath": "pages/home/index",
+        "page": "home",
         "iconPath": "public/home.png"
       },
       {
         "text": "Settings",
-        "pagePath": "pages/settings/index",
+        "page": "settings",
         "iconPath": "public/settings.png"
       }
     ]
