@@ -32,6 +32,9 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     /// WKWebView's pre-commit frame is white, which reads as a flash.
     private var loadingPlaceholder: NSView?
     private var loadingObservation: NSKeyValueObservation?
+    /// When the running navigation transition finishes, in `CACurrentMediaTime`.
+    /// The placeholder reveal consults it so the two never animate at once.
+    private var navigationTransitionEndsAt: CFTimeInterval = 0
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
 
@@ -234,11 +237,24 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         }
     }
 
+    /// Drop the placeholder once the page can draw itself.
+    ///
+    /// Fading it while the navigation transition is still running reads as a
+    /// second animation: the page slides in as a flat colour and then that
+    /// colour dissolves, so one navigation looks like two. Most loads finish
+    /// inside the 300ms slide, so during it the placeholder is removed outright
+    /// and the slide is the only motion. A load that lands after the slide has
+    /// nothing to collide with, and there the short fade still reads as content
+    /// arriving rather than as a flash.
     private func revealLoadedContent() {
         loadingObservation?.invalidate()
         loadingObservation = nil
         guard let placeholder = loadingPlaceholder else { return }
         loadingPlaceholder = nil
+        guard CACurrentMediaTime() >= navigationTransitionEndsAt else {
+            placeholder.removeFromSuperview()
+            return
+        }
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.15
             placeholder.animator().alphaValue = 0
@@ -269,6 +285,7 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             return
         }
         layer.add(transition, forKey: "lxNavTransition")
+        navigationTransitionEndsAt = CACurrentMediaTime() + Self.navTransitionDuration
     }
 
     /// Navigating to the page already on screen (same WKWebView instance): the
