@@ -264,9 +264,25 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         path: String,
         animation: LxAppAnimation = .none
     ) {
-        if animation != .none {
-            applyNavigationTransition(animation)
+        // Sliding a page that has not painted yet shows its content settling
+        // inside a frame that is already moving. Hold the outgoing page and
+        // slide once the incoming one can draw itself; nothing changes on
+        // screen while we wait, so it reads as the animation starting a moment
+        // later rather than as a stall. Mirrors the SDK's macOS controller.
+        if RunnerPageTransition.needsPaintWait(webView, animation: animation) {
+            pageTransition.whenPagePaints(
+                webView,
+                stillCurrent: { [weak self] in self?.currentPath == path },
+                swap: { [weak self] in self?.performWebViewSwap(webView, animation: animation) }
+            )
+            return
         }
+        performWebViewSwap(webView, animation: animation)
+    }
+
+    private func performWebViewSwap(_ webView: WKWebView, animation: LxAppAnimation) {
+        webViewContainer.layer?.masksToBounds = true
+        pageTransition.install(animation, on: webViewContainer)
         RunnerSupport.WebView.removeCurrentFromSuperview()
         RunnerSupport.WebView.attachLxApp(webView, to: webViewContainer)
         if let tabBar = tabBarView {
@@ -274,30 +290,6 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         }
     }
 
-    /// Slide the container's contents in the navigation direction — mirrors the
-    /// iOS/Android 300ms page transition. A layer `CATransition` animates the
-    /// webview swap; the phone frame's container already clips to bounds.
-    private func applyNavigationTransition(_ animation: LxAppAnimation) {
-        webViewContainer.layer?.masksToBounds = true
-        guard let layer = webViewContainer.layer else { return }
-        let transition = CATransition()
-        transition.duration = 0.3
-        transition.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        switch animation {
-        case .push:
-            transition.type = .push
-            transition.subtype = .fromRight
-        case .pop:
-            transition.type = .push
-            transition.subtype = .fromLeft
-        case .fade:
-            transition.type = .fade
-        case .none:
-            return
-        }
-        layer.add(transition, forKey: "lxNavTransition")
-    }
-    
     // MARK: - Notification Observers
     
     private func setupNotificationObservers() {
@@ -327,9 +319,11 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
         }
     }
     
+    /// Owned by the SDK so the runner cannot drift from the host's animation.
+    private let pageTransition = RunnerPageTransition()
+
     // MARK: - Navigation
-    
-    @MainActor
+
     public func navigate(to path: String, animationType: LxAppAnimation = .none) {
         self.currentPath = path
         

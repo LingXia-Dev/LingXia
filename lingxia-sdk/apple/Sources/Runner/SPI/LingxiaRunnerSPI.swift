@@ -6,6 +6,27 @@ import WebKit
 
 /// Tooling-only SPI consumed by `tools/lingxia-runner`.
 @_spi(Runner) public enum LingxiaRunnerSPI {
+    /// The lxapp's own capsule actions, as the runtime publishes them.
+    ///
+    /// The runner had a byte-for-byte copy of this decoder, down to the same
+    /// `prefix(7)`, and had lost the token helper along the way — so it built
+    /// action tokens by hand in a format only this type defines.
+    public enum MoreActions {
+        public typealias Snapshot = LxAppMoreActionSnapshot
+        public typealias Item = LxAppMoreActionItem
+
+        public static func load(appId: String) -> Snapshot {
+            LxAppMoreActionSnapshot.load(appId: appId)
+        }
+    }
+
+    /// The page transition every macOS host shares.
+    ///
+    /// The runner draws its own phone chrome but must not draw its own page
+    /// animation: when it did, the two implementations drifted and the same
+    /// defects had to be fixed twice.
+    public typealias PageTransition = LxAppPageTransition
+
     @MainActor
     public enum Runtime {
         /// Handler receives `(ownerAppId, ownerSessionId, url, aside)`; `aside`
