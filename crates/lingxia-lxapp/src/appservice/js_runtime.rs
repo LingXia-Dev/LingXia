@@ -272,6 +272,9 @@ pub(crate) fn eval_error_from_rong(ctx: &JSContext, error: RongJSError) -> LxApp
 /// own concurrently running code still sees the real global `lx`. Swapping the
 /// global instead would record every background call the app happened to make
 /// and credit it to whatever spec was running.
+///
+/// Primitive members (`lx.env.USER_DATA_PATH`) are published capabilities too;
+/// recording only functions and objects would miss the get that reached them.
 const RECORDER_PRELUDE: &str = r#"
 const __lxCalls = new Set();
 const __lxRecord = (target, path) => {
@@ -283,12 +286,11 @@ const __lxRecord = (target, path) => {
       const value = Reflect.get(obj, key, receiver);
       if (typeof key === "symbol") return value;
       const next = path + "." + String(key);
+      __lxCalls.add(next);
       if (typeof value === "function") {
-        __lxCalls.add(next);
         return (...args) => Reflect.apply(value, obj, args);
       }
       if (value && typeof value === "object") {
-        __lxCalls.add(next);
         return __lxRecord(value, next);
       }
       return value;

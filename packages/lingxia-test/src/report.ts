@@ -371,7 +371,14 @@ function collectCovers(report: JsonReport, seedSurface: boolean): Map<string, Co
         state.shape = true;
         continue;
       }
-      if (observed && !observed.some((call) => call === name || call.startsWith(`${name}.`))) {
+      // The recorder only emits `lx.*` paths. Returned-object tags
+      // (`Storage.set`, `LxFile.text`) never appear in `calls`, so matching
+      // them would paint every eval-driven object cover as claimed.
+      if (
+        observed &&
+        name.startsWith("lx.") &&
+        !observed.some((call) => call === name || call.startsWith(`${name}.`))
+      ) {
         state.claimedOnly = true;
         continue;
       }
