@@ -7,7 +7,7 @@
 //! OTA-managed target and answers `None` for "already up to date".
 //!
 //! Icons are content-addressed, so an unchanged icon costs nothing after the
-//! first fetch and the same artwork resolved for two locales is one file.
+//! first fetch and the same artwork reached through two URLs is one file.
 //! Names are not: a string that short is cheaper to re-fetch than to reconcile.
 
 use super::metadata::{self, RegistryRecord};
@@ -83,10 +83,6 @@ fn ensure_icons_dir() -> Option<PathBuf> {
     Some(dir)
 }
 
-fn current_locale() -> String {
-    runtime_registry::get_display_language()
-}
-
 /// Keep the extension the server used where it is a plausible image, so the
 /// cached file stays loadable by path alone.
 fn icon_extension(url: &str) -> &'static str {
@@ -136,34 +132,27 @@ impl Drop for RefreshGuard {
     }
 }
 
-/// Last refresh attempt per `(appid, locale)`, successful or not. Separate from
-/// the record's `fetched_at`, which only advances on an answer.
+/// Last refresh attempt per app, successful or not. Separate from the
+/// record's `fetched_at`, which only advances on an answer.
 fn last_attempts() -> &'static Mutex<HashMap<String, Instant>> {
     static ATTEMPTS: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
     ATTEMPTS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn attempted_recently(appid: &str, locale: &str) -> bool {
+fn attempted_recently(appid: &str) -> bool {
     let attempts = last_attempts()
         .lock()
         .unwrap_or_else(|err| err.into_inner());
     attempts
-        .get(&attempt_key(appid, locale))
+        .get(appid)
         .is_some_and(|at| at.elapsed() < REFRESH_RETRY_INTERVAL)
 }
 
-fn mark_attempted(appids: &[String], locale: &str) {
-    let mut attempts = last_attempts()
+fn mark_attempted(appid: &str) {
+    last_attempts()
         .lock()
-        .unwrap_or_else(|err| err.into_inner());
-    let now = Instant::now();
-    for appid in appids {
-        attempts.insert(attempt_key(appid, locale), now);
-    }
-}
-
-fn attempt_key(appid: &str, locale: &str) -> String {
-    format!("{}::{}", appid, locale)
+        .unwrap_or_else(|err| err.into_inner())
+        .insert(appid.to_string(), Instant::now());
 }
 
 type RegistryChangeListener = Box<dyn Fn(&[String]) + Send + Sync>;
@@ -183,6 +172,48 @@ pub fn set_registry_change_listener(listener: RegistryChangeListener) {
     *change_listener().lock().unwrap_or_else(|e| e.into_inner()) = Some(listener);
 }
 
+/// Status that blocked an open, when the error came from [`ensure_open_allowed`].
+pub fn registry_unavailable_status(error: &LxAppError) -> Option<LxAppStatus> {
+    let LxAppError::RongJSHost {
+        data: Some(data), ..
+    } = error
+    else {
+        return None;
+    };
+    let code = data.get("code")?.as_str()?;
+    let status = LxAppStatus::from_str_lossy(code);
+    status.blocks_open().then_some(status)
+}
+
+type OpenBlockedListener = Box<dyn Fn(LxAppStatus) + Send + Sync>;
+
+fn open_blocked_listener() -> &'static Mutex<Option<OpenBlockedListener>> {
+    static LISTENER: OnceLock<Mutex<Option<OpenBlockedListener>>> = OnceLock::new();
+    LISTENER.get_or_init(|| Mutex::new(None))
+}
+
+/// Host chrome registers this to show a notice when an open is refused with
+/// no JS `catch` (pin, App Link, panel).
+pub fn set_open_blocked_listener(listener: OpenBlockedListener) {
+    *open_blocked_listener()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(listener);
+}
+
+/// Tell host chrome a blocked open happened. Logs when nothing is registered.
+pub fn notify_open_blocked(error: &LxAppError) {
+    if let Some(status) = registry_unavailable_status(error) {
+        let guard = open_blocked_listener()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(listener) = guard.as_ref() {
+            listener(status);
+            return;
+        }
+    }
+    crate::warn!("lxapp open blocked: {}", error);
+}
+
 fn notify_changed(appids: &[String]) {
     if appids.is_empty() {
         return;
@@ -193,8 +224,8 @@ fn notify_changed(appids: &[String]) {
     }
 }
 
-fn record(appid: &str, locale: &str) -> Option<RegistryRecord> {
-    metadata::registry_get(appid, locale).ok().flatten()
+fn record(appid: &str) -> Option<RegistryRecord> {
+    metadata::registry_get(appid).ok().flatten()
 }
 
 /// A record written with a clock that was ahead reads as "aged negative
@@ -217,44 +248,28 @@ fn cached_icon_is_gone(record: &RegistryRecord, icons_dir: &Path) -> bool {
         .is_some_and(|file| !icons_dir.join(file).exists())
 }
 
-/// The registry's name for this app in the current locale, else the freshest
-/// name it has in any locale.
-///
-/// The cross-locale fallback matters offline: switching display language with
-/// no network would otherwise blank every row, and a name in the previous
-/// language is strictly better than no name. Status gets no such fallback —
-/// see [`ensure_open_allowed`].
+/// The registry's name for this app.
 pub(crate) fn name(appid: &str) -> Option<String> {
     lxapp_registry_provider()?;
-    let locale = current_locale();
-    record(appid, &locale)
+    record(appid)
         .and_then(|record| record.name)
-        .or_else(|| any_locale(appid).and_then(|record| record.name))
         .filter(|name| !name.trim().is_empty())
 }
 
 /// Absolute path to the cached icon, or `None` when nothing is cached yet.
-/// Callers fall back to the packaged icon from here.
+/// Callers fall back to a host-drawn default mark from here.
 pub(crate) fn icon_path(appid: &str) -> Option<String> {
     lxapp_registry_provider()?;
-    let locale = current_locale();
-    let file = record(appid, &locale)
-        .and_then(|record| record.icon_file)
-        .or_else(|| any_locale(appid).and_then(|record| record.icon_file))?;
+    let file = record(appid).and_then(|record| record.icon_file)?;
     let path = icons_dir()?.join(file);
     path.exists().then(|| path.to_string_lossy().into_owned())
-}
-
-fn any_locale(appid: &str) -> Option<RegistryRecord> {
-    metadata::registry_any_locale(appid).ok().flatten()
 }
 
 pub(crate) fn status(appid: &str) -> LxAppStatus {
     if lxapp_registry_provider().is_none() {
         return LxAppStatus::Unknown;
     }
-    let locale = current_locale();
-    record(appid, &locale)
+    record(appid)
         .map(|record| LxAppStatus::from_str_lossy(&record.status))
         .unwrap_or_default()
 }
@@ -265,42 +280,34 @@ pub(crate) fn ensure_fresh(appids: &[String]) {
     if lxapp_registry_provider().is_none() {
         return;
     }
-    let locale = current_locale();
     let icons_dir = icons_dir();
-    let stale: Vec<String> = appids
-        .iter()
-        .filter(|appid| {
-            let cached = record(appid, &locale);
-            let needs_fetch = match (&cached, &icons_dir) {
-                (None, _) => true,
-                (Some(cached), Some(icons_dir)) => {
-                    is_expired(cached, LISTING_TTL) || cached_icon_is_gone(cached, icons_dir)
-                }
-                (Some(cached), None) => is_expired(cached, LISTING_TTL),
-            };
-            needs_fetch && !attempted_recently(appid, &locale)
-        })
-        .cloned()
-        .collect();
-    if stale.is_empty() {
-        return;
-    }
-    mark_attempted(&stale, &locale);
-
-    let mut key = stale.clone();
-    key.sort();
-    let key = format!("{}::{}", key.join(","), locale);
-    std::mem::drop(crate::executor::spawn(Box::pin(async move {
-        let Some(_guard) = RefreshGuard::acquire(key) else {
-            return;
-        };
-        match fetch_records(&stale, &locale).await {
-            Ok(infos) => fetch_icons(&infos, &locale).await,
-            Err(err) => {
-                crate::warn!("lxapp registry refresh failed: {}", err);
+    for appid in appids {
+        let cached = record(appid);
+        let needs_fetch = match (&cached, &icons_dir) {
+            (None, _) => true,
+            (Some(cached), Some(icons_dir)) => {
+                is_expired(cached, LISTING_TTL) || cached_icon_is_gone(cached, icons_dir)
             }
+            (Some(cached), None) => is_expired(cached, LISTING_TTL),
+        };
+        if !needs_fetch || attempted_recently(appid) {
+            continue;
         }
-    })));
+        mark_attempted(appid);
+        let appid = appid.clone();
+        std::mem::drop(crate::executor::spawn(Box::pin(async move {
+            let Some(_guard) = RefreshGuard::acquire(appid.clone()) else {
+                return;
+            };
+            match fetch_records(&appid).await {
+                Ok(Some(info)) => fetch_icons(std::slice::from_ref(&info)).await,
+                Ok(None) => {}
+                Err(err) => {
+                    crate::warn!("lxapp registry refresh failed: {}", err);
+                }
+            }
+        })));
+    }
 }
 
 /// Gate on a *fresh negative* answer only.
@@ -309,34 +316,28 @@ pub(crate) fn ensure_fresh(appids: &[String]) {
 /// re-check when the cached status has aged out. But a check that cannot reach
 /// the registry is not evidence of anything either, and an installed app must
 /// keep opening offline — so only a status we just confirmed can block.
-pub(crate) async fn ensure_open_allowed(appid: &str) -> Result<(), LxAppError> {
+pub async fn ensure_open_allowed(appid: &str) -> Result<(), LxAppError> {
     if lxapp_registry_provider().is_none() {
         return Ok(());
     }
-    let locale = current_locale();
-    let fresh = record(appid, &locale)
+    let fresh = record(appid)
         .filter(|record| !is_expired(record, STATUS_TTL))
         .map(|record| LxAppStatus::from_str_lossy(&record.status));
 
     let status = match fresh {
         Some(status) => status,
         None => {
-            let appids = [appid.to_string()];
-            match tokio::time::timeout(OPEN_GATE_TIMEOUT, fetch_records(&appids, &locale)).await {
-                Ok(Ok(infos)) => {
+            match tokio::time::timeout(OPEN_GATE_TIMEOUT, fetch_records(appid)).await {
+                Ok(Ok(info)) => {
                     // Artwork is fetched outside the deadline: it is not what
                     // the gate is waiting for, and awaiting it here would let a
                     // slow image expire a check that already had its answer.
-                    let detached = infos.clone();
-                    let detached_locale = locale.clone();
-                    std::mem::drop(crate::executor::spawn(Box::pin(async move {
-                        fetch_icons(&detached, &detached_locale).await;
-                    })));
-                    infos
-                        .into_iter()
-                        .find(|info| info.appid == appid)
-                        .map(|info| info.status)
-                        .unwrap_or_default()
+                    if let Some(info) = info.clone() {
+                        std::mem::drop(crate::executor::spawn(Box::pin(async move {
+                            fetch_icons(std::slice::from_ref(&info)).await;
+                        })));
+                    }
+                    info.map(|info| info.status).unwrap_or_default()
                 }
                 // Unreachable registry keeps the standing local permission.
                 Ok(Err(err)) => {
@@ -384,67 +385,62 @@ fn unavailable_error(appid: &str, status: LxAppStatus) -> LxAppError {
 /// deadline, a slow image would expire a check that had already been told the
 /// app is suspended — and the drop would cancel the download too, so the next
 /// attempt would be no faster.
-pub(crate) async fn fetch_records(
-    appids: &[String],
-    locale: &str,
-) -> Result<Vec<LxAppRegistryInfo>, LxAppError> {
+pub(crate) async fn fetch_records(appid: &str) -> Result<Option<LxAppRegistryInfo>, LxAppError> {
     let Some(provider) = lxapp_registry_provider() else {
-        return Ok(Vec::new());
+        return Ok(None);
     };
-    if appids.is_empty() {
-        return Ok(Vec::new());
+    if appid.trim().is_empty() {
+        return Ok(None);
     }
 
-    let infos = provider
-        .fetch_registry_info(appids, locale)
+    let info = provider
+        .fetch_registry_info(appid)
         .await
         .map_err(|err| crate::provider::provider_error_to_lxapp_error(&err))?;
-    mark_attempted(appids, locale);
+    mark_attempted(appid);
 
-    for appid in appids {
-        let previous = record(appid, locale);
-        let info = infos.iter().find(|info| info.appid == *appid);
-        // An app the registry omitted is cached as `Unknown` rather than left
-        // absent. Without this every open of a dev project, an unpublished app,
-        // or a bundled builtin pays a fresh round trip — and a record that once
-        // said `suspended` would keep saying so after the registry stopped
-        // listing the app.
-        let record = RegistryRecord {
-            appid: appid.clone(),
-            locale: locale.to_string(),
-            name: info.and_then(|info| info.name.clone()),
-            description: info.and_then(|info| info.description.clone()),
-            icon_url: info.and_then(|info| info.icon_url.clone()),
-            // Artwork is replaced by `fetch_icons`. Carrying the old file over
-            // meanwhile keeps a row showing a slightly stale icon rather than
-            // blanking it for the duration of a download — but an app that no
-            // longer advertises an icon drops it, so an icon can be withdrawn
-            // and not merely replaced.
-            icon_file: match info {
-                Some(info) if info.icon_url.is_none() => None,
-                _ => previous.and_then(|previous| previous.icon_file),
-            },
-            status: info
-                .map(|info| info.status)
-                .unwrap_or_default()
-                .as_str()
-                .to_string(),
-            fetched_at: now_secs(),
-        };
-        if let Err(err) = metadata::registry_upsert(&record) {
-            crate::warn!("Failed to cache registry record for {}: {}", appid, err);
-        }
+    let previous = record(appid);
+    // An app the registry does not know is cached as `Unknown` rather than left
+    // absent. Without this every open of a dev project, an unpublished app,
+    // or a bundled builtin pays a fresh round trip — and a record that once
+    // said `suspended` would keep saying so after the registry stopped
+    // listing the app.
+    let stored = RegistryRecord {
+        appid: appid.to_string(),
+        name: info.as_ref().and_then(|info| info.name.clone()),
+        description: info.as_ref().and_then(|info| info.description.clone()),
+        icon_url: info.as_ref().and_then(|info| info.icon_url.clone()),
+        // Artwork is replaced by `fetch_icons`. Carrying the old file over
+        // meanwhile keeps a row showing a slightly stale icon rather than
+        // blanking it for the duration of a download — but an app that no
+        // longer advertises an icon drops it, so an icon can be withdrawn
+        // and not merely replaced.
+        icon_file: match &info {
+            Some(info) if info.icon_url.is_none() => None,
+            _ => previous.and_then(|previous| previous.icon_file),
+        },
+        status: info
+            .as_ref()
+            .map(|info| info.status)
+            .unwrap_or_default()
+            .as_str()
+            .to_string(),
+        fetched_at: now_secs(),
+    };
+    if let Err(err) = metadata::registry_upsert(&stored) {
+        crate::warn!("Failed to cache registry record for {}: {}", appid, err);
     }
-    notify_changed(appids);
-    Ok(infos)
+    let changed = [appid.to_string()];
+    notify_changed(&changed);
+    Ok(info)
 }
 
 /// Bring cached artwork in line with records already stored by [`fetch_records`].
-async fn fetch_icons(infos: &[LxAppRegistryInfo], locale: &str) {
+async fn fetch_icons(infos: &[LxAppRegistryInfo]) {
     sweep_staging_files();
     let mut changed = Vec::new();
     for info in infos {
-        let cached = record(&info.appid, locale);
+        let cached = record(&info.appid);
         let Some(icon_file) = resolve_icon_file(info, cached.as_ref()).await else {
             continue;
         };
@@ -517,7 +513,7 @@ async fn resolve_icon_file(
     let file = format!("{}.{}", digest, extension);
     let destination = dir.join(&file);
     // Content-addressed, so a destination that already exists holds exactly
-    // these bytes: a concurrent refresh for another locale resolving to the
+    // these bytes: a concurrent refresh for another app resolving to the
     // same artwork won the race. POSIX rename would overwrite silently; on
     // Windows it errors, and treating that as failure would drop the icon.
     if destination.exists() {
@@ -648,11 +644,10 @@ mod tests {
         assert_eq!(icon_extension("https://cdn.example.com/a/logo.bin"), "png");
     }
 
-    fn record_for(appid: &str, locale: &str, icon_file: Option<&str>) -> RegistryRecord {
+    fn record_for(appid: &str, icon_file: Option<&str>) -> RegistryRecord {
         RegistryRecord {
             appid: appid.to_string(),
-            locale: locale.to_string(),
-            name: Some(format!("{appid}-{locale}")),
+            name: Some(format!("{appid}-name")),
             description: None,
             icon_url: None,
             icon_file: icon_file.map(str::to_string),
@@ -663,7 +658,7 @@ mod tests {
 
     #[test]
     fn expiry_uses_the_ttl_it_is_given() {
-        let mut record = record_for("demo", "en-US", None);
+        let mut record = record_for("demo", None);
         assert!(!is_expired(&record, STATUS_TTL));
 
         // Aged past the status window but still inside the listing window: the
@@ -675,7 +670,7 @@ mod tests {
 
     #[test]
     fn a_record_stamped_in_the_future_is_expired_not_eternally_fresh() {
-        let mut record = record_for("demo", "en-US", None);
+        let mut record = record_for("demo", None);
         // A clock that ran ahead before NTP corrected it. Saturating the
         // subtraction would make this record outlive every later suspension.
         record.fetched_at = now_secs() + 60 * 60 * 24 * 365;
@@ -713,22 +708,6 @@ mod tests {
     }
 
     #[test]
-    fn a_name_in_another_locale_beats_no_name_at_all() {
-        with_store(|_| {
-            let appid = "com.example.crosslocale";
-            metadata::registry_upsert(&record_for(appid, "zh-CN", None)).unwrap();
-
-            // Nothing cached for this locale, but the app still has a name.
-            assert!(metadata::registry_get(appid, "en-US").unwrap().is_none());
-            let fallback = metadata::registry_any_locale(appid).unwrap().unwrap();
-            assert_eq!(
-                fallback.name.as_deref(),
-                Some("com.example.crosslocale-zh-CN")
-            );
-        });
-    }
-
-    #[test]
     fn uninstall_keeps_artwork_another_app_still_references() {
         with_store(|icons| {
             let shared = "shared-artwork.png";
@@ -738,23 +717,15 @@ mod tests {
 
             // Two apps resolved to the same artwork; content addressing means
             // one file, so uninstalling either must not orphan the other's icon.
-            metadata::registry_upsert(&record_for("com.example.keeper", "en-US", Some(shared)))
-                .unwrap();
-            metadata::registry_upsert(&record_for("com.example.leaver", "en-US", Some(shared)))
-                .unwrap();
-            metadata::registry_upsert(&record_for("com.example.leaver", "zh-CN", Some(solo)))
-                .unwrap();
+            metadata::registry_upsert(&record_for("com.example.keeper", Some(shared))).unwrap();
+            metadata::registry_upsert(&record_for("com.example.leaver", Some(shared))).unwrap();
+            metadata::registry_upsert(&record_for("com.example.other", Some(solo))).unwrap();
 
             let orphans = metadata::registry_remove_all("com.example.leaver").unwrap();
             sweep_orphan_icons(&orphans, icons);
 
             assert!(
-                metadata::registry_get("com.example.leaver", "en-US")
-                    .unwrap()
-                    .is_none()
-            );
-            assert!(
-                metadata::registry_get("com.example.leaver", "zh-CN")
+                metadata::registry_get("com.example.leaver")
                     .unwrap()
                     .is_none()
             );
@@ -762,6 +733,10 @@ mod tests {
                 icons.join(shared).exists(),
                 "still referenced by the keeper"
             );
+            assert!(icons.join(solo).exists(), "still referenced by the other");
+
+            let orphans = metadata::registry_remove_all("com.example.other").unwrap();
+            sweep_orphan_icons(&orphans, icons);
             assert!(!icons.join(solo).exists(), "last reference went away");
 
             let orphans = metadata::registry_remove_all("com.example.keeper").unwrap();
@@ -777,7 +752,7 @@ mod tests {
         let present = "kept.png";
         fs::write(dir.join(present), b"art").unwrap();
 
-        let mut record = record_for("demo", "en-US", Some(present));
+        let mut record = record_for("demo", Some(present));
         assert!(!cached_icon_is_gone(&record, &dir));
 
         // Records live in the data dir and icons in the cache dir; a cache
@@ -798,6 +773,7 @@ mod tests {
         // status has to survive as data rather than only inside a sentence.
         for status in [LxAppStatus::Suspended, LxAppStatus::Maintain] {
             let error = unavailable_error("com.example.app", status);
+            assert_eq!(registry_unavailable_status(&error), Some(status));
             let LxAppError::RongJSHost { data, message, .. } = error else {
                 panic!("a blocked open must carry structured data, got a bare error");
             };
@@ -812,12 +788,11 @@ mod tests {
     #[test]
     fn a_recent_attempt_suppresses_the_next_refresh() {
         let appid = "com.example.backoff";
-        let locale = "en-US";
-        assert!(!attempted_recently(appid, locale));
+        assert!(!attempted_recently(appid));
         // The sidebar asks on every layout pass; a fast provider failure would
         // otherwise let each pass start another request.
-        mark_attempted(&[appid.to_string()], locale);
-        assert!(attempted_recently(appid, locale));
-        assert!(!attempted_recently(appid, "zh-CN"));
+        mark_attempted(appid);
+        assert!(attempted_recently(appid));
+        assert!(!attempted_recently("com.example.other"));
     }
 }

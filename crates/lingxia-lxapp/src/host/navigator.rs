@@ -114,6 +114,8 @@ async fn do_navigate_to_app(
         .map(str::trim)
         .filter(|v| !v.is_empty());
 
+    await_or_cancel(cancel, crate::ensure_open_allowed(&target_appid)).await?;
+
     if let Some(target_version) = target_version {
         await_or_cancel(
             cancel,

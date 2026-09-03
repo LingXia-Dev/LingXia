@@ -321,14 +321,13 @@ pub(crate) fn downloaded_upsert(
     Ok(())
 }
 
-/// One cached registry answer, scoped to the locale it was resolved for.
+/// One cached registry answer for an app.
 ///
-/// `icon_file` names a content-addressed file in the icon cache, so records for
-/// different locales that resolved to the same artwork share one file on disk.
+/// `icon_file` names a content-addressed file in the icon cache, so two apps
+/// that resolved to the same artwork share one file on disk.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct RegistryRecord {
     pub appid: String,
-    pub locale: String,
     pub name: Option<String>,
     pub description: Option<String>,
     /// Where the artwork came from. The cache key: a record whose URL still
@@ -341,15 +340,7 @@ pub(crate) struct RegistryRecord {
     pub fetched_at: i64,
 }
 
-fn registry_key(appid: &str, locale: &str) -> String {
-    format!("{}::{}", appid, locale)
-}
-
-pub(crate) fn registry_get(
-    appid: &str,
-    locale: &str,
-) -> Result<Option<RegistryRecord>, LxAppError> {
-    let key = registry_key(appid, locale);
+pub(crate) fn registry_get(appid: &str) -> Result<Option<RegistryRecord>, LxAppError> {
     let db = database()?;
     let txn = db
         .begin_read()
@@ -358,7 +349,7 @@ pub(crate) fn registry_get(
         .open_table(REGISTRY_TABLE)
         .map_err(|e| metadata_error("open registry table", e))?;
     let Some(value) = table
-        .get(key.as_str())
+        .get(appid)
         .map_err(|e| metadata_error("read registry record", e))?
     else {
         return Ok(None);
@@ -366,40 +357,8 @@ pub(crate) fn registry_get(
     Ok(Some(serde_json::from_slice(value.value())?))
 }
 
-/// The freshest record for this app in any locale. Backs the name fallback: a
-/// name in the previous language beats a blank row when the current locale has
-/// never been fetched and the network is gone.
-pub(crate) fn registry_any_locale(appid: &str) -> Result<Option<RegistryRecord>, LxAppError> {
-    let prefix = format!("{}::", appid);
-    let db = database()?;
-    let txn = db
-        .begin_read()
-        .map_err(|e| metadata_error("begin read transaction", e))?;
-    let table = txn
-        .open_table(REGISTRY_TABLE)
-        .map_err(|e| metadata_error("open registry table", e))?;
-    let mut best: Option<RegistryRecord> = None;
-    for entry in table
-        .iter()
-        .map_err(|e| metadata_error("iterate registry records", e))?
-    {
-        let (key, value) = entry.map_err(|e| metadata_error("read registry record", e))?;
-        if !key.value().starts_with(&prefix) {
-            continue;
-        }
-        let record: RegistryRecord = serde_json::from_slice(value.value())?;
-        if best
-            .as_ref()
-            .is_none_or(|current| record.fetched_at > current.fetched_at)
-        {
-            best = Some(record);
-        }
-    }
-    Ok(best)
-}
-
 pub(crate) fn registry_upsert(record: &RegistryRecord) -> Result<(), LxAppError> {
-    let key = registry_key(&record.appid, &record.locale);
+    let key = record.appid.as_str();
     let db = database()?;
     let txn = db
         .begin_write()
@@ -410,7 +369,7 @@ pub(crate) fn registry_upsert(record: &RegistryRecord) -> Result<(), LxAppError>
             .map_err(|e| metadata_error("open registry table", e))?;
         let serialized = serde_json::to_vec(record)?;
         table
-            .insert(key.as_str(), serialized.as_slice())
+            .insert(key, serialized.as_slice())
             .map_err(|e| metadata_error("write registry record", e))?;
     }
     txn.commit()
@@ -418,10 +377,14 @@ pub(crate) fn registry_upsert(record: &RegistryRecord) -> Result<(), LxAppError>
     Ok(())
 }
 
-/// Drop every locale's record for one app, returning the icon files they
-/// referenced so the caller can delete the artwork they were the last user of.
+/// Drop this app's record, returning the icon files it referenced so the
+/// caller can delete the artwork they were the last user of.
+///
+/// Also sweeps leftover `appid::…` keys from the previous locale-scoped cache
+/// so an uninstall still cleans a record written before the key was just the
+/// app id.
 pub(crate) fn registry_remove_all(appid: &str) -> Result<Vec<String>, LxAppError> {
-    let prefix = format!("{}::", appid);
+    let legacy_prefix = format!("{appid}::");
     let db = database()?;
     let txn = db
         .begin_write()
@@ -437,10 +400,11 @@ pub(crate) fn registry_remove_all(appid: &str) -> Result<Vec<String>, LxAppError
             .map_err(|e| metadata_error("iterate registry records", e))?
         {
             let (key, value) = entry.map_err(|e| metadata_error("read registry record", e))?;
-            if !key.value().starts_with(&prefix) {
+            let key = key.value();
+            if key != appid && !key.starts_with(&legacy_prefix) {
                 continue;
             }
-            keys_to_remove.push(key.value().to_string());
+            keys_to_remove.push(key.to_string());
             if let Ok(record) = serde_json::from_slice::<RegistryRecord>(value.value())
                 && let Some(file) = record.icon_file
             {

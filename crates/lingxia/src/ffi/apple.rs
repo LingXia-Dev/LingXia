@@ -762,6 +762,11 @@ mod bridge {
         // is long finished by the time the answer arrives.
         #[swift_bridge(swift_name = "LxApp.lxappRegistryChanged")]
         fn lxapp_registry_changed();
+
+        // Pin / App Link refused to open because the registry said maintain or
+        // suspended. Host chrome shows the notice; there is no JS catch here.
+        #[swift_bridge(swift_name = "LxApp.showLxappUnavailable")]
+        fn show_lxapp_unavailable(status: &str);
     }
 }
 
@@ -823,6 +828,9 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::Li
     }));
     lxapp::set_lxapp_registry_change_listener(Box::new(|_appids| {
         self::bridge::lxapp_registry_changed();
+    }));
+    lxapp::set_lxapp_open_blocked_listener(Box::new(|status| {
+        self::bridge::show_lxapp_unavailable(status.as_str());
     }));
 
     log::info!(
@@ -1529,7 +1537,7 @@ pub fn shell_open_lxapp_main(app_id: &str) -> bool {
         std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
             let channel = lxapp::host_channel();
             if let Err(err) = lxapp::prepare_lxapp_open(&app_id, channel).await {
-                log::error!("pin open failed for {app_id}: {err}");
+                lxapp::notify_lxapp_open_blocked(&err);
                 return;
             }
             if let Err(err) = lxapp::open_lxapp(

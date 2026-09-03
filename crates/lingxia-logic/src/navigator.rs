@@ -126,6 +126,10 @@ pub(crate) async fn prepare_app_open(
         )));
     }
 
+    lxapp::ensure_open_allowed(&target_appid)
+        .await
+        .map_err(|e| js_error_from_lxapp_error(&e))?;
+
     if !host_terminal_settings {
         if let Some(target_version) = target_version {
             lxapp::ensure_target_version_ready(lxapp, &target_appid, release_type, target_version)
