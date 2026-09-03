@@ -1239,6 +1239,15 @@ class SidebarView: NSView {
     func reloadLxAppPresentation() {
         rebuildRail()
         rebuildAppGroups()
+        // `rebuildAppGroups` only writes the model. Existing group views keep
+        // the name/icon they loaded on creation unless refreshed; `render`
+        // then relayouts the list and pin tiles against that model.
+        if !appUIOnlyMode {
+            for view in groupViews.values {
+                view.refreshFromRust()
+            }
+        }
+        render()
     }
 
     private func rebuildRail() {
@@ -2567,9 +2576,12 @@ class SidebarView: NSView {
             view.removeFromSuperview()
             lxappPinTiles.removeValue(forKey: id)
         }
-        for id in pinnedLxappIds where lxappPinTiles[id] == nil {
-            let tile = LxappPinTileView(appId: id)
-            lxappPinTiles[id] = tile
+        for id in pinnedLxappIds {
+            if let existing = lxappPinTiles[id] {
+                existing.refreshFromRust()
+            } else {
+                lxappPinTiles[id] = LxappPinTileView(appId: id)
+            }
         }
 
         let pinned = pinnedBookmarkEntries

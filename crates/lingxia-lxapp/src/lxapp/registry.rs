@@ -410,15 +410,12 @@ pub(crate) async fn fetch_records(appid: &str) -> Result<Option<LxAppRegistryInf
         name: info.as_ref().and_then(|info| info.name.clone()),
         description: info.as_ref().and_then(|info| info.description.clone()),
         icon_url: info.as_ref().and_then(|info| info.icon_url.clone()),
-        // Artwork is replaced by `fetch_icons`. Carrying the old file over
-        // meanwhile keeps a row showing a slightly stale icon rather than
-        // blanking it for the duration of a download — but an app that no
-        // longer advertises an icon drops it, so an icon can be withdrawn
-        // and not merely replaced.
-        icon_file: match &info {
-            Some(info) if info.icon_url.is_none() => None,
-            _ => previous.and_then(|previous| previous.icon_file),
-        },
+        // Artwork is replaced by `fetch_icons`. Keep the previous file only
+        // when the URL is unchanged: `resolve_icon_file` treats a stored file
+        // as belonging to the stored URL, so carrying a file under a new URL
+        // would skip the download. A withdrawn icon drops it. A 404 keeps
+        // last artwork so an unknown app does not blank its icon.
+        icon_file: carry_icon_file(info.as_ref(), previous.as_ref()),
         status: info
             .as_ref()
             .map(|info| info.status)
@@ -433,6 +430,32 @@ pub(crate) async fn fetch_records(appid: &str) -> Result<Option<LxAppRegistryInf
     let changed = [appid.to_string()];
     notify_changed(&changed);
     Ok(info)
+}
+
+/// File name to keep on the record [`fetch_records`] is about to store.
+///
+/// The URL is the cache key. Carrying a file over under a *new* URL would
+/// make [`resolve_icon_file`] treat that file as already matching and skip
+/// the download. A missing or empty URL is a withdrawal. `info` of `None`
+/// is a 404: keep last artwork.
+fn carry_icon_file(
+    info: Option<&LxAppRegistryInfo>,
+    previous: Option<&RegistryRecord>,
+) -> Option<String> {
+    match info {
+        Some(info) => {
+            let new_url = info.icon_url.as_deref().filter(|url| !url.is_empty());
+            let old_url = previous
+                .and_then(|previous| previous.icon_url.as_deref())
+                .filter(|url| !url.is_empty());
+            if new_url.is_some() && new_url == old_url {
+                previous.and_then(|previous| previous.icon_file.clone())
+            } else {
+                None
+            }
+        }
+        None => previous.and_then(|previous| previous.icon_file.clone()),
+    }
 }
 
 /// Bring cached artwork in line with records already stored by [`fetch_records`].
@@ -783,6 +806,52 @@ mod tests {
             // The message stays useful for a host that only shows raw text.
             assert!(message.contains("com.example.app"));
         }
+    }
+
+    #[test]
+    fn artwork_is_kept_only_when_its_url_is_unchanged() {
+        let previous = RegistryRecord {
+            appid: "demo".to_string(),
+            name: None,
+            description: None,
+            icon_url: Some("https://cdn.example.com/a.png".to_string()),
+            icon_file: Some("old.png".to_string()),
+            status: LxAppStatus::Published.as_str().to_string(),
+            fetched_at: now_secs(),
+        };
+        let same = LxAppRegistryInfo {
+            appid: "demo".to_string(),
+            icon_url: Some("https://cdn.example.com/a.png".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            carry_icon_file(Some(&same), Some(&previous)).as_deref(),
+            Some("old.png")
+        );
+
+        let changed = LxAppRegistryInfo {
+            icon_url: Some("https://cdn.example.com/b.png".to_string()),
+            ..same.clone()
+        };
+        assert_eq!(carry_icon_file(Some(&changed), Some(&previous)), None);
+
+        let withdrawn = LxAppRegistryInfo {
+            icon_url: None,
+            ..same.clone()
+        };
+        assert_eq!(carry_icon_file(Some(&withdrawn), Some(&previous)), None);
+
+        let empty = LxAppRegistryInfo {
+            icon_url: Some(String::new()),
+            ..same
+        };
+        assert_eq!(carry_icon_file(Some(&empty), Some(&previous)), None);
+
+        // A 404 keeps last artwork so an unpublished app does not blank its icon.
+        assert_eq!(
+            carry_icon_file(None, Some(&previous)).as_deref(),
+            Some("old.png")
+        );
     }
 
     #[test]
