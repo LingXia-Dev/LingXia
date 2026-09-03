@@ -9,10 +9,10 @@ struct RunnerWebTarget {
     let ownerSessionId: UInt64
 }
 
-/// Simulated system appearance of the device screen. Applied as `NSAppearance`
-/// on the simulator windows so hosted WebViews observe it through
-/// `prefers-color-scheme` — never injected into page DOM, which stays the
-/// app's own override channel.
+/// Simulated system appearance of the device screen. Applied as the
+/// application's `NSAppearance`, which is what the SDK reads to resolve an
+/// lxapp's scheme — never injected into page DOM, which stays the app's own
+/// override channel.
 public enum RunnerAppearance: String, CaseIterable, Sendable {
     case system
     case light
@@ -154,10 +154,18 @@ public class RunnerApp {
         RunnerSupport.PageChrome.republish(appId: controller.appId)
     }
 
-    /// Window-level `NSAppearance` reaches every hosted WebView (and the
-    /// simulated system chrome — capsule, status bar) via the view hierarchy.
+    /// The simulated screen stands in for a device's system appearance, so pin
+    /// it where the SDK looks for one.
+    ///
+    /// Windows alone are not enough. A hosted WebView does not inherit its
+    /// scheme from the window: `LxAppAppearanceRegistry` assigns
+    /// `webView.appearance` outright, from a scheme the runtime resolves
+    /// against `NSApp.effectiveAppearance`, and re-resolves only when the KVO
+    /// on `NSApp` fires. Pinning windows left that untouched, so the simulator
+    /// chrome flipped while the lxapp kept the Mac's own scheme.
     private func applyAppearanceToHosts() {
         let appearance = simulatedAppearance.nsAppearance
+        NSApp.appearance = appearance
         windowController?.window?.appearance = appearance
         for suspended in suspendedPhoneControllers {
             suspended.window?.appearance = appearance
