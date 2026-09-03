@@ -18,6 +18,7 @@ class LxAppCapsuleButtons {
 
     #if os(iOS)
     private static weak var capsuleButtonView: UIView?
+    private static var capsuleTopConstraint: NSLayoutConstraint?
 
     static func addCapsuleButton(to viewController: UIViewController, appId: String) {
         guard viewController.view.viewWithTag(CAPSULE_BUTTON_TAG) == nil else { return }
@@ -43,18 +44,39 @@ class LxAppCapsuleButtons {
 
         let statusBarHeight = LxAppTheme.getStatusBarHeight()
         let topMargin = LxAppTheme.Metrics.calculateCapsuleTop(statusBarHeight: statusBarHeight)
+        let topConstraint = hostingController.view.topAnchor.constraint(
+            equalTo: viewController.view.topAnchor, constant: topMargin
+        )
+        capsuleTopConstraint = topConstraint
 
         NSLayoutConstraint.activate([
             hostingController.view.widthAnchor.constraint(equalToConstant: LxAppTheme.Metrics.capsuleButtonWidth),
             hostingController.view.heightAnchor.constraint(equalToConstant: LxAppTheme.Metrics.capsuleButtonHeight),
             hostingController.view.trailingAnchor.constraint(equalTo: viewController.view.trailingAnchor, constant: -LxAppTheme.Metrics.capsuleTrailingMargin),
-            hostingController.view.topAnchor.constraint(equalTo: viewController.view.topAnchor, constant: topMargin)
+            topConstraint
         ])
-        
+
         viewController.view.layoutIfNeeded()
         let frame = hostingController.view.frame
         os_log("Actual capsule frame: x=%{public}.1f, y=%{public}.1f, width=%{public}.1f, height=%{public}.1f", log: capsuleLog, type: .info, frame.origin.x, frame.origin.y, frame.width, frame.height)
         os_log("statusBarHeight=%{public}.1f, topMargin=%{public}.1f", log: capsuleLog, type: .info, statusBarHeight, topMargin)
+    }
+
+    static func syncCapsuleTop() {
+        let top = LxAppTheme.Metrics.calculateCapsuleTop(
+            statusBarHeight: LxAppTheme.getStatusBarHeight()
+        )
+        guard let constraint = capsuleTopConstraint, constraint.constant != top else { return }
+        constraint.constant = top
+        capsuleButtonView?.superview?.layoutIfNeeded()
+        republishPageChrome()
+    }
+
+    private static func republishPageChrome() {
+        guard let appId = LxAppCore.currentAppId, !appId.isEmpty else { return }
+        DispatchQueue.main.async {
+            _ = syncLxAppHostUI(appId)
+        }
     }
 
     static func removeCapsuleButton(from viewController: UIViewController) {
@@ -63,40 +85,47 @@ class LxAppCapsuleButtons {
         if capsule === capsuleButtonView {
             capsuleButtonView = nil
         }
+        capsuleTopConstraint = nil
     }
 
-    static func getMenuButtonBoundingRect() -> [String: Double] {
-        let statusBarHeight = LxAppTheme.getStatusBarHeight()
-        
-        // Match Web layout centering offset.
-        let top = statusBarHeight
+    /// Capsule in the current page WebView's CSS pixel space, or nil until laid out.
+    static func getMenuButtonBoundingRect() -> [String: Double]? {
+        guard let capsule = capsuleButtonView,
+              !capsule.isHidden,
+              capsule.window != nil else { return nil }
+        capsule.superview?.layoutIfNeeded()
+        guard capsule.bounds.width > 0, capsule.bounds.height > 0,
+              let webView = LxAppCore.getCurrentWebView(),
+              webView.window === capsule.window else { return nil }
+        let rect = capsule.convert(capsule.bounds, to: webView)
+        guard rect.width > 0, rect.height > 0 else { return nil }
 
-        let screenWidth = UIScreen.main.bounds.width
-
-        let width = LxAppTheme.Metrics.capsuleButtonWidth
-        let height = LxAppTheme.Metrics.capsuleButtonHeight
-        let right = screenWidth - LxAppTheme.Metrics.capsuleTrailingMargin
-        let left = right - width
-        let bottom = top + height
-
-        os_log("getCapsuleRect: statusBarHeight=%{public}.1f, top=%{public}.1f, screenWidth=%{public}.1f", log: capsuleLog, type: .info, statusBarHeight, top, screenWidth)
+        os_log(
+            "getCapsuleRect: x=%{public}.1f y=%{public}.1f w=%{public}.1f h=%{public}.1f",
+            log: capsuleLog,
+            type: .info,
+            rect.minX,
+            rect.minY,
+            rect.width,
+            rect.height
+        )
 
         return [
-            "width": Double(width),
-            "height": Double(height),
-            "top": Double(top),
-            "right": Double(right),
-            "bottom": Double(bottom),
-            "left": Double(left)
+            "width": Double(rect.width),
+            "height": Double(rect.height),
+            "top": Double(rect.minY),
+            "right": Double(rect.maxX),
+            "bottom": Double(rect.maxY),
+            "left": Double(rect.minX)
         ]
     }
 
     /// Get menu button bounding rect as JSON string (for FFI)
     static func getMenuButtonBoundingRectJSON() -> String {
-        let rect = getMenuButtonBoundingRect()
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: rect, options: []),
+        guard let rect = getMenuButtonBoundingRect(),
+              let jsonData = try? JSONSerialization.data(withJSONObject: rect, options: []),
               let jsonString = String(data: jsonData, encoding: .utf8) else {
-            return "{}"
+            return "null"
         }
         return jsonString
     }
@@ -112,11 +141,7 @@ class LxAppCapsuleButtons {
                 return
             }
             let jsonString = getMenuButtonBoundingRectJSON()
-            if jsonString.isEmpty || jsonString == "{}" {
-                let _ = onCallback(callback_id, false, "2001")
-            } else {
-                let _ = onCallback(callback_id, true, jsonString)
-            }
+            let _ = onCallback(callback_id, true, jsonString)
         }
     }
     #endif

@@ -565,6 +565,7 @@ class LxAppActivity : AppCompatActivity() {
                 tabBar?.let { tb -> applyTabBarLayoutParams(tb, cfg) }
             }
             updateLayoutMargins()
+            layoutCapsuleButton()
             reportSurfaceWidthIfNeeded()
             insets
         }
@@ -1276,6 +1277,20 @@ class LxAppActivity : AppCompatActivity() {
         }
     }
 
+    private fun layoutCapsuleButton() {
+        val capsule = rootContainer.findViewWithTag<View>("capsule_button") ?: return
+        val lp = capsule.layoutParams as? FrameLayout.LayoutParams ?: return
+        val density = resources.displayMetrics.density
+        val top = LxAppTheme.Metrics.calculateCapsuleTopMargin(getStatusBarHeight(this), density)
+        val trailing = (LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP * density).toInt()
+        if (lp.topMargin != top || lp.rightMargin != trailing) {
+            lp.topMargin = top
+            lp.rightMargin = trailing
+            capsule.layoutParams = lp
+            capsule.post { NativeApi.syncLxAppHostUI(appId) }
+        }
+    }
+
     fun getCapsuleRectJSON(requestingAppId: String): String {
         if (requestingAppId != appId) {
             return "null"
@@ -1292,35 +1307,33 @@ class LxAppActivity : AppCompatActivity() {
             return "null"
         }
 
+        val page = currentWebView ?: return "null"
+        if (page.width <= 0 || page.height <= 0) {
+            return "null"
+        }
+
         val density = resources.displayMetrics.density
-        val statusBarHeight = getStatusBarHeight(this)
-
-        val capsuleTopDp = LxAppTheme.Metrics.calculateCapsuleTopDp(statusBarHeight, density)
-
-        // Web layout uses items-center with height+16, causing an 8px centering offset
-        // Compensate by returning capsule_position - 8 (same strategy as iOS)
-        val top = (capsuleTopDp - 8).toDouble()
-
-        val width = widthPx / density
-        val height = LxAppTheme.Metrics.CAPSULE_HEIGHT_DP.toDouble()
-
-        val screenWidth = resources.displayMetrics.widthPixels / density
-        val right = screenWidth - LxAppTheme.Metrics.CAPSULE_TRAILING_MARGIN_DP
-        val left = right - width
-        val bottom = top + height
+        val cap = IntArray(2)
+        val origin = IntArray(2)
+        capsuleView.getLocationInWindow(cap)
+        page.getLocationInWindow(origin)
+        val left = (cap[0] - origin[0]) / density.toDouble()
+        val top = (cap[1] - origin[1]) / density.toDouble()
+        val width = widthPx / density.toDouble()
+        val height = heightPx / density.toDouble()
 
         Log.i(
             TAG,
-            "Capsule rect: top=${String.format("%.1f", top)}dp (capsule=${String.format("%.1f", capsuleTopDp)}dp, offset=-8) " +
-                "width=${String.format("%.1f", width)}dp height=${String.format("%.1f", height)}dp"
+            "Capsule rect: left=${String.format("%.1f", left)} top=${String.format("%.1f", top)} " +
+                "width=${String.format("%.1f", width)} height=${String.format("%.1f", height)}"
         )
 
         return JSONObject().apply {
             put("width", width)
             put("height", height)
             put("top", top)
-            put("right", right)
-            put("bottom", bottom)
+            put("right", left + width)
+            put("bottom", top + height)
             put("left", left)
         }.toString()
     }
@@ -2564,6 +2577,7 @@ class LxAppActivity : AppCompatActivity() {
                         state?.capsuleInteractionColor ?: NavigationBarState.DEFAULT_CAPSULE_INTERACTION_COLOR
                     )
                     capsule.visibility = View.VISIBLE
+                    layoutCapsuleButton()
                 }
             }
         }

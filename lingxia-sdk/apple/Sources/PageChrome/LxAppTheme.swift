@@ -89,10 +89,10 @@ struct LxAppTheme {
             #endif
         }
 
-        public static let capsuleTopMarginFromSafeArea: CGFloat = 8
-
+        /// Capsule centerY matches the navbar title centerY:
+        /// `top = statusBar + (navBarContentHeight - capsuleHeight) / 2`.
         public static func calculateCapsuleTop(statusBarHeight: CGFloat) -> CGFloat {
-            return statusBarHeight + capsuleTopMarginFromSafeArea
+            return statusBarHeight + (platformNavigationHeight - platformCapsuleHeight) / 2
         }
     }
 
