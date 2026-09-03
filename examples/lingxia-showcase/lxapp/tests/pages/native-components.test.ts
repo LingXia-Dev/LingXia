@@ -271,13 +271,24 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
       script: 'const deferred = globalThis.__nativeIslandDeferredRafs || []; window.requestAnimationFrame = globalThis.__nativeIslandOriginalRaf; delete globalThis.__nativeIslandOriginalRaf; delete globalThis.__nativeIslandDeferredRafs; deferred.forEach((callback) => callback(performance.now()));',
     });
   } else {
-    await app.page.scroll({ page: 'video', dy: -80 });
+    // macOS `page.scroll` posts a wheel at the WebView center, which the
+    // island consumes. Move the document itself so geometry has to follow.
+    const scrollY = await app.page.eval({
+      page: 'video',
+      script: `(() => {
+        const y = window.scrollY;
+        const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+        const next = y + 80 <= max ? y + 80 : Math.max(0, y - 80);
+        window.scrollTo(0, next);
+        return window.scrollY;
+      })()`,
+    }) as number;
     nativeButton = await eventually(
       () => app.page.query({ page: 'video', css: '#video-native-menu-more' }),
       (button) => button.exists
         && button.visible
         && Math.abs(button.rect.center_y - beforeScrollCenterY) >= 40,
-      { timeoutMs: 5_000, describe: 'native island element followed cross-platform page scroll' },
+      { timeoutMs: 5_000, describe: `native island element followed page scroll (scrollY=${scrollY})` },
     );
   }
   if (!nativeButton.exists) throw new Error('native menu More button disappeared after scroll');
