@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const scenario = process.env.LX_BRIDGE_TEST_SCENARIO;
 if (!scenario) {
-  for (const name of ['trusted', 'ordinary', 'blocked']) {
+  for (const name of ['trusted', 'ordinary', 'blocked', 'webkit']) {
     const result = spawnSync(
       process.execPath,
       [new URL(import.meta.url).pathname],
@@ -38,12 +38,24 @@ globalThis.document = {
   getElementById() { return null; },
 };
 globalThis.window = {
-  __LX_BRIDGE_CFG: { os: 'Windows', nonce: 'nonce-1', dev: true },
+  __LX_BRIDGE_CFG: {
+    os: scenario === 'webkit' ? 'macOS' : 'Windows',
+    nonce: 'nonce-1',
+    dev: true,
+    ...(scenario === 'webkit'
+      ? { appleDownstreamURL: 'lx-apple://bridge/downstream' }
+      : {}),
+  },
   __LX_RUNTIME_CONFIG: {},
   LingXiaProxy: {
     supportsMessagePort: () => false,
     getPort: () => '',
     postMessage: (message) => sent.push(message),
+  },
+  webkit: {
+    messageHandlers: {
+      LingXia: { postMessage: (message) => sent.push(message) },
+    },
   },
   addEventListener() {},
   removeEventListener() {},
@@ -52,6 +64,9 @@ globalThis.window = {
   scrollX: 0,
   scrollY: 0,
 };
+if (scenario === 'webkit') {
+  globalThis.fetch = async () => new Response(new ReadableStream({ start() {} }));
+}
 
 const sessionId = 'trusted-session';
 const secret = 'secret-never-observable';
@@ -73,6 +88,18 @@ vm.runInThisContext(`${runtimeSource}\n;globalThis.__testBridgeBundle = __LingXi
 const bridge = globalThis.__testBridgeBundle;
 const receive = (frame) => window.__LingXiaRecvMessage(JSON.stringify(frame));
 const decoded = () => sent.map((frame) => JSON.parse(frame));
+
+if (scenario === 'webkit') {
+  bridge.initBridge();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(typeof sent[0], 'string');
+  assert.equal(decoded()[0].kind, 'hello');
+  receive({ v: 2, kind: 'helloAck', nonce: 'nonce-1', protocol: 2, sessionId: 'webkit-session' });
+  receive({ v: 2, kind: 'ready', sessionId: 'webkit-session' });
+  bridge.LingXiaBridge.raw.notify('host.note', { exact: true }, { cap: 'host' });
+  assert.equal(sent.every((frame) => typeof frame === 'string'), true);
+  process.exit(0);
+}
 
 if (scenario === 'blocked') {
   bridge.initBridge();

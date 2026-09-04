@@ -17,7 +17,7 @@ use crate::traits::{
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::traits::{PressOptions, ScrollOptions, TypeOptions};
-use crate::webview::{find_webview, find_webview_by_native_view_id};
+use crate::webview::{WebView, find_webview, find_webview_by_native_view_id};
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, DownloadRequest, LoadDataRequest, LogLevel,
     UserAgentOverride, WebResourceResponse, WebViewController, WebViewCookie,
@@ -29,16 +29,15 @@ use dispatch2::DispatchQueue;
 use http::{Method, Response, StatusCode};
 use objc2::runtime::{AnyObject, NSObject, ProtocolObject};
 use objc2::{
-    AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, class, define_class, msg_send,
-    rc::Retained,
+    DefinedClass, MainThreadMarker, MainThreadOnly, class, define_class, msg_send, rc::Retained,
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use objc2_core_foundation::{CFRetained, CGPoint, CGRect};
 use objc2_foundation::{
     NSArray, NSDate, NSDictionary, NSError, NSHTTPCookie, NSHTTPCookieDomain, NSHTTPCookieExpires,
     NSHTTPCookieName, NSHTTPCookieOriginURL, NSHTTPCookiePath, NSHTTPCookiePropertyKey,
-    NSHTTPCookieSameSitePolicy, NSHTTPCookieSecure, NSHTTPCookieValue, NSJSONSerialization,
-    NSJSONWritingOptions, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL, NSURLRequest,
+    NSHTTPCookieSameSitePolicy, NSHTTPCookieSecure, NSHTTPCookieValue, NSObjectProtocol, NSPoint,
+    NSRect, NSSize, NSString, NSURL, NSURLRequest,
 };
 use objc2_web_kit::{
     WKAudiovisualMediaTypes, WKContentWorld, WKNavigation, WKNavigationDelegate, WKNavigationType,
@@ -2463,10 +2462,10 @@ impl WebViewInner {
 
                         try {
                             // Use dedicated console handler (like Swift version)
-                            window.webkit.messageHandlers.LingXiaConsole.postMessage({
+                            window.webkit.messageHandlers.LingXiaConsole.postMessage(JSON.stringify({
                                 level: level,
                                 message: message
-                            });
+                            }));
                         } catch (e) {
                             // Fallback if message handler not ready
                         }
@@ -4467,50 +4466,21 @@ define_class!(
                 let body: *mut AnyObject = msg_send![message, body];
 
                 let message_string = if !body.is_null() {
-                    // Try to get as string first
                     let is_string: objc2::runtime::Bool =
                         msg_send![body, isKindOfClass: objc2::class!(NSString)];
                     if is_string.as_bool() {
                         let ns_string = &*(body as *const NSString);
-                        ns_string.to_string()
-                    } else {
-                        // Try to convert to JSON if it's a dictionary
-                        let is_dict: objc2::runtime::Bool =
-                            msg_send![body, isKindOfClass: objc2::class!(NSDictionary)];
-                        if is_dict.as_bool() {
-                            // Convert NSDictionary to JSON string (like Swift version)
-                            let body_obj: &AnyObject = &*(body as *const AnyObject);
-                            let json_data =
-                                match NSJSONSerialization::dataWithJSONObject_options_error(
-                                    body_obj,
-                                    NSJSONWritingOptions(0),
-                                ) {
-                                    Ok(data) => data,
-                                    Err(err) => {
-                                        log::error!(
-                                            "Failed to serialize dictionary to JSON: {}",
-                                            err.localizedDescription()
-                                        );
-                                        return;
-                                    }
-                                };
-
-                            let json_string = match NSString::initWithData_encoding(
-                                NSString::alloc(),
-                                &json_data,
-                                4, // NSUTF8StringEncoding
-                            ) {
-                                Some(s) => s,
-                                None => {
-                                    log::error!("Failed to convert JSON data to string");
-                                    return;
-                                }
-                            };
-                            json_string.to_string()
-                        } else {
-                            log::error!("Unsupported message body type");
+                        if !crate::webview::web_message_bytes_within_limit(ns_string.len()) {
+                            self.reject_oversized_message();
                             return;
                         }
+                        ns_string.to_string()
+                    } else {
+                        // All owned producers send JSON text. Rejecting objects
+                        // prevents an attacker from forcing an unbounded
+                        // NSJSONSerialization allocation before the byte cap.
+                        log::warn!("Dropping Apple WebView message with non-string body");
+                        return;
                     }
                 } else {
                     log::error!("Message body is null");
@@ -4545,6 +4515,18 @@ define_class!(
 );
 
 impl LingXiaMessageHandler {
+    fn current_webview(&self) -> Option<Arc<WebView>> {
+        let ivars = self.ivars();
+        let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
+        find_webview_for_native(&webtag, ivars.native_webview as *mut AnyObject)
+    }
+
+    fn reject_oversized_message(&self) {
+        if let Some(webview) = self.current_webview() {
+            webview.reject_oversized_web_message();
+        }
+    }
+
     /// Create a new message handler
     pub fn new(
         appid: String,
@@ -4614,10 +4596,10 @@ impl LingXiaMessageHandler {
                     delegate.log(log_level, console_message);
                 }
             } else {
-                log::error!("Failed to parse console message fields: {}", message);
+                log::error!("Failed to parse Apple console message fields");
             }
         } else {
-            log::error!("Failed to parse console message JSON: {}", message);
+            log::error!("Failed to parse Apple console message JSON");
         }
     }
 }
@@ -4625,6 +4607,19 @@ impl LingXiaMessageHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apple_raw_string_cap_counts_utf8_bytes_before_copying() {
+        let exact = NSString::from_str(&"é".repeat(crate::webview::MAX_WEB_MESSAGE_BYTES / 2));
+        assert_eq!(exact.len(), crate::webview::MAX_WEB_MESSAGE_BYTES);
+        assert!(crate::webview::web_message_bytes_within_limit(exact.len()));
+
+        let oversized = NSString::from_str(&format!("{}x", exact));
+        assert_eq!(oversized.len(), crate::webview::MAX_WEB_MESSAGE_BYTES + 1);
+        assert!(!crate::webview::web_message_bytes_within_limit(
+            oversized.len()
+        ));
+    }
 
     #[test]
     fn apple_native_callback_identity_rejects_a_reused_tag() {

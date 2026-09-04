@@ -882,6 +882,14 @@ public class LingXiaWebView extends WebView {
         return url != null ? url : "";
     }
 
+    void rejectOversizedPostMessage() {
+        reportWebMessageRejected(
+                getAppId() != null ? getAppId() : "",
+                getCurrentPath() != null ? getCurrentPath() : "",
+                getSessionId(),
+                getNativeViewId());
+    }
+
     private class LingXiaProxy {
         @android.webkit.JavascriptInterface
         public boolean supportsMessagePort() {
@@ -905,6 +913,10 @@ public class LingXiaWebView extends WebView {
         public void postMessage(String message) {
             // Android 5 compatible JS->native channel
             try {
+                if (!WebMessageSizePolicy.isWithinLimit(message)) {
+                    rejectOversizedPostMessage();
+                    return;
+                }
                 handlePostMessage(
                     getAppId() != null ? getAppId() : "",
                     getCurrentPath() != null ? getCurrentPath() : "",
@@ -1674,6 +1686,12 @@ public class LingXiaWebView extends WebView {
             long documentGeneration,
             String sourceUrl,
             String message
+    );
+    native int reportWebMessageRejected(
+            String appId,
+            String path,
+            long sessionId,
+            long nativeViewId
     );
     native boolean dispatchDocumentMessage(long requestId);
     native static void notifyWebViewReady(String appId, String path, long sessionId, long requestId, Object webView);

@@ -116,6 +116,32 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_reportWebMessageRejected(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    native_view_id: jlong,
+) -> jint {
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "ingress rejection")
+        else {
+            return Ok(0);
+        };
+        let session_id = (session_id > 0).then_some(session_id as u64);
+        let webtag = WebTag::new(&appid, &path, session_id);
+        if let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) {
+            webview.reject_oversized_web_message();
+        }
+        Ok(0)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_dispatchDocumentMessage(
     mut env: EnvUnowned,
     this: JObject,
