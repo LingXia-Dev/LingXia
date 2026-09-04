@@ -173,6 +173,12 @@ its own policy/consent check. Standard and Control sessions otherwise start
 without privileged resource grants, even when their app ids or manifests are
 identical.
 
+Loading the process namespace is not a persistent grant. `spawn`, `spawnSync`,
+shell commands, retained child handles, and child stream I/O recheck the exact
+session's live `Process` grant. Closing, restarting, or replacing that session
+revokes its handles and terminates its running process trees; a successor with
+the same app id cannot control them.
+
 The callback receives an unconstructable `NativeHostRuntimeAuthority`; it
 cannot be called from a route or populated from payload fields. Devtools builds
 use the separate `NativeDevtoolsAuthority`, which can issue only session-bound

@@ -478,6 +478,39 @@ impl AppScope {
     }
 }
 
+#[cfg(feature = "process")]
+pub(crate) struct ProcessSessionAuthority {
+    scope: AppScope,
+}
+
+#[cfg(feature = "process")]
+impl ProcessSessionAuthority {
+    pub(crate) fn for_lxapp(app: &Arc<LxApp>) -> Self {
+        Self {
+            scope: AppScope::from_lxapp(app),
+        }
+    }
+}
+
+#[cfg(feature = "process")]
+impl rong_command::ProcessAuthority for ProcessSessionAuthority {
+    fn authorize(&self) -> Result<(), String> {
+        if self
+            .scope
+            .resource_grants()
+            .contains(AppResourceGrant::Process)
+        {
+            Ok(())
+        } else {
+            Err(format!(
+                "process execution requires a live native Process grant for app session {}:{}",
+                self.scope.identity().app_id(),
+                self.scope.identity().session_id()
+            ))
+        }
+    }
+}
+
 /// Authenticated source for a native route invocation.
 ///
 /// Browser construction is reserved for the browser document lifecycle TCB:
@@ -1723,6 +1756,38 @@ mod tests {
         );
         assert!(terminal_handle.snapshot().is_err());
         crate::terminal_automation::remove_workspace(&native, &surface_id);
+    }
+
+    #[cfg(feature = "process")]
+    #[test]
+    fn process_authority_rejects_manifest_only_and_stale_same_app_id_sessions() {
+        use rong_command::ProcessAuthority;
+
+        let (_root, original, successor) = same_app_id_with_different_classes();
+        let original_authority = ProcessSessionAuthority::for_lxapp(&original);
+
+        assert!(
+            original
+                .has_security_privilege(&crate::LxAppSecurityPrivilege::new("process").unwrap())
+        );
+        assert!(original_authority.authorize().is_err());
+
+        original.seal_resource_grants(HashSet::from([AppResourceGrant::Process]));
+        assert!(original_authority.authorize().is_ok());
+
+        for status in [
+            LxAppSessionStatus::Closing,
+            LxAppSessionStatus::Restarting,
+            LxAppSessionStatus::Closed,
+        ] {
+            original.set_status(status);
+            assert!(original_authority.authorize().is_err());
+        }
+
+        successor.seal_resource_grants(HashSet::from([AppResourceGrant::Process]));
+        let successor_authority = ProcessSessionAuthority::for_lxapp(&successor);
+        assert!(successor_authority.authorize().is_ok());
+        assert!(original_authority.authorize().is_err());
     }
 
     #[test]

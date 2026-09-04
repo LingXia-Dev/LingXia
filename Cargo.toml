@@ -30,6 +30,7 @@ members = [
     "crates/lingxia-proxy",
     "crates/lingxia-device-io",
     "crates/lingxia-control-commands",
+    "third_party/rong_command",
     "tools/lingxia-runner/macos/native",
     "tools/lingxia-runner/windows",
     "tools/lingxia-runner/config",
@@ -120,6 +121,7 @@ napi-derive-ohos = "1.1.0"
 rong = { version = "0.6.0", default-features = false }
 rong_rt = { version = "0.6.0", default-features = false }
 rong_modules = { version = "0.6.0", default-features = false }
+rong_command = { package = "lingxia-rong-command", version = "0.14.0", path = "third_party/rong_command", default-features = false }
 rong_http = { version = "0.6.0", default-features = false }
 rong_console = "0.6.0"
 rong_event = "0.6.0"

@@ -3484,6 +3484,7 @@ dependencies = [
  "lingxia-messaging",
  "lingxia-platform",
  "lingxia-provider",
+ "lingxia-rong-command",
  "lingxia-service",
  "lingxia-settings",
  "lingxia-shell",
@@ -3615,6 +3616,20 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tokio-rustls",
+]
+
+[[package]]
+name = "lingxia-rong-command"
+version = "0.14.0"
+dependencies = [
+ "libc",
+ "rong",
+ "rong_abort",
+ "rong_buffer",
+ "rong_encoding",
+ "rong_event",
+ "rong_stream",
+ "tokio",
 ]
 
 [[package]]
