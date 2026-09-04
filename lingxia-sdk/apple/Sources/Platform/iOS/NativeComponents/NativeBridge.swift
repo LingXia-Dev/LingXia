@@ -55,12 +55,22 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
     private var componentManager: NativeComponentManager?
     private var pageKey: String
     private var pendingPageKeyUpdate: Bool = false
+    private let surfaceBinding: NativeComponentSurfaceBinding
+    private var active = true
 
     static func attachIfNeeded(to webView: WKWebView) {
-        if webView.lxNativeComponentConfigured {
+        guard case .lxAppPage(let requestedBinding) = webView.nativeComponentSurfaceBinding else {
+            webView.lxNativeComponentManager?.invalidate()
+            webView.lxNativeComponentManager = nil
+            webView.lxNativeComponentConfigured = false
+            return
+        }
+        if let current = webView.lxNativeComponentManager,
+           current.surfaceBinding == .lxAppPage(requestedBinding) {
             os_log("NativeBridge already configured for WebView", log: nativeComponentLog, type: .info)
             return
         }
+        webView.lxNativeComponentManager?.invalidate()
         webView.lxNativeComponentConfigured = true
 
         os_log("NativeBridge attaching to WebView", log: nativeComponentLog, type: .info)
@@ -68,14 +78,15 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         // Ensure built-in components are registered before installing
         registerDefaultComponents()
 
-        let bridge = NativeBridge(webView: webView)
+        let bridge = NativeBridge(webView: webView, surfaceBinding: .lxAppPage(requestedBinding))
         bridge.install()
         webView.lxNativeComponentManager = bridge
     }
 
-    private init(webView: WKWebView) {
+    private init(webView: WKWebView, surfaceBinding: NativeComponentSurfaceBinding) {
         self.webView = webView
         self.pageKey = Self.makePageKey(for: webView)
+        self.surfaceBinding = surfaceBinding
         super.init()
     }
 
@@ -85,6 +96,44 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
                 manager.teardownAll()
             }
         }
+    }
+
+    private func invalidate() {
+        active = false
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "NativeComponent")
+        componentManager?.teardownAll()
+        componentManager = nil
+    }
+
+    private func bindingIsCurrent(isMainFrame: Bool) -> Bool {
+        guard active, let webView else { return false }
+        let currentIdentity: UInt?
+        if case .lxAppPage(let binding) = surfaceBinding {
+            let pointer = lingxia.findWebViewByPageInstanceId(binding.pageInstanceID)
+            currentIdentity = pointer == 0 ? nil : pointer
+        } else {
+            currentIdentity = nil
+        }
+        let currentBinding = webView.nativeComponentSurfaceBinding
+        let currentPageInstanceID: String?
+        let currentGeneration: UInt64?
+        if case .lxAppPage(let binding) = currentBinding {
+            currentPageInstanceID = binding.pageInstanceID
+            currentGeneration = binding.attachmentGeneration
+        } else {
+            currentPageInstanceID = nil
+            currentGeneration = nil
+        }
+        return surfaceBinding.admits(
+            isMainFrame: isMainFrame,
+            currentPageInstanceID: currentPageInstanceID,
+            currentWebViewIdentity: currentIdentity,
+            currentAttachmentGeneration: currentGeneration
+        )
+    }
+
+    private func admits(_ message: WKScriptMessage) -> Bool {
+        bindingIsCurrent(isMainFrame: message.frameInfo.isMainFrame)
     }
 
     private func install() {
@@ -175,6 +224,10 @@ extension NativeBridge {
         didReceive message: WKScriptMessage
     ) {
         guard message.name == "NativeComponent" else { return }
+        guard admits(message) else {
+            os_log("NativeBridge rejected unproven or stale message", log: nativeComponentLog, type: .error)
+            return
+        }
 
         var dict: [String: Any]?
 
@@ -199,15 +252,14 @@ extension NativeBridge {
         }
 
         var payloadWithPage = payload
-        if payloadWithPage["pageId"] == nil {
-            payloadWithPage["pageId"] = pageKey
-        }
+        payloadWithPage["pageId"] = pageKey
 
         componentManager?.handle(message: payloadWithPage)
     }
 
     private func sendEventToJavaScript(_ payload: [String: Any]) {
         guard let webView = webView else { return }
+        guard bindingIsCurrent(isMainFrame: true) else { return }
         let fullMessage: [String: Any] = [
             "type": "event",
             "name": "nativecomponent",
