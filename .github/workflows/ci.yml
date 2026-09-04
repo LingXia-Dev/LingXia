@@ -105,6 +105,7 @@ jobs:
               - 'crates/lingxia-webview/**'
               - 'third_party/**'
               - 'packages/lingxia-bridge/**'
+              - 'scripts/ci/authority-escape-gate.sh'
               - 'scripts/ci/control-security-gates.sh'
               - 'scripts/ci/test-control-security-gates.sh'
               - '.github/workflows/ci.yml'
