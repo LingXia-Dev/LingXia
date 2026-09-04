@@ -113,7 +113,7 @@ impl BoundV3Protocol {
         self.inbound.session_id()
     }
 
-    fn authenticates(&self, binding: &V3InboundBinding) -> bool {
+    pub(crate) fn authenticates(&self, binding: &V3InboundBinding) -> bool {
         self.inbound.matches(binding)
     }
 

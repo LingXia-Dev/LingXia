@@ -73,8 +73,7 @@ fn download_settings_result(app: &LxApp) -> HostResult<DownloadSettingsResult> {
 }
 
 #[lingxia::framework_native("app.getInfo", audience = "browser-control-only")]
-fn get_app_info(app: Arc<LxApp>) -> HostResult<AppInfo> {
-    crate::require_builtin_browser(&app)?;
+fn get_app_info(_app: Arc<LxApp>) -> HostResult<AppInfo> {
     let (product_name, version) = match app_config() {
         Some(cfg) => (cfg.product_name.clone(), cfg.product_version.clone()),
         None => (String::new(), String::new()),
@@ -90,7 +89,6 @@ fn get_app_info(app: Arc<LxApp>) -> HostResult<AppInfo> {
 
 #[lingxia::framework_native("downloads.getSettings", audience = "browser-control-only")]
 fn get_download_settings(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
-    crate::require_builtin_browser(&app)?;
     download_settings_result(&app)
 }
 
@@ -99,7 +97,6 @@ async fn choose_download_directory(
     app: Arc<LxApp>,
     mut cancel: HostCancel,
 ) -> HostResult<DownloadSettingsResult> {
-    crate::require_builtin_browser(&app)?;
     let current_dir = lingxia_service::downloads::dir(&app.app_data_dir())
         .to_string_lossy()
         .to_string();
@@ -129,7 +126,6 @@ async fn choose_download_directory(
 
 #[lingxia::framework_native("downloads.resetDirectory", audience = "browser-control-only")]
 fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
-    crate::require_builtin_browser(&app)?;
     lingxia_service::downloads::reset_dir(&app.app_data_dir())
         .map_err(|e| lxapp::LxAppError::Runtime(e.to_string()))?;
     download_settings_result(&app)
@@ -149,7 +145,6 @@ fn set_display_language(
     app: Arc<LxApp>,
     input: SetLanguageInput,
 ) -> HostResult<LanguageSettingsResult> {
-    crate::require_builtin_browser(&app)?;
     let language = input
         .language
         .parse::<lxapp::DisplayLanguage>()

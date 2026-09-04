@@ -25,8 +25,9 @@ import { BRIDGE_ERROR } from "./types";
 import { toBridgeError, toNativeError } from "./invocation";
 import { installNativeComponentCoverageMonitor } from "./nativecomponents/coverage-monitor";
 import {
-  consumeV3BootstrapForFutureRequiredProtocol,
+  consumeV3Bootstrap,
   type V3DocumentCodec,
+  type V3DocumentToNativeKind,
 } from "./protocol-v3";
 import {
   BRIDGE_CONFIG,
@@ -61,9 +62,14 @@ const APPLE_RECONNECT_MAX_MS = 2000;
 const debugFlags = { data: false, proto: false, all: false };
 const earlyNativeMessages: string[] = [];
 
-// Kept entirely inside this module until a later, host-attested RequiredV3
-// activation path is introduced. V2 does not read or use this codec.
-let futureRequiredV3Codec: V3DocumentCodec | undefined;
+type ProtocolMode =
+  | { readonly kind: "v2" }
+  | { readonly kind: "required-v3"; readonly codec: V3DocumentCodec }
+  | { readonly kind: "blocked" };
+
+// Fixed once, during init. The V3 secret remains captured only by the codec.
+let protocolMode: ProtocolMode = { kind: "v2" };
+let protocolInitialized = false;
 
 // Plain-object equivalent of `new Proxy(debugFlags, ...)`. Avoids referencing
 // the `Proxy` global so the module loads on older WebViews (Android 5.x stock
@@ -277,7 +283,8 @@ function rejectAllPendingForTransport(reason: string): void {
 
 function resetHandshakeState(reason: string, rejectPending: boolean): void {
   clearHandshakeTimer();
-  handshakeSessionId = null;
+  if (protocolMode.kind !== "required-v3") handshakeSessionId = null;
+  helloAcknowledged = false;
   handshakeDone = false;
   helloSent = false;
   handshakeRetryCount = 0;
@@ -540,18 +547,35 @@ function getMessagePort(): Promise<MessagePort> {
   return portInitState.promise;
 }
 
+function encodeForNative(message: unknown): unknown | null {
+  if (protocolMode.kind === "blocked") return null;
+  if (protocolMode.kind === "v2") return message;
+  if (!message || typeof message !== "object") return null;
+
+  const { v: _v, kind, ...payload } = message as Record<string, unknown>;
+  if (typeof kind !== "string") return null;
+  const encoded = protocolMode.codec.encode(
+    kind as V3DocumentToNativeKind,
+    payload,
+  );
+  return encoded.ok ? encoded.value : null;
+}
+
 function postToNative(message: unknown): void {
+  const encodedMessage = encodeForNative(message);
+  if (!encodedMessage) return;
   const kind = (message as { kind?: string }).kind;
   if (kind === "req" || kind === "notify")
     log(`postToNative: ${kind} ${(message as { method?: string }).method}`);
   if (isDebugEnabled("proto"))
+    // Log the payload before RequiredV3 adds its document secret.
     console.log("→", JSON.stringify(message, null, 2));
   try {
     if (communicationMethod === "webkit") {
-      window.webkit?.messageHandlers[NATIVE_HANDLER_NAME]?.postMessage(message);
+      window.webkit?.messageHandlers[NATIVE_HANDLER_NAME]?.postMessage(encodedMessage);
       return;
     }
-    const messageString = stringifyForNative(message);
+    const messageString = stringifyForNative(encodedMessage);
     if (communicationMethod === MESSAGE_PORT_TYPE && messagePort) {
       messagePort.postMessage(messageString);
       return;
@@ -566,7 +590,8 @@ function postToNative(message: unknown): void {
     }
     warn("Transport not ready");
   } catch (e) {
-    error("Send error:", e);
+    if (protocolMode.kind === "required-v3") error("Send error");
+    else error("Send error:", e);
   }
 }
 
@@ -691,6 +716,7 @@ type Incoming =
 
 // Handshake state
 let handshakeSessionId: string | null = null;
+let helloAcknowledged = false;
 let handshakeDone = false;
 let helloSent = false;
 let handshakeRetryCount = 0;
@@ -1197,6 +1223,8 @@ function clearHandshakeTimer(): void {
 
 function startHandshake(): void {
   if (handshakeDone) return;
+  if (!protocolInitialized) return;
+  if (protocolMode.kind === "blocked") return;
   if (!isTransportReady()) return;
   clearHandshakeTimer();
 
@@ -1205,7 +1233,7 @@ function startHandshake(): void {
     kind: "hello",
     nonce: BRIDGE_CONFIG.nonce || "",
     role: "view",
-    protocolsSupported: [2],
+    protocolsSupported: protocolMode.kind === "required-v3" ? [3] : [2],
   };
 
   helloSent = true;
@@ -1245,6 +1273,25 @@ function startHandshake(): void {
 }
 
 function parseIncoming(msg: unknown): Incoming | null {
+  if (protocolMode.kind === "blocked") return null;
+  if (protocolMode.kind === "required-v3") {
+    const frame = typeof msg === "string" ? msg : stringifyForNative(msg);
+    const parsed = protocolMode.codec.parse(frame);
+    if (!parsed.ok) return null;
+    return {
+      v: 3,
+      kind: parsed.value.kind,
+      ...parsed.value.payload,
+    } as unknown as Incoming;
+  }
+
+  if (typeof msg === "string") {
+    try {
+      msg = JSON.parse(msg);
+    } catch {
+      return null;
+    }
+  }
   if (!msg || typeof msg !== "object") return null;
   const v = (msg as { v?: unknown }).v;
   const kind = (msg as { kind?: unknown }).kind;
@@ -1378,9 +1425,18 @@ function applySnapshotFromResult(result: unknown): boolean {
 }
 
 function handleIncomingMessage(msg: unknown): void {
+  let candidate = msg;
+  if (protocolMode.kind === "v2" && typeof candidate === "string") {
+    try {
+      candidate = JSON.parse(candidate);
+    } catch {
+      candidate = null;
+    }
+  }
+
   // Handle native component events (from Android NativeBridge.sendEventToView)
-  if (msg && typeof msg === "object") {
-    const obj = msg as {
+  if (protocolMode.kind === "v2" && candidate && typeof candidate === "object") {
+    const obj = candidate as {
       type?: string;
       name?: string;
       payload?: NativeComponentMessage;
@@ -1404,19 +1460,40 @@ function handleIncomingMessage(msg: unknown): void {
     }
   }
 
-  const message = parseIncoming(msg);
+  const message = parseIncoming(candidate);
   if (!message) {
-    warn("Invalid V2 message:", msg);
+    warn("Invalid bridge message");
     return;
   }
 
   switch (message.kind) {
     case "helloAck":
-      handshakeSessionId = message.sessionId;
+      if (
+        message.protocol !== (protocolMode.kind === "required-v3" ? 3 : 2) ||
+        message.nonce !== (BRIDGE_CONFIG.nonce || "")
+      ) {
+        warn("Invalid helloAck");
+        return;
+      }
+      if (protocolMode.kind === "required-v3") {
+        helloAcknowledged = true;
+        return;
+      }
+      if (handshakeSessionId && message.sessionId !== handshakeSessionId) {
+        warn("sessionId mismatch");
+        return;
+      }
+      if (!handshakeSessionId) handshakeSessionId = message.sessionId;
+      helloAcknowledged = true;
       return;
 
     case "ready":
-      if (handshakeSessionId && message.sessionId !== handshakeSessionId) {
+      if (!helloAcknowledged) return;
+      if (
+        protocolMode.kind === "v2" &&
+        handshakeSessionId &&
+        message.sessionId !== handshakeSessionId
+      ) {
         warn("sessionId mismatch");
         return;
       }
@@ -1927,15 +2004,7 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     }
     messagePort = port;
     port.onmessage = (event: MessageEvent) => {
-      let data = event.data;
-      if (typeof data === "string") {
-        try {
-          data = JSON.parse(data);
-        } catch {
-          return;
-        }
-      }
-      handleIncomingMessage(data);
+      handleIncomingMessage(event.data);
     };
     // Some WebView MessagePort implementations (notably Android WebMessagePort)
     // require an explicit start() to begin dispatching onmessage events.
@@ -1947,11 +2016,7 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
   },
 
   _receiveEvaluateMessage(messageString: string): void {
-    try {
-      if (messageString) handleIncomingMessage(JSON.parse(messageString));
-    } catch (e) {
-      error("Parse error:", e);
-    }
+    if (messageString) handleIncomingMessage(messageString);
   },
 
   debug: createDebugObject(debugFlags),
@@ -2137,7 +2202,14 @@ export function initBridge(): void {
   window.__LX_BRIDGE_INIT_STATE = "initializing";
 
   try {
-    futureRequiredV3Codec = consumeV3BootstrapForFutureRequiredProtocol();
+    if (!protocolInitialized) {
+      const activation = consumeV3Bootstrap();
+      protocolMode =
+        activation.kind === "required"
+          ? { kind: "required-v3", codec: activation.codec }
+          : { kind: activation.kind === "absent" ? "v2" : "blocked" };
+      protocolInitialized = true;
+    }
     log(`Method: ${communicationMethod}`);
     activateReceiver(LingXiaBridge._receiveEvaluateMessage);
 

@@ -480,7 +480,6 @@ pub(crate) fn count_in(app_data_dir: &Path) -> Result<usize, LxAppError> {
 /// history page filters/searches client-side by design.
 #[lingxia::framework_native("history.list", audience = "browser-control-only")]
 fn list_history(app: Arc<LxApp>) -> HostResult<HistorySnapshot> {
-    crate::require_builtin_browser(&app)?;
     let _guard = store_lock()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
@@ -489,7 +488,6 @@ fn list_history(app: Arc<LxApp>) -> HostResult<HistorySnapshot> {
 
 #[lingxia::framework_native("history.remove", audience = "browser-control-only")]
 fn remove_history_entry(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     let _guard = store_lock()
         .lock()
         .unwrap_or_else(|error| error.into_inner());
@@ -511,7 +509,6 @@ fn remove_history_entry(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
 
 #[lingxia::framework_native("history.clear", audience = "browser-control-only")]
 fn clear_history(app: Arc<LxApp>, input: ClearInput) -> HostResult<ClearResult> {
-    crate::require_builtin_browser(&app)?;
     clear_since_in(&app.app_data_dir(), input.since_ms).map(|removed| ClearResult { removed })
 }
 
@@ -520,7 +517,6 @@ async fn watch_history(
     app: Arc<LxApp>,
     mut stream: StreamContext<HistoryWatchEvent>,
 ) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     let mut receiver = channel().subscribe();
     {
         let _guard = store_lock()
