@@ -91,14 +91,23 @@ impl JSContextService for TerminalContextService {
 }
 
 pub(crate) fn eligible(app: &LxApp) -> bool {
-    cfg!(any(target_os = "macos", target_os = "windows"))
-        && lingxia_app_context::terminal_enabled()
-        && app.appid == SETTINGS_APP_ID
-        && app.is_host_bundled()
+    terminal_access_allowed(
+        cfg!(any(target_os = "macos", target_os = "windows"))
+            && lingxia_app_context::terminal_enabled(),
+        app.is_control_app(),
+    )
 }
 
 pub(crate) fn owns_context(ctx: &JSContext) -> JSResult<bool> {
-    Ok(eligible(LxApp::from_ctx(ctx)?.as_ref()))
+    let app = LxApp::from_ctx(ctx)?;
+    // This chooses the focused settings runtime profile; it is not an
+    // authorization decision. Every API call below separately requires the
+    // native-assigned ControlApp session.
+    Ok(eligible(&app) && app.appid == SETTINGS_APP_ID && app.is_host_bundled())
+}
+
+fn terminal_access_allowed(host_terminal_enabled: bool, native_control_app: bool) -> bool {
+    host_terminal_enabled && native_control_app
 }
 
 fn require_access(ctx: &JSContext) -> JSResult<Arc<LxApp>> {
@@ -108,7 +117,7 @@ fn require_access(ctx: &JSContext) -> JSResult<Arc<LxApp>> {
     }
     Err(HostError::new(
         rong::error::E_PERMISSION_DENIED,
-        "lx.terminal is restricted to the host-bundled Terminal Settings app",
+        "lx.terminal requires a live native-assigned ControlApp session",
     )
     .into())
 }
@@ -255,12 +264,15 @@ async fn settings_get(ctx: JSContext) -> JSResult<JSValue> {
     snapshot_to_js(&ctx)
 }
 
-async fn settings_update(
-    ctx: JSContext,
-    patch: JSObject,
-    options: RevisionOptions,
-) -> JSResult<JSValue> {
+async fn settings_update(ctx: JSContext, patch: JSValue, options: JSValue) -> JSResult<JSValue> {
     let (_, data_dir, system_is_dark) = context(&ctx)?;
+    let patch = patch.into_object().ok_or_else(|| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INVALID_ARG,
+            "terminal settings patch must be an object",
+        ))
+    })?;
+    let options = options.to_rust::<RevisionOptions>()?;
     let patch = object_json(&patch, "terminal settings patch")?;
     lingxia_terminal_config::runtime::apply_config_if_revision(
         &data_dir,
@@ -272,8 +284,9 @@ async fn settings_update(
     to_js(&ctx, &snapshot_value(&data_dir, system_is_dark))
 }
 
-async fn settings_reset(ctx: JSContext, options: ResetOptions) -> JSResult<JSValue> {
+async fn settings_reset(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
     let (_, data_dir, system_is_dark) = context(&ctx)?;
+    let options = options.to_rust::<ResetOptions>()?;
     lingxia_terminal_config::runtime::reset_config_if_revision(
         &data_dir,
         options.scope.as_deref(),
@@ -289,8 +302,9 @@ async fn schemes_list(ctx: JSContext) -> JSResult<JSValue> {
     to_js(&ctx, &ThemeStore::new(&data_dir).list_with_schemes())
 }
 
-async fn schemes_import(ctx: JSContext, options: ImportOptions) -> JSResult<JSValue> {
+async fn schemes_import(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
     let (app, data_dir, _) = context(&ctx)?;
+    let options = options.to_rust::<ImportOptions>()?;
     let scheme = lingxia_terminal_config::parse_scheme(&options.text).map_err(|error| {
         HostError::new(
             rong::error::E_INVALID_DATA,
@@ -342,8 +356,9 @@ async fn conpty_status(ctx: JSContext) -> JSResult<JSValue> {
 }
 
 #[cfg(target_os = "windows")]
-async fn conpty_install(ctx: JSContext, options: InstallConptyOptions) -> JSResult<JSValue> {
+async fn conpty_install(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
     let (app, data_dir, _) = context(&ctx)?;
+    let options = options.to_rust::<InstallConptyOptions>()?;
     let logical_path = options.path.trim();
     if !logical_path.starts_with("lx://temp/") {
         return Err(HostError::new(
@@ -372,8 +387,9 @@ async fn conpty_install(ctx: JSContext, options: InstallConptyOptions) -> JSResu
 }
 
 #[cfg(target_os = "windows")]
-async fn conpty_set_enabled(ctx: JSContext, options: SetConptyEnabledOptions) -> JSResult<JSValue> {
+async fn conpty_set_enabled(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
     let (_, data_dir, _) = context(&ctx)?;
+    let options = options.to_rust::<SetConptyEnabledOptions>()?;
     let status = lingxia_terminal_config::windows::set_enabled(&data_dir, options.enabled)
         .map_err(|error| HostError::new(rong::error::E_INVALID_STATE, error.to_string()))?;
     to_js(&ctx, &status)
@@ -522,8 +538,9 @@ fn install_on_change(
     let listeners = listeners.clone();
     let on_change = JSFunc::new(
         ctx,
-        move |ctx: JSContext, listener: JSFunc| -> JSResult<JSFunc> {
+        move |ctx: JSContext, listener: JSValue| -> JSResult<JSFunc> {
             require_access(&ctx)?;
+            let listener = listener.to_rust::<JSFunc>()?;
             let slot = {
                 let mut slots = listeners.borrow_mut();
                 slots.push(Some(listener));
@@ -653,5 +670,12 @@ mod tests {
         assert!(effective_is_dark(&config, false));
         config.theme.mode = ThemeMode::System;
         assert!(effective_is_dark(&config, true));
+    }
+
+    #[test]
+    fn terminal_access_uses_native_session_class_not_app_id_or_source() {
+        assert!(!terminal_access_allowed(true, false));
+        assert!(!terminal_access_allowed(false, true));
+        assert!(terminal_access_allowed(true, true));
     }
 }

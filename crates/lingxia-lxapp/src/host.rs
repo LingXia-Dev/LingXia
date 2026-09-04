@@ -262,7 +262,7 @@ pub struct AppScope {
 }
 
 impl AppScope {
-    fn from_lxapp(app: &Arc<LxApp>) -> Self {
+    pub(crate) fn from_lxapp(app: &Arc<LxApp>) -> Self {
         let app_id: Arc<str> = Arc::from(app.appid.as_str());
         let session_id = app.session_id();
         Self {
@@ -1426,6 +1426,20 @@ mod tests {
             "same app id on a different native session must not inherit grants"
         );
 
+        let native = crate::terminal_automation::TerminalAutomationAuthority::__native_host();
+        let surface_id = format!("terminal-session-{}", standard.session_id());
+        crate::terminal_automation::publish_snapshot(
+            &native,
+            &surface_id,
+            r#"{"surfaceId":"terminal-session"}"#,
+        )
+        .unwrap();
+        let terminal_authority =
+            crate::terminal_automation::TerminalAutomationAuthority::for_lxapp(&standard).unwrap();
+        let terminal_handle =
+            crate::terminal_automation::bind_surface(&terminal_authority, &surface_id).unwrap();
+        assert!(terminal_handle.snapshot().is_ok());
+
         standard.set_status(LxAppSessionStatus::Closing);
         assert!(!standard.has_resource_grant(AppResourceGrant::Downloads));
         assert!(
@@ -1434,6 +1448,8 @@ mod tests {
                 .contains(AppResourceGrant::AutomationHost),
             "retained resource handles must fail as teardown begins"
         );
+        assert!(terminal_handle.snapshot().is_err());
+        crate::terminal_automation::remove_workspace(&native, &surface_id);
     }
 
     #[test]

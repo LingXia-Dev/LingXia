@@ -1563,8 +1563,13 @@ fn automation_snapshot_json(panel_id: &str) -> Option<String> {
 }
 
 #[cfg(feature = "terminal-runtime")]
+fn terminal_automation_authority() -> lxapp::terminal_automation::TerminalAutomationAuthority {
+    lxapp::terminal_automation::TerminalAutomationAuthority::__native_host()
+}
+
+#[cfg(feature = "terminal-runtime")]
 fn take_automation_command(panel_id: &str) -> Option<u64> {
-    let raw = lxapp::terminal_automation::take_command(panel_id);
+    let raw = lxapp::terminal_automation::take_command(&terminal_automation_authority(), panel_id);
     if raw.is_empty() {
         return None;
     }
@@ -1587,6 +1592,7 @@ fn take_automation_command(panel_id: &str) -> Option<u64> {
             .and_then(serde_json::Value::as_bool)
         else {
             lxapp::terminal_automation::complete_command(
+                &terminal_automation_authority(),
                 id,
                 false,
                 "setMaximized requires a boolean 'maximized'",
@@ -1601,11 +1607,17 @@ fn take_automation_command(panel_id: &str) -> Option<u64> {
             .pointer("/params/text")
             .and_then(serde_json::Value::as_str)
         else {
-            lxapp::terminal_automation::complete_command(id, false, "input requires text");
+            lxapp::terminal_automation::complete_command(
+                &terminal_automation_authority(),
+                id,
+                false,
+                "input requires text",
+            );
             return None;
         };
         let Some(session_id) = active_session_id(panel_id) else {
             lxapp::terminal_automation::complete_command(
+                &terminal_automation_authority(),
                 id,
                 false,
                 "terminal surface has no active pane",
@@ -1615,12 +1627,18 @@ fn take_automation_command(panel_id: &str) -> Option<u64> {
         if lingxia_terminal::terminal_write(session_id, text) {
             return Some(id);
         }
-        lxapp::terminal_automation::complete_command(id, false, "terminal input was rejected");
+        lxapp::terminal_automation::complete_command(
+            &terminal_automation_authority(),
+            id,
+            false,
+            "terminal input was rejected",
+        );
         return None;
     }
     if action != Some("split") {
         let name = action.unwrap_or("missing");
         lxapp::terminal_automation::complete_command(
+            &terminal_automation_authority(),
             id,
             false,
             &format!("unknown terminal automation action '{name}'"),
@@ -1637,6 +1655,7 @@ fn take_automation_command(panel_id: &str) -> Option<u64> {
         Some("down") => SplitDir::Down,
         _ => {
             lxapp::terminal_automation::complete_command(
+                &terminal_automation_authority(),
                 id,
                 false,
                 "split requires left, right, up, or down",
@@ -1648,6 +1667,7 @@ fn take_automation_command(panel_id: &str) -> Option<u64> {
         Some(id)
     } else {
         lxapp::terminal_automation::complete_command(
+            &terminal_automation_authority(),
             id,
             false,
             "terminal surface has no active pane",
@@ -1830,9 +1850,18 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &Arc<AtomicBool>) {
             {
                 break;
             }
-            let _ = lxapp::terminal_automation::publish_snapshot(panel_key, &snapshot);
+            let _ = lxapp::terminal_automation::publish_snapshot(
+                &terminal_automation_authority(),
+                panel_key,
+                &snapshot,
+            );
             if let Some(id) = pending_automation.take() {
-                let _ = lxapp::terminal_automation::complete_command(id, true, &snapshot);
+                let _ = lxapp::terminal_automation::complete_command(
+                    &terminal_automation_authority(),
+                    id,
+                    true,
+                    &snapshot,
+                );
             }
         }
         last_active_set = active_sessions;
@@ -1840,6 +1869,7 @@ fn run_terminal_panel_poll_loop(panel_key: &str, stop: &Arc<AtomicBool>) {
     }
     if let Some(id) = pending_automation {
         let _ = lxapp::terminal_automation::complete_command(
+            &terminal_automation_authority(),
             id,
             false,
             "terminal surface closed before the command completed",
@@ -2054,7 +2084,7 @@ fn close_terminal_tab_by_sessions(panel_id: &str, session_ids: &[u64]) {
 /// input handler and grid store. The caller hides the panel window.
 #[cfg(feature = "terminal-runtime")]
 fn shutdown_windows_terminal_panel_state(panel_id: &str) {
-    lxapp::terminal_automation::remove_workspace(panel_id);
+    lxapp::terminal_automation::remove_workspace(&terminal_automation_authority(), panel_id);
     lingxia_windows_contract::clear_host_panel_input_handler(panel_id);
     #[cfg(feature = "shell-chrome")]
     super::terminal_gpu::drop_panel(panel_id);
