@@ -29,23 +29,52 @@ final class StaticSettingsSourceTests: XCTestCase {
         }
     }
 
-    func testRuntimeSettingsIdentityCannotMasqueradeAsStaticEntry() {
+    func testOnlyReservedTypedIdentityCollidesWithStaticEntry() {
         XCTAssertFalse(LxAppStaticSettingsSource.acceptsRuntimeSidebarAction(
-            id: "settings",
-            label: "Anything"
-        ))
-        XCTAssertFalse(LxAppStaticSettingsSource.acceptsRuntimeSidebarAction(
-            id: "other",
-            label: " SETTINGS "
-        ))
-        XCTAssertFalse(LxAppStaticSettingsSource.acceptsRuntimeSidebarAction(
-            id: LxAppStaticSettingsSource.sidebarItemID,
-            label: "Anything"
+            id: LxAppStaticSettingsSource.sidebarItemID
         ))
         XCTAssertTrue(LxAppStaticSettingsSource.acceptsRuntimeSidebarAction(
-            id: "help",
-            label: "Help"
+            id: "settings"
         ))
+        XCTAssertTrue(LxAppStaticSettingsSource.acceptsRuntimeSidebarAction(
+            id: "help"
+        ))
+    }
+
+    @MainActor
+    func testStaticFooterExistsOnlyForAConfiguredTypedSource() {
+        let runtime = [
+            LxAppUIActionItem(
+                id: "settings",
+                label: "Settings",
+                iconURL: URL(fileURLWithPath: "/tmp/settings.svg")
+            ),
+            LxAppUIActionItem(
+                id: LxAppStaticSettingsSource.sidebarItemID,
+                label: "Runtime collision",
+                iconURL: nil
+            ),
+        ]
+
+        let absent = LxAppStaticSettingsSource.mergeFooter(
+            runtimeItems: runtime,
+            source: nil
+        )
+        XCTAssertEqual(absent.map(\.id), ["settings"])
+        XCTAssertTrue(absent.allSatisfy { $0.sidebarActionSource == .runtime })
+
+        let source = LxAppStaticSettingsSource(
+            .browserControlPage(route: "/settings", query: nil)
+        )
+        let configured = LxAppStaticSettingsSource.mergeFooter(
+            runtimeItems: runtime,
+            source: source
+        )
+        XCTAssertEqual(
+            configured.map(\.id),
+            ["settings", LxAppStaticSettingsSource.sidebarItemID]
+        )
+        XCTAssertEqual(configured.last?.sidebarActionSource, .staticSettings)
     }
 
     func testBrowserSettingsAndClearSiteDataRemainBrowserLocalRoutes() {

@@ -32,16 +32,28 @@ struct LxAppStaticSettingsSource: Equatable, Sendable {
         return resolver()
     }
 
-    /// Runtime sidebar declarations are not an alternate Settings provider.
-    /// Suppress both identifier- and label-based impersonation even when the
-    /// host has no configured Settings destination.
-    static func acceptsRuntimeSidebarAction(id: String, label: String) -> Bool {
-        id != sidebarItemID && !isSettingsIdentity(id) && !isSettingsIdentity(label)
+    /// Source type, not presentation strings, grants the static resolver.
+    /// The reserved id is the sole merge collision a runtime item cannot own.
+    static func acceptsRuntimeSidebarAction(id: String) -> Bool {
+        id != sidebarItemID
     }
 
-    private static func isSettingsIdentity(_ value: String) -> Bool {
-        value.trimmingCharacters(in: .whitespacesAndNewlines)
-            .caseInsensitiveCompare("settings") == .orderedSame
+    @MainActor
+    static func mergeFooter(
+        runtimeItems: [LxAppUIActionItem],
+        source: LxAppStaticSettingsSource?
+    ) -> [LxAppUIActionItem] {
+        var items = runtimeItems.filter { acceptsRuntimeSidebarAction(id: $0.id) }
+        guard source != nil else { return items }
+        items.append(LxAppUIActionItem(
+            id: sidebarItemID,
+            label: "Settings",
+            iconURL: nil,
+            builtInIcon: "gearshape",
+            closable: false,
+            sidebarActionSource: .staticSettings
+        ))
+        return items
     }
 }
 #endif
