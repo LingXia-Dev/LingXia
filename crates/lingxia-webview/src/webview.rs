@@ -10,10 +10,12 @@
 )]
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::pin::Pin;
-use std::sync::mpsc::{SyncSender, sync_channel};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::mpsc::{Sender, SyncSender, channel, sync_channel};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use tokio::sync::watch;
@@ -43,18 +45,194 @@ pub(crate) struct WebViewInner {
 
 use crate::traits::{
     AsyncSchemeHandler, ClickOptions, DownloadHandler, DownloadRequest, FileChooserRequest,
-    FileChooserResponse, FillOptions, NavigationHandler, NavigationPolicy, NavigationRequest,
-    NewWindowHandler, NewWindowPolicy, PressOptions, SchemeOutcome, ScrollOptions, TypeOptions,
-    UserAgentOverride, WebViewInputController,
+    FileChooserResponse, FillOptions, NativeWebViewId, NavigationHandler, NavigationPolicy,
+    NavigationRequest, NewWindowHandler, NewWindowPolicy, PressOptions, SchemeOutcome,
+    ScrollOptions, TypeOptions, UserAgentOverride, WebMessageContext, WebMessageFrame,
+    WebMessageSource, WebMessageTransport, WebViewInputController,
 };
 use crate::{
-    ClearSiteDataOptions, ClearSiteDataResult, LoadDataRequest, NetworkCaptureSnapshot,
-    WebResourceResponse, WebViewController, WebViewCookie, WebViewCookieSetRequest,
-    WebViewDelegate, WebViewError, WebViewInputError, WebViewScriptError,
+    ClearSiteDataOptions, ClearSiteDataResult, IncomingWebMessage, LoadDataRequest,
+    NetworkCaptureSnapshot, WebResourceResponse, WebViewController, WebViewCookie,
+    WebViewCookieSetRequest, WebViewDelegate, WebViewError, WebViewInputError, WebViewScriptError,
 };
 use async_trait::async_trait;
 
 const APPLE_INTERNAL_SCHEME: &str = "lx-apple";
+const MAX_PENDING_WEB_MESSAGES: usize = 1024;
+const WEB_MESSAGE_WORKER_COUNT: usize = 4;
+
+static NEXT_NATIVE_WEBVIEW_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_native_webview_id() -> NativeWebViewId {
+    // Zero is deliberately never allocated, so a platform's default integer
+    // cannot accidentally match a real native instance. Exhaustion is safer
+    // than wrapping and allowing a retired native callback to match again.
+    let raw = NEXT_NATIVE_WEBVIEW_ID
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .expect("native WebView identity space exhausted");
+    NativeWebViewId::new(raw)
+}
+
+#[derive(Default)]
+struct WebMessageIngress {
+    state: Mutex<WebMessageIngressState>,
+}
+
+#[derive(Default)]
+struct WebMessageIngressState {
+    queue: VecDeque<IncomingWebMessage>,
+    scheduled: bool,
+    closed: bool,
+    in_flight: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WebMessageEnqueue {
+    Queued,
+    Schedule,
+    Full,
+    Closed,
+}
+
+impl WebMessageIngress {
+    /// Enqueue one message and report whether this instance must be scheduled.
+    /// A bounded queue prevents an untrusted page from growing native memory
+    /// without limit; accepted messages remain FIFO.
+    fn enqueue(&self, message: IncomingWebMessage) -> WebMessageEnqueue {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        if state.closed {
+            return WebMessageEnqueue::Closed;
+        }
+        if state.queue.len() >= MAX_PENDING_WEB_MESSAGES {
+            return WebMessageEnqueue::Full;
+        }
+        state.queue.push_back(message);
+        if state.scheduled {
+            WebMessageEnqueue::Queued
+        } else {
+            state.scheduled = true;
+            WebMessageEnqueue::Schedule
+        }
+    }
+
+    /// Stop accepting messages and discard all queued work.
+    ///
+    /// A message becomes in-flight while holding this mutex, immediately
+    /// before its delegate lookup. Closing does not interrupt that already
+    /// admitted delivery, but prevents every queued and future message from
+    /// reaching a delegate.
+    fn close(&self) {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        state.closed = true;
+        state.queue.clear();
+        if !state.in_flight {
+            state.scheduled = false;
+        }
+    }
+
+    /// Pop the next admitted message for this instance's sole scheduled job.
+    /// Delegate code never runs while this lock is held, so re-entrant ingress
+    /// appends after the current message.
+    fn begin_delivery(&self) -> Option<IncomingWebMessage> {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        if state.closed {
+            state.scheduled = false;
+            return None;
+        }
+        match state.queue.pop_front() {
+            Some(message) => {
+                state.in_flight = true;
+                Some(message)
+            }
+            None => {
+                state.scheduled = false;
+                None
+            }
+        }
+    }
+
+    fn finish_delivery(&self) {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        debug_assert!(state.in_flight);
+        state.in_flight = false;
+    }
+
+    fn drain<F>(&self, mut deliver: F)
+    where
+        F: FnMut(IncomingWebMessage),
+    {
+        while let Some(message) = self.begin_delivery() {
+            let result = catch_unwind(AssertUnwindSafe(|| deliver(message)));
+            self.finish_delivery();
+            if result.is_err() {
+                log::error!("WebView message delegate panicked; continuing ingress drain");
+            }
+        }
+    }
+}
+
+struct WebMessageJob {
+    ingress: Arc<WebMessageIngress>,
+    webview: std::sync::Weak<WebView>,
+}
+
+/// Process-lifetime, fixed-size executor for WebView message ingress.
+///
+/// Each ingress schedules no more than one job, so an instance stays serial;
+/// different instances are distributed across workers and can make progress in
+/// parallel without creating a thread per callback or idle burst.
+struct WebMessageExecutor {
+    senders: Vec<Sender<WebMessageJob>>,
+    next_worker: AtomicUsize,
+}
+
+impl WebMessageExecutor {
+    fn global() -> &'static Self {
+        static EXECUTOR: OnceLock<WebMessageExecutor> = OnceLock::new();
+        EXECUTOR.get_or_init(Self::new)
+    }
+
+    fn new() -> Self {
+        let mut senders = Vec::with_capacity(WEB_MESSAGE_WORKER_COUNT);
+        for worker_index in 0..WEB_MESSAGE_WORKER_COUNT {
+            let (sender, receiver) = channel::<WebMessageJob>();
+            std::thread::Builder::new()
+                .name(format!("lingxia-web-message-worker-{worker_index}"))
+                .spawn(move || {
+                    while let Ok(job) = receiver.recv() {
+                        let ingress = Arc::clone(&job.ingress);
+                        job.ingress.drain(|message| {
+                            let Some(webview) = job.webview.upgrade() else {
+                                ingress.close();
+                                return;
+                            };
+                            if let Some(delegate) = webview.get_delegate() {
+                                delegate.handle_post_message(message);
+                            } else {
+                                log::debug!(
+                                    "Dropping WebView message before delegate installation ({})",
+                                    webview.webtag()
+                                );
+                            }
+                        });
+                    }
+                })
+                .expect("failed to start fixed WebView message worker");
+            senders.push(sender);
+        }
+        Self {
+            senders,
+            next_worker: AtomicUsize::new(0),
+        }
+    }
+
+    fn schedule(&self, job: WebMessageJob) -> Result<(), WebMessageJob> {
+        let worker = self.next_worker.fetch_add(1, Ordering::Relaxed) % self.senders.len();
+        self.senders[worker].send(job).map_err(|error| error.0)
+    }
+}
 
 #[cfg(not(any(
     target_os = "android",
@@ -777,6 +955,7 @@ impl PendingCallbacks {
 /// WebView type that includes inner implementation and delegate
 pub struct WebView {
     pub(crate) inner: WebViewInner,
+    native_view_id: NativeWebViewId,
     effective_options: EffectiveWebViewCreateOptions,
     // Hold a strong reference to the delegate; runtime destroy clears it to break cycles.
     delegate: RwLock<Option<Arc<dyn WebViewDelegate>>>,
@@ -786,15 +965,18 @@ pub struct WebView {
     new_window_handler: RwLock<Option<NewWindowHandler>>,
     download_handler: RwLock<Option<DownloadHandler>>,
     file_chooser_handler: RwLock<Option<FileChooserHandler>>,
+    message_ingress: Arc<WebMessageIngress>,
 }
 
 impl WebView {
     pub(crate) fn new(
         inner: WebViewInner,
         effective_options: EffectiveWebViewCreateOptions,
+        native_view_id: NativeWebViewId,
     ) -> Self {
         Self {
             inner,
+            native_view_id,
             effective_options,
             delegate: RwLock::new(None),
             scheme_handlers: RwLock::new(HashMap::new()),
@@ -802,7 +984,77 @@ impl WebView {
             new_window_handler: RwLock::new(None),
             download_handler: RwLock::new(None),
             file_chooser_handler: RwLock::new(None),
+            message_ingress: Arc::new(WebMessageIngress::default()),
         }
+    }
+
+    /// Opaque identity for this concrete native WebView.
+    // This is consumed by conditionally compiled platform callback adapters.
+    #[allow(dead_code)]
+    pub(crate) const fn native_view_id(&self) -> NativeWebViewId {
+        self.native_view_id
+    }
+
+    /// Enqueue a platform message whose frame proof is known but whose
+    /// document generation is not yet bound by this adapter.
+    ///
+    /// Callers cannot construct a context with another WebView's identity or
+    /// claim a document generation through this entry point.
+    pub(crate) fn enqueue_unbound_web_message(
+        self: &Arc<Self>,
+        body: String,
+        frame: WebMessageFrame,
+        transport: WebMessageTransport,
+        source: WebMessageSource,
+    ) {
+        let context = WebMessageContext::new(
+            self.native_view_id,
+            crate::DocumentBinding::Unbound,
+            frame,
+            transport,
+            source,
+        );
+        match self
+            .message_ingress
+            .enqueue(IncomingWebMessage::new(body, context))
+        {
+            WebMessageEnqueue::Queued => return,
+            WebMessageEnqueue::Closed => {
+                log::debug!(
+                    "Dropping WebView message after ingress closure ({})",
+                    self.webtag()
+                );
+                return;
+            }
+            WebMessageEnqueue::Full => {
+                log::warn!(
+                    "Dropping WebView message because its ingress queue is full ({})",
+                    self.webtag()
+                );
+                return;
+            }
+            WebMessageEnqueue::Schedule => {}
+        }
+
+        if WebMessageExecutor::global()
+            .schedule(WebMessageJob {
+                ingress: Arc::clone(&self.message_ingress),
+                webview: Arc::downgrade(self),
+            })
+            .is_err()
+        {
+            // A fixed worker unexpectedly exiting must not leave this ingress
+            // scheduled forever, nor let later callbacks restart its delivery.
+            self.message_ingress.close();
+            log::error!(
+                "Dropping WebView message queue because the fixed executor stopped ({})",
+                self.webtag()
+            );
+        }
+    }
+
+    fn close_message_ingress(&self) {
+        self.message_ingress.close();
     }
 
     /// Get the appid
@@ -1885,11 +2137,23 @@ impl WebViewSessionSignals {
 pub(crate) struct WebViewCreateSender {
     webtag: WebTag,
     signals: Arc<WebViewSessionSignals>,
+    native_view_id: NativeWebViewId,
 }
 
 impl WebViewCreateSender {
     fn new(webtag: WebTag, signals: Arc<WebViewSessionSignals>) -> Self {
-        Self { webtag, signals }
+        Self {
+            webtag,
+            signals,
+            native_view_id: next_native_webview_id(),
+        }
+    }
+
+    /// The concrete native-instance identity reserved before platform callback
+    /// registration. Platform closures must capture this value and validate it
+    /// against a lookup before delivering a message for a reusable WebTag.
+    pub(crate) const fn native_view_id(&self) -> NativeWebViewId {
+        self.native_view_id
     }
 
     pub(crate) fn succeed(self, webview: Arc<WebView>) {
@@ -2393,6 +2657,19 @@ pub(crate) fn find_webview(webtag: &WebTag) -> Option<Arc<WebView>> {
     }
 }
 
+/// Resolve a logical WebTag only while it still names the native instance
+/// which registered the callback. This prevents a late callback from a
+/// destroyed WebView from being delivered to a replacement that reused its
+/// tag.
+// This is consumed by conditionally compiled platform callback adapters.
+#[allow(dead_code)]
+pub(crate) fn find_webview_by_native_view_id(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+) -> Option<Arc<WebView>> {
+    find_webview(webtag).filter(|webview| webview.native_view_id() == native_view_id)
+}
+
 #[cfg(target_os = "windows")]
 pub(crate) fn first_browser_webview() -> Option<Arc<WebView>> {
     WEBVIEW_INSTANCES
@@ -2439,6 +2716,10 @@ fn remove_arc_if_matches<T>(
 /// its tag. Tag-scoped session, callback, and navigation state may already
 /// belong to a newer create cycle and is deliberately left untouched.
 pub(crate) fn destroy_webview_if_matches(webtag: &WebTag, expected: &Arc<WebView>) -> bool {
+    // Close before touching the registry: a queued message must not cross the
+    // remove-to-close window and become in-flight. Closing an already detached
+    // expected instance is harmless and still rejects its late native callbacks.
+    expected.close_message_ingress();
     let removed = if let Some(instances) = WEBVIEW_INSTANCES.get()
         && let Ok(mut webviews) = instances.lock()
     {
@@ -2461,6 +2742,12 @@ pub(crate) fn destroy_webview_if_matches(webtag: &WebTag, expected: &Arc<WebView
 
 /// Destroy a WebView instance by WebTag and remove it from global storage
 pub(crate) fn destroy_webview(webtag: &WebTag) {
+    // Close ingress before lifecycle notifications and native teardown. A
+    // delivery already admitted under its own mutex may finish; queued and
+    // future callbacks are rejected immediately.
+    if let Some(webview) = find_webview(webtag) {
+        webview.close_message_ingress();
+    }
     // Drain active navigations as Cancelled(WebViewDestroyed) while the
     // delegate can still observe them, then drop the normalizer.
     crate::events::normalizer::destroy(webtag);
@@ -2480,6 +2767,7 @@ pub(crate) fn destroy_webview(webtag: &WebTag) {
         None
     };
     if let Some(webview) = removed {
+        webview.close_message_ingress();
         // Windows composition teardown is asynchronous. Hide the controller
         // synchronously while it is still callable so a closed browser tab or
         // surface cannot leave its last composed frame over the replacement.
@@ -2499,11 +2787,228 @@ pub(crate) fn destroy_webview(webtag: &WebTag) {
 #[cfg(test)]
 mod tests {
     use super::{
-        WEBVIEW_SESSIONS, WebTag, WebViewCreateSender, WebViewSessionSignals,
-        remove_arc_if_matches, remove_session_signals_if_matches, replace_session_signals,
+        MAX_PENDING_WEB_MESSAGES, WEBVIEW_SESSIONS, WebMessageEnqueue, WebMessageIngress, WebTag,
+        WebViewCreateSender, WebViewSessionSignals, next_native_webview_id, remove_arc_if_matches,
+        remove_session_signals_if_matches, replace_session_signals,
+    };
+    use crate::{
+        DocumentBinding, IncomingWebMessage, WebMessageContext, WebMessageFrame, WebMessageSource,
+        WebMessageTransport,
     };
     use std::collections::HashMap;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex, mpsc};
+    use std::thread;
+
+    fn message(body: &str, native_view: crate::NativeWebViewId) -> IncomingWebMessage {
+        IncomingWebMessage::new(
+            body.to_string(),
+            WebMessageContext::new(
+                native_view,
+                DocumentBinding::Unbound,
+                WebMessageFrame::Unproven,
+                WebMessageTransport::Other,
+                WebMessageSource::unavailable(),
+            ),
+        )
+    }
+
+    #[test]
+    fn native_webview_ids_are_not_reused_across_logical_tag_reuse() {
+        let retired = next_native_webview_id();
+        let replacement = next_native_webview_id();
+        assert_ne!(retired, replacement);
+
+        let late_message = message("late", retired);
+        assert_ne!(late_message.context().native_view(), replacement);
+        assert_eq!(late_message.context().document(), DocumentBinding::Unbound);
+    }
+
+    #[test]
+    fn message_ingress_preserves_fifo_across_reentrant_enqueue() {
+        let ingress = WebMessageIngress::default();
+        let native_view = next_native_webview_id();
+        let delivered = Mutex::new(Vec::new());
+
+        assert_eq!(
+            ingress.enqueue(message("first", native_view)),
+            WebMessageEnqueue::Schedule
+        );
+        while let Some(incoming) = ingress.begin_delivery() {
+            let body = incoming.body().to_string();
+            delivered.lock().unwrap().push(body.clone());
+            if body == "first" {
+                assert_eq!(
+                    ingress.enqueue(message("second", native_view)),
+                    WebMessageEnqueue::Queued
+                );
+                assert_eq!(
+                    ingress.enqueue(message("third", native_view)),
+                    WebMessageEnqueue::Queued
+                );
+            }
+            ingress.finish_delivery();
+        }
+
+        assert_eq!(*delivered.lock().unwrap(), vec!["first", "second", "third"]);
+    }
+
+    #[test]
+    fn message_ingress_bounds_untrusted_backlog_without_reordering_accepted_messages() {
+        let ingress = WebMessageIngress::default();
+        let native_view = next_native_webview_id();
+        assert_eq!(
+            ingress.enqueue(message("0", native_view)),
+            WebMessageEnqueue::Schedule
+        );
+        for index in 1..MAX_PENDING_WEB_MESSAGES {
+            assert_eq!(
+                ingress.enqueue(message(&index.to_string(), native_view)),
+                WebMessageEnqueue::Queued
+            );
+        }
+        assert_eq!(
+            ingress.enqueue(message("overflow", native_view)),
+            WebMessageEnqueue::Full
+        );
+
+        let mut accepted = Vec::new();
+        while let Some(incoming) = ingress.begin_delivery() {
+            accepted.push(incoming.body().to_owned());
+            ingress.finish_delivery();
+        }
+        assert_eq!(accepted.len(), MAX_PENDING_WEB_MESSAGES);
+        assert_eq!(accepted.first().map(String::as_str), Some("0"));
+        let last = (MAX_PENDING_WEB_MESSAGES - 1).to_string();
+        assert_eq!(accepted.last().map(String::as_str), Some(last.as_str()));
+    }
+
+    #[test]
+    fn message_ingress_preserves_fifo_across_producer_threads() {
+        let ingress = Arc::new(WebMessageIngress::default());
+        let native_view = next_native_webview_id();
+        let (a_to_b_tx, a_to_b_rx) = mpsc::channel();
+        let (b_to_a_tx, b_to_a_rx) = mpsc::channel();
+
+        let a_ingress = Arc::clone(&ingress);
+        let producer_a = thread::spawn(move || {
+            assert_eq!(
+                a_ingress.enqueue(message("0", native_view)),
+                WebMessageEnqueue::Schedule
+            );
+            a_to_b_tx.send(()).unwrap();
+            for value in (2..64).step_by(2) {
+                b_to_a_rx.recv().unwrap();
+                assert_eq!(
+                    a_ingress.enqueue(message(&value.to_string(), native_view)),
+                    WebMessageEnqueue::Queued
+                );
+                a_to_b_tx.send(()).unwrap();
+            }
+        });
+
+        let b_ingress = Arc::clone(&ingress);
+        let producer_b = thread::spawn(move || {
+            for value in (1..64).step_by(2) {
+                a_to_b_rx.recv().unwrap();
+                assert_eq!(
+                    b_ingress.enqueue(message(&value.to_string(), native_view)),
+                    WebMessageEnqueue::Queued
+                );
+                if value != 63 {
+                    b_to_a_tx.send(()).unwrap();
+                }
+            }
+        });
+
+        producer_a.join().unwrap();
+        producer_b.join().unwrap();
+
+        let mut accepted = Vec::new();
+        while let Some(incoming) = ingress.begin_delivery() {
+            accepted.push(incoming.body().to_owned());
+            ingress.finish_delivery();
+        }
+        assert_eq!(
+            accepted,
+            (0..64).map(|value| value.to_string()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn destroying_ingress_discards_queued_messages_but_allows_admitted_delivery() {
+        let ingress = Arc::new(WebMessageIngress::default());
+        let native_view = next_native_webview_id();
+        assert_eq!(
+            ingress.enqueue(message("in-flight", native_view)),
+            WebMessageEnqueue::Schedule
+        );
+        assert_eq!(
+            ingress.enqueue(message("queued", native_view)),
+            WebMessageEnqueue::Queued
+        );
+
+        let delivered = Mutex::new(Vec::new());
+        let ingress_for_delivery = Arc::clone(&ingress);
+        ingress.drain(|incoming| {
+            delivered.lock().unwrap().push(incoming.body().to_owned());
+            ingress_for_delivery.close();
+            assert_eq!(
+                ingress_for_delivery.enqueue(message("after-close", native_view)),
+                WebMessageEnqueue::Closed
+            );
+        });
+
+        assert_eq!(*delivered.lock().unwrap(), vec!["in-flight"]);
+        assert!(ingress.begin_delivery().is_none());
+    }
+
+    #[test]
+    fn closing_before_registry_removal_prevents_queued_message_admission() {
+        let ingress = WebMessageIngress::default();
+        let native_view = next_native_webview_id();
+        assert_eq!(
+            ingress.enqueue(message("queued", native_view)),
+            WebMessageEnqueue::Schedule
+        );
+
+        // This mirrors `destroy_webview_if_matches`: close is the destroy
+        // linearization point and happens before the registry mutation.
+        ingress.close();
+
+        assert!(ingress.begin_delivery().is_none());
+        assert_eq!(
+            ingress.enqueue(message("late", native_view)),
+            WebMessageEnqueue::Closed
+        );
+    }
+
+    #[test]
+    fn delegate_panic_does_not_stall_following_messages() {
+        let ingress = WebMessageIngress::default();
+        let native_view = next_native_webview_id();
+        assert_eq!(
+            ingress.enqueue(message("panic", native_view)),
+            WebMessageEnqueue::Schedule
+        );
+        assert_eq!(
+            ingress.enqueue(message("after", native_view)),
+            WebMessageEnqueue::Queued
+        );
+
+        let delivered = Mutex::new(Vec::new());
+        ingress.drain(|incoming| {
+            if incoming.body() == "panic" {
+                panic!("test delegate panic");
+            }
+            delivered.lock().unwrap().push(incoming.body().to_owned());
+        });
+
+        assert_eq!(*delivered.lock().unwrap(), vec!["after"]);
+        assert_eq!(
+            ingress.enqueue(message("recovered", native_view)),
+            WebMessageEnqueue::Schedule
+        );
+    }
 
     #[test]
     fn conditional_instance_removal_uses_arc_identity() {

@@ -45,6 +45,9 @@ public final class AndroidMessagePortBridge {
                                 webView.getAppId() != null ? webView.getAppId() : "",
                                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                                 webView.getSessionId(),
+                                webView.getNativeViewId(),
+                                LingXiaWebView.MESSAGE_TRANSPORT_PORT,
+                                webView.getDiagnosticUrl(),
                                 messageData != null ? messageData : ""
                         );
                     } catch (Throwable t) {

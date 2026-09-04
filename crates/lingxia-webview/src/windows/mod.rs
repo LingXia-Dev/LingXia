@@ -9,12 +9,14 @@
 //! and re-exports the public Windows WebView API.
 
 use crate::traits::{
-    DownloadRequest, LoadDataRequest, NavigationPolicy, NetworkCaptureSnapshot, NewWindowPolicy,
-    WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest,
+    DownloadRequest, LoadDataRequest, NativeWebViewId, NavigationPolicy, NetworkCaptureSnapshot,
+    NewWindowPolicy, WebMessageFrame, WebMessageSource, WebMessageTransport, WebViewCookie,
+    WebViewCookieSameSite, WebViewCookieSetRequest,
 };
 use crate::webview::{
     EffectiveWebViewCreateOptions, SecurityProfile, WebTag, WebViewCreateSender,
-    WebViewCreateStage, WebViewDataMode, find_webview, find_webview_delegate, register_webview,
+    WebViewCreateStage, WebViewDataMode, find_webview, find_webview_by_native_view_id,
+    find_webview_delegate, register_webview,
 };
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, UserAgentOverride, WebResourceBody,

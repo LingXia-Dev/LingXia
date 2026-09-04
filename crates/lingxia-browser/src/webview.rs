@@ -27,10 +27,10 @@ use lingxia_webview::runtime::{
     find_webview as find_managed_webview,
 };
 use lingxia_webview::{
-    LoadDataRequest, LoadError, LoadErrorPage, LogLevel, NavigationEvent, NavigationPolicy,
-    NavigationProgress, NewWindowPolicy, UserAgentOverride, WebTag, WebView, WebViewBuilder,
-    WebViewController, WebViewDataMode, WebViewDelegate, WebViewSession, WebViewStateChange,
-    render_load_error_page,
+    IncomingWebMessage, LoadDataRequest, LoadError, LoadErrorPage, LogLevel, NavigationEvent,
+    NavigationPolicy, NavigationProgress, NewWindowPolicy, UserAgentOverride, WebTag, WebView,
+    WebViewBuilder, WebViewController, WebViewDataMode, WebViewDelegate, WebViewSession,
+    WebViewStateChange, render_load_error_page,
 };
 use lxapp::LxAppError;
 use serde_json::Value;
@@ -301,9 +301,12 @@ impl WebViewDelegate for BrowserTabDelegate {
         }
     }
 
-    fn handle_post_message(&self, msg: String) {
-        if let Some((level, message)) = decode_console_envelope(&msg) {
-            self.log(level, &message);
+    fn handle_post_message(&self, message: IncomingWebMessage) {
+        // Console envelopes are diagnostic-only and never enter PageBridge or
+        // a host route. Every other message retains its attested context for
+        // PageBridge admission below.
+        if let Some((level, console_message)) = decode_console_envelope(message.body()) {
+            self.log(level, &console_message);
             return;
         }
 
@@ -319,7 +322,7 @@ impl WebViewDelegate for BrowserTabDelegate {
 
         match browser_resolve_delegate_page(&self.page_path, self.session_id) {
             Ok(page) => {
-                if let Err(err) = page.handle_incoming_message_json(&msg) {
+                if let Err(err) = page.handle_incoming_web_message(message) {
                     lxapp::warn!(
                         "[InternalBrowser] Failed to handle bridge message for tab {}: {}",
                         self.tab_id,

@@ -17,10 +17,15 @@ fn windows_load_error_kind(status: i32) -> LoadErrorKind {
     }
 }
 
+fn windows_message_source(source: String) -> WebMessageSource {
+    WebMessageSource::diagnostic_url(Some(source))
+}
+
 pub(crate) fn register_event_handlers(
     env: &ICoreWebView2Environment,
     webview: &ICoreWebView2,
     webtag: WebTag,
+    native_view_id: NativeWebViewId,
     registered_schemes: &[String],
     memory_pages: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 ) -> StdResult<()> {
@@ -370,11 +375,27 @@ pub(crate) fn register_event_handlers(
                     let mut message = PWSTR::null();
                     args.TryGetWebMessageAsString(&mut message)?;
                     let payload = CoTaskMemPWSTR::from(message).to_string();
+                    let mut source = PWSTR::null();
+                    args.Source(&mut source)?;
+                    let source = CoTaskMemPWSTR::from(source).to_string();
 
-                    if let Some(delegate) = find_webview_delegate(&message_tag) {
-                        let _ = thread::Builder::new()
-                            .name(format!("lingxia-web-message-{}", message_tag.key()))
-                            .spawn(move || delegate.handle_post_message(payload));
+                    if let Some(webview) =
+                        find_webview_by_native_view_id(&message_tag, native_view_id)
+                    {
+                        // Source is captured while this callback owns its COM args. It
+                        // is diagnostic only; WebView2 does not prove a top-level
+                        // frame or a committed document generation here.
+                        webview.enqueue_unbound_web_message(
+                            payload,
+                            WebMessageFrame::Unproven,
+                            WebMessageTransport::WindowsWebMessage,
+                            windows_message_source(source),
+                        );
+                    } else {
+                        log::debug!(
+                            "Dropping script message from stale Windows WebView ({})",
+                            message_tag
+                        );
                     }
                     Ok(())
                 })),
@@ -466,6 +487,18 @@ pub(crate) fn register_event_handlers(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn windows_message_source_is_retained_for_diagnostics_only() {
+        let source = windows_message_source("https://example.test/frame".to_string());
+        assert_eq!(source.reported_url(), Some("https://example.test/frame"));
+        assert_eq!(source.reported_origin(), None);
+    }
 }
 
 pub(crate) fn download_request_from_operation(

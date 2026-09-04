@@ -19,11 +19,11 @@
 //! (picker is deferred).
 //!
 //! Threading: every Win32 mutation runs on the UI thread that owns the webview
-//! window. Messages already arrive on that thread (WebView2
-//! `WebMessageReceived`); calls from other threads are marshalled with
-//! `crate::window_host::post_to_window_thread`. The state registry is guarded
-//! by a mutex that is never held across Win32 calls that can re-enter the
-//! window procedures, such as `SetWindowTextW` causing `EN_CHANGE`.
+//! window. WebView messages are delivered through the shared ingress workers,
+//! so mutations are marshalled with `crate::window_host::post_to_window_thread`.
+//! The state registry is guarded by a mutex that is never held across Win32
+//! calls that can re-enter the window procedures, such as `SetWindowTextW`
+//! causing `EN_CHANGE`.
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -661,8 +661,8 @@ fn parent_window_for_page(page_key: &str) -> Option<isize> {
 }
 
 /// Runs `callback` on the UI thread that owns `window`: directly when the
-/// caller is already on it (component messages arrive on the webview UI
-/// thread), otherwise marshalled through the window's message queue.
+/// caller is already on it, otherwise marshalled through the window's message
+/// queue. Inbound component messages normally arrive through ingress workers.
 /// Returns `false` when the window is gone and the callback was dropped.
 fn run_on_window_thread(window: isize, callback: impl FnOnce() + Send + 'static) -> bool {
     let hwnd = HWND(window as *mut _);

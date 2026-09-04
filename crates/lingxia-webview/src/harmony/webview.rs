@@ -7,15 +7,16 @@ use crate::harmony::tsfn::call_arkts;
 use crate::input_helper::{build_async_eval_body, new_eval_token, parse_wrapped_eval_result};
 use crate::traits::{
     FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
+    WebMessageFrame, WebMessageSource, WebMessageTransport,
 };
 use crate::webview::{
     EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, SecurityProfile,
-    WebTag, WebViewCreateSender, WebViewCreateStage, find_webview, find_webview_delegate,
-    register_webview,
+    WebTag, WebViewCreateSender, WebViewCreateStage, find_webview, find_webview_by_native_view_id,
+    find_webview_delegate, register_webview,
 };
 use crate::{
-    DownloadRequest, LoadDataRequest, LogLevel, UserAgentOverride, WebViewController, WebViewError,
-    WebViewScriptError,
+    DownloadRequest, LoadDataRequest, LogLevel, NativeWebViewId, UserAgentOverride,
+    WebViewController, WebViewError, WebViewScriptError,
 };
 use async_trait::async_trait;
 use ohos_web_sys::*;
@@ -301,9 +302,58 @@ fn fail_pending_eval_requests_for_webtag(webtag: &WebTag) {
 #[derive(Debug, Default, Clone, Copy)]
 struct WebMessagePorts {
     native_port: Option<*mut ArkWeb_WebMessagePort>,
+    native_message_callback_token: Option<u64>,
     console_port: Option<*mut ArkWeb_WebMessagePort>,
     webview_native_port: Option<*mut ArkWeb_WebMessagePort>,
     webview_console_port: Option<*mut ArkWeb_WebMessagePort>,
+}
+
+// ArkWeb retains `user_data` beyond the Rust call that registers a callback.
+// Use a non-dereferenced numeric token rather than a heap pointer: a late
+// callback can then only look up a removed binding and is never an UAF.
+static NEXT_MESSAGE_CALLBACK_TOKEN: AtomicU64 = AtomicU64::new(1);
+static MESSAGE_CALLBACK_BINDINGS: OnceLock<Mutex<HashMap<u64, NativeWebViewId>>> = OnceLock::new();
+
+fn message_callback_bindings() -> &'static Mutex<HashMap<u64, NativeWebViewId>> {
+    MESSAGE_CALLBACK_BINDINGS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn bind_message_callback(native_view_id: NativeWebViewId) -> u64 {
+    // Never wrap: a late ArkWeb callback must not acquire a token later
+    // reused for another concrete native WebView.
+    let token = NEXT_MESSAGE_CALLBACK_TOKEN
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .expect("Harmony WebMessage callback token space exhausted");
+    lock_or_recover(
+        message_callback_bindings(),
+        "harmony.message_callback_bindings.insert",
+    )
+    .insert(token, native_view_id);
+    token
+}
+
+fn unbind_message_callback(token: u64) {
+    if token != 0 {
+        lock_or_recover(
+            message_callback_bindings(),
+            "harmony.message_callback_bindings.remove",
+        )
+        .remove(&token);
+    }
+}
+
+fn native_view_id_for_message_callback(user_data: *mut c_void) -> Option<NativeWebViewId> {
+    let token = user_data as usize as u64;
+    (token != 0).then(|| {
+        lock_or_recover(
+            message_callback_bindings(),
+            "harmony.message_callback_bindings.get",
+        )
+        .get(&token)
+        .copied()
+    })?
 }
 
 pub struct WebViewInner {
@@ -793,6 +843,10 @@ impl WebViewInner {
             .wrapping_add(1)
             .to_string();
 
+        // Reserve the non-reusable native identity before the sender moves
+        // into the platform inner state and before any callback is installed.
+        let native_view_id = sender.native_view_id();
+
         // Create WebView instance, storing the sender
         let webview_inner = WebViewInner {
             webtag: webtag.clone(),
@@ -810,6 +864,7 @@ impl WebViewInner {
         let webview = Arc::new(crate::WebView::new(
             webview_inner,
             effective_options.clone(),
+            native_view_id,
         ));
         register_webview(webview.clone());
 
@@ -893,6 +948,9 @@ impl WebViewInner {
     /// Cleanup WebMessage ports
     fn cleanup_webmessage_ports(&self) {
         self.set_port_ready(false);
+        if let Some(token) = self.with_ports(|ports| ports.native_message_callback_token.take()) {
+            unbind_message_callback(token);
+        }
         unsafe {
             // Get port API if available
             if let Ok(port_api) = get_port_api() {
@@ -917,7 +975,6 @@ impl WebViewInner {
                         close_fn(port, webtag_cstr.as_ptr());
                         cleanup_count += 1;
                     }
-
                     // Cleanup webview message port
                     if let Some(port) = ports.webview_native_port.take()
                         && let Some(close_fn) = port_api.close
@@ -1710,6 +1767,8 @@ fn setup_webmessage_port_for_webtag(
 
         let port1 = *ports.offset(0); // Native side port
         let port2 = *ports.offset(1); // WebView side port
+        let callback_token = (port_type == PortType::Message)
+            .then(|| bind_message_callback(webview.native_view_id()));
 
         let webview_inner = &webview.inner;
         webview_inner.with_ports(|ports| {
@@ -1722,9 +1781,13 @@ fn setup_webmessage_port_for_webtag(
                     if let (Some(old), Some(close_fn)) = (ports.native_port.take(), close) {
                         close_fn(old, webtag_cstr.as_ptr());
                     }
+                    if let Some(token) = ports.native_message_callback_token.take() {
+                        unbind_message_callback(token);
+                    }
                     ports.webview_native_port.take();
                     ports.native_port = Some(port1);
                     ports.webview_native_port = Some(port2);
+                    ports.native_message_callback_token = callback_token;
                 }
                 PortType::Console => {
                     if let (Some(old), Some(close_fn)) = (ports.console_port.take(), close) {
@@ -1743,8 +1806,16 @@ fn setup_webmessage_port_for_webtag(
                 port1,
                 webtag_cstr.as_ptr(),
                 Some(callback_fn),
-                std::ptr::null_mut(),
+                callback_token
+                    .map(|token| token as usize as *mut c_void)
+                    .unwrap_or(std::ptr::null_mut()),
             );
+        } else if let Some(token) = callback_token {
+            unbind_message_callback(token);
+            return Err(WebViewError::WebView(format!(
+                "setMessageEventHandler not available for {:?}",
+                port_type
+            )));
         }
 
         log::info!("Setup {} port for {}", port_type, webtag);
@@ -1813,8 +1884,12 @@ extern "C" fn on_web_message_received(
     web_tag: *const c_char,
     port: *mut ArkWeb_WebMessagePort,
     message: *mut ArkWeb_WebMessage,
-    _user_data: *mut c_void,
+    user_data: *mut c_void,
 ) {
+    let Some(native_view_id) = native_view_id_for_message_callback(user_data) else {
+        log::warn!("Dropping Harmony WebMessage callback without a live native-view binding");
+        return;
+    };
     if web_tag.is_null() {
         log::error!("on_web_message_received got null web_tag");
         return;
@@ -1830,12 +1905,17 @@ extern "C" fn on_web_message_received(
     }
 
     let full_webtag = WebTag::from(webtag);
-    let (appid, path) = full_webtag.extract_parts();
+    let Some(webview) = find_webview_by_native_view_id(&full_webtag, native_view_id) else {
+        log::debug!(
+            "Dropping stale Harmony WebMessage callback for {} (native view {:?})",
+            full_webtag.as_str(),
+            native_view_id
+        );
+        return;
+    };
 
     // Keep native_port aligned with the port that delivered the message.
-    if !port.is_null()
-        && let Some(webview) = find_webview(&full_webtag)
-    {
+    if !port.is_null() {
         webview.inner.set_port_ready(true);
         webview.inner.with_ports(|ports| {
             let prev = ports.native_port;
@@ -1901,17 +1981,12 @@ extern "C" fn on_web_message_received(
             return;
         };
 
-        // Forward to delegate
-        if let Some(delegate) = find_webview_delegate(&full_webtag) {
-            delegate.handle_post_message(msg_str.to_string());
-        } else {
-            log::warn!(
-                "on_web_message_received: no delegate for {} (appid={}, path={})",
-                full_webtag.as_str(),
-                appid,
-                path
-            );
-        }
+        webview.enqueue_unbound_web_message(
+            msg_str.to_string(),
+            WebMessageFrame::Unproven,
+            WebMessageTransport::HarmonyMessagePort,
+            WebMessageSource::unavailable(),
+        );
     }
 }
 

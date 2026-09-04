@@ -12,7 +12,7 @@ use crate::input_helper::build_helper_invocation;
 use crate::input_helper::{build_async_eval_body, parse_wrapped_eval_result};
 use crate::traits::{
     FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
-    NewWindowPolicy,
+    NewWindowPolicy, WebMessageFrame, WebMessageSource, WebMessageTransport,
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::traits::{PressOptions, ScrollOptions, TypeOptions};
@@ -41,7 +41,7 @@ use objc2_foundation::{
 };
 use objc2_web_kit::{
     WKAudiovisualMediaTypes, WKContentWorld, WKNavigation, WKNavigationDelegate, WKNavigationType,
-    WKUIDelegate, WKURLSchemeHandler, WKWebViewConfiguration, WKWebsiteDataStore,
+    WKScriptMessage, WKUIDelegate, WKURLSchemeHandler, WKWebViewConfiguration, WKWebsiteDataStore,
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use serde::Deserialize;
@@ -1943,7 +1943,11 @@ impl WebViewInner {
         match result {
             Ok(webview_inner) => {
                 // Wrap WebViewInner in WebView
-                let webview = Arc::new(crate::WebView::new(webview_inner, effective_options));
+                let webview = Arc::new(crate::WebView::new(
+                    webview_inner,
+                    effective_options,
+                    sender.native_view_id(),
+                ));
 
                 // Register the WebView instance for future lookups
                 crate::webview::register_webview(webview.clone());
@@ -4083,6 +4087,43 @@ impl WebViewInner {
 // Message Handler Implementation (like Swift WebViewMessageHandler)
 use objc2_web_kit::WKScriptMessageHandler;
 
+const fn apple_message_frame(is_main_frame: bool) -> WebMessageFrame {
+    if is_main_frame {
+        WebMessageFrame::TopLevel
+    } else {
+        WebMessageFrame::Subframe
+    }
+}
+
+/// Snapshot frame metadata while WebKit's callback owns the script message.
+///
+/// The URL is diagnostic only. A frame classification alone does not bind this
+/// message to a committed document generation, so ingress remains Unbound.
+unsafe fn apple_message_frame_and_source(
+    message: *mut AnyObject,
+) -> (WebMessageFrame, WebMessageSource) {
+    let message = unsafe { &*(message as *const WKScriptMessage) };
+    let frame = unsafe { message.frameInfo() };
+    let message_frame = apple_message_frame(unsafe { frame.isMainFrame() });
+    let url = unsafe { frame.request() }
+        .URL()
+        .and_then(|url| url.absoluteString())
+        .map(|url| url.to_string());
+    let origin = unsafe {
+        let origin = frame.securityOrigin();
+        format!(
+            "{}://{}:{}",
+            origin.protocol(),
+            origin.host(),
+            origin.port()
+        )
+    };
+    (
+        message_frame,
+        WebMessageSource::diagnostic(url, Some(origin)),
+    )
+}
+
 #[derive(Debug)]
 pub struct LingXiaMessageHandlerIvars {
     appid: String,
@@ -4174,7 +4215,8 @@ define_class!(
                 // Route to appropriate handler based on name (like Swift version)
                 match handler_name.as_str() {
                     "LingXia" => {
-                        self.handle_bridge_message(message_string);
+                        let (frame, source) = apple_message_frame_and_source(message);
+                        self.handle_bridge_message(message_string, frame, source);
                     }
                     "LingXiaConsole" => {
                         self.handle_console_message(message_string);
@@ -4211,15 +4253,23 @@ impl LingXiaMessageHandler {
     }
 
     /// Handle bridge messages
-    fn handle_bridge_message(&self, message: String) {
+    fn handle_bridge_message(
+        &self,
+        message: String,
+        frame: WebMessageFrame,
+        source: WebMessageSource,
+    ) {
         let ivars = self.ivars();
 
         let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
         let native_webview = ivars.native_webview as *mut AnyObject;
-        if let Some(delegate) = find_webview_for_native(&webtag, native_webview)
-            .and_then(|webview| webview.get_delegate())
-        {
-            delegate.handle_post_message(message);
+        if let Some(webview) = find_webview_for_native(&webtag, native_webview) {
+            webview.enqueue_unbound_web_message(
+                message,
+                frame,
+                WebMessageTransport::AppleScriptMessage,
+                source,
+            );
         } else {
             log::debug!("Dropping script message from stale Apple WebView ({webtag})");
         }
@@ -4275,5 +4325,11 @@ mod tests {
         ));
         assert!(!navigation_type_has_user_gesture(WKNavigationType::Other));
         assert!(!navigation_type_has_user_gesture(WKNavigationType::Reload));
+    }
+
+    #[test]
+    fn apple_script_message_frame_is_preserved_without_binding_a_document() {
+        assert_eq!(apple_message_frame(true), WebMessageFrame::TopLevel);
+        assert_eq!(apple_message_frame(false), WebMessageFrame::Subframe);
     }
 }
