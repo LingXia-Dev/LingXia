@@ -130,9 +130,17 @@ mod tests {
         assert!(!is_built_bundle_dir(temp.path()));
 
         let built = "<!DOCTYPE html>\n<html><head>\
-            <script src=\"lx://assets/bridge-runtime.js\"></script>\
+            <script data-lingxia-bridge-runtime=\"v3-bootstrap\" src=\"lx://assets/bridge-runtime.js\"></script>\
             </head><body>hi</body></html>";
         fs::write(temp.path().join("pages/home/index.html"), built).unwrap();
+        assert!(is_built_bundle_dir(temp.path()));
+
+        // Existing V2 bundles remain recognized. They just lack the sentinel
+        // required by trusted direct-load bootstrap.
+        let legacy = "<!DOCTYPE html>\n<html><head>\
+            <script src=\"lx://assets/bridge-runtime.js\"></script>\
+            </head><body>hi</body></html>";
+        fs::write(temp.path().join("pages/home/index.html"), legacy).unwrap();
         assert!(is_built_bundle_dir(temp.path()));
     }
 

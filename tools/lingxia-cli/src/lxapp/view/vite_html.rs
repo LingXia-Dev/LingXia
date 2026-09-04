@@ -268,6 +268,10 @@ pub(super) fn extract_html_module_entry_script_path(source: &str) -> Option<Stri
     None
 }
 
+const BRIDGE_RUNTIME_SCRIPT: &str = "<script data-lingxia-bridge-runtime=\"v3-bootstrap\" src=\"lx://assets/bridge-runtime.js\"></script>";
+const LEGACY_BRIDGE_RUNTIME_SCRIPT: &str =
+    "<script src=\"lx://assets/bridge-runtime.js\"></script>";
+
 pub(super) fn inject_runtime_script(mut html: String, include_polyfills: bool) -> String {
     // Polyfills must load and execute BEFORE the bridge runtime so that any
     // ES5 stdlib gap (Object.assign, Promise.prototype.finally, ...) is filled
@@ -275,13 +279,14 @@ pub(super) fn inject_runtime_script(mut html: String, include_polyfills: bool) -
     // polyfills tag in the legacy ES5 pipeline; modern builds run on Chromium
     // >= 51 where every method we'd polyfill is native.
     let polyfills_script = "<script src=\"lx://assets/polyfills.es5.js\"></script>";
-    let runtime_script = "<script src=\"lx://assets/bridge-runtime.js\"></script>";
     let to_insert = if include_polyfills {
-        format!("{polyfills_script}{runtime_script}")
+        format!("{polyfills_script}{BRIDGE_RUNTIME_SCRIPT}")
     } else {
-        runtime_script.to_string()
+        BRIDGE_RUNTIME_SCRIPT.to_string()
     };
-    if html.contains(runtime_script) {
+    // Preserve hand-authored/older V2 pages without injecting a second runtime.
+    // Trusted V3 bootstrap intentionally requires the generated sentinel.
+    if html.contains(BRIDGE_RUNTIME_SCRIPT) || html.contains(LEGACY_BRIDGE_RUNTIME_SCRIPT) {
         return html;
     }
     if let Some(index) = html.find("</head>") {
@@ -471,7 +476,16 @@ mod tests {
 
         let output =
             fs::read_to_string(project.output_dir.join("pages/settings/index.html")).unwrap();
-        assert!(output.contains("lx://assets/bridge-runtime.js"));
+        assert!(output.contains(BRIDGE_RUNTIME_SCRIPT));
+    }
+
+    #[test]
+    fn runtime_injection_preserves_legacy_v2_runtime_without_a_sentinel() {
+        let html = format!("<html><head>{LEGACY_BRIDGE_RUNTIME_SCRIPT}</head></html>");
+        let output = inject_runtime_script(html.clone(), false);
+
+        assert_eq!(output, html);
+        assert!(!output.contains("data-lingxia-bridge-runtime"));
     }
 
     #[test]

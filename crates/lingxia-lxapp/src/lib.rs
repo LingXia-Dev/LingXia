@@ -7,6 +7,7 @@ mod archive;
 pub mod automation;
 pub(crate) mod bridge;
 mod cache;
+mod control_document_bootstrap;
 mod delegate;
 /// Simulated-device control shared by the devtool and `lx.automation()`.
 pub mod device;
@@ -46,6 +47,10 @@ pub use appservice::event_bus::{
     BROWSER_TAB_CLOSED_EVENT, DISPLAY_LANGUAGE_CHANGE_EVENT, publish_app_event, publish_page_event,
 };
 pub use cache::touch_access_time;
+pub use control_document_bootstrap::{
+    ControlDocumentBootstrap, ControlDocumentBootstrapError, ControlDocumentSessionMaterial,
+    issue_control_document_bootstrap,
+};
 pub use delegate::{LxAppDelegate, LxAppUiEventType};
 pub use error::LxAppError;
 pub use lifecycle::{

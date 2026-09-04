@@ -500,20 +500,41 @@ pub(crate) fn browser_load_internal_document(
     })?;
     let (_, page) = prepare_internal_tab_page(page_path)?;
     let nonce = page.bridge_nonce();
-    let html =
-        browser.generate_page_html(internal_page_target_entry_path(&target), nonce.as_deref());
-    let html = String::from_utf8_lossy(&html);
+    let entry_path = internal_page_target_entry_path(&target).to_string();
     let reservation = webview
         .prepare_trusted_data_load()
         .map_err(LxAppError::from)?;
     let intent = reservation.intent();
-    documents.prepare(
-        webview.native_view_id(),
-        session_id,
-        create_token,
-        target,
-        intent,
-    );
+    let bootstrap = documents
+        .prepare(
+            webview.native_view_id(),
+            session_id,
+            create_token,
+            target,
+            intent,
+        )
+        .map_err(|error| {
+            LxAppError::InvalidParameter(format!(
+                "failed to prepare trusted browser document: {error}"
+            ))
+        })?;
+    let html = match browser.generate_page_html_with_bridge_bootstrap(
+        &entry_path,
+        nonce.as_deref(),
+        bootstrap,
+    ) {
+        Ok(html) => html,
+        Err(error) => {
+            let _ = documents.revoke_if_matches(
+                webview.native_view_id(),
+                session_id,
+                create_token,
+                intent,
+            );
+            return Err(error);
+        }
+    };
+    let html = String::from_utf8_lossy(&html);
     if let Err(error) = bind_internal_tab_page_for_webview(page_path, session_id, &webview) {
         let _ =
             documents.revoke_if_matches(webview.native_view_id(), session_id, create_token, intent);
