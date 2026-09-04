@@ -248,9 +248,13 @@ mod resource_grant_tests {
             "dev.app",
             13,
             AppSessionClass::StandardApp,
+            [
+                AppResourceGrant::Automation,
+                AppResourceGrant::AutomationHost,
+            ],
             &mut grants,
         );
-        authority.grant_automation();
+        assert!(authority.grant_automation());
         assert_eq!(authority.app_id(), "dev.app");
         assert_eq!(authority.session_id(), 13);
         assert_eq!(authority.session_class(), AppSessionClass::StandardApp);
@@ -261,6 +265,27 @@ mod resource_grant_tests {
                 AppResourceGrant::AutomationHost
             ])
         );
+    }
+
+    #[cfg(feature = "devtool")]
+    #[test]
+    fn devtools_native_policy_cannot_expand_manifest_requests() {
+        for requested in [
+            Vec::new(),
+            vec![AppResourceGrant::Automation],
+            vec![AppResourceGrant::AutomationHost],
+        ] {
+            let mut grants = HashSet::new();
+            let mut authority = NativeDevtoolsAuthority::for_test(
+                "same.app",
+                21,
+                AppSessionClass::StandardApp,
+                requested.clone(),
+                &mut grants,
+            );
+            authority.grant_automation();
+            assert_eq!(grants, requested.into_iter().collect());
+        }
     }
 }
 

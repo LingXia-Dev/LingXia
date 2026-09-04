@@ -310,13 +310,6 @@ pub(crate) fn init_with_platform(
     #[cfg(feature = "devtool")]
     crate::devtool::prepare_bundle_sources(&runtime);
     crate::host_addon::run_install_logic_extensions();
-    let _ = lxapp::host::__install_app_resource_grant_resolver(std::sync::Arc::new(
-        crate::host_addon::resolve_app_resource_grants,
-    ));
-    #[cfg(feature = "devtool")]
-    let _ = lxapp::host::__install_devtools_resource_grant_resolver(std::sync::Arc::new(
-        crate::host_addon::resolve_devtools_resource_grants,
-    ));
     crate::browser::register_bundled_app();
     crate::browser::register_builtin_runtime();
     crate::applink::install_handler();
@@ -324,7 +317,29 @@ pub(crate) fn init_with_platform(
     lingxia_logic::register_logic_runtime();
     #[cfg(feature = "automation")]
     lingxia_automation::register_automation_runtime();
-    let (home_app_id, native_authority) = lxapp::__init_with_native_authority(platform)?;
+    let (home_app_id, native_authority) =
+        lxapp::__init_with_native_authority(platform, |runtime_authority| {
+            let control_authority =
+                lxapp::NativeControlPlaneAuthority::for_native_runtime(runtime_authority);
+            if !lxapp::host::__install_app_resource_grant_resolver(
+                &control_authority,
+                std::sync::Arc::new(crate::host_addon::resolve_app_resource_grants),
+            ) {
+                return Err(lxapp::LxAppError::Runtime(
+                    "native app resource grant resolver was already installed".to_string(),
+                ));
+            }
+            #[cfg(feature = "devtool")]
+            if !lxapp::host::__install_devtools_resource_grant_resolver(
+                &control_authority,
+                std::sync::Arc::new(crate::host_addon::resolve_devtools_resource_grants),
+            ) {
+                return Err(lxapp::LxAppError::Runtime(
+                    "native devtools grant resolver was already installed".to_string(),
+                ));
+            }
+            Ok(())
+        })?;
     crate::settings_destination::install_control_authority(
         lxapp::NativeControlPlaneAuthority::for_native_runtime(&native_authority),
     )
