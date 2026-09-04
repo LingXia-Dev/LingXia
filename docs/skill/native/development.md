@@ -36,6 +36,17 @@ impl lingxia::HostAddon for AppHostAddon {
         // lingxia::host::register_host_entry(pick_document_host());
     }
 
+    fn issue_app_resource_grants(
+        &self,
+        authority: &mut lingxia::NativeHostRuntimeAuthority<'_>,
+    ) {
+        // A manifest entry is only a request. Issue the session grant only
+        // after this native product's policy or consent flow approved it.
+        if user_approved_downloads_for(authority.app_id()) {
+            authority.grant(lingxia::host::AppResourceGrant::Downloads);
+        }
+    }
+
     #[cfg(feature = "standard")]
     fn install_logic_extensions(&self) {
         lingxia::js::register_logic_extension(Box::new(WorkspaceDocsExtension));
@@ -151,6 +162,21 @@ async fn open_granted_document(
 
 Streams and channels accept the same optional first authority parameter before
 their payload and final `StreamContext` or `ChannelContext`.
+
+High-risk manifest privileges (`process`, `downloads`, `automation`, and
+`host`) are requests rather than authority. Their native grants are sealed to
+the session before its Logic runtime starts. `capabilities.process` grants
+`Process` only to the native-assigned ControlApp when that manifest requested
+it. A product that supports user-approved OS Downloads access must issue
+`AppResourceGrant::Downloads` from `HostAddon::issue_app_resource_grants` after
+its own policy/consent check. Standard and Control sessions otherwise start
+without privileged resource grants, even when their app ids or manifests are
+identical.
+
+The callback receives an unconstructable `NativeHostRuntimeAuthority`; it
+cannot be called from a route or populated from payload fields. Devtools builds
+use the separate `NativeDevtoolsAuthority`, which can issue only session-bound
+automation grants and cannot grant process or Downloads access.
 
 ### Route audience metadata
 

@@ -1,7 +1,7 @@
 //! Trusted automation for native terminal workspace state.
 
-use crate::auto_err;
 use crate::resolve::json_to_js;
+use crate::{auto_err, require_host_context};
 use rong::{FromJSObject, HostError, JSContext, JSResult, JSValue, js_class, js_method};
 use serde_json::json;
 use std::time::{Duration, Instant};
@@ -77,6 +77,7 @@ impl JSTerminalDriver {
     /// Read the native pane tree and the visual configuration it has consumed.
     #[js_method]
     async fn snapshot(&self, ctx: JSContext, options: SurfaceOptions) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let snapshot = wait_for_snapshot(options.surface.trim()).await?;
         json_to_js(&ctx, &snapshot)
     }
@@ -84,6 +85,7 @@ impl JSTerminalDriver {
     /// Send text to the focused pane through the native PTY input path.
     #[js_method]
     async fn input(&self, ctx: JSContext, options: InputOptions) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let surface = options.surface.trim();
         if surface.is_empty() {
             return Err(auto_err("terminal input requires a surface id"));
@@ -104,6 +106,7 @@ impl JSTerminalDriver {
     /// back at its docked size.
     #[js_method(rename = "setMaximized")]
     async fn set_maximized(&self, ctx: JSContext, options: MaximizeOptions) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let surface = options.surface.trim();
         if surface.is_empty() {
             return Err(auto_err("terminal setMaximized requires a surface id"));
@@ -123,6 +126,7 @@ impl JSTerminalDriver {
     /// Open a tab in one native terminal surface, and activate it.
     #[js_method(rename = "newTab")]
     async fn new_tab(&self, ctx: JSContext, options: SurfaceOptions) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let surface = options.surface.trim();
         if surface.is_empty() {
             return Err(auto_err("terminal newTab requires a surface id"));
@@ -138,6 +142,7 @@ impl JSTerminalDriver {
     /// Split the active pane in one native terminal surface.
     #[js_method]
     async fn split(&self, ctx: JSContext, options: SplitOptions) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let surface = options.surface.trim();
         if surface.is_empty() {
             return Err(auto_err("terminal split requires a surface id"));

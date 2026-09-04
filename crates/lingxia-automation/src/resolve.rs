@@ -5,7 +5,7 @@
 //! `lx.automation()` never drift. This module only adapts errors and values
 //! into the JS runtime.
 
-use crate::auto_err;
+use crate::{auto_err, require_target_context};
 use lxapp::LxApp;
 use rong::{IntoJSValue, JSArray, JSContext, JSObject, JSResult, JSValue};
 use serde_json::Value;
@@ -14,6 +14,12 @@ use std::sync::{Arc, Weak};
 pub(crate) fn upgrade(weak: &Weak<LxApp>) -> JSResult<Arc<LxApp>> {
     weak.upgrade()
         .ok_or_else(|| auto_err("automation owner LxApp has been released"))
+}
+
+pub(crate) fn upgrade_authorized(ctx: &JSContext, weak: &Weak<LxApp>) -> JSResult<Arc<LxApp>> {
+    let app = upgrade(weak)?;
+    require_target_context(ctx, &app)?;
+    Ok(app)
 }
 
 /// Resolve any running lxapp by id ("current" = the active app).

@@ -264,6 +264,9 @@ pub(crate) fn init_with_platform(
     crate::host_addon::run_install_logic_extensions();
     crate::host_addon::run_install_host_apis();
     crate::display_language_host::register();
+    let _ = lxapp::host::__install_app_resource_grant_resolver(std::sync::Arc::new(
+        crate::host_addon::resolve_app_resource_grants,
+    ));
     crate::browser::register_bundled_app();
     crate::browser::register_builtin_runtime();
     crate::applink::install_handler();

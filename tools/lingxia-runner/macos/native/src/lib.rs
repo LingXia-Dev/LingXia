@@ -87,6 +87,13 @@ impl lingxia::dev::DeviceController for MacRunnerDeviceController {
 }
 
 impl lingxia::HostAddon for RunnerDevtoolAddon {
+    fn issue_devtools_app_resource_grants(
+        &self,
+        authority: &mut lingxia::NativeDevtoolsAuthority<'_>,
+    ) {
+        authority.grant_automation();
+    }
+
     // Cloud provider (lx.cloud/auth + update/fingerprint/push). Must register in this
     // hook — the logic context is built before `start_services`. Injected via
     // `--with-provider cloud`.
@@ -112,9 +119,6 @@ impl lingxia::HostAddon for RunnerDevtoolAddon {
     }
 
     fn start_services(&self) {
-        // The Runner is a dev/test harness: grant lx.automation() to every
-        // lxapp it launches so test scripts need not declare the privilege.
-        lingxia::set_automation_auto_grant(true);
         lingxia::dev::register_device_controller(Box::new(MacRunnerDeviceController));
         lingxia_control_runtime::start_dev_session_bridge_from_env();
     }

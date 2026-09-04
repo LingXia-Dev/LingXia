@@ -7,7 +7,7 @@ use lingxia_platform::traits::ui::UIUpdate;
 use rong::{JSContext, JSResult, Source, error::HostError};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Read;
@@ -80,7 +80,6 @@ use lingxia_webview::runtime::destroy_webview_if_matches;
 pub use runtime_bootstrap::dev_session_active as is_dev_session;
 pub use runtime_bootstrap::init;
 pub use runtime_bootstrap::runner_active as is_runner;
-pub use runtime_bootstrap::{automation_auto_grant, set_automation_auto_grant};
 pub use runtime_ops::{
     close_lxapp, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
     ensure_builtin_lxapp, ensure_host_surface_owner, ensure_lxapp, get_current_lxapp,
@@ -395,6 +394,7 @@ impl LxApps {
                 ReleaseType::Release,
             )?);
             app.bind_arc();
+            crate::host::seal_app_resource_grants(&app);
             self.lxapps.insert(appid.to_string(), app.clone());
             Ok(app)
         })
@@ -417,6 +417,7 @@ impl LxApps {
                 self.executor.clone(),
             )?);
             app.bind_arc();
+            crate::host::seal_app_resource_grants(&app);
             self.lxapps.insert(appid, app.clone());
             Ok(app)
         })
@@ -462,6 +463,7 @@ impl LxApps {
             }
         });
         new_lxapp.bind_arc();
+        crate::host::seal_app_resource_grants(&new_lxapp);
 
         // Publish with the map entry API. Two concurrent cold opens must both
         // receive the same LxApp instance; otherwise each instance could claim
@@ -786,6 +788,9 @@ pub struct LxApp {
     pub(crate) page_chrome_mutation_lock: tokio::sync::Mutex<()>,
 
     self_weak: OnceLock<Weak<LxApp>>,
+
+    /// Native-issued privileged resources, sealed once for this exact session.
+    resource_grants: OnceLock<HashSet<crate::host::AppResourceGrant>>,
 
     // Scripts injected as soon as a page document starts loading.
     document_start_scripts: Mutex<Vec<Arc<str>>>,
@@ -1168,6 +1173,7 @@ impl LxApp {
         let privilege = LxAppSecurityPrivilege::new("process")
             .expect("process is a valid security privilege id");
         self.has_security_privilege(&privilege)
+            && self.has_resource_grant(crate::host::AppResourceGrant::Process)
     }
 
     pub fn app_data_dir(&self) -> PathBuf {
@@ -1807,6 +1813,7 @@ impl LxApp {
             presentation_open_lock: Mutex::new(()),
             page_chrome_mutation_lock: tokio::sync::Mutex::new(()),
             self_weak: OnceLock::new(),
+            resource_grants: OnceLock::new(),
             document_start_scripts: Mutex::new(Vec::new()),
             page_scripts: Mutex::new(Vec::new()),
         }
@@ -2472,6 +2479,21 @@ impl LxApp {
     /// on the host app and platform permission flow.
     pub fn has_security_privilege(&self, privilege: &LxAppSecurityPrivilege) -> bool {
         self.config.has_security_privilege(privilege)
+    }
+
+    pub(crate) fn seal_resource_grants(&self, grants: HashSet<crate::host::AppResourceGrant>) {
+        let _ = self.resource_grants.set(grants);
+    }
+
+    /// Whether this live native session owns a sealed privileged resource.
+    pub fn has_resource_grant(&self, grant: crate::host::AppResourceGrant) -> bool {
+        matches!(
+            self.status(),
+            LxAppSessionStatus::Opening | LxAppSessionStatus::Opened
+        ) && self
+            .resource_grants
+            .get()
+            .is_some_and(|grants| grants.contains(&grant))
     }
 
     /// Resolve a path to its live page instance.
