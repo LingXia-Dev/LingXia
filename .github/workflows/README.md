@@ -34,6 +34,15 @@ bot-dispatched executor; humans cannot start a new real internal publish directl
 | `Release Executor / CLI (internal)` | CLI binaries and GitHub Release dispatched by Release / 2 |
 | `Release Executor / NPM (internal)` | npm publish dispatched by Release / 2 |
 
+## 启用 Harmony HAR CI
+
+`Harmony SDK HAR` 需要安装了 DevEco `ohpm`/`hvigorw` 的可信 self-hosted
+runner。仓库默认不调度该 job，避免未分配 runner 时 required check 永久排队。
+管理员完成 runner 分配后，在 repository 或 organization Actions variables 中设置
+`HARMONY_HAR_CI_ENABLED=true` 即可启用。启用后该 job 仍属于 `CI Success` 的依赖，
+HAR 构建失败或取消都会阻止合并；来自 fork 的 pull request 始终不会执行
+self-hosted job。
+
 The executors are `workflow_dispatch`-only because tags pushed with
 `GITHUB_TOKEN` do not trigger downstream workflows. Run an executor by hand
 only to debug with `dry_run=true`.
