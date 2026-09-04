@@ -519,6 +519,29 @@ declare module 'liblingxia.so' {
    */
   export function onWebviewControllerDestroyed(webtag: string, nativeViewToken: string): boolean;
 
+  export function onWebviewPageBegin(
+    webtag: string,
+    nativeViewToken: string,
+    pageEpoch: string,
+    url: string
+  ): boolean;
+
+  export function onWebviewDocumentCommit(
+    webtag: string,
+    nativeViewToken: string,
+    pageEpoch: string,
+    url: string
+  ): boolean;
+
+  export function onWebviewPageEnd(
+    webtag: string,
+    nativeViewToken: string,
+    pageEpoch: string,
+    url: string
+  ): boolean;
+
+  export function onWebviewRenderExited(webtag: string, nativeViewToken: string): boolean;
+
   /**
    * Ask native layer whether current navigation should be intercepted.
    */
@@ -561,6 +584,7 @@ declare module 'liblingxia.so' {
   export function onLoadError(
     webtag: string,
     nativeGeneration: string,
+    pageEpoch: string,
     url: string,
     errorCode: number,
     description: string

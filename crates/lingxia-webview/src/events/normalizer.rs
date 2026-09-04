@@ -57,7 +57,8 @@ pub(crate) enum NativeSignal {
         can_go_forward: bool,
     },
     /// The renderer/document disappeared while the native WebView remains
-    /// reusable (for example a WebView2 render-process failure).
+    /// reusable (for example a WebView2 render-process failure). No later
+    /// callback from that document may retain authority.
     DocumentInvalidated,
     Destroyed,
 }

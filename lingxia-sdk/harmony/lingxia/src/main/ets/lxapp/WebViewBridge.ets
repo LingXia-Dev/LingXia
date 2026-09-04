@@ -5,6 +5,10 @@ import {
   handleWebViewLoadError as coreHandleWebViewLoadError,
   handleWebViewNavigationPolicy as coreHandleWebViewNavigationPolicy,
   notifyWebViewControllerCreated as coreNotifyWebViewControllerAttached,
+  notifyWebViewDocumentCommit as coreNotifyWebViewDocumentCommit,
+  notifyWebViewPageBegin as coreNotifyWebViewPageBegin,
+  notifyWebViewPageEnd as coreNotifyWebViewPageEnd,
+  notifyWebViewRenderExited as coreNotifyWebViewRenderExited,
   WebViewInfo,
   WebTagParts,
   WebViewManager as CoreWebViewManager,
@@ -55,6 +59,32 @@ export class WebViewManager {
 
   static getGenerationForController(webtag: string, controller: webview.WebviewController): string {
     return CoreWebViewManager.getGenerationForController(webtag, controller);
+  }
+
+  static pageBegin(webtag: string, controller: webview.WebviewController, url: string): string {
+    return coreNotifyWebViewPageBegin(webtag, controller, url);
+  }
+
+  static documentCommit(
+    webtag: string,
+    controller: webview.WebviewController,
+    pageEpoch: string,
+    url: string
+  ): boolean {
+    return coreNotifyWebViewDocumentCommit(webtag, controller, pageEpoch, url);
+  }
+
+  static pageEnd(
+    webtag: string,
+    controller: webview.WebviewController,
+    pageEpoch: string,
+    url: string
+  ): boolean {
+    return coreNotifyWebViewPageEnd(webtag, controller, pageEpoch, url);
+  }
+
+  static renderExited(webtag: string, controller: webview.WebviewController): boolean {
+    return coreNotifyWebViewRenderExited(webtag, controller);
   }
 
   static destroyWebview(webtag: string, generation?: string): boolean {
@@ -183,11 +213,12 @@ export function handleWebViewNavigationPolicy(
 export function handleWebViewLoadError(
   webtag: string,
   nativeGeneration: string,
+  pageEpoch: string,
   url: string,
   errorCode: number,
   description: string
 ): void {
-  coreHandleWebViewLoadError(webtag, nativeGeneration, url, errorCode, description);
+  coreHandleWebViewLoadError(webtag, nativeGeneration, pageEpoch, url, errorCode, description);
 }
 
 export function handleWebViewDownloadStart(
