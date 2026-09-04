@@ -1,0 +1,99 @@
+[package]
+edition = "2024"
+rust-version = "1.95"
+name = "lingxia-rong-command"
+version.workspace = true
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+description = "LingXia-maintained command execution APIs for RongJS"
+homepage = "https://github.com/LingXia-Dev/Rong"
+documentation = "https://docs.rs/lingxia-rong-command"
+readme = "README.md"
+keywords = [
+    "javascript",
+    "runtime",
+    "embedding",
+]
+categories = ["api-bindings"]
+license = "MIT OR Apache-2.0"
+repository.workspace = true
+
+[features]
+arkjs = [
+    "rong/arkjs",
+    "rong_abort/arkjs",
+    "rong_buffer/arkjs",
+    "rong_encoding/arkjs",
+    "rong_event/arkjs",
+    "rong_stream/arkjs",
+]
+# Standalone package verification needs one concrete Rong engine. LingXia's
+# target-specific dependencies disable defaults and select the host engine.
+default = ["quickjs"]
+jscore = [
+    "rong/jscore",
+    "rong_abort/jscore",
+    "rong_buffer/jscore",
+    "rong_encoding/jscore",
+    "rong_event/jscore",
+    "rong_stream/jscore",
+]
+quickjs = [
+    "rong/quickjs",
+    "rong_abort/quickjs",
+    "rong_buffer/quickjs",
+    "rong_encoding/quickjs",
+    "rong_event/quickjs",
+    "rong_stream/quickjs",
+]
+tls-aws-lc = ["rong/tls-aws-lc"]
+tls-ring = ["rong/tls-ring"]
+
+[lib]
+name = "rong_command"
+path = "src/lib.rs"
+
+[dependencies.rong]
+version = "0.6.0"
+default-features = false
+
+[dependencies.rong_abort]
+version = "0.6.0"
+default-features = false
+
+[dependencies.rong_buffer]
+version = "0.6.0"
+default-features = false
+
+[dependencies.rong_encoding]
+version = "0.6.0"
+default-features = false
+
+[dependencies.rong_event]
+version = "0.6.0"
+default-features = false
+
+[dependencies.rong_stream]
+version = "0.6.0"
+default-features = false
+
+[dependencies.tokio]
+version = "1.52"
+features = [
+    "rt",
+    "rt-multi-thread",
+    "time",
+    "macros",
+    "sync",
+    "fs",
+    "io-util",
+    "process",
+    "io-std",
+]
+
+[target."cfg(unix)".dependencies.libc]
+version = "0.2"

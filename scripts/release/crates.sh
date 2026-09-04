@@ -30,6 +30,7 @@ CRATES=(
   "lingxia-platform"
   "lingxia-provider"
   "lingxia-proxy"
+  "lingxia-rong-command"
   "lingxia-service"
   "lingxia-settings"
   "lingxia-shell"
@@ -330,13 +331,18 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   if [[ "${#ONLY_CRATES[@]}" -gt 0 ]]; then
     echo "Only: ${SELECTED_CRATES[*]}"
   fi
+
+  # Package the selected release set together. Cargo can then normalize
+  # path+version edges between workspace packages that are not on crates.io
+  # yet, matching the dependency order used by the real sequential publish.
+  package_args=(--no-verify)
+  [[ "$ALLOW_DIRTY" -eq 1 ]] && package_args+=(--allow-dirty)
   for crate in "${SELECTED_CRATES[@]}"; do
     echo "==> cargo package -p $crate --no-verify"
-    if [[ "$ALLOW_DIRTY" -eq 1 ]]; then
-      cargo package -p "$crate" --no-verify --allow-dirty >/dev/null
-    else
-      cargo package -p "$crate" --no-verify >/dev/null
-    fi
+    package_args+=(-p "$crate")
+  done
+  cargo package "${package_args[@]}" >/dev/null
+  for crate in "${SELECTED_CRATES[@]}"; do
     echo "✓ $crate package check passed"
   done
 fi

@@ -18,7 +18,7 @@ automation = []
 test-utils = []
 # OS process execution for explicitly capable desktop product hosts. Runtime
 # initialization remains restricted to the privileged home lxapp.
-process = ["js-appservice", "rong_modules/command"]
+process = ["js-appservice", "dep:rong_command"]
 js-appservice = [
     "dep:rong",
     "dep:rong_modules",
@@ -51,6 +51,7 @@ uuid = { version = "1.20", features = ["v4"] }
 
 # Local dependencies
 rong_modules = { workspace = true, default-features = false, features = ["timer", "cron", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "stream", "compression", "storage"], optional = true }
+rong_command = { workspace = true, optional = true }
 rong_rt = { workspace = true, default-features = false }
 rong_http = { workspace = true, default-features = false, optional = true }
 rong_console = { workspace = true, optional = true }
@@ -75,21 +76,25 @@ lingxia-messaging = { workspace = true }
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 rong = { workspace = true, features = ["jscore"], optional = true }
 rong_modules = { workspace = true, default-features = false, features = ["jscore"], optional = true }
+rong_command = { workspace = true, features = ["jscore"], optional = true }
 
 # Android currently uses QuickJS.
 [target.'cfg(target_os = "android")'.dependencies]
 rong = { workspace = true, features = ["quickjs"], optional = true }
 rong_modules = { workspace = true, default-features = false, features = ["quickjs"], optional = true }
+rong_command = { workspace = true, features = ["quickjs"], optional = true }
 
 # HarmonyOS uses ArkJS.
 [target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
 rong = { workspace = true, features = ["arkjs"], optional = true }
 rong_modules = { workspace = true, default-features = false, features = ["arkjs"], optional = true }
+rong_command = { workspace = true, features = ["arkjs"], optional = true }
 
 # Fallback for other targets.
 [target.'cfg(not(any(target_os = "ios", target_os = "macos", target_os = "android", all(target_os = "linux", target_env = "ohos"))))'.dependencies]
 rong = { workspace = true, features = ["quickjs"], optional = true }
 rong_modules = { workspace = true, default-features = false, features = ["quickjs"], optional = true }
+rong_command = { workspace = true, features = ["quickjs"], optional = true }
 
 [target.'cfg(any(target_os = "android", target_os = "ios", all(target_os = "linux", target_env = "ohos")))'.dependencies]
 rong_modules = { workspace = true, default-features = false, features = ["tls-ring"], optional = true }

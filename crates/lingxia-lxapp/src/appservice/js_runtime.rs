@@ -1,5 +1,7 @@
 use crate::bridge::{self, AppServiceCommand};
 use crate::error::LxAppError;
+#[cfg(feature = "process")]
+use crate::host::ProcessSessionAuthority;
 use crate::lx;
 use crate::lxapp::LxApp;
 #[cfg(feature = "process")]
@@ -70,25 +72,12 @@ const RONG_MODULES: [&str; 13] = [
     "storage",
 ];
 
-/// High-authority modules compiled for hosts that declare the corresponding
-/// product capability. Keep this list explicit: adding a module changes the
-/// authority of home-lxapp Logic code.
-#[cfg(feature = "process")]
-const PROCESS_RONG_MODULES: [&str; 1] = ["command"];
-
 #[cfg(test)]
 mod rong_modules_tests {
     #[test]
     fn requested_rong_modules_resolve() {
         rong_modules::resolve_modules(super::RONG_MODULES)
             .expect("every requested Rong module must be compiled into this build");
-    }
-
-    #[cfg(feature = "process")]
-    #[test]
-    fn requested_process_rong_modules_resolve() {
-        rong_modules::resolve_modules(super::PROCESS_RONG_MODULES)
-            .expect("every requested process module must be compiled into this build");
     }
 }
 
@@ -698,7 +687,10 @@ pub(crate) async fn lxapp_service_handler(
                         worker_id
                     )
                     .with_appid(lxapp.appid.clone());
-                } else if let Err(e) = rong_modules::init(&ctx, PROCESS_RONG_MODULES) {
+                } else if let Err(e) = rong_command::init_with_authority(
+                    &ctx,
+                    Arc::new(ProcessSessionAuthority::for_lxapp(&lxapp)),
+                ) {
                     error!(
                         "[Worker {}] Failed to initialize process capability: {}",
                         worker_id, e
