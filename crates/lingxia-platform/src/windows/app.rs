@@ -850,8 +850,5 @@ mod tests {
         assert!(is_windows_builtin_browser_downloads(
             BuiltinBrowserPage::Downloads
         ));
-        assert!(!is_windows_builtin_browser_downloads(
-            BuiltinBrowserPage::Settings
-        ));
     }
 }

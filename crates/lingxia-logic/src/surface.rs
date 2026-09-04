@@ -552,7 +552,6 @@ async fn shell_open_builtin(ctx: JSContext, page: JSValue) -> JSResult<JSObject>
     let invocation = require_control_route(&ctx, LogicRoute::ShellOpenBuiltin)?;
     let page = shell_string_argument(page, "lx.shell.openBuiltin page")?;
     let url = match page.trim() {
-        "settings" => "lingxia://settings",
         "downloads" => "lingxia://downloads",
         other => {
             return Err(surface_error(
@@ -1486,35 +1485,35 @@ async fn open_url_spec(
     let lxapp = LxApp::from_ctx(&ctx)?;
     let trimmed_url = raw_url.trim_matches(|character: char| character.is_ascii_whitespace());
 
-    if let Some(page) = parse_builtin_browser_page(trimmed_url) {
-        if privileged_invocation.is_none() {
-            require_control_route(&ctx, LogicRoute::SurfaceOpenBuiltin)?;
+    match classify_logic_url(trimmed_url) {
+        LogicUrlClassification::BuiltinDownloads => {
+            if privileged_invocation.is_none() {
+                require_control_route(&ctx, LogicRoute::SurfaceOpenBuiltin)?;
+            }
+            validate_builtin_browser_surface_keys(spec)?;
+            if !lingxia_app_context::browser_enabled() {
+                return Err(surface_error(
+                    SurfaceErrorCode::UnsupportedPlacement,
+                    "built-in browser pages require capabilities.browser",
+                ));
+            }
+            lxapp
+                .runtime
+                .open_builtin_browser_page(BuiltinBrowserPage::Downloads)
+                .map_err(|err| match err {
+                    lingxia_platform::error::PlatformError::NotSupported(_) => {
+                        surface_error(SurfaceErrorCode::UnsupportedPlacement, err)
+                    }
+                    _ => surface_error(SurfaceErrorCode::Failed, err),
+                })?;
+            return Ok(JSValue::null(&ctx));
         }
-        validate_builtin_browser_surface_keys(spec)?;
-        if !lingxia_app_context::browser_enabled() {
-            return Err(surface_error(
-                SurfaceErrorCode::UnsupportedPlacement,
-                "built-in browser pages require capabilities.browser",
+        LogicUrlClassification::ReservedInternal => {
+            return Err(invalid_surface_target(
+                "only lingxia://downloads is a public built-in URL",
             ));
         }
-        lxapp
-            .runtime
-            .open_builtin_browser_page(page)
-            .map_err(|err| match err {
-                lingxia_platform::error::PlatformError::NotSupported(_) => {
-                    surface_error(SurfaceErrorCode::UnsupportedPlacement, err)
-                }
-                _ => surface_error(SurfaceErrorCode::Failed, err),
-            })?;
-        return Ok(JSValue::null(&ctx));
-    }
-    if trimmed_url
-        .get(.."lingxia:".len())
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("lingxia:"))
-    {
-        return Err(invalid_surface_target(
-            "only lingxia://settings and lingxia://downloads are public built-in URLs",
-        ));
+        LogicUrlClassification::External => {}
     }
 
     match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
@@ -1550,12 +1549,24 @@ async fn open_url_spec(
     }
 }
 
-fn parse_builtin_browser_page(url: &str) -> Option<BuiltinBrowserPage> {
-    match url {
-        "lingxia://settings" => Some(BuiltinBrowserPage::Settings),
-        "lingxia://downloads" => Some(BuiltinBrowserPage::Downloads),
-        _ => None,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LogicUrlClassification {
+    BuiltinDownloads,
+    ReservedInternal,
+    External,
+}
+
+fn classify_logic_url(url: &str) -> LogicUrlClassification {
+    if url == "lingxia://downloads" {
+        return LogicUrlClassification::BuiltinDownloads;
     }
+    if url
+        .get(.."lingxia:".len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("lingxia:"))
+    {
+        return LogicUrlClassification::ReservedInternal;
+    }
+    LogicUrlClassification::External
 }
 
 fn validate_builtin_browser_surface_keys(spec: &JSObject) -> JSResult<()> {
@@ -3427,23 +3438,41 @@ mod tests {
     }
 
     #[test]
-    fn builtin_browser_pages_require_exact_public_urls() {
+    fn downloads_is_the_only_public_builtin_url() {
         assert_eq!(
-            parse_builtin_browser_page("lingxia://settings"),
-            Some(BuiltinBrowserPage::Settings)
-        );
-        assert_eq!(
-            parse_builtin_browser_page("lingxia://downloads"),
-            Some(BuiltinBrowserPage::Downloads)
+            classify_logic_url("lingxia://downloads"),
+            LogicUrlClassification::BuiltinDownloads
         );
         for rejected in [
+            "lingxia://settings",
             "Lingxia://settings",
             "lingxia://settings/",
             "lingxia://settings?tab=privacy",
+            "lingxia://settings#clear-site-data?tabId=tab-1",
             "lingxia://downloads#active",
             "lingxia://history",
         ] {
-            assert_eq!(parse_builtin_browser_page(rejected), None, "{rejected}");
+            assert_eq!(
+                classify_logic_url(rejected),
+                LogicUrlClassification::ReservedInternal,
+                "{rejected}"
+            );
+        }
+        assert_eq!(
+            classify_logic_url("https://example.com"),
+            LogicUrlClassification::External
+        );
+    }
+
+    #[test]
+    fn settings_is_reserved_before_ordinary_or_control_caller_authorization() {
+        for caller_is_control in [false, true] {
+            let classification = classify_logic_url("lingxia://settings?tab=privacy");
+            assert_eq!(
+                classification,
+                LogicUrlClassification::ReservedInternal,
+                "caller_is_control={caller_is_control}"
+            );
         }
     }
 

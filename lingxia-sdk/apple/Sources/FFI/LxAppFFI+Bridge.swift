@@ -798,10 +798,6 @@ extension LxApp {
             #if os(macOS)
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
             switch page {
-            case 0:
-                // Host-wide Settings is exclusively bootstrap-owned. Browser
-                // chrome uses BrowserLocalNavigation for its private page.
-                return false
             case 1:
                 return runtime.shell.openBuiltinShellSurface(id: "downloads")
             default:

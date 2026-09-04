@@ -215,8 +215,8 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
 
     const opened = await eventually(
       async () => (await browser.tabs()).filter((tab) => !tabsBefore.has(tab.tab_id)),
-      (tabs) => tabs.length >= 2,
-      { describe: 'two covering web tabs to open', timeoutMs: 15_000 });
+      (tabs) => tabs.length >= 1,
+      { describe: 'covering web tab to open', timeoutMs: 15_000 });
 
     for (const tab of opened) {
       await browser.close({ tab: tab.tab_id });

@@ -161,7 +161,8 @@ Use `lingxia` for:
 Do not use `lingxia` as a shortcut to runtime internals:
 
 - page lifecycle orchestration belongs below the facade
-- shell products such as downloads/settings management stay behind shell or logic APIs
+- host-wide Downloads stays behind the shell API; Settings is bootstrap-owned
+  native chrome or browser-local navigation
 - whole internal crates should not be re-exported just because they exist
 
 For more detail, see [`docs/native-development.md`](../../docs/native-development.md)

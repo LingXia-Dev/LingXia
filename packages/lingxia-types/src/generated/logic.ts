@@ -344,10 +344,10 @@ export type BinaryFileData = ArrayBuffer | ArrayBufferView;
  * Built-in browser product page. Opening one requires
  * `capabilities.browser` and is restricted to the native-assigned Control app.
  */
-export type BuiltinShellPage = 'settings' | 'downloads';
+export type BuiltinShellPage = 'downloads';
 
 /**
- * A host builtin page such as settings or downloads. The shell owns
+ * A host builtin page such as downloads. The shell owns
  * its lifetime and its visibility, so this handle reports identity:
  * there is no `show` / `hide`, and the inherited `close()` rejects
  * with `unsupported_placement`.
@@ -1312,7 +1312,7 @@ export type ShellApi = {
     sidebarActions: ShellSidebarActionsApi;
     /** Compose another lxapp into a shell slot. */
     openApp(appId: string, options: ShellOpenAppOptions): Promise<AppSurface>;
-    /** Open a host builtin page such as settings or downloads. */
+    /** Open a host builtin page such as downloads. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
      * Open a declared surface with shell privileges — the same declaration

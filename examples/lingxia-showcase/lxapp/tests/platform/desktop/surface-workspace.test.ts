@@ -1492,7 +1492,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       return inset >= minimumRail ? inset : undefined;
     }, `${platform} compact browser preserves the icon rail`);
 
-    // The registry lists tabs in creation order; settings opened first.
+    // The registry lists tabs in creation order; the website opened first.
     const compactBrowserTabs = (await browser.tabs()).filter((tab) => (
       tab.tab_id === browserTabId || tab.tab_id === secondaryBrowserTabId
     ));
