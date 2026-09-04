@@ -76,11 +76,15 @@ const shellDeclared: Promise<unknown> = lx.shell.openDeclared("terminal", {
 
 // A builtin page's lifetime belongs to the shell.
 async function builtinReportsIdentityOnly(): Promise<string> {
-  const settings = await lx.shell.openBuiltin("settings");
+  const downloads = await lx.shell.openBuiltin("downloads");
   // @ts-expect-error the shell owns a builtin page's visibility
-  settings.show;
-  return settings.id;
+  downloads.show;
+  return downloads.id;
 }
+
+// Host-wide Settings is bootstrap-owned native chrome, never Logic.
+// @ts-expect-error Settings is not a public builtin page
+lx.shell.openBuiltin("settings");
 
 // An ordered preference degrades, and `realized` reports the outcome.
 async function orderedPreference(): Promise<"window" | "float"> {

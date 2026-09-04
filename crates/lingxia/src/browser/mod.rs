@@ -45,35 +45,38 @@ pub(crate) fn classify_navigation_json(request_json: &str) -> Option<String> {
     runtime::classify_navigation_json(request_json)
 }
 
+#[cfg(feature = "browser-shell")]
+fn settings_required_routes() -> Vec<&'static str> {
+    let routes = vec![
+        "app.getInfo",
+        "downloads.chooseDirectory",
+        "downloads.getSettings",
+        "downloads.resetDirectory",
+        "privacy.clearBrowsingData",
+        "privacy.clearSiteData",
+        "privacy.getSiteDataContext",
+        "privacy.getUsage",
+        "app.getDisplayLanguageState",
+        "app.setDisplayLanguagePreference",
+        "app.watchDisplayLanguageState",
+    ];
+    #[cfg(feature = "proxy")]
+    let routes = {
+        let mut routes = routes;
+        routes.extend([
+            "proxy.getSettings",
+            "proxy.refreshGfwList",
+            "proxy.updateSettings",
+            "proxy.watch",
+        ]);
+        routes
+    };
+    routes
+}
+
 pub(crate) fn configure_static_settings_targets(catalog: &mut crate::StaticSettingsTargetCatalog) {
     #[cfg(feature = "browser-shell")]
-    {
-        let routes = [
-            "app.getInfo",
-            "downloads.chooseDirectory",
-            "downloads.getSettings",
-            "downloads.resetDirectory",
-            "privacy.clearBrowsingData",
-            "privacy.clearSiteData",
-            "privacy.getSiteDataContext",
-            "privacy.getUsage",
-            "app.getDisplayLanguageState",
-            "app.setDisplayLanguagePreference",
-            "app.watchDisplayLanguageState",
-        ]
-        .into_iter();
-        #[cfg(feature = "proxy")]
-        let routes = routes.chain(
-            [
-                "proxy.getSettings",
-                "proxy.refreshGfwList",
-                "proxy.updateSettings",
-                "proxy.watch",
-            ]
-            .into_iter(),
-        );
-        catalog.require_browser_page_routes("/settings", routes);
-    }
+    catalog.require_browser_page_routes("/settings", settings_required_routes());
     #[cfg(not(feature = "browser-shell"))]
     let _ = catalog;
 }
@@ -105,4 +108,30 @@ pub(crate) fn warmup() {
     shell::warmup();
     #[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
     runtime::warmup();
+}
+
+#[cfg(all(test, feature = "browser-shell"))]
+mod tests {
+    #[test]
+    fn settings_catalog_routes_match_production_inventory_and_policy() {
+        crate::host_addon::run_install_host_apis();
+        crate::display_language_host::register();
+        super::register_builtin_route_inventory();
+        lxapp::host::register_builtin_routes();
+
+        for route in super::settings_required_routes() {
+            let audience = lxapp::host::route_policy(route)
+                .unwrap_or_else(|error| panic!("{route}: {error}"))
+                .unwrap_or_else(|| panic!("missing production Settings route: {route}"))
+                .audience();
+            assert!(
+                matches!(
+                    audience,
+                    lxapp::host::RouteAudience::BrowserControlOnly
+                        | lxapp::host::RouteAudience::ControlOnly
+                ),
+                "incompatible production Settings route {route}: {audience:?}"
+            );
+        }
+    }
 }

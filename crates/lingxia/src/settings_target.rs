@@ -518,7 +518,7 @@ mod tests {
     impl lxapp::host::HostHandler for TestHostHandler {
         fn call<'a>(
             &'a self,
-            _lxapp: Arc<lxapp::LxApp>,
+            _invocation: lxapp::host::HostInvocationContext,
             _input: Option<String>,
             _cancel: lxapp::host::HostCancel,
         ) -> lxapp::host::HostFuture<'a> {

@@ -79,7 +79,6 @@ pub struct OpenUrlResult {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinBrowserPage {
-    Settings = 0,
     Downloads = 1,
 }
 
