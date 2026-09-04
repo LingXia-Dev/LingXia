@@ -1,7 +1,8 @@
 //! Host API runtime and extension surface.
 //!
-//! Built-in host capabilities and third-party host extensions share the same
-//! registry. External crates can define handlers and register them here.
+//! Public host capabilities and runtime-owned built-in WebUI capabilities use
+//! separate registry scopes. External crates can define public handlers and
+//! register them here.
 
 use crate::error::LxAppError;
 use crate::lxapp::LxApp;
@@ -123,18 +124,66 @@ pub trait HostHandler: Send + Sync + 'static {
     ) -> HostFuture<'a>;
 }
 
-/// Host API registry - stores host handlers and their method kinds.
+struct RegisteredHostHandler {
+    handler: Arc<dyn HostHandler>,
+    kind: HostMethodKind,
+}
+
+/// Host API registry. Public handlers are visible to every lxapp; built-in
+/// handlers are keyed by the runtime-owned app that is allowed to see them.
 struct HostRegistry {
-    handlers: HashMap<String, Arc<dyn HostHandler>>,
-    kinds: HashMap<String, HostMethodKind>,
+    public: HashMap<String, RegisteredHostHandler>,
+    builtins: HashMap<String, HashMap<String, RegisteredHostHandler>>,
 }
 
 impl HostRegistry {
     fn new() -> Self {
         Self {
-            handlers: HashMap::new(),
-            kinds: HashMap::new(),
+            public: HashMap::new(),
+            builtins: HashMap::new(),
         }
+    }
+
+    fn insert_public(&mut self, key: String, handler: RegisteredHostHandler) {
+        self.public.insert(key, handler);
+    }
+
+    fn insert_builtin(&mut self, appid: &str, key: String, handler: RegisteredHostHandler) {
+        self.builtins
+            .entry(appid.to_string())
+            .or_default()
+            .insert(key, handler);
+    }
+
+    fn handler(&self, name: &str, builtin_appid: Option<&str>) -> Option<Arc<dyn HostHandler>> {
+        builtin_appid
+            .and_then(|appid| self.builtins.get(appid))
+            .and_then(|handlers| handlers.get(name))
+            .or_else(|| self.public.get(name))
+            .map(|registered| registered.handler.clone())
+    }
+
+    fn method_schema(&self, builtin_appid: Option<&str>) -> HashMap<String, &'static str> {
+        let mut schema = self
+            .public
+            .iter()
+            .map(|(name, registered)| (name.clone(), method_kind_name(registered.kind)))
+            .collect::<HashMap<_, _>>();
+        if let Some(handlers) = builtin_appid.and_then(|appid| self.builtins.get(appid)) {
+            schema.extend(
+                handlers
+                    .iter()
+                    .map(|(name, registered)| (name.clone(), method_kind_name(registered.kind))),
+            );
+        }
+        schema
+    }
+}
+
+fn method_kind_name(kind: HostMethodKind) -> &'static str {
+    match kind {
+        HostMethodKind::Call => "call",
+        HostMethodKind::Stream => "stream",
     }
 }
 
@@ -157,8 +206,13 @@ pub fn register_host_route(namespace: &str, method: &str, handler: Arc<dyn HostH
     let key = format!("{namespace}.{method}");
     let registry = get_host_registry();
     let mut reg = registry.lock().unwrap();
-    reg.kinds.insert(key.clone(), HostMethodKind::Call);
-    reg.handlers.insert(key, handler);
+    reg.insert_public(
+        key,
+        RegisteredHostHandler {
+            handler,
+            kind: HostMethodKind::Call,
+        },
+    );
 }
 
 pub fn register_host(registration: HostRegistration) {
@@ -166,8 +220,13 @@ pub fn register_host(registration: HostRegistration) {
     let key = format!("{}.{}", registration.namespace, registration.method);
     let registry = get_host_registry();
     let mut reg = registry.lock().unwrap();
-    reg.kinds.insert(key.clone(), registration.kind);
-    reg.handlers.insert(key, registration.handler);
+    reg.insert_public(
+        key,
+        RegisteredHostHandler {
+            handler: registration.handler,
+            kind: registration.kind,
+        },
+    );
 }
 
 /// Unified registration entry returned by the `#[native]` macro for all modes
@@ -185,27 +244,70 @@ pub fn register_host_entry(entry: HostRegistrationEntry) {
     }
 }
 
-pub(crate) fn get_host(name: &str) -> Option<Arc<dyn HostHandler>> {
-    let registry = get_host_registry();
-    registry.lock().unwrap().handlers.get(name).cloned()
+/// Register a Host API that is visible only to a runtime-owned built-in lxapp.
+///
+/// The app id selects the private namespace, but does not grant access by
+/// itself: dispatch also verifies that the caller was constructed from a
+/// built-in asset or synthetic runtime source.
+#[doc(hidden)]
+pub fn register_builtin_host_entry(appid: &str, entry: HostRegistrationEntry) {
+    match entry {
+        HostRegistrationEntry::Handler(registration) => {
+            validate_host_namespace(registration.namespace);
+            let key = format!("{}.{}", registration.namespace, registration.method);
+            get_host_registry().lock().unwrap().insert_builtin(
+                appid,
+                key,
+                RegisteredHostHandler {
+                    handler: registration.handler,
+                    kind: registration.kind,
+                },
+            );
+        }
+        HostRegistrationEntry::Channel(registration) => {
+            register_builtin_channel_handler(appid, registration)
+        }
+    }
 }
 
-/// Returns a map of `"namespace.method"` → `"call"` | `"stream"` for all
-/// registered host methods. Included in the handshake `Ready` message so
-/// the JS bridge can automatically choose the right wire protocol.
-pub fn host_method_schema() -> HashMap<String, &'static str> {
+fn builtin_caller_appid(lxapp: &LxApp) -> Option<&str> {
+    builtin_appid_for_source(&lxapp.appid, &lxapp.bundle_source)
+}
+
+fn builtin_appid_for_source<'a>(
+    appid: &'a str,
+    source: &crate::lxapp::LxAppBundleSource,
+) -> Option<&'a str> {
+    matches!(
+        source,
+        crate::lxapp::LxAppBundleSource::BuiltinAssets | crate::lxapp::LxAppBundleSource::Synthetic
+    )
+    .then_some(appid)
+}
+
+pub(crate) fn get_host(name: &str, lxapp: &LxApp) -> Option<Arc<dyn HostHandler>> {
     let registry = get_host_registry();
-    let reg = registry.lock().unwrap();
-    reg.kinds
-        .iter()
-        .map(|(k, v)| {
-            let kind_str = match v {
-                HostMethodKind::Call => "call",
-                HostMethodKind::Stream => "stream",
-            };
-            (k.clone(), kind_str)
-        })
-        .collect()
+    registry
+        .lock()
+        .unwrap()
+        .handler(name, builtin_caller_appid(lxapp))
+}
+
+/// Returns a map of public `"namespace.method"` → `"call"` | `"stream"`
+/// registrations.
+pub fn host_method_schema() -> HashMap<String, &'static str> {
+    get_host_registry().lock().unwrap().method_schema(None)
+}
+
+/// Returns the public methods plus private built-in methods visible to this
+/// caller. Used by the bridge handshake without advertising built-in WebUI
+/// capabilities to ordinary lxapps.
+pub(crate) fn host_method_schema_for(lxapp: &LxApp) -> HashMap<String, &'static str> {
+    let registry = get_host_registry();
+    registry
+        .lock()
+        .unwrap()
+        .method_schema(builtin_caller_appid(lxapp))
 }
 
 pub fn parse_input<T: DeserializeOwned>(input: Option<&str>) -> HostResult<T> {
@@ -547,13 +649,15 @@ impl ChannelRegistration {
 }
 
 struct ChannelRegistry {
-    handlers: HashMap<String, Arc<dyn ChannelHandler>>,
+    public: HashMap<String, Arc<dyn ChannelHandler>>,
+    builtins: HashMap<String, HashMap<String, Arc<dyn ChannelHandler>>>,
 }
 
 impl ChannelRegistry {
     fn new() -> Self {
         Self {
-            handlers: HashMap::new(),
+            public: HashMap::new(),
+            builtins: HashMap::new(),
         }
     }
 }
@@ -570,16 +674,29 @@ pub fn register_channel_handler(registration: ChannelRegistration) {
     get_channel_registry()
         .lock()
         .unwrap()
-        .handlers
+        .public
         .insert(key, registration.handler);
 }
 
-pub(crate) fn get_channel_handler(name: &str) -> Option<Arc<dyn ChannelHandler>> {
+fn register_builtin_channel_handler(appid: &str, registration: ChannelRegistration) {
+    validate_host_namespace(registration.namespace);
+    let key = format!("{}.{}", registration.namespace, registration.method);
     get_channel_registry()
         .lock()
         .unwrap()
-        .handlers
-        .get(name)
+        .builtins
+        .entry(appid.to_string())
+        .or_default()
+        .insert(key, registration.handler);
+}
+
+pub(crate) fn get_channel_handler(name: &str, lxapp: &LxApp) -> Option<Arc<dyn ChannelHandler>> {
+    let registry = get_channel_registry();
+    let registry = registry.lock().unwrap();
+    builtin_caller_appid(lxapp)
+        .and_then(|appid| registry.builtins.get(appid))
+        .and_then(|handlers| handlers.get(name))
+        .or_else(|| registry.public.get(name))
         .cloned()
 }
 
@@ -619,4 +736,115 @@ pub(crate) fn register_all() {
         navigation::register_all();
         navigator::register_all();
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct NoopHandler;
+
+    impl HostHandler for NoopHandler {
+        fn call<'a>(
+            &'a self,
+            _lxapp: Arc<LxApp>,
+            _input: Option<String>,
+            _cancel: HostCancel,
+        ) -> HostFuture<'a> {
+            Box::pin(async { Ok(HostOutput::Json("null".to_string())) })
+        }
+    }
+
+    fn registered(kind: HostMethodKind) -> RegisteredHostHandler {
+        RegisteredHostHandler {
+            handler: Arc::new(NoopHandler),
+            kind,
+        }
+    }
+
+    #[test]
+    fn builtin_routes_are_absent_without_the_matching_scope() {
+        let mut registry = HostRegistry::new();
+        registry.insert_public("shared.read".to_string(), registered(HostMethodKind::Call));
+        registry.insert_builtin(
+            "app.lingxia.browser",
+            "settings.watch".to_string(),
+            registered(HostMethodKind::Stream),
+        );
+
+        let ordinary = registry.method_schema(None);
+        assert_eq!(ordinary.get("shared.read"), Some(&"call"));
+        assert!(!ordinary.contains_key("settings.watch"));
+        assert!(registry.handler("settings.watch", None).is_none());
+
+        let wrong_builtin = registry.method_schema(Some("app.lingxia.other"));
+        assert!(!wrong_builtin.contains_key("settings.watch"));
+        assert!(
+            registry
+                .handler("settings.watch", Some("app.lingxia.other"))
+                .is_none()
+        );
+
+        let browser = registry.method_schema(Some("app.lingxia.browser"));
+        assert_eq!(browser.get("settings.watch"), Some(&"stream"));
+        assert!(
+            registry
+                .handler("settings.watch", Some("app.lingxia.browser"))
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn builtin_route_can_coexist_with_the_same_public_name() {
+        let mut registry = HostRegistry::new();
+        registry.insert_public(
+            "settings.read".to_string(),
+            registered(HostMethodKind::Call),
+        );
+        registry.insert_builtin(
+            "app.lingxia.browser",
+            "settings.read".to_string(),
+            registered(HostMethodKind::Stream),
+        );
+
+        assert_eq!(
+            registry.method_schema(None).get("settings.read"),
+            Some(&"call")
+        );
+        assert_eq!(
+            registry
+                .method_schema(Some("app.lingxia.browser"))
+                .get("settings.read"),
+            Some(&"stream")
+        );
+    }
+
+    #[test]
+    fn an_appid_does_not_make_an_installed_or_dev_bundle_builtin() {
+        use crate::lxapp::LxAppBundleSource;
+        use std::path::PathBuf;
+
+        let appid = "app.lingxia.browser";
+        assert_eq!(
+            builtin_appid_for_source(appid, &LxAppBundleSource::BuiltinAssets),
+            Some(appid)
+        );
+        assert_eq!(
+            builtin_appid_for_source(appid, &LxAppBundleSource::Synthetic),
+            Some(appid)
+        );
+        assert_eq!(
+            builtin_appid_for_source(appid, &LxAppBundleSource::Installed),
+            None
+        );
+        assert_eq!(
+            builtin_appid_for_source(
+                appid,
+                &LxAppBundleSource::DevPath {
+                    root: PathBuf::from("browser-webui"),
+                },
+            ),
+            None
+        );
+    }
 }

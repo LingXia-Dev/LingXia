@@ -380,6 +380,9 @@
     if (!bridge || !bridge.state || typeof bridge.state.subscribe !== "function") return;
     unsubscribeState = bridge.state.subscribe(function (state) {
       acceptExternalSnapshot(state && state.terminalSettingsSnapshot);
+      if (state && state.displayLanguage && window.LingXiaI18n) {
+        window.LingXiaI18n.adoptAppLocale(state.displayLanguage);
+      }
       if (installingInlineImages) renderWindowsInlineImages(state && state.windowsInlineImageProgress);
     });
   }

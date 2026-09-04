@@ -65,6 +65,7 @@ function windowsTerminal(): WindowsTerminalApi {
 
 let preview: ReturnType<TerminalApi['colorSchemes']['createPreview']> | null = null;
 let stopSettingsChanges: (() => void) | null = null;
+let stopDisplayLanguageChanges: (() => void) | null = null;
 let conptyDownload: ReturnType<typeof lx.downloadFile> | null = null;
 
 function previewController(): ReturnType<TerminalApi['colorSchemes']['createPreview']> {
@@ -75,6 +76,7 @@ function previewController(): ReturnType<TerminalApi['colorSchemes']['createPrev
 Page({
   data: {
     terminalSettingsSnapshot: null as TerminalSnapshot | null,
+    displayLanguage: lx.app.getBaseInfo().displayLanguage,
     windowsInlineImageProgress: null as {
       downloadedBytes?: number;
       totalBytes?: number;
@@ -86,6 +88,10 @@ Page({
     stopSettingsChanges?.();
     stopSettingsChanges = terminal().settings.onChange((snapshot) => {
       this.setData({ terminalSettingsSnapshot: snapshot });
+    });
+    stopDisplayLanguageChanges?.();
+    stopDisplayLanguageChanges = lx.app.onDisplayLanguageChange((displayLanguage) => {
+      this.setData({ displayLanguage });
     });
   },
 
@@ -163,6 +169,8 @@ Page({
   async onUnload() {
     stopSettingsChanges?.();
     stopSettingsChanges = null;
+    stopDisplayLanguageChanges?.();
+    stopDisplayLanguageChanges = null;
     const controller = preview;
     preview = null;
     await controller?.close();

@@ -690,12 +690,6 @@ struct GroupRenameInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct OrderedIdsInput {
-    ordered_ids: Vec<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct SetPinnedInput {
     id: String,
     pinned: bool,
@@ -711,14 +705,6 @@ struct PinStatus {
 struct AddResult {
     entry: BookmarkEntry,
     created: bool,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct StatusResult {
-    bookmarked: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    entry: Option<BookmarkEntry>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -922,55 +908,6 @@ fn remove_bookmark(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
     set_bookmark_pinned(&input.id, false)
 }
 
-#[lingxia::native("bookmarks.toggle")]
-fn toggle_bookmark_route(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusResult> {
-    crate::require_builtin_browser(&app)?;
-    let (status, removed_id) = mutate(&app.app_data_dir(), |snapshot| {
-        let normalized = normalize_url(&input.url);
-        if let Some(existing) = find_entry(snapshot, &normalized) {
-            let id = existing.id.clone();
-            snapshot.entries.retain(|e| e.id != id);
-            Ok((
-                StatusResult {
-                    bookmarked: false,
-                    entry: None,
-                },
-                Some(id),
-            ))
-        } else {
-            let (entry, _) = add_entry(
-                snapshot,
-                &input.url,
-                input.title.as_deref(),
-                input.group_id.as_deref(),
-            )?;
-            Ok((
-                StatusResult {
-                    bookmarked: true,
-                    entry: Some(entry),
-                },
-                None,
-            ))
-        }
-    })?;
-    if let Some(id) = removed_id {
-        set_bookmark_pinned(&id, false)?;
-    }
-    Ok(status)
-}
-
-#[lingxia::native("bookmarks.getStatus")]
-fn bookmark_status(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusResult> {
-    crate::require_builtin_browser(&app)?;
-    let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
-    let snapshot = load(&app.app_data_dir())?;
-    let entry = find_entry(&snapshot, &normalize_url(&input.url)).cloned();
-    Ok(StatusResult {
-        bookmarked: entry.is_some(),
-        entry,
-    })
-}
-
 #[lingxia::native("bookmarks.rename")]
 fn rename_bookmark(app: Arc<LxApp>, input: RenameInput) -> HostResult<BookmarkEntry> {
     crate::require_builtin_browser(&app)?;
@@ -1051,27 +988,6 @@ fn delete_group(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
     crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
         delete_group_op(snapshot, &input.id)
-    })
-}
-
-#[lingxia::native("bookmarks.reorderGroups")]
-fn reorder_groups(app: Arc<LxApp>, input: OrderedIdsInput) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
-    mutate(&app.app_data_dir(), |snapshot| {
-        let ids: Vec<&str> = snapshot.groups.iter().map(|g| g.id.as_str()).collect();
-        if !is_id_permutation(&ids, &input.ordered_ids) {
-            return Err(LxAppError::InvalidParameter(
-                "orderedIds must be a permutation of all group ids".to_string(),
-            ));
-        }
-        snapshot.groups.sort_by_key(|g| {
-            input
-                .ordered_ids
-                .iter()
-                .position(|id| *id == g.id)
-                .unwrap_or(usize::MAX)
-        });
-        Ok(())
     })
 }
 
@@ -1208,22 +1124,19 @@ async fn watch_bookmarks(
 }
 
 pub(crate) fn register() {
-    lxapp::host::register_host_entry(list_bookmarks_host());
-    lxapp::host::register_host_entry(add_bookmark_host());
-    lxapp::host::register_host_entry(remove_bookmark_host());
-    lxapp::host::register_host_entry(toggle_bookmark_route_host());
-    lxapp::host::register_host_entry(bookmark_status_host());
-    lxapp::host::register_host_entry(rename_bookmark_host());
-    lxapp::host::register_host_entry(move_bookmark_host());
-    lxapp::host::register_host_entry(reorder_bookmarks_host());
-    lxapp::host::register_host_entry(set_pinned_host());
-    lxapp::host::register_host_entry(create_group_host());
-    lxapp::host::register_host_entry(rename_group_host());
-    lxapp::host::register_host_entry(delete_group_host());
-    lxapp::host::register_host_entry(reorder_groups_host());
-    lxapp::host::register_host_entry(import_html_bookmarks_host());
-    lxapp::host::register_host_entry(export_html_bookmarks_host());
-    lxapp::host::register_host_entry(watch_bookmarks_host());
+    crate::register_webui_host_entry(list_bookmarks_host());
+    crate::register_webui_host_entry(add_bookmark_host());
+    crate::register_webui_host_entry(remove_bookmark_host());
+    crate::register_webui_host_entry(rename_bookmark_host());
+    crate::register_webui_host_entry(move_bookmark_host());
+    crate::register_webui_host_entry(reorder_bookmarks_host());
+    crate::register_webui_host_entry(set_pinned_host());
+    crate::register_webui_host_entry(create_group_host());
+    crate::register_webui_host_entry(rename_group_host());
+    crate::register_webui_host_entry(delete_group_host());
+    crate::register_webui_host_entry(import_html_bookmarks_host());
+    crate::register_webui_host_entry(export_html_bookmarks_host());
+    crate::register_webui_host_entry(watch_bookmarks_host());
 }
 
 #[cfg(test)]

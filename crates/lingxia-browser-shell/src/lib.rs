@@ -120,10 +120,17 @@ fn bundled_context_menu_script() -> Result<String, LxAppError> {
     read_browser_asset_text(BROWSER_CONTEXT_MENU_ASSET_PATH)
 }
 
-/// Host routes live in a process-global registry with no per-app scoping, so
-/// every browser-private route must gate itself on the calling app's id.
+/// Defense-in-depth for browser handlers. Registration and dispatch already
+/// require a runtime-owned built-in browser identity; keep the local check so
+/// a handler cannot silently lose its caller assertion during refactoring.
 pub(crate) fn require_builtin_browser(app: &LxApp) -> Result<(), LxAppError> {
     require_builtin_browser_appid(&app.appid)
+}
+
+/// Keep browser WebUI routes out of the public lxapp Host API registry. The
+/// bridge exposes these entries only to the runtime-owned browser lxapp.
+pub(crate) fn register_webui_host_entry(entry: lxapp::host::HostRegistrationEntry) {
+    lxapp::host::register_builtin_host_entry(lingxia_browser::BUILTIN_BROWSER_APPID, entry);
 }
 
 fn require_builtin_browser_appid(appid: &str) -> Result<(), LxAppError> {

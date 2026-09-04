@@ -849,11 +849,12 @@ impl PageBridge {
         transport: &T,
         session_id: String,
     ) -> Result<(), LxAppError> {
+        let lxapp = self.lxapp();
         let msg = ReadyMsg {
             v: 2,
             kind: "ready",
             session_id,
-            host_methods: host::host_method_schema(),
+            host_methods: host::host_method_schema_for(&lxapp),
         };
         self.send_json(transport, &msg)
     }
@@ -967,7 +968,8 @@ impl PageBridge {
         host_topic: &str,
         params_json: Option<String>,
     ) -> Result<(), LxAppError> {
-        let Some(handler) = host::get_channel_handler(host_topic) else {
+        let lxapp = self.lxapp();
+        let Some(handler) = host::get_channel_handler(host_topic, &lxapp) else {
             let _ = self.send_ch_ack_err(
                 page,
                 id,
@@ -1014,7 +1016,6 @@ impl PageBridge {
 
         // Call handler.on_open synchronously; the handler is expected to spawn
         // its own async task if it needs to do long-running work.
-        let lxapp = self.lxapp();
         handler.on_open(lxapp, ctx, params_json);
 
         Ok(())
@@ -1027,7 +1028,8 @@ impl PageBridge {
         host_method: String,
         params_json: Option<String>,
     ) -> Result<(), LxAppError> {
-        let Some(handler) = host::get_host(&host_method) else {
+        let lxapp = self.lxapp();
+        let Some(handler) = host::get_host(&host_method, &lxapp) else {
             let _ = self.send_res_err(
                 page,
                 id,
@@ -1038,7 +1040,6 @@ impl PageBridge {
             return Ok(());
         };
 
-        let lxapp = self.lxapp();
         let page = page.clone();
         let task_page = page.clone();
         let bridge = self.clone();
@@ -1130,11 +1131,11 @@ impl PageBridge {
         host_method: String,
         params_json: Option<String>,
     ) -> Result<(), LxAppError> {
-        let Some(handler) = host::get_host(&host_method) else {
+        let lxapp = self.lxapp();
+        let Some(handler) = host::get_host(&host_method, &lxapp) else {
             return Ok(());
         };
 
-        let lxapp = self.lxapp();
         let appid = page.appid();
         let path = page.path();
         let task_host_method = host_method.clone();

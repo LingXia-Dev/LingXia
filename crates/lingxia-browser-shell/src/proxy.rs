@@ -985,10 +985,10 @@ async fn watch_proxy_settings(
 }
 
 pub(crate) fn register() {
-    lxapp::host::register_host_entry(get_proxy_settings_host());
-    lxapp::host::register_host_entry(update_proxy_settings_host());
-    lxapp::host::register_host_entry(refresh_gfwlist_host());
-    lxapp::host::register_host_entry(watch_proxy_settings_host());
+    crate::register_webui_host_entry(get_proxy_settings_host());
+    crate::register_webui_host_entry(update_proxy_settings_host());
+    crate::register_webui_host_entry(refresh_gfwlist_host());
+    crate::register_webui_host_entry(watch_proxy_settings_host());
 }
 
 pub(crate) fn warmup() {

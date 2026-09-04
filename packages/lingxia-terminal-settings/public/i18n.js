@@ -4,7 +4,7 @@
   /*
    * Same contract as the browser package's i18n: `data-i18n` attributes in the
    * markup, a two-locale dictionary, and the host's language followed live
-   * through `settings.watchLanguage`. Sharing the shape matters more than
+   * through replicated Logic state. Sharing the shape matters more than
    * sharing the file - a settings screen that picked its own convention would
    * be the one surface a translator has to learn twice.
    */
@@ -161,6 +161,7 @@
   }
 
   var locale = resolveLocale();
+  var appLocale = null;
 
   function interpolate(value, variables) {
     return String(value).replace(/\{([a-zA-Z0-9_]+)\}/g, function (_, key) {
@@ -229,75 +230,28 @@
     apply: apply,
     setLocale: setLocale,
     useSystemLocale: useSystemLocale,
+    adoptAppLocale: function (value) {
+      var next = normalizeLocale(value);
+      if (!next) return locale;
+      appLocale = next;
+      if (storedLocale() || next === locale) return locale;
+      locale = next;
+      api.locale = locale;
+      apply();
+      return locale;
+    },
     /// Drop this screen's own choice and take the app's language again. The
     /// host decides it, so this is not the same as the operating system's.
     followApp: function () {
       try {
         global.localStorage.removeItem(LOCALE_STORAGE_KEY);
       } catch (_) {}
-      if (typeof api._refreshFromHost === 'function') {
-        api._refreshFromHost();
-        return locale;
-      }
+      if (appLocale) return api.adoptAppLocale(appLocale);
       return useSystemLocale();
     },
     storageKey: LOCALE_STORAGE_KEY
   };
   global.LingXiaI18n = api;
-
-  function syncLocaleFromHost() {
-    var bridge = global.LingXiaBridge;
-    if (!bridge || typeof bridge.invoke !== 'function') return;
-    function adoptHostLocale(result) {
-      if (result && result.language == null) {
-        useSystemLocale();
-        return;
-      }
-      var hostLocale = normalizeLocale(result && result.language);
-      if (!hostLocale || hostLocale === locale) return;
-      // Reached with no stored override, so this is the app's language, not a
-      // choice this screen made.
-      // setLocale re-applies every translation in place. Reloading instead
-      // would destroy the page: its document was injected with the bridge
-      // configuration, and navigating to the base URL fetches the raw file
-      // without it, leaving a screen whose Logic calls are never answered.
-      setLocale(hostLocale);
-    }
-    api._refreshFromHost = refreshFromHost;
-    function refreshFromHost() {
-      bridge.invoke('settings.getLanguage').then(adoptHostLocale, function () {});
-    }
-    var languageWatchRetryMs = 1000;
-    var languageWatchRetryTimer = null;
-    function scheduleLanguageWatch() {
-      if (languageWatchRetryTimer != null) return;
-      languageWatchRetryTimer = global.setTimeout(function () {
-        languageWatchRetryTimer = null;
-        attachLanguageWatch();
-      }, languageWatchRetryMs);
-      languageWatchRetryMs = Math.min(languageWatchRetryMs * 2, 30000);
-    }
-    function attachLanguageWatch() {
-      if (typeof bridge.stream !== 'function') return;
-      var watch = bridge.stream('settings.watchLanguage');
-      var startedAt = Date.now();
-      api.languageWatch = watch;
-      watch.onEvent(adoptHostLocale);
-      watch.onError(function () {
-        if (api.languageWatch !== watch) return;
-        api.languageWatch = null;
-        // Transport reset: re-sync immediately, then reconnect with backoff.
-        // Only a stream that stayed healthy for a while resets the backoff —
-        // the seed event must not, or a flapping stream reconnects at the
-        // floor forever.
-        if (Date.now() - startedAt > 30000) languageWatchRetryMs = 1000;
-        refreshFromHost();
-        scheduleLanguageWatch();
-      });
-    }
-    refreshFromHost();
-    attachLanguageWatch();
-  }
 
   if (typeof global.addEventListener === 'function') {
     global.addEventListener('storage', function (event) {
@@ -320,6 +274,4 @@
       apply();
     }
   }
-
-  syncLocaleFromHost();
 })(window);

@@ -135,9 +135,8 @@ fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResul
     download_settings_result(&app)
 }
 
-/// Readable by any lxapp: the host's display language is what every screen has
-/// to render in, and a Logic worker already reads it from `lx.app` base info.
-/// This write path stays browser-private; the home lxapp writes through
+/// Browser WebUI read path. Ordinary lxapps read the effective language from
+/// `lx.app` base info instead; the home lxapp writes through
 /// `lx.app.setDisplayLanguage`.
 #[lingxia::native("settings.getLanguage")]
 fn get_display_language(app: Arc<LxApp>) -> HostResult<LanguageSettingsResult> {
@@ -182,13 +181,13 @@ async fn watch_display_language(
 }
 
 pub(crate) fn register() {
-    lxapp::host::register_host_entry(get_app_info_host());
-    lxapp::host::register_host_entry(get_download_settings_host());
-    lxapp::host::register_host_entry(choose_download_directory_host());
-    lxapp::host::register_host_entry(reset_download_directory_host());
-    lxapp::host::register_host_entry(get_display_language_host());
-    lxapp::host::register_host_entry(set_display_language_host());
-    lxapp::host::register_host_entry(watch_display_language_host());
+    crate::register_webui_host_entry(get_app_info_host());
+    crate::register_webui_host_entry(get_download_settings_host());
+    crate::register_webui_host_entry(choose_download_directory_host());
+    crate::register_webui_host_entry(reset_download_directory_host());
+    crate::register_webui_host_entry(get_display_language_host());
+    crate::register_webui_host_entry(set_display_language_host());
+    crate::register_webui_host_entry(watch_display_language_host());
     lxapp::add_display_language_change_listener(Box::new(|| {
         let Some(runtime) = lxapp::get_platform() else {
             return;

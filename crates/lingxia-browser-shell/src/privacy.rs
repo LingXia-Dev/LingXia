@@ -128,22 +128,6 @@ async fn get_privacy_usage(app: Arc<LxApp>) -> HostResult<PrivacyUsage> {
     })
 }
 
-#[lingxia::native("privacy.clearCache")]
-async fn clear_cache(app: Arc<LxApp>) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
-    lingxia_webview::data_store::clear_cache(None)
-        .await
-        .map_err(|e| map_webview_error("privacy.clearCache", e))
-}
-
-#[lingxia::native("privacy.clearAllSiteData")]
-async fn clear_all_site_data(app: Arc<LxApp>) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
-    lingxia_webview::data_store::clear_all_site_data(None)
-        .await
-        .map_err(|e| map_webview_error("privacy.clearAllSiteData", e))
-}
-
 #[lingxia::native("privacy.clearBrowsingData")]
 async fn clear_browsing_data(
     app: Arc<LxApp>,
@@ -267,10 +251,8 @@ async fn get_site_data_context(
 }
 
 pub(crate) fn register() {
-    lxapp::host::register_host_entry(get_privacy_usage_host());
-    lxapp::host::register_host_entry(clear_cache_host());
-    lxapp::host::register_host_entry(clear_all_site_data_host());
-    lxapp::host::register_host_entry(clear_browsing_data_host());
-    lxapp::host::register_host_entry(clear_site_data_host());
-    lxapp::host::register_host_entry(get_site_data_context_host());
+    crate::register_webui_host_entry(get_privacy_usage_host());
+    crate::register_webui_host_entry(clear_browsing_data_host());
+    crate::register_webui_host_entry(clear_site_data_host());
+    crate::register_webui_host_entry(get_site_data_context_host());
 }

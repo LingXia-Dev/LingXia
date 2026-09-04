@@ -285,16 +285,16 @@ async fn watch_downloads(
 }
 
 pub(crate) fn register() {
-    lxapp::host::register_host_entry(list_downloads_host());
-    lxapp::host::register_host_entry(clear_completed_downloads_host());
-    lxapp::host::register_host_entry(remove_download_route_host());
-    lxapp::host::register_host_entry(cancel_download_route_host());
-    lxapp::host::register_host_entry(pause_download_route_host());
-    lxapp::host::register_host_entry(retry_download_route_host());
-    lxapp::host::register_host_entry(resume_download_route_host());
-    lxapp::host::register_host_entry(open_download_route_host());
-    lxapp::host::register_host_entry(reveal_download_route_host());
-    lxapp::host::register_host_entry(watch_downloads_host());
+    crate::register_webui_host_entry(list_downloads_host());
+    crate::register_webui_host_entry(clear_completed_downloads_host());
+    crate::register_webui_host_entry(remove_download_route_host());
+    crate::register_webui_host_entry(cancel_download_route_host());
+    crate::register_webui_host_entry(pause_download_route_host());
+    crate::register_webui_host_entry(retry_download_route_host());
+    crate::register_webui_host_entry(resume_download_route_host());
+    crate::register_webui_host_entry(open_download_route_host());
+    crate::register_webui_host_entry(reveal_download_route_host());
+    crate::register_webui_host_entry(watch_downloads_host());
 }
 
 #[cfg(test)]

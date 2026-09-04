@@ -552,10 +552,10 @@ async fn watch_history(
 }
 
 pub(crate) fn register() {
-    lxapp::host::register_host_entry(list_history_host());
-    lxapp::host::register_host_entry(remove_history_entry_host());
-    lxapp::host::register_host_entry(clear_history_host());
-    lxapp::host::register_host_entry(watch_history_host());
+    crate::register_webui_host_entry(list_history_host());
+    crate::register_webui_host_entry(remove_history_entry_host());
+    crate::register_webui_host_entry(clear_history_host());
+    crate::register_webui_host_entry(watch_history_host());
 }
 
 #[cfg(test)]
