@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 GATE="$ROOT_DIR/scripts/ci/control-security-gates.sh"
+AUTHORITY_GATE="$ROOT_DIR/scripts/ci/authority-escape-gate.sh"
 WORKFLOW="$ROOT_DIR/.github/workflows/ci.yml"
 
 filter_has_path() {
@@ -28,7 +29,14 @@ job_has_text() {
 }
 
 bash -n "$GATE"
+bash -n "$AUTHORITY_GATE"
 bash "$GATE" verify
+bash "$AUTHORITY_GATE" self-test
+
+grep -Fq 'bash scripts/ci/authority-escape-gate.sh run' "$GATE" || {
+  echo "portable Rust security gate does not run the authority escape fixture" >&2
+  exit 1
+}
 
 for filter in core control_security; do
   filter_has_path "$filter" 'third_party/**' || {

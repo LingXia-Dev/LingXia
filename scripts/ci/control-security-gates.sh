@@ -20,7 +20,10 @@ verify_inputs() {
     crates/lingxia-settings/Cargo.toml
     crates/lingxia-transfer/Cargo.toml
     crates/lingxia/Cargo.toml
+    crates/lingxia/tests/fixtures/authority-escape/Cargo.toml
+    crates/lingxia/tests/fixtures/authority-escape/src/main.rs
     packages/lingxia-bridge/package.json
+    scripts/ci/authority-escape-gate.sh
     lingxia-sdk/android/gradlew
     lingxia-sdk/android/lingxia/src/test/java/com/lingxia/webview/AndroidDocumentBridgeStateTest.java
     lingxia-sdk/android/lingxia/src/test/java/com/lingxia/webview/DocumentCommitCallbackPolicyTest.java
@@ -55,6 +58,7 @@ case "$profile" in
       --lib
     cargo test -p lingxia-transfer --lib download::manager::tests
     cargo test -p lingxia --lib host_addon::tests
+    bash scripts/ci/authority-escape-gate.sh run
     ;;
   bridge)
     verify_inputs
