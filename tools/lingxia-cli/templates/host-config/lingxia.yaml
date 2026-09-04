@@ -43,6 +43,25 @@ app:
 {{PLATFORMS}}
 {{HOME_APP_FIELD}}
 
+# 可选的 Settings 目标。Host 将这一静态 descriptor 写入 app.json；一次只能选择一种 kind。
+# query 的 key 不可为空，value 只能是 string、number、boolean 或 null。
+# settingsDestination:
+#   kind: controlAppPage
+#   appId: com.example.control
+#   page: settings
+#   query:
+#     tab: general
+#
+# Browser 产品也可以把 Settings 指向 browser control page：
+# settingsDestination:
+#   kind: browserControlPage
+#   route: /settings
+#
+# 完全由 native UI 管理 Settings 时，声明一个 host 注册的 action id：
+# settingsDestination:
+#   kind: nativeAction
+#   actionId: openPreferences
+
 # Optional application-wide native UI colors. Omitted roles keep each
 # platform's semantic defaults. Values must use opaque #RRGGBB syntax.
 # theme:

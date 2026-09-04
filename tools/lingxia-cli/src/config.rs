@@ -37,6 +37,9 @@ pub struct LingXiaConfig {
     /// Application-wide native UI colors emitted into `app.json`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<ThemeConfig>,
+    /// Static destination used by host-owned Settings affordances.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings_destination: Option<SettingsDestination>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub browser: Option<BrowserConfig>,
     /// Generated UI structure (`ui.json`). Built from `surfaces` at load time;
@@ -124,7 +127,7 @@ impl Default for FeaturesConfig {
 
 // One shared definition with the runtime (which reads it back from app.json),
 // so a capability can never exist on one side only.
-pub use lingxia_app_context::{CapabilitiesConfig, ThemeConfig};
+pub use lingxia_app_context::{CapabilitiesConfig, SettingsDestination, ThemeConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1776,6 +1779,7 @@ impl LingXiaConfig {
             features: Some(FeaturesConfig::default()),
             capabilities: Some(CapabilitiesConfig::default()),
             theme: None,
+            settings_destination: None,
             browser: None,
             generated_ui: None,
             surfaces: None,
@@ -1850,6 +1854,9 @@ impl LingXiaConfig {
 
     fn validate(&self) -> Result<()> {
         validate_capability_dependencies(self.capabilities.as_ref())?;
+        if let Some(destination) = self.settings_destination.as_ref() {
+            destination.validate().map_err(|message| anyhow!(message))?;
+        }
         if let Some(app) = &self.app {
             if app.project_name.trim().is_empty() {
                 return Err(anyhow!("app.projectName must not be empty"));
@@ -2679,6 +2686,71 @@ mod tests {
         let resources = parsed.resources.unwrap();
         assert_eq!(resources.bundles[0].app_id, "my-app");
         assert_eq!(resources.bundles[0].path.as_deref(), Some("my-app"));
+    }
+
+    #[test]
+    fn settings_destination_authoring_round_trips_and_validates() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let yaml_without_destination = yaml::to_string(&config).unwrap();
+        assert!(!yaml_without_destination.contains("settingsDestination"));
+
+        config.settings_destination = Some(SettingsDestination::ControlAppPage {
+            app_id: "my-app".to_string(),
+            page: "settings".to_string(),
+            query: Some(BTreeMap::from([
+                ("tab".to_string(), json!("general")),
+                ("preview".to_string(), json!(true)),
+                ("empty".to_string(), Value::Null),
+            ])),
+        });
+        let serialized = yaml::to_string(&config).unwrap();
+        assert!(serialized.contains("kind: controlAppPage"));
+        let parsed: LingXiaConfig = yaml::from_str(&serialized).unwrap();
+        assert_eq!(parsed.settings_destination, config.settings_destination);
+        parsed.validate().expect("valid settings destination");
+
+        config.settings_destination = Some(SettingsDestination::BrowserControlPage {
+            route: "/settings".to_string(),
+            query: None,
+        });
+        config.validate().expect("valid browser destination");
+
+        config.settings_destination = Some(SettingsDestination::NativeAction {
+            action_id: "openPreferences".to_string(),
+        });
+        config.validate().expect("valid native destination");
+    }
+
+    #[test]
+    fn settings_destination_authoring_rejects_unknown_and_invalid_values() {
+        let unknown = r#"
+kind: nativeAction
+actionId: openPreferences
+route: /wrong
+"#;
+        assert!(yaml::from_str::<SettingsDestination>(unknown).is_err());
+
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        for destination in [
+            SettingsDestination::ControlAppPage {
+                app_id: " ".to_string(),
+                page: "settings".to_string(),
+                query: None,
+            },
+            SettingsDestination::BrowserControlPage {
+                route: "/settings".to_string(),
+                query: Some(BTreeMap::from([(
+                    "nested".to_string(),
+                    json!({ "no": true }),
+                )])),
+            },
+            SettingsDestination::NativeAction {
+                action_id: String::new(),
+            },
+        ] {
+            config.settings_destination = Some(destination);
+            assert!(config.validate().is_err());
+        }
     }
 
     #[test]
