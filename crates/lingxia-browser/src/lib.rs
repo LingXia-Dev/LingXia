@@ -56,8 +56,12 @@ pub fn set_title_changed_handler(handler: BrowserPageMetadataHandler) {
 }
 
 #[doc(hidden)]
-pub fn register_document_script(js: impl Into<String>) {
-    internal_pages::register_browser_document_script(js);
+pub fn register_document_script(
+    native_authority: &lxapp::NativeControlPlaneAuthority,
+    js: impl Into<String>,
+) -> Result<(), LxAppError> {
+    require_native_control_authority(native_authority)?;
+    internal_pages::register_browser_document_script(js)
 }
 
 #[doc(hidden)]
@@ -78,23 +82,88 @@ pub fn __install_native_control_authority(authority: lxapp::NativeControlPlaneAu
 
 #[doc(hidden)]
 pub fn register_internal_page(
+    native_authority: &lxapp::NativeControlPlaneAuthority,
     route: impl Into<String>,
     entry_asset: impl Into<String>,
 ) -> Result<(), LxAppError> {
+    require_native_control_authority(native_authority)?;
     internal_pages::register_browser_internal_page(route, entry_asset)
 }
 
 pub fn open(url: &str, tab_id: Option<&str>) -> Result<String, LxAppError> {
+    reject_trusted_control_url(url)?;
     tabs::open_internal_browser_tab(url, tab_id)
+}
+
+#[doc(hidden)]
+pub fn open_trusted(
+    native_authority: &lxapp::NativeControlPlaneAuthority,
+    url: &str,
+    tab_id: Option<&str>,
+) -> Result<String, LxAppError> {
+    require_native_control_authority(native_authority)?;
+    tabs::open_internal_browser_tab(url, tab_id)
+}
+
+#[doc(hidden)]
+pub fn open_trusted_for_app(
+    native_authority: &lxapp::NativeControlPlaneAuthority,
+    appid: &str,
+    session_id: u64,
+    url: &str,
+    tab_id: Option<&str>,
+) -> Result<String, LxAppError> {
+    require_native_control_authority(native_authority)?;
+    tabs::open_internal_browser_tab_for_owner(
+        appid,
+        session_id,
+        url,
+        tab_id,
+        false,
+        false,
+        lingxia_webview::WebViewDataMode::ProfileDefault,
+        false,
+    )
 }
 
 /// Bootstrap-TCB entry that always requests a new trusted top-level load of a
 /// registered internal control page. It never returns document authority.
 #[doc(hidden)]
 pub fn navigate_trusted_control_page(
+    native_authority: &lxapp::NativeControlPlaneAuthority,
     url: &str,
 ) -> Result<TrustedControlPageNavigation, LxAppError> {
+    require_native_control_authority(native_authority)?;
     tabs::navigate_trusted_control_page(url)
+}
+
+fn require_native_control_authority(
+    native_authority: &lxapp::NativeControlPlaneAuthority,
+) -> Result<(), LxAppError> {
+    native_authority.is_live().then_some(()).ok_or_else(|| {
+        LxAppError::UnsupportedOperation(
+            "trusted browser control operation requires live native host authority".to_string(),
+        )
+    })
+}
+
+fn reject_trusted_control_url(url: &str) -> Result<(), LxAppError> {
+    (extract_url_scheme(url).as_deref() != Some("lingxia"))
+        .then_some(())
+        .ok_or_else(|| {
+            LxAppError::UnsupportedOperation(
+                "lingxia:// navigation requires sealed native browser authority".to_string(),
+            )
+        })
+}
+
+#[doc(hidden)]
+pub fn seal_control_registration(
+    native_authority: &lxapp::NativeControlPlaneAuthority,
+) -> Result<(), LxAppError> {
+    require_native_control_authority(native_authority)?;
+    internal_pages::seal_browser_control_registration();
+    Ok(())
 }
 
 pub fn open_for_app(
@@ -103,6 +172,7 @@ pub fn open_for_app(
     url: &str,
     tab_id: Option<&str>,
 ) -> Result<String, LxAppError> {
+    reject_trusted_control_url(url)?;
     tabs::open_internal_browser_tab_for_owner(
         appid,
         session_id,
@@ -122,6 +192,7 @@ pub fn open_aside_for_app(
     url: &str,
     tab_id: Option<&str>,
 ) -> Result<String, LxAppError> {
+    reject_trusted_control_url(url)?;
     tabs::open_internal_browser_tab_for_owner(
         appid,
         session_id,
@@ -145,6 +216,7 @@ pub fn open_standalone_for_app(
     data_mode: lingxia_webview::WebViewDataMode,
     url_callback: bool,
 ) -> Result<String, LxAppError> {
+    reject_trusted_control_url(url)?;
     tabs::open_internal_browser_tab_for_owner(
         appid,
         session_id,

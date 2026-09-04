@@ -103,18 +103,25 @@ mod tests {
         use crate::host::{AuthenticatedCaller, authorize, host_route_schema};
         use lxapp::AppSessionClass;
 
+        unsafe extern "Rust" {
+            #[link_name = "lingxia_lxapp_test_authenticated_caller_v1"]
+            fn test_authenticated_caller(
+                app_id: &str,
+                session_id: u64,
+                class: AppSessionClass,
+            ) -> AuthenticatedCaller;
+            #[link_name = "lingxia_lxapp_test_browser_caller_v1"]
+            fn test_browser_caller() -> AuthenticatedCaller;
+        }
+
         register();
-        let standard = AuthenticatedCaller::lxapp_session_for_test(
-            "test.standard",
-            1,
-            AppSessionClass::StandardApp,
-        );
-        let control = AuthenticatedCaller::lxapp_session_for_test(
-            "test.control",
-            2,
-            AppSessionClass::ControlApp,
-        );
-        let browser = AuthenticatedCaller::browser_document_for_test();
+        // SAFETY: these symbols are private workspace test harnesses and are
+        // not reachable through lxapp's safe downstream API.
+        let standard =
+            unsafe { test_authenticated_caller("test.standard", 1, AppSessionClass::StandardApp) };
+        let control =
+            unsafe { test_authenticated_caller("test.control", 2, AppSessionClass::ControlApp) };
+        let browser = unsafe { test_browser_caller() };
         let watch_audience = watch_display_language_host().audience();
 
         assert!(

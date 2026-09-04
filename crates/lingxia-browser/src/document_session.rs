@@ -1057,8 +1057,14 @@ pub(crate) fn browser_document_sessions() -> Arc<BrowserDocumentSessions> {
     #[cfg(test)]
     return BROWSER_DOCUMENT_SESSIONS
         .get_or_init(|| {
+            unsafe extern "Rust" {
+                #[link_name = "lingxia_lxapp_test_control_authority_v1"]
+                fn test_control_authority() -> NativeControlPlaneAuthority;
+            }
             Arc::new(BrowserDocumentSessions::new(
-                NativeControlPlaneAuthority::for_test(),
+                // SAFETY: this private workspace test harness is not part of
+                // lxapp's safe downstream API.
+                unsafe { test_control_authority() },
             ))
         })
         .clone();

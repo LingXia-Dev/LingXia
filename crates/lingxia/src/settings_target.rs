@@ -501,7 +501,7 @@ pub(crate) fn validated() -> Option<&'static ValidatedStaticSettingsTargets> {
 
 /// Returns the bootstrap-validated Settings declaration, if this product has
 /// one. Native chrome may use this only to decide whether to render an
-/// affordance; clicks must still call [`crate::resolve_settings_destination`].
+/// affordance; clicks must still resolve through the initialized runtime handle.
 pub fn static_settings_destination() -> Option<&'static SettingsDestination> {
     validated().and_then(ValidatedStaticSettingsTargets::destination)
 }

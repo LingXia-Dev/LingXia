@@ -59,7 +59,7 @@ enum AuthorityKind {
 /// Opaque proof returned only to the native caller that successfully boots the
 /// process-wide lxapp runtime. Native extensions must be handed this proof by
 /// that host; there is no global accessor or standalone constructor.
-pub struct NativeHostRuntimeToken {
+pub(crate) struct NativeHostRuntimeToken {
     runtime: std::sync::Weak<Platform>,
 }
 
@@ -72,12 +72,6 @@ impl NativeHostRuntimeToken {
 
     pub(crate) fn runtime(&self) -> &std::sync::Weak<Platform> {
         &self.runtime
-    }
-
-    #[cfg(feature = "test-utils")]
-    #[doc(hidden)]
-    pub fn for_test(runtime: &std::sync::Arc<Platform>) -> Self {
-        Self::new(runtime)
     }
 }
 
@@ -93,6 +87,13 @@ impl TerminalAutomationAuthority {
     pub(crate) fn native_for_test() -> Self {
         Self {
             kind: AuthorityKind::NativeTest,
+        }
+    }
+
+    #[cfg(feature = "test-utils")]
+    pub(crate) fn native_runtime_for_test(runtime: &std::sync::Arc<Platform>) -> Self {
+        Self {
+            kind: AuthorityKind::NativeHost(std::sync::Arc::downgrade(runtime)),
         }
     }
 
@@ -114,9 +115,7 @@ impl TerminalAutomationAuthority {
         })
     }
 
-    /// Derive terminal authority from the opaque proof returned to the native
-    /// host at successful runtime bootstrap.
-    pub fn for_native_runtime(proof: &NativeHostRuntimeToken) -> Self {
+    pub(crate) fn for_native_runtime(proof: &NativeHostRuntimeToken) -> Self {
         Self {
             kind: AuthorityKind::NativeHost(proof.runtime.clone()),
         }
@@ -140,8 +139,7 @@ impl TerminalAutomationAuthority {
     }
 
     #[cfg(feature = "test-utils")]
-    #[doc(hidden)]
-    pub fn validate_native_runtime_for_test(
+    pub(crate) fn validate_native_runtime_for_test(
         &self,
         current: Option<&std::sync::Arc<Platform>>,
     ) -> Result<(), String> {

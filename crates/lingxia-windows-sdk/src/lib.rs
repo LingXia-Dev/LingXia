@@ -353,7 +353,7 @@ pub fn init_runtime(app: WindowsApp) -> Result<RuntimeInfo> {
     platform.install_taskbar_identity();
     let runtime = lingxia::windows::init(platform)?;
     #[cfg(feature = "shell-chrome")]
-    shell::configure_static_settings_source(lingxia::static_settings_destination());
+    shell::configure_static_settings_source(lingxia::static_settings_destination(), &runtime);
     #[cfg(feature = "terminal-runtime")]
     if !shell::install_terminal_automation_authority(runtime.terminal_automation_authority()) {
         return Err(WindowsHostError::OpenTerminal(

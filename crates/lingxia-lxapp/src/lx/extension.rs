@@ -32,7 +32,10 @@
 //! ```
 //!
 
+use crate::AppSessionClass;
 use rong::{JSContext, JSResult};
+#[cfg(feature = "js-appservice")]
+use std::cell::Cell;
 #[cfg(feature = "js-appservice")]
 use std::sync::{Mutex, OnceLock};
 
@@ -63,9 +66,29 @@ pub trait LxLogicExtension: Send + Sync {
 // Type alias for convenience when handling boxed extensions.
 type BoxedExtension = Box<dyn LxLogicExtension>;
 
+#[derive(Clone, Copy)]
+enum ExtensionAudience {
+    StandardOnly,
+    HostAssigned,
+}
+
+struct RegisteredExtension {
+    extension: BoxedExtension,
+    audience: ExtensionAudience,
+}
+
+fn audience_allows(audience: ExtensionAudience, class: AppSessionClass) -> bool {
+    matches!(audience, ExtensionAudience::HostAssigned) || class == AppSessionClass::StandardApp
+}
+
 // Global registry for LxApp extensions. Initialized only once.
 #[cfg(feature = "js-appservice")]
-static EXTENSIONS: OnceLock<Mutex<Vec<BoxedExtension>>> = OnceLock::new();
+static EXTENSIONS: OnceLock<Mutex<Vec<RegisteredExtension>>> = OnceLock::new();
+
+#[cfg(feature = "js-appservice")]
+thread_local! {
+    static HOST_REGISTRATION_PHASE: Cell<bool> = const { Cell::new(false) };
+}
 
 /// Registers an extension to be initialized for LxApp JavaScript contexts.
 ///
@@ -84,6 +107,18 @@ static EXTENSIONS: OnceLock<Mutex<Vec<BoxedExtension>>> = OnceLock::new();
 /// modifications during runtime which could lead to inconsistencies.
 #[cfg(feature = "js-appservice")]
 pub fn register_logic_extension(extension: BoxedExtension) {
+    let audience = HOST_REGISTRATION_PHASE.with(|phase| {
+        if phase.get() {
+            ExtensionAudience::HostAssigned
+        } else {
+            ExtensionAudience::StandardOnly
+        }
+    });
+    register(extension, audience);
+}
+
+#[cfg(feature = "js-appservice")]
+fn register(extension: BoxedExtension, audience: ExtensionAudience) {
     // Get or initialize the Mutex<Vec>. `OnceLock::get_or_init` ensures
     // this happens only once and is thread-safe.
     let extensions_mutex = EXTENSIONS.get_or_init(|| Mutex::new(Vec::new()));
@@ -96,7 +131,33 @@ pub fn register_logic_extension(extension: BoxedExtension) {
         .expect("Extension registry mutex is poisoned");
 
     // Add the new extension to the list. This is where the actual registration happens.
-    extensions.push(extension);
+    extensions.push(RegisteredExtension {
+        extension,
+        audience,
+    });
+}
+
+#[cfg(feature = "js-appservice")]
+#[unsafe(export_name = "lingxia_lxapp_register_framework_logic_extension_v1")]
+pub(crate) extern "Rust" fn register_framework_logic_extension(extension: BoxedExtension) {
+    register(extension, ExtensionAudience::HostAssigned);
+}
+
+#[cfg(feature = "js-appservice")]
+#[unsafe(export_name = "lingxia_lxapp_run_host_extension_registration_v1")]
+pub(crate) extern "Rust" fn run_host_extension_registration(action: Box<dyn FnOnce()>) {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            HOST_REGISTRATION_PHASE.with(|phase| phase.set(false));
+        }
+    }
+
+    HOST_REGISTRATION_PHASE.with(|phase| {
+        assert!(!phase.replace(true), "nested host extension registration");
+    });
+    let _reset = Reset;
+    action();
 }
 
 /// Executes a closure with access to the list of registered extensions.
@@ -118,22 +179,48 @@ pub fn register_logic_extension(extension: BoxedExtension) {
 /// * `Some(R)` if extensions were registered and the closure was executed.
 /// * `None` if no extensions were registered.
 #[cfg(feature = "js-appservice")]
-pub(crate) fn with_registered_extensions<F, R>(f: F) -> Option<R>
+pub(crate) fn with_registered_extensions<F, R>(class: AppSessionClass, f: F) -> Option<R>
 where
-    F: FnOnce(&Vec<BoxedExtension>) -> R,
+    F: FnOnce(Vec<&dyn LxLogicExtension>) -> R,
 {
     EXTENSIONS.get().map(|extensions_mutex| {
         let extensions = extensions_mutex
             .lock()
             .expect("Extension registry mutex is poisoned");
-        f(&extensions)
+        let selected = extensions
+            .iter()
+            .filter(|registered| audience_allows(registered.audience, class))
+            .map(|registered| registered.extension.as_ref())
+            .collect();
+        f(selected)
     })
 }
 
 #[cfg(not(feature = "js-appservice"))]
-pub(crate) fn with_registered_extensions<F, R>(_f: F) -> Option<R>
+pub(crate) fn with_registered_extensions<F, R>(_class: AppSessionClass, _f: F) -> Option<R>
 where
-    F: FnOnce(&Vec<BoxedExtension>) -> R,
+    F: FnOnce(Vec<&dyn LxLogicExtension>) -> R,
 {
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ordinary_extensions_cannot_enter_control_contexts() {
+        assert!(audience_allows(
+            ExtensionAudience::StandardOnly,
+            AppSessionClass::StandardApp
+        ));
+        assert!(!audience_allows(
+            ExtensionAudience::StandardOnly,
+            AppSessionClass::ControlApp
+        ));
+        assert!(audience_allows(
+            ExtensionAudience::HostAssigned,
+            AppSessionClass::ControlApp
+        ));
+    }
 }

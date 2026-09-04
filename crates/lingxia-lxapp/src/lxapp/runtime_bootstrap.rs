@@ -122,25 +122,57 @@ pub fn runner_active() -> bool {
 
 /// Initialize the LxApps singleton using the host app configuration from app-context.
 pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
-    __init_with_native_authority(runtime, |_| Ok(())).map(|(home_app_id, _)| home_app_id)
+    init_with_native_authority(runtime, None, None, Box::new(|_, _, _, _| Ok(())))
+        .map(|(home_app_id, _, _)| home_app_id)
 }
 
-/// Bootstrap entrypoint for the native host facade. The returned opaque token
-/// is the only way to derive process-wide native terminal authority.
-#[doc(hidden)]
-pub fn __init_with_native_authority<F>(
+type NativeAuthorityInstaller = dyn FnOnce(
+        crate::NativeControlPlaneAuthority,
+        crate::NativeControlPlaneAuthority,
+        crate::NativeControlPlaneAuthority,
+        crate::terminal_automation::TerminalAutomationAuthority,
+    ) -> Result<(), LxAppError>
+    + 'static;
+
+/// Private Rust-ABI edge used by the `lingxia` platform facade. Keeping this
+/// symbol out of the Rust public API prevents a linked extension from entering
+/// bootstrap, obtaining its token, or pre-installing a resolver through safe
+/// Rust. The ABI edge never returns the native token.
+#[unsafe(export_name = "lingxia_lxapp_platform_bootstrap_v1")]
+pub(crate) extern "Rust" fn platform_bootstrap(
     runtime: Platform,
-    configure_native_authority: F,
+    app_grant_resolver: Option<Arc<crate::host::AppResourceGrantResolver>>,
+    devtools_grant_resolver: Option<Arc<crate::host::DevtoolsResourceGrantResolver>>,
+    install_authorities: Box<NativeAuthorityInstaller>,
 ) -> Result<
     (
         Option<String>,
-        crate::terminal_automation::NativeHostRuntimeToken,
+        crate::terminal_automation::TerminalAutomationAuthority,
+        crate::NativeControlPlaneAuthority,
     ),
     LxAppError,
->
-where
-    F: FnOnce(&crate::terminal_automation::NativeHostRuntimeToken) -> Result<(), LxAppError>,
-{
+> {
+    init_with_native_authority(
+        runtime,
+        app_grant_resolver,
+        devtools_grant_resolver,
+        install_authorities,
+    )
+}
+
+fn init_with_native_authority(
+    runtime: Platform,
+    app_grant_resolver: Option<Arc<crate::host::AppResourceGrantResolver>>,
+    devtools_grant_resolver: Option<Arc<crate::host::DevtoolsResourceGrantResolver>>,
+    install_authorities: Box<NativeAuthorityInstaller>,
+) -> Result<
+    (
+        Option<String>,
+        crate::terminal_automation::TerminalAutomationAuthority,
+        crate::NativeControlPlaneAuthority,
+    ),
+    LxAppError,
+> {
     // Set up panic hook to capture panic information
     std::panic::set_hook(Box::new(|panic_info| {
         let location = panic_info
@@ -164,8 +196,22 @@ where
 
     let runtime_arc = Arc::new(runtime.clone());
     super::runtime_registry::set_runtime(runtime_arc.clone());
-    let native_authority = crate::terminal_automation::NativeHostRuntimeToken::new(&runtime_arc);
-    configure_native_authority(&native_authority)?;
+    let native_token = crate::terminal_automation::NativeHostRuntimeToken::new(&runtime_arc);
+    crate::host::install_bootstrap_resource_grant_resolvers(
+        app_grant_resolver,
+        devtools_grant_resolver,
+    )
+    .map_err(|message| LxAppError::Runtime(message.to_string()))?;
+    let terminal_authority =
+        crate::terminal_automation::TerminalAutomationAuthority::for_native_runtime(&native_token);
+    install_authorities(
+        crate::NativeControlPlaneAuthority::for_native_runtime(&native_token),
+        crate::NativeControlPlaneAuthority::for_native_runtime(&native_token),
+        crate::NativeControlPlaneAuthority::for_native_runtime(&native_token),
+        terminal_authority.clone(),
+    )?;
+    let browser_registration_authority =
+        crate::NativeControlPlaneAuthority::for_native_runtime(&native_token);
 
     // Prepare directory structure
     if let Err(e) = prepare_directory_structure(runtime_arc.clone()) {
@@ -190,7 +236,7 @@ where
     ) else {
         info!("LxApps initialized without a home lxapp");
         spawn_cache_cleanup(runtime_arc);
-        return Ok((None, native_authority));
+        return Ok((None, terminal_authority, browser_registration_authority));
     };
     let home_app_id = home_app_id.to_string();
 
@@ -297,5 +343,9 @@ where
     info!("LxApps initialized successfully");
 
     spawn_cache_cleanup(runtime_arc.clone());
-    Ok((Some(home_app_id), native_authority))
+    Ok((
+        Some(home_app_id),
+        terminal_authority,
+        browser_registration_authority,
+    ))
 }

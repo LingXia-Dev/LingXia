@@ -1,0 +1,29 @@
+[package]
+name = "lingxia-authority-escape"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[features]
+default = []
+all-lxapp-features = [
+    "lxapp/automation",
+    "lxapp/process",
+    "lxapp/standard",
+    "lxapp/test-utils",
+]
+
+[dependencies]
+lingxia = { path = "../../..", default-features = false }
+lxapp = { package = "lingxia-lxapp", path = "../../../../lingxia-lxapp", default-features = false }
+
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+rong-command = { package = "lingxia-rong-command", path = "../../../../../third_party/rong_command", default-features = false, features = ["jscore"] }
+
+[target.'cfg(target_env = "ohos")'.dependencies]
+rong-command = { package = "lingxia-rong-command", path = "../../../../../third_party/rong_command", default-features = false, features = ["arkjs"] }
+
+[target.'cfg(not(any(target_os = "ios", target_os = "macos", target_env = "ohos")))'.dependencies]
+rong-command = { package = "lingxia-rong-command", path = "../../../../../third_party/rong_command", default-features = false, features = ["quickjs"] }

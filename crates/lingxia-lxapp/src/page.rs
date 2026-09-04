@@ -27,14 +27,9 @@ use lingxia_webview::{
 };
 use ring::rand::{SecureRandom, SystemRandom};
 
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
-
-/// Global scripts injected into every page across all LxApps on page load.
-///
-/// For per-app scripts, use [`LxApp::add_page_script`] instead.
-static GLOBAL_PAGE_SCRIPTS: OnceLock<Mutex<Vec<Arc<str>>>> = OnceLock::new();
 
 /// How long an isolated page's setup waits for its opener to create the
 /// PageSvc. The opener does that in the same turn it awaits this page, so
@@ -42,25 +37,6 @@ static GLOBAL_PAGE_SCRIPTS: OnceLock<Mutex<Vec<Arc<str>>>> = OnceLock::new();
 /// outside `lx.surface`. Fail loudly instead of leaving the page parked at
 /// `about:blank` with no diagnostic.
 const PAGE_SVC_READY_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Register a script to inject on every page load across all LxApps.
-///
-/// Call at app startup, before any pages are created.
-/// For per-app scripts, use [`LxApp::add_page_script`] instead.
-pub fn add_global_page_script(js: impl Into<String>) {
-    let scripts = GLOBAL_PAGE_SCRIPTS.get_or_init(|| Mutex::new(Vec::new()));
-    if let Ok(mut guard) = scripts.lock() {
-        guard.push(Arc::from(js.into()));
-    }
-}
-
-pub(crate) fn global_page_scripts_snapshot() -> Vec<Arc<str>> {
-    GLOBAL_PAGE_SCRIPTS
-        .get()
-        .and_then(|m| m.lock().ok())
-        .map(|guard| guard.clone())
-        .unwrap_or_default()
-}
 
 /// Fired at most once per process: the home lxapp delivered its first
 /// `OnReady` (first render finished). Hosts dismiss the startup splash
