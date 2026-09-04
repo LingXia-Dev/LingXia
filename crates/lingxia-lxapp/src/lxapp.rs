@@ -82,9 +82,9 @@ pub use runtime_bootstrap::init;
 pub use runtime_bootstrap::runner_active as is_runner;
 pub use runtime_ops::{
     close_lxapp, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
-    ensure_builtin_lxapp, ensure_host_surface_owner, ensure_lxapp, get_current_lxapp,
-    installed_lxapp_path, is_lxapp_open, is_pull_down_refresh_enabled, list_lxapps,
-    mark_lxapp_active, notify_lxapp_host_visibility, notify_page_host_visibility,
+    ensure_builtin_lxapp, ensure_control_lxapp, ensure_host_surface_owner, ensure_lxapp,
+    get_current_lxapp, installed_lxapp_path, is_lxapp_open, is_pull_down_refresh_enabled,
+    list_lxapps, mark_lxapp_active, notify_lxapp_host_visibility, notify_page_host_visibility,
     notify_page_instance, notify_page_instance_by_id, on_low_memory, open_lxapp,
     refresh_auto_appearances, restart_lxapp, touch_page_instance_by_id, uninstall_lxapp,
 };
@@ -370,6 +370,24 @@ impl LxApps {
                 .map(|app| app.app_session_class())
                 .unwrap_or(AppSessionClass::StandardApp);
             self.ensure_lxapp_with_session_class(appid, release_type, session_class)
+        })
+    }
+
+    pub(crate) fn ensure_lxapp_for_native_control(
+        &self,
+        appid: String,
+        release_type: ReleaseType,
+    ) -> Result<Arc<LxApp>, LxAppError> {
+        let transition_appid = appid.clone();
+        self.with_session_transition(&transition_appid, move || {
+            if let Some(app) = self.lxapps.get(&appid) {
+                if app.is_control_app() {
+                    return Ok(app.clone());
+                }
+                drop(app);
+                self.destroy_lxapp_with_options(&appid, true);
+            }
+            self.ensure_lxapp_with_session_class(appid, release_type, AppSessionClass::ControlApp)
         })
     }
 

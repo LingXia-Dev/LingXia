@@ -4,6 +4,8 @@
 //! queued commands here. The JavaScript automation driver consumes the same
 //! registry without learning platform view types or relying on screen coordinates.
 
+use crate::LxApp;
+use crate::host::{AppResourceGrant, AppScope};
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
@@ -22,14 +24,98 @@ struct HostCommand {
 #[derive(Default)]
 struct Registry {
     next_id: u64,
-    snapshots: HashMap<String, Value>,
-    queues: HashMap<String, VecDeque<HostCommand>>,
+    snapshots: HashMap<SurfaceKey, Value>,
+    queues: HashMap<SurfaceKey, VecDeque<HostCommand>>,
     pending: HashMap<u64, PendingCommand>,
 }
 
 struct PendingCommand {
-    surface_id: String,
+    surface: SurfaceKey,
+    caller: TerminalAutomationAuthority,
     sender: oneshot::Sender<Result<Value, String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum SurfaceOwner {
+    NativeHost,
+    App { app_id: String, session_id: u64 },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct SurfaceKey {
+    owner: SurfaceOwner,
+    id: String,
+}
+
+#[derive(Clone)]
+enum AuthorityKind {
+    NativeHost,
+    App(AppScope),
+}
+
+/// Native-derived authority for binding and using terminal surface handles.
+/// Its fields are private, so a bridge payload cannot name an owner.
+#[derive(Clone)]
+pub struct TerminalAutomationAuthority {
+    kind: AuthorityKind,
+}
+
+impl TerminalAutomationAuthority {
+    /// Derive authority from an authenticated native lxapp object.
+    pub fn for_lxapp(app: &std::sync::Arc<LxApp>) -> Result<Self, String> {
+        Self::for_app(AppScope::from_lxapp(app))
+    }
+
+    /// Bind authority to one live app session with a sealed host-automation grant.
+    pub fn for_app(scope: AppScope) -> Result<Self, String> {
+        if !scope
+            .resource_grants()
+            .contains(AppResourceGrant::AutomationHost)
+        {
+            return Err("terminal automation requires a live native AutomationHost grant".into());
+        }
+        Ok(Self {
+            kind: AuthorityKind::App(scope),
+        })
+    }
+
+    /// Native platform/isolated-automation TCB entrypoint.
+    #[doc(hidden)]
+    pub fn __native_host() -> Self {
+        Self {
+            kind: AuthorityKind::NativeHost,
+        }
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        match &self.kind {
+            AuthorityKind::NativeHost => Ok(()),
+            AuthorityKind::App(scope) => scope
+                .resource_grants()
+                .contains(AppResourceGrant::AutomationHost)
+                .then_some(())
+                .ok_or_else(|| {
+                    "terminal automation authority no longer matches a live app session".into()
+                }),
+        }
+    }
+
+    fn owner(&self) -> SurfaceOwner {
+        match &self.kind {
+            AuthorityKind::NativeHost => SurfaceOwner::NativeHost,
+            AuthorityKind::App(scope) => SurfaceOwner::App {
+                app_id: scope.identity().app_id().to_string(),
+                session_id: scope.identity().session_id(),
+            },
+        }
+    }
+}
+
+/// A terminal surface capability bound to both registry owner and caller.
+#[derive(Clone)]
+pub struct TerminalSurfaceHandle {
+    key: SurfaceKey,
+    authority: TerminalAutomationAuthority,
 }
 
 fn registry() -> &'static Mutex<Registry> {
@@ -38,26 +124,42 @@ fn registry() -> &'static Mutex<Registry> {
 }
 
 /// Publish the latest semantic state for one native terminal surface.
-pub fn publish_snapshot(surface_id: &str, snapshot_json: &str) -> Result<(), String> {
+pub fn publish_snapshot(
+    authority: &TerminalAutomationAuthority,
+    surface_id: &str,
+    snapshot_json: &str,
+) -> Result<(), String> {
+    authority.validate()?;
     let snapshot = serde_json::from_str(snapshot_json)
         .map_err(|error| format!("invalid terminal automation snapshot: {error}"))?;
+    let key = SurfaceKey {
+        owner: authority.owner(),
+        id: surface_id.to_string(),
+    };
     registry()
         .lock()
         .unwrap_or_else(|error| error.into_inner())
         .snapshots
-        .insert(surface_id.to_string(), snapshot);
+        .insert(key, snapshot);
     Ok(())
 }
 
 /// Remove a native workspace and fail commands that have not reached it.
-pub fn remove_workspace(surface_id: &str) {
+pub fn remove_workspace(authority: &TerminalAutomationAuthority, surface_id: &str) {
+    if authority.validate().is_err() {
+        return;
+    }
+    let key = SurfaceKey {
+        owner: authority.owner(),
+        id: surface_id.to_string(),
+    };
     let mut registry = registry().lock().unwrap_or_else(|error| error.into_inner());
-    registry.snapshots.remove(surface_id);
-    registry.queues.remove(surface_id);
+    registry.snapshots.remove(&key);
+    registry.queues.remove(&key);
     let pending = registry
         .pending
         .iter()
-        .filter_map(|(id, command)| (command.surface_id == surface_id).then_some(*id))
+        .filter_map(|(id, command)| (command.surface == key).then_some(*id))
         .collect::<Vec<_>>();
     for id in pending {
         if let Some(command) = registry.pending.remove(&id) {
@@ -69,28 +171,77 @@ pub fn remove_workspace(surface_id: &str) {
     }
 }
 
-/// Read one host-published workspace snapshot.
-pub fn snapshot(surface_id: &str) -> Result<Value, String> {
-    registry()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .snapshots
-        .get(surface_id)
-        .cloned()
-        .ok_or_else(|| format!("terminal surface '{surface_id}' is not available"))
+/// Resolve a surface string into a capability bound to the native registry
+/// owner and the exact caller session.
+pub fn bind_surface(
+    authority: &TerminalAutomationAuthority,
+    surface_id: &str,
+) -> Result<TerminalSurfaceHandle, String> {
+    authority.validate()?;
+    let requested = SurfaceKey {
+        owner: authority.owner(),
+        id: surface_id.to_string(),
+    };
+    let native = SurfaceKey {
+        owner: SurfaceOwner::NativeHost,
+        id: surface_id.to_string(),
+    };
+    let registry = registry().lock().unwrap_or_else(|error| error.into_inner());
+    let key = if registry.snapshots.contains_key(&requested) {
+        requested
+    } else if matches!(authority.kind, AuthorityKind::App(_))
+        && registry.snapshots.contains_key(&native)
+    {
+        native
+    } else {
+        return Err(format!(
+            "terminal surface '{surface_id}' is not available for this owner"
+        ));
+    };
+    Ok(TerminalSurfaceHandle {
+        key,
+        authority: authority.clone(),
+    })
 }
 
-/// Queue an operation for the native workspace and await its semantic result.
-pub async fn run_command(
-    surface_id: &str,
+impl TerminalSurfaceHandle {
+    /// Read a host-published workspace snapshot after revalidating the owner.
+    pub fn snapshot(&self) -> Result<Value, String> {
+        self.authority.validate()?;
+        registry()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .snapshots
+            .get(&self.key)
+            .cloned()
+            .ok_or_else(|| format!("terminal surface '{}' is no longer available", self.key.id))
+    }
+
+    /// Queue an operation for the bound workspace and await its result.
+    pub async fn run_command(
+        &self,
+        action: &str,
+        params: Value,
+        timeout: Duration,
+    ) -> Result<Value, String> {
+        self.authority.validate()?;
+        run_bound_command(self, action, params, timeout).await
+    }
+}
+
+async fn run_bound_command(
+    handle: &TerminalSurfaceHandle,
     action: &str,
     params: Value,
     timeout: Duration,
 ) -> Result<Value, String> {
     let (id, receiver) = {
         let mut registry = registry().lock().unwrap_or_else(|error| error.into_inner());
-        if !registry.snapshots.contains_key(surface_id) {
-            return Err(format!("terminal surface '{surface_id}' is not available"));
+        if !registry.snapshots.contains_key(&handle.key) {
+            return Err(format!(
+                "terminal surface '{}' is not available",
+                handle.key.id
+            ));
         }
         registry.next_id = registry.next_id.wrapping_add(1).max(1);
         let id = registry.next_id;
@@ -98,13 +249,14 @@ pub async fn run_command(
         registry.pending.insert(
             id,
             PendingCommand {
-                surface_id: surface_id.to_string(),
+                surface: handle.key.clone(),
+                caller: handle.authority.clone(),
                 sender,
             },
         );
         registry
             .queues
-            .entry(surface_id.to_string())
+            .entry(handle.key.clone())
             .or_default()
             .push_back(HostCommand {
                 id,
@@ -133,17 +285,29 @@ fn cancel_command(id: u64) {
 }
 
 /// Pull the next live command for a native workspace as JSON.
-pub fn take_command(surface_id: &str) -> String {
+pub fn take_command(authority: &TerminalAutomationAuthority, surface_id: &str) -> String {
+    if authority.validate().is_err() {
+        return String::new();
+    }
+    let key = SurfaceKey {
+        owner: authority.owner(),
+        id: surface_id.to_string(),
+    };
     let mut registry = registry().lock().unwrap_or_else(|error| error.into_inner());
     loop {
-        let command = registry
-            .queues
-            .get_mut(surface_id)
-            .and_then(VecDeque::pop_front);
+        let command = registry.queues.get_mut(&key).and_then(VecDeque::pop_front);
         let Some(command) = command else {
             return String::new();
         };
-        if !registry.pending.contains_key(&command.id) {
+        let Some(pending) = registry.pending.get(&command.id) else {
+            continue;
+        };
+        if pending.caller.validate().is_err() {
+            if let Some(pending) = registry.pending.remove(&command.id) {
+                let _ = pending.sender.send(Err(
+                    "terminal automation caller session closed before command dispatch".into(),
+                ));
+            }
             continue;
         }
         return serde_json::to_string(&command).unwrap_or_default();
@@ -151,12 +315,32 @@ pub fn take_command(surface_id: &str) -> String {
 }
 
 /// Complete one command after the native workspace has reconciled its layout.
-pub fn complete_command(id: u64, ok: bool, payload: &str) -> bool {
-    let sender = registry()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .pending
-        .remove(&id);
+pub fn complete_command(
+    authority: &TerminalAutomationAuthority,
+    id: u64,
+    ok: bool,
+    payload: &str,
+) -> bool {
+    if authority.validate().is_err() {
+        return false;
+    }
+    let mut registry = registry().lock().unwrap_or_else(|error| error.into_inner());
+    let Some(pending) = registry.pending.get(&id) else {
+        return false;
+    };
+    if pending.surface.owner != authority.owner() {
+        return false;
+    }
+    if pending.caller.validate().is_err() {
+        if let Some(pending) = registry.pending.remove(&id) {
+            let _ = pending.sender.send(Err(
+                "terminal automation caller session closed before command completion".into(),
+            ));
+        }
+        return false;
+    }
+    let sender = registry.pending.remove(&id);
+    drop(registry);
     let Some(command) = sender else {
         return false;
     };
@@ -175,23 +359,35 @@ mod tests {
 
     #[tokio::test]
     async fn native_snapshot_and_command_share_one_surface_identity() {
+        let authority = TerminalAutomationAuthority::__native_host();
         let surface = "terminal-automation-registry-test";
-        remove_workspace(surface);
-        publish_snapshot(surface, r#"{"surfaceId":"terminal-test","tabs":[]}"#).unwrap();
-        assert_eq!(snapshot(surface).unwrap()["surfaceId"], "terminal-test");
-
-        let task = tokio::spawn(run_command(
+        remove_workspace(&authority, surface);
+        publish_snapshot(
+            &authority,
             surface,
-            "split",
-            serde_json::json!({ "direction": "right" }),
-            Duration::from_secs(1),
-        ));
+            r#"{"surfaceId":"terminal-test","tabs":[]}"#,
+        )
+        .unwrap();
+        let handle = bind_surface(&authority, surface).unwrap();
+        assert_eq!(handle.snapshot().unwrap()["surfaceId"], "terminal-test");
+
+        let command_handle = handle.clone();
+        let task = tokio::spawn(async move {
+            command_handle
+                .run_command(
+                    "split",
+                    serde_json::json!({ "direction": "right" }),
+                    Duration::from_secs(1),
+                )
+                .await
+        });
         tokio::task::yield_now().await;
 
-        let command: Value = serde_json::from_str(&take_command(surface)).unwrap();
+        let command: Value = serde_json::from_str(&take_command(&authority, surface)).unwrap();
         assert_eq!(command["action"], "split");
         assert_eq!(command["params"]["direction"], "right");
         assert!(complete_command(
+            &authority,
             command["id"].as_u64().unwrap(),
             true,
             r#"{"surfaceId":"terminal-test","paneCount":2}"#,
@@ -199,28 +395,76 @@ mod tests {
 
         let result = task.await.unwrap().unwrap();
         assert_eq!(result["paneCount"], 2);
-        remove_workspace(surface);
+        remove_workspace(&authority, surface);
     }
 
     #[tokio::test]
     async fn closing_a_surface_fails_a_command_already_taken_by_the_host() {
+        let authority = TerminalAutomationAuthority::__native_host();
         let surface = "terminal-automation-close-test";
-        remove_workspace(surface);
-        publish_snapshot(surface, r#"{"surfaceId":"terminal-close","tabs":[]}"#).unwrap();
-        let task = tokio::spawn(run_command(
+        remove_workspace(&authority, surface);
+        publish_snapshot(
+            &authority,
             surface,
-            "split",
-            serde_json::json!({ "direction": "down" }),
-            Duration::from_secs(1),
-        ));
+            r#"{"surfaceId":"terminal-close","tabs":[]}"#,
+        )
+        .unwrap();
+        let handle = bind_surface(&authority, surface).unwrap();
+        let task = tokio::spawn(async move {
+            handle
+                .run_command(
+                    "split",
+                    serde_json::json!({ "direction": "down" }),
+                    Duration::from_secs(1),
+                )
+                .await
+        });
         tokio::task::yield_now().await;
-        assert!(!take_command(surface).is_empty());
+        assert!(!take_command(&authority, surface).is_empty());
 
-        remove_workspace(surface);
+        remove_workspace(&authority, surface);
         let error = task
             .await
             .unwrap()
             .expect_err("closed surface fails command");
         assert!(error.contains("closed before the command completed"));
+    }
+
+    #[test]
+    fn native_handle_cannot_guess_an_app_owned_surface_id() {
+        let authority = TerminalAutomationAuthority::__native_host();
+        let surface = "terminal-owner-isolation-test";
+        let key = SurfaceKey {
+            owner: SurfaceOwner::App {
+                app_id: "same.app".into(),
+                session_id: 41,
+            },
+            id: surface.into(),
+        };
+        registry()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .snapshots
+            .insert(key.clone(), serde_json::json!({ "surfaceId": surface }));
+        assert!(bind_surface(&authority, surface).is_err());
+        registry()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .snapshots
+            .remove(&key);
+    }
+
+    #[test]
+    fn same_app_id_sessions_have_distinct_surface_owners() {
+        let first = SurfaceOwner::App {
+            app_id: "same.app".into(),
+            session_id: 51,
+        };
+        let takeover = SurfaceOwner::App {
+            app_id: "same.app".into(),
+            session_id: 52,
+        };
+        assert_ne!(first, takeover);
+        assert_ne!(first, SurfaceOwner::NativeHost);
     }
 }

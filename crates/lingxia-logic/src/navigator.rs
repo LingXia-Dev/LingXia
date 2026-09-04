@@ -142,8 +142,12 @@ pub(crate) async fn prepare_app_open(
         }
     }
 
-    let target_app = lxapp::ensure_lxapp(&target_appid, release_type)
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
+    let target_app = if host_terminal_settings {
+        lxapp::ensure_control_lxapp(&target_appid, release_type)
+    } else {
+        lxapp::ensure_lxapp(&target_appid, release_type)
+    }
+    .map_err(|e| js_error_from_lxapp_error(&e))?;
     let (startup_options, _) =
         build_startup_options(&target_app, options).map_err(|e| js_error_from_lxapp_error(&e))?;
 
@@ -154,6 +158,14 @@ pub(crate) async fn prepare_app_open(
 fn register_host_terminal_settings_bundle(lxapp: &LxApp, target_appid: &str) -> JSResult<bool> {
     if target_appid != lingxia_terminal_config::SETTINGS_APP_ID {
         return Ok(false);
+    }
+    if !lxapp.is_control_app() {
+        return Err(js_error_from_lxapp_error(
+            &LxAppError::UnsupportedOperation(
+                "only the native ControlApp may open the host Terminal Settings control session"
+                    .to_string(),
+            ),
+        ));
     }
     let manifest = format!("{target_appid}/lxapp.json");
     lxapp.runtime.read_asset(&manifest).map_err(|_| {

@@ -86,7 +86,8 @@ pub use lxapp::{
     bundled_lxapp_asset_available, clear_active_display_language_session_override,
     clear_display_language_session_override, close_lxapp, config::LxAppInfo, create_page_instance,
     display_language, display_language_state, display_language_state_update, dispose_page_instance,
-    dispose_page_instance_by_id, ensure_builtin_lxapp, ensure_host_surface_owner, ensure_lxapp,
+    dispose_page_instance_by_id, ensure_builtin_lxapp, ensure_control_lxapp,
+    ensure_host_surface_owner, ensure_lxapp,
     find_page_by_instance_id, get_current_lxapp, get_platform, host_class, init,
     initialize_display_language, install_display_language_session_override, installed_lxapp_path,
     is_dev_session, is_public_network_address, is_pull_down_refresh_enabled, list_lxapps,
@@ -98,8 +99,7 @@ pub use lxapp::{
     register_surface_context_observer, register_surface_visibility_observer,
     register_synthetic_lxapp, restart_lxapp, set_display_language_preference,
     set_display_language_preference_in, subscribe_display_language_effective,
-    subscribe_display_language_state, tabbar,
-    touch_page_instance_by_id, try_get, uninstall_lxapp,
+    subscribe_display_language_state, tabbar, touch_page_instance_by_id, try_get, uninstall_lxapp,
 };
 pub use native_component::{
     NativeComponentHost, on_native_component_event, register_native_component_host,

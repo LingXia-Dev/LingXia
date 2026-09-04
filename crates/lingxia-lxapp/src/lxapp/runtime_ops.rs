@@ -8,6 +8,18 @@ pub fn ensure_lxapp(appid: &str, release_type: ReleaseType) -> Result<Arc<LxApp>
     manager.ensure_lxapp(appid.to_string(), release_type)
 }
 
+/// Native-host bootstrap for a bundled control surface. Payload app ids never
+/// select this class; the host calls it only after resolving its own resource.
+#[doc(hidden)]
+pub fn ensure_control_lxapp(
+    appid: &str,
+    release_type: ReleaseType,
+) -> Result<Arc<LxApp>, LxAppError> {
+    let manager = super::runtime_registry::get_lxapps_manager()
+        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
+    manager.ensure_lxapp_for_native_control(appid.to_string(), release_type)
+}
+
 pub fn ensure_builtin_lxapp(appid: &str) -> Result<Arc<LxApp>, LxAppError> {
     let manager = super::runtime_registry::get_lxapps_manager()
         .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;

@@ -100,6 +100,10 @@ A whole namespace that a host may not carry at all stays an optional member —
 from one registry, so `('terminal' in lx)` and `lx.supports({ capability: 'terminal' })`
 can never disagree.
 
+`lx.terminal.settings`, `colorSchemes`, `fonts`, and Windows terminal control
+are additionally restricted to the live session the native host assigned as a
+ControlApp. A matching app id or bundled source does not grant this authority.
+
 ---
 
 ## Handling errors
