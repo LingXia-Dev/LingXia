@@ -28,6 +28,8 @@ pub use types::{
 pub use lxapp::LxAppError;
 
 pub const BUILTIN_BROWSER_APPID: &str = "app.lingxia.browser";
+/// Exact browser webui-to-host control protocol supported by this runtime.
+pub const CONTROL_PROTOCOL_VERSION: u32 = 3;
 /// `(url, title)` observer; `title` is empty when no title has been reported
 /// for that URL yet.
 pub type BrowserPageMetadataHandler = Arc<dyn Fn(&str, &str) + Send + Sync>;

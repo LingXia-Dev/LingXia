@@ -2,6 +2,7 @@
   "appId": "app.lingxia.browser",
   "name": "LingXia Browser",
   "version": "1.2.0",
+  "controlProtocolVersion": 3,
   "logic": false,
   "security": {
     "network": {

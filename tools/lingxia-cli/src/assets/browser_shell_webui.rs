@@ -1,4 +1,4 @@
-use crate::config::LingXiaConfig;
+use crate::config::{BROWSER_CONTROL_PROTOCOL_VERSION, LingXiaConfig};
 use anyhow::{Result, anyhow};
 use std::path::{Path, PathBuf};
 
@@ -19,6 +19,24 @@ pub(super) fn resolve_browser_shell_webui_dir(
         .browser
         .as_ref()
         .and_then(|browser| browser.webui.as_ref());
+    if let Some(webui) = webui {
+        match webui.control_protocol_version {
+            Some(BROWSER_CONTROL_PROTOCOL_VERSION) => {}
+            Some(version) => {
+                return Err(anyhow!(
+                    "browser.webui.controlProtocolVersion must be {}, got {}",
+                    BROWSER_CONTROL_PROTOCOL_VERSION,
+                    version
+                ));
+            }
+            None => {
+                return Err(anyhow!(
+                    "browser.webui.controlProtocolVersion is required and must be {}",
+                    BROWSER_CONTROL_PROTOCOL_VERSION
+                ));
+            }
+        }
+    }
     if let Some(path) = webui
         .and_then(|webui| webui.path.as_deref())
         .map(str::trim)
