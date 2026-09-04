@@ -22,7 +22,7 @@ pub use types::{
     BrowserAddressValueKind, BrowserAutomationError, BrowserElementInfo, BrowserNativeInputHost,
     BrowserNavigationPolicyDecision, BrowserNavigationPolicyRequest,
     BrowserNavigationPolicyResponse, BrowserNavigationTarget, BrowserRect, BrowserTabInfo,
-    BrowserWaitCondition, BrowserWaitResult,
+    BrowserWaitCondition, BrowserWaitResult, TrustedControlPageNavigation,
 };
 
 pub use lxapp::LxAppError;
@@ -76,6 +76,15 @@ pub fn register_internal_page(
 
 pub fn open(url: &str, tab_id: Option<&str>) -> Result<String, LxAppError> {
     tabs::open_internal_browser_tab(url, tab_id)
+}
+
+/// Bootstrap-TCB entry that always requests a new trusted top-level load of a
+/// registered internal control page. It never returns document authority.
+#[doc(hidden)]
+pub fn navigate_trusted_control_page(
+    url: &str,
+) -> Result<TrustedControlPageNavigation, LxAppError> {
+    tabs::navigate_trusted_control_page(url)
 }
 
 pub fn open_for_app(

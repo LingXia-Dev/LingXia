@@ -270,6 +270,16 @@ pub(crate) fn init_with_platform(
             "failed to validate static Settings target: {error}"
         ))
     })?;
+    let mut native_settings_actions =
+        crate::NativeSettingsActionRegistrar::new(validated_settings.native_actions().clone());
+    crate::host_addon::run_install_native_settings_actions(&mut native_settings_actions).map_err(
+        |error| {
+            crate::Error::internal(format!(
+                "failed to install native Settings actions: {error}"
+            ))
+        },
+    )?;
+    let native_settings_actions = native_settings_actions.seal();
 
     // Global runtime state begins only after static validation succeeds.
     crate::runtime::set_platform(runtime.clone());
@@ -287,6 +297,13 @@ pub(crate) fn init_with_platform(
             "failed to install static Settings targets: {error}"
         ))
     })?;
+    crate::settings_destination::install_native_actions(native_settings_actions).map_err(
+        |error| {
+            crate::Error::internal(format!(
+                "failed to initialize native Settings actions: {error}"
+            ))
+        },
+    )?;
     // App config (with the device dev-ws-url) is now loaded, so a dev session is
     // detectable: default logging to debug unless LINGXIA_LOG_LEVEL pinned it.
     crate::logging::apply_dev_session_level();

@@ -136,8 +136,13 @@ pub mod network;
 /// Provider traits and registration helpers.
 pub mod provider;
 mod runtime;
+mod settings_destination;
 mod settings_target;
 pub(crate) mod shell;
+pub use settings_destination::{
+    NativeSettingsActionRegistrar, SettingsDestinationResolution, SettingsDestinationResolveError,
+    resolve_settings_destination,
+};
 pub use settings_target::{
     SealedNativeActionRegistry, StaticSettingsTargetCatalog, StaticSettingsTargetError,
     ValidatedStaticSettingsTargets,

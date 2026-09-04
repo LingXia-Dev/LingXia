@@ -2,8 +2,9 @@
 //! and the create-token machinery shared with WebView creation.
 
 use crate::BUILTIN_BROWSER_APPID;
+use crate::internal_pages::registered_control_page_route;
 use crate::policy::{is_lingxia_startup_url, normalize_browser_target_url};
-use crate::types::{BrowserAutomationError, BrowserTabInfo};
+use crate::types::{BrowserAutomationError, BrowserTabInfo, TrustedControlPageNavigation};
 use crate::webview::{
     browser_create_webview, browser_destroy_webview_if_matches, browser_find_webview,
     browser_load_url,
@@ -853,6 +854,11 @@ fn open_internal_browser_tab_with_scope(
         let mut state = lock_state();
         if let Some(existing) = state.tabs.get_mut(&tab_id) {
             validate_reused_tab_policy(existing, data_mode, standalone)?;
+            if existing.session_id != session_id {
+                // The browser lxapp restarted. Its old WebView generation
+                // cannot satisfy a navigation for the new native session.
+                existing.create_in_flight = false;
+            }
             existing.session_id = session_id;
             existing.url_callback.store(url_callback, Ordering::Release);
             if has_target_url {
@@ -949,6 +955,7 @@ fn open_internal_browser_tab_with_scope(
                             let token = next_browser_create_token();
                             tab.create_token = token;
                             tab.create_in_flight = true;
+                            tab.discarded = false;
                             Some(token)
                         }
                         _ => None,
@@ -996,6 +1003,36 @@ pub(crate) fn open_internal_browser_tab(
         WebViewDataMode::ProfileDefault,
         false,
     )
+}
+
+/// Start a new trusted top-level load for a registered browser control page.
+/// Stable-tab reuse never degrades to focus-only: a live tab reloads through
+/// `browser_load_internal_document`, while a missing/discarded generation is
+/// recreated with this URL pending.
+pub(crate) fn navigate_trusted_control_page(
+    url: &str,
+) -> Result<TrustedControlPageNavigation, LxAppError> {
+    let route = registered_control_page_route(url).ok_or_else(|| {
+        LxAppError::InvalidParameter(format!(
+            "trusted browser control route is not registered: {url}"
+        ))
+    })?;
+    let tab_id = open_internal_browser_tab_with_scope(
+        url,
+        Some(&route),
+        BrowserTabScope::Global,
+        false,
+        false,
+        WebViewDataMode::ProfileDefault,
+        false,
+    )?;
+    let identity = browser_tab_info(&tab_id).ok_or_else(|| {
+        LxAppError::ResourceNotFound(format!("trusted browser control tab disappeared: {tab_id}"))
+    })?;
+    Ok(TrustedControlPageNavigation {
+        tab_id,
+        browser_session_id: identity.session_id,
+    })
 }
 
 pub(crate) fn open_internal_browser_tab_for_owner(

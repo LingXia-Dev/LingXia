@@ -18,6 +18,19 @@ pub(crate) fn register_bundled_app() {
     lingxia_browser::register_bundled_app();
 }
 
+pub(crate) fn navigate_trusted_control_page(url: &str) -> Result<(String, u64), lxapp::LxAppError> {
+    #[cfg(feature = "browser-runtime")]
+    {
+        let navigation = lingxia_browser::navigate_trusted_control_page(url)?;
+        Ok((navigation.tab_id, navigation.browser_session_id))
+    }
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = url;
+        unavailable()
+    }
+}
+
 #[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
 pub(crate) fn install_runtime_once() {
     use std::sync::OnceLock;

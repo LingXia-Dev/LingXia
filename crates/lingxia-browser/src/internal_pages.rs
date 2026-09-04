@@ -149,6 +149,14 @@ fn internal_page_target_for_url(startup_path: &str, url: &str) -> Option<Interna
     internal_page_target_for_host(startup_path, &host)
 }
 
+pub(crate) fn registered_control_page_route(url: &str) -> Option<String> {
+    if extract_url_scheme(url).as_deref() != Some(LINGXIA_SCHEME) {
+        return None;
+    }
+    let host = lingxia_url_host(url);
+    browser_internal_page_for_host(&host).map(|_| host)
+}
+
 fn is_browser_lingxia_asset_host(host: &str) -> bool {
     BROWSER_LINGXIA_ASSET_HOSTS.contains(&host)
 }
@@ -634,6 +642,18 @@ mod tests {
             internal_page_target_entry_path(&target),
             "pages/settings/index.html"
         );
+    }
+
+    #[test]
+    fn trusted_control_route_requires_a_registered_internal_page() {
+        register_test_browser_internal_pages();
+        assert_eq!(
+            registered_control_page_route("lingxia://settings?section=privacy"),
+            Some("settings".to_string())
+        );
+        assert!(registered_control_page_route("lingxia://unknown").is_none());
+        assert!(registered_control_page_route("lingxia://newtab").is_none());
+        assert!(registered_control_page_route("https://settings.example").is_none());
     }
 
     #[test]

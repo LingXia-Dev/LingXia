@@ -43,6 +43,41 @@ pub fn open_lxapp(appid: &str, options: LxAppStartupOptions) -> Result<Arc<LxApp
     Ok(app)
 }
 
+/// Bootstrap-TCB entry for reopening the configured control app at a page.
+///
+/// The app id must be the native-sealed home app id. A missing or stale
+/// StandardApp instance is replaced with a ControlApp before navigation.
+#[doc(hidden)]
+pub fn open_control_lxapp_page(
+    appid: &str,
+    options: LxAppStartupOptions,
+) -> Result<Arc<LxApp>, LxAppError> {
+    let expected = lingxia_app_context::home_app_id().ok_or_else(|| {
+        LxAppError::Runtime("control app identity is not initialized".to_string())
+    })?;
+    if appid != expected {
+        return Err(LxAppError::InvalidParameter(format!(
+            "control app identity mismatch: expected {expected}, got {appid}"
+        )));
+    }
+    let app = ensure_control_lxapp(appid, options.release_type)?;
+    if !app.is_control_app() {
+        return Err(LxAppError::Runtime(format!(
+            "current app session is not ControlApp: {appid}"
+        )));
+    }
+    app.open(options)?;
+    let current = super::runtime_registry::try_get(appid).ok_or_else(|| {
+        LxAppError::ResourceNotFound(format!("current control app session not found: {appid}"))
+    })?;
+    if !current.is_control_app() {
+        return Err(LxAppError::Runtime(format!(
+            "current app session is not ControlApp: {appid}"
+        )));
+    }
+    Ok(current)
+}
+
 pub fn list_lxapps() -> Vec<LxAppRuntimeInfo> {
     let Some(manager) = super::runtime_registry::get_lxapps_manager() else {
         return Vec::new();

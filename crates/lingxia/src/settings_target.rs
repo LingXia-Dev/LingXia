@@ -89,6 +89,7 @@ impl SealedNativeActionRegistry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatedStaticSettingsTargets {
     destination: Option<SettingsDestination>,
+    control_app_id: Option<String>,
     native_actions: SealedNativeActionRegistry,
 }
 
@@ -97,8 +98,30 @@ impl ValidatedStaticSettingsTargets {
         self.destination.as_ref()
     }
 
+    pub fn control_app_id(&self) -> Option<&str> {
+        self.control_app_id.as_deref()
+    }
+
     pub fn native_actions(&self) -> &SealedNativeActionRegistry {
         &self.native_actions
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_runtime_test(
+        destination: Option<SettingsDestination>,
+        control_app_id: Option<&str>,
+        native_action_ids: &[&str],
+    ) -> Self {
+        Self {
+            destination,
+            control_app_id: control_app_id.map(str::to_string),
+            native_actions: SealedNativeActionRegistry {
+                action_ids: native_action_ids
+                    .iter()
+                    .map(|action_id| (*action_id).to_string())
+                    .collect(),
+            },
+        }
     }
 }
 
@@ -289,6 +312,8 @@ fn validate_with_inventory(
 
     Ok(ValidatedStaticSettingsTargets {
         destination,
+        control_app_id: (!app_config.home_app_id.is_empty())
+            .then(|| app_config.home_app_id.clone()),
         native_actions,
     })
 }
