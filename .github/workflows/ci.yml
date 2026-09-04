@@ -56,6 +56,7 @@ jobs:
       cli_matrix: ${{ steps.compute.outputs.cli_matrix }}
       cli_fingerprint: ${{ steps.compute.outputs.cli_fingerprint }}
       rust_test: ${{ steps.compute.outputs.rust_test }}
+      control_security: ${{ steps.compute.outputs.control_security }}
       release_tooling: ${{ steps.filter.outputs.release_tooling }}
     steps:
       - uses: actions/checkout@v4
@@ -65,6 +66,7 @@ jobs:
           filters: |
             core:
               - 'crates/**'
+              - 'third_party/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain*'
@@ -89,6 +91,23 @@ jobs:
             core_rust:
               - 'crates/lingxia/**'
               - 'crates/lingxia-webview/**'
+            control_security:
+              - 'crates/lingxia/**'
+              - 'crates/lingxia-app-context/**'
+              - 'crates/lingxia-browser/**'
+              - 'crates/lingxia-control-commands/**'
+              - 'crates/lingxia-control-protocol/**'
+              - 'crates/lingxia-control-runtime/**'
+              - 'crates/lingxia-logic/**'
+              - 'crates/lingxia-lxapp/**'
+              - 'crates/lingxia-settings/**'
+              - 'crates/lingxia-transfer/**'
+              - 'crates/lingxia-webview/**'
+              - 'third_party/**'
+              - 'packages/lingxia-bridge/**'
+              - 'scripts/ci/control-security-gates.sh'
+              - 'scripts/ci/test-control-security-gates.sh'
+              - '.github/workflows/ci.yml'
             webview_harmony:
               - 'crates/lingxia-webview/src/harmony/**'
             sdk_release:
@@ -231,6 +250,7 @@ jobs:
           bash scripts/ci/test-automation-matrix.sh
           bash scripts/ci/test-cli-matrix.sh
           bash scripts/ci/test-cli-fingerprint.sh
+          bash scripts/ci/test-control-security-gates.sh
       - id: compute
         shell: bash
         env:
@@ -243,6 +263,7 @@ jobs:
           ANDROID: ${{ steps.filter.outputs.android_sdk }}
           HARMONY_SDK: ${{ steps.filter.outputs.harmony_sdk }}
           CORE_RUST: ${{ steps.filter.outputs.core_rust }}
+          CONTROL_SECURITY: ${{ steps.filter.outputs.control_security }}
           WEBVIEW_HARMONY: ${{ steps.filter.outputs.webview_harmony }}
           SDK_RELEASE: ${{ steps.filter.outputs.sdk_release }}
           EX_COMMON: ${{ steps.filter.outputs.examples_common }}
@@ -282,6 +303,7 @@ jobs:
           # Anything that touches the rust build, the CLI, the embedded web
           # runtime, or CI config rebuilds everything downstream.
           rust=$(any "$rel" "$CI_F" "$CORE" "$CLI" "$WEB_RT")
+          control_security=$(any "$rel" "$CI_F" "$CONTROL_SECURITY")
           # Common base for the example apps (runtime + lxapp frontend + shared
           # example config + localized strings).
           ex_base=$(any "$rust" "$WEB_FE" "$EX_COMMON" "$I18N")
@@ -299,7 +321,7 @@ jobs:
           # the core rust crates, so fan those signals in too.
           sdk_base=$(any "$WEB_RT" "$I18N" "$CORE_RUST")
           # SDK platform checks stay scoped unless shared runtime/release inputs changed.
-          sdk_apple=$(any "$rel" "$sdk_base" "$APPLE" "$SDK_RELEASE")
+          sdk_apple=$(any "$rel" "$CI_F" "$sdk_base" "$APPLE" "$SDK_RELEASE")
           sdk_android=$(any "$rel" "$sdk_base" "$ANDROID" "$SDK_RELEASE")
           # Harmony: harmony SDK tree + harmony webview backend + harmony example inputs.
           harmony=$(any "$rel" "$sdk_base" "$HARMONY_SDK" "$WEBVIEW_HARMONY" "$SDK_RELEASE" "$ex_base" "$EX_HARMONY")
@@ -342,6 +364,7 @@ jobs:
             sdk_android=false
             harmony=false
             npm=false
+            control_security=false
             automation_cross_platform=false
             automation_macos=false
             automation_windows=false
@@ -408,6 +431,7 @@ jobs:
             echo "cli_matrix=$cli_matrix"
             echo "cli_fingerprint=$cli_fingerprint"
             echo "rust_test=$rust_test"
+            echo "control_security=$control_security"
           } >> "$GITHUB_OUTPUT"
 
   # ---- Gating jobs (required via ci-success) ----
@@ -468,6 +492,50 @@ jobs:
       # `--check` only validates that they generate, not that they're tracked.
       - name: Verify committed i18n outputs are in sync
         run: cargo run -p lingxia-cli -- gen i18n --check
+
+  # Fast, portable security contracts run on every affected PR instead of
+  # waiting for the advisory full-workspace test on a main push. The matrix
+  # keeps the Rust and npm dependency graphs independent and cacheable.
+  control-security:
+    needs: changes
+    if: ${{ needs.changes.outputs.control_security == 'true' }}
+    name: Control security / ${{ matrix.suite }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [portable-rust, bridge]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        if: matrix.suite == 'portable-rust'
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+        if: matrix.suite == 'portable-rust'
+        with:
+          prefix-key: control-security-rust
+
+      - uses: ./.github/actions/build-web-runtime
+        if: matrix.suite == 'portable-rust'
+
+      - uses: actions/setup-node@v4
+        if: matrix.suite == 'bridge'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: packages/package-lock.json
+
+      - name: Install bridge dependencies
+        if: matrix.suite == 'bridge'
+        working-directory: packages
+        run: npm ci
+
+      - name: Run security contract suite
+        run: bash scripts/ci/control-security-gates.sh ${{ matrix.suite }}
 
   # lingxia (lib) for the android target does not pull lingxia-terminal, so this
   # job needs only the NDK clang.
@@ -555,6 +623,16 @@ jobs:
         shell: bash
         run: cargo clippy --workspace -- -D warnings -A clippy::let_underscore_future
 
+      - name: Test Windows control documents and sessions
+        shell: bash
+        run: |
+          cargo test -p lingxia-webview --lib windows::document::tests
+          cargo test -p lingxia-browser --lib document_session::tests
+
+      - name: Clippy Windows browser shell feature
+        shell: bash
+        run: cargo clippy -p lingxia-windows-sdk --no-default-features --features browser-shell -- -D warnings -A clippy::let_underscore_future
+
       - name: Test Windows media metadata mappings
         shell: bash
         run: cargo test -p lingxia-platform codec_subtypes_use_stable_mime_names
@@ -616,7 +694,6 @@ jobs:
         run: |
           cargo check -p lingxia-windows-sdk --no-default-features --features host-api
           cargo check -p lingxia-windows-sdk --no-default-features --features components
-          cargo check -p lingxia-windows-sdk --no-default-features --features browser-shell
           cargo check -p lingxia-windows-sdk --no-default-features --features terminal-runtime
           cargo build --example advanced_host -p lingxia-windows-sdk --no-default-features --features host-api
           cargo build --example advanced_host -p lingxia-windows-sdk --no-default-features --features runtime
@@ -1097,6 +1174,8 @@ jobs:
       # Generate the gitignored android SDK drawables/strings the Kotlin
       # references (R.drawable.* / R.string.*).
       - uses: ./.github/actions/bootstrap-android-sdk
+      - name: Test Android document admission without an emulator
+        run: bash scripts/ci/control-security-gates.sh android
       - name: Expose Android NDK to lingxia build
         run: echo "ANDROID_NDK_HOME=${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_ROOT}" >> "$GITHUB_ENV"
       - uses: ./.github/actions/resolve-cli
@@ -1142,9 +1221,9 @@ jobs:
       - name: Test all workspace crates
         run: cargo test --workspace
 
-  # sdk / harmony / npm run + are visible on PRs but are deliberately NOT in
-  # ci-success.needs, so they can never block a merge. Promote each to a gating
-  # job (add to ci-success.needs) only once it has proven green on real PRs.
+  # SDK packaging jobs remain independently scoped. Apple is a required gate
+  # because it also runs the linkable Swift security contracts; Android's
+  # document contracts run in the already-required example job.
   sdk-android:
     needs: changes
     if: ${{ needs.changes.outputs.sdk_android == 'true' }}
@@ -1208,6 +1287,9 @@ jobs:
       - name: Build Apple SDK release artifact
         run: bash scripts/release/sdk.sh --platform apple --out dist/sdk-ci --no-shasums
 
+      - name: Test linkable Apple admission and Settings contracts
+        run: bash scripts/ci/control-security-gates.sh apple
+
   harmony-native:
     needs: changes
     if: ${{ needs.changes.outputs.harmony == 'true' }}
@@ -1265,6 +1347,9 @@ jobs:
           # libavtranscoder confirms a media-complete NDK (was an earlier failure).
           find "$NDK/native" -name 'libavtranscoder*' | head -1 || true
 
+      - name: Test Harmony document authority and target
+        run: bash scripts/ci/control-security-gates.sh harmony-rust
+
       - name: Save OpenHarmony native NDK cache
         if: steps.ndk-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -1290,6 +1375,34 @@ jobs:
           name: example-harmony-libs
           path: examples/lingxia-showcase/harmony/.lingxia/**/libs/**/*.so
           if-no-files-found: warn
+
+  # HAR compilation requires DevEco's ohpm/hvigorw, which GitHub-hosted images
+  # do not provide. A missing/false repository or organization Actions variable
+  # skips this job before GitHub tries to allocate a runner. Once an admin sets
+  # HARMONY_HAR_CI_ENABLED=true and assigns a trusted runner, ci-success still
+  # requires this job and propagates any build failure or cancellation.
+  harmony-har:
+    needs: changes
+    # Never execute fork-controlled code on a persistent self-hosted runner.
+    if: ${{ needs.changes.outputs.harmony == 'true' && vars.HARMONY_HAR_CI_ENABLED == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    name: Harmony SDK HAR
+    runs-on: self-hosted
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: control-security-harmony-har
+
+      - uses: ./.github/actions/build-web-runtime
+
+      - name: Build Harmony SDK HAR
+        run: bash scripts/ci/control-security-gates.sh harmony-har
 
   npm-packages:
     needs: changes
@@ -1351,7 +1464,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Test release tooling
-        run: node --test scripts/release/changelog.test.mjs scripts/ci/check-release-notes.test.mjs
+        run: node --test scripts/release/changelog.test.mjs scripts/release/verify-crate-inventory.test.mjs scripts/ci/check-release-notes.test.mjs
 
       # Every publishable package must be registered in npm.sh AND in the two
       # release workflows, or it publishes untagged and unverified.
@@ -1374,6 +1487,7 @@ jobs:
       - changes
       - fmt
       - rust-check
+      - control-security
       - rust-android-target
       - rust-windows-target
       - cli
@@ -1382,6 +1496,9 @@ jobs:
       - macos
       - ios
       - android
+      - sdk-apple
+      - harmony-native
+      - harmony-har
       - showcase-automation-types
       - showcase-automation
       - release-tooling
