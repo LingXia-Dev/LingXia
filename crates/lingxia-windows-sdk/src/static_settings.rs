@@ -42,15 +42,11 @@ impl WindowsStaticSettingsSource {
         item_id == STATIC_SETTINGS_ACTION_ID && settings_resolution_succeeded(resolver())
     }
 
-    /// Dynamic sidebar declarations cannot become an alternate Settings
-    /// provider, even if they copy the static id or user-facing label.
-    pub(crate) fn accepts_runtime_action(id: &str, label: &str) -> bool {
-        id != STATIC_SETTINGS_ACTION_ID && !is_settings_identity(id) && !is_settings_identity(label)
+    /// Source type, not presentation strings, grants the static resolver.
+    /// The reserved id is the sole merge collision a runtime item cannot own.
+    pub(crate) fn accepts_runtime_action(id: &str) -> bool {
+        id != STATIC_SETTINGS_ACTION_ID
     }
-}
-
-fn is_settings_identity(value: &str) -> bool {
-    value.trim().eq_ignore_ascii_case("settings")
 }
 
 fn settings_resolution_succeeded(
@@ -146,21 +142,28 @@ mod tests {
     }
 
     #[test]
-    fn runtime_actions_cannot_impersonate_static_settings() {
+    fn runtime_presentation_strings_never_grant_static_authority() {
         assert!(!WindowsStaticSettingsSource::accepts_runtime_action(
-            STATIC_SETTINGS_ACTION_ID,
-            "Preferences"
-        ));
-        assert!(!WindowsStaticSettingsSource::accepts_runtime_action(
-            "settings", "Anything"
-        ));
-        assert!(!WindowsStaticSettingsSource::accepts_runtime_action(
-            "anything",
-            "  SeTTings\n"
+            STATIC_SETTINGS_ACTION_ID
         ));
         assert!(WindowsStaticSettingsSource::accepts_runtime_action(
-            "preferences",
-            "Preferences"
+            "settings"
         ));
+        assert!(WindowsStaticSettingsSource::accepts_runtime_action(
+            "anything"
+        ));
+
+        let source = WindowsStaticSettingsSource {
+            destination_kind: StaticSettingsDestinationKind::BrowserControlPage,
+        };
+        let called = Cell::new(false);
+        assert!(!source.activate("settings", || {
+            called.set(true);
+            Ok(SettingsDestinationResolution::BrowserControlPage {
+                tab_id: "settings".to_string(),
+                browser_session_id: 1,
+            })
+        }));
+        assert!(!called.get());
     }
 }

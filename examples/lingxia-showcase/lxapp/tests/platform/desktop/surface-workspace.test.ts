@@ -79,10 +79,16 @@ async function openSettingsMain(
   desktop: DesktopDriver,
   host: DesktopWindowInfo,
 ): Promise<void> {
-  if (platform !== 'macos') {
-    await app.eval({
-      timeoutMs: 20_000,
-      script: `await lx.shell.openBuiltin('settings');`,
+  if (platform === 'windows') {
+    const current = (await desktop.windows()).find((window) => window.id === host.id) ?? host;
+    await desktop.window.focus({ window: current.id });
+    const layout = await app.surfaceLayout();
+    await desktop.pointer.click({
+      at: staticSettingsActionPoint(
+        current,
+        layout.switcherForm === 'rail',
+        DESKTOP_FOOTER_ACTION_COUNT,
+      ),
     });
     return;
   }
@@ -652,12 +658,10 @@ function pinnedShortcutPoint(
   ];
 }
 
-/// Footer actions the showcase declares on desktop, in `lxapp/lxapp.ts`:
-/// chat, terminal, ping, and terminal settings. The rail lays them out from
-/// the bottom, so the first one's position depends on how many there are —
-/// declaring another without updating this clicks a different action, and the
-/// test then waits for a surface that was never opened.
-const DESKTOP_FOOTER_ACTION_COUNT = 4;
+/// Four runtime actions from `lxapp.ts`, followed by the host-owned static
+/// Settings action. The rail lays them out from the bottom, so adding another
+/// source without updating this clicks a different action.
+const DESKTOP_FOOTER_ACTION_COUNT = 5;
 // The mobile-only Device item is filtered out; every other declared tab is a
 // root page row above dynamic workspaces in the expanded desktop sidebar.
 const SHOWCASE_DESKTOP_TAB_COUNT = 6;
@@ -679,6 +683,24 @@ function firstRailFooterActionPoint(
     host.bounds.x + Math.round(railWidth / 2),
     host.bounds.y + firstTop + Math.round(cell / 2),
   ];
+}
+
+function staticSettingsActionPoint(
+  host: DesktopWindowInfo,
+  rail: boolean,
+  footerActionCount: number,
+): [number, number] {
+  const cell = nativeWindowExtent('windows', host, 30);
+  const margin = nativeWindowExtent('windows', host, 6);
+  if (!rail) {
+    return [
+      host.bounds.x + nativeWindowExtent('windows', host, 92),
+      host.bounds.y + host.bounds.h - margin - cell / 2,
+    ];
+  }
+  const first = firstRailFooterActionPoint(host, footerActionCount);
+  const gap = nativeWindowExtent('windows', host, 4);
+  return [first[0], first[1] + (footerActionCount - 1) * (cell + gap)];
 }
 
 function firstLxappWorkspacePoint(

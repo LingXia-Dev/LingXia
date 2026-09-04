@@ -4267,6 +4267,116 @@ surfaces:
     }
 
     #[test]
+    fn static_settings_schema_survives_six_desktop_host_shapes() {
+        let cases = [
+            (
+                "Logic home",
+                r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+features: { appService: true }
+settingsDestination: { kind: controlAppPage, appId: home, page: settings }
+surfaces: [{ lxapp: home, role: main, launch: true }]
+"#,
+                Some("controlAppPage"),
+            ),
+            (
+                "logic:false home",
+                r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+features: { appService: false }
+settingsDestination: { kind: controlAppPage, appId: home, page: settings }
+surfaces: [{ lxapp: home, role: main, launch: true }]
+"#,
+                Some("controlAppPage"),
+            ),
+            (
+                "browser main",
+                r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+capabilities: { browser: true }
+settingsDestination: { kind: browserControlPage, route: /settings }
+surfaces: [{ native: browser, role: main, launch: true }]
+"#,
+                Some("browserControlPage"),
+            ),
+            (
+                "terminal main",
+                r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+capabilities: { terminal: true }
+settingsDestination: { kind: nativeAction, actionId: openPreferences }
+surfaces: [{ native: terminal, role: main, launch: true }]
+"#,
+                Some("nativeAction"),
+            ),
+            (
+                "URL main",
+                r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+capabilities: { browser: true }
+settingsDestination: { kind: browserControlPage, route: /settings }
+surfaces: [{ url: https://example.com, role: main, launch: true }]
+"#,
+                Some("browserControlPage"),
+            ),
+            (
+                "pure native",
+                r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+features: { appService: false }
+capabilities: { terminal: true }
+surfaces: [{ native: terminal, role: main, launch: true }]
+"#,
+                None,
+            ),
+        ];
+
+        for (shape, yaml, expected_kind) in cases {
+            let config = load_config_yaml(yaml)
+                .unwrap_or_else(|error| panic!("{shape} config failed: {error}"));
+            let actual_kind =
+                config
+                    .settings_destination
+                    .as_ref()
+                    .map(|destination| match destination {
+                        SettingsDestination::ControlAppPage { .. } => "controlAppPage",
+                        SettingsDestination::BrowserControlPage { .. } => "browserControlPage",
+                        SettingsDestination::NativeAction { .. } => "nativeAction",
+                    });
+            assert_eq!(actual_kind, expected_kind, "{shape}");
+        }
+    }
+
+    #[test]
     fn surfaces_keep_mobile_home_launch_separate_from_desktop_native_main() {
         let yaml = r#"
 app:
