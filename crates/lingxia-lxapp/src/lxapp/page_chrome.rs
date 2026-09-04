@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use super::navbar::NavigationBarPatch;
 use super::tabbar::TabBarPatch;
-use crate::{LxApp, LxAppError, PageInstance};
+use crate::{AppSessionClass, LxApp, LxAppError, PageInstance};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::ui::UIUpdate;
 use lingxia_webview::WebViewController;
@@ -588,14 +588,14 @@ impl LxApp {
     /// from its own night mode: the activity theme, and the canvas the host
     /// paints behind a page.
     ///
-    /// Only the home lxapp speaks for the app: it is the one whose appearance
-    /// the user sees at launch.
+    /// Only the native-assigned ControlApp session speaks for the host. This
+    /// is intentionally independent of an app's id or bundle source.
     fn publish_host_color_mode(
         &self,
         preference: AppearancePreference,
         resolved: ResolvedAppearance,
     ) {
-        if lingxia_app_context::home_app_id() != Some(self.appid.as_str()) {
+        if !session_class_may_publish_host_color_mode(self.app_session_class()) {
             return;
         }
         // Auto clears the override rather than pinning today's answer: the
@@ -691,9 +691,23 @@ const fn capsule_trailing_inset() -> f64 {
     12.0
 }
 
+const fn session_class_may_publish_host_color_mode(class: AppSessionClass) -> bool {
+    matches!(class, AppSessionClass::ControlApp)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn host_color_mode_is_reserved_for_control_app_sessions() {
+        assert!(!session_class_may_publish_host_color_mode(
+            AppSessionClass::StandardApp
+        ));
+        assert!(session_class_may_publish_host_color_mode(
+            AppSessionClass::ControlApp
+        ));
+    }
 
     #[test]
     fn color_parses_css_order_alpha() {

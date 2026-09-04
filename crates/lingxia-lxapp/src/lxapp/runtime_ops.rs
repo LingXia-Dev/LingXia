@@ -11,27 +11,7 @@ pub fn ensure_lxapp(appid: &str, release_type: ReleaseType) -> Result<Arc<LxApp>
 pub fn ensure_builtin_lxapp(appid: &str) -> Result<Arc<LxApp>, LxAppError> {
     let manager = super::runtime_registry::get_lxapps_manager()
         .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
-    if let Some(app) = manager.lxapps.get(appid) {
-        return Ok(app.clone());
-    }
-    if !matches!(
-        lxapp_bundle_source_for(appid),
-        Some(LxAppBundleSource::BuiltinAssets | LxAppBundleSource::Synthetic)
-    ) {
-        return Err(LxAppError::ResourceNotFound(format!(
-            "builtin lxapp source not registered: {appid}"
-        )));
-    }
-
-    let app = Arc::new(LxApp::new(
-        appid.to_string(),
-        manager.runtime.clone(),
-        manager.executor.clone(),
-        ReleaseType::Release,
-    )?);
-    app.bind_arc();
-    manager.lxapps.insert(appid.to_string(), app.clone());
-    Ok(app)
+    manager.ensure_builtin_lxapp(appid)
 }
 
 /// Ensure the SDK's content-less desktop surface owner exists. It provides a

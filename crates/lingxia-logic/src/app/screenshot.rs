@@ -49,13 +49,13 @@ rong::js_api! {
 /// is what the user sees of the whole app — host-drawn navigation chrome,
 /// native overlays, and every composited WebView, not just this lxapp's web
 /// content. Because that view can include other lxapps' UI, the API is
-/// restricted to the home lxapp, like the other host-level APIs on `lx.app`.
+/// restricted to the Control app, like the other host-level APIs on `lx.app`.
 async fn app_screenshot(
     ctx: JSContext,
     options: Optional<JSAppScreenshotOptions>,
 ) -> JSResult<JSAppScreenshotResult> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    super::ensure_home_lxapp(&lxapp, "lx.app.screenshot")?;
+    super::ensure_control_caller(&lxapp, "lx.app.screenshot")?;
 
     let window_id = options.as_ref().and_then(|o| o.window_id.clone());
     let platform = lxapp::get_platform()

@@ -62,7 +62,7 @@ pub use lingxia_update::{
 pub use lingxia_webview::url_callback;
 pub use lxapp::set_num_workers;
 pub use lxapp::{
-    CloseReason, CreatePageInstanceRequest, CreatedPageInstance, DisplayLanguage,
+    AppSessionClass, CloseReason, CreatePageInstanceRequest, CreatedPageInstance, DisplayLanguage,
     HOST_SURFACE_OWNER_APP_ID, HostMainSurfaceRegistration, HostSurfaceMenuExecution,
     LXAPP_MORE_ACTION_LIMIT, LxApp, LxAppMoreAction, LxAppMoreActions, LxAppOpenRegion,
     LxAppRuntimeInfo, LxAppRuntimePageInfo, LxAppRuntimeSurfaceInfo, LxAppSecurityPrivilege,

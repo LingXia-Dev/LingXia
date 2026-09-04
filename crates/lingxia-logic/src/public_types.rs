@@ -136,8 +136,8 @@ rong::js_api! {
         /// toggle, default off).
         ///
         /// Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
-        /// are available only to the home lxapp; other lxapps receive a permission
-        /// error.
+        /// are available only to the native-assigned Control app; other lxapps receive
+        /// a permission error.
         ///
         type AutostartApi = r###"{
     /**
@@ -840,7 +840,7 @@ rong::js_api! {
 }"###;
 
         /// Built-in browser product page. Opening one requires
-        /// `capabilities.browser` and is restricted to the home lxapp.
+        /// `capabilities.browser` and is restricted to the native-assigned Control app.
         type BuiltinShellPage = r###"'settings' | 'downloads'"###;
 
         type OverlaySurfaceSize = r###"{
@@ -1243,7 +1243,7 @@ true
         ///
         type SurfaceErrorCode = r###"/** The placement cannot be realized by this host build. */
 'unsupported_placement'
-/** A privileged operation was called by an lxapp other than the home lxapp. */
+/** A privileged operation was called by an lxapp other than the native-assigned Control app. */
  | 'denied'
 /** No such declared surface, lxapp, or builtin page. */
  | 'not_declared'
@@ -1437,7 +1437,7 @@ true
     key?: string;
 }"###;
 
-        /// The declared-surface options only the home lxapp may use.
+        /// The declared-surface options only the native-assigned Control app may use.
         ///
         /// Creating an extra instance and overriding a placement both mutate
         /// shared shell composition, so they live here and not on
@@ -1482,7 +1482,7 @@ true
     key?: string;
 }"###;
 
-        /// Role and edge overrides the home lxapp may apply to a live declared
+        /// Role and edge overrides the native-assigned Control app may apply to a live declared
         /// surface. A stable root rejects non-main roles.
         ///
         type ShellSurfacePatch = r###"{
@@ -1600,7 +1600,7 @@ true
 }"###;
 
         /// Callback-based updates for this lxapp's bundle. Available to every
-        /// lxapp. To update the native host app, the home lxapp uses the
+        /// lxapp. To update the native host app, the Control app uses the
         /// task-based `lx.app.checkUpdate()` API instead.
         ///
         type UpdateManager = r###"{

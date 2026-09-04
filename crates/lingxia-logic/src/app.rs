@@ -2,7 +2,7 @@ use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_lxapp_error,
     js_error_from_platform_error, js_invalid_parameter_error, js_service_unavailable_error,
 };
-use lingxia_app_context::{app_config, env_version, home_app_id};
+use lingxia_app_context::{app_config, env_version};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
 use lxapp::{DISPLAY_LANGUAGE_CHANGE_EVENT, register_app_handler, unregister_app_handler_token};
@@ -98,18 +98,22 @@ pub(crate) fn badge_text(value: JSValue, api: &str) -> JSResult<String> {
     .into())
 }
 
-/// Guard for host-app-level APIs (`checkUpdate`, `screenshot`, `autostart`):
-/// only the home lxapp may call them; others get a permission error.
-pub(crate) fn ensure_home_lxapp(lxapp: &LxApp, api_name: &str) -> JSResult<()> {
-    let home_appid = home_app_id()
-        .ok_or_else(|| js_service_unavailable_error("home lxapp is not configured"))?;
-    if lxapp.appid == home_appid {
+/// Guard for host-app-level APIs (`checkUpdate`, `screenshot`, `autostart`).
+///
+/// Admission follows the native-assigned Control session class, never an appid
+/// or bundle/source property supplied by the lxapp.
+pub(crate) fn ensure_control_caller(lxapp: &LxApp, api_name: &str) -> JSResult<()> {
+    ensure_control_classification(lxapp.is_control_app(), api_name)
+}
+
+fn ensure_control_classification(is_control: bool, api_name: &str) -> JSResult<()> {
+    if is_control {
         return Ok(());
     }
 
     Err(js_error_from_business_code_with_detail(
         3000,
-        format!("{api_name} is only available in the home lxapp"),
+        format!("{api_name} is only available in the Control app"),
     ))
 }
 
@@ -155,10 +159,10 @@ rong::js_api! {
 
 /// Set the host display language. `"auto"` follows the system locale;
 /// `"en-US"` and `"zh-CN"` pin the product. Every lxapp inherits the resolved
-/// tag from `getBaseInfo().displayLanguage`. Restricted to the home lxapp.
+/// tag from `getBaseInfo().displayLanguage`. Restricted to the Control app.
 fn set_js_display_language(ctx: JSContext, language: String) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp, "lx.app.setDisplayLanguage")?;
+    ensure_control_caller(&lxapp, "lx.app.setDisplayLanguage")?;
     let language = language
         .parse::<lxapp::DisplayLanguage>()
         .map_err(js_invalid_parameter_error)?;

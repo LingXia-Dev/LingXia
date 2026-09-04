@@ -1,6 +1,6 @@
-//! `lx.shell.sidebarActions` — app-declared host-shell entries (home lxapp only).
+//! `lx.shell.sidebarActions` — app-declared host-shell entries (Control app only).
 
-use crate::app::ensure_home_lxapp;
+use crate::app::ensure_control_caller;
 use lingxia_shell::{
     ShellError, ShellSidebarAction, ShellSidebarActionUpdate, SidebarActionCollection,
     SidebarActionPlacement,
@@ -185,9 +185,9 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
 }
 
 /// Atomically replaces the complete desktop sidebar action declaration. Only the
-/// home lxapp may call this API. Ids must be non-empty and unique across both
+/// Control app may call this API. Ids must be non-empty and unique across both
 /// placements; header accepts at most two entries. Icons must be bundled relative
-/// paths or runtime-managed `lx://` paths accessible to the home lxapp.
+/// paths or runtime-managed `lx://` paths accessible to the Control app.
 ///
 /// Every entry is bound to its generation-scoped callback. The shell invokes that
 /// callback but never infers navigation or selected state. Validation or host
@@ -196,7 +196,7 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
 /// on every Logic launch.
 fn sidebar_actions_replace(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp, "lx.shell.sidebarActions.replace")?;
+    ensure_control_caller(&lxapp, "lx.shell.sidebarActions.replace")?;
     let parsed = items
         .iter()
         .map(parse_sidebar_action)
@@ -210,12 +210,12 @@ fn sidebar_actions_replace(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()>
 }
 
 /// Atomically updates the icon, label, and/or disabled state of one stable id.
-/// Only the home lxapp may call this API. The patch must be non-empty; unknown
+/// Only the Control app may call this API. The patch must be non-empty; unknown
 /// fields are rejected. The callback and placement stay unchanged. Throws
 /// `E_NOT_FOUND` when `id` is not in the current declaration.
 fn sidebar_actions_update(ctx: JSContext, id: String, patch: JSObject) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp, "lx.shell.sidebarActions.update")?;
+    ensure_control_caller(&lxapp, "lx.shell.sidebarActions.update")?;
     reject_unknown_keys(&patch, &["label", "icon", "disabled"])?;
     let patch = ShellSidebarActionUpdate {
         label: optional_string(&patch, "label")?,
@@ -227,11 +227,11 @@ fn sidebar_actions_update(ctx: JSContext, id: String, patch: JSObject) -> JSResu
 }
 
 /// Atomically removes one stable id and its generation-scoped callback. Only the
-/// home lxapp may call this API. Throws `E_NOT_FOUND` when `id` is not in the
+/// Control app may call this API. Throws `E_NOT_FOUND` when `id` is not in the
 /// current declaration.
 fn sidebar_actions_remove(ctx: JSContext, id: String) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp, "lx.shell.sidebarActions.remove")?;
+    ensure_control_caller(&lxapp, "lx.shell.sidebarActions.remove")?;
     let mut handlers = retained_handlers(&ctx);
     handlers.remove(id.trim());
     commit_generation(&ctx, |next| next.remove(&id), handlers)
@@ -239,10 +239,10 @@ fn sidebar_actions_remove(ctx: JSContext, id: String) -> JSResult<()> {
 
 /// Atomically clears every runtime sidebar action and callback. Only the home
 /// lxapp may call this API. Equivalent to `replace([])` and safe when already
-/// empty; the home lxapp must still redeclare actions after the next Logic launch.
+/// empty; the Control app must still redeclare actions after the next Logic launch.
 fn sidebar_actions_clear(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp, "lx.shell.sidebarActions.clear")?;
+    ensure_control_caller(&lxapp, "lx.shell.sidebarActions.clear")?;
     commit_generation(
         &ctx,
         |next| {
