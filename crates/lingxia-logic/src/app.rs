@@ -1,6 +1,7 @@
+use crate::authorization::{self, LogicRoute};
 use crate::i18n::{
-    js_error_from_business_code_with_detail, js_error_from_lxapp_error,
-    js_error_from_platform_error, js_invalid_parameter_error, js_service_unavailable_error,
+    js_error_from_lxapp_error, js_error_from_platform_error, js_invalid_parameter_error,
+    js_service_unavailable_error,
 };
 use lingxia_app_context::{app_config, env_version};
 use lingxia_platform::traits::app_runtime::AppRuntime;
@@ -122,7 +123,8 @@ fn get_app_base_info(ctx: JSContext) -> JSResult<AppBaseInfo> {
 /// If the user should confirm first, call `lx.showModal(...)` and invoke this
 /// only after confirmation.
 fn exit_app(ctx: JSContext) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    let invocation = authorization::require(&ctx, LogicRoute::AppExit)?;
+    let lxapp = invocation.lxapp();
     lxapp::clear_active_display_language_session_override();
     lxapp
         .runtime
@@ -136,7 +138,8 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
 /// on mobile. Null or an empty string clears it. Unsupported platforms treat
 /// the call as a no-op.
 fn set_app_badge(ctx: JSContext, value: JSValue) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    let invocation = authorization::require(&ctx, LogicRoute::AppSetBadge)?;
+    let lxapp = invocation.lxapp();
     let text = badge_text(value, "lx.app.setBadge")?;
     lxapp
         .runtime
@@ -161,25 +164,6 @@ pub(crate) fn badge_text(value: JSValue, api: &str) -> JSResult<String> {
         ),
     )
     .into())
-}
-
-/// Guard for host-app-level APIs (`checkUpdate`, `screenshot`, `autostart`).
-///
-/// Admission follows the native-assigned Control session class, never an appid
-/// or bundle/source property supplied by the lxapp.
-pub(crate) fn ensure_control_caller(lxapp: &LxApp, api_name: &str) -> JSResult<()> {
-    ensure_control_classification(lxapp.is_control_app(), api_name)
-}
-
-fn ensure_control_classification(is_control: bool, api_name: &str) -> JSResult<()> {
-    if is_control {
-        return Ok(());
-    }
-
-    Err(js_error_from_business_code_with_detail(
-        3000,
-        format!("{api_name} is only available in the Control app"),
-    ))
 }
 
 /// The native host app around this lxapp — its identity, updates, and window.
@@ -222,33 +206,14 @@ rong::js_api! {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::ensure_control_classification;
-
-    #[test]
-    fn host_display_language_controls_require_native_control_classification() {
-        for api in [
-            "lx.app.getDisplayLanguageState",
-            "lx.app.setDisplayLanguagePreference",
-            "lx.app.onDisplayLanguageStateChange",
-        ] {
-            assert!(ensure_control_classification(true, api).is_ok());
-            assert!(ensure_control_classification(false, api).is_err());
-        }
-    }
-}
-
 fn get_display_language_state(ctx: JSContext) -> JSResult<JsDisplayLanguageState> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_control_caller(&lxapp, "lx.app.getDisplayLanguageState")?;
+    authorization::require(&ctx, LogicRoute::AppGetDisplayLanguageState)?;
     Ok(js_display_language_state())
 }
 
 /// Persist an arbitrary BCP-47 preference, or `"auto"` to follow the system.
 fn set_js_display_language_preference(ctx: JSContext, preference: String) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_control_caller(&lxapp, "lx.app.setDisplayLanguagePreference")?;
+    authorization::require(&ctx, LogicRoute::AppSetDisplayLanguagePreference)?;
     let preference = preference
         .parse::<lxapp::DisplayLanguagePreference>()
         .map_err(js_invalid_parameter_error)?;
@@ -297,8 +262,7 @@ fn on_display_language_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFu
 }
 
 fn on_display_language_state_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_control_caller(&lxapp, "lx.app.onDisplayLanguageStateChange")?;
+    authorization::require(&ctx, LogicRoute::AppWatchDisplayLanguageState)?;
     let last_revision = Rc::new(Cell::new(0));
     let delivered = Rc::new(Cell::new(false));
     let event_revision = last_revision.clone();
