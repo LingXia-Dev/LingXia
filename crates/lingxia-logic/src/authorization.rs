@@ -24,9 +24,7 @@ pub(crate) enum LogicRoute {
     ShellOpenBuiltin,
     ShellOpenDeclared,
     ShellReconfigure,
-    SurfaceDeclaredOverride,
-    SurfaceOpenBuiltin,
-    NavigatorHostTerminalSettings,
+    ShellOpenHostTerminalSettings,
     #[cfg(feature = "terminal")]
     TerminalSettingsGet,
     #[cfg(feature = "terminal")]
@@ -77,9 +75,7 @@ impl LogicRoute {
         Self::ShellOpenBuiltin,
         Self::ShellOpenDeclared,
         Self::ShellReconfigure,
-        Self::SurfaceDeclaredOverride,
-        Self::SurfaceOpenBuiltin,
-        Self::NavigatorHostTerminalSettings,
+        Self::ShellOpenHostTerminalSettings,
         #[cfg(feature = "terminal")]
         Self::TerminalSettingsGet,
         #[cfg(feature = "terminal")]
@@ -130,9 +126,7 @@ impl LogicRoute {
             Self::ShellOpenBuiltin => "lx.shell.openBuiltin",
             Self::ShellOpenDeclared => "lx.shell.openDeclared",
             Self::ShellReconfigure => "lx.shell.reconfigure",
-            Self::SurfaceDeclaredOverride => "lx.surface.openDeclared.override",
-            Self::SurfaceOpenBuiltin => "lx.surface.openUrl.builtin",
-            Self::NavigatorHostTerminalSettings => "lx.navigateToApp.hostTerminalSettings",
+            Self::ShellOpenHostTerminalSettings => "lx.shell.openApp.hostTerminalSettings",
             #[cfg(feature = "terminal")]
             Self::TerminalSettingsGet => "lx.terminal.settings.get",
             #[cfg(feature = "terminal")]
@@ -247,6 +241,36 @@ pub(crate) fn require(ctx: &JSContext, route: LogicRoute) -> JSResult<HostInvoca
     Ok(invocation)
 }
 
+/// Authenticate and authorize a direct Logic call before its raw arguments
+/// are converted into route-specific Rust values.
+pub(crate) fn require_before_decode<T>(
+    ctx: &JSContext,
+    route: LogicRoute,
+    decode: impl FnOnce() -> JSResult<T>,
+) -> JSResult<(HostInvocationContext, T)> {
+    let invocation = invocation_from_context(ctx)?;
+    let decoded =
+        authorize_caller_then(invocation.caller(), route, decode).map_err(|denied| {
+            js_error_from_business_code_with_detail(
+                3000,
+                format!(
+                    "{} is only available in the Control app",
+                    denied.route().name()
+                ),
+            )
+        })??;
+    Ok((invocation, decoded))
+}
+
+fn authorize_caller_then<T>(
+    caller: &host::AuthenticatedCaller,
+    route: LogicRoute,
+    action: impl FnOnce() -> T,
+) -> Result<T, LogicAuthorizationDenied> {
+    authorize_caller(caller, route)?;
+    Ok(action())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,5 +321,35 @@ mod tests {
                 route.name()
             );
         }
+    }
+
+    #[test]
+    fn unauthorized_raw_call_never_decodes_malformed_arguments() {
+        let standard = host::AuthenticatedCaller::lxapp_session_for_test(
+            "same.app",
+            51,
+            AppSessionClass::StandardApp,
+        );
+        let control = host::AuthenticatedCaller::lxapp_session_for_test(
+            "same.app",
+            52,
+            AppSessionClass::ControlApp,
+        );
+        let mut decoded = false;
+        let denied = authorize_caller_then(
+            &standard,
+            LogicRoute::AppSetDisplayLanguagePreference,
+            || decoded = true,
+        );
+        assert!(denied.is_err());
+        assert!(!decoded, "unauthorized arguments must remain raw");
+
+        authorize_caller_then(
+            &control,
+            LogicRoute::AppSetDisplayLanguagePreference,
+            || decoded = true,
+        )
+        .expect("ControlApp is authorized");
+        assert!(decoded, "authorized arguments may be decoded");
     }
 }
