@@ -10,7 +10,7 @@ use crate::lxapp::{AppSessionClass, LxApp, LxAppSessionStatus};
 use futures::Stream;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -88,6 +88,50 @@ pub enum RouteAudience {
     ControlAppOnly,
     BrowserControlOnly,
     ControlOnly,
+}
+
+/// A privileged native resource that may be assigned to one lxapp session.
+///
+/// Manifest entries are requests, not grants. The native host seals the
+/// granted subset when it creates the session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum AppResourceGrant {
+    Process,
+    Downloads,
+    Automation,
+    AutomationHost,
+}
+
+impl AppResourceGrant {
+    pub const fn manifest_privilege(self) -> &'static str {
+        match self {
+            Self::Process => "process",
+            Self::Downloads => "downloads",
+            Self::Automation => "automation",
+            Self::AutomationHost => "host",
+        }
+    }
+}
+
+type AppResourceGrantResolver =
+    dyn Fn(&Arc<LxApp>) -> HashSet<AppResourceGrant> + Send + Sync + 'static;
+
+static APP_RESOURCE_GRANT_RESOLVER: OnceLock<Arc<AppResourceGrantResolver>> = OnceLock::new();
+
+/// Install the native host's per-session grant resolver before lxapp runtime
+/// initialization. The resolver and each resulting grant set are sealed once.
+#[doc(hidden)]
+pub fn __install_app_resource_grant_resolver(resolver: Arc<AppResourceGrantResolver>) -> bool {
+    APP_RESOURCE_GRANT_RESOLVER.set(resolver).is_ok()
+}
+
+pub(crate) fn seal_app_resource_grants(app: &Arc<LxApp>) {
+    let grants = APP_RESOURCE_GRANT_RESOLVER
+        .get()
+        .map(|resolver| resolver(app))
+        .unwrap_or_default();
+    app.seal_resource_grants(grants);
 }
 
 /// Native identity of one authenticated lxapp session.
@@ -194,6 +238,13 @@ impl AppResourceGrants {
     pub fn contains_file_reference(&self, reference: &str) -> bool {
         self.live_owner()
             .is_ok_and(|app| app.has_transient_file_reference(reference))
+    }
+
+    /// Whether the native host assigned this privileged resource to this live
+    /// session. A manifest declaration alone never makes this return true.
+    pub fn contains(&self, grant: AppResourceGrant) -> bool {
+        self.live_owner()
+            .is_ok_and(|app| app.has_resource_grant(grant))
     }
 }
 
@@ -1123,26 +1174,36 @@ mod tests {
         let workers = LxAppWorkers::init(1);
         let app_id = format!("app.lingxia.scope-test.{}", Uuid::new_v4());
         register_synthetic_lxapp(app_id.clone());
-        let standard = Arc::new(
-            LxApp::new_with_session_class_for_test(
-                app_id.clone(),
-                Arc::clone(&runtime),
-                Arc::clone(&workers),
-                AppSessionClass::StandardApp,
-            )
-            .expect("standard app"),
-        );
+        let mut standard = LxApp::new_with_session_class_for_test(
+            app_id.clone(),
+            Arc::clone(&runtime),
+            Arc::clone(&workers),
+            AppSessionClass::StandardApp,
+        )
+        .expect("standard app");
+        standard.config.security.privileges = vec![
+            "process".to_string(),
+            "downloads".to_string(),
+            "automation".to_string(),
+            "host".to_string(),
+        ];
+        let standard = Arc::new(standard);
         standard.bind_arc();
         standard.set_status(LxAppSessionStatus::Opened);
-        let control = Arc::new(
-            LxApp::new_with_session_class_for_test(
-                app_id,
-                runtime,
-                workers,
-                AppSessionClass::ControlApp,
-            )
-            .expect("control app"),
-        );
+        let mut control = LxApp::new_with_session_class_for_test(
+            app_id,
+            runtime,
+            workers,
+            AppSessionClass::ControlApp,
+        )
+        .expect("control app");
+        control.config.security.privileges = vec![
+            "process".to_string(),
+            "downloads".to_string(),
+            "automation".to_string(),
+            "host".to_string(),
+        ];
+        let control = Arc::new(control);
         control.bind_arc();
         control.set_status(LxAppSessionStatus::Opened);
         (root, standard, control)
@@ -1330,6 +1391,48 @@ mod tests {
                 .resolve_transient_file(&granted)
                 .is_err(),
             "same app id must not confer another session's native grant"
+        );
+    }
+
+    #[test]
+    fn privileged_resource_grants_are_native_session_bound_and_expire_on_teardown() {
+        let (_root, standard, takeover) = same_app_id_with_different_classes();
+        let declared_downloads = crate::LxAppSecurityPrivilege::new("downloads").unwrap();
+        let declared_host = crate::LxAppSecurityPrivilege::new("host").unwrap();
+
+        assert!(standard.has_security_privilege(&declared_downloads));
+        assert!(standard.has_security_privilege(&declared_host));
+        assert!(!standard.has_resource_grant(AppResourceGrant::Downloads));
+        assert!(!standard.has_resource_grant(AppResourceGrant::AutomationHost));
+
+        standard.seal_resource_grants(HashSet::from([
+            AppResourceGrant::Downloads,
+            AppResourceGrant::AutomationHost,
+        ]));
+        assert!(standard.has_resource_grant(AppResourceGrant::Downloads));
+        assert!(standard.has_resource_grant(AppResourceGrant::AutomationHost));
+
+        let scope = AuthenticatedCaller::for_lxapp(&standard)
+            .app_scope()
+            .expect("app scope")
+            .clone();
+        assert!(
+            scope
+                .resource_grants()
+                .contains(AppResourceGrant::Downloads)
+        );
+        assert!(
+            !takeover.has_resource_grant(AppResourceGrant::Downloads),
+            "same app id on a different native session must not inherit grants"
+        );
+
+        standard.set_status(LxAppSessionStatus::Closing);
+        assert!(!standard.has_resource_grant(AppResourceGrant::Downloads));
+        assert!(
+            !scope
+                .resource_grants()
+                .contains(AppResourceGrant::AutomationHost),
+            "retained resource handles must fail as teardown begins"
         );
     }
 

@@ -5,7 +5,7 @@
 //! lower half (tab-bar guard included), matching `lxdev lxapp nav`.
 
 use crate::auto_err;
-use crate::resolve::{js_object_to_json, upgrade};
+use crate::resolve::{js_object_to_json, upgrade_authorized};
 use lxapp::{LxApp, NavigationType, automation as auto};
 use rong::{
     FromJSObject, HostError, IntoJSObject, JSContext, JSObject, JSResult, function::Optional,
@@ -65,8 +65,13 @@ impl From<auto::PageStatus> for JSPageInfo {
 }
 
 impl JSNavDriver {
-    async fn navigate(&self, options: &JSNavOptions, kind: NavigationType) -> JSResult<JSPageInfo> {
-        let app = upgrade(&self.lxapp)?;
+    async fn navigate(
+        &self,
+        ctx: &JSContext,
+        options: &JSNavOptions,
+        kind: NavigationType,
+    ) -> JSResult<JSPageInfo> {
+        let app = upgrade_authorized(ctx, &self.lxapp)?;
         let query = options.query.as_ref().map(js_object_to_json).transpose()?;
         let (page, name) = auto::navigate(&app, &options.page, query.as_ref(), kind, false)
             .await
@@ -83,32 +88,29 @@ impl JSNavDriver {
     }
 
     #[js_method]
-    async fn to(&self, _ctx: JSContext, options: JSNavOptions) -> JSResult<JSPageInfo> {
-        self.navigate(&options, NavigationType::Forward).await
+    async fn to(&self, ctx: JSContext, options: JSNavOptions) -> JSResult<JSPageInfo> {
+        self.navigate(&ctx, &options, NavigationType::Forward).await
     }
 
     #[js_method]
-    async fn redirect(&self, _ctx: JSContext, options: JSNavOptions) -> JSResult<JSPageInfo> {
-        self.navigate(&options, NavigationType::Replace).await
+    async fn redirect(&self, ctx: JSContext, options: JSNavOptions) -> JSResult<JSPageInfo> {
+        self.navigate(&ctx, &options, NavigationType::Replace).await
     }
 
     #[js_method(rename = "switchTab")]
-    async fn switch_tab(&self, _ctx: JSContext, options: JSNavOptions) -> JSResult<JSPageInfo> {
-        self.navigate(&options, NavigationType::SwitchTab).await
+    async fn switch_tab(&self, ctx: JSContext, options: JSNavOptions) -> JSResult<JSPageInfo> {
+        self.navigate(&ctx, &options, NavigationType::SwitchTab)
+            .await
     }
 
     #[js_method]
-    async fn relaunch(&self, _ctx: JSContext, options: JSNavOptions) -> JSResult<JSPageInfo> {
-        self.navigate(&options, NavigationType::Launch).await
+    async fn relaunch(&self, ctx: JSContext, options: JSNavOptions) -> JSResult<JSPageInfo> {
+        self.navigate(&ctx, &options, NavigationType::Launch).await
     }
 
     #[js_method]
-    async fn back(
-        &self,
-        _ctx: JSContext,
-        options: Optional<JSBackOptions>,
-    ) -> JSResult<JSPageInfo> {
-        let app = upgrade(&self.lxapp)?;
+    async fn back(&self, ctx: JSContext, options: Optional<JSBackOptions>) -> JSResult<JSPageInfo> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let delta = options.0.and_then(|o| o.delta).unwrap_or(1);
         let (page, name) = auto::navigate_back(&app, delta, false)
             .await
@@ -117,8 +119,8 @@ impl JSNavDriver {
     }
 
     #[js_method]
-    async fn current(&self, _ctx: JSContext) -> JSResult<JSPageInfo> {
-        let app = upgrade(&self.lxapp)?;
+    async fn current(&self, ctx: JSContext) -> JSResult<JSPageInfo> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let (page, name) = auto::resolve_page(&app, None).map_err(auto_err)?;
         Ok(auto::page_status(&app, &page, name.as_deref()).into())
     }
@@ -126,16 +128,16 @@ impl JSNavDriver {
     /// Status of a configured page by name (`lxdev lxapp page info --page`);
     /// omit `page` for the current page.
     #[js_method]
-    async fn info(&self, _ctx: JSContext, options: Optional<JSPageRef>) -> JSResult<JSPageInfo> {
-        let app = upgrade(&self.lxapp)?;
+    async fn info(&self, ctx: JSContext, options: Optional<JSPageRef>) -> JSResult<JSPageInfo> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let options = options.0.unwrap_or_default();
         let (page, name) = auto::resolve_page(&app, options.page.as_deref()).map_err(auto_err)?;
         Ok(auto::page_status(&app, &page, name.as_deref()).into())
     }
 
     #[js_method]
-    async fn stack(&self, _ctx: JSContext) -> JSResult<Vec<JSPageInfo>> {
-        let app = upgrade(&self.lxapp)?;
+    async fn stack(&self, ctx: JSContext) -> JSResult<Vec<JSPageInfo>> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let info = app.runtime_info();
         let current = info.current_page.clone();
         let stack = info

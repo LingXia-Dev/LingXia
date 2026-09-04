@@ -18,17 +18,15 @@
 //! internals and advanced integrations.
 
 extern crate self as lingxia;
-pub use host_addon::{HostAddon, register_host_addon};
+#[cfg(feature = "devtool")]
+pub use host_addon::NativeDevtoolsAuthority;
+pub use host_addon::{HostAddon, NativeHostRuntimeAuthority, register_host_addon};
 #[doc(hidden)]
 pub use lingxia_native_macros::framework_native;
 pub use lingxia_native_macros::native;
 
 pub use lxapp::host;
 pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
-/// Grant `lx.automation()` to every lxapp in this process without a manifest
-/// privilege declaration. For dev/test hosts (the Runner) only — product hosts
-/// must not call this. A `lingxia dev` session already implies auto-grant.
-pub use lxapp::set_automation_auto_grant;
 // Required by expansions of `#[lingxia::native]`; host applications should
 // receive it through macro-generated parameters rather than orchestrate it.
 #[doc(hidden)]

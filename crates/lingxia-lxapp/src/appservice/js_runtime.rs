@@ -694,7 +694,7 @@ pub(crate) async fn lxapp_service_handler(
             if lxapp.is_home_lxapp && lingxia_app_context::process_enabled() {
                 if !lxapp.process_access_enabled() {
                     warn!(
-                        "[Worker {}] Process capability requires security.privileges: [process]",
+                        "[Worker {}] Process capability requires both security.privileges: [process] and a native ControlApp Process grant",
                         worker_id
                     )
                     .with_appid(lxapp.appid.clone());

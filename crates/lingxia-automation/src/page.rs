@@ -3,7 +3,7 @@
 //! so results match the devtool (`lxdev lxapp page …`) exactly.
 
 use crate::auto_err;
-use crate::resolve::{json_to_js, upgrade};
+use crate::resolve::{json_to_js, upgrade_authorized};
 use base64::{Engine as _, engine::general_purpose};
 use lxapp::{LxApp, automation as auto};
 use rong::{
@@ -155,7 +155,7 @@ impl JSPageDriver {
     /// Evaluate JavaScript in the page WebView.
     #[js_method]
     async fn eval(&self, ctx: JSContext, options: JSEvalOptions) -> JSResult<JSValue> {
-        let app = upgrade(&self.lxapp)?;
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let timeout = Duration::from_millis(options.timeout_ms.unwrap_or(EVAL_DEFAULT_MS));
         let value = tokio::time::timeout(
             timeout,
@@ -170,7 +170,7 @@ impl JSPageDriver {
     /// Query element information. Same payload shape as `lxdev lxapp page query`.
     #[js_method]
     async fn query(&self, ctx: JSContext, options: JSQueryOptions) -> JSResult<JSValue> {
-        let app = upgrade(&self.lxapp)?;
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let all = options.all.unwrap_or(false);
         if all && options.index.is_some() {
             return Err(auto_err("pass either all or index, not both"));
@@ -194,16 +194,16 @@ impl JSPageDriver {
     }
 
     #[js_method]
-    async fn click(&self, _ctx: JSContext, options: JSClickOptions) -> JSResult<()> {
-        let app = upgrade(&self.lxapp)?;
+    async fn click(&self, ctx: JSContext, options: JSClickOptions) -> JSResult<()> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         auto::page_click(&app, options.page.as_deref(), &options.css, options.index)
             .await
             .map_err(auto_err)
     }
 
     #[js_method(rename = "type")]
-    async fn type_text(&self, _ctx: JSContext, options: JSTypeOptions) -> JSResult<()> {
-        let app = upgrade(&self.lxapp)?;
+    async fn type_text(&self, ctx: JSContext, options: JSTypeOptions) -> JSResult<()> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         auto::page_type(
             &app,
             options.page.as_deref(),
@@ -216,8 +216,8 @@ impl JSPageDriver {
     }
 
     #[js_method]
-    async fn fill(&self, _ctx: JSContext, options: JSTypeOptions) -> JSResult<()> {
-        let app = upgrade(&self.lxapp)?;
+    async fn fill(&self, ctx: JSContext, options: JSTypeOptions) -> JSResult<()> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         auto::page_fill(
             &app,
             options.page.as_deref(),
@@ -230,8 +230,8 @@ impl JSPageDriver {
     }
 
     #[js_method]
-    async fn press(&self, _ctx: JSContext, options: JSPressOptions) -> JSResult<()> {
-        let app = upgrade(&self.lxapp)?;
+    async fn press(&self, ctx: JSContext, options: JSPressOptions) -> JSResult<()> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         auto::page_press(
             &app,
             options.page.as_deref(),
@@ -244,16 +244,16 @@ impl JSPageDriver {
     }
 
     #[js_method(rename = "scrollTo")]
-    async fn scroll_to(&self, _ctx: JSContext, options: JSScrollToOptions) -> JSResult<()> {
-        let app = upgrade(&self.lxapp)?;
+    async fn scroll_to(&self, ctx: JSContext, options: JSScrollToOptions) -> JSResult<()> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         auto::page_scroll_to(&app, options.page.as_deref(), &options.css)
             .await
             .map_err(auto_err)
     }
 
     #[js_method]
-    async fn scroll(&self, _ctx: JSContext, options: Optional<JSScrollOptions>) -> JSResult<()> {
-        let app = upgrade(&self.lxapp)?;
+    async fn scroll(&self, ctx: JSContext, options: Optional<JSScrollOptions>) -> JSResult<()> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let options = options.0.unwrap_or_default();
         auto::page_scroll(
             &app,
@@ -268,6 +268,7 @@ impl JSPageDriver {
     /// App-window pointer input at page coordinates (`lxdev lxapp page pointer`).
     #[js_method(getter, enumerable)]
     fn pointer(&self, ctx: JSContext) -> JSResult<JSObject> {
+        let _ = upgrade_authorized(&ctx, &self.lxapp)?;
         Ok(Class::lookup::<crate::input::JSPagePointer>(&ctx)?
             .instance(crate::input::JSPagePointer::new()))
     }
@@ -275,6 +276,7 @@ impl JSPageDriver {
     /// App-window keyboard input (`lxdev lxapp page key`).
     #[js_method(getter, enumerable)]
     fn key(&self, ctx: JSContext) -> JSResult<JSObject> {
+        let _ = upgrade_authorized(&ctx, &self.lxapp)?;
         Ok(
             Class::lookup::<crate::input::JSPageKey>(&ctx)?
                 .instance(crate::input::JSPageKey::new()),
@@ -282,8 +284,8 @@ impl JSPageDriver {
     }
 
     #[js_method(rename = "waitFor")]
-    async fn wait_for(&self, _ctx: JSContext, options: JSWaitForOptions) -> JSResult<()> {
-        let app = upgrade(&self.lxapp)?;
+    async fn wait_for(&self, ctx: JSContext, options: JSWaitForOptions) -> JSResult<()> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let state = options.state.as_deref().unwrap_or("visible");
         if !matches!(
             state,
@@ -361,10 +363,10 @@ impl JSPageDriver {
     #[js_method]
     async fn screenshot(
         &self,
-        _ctx: JSContext,
+        ctx: JSContext,
         options: Optional<JSScreenshotOptions>,
     ) -> JSResult<JSScreenshot> {
-        let app = upgrade(&self.lxapp)?;
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let options = options.0.unwrap_or_default();
         let bytes = auto::page_screenshot(&app, options.page.as_deref())
             .await

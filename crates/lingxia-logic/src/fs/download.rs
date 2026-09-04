@@ -609,13 +609,31 @@ fn resolve_output_path(
 fn ensure_downloads_privilege(lxapp: &LxApp) -> JSResult<()> {
     let privilege =
         LxAppSecurityPrivilege::new("downloads").map_err(|err| js_error_from_lxapp_error(&err))?;
-    if lxapp.has_security_privilege(&privilege) {
+    if downloads_access_allowed(
+        lxapp.has_security_privilege(&privilege),
+        lxapp.has_resource_grant(lxapp::host::AppResourceGrant::Downloads),
+    ) {
         Ok(())
     } else {
         Err(js_error_from_business_code_with_detail(
             3005,
-            "downloadFile destination 'downloads' requires security.privileges to include 'downloads'",
+            "downloadFile destination 'downloads' requires both the 'downloads' manifest request and a native/user-approved Downloads grant",
         ))
+    }
+}
+
+fn downloads_access_allowed(manifest_requested: bool, native_granted: bool) -> bool {
+    manifest_requested && native_granted
+}
+
+fn ensure_download_task_grant(config: &DownloadTaskConfig) -> JSResult<()> {
+    if matches!(
+        config.output_path.as_ref(),
+        Some((_, DownloadPathKind::Downloads))
+    ) {
+        ensure_downloads_privilege(&config.lxapp)
+    } else {
+        Ok(())
     }
 }
 
@@ -880,14 +898,10 @@ fn cleanup_staging_file(path: &Path) {
 }
 
 fn cleanup_canceled_download_files(
-    output_path: Option<&(PathBuf, DownloadPathKind)>,
+    _output_path: Option<&(PathBuf, DownloadPathKind)>,
     staging_path: &Path,
 ) {
-    if matches!(output_path, Some((_, DownloadPathKind::Downloads))) {
-        let _ = std::fs::remove_file(staging_path.with_extension("part"));
-    } else {
-        cleanup_staging_file(staging_path);
-    }
+    cleanup_staging_file(staging_path);
 }
 
 fn cleanup_completed_canceled_download(
@@ -899,8 +913,8 @@ fn cleanup_completed_canceled_download(
     cleanup_canceled_download_files(output_path, staging_path);
 }
 
-fn should_cleanup_staging_file(output_path: Option<&(PathBuf, DownloadPathKind)>) -> bool {
-    !matches!(output_path, Some((_, DownloadPathKind::Downloads)))
+fn should_cleanup_staging_file(_output_path: Option<&(PathBuf, DownloadPathKind)>) -> bool {
+    true
 }
 
 fn unique_temp_download_name(source_url: &str, staging_path: &Path, size: u64) -> String {
@@ -950,13 +964,24 @@ fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
             }
             (guard.sender.clone(), guard.config.clone())
         };
+        if let Err(error) = ensure_download_task_grant(&config) {
+            let failure = DownloadFailureReason::internal(error.to_string());
+            let _ = progress_tx
+                .send(DownloadIteratorMessage::Error(failure.clone()))
+                .await;
+            let mut guard = state.lock().await;
+            guard.status = DownloadTaskStatus::Failed;
+            if let Some(completion) = guard.completion.take() {
+                let _ = completion.send(DownloadCompletionOutcome::Failed(failure));
+            }
+            release_output_reservation(guard.config.reservation_key.take());
+            return;
+        }
         let downloads_target = config
             .output_path
             .as_ref()
             .and_then(|(path, kind)| (*kind == DownloadPathKind::Downloads).then(|| path.clone()));
-        let download_target = downloads_target
-            .clone()
-            .unwrap_or_else(|| config.staging_path.clone());
+        let download_target = config.staging_path.clone();
 
         let persistence = user_cache::DownloadPersistence::new(
             config.app_data_dir.clone(),
@@ -1004,15 +1029,20 @@ fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
 
         let result: Result<DownloadCompletion, DownloadFailureReason> = match download_result {
             Ok(success) => {
-                finalize_download_result(
-                    &config.temp_dir,
-                    &config.user_data_dir,
-                    &config.user_cache_dir,
-                    &config.request.url,
-                    config.output_path.as_ref(),
-                    success,
-                )
-                .await
+                if let Err(error) = ensure_download_task_grant(&config) {
+                    cleanup_staging_file(&success.temp_path);
+                    Err(DownloadFailureReason::internal(error.to_string()))
+                } else {
+                    finalize_download_result(
+                        &config.temp_dir,
+                        &config.user_data_dir,
+                        &config.user_cache_dir,
+                        &config.request.url,
+                        config.output_path.as_ref(),
+                        success,
+                    )
+                    .await
+                }
             }
             Err(error) => Err(download_failure_to_reason(error)),
         };
@@ -1223,10 +1253,7 @@ fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         release_output_reservation(reservation_key.clone());
         js_internal_error(format!("download staging dir failed: {err}"))
     })?;
-    let staging_path = output_path
-        .as_ref()
-        .and_then(|(path, kind)| (*kind == DownloadPathKind::Downloads).then(|| path.clone()))
-        .unwrap_or_else(|| staging_dir.join(&task_id));
+    let staging_path = staging_dir.join(&task_id);
     let (tx, rx) = mpsc::channel::<DownloadIteratorMessage>(64);
     let (completion_tx, completion_rx) = oneshot::channel::<DownloadCompletionOutcome>();
     let promise_ctx = ctx.clone();
@@ -1351,6 +1378,7 @@ async fn download_next_step(
 ) -> JSResult<JSDownloadIteratorStep> {
     let mut receiver = {
         let mut state_guard = state.lock().await;
+        ensure_download_task_grant(&state_guard.config)?;
         if let Some(message) = state_guard.pending_message.take() {
             drop(state_guard);
             return handle_download_message(ctx, state, message).await;
@@ -1457,6 +1485,7 @@ async fn handle_download_message(
 async fn download_pause_task(state: &Arc<Mutex<DownloadIteratorState>>) -> JSResult<()> {
     let (app_data_dir, task_id) = {
         let mut guard = state.lock().await;
+        ensure_download_task_grant(&guard.config)?;
         if guard.status != DownloadTaskStatus::Running {
             return Ok(());
         }
@@ -1480,6 +1509,7 @@ async fn download_pause_task(state: &Arc<Mutex<DownloadIteratorState>>) -> JSRes
 async fn download_resume_task(state: &Arc<Mutex<DownloadIteratorState>>) -> JSResult<()> {
     {
         let mut guard = state.lock().await;
+        ensure_download_task_grant(&guard.config)?;
         if guard.status.is_terminal() || guard.status != DownloadTaskStatus::Paused {
             return Ok(());
         }
@@ -1581,6 +1611,14 @@ rong::js_api! {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn downloads_requires_manifest_and_native_grant() {
+        assert!(!downloads_access_allowed(false, false));
+        assert!(!downloads_access_allowed(true, false));
+        assert!(!downloads_access_allowed(false, true));
+        assert!(downloads_access_allowed(true, true));
+    }
 
     fn test_temp_dir(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
