@@ -11,9 +11,9 @@ use crate::input_helper::INPUT_HELPER_BOOTSTRAP;
 use crate::input_helper::build_helper_invocation;
 use crate::input_helper::{build_async_eval_body, parse_wrapped_eval_result};
 use crate::traits::{
-    ContextualSchemeRequest, FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind,
-    NativeWebViewId, NavigationPolicy, NewWindowPolicy, SchemeRequestFrame, WebMessageFrame,
-    WebMessageSource, WebMessageTransport,
+    ContextualSchemeRequest, DocumentGeneration, DocumentOutboundGate, FileChooserRequest,
+    FileChooserResponse, LoadError, LoadErrorKind, NativeWebViewId, NavigationPolicy,
+    NewWindowPolicy, SchemeRequestFrame, WebMessageFrame, WebMessageSource, WebMessageTransport,
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::traits::{PressOptions, ScrollOptions, TypeOptions};
@@ -1842,6 +1842,10 @@ impl LingXiaUIDelegate {
 
 pub struct WebViewInner {
     webview: *mut AnyObject,
+    /// Issued before native creation and never reused. Keep this on the
+    /// platform object rather than recovering it from a raw WKWebView pointer:
+    /// Objective-C addresses may be recycled after a same-tag recreation.
+    native_view_id: NativeWebViewId,
     _navigation_delegate: Retained<LingXiaNavigationDelegate>,
     _ui_delegate: Option<Retained<LingXiaUIDelegate>>,
     _message_handler: Retained<LingXiaMessageHandler>,
@@ -1860,6 +1864,53 @@ pub(super) fn find_webview_for_native(
     native_webview: *mut AnyObject,
 ) -> Option<Arc<crate::WebView>> {
     find_webview(webtag).filter(|webview| webview.inner.webview == native_webview)
+}
+
+fn document_message_script(message: &str) -> String {
+    // `message` is protocol JSON, but quote it as a JavaScript string rather
+    // than interpolating it as code. This is the same document receiver used
+    // by the existing Android, Harmony, and Windows transports.
+    let quoted = serde_json::to_string(message).expect("serializing a Rust string cannot fail");
+    format!(
+        "(function(){{var fn=window.__LingXiaRecvMessage;if(typeof fn==='function'){{fn({quoted});}}}})();"
+    )
+}
+
+fn post_message_to_current_document(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+    expected_generation: DocumentGeneration,
+    gate: &dyn DocumentOutboundGate,
+    script: &str,
+) {
+    let mut post = || unsafe {
+        // This runs while the browser session registry lock is held. Do not
+        // move either revalidation outside that lock: a queued navigation can
+        // otherwise replace the committed document between the check and the
+        // JavaScript call.
+        let Some(webview) = find_webview_by_native_view_id(webtag, native_view_id) else {
+            return;
+        };
+        let mut evaluate = || {
+            let js = NSString::from_str(script);
+            let completion =
+                StackBlock::new(|_result: *mut AnyObject, _error: *mut NSError| {}).copy();
+            let _: () = msg_send![
+                webview.inner.webview,
+                evaluateJavaScript: &*js,
+                completionHandler: Some(&*completion)
+            ];
+        };
+        // Navigation start mutates this same normalizer state lock. Holding it
+        // through evaluateJavaScript closes the gap between generation check
+        // and the actual native post.
+        let _ = crate::events::normalizer::with_current_document_binding(
+            native_view_id,
+            expected_generation,
+            &mut evaluate,
+        );
+    };
+    let _ = gate.with_active(&mut post);
 }
 
 #[cfg(target_os = "macos")]
@@ -2353,6 +2404,7 @@ impl WebViewInner {
             // Create WebViewInner instance with navigation delegate and message handler
             let webview_inner = WebViewInner {
                 webview,
+                native_view_id,
                 _navigation_delegate: navigation_delegate,
                 _ui_delegate: ui_delegate,
                 _message_handler: message_handler,
@@ -3081,6 +3133,41 @@ impl WebViewController for WebViewInner {
 
     fn post_message(&self, message: &str) -> Result<(), WebViewError> {
         self.apple_bridge_transport.enqueue_message(message)
+    }
+
+    fn post_message_to_document(
+        &self,
+        expected_generation: DocumentGeneration,
+        gate: Arc<dyn DocumentOutboundGate>,
+        message: &str,
+    ) -> Result<(), WebViewError> {
+        // The ID was allocated before this WKWebView was created. It must not
+        // be rediscovered from `self.webview`: Objective-C can recycle that
+        // pointer for a successor with the same logical WebTag.
+        let webtag = self.webtag.clone();
+        let native_view_id = self.native_view_id;
+        let script = document_message_script(message);
+
+        if MainThreadMarker::new().is_some() {
+            post_message_to_current_document(
+                &webtag,
+                native_view_id,
+                expected_generation,
+                gate.as_ref(),
+                &script,
+            );
+        } else {
+            DispatchQueue::main().exec_async(move || {
+                post_message_to_current_document(
+                    &webtag,
+                    native_view_id,
+                    expected_generation,
+                    gate.as_ref(),
+                    &script,
+                );
+            });
+        }
+        Ok(())
     }
 
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
@@ -4558,5 +4645,14 @@ mod tests {
             apple_navigation_key(navigation).expect("non-null navigation key"),
             navigation as usize as NativeKey
         );
+    }
+
+    #[test]
+    fn document_bound_post_quotes_message_as_data() {
+        let message = r#"{"kind":"event","text":"'\\n"}"#;
+        let script = document_message_script(message);
+        assert!(script.contains("window.__LingXiaRecvMessage"));
+        assert!(script.contains(&format!("fn({})", serde_json::to_string(message).unwrap())));
+        assert!(!script.contains("fn({\"kind\""));
     }
 }

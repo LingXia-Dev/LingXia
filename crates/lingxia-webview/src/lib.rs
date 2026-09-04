@@ -114,9 +114,9 @@ pub use events::{
 };
 pub use traits::{
     ClearSiteDataOptions, ClearSiteDataResult, ClickOptions, ContextualSchemeRequest,
-    DocumentBinding, DocumentGeneration, DownloadRequest, FileChooserFile, FileChooserRequest,
-    FileChooserResponse, FillOptions, IncomingWebMessage, LoadDataRequest, LoadError,
-    LoadErrorKind, NativeWebViewId, NavigationPolicy, NavigationRequest, NetworkBody,
+    DocumentBinding, DocumentGeneration, DocumentOutboundGate, DownloadRequest, FileChooserFile,
+    FileChooserRequest, FileChooserResponse, FillOptions, IncomingWebMessage, LoadDataRequest,
+    LoadError, LoadErrorKind, NativeWebViewId, NavigationPolicy, NavigationRequest, NetworkBody,
     NetworkCaptureSnapshot, NetworkEntry, NewWindowPolicy, PressOptions, SchemeOutcome,
     SchemeRequestFrame, ScrollOptions, SystemPipeReader, TrustedDocumentAdmission,
     TrustedLoadIntent, TypeOptions, UserAgentOverride, WebMessageContext, WebMessageFrame,

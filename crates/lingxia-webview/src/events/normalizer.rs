@@ -878,6 +878,31 @@ pub(crate) fn current_document_binding(native_view_id: NativeWebViewId) -> Docum
     })
 }
 
+/// Run one native action while an exact committed document remains current.
+///
+/// Keep both the registry and per-WebView state locks through `action`: a
+/// replacement native view or a navigation start must linearize entirely
+/// before or after the action, never between its generation check and effect.
+pub(crate) fn with_current_document_binding(
+    native_view_id: NativeWebViewId,
+    expected_generation: DocumentGeneration,
+    action: &mut dyn FnMut(),
+) -> bool {
+    let normalizers = registry().lock().unwrap_or_else(|e| e.into_inner());
+    let Some(normalizer) = normalizers
+        .values()
+        .find(|normalizer| normalizer.native_view_id == native_view_id)
+    else {
+        return false;
+    };
+    let state = normalizer.state.lock().unwrap_or_else(|e| e.into_inner());
+    if state.documents.current() != DocumentBinding::Bound(expected_generation) {
+        return false;
+    }
+    action();
+    true
+}
+
 /// Register a read-only observer for `webtag`'s events.
 pub fn add_observer(webtag: &WebTag, observer: WebViewEventObserver) {
     let Some(normalizer) = normalizer_for(webtag) else {
@@ -1845,6 +1870,75 @@ mod tests {
         assert_eq!(
             current_document_binding(native_view_id),
             DocumentBinding::Bound(DocumentGeneration::new(2))
+        );
+        destroy(&webtag);
+    }
+
+    #[test]
+    fn document_bound_action_linearizes_before_navigation_start() {
+        use std::sync::mpsc::{self, RecvTimeoutError};
+        use std::time::Duration;
+
+        let webtag = tag("document-bound-action-linearization");
+        let native_view_id = NativeWebViewId::new(8199);
+        super::begin(&webtag, native_view_id);
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(61),
+                url: "https://first/".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(61) },
+        );
+
+        let (post_entered_tx, post_entered_rx) = mpsc::channel();
+        let (release_post_tx, release_post_rx) = mpsc::channel();
+        let post = std::thread::spawn(move || {
+            let mut action = || {
+                post_entered_tx.send(()).unwrap();
+                release_post_rx.recv().unwrap();
+            };
+            assert!(with_current_document_binding(
+                native_view_id,
+                DocumentGeneration::new(1),
+                &mut action,
+            ));
+        });
+        post_entered_rx.recv().unwrap();
+
+        let navigation_tag = webtag.clone();
+        let (navigation_attempted_tx, navigation_attempted_rx) = mpsc::channel();
+        let (navigation_done_tx, navigation_done_rx) = mpsc::channel();
+        let navigation = std::thread::spawn(move || {
+            navigation_attempted_tx.send(()).unwrap();
+            super::submit(
+                &navigation_tag,
+                native_view_id,
+                NativeSignal::NavigationStarted {
+                    key: Some(62),
+                    url: "https://second/".into(),
+                },
+            );
+            navigation_done_tx.send(()).unwrap();
+        });
+        navigation_attempted_rx.recv().unwrap();
+        assert_eq!(
+            navigation_done_rx.recv_timeout(Duration::from_millis(25)),
+            Err(RecvTimeoutError::Timeout),
+            "navigation start must wait until the bound action completes"
+        );
+
+        release_post_tx.send(()).unwrap();
+        post.join().unwrap();
+        navigation.join().unwrap();
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
         );
         destroy(&webtag);
     }

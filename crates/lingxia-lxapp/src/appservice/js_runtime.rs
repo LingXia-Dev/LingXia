@@ -390,16 +390,40 @@ async fn handle_bridge_source(
     message: AppServiceCommand,
 ) -> Result<(), LxAppError> {
     match message {
-        AppServiceCommand::Ready => {
-            page_svc.handle_bridge_ready().await;
+        AppServiceCommand::BeginSessionWork { work_id } => {
+            page_svc.begin_session_work(work_id).await;
             Ok(())
         }
-        AppServiceCommand::StateSnapshot { id, scope } => {
+        AppServiceCommand::CancelSessionWork { work_id } => {
+            page_svc.cancel_session_work(work_id).await;
+            Ok(())
+        }
+        AppServiceCommand::Ready { work_id, outbound } => {
+            page_svc.handle_bridge_ready(work_id, outbound).await;
+            Ok(())
+        }
+        AppServiceCommand::StateSnapshot {
+            work_id,
+            outbound,
+            id,
+            scope,
+        } => {
+            if !page_svc.session_work_is_active(work_id).await {
+                return Ok(());
+            }
             let bridge = page_svc.bridge();
             match page_svc.get_state_snapshot(scope.as_deref()).await {
-                Ok(snapshot) => bridge.send_res_ok(page_svc, id, snapshot)?,
-                Err(err) => bridge.send_res_err(
+                Ok(snapshot) => bridge.send_res_ok_for_context(
                     page_svc,
+                    work_id,
+                    outbound.as_ref(),
+                    id,
+                    snapshot,
+                )?,
+                Err(err) => bridge.send_res_err_for_context(
+                    page_svc,
+                    work_id,
+                    outbound.as_ref(),
                     id,
                     bridge::BRIDGE_INTERNAL_ERROR,
                     Some(err.to_string()),
@@ -409,45 +433,98 @@ async fn handle_bridge_source(
             Ok(())
         }
         AppServiceCommand::Req {
+            work_id,
+            outbound,
             id,
             method,
             params_json,
             cancel_rx,
             pending_request,
         } => {
+            if !page_svc.session_work_is_active(work_id).await {
+                return Ok(());
+            }
             let bridge = page_svc.bridge();
-            let result = page_svc
-                .handle_req(&id, &method, params_json.as_deref(), cancel_rx)
-                .await;
+            let result = page::with_document_callback_work(
+                work_id,
+                outbound.clone(),
+                page_svc.handle_req(
+                    work_id,
+                    outbound.clone(),
+                    &id,
+                    &method,
+                    params_json.as_deref(),
+                    cancel_rx,
+                ),
+            )
+            .await;
             drop(pending_request);
             match result {
-                Ok(json) => bridge.send_res_ok(page_svc, id, json)?,
+                Ok(json) => bridge.send_res_ok_for_context(
+                    page_svc,
+                    work_id,
+                    outbound.as_ref(),
+                    id,
+                    json,
+                )?,
                 Err(err) if err.code == bridge::BRIDGE_CANCELED => {
                     // Cancellation is teardown control flow. Reply while a cached
                     // View still exists, but tolerate a concurrent WebView detach.
-                    let _ = bridge.send_res_err(page_svc, id, &err.code, err.message, err.data);
+                    let _ = bridge.send_res_err_for_context(
+                        page_svc,
+                        work_id,
+                        outbound.as_ref(),
+                        id,
+                        &err.code,
+                        err.message,
+                        err.data,
+                    );
                 }
-                Err(err) => bridge.send_res_err(page_svc, id, &err.code, err.message, err.data)?,
+                Err(err) => bridge.send_res_err_for_context(
+                    page_svc,
+                    work_id,
+                    outbound.as_ref(),
+                    id,
+                    &err.code,
+                    err.message,
+                    err.data,
+                )?,
             }
             Ok(())
         }
         AppServiceCommand::Notify {
+            work_id,
+            outbound,
             method,
             params_json,
         } => {
+            if !page_svc.session_work_is_active(work_id).await {
+                return Ok(());
+            }
             page_svc
-                .handle_notify(&method, params_json.as_deref())
+                .handle_notify(work_id, outbound, &method, params_json.as_deref())
                 .await;
             Ok(())
         }
         AppServiceCommand::ChOpen {
+            work_id,
+            outbound,
             id,
             topic,
             params_json,
         } => {
+            if !page_svc.session_work_is_active(work_id).await {
+                return Ok(());
+            }
             let bridge = page_svc.bridge();
             match page_svc
-                .handle_ch_open(&id, &topic, params_json.as_deref())
+                .handle_ch_open(
+                    work_id,
+                    outbound.clone(),
+                    &id,
+                    &topic,
+                    params_json.as_deref(),
+                )
                 .await
             {
                 Ok(result_rx) => {
@@ -459,11 +536,18 @@ async fn handle_bridge_source(
                         });
                         match result {
                             Ok(()) => {
-                                let _ = bridge.send_ch_ack_ok(&page_svc, id);
+                                let _ = bridge.send_ch_ack_ok_for_context(
+                                    &page_svc,
+                                    work_id,
+                                    outbound.as_ref(),
+                                    id,
+                                );
                             }
                             Err(err) => {
-                                let _ = bridge.send_ch_ack_err(
+                                let _ = bridge.send_ch_ack_err_for_context(
                                     &page_svc,
+                                    work_id,
+                                    outbound.as_ref(),
                                     id,
                                     &err.code,
                                     err.message,
@@ -473,32 +557,53 @@ async fn handle_bridge_source(
                         }
                     });
                 }
-                Err(err) => {
-                    bridge.send_ch_ack_err(page_svc, id, &err.code, err.message, err.data)?
-                }
+                Err(err) => bridge.send_ch_ack_err_for_context(
+                    page_svc,
+                    work_id,
+                    outbound.as_ref(),
+                    id,
+                    &err.code,
+                    err.message,
+                    err.data,
+                )?,
             }
             Ok(())
         }
-        AppServiceCommand::ChData { id, payload_json } => {
-            if let Err(err) = page_svc.handle_ch_data(&id, &payload_json).await {
+        AppServiceCommand::ChData {
+            work_id,
+            id,
+            payload_json,
+        } => {
+            if !page_svc.session_work_is_active(work_id).await {
+                return Ok(());
+            }
+            if let Err(err) = page_svc.handle_ch_data(work_id, &id, &payload_json).await {
                 error!("channel '{}' data handler failed: {}", id, err.code)
                     .with_appid(page_svc.page.appid())
                     .with_path(page_svc.page.path());
             }
             Ok(())
         }
-        AppServiceCommand::ChClose { id, code, reason } => {
+        AppServiceCommand::ChClose {
+            work_id,
+            id,
+            code,
+            reason,
+        } => {
+            if !page_svc.session_work_is_active(work_id).await {
+                return Ok(());
+            }
             page_svc
-                .handle_ch_close(&id, code.as_deref(), reason.as_deref())
+                .handle_ch_close(work_id, &id, code.as_deref(), reason.as_deref())
                 .await;
             Ok(())
         }
-        AppServiceCommand::CloseChannels { code, reason } => {
-            page_svc.close_channels(&code, &reason).await;
-            Ok(())
-        }
-        AppServiceCommand::StateAck { scope, rev } => {
-            page_svc.handle_state_ack(scope, rev).await;
+        AppServiceCommand::StateAck {
+            work_id,
+            scope,
+            rev,
+        } => {
+            page_svc.handle_state_ack(work_id, scope, rev).await;
             Ok(())
         }
     }

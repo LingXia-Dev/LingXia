@@ -27,7 +27,9 @@ use crate::lxapp::LxApp;
 use crate::page::PageInstance;
 use base64::Engine;
 use futures::StreamExt;
-use lingxia_webview::{IncomingWebMessage, WebMessageContext};
+use lingxia_webview::{
+    DocumentGeneration, DocumentOutboundGate, IncomingWebMessage, WebMessageContext,
+};
 use serde::Serialize;
 use serde_json::Value;
 use serde_json::value::RawValue;
@@ -38,12 +40,19 @@ use tokio::sync::oneshot;
 
 // AppServiceCommand — the bridge-level message routed to the JS runtime backend
 pub(crate) enum AppServiceCommand {
-    Ready,
+    Ready {
+        work_id: Option<SessionWorkId>,
+        outbound: Option<OutboundContext>,
+    },
     StateSnapshot {
+        work_id: Option<SessionWorkId>,
+        outbound: Option<OutboundContext>,
         id: String,
         scope: Option<String>,
     },
     Req {
+        work_id: Option<SessionWorkId>,
+        outbound: Option<OutboundContext>,
         id: String,
         method: String,
         params_json: Option<String>,
@@ -51,30 +60,40 @@ pub(crate) enum AppServiceCommand {
         pending_request: PendingRequestGuard,
     },
     Notify {
+        work_id: Option<SessionWorkId>,
+        outbound: Option<OutboundContext>,
         method: String,
         params_json: Option<String>,
     },
     ChOpen {
+        work_id: Option<SessionWorkId>,
+        outbound: Option<OutboundContext>,
         id: String,
         topic: String,
         params_json: Option<String>,
     },
     ChData {
+        work_id: Option<SessionWorkId>,
         id: String,
         payload_json: String,
     },
     ChClose {
+        work_id: Option<SessionWorkId>,
         id: String,
         code: Option<String>,
         reason: Option<String>,
     },
-    CloseChannels {
-        code: String,
-        reason: String,
-    },
     StateAck {
+        work_id: Option<SessionWorkId>,
         scope: Option<String>,
         rev: u64,
+    },
+    /// Internal lifecycle transitions, never decoded from a document frame.
+    BeginSessionWork {
+        work_id: SessionWorkId,
+    },
+    CancelSessionWork {
+        work_id: SessionWorkId,
     },
 }
 
@@ -117,6 +136,17 @@ struct ViewReqOut {
 // ViewTransport — posting messages back to the WebView
 pub(crate) trait ViewTransport {
     fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError>;
+
+    fn post_message_to_document(
+        &self,
+        _expected_generation: DocumentGeneration,
+        _gate: Arc<dyn DocumentOutboundGate>,
+        _message_json: String,
+    ) -> Result<(), LxAppError> {
+        Err(LxAppError::Bridge(
+            "document-bound message posting is unavailable".to_string(),
+        ))
+    }
 }
 
 /// Invoke route admission before any host lookup or allocation. Keeping the
@@ -136,6 +166,21 @@ impl ViewTransport for PageInstance {
         if let Some(controller) = self.webview_controller() {
             controller
                 .post_message(&message_json)
+                .map_err(LxAppError::from)
+        } else {
+            Err(LxAppError::WebView("WebView not ready".to_string()))
+        }
+    }
+
+    fn post_message_to_document(
+        &self,
+        expected_generation: DocumentGeneration,
+        gate: Arc<dyn DocumentOutboundGate>,
+        message_json: String,
+    ) -> Result<(), LxAppError> {
+        if let Some(controller) = self.webview_controller() {
+            controller
+                .post_message_to_document(expected_generation, gate, &message_json)
                 .map_err(LxAppError::from)
         } else {
             Err(LxAppError::WebView("WebView not ready".to_string()))
@@ -187,34 +232,118 @@ struct HandshakeState {
     session_id: Option<String>,
     ready: bool,
     protocol: BridgeProtocol,
+    connection: Option<Arc<BridgeConnection>>,
+}
+
+/// Monotonic identity for native work that belongs to one bound document.
+/// It is never reused after the connection has been revoked.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct SessionWorkId(u64);
+
+impl SessionWorkId {
+    pub(crate) const fn is_newer_than(self, other: Self) -> bool {
+        self.0 > other.0
+    }
+}
+
+#[cfg(test)]
+impl SessionWorkId {
+    pub(crate) const fn for_test(value: u64) -> Self {
+        Self(value)
+    }
+}
+
+/// Immutable delivery credentials captured when work is created. The gate
+/// owns the final document/session check at the native JavaScript boundary.
+#[derive(Clone)]
+pub(crate) struct OutboundContext {
+    expected_generation: DocumentGeneration,
+    gate: Arc<dyn DocumentOutboundGate>,
+    binding: V3OutboundBinding,
+}
+
+/// One bridge lifetime, legacy or V3. Work must retain this exact connection
+/// rather than consulting the mutable handshake again after an async boundary.
+struct BridgeConnection {
+    work_id: SessionWorkId,
+    outbound: Option<OutboundContext>,
+}
+
+fn connection_matches_work(
+    connection: Option<&Arc<BridgeConnection>>,
+    expected_work: Option<SessionWorkId>,
+) -> bool {
+    match (expected_work, connection) {
+        (Some(expected), Some(current)) => current.work_id == expected,
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+/// The one-time snapshot used to construct a document-originated backend
+/// command. Keeping the fields together prevents a work id from one session
+/// being paired with delivery credentials from another.
+#[derive(Clone)]
+struct CapturedSessionWork {
+    work_id: Option<SessionWorkId>,
+    outbound: Option<OutboundContext>,
+}
+
+tokio::task_local! {
+    /// Native handlers inherit the document work that admitted them. Any Page
+    /// API they invoke after an await must not silently capture a successor.
+    static HOST_EFFECT_WORK: CapturedSessionWork;
+}
+
+struct DecodedIncoming {
+    message: IncomingMessage,
+    work: CapturedSessionWork,
+    bound_v3: bool,
+    ready: bool,
+    session_id: Option<String>,
 }
 
 #[derive(Default)]
 struct PendingRequestRegistry {
     next_token: AtomicUsize,
-    requests: Mutex<HashMap<String, PendingRequestEntry>>,
+    // A document can reuse a JSON-RPC id after navigation.  Keep the
+    // document work in the key so a late retired request cannot replace or
+    // cancel its successor merely because the caller reused an id.
+    requests: Mutex<HashMap<(SessionWorkId, String), PendingRequestEntry>>,
 }
 
 struct PendingRequestEntry {
     token: usize,
+    work_id: SessionWorkId,
     cancel_tx: oneshot::Sender<()>,
 }
 
 pub(crate) struct PendingRequestGuard {
     registry: Arc<PendingRequestRegistry>,
-    id: String,
+    key: (SessionWorkId, String),
     token: usize,
 }
 
 impl PendingRequestRegistry {
-    fn register(self: &Arc<Self>, id: String) -> (oneshot::Receiver<()>, PendingRequestGuard) {
-        let token = self.next_token.fetch_add(1, Ordering::Relaxed);
+    fn register(
+        self: &Arc<Self>,
+        id: String,
+        work_id: SessionWorkId,
+    ) -> (oneshot::Receiver<()>, PendingRequestGuard) {
+        let token = self
+            .next_token
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .expect("pending request token space exhausted");
         let (cancel_tx, cancel_rx) = oneshot::channel();
-        let replaced = self
-            .requests
-            .lock()
-            .unwrap()
-            .insert(id.clone(), PendingRequestEntry { token, cancel_tx });
+        let key = (work_id, id);
+        let replaced = self.requests.lock().unwrap().insert(
+            key.clone(),
+            PendingRequestEntry {
+                token,
+                work_id,
+                cancel_tx,
+            },
+        );
         if let Some(replaced) = replaced {
             let _ = replaced.cancel_tx.send(());
         }
@@ -222,25 +351,44 @@ impl PendingRequestRegistry {
             cancel_rx,
             PendingRequestGuard {
                 registry: Arc::clone(self),
-                id,
+                key,
                 token,
             },
         )
     }
 
-    fn complete(&self, id: &str, token: usize) {
+    fn complete(&self, key: &(SessionWorkId, String), token: usize) {
         let mut requests = self.requests.lock().unwrap();
-        if requests.get(id).is_some_and(|entry| entry.token == token) {
-            requests.remove(id);
+        if requests.get(key).is_some_and(|entry| entry.token == token) {
+            requests.remove(key);
         }
     }
 
-    fn cancel(&self, id: &str) {
-        if let Some(entry) = self.requests.lock().unwrap().remove(id) {
+    fn cancel(&self, work_id: SessionWorkId, id: &str) {
+        let key = (work_id, id.to_owned());
+        if let Some(entry) = self.requests.lock().unwrap().remove(&key) {
             let _ = entry.cancel_tx.send(());
         }
     }
 
+    fn cancel_work(&self, work_id: SessionWorkId) {
+        let canceled = {
+            let mut requests = self.requests.lock().unwrap();
+            let keys = requests
+                .iter()
+                .filter(|(_, entry)| entry.work_id == work_id)
+                .map(|(key, _)| key.clone())
+                .collect::<Vec<_>>();
+            keys.into_iter()
+                .filter_map(|key| requests.remove(&key))
+                .collect::<Vec<_>>()
+        };
+        for entry in canceled {
+            let _ = entry.cancel_tx.send(());
+        }
+    }
+
+    #[cfg(test)]
     fn cancel_all(&self) {
         let requests = {
             let mut requests = self.requests.lock().unwrap();
@@ -259,7 +407,7 @@ impl PendingRequestRegistry {
 
 impl Drop for PendingRequestGuard {
     fn drop(&mut self) {
-        self.registry.complete(&self.id, self.token);
+        self.registry.complete(&self.key, self.token);
     }
 }
 
@@ -267,9 +415,45 @@ struct PageBridgeState {
     lxapp: Arc<LxApp>,
     js_backend: Arc<dyn AppServiceBackend>,
     msg_counter: AtomicUsize,
+    next_session_work_id: std::sync::atomic::AtomicU64,
     handshake: Mutex<HandshakeState>,
     pending_requests: Arc<PendingRequestRegistry>,
-    active_host_channels: Mutex<HashMap<String, host::ChannelContextSender>>,
+    // The same channel id may occur in successive document sessions.  The
+    // work id is part of the registry key; the token additionally protects a
+    // same-work replacement of an id.
+    active_host_channels: Mutex<HashMap<(SessionWorkId, String), ActiveHostChannel>>,
+    next_host_channel_token: AtomicUsize,
+    next_host_notify_token: AtomicUsize,
+    active_host_notifies: Mutex<HashMap<usize, ActiveHostNotify>>,
+}
+
+struct ActiveHostChannel {
+    token: usize,
+    work_id: SessionWorkId,
+    outbound: Option<OutboundContext>,
+    sender: host::ChannelContextSender,
+}
+
+struct ActiveHostNotify {
+    work_id: SessionWorkId,
+    _outbound: Option<OutboundContext>,
+    cancel_tx: oneshot::Sender<()>,
+}
+
+struct PendingHostNotifyGuard {
+    state: Arc<PageBridgeState>,
+    token: usize,
+    _outbound: Option<OutboundContext>,
+}
+
+impl Drop for PendingHostNotifyGuard {
+    fn drop(&mut self) {
+        self.state
+            .active_host_notifies
+            .lock()
+            .unwrap()
+            .remove(&self.token);
+    }
 }
 
 #[derive(Clone)]
@@ -297,9 +481,13 @@ impl PageBridge {
                 lxapp,
                 js_backend,
                 msg_counter: AtomicUsize::new(0),
+                next_session_work_id: std::sync::atomic::AtomicU64::new(1),
                 handshake: Mutex::new(HandshakeState::default()),
                 pending_requests: Arc::new(PendingRequestRegistry::default()),
                 active_host_channels: Mutex::new(HashMap::new()),
+                next_host_channel_token: AtomicUsize::new(1),
+                next_host_notify_token: AtomicUsize::new(1),
+                active_host_notifies: Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -311,16 +499,158 @@ impl PageBridge {
     /// Future document-session activation binds the bridge before a V3 hello.
     /// No existing Page invokes this in Commit B.
     #[allow(dead_code)] // Consumed by BrowserDocumentSessions integration in Commit C.
-    pub(crate) fn bind_v3_protocol(&self, protocol: BoundV3Protocol) -> Result<(), LxAppError> {
-        let mut handshake = self.inner.handshake.lock().unwrap();
-        if handshake.ready {
+    pub(crate) fn bind_v3_protocol(
+        &self,
+        page: &PageInstance,
+        protocol: BoundV3Protocol,
+        expected_generation: DocumentGeneration,
+        gate: Arc<dyn DocumentOutboundGate>,
+    ) -> Result<(), LxAppError> {
+        let mut outcome = Ok(());
+        let mut replaced = None;
+        let mut protocol = Some(protocol);
+        let mut install = || {
+            let mut handshake = self.inner.handshake.lock().unwrap();
+            if handshake.ready {
+                outcome = Err(LxAppError::Bridge(
+                    "cannot bind V3 protocol after bridge readiness".to_string(),
+                ));
+                return;
+            }
+            let protocol = protocol
+                .take()
+                .expect("active document gate invoked bind more than once");
+            let binding = protocol.outbound_binding();
+            let connection = Arc::new(BridgeConnection {
+                work_id: self.next_session_work_id(),
+                outbound: Some(OutboundContext {
+                    expected_generation,
+                    gate: Arc::clone(&gate),
+                    binding,
+                }),
+            });
+            // The lease gate is held outside the handshake lock.  Thus a
+            // revoked browser document cannot install an old binding over a
+            // successor, while Begin remains linearized with installation.
+            if let Err(err) = self.begin_work_locked(page, connection.work_id) {
+                outcome = Err(err);
+                return;
+            }
+            replaced = handshake.connection.replace(connection);
+            handshake.protocol = BridgeProtocol::BoundV3(protocol);
+            handshake.session_id = None;
+            handshake.ready = false;
+        };
+        if !gate.with_active(&mut install) {
             return Err(LxAppError::Bridge(
-                "cannot bind V3 protocol after bridge readiness".to_string(),
+                "cannot bind a revoked document session".to_string(),
             ));
         }
-        handshake.protocol = BridgeProtocol::BoundV3(protocol);
-        handshake.session_id = None;
+        outcome?;
+        if let Some(previous) = replaced {
+            self.cancel_work(page, previous, "Session replaced");
+        }
         Ok(())
+    }
+
+    fn next_session_work_id(&self) -> SessionWorkId {
+        let next = self
+            .inner
+            .next_session_work_id
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .expect("SessionWorkId space exhausted");
+        SessionWorkId(next)
+    }
+
+    /// Replace exactly the connection that admitted a legacy hello.  The
+    /// comparison, Begin enqueue, and replacement share the handshake lock:
+    /// a decoded stale V2 hello must never reset a V3 successor.
+    fn replace_with_legacy_session_work(
+        &self,
+        page: &PageInstance,
+        expected_work: Option<SessionWorkId>,
+    ) -> Result<Option<SessionWorkId>, LxAppError> {
+        let connection = Arc::new(BridgeConnection {
+            work_id: self.next_session_work_id(),
+            outbound: None,
+        });
+        let replaced = {
+            let mut handshake = self.inner.handshake.lock().unwrap();
+            if !connection_matches_work(handshake.connection.as_ref(), expected_work) {
+                return Ok(None);
+            }
+            self.begin_work_locked(page, connection.work_id)?;
+            let replaced = handshake.connection.replace(Arc::clone(&connection));
+            handshake.protocol = BridgeProtocol::LegacyV2;
+            handshake.session_id = None;
+            handshake.ready = false;
+            replaced
+        };
+        if let Some(previous) = replaced {
+            self.cancel_work(page, previous, "Session replaced");
+        }
+        Ok(Some(connection.work_id))
+    }
+
+    /// Capture the exact native work identity and document-bound transport at
+    /// creation time. Completion paths must use this value, never query a
+    /// successor connection.
+    pub(crate) fn capture_session_work(&self) -> Option<(SessionWorkId, Option<OutboundContext>)> {
+        if let Ok(work) = HOST_EFFECT_WORK.try_with(Clone::clone)
+            && let Some(work_id) = work.work_id
+        {
+            return Some((work_id, work.outbound));
+        }
+        self.inner
+            .handshake
+            .lock()
+            .unwrap()
+            .connection
+            .as_ref()
+            .map(|connection| (connection.work_id, connection.outbound.clone()))
+    }
+
+    pub(crate) fn is_current_work(&self, work_id: Option<SessionWorkId>) -> bool {
+        let handshake = self.inner.handshake.lock().unwrap();
+        match (work_id, handshake.connection.as_ref()) {
+            (Some(work_id), Some(connection)) => connection.work_id == work_id,
+            (None, None) => true,
+            _ => false,
+        }
+    }
+
+    fn begin_work_locked(
+        &self,
+        page: &PageInstance,
+        work_id: SessionWorkId,
+    ) -> Result<(), LxAppError> {
+        // Callers hold `handshake`. This order deliberately makes Begin part
+        // of the connection state transition rather than a late side effect.
+        self.inner.js_backend.forward(
+            Arc::clone(&self.inner.lxapp),
+            page.path(),
+            Some(page.instance_id_string()),
+            AppServiceCommand::BeginSessionWork { work_id },
+        )
+    }
+
+    fn cancel_work(&self, page: &PageInstance, connection: Arc<BridgeConnection>, reason: &str) {
+        // The old connection has already been removed under the handshake
+        // lock. Every cancellation below is keyed, so it cannot affect a
+        // replacement that wins the race before this code runs.
+        self.inner.pending_requests.cancel_work(connection.work_id);
+        self.cancel_host_notifies_for_work(connection.work_id);
+        crate::view_call::cancel_view_calls_for_work(
+            connection.work_id,
+            "Document session revoked",
+        );
+        self.close_host_channels_for_work(page, connection.work_id, reason);
+        let _ = self.forward_js_message(
+            page,
+            AppServiceCommand::CancelSessionWork {
+                work_id: connection.work_id,
+            },
+        );
     }
 
     pub(crate) fn lxapp(&self) -> Arc<LxApp> {
@@ -337,53 +667,67 @@ impl PageBridge {
         // every inbound bridge kind and receives platform-attested context.
         let context = incoming.context();
         self.admit_incoming(page, context)?;
-        let message = self.predecode_inbound(incoming.body())?;
+        let decoded = self.predecode_inbound(incoming.body())?;
 
-        match &message {
-            IncomingMessage::Hello(msg) => self.handle_hello(page, context, msg),
-            IncomingMessage::Req(msg) => self.handle_req(page, context, msg),
-            IncomingMessage::Res(msg) => self.handle_res(page, context, msg),
-            IncomingMessage::Notify(msg) => self.handle_notify(page, context, msg),
-            IncomingMessage::ChOpen(msg) => self.handle_ch_open(page, context, msg),
-            IncomingMessage::ChData(msg) => self.handle_ch_data(page, context, msg),
-            IncomingMessage::ChClose(msg) => self.handle_ch_close(page, context, msg),
-            IncomingMessage::Cancel(msg) => self.handle_cancel(page, context, msg),
-            IncomingMessage::StateAck(msg) => self.handle_state_ack(page, context, msg),
-            IncomingMessage::Unknown(unknown) => self.handle_unknown(page, context, unknown),
+        match &decoded.message {
+            IncomingMessage::Hello(msg) => self.handle_hello(page, context, msg, &decoded),
+            IncomingMessage::Req(msg) => {
+                self.handle_req(page, context, msg, &decoded.work, decoded.ready)
+            }
+            IncomingMessage::Res(msg) => self.handle_res(page, context, msg, &decoded.work),
+            IncomingMessage::Notify(msg) => {
+                self.handle_notify(page, context, msg, &decoded.work, decoded.ready)
+            }
+            IncomingMessage::ChOpen(msg) => {
+                self.handle_ch_open(page, context, msg, &decoded.work, decoded.ready)
+            }
+            IncomingMessage::ChData(msg) => self.handle_ch_data(page, context, msg, &decoded.work),
+            IncomingMessage::ChClose(msg) => {
+                self.handle_ch_close(page, context, msg, &decoded.work)
+            }
+            IncomingMessage::Cancel(msg) => self.handle_cancel(page, context, msg, &decoded.work),
+            IncomingMessage::StateAck(msg) => {
+                self.handle_state_ack(page, context, msg, &decoded.work)
+            }
+            IncomingMessage::Unknown(unknown) => {
+                self.handle_unknown(page, context, unknown, &decoded.work)
+            }
         }
     }
 
-    fn predecode_inbound(&self, frame: &str) -> Result<IncomingMessage, LxAppError> {
-        self.inner
-            .handshake
-            .lock()
-            .unwrap()
+    fn predecode_inbound(&self, frame: &str) -> Result<DecodedIncoming, LxAppError> {
+        let handshake = self.inner.handshake.lock().unwrap();
+        let bound_v3 = matches!(handshake.protocol, BridgeProtocol::BoundV3(_));
+        let message = handshake
             .protocol
             .predecode_inbound(frame)
-            .map_err(|_| LxAppError::Bridge("invalid bridge protocol envelope".to_string()))
-    }
-
-    fn accepts_message_version(&self, version: u8) -> bool {
-        self.inner
-            .handshake
-            .lock()
-            .unwrap()
-            .protocol
-            .accepts_version(version)
-    }
-
-    fn bound_v3_session_id(&self) -> Option<String> {
-        self.inner
-            .handshake
-            .lock()
-            .unwrap()
-            .protocol
-            .session_id()
-            .map(str::to_string)
-    }
-
-    fn is_bound_v3(&self) -> bool {
-        self.bound_v3_session_id().is_some()
+            .map_err(|_| LxAppError::Bridge("invalid bridge protocol envelope".to_string()))?;
+        let version = message
+            .version()
+            .ok_or_else(|| LxAppError::Bridge("invalid bridge protocol version".to_string()))?;
+        if !handshake.protocol.accepts_version(version) {
+            return Err(LxAppError::Bridge(format!(
+                "Unsupported protocol: {version}"
+            )));
+        }
+        let work = handshake
+            .connection
+            .as_ref()
+            .map(|connection| CapturedSessionWork {
+                work_id: Some(connection.work_id),
+                outbound: connection.outbound.clone(),
+            })
+            .unwrap_or(CapturedSessionWork {
+                work_id: None,
+                outbound: None,
+            });
+        Ok(DecodedIncoming {
+            message,
+            work,
+            bound_v3,
+            ready: handshake.ready,
+            session_id: handshake.protocol.session_id().map(str::to_owned),
+        })
     }
 
     /// The single pre-decode admission seam. It intentionally permits every
@@ -416,8 +760,9 @@ impl PageBridge {
         page: &PageInstance,
         _context: &WebMessageContext,
         msg: &ResMsg,
+        work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
-        if !self.accepts_message_version(msg.v) {
+        if !self.is_current_work(work.work_id) {
             return Ok(());
         }
 
@@ -434,7 +779,7 @@ impl PageBridge {
             })
         };
         let page_instance_id = page.instance_id_string();
-        crate::view_call::resolve_view_call(&msg.id, Some(&page_instance_id), result);
+        crate::view_call::resolve_view_call(&msg.id, Some(&page_instance_id), work.work_id, result);
         Ok(())
     }
 
@@ -443,16 +788,21 @@ impl PageBridge {
         page: &PageInstance,
         _context: &WebMessageContext,
         msg: &ChDataMsg,
+        work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
-        if !self.accepts_message_version(msg.v) {
+        if !self.is_current_work(work.work_id) {
             return Ok(());
         }
-        if self.send_data_to_host_channel(&msg.id, msg.payload.get().to_owned()) {
+        let Some(work_id) = work.work_id else {
+            return Ok(());
+        };
+        if self.send_data_to_host_channel(&msg.id, work_id, msg.payload.get().to_owned()) {
             return Ok(());
         }
         self.forward_js_message(
             page,
             AppServiceCommand::ChData {
+                work_id: work.work_id,
                 id: msg.id.clone(),
                 payload_json: msg.payload.get().to_owned(),
             },
@@ -464,16 +814,22 @@ impl PageBridge {
         page: &PageInstance,
         _context: &WebMessageContext,
         msg: &ChCloseMsg,
+        work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
-        if !self.accepts_message_version(msg.v) {
+        if !self.is_current_work(work.work_id) {
             return Ok(());
         }
-        if self.close_host_channel_from_view(&msg.id, msg.code.clone(), msg.reason.clone()) {
+        let Some(work_id) = work.work_id else {
+            return Ok(());
+        };
+        if self.close_host_channel_from_view(&msg.id, work_id, msg.code.clone(), msg.reason.clone())
+        {
             return Ok(());
         }
         self.forward_js_message(
             page,
             AppServiceCommand::ChClose {
+                work_id: work.work_id,
                 id: msg.id.clone(),
                 code: msg.code.clone(),
                 reason: msg.reason.clone(),
@@ -486,9 +842,12 @@ impl PageBridge {
         _page: &PageInstance,
         _context: &WebMessageContext,
         msg: &CancelMsg,
+        work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
-        if self.accepts_message_version(msg.v) {
-            self.inner.pending_requests.cancel(&msg.id);
+        if let Some(work_id) = work.work_id
+            && self.is_current_work(Some(work_id))
+        {
+            self.inner.pending_requests.cancel(work_id, &msg.id);
         }
         Ok(())
     }
@@ -498,13 +857,15 @@ impl PageBridge {
         page: &PageInstance,
         _context: &WebMessageContext,
         msg: &StateAckMsg,
+        work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
-        if !self.accepts_message_version(msg.v) {
+        if !self.is_current_work(work.work_id) {
             return Ok(());
         }
         self.forward_js_message(
             page,
             AppServiceCommand::StateAck {
+                work_id: work.work_id,
                 scope: msg.scope.clone(),
                 rev: msg.rev,
             },
@@ -516,9 +877,13 @@ impl PageBridge {
         page: &PageInstance,
         _context: &WebMessageContext,
         unknown: &UnknownMsg,
+        work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
+        if !self.is_current_work(work.work_id) {
+            return Ok(());
+        }
         if let Some(id) = &unknown.id {
-            let (code, message) = if !unknown.v.is_some_and(|v| self.accepts_message_version(v)) {
+            let (code, message) = if unknown.v.is_none() {
                 (
                     BRIDGE_PROTOCOL_MISMATCH,
                     Some(format!(
@@ -540,7 +905,15 @@ impl PageBridge {
                         .or_else(|| Some("Unknown message".to_string())),
                 )
             };
-            let _ = self.send_res_err(page, id.clone(), code, message, None);
+            let _ = self.send_res_err_for_context(
+                page,
+                work.work_id,
+                work.outbound.as_ref(),
+                id.clone(),
+                code,
+                message,
+                None,
+            );
         }
         Ok(())
     }
@@ -550,9 +923,10 @@ impl PageBridge {
         page: &PageInstance,
         _context: &WebMessageContext,
         msg: &HelloMsg,
+        decoded: &DecodedIncoming,
     ) -> Result<(), LxAppError> {
-        if self.is_bound_v3() {
-            return self.handle_bound_v3_hello(page, msg);
+        if decoded.bound_v3 {
+            return self.handle_bound_v3_hello(page, msg, decoded);
         }
         if msg.v != 2 {
             return Err(LxAppError::Bridge(format!(
@@ -573,25 +947,62 @@ impl PageBridge {
         {
             return Err(LxAppError::Bridge("Nonce mismatch".to_string()));
         }
-
-        self.reset_session(page);
+        if !self.is_current_work(decoded.work.work_id) {
+            return Ok(());
+        }
 
         let session_id = self.new_session_id();
-        self.send_hello_ack(page, msg.nonce.clone(), session_id.clone())?;
-        self.set_ready(session_id.clone());
+        let Some(work_id) = self.replace_with_legacy_session_work(page, decoded.work.work_id)?
+        else {
+            return Ok(());
+        };
+        let work = CapturedSessionWork {
+            work_id: Some(work_id),
+            outbound: None,
+        };
+        self.send_hello_ack(
+            page,
+            work.work_id,
+            work.outbound.as_ref(),
+            msg.nonce.clone(),
+            session_id.clone(),
+        )?;
+        if !self.set_ready_if_current(work_id, session_id.clone()) {
+            return Ok(());
+        }
         // Queue AppService initialization before exposing `ready` to the View.
         // Otherwise a fast View can flush a page-action notification while the
         // worker still considers the page uninitialized, losing the action.
-        if let Err(err) = self.forward_js_message(page, AppServiceCommand::Ready) {
+        if let Err(err) = self.forward_js_message(
+            page,
+            AppServiceCommand::Ready {
+                work_id: work.work_id,
+                outbound: work.outbound.clone(),
+            },
+        ) {
             crate::warn!("bridge ready bootstrap failed: {}", err)
                 .with_appid(page.appid())
                 .with_path(page.path());
         }
-        self.send_ready(page, session_id.clone())?;
+        self.send_ready(
+            page,
+            work.work_id,
+            work.outbound.as_ref(),
+            session_id.clone(),
+        )?;
         Ok(())
     }
 
-    fn handle_bound_v3_hello(&self, page: &PageInstance, msg: &HelloMsg) -> Result<(), LxAppError> {
+    fn handle_bound_v3_hello(
+        &self,
+        page: &PageInstance,
+        msg: &HelloMsg,
+        decoded: &DecodedIncoming,
+    ) -> Result<(), LxAppError> {
+        let work = &decoded.work;
+        if !self.is_current_work(work.work_id) {
+            return Ok(());
+        }
         if msg.v != V3_PROTOCOL || !msg.protocols_supported.contains(&(V3_PROTOCOL as u32)) {
             return Err(LxAppError::Bridge(
                 "V3 hello does not negotiate V3".to_string(),
@@ -605,23 +1016,40 @@ impl PageBridge {
         {
             return Err(LxAppError::Bridge("Nonce mismatch".to_string()));
         }
-        let session_id = self
-            .bound_v3_session_id()
+        let session_id = decoded
+            .session_id
+            .clone()
             .ok_or_else(|| LxAppError::Bridge("missing V3 bridge binding".to_string()))?;
-        let first_hello = !self.is_ready();
+        let first_hello = !decoded.ready;
         if first_hello {
-            self.reset_session(page);
-            self.set_ready(session_id.clone());
+            let Some(work_id) = work.work_id else {
+                return Ok(());
+            };
+            if !self.set_ready_if_current(work_id, session_id.clone()) {
+                return Ok(());
+            }
             // Do this once only: a retransmitted authenticated hello must not
             // cancel in-flight work or initialize the backend a second time.
-            if let Err(err) = self.forward_js_message(page, AppServiceCommand::Ready) {
+            if let Err(err) = self.forward_js_message(
+                page,
+                AppServiceCommand::Ready {
+                    work_id: work.work_id,
+                    outbound: work.outbound.clone(),
+                },
+            ) {
                 crate::warn!("bridge ready bootstrap failed: {}", err)
                     .with_appid(page.appid())
                     .with_path(page.path());
             }
         }
-        self.send_hello_ack(page, msg.nonce.clone(), session_id.clone())?;
-        self.send_ready(page, session_id)?;
+        self.send_hello_ack(
+            page,
+            work.work_id,
+            work.outbound.as_ref(),
+            msg.nonce.clone(),
+            session_id.clone(),
+        )?;
+        self.send_ready(page, work.work_id, work.outbound.as_ref(), session_id)?;
         Ok(())
     }
 
@@ -630,20 +1058,17 @@ impl PageBridge {
         page: &PageInstance,
         context: &WebMessageContext,
         msg: &ReqMsg,
+        work: &CapturedSessionWork,
+        ready: bool,
     ) -> Result<(), LxAppError> {
-        if !self.accepts_message_version(msg.v) {
-            let _ = self.send_res_err(
-                page,
-                msg.id.clone(),
-                BRIDGE_PROTOCOL_MISMATCH,
-                Some(format!("Unsupported protocol: {}", msg.v)),
-                None,
-            );
+        if !self.is_current_work(work.work_id) {
             return Ok(());
         }
-        if !self.is_ready() {
-            let _ = self.send_res_err(
+        if !ready {
+            let _ = self.send_res_err_for_context(
                 page,
+                work.work_id,
+                work.outbound.as_ref(),
                 msg.id.clone(),
                 BRIDGE_NOT_READY,
                 Some("Bridge not ready".to_string()),
@@ -654,8 +1079,10 @@ impl PageBridge {
 
         let required_cap = required_cap_for_name(&msg.method);
         if msg.cap.is_empty() {
-            let _ = self.send_res_err(
+            let _ = self.send_res_err_for_context(
                 page,
+                work.work_id,
+                work.outbound.as_ref(),
                 msg.id.clone(),
                 BRIDGE_MALFORMED_MESSAGE,
                 Some("Missing cap".to_string()),
@@ -664,8 +1091,10 @@ impl PageBridge {
             return Ok(());
         }
         if msg.cap != required_cap {
-            let _ = self.send_res_err(
+            let _ = self.send_res_err_for_context(
                 page,
+                work.work_id,
+                work.outbound.as_ref(),
                 msg.id.clone(),
                 BRIDGE_MALFORMED_MESSAGE,
                 Some(format!("Capability mismatch: expected '{}'", required_cap)),
@@ -687,8 +1116,12 @@ impl PageBridge {
                 .and_then(|params| params.scope);
             return self.forward_js_request(
                 page,
+                work.work_id,
+                work.outbound.as_ref(),
                 msg.id.clone(),
                 AppServiceCommand::StateSnapshot {
+                    work_id: work.work_id,
+                    outbound: work.outbound.clone(),
                     id: msg.id.clone(),
                     scope,
                 },
@@ -703,15 +1136,33 @@ impl PageBridge {
                 msg.id.clone(),
                 host_method.to_string(),
                 params_json,
+                work,
             );
         }
 
         // everything else → JS runtime
-        let (cancel_rx, pending_request) = self.inner.pending_requests.register(msg.id.clone());
+        let Some(work_id) = work.work_id else {
+            return Ok(());
+        };
+        let (cancel_rx, pending_request) = self
+            .inner
+            .pending_requests
+            .register(msg.id.clone(), work_id);
+        // Registration and session revocation race across independent locks.
+        // If revocation swept this work just before the insertion, compensate
+        // before handing the request to the asynchronous JS backend.
+        if !self.is_current_work(Some(work_id)) {
+            drop(pending_request);
+            return Ok(());
+        }
         self.forward_js_request(
             page,
+            Some(work_id),
+            work.outbound.as_ref(),
             msg.id.clone(),
             AppServiceCommand::Req {
+                work_id: Some(work_id),
+                outbound: work.outbound.clone(),
                 id: msg.id.clone(),
                 method: msg.method.clone(),
                 params_json,
@@ -726,8 +1177,10 @@ impl PageBridge {
         page: &PageInstance,
         context: &WebMessageContext,
         msg: &NotifyMsg,
+        work: &CapturedSessionWork,
+        ready: bool,
     ) -> Result<(), LxAppError> {
-        if !self.accepts_message_version(msg.v) || !self.is_ready() {
+        if !self.is_current_work(work.work_id) || !ready {
             return Ok(());
         }
 
@@ -738,12 +1191,20 @@ impl PageBridge {
 
         let params_json = msg.params.as_ref().map(|v| v.get().to_owned());
         if let Some(host_method) = msg.method.strip_prefix("host.") {
-            return self.dispatch_host_notify(page, context, host_method.to_string(), params_json);
+            return self.dispatch_host_notify(
+                page,
+                context,
+                host_method.to_string(),
+                params_json,
+                work,
+            );
         }
 
         self.forward_js_message(
             page,
             AppServiceCommand::Notify {
+                work_id: work.work_id,
+                outbound: work.outbound.clone(),
                 method: msg.method.clone(),
                 params_json,
             },
@@ -755,20 +1216,17 @@ impl PageBridge {
         page: &PageInstance,
         context: &WebMessageContext,
         msg: &ChOpenMsg,
+        work: &CapturedSessionWork,
+        ready: bool,
     ) -> Result<(), LxAppError> {
-        if !self.accepts_message_version(msg.v) {
-            let _ = self.send_ch_ack_err(
-                page,
-                msg.id.clone(),
-                BRIDGE_PROTOCOL_MISMATCH,
-                Some(format!("Unsupported protocol: {}", msg.v)),
-                None,
-            );
+        if !self.is_current_work(work.work_id) {
             return Ok(());
         }
-        if !self.is_ready() {
-            let _ = self.send_ch_ack_err(
+        if !ready {
+            let _ = self.send_ch_ack_err_for_context(
                 page,
+                work.work_id,
+                work.outbound.as_ref(),
                 msg.id.clone(),
                 BRIDGE_NOT_READY,
                 Some("Bridge not ready".to_string()),
@@ -779,8 +1237,10 @@ impl PageBridge {
 
         let required_cap = required_cap_for_name(&msg.topic);
         if msg.cap.is_empty() || msg.cap != required_cap {
-            let _ = self.send_ch_ack_err(
+            let _ = self.send_ch_ack_err_for_context(
                 page,
+                work.work_id,
+                work.outbound.as_ref(),
                 msg.id.clone(),
                 BRIDGE_MALFORMED_MESSAGE,
                 Some(format!("Capability mismatch: expected '{}'", required_cap)),
@@ -796,13 +1256,18 @@ impl PageBridge {
                 msg.id.clone(),
                 host_topic,
                 msg.params.as_ref().map(|v| v.get().to_owned()),
+                work,
             );
         }
 
         self.forward_js_channel_open(
             page,
+            work.work_id,
+            work.outbound.as_ref(),
             msg.id.clone(),
             AppServiceCommand::ChOpen {
+                work_id: work.work_id,
+                outbound: work.outbound.clone(),
                 id: msg.id.clone(),
                 topic: msg.topic.clone(),
                 params_json: msg.params.as_ref().map(|v| v.get().to_owned()),
@@ -826,11 +1291,21 @@ impl PageBridge {
     fn forward_js_request(
         &self,
         page: &PageInstance,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         id: String,
         message: AppServiceCommand,
     ) -> Result<(), LxAppError> {
         if let Err(err) = self.forward_js_message(page, message) {
-            let _ = self.send_res_err(page, id, BRIDGE_INTERNAL_ERROR, Some(err.to_string()), None);
+            let _ = self.send_res_err_for_context(
+                page,
+                work_id,
+                outbound,
+                id,
+                BRIDGE_INTERNAL_ERROR,
+                Some(err.to_string()),
+                None,
+            );
         }
         Ok(())
     }
@@ -838,19 +1313,30 @@ impl PageBridge {
     fn forward_js_channel_open(
         &self,
         page: &PageInstance,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         id: String,
         message: AppServiceCommand,
     ) -> Result<(), LxAppError> {
         if let Err(err) = self.forward_js_message(page, message) {
-            let _ =
-                self.send_ch_ack_err(page, id, BRIDGE_INTERNAL_ERROR, Some(err.to_string()), None);
+            let _ = self.send_ch_ack_err_for_context(
+                page,
+                work_id,
+                outbound,
+                id,
+                BRIDGE_INTERNAL_ERROR,
+                Some(err.to_string()),
+                None,
+            );
         }
         Ok(())
     }
 
-    pub(crate) fn send_res_ok<T: ViewTransport>(
+    pub(crate) fn send_res_ok_for_context<T: ViewTransport>(
         &self,
         transport: &T,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         id: String,
         result_json: String,
     ) -> Result<(), LxAppError> {
@@ -864,12 +1350,14 @@ impl PageBridge {
             result: Some(result),
             error: None,
         };
-        self.send_json(transport, V3OutboundKind::Res, &msg)
+        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::Res, &msg)
     }
 
-    pub(crate) fn send_view_request<T: ViewTransport>(
+    pub(crate) fn send_view_request_for_context<T: ViewTransport>(
         &self,
         transport: &T,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         id: String,
         method: String,
         params: Option<Value>,
@@ -883,12 +1371,14 @@ impl PageBridge {
             params,
             cap,
         };
-        self.send_json(transport, V3OutboundKind::Req, &msg)
+        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::Req, &msg)
     }
 
-    pub(crate) fn send_res_err<T: ViewTransport>(
+    pub(crate) fn send_res_err_for_context<T: ViewTransport>(
         &self,
         transport: &T,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         id: String,
         code: &str,
         message: Option<String>,
@@ -913,12 +1403,14 @@ impl PageBridge {
                 data,
             }),
         };
-        self.send_json(transport, V3OutboundKind::Res, &msg)
+        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::Res, &msg)
     }
 
-    pub(crate) fn send_state_snapshot<T: ViewTransport>(
+    pub(crate) fn send_state_snapshot_for_context<T: ViewTransport>(
         &self,
         transport: &T,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         scope: Option<String>,
         rev: u64,
         state_json: String,
@@ -932,12 +1424,20 @@ impl PageBridge {
             rev,
             state,
         };
-        self.send_json(transport, V3OutboundKind::StateSnapshot, &msg)
+        self.send_json_for_context(
+            transport,
+            work_id,
+            outbound,
+            V3OutboundKind::StateSnapshot,
+            &msg,
+        )
     }
 
-    pub(crate) fn send_state_patch<T: ViewTransport>(
+    pub(crate) fn send_state_patch_for_context<T: ViewTransport>(
         &self,
         transport: &T,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         scope: Option<String>,
         base_rev: u64,
         rev: u64,
@@ -953,18 +1453,28 @@ impl PageBridge {
             ops,
             ack,
         };
-        self.send_json(transport, V3OutboundKind::StatePatch, &msg)
+        self.send_json_for_context(
+            transport,
+            work_id,
+            outbound,
+            V3OutboundKind::StatePatch,
+            &msg,
+        )
     }
 
-    pub(crate) fn send_event<T: ViewTransport>(
+    pub(crate) fn send_event_for_context<T: ViewTransport>(
         &self,
         transport: &T,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         id: impl Into<String>,
         seq: u64,
         payload_json: String,
     ) -> Result<(), LxAppError> {
-        self.send_seq_frame_with_payload(
+        self.send_seq_frame_with_payload_for_context(
             transport,
+            work_id,
+            outbound,
             V3OutboundKind::Event,
             "event",
             id.into(),
@@ -973,9 +1483,11 @@ impl PageBridge {
         )
     }
 
-    pub(crate) fn send_ch_ack_ok<T: ViewTransport>(
+    pub(crate) fn send_ch_ack_ok_for_context<T: ViewTransport>(
         &self,
         transport: &T,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         id: impl Into<String>,
     ) -> Result<(), LxAppError> {
         let msg = ChAck {
@@ -985,12 +1497,14 @@ impl PageBridge {
             ok: true,
             error: None,
         };
-        self.send_json(transport, V3OutboundKind::ChAck, &msg)
+        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::ChAck, &msg)
     }
 
-    pub(crate) fn send_ch_ack_err<T: ViewTransport>(
+    pub(crate) fn send_ch_ack_err_for_context<T: ViewTransport>(
         &self,
         transport: &T,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         id: impl Into<String>,
         code: &str,
         message: Option<String>,
@@ -1007,18 +1521,22 @@ impl PageBridge {
                 data,
             }),
         };
-        self.send_json(transport, V3OutboundKind::ChAck, &msg)
+        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::ChAck, &msg)
     }
 
-    pub(crate) fn send_ch_data<T: ViewTransport>(
+    pub(crate) fn send_ch_data_for_context<T: ViewTransport>(
         &self,
         transport: &T,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         id: impl Into<String>,
         seq: u64,
         payload_json: String,
     ) -> Result<(), LxAppError> {
-        self.send_seq_frame_with_payload(
+        self.send_seq_frame_with_payload_for_context(
             transport,
+            work_id,
+            outbound,
             V3OutboundKind::ChData,
             "ch.data",
             id.into(),
@@ -1027,9 +1545,11 @@ impl PageBridge {
         )
     }
 
-    pub(crate) fn send_ch_close<T: ViewTransport>(
+    pub(crate) fn send_ch_close_for_context<T: ViewTransport>(
         &self,
         transport: &T,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         id: impl Into<String>,
         code: Option<String>,
         reason: Option<String>,
@@ -1041,23 +1561,21 @@ impl PageBridge {
             code,
             reason,
         };
-        self.send_json(transport, V3OutboundKind::ChClose, &msg)
+        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::ChClose, &msg)
     }
 
-    fn send_json<T: ViewTransport, S: Serialize>(
+    fn send_json_for_context<T: ViewTransport, S: Serialize>(
         &self,
         transport: &T,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         kind: V3OutboundKind,
         msg: &S,
     ) -> Result<(), LxAppError> {
-        let serialized = if let Some(binding) = self
-            .inner
-            .handshake
-            .lock()
-            .unwrap()
-            .protocol
-            .outbound_binding()
-        {
+        if !self.is_current_work(work_id) {
+            return Ok(());
+        }
+        let serialized = if let Some(outbound) = outbound {
             let mut payload = serde_json::to_value(msg)?;
             let object = payload
                 .as_object_mut()
@@ -1068,38 +1586,48 @@ impl PageBridge {
             object.remove("kind");
             object.remove("sessionId");
             serde_json::to_string(
-                &encode_v3_outbound_frame(&binding, kind, payload)
+                &encode_v3_outbound_frame(&outbound.binding, kind, payload)
                     .map_err(|_| LxAppError::Bridge("invalid V3 outbound payload".to_string()))?,
             )?
         } else {
             serde_json::to_string(msg)?
         };
-        transport.post_message_to_view(serialized)
+        if let Some(outbound) = outbound {
+            transport.post_message_to_document(
+                outbound.expected_generation,
+                Arc::clone(&outbound.gate),
+                serialized,
+            )
+        } else {
+            transport.post_message_to_view(serialized)
+        }
     }
 
-    fn send_seq_frame_with_payload<T: ViewTransport>(
+    fn send_seq_frame_with_payload_for_context<T: ViewTransport>(
         &self,
         transport: &T,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         v3_kind: V3OutboundKind,
         kind: &'static str,
         id: String,
         seq: u64,
         payload_json: &str,
     ) -> Result<(), LxAppError> {
-        if let Some(binding) = self
-            .inner
-            .handshake
-            .lock()
-            .unwrap()
-            .protocol
-            .outbound_binding()
-        {
+        if !self.is_current_work(work_id) {
+            return Ok(());
+        }
+        if let Some(outbound) = outbound {
             let payload: Value = serde_json::from_str(payload_json)
                 .map_err(|_| LxAppError::Bridge("invalid V3 outbound payload".to_string()))?;
             let frame = serde_json::json!({ "id": id, "seq": seq, "payload": payload });
-            let frame = encode_v3_outbound_frame(&binding, v3_kind, frame)
+            let frame = encode_v3_outbound_frame(&outbound.binding, v3_kind, frame)
                 .map_err(|_| LxAppError::Bridge("invalid V3 outbound payload".to_string()))?;
-            return transport.post_message_to_view(serde_json::to_string(&frame)?);
+            return transport.post_message_to_document(
+                outbound.expected_generation,
+                Arc::clone(&outbound.gate),
+                serde_json::to_string(&frame)?,
+            );
         }
         transport.post_message_to_view(serialize_seq_frame_with_payload(
             kind,
@@ -1112,10 +1640,14 @@ impl PageBridge {
     fn send_hello_ack<T: ViewTransport>(
         &self,
         transport: &T,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         nonce: String,
         session_id: String,
     ) -> Result<(), LxAppError> {
-        let protocol = if self.is_bound_v3() { V3_PROTOCOL } else { 2 };
+        // The captured outbound binding, rather than mutable handshake state,
+        // identifies the protocol of the document receiving this frame.
+        let protocol = if outbound.is_some() { V3_PROTOCOL } else { 2 };
         let msg = HelloAck {
             v: 2,
             kind: "helloAck",
@@ -1123,12 +1655,14 @@ impl PageBridge {
             protocol,
             session_id,
         };
-        self.send_json(transport, V3OutboundKind::HelloAck, &msg)
+        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::HelloAck, &msg)
     }
 
     fn send_ready<T: ViewTransport>(
         &self,
         transport: &T,
+        work_id: Option<SessionWorkId>,
+        outbound: Option<&OutboundContext>,
         session_id: String,
     ) -> Result<(), LxAppError> {
         let msg = ReadyMsg {
@@ -1137,57 +1671,70 @@ impl PageBridge {
             session_id,
             host_methods: host::host_method_schema(),
         };
-        self.send_json(transport, V3OutboundKind::Ready, &msg)
+        self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::Ready, &msg)
     }
 
-    fn set_ready(&self, session_id: String) {
+    fn set_ready_if_current(&self, work_id: SessionWorkId, session_id: String) -> bool {
         let mut hs = self.inner.handshake.lock().unwrap();
+        if hs
+            .connection
+            .as_ref()
+            .is_none_or(|connection| connection.work_id != work_id)
+            || hs.ready
+        {
+            return false;
+        }
         hs.session_id = Some(session_id);
         hs.ready = true;
+        true
     }
 
-    fn reset_session(&self, page: &PageInstance) {
-        {
-            let mut hs = self.inner.handshake.lock().unwrap();
-            hs.session_id = None;
-            hs.ready = false;
-        }
-
-        self.cancel_pending_requests();
-        self.close_host_channels(page, "Session reset");
-    }
-
-    /// Cancel in-flight View requests without resetting the reusable bridge session.
-    pub(crate) fn cancel_pending_requests(&self) {
-        self.inner.pending_requests.cancel_all();
-    }
-
-    /// Cancel all page-scoped bridge work while preserving the reusable handshake.
+    /// Revoke the document session and all of its work when its page departs.
     pub(crate) fn cancel_page_work(&self, page: &PageInstance) {
-        self.cancel_pending_requests();
-        self.close_host_channels(page, PAGE_UNLOADED);
-        let _ = self.forward_js_message(
-            page,
-            AppServiceCommand::CloseChannels {
-                code: BRIDGE_CANCELED.to_string(),
-                reason: PAGE_UNLOADED.to_string(),
-            },
-        );
+        let connection = {
+            let mut handshake = self.inner.handshake.lock().unwrap();
+            handshake.session_id = None;
+            handshake.ready = false;
+            // The V3 binding belongs to the departing document. A successor
+            // must be explicitly bound again; otherwise its hello could be
+            // checked against revoked credentials.
+            handshake.protocol = BridgeProtocol::LegacyV2;
+            handshake.connection.take()
+        };
+        if let Some(connection) = connection {
+            self.cancel_work(page, connection, PAGE_UNLOADED);
+        }
     }
 
-    fn close_host_channels(&self, page: &PageInstance, reason: &str) {
+    fn close_host_channels_for_work(
+        &self,
+        page: &PageInstance,
+        work_id: SessionWorkId,
+        reason: &str,
+    ) {
         let active_host_channels = {
             let mut channels = self.inner.active_host_channels.lock().unwrap();
-            std::mem::take(&mut *channels)
+            let keys = channels
+                .iter()
+                .filter(|(_, channel)| channel.work_id == work_id)
+                .map(|(key, _)| key.clone())
+                .collect::<Vec<_>>();
+            keys.into_iter()
+                .filter_map(|key| channels.remove(&key).map(|channel| (key.1, channel)))
+                .collect::<Vec<_>>()
         };
-        for (id, sender) in active_host_channels {
-            let _ = self.send_ch_close(
+        for (id, channel) in active_host_channels {
+            let _ = self.send_ch_close_for_context(
                 page,
+                Some(channel.work_id),
+                channel.outbound.as_ref(),
                 id,
                 Some(BRIDGE_CANCELED.to_string()),
                 Some(reason.to_string()),
             );
-            sender.send_close(Some(BRIDGE_CANCELED.to_string()), Some(reason.to_string()));
+            channel
+                .sender
+                .send_close(Some(BRIDGE_CANCELED.to_string()), Some(reason.to_string()));
         }
     }
 
@@ -1201,24 +1748,122 @@ impl PageBridge {
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(data.as_bytes())
     }
 
-    fn register_host_channel(&self, id: impl Into<String>, sender: host::ChannelContextSender) {
+    fn register_host_channel(
+        &self,
+        id: impl Into<String>,
+        work_id: SessionWorkId,
+        outbound: Option<OutboundContext>,
+        sender: host::ChannelContextSender,
+    ) -> usize {
+        let token = self
+            .inner
+            .next_host_channel_token
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .expect("host channel token space exhausted");
+        let id = id.into();
+        let replaced = self.inner.active_host_channels.lock().unwrap().insert(
+            (work_id, id),
+            ActiveHostChannel {
+                token,
+                work_id,
+                outbound,
+                sender,
+            },
+        );
+        if let Some(replaced) = replaced {
+            replaced.sender.send_close(
+                Some(BRIDGE_CANCELED.to_string()),
+                Some("Channel replaced".to_string()),
+            );
+        }
+        token
+    }
+
+    fn register_host_notify(
+        &self,
+        work_id: SessionWorkId,
+        outbound: Option<OutboundContext>,
+    ) -> (oneshot::Receiver<()>, PendingHostNotifyGuard) {
+        let token = self
+            .inner
+            .next_host_notify_token
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
+            .expect("host notify token space exhausted");
+        let (cancel_tx, cancel_rx) = oneshot::channel();
+        self.inner.active_host_notifies.lock().unwrap().insert(
+            token,
+            ActiveHostNotify {
+                work_id,
+                _outbound: outbound.clone(),
+                cancel_tx,
+            },
+        );
+        (
+            cancel_rx,
+            PendingHostNotifyGuard {
+                state: Arc::clone(&self.inner),
+                token,
+                _outbound: outbound,
+            },
+        )
+    }
+
+    fn cancel_host_notifies_for_work(&self, work_id: SessionWorkId) {
+        let canceled = {
+            let mut notifies = self.inner.active_host_notifies.lock().unwrap();
+            let tokens = notifies
+                .iter()
+                .filter(|(_, notify)| notify.work_id == work_id)
+                .map(|(token, _)| *token)
+                .collect::<Vec<_>>();
+            tokens
+                .into_iter()
+                .filter_map(|token| notifies.remove(&token))
+                .collect::<Vec<_>>()
+        };
+        for notify in canceled {
+            let _ = notify.cancel_tx.send(());
+        }
+    }
+
+    fn take_host_channel(
+        &self,
+        id: &str,
+        work_id: SessionWorkId,
+        token: usize,
+    ) -> Option<ActiveHostChannel> {
+        let mut channels = self.inner.active_host_channels.lock().unwrap();
+        let key = (work_id, id.to_owned());
+        if channels
+            .get(&key)
+            .is_some_and(|channel| channel.work_id == work_id && channel.token == token)
+        {
+            channels.remove(&key)
+        } else {
+            None
+        }
+    }
+
+    fn host_channel_is_current(&self, id: &str, work_id: SessionWorkId, token: usize) -> bool {
         self.inner
             .active_host_channels
             .lock()
             .unwrap()
-            .insert(id.into(), sender);
-    }
-
-    fn take_host_channel(&self, id: &str) -> Option<host::ChannelContextSender> {
-        self.inner.active_host_channels.lock().unwrap().remove(id)
+            .get(&(work_id, id.to_owned()))
+            .is_some_and(|channel| channel.work_id == work_id && channel.token == token)
     }
 
     /// Forward inbound `ch.data` payload to the matching host channel sender.
     /// Returns `true` if the channel was found (message consumed), `false` otherwise.
-    fn send_data_to_host_channel(&self, id: &str, payload_json: String) -> bool {
+    fn send_data_to_host_channel(
+        &self,
+        id: &str,
+        work_id: SessionWorkId,
+        payload_json: String,
+    ) -> bool {
         let lock = self.inner.active_host_channels.lock().unwrap();
-        if let Some(sender) = lock.get(id) {
-            sender.send_data(payload_json);
+        if let Some(channel) = lock.get(&(work_id, id.to_owned())) {
+            channel.sender.send_data(payload_json);
             true
         } else {
             false
@@ -1230,12 +1875,18 @@ impl PageBridge {
     fn close_host_channel_from_view(
         &self,
         id: &str,
+        work_id: SessionWorkId,
         code: Option<String>,
         reason: Option<String>,
     ) -> bool {
-        let sender = self.inner.active_host_channels.lock().unwrap().remove(id);
-        if let Some(sender) = sender {
-            sender.send_close(code, reason);
+        let channel = self
+            .inner
+            .active_host_channels
+            .lock()
+            .unwrap()
+            .remove(&(work_id, id.to_owned()));
+        if let Some(channel) = channel {
+            channel.sender.send_close(code, reason);
             true
         } else {
             false
@@ -1249,14 +1900,20 @@ impl PageBridge {
         id: String,
         host_topic: &str,
         params_json: Option<String>,
+        work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
         admit_before_host_dispatch(
             context,
             |context| self.admit_host_route(page, context, host_topic),
             || {
+                if !self.is_current_work(work.work_id) {
+                    return Ok(());
+                }
                 let Some(handler) = host::get_channel_handler(host_topic) else {
-                    let _ = self.send_ch_ack_err(
+                    let _ = self.send_ch_ack_err_for_context(
                         page,
+                        work.work_id,
+                        work.outbound.as_ref(),
                         id,
                         BRIDGE_TOPIC_NOT_FOUND,
                         Some(format!("Channel not found: host.{}", host_topic)),
@@ -1264,25 +1921,52 @@ impl PageBridge {
                     );
                     return Ok(());
                 };
+                let Some(work_id) = work.work_id else {
+                    return Ok(());
+                };
 
                 let (ctx, sender, mut outbound_rx) = host::new_channel_context(id.clone());
-                self.register_host_channel(id.clone(), sender);
+                let channel_token =
+                    self.register_host_channel(id.clone(), work_id, work.outbound.clone(), sender);
+                // Compensate for a revoke that happened after capture but
+                // before this channel entered the work registry.
+                if !self.is_current_work(Some(work_id)) {
+                    if let Some(channel) = self.take_host_channel(&id, work_id, channel_token) {
+                        channel.sender.send_close(
+                            Some(BRIDGE_CANCELED.to_string()),
+                            Some(PAGE_UNLOADED.to_string()),
+                        );
+                    }
+                    return Ok(());
+                }
 
                 // Acknowledge the channel open before invoking the handler.
-                self.send_ch_ack_ok(page, id.clone())?;
+                self.send_ch_ack_ok_for_context(
+                    page,
+                    Some(work_id),
+                    work.outbound.as_ref(),
+                    id.clone(),
+                )?;
 
                 // Spawn an outbound forwarding task that relays ChannelOutbound messages
                 // from the handler back to the View as ch.data / ch.close wire messages.
                 let bridge = self.clone();
                 let task_page = page.clone();
                 let task_id = id.clone();
+                let task_outbound = work.outbound.clone();
                 crate::executor::spawn(async move {
                     let mut seq = 0u64;
                     while let Some(msg) = outbound_rx.recv().await {
                         match msg {
                             host::ChannelOutbound::Data(payload_json) => {
-                                if let Err(e) = bridge.send_ch_data(
+                                if !bridge.host_channel_is_current(&task_id, work_id, channel_token)
+                                {
+                                    break;
+                                }
+                                if let Err(e) = bridge.send_ch_data_for_context(
                                     &task_page,
+                                    Some(work_id),
+                                    task_outbound.as_ref(),
                                     task_id.clone(),
                                     seq,
                                     payload_json,
@@ -1298,9 +1982,19 @@ impl PageBridge {
                                 seq += 1;
                             }
                             host::ChannelOutbound::Close { code, reason } => {
-                                bridge.take_host_channel(&task_id);
-                                let _ =
-                                    bridge.send_ch_close(&task_page, task_id.clone(), code, reason);
+                                if bridge
+                                    .take_host_channel(&task_id, work_id, channel_token)
+                                    .is_some()
+                                {
+                                    let _ = bridge.send_ch_close_for_context(
+                                        &task_page,
+                                        Some(work_id),
+                                        task_outbound.as_ref(),
+                                        task_id.clone(),
+                                        code,
+                                        reason,
+                                    );
+                                }
                                 break;
                             }
                         }
@@ -1309,8 +2003,18 @@ impl PageBridge {
 
                 // Call handler.on_open synchronously; the handler is expected to spawn
                 // its own async task if it needs to do long-running work.
+                if !self.is_current_work(Some(work_id)) {
+                    if let Some(channel) = self.take_host_channel(&id, work_id, channel_token) {
+                        channel.sender.send_close(
+                            Some(BRIDGE_CANCELED.to_string()),
+                            Some(PAGE_UNLOADED.to_string()),
+                        );
+                    }
+                    return Ok(());
+                }
                 let lxapp = self.lxapp();
-                handler.on_open(lxapp, ctx, params_json);
+                HOST_EFFECT_WORK
+                    .sync_scope(work.clone(), || handler.on_open(lxapp, ctx, params_json));
 
                 Ok(())
             },
@@ -1324,20 +2028,29 @@ impl PageBridge {
         id: String,
         host_method: String,
         params_json: Option<String>,
+        work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
         let route = host_method.clone();
         admit_before_host_dispatch(
             context,
             |context| self.admit_host_route(page, context, &route),
             || {
+                if !self.is_current_work(work.work_id) {
+                    return Ok(());
+                }
                 let Some(handler) = host::get_host(&host_method) else {
-                    let _ = self.send_res_err(
+                    let _ = self.send_res_err_for_context(
                         page,
+                        work.work_id,
+                        work.outbound.as_ref(),
                         id,
                         BRIDGE_METHOD_NOT_FOUND,
                         Some(format!("Method not found: host.{}", host_method)),
                         None,
                     );
+                    return Ok(());
+                };
+                let Some(work_id) = work.work_id else {
                     return Ok(());
                 };
 
@@ -1346,11 +2059,21 @@ impl PageBridge {
                 let task_page = page.clone();
                 let bridge = self.clone();
                 let (mut cancel_rx, pending_request) =
-                    self.inner.pending_requests.register(id.clone());
+                    self.inner.pending_requests.register(id.clone(), work_id);
+                // The revoke path may have completed its work-id sweep before
+                // this insertion. Do not start a handler in that gap.
+                if !self.is_current_work(Some(work_id)) {
+                    drop(pending_request);
+                    return Ok(());
+                }
                 let task_id = id.clone();
                 let task_host_method = host_method.clone();
+                let task_outbound = work.outbound.clone();
+                let task_work = work.clone();
 
                 crate::executor::spawn(async move {
+                    HOST_EFFECT_WORK
+                        .scope(task_work, async move {
                     let started_at = std::time::Instant::now();
                     let (tx, rx) = oneshot::channel();
                     let mut host_cancel_tx = Some(tx);
@@ -1373,13 +2096,19 @@ impl PageBridge {
                     };
 
                     let send_result = match initial_result {
-                        Ok(HostOutput::Json(json)) => {
-                            bridge.send_res_ok(&task_page, task_id.clone(), json)
-                        }
+                        Ok(HostOutput::Json(json)) => bridge.send_res_ok_for_context(
+                            &task_page,
+                            Some(work_id),
+                            task_outbound.as_ref(),
+                            task_id.clone(),
+                            json,
+                        ),
                         Ok(HostOutput::Stream(stream)) => {
                             match bridge
                                 .consume_host_stream(
                                     &task_page,
+                                    work_id,
+                                    task_outbound.as_ref(),
                                     &task_id,
                                     stream,
                                     &mut cancel_rx,
@@ -1387,9 +2116,17 @@ impl PageBridge {
                                 )
                                 .await
                             {
-                                Ok(json) => bridge.send_res_ok(&task_page, task_id.clone(), json),
-                                Err(err) => bridge.send_res_err(
+                                Ok(json) => bridge.send_res_ok_for_context(
                                     &task_page,
+                                    Some(work_id),
+                                    task_outbound.as_ref(),
+                                    task_id.clone(),
+                                    json,
+                                ),
+                                Err(err) => bridge.send_res_err_for_context(
+                                    &task_page,
+                                    Some(work_id),
+                                    task_outbound.as_ref(),
                                     task_id.clone(),
                                     &err.code,
                                     err.message,
@@ -1397,8 +2134,10 @@ impl PageBridge {
                                 ),
                             }
                         }
-                        Err(err) => bridge.send_res_err(
+                        Err(err) => bridge.send_res_err_for_context(
                             &task_page,
+                            Some(work_id),
+                            task_outbound.as_ref(),
                             task_id.clone(),
                             &err.code,
                             err.message,
@@ -1425,6 +2164,8 @@ impl PageBridge {
                             .with_appid(task_page.appid())
                             .with_path(task_page.path());
                     }
+                    })
+                    .await;
                 });
 
                 Ok(())
@@ -1438,13 +2179,20 @@ impl PageBridge {
         context: &WebMessageContext,
         host_method: String,
         params_json: Option<String>,
+        work: &CapturedSessionWork,
     ) -> Result<(), LxAppError> {
         let route = host_method.clone();
         admit_before_host_dispatch(
             context,
             |context| self.admit_host_route(page, context, &route),
             || {
+                if !self.is_current_work(work.work_id) {
+                    return Ok(());
+                }
                 let Some(handler) = host::get_host(&host_method) else {
+                    return Ok(());
+                };
+                let Some(work_id) = work.work_id else {
                     return Ok(());
                 };
 
@@ -1452,25 +2200,41 @@ impl PageBridge {
                 let appid = page.appid();
                 let path = page.path();
                 let task_host_method = host_method.clone();
+                let (cancel_rx, notify_guard) =
+                    self.register_host_notify(work_id, work.outbound.clone());
+                // Same post-registration compensation as requests: a reset
+                // that won before insertion must not leave a live notify.
+                if !self.is_current_work(Some(work_id)) {
+                    drop(notify_guard);
+                    return Ok(());
+                }
+                let task_work = work.clone();
                 crate::executor::spawn(async move {
-                    let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
-                    let _keep_alive = cancel_tx;
-                    match handler.call(lxapp, params_json, cancel_rx).await {
-                        Ok(HostOutput::Json(_)) => {}
-                        Ok(HostOutput::Stream(_)) => {
-                            crate::warn!(
-                                "host notify '{}' returned a stream; dropping output",
-                                task_host_method
-                            )
-                            .with_appid(appid.clone())
-                            .with_path(path.clone());
-                        }
-                        Err(err) => {
-                            crate::warn!("host notify '{}' failed: {}", task_host_method, err)
-                                .with_appid(appid)
-                                .with_path(path);
-                        }
-                    }
+                    HOST_EFFECT_WORK
+                        .scope(task_work, async move {
+                            let _notify_guard = notify_guard;
+                            match handler.call(lxapp, params_json, cancel_rx).await {
+                                Ok(HostOutput::Json(_)) => {}
+                                Ok(HostOutput::Stream(_)) => {
+                                    crate::warn!(
+                                        "host notify '{}' returned a stream; dropping output",
+                                        task_host_method
+                                    )
+                                    .with_appid(appid.clone())
+                                    .with_path(path.clone());
+                                }
+                                Err(err) => {
+                                    crate::warn!(
+                                        "host notify '{}' failed: {}",
+                                        task_host_method,
+                                        err
+                                    )
+                                    .with_appid(appid)
+                                    .with_path(path);
+                                }
+                            }
+                        })
+                        .await;
                 });
                 Ok(())
             },
@@ -1480,6 +2244,8 @@ impl PageBridge {
     async fn consume_host_stream(
         &self,
         page: &PageInstance,
+        work_id: SessionWorkId,
+        outbound: Option<&OutboundContext>,
         stream_id: &str,
         mut stream: HostStream,
         cancel_rx: &mut oneshot::Receiver<()>,
@@ -1508,8 +2274,15 @@ impl PageBridge {
                                 Some(format!("Host stream emitted invalid JSON: {}", e)),
                             )
                         })?;
-                    self.send_event(page, stream_id.to_string(), seq, payload_json)
-                        .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
+                    self.send_event_for_context(
+                        page,
+                        Some(work_id),
+                        outbound,
+                        stream_id.to_string(),
+                        seq,
+                        payload_json,
+                    )
+                    .map_err(|e| RpcError::new(BRIDGE_INTERNAL_ERROR, Some(e.to_string())))?;
                     seq += 1;
                 }
                 Some(Ok(HostStreamItem::Return(result_json))) => {
@@ -1621,10 +2394,29 @@ mod tests {
     }
 
     #[test]
+    fn stale_legacy_hello_work_does_not_match_v3_successor() {
+        let successor = Arc::new(BridgeConnection {
+            work_id: SessionWorkId::for_test(12),
+            outbound: None,
+        });
+
+        assert!(!connection_matches_work(
+            Some(&successor),
+            Some(SessionWorkId::for_test(11)),
+        ));
+        assert!(!connection_matches_work(Some(&successor), None));
+        assert!(connection_matches_work(
+            Some(&successor),
+            Some(SessionWorkId::for_test(12))
+        ));
+    }
+
+    #[test]
     fn pending_request_registry_cancels_all_and_auto_unregisters() {
         let pending = Arc::new(PendingRequestRegistry::default());
-        let (mut first_rx, first_guard) = pending.register("first".to_string());
-        let (mut second_rx, second_guard) = pending.register("second".to_string());
+        let (mut first_rx, first_guard) = pending.register("first".to_string(), SessionWorkId(1));
+        let (mut second_rx, second_guard) =
+            pending.register("second".to_string(), SessionWorkId(1));
 
         assert_eq!(pending.len(), 2);
         drop(first_guard);
@@ -1642,8 +2434,8 @@ mod tests {
     #[test]
     fn completed_request_cannot_remove_a_reused_request_id() {
         let pending = Arc::new(PendingRequestRegistry::default());
-        let (mut first_rx, first_guard) = pending.register("same".to_string());
-        let (mut second_rx, second_guard) = pending.register("same".to_string());
+        let (mut first_rx, first_guard) = pending.register("same".to_string(), SessionWorkId(1));
+        let (mut second_rx, second_guard) = pending.register("same".to_string(), SessionWorkId(1));
 
         assert_eq!(first_rx.try_recv(), Ok(()));
         drop(first_guard);
@@ -1654,6 +2446,66 @@ mod tests {
         drop(second_guard);
         assert_eq!(pending.len(), 0);
         assert_eq!(second_rx.try_recv(), Ok(()));
+    }
+
+    #[test]
+    fn canceling_retired_work_cannot_cancel_successor_request_with_same_id() {
+        let pending = Arc::new(PendingRequestRegistry::default());
+        let (mut old_rx, old_guard) = pending.register("same".to_string(), SessionWorkId(7));
+        let (mut new_rx, new_guard) = pending.register("same".to_string(), SessionWorkId(8));
+
+        pending.cancel_work(SessionWorkId(7));
+
+        assert_eq!(old_rx.try_recv(), Ok(()));
+        assert!(new_rx.try_recv().is_err());
+        assert_eq!(pending.len(), 1);
+        drop(old_guard);
+        drop(new_guard);
+    }
+
+    #[test]
+    fn stale_cancel_cannot_remove_successor_request_with_same_id() {
+        let pending = Arc::new(PendingRequestRegistry::default());
+        let (mut old_rx, old_guard) = pending.register("same".to_string(), SessionWorkId(7));
+        let (mut new_rx, new_guard) = pending.register("same".to_string(), SessionWorkId(8));
+
+        pending.cancel(SessionWorkId(7), "same");
+
+        assert_eq!(old_rx.try_recv(), Ok(()));
+        assert!(new_rx.try_recv().is_err());
+        drop(old_guard);
+        drop(new_guard);
+    }
+
+    #[test]
+    fn host_channel_registry_keeps_same_id_from_successive_works_distinct() {
+        let (_old_context, old_sender, _old_outbound) =
+            host::new_channel_context("same".to_string());
+        let (_new_context, new_sender, _new_outbound) =
+            host::new_channel_context("same".to_string());
+        let mut channels = HashMap::new();
+        channels.insert(
+            (SessionWorkId::for_test(40), "same".to_string()),
+            ActiveHostChannel {
+                token: 1,
+                work_id: SessionWorkId::for_test(40),
+                outbound: None,
+                sender: old_sender,
+            },
+        );
+        channels.insert(
+            (SessionWorkId::for_test(41), "same".to_string()),
+            ActiveHostChannel {
+                token: 1,
+                work_id: SessionWorkId::for_test(41),
+                outbound: None,
+                sender: new_sender,
+            },
+        );
+
+        assert_eq!(channels.len(), 2);
+        assert!(channels.contains_key(&(SessionWorkId::for_test(40), "same".to_string())));
+        assert!(channels.contains_key(&(SessionWorkId::for_test(41), "same".to_string())));
     }
 
     #[test]
