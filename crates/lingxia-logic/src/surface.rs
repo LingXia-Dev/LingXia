@@ -518,9 +518,13 @@ fn get_surface(ctx: JSContext, key_or_id: String) -> JSResult<JSValue> {
 /// `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
 /// slot. Control-app only; the namespace is the privilege.
 async fn shell_open_app(ctx: JSContext, app_id: JSValue, options: JSValue) -> JSResult<JSObject> {
-    let invocation = require_control_route(&ctx, LogicRoute::ShellOpenApp)?;
-    let app_id = shell_string_argument(app_id, "lx.shell.openApp appId")?;
-    let options = shell_object_argument(options, "lx.shell.openApp options")?;
+    let (invocation, (app_id, options)) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellOpenApp, || {
+            Ok((
+                shell_string_argument(app_id, "lx.shell.openApp appId")?,
+                shell_object_argument(options, "lx.shell.openApp options")?,
+            ))
+        })?;
     reject_unknown_options(
         &options,
         &[
@@ -549,8 +553,10 @@ async fn shell_open_app(ctx: JSContext, app_id: JSValue, options: JSValue) -> JS
 
 /// `lx.shell.openBuiltin(page)` — a host builtin page. Control-app only.
 async fn shell_open_builtin(ctx: JSContext, page: JSValue) -> JSResult<JSObject> {
-    let invocation = require_control_route(&ctx, LogicRoute::ShellOpenBuiltin)?;
-    let page = shell_string_argument(page, "lx.shell.openBuiltin page")?;
+    let (invocation, page) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellOpenBuiltin, || {
+            shell_string_argument(page, "lx.shell.openBuiltin page")
+        })?;
     let url = match page.trim() {
         "downloads" => "lingxia://downloads",
         other => {
@@ -573,14 +579,17 @@ async fn shell_open_declared(
     id: JSValue,
     options: Optional<JSValue>,
 ) -> JSResult<JSObject> {
-    let invocation = require_control_route(&ctx, LogicRoute::ShellOpenDeclared)?;
-    let id = shell_string_argument(id, "lx.shell.openDeclared id")?;
-    let options = options
-        .0
-        .filter(|value| !value.is_undefined() && !value.is_null())
-        .map(|value| shell_object_argument(value, "lx.shell.openDeclared options"))
-        .transpose()?
-        .unwrap_or_else(|| JSObject::new(&ctx));
+    let (invocation, (id, options)) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellOpenDeclared, || {
+            let id = shell_string_argument(id, "lx.shell.openDeclared id")?;
+            let options = options
+                .0
+                .filter(|value| !value.is_undefined() && !value.is_null())
+                .map(|value| shell_object_argument(value, "lx.shell.openDeclared options"))
+                .transpose()?
+                .unwrap_or_else(|| JSObject::new(&ctx));
+            Ok((id, options))
+        })?;
     reject_unknown_options(&options, &["key", "as", "edge"], "lx.shell.openDeclared")?;
     let key = read_surface_key(&options)?;
     let spec = JSObject::new(&ctx);
@@ -598,9 +607,13 @@ async fn shell_open_declared(
 
 /// `lx.shell.reconfigure(id, patch)` — re-place a live declared surface.
 async fn shell_reconfigure(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResult<()> {
-    let invocation = require_control_route(&ctx, LogicRoute::ShellReconfigure)?;
-    let id = shell_string_argument(id, "lx.shell.reconfigure id")?;
-    let patch = shell_object_argument(patch, "lx.shell.reconfigure patch")?;
+    let (invocation, (id, patch)) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellReconfigure, || {
+            Ok((
+                shell_string_argument(id, "lx.shell.reconfigure id")?,
+                shell_object_argument(patch, "lx.shell.reconfigure patch")?,
+            ))
+        })?;
     reject_unknown_options(&patch, &["as", "edge"], "lx.shell.reconfigure")?;
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
@@ -1063,20 +1076,6 @@ fn handle_realized_placement(handle: &JSObject) -> String {
         .unwrap_or_else(|_| "aside".to_string())
 }
 
-fn require_control_route(
-    ctx: &JSContext,
-    route: LogicRoute,
-) -> JSResult<lxapp::host::HostInvocationContext> {
-    let invocation = authorization::invocation_from_context(ctx)?;
-    authorization::authorize(&invocation, route).map_err(|denied| {
-        surface_error(
-            SurfaceErrorCode::Denied,
-            format!("{} is restricted to the Control app", denied.route().name()),
-        )
-    })?;
-    Ok(invocation)
-}
-
 fn shell_string_argument(value: JSValue, label: &str) -> JSResult<String> {
     value.to_rust::<String>().map_err(|_| {
         surface_error(
@@ -1164,7 +1163,7 @@ async fn open_app_spec(
         return lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id, current_region);
     }
     let (startup_options, release_type) =
-        crate::navigator::prepare_app_open(&lxapp, &target, invocation).await?;
+        crate::navigator::prepare_app_open(&lxapp, &target, Some(invocation)).await?;
 
     let (region, shell_surface_id) = match as_role {
         "main" => {
@@ -1286,9 +1285,10 @@ async fn open_declared_surface_spec(
         edge.as_deref(),
     );
     if has_orchestration_override && privileged_invocation.is_none() {
-        // Classifying the optional orchestration form needs its three shape
-        // fields, but admission still precedes surface lookup or mutation.
-        require_control_route(ctx, LogicRoute::SurfaceDeclaredOverride)?;
+        return Err(surface_error(
+            SurfaceErrorCode::Denied,
+            "declared-surface overrides are reserved; use lx.shell.openDeclared",
+        ));
     }
     if key.is_none()
         && requested_role.is_some_and(|role| role != lingxia_surface::Role::Main)
@@ -1487,9 +1487,9 @@ async fn open_url_spec(
 
     match classify_logic_url(trimmed_url) {
         LogicUrlClassification::BuiltinDownloads => {
-            if privileged_invocation.is_none() {
-                require_control_route(&ctx, LogicRoute::SurfaceOpenBuiltin)?;
-            }
+            // URL classification only reserves the target. Authority comes
+            // from the fixed-policy shell entry that supplied this context.
+            ensure_fixed_builtin_entry(privileged_invocation.is_some())?;
             validate_builtin_browser_surface_keys(spec)?;
             if !lingxia_app_context::browser_enabled() {
                 return Err(surface_error(
@@ -1547,6 +1547,15 @@ async fn open_url_spec(
             ),
         )),
     }
+}
+
+fn ensure_fixed_builtin_entry(has_control_invocation: bool) -> JSResult<()> {
+    if has_control_invocation {
+        return Ok(());
+    }
+    Err(invalid_surface_target(
+        "lingxia://downloads is reserved; use lx.shell.openBuiltin('downloads')",
+    ))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3438,7 +3447,7 @@ mod tests {
     }
 
     #[test]
-    fn downloads_is_the_only_public_builtin_url() {
+    fn downloads_is_reserved_for_the_fixed_shell_entry() {
         assert_eq!(
             classify_logic_url("lingxia://downloads"),
             LogicUrlClassification::BuiltinDownloads
@@ -3462,6 +3471,8 @@ mod tests {
             classify_logic_url("https://example.com"),
             LogicUrlClassification::External
         );
+        assert!(ensure_fixed_builtin_entry(false).is_err());
+        assert!(ensure_fixed_builtin_entry(true).is_ok());
     }
 
     #[test]

@@ -41,8 +41,10 @@ async fn autostart_is_enabled(ctx: JSContext) -> JSResult<bool> {
 }
 
 async fn autostart_set_enabled(ctx: JSContext, enabled: JSValue) -> JSResult<()> {
-    let invocation = authorization::require(&ctx, LogicRoute::AppAutostartSetEnabled)?;
-    let enabled = enabled.to_rust::<bool>()?;
+    let (invocation, enabled) =
+        authorization::require_before_decode(&ctx, LogicRoute::AppAutostartSetEnabled, || {
+            enabled.to_rust::<bool>()
+        })?;
     let lxapp = invocation.lxapp();
     let runtime = lxapp.runtime.clone();
     tokio::task::spawn_blocking(move || runtime.autostart_set_enabled(enabled))

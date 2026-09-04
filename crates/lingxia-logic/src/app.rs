@@ -212,8 +212,12 @@ fn get_display_language_state(ctx: JSContext) -> JSResult<JsDisplayLanguageState
 }
 
 /// Persist an arbitrary BCP-47 preference, or `"auto"` to follow the system.
-fn set_js_display_language_preference(ctx: JSContext, preference: String) -> JSResult<()> {
-    authorization::require(&ctx, LogicRoute::AppSetDisplayLanguagePreference)?;
+fn set_js_display_language_preference(ctx: JSContext, preference: JSValue) -> JSResult<()> {
+    let (_, preference) = authorization::require_before_decode(
+        &ctx,
+        LogicRoute::AppSetDisplayLanguagePreference,
+        || preference.to_rust::<String>(),
+    )?;
     let preference = preference
         .parse::<lxapp::DisplayLanguagePreference>()
         .map_err(js_invalid_parameter_error)?;
@@ -261,8 +265,12 @@ fn on_display_language_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFu
     })
 }
 
-fn on_display_language_state_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
-    authorization::require(&ctx, LogicRoute::AppWatchDisplayLanguageState)?;
+fn on_display_language_state_change(ctx: JSContext, callback: JSValue) -> JSResult<JSFunc> {
+    let (_, callback) = authorization::require_before_decode(
+        &ctx,
+        LogicRoute::AppWatchDisplayLanguageState,
+        || callback.to_rust::<JSFunc>(),
+    )?;
     let last_revision = Rc::new(Cell::new(0));
     let delivered = Rc::new(Cell::new(false));
     let event_revision = last_revision.clone();

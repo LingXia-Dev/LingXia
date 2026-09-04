@@ -109,14 +109,30 @@ fn should_navigate_to_app(
     Ok(true)
 }
 
+#[cfg(feature = "terminal")]
+fn ensure_ordinary_app_target(appid: &str) -> Result<(), LxAppError> {
+    if appid == lingxia_terminal_config::SETTINGS_APP_ID {
+        return Err(LxAppError::UnsupportedOperation(
+            "the host Terminal Settings control session is reserved; use lx.shell.openApp"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "terminal"))]
+fn ensure_ordinary_app_target(_appid: &str) -> Result<(), LxAppError> {
+    Ok(())
+}
+
 pub(crate) async fn prepare_app_open(
     lxapp: &Arc<LxApp>,
     options: &NavigateToAppOptions,
-    invocation: &HostInvocationContext,
+    control_invocation: Option<&HostInvocationContext>,
 ) -> JSResult<(LxAppStartupOptions, ReleaseType)> {
     let target_appid = options.appid.clone();
     let host_terminal_settings =
-        register_host_terminal_settings_bundle(lxapp, &target_appid, invocation)?;
+        register_host_terminal_settings_bundle(lxapp, &target_appid, control_invocation)?;
     validate_page_selector(options).map_err(|e| js_error_from_lxapp_error(&e))?;
     let release_type = parse_env_version(options.env_version.as_deref())
         .map_err(|e| js_error_from_lxapp_error(&e))?;
@@ -169,12 +185,20 @@ pub(crate) async fn prepare_app_open(
 fn register_host_terminal_settings_bundle(
     lxapp: &Arc<LxApp>,
     target_appid: &str,
-    invocation: &HostInvocationContext,
+    control_invocation: Option<&HostInvocationContext>,
 ) -> JSResult<bool> {
     if target_appid != lingxia_terminal_config::SETTINGS_APP_ID {
         return Ok(false);
     }
-    if authorization::authorize(invocation, LogicRoute::NavigatorHostTerminalSettings).is_err() {
+    let Some(invocation) = control_invocation else {
+        return Err(js_error_from_lxapp_error(
+            &LxAppError::UnsupportedOperation(
+                "the host Terminal Settings control session is reserved; use lx.shell.openApp"
+                    .to_string(),
+            ),
+        ));
+    };
+    if authorization::authorize(invocation, LogicRoute::ShellOpenHostTerminalSettings).is_err() {
         return Err(js_error_from_lxapp_error(
             &LxAppError::UnsupportedOperation(
                 "only the native ControlApp may open the host Terminal Settings control session"
@@ -196,7 +220,7 @@ fn register_host_terminal_settings_bundle(
 fn register_host_terminal_settings_bundle(
     _lxapp: &Arc<LxApp>,
     _target_appid: &str,
-    _invocation: &HostInvocationContext,
+    _control_invocation: Option<&HostInvocationContext>,
 ) -> JSResult<bool> {
     Ok(false)
 }
@@ -207,7 +231,7 @@ async fn do_navigate_to_app(
 ) -> JSResult<()> {
     let lxapp = invocation.lxapp();
     let target_appid = options.appid.clone();
-    let (startup_options, _) = prepare_app_open(&lxapp, &options, &invocation).await?;
+    let (startup_options, _) = prepare_app_open(&lxapp, &options, None).await?;
     let release_type = startup_options.release_type;
 
     lxapp
@@ -243,6 +267,9 @@ fn do_navigate_back_lxapp(lxapp: &LxApp) -> Result<(), LxAppError> {
 async fn navigate_to_app(ctx: JSContext, options: NavigateToAppOptions) -> JSResult<()> {
     let invocation = authorization::invocation_from_context(&ctx)?;
     let lxapp = invocation.lxapp();
+
+    ensure_ordinary_app_target(&options.appid)
+        .map_err(|error| js_error_from_lxapp_error(&error))?;
 
     if !should_navigate_to_app(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))? {
         return Ok(());
@@ -314,5 +341,14 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("page must be a non-empty configured page name"));
+    }
+
+    #[cfg(feature = "terminal")]
+    #[test]
+    fn ordinary_navigation_cannot_promote_a_settings_app_id() {
+        let error = ensure_ordinary_app_target(lingxia_terminal_config::SETTINGS_APP_ID)
+            .expect_err("the fixed shell route is the only control entry");
+        assert!(error.to_string().contains("lx.shell.openApp"));
+        assert!(ensure_ordinary_app_target("same.app").is_ok());
     }
 }

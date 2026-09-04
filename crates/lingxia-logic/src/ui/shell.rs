@@ -195,8 +195,10 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
 /// the chrome explicitly. Declarations are process-local, so call `replace` again
 /// on every Logic launch.
 fn sidebar_actions_replace(ctx: JSContext, items: JSValue) -> JSResult<()> {
-    authorization::require(&ctx, LogicRoute::ShellSidebarReplace)?;
-    let items = items.to_rust::<Vec<JSObject>>()?;
+    let (_, items) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellSidebarReplace, || {
+            items.to_rust::<Vec<JSObject>>()
+        })?;
     let parsed = items
         .iter()
         .map(parse_sidebar_action)
@@ -214,14 +216,17 @@ fn sidebar_actions_replace(ctx: JSContext, items: JSValue) -> JSResult<()> {
 /// fields are rejected. The callback and placement stay unchanged. Throws
 /// `E_NOT_FOUND` when `id` is not in the current declaration.
 fn sidebar_actions_update(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResult<()> {
-    authorization::require(&ctx, LogicRoute::ShellSidebarUpdate)?;
-    let id = id.to_rust::<String>()?;
-    let patch = patch.into_object().ok_or_else(|| {
-        rong::HostError::new(
-            rong::error::E_INVALID_ARG,
-            "lx.shell.sidebarActions.update patch must be an object",
-        )
-    })?;
+    let (_, (id, patch)) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellSidebarUpdate, || {
+            let id = id.to_rust::<String>()?;
+            let patch = patch.into_object().ok_or_else(|| {
+                rong::HostError::new(
+                    rong::error::E_INVALID_ARG,
+                    "lx.shell.sidebarActions.update patch must be an object",
+                )
+            })?;
+            Ok((id, patch))
+        })?;
     reject_unknown_keys(&patch, &["label", "icon", "disabled"])?;
     let patch = ShellSidebarActionUpdate {
         label: optional_string(&patch, "label")?,
@@ -236,8 +241,10 @@ fn sidebar_actions_update(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResu
 /// Control app may call this API. Throws `E_NOT_FOUND` when `id` is not in the
 /// current declaration.
 fn sidebar_actions_remove(ctx: JSContext, id: JSValue) -> JSResult<()> {
-    authorization::require(&ctx, LogicRoute::ShellSidebarRemove)?;
-    let id = id.to_rust::<String>()?;
+    let (_, id) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellSidebarRemove, || {
+            id.to_rust::<String>()
+        })?;
     let mut handlers = retained_handlers(&ctx);
     handlers.remove(id.trim());
     commit_generation(&ctx, |next| next.remove(&id), handlers)
