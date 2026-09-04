@@ -44,7 +44,8 @@ pub use appservice::event_bus::{
     unregister_app_handler, unregister_app_handler_token, unregister_page_handler,
 };
 pub use appservice::event_bus::{
-    BROWSER_TAB_CLOSED_EVENT, DISPLAY_LANGUAGE_CHANGE_EVENT, publish_app_event, publish_page_event,
+    BROWSER_TAB_CLOSED_EVENT, DISPLAY_LANGUAGE_CHANGE_EVENT, DISPLAY_LANGUAGE_STATE_CHANGE_EVENT,
+    publish_app_event, publish_page_event,
 };
 #[doc(hidden)]
 pub use bridge::{
@@ -72,25 +73,31 @@ pub use lingxia_webview::url_callback;
 pub use lxapp::set_num_workers;
 pub use lxapp::{
     AppSessionClass, CloseReason, CreatePageInstanceRequest, CreatedPageInstance, DisplayLanguage,
-    HOST_SURFACE_OWNER_APP_ID, HostMainSurfaceRegistration, HostSurfaceMenuExecution,
-    LXAPP_MORE_ACTION_LIMIT, LxApp, LxAppMoreAction, LxAppMoreActions, LxAppOpenRegion,
-    LxAppRuntimeInfo, LxAppRuntimePageInfo, LxAppRuntimeSurfaceInfo, LxAppSecurityPrivilege,
-    ManagedNativeSurface, PageDefinition, PageInstanceEvent, PageInstanceRuntimeInfo, PageOwner,
-    PageQueryInput, PageSurface, PageSurfaceRequest, PageSurfaceTarget, PageTarget,
-    PresentationKind, ResolvedPage, SceneId, SurfaceKind, SurfacePosition, SurfaceRole,
-    UrlCallbackSurface, UrlCallbackWaitError, add_display_language_change_listener,
-    apply_display_language_override, automation_auto_grant, bundled_lxapp_asset_available,
-    close_lxapp, config::LxAppInfo, create_page_instance, display_language, dispose_page_instance,
-    dispose_page_instance_by_id, ensure_builtin_lxapp, ensure_host_surface_owner, ensure_lxapp,
-    find_page_by_instance_id, get_current_lxapp, get_platform, host_class, init,
-    installed_lxapp_path, is_dev_session, is_public_network_address, is_pull_down_refresh_enabled,
-    list_lxapps, mark_lxapp_active, navbar, notify_lxapp_host_visibility,
-    notify_page_host_visibility, notify_page_instance, notify_page_instance_by_id, on_low_memory,
-    open_lxapp, open_region, page_chrome, refresh_auto_appearances, register_builtin_asset_bundle,
+    DisplayLanguageEffectiveSource, DisplayLanguagePreference, DisplayLanguageSessionOwner,
+    DisplayLanguageState, HOST_SURFACE_OWNER_APP_ID, HostMainSurfaceRegistration,
+    HostSurfaceMenuExecution, LXAPP_MORE_ACTION_LIMIT, LanguageTag, LxApp, LxAppMoreAction,
+    LxAppMoreActions, LxAppOpenRegion, LxAppRuntimeInfo, LxAppRuntimePageInfo,
+    LxAppRuntimeSurfaceInfo, LxAppSecurityPrivilege, ManagedNativeSurface, PageDefinition,
+    PageInstanceEvent, PageInstanceRuntimeInfo, PageOwner, PageQueryInput, PageSurface,
+    PageSurfaceRequest, PageSurfaceTarget, PageTarget, PresentationKind, ResolvedPage, SceneId,
+    SurfaceKind, SurfacePosition, SurfaceRole, UrlCallbackSurface, UrlCallbackWaitError,
+    add_display_language_change_listener, add_display_language_effective_listener,
+    add_display_language_state_listener, apply_display_language_override, automation_auto_grant,
+    bundled_lxapp_asset_available, clear_display_language_session_override, close_lxapp,
+    config::LxAppInfo, create_page_instance, display_language, display_language_state,
+    dispose_page_instance, dispose_page_instance_by_id, ensure_builtin_lxapp,
+    ensure_host_surface_owner, ensure_lxapp, find_page_by_instance_id, get_current_lxapp,
+    get_platform, host_class, init, initialize_display_language,
+    install_display_language_session_override, installed_lxapp_path, is_dev_session,
+    is_public_network_address, is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active,
+    navbar, notify_lxapp_host_visibility, notify_page_host_visibility, notify_page_instance,
+    notify_page_instance_by_id, on_low_memory, open_lxapp, open_region, page_chrome,
+    refresh_auto_appearances, refresh_display_language_system, register_builtin_asset_bundle,
     register_dev_bundle_source, register_surface_active_main_observer,
     register_surface_close_observer, register_surface_context_observer,
     register_surface_visibility_observer, register_synthetic_lxapp, restart_lxapp,
-    set_automation_auto_grant, set_display_language, set_display_language_in, tabbar,
+    set_automation_auto_grant, set_display_language, set_display_language_in,
+    set_display_language_preference, set_display_language_preference_in, tabbar,
     touch_page_instance_by_id, try_get, uninstall_lxapp,
 };
 pub use native_component::{

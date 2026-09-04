@@ -9,6 +9,8 @@ use std::rc::{Rc, Weak};
 pub const BROWSER_TAB_CLOSED_EVENT: &str = "__lingxiaBrowserTabClosed";
 /// App-scoped event carrying the host's effective display language.
 pub const DISPLAY_LANGUAGE_CHANGE_EVENT: &str = "DisplayLanguageChange";
+/// App-scoped event carrying the complete host display-language state.
+pub const DISPLAY_LANGUAGE_STATE_CHANGE_EVENT: &str = "DisplayLanguageStateChange";
 
 /// Internal scope marker. The page scope carries the page INSTANCE id, so
 /// one instance's teardown can never clear a same-path sibling's handlers.

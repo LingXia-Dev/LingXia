@@ -63,8 +63,14 @@ use crate::page::runtime::{
     PageInstanceLifecycleState, PageInstanceRuntimeRecord, transition_page_instance_lifecycle,
 };
 pub use display_language::{
-    DisplayLanguage, add_display_language_change_listener, apply_display_language_override,
-    display_language, set_display_language, set_display_language_in,
+    DisplayLanguage, DisplayLanguageEffectiveSource, DisplayLanguagePreference,
+    DisplayLanguageSessionOwner, DisplayLanguageState, LanguageTag,
+    add_display_language_change_listener, add_display_language_effective_listener,
+    add_display_language_state_listener, apply_display_language_override,
+    clear_display_language_session_override, display_language, display_language_state,
+    initialize_display_language, install_display_language_session_override,
+    refresh_display_language_system, set_display_language, set_display_language_in,
+    set_display_language_preference, set_display_language_preference_in,
 };
 pub use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 pub use lingxia_surface::Role as SurfaceRole;

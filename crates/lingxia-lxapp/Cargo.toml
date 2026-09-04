@@ -37,6 +37,7 @@ tokio = { workspace = true }
 futures = { workspace = true }
 urlencoding = { workspace = true }
 base64 = { workspace = true }
+language-tags = { workspace = true }
 bytes = "1.11"
 http-body-util = "0.1"
 redb = { workspace = true }

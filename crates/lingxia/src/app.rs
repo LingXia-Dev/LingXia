@@ -18,7 +18,10 @@ use std::sync::OnceLock;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 
 pub use lingxia_app_context::EnvVersion;
-pub use lxapp::DisplayLanguage;
+pub use lxapp::{
+    DisplayLanguage, DisplayLanguageEffectiveSource, DisplayLanguagePreference,
+    DisplayLanguageState, LanguageTag,
+};
 
 static APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -75,6 +78,28 @@ pub fn notifications_enabled() -> bool {
 /// locale.
 pub fn display_language() -> String {
     lxapp::display_language()
+}
+
+/// Return the complete host display-language state.
+pub fn display_language_state() -> DisplayLanguageState {
+    lxapp::display_language_state()
+}
+
+/// Persist a host display-language preference and publish it after the write succeeds.
+pub fn set_display_language_preference(preference: DisplayLanguagePreference) -> crate::Result<()> {
+    lxapp::set_display_language_preference_in(&data_dir()?, preference).map_err(Into::into)
+}
+
+/// Observe actual effective-language changes.
+pub fn on_display_language_change(listener: impl Fn(LanguageTag) + Send + Sync + 'static) {
+    lxapp::add_display_language_effective_listener(Box::new(listener));
+}
+
+/// Observe actual changes to any field in [`DisplayLanguageState`].
+pub fn on_display_language_state_change(
+    listener: impl Fn(DisplayLanguageState) + Send + Sync + 'static,
+) {
+    lxapp::add_display_language_state_listener(Box::new(listener));
 }
 
 /// Set the host display language and persist it.
