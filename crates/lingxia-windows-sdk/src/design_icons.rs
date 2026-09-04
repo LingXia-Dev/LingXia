@@ -28,6 +28,7 @@ pub enum WindowsDesignIcon {
     Back,
     Forward,
     BrowserRefresh,
+    BrowserSettings,
     BrowserTabs,
     Bookmark,
     BookmarkFilled,
@@ -75,6 +76,7 @@ impl WindowsDesignIcon {
             Self::Back => "icon_back.png",
             Self::Forward => "icon_forward.png",
             Self::BrowserRefresh => "icon_browser_refresh.png",
+            Self::BrowserSettings => "icon_browser_settings.png",
             Self::BrowserTabs => "icon_browser_tabs.png",
             Self::Bookmark => "icon_bookmark.png",
             Self::BookmarkFilled => "icon_bookmark_filled.png",
@@ -122,6 +124,9 @@ impl WindowsDesignIcon {
             Self::Forward => include_bytes!("../../../design/icons/svg/icon_forward.svg"),
             Self::BrowserRefresh => {
                 include_bytes!("../../../design/icons/svg/icon_browser_refresh.svg")
+            }
+            Self::BrowserSettings => {
+                include_bytes!("../../../design/icons/svg/icon_browser_settings.svg")
             }
             Self::BrowserTabs => include_bytes!("../../../design/icons/svg/icon_browser_tabs.svg"),
             Self::Bookmark => include_bytes!("../../../design/icons/svg/icon_bookmark.svg"),
