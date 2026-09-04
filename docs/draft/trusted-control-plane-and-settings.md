@@ -228,6 +228,27 @@ registry。调用方不能在 payload 中选择或覆盖 audience，`appid` 也�
 拒绝。source、URL、built-in asset 或 appid equality 仅可保留作 presentation/lookup，不能
 作 authorization input。
 
+### Logic 控制入口的参数解码顺序与迁移
+
+Logic direct binding 必须先从当前 runtime context 取得不可伪造的
+`HostInvocationContext`，按固定 `LogicRoute` 完成 audience 检查，再把 raw `JSValue`
+转换成 `String`、`JSFunc` 或 options object。未授权 caller 即使传入畸形参数，也必须先得到
+`E_PERMISSION_DENIED`（business code `3000`）；参数转换、URL/resource lookup 与 handler
+side effect 均不得发生。生成的 TypeScript 合同仍由显式 `ts_params` 定义，因此这项 Rust
+binding 内部迁移不改变公开 TS 方法签名。
+
+历史上有两个普通 API 根据已解码字符串临时进入控制分支，现已收紧为固定 policy 入口：
+
+| 旧调用 | 新调用 | 迁移原因 |
+| --- | --- | --- |
+| `lx.surface.openUrl('lingxia://downloads')` | `lx.shell.openBuiltin('downloads')` | URL 只分类保留目标，不能选择或证明 authority |
+| `lx.navigateToApp({ appId: SETTINGS_APP_ID, ... })` | `lx.shell.openApp(SETTINGS_APP_ID, options)` | appid 只用于目标 lookup，不能把普通 session 提升为 ControlApp |
+
+旧调用现在 fail closed，并在错误中指出替代入口；不提供 compatibility alias。新的 shell
+入口在读取 page/appid/options 之前按其静态 `ControlAppOnly` policy 授权。Terminal Settings
+bundle 的资源检查仍保留第二层固定 route policy，但只接受已经通过 `lx.shell.openApp`
+入口产生的 control invocation，不能由普通导航按 appid 触发。
+
 ### DocumentSession 与 session registry
 
 browser WebView 是长生命周期 container，会在内部与外部 document 之间切换，因而不能
