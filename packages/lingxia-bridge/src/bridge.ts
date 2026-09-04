@@ -58,6 +58,18 @@ const OUTBOX_LIMIT = 256;
 const APPLE_DOWNSTREAM_URL = BRIDGE_CONFIG.appleDownstreamURL;
 const APPLE_RECONNECT_BASE_MS = 200;
 const APPLE_RECONNECT_MAX_MS = 2000;
+const BOUND_CONSOLE_MESSAGE_CHARS = 12 * 1024;
+
+// Keep framework diagnostics and console forwarding on the original methods.
+// RequiredV3 installs a page-facing wrapper later; using it here would recurse
+// and could accidentally serialize the bound envelope into another log.
+const nativeConsole = {
+  log: console.log.bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console),
+  info: (console.info || console.log).bind(console),
+  debug: (console.debug || console.log).bind(console),
+};
 
 const debugFlags = { data: false, proto: false, all: false };
 const earlyNativeMessages: string[] = [];
@@ -85,7 +97,7 @@ function createDebugObject(flags: typeof debugFlags): typeof debugFlags {
       },
       set(value: boolean): void {
         flags[key] = !!value;
-        console.log(`[LX] ${key}: ${value}`);
+        nativeConsole.log(`[LX] ${key}: ${value}`);
       },
     });
   });
@@ -133,13 +145,13 @@ function log(...args: unknown[]): void {
   ) {
     return;
   }
-  console.log(LOG_PREFIX, ...args);
+  nativeConsole.log(LOG_PREFIX, ...args);
 }
 function warn(...args: unknown[]): void {
-  console.warn(LOG_PREFIX, ...args);
+  nativeConsole.warn(LOG_PREFIX, ...args);
 }
 function error(...args: unknown[]): void {
-  console.error(LOG_PREFIX, ...args);
+  nativeConsole.error(LOG_PREFIX, ...args);
 }
 
 function safeStringify(obj: unknown, space?: number): string {
@@ -594,6 +606,48 @@ function postToNative(message: unknown): void {
   } catch (e) {
     if (protocolMode.kind === "required-v3") error("Send error");
     else error("Send error:", e);
+  }
+}
+
+function formatBoundConsoleMessage(args: unknown[]): string {
+  const message = args
+    .map((arg) => {
+      if (typeof arg === "string") return arg;
+      try {
+        const encoded = stringifyForNative(arg);
+        return typeof encoded === "string" ? encoded : String(arg);
+      } catch {
+        return "[Unserializable]";
+      }
+    })
+    .join(" ");
+  return message.length <= BOUND_CONSOLE_MESSAGE_CHARS
+    ? message
+    : `${message.slice(0, BOUND_CONSOLE_MESSAGE_CHARS)}…`;
+}
+
+/**
+ * BrowserControl console is an authenticated auxiliary V3 frame. Platform
+ * console hooks are disabled for BrowserRelaxed WebViews, so this is the only
+ * path that can reach the native log delegate for a control document.
+ */
+function installBoundV3Console(): void {
+  if (protocolMode.kind !== "required-v3") return;
+  const methods = ["log", "error", "warn", "info", "debug"] as const;
+  for (const level of methods) {
+    const original = nativeConsole[level];
+    console[level] = (...args: unknown[]): void => {
+      original(...args);
+      // Native repeats Active session, WebMessageContext, generation and rate
+      // checks. Avoid sending pre-handshake output that can never be admitted.
+      if (!handshakeDone) return;
+      postToNative({
+        kind: "console",
+        __lingxia_console__: true,
+        level,
+        message: formatBoundConsoleMessage(args),
+      });
+    };
   }
 }
 
@@ -2227,6 +2281,7 @@ export function initBridge(): void {
           : { kind: activation.kind === "absent" ? "v2" : "blocked" };
       protocolInitialized = true;
     }
+    installBoundV3Console();
     log(`Method: ${communicationMethod}`);
     activateReceiver(LingXiaBridge._receiveEvaluateMessage);
 

@@ -514,6 +514,37 @@ pub(crate) enum SecurityProfile {
     BrowserRelaxed,
 }
 
+/// Native console hooks are safe only for fixed-origin lxapp pages. A
+/// BrowserRelaxed WebView can contain arbitrary external content, so its
+/// BrowserControl document must use the V3-bound main message transport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlatformConsoleBackend {
+    #[cfg(any(target_os = "ios", target_os = "macos", test))]
+    Apple,
+    #[cfg(any(target_os = "android", test))]
+    Android,
+    #[cfg(any(all(target_os = "linux", target_env = "ohos"), test))]
+    Harmony,
+    #[cfg(any(target_os = "windows", test))]
+    Windows,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlatformConsoleDelivery {
+    DirectDelegate,
+    RequiredV3Envelope,
+}
+
+pub(crate) const fn platform_console_delivery(
+    profile: SecurityProfile,
+    _backend: PlatformConsoleBackend,
+) -> PlatformConsoleDelivery {
+    match profile {
+        SecurityProfile::StrictDefault => PlatformConsoleDelivery::DirectDelegate,
+        SecurityProfile::BrowserRelaxed => PlatformConsoleDelivery::RequiredV3Envelope,
+    }
+}
+
 /// Website-data lifetime for a WebView.
 ///
 /// This is independent of the security profile: a browser-profile WebView can
@@ -3270,9 +3301,10 @@ pub(crate) fn destroy_current_webview(webtag: &WebTag) {
 mod tests {
     use super::{
         MAX_PENDING_WEB_MESSAGE_BYTES, MAX_PENDING_WEB_MESSAGES, MAX_WEB_MESSAGE_BYTES,
-        WEBVIEW_SESSIONS, WebMessageEnqueue, WebMessageIngress, WebMessageRejectReason, WebTag,
-        WebViewCreateOptions, WebViewCreateSender, WebViewSessionSignals,
-        android_document_port_context, block_on_scheme_future, next_native_webview_id,
+        PlatformConsoleBackend, PlatformConsoleDelivery, SecurityProfile, WEBVIEW_SESSIONS,
+        WebMessageEnqueue, WebMessageIngress, WebMessageRejectReason, WebTag, WebViewCreateOptions,
+        WebViewCreateSender, WebViewSessionSignals, android_document_port_context,
+        block_on_scheme_future, next_native_webview_id, platform_console_delivery,
         remove_arc_if_matches, remove_session_signals_if_matches, replace_session_signals,
         should_sample_rejection, snapshot_web_message_context, web_message_bytes_within_limit,
     };
@@ -3296,6 +3328,37 @@ mod tests {
                 WebMessageSource::unavailable(),
             ),
         )
+    }
+
+    fn assert_browser_console_is_bound(backend: PlatformConsoleBackend) {
+        assert_eq!(
+            platform_console_delivery(SecurityProfile::BrowserRelaxed, backend),
+            PlatformConsoleDelivery::RequiredV3Envelope
+        );
+        assert_eq!(
+            platform_console_delivery(SecurityProfile::StrictDefault, backend),
+            PlatformConsoleDelivery::DirectDelegate
+        );
+    }
+
+    #[test]
+    fn apple_browser_console_requires_v3_envelope() {
+        assert_browser_console_is_bound(PlatformConsoleBackend::Apple);
+    }
+
+    #[test]
+    fn android_browser_console_requires_v3_envelope() {
+        assert_browser_console_is_bound(PlatformConsoleBackend::Android);
+    }
+
+    #[test]
+    fn harmony_browser_console_requires_v3_envelope() {
+        assert_browser_console_is_bound(PlatformConsoleBackend::Harmony);
+    }
+
+    #[test]
+    fn windows_browser_console_requires_v3_envelope() {
+        assert_browser_console_is_bound(PlatformConsoleBackend::Windows);
     }
 
     #[test]

@@ -1072,15 +1072,25 @@ pub(crate) fn run_ui_thread_inner(
     // browser-level messages) is wired before the message loop pumps any
     // command, so it is live before the first navigation. Best-effort: a
     // subscribe failure must not fail webview creation.
-    let console_receivers = match console::subscribe(&webview, &webtag, native_view_id) {
-        Ok(receivers) => {
-            console::enable(&webview);
-            receivers
+    let console_receivers = if crate::webview::platform_console_delivery(
+        effective_options.profile,
+        crate::webview::PlatformConsoleBackend::Windows,
+    ) == crate::webview::PlatformConsoleDelivery::DirectDelegate
+    {
+        match console::subscribe(&webview, &webtag, native_view_id) {
+            Ok(receivers) => {
+                console::enable(&webview);
+                receivers
+            }
+            Err(err) => {
+                log::warn!("console log capture unavailable: {err}");
+                Vec::new()
+            }
         }
-        Err(err) => {
-            log::warn!("console log capture unavailable: {err}");
-            Vec::new()
-        }
+    } else {
+        // BrowserRelaxed control documents use the V3-bound main WebMessage
+        // channel; CDP has no document-session binding and remains disabled.
+        Vec::new()
     };
 
     let default_user_agent = match user_agent(&webview) {
