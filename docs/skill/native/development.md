@@ -114,18 +114,43 @@ async fn pick_document(
 
 Supported parameters:
 
-- optional first parameter: `Arc<lingxia::LxApp>`
+- optional first authority parameter: `Arc<lingxia::LxApp>` for compatibility,
+  or `lingxia::host::HostInvocationContext` when the handler must authorize an
+  app-owned or native-granted resource
 - optional JSON payload parameter
 - optional last parameter: `lingxia::host::HostCancel`
 
 Rules:
 
-- `Arc<lingxia::LxApp>` must be first when present.
+- The authority parameter must be first when present.
 - `HostCancel` must be last when present.
 - Only one JSON payload parameter is supported.
 - Payload types must implement `serde::Deserialize`.
 - Return values must implement `serde::Serialize`.
 - Handler errors should use `lingxia::Result`.
+
+`HostInvocationContext` is created by native dispatch and cannot be constructed
+from request JSON. For an authenticated lxapp caller, `app_scope()` exposes its
+native identity, storage namespace, and native-issued resource grants. Treat a
+payload app id or resource id only as a selector and authorize it against this
+scope before access:
+
+```rust
+#[lingxia::native("editor.openGrantedDocument")]
+async fn open_granted_document(
+    invocation: lingxia::host::HostInvocationContext,
+    resource: String,
+) -> lingxia::Result<String> {
+    let scope = invocation
+        .app_scope()
+        .ok_or_else(|| lingxia::Error::permission_denied("lxapp scope required"))?;
+    let path = scope.resolve_accessible_path(&resource)?;
+    Ok(path.to_string_lossy().into_owned())
+}
+```
+
+Streams and channels accept the same optional first authority parameter before
+their payload and final `StreamContext` or `ChannelContext`.
 
 ### Route audience metadata
 

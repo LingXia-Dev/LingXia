@@ -317,7 +317,7 @@ fn expand_host(
         impl ::lingxia::host::HostHandler for #handler_ident {
             fn call<'a>(
                 &'a self,
-                __lingxia_lxapp: std::sync::Arc<::lingxia::LxApp>,
+                __lingxia_invocation: ::lingxia::host::HostInvocationContext,
                 __lingxia_input: Option<String>,
                 __lingxia_cancel: ::lingxia::host::HostCancel,
             ) -> ::lingxia::host::HostFuture<'a> {
@@ -345,15 +345,32 @@ fn expand_host(
     }
 }
 
+#[derive(Clone, Copy)]
+enum HostAuthorityArg {
+    None,
+    LxApp,
+    Invocation,
+}
+
+impl HostAuthorityArg {
+    fn tokens(self) -> Option<proc_macro2::TokenStream> {
+        match self {
+            Self::None => None,
+            Self::LxApp => Some(quote! { __lingxia_invocation.lxapp() }),
+            Self::Invocation => Some(quote! { __lingxia_invocation }),
+        }
+    }
+}
+
 struct HostFnPlan {
-    has_lxapp: bool,
+    authority: HostAuthorityArg,
     input_ty: Option<Type>,
     has_cancel: bool,
 }
 
 impl HostFnPlan {
     fn from_fn(input_fn: &ItemFn) -> syn::Result<Self> {
-        let mut has_lxapp = false;
+        let mut authority = HostAuthorityArg::None;
         let mut input_ty = None;
         let mut has_cancel = false;
         let input_count = input_fn.sig.inputs.len();
@@ -366,9 +383,15 @@ impl HostFnPlan {
                 ));
             };
 
-            if index == 0 && is_lxapp_arg(arg) {
-                has_lxapp = true;
-                continue;
+            if index == 0 {
+                if is_lxapp_arg(arg) {
+                    authority = HostAuthorityArg::LxApp;
+                    continue;
+                }
+                if is_host_invocation_context_arg(arg) {
+                    authority = HostAuthorityArg::Invocation;
+                    continue;
+                }
             }
 
             if is_host_cancel_arg(arg) {
@@ -398,7 +421,7 @@ impl HostFnPlan {
         }
 
         Ok(Self {
-            has_lxapp,
+            authority,
             input_ty,
             has_cancel,
         })
@@ -413,8 +436,8 @@ impl HostFnPlan {
         let mut args = Vec::new();
         let mut prelude = Vec::new();
 
-        if self.has_lxapp {
-            args.push(quote! { __lingxia_lxapp });
+        if let Some(authority) = self.authority.tokens() {
+            args.push(authority);
         }
 
         if let Some(input_ty) = &self.input_ty {
@@ -450,6 +473,10 @@ impl HostFnPlan {
 
 fn is_lxapp_arg(arg: &PatType) -> bool {
     type_is_arc_lxapp(&arg.ty)
+}
+
+fn is_host_invocation_context_arg(arg: &PatType) -> bool {
+    type_is_host_invocation_context(&arg.ty)
 }
 
 fn is_host_cancel_arg(arg: &PatType) -> bool {
@@ -496,6 +523,18 @@ fn type_is_host_cancel(ty: &Type) -> bool {
         .segments
         .last()
         .map(|segment| segment.ident == "HostCancel")
+        .unwrap_or(false)
+}
+
+fn type_is_host_invocation_context(ty: &Type) -> bool {
+    let Type::Path(type_path) = ty else {
+        return false;
+    };
+    type_path
+        .path
+        .segments
+        .last()
+        .map(|segment| segment.ident == "HostInvocationContext")
         .unwrap_or(false)
 }
 
@@ -599,7 +638,7 @@ fn parse_channel_context_types(ty: &Type) -> syn::Result<(Type, Type)> {
 // ===== Stream expansion =====
 
 struct StreamFnPlan {
-    has_lxapp: bool,
+    authority: HostAuthorityArg,
     input_ty: Option<Type>,
     event_ty: Type,
     result_ty: Type,
@@ -629,7 +668,7 @@ impl StreamFnPlan {
         }
 
         let (event_ty, result_ty) = parse_stream_context_types(&last_arg.ty)?;
-        let mut has_lxapp = false;
+        let mut authority = HostAuthorityArg::None;
         let mut input_ty = None;
         let prefix_count = inputs.len() - 1;
 
@@ -640,9 +679,15 @@ impl StreamFnPlan {
                     "#[native] does not support methods with a receiver",
                 ));
             };
-            if index == 0 && is_lxapp_arg(arg) {
-                has_lxapp = true;
-                continue;
+            if index == 0 {
+                if is_lxapp_arg(arg) {
+                    authority = HostAuthorityArg::LxApp;
+                    continue;
+                }
+                if is_host_invocation_context_arg(arg) {
+                    authority = HostAuthorityArg::Invocation;
+                    continue;
+                }
             }
             if input_ty.is_some() {
                 return Err(syn::Error::new_spanned(
@@ -654,7 +699,7 @@ impl StreamFnPlan {
         }
 
         Ok(Self {
-            has_lxapp,
+            authority,
             input_ty,
             event_ty,
             result_ty,
@@ -665,8 +710,8 @@ impl StreamFnPlan {
         let mut args: Vec<proc_macro2::TokenStream> = Vec::new();
         let mut prelude: Vec<proc_macro2::TokenStream> = Vec::new();
 
-        if self.has_lxapp {
-            args.push(quote! { __lingxia_lxapp });
+        if let Some(authority) = self.authority.tokens() {
+            args.push(authority);
         }
 
         if let Some(input_ty) = &self.input_ty {
@@ -726,7 +771,7 @@ fn expand_stream(
         impl ::lingxia::host::HostHandler for #handler_ident {
             fn call<'a>(
                 &'a self,
-                __lingxia_lxapp: std::sync::Arc<::lingxia::LxApp>,
+                __lingxia_invocation: ::lingxia::host::HostInvocationContext,
                 __lingxia_input: Option<String>,
                 __lingxia_cancel: ::lingxia::host::HostCancel,
             ) -> ::lingxia::host::HostFuture<'a> {
@@ -737,7 +782,7 @@ fn expand_stream(
 
                     ::lingxia::host::__native::spawn(async move {
                         let __lingxia_result: ::lingxia::host::HostResult<()> = {
-                            let __lingxia_lxapp = __lingxia_lxapp;
+                            let __lingxia_invocation = __lingxia_invocation;
                             let __lingxia_input = __lingxia_input;
                             let __lingxia_stream = __lingxia_stream;
                             #call_expr
@@ -770,7 +815,7 @@ fn expand_stream(
 // ===== Channel expansion =====
 
 struct ChannelFnPlan {
-    has_lxapp: bool,
+    authority: HostAuthorityArg,
     input_ty: Option<Type>,
     inbound_ty: Type,
     outbound_ty: Type,
@@ -802,7 +847,7 @@ impl ChannelFnPlan {
 
         let (inbound_ty, outbound_ty) = parse_channel_context_types(&last_arg.ty)?;
 
-        let mut has_lxapp = false;
+        let mut authority = HostAuthorityArg::None;
         let mut input_ty = None;
         let prefix_count = inputs.len() - 1;
 
@@ -813,9 +858,15 @@ impl ChannelFnPlan {
                     "#[native] does not support methods with a receiver",
                 ));
             };
-            if index == 0 && is_lxapp_arg(arg) {
-                has_lxapp = true;
-                continue;
+            if index == 0 {
+                if is_lxapp_arg(arg) {
+                    authority = HostAuthorityArg::LxApp;
+                    continue;
+                }
+                if is_host_invocation_context_arg(arg) {
+                    authority = HostAuthorityArg::Invocation;
+                    continue;
+                }
             }
             if input_ty.is_some() {
                 return Err(syn::Error::new_spanned(
@@ -827,7 +878,7 @@ impl ChannelFnPlan {
         }
 
         Ok(Self {
-            has_lxapp,
+            authority,
             input_ty,
             inbound_ty,
             outbound_ty,
@@ -843,8 +894,8 @@ impl ChannelFnPlan {
         let mut args: Vec<proc_macro2::TokenStream> = Vec::new();
         let mut prelude: Vec<proc_macro2::TokenStream> = Vec::new();
 
-        if self.has_lxapp {
-            args.push(quote! { __lingxia_lxapp });
+        if let Some(authority) = self.authority.tokens() {
+            args.push(authority);
         }
 
         if let Some(input_ty) = &self.input_ty {
@@ -916,7 +967,7 @@ fn expand_channel(
             #[allow(unused_variables)]
             fn on_open(
                 &self,
-                __lingxia_lxapp: std::sync::Arc<::lingxia::LxApp>,
+                __lingxia_invocation: ::lingxia::host::HostInvocationContext,
                 __lingxia_ctx: ::lingxia::host::ChannelContext,
                 __lingxia_input: Option<String>,
             ) {
@@ -1051,5 +1102,47 @@ mod tests {
             Err(error) => error,
         };
         assert!(error.to_string().contains("requires `audience = \"…\"`"));
+    }
+
+    #[test]
+    fn invocation_context_is_an_authority_argument_for_every_native_mode() {
+        let unary: ItemFn = syn::parse_quote! {
+            fn scoped(context: lingxia::host::HostInvocationContext, input: String) -> Result<()> {
+                Ok(())
+            }
+        };
+        let stream: ItemFn = syn::parse_quote! {
+            async fn scoped_stream(
+                context: lingxia::host::HostInvocationContext,
+                stream: lingxia::host::StreamContext<String>,
+            ) -> Result<()> {
+                Ok(())
+            }
+        };
+        let channel: ItemFn = syn::parse_quote! {
+            async fn scoped_channel(
+                context: lingxia::host::HostInvocationContext,
+                channel: lingxia::host::ChannelContext<String>,
+            ) -> Result<()> {
+                Ok(())
+            }
+        };
+
+        assert!(matches!(
+            HostFnPlan::from_fn(&unary).expect("unary plan").authority,
+            HostAuthorityArg::Invocation
+        ));
+        assert!(matches!(
+            StreamFnPlan::from_fn(&stream)
+                .expect("stream plan")
+                .authority,
+            HostAuthorityArg::Invocation
+        ));
+        assert!(matches!(
+            ChannelFnPlan::from_fn(&channel)
+                .expect("channel plan")
+                .authority,
+            HostAuthorityArg::Invocation
+        ));
     }
 }
