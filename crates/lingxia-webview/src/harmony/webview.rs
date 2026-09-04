@@ -12,10 +12,10 @@ use crate::traits::{
 use crate::webview::{
     EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, SecurityProfile,
     WebTag, WebViewCreateSender, WebViewCreateStage, find_webview, find_webview_by_native_view_id,
-    find_webview_delegate, register_webview,
+    register_webview,
 };
 use crate::{
-    DownloadRequest, LoadDataRequest, LogLevel, NativeWebViewId, UserAgentOverride,
+    DownloadRequest, LoadDataRequest, LogLevel, NativeWebViewId, UserAgentOverride, WebView,
     WebViewController, WebViewError, WebViewScriptError,
 };
 use async_trait::async_trait;
@@ -149,6 +149,7 @@ static LINGXIA_PROXY_RESOLVE_EVAL: &[u8] = b"resolveEval\0";
 #[repr(C)]
 struct ProxyStorage {
     method: Box<[ArkWeb_ProxyMethod; 3]>,
+    callback_token: u64,
 }
 
 /// Wrapper for API pointers to make them Send + Sync
@@ -304,6 +305,7 @@ struct WebMessagePorts {
     native_port: Option<*mut ArkWeb_WebMessagePort>,
     native_message_callback_token: Option<u64>,
     console_port: Option<*mut ArkWeb_WebMessagePort>,
+    console_message_callback_token: Option<u64>,
     webview_native_port: Option<*mut ArkWeb_WebMessagePort>,
     webview_console_port: Option<*mut ArkWeb_WebMessagePort>,
 }
@@ -313,6 +315,11 @@ struct WebMessagePorts {
 // callback can then only look up a removed binding and is never an UAF.
 static NEXT_MESSAGE_CALLBACK_TOKEN: AtomicU64 = AtomicU64::new(1);
 static MESSAGE_CALLBACK_BINDINGS: OnceLock<Mutex<HashMap<u64, NativeWebViewId>>> = OnceLock::new();
+static NEXT_LIFECYCLE_CALLBACK_TOKEN: AtomicU64 = AtomicU64::new(1);
+static LIFECYCLE_CALLBACK_BINDINGS: OnceLock<Mutex<HashMap<u64, NativeWebViewId>>> =
+    OnceLock::new();
+static NEXT_PROXY_CALLBACK_TOKEN: AtomicU64 = AtomicU64::new(1);
+static PROXY_CALLBACK_BINDINGS: OnceLock<Mutex<HashMap<u64, NativeWebViewId>>> = OnceLock::new();
 
 fn message_callback_bindings() -> &'static Mutex<HashMap<u64, NativeWebViewId>> {
     MESSAGE_CALLBACK_BINDINGS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -356,13 +363,95 @@ fn native_view_id_for_message_callback(user_data: *mut c_void) -> Option<NativeW
     })?
 }
 
+fn lifecycle_callback_bindings() -> &'static Mutex<HashMap<u64, NativeWebViewId>> {
+    LIFECYCLE_CALLBACK_BINDINGS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn bind_lifecycle_callback(native_view_id: NativeWebViewId) -> u64 {
+    let token = NEXT_LIFECYCLE_CALLBACK_TOKEN
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .expect("Harmony lifecycle callback token space exhausted");
+    lock_or_recover(
+        lifecycle_callback_bindings(),
+        "harmony.lifecycle_callback_bindings.insert",
+    )
+    .insert(token, native_view_id);
+    token
+}
+
+fn unbind_lifecycle_callback(token: u64) {
+    if token != 0 {
+        lock_or_recover(
+            lifecycle_callback_bindings(),
+            "harmony.lifecycle_callback_bindings.remove",
+        )
+        .remove(&token);
+    }
+}
+
+fn native_view_id_for_lifecycle_callback(user_data: *mut c_void) -> Option<NativeWebViewId> {
+    let token = user_data as usize as u64;
+    (token != 0).then(|| {
+        lock_or_recover(
+            lifecycle_callback_bindings(),
+            "harmony.lifecycle_callback_bindings.get",
+        )
+        .get(&token)
+        .copied()
+    })?
+}
+
+fn proxy_callback_bindings() -> &'static Mutex<HashMap<u64, NativeWebViewId>> {
+    PROXY_CALLBACK_BINDINGS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn bind_proxy_callback(native_view_id: NativeWebViewId) -> u64 {
+    let token = NEXT_PROXY_CALLBACK_TOKEN
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .expect("Harmony proxy callback token space exhausted");
+    lock_or_recover(
+        proxy_callback_bindings(),
+        "harmony.proxy_callback_bindings.insert",
+    )
+    .insert(token, native_view_id);
+    token
+}
+
+fn unbind_proxy_callback(token: u64) {
+    if token != 0 {
+        lock_or_recover(
+            proxy_callback_bindings(),
+            "harmony.proxy_callback_bindings.remove",
+        )
+        .remove(&token);
+    }
+}
+
+fn native_view_id_for_proxy_callback(user_data: *mut c_void) -> Option<NativeWebViewId> {
+    let token = user_data as usize as u64;
+    (token != 0).then(|| {
+        lock_or_recover(
+            proxy_callback_bindings(),
+            "harmony.proxy_callback_bindings.get",
+        )
+        .get(&token)
+        .copied()
+    })?
+}
+
 pub struct WebViewInner {
     pub(crate) webtag: WebTag,
-    /// Monotonic creation token. Create/destroy travel to ArkTS on separate
+    /// Monotonic native-view callback token, unrelated to `DocumentGeneration`.
+    /// Create/destroy travel to ArkTS on separate
     /// ThreadSafe channels with no cross-channel ordering, and webtags repeat
     /// across generations — ArkTS uses this to drop a stale destroy instead
     /// of tearing down the successor registered under the same tag.
     native_generation: String,
+    native_view_id: NativeWebViewId,
     /// ArkWeb-facing tag for controller operations (may include `#session` suffix).
     ark_webtag: Mutex<String>,
     ports: Mutex<WebMessagePorts>,
@@ -373,6 +462,7 @@ pub struct WebViewInner {
     proxy_allocs: RefCell<Vec<*mut c_void>>,
     // Whether lifecycle callbacks have been registered with ArkWeb
     callbacks_registered: RefCell<bool>,
+    lifecycle_callback_token: RefCell<Option<u64>>,
     // Store scheme handlers for cleanup
     scheme_handlers: RefCell<Vec<*mut ohos_web_sys::ArkWeb_SchemeHandler>>,
 }
@@ -404,10 +494,14 @@ impl std::fmt::Display for PortType {
     }
 }
 
-pub fn webview_controller_created(webtag_str: &str) -> Result<(), WebViewError> {
+pub fn webview_controller_created(
+    webtag_str: &str,
+    native_view_token: &str,
+) -> Result<(), WebViewError> {
     let webtag = WebTag::from(webtag_str);
-    let webview = find_webview(&webtag)
-        .ok_or_else(|| WebViewError::WebView(format!("WebView not found: {}", webtag_str)))?;
+    let webview = webview_for_native_generation(&webtag, native_view_token).ok_or_else(|| {
+        WebViewError::WebView(format!("WebView token is stale or missing: {webtag_str}"))
+    })?;
 
     // Sync the ArkWeb-facing tag to the latest controller tag and drop any cached ports that
     // belonged to the previous controller instance.
@@ -431,7 +525,7 @@ pub fn webview_controller_created(webtag_str: &str) -> Result<(), WebViewError> 
 
     // Register lifecycle callbacks now that controller is created
     if !*webview.inner.callbacks_registered.borrow() {
-        if let Err(e) = register_webview_callbacks(&webtag) {
+        if let Err(e) = register_webview_callbacks(&webview) {
             log::error!(
                 "WebView callback registration failed for {}: {:?}",
                 webtag_str,
@@ -445,7 +539,7 @@ pub fn webview_controller_created(webtag_str: &str) -> Result<(), WebViewError> 
 
     // Register JS proxy when ArkTS notifies controller created (page UI attached)
     // This binds the proxy into the actual page JS world.
-    if let Err(e) = register_proxy_for_webtag(&webtag) {
+    if let Err(e) = register_proxy_for_webtag(&webtag, webview.native_view_id()) {
         log::warn!(
             "Failed to register LingXiaProxy at created-ack for {}: {}",
             webtag_str,
@@ -468,13 +562,14 @@ pub fn webview_controller_created(webtag_str: &str) -> Result<(), WebViewError> 
 /// Called when ArkTS reports that a WebView controller was destroyed.
 /// Cleanup is centralized here via the NAPI bridge (on_webview_controller_destroyed)
 /// rather than the low-level ArkWeb onDestroy callback to avoid double free.
-pub fn webview_controller_destroyed(webtag_str: &str) {
+pub fn webview_controller_destroyed(webtag_str: &str, native_view_token: &str) {
     let webtag = WebTag::from(webtag_str);
-    fail_pending_eval_requests_for_webtag(&webtag);
-    fail_pending_screenshot_requests_for_webtag(&webtag);
-    if let Some(webview) = find_webview(&webtag) {
+    if let Some(webview) = webview_for_native_generation(&webtag, native_view_token) {
+        fail_pending_eval_requests_for_webtag(&webtag);
+        fail_pending_screenshot_requests_for_webtag(&webtag);
         // Allow callbacks to be re-registered if a new controller is later created
         *webview.inner.callbacks_registered.borrow_mut() = false;
+        webview.inner.cleanup_lifecycle_callbacks();
 
         // Idempotent cleanup of native resources tied to the old controller.
         webview.inner.cleanup_webmessage_ports();
@@ -484,7 +579,10 @@ pub fn webview_controller_destroyed(webtag_str: &str) {
 }
 
 /// Register LingXiaProxy for a specific webtag
-fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), WebViewError> {
+fn register_proxy_for_webtag(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+) -> Result<(), WebViewError> {
     unsafe {
         let webtag_cstr = cstring_from_str("webtag", webtag.as_str())?;
 
@@ -496,46 +594,48 @@ fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), WebViewError> {
             ));
         }
         let controller = &*(controller_api as *const ArkWeb_ControllerAPI);
+        let webview = find_webview_by_native_view_id(webtag, native_view_id).ok_or_else(|| {
+            WebViewError::WebView(format!("WebView not found for webtag: {}", webtag.as_str()))
+        })?;
 
         if let Some(register_proxy) = controller.registerJavaScriptProxy {
             // If storage already exists, reuse it to rebind into current page JS world
-            if let Some(wv) = find_webview(webtag) {
-                let allocs = wv.inner.proxy_allocs.borrow_mut();
-                if let Some(p) = allocs.first() {
-                    let storage = *p as *mut ProxyStorage;
-                    let proxy_object = ArkWeb_ProxyObject {
-                        objName: LINGXIA_PROXY_NAME.as_ptr() as *const c_char,
-                        methodList: (*storage).method.as_ptr(),
-                        size: (*storage).method.len(),
-                    };
-                    register_proxy(webtag_cstr.as_ptr(), &proxy_object);
-                    log::info!(
-                        "Re-registered LingXiaProxy for {} (page context)",
-                        webtag.as_str()
-                    );
-                    return Ok(());
-                }
+            if let Some(p) = webview.inner.proxy_allocs.borrow().first().copied() {
+                let storage = p as *mut ProxyStorage;
+                let proxy_object = ArkWeb_ProxyObject {
+                    objName: LINGXIA_PROXY_NAME.as_ptr() as *const c_char,
+                    methodList: (*storage).method.as_ptr(),
+                    size: (*storage).method.len(),
+                };
+                register_proxy(webtag_cstr.as_ptr(), &proxy_object);
+                log::info!(
+                    "Re-registered LingXiaProxy for {} (page context)",
+                    webtag.as_str()
+                );
+                return Ok(());
             }
 
             // First-time allocation path
+            let callback_token = bind_proxy_callback(webview.native_view_id());
             let storage = Box::new(ProxyStorage {
                 method: Box::new([
                     ArkWeb_ProxyMethod {
                         methodName: LINGXIA_PROXY_GET_PORT.as_ptr() as *const c_char,
                         callback: Some(get_port_callback),
-                        userData: std::ptr::null_mut(),
+                        userData: callback_token as usize as *mut c_void,
                     },
                     ArkWeb_ProxyMethod {
                         methodName: LINGXIA_PROXY_NATIVE_COMPONENT_UPDATE.as_ptr() as *const c_char,
                         callback: Some(native_component_update_callback),
-                        userData: std::ptr::null_mut(),
+                        userData: callback_token as usize as *mut c_void,
                     },
                     ArkWeb_ProxyMethod {
                         methodName: LINGXIA_PROXY_RESOLVE_EVAL.as_ptr() as *const c_char,
                         callback: Some(resolve_eval_callback),
-                        userData: std::ptr::null_mut(),
+                        userData: callback_token as usize as *mut c_void,
                     },
                 ]),
+                callback_token,
             });
             let storage = Box::into_raw(storage);
 
@@ -547,13 +647,11 @@ fn register_proxy_for_webtag(webtag: &WebTag) -> Result<(), WebViewError> {
             register_proxy(webtag_cstr.as_ptr(), &proxy_object);
 
             // Keep allocations alive for WebView lifetime
-            if let Some(webview) = find_webview(webtag) {
-                webview
-                    .inner
-                    .proxy_allocs
-                    .borrow_mut()
-                    .push(storage as *mut c_void);
-            }
+            webview
+                .inner
+                .proxy_allocs
+                .borrow_mut()
+                .push(storage as *mut c_void);
             log::info!("Registered LingXiaProxy for {}", webtag.as_str());
             Ok(())
         } else {
@@ -573,8 +671,12 @@ unsafe extern "C" fn native_component_update_callback(
     web_tag: *const std::ffi::c_char,
     bridge_data: *const ArkWeb_JavaScriptBridgeData,
     data_count: usize,
-    _user_data: *mut std::ffi::c_void,
+    user_data: *mut std::ffi::c_void,
 ) {
+    let Some(native_view_id) = native_view_id_for_proxy_callback(user_data) else {
+        log::debug!("Dropping Harmony component callback without a live native-view binding");
+        return;
+    };
     if web_tag.is_null() || data_count < 1 || bridge_data.is_null() {
         log::warn!(
             "native_component_update_callback missing web_tag or args data_count={}",
@@ -589,6 +691,13 @@ unsafe extern "C" fn native_component_update_callback(
             return;
         };
         let webtag = WebTag::from(webtag_str);
+        if find_webview_by_native_view_id(&webtag, native_view_id).is_none() {
+            log::debug!(
+                "Dropping stale Harmony component callback for {}",
+                webtag.as_str()
+            );
+            return;
+        }
         let mut component_id = String::new();
         let props_json = if data_count >= 2 {
             let component_data = &*bridge_data.offset(0);
@@ -650,11 +759,18 @@ unsafe extern "C" fn native_component_update_callback(
 /// and token it was given. We forward the envelope into the pending-eval
 /// registry so the awaiting `eval_js` future resolves.
 unsafe extern "C" fn resolve_eval_callback(
-    _web_tag: *const std::ffi::c_char,
+    web_tag: *const std::ffi::c_char,
     bridge_data: *const ArkWeb_JavaScriptBridgeData,
     data_count: usize,
-    _user_data: *mut std::ffi::c_void,
+    user_data: *mut std::ffi::c_void,
 ) {
+    let Some(native_view_id) = native_view_id_for_proxy_callback(user_data) else {
+        log::debug!("Dropping Harmony eval callback without a live native-view binding");
+        return;
+    };
+    if web_tag.is_null() {
+        return;
+    }
     if bridge_data.is_null() || data_count < 3 {
         log::warn!(
             "resolve_eval_callback missing args data_count={}",
@@ -663,6 +779,13 @@ unsafe extern "C" fn resolve_eval_callback(
         return;
     }
     unsafe {
+        let Ok(webtag_str) = CStr::from_ptr(web_tag).to_str() else {
+            return;
+        };
+        if find_webview_by_native_view_id(&WebTag::from(webtag_str), native_view_id).is_none() {
+            log::debug!("Dropping stale Harmony eval callback for {}", webtag_str);
+            return;
+        }
         let request_id_data = &*bridge_data.offset(0);
         let token_data = &*bridge_data.offset(1);
         let envelope_data = &*bridge_data.offset(2);
@@ -691,8 +814,12 @@ unsafe extern "C" fn get_port_callback(
     web_tag: *const std::ffi::c_char,
     bridge_data: *const ArkWeb_JavaScriptBridgeData,
     data_count: usize,
-    _user_data: *mut std::ffi::c_void,
+    user_data: *mut std::ffi::c_void,
 ) {
+    let Some(native_view_id) = native_view_id_for_proxy_callback(user_data) else {
+        log::debug!("Dropping Harmony port callback without a live native-view binding");
+        return;
+    };
     if web_tag.is_null() || data_count < 1 || bridge_data.is_null() {
         log::warn!("get_port_callback missing web_tag or args");
         return;
@@ -704,6 +831,13 @@ unsafe extern "C" fn get_port_callback(
             return;
         };
         let webtag = WebTag::from(webtag_str);
+        let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) else {
+            log::debug!(
+                "Dropping stale Harmony port callback for {}",
+                webtag.as_str()
+            );
+            return;
+        };
         let type_data = &*bridge_data.offset(0);
 
         if let Some(port_type_str) = extract_string_from_bridge_data(type_data) {
@@ -718,6 +852,7 @@ unsafe extern "C" fn get_port_callback(
                 "ConsolePort" => {
                     if let Err(e) = setup_webmessage_port_for_webtag(
                         &webtag,
+                        native_view_id,
                         PortType::Console,
                         on_console_message_received,
                     ) {
@@ -727,16 +862,17 @@ unsafe extern "C" fn get_port_callback(
                             e
                         );
                     }
-                    if let Err(e) = send_port_to_webview_for_webtag(&webtag, PortType::Console) {
+                    if let Err(e) =
+                        send_port_to_webview_for_webtag(&webtag, native_view_id, PortType::Console)
+                    {
                         log::error!("Failed to send console port: {}", e);
                     }
                 }
                 "LingXiaPort" => {
-                    if let Some(webview) = find_webview(&webtag) {
-                        webview.inner.set_port_ready(false);
-                    }
+                    webview.inner.set_port_ready(false);
                     if let Err(e) = setup_webmessage_port_for_webtag(
                         &webtag,
+                        native_view_id,
                         PortType::Message,
                         on_web_message_received,
                     ) {
@@ -746,7 +882,9 @@ unsafe extern "C" fn get_port_callback(
                             e
                         );
                     }
-                    if let Err(e) = send_port_to_webview_for_webtag(&webtag, PortType::Message) {
+                    if let Err(e) =
+                        send_port_to_webview_for_webtag(&webtag, native_view_id, PortType::Message)
+                    {
                         log::error!("Failed to send message port: {}", e);
                     }
                 }
@@ -782,11 +920,12 @@ fn extract_string_from_bridge_data(data: &ArkWeb_JavaScriptBridgeData) -> Option
 }
 
 /// Send port to WebView for webtag (unified function)
-pub fn send_port_to_webview_for_webtag(
+fn send_port_to_webview_for_webtag(
     webtag: &WebTag,
+    native_view_id: NativeWebViewId,
     port_type: PortType,
 ) -> Result<(), WebViewError> {
-    let webview = find_webview(webtag).ok_or_else(|| {
+    let webview = find_webview_by_native_view_id(webtag, native_view_id).ok_or_else(|| {
         WebViewError::WebView(format!("WebView not found for webtag: {}", webtag.as_str()))
     })?;
 
@@ -839,8 +978,14 @@ impl WebViewInner {
         static NATIVE_GENERATION: std::sync::atomic::AtomicU64 =
             std::sync::atomic::AtomicU64::new(0);
         let native_generation = NATIVE_GENERATION
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            .wrapping_add(1)
+            .fetch_update(
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+                |current| current.checked_add(1),
+            )
+            .expect("Harmony native generation space exhausted")
+            .checked_add(1)
+            .expect("Harmony native generation space exhausted")
             .to_string();
 
         // Reserve the non-reusable native identity before the sender moves
@@ -851,12 +996,14 @@ impl WebViewInner {
         let webview_inner = WebViewInner {
             webtag: webtag.clone(),
             native_generation: native_generation.clone(),
+            native_view_id,
             ark_webtag: Mutex::new(webtag.as_str().to_string()),
             ports: Mutex::new(WebMessagePorts::default()),
             port_ready_signal: (Mutex::new(false), Condvar::new()),
             creation_sender: Mutex::new(Some(sender)),
             proxy_allocs: RefCell::new(Vec::new()),
             callbacks_registered: RefCell::new(false),
+            lifecycle_callback_token: RefCell::new(None),
             scheme_handlers: RefCell::new(Vec::new()),
         };
 
@@ -881,7 +1028,7 @@ impl WebViewInner {
             &[webtag.as_str(), &options_token, &native_generation],
         ) {
             log::error!("Failed to call createWebViewController: {}", e);
-            if let Some(webview) = find_webview(&webtag)
+            if let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id)
                 && let Ok(mut sender_opt) = webview.inner.creation_sender.lock()
                 && let Some(s) = sender_opt.take()
             {
@@ -891,7 +1038,7 @@ impl WebViewInner {
         }
 
         // Register native ArkWeb scheme handlers driven by registered_schemes
-        if let Err(e) = set_webview_scheme_handler(&webtag) {
+        if let Err(e) = set_webview_scheme_handler(&webtag, native_view_id) {
             log::error!(
                 "Failed to set scheme handler for {}: {}",
                 webtag.as_str(),
@@ -911,7 +1058,8 @@ impl WebViewInner {
         let count = proxies.len();
         for p in proxies {
             unsafe {
-                let _ = Box::from_raw(p as *mut ProxyStorage);
+                let storage = Box::from_raw(p as *mut ProxyStorage);
+                unbind_proxy_callback(storage.callback_token);
             }
         }
         if count > 0 {
@@ -948,9 +1096,14 @@ impl WebViewInner {
     /// Cleanup WebMessage ports
     fn cleanup_webmessage_ports(&self) {
         self.set_port_ready(false);
-        if let Some(token) = self.with_ports(|ports| ports.native_message_callback_token.take()) {
-            unbind_message_callback(token);
-        }
+        self.with_ports(|ports| {
+            if let Some(token) = ports.native_message_callback_token.take() {
+                unbind_message_callback(token);
+            }
+            if let Some(token) = ports.console_message_callback_token.take() {
+                unbind_message_callback(token);
+            }
+        });
         unsafe {
             // Get port API if available
             if let Ok(port_api) = get_port_api() {
@@ -1008,6 +1161,12 @@ impl WebViewInner {
                     );
                 }
             }
+        }
+    }
+
+    fn cleanup_lifecycle_callbacks(&self) {
+        if let Some(token) = self.lifecycle_callback_token.borrow_mut().take() {
+            unbind_lifecycle_callback(token);
         }
     }
 
@@ -1325,7 +1484,12 @@ impl WebViewInner {
     fn refresh_message_port(&self) -> Result<(), WebViewError> {
         self.set_port_ready(false);
         self.cleanup_webmessage_ports();
-        setup_webmessage_port_for_webtag(&self.webtag, PortType::Message, on_web_message_received)?;
+        setup_webmessage_port_for_webtag(
+            &self.webtag,
+            self.native_view_id,
+            PortType::Message,
+            on_web_message_received,
+        )?;
         self.send_port(PortType::Message)?;
         Ok(())
     }
@@ -1487,6 +1651,8 @@ impl Drop for WebViewInner {
         // Cleanup WebMessage ports
         self.cleanup_webmessage_ports();
 
+        self.cleanup_lifecycle_callbacks();
+
         // Free proxy allocations
         self.cleanup_proxy_allocs();
 
@@ -1512,8 +1678,9 @@ impl Drop for WebViewInner {
 }
 
 /// Register WebView lifecycle callbacks
-fn register_webview_callbacks(webtag: &WebTag) -> Result<(), WebViewError> {
+fn register_webview_callbacks(webview: &Arc<crate::WebView>) -> Result<(), WebViewError> {
     unsafe {
+        let webtag = webview.webtag();
         let webtag_cstr = cstring_from_str("webtag", webtag.as_str())?;
 
         // Get the ArkWeb_ComponentAPI using the correct API
@@ -1527,12 +1694,32 @@ fn register_webview_callbacks(webtag: &WebTag) -> Result<(), WebViewError> {
 
         let api = &*(component_api as *const ArkWeb_ComponentAPI);
 
-        // Register lifecycle callbacks. We use web_tag from callback args and do not rely on user_data.
+        let lifecycle_token = (api.onControllerAttached.is_some()
+            || api.onPageBegin.is_some()
+            || api.onPageEnd.is_some()
+            || api.onDestroy.is_some())
+        .then(|| bind_lifecycle_callback(webview.native_view_id()));
+        if let Some(token) = lifecycle_token {
+            if let Some(previous) = webview
+                .inner
+                .lifecycle_callback_token
+                .borrow_mut()
+                .replace(token)
+            {
+                unbind_lifecycle_callback(previous);
+            }
+        }
+        let lifecycle_user_data = lifecycle_token
+            .map(|token| token as usize as *mut c_void)
+            .unwrap_or(std::ptr::null_mut());
+
+        // Page lifecycle callbacks must carry their concrete native-view ID:
+        // the logical tag can be reused by a replacement WebView.
         if let Some(on_controller_attached) = api.onControllerAttached {
             on_controller_attached(
                 webtag_cstr.as_ptr(),
                 Some(on_controller_attached_callback),
-                std::ptr::null_mut(),
+                lifecycle_user_data,
             );
         }
 
@@ -1540,7 +1727,7 @@ fn register_webview_callbacks(webtag: &WebTag) -> Result<(), WebViewError> {
             on_page_begin(
                 webtag_cstr.as_ptr(),
                 Some(on_page_begin_callback),
-                std::ptr::null_mut(),
+                lifecycle_user_data,
             );
         }
 
@@ -1548,7 +1735,7 @@ fn register_webview_callbacks(webtag: &WebTag) -> Result<(), WebViewError> {
             on_page_end(
                 webtag_cstr.as_ptr(),
                 Some(on_page_end_callback),
-                std::ptr::null_mut(),
+                lifecycle_user_data,
             );
         }
 
@@ -1556,7 +1743,7 @@ fn register_webview_callbacks(webtag: &WebTag) -> Result<(), WebViewError> {
             on_destroy(
                 webtag_cstr.as_ptr(),
                 Some(on_destroy_callback),
-                std::ptr::null_mut(),
+                lifecycle_user_data,
             );
         }
 
@@ -1597,17 +1784,28 @@ fn read_map(
         .cloned()
 }
 
-extern "C" fn on_controller_attached_callback(web_tag: *const c_char, _user_data: *mut c_void) {
+extern "C" fn on_controller_attached_callback(web_tag: *const c_char, user_data: *mut c_void) {
+    let Some(native_view_id) = native_view_id_for_lifecycle_callback(user_data) else {
+        log::debug!("Dropping Harmony controller-attached callback without a live binding");
+        return;
+    };
     if web_tag.is_null() {
         log::warn!("WebView controller attached callback received null web_tag");
         return;
     }
     if let Ok(webtag_str) = unsafe { CStr::from_ptr(web_tag).to_str() } {
-        log::info!("WebView controller attached: {}", webtag_str);
+        let webtag = WebTag::from(webtag_str);
+        if find_webview_by_native_view_id(&webtag, native_view_id).is_some() {
+            log::info!("WebView controller attached: {}", webtag_str);
+        }
     }
 }
 
-extern "C" fn on_page_begin_callback(web_tag: *const c_char, _user_data: *mut c_void) {
+extern "C" fn on_page_begin_callback(web_tag: *const c_char, user_data: *mut c_void) {
+    let Some(native_view_id) = native_view_id_for_lifecycle_callback(user_data) else {
+        log::debug!("Dropping Harmony page-begin callback without a live native-view binding");
+        return;
+    };
     if web_tag.is_null() {
         log::warn!("on_page_begin_callback received null web_tag");
         return;
@@ -1616,22 +1814,30 @@ extern "C" fn on_page_begin_callback(web_tag: *const c_char, _user_data: *mut c_
         log::info!("Page begin loading: {}", webtag_str);
 
         let webtag = WebTag::from(webtag_str);
-        if find_webview(&webtag).is_none() {
+        let Some(_webview) = find_webview_by_native_view_id(&webtag, native_view_id) else {
             log::debug!("Ignoring page begin for stale webview {}", webtag_str);
             return;
-        }
+        };
 
         // Only inject console interception script; port setup is deferred to get_port_callback
-        if let Err(e) = inject_console_script(&webtag) {
+        if let Err(e) = inject_console_script(&webtag, native_view_id) {
             log::error!("Failed to inject console script for {}: {}", webtag_str, e);
         }
 
         let url = read_map(&RECENT_NAV_URLS, &webtag).unwrap_or_else(|| "about:blank".to_string());
-        normalizer::submit(&webtag, NativeSignal::NavigationStarted { key: None, url });
+        normalizer::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted { key: None, url },
+        );
     }
 }
 
-extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_void) {
+extern "C" fn on_page_end_callback(web_tag: *const c_char, user_data: *mut c_void) {
+    let Some(native_view_id) = native_view_id_for_lifecycle_callback(user_data) else {
+        log::debug!("Dropping Harmony page-end callback without a live native-view binding");
+        return;
+    };
     if web_tag.is_null() {
         log::warn!("on_page_end_callback received null web_tag");
         return;
@@ -1640,24 +1846,86 @@ extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_vo
         log::info!("Page end loading: {}", webtag);
 
         let webtag = WebTag::from(webtag);
-        if find_webview(&webtag).is_none() {
+        let Some(_webview) = find_webview_by_native_view_id(&webtag, native_view_id) else {
             log::debug!("Ignoring page end for stale webview {}", webtag);
             return;
-        }
+        };
 
         // Final URL: the last ets-sampled location (progress fires before
         // page end), else the last requested URL.
         let final_url = read_map(&LAST_LOCATIONS, &webtag)
             .or_else(|| read_map(&RECENT_NAV_URLS, &webtag))
             .unwrap_or_else(|| "about:blank".to_string());
-        normalizer::submit(
-            &webtag,
+        normalizer::submit(&webtag, native_view_id, page_end_signal(final_url));
+    }
+}
+
+// ArkWeb exposes no commit-visible equivalent, so page end is only a
+// navigation terminal and must never bind a document generation.
+fn page_end_signal(final_url: String) -> NativeSignal {
+    NativeSignal::NavigationFinished {
+        key: None,
+        result: NativeNavigationResult::Succeeded { final_url },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn page_end_never_claims_document_commit_evidence() {
+        assert!(matches!(
+            page_end_signal("https://example.test".to_string()),
             NativeSignal::NavigationFinished {
                 key: None,
-                result: NativeNavigationResult::Succeeded { final_url },
-            },
+                result: NativeNavigationResult::Succeeded { .. },
+            }
+        ));
+    }
+
+    #[test]
+    fn lifecycle_callback_token_cannot_bind_a_replacement_webview() {
+        let token = bind_lifecycle_callback(NativeWebViewId::new(41));
+        assert_eq!(
+            native_view_id_for_lifecycle_callback(token as usize as *mut c_void),
+            Some(NativeWebViewId::new(41))
+        );
+        unbind_lifecycle_callback(token);
+        assert_eq!(
+            native_view_id_for_lifecycle_callback(token as usize as *mut c_void),
+            None
         );
     }
+
+    #[test]
+    fn proxy_callback_token_cannot_bind_a_replacement_webview() {
+        let token = bind_proxy_callback(NativeWebViewId::new(73));
+        let user_data = token as usize as *mut c_void;
+        assert_eq!(
+            native_view_id_for_proxy_callback(user_data),
+            Some(NativeWebViewId::new(73))
+        );
+        unbind_proxy_callback(token);
+        assert_eq!(native_view_id_for_proxy_callback(user_data), None);
+    }
+
+    #[test]
+    fn native_generation_rejects_missing_or_stale_callback_tokens() {
+        assert!(native_generation_matches("42", "42"));
+        assert!(!native_generation_matches("42", ""));
+        assert!(!native_generation_matches("42", "41"));
+    }
+}
+
+fn webview_for_native_generation(webtag: &WebTag, native_generation: &str) -> Option<Arc<WebView>> {
+    let webview = find_webview(webtag)?;
+    native_generation_matches(&webview.inner.native_generation, native_generation)
+        .then_some(webview)
+}
+
+fn native_generation_matches(current: &str, supplied: &str) -> bool {
+    !supplied.is_empty() && current == supplied
 }
 
 /// ArkWeb exposes URL, title, and back/forward availability only through the
@@ -1667,20 +1935,22 @@ extern "C" fn on_page_end_callback(web_tag: *const c_char, _user_data: *mut c_vo
 /// Empty strings mean "no sample" and are skipped.
 pub fn notify_webview_state(
     web_tag: &str,
+    native_generation: &str,
     url: &str,
     title: &str,
     can_go_back: bool,
     can_go_forward: bool,
 ) {
     let webtag = WebTag::from(web_tag);
-    if find_webview(&webtag).is_none() {
-        log::debug!("Ignoring webview state for stale webview {}", web_tag);
+    let Some(webview) = webview_for_native_generation(&webtag, native_generation) else {
+        log::debug!("Ignoring webview state for stale native generation {web_tag}");
         return;
-    }
+    };
     if !url.is_empty() {
         record_map(&LAST_LOCATIONS, &webtag, url);
         normalizer::submit(
             &webtag,
+            webview.native_view_id(),
             NativeSignal::LocationChanged {
                 url: url.to_string(),
             },
@@ -1689,6 +1959,7 @@ pub fn notify_webview_state(
     if !title.is_empty() {
         normalizer::submit(
             &webtag,
+            webview.native_view_id(),
             NativeSignal::TitleChanged {
                 title: Some(title.to_string()),
             },
@@ -1696,6 +1967,7 @@ pub fn notify_webview_state(
     }
     normalizer::submit(
         &webtag,
+        webview.native_view_id(),
         NativeSignal::BackForwardChanged {
             can_go_back,
             can_go_forward,
@@ -1703,12 +1975,20 @@ pub fn notify_webview_state(
     );
 }
 
-extern "C" fn on_destroy_callback(web_tag: *const c_char, _user_data: *mut c_void) {
+extern "C" fn on_destroy_callback(web_tag: *const c_char, user_data: *mut c_void) {
+    let Some(native_view_id) = native_view_id_for_lifecycle_callback(user_data) else {
+        log::debug!("Dropping Harmony destroy callback without a live native-view binding");
+        return;
+    };
     if web_tag.is_null() {
         log::warn!("on_destroy_callback received null web_tag");
         return;
     }
     if let Ok(webtag_str) = unsafe { CStr::from_ptr(web_tag).to_str() } {
+        let webtag = WebTag::from(webtag_str);
+        if find_webview_by_native_view_id(&webtag, native_view_id).is_none() {
+            return;
+        }
         // ArkWeb component level reports WebView is destroyed; only log here.
         // Resource cleanup is unified through ArkTS -> onWebviewControllerDestroyed(NAPI) -> webview_controller_destroyed,
         // to avoid double-free caused by duplicate calls.
@@ -1719,6 +1999,7 @@ extern "C" fn on_destroy_callback(web_tag: *const c_char, _user_data: *mut c_voi
 /// Generic WebMessage port setup function for webtag
 fn setup_webmessage_port_for_webtag(
     webtag: &WebTag,
+    native_view_id: NativeWebViewId,
     port_type: PortType,
     callback_fn: extern "C" fn(
         *const c_char,
@@ -1738,7 +2019,7 @@ fn setup_webmessage_port_for_webtag(
         let port_api_struct = &*(port_api as *const ArkWeb_WebMessagePortAPI);
 
         // Use the current Ark tag to avoid stale controller state.
-        let webview = find_webview(webtag)
+        let webview = find_webview_by_native_view_id(webtag, native_view_id)
             .ok_or_else(|| WebViewError::WebView("WebView not found".to_string()))?;
         let ark_webtag = webview.inner.ark_webtag_string();
         let webtag_cstr = cstring_from_str("ark_webtag", &ark_webtag)?;
@@ -1767,8 +2048,7 @@ fn setup_webmessage_port_for_webtag(
 
         let port1 = *ports.offset(0); // Native side port
         let port2 = *ports.offset(1); // WebView side port
-        let callback_token = (port_type == PortType::Message)
-            .then(|| bind_message_callback(webview.native_view_id()));
+        let callback_token = bind_message_callback(webview.native_view_id());
 
         let webview_inner = &webview.inner;
         webview_inner.with_ports(|ports| {
@@ -1787,15 +2067,19 @@ fn setup_webmessage_port_for_webtag(
                     ports.webview_native_port.take();
                     ports.native_port = Some(port1);
                     ports.webview_native_port = Some(port2);
-                    ports.native_message_callback_token = callback_token;
+                    ports.native_message_callback_token = Some(callback_token);
                 }
                 PortType::Console => {
                     if let (Some(old), Some(close_fn)) = (ports.console_port.take(), close) {
                         close_fn(old, webtag_cstr.as_ptr());
                     }
+                    if let Some(token) = ports.console_message_callback_token.take() {
+                        unbind_message_callback(token);
+                    }
                     ports.webview_console_port.take();
                     ports.console_port = Some(port1);
                     ports.webview_console_port = Some(port2);
+                    ports.console_message_callback_token = Some(callback_token);
                 }
             }
         });
@@ -1806,12 +2090,10 @@ fn setup_webmessage_port_for_webtag(
                 port1,
                 webtag_cstr.as_ptr(),
                 Some(callback_fn),
-                callback_token
-                    .map(|token| token as usize as *mut c_void)
-                    .unwrap_or(std::ptr::null_mut()),
+                callback_token as usize as *mut c_void,
             );
-        } else if let Some(token) = callback_token {
-            unbind_message_callback(token);
+        } else {
+            unbind_message_callback(callback_token);
             return Err(WebViewError::WebView(format!(
                 "setMessageEventHandler not available for {:?}",
                 port_type
@@ -1824,7 +2106,10 @@ fn setup_webmessage_port_for_webtag(
 }
 
 /// Inject console interception script
-fn inject_console_script(webtag: &WebTag) -> Result<(), WebViewError> {
+fn inject_console_script(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+) -> Result<(), WebViewError> {
     let console_script = r#"
         (function() {
             if (window.__LingXiaConsoleInjected) return;
@@ -1870,7 +2155,7 @@ fn inject_console_script(webtag: &WebTag) -> Result<(), WebViewError> {
         })();
     "#;
 
-    let webview = find_webview(webtag).ok_or_else(|| {
+    let webview = find_webview_by_native_view_id(webtag, native_view_id).ok_or_else(|| {
         WebViewError::WebView(format!("WebView not found for webtag: {}", webtag.as_str()))
     })?;
 
@@ -1981,7 +2266,7 @@ extern "C" fn on_web_message_received(
             return;
         };
 
-        webview.enqueue_unbound_web_message(
+        webview.enqueue_web_message(
             msg_str.to_string(),
             WebMessageFrame::Unproven,
             WebMessageTransport::HarmonyMessagePort,
@@ -1995,13 +2280,14 @@ extern "C" fn on_web_message_received(
 /// Called from the ArkTS `onLoadIntercept` handler via NAPI.
 pub fn check_navigation_policy(
     webtag_str: &str,
+    native_view_token: &str,
     url: &str,
     has_user_gesture: bool,
     is_main_frame: bool,
 ) -> bool {
-    record_map(&RECENT_NAV_URLS, &WebTag::from(webtag_str), url);
     let webtag = WebTag::from(webtag_str);
-    if let Some(webview) = find_webview(&webtag) {
+    if let Some(webview) = webview_for_native_generation(&webtag, native_view_token) {
+        record_map(&RECENT_NAV_URLS, &webtag, url);
         let request = crate::NavigationRequest::new(url, has_user_gesture, is_main_frame);
         return matches!(
             webview.handle_navigation(&request),
@@ -2014,6 +2300,7 @@ pub fn check_navigation_policy(
 
 pub fn on_download_start(
     webtag_str: &str,
+    native_view_token: &str,
     url: &str,
     user_agent: &str,
     content_disposition: &str,
@@ -2021,7 +2308,7 @@ pub fn on_download_start(
     content_length: i64,
 ) -> bool {
     let webtag = WebTag::from(webtag_str);
-    let Some(webview) = find_webview(&webtag) else {
+    let Some(webview) = webview_for_native_generation(&webtag, native_view_token) else {
         return false;
     };
 
@@ -2051,6 +2338,7 @@ pub fn on_download_start(
 
 pub fn on_file_chooser_requested(
     webtag_str: &str,
+    native_view_token: &str,
     request_id: &str,
     source_url: &str,
     accept_types_json: &str,
@@ -2059,7 +2347,7 @@ pub fn on_file_chooser_requested(
     capture: bool,
 ) -> bool {
     let webtag = WebTag::from(webtag_str);
-    let Some(webview) = find_webview(&webtag) else {
+    let Some(webview) = webview_for_native_generation(&webtag, native_view_token) else {
         return false;
     };
 
@@ -2142,8 +2430,18 @@ fn harmony_load_error_kind(error_code: i32, description: &str) -> LoadErrorKind 
     }
 }
 
-pub fn on_load_error(webtag_str: &str, url: &str, error_code: i32, description: &str) {
+pub fn on_load_error(
+    webtag_str: &str,
+    native_generation: &str,
+    url: &str,
+    error_code: i32,
+    description: &str,
+) {
     let webtag = WebTag::from(webtag_str);
+    let Some(webview) = webview_for_native_generation(&webtag, native_generation) else {
+        log::debug!("Ignoring load error for stale native generation {webtag_str}");
+        return;
+    };
     // Cancellation is control flow, never an application-visible load error.
     let desc = description.trim().to_ascii_lowercase();
     let result = if desc.contains("cancel") || desc.contains("aborted") {
@@ -2162,6 +2460,7 @@ pub fn on_load_error(webtag_str: &str, url: &str, error_code: i32, description: 
     };
     normalizer::submit(
         &webtag,
+        webview.native_view_id(),
         NativeSignal::NavigationFinished { key: None, result },
     );
 }
@@ -2171,8 +2470,12 @@ extern "C" fn on_console_message_received(
     web_tag: *const c_char,
     _port: *mut ArkWeb_WebMessagePort,
     message: *mut ArkWeb_WebMessage,
-    _user_data: *mut c_void,
+    user_data: *mut c_void,
 ) {
+    let Some(native_view_id) = native_view_id_for_message_callback(user_data) else {
+        log::debug!("Dropping Harmony console callback without a live native-view binding");
+        return;
+    };
     if web_tag.is_null() {
         return;
     }
@@ -2223,7 +2526,9 @@ extern "C" fn on_console_message_received(
             };
 
             // Forward to delegate for logging
-            if let Some(delegate) = find_webview_delegate(&full_webtag) {
+            if let Some(delegate) = find_webview_by_native_view_id(&full_webtag, native_view_id)
+                .and_then(|webview| webview.get_delegate())
+            {
                 delegate.log(log_level, console_message);
             }
         }

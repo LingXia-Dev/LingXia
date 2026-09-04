@@ -38,7 +38,7 @@ Five ideas explain almost everything below:
    (`PageInstanceEvent::Visible` / `Hidden`), never by `lingxia-webview` itself.
 5. **Teardown is multi-edge and comes in different flavors.** The
    `Page ↔ WebView` reference cycle is broken by *two* separate actions, and
-   "dispose", "evict", "detach", and "destroy_webview" are **not** synonyms —
+   "dispose", "evict", "detach", and matched WebView destruction are **not** synonyms —
    see [Teardown Paths](#teardown-paths).
 
 ### Who owns what
@@ -238,8 +238,11 @@ edges**, and neither alone is sufficient:
 
 1. `PageInstance::detach_webview()` drops the page-held `Arc<WebView>` (the
    page → webview edge). It does **not** touch the delegate.
-2. `destroy_webview(webtag)` → `WebView::remove_delegate()` clears the delegate
-   (the webview → delegate edge).
+2. `destroy_webview_if_matches(webtag, expected)` → `WebView::remove_delegate()`
+   clears the delegate (the webview → delegate edge). Page and browser teardown
+   retain the expected `Arc<WebView>` so a delayed teardown cannot remove a
+   replacement which reused the tag. `destroy_current_webview(webtag)` is the
+   separate host-intent API for destroying whichever instance is current.
 
 Full teardown performs both. The native object only drops once the **last**
 `Arc<WebView>` is released, so map removal alone is not native teardown.
@@ -439,8 +442,8 @@ took over); both destroy the orphaned WebView and bail without attaching — thi
 is the in-flight reattach guard.
 
 Tab teardown (`close_browser_tab`) must: remove tab state, detach the page if it
-currently backs the shared bridge, `destroy_webview` the tab path/session, and
-reassign the active tab if the closed one was active.
+currently backs the shared bridge, destroy the matched tab WebView for its
+path/session, and reassign the active tab if the closed one was active.
 
 ### Browser tab discard and reactivation
 
@@ -462,7 +465,7 @@ Live -> Discarded -> Recreating -> Live
    tab.
 3. Detaches the tab from the shared startup bridge and removes any per-tab
    internal `Page`.
-4. Calls `destroy_webview` for the tab path/session.
+4. Calls `destroy_webview_if_matches` for the tab path/session.
 5. Keeps the tab map entry, sets `discarded = true`, clears
    `create_in_flight`, and preserves `pending_url` (falling back to
    `current_url`) as the restore target.
@@ -633,9 +636,10 @@ is the quickest way to keep them straight:
 | Action | What it does | OnHide/OnUnload? | detach_webview? | Surface cascades? | Native drop? |
 | --- | --- | --- | --- | --- | --- |
 | `detach_webview()` | Drops the page→webview `Arc` (one cycle edge) | No | — | No | Only if it was the last `Arc` |
-| `destroy_webview(tag)` | Removes registry entry + clears delegate (other cycle edge) | No | No | No | When last `Arc` released |
+| `destroy_webview_if_matches(tag, expected)` | Removes that instance only if it still owns the tag, then clears its delegate (other cycle edge) | No | No | No | When last `Arc` released |
+| `destroy_current_webview(tag)` | Host-intent API: removes whichever instance currently owns the tag + clears its delegate | No | No | No | When last `Arc` released |
 | `dispose_page_instance_internal()` | Full page-instance teardown | Yes | Yes | Yes (both) | Yes (via the two edges) |
-| LRU eviction | Lightweight reclaim of an inactive page | **No** | **No** | **No** | Yes |
+| LRU eviction | Lightweight reclaim of an inactive page | **No** | Yes | **No** | Yes |
 | Browser tab discard | Destroys a background tab WebView but retains restorable tab state | No | Internal browser page only | No | Yes; recreated on activation |
 
 ### PageInstance disposal
@@ -652,7 +656,7 @@ is the quickest way to keep them straight:
 6. Cancel pending view calls for this instance.
 7. Remove from `pages` (only if it is the canonical instance for the path),
    `pages_by_id`, `page_instance_runtime`, and the page stack.
-8. `destroy_webview(&page.webtag())`.
+8. `destroy_webview_if_matches(&page.webtag(), &webview)`.
 9. Terminate `PageSvc`.
 
 Disposal is triggered by:
@@ -729,9 +733,9 @@ When the page count exceeds `tabbar_items + PAGE_STACK_MAX` (`PAGE_STACK_MAX = 1
 `last_active_time`, excluding the current page and tabbar pages). Eviction is a
 **lighter** path than disposal: it terminates `PageSvc`, cancels the dispose
 timer, cancels view calls, removes the instance from `pages`/`pages_by_id`/
-`page_instance_runtime`, and calls `destroy_webview` — but it does **not**
-dispatch `onHide`/`onUnload`, does **not** call `detach_webview()`, and does
-**not** run the surface cascades.
+`page_instance_runtime`, captures and detaches its WebView, then calls
+`destroy_webview_if_matches` — but it does **not** dispatch `onHide`/`onUnload`
+or run the surface cascades.
 
 ### LxApp shutdown order
 
@@ -743,10 +747,10 @@ dispatch `onHide`/`onUnload`, does **not** call `detach_webview()`, and does
 4. `close_all_surfaces(AppClosed)`.
 5. Clear key-event state.
 6. Hide the runtime window (unless `skip_hide`).
-7. Collect page webtags + cancel pending view calls.
+7. Collect page webtags and their `Arc<WebView>`s + cancel pending view calls.
 8. `detach_webview()` for all pages.
 9. Clear `pages`, `pages_by_id`, `page_instance_runtime`.
-10. `destroy_webview()` for each webtag.
+10. `destroy_webview_if_matches()` for each captured WebView.
 11. Clear the page stack.
 12. Terminate the app service.
 
@@ -764,7 +768,7 @@ dispatch `onHide`/`onUnload`, does **not** call `detach_webview()`, and does
 ### Browser tab teardown
 
 Owned by `lingxia-browser`: remove tab state, reject stale creation tokens,
-cancel pending URL state, `destroy_webview`, and prevent reattachment of
+cancel pending URL state, `destroy_webview_if_matches`, and prevent reattachment of
 in-flight WebViews to closed tabs (the `Missing`/`Stale` guard). This is the
 permanent close path. Browser tab discard instead retains the state, advances
 the token, and uses the `Stale` guard to protect the retained entry until
@@ -778,12 +782,12 @@ reactivation creates a replacement WebView.
   create).
 - **`detach_webview()` does not clear the delegate.** Breaking the
   `PageInstance ↔ WebView` cycle takes both `detach_webview()` *and*
-  `destroy_webview()` → `remove_delegate()`.
+  `destroy_webview_if_matches()` → `remove_delegate()`.
 - **`onPageShow` is fired in the SDK/UI container layer**, not in
   `lingxia-webview`.
-- **Eviction ≠ disposal.** LRU eviction skips `onHide`/`onUnload`,
-  `detach_webview`, and surface cascades. Do not assume an evicted page ran the
-  full disposal path.
+- **Eviction ≠ disposal.** LRU eviction skips `onHide`/`onUnload` and surface
+  cascades, though it does detach before matched destruction. Do not assume an
+  evicted page ran the full disposal path.
 - **`Reclaimed` is its own close reason.** A surface WebView reclaimed after its
   30s TTL closes with `Reclaimed`, not the user/programmatic reason — JS relies
   on this distinction.
@@ -793,7 +797,7 @@ reactivation creates a replacement WebView.
 - **Harmony creation is async-ack on UI `onAppear`.** Treating
   `createWebViewController` as fully ready is incorrect; wait for
   `onWebviewControllerCreated`.
-- **`destroy_webview()` without detaching page references can delay native drop**
+- **`destroy_webview_if_matches()` without detaching page references can delay native drop**
   (the native object only drops when the last `Arc<WebView>` is released).
 - **Browser external pages have no LxApp page lifecycle.** Do not wait for
   `wait_webview_ready()` on a normal web URL tab. Internal pages (and the shared
@@ -835,7 +839,7 @@ sequenceDiagram
   Page->>Page: dispatch OnReady (gated)
   SDK->>LxApp: PageInstanceEvent::Hidden (navigate away)
   LxApp->>Page: dispatch onHide
-  LxApp->>Page: dispose → detach_webview + destroy_webview (clears delegate)
+  LxApp->>Page: dispose → detach_webview + destroy_webview_if_matches (clears delegate)
   Core->>Backend: Drop when last Arc released
 ```
 
@@ -866,7 +870,7 @@ sequenceDiagram
   LxApp->>PI: PageInstanceEvent::Hidden { reason }
   LxApp->>LxApp: schedule 30s dispose timer
   Note over LxApp: if not re-shown within 30s:
-  LxApp->>PI: dispose (reason Reclaimed) → detach_webview + destroy_webview
+  LxApp->>PI: dispose (reason Reclaimed) → detach_webview + destroy_webview_if_matches
 ```
 
 ## Sequence: Surface (URL Target)
@@ -902,7 +906,7 @@ sequenceDiagram
 
   Policy->>Browser: discard(background_tab_id)
   Browser->>Browser: advance create token + retain state/restore URL
-  Browser->>Core: destroy_webview
+  Browser->>Core: destroy_webview_if_matches
   Core->>Backend: Drop when last Arc is released
 
   Note over Policy,Backend: tab id and sidebar row remain
@@ -939,6 +943,6 @@ sequenceDiagram
   SDK->>Backend: attach/resume managed browser WebView
   Backend->>Browser: delegate callbacks via BrowserTabDelegate
   Browser->>Page: forward callbacks only when a headless Page is bound
-  Browser->>Core: close tab → destroy_webview
+  Browser->>Core: close tab → destroy_webview_if_matches
   Core->>Backend: Drop when last Arc released
 ```

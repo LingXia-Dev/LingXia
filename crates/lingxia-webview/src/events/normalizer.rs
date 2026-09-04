@@ -7,8 +7,8 @@ use super::{
     NavigationCancellationReason, NavigationEvent, NavigationId, WebViewEventObserver,
     WebViewObservedEvent, WebViewStateChange,
 };
-use crate::traits::LoadError;
-use crate::webview::{WebTag, find_webview_delegate};
+use crate::traits::{DocumentBinding, DocumentGeneration, LoadError, NativeWebViewId};
+use crate::webview::{WebTag, find_webview_delegate_by_native_view_id};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -31,8 +31,10 @@ pub(crate) enum NativeSignal {
     NavigationSuppressed {
         key: Option<NativeKey>,
     },
-    /// Commit evidence: the displayed document was replaced.
-    DocumentCommitted,
+    /// Reliable top-level commit evidence for one accepted navigation.
+    DocumentCommitted {
+        key: Option<NativeKey>,
+    },
     NavigationFinished {
         key: Option<NativeKey>,
         result: NativeNavigationResult,
@@ -309,17 +311,154 @@ impl StateCoalescer {
     }
 }
 
+/// The document binding is intentionally independent from [`NavigationId`].
+/// A navigation id describes an attempt; a generation describes only a
+/// document which has actually committed in this native WebView.
+struct DocumentTracker {
+    binding: DocumentBinding,
+    next_generation: u64,
+    /// An overlap from a backend without native attempt keys is permanently
+    /// unresolvable for this WebView instance. Subsequent keyless commits may
+    /// be stale callbacks from either attempt, so they must all fail closed.
+    keyless_tainted: bool,
+    /// Only the most recently accepted attempt may claim the next document.
+    /// A newer start supersedes an older pending commit, even on backends
+    /// which report overlapping native navigation ids.
+    pending: Option<PendingDocumentCommit>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PendingDocumentCommit {
+    Keyed {
+        key: NativeKey,
+        committed: bool,
+    },
+    /// An ID-less platform cannot associate a second start or terminal signal
+    /// with one of two overlapping attempts. Once that happens, fail closed:
+    /// neither commit can prove which document it belongs to.
+    Keyless {
+        committed: bool,
+        ambiguous: bool,
+    },
+}
+
+impl Default for DocumentTracker {
+    fn default() -> Self {
+        Self {
+            binding: DocumentBinding::Unbound,
+            next_generation: 0,
+            keyless_tainted: false,
+            pending: None,
+        }
+    }
+}
+
+impl DocumentTracker {
+    fn current(&self) -> DocumentBinding {
+        self.binding
+    }
+
+    /// A submitted start is a top-level navigation which policy has accepted.
+    /// The old document becomes unusable immediately, before load completion.
+    fn started(&mut self, key: Option<NativeKey>) {
+        match key {
+            Some(key)
+                if matches!(
+                    self.pending,
+                    Some(PendingDocumentCommit::Keyed { key: pending, .. }) if pending == key
+                ) =>
+            {
+                // Redirect/repeated platform start for the same native attempt.
+            }
+            Some(key) => {
+                self.binding = DocumentBinding::Unbound;
+                self.pending = Some(PendingDocumentCommit::Keyed {
+                    key,
+                    committed: false,
+                });
+            }
+            None => {
+                self.binding = DocumentBinding::Unbound;
+                let ambiguous = self.keyless_tainted
+                    || matches!(self.pending, Some(PendingDocumentCommit::Keyless { .. }));
+                self.keyless_tainted |= ambiguous;
+                self.pending = Some(PendingDocumentCommit::Keyless {
+                    committed: false,
+                    ambiguous,
+                });
+            }
+        }
+    }
+
+    /// Bind only on commit evidence. A keyed navigation and a keyless start
+    /// each consume at most one commit, making duplicate callbacks harmless.
+    fn committed(&mut self, key: Option<NativeKey>) -> bool {
+        let pending = match (self.pending, key) {
+            (
+                Some(PendingDocumentCommit::Keyed {
+                    key: pending,
+                    committed,
+                }),
+                Some(key),
+            ) if pending == key && !committed => PendingDocumentCommit::Keyed {
+                key,
+                committed: true,
+            },
+            (
+                Some(PendingDocumentCommit::Keyless {
+                    committed: false,
+                    ambiguous: false,
+                }),
+                None,
+            ) if !self.keyless_tainted => PendingDocumentCommit::Keyless {
+                committed: true,
+                ambiguous: false,
+            },
+            _ => return false,
+        };
+        self.pending = Some(pending);
+        self.next_generation = self
+            .next_generation
+            .checked_add(1)
+            .expect("document generation sequence exhausted");
+        self.binding = DocumentBinding::Bound(DocumentGeneration::new(self.next_generation));
+        true
+    }
+
+    fn finished(&mut self, key: Option<NativeKey>) {
+        let clears_pending = match (self.pending, key) {
+            (Some(PendingDocumentCommit::Keyed { key: pending, .. }), Some(key)) => pending == key,
+            // An ID-less terminal cannot identify one of overlapping starts.
+            // Clearing the pending claim is deliberately all it may do: a
+            // later commit has no pending proof from which to mint a binding.
+            (Some(PendingDocumentCommit::Keyless { .. }), None) => true,
+            _ => false,
+        };
+        if clears_pending {
+            self.pending = None;
+        }
+    }
+
+    fn destroyed(&mut self) {
+        self.binding = DocumentBinding::Unbound;
+        self.keyless_tainted = false;
+        self.pending = None;
+    }
+}
+
 struct NormalizerState {
     tracker: NavigationTracker,
+    documents: DocumentTracker,
     coalescer: StateCoalescer,
     queue: VecDeque<Output>,
     draining: bool,
     observers: Vec<WebViewEventObserver>,
 }
 
-/// One normalizer per WebView, keyed by webtag.
+/// One normalizer per concrete native WebView, indexed by its current tag.
 pub(crate) struct EventNormalizer {
     webtag: WebTag,
+    native_view_id: NativeWebViewId,
     state: Mutex<NormalizerState>,
 }
 
@@ -329,11 +468,13 @@ fn registry() -> &'static Mutex<HashMap<String, Arc<EventNormalizer>>> {
     NORMALIZERS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn new_normalizer(webtag: &WebTag) -> Arc<EventNormalizer> {
+fn new_normalizer(webtag: &WebTag, native_view_id: NativeWebViewId) -> Arc<EventNormalizer> {
     Arc::new(EventNormalizer {
         webtag: webtag.clone(),
+        native_view_id,
         state: Mutex::new(NormalizerState {
             tracker: NavigationTracker::default(),
+            documents: DocumentTracker::default(),
             coalescer: StateCoalescer::default(),
             queue: VecDeque::new(),
             draining: false,
@@ -343,10 +484,27 @@ fn new_normalizer(webtag: &WebTag) -> Arc<EventNormalizer> {
 }
 
 /// Start a normalizer lifecycle before native WebView creation can emit events.
-pub(crate) fn begin(webtag: &WebTag) {
+///
+/// The preallocated native identity is mandatory: a reused [`WebTag`] must
+/// never let late navigation callbacks alter its replacement's document.
+pub(crate) fn begin(webtag: &WebTag, native_view_id: NativeWebViewId) {
     let mut map = registry().lock().unwrap_or_else(|e| e.into_inner());
-    map.entry(webtag.key().to_string())
-        .or_insert_with(|| new_normalizer(webtag));
+    match map.get(webtag.key()) {
+        Some(existing) if existing.native_view_id == native_view_id => {}
+        _ => {
+            map.insert(
+                webtag.key().to_string(),
+                new_normalizer(webtag, native_view_id),
+            );
+        }
+    }
+}
+
+/// Confirm that a ready WebView owns the normalizer lifecycle reserved for
+/// its native identity. Kept separate from [`begin`] so registration makes the
+/// identity hand-off explicit while early platform callbacks remain covered.
+pub(crate) fn bind_native_view(webtag: &WebTag, native_view_id: NativeWebViewId) {
+    begin(webtag, native_view_id);
 }
 
 fn normalizer_for(webtag: &WebTag) -> Option<Arc<EventNormalizer>> {
@@ -357,12 +515,46 @@ fn normalizer_for(webtag: &WebTag) -> Option<Arc<EventNormalizer>> {
         .cloned()
 }
 
+/// A removed normalizer remains able to drain teardown notifications, but a
+/// replacement registered under the same tag makes every queued old output
+/// stale. This check is separate from delegate lookup so observers are also
+/// never invoked for the replacement lifecycle.
+fn normalizer_was_replaced(webtag: &WebTag, native_view_id: NativeWebViewId) -> bool {
+    normalizer_for(webtag).is_some_and(|current| current.native_view_id != native_view_id)
+}
+
 /// Submit a native signal for `webtag`. Payloads must already be captured on
 /// the native callback thread — the normalizer never queries native objects.
-pub(crate) fn submit(webtag: &WebTag, signal: NativeSignal) {
+pub(crate) fn submit(webtag: &WebTag, native_view_id: NativeWebViewId, signal: NativeSignal) {
     if let Some(normalizer) = normalizer_for(webtag) {
+        if normalizer.native_view_id != native_view_id {
+            log::debug!(
+                "Dropping stale navigation signal for {webtag}: native WebView identity changed"
+            );
+            return;
+        }
         normalizer.submit(signal);
     }
+}
+
+/// Snapshot the currently committed document for a concrete native WebView.
+/// The only mutation path is the normalizer's accepted-start/commit sequence;
+/// adapters cannot synthesize a bound generation.
+pub(crate) fn current_document_binding(native_view_id: NativeWebViewId) -> DocumentBinding {
+    let normalizer = registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .values()
+        .find(|normalizer| normalizer.native_view_id == native_view_id)
+        .cloned();
+    normalizer.map_or(DocumentBinding::Unbound, |normalizer| {
+        normalizer
+            .state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .documents
+            .current()
+    })
 }
 
 /// Register a read-only observer for `webtag`'s events.
@@ -380,7 +572,14 @@ impl EventNormalizer {
         let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let outputs = match signal {
             NativeSignal::NavigationStarted { key, url } => {
-                state.tracker.start(&self.webtag, key, url)
+                let outputs = state.tracker.start(&self.webtag, key, url);
+                if outputs
+                    .iter()
+                    .any(|output| matches!(output, Output::Nav(NavigationEvent::Started { .. })))
+                {
+                    state.documents.started(key);
+                }
+                outputs
             }
             NativeSignal::NavigationSuppressed { key } => {
                 match key {
@@ -391,8 +590,16 @@ impl EventNormalizer {
                 }
                 Vec::new()
             }
-            NativeSignal::DocumentCommitted => state.coalescer.document_committed(),
+            NativeSignal::DocumentCommitted { key } => {
+                // Metadata reset is an observable platform commit signal in
+                // its own right. Generation minting is stricter and may drop
+                // a stale or duplicate attempt without suppressing that state
+                // maintenance.
+                state.documents.committed(key);
+                state.coalescer.document_committed()
+            }
             NativeSignal::NavigationFinished { key, result } => {
+                state.documents.finished(key);
                 state.tracker.finish(&self.webtag, key, result)
             }
             NativeSignal::LocationChanged { url } => state.coalescer.location(url),
@@ -402,7 +609,10 @@ impl EventNormalizer {
                 can_go_back,
                 can_go_forward,
             } => state.coalescer.back_forward(can_go_back, can_go_forward),
-            NativeSignal::Destroyed => state.tracker.drain_destroyed(),
+            NativeSignal::Destroyed => {
+                state.documents.destroyed();
+                state.tracker.drain_destroyed()
+            }
         };
         state.queue.extend(outputs);
 
@@ -426,7 +636,14 @@ impl EventNormalizer {
     }
 
     fn deliver(&self, output: &Output, observers: &[WebViewEventObserver]) {
-        let delegate = find_webview_delegate(&self.webtag);
+        if normalizer_was_replaced(&self.webtag, self.native_view_id) {
+            log::debug!(
+                "Dropping queued navigation output for {}: native WebView identity changed",
+                self.webtag
+            );
+            return;
+        }
+        let delegate = find_webview_delegate_by_native_view_id(&self.webtag, self.native_view_id);
         match output {
             Output::Nav(event) => {
                 if let Some(delegate) = &delegate {
@@ -463,6 +680,22 @@ pub(crate) fn destroy(webtag: &WebTag) {
 mod tests {
     use super::*;
     use crate::traits::LoadErrorKind;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    fn test_native_view_id(webtag: &WebTag) -> NativeWebViewId {
+        let mut hasher = DefaultHasher::new();
+        webtag.key().hash(&mut hasher);
+        NativeWebViewId::new(hasher.finish().max(1))
+    }
+
+    fn begin(webtag: &WebTag) {
+        super::begin(webtag, test_native_view_id(webtag));
+    }
+
+    fn submit(webtag: &WebTag, signal: NativeSignal) {
+        super::submit(webtag, test_native_view_id(webtag), signal);
+    }
 
     fn capture(webtag: &WebTag) -> Arc<Mutex<Vec<String>>> {
         begin(webtag);
@@ -744,7 +977,7 @@ mod tests {
                 png_bytes: Some(vec![1, 2]),
             },
         );
-        submit(&webtag, NativeSignal::DocumentCommitted);
+        submit(&webtag, NativeSignal::DocumentCommitted { key: None });
         submit(
             &webtag,
             NativeSignal::TitleChanged {
@@ -753,7 +986,7 @@ mod tests {
         );
         // A second commit with already-clear metadata emits nothing for the
         // favicon (still None) but clears the new title.
-        submit(&webtag, NativeSignal::DocumentCommitted);
+        submit(&webtag, NativeSignal::DocumentCommitted { key: None });
         assert_eq!(
             *events.lock().unwrap(),
             vec![
@@ -765,6 +998,362 @@ mod tests {
                 "title:<none>",
             ]
         );
+    }
+
+    #[test]
+    fn document_binding_revokes_on_start_and_commits_once_per_key() {
+        let webtag = tag("document-keyed");
+        let native_view_id = NativeWebViewId::new(8101);
+        super::begin(&webtag, native_view_id);
+
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(51),
+                url: "https://first/".into(),
+            },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(51) },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Bound(DocumentGeneration::new(1))
+        );
+
+        // A duplicate platform commit is not a second document.
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(51) },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Bound(DocumentGeneration::new(1))
+        );
+
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(52),
+                url: "https://second/".into(),
+            },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(52) },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Bound(DocumentGeneration::new(2))
+        );
+        destroy(&webtag);
+    }
+
+    #[test]
+    fn overlapping_keyed_start_cannot_let_a_stale_commit_bind_the_new_document() {
+        let webtag = tag("document-overlap");
+        let native_view_id = NativeWebViewId::new(8105);
+        super::begin(&webtag, native_view_id);
+        for key in [1, 2] {
+            super::submit(
+                &webtag,
+                native_view_id,
+                NativeSignal::NavigationStarted {
+                    key: Some(key),
+                    url: format!("https://{key}/"),
+                },
+            );
+        }
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(1) },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(2) },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Bound(DocumentGeneration::new(1))
+        );
+        destroy(&webtag);
+    }
+
+    #[test]
+    fn keyless_start_consumes_only_one_commit_and_failed_attempt_stays_unbound() {
+        let webtag = tag("document-keyless");
+        let native_view_id = NativeWebViewId::new(8102);
+        super::begin(&webtag, native_view_id);
+
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: None,
+                url: "https://first/".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: None },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Bound(DocumentGeneration::new(1))
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: None },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Bound(DocumentGeneration::new(1))
+        );
+
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: None,
+                url: "https://failed/".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationFinished {
+                key: None,
+                result: failed("https://failed/"),
+            },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+        // A late keyless commit after a failed attempt cannot resurrect it.
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: None },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+        destroy(&webtag);
+    }
+
+    #[test]
+    fn overlapping_keyless_attempts_taint_the_native_webview_until_recreated() {
+        let webtag = tag("document-keyless-overlap");
+        let native_view_id = NativeWebViewId::new(8106);
+        super::begin(&webtag, native_view_id);
+
+        // Without native attempt keys, B's start makes the source of every
+        // subsequent commit ambiguous. The old document remains revoked.
+        for url in ["https://a/", "https://b/"] {
+            super::submit(
+                &webtag,
+                native_view_id,
+                NativeSignal::NavigationStarted {
+                    key: None,
+                    url: url.into(),
+                },
+            );
+        }
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+
+        // This may be A's commit. It cannot establish a binding for B.
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: None },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+
+        // A keyless terminal only discards the pending claim. A later start
+        // cannot make the WebView trustworthy again: B's delayed callbacks
+        // are still indistinguishable from C's own document callbacks.
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationFinished {
+                key: None,
+                result: NativeNavigationResult::Succeeded {
+                    final_url: "https://a/".into(),
+                },
+            },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: None,
+                url: "https://c/".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: None },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+
+        // C's own commit is no more trustworthy than B's late commit once
+        // the prior overlap has tainted this keyless WebView lifetime.
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: None },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+
+        // B's late finish is an orphan at the document layer and remains
+        // unable to alter the revoked binding.
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationFinished {
+                key: None,
+                result: NativeNavigationResult::Succeeded {
+                    final_url: "https://b/".into(),
+                },
+            },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+        destroy(&webtag);
+
+        // A fresh native WebView gets a fresh tracker and can establish its
+        // first unambiguous keyless document normally.
+        let replacement = NativeWebViewId::new(8107);
+        super::begin(&webtag, replacement);
+        super::submit(
+            &webtag,
+            replacement,
+            NativeSignal::NavigationStarted {
+                key: None,
+                url: "https://replacement/".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            replacement,
+            NativeSignal::DocumentCommitted { key: None },
+        );
+        assert_eq!(
+            current_document_binding(replacement),
+            DocumentBinding::Bound(DocumentGeneration::new(1))
+        );
+        destroy(&webtag);
+    }
+
+    #[test]
+    fn retired_normalizer_drops_queued_output_after_tag_reuse() {
+        let webtag = tag("normalizer-tag-reuse");
+        let retired = NativeWebViewId::new(8108);
+        let replacement = NativeWebViewId::new(8109);
+        super::begin(&webtag, retired);
+        let retired_normalizer = normalizer_for(&webtag).expect("reserved normalizer");
+        let delivery_count = Arc::new(Mutex::new(0_usize));
+        let observed = delivery_count.clone();
+        add_observer(&webtag, Arc::new(move |_| *observed.lock().unwrap() += 1));
+
+        // Simulate a callback which resolved the old normalizer before the
+        // replacement claimed this logical tag, then reaches its FIFO drain.
+        super::begin(&webtag, replacement);
+        retired_normalizer.submit(NativeSignal::NavigationStarted {
+            key: Some(1),
+            url: "https://retired/".into(),
+        });
+
+        assert_eq!(*delivery_count.lock().unwrap(), 0);
+        destroy(&webtag);
+    }
+
+    #[test]
+    fn reused_tag_drops_old_native_view_navigation_signals() {
+        let webtag = tag("document-tag-reuse");
+        let retired = NativeWebViewId::new(8103);
+        let replacement = NativeWebViewId::new(8104);
+        super::begin(&webtag, retired);
+        super::submit(
+            &webtag,
+            retired,
+            NativeSignal::NavigationStarted {
+                key: Some(1),
+                url: "https://retired/".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            retired,
+            NativeSignal::DocumentCommitted { key: Some(1) },
+        );
+        assert!(matches!(
+            current_document_binding(retired),
+            DocumentBinding::Bound(_)
+        ));
+
+        super::begin(&webtag, replacement);
+        assert_eq!(
+            current_document_binding(replacement),
+            DocumentBinding::Unbound
+        );
+        super::submit(
+            &webtag,
+            retired,
+            NativeSignal::NavigationStarted {
+                key: Some(2),
+                url: "https://stale/".into(),
+            },
+        );
+        assert_eq!(
+            current_document_binding(replacement),
+            DocumentBinding::Unbound
+        );
+        destroy(&webtag);
     }
 
     #[test]

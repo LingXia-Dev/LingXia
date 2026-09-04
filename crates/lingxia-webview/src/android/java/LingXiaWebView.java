@@ -335,6 +335,7 @@ public class LingXiaWebView extends WebView {
                     getAppId() != null ? getAppId() : "",
                     getCurrentPath() != null ? getCurrentPath() : "",
                     getSessionId(),
+                    getNativeViewId(),
                     target
             );
             if (policy == NEW_WINDOW_POLICY_LOAD_IN_SELF) {
@@ -859,6 +860,7 @@ public class LingXiaWebView extends WebView {
                         getAppId() != null ? getAppId() : "",
                         getCurrentPath() != null ? getCurrentPath() : "",
                         getSessionId(),
+                        getNativeViewId(),
                         url,
                         userAgent != null ? userAgent : "",
                         contentDisposition != null ? contentDisposition : "",
@@ -1122,6 +1124,7 @@ public class LingXiaWebView extends WebView {
                 getAppId() != null ? getAppId() : "",
                 getCurrentPath() != null ? getCurrentPath() : "",
                 getSessionId(),
+                getNativeViewId(),
                 requestId,
                 sourceUrl,
                 acceptTypes != null ? acceptTypes : new String[0],
@@ -1294,6 +1297,7 @@ public class LingXiaWebView extends WebView {
             getAppId() != null ? getAppId() : "",
             getCurrentPath() != null ? getCurrentPath() : "",
             getSessionId(),
+            getNativeViewId(),
             getUrl() != null ? getUrl() : "",
             getTitle() != null ? getTitle() : "",
             canGoBack(),
@@ -1312,32 +1316,35 @@ public class LingXiaWebView extends WebView {
                 getAppId() != null ? getAppId() : "",
                 getCurrentPath() != null ? getCurrentPath() : "",
                 getSessionId(),
+                getNativeViewId(),
                 out.toByteArray()
             );
         }
     }
 
-    native void onConsoleMessage(String appId, String path, long sessionId, int level, String message);
-    native void onPageStarted(String appId, String path, long sessionId, String url);
-    native void onPageFinished(String appId, String path, long sessionId, String url);
-    native void onPageCommitted(String appId, String path, long sessionId);
-    native void onWebViewStateChanged(String appId, String path, long sessionId, String url, String title, boolean canGoBack, boolean canGoForward);
-    native void onFaviconChanged(String appId, String path, long sessionId, byte[] pngBytes);
-    native void onLoadError(String appId, String path, long sessionId, String url, int errorCode, String description);
-    native WebResourceResponseData handleRequest(String appId, String path, long sessionId, String url, String method, String[] headerKeysAndValues);
+    native void onConsoleMessage(String appId, String path, long sessionId, long nativeViewId, int level, String message);
+    native void onPageStarted(String appId, String path, long sessionId, long nativeViewId, String url);
+    native void onPageFinished(String appId, String path, long sessionId, long nativeViewId, String url);
+    native void onPageCommitVisible(String appId, String path, long sessionId, long nativeViewId);
+    native void onWebViewStateChanged(String appId, String path, long sessionId, long nativeViewId, String url, String title, boolean canGoBack, boolean canGoForward);
+    native void onFaviconChanged(String appId, String path, long sessionId, long nativeViewId, byte[] pngBytes);
+    native void onLoadError(String appId, String path, long sessionId, long nativeViewId, String url, int errorCode, String description);
+    native WebResourceResponseData handleRequest(String appId, String path, long sessionId, long nativeViewId, String url, String method, String[] headerKeysAndValues);
     native boolean handleNavigationPolicy(
         String appId,
         String path,
         long sessionId,
+        long nativeViewId,
         String url,
         boolean hasUserGesture,
         boolean isMainFrame
     );
-    native int handleNewWindowPolicy(String appId, String path, long sessionId, String url);
+    native int handleNewWindowPolicy(String appId, String path, long sessionId, long nativeViewId, String url);
     native void onFileChooserRequested(
         String appId,
         String path,
         long sessionId,
+        long nativeViewId,
         long requestId,
         String sourceUrl,
         String[] acceptTypes,
@@ -1349,6 +1356,7 @@ public class LingXiaWebView extends WebView {
         String appId,
         String path,
         long sessionId,
+        long nativeViewId,
         String url,
         String userAgent,
         String contentDisposition,

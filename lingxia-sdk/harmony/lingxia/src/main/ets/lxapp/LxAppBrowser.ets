@@ -854,7 +854,7 @@ export struct LxAppBrowser {
       .multiWindowAccess(true)
       .allowWindowOpenMethod(true)
       .onWindowNew((event) => {
-        if (!event) {
+        if (!event || !WebViewManager.getGenerationForController(entry.webTag, entry.controller)) {
           return;
         }
         // Decline the native popup window: we don't host an ArkWeb child
@@ -867,12 +867,20 @@ export struct LxAppBrowser {
         this.openTargetInNewTab(event.targetUrl);
       })
       .onAppear(() => {
-        if (!this.ackedWebTags.has(entry.webTag)) {
-          notifyWebViewControllerAttached(entry.webTag);
-          this.ackedWebTags.add(entry.webTag);
+        const nativeViewToken = WebViewManager.getGenerationForController(entry.webTag, entry.controller);
+        const attachKey = `${entry.webTag}@${nativeViewToken}`;
+        if (nativeViewToken && !this.ackedWebTags.has(attachKey)) {
+          notifyWebViewControllerAttached(
+            entry.webTag,
+            nativeViewToken
+          );
+          this.ackedWebTags.add(attachKey);
         }
       })
       .onLoadIntercept((event) => {
+        if (!WebViewManager.getGenerationForController(entry.webTag, entry.controller)) {
+          return true;
+        }
         if (!event || !event.data) {
           return false;
         }
@@ -913,6 +921,7 @@ export struct LxAppBrowser {
         }
         return requestWebFileChooser(
           entry.webTag,
+          WebViewManager.getGenerationForController(entry.webTag, entry.controller),
           (selectedPaths: Array<string>) => {
             event.result.handleFileList(selectedPaths);
           },
@@ -1600,6 +1609,7 @@ export struct LxAppBrowser {
     try {
       notifyWebViewState(
         entry.webTag,
+        WebViewManager.getGenerationForController(entry.webTag, entry.controller),
         entry.controller.getUrl() ?? '',
         entry.controller.getTitle() ?? '',
         entry.controller.accessBackward(),

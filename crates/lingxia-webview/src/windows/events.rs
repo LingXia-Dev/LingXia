@@ -21,6 +21,25 @@ fn windows_message_source(source: String) -> WebMessageSource {
     WebMessageSource::diagnostic_url(Some(source))
 }
 
+fn native_callback_identity_matches(
+    callback_native_view_id: NativeWebViewId,
+    registered_native_view_id: NativeWebViewId,
+) -> bool {
+    callback_native_view_id == registered_native_view_id
+}
+
+/// Resolve a native callback only if its concrete WebView is still the one
+/// registered for this logical tag. A tag can be reused while an old WebView2
+/// controller is still draining callbacks.
+fn current_native_callback_webview(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+) -> Option<Arc<crate::WebView>> {
+    find_webview_by_native_view_id(webtag, native_view_id).filter(|webview| {
+        native_callback_identity_matches(native_view_id, webview.native_view_id())
+    })
+}
+
 pub(crate) fn register_event_handlers(
     env: &ICoreWebView2Environment,
     webview: &ICoreWebView2,
@@ -30,6 +49,7 @@ pub(crate) fn register_event_handlers(
     memory_pages: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 ) -> StdResult<()> {
     let started_tag = webtag.clone();
+    let started_native_view_id = native_view_id;
     unsafe {
         let mut token = 0;
         webview
@@ -46,7 +66,8 @@ pub(crate) fn register_event_handlers(
                     let mut navigation_id = 0u64;
                     args.NavigationId(&mut navigation_id)?;
 
-                    if let Some(webview) = find_webview(&started_tag)
+                    if let Some(webview) =
+                        current_native_callback_webview(&started_tag, started_native_view_id)
                         && matches!(
                             webview.handle_navigation(&crate::NavigationRequest::new(
                                 uri.clone(),
@@ -60,6 +81,7 @@ pub(crate) fn register_event_handlers(
                         // completion for this key is expected and consumed.
                         normalizer::submit(
                             &started_tag,
+                            started_native_view_id,
                             NativeSignal::NavigationSuppressed {
                                 key: Some(navigation_id),
                             },
@@ -72,6 +94,7 @@ pub(crate) fn register_event_handlers(
                     // coalesces them into one attempt.
                     normalizer::submit(
                         &started_tag,
+                        started_native_view_id,
                         NativeSignal::NavigationStarted {
                             key: Some(navigation_id),
                             url: uri,
@@ -87,6 +110,7 @@ pub(crate) fn register_event_handlers(
     }
 
     let frame_started_tag = webtag.clone();
+    let frame_started_native_view_id = native_view_id;
     unsafe {
         let mut token = 0;
         webview
@@ -99,14 +123,14 @@ pub(crate) fn register_event_handlers(
                     let mut uri = PWSTR::null();
                     args.Uri(&mut uri)?;
                     let uri = CoTaskMemPWSTR::from(uri).to_string();
-                    if let Some(webview) = find_webview(&frame_started_tag)
-                        && matches!(
-                            webview.handle_navigation(&crate::NavigationRequest::new(
-                                uri, false, false,
-                            )),
-                            NavigationPolicy::Cancel
-                        )
-                    {
+                    if let Some(webview) = current_native_callback_webview(
+                        &frame_started_tag,
+                        frame_started_native_view_id,
+                    ) && matches!(
+                        webview
+                            .handle_navigation(&crate::NavigationRequest::new(uri, false, false,)),
+                        NavigationPolicy::Cancel
+                    ) {
                         args.SetCancel(true)?;
                     }
                     Ok(())
@@ -119,13 +143,25 @@ pub(crate) fn register_event_handlers(
     }
 
     let committed_tag = webtag.clone();
+    let committed_native_view_id = native_view_id;
     unsafe {
         let mut token = 0;
         webview
             .add_ContentLoading(
-                &ContentLoadingEventHandler::create(Box::new(move |_sender, _args| {
+                &ContentLoadingEventHandler::create(Box::new(move |_sender, args| {
+                    let Some(args) = args else {
+                        return Ok(());
+                    };
+                    let mut navigation_id = 0u64;
+                    args.NavigationId(&mut navigation_id)?;
                     // Commit evidence: the displayed document was replaced.
-                    normalizer::submit(&committed_tag, NativeSignal::DocumentCommitted);
+                    normalizer::submit(
+                        &committed_tag,
+                        committed_native_view_id,
+                        NativeSignal::DocumentCommitted {
+                            key: Some(navigation_id),
+                        },
+                    );
                     Ok(())
                 })),
                 &mut token,
@@ -134,6 +170,7 @@ pub(crate) fn register_event_handlers(
     }
 
     let finished_tag = webtag.clone();
+    let finished_native_view_id = native_view_id;
     unsafe {
         let mut token = 0;
         webview
@@ -169,6 +206,7 @@ pub(crate) fn register_event_handlers(
                     };
                     normalizer::submit(
                         &finished_tag,
+                        finished_native_view_id,
                         NativeSignal::NavigationFinished {
                             key: Some(navigation_id),
                             result,
@@ -184,6 +222,7 @@ pub(crate) fn register_event_handlers(
     }
 
     let source_tag = webtag.clone();
+    let source_native_view_id = native_view_id;
     unsafe {
         let mut token = 0;
         webview
@@ -195,7 +234,11 @@ pub(crate) fn register_event_handlers(
                     let mut source = PWSTR::null();
                     sender.Source(&mut source)?;
                     let source = CoTaskMemPWSTR::from(source).to_string();
-                    normalizer::submit(&source_tag, NativeSignal::LocationChanged { url: source });
+                    normalizer::submit(
+                        &source_tag,
+                        source_native_view_id,
+                        NativeSignal::LocationChanged { url: source },
+                    );
                     Ok(())
                 })),
                 &mut token,
@@ -204,6 +247,7 @@ pub(crate) fn register_event_handlers(
     }
 
     let history_tag = webtag.clone();
+    let history_native_view_id = native_view_id;
     unsafe {
         let mut token = 0;
         webview
@@ -218,6 +262,7 @@ pub(crate) fn register_event_handlers(
                     sender.CanGoForward(&mut can_forward)?;
                     normalizer::submit(
                         &history_tag,
+                        history_native_view_id,
                         NativeSignal::BackForwardChanged {
                             can_go_back: can_back.as_bool(),
                             can_go_forward: can_forward.as_bool(),
@@ -231,6 +276,7 @@ pub(crate) fn register_event_handlers(
     }
 
     let title_tag = webtag.clone();
+    let title_native_view_id = native_view_id;
     unsafe {
         let mut token = 0;
         webview
@@ -245,6 +291,7 @@ pub(crate) fn register_event_handlers(
                     if !title.is_empty() {
                         normalizer::submit(
                             &title_tag,
+                            title_native_view_id,
                             NativeSignal::TitleChanged { title: Some(title) },
                         );
                     }
@@ -260,6 +307,7 @@ pub(crate) fn register_event_handlers(
     // Favicon change notifications need ICoreWebView2_15 (newer WebView2
     // runtimes); older runtimes simply do without favicons.
     let favicon_tag = webtag.clone();
+    let favicon_native_view_id = native_view_id;
     if let Ok(webview15) = webview.cast::<ICoreWebView2_15>() {
         let handler = FaviconChangedEventHandler::create(Box::new(move |sender, _args| {
             let Some(sender) = sender else {
@@ -281,7 +329,11 @@ pub(crate) fn register_event_handlers(
                             .as_ref()
                             .and_then(|stream| read_stream_to_end(stream).ok())
                             .filter(|bytes| !bytes.is_empty());
-                        normalizer::submit(&tag, NativeSignal::FaviconChanged { png_bytes });
+                        normalizer::submit(
+                            &tag,
+                            favicon_native_view_id,
+                            NativeSignal::FaviconChanged { png_bytes },
+                        );
                         Ok(())
                     })),
                 )?;
@@ -296,6 +348,7 @@ pub(crate) fn register_event_handlers(
     }
 
     let new_window_tag = webtag.clone();
+    let new_window_native_view_id = native_view_id;
     unsafe {
         let mut token = 0;
         webview
@@ -306,7 +359,9 @@ pub(crate) fn register_event_handlers(
                     };
 
                     let uri = take_request_string(|slot| args.Uri(slot))?;
-                    let Some(webview) = find_webview(&new_window_tag) else {
+                    let Some(webview) =
+                        current_native_callback_webview(&new_window_tag, new_window_native_view_id)
+                    else {
                         args.SetHandled(true)?;
                         return Ok(());
                     };
@@ -333,6 +388,7 @@ pub(crate) fn register_event_handlers(
     }
 
     let download_tag = webtag.clone();
+    let download_native_view_id = native_view_id;
     unsafe {
         let webview4: ICoreWebView2_4 = webview.cast().map_err(|err| {
             WebViewError::WebView(format!("WebView2_4 cast failed for downloads: {err}"))
@@ -344,7 +400,9 @@ pub(crate) fn register_event_handlers(
                     let Some(args) = args else {
                         return Ok(());
                     };
-                    let Some(webview) = find_webview(&download_tag) else {
+                    let Some(webview) =
+                        current_native_callback_webview(&download_tag, download_native_view_id)
+                    else {
                         return Ok(());
                     };
                     if !webview.has_download_handler() {
@@ -380,12 +438,12 @@ pub(crate) fn register_event_handlers(
                     let source = CoTaskMemPWSTR::from(source).to_string();
 
                     if let Some(webview) =
-                        find_webview_by_native_view_id(&message_tag, native_view_id)
+                        current_native_callback_webview(&message_tag, native_view_id)
                     {
                         // Source is captured while this callback owns its COM args. It
                         // is diagnostic only; WebView2 does not prove a top-level
                         // frame or a committed document generation here.
-                        webview.enqueue_unbound_web_message(
+                        webview.enqueue_web_message(
                             payload,
                             WebMessageFrame::Unproven,
                             WebMessageTransport::WindowsWebMessage,
@@ -424,6 +482,7 @@ pub(crate) fn register_event_handlers(
     }
 
     let request_tag = webtag;
+    let request_native_view_id = native_view_id;
     let env = env.clone();
     let memory_pages = memory_pages.clone();
     let custom_schemes = webview2_custom_schemes(registered_schemes);
@@ -459,8 +518,11 @@ pub(crate) fn register_event_handlers(
                     populate_request_headers(&request, http_request.headers_mut())?;
 
                     let scheme = request_scheme(&uri);
-                    let response = find_webview(&request_tag)
-                        .and_then(|webview| webview.handle_scheme_request(scheme, http_request));
+                    let response =
+                        current_native_callback_webview(&request_tag, request_native_view_id)
+                            .and_then(|webview| {
+                                webview.handle_scheme_request(scheme, http_request)
+                            });
 
                     let Some(response) = response else {
                         // PassThrough (or no webview found): leave the response
@@ -492,6 +554,15 @@ pub(crate) fn register_event_handlers(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_callback_identity_rejects_a_reused_tag() {
+        let retired = NativeWebViewId::new(1);
+        let replacement = NativeWebViewId::new(2);
+
+        assert!(!native_callback_identity_matches(retired, replacement));
+        assert!(native_callback_identity_matches(replacement, replacement));
+    }
 
     #[test]
     fn windows_message_source_is_retained_for_diagnostics_only() {

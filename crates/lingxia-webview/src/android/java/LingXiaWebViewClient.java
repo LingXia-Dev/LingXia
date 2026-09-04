@@ -40,6 +40,7 @@ public class LingXiaWebViewClient extends WebViewClient {
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 webView.getSessionId(),
+                webView.getNativeViewId(),
                 url != null ? url : ""
             );
         }
@@ -55,10 +56,14 @@ public class LingXiaWebViewClient extends WebViewClient {
             webView.setPageLoaded(true);
             webView.resetViewport();
             webView.pushWebViewState();
+            // API 21/22 have no visible-commit callback. Finishing a load
+            // remains useful navigation state, but must not mint a document
+            // binding from weaker evidence.
             webView.onPageFinished(
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 webView.getSessionId(),
+                webView.getNativeViewId(),
                 url != null ? url : ""
             );
         }
@@ -69,11 +74,12 @@ public class LingXiaWebViewClient extends WebViewClient {
         super.onPageCommitVisible(view, url);
         // Commit evidence: the displayed document was replaced.
         LingXiaWebView webView = webViewRef.get();
-        if (webView != null) {
-            webView.onPageCommitted(
+        if (webView != null && DocumentCommitCallbackPolicy.canBindDocument(Build.VERSION.SDK_INT)) {
+            webView.onPageCommitVisible(
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
-                webView.getSessionId()
+                webView.getSessionId(),
+                webView.getNativeViewId()
             );
         }
     }
@@ -101,6 +107,7 @@ public class LingXiaWebViewClient extends WebViewClient {
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 webView.getSessionId(),
+                webView.getNativeViewId(),
                 url,
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && request.hasGesture(),
                 request.isForMainFrame()
@@ -119,6 +126,7 @@ public class LingXiaWebViewClient extends WebViewClient {
             webView.getAppId() != null ? webView.getAppId() : "",
             webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
             webView.getSessionId(),
+            webView.getNativeViewId(),
             failingUrl,
             errorCode,
             description
@@ -185,6 +193,7 @@ public class LingXiaWebViewClient extends WebViewClient {
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 webView.getSessionId(),
+                webView.getNativeViewId(),
                 url,
                 method,
                 headerArray

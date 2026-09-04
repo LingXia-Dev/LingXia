@@ -11,12 +11,12 @@ use crate::input_helper::INPUT_HELPER_BOOTSTRAP;
 use crate::input_helper::build_helper_invocation;
 use crate::input_helper::{build_async_eval_body, parse_wrapped_eval_result};
 use crate::traits::{
-    FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
-    NewWindowPolicy, WebMessageFrame, WebMessageSource, WebMessageTransport,
+    FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NativeWebViewId,
+    NavigationPolicy, NewWindowPolicy, WebMessageFrame, WebMessageSource, WebMessageTransport,
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::traits::{PressOptions, ScrollOptions, TypeOptions};
-use crate::webview::find_webview;
+use crate::webview::{find_webview, find_webview_by_native_view_id};
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, DownloadRequest, LoadDataRequest, LogLevel,
     UserAgentOverride, WebResourceResponse, WebViewController, WebViewCookie,
@@ -755,7 +755,12 @@ fn last_requested_url(webtag: &WebTag) -> Option<String> {
 
 /// Normalize and submit a failed-navigation callback: cancellations terminate
 /// as `Cancelled`, everything else as `Failed`, keyed by WKNavigation identity.
-fn submit_navigation_failure(webtag: &WebTag, navigation: *mut AnyObject, error: *mut NSError) {
+fn submit_navigation_failure(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+    navigation: *mut AnyObject,
+    error: *mut NSError,
+) {
     let key = (!navigation.is_null()).then_some(navigation as usize as u64);
     let result = match unsafe { ns_error_to_navigation_failure(error) } {
         AppleNavigationFailure::Cancelled { description } => {
@@ -770,7 +775,30 @@ fn submit_navigation_failure(webtag: &WebTag, navigation: *mut AnyObject, error:
             NativeNavigationResult::Failed(load_error)
         }
     };
-    normalizer::submit(webtag, NativeSignal::NavigationFinished { key, result });
+    normalizer::submit(
+        webtag,
+        native_view_id,
+        NativeSignal::NavigationFinished { key, result },
+    );
+}
+
+/// Resolve a native callback only while its concrete WKWebView still owns the
+/// logical tag. A retired delegate can otherwise invoke a replacement's
+/// navigation, scheme, download, or chooser handlers.
+fn native_callback_identity_matches(
+    callback_native_view_id: NativeWebViewId,
+    registered_native_view_id: NativeWebViewId,
+) -> bool {
+    callback_native_view_id == registered_native_view_id
+}
+
+fn current_native_callback_webview(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+) -> Option<Arc<crate::WebView>> {
+    find_webview_by_native_view_id(webtag, native_view_id).filter(|webview| {
+        native_callback_identity_matches(native_view_id, webview.native_view_id())
+    })
 }
 
 // KVO observer that turns WKWebView observable state (URL, title,
@@ -779,6 +807,7 @@ fn submit_navigation_failure(webtag: &WebTag, navigation: *mut AnyObject, error:
 // never mirror these values into Rust themselves.
 pub struct LingXiaWebViewStateObserverIvars {
     webtag: WebTag,
+    native_view_id: NativeWebViewId,
 }
 
 define_class!(
@@ -800,20 +829,29 @@ define_class!(
             _context: *mut std::ffi::c_void,
         ) {
             let webtag = &self.ivars().webtag;
+            let native_view_id = self.ivars().native_view_id;
             let key = unsafe { key_path.as_ref() }
                 .map(|s| s.to_string())
                 .unwrap_or_default();
             match key.as_str() {
                 "URL" => {
                     if let Some(url) = source_page_url_from_webview(object) {
-                        normalizer::submit(webtag, NativeSignal::LocationChanged { url });
+                        normalizer::submit(
+                            webtag,
+                            native_view_id,
+                            NativeSignal::LocationChanged { url },
+                        );
                     }
                 }
                 "title" => {
                     let title: *mut AnyObject = unsafe { msg_send![object, title] };
                     let title = LingXiaNavigationDelegate::nsstring_ptr_to_string(title)
                         .filter(|title| !title.is_empty());
-                    normalizer::submit(webtag, NativeSignal::TitleChanged { title });
+                    normalizer::submit(
+                        webtag,
+                        native_view_id,
+                        NativeSignal::TitleChanged { title },
+                    );
                 }
                 "canGoBack" | "canGoForward" => {
                     let can_go_back: objc2::runtime::Bool =
@@ -822,6 +860,7 @@ define_class!(
                         unsafe { msg_send![object, canGoForward] };
                     normalizer::submit(
                         webtag,
+                        native_view_id,
                         NativeSignal::BackForwardChanged {
                             can_go_back: can_go_back.as_bool(),
                             can_go_forward: can_go_forward.as_bool(),
@@ -837,10 +876,17 @@ define_class!(
 const WEBVIEW_STATE_KEY_PATHS: [&str; 4] = ["URL", "title", "canGoBack", "canGoForward"];
 
 impl LingXiaWebViewStateObserver {
-    fn new(webtag: WebTag, mtm: MainThreadMarker) -> Retained<Self> {
-        let observer = mtm
-            .alloc::<LingXiaWebViewStateObserver>()
-            .set_ivars(LingXiaWebViewStateObserverIvars { webtag });
+    fn new(
+        webtag: WebTag,
+        native_view_id: NativeWebViewId,
+        mtm: MainThreadMarker,
+    ) -> Retained<Self> {
+        let observer = mtm.alloc::<LingXiaWebViewStateObserver>().set_ivars(
+            LingXiaWebViewStateObserverIvars {
+                webtag,
+                native_view_id,
+            },
+        );
         unsafe { msg_send![super(observer), init] }
     }
 
@@ -872,6 +918,7 @@ impl LingXiaWebViewStateObserver {
 // Custom Navigation Delegate for handling page lifecycle events
 pub struct LingXiaNavigationDelegateIvars {
     webtag: WebTag,
+    native_view_id: NativeWebViewId,
     intercept_https_navigation: bool,
     pending_browser_download_url: RefCell<Option<String>>,
 }
@@ -900,6 +947,7 @@ define_class!(
                 .unwrap_or_else(|| "about:blank".to_string());
             normalizer::submit(
                 webtag,
+                self.ivars().native_view_id,
                 NativeSignal::NavigationStarted {
                     key: Some(navigation as *const WKNavigation as usize as u64),
                     url,
@@ -908,9 +956,15 @@ define_class!(
         }
 
         #[unsafe(method(webView:didCommitNavigation:))]
-        fn did_commit_navigation(&self, _webview: *mut AnyObject, _navigation: &WKNavigation) {
+        fn did_commit_navigation(&self, _webview: *mut AnyObject, navigation: &WKNavigation) {
             // Commit evidence: the displayed document was replaced.
-            normalizer::submit(&self.ivars().webtag, NativeSignal::DocumentCommitted);
+            normalizer::submit(
+                &self.ivars().webtag,
+                self.ivars().native_view_id,
+                NativeSignal::DocumentCommitted {
+                    key: Some(navigation as *const WKNavigation as usize as u64),
+                },
+            );
         }
 
         #[unsafe(method(webView:didFinishNavigation:))]
@@ -922,6 +976,7 @@ define_class!(
                 source_page_url_from_webview(webview).unwrap_or_else(|| "about:blank".to_string());
             normalizer::submit(
                 webtag,
+                self.ivars().native_view_id,
                 NativeSignal::NavigationFinished {
                     key: (!navigation.is_null()).then_some(navigation as usize as u64),
                     result: NativeNavigationResult::Succeeded { final_url },
@@ -936,7 +991,12 @@ define_class!(
             _navigation: *mut AnyObject,
             error: *mut NSError,
         ) {
-            submit_navigation_failure(&self.ivars().webtag, _navigation, error);
+            submit_navigation_failure(
+                &self.ivars().webtag,
+                self.ivars().native_view_id,
+                _navigation,
+                error,
+            );
         }
 
         #[unsafe(method(webView:didFailNavigation:withError:))]
@@ -946,7 +1006,12 @@ define_class!(
             _navigation: *mut AnyObject,
             error: *mut NSError,
         ) {
-            submit_navigation_failure(&self.ivars().webtag, _navigation, error);
+            submit_navigation_failure(
+                &self.ivars().webtag,
+                self.ivars().native_view_id,
+                _navigation,
+                error,
+            );
         }
 
         #[unsafe(method(webView:decidePolicyForNavigationAction:decisionHandler:))]
@@ -1022,7 +1087,8 @@ define_class!(
                 value.as_bool()
             };
             if should_perform_download
-                && let Some(managed_webview) = find_webview(webtag)
+                && let Some(managed_webview) =
+                    current_native_callback_webview(webtag, self.ivars().native_view_id)
                 && managed_webview.effective_options().profile == SecurityProfile::BrowserRelaxed
             {
                 self.ivars()
@@ -1038,7 +1104,9 @@ define_class!(
             }
 
             // Check closure-based navigation handler first
-            if let Some(webview) = find_webview(webtag) {
+            if let Some(webview) =
+                current_native_callback_webview(webtag, self.ivars().native_view_id)
+            {
                 let request =
                     crate::NavigationRequest::new(url.clone(), has_user_gesture, is_main_frame);
                 match webview.handle_navigation(&request) {
@@ -1081,7 +1149,9 @@ define_class!(
             };
 
             // Dispatch to closure-based scheme handler
-            let response = if let Some(webview) = find_webview(webtag) {
+            let response = if let Some(webview) =
+                current_native_callback_webview(webtag, self.ivars().native_view_id)
+            {
                 webview.handle_scheme_request("https", http_request)
             } else {
                 None
@@ -1114,7 +1184,9 @@ define_class!(
             let cancel_navigation = || call_decision_handler(0); // WKNavigationResponsePolicyCancel
 
             let webtag = &self.ivars().webtag;
-            let Some(managed_webview) = find_webview(webtag) else {
+            let Some(managed_webview) =
+                current_native_callback_webview(webtag, self.ivars().native_view_id)
+            else {
                 allow_navigation();
                 return;
             };
@@ -1307,6 +1379,7 @@ impl LingXiaNavigationDelegate {
         appid: String,
         path: String,
         session_id: Option<u64>,
+        native_view_id: NativeWebViewId,
         intercept_https_navigation: bool,
         mtm: MainThreadMarker,
     ) -> Retained<Self> {
@@ -1315,6 +1388,7 @@ impl LingXiaNavigationDelegate {
             mtm.alloc::<LingXiaNavigationDelegate>()
                 .set_ivars(LingXiaNavigationDelegateIvars {
                     webtag,
+                    native_view_id,
                     intercept_https_navigation,
                     pending_browser_download_url: RefCell::new(None),
                 });
@@ -1328,6 +1402,7 @@ impl LingXiaNavigationDelegate {
 // - Shows native NSAlert for JavaScript alert/confirm/prompt dialogs
 pub struct LingXiaUIDelegateIvars {
     webtag: WebTag,
+    native_view_id: NativeWebViewId,
     allow_js_dialogs: bool,
 }
 
@@ -1369,9 +1444,16 @@ define_class!(
                                         webtag,
                                         url
                                     );
-                                    if let Some(wv) = find_webview(webtag)
-                                        && wv.has_new_window_handler()
-                                    {
+                                    let Some(wv) = current_native_callback_webview(
+                                        webtag,
+                                        self.ivars().native_view_id,
+                                    ) else {
+                                        log::debug!(
+                                            "Dropping new-window callback from stale Apple WebView ({webtag})"
+                                        );
+                                        return std::ptr::null_mut();
+                                    };
+                                    if wv.has_new_window_handler() {
                                         let policy = wv.handle_new_window(&url);
                                         log::info!(
                                             "Apple new-window policy webtag={} url={} policy={:?}",
@@ -1481,6 +1563,12 @@ define_class!(
             _frame: *mut AnyObject,
             completion_handler: *mut AnyObject,
         ) {
+            if self.current_webview().is_none() {
+                let handler: &Block<dyn Fn()> =
+                    unsafe { &*(completion_handler as *const Block<dyn Fn()>) };
+                handler.call(());
+                return;
+            }
             if !self.ivars().allow_js_dialogs {
                 log::info!(
                     "Apple suppressed JavaScript alert in strict profile webtag={}",
@@ -1514,6 +1602,12 @@ define_class!(
             _frame: *mut AnyObject,
             completion_handler: *mut AnyObject,
         ) {
+            if self.current_webview().is_none() {
+                let handler: &Block<dyn Fn(objc2::runtime::Bool)> =
+                    unsafe { &*(completion_handler as *const Block<dyn Fn(objc2::runtime::Bool)>) };
+                handler.call((objc2::runtime::Bool::new(false),));
+                return;
+            }
             if !self.ivars().allow_js_dialogs {
                 log::info!(
                     "Apple suppressed JavaScript confirm in strict profile webtag={}",
@@ -1558,6 +1652,12 @@ define_class!(
             _frame: *mut AnyObject,
             completion_handler: *mut AnyObject,
         ) {
+            if self.current_webview().is_none() {
+                let handler: &Block<dyn Fn(*mut AnyObject)> =
+                    unsafe { &*(completion_handler as *const Block<dyn Fn(*mut AnyObject)>) };
+                handler.call((std::ptr::null_mut(),));
+                return;
+            }
             if !self.ivars().allow_js_dialogs {
                 log::info!(
                     "Apple suppressed JavaScript prompt in strict profile webtag={}",
@@ -1646,7 +1746,7 @@ define_class!(
                 }
             };
 
-            let Some(webview) = find_webview(&self.ivars().webtag) else {
+            let Some(webview) = self.current_webview() else {
                 handler.call((std::ptr::null_mut(),));
                 return;
             };
@@ -1709,11 +1809,21 @@ define_class!(
 );
 
 impl LingXiaUIDelegate {
-    pub fn new(webtag: WebTag, allow_js_dialogs: bool, mtm: MainThreadMarker) -> Retained<Self> {
+    fn current_webview(&self) -> Option<Arc<crate::WebView>> {
+        current_native_callback_webview(&self.ivars().webtag, self.ivars().native_view_id)
+    }
+
+    pub fn new(
+        webtag: WebTag,
+        native_view_id: NativeWebViewId,
+        allow_js_dialogs: bool,
+        mtm: MainThreadMarker,
+    ) -> Retained<Self> {
         let delegate = mtm
             .alloc::<LingXiaUIDelegate>()
             .set_ivars(LingXiaUIDelegateIvars {
                 webtag,
+                native_view_id,
                 allow_js_dialogs,
             });
         unsafe { msg_send![super(delegate), init] }
@@ -1938,7 +2048,15 @@ impl WebViewInner {
         mtm: MainThreadMarker,
         sender: WebViewCreateSender,
     ) {
-        let result = Self::create_with_marker(appid, path, session_id, &effective_options, mtm);
+        let native_view_id = sender.native_view_id();
+        let result = Self::create_with_marker(
+            appid,
+            path,
+            session_id,
+            &effective_options,
+            native_view_id,
+            mtm,
+        );
 
         match result {
             Ok(webview_inner) => {
@@ -1946,7 +2064,7 @@ impl WebViewInner {
                 let webview = Arc::new(crate::WebView::new(
                     webview_inner,
                     effective_options,
-                    sender.native_view_id(),
+                    native_view_id,
                 ));
 
                 // Register the WebView instance for future lookups
@@ -1962,7 +2080,7 @@ impl WebViewInner {
                         appid,
                         path
                     );
-                    crate::webview::destroy_webview(&webview.webtag());
+                    crate::webview::destroy_webview_if_matches(&webview.webtag(), &webview);
                     return;
                 }
 
@@ -1982,6 +2100,7 @@ impl WebViewInner {
         path: &str,
         session_id: Option<u64>,
         effective_options: &EffectiveWebViewCreateOptions,
+        native_view_id: NativeWebViewId,
         mtm: MainThreadMarker,
     ) -> Result<Self, WebViewError> {
         unsafe {
@@ -2177,6 +2296,7 @@ impl WebViewInner {
                 appid.to_string(),
                 path.to_string(),
                 session_id,
+                native_view_id,
                 // Profile policy on Apple:
                 // - StrictDefault: intercept https:// top-level navigation
                 // - BrowserRelaxed: do not intercept
@@ -2194,7 +2314,8 @@ impl WebViewInner {
             let needs_ui_delegate =
                 is_strict || allow_new_windows || effective_options.has_new_window_handler;
             let ui_delegate = if needs_ui_delegate {
-                let delegate = LingXiaUIDelegate::new(webtag.clone(), !is_strict, mtm);
+                let delegate =
+                    LingXiaUIDelegate::new(webtag.clone(), native_view_id, !is_strict, mtm);
                 let proto_ui_delegate: &ProtocolObject<dyn WKUIDelegate> =
                     ProtocolObject::from_ref(&*delegate);
                 let _: () = msg_send![webview, setUIDelegate: Some(proto_ui_delegate)];
@@ -2215,7 +2336,8 @@ impl WebViewInner {
 
             // Observe URL/title/back-forward state so the Rust delegate is the
             // single source of truth for observable WebView state.
-            let state_observer = LingXiaWebViewStateObserver::new(webtag.clone(), mtm);
+            let state_observer =
+                LingXiaWebViewStateObserver::new(webtag.clone(), native_view_id, mtm);
             state_observer.observe(webview);
 
             // Create WebViewInner instance with navigation delegate and message handler
@@ -4264,7 +4386,7 @@ impl LingXiaMessageHandler {
         let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
         let native_webview = ivars.native_webview as *mut AnyObject;
         if let Some(webview) = find_webview_for_native(&webtag, native_webview) {
-            webview.enqueue_unbound_web_message(
+            webview.enqueue_web_message(
                 message,
                 frame,
                 WebMessageTransport::AppleScriptMessage,
@@ -4311,6 +4433,15 @@ impl LingXiaMessageHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apple_native_callback_identity_rejects_a_reused_tag() {
+        let retired = NativeWebViewId::new(1);
+        let replacement = NativeWebViewId::new(2);
+
+        assert!(!native_callback_identity_matches(retired, replacement));
+        assert!(native_callback_identity_matches(replacement, replacement));
+    }
 
     #[test]
     fn apple_navigation_type_preserves_user_initiated_actions() {

@@ -200,8 +200,13 @@ pub mod runtime {
         webview::list_webviews()
     }
 
-    pub fn destroy_webview(webtag: &WebTag) {
-        webview::destroy_webview(webtag);
+    /// Destroy whichever WebView is currently registered for this logical tag.
+    ///
+    /// Callers which own a concrete [`WebView`] should prefer
+    /// [`destroy_webview_if_matches`] so delayed teardown cannot destroy a
+    /// replacement which reused the tag.
+    pub fn destroy_current_webview(webtag: &WebTag) {
+        webview::destroy_current_webview(webtag);
     }
 
     pub fn destroy_webview_if_matches(webtag: &WebTag, expected: &Arc<WebView>) -> bool {
@@ -251,13 +256,20 @@ pub mod platform {
         };
 
         #[doc(hidden)]
-        pub fn on_load_error(webtag: &str, url: &str, error_code: i32, description: &str) {
-            crate::harmony::on_load_error(webtag, url, error_code, description);
+        pub fn on_load_error(
+            webtag: &str,
+            native_generation: &str,
+            url: &str,
+            error_code: i32,
+            description: &str,
+        ) {
+            crate::harmony::on_load_error(webtag, native_generation, url, error_code, description);
         }
 
         #[doc(hidden)]
         pub fn on_download_start(
             webtag_str: &str,
+            native_view_token: &str,
             url: &str,
             user_agent: &str,
             content_disposition: &str,
@@ -266,6 +278,7 @@ pub mod platform {
         ) -> bool {
             crate::harmony::on_download_start(
                 webtag_str,
+                native_view_token,
                 url,
                 user_agent,
                 content_disposition,

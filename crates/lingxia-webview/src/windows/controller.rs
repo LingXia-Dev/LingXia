@@ -359,7 +359,7 @@ impl WebViewInner {
                         "Windows WebView for {} was destroyed during registration; discarding",
                         webview.webtag().key()
                     );
-                    crate::webview::destroy_webview(&webview.webtag());
+                    crate::webview::destroy_webview_if_matches(&webview.webtag(), &webview);
                     return;
                 }
                 sender.succeed(webview);
@@ -1020,7 +1020,7 @@ pub(crate) fn run_ui_thread_inner(
     // browser-level messages) is wired before the message loop pumps any
     // command, so it is live before the first navigation. Best-effort: a
     // subscribe failure must not fail webview creation.
-    let console_receivers = match console::subscribe(&webview, &webtag) {
+    let console_receivers = match console::subscribe(&webview, &webtag, native_view_id) {
         Ok(receivers) => {
             console::enable(&webview);
             receivers

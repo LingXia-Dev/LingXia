@@ -53,6 +53,10 @@ export class WebViewManager {
     return CoreWebViewManager.findWebview(appId, path);
   }
 
+  static getGenerationForController(webtag: string, controller: webview.WebviewController): string {
+    return CoreWebViewManager.getGenerationForController(webtag, controller);
+  }
+
   static destroyWebview(webtag: string, generation?: string): boolean {
     // A stale destroy must leave the successor's embed manager alone too.
     if (!CoreWebViewManager.isStaleDestroy(webtag, generation)) {
@@ -168,24 +172,27 @@ export function isEphemeralDataMode(webtag: string): boolean {
 
 export function handleWebViewNavigationPolicy(
   webtag: string,
+  nativeViewToken: string,
   url: string,
   hasUserGesture: boolean,
   isMainFrame: boolean
 ): boolean {
-  return coreHandleWebViewNavigationPolicy(webtag, url, hasUserGesture, isMainFrame);
+  return coreHandleWebViewNavigationPolicy(webtag, nativeViewToken, url, hasUserGesture, isMainFrame);
 }
 
 export function handleWebViewLoadError(
   webtag: string,
+  nativeGeneration: string,
   url: string,
   errorCode: number,
   description: string
 ): void {
-  coreHandleWebViewLoadError(webtag, url, errorCode, description);
+  coreHandleWebViewLoadError(webtag, nativeGeneration, url, errorCode, description);
 }
 
 export function handleWebViewDownloadStart(
   webtag: string,
+  nativeViewToken: string,
   url: string,
   userAgent: string,
   contentDisposition: string,
@@ -194,6 +201,7 @@ export function handleWebViewDownloadStart(
 ): void {
   coreHandleWebViewDownloadStart(
     webtag,
+    nativeViewToken,
     url,
     userAgent,
     contentDisposition,
@@ -202,8 +210,8 @@ export function handleWebViewDownloadStart(
   );
 }
 
-export function notifyWebViewControllerAttached(webtag: string): void {
-  coreNotifyWebViewControllerAttached(webtag);
+export function notifyWebViewControllerAttached(webtag: string, nativeViewToken: string): void {
+  coreNotifyWebViewControllerAttached(webtag, nativeViewToken);
 }
 
 export function getAllWebViewInfos(): WebViewInfo[] {
