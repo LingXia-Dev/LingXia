@@ -201,6 +201,9 @@ mod bridge {
         #[swift_bridge(swift_name = "ensureHostSurfaceOwner")]
         fn ensure_host_surface_owner() -> String;
 
+        #[swift_bridge(swift_name = "resolveSettingsDestination")]
+        fn resolve_settings_destination_for_host() -> bool;
+
         #[swift_bridge(swift_name = "getDisplayLanguage")]
         fn get_display_language() -> String;
 
@@ -863,6 +866,24 @@ pub fn get_display_language() -> String {
 pub fn on_host_locale_changed(locale: &str) {
     if let Err(error) = lxapp::refresh_display_language_system(locale) {
         log::warn!("Ignoring invalid Apple host locale '{locale}': {error}");
+    }
+}
+
+/// Resolve the bootstrap-sealed Settings destination against current runtime
+/// registries for a native host entry click.
+pub fn resolve_settings_destination_for_host() -> bool {
+    settings_destination_result_to_bool(crate::resolve_settings_destination())
+}
+
+fn settings_destination_result_to_bool(
+    result: Result<crate::SettingsDestinationResolution, crate::SettingsDestinationResolveError>,
+) -> bool {
+    match result {
+        Ok(_) => true,
+        Err(error) => {
+            log::error!("failed to resolve static Settings destination: {error}");
+            false
+        }
     }
 }
 
@@ -2778,5 +2799,37 @@ pub fn terminal_session_close(id: u64) {
     #[cfg(not(feature = "terminal-runtime"))]
     {
         let _ = id;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn static_settings_click_accepts_every_resolved_destination_variant() {
+        let resolutions = [
+            crate::SettingsDestinationResolution::ControlAppPage {
+                app_id: "control".to_string(),
+                session_id: 1,
+            },
+            crate::SettingsDestinationResolution::BrowserControlPage {
+                tab_id: "settings".to_string(),
+                browser_session_id: 2,
+            },
+            crate::SettingsDestinationResolution::NativeAction {
+                action_id: "preferences".to_string(),
+            },
+        ];
+        for resolution in resolutions {
+            assert!(settings_destination_result_to_bool(Ok(resolution)));
+        }
+    }
+
+    #[test]
+    fn static_settings_click_reports_missing_destination_as_failure() {
+        assert!(!settings_destination_result_to_bool(Err(
+            crate::SettingsDestinationResolveError::NotConfigured,
+        )));
     }
 }

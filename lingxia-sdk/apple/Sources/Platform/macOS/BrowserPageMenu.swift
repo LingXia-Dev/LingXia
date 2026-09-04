@@ -23,6 +23,8 @@ enum BrowserPageMenu {
         var onOpenBookmarks: (() -> Void)?
         /// Open browser history (main browser only).
         var onOpenHistory: (() -> Void)?
+        /// Open browser-local settings (main browser only).
+        var onOpenSettings: (() -> Void)?
         /// Open the current website's data-clearing dialog.
         var onClearSiteData: (() -> Void)?
     }
@@ -99,6 +101,7 @@ enum BrowserPageMenu {
         menu.addItem(externalItem)
 
         if context.onOpenBookmarks != nil || context.onOpenHistory != nil
+            || context.onOpenSettings != nil
             || context.onClearSiteData != nil
         {
             menu.addItem(.separator())
@@ -116,6 +119,13 @@ enum BrowserPageMenu {
                     key: "y",
                     modifiers: [.command],
                     handler: onOpenHistory
+                ))
+            }
+            if let onOpenSettings = context.onOpenSettings {
+                menu.addItem(actionItem(
+                    title: "Settings",
+                    iconName: "icon_settings",
+                    handler: onOpenSettings
                 ))
             }
             if let onClearSiteData = context.onClearSiteData, isBookmarkActionable(context.url) {

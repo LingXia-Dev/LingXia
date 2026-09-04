@@ -252,19 +252,13 @@ extension LxApp {
         return executeOnMain {
             #if os(macOS)
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            if visible {
-                // Declared surfaces first; else fall back to built-in browser
-                // routes (downloads/settings) opened as main browser tabs.
-                if runtime.openManagedSurface(
-                    id: idString,
-                    role: roleString.isEmpty ? nil : roleString,
-                    edge: edgeString.isEmpty ? nil : edgeString
-                ) {
-                    return true
-                }
-                return runtime.shell.openBuiltinShellSurface(id: idString)
-            }
-            return runtime.closeManagedSurface(id: idString)
+            return LxAppDeclaredSurfaceVisibilityRouter.setVisible(
+                in: runtime,
+                id: idString,
+                visible: visible,
+                role: roleString.isEmpty ? nil : roleString,
+                edge: edgeString.isEmpty ? nil : edgeString
+            )
             #else
             _ = visible
             return false
@@ -805,9 +799,11 @@ extension LxApp {
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
             switch page {
             case 0:
-                return runtime.openBuiltinBrowserPage(id: "settings")
+                // Host-wide Settings is exclusively bootstrap-owned. Browser
+                // chrome uses BrowserLocalNavigation for its private page.
+                return false
             case 1:
-                return runtime.openBuiltinBrowserPage(id: "downloads")
+                return runtime.shell.openBuiltinShellSurface(id: "downloads")
             default:
                 return false
             }
