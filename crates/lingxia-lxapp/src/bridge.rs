@@ -1993,11 +1993,13 @@ impl PageBridge {
         session_id: String,
         caller: &host::AuthenticatedCaller,
     ) -> Result<(), LxAppError> {
+        let schema = host::host_route_schema(caller);
         let msg = ReadyMsg {
             v: 2,
             kind: "ready",
             session_id,
-            host_methods: host::host_method_schema(caller),
+            host_methods: schema.methods,
+            host_channels: schema.channels,
         };
         self.send_json_for_context(transport, work_id, outbound, V3OutboundKind::Ready, &msg)
     }

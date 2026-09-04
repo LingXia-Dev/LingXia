@@ -98,7 +98,13 @@ if (scenario === 'ordinary') {
   assert.equal(bridge.LingXiaBridge.isReady(), false);
 
   receive({ v: 2, kind: 'helloAck', nonce: 'nonce-1', protocol: 2, sessionId: 'v2-session' });
-  receive({ v: 2, kind: 'ready', sessionId: 'v2-session' });
+  receive({
+    v: 2,
+    kind: 'ready',
+    sessionId: 'v2-session',
+    hostMethods: { 'demo.call': 'call' },
+    hostChannels: ['demo.channel'],
+  });
   assert.equal(bridge.LingXiaBridge.isReady(), true);
   bridge.LingXiaBridge.raw.notify('host.note', { exact: true }, { cap: 'host' });
   assert.equal(
@@ -135,13 +141,25 @@ assert.deepEqual(frames[0], {
 
 receive({ v: 2, kind: 'helloAck', nonce: 'nonce-1', protocol: 2, sessionId });
 receive({ v: 3, kind: 'helloAck', nonce: 'nonce-1', protocol: 3, sessionId: 'wrong' });
-receive({ v: 3, kind: 'ready', sessionId });
+receive({
+  v: 3,
+  kind: 'ready',
+  sessionId,
+  hostMethods: { 'demo.watch': 'stream' },
+  hostChannels: ['demo.channel'],
+});
 assert.equal(bridge.LingXiaBridge.isReady(), false);
 receive({ v: 3, kind: 'helloAck', nonce: 'nonce-1', protocol: 3, sessionId });
 receive({ v: 3, kind: 'helloAck', nonce: 'nonce-1', protocol: 3, sessionId });
 receive({ v: 3, kind: 'ready', sessionId: 'wrong' });
 assert.equal(bridge.LingXiaBridge.isReady(), false);
-receive({ v: 3, kind: 'ready', sessionId });
+receive({
+  v: 3,
+  kind: 'ready',
+  sessionId,
+  hostMethods: { 'demo.watch': 'stream' },
+  hostChannels: ['demo.channel'],
+});
 assert.equal(bridge.LingXiaBridge.isReady(), true);
 
 const call = bridge.LingXiaBridge.raw.call('host.echo', { value: 1 }, { cap: 'host' });

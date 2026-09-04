@@ -68,12 +68,19 @@ pub mod __native {
     }
 }
 
-/// Wire-level method kind, serialized into the handshake schema so the JS
-/// bridge can automatically choose `invoke` vs `stream`.
+/// Wire-level method kind generated for unary and stream handlers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostMethodKind {
     Call,
     Stream,
+}
+
+/// Route family stored in the effective inventory and Ready schema.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HostRouteKind {
+    Call,
+    Stream,
+    Channel,
 }
 
 /// The admission constraint attached to a host route.
@@ -459,6 +466,30 @@ pub struct EffectiveRoutePolicy {
     audience: RouteAudience,
 }
 
+/// Read-only metadata for one production route.
+///
+/// Handlers are deliberately absent: callers can inspect the effective
+/// registration without gaining an invocation capability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EffectiveRouteMetadata {
+    kind: HostRouteKind,
+    policy: EffectiveRoutePolicy,
+}
+
+impl EffectiveRouteMetadata {
+    pub const fn kind(self) -> HostRouteKind {
+        self.kind
+    }
+
+    pub const fn policy(self) -> EffectiveRoutePolicy {
+        self.policy
+    }
+
+    pub const fn audience(self) -> RouteAudience {
+        self.policy.audience()
+    }
+}
+
 impl EffectiveRoutePolicy {
     pub const fn new(audience: RouteAudience) -> Self {
         Self { audience }
@@ -534,70 +565,107 @@ pub trait HostHandler: Send + Sync + 'static {
     ) -> HostFuture<'a>;
 }
 
-/// One fully resolved host route in the registry.
-///
-/// Keep the handler, wire kind, and policy together: a duplicate registration
-/// must replace all three values atomically from the registry's perspective.
-struct HostRouteRecord {
-    handler: Arc<dyn HostHandler>,
-    kind: HostMethodKind,
-    // Keep policy with the route so registration cannot produce policy-less
-    // entries.
-    policy: EffectiveRoutePolicy,
+enum RouteHandler {
+    Host(Arc<dyn HostHandler>),
+    Channel(Arc<dyn ChannelHandler>),
 }
 
-/// Host API registry.
-struct HostRegistry {
-    routes: HashMap<String, HostRouteRecord>,
+/// One fully resolved production route. There is no constructor for a handler
+/// without its immutable effective metadata.
+struct EffectiveRouteRecord {
+    metadata: EffectiveRouteMetadata,
+    handler: RouteHandler,
 }
 
-impl HostRegistry {
+/// Shared inventory for unary, stream, notification, and channel dispatch.
+struct EffectiveRouteRegistry {
+    routes: HashMap<String, EffectiveRouteRecord>,
+}
+
+impl EffectiveRouteRegistry {
     fn new() -> Self {
         Self {
             routes: HashMap::new(),
         }
     }
 
-    fn register(&mut self, key: String, route: HostRouteRecord) {
-        self.routes.insert(key, route);
+    fn try_register(&mut self, key: String, route: EffectiveRouteRecord) -> bool {
+        if let std::collections::hash_map::Entry::Vacant(entry) = self.routes.entry(key) {
+            entry.insert(route);
+            true
+        } else {
+            false
+        }
     }
 
-    fn route_for_caller(
+    fn inventory_for_caller(
+        &self,
+        caller: &AuthenticatedCaller,
+    ) -> HashMap<String, EffectiveRouteMetadata> {
+        self.routes
+            .iter()
+            .filter(|(_, route)| authorize(caller, route.metadata.audience()))
+            .map(|(key, route)| (key.clone(), route.metadata))
+            .collect()
+    }
+
+    fn schema_for_caller(&self, caller: &AuthenticatedCaller) -> HostRouteSchema {
+        HostRouteSchema::from_inventory(self.inventory_for_caller(caller))
+    }
+
+    fn host_for_caller(
         &self,
         name: &str,
         caller: &AuthenticatedCaller,
-    ) -> Option<&HostRouteRecord> {
-        self.routes
-            .get(name)
-            .filter(|route| authorize(caller, route.policy.audience()))
+    ) -> Option<Arc<dyn HostHandler>> {
+        let route = self.routes.get(name)?;
+        if !authorize(caller, route.metadata.audience()) {
+            return None;
+        }
+        match &route.handler {
+            RouteHandler::Host(handler) => Some(Arc::clone(handler)),
+            RouteHandler::Channel(_) => None,
+        }
     }
 
-    fn schema_for_caller(&self, caller: &AuthenticatedCaller) -> HashMap<String, &'static str> {
-        self.routes
-            .iter()
-            .filter(|(_, route)| authorize(caller, route.policy.audience()))
-            .map(|(key, route)| {
-                let kind = match route.kind {
-                    HostMethodKind::Call => "call",
-                    HostMethodKind::Stream => "stream",
-                };
-                (key.clone(), kind)
-            })
-            .collect()
+    fn channel_for_caller(
+        &self,
+        name: &str,
+        caller: &AuthenticatedCaller,
+    ) -> Option<Arc<dyn ChannelHandler>> {
+        let route = self.routes.get(name)?;
+        if !authorize(caller, route.metadata.audience()) {
+            return None;
+        }
+        match &route.handler {
+            RouteHandler::Channel(handler) => Some(Arc::clone(handler)),
+            RouteHandler::Host(_) => None,
+        }
     }
 }
 
-/// Global host API registry instance.
-static GLOBAL_HOST_REGISTRY: OnceLock<Mutex<HostRegistry>> = OnceLock::new();
+/// Global effective route inventory and handler registry.
+static GLOBAL_ROUTE_REGISTRY: OnceLock<Mutex<EffectiveRouteRegistry>> = OnceLock::new();
 
-fn get_host_registry() -> &'static Mutex<HostRegistry> {
-    GLOBAL_HOST_REGISTRY.get_or_init(|| Mutex::new(HostRegistry::new()))
+fn get_route_registry() -> &'static Mutex<EffectiveRouteRegistry> {
+    GLOBAL_ROUTE_REGISTRY.get_or_init(|| Mutex::new(EffectiveRouteRegistry::new()))
 }
 
 fn validate_host_namespace(namespace: &str) {
     assert_ne!(
         namespace, "channel",
         "host namespace 'channel' is reserved by the JS API; choose a different namespace"
+    );
+}
+
+fn register_effective_route(key: String, route: EffectiveRouteRecord) {
+    let inserted = {
+        let mut registry = get_route_registry().lock().unwrap();
+        registry.try_register(key.clone(), route)
+    };
+    assert!(
+        inserted,
+        "duplicate effective route registration for host.{key}"
     );
 }
 
@@ -609,14 +677,14 @@ pub fn register_host_route(
 ) {
     validate_host_namespace(namespace);
     let key = format!("{namespace}.{method}");
-    let registry = get_host_registry();
-    let mut reg = registry.lock().unwrap();
-    reg.register(
+    register_effective_route(
         key,
-        HostRouteRecord {
-            handler,
-            kind: HostMethodKind::Call,
-            policy: EffectiveRoutePolicy::new(audience),
+        EffectiveRouteRecord {
+            metadata: EffectiveRouteMetadata {
+                kind: HostRouteKind::Call,
+                policy: EffectiveRoutePolicy::new(audience),
+            },
+            handler: RouteHandler::Host(handler),
         },
     );
 }
@@ -624,21 +692,24 @@ pub fn register_host_route(
 pub fn register_host(registration: HostRegistration) {
     validate_host_namespace(registration.namespace);
     let key = format!("{}.{}", registration.namespace, registration.method);
-    let registry = get_host_registry();
-    let mut reg = registry.lock().unwrap();
-    reg.register(
+    register_effective_route(
         key,
-        HostRouteRecord {
-            handler: registration.handler,
-            kind: registration.kind,
-            policy: registration.policy,
+        EffectiveRouteRecord {
+            metadata: EffectiveRouteMetadata {
+                kind: match registration.kind {
+                    HostMethodKind::Call => HostRouteKind::Call,
+                    HostMethodKind::Stream => HostRouteKind::Stream,
+                },
+                policy: registration.policy,
+            },
+            handler: RouteHandler::Host(registration.handler),
         },
     );
 }
 
 /// Unified registration entry returned by the `#[native]` macro for all modes
-/// (unary, stream, channel). Runtime assembly code dispatches each entry to the
-/// correct registry.
+/// (unary, stream, channel). Runtime assembly seals every entry into the shared
+/// effective route inventory.
 pub enum HostRegistrationEntry {
     Handler(HostRegistration),
     Channel(ChannelRegistration),
@@ -668,33 +739,69 @@ pub(crate) fn get_host_for_caller(
     name: &str,
     caller: &AuthenticatedCaller,
 ) -> Option<Arc<dyn HostHandler>> {
-    let registry = get_host_registry();
-    registry
-        .lock()
-        .unwrap()
-        .route_for_caller(name, caller)
-        .map(|route| Arc::clone(&route.handler))
+    let registry = get_route_registry();
+    let registry = registry.lock().unwrap();
+    registry.host_for_caller(name, caller)
 }
 
 /// Inspect only immutable route policy. Browser ingress uses this while its
 /// lifecycle registry lock is held; cloning a handler is deliberately deferred
 /// until after that lock is released.
 pub(crate) fn host_route_is_authorized(name: &str, caller: &AuthenticatedCaller) -> bool {
-    get_host_registry()
+    get_route_registry()
         .lock()
         .unwrap()
         .routes
         .get(name)
-        .is_none_or(|route| authorize(caller, route.policy.audience()))
+        .is_none_or(|route| {
+            !matches!(
+                route.metadata.kind(),
+                HostRouteKind::Call | HostRouteKind::Stream
+            ) || authorize(caller, route.metadata.audience())
+        })
 }
 
-/// Returns a map of `"namespace.method"` → `"call"` | `"stream"` for all
-/// registered host methods. Included in the handshake `Ready` message so
-/// the JS bridge can automatically choose the right wire protocol.
-pub fn host_method_schema(caller: &AuthenticatedCaller) -> HashMap<String, &'static str> {
-    let registry = get_host_registry();
-    let reg = registry.lock().unwrap();
-    reg.schema_for_caller(caller)
+/// Returns a caller-filtered snapshot of production route metadata.
+pub fn effective_route_inventory(
+    caller: &AuthenticatedCaller,
+) -> HashMap<String, EffectiveRouteMetadata> {
+    get_route_registry()
+        .lock()
+        .unwrap()
+        .inventory_for_caller(caller)
+}
+
+/// Ready schema derived from the same effective inventory used by dispatch.
+pub struct HostRouteSchema {
+    pub methods: HashMap<String, &'static str>,
+    pub channels: Vec<String>,
+}
+
+impl HostRouteSchema {
+    fn from_inventory(inventory: HashMap<String, EffectiveRouteMetadata>) -> Self {
+        let mut methods = HashMap::new();
+        let mut channels = Vec::new();
+        for (name, metadata) in inventory {
+            match metadata.kind() {
+                HostRouteKind::Call => {
+                    methods.insert(name, "call");
+                }
+                HostRouteKind::Stream => {
+                    methods.insert(name, "stream");
+                }
+                HostRouteKind::Channel => channels.push(name),
+            }
+        }
+        channels.sort();
+        Self { methods, channels }
+    }
+}
+
+pub fn host_route_schema(caller: &AuthenticatedCaller) -> HostRouteSchema {
+    get_route_registry()
+        .lock()
+        .unwrap()
+        .schema_for_caller(caller)
 }
 
 pub fn parse_input<T: DeserializeOwned>(input: Option<&str>) -> HostResult<T> {
@@ -1019,7 +1126,7 @@ pub trait ChannelHandler: Send + Sync + 'static {
     );
 }
 
-/// A channel handler ready to be inserted into the global channel registry.
+/// A channel handler ready to be inserted into the effective route inventory.
 pub struct ChannelRegistration {
     namespace: &'static str,
     method: &'static str,
@@ -1051,42 +1158,17 @@ impl ChannelRegistration {
     }
 }
 
-struct ChannelRouteRecord {
-    handler: Arc<dyn ChannelHandler>,
-    // Channel admission is wired with request/notification authorization.
-    policy: EffectiveRoutePolicy,
-}
-
-struct ChannelRegistry {
-    routes: HashMap<String, ChannelRouteRecord>,
-}
-
-impl ChannelRegistry {
-    fn new() -> Self {
-        Self {
-            routes: HashMap::new(),
-        }
-    }
-
-    fn register(&mut self, key: String, route: ChannelRouteRecord) {
-        self.routes.insert(key, route);
-    }
-}
-
-static GLOBAL_CHANNEL_REGISTRY: OnceLock<Mutex<ChannelRegistry>> = OnceLock::new();
-
-fn get_channel_registry() -> &'static Mutex<ChannelRegistry> {
-    GLOBAL_CHANNEL_REGISTRY.get_or_init(|| Mutex::new(ChannelRegistry::new()))
-}
-
 pub fn register_channel_handler(registration: ChannelRegistration) {
     validate_host_namespace(registration.namespace);
     let key = format!("{}.{}", registration.namespace, registration.method);
-    get_channel_registry().lock().unwrap().register(
+    register_effective_route(
         key,
-        ChannelRouteRecord {
-            handler: registration.handler,
-            policy: registration.policy,
+        EffectiveRouteRecord {
+            metadata: EffectiveRouteMetadata {
+                kind: HostRouteKind::Channel,
+                policy: registration.policy,
+            },
+            handler: RouteHandler::Channel(registration.handler),
         },
     );
 }
@@ -1095,24 +1177,23 @@ pub(crate) fn get_channel_handler_for_caller(
     name: &str,
     caller: &AuthenticatedCaller,
 ) -> Option<Arc<dyn ChannelHandler>> {
-    get_channel_registry()
-        .lock()
-        .unwrap()
-        .routes
-        .get(name)
-        .filter(|route| authorize(caller, route.policy.audience()))
-        .map(|route| Arc::clone(&route.handler))
+    let registry = get_route_registry();
+    let registry = registry.lock().unwrap();
+    registry.channel_for_caller(name, caller)
 }
 
 /// See [`host_route_is_authorized`]. Unknown channels remain eligible for the
 /// normal post-lock "not found" response.
 pub(crate) fn channel_route_is_authorized(name: &str, caller: &AuthenticatedCaller) -> bool {
-    get_channel_registry()
+    get_route_registry()
         .lock()
         .unwrap()
         .routes
         .get(name)
-        .is_none_or(|route| authorize(caller, route.policy.audience()))
+        .is_none_or(|route| {
+            route.metadata.kind() != HostRouteKind::Channel
+                || authorize(caller, route.metadata.audience())
+        })
 }
 
 /// Create a linked `(ChannelContext, ChannelContextSender, outbound_rx)` triple.
@@ -1453,55 +1534,86 @@ mod tests {
     }
 
     #[test]
-    fn host_route_inventory_keeps_kind_and_policy_together_on_overwrite() {
-        let mut registry = HostRegistry::new();
-        registry.register(
-            "test.route".to_string(),
-            HostRouteRecord {
-                handler: Arc::new(TestHostHandler),
-                kind: HostMethodKind::Call,
-                policy: EffectiveRoutePolicy::new(RouteAudience::AppSessionOnly),
-            },
+    fn duplicate_same_policy_registration_cannot_replace_the_original_handler() {
+        let original: Arc<dyn HostHandler> = Arc::new(TestHostHandler);
+        register_host_route(
+            "inventory_replacement",
+            "same",
+            RouteAudience::AppSessionOnly,
+            Arc::clone(&original),
         );
-        registry.register(
-            "test.route".to_string(),
-            HostRouteRecord {
-                handler: Arc::new(TestHostHandler),
-                kind: HostMethodKind::Stream,
-                policy: EffectiveRoutePolicy::new(RouteAudience::ControlAppOnly),
-            },
-        );
+        let replacement: Arc<dyn HostHandler> = Arc::new(TestHostHandler);
+        let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            register_host_route(
+                "inventory_replacement",
+                "same",
+                RouteAudience::AppSessionOnly,
+                Arc::clone(&replacement),
+            );
+        }));
 
-        assert_eq!(registry.routes.len(), 1);
-        let route = registry.routes.get("test.route").expect("registered route");
-        assert_eq!(route.kind, HostMethodKind::Stream);
-        assert_eq!(route.policy.audience(), RouteAudience::ControlAppOnly);
+        assert!(rejected.is_err());
+        let active = get_host_for_caller(
+            "inventory_replacement.same",
+            &AuthenticatedCaller::standard_for_test(80),
+        )
+        .expect("original handler remains active");
+        assert!(Arc::ptr_eq(&active, &original));
+        assert!(!Arc::ptr_eq(&active, &replacement));
     }
 
     #[test]
-    fn channel_route_inventory_keeps_policy_on_overwrite() {
-        let mut registry = ChannelRegistry::new();
-        registry.register(
-            "test.channel".to_string(),
-            ChannelRouteRecord {
-                handler: Arc::new(TestChannelHandler),
-                policy: EffectiveRoutePolicy::new(RouteAudience::AppSessionOnly),
-            },
+    fn same_name_across_handler_families_with_conflicting_policy_fails_registration() {
+        let original: Arc<dyn HostHandler> = Arc::new(TestHostHandler);
+        register_host_route(
+            "inventory_cross_family",
+            "same",
+            RouteAudience::AppSessionOnly,
+            Arc::clone(&original),
         );
-        registry.register(
-            "test.channel".to_string(),
-            ChannelRouteRecord {
-                handler: Arc::new(TestChannelHandler),
-                policy: EffectiveRoutePolicy::new(RouteAudience::BrowserControlOnly),
-            },
-        );
+        let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            register_channel_handler(ChannelRegistration::new(
+                "inventory_cross_family",
+                "same",
+                RouteAudience::BrowserControlOnly,
+                Arc::new(TestChannelHandler),
+            ));
+        }));
 
-        assert_eq!(registry.routes.len(), 1);
-        let route = registry
-            .routes
-            .get("test.channel")
-            .expect("registered route");
-        assert_eq!(route.policy.audience(), RouteAudience::BrowserControlOnly);
+        assert!(rejected.is_err());
+        let caller = AuthenticatedCaller::standard_for_test(85);
+        let inventory = effective_route_inventory(&caller);
+        assert_eq!(
+            inventory["inventory_cross_family.same"].kind(),
+            HostRouteKind::Call
+        );
+        let active = get_host_for_caller("inventory_cross_family.same", &caller)
+            .expect("original family remains active");
+        assert!(Arc::ptr_eq(&active, &original));
+        assert!(get_channel_handler_for_caller("inventory_cross_family.same", &caller).is_none());
+    }
+
+    #[test]
+    fn duplicate_registration_cannot_change_effective_policy() {
+        let mut registry = EffectiveRouteRegistry::new();
+        for (index, audience) in [RouteAudience::AppSessionOnly, RouteAudience::ControlAppOnly]
+            .into_iter()
+            .enumerate()
+        {
+            assert_eq!(
+                registry.try_register(
+                    "test.route".to_string(),
+                    EffectiveRouteRecord {
+                        metadata: EffectiveRouteMetadata {
+                            kind: HostRouteKind::Call,
+                            policy: EffectiveRoutePolicy::new(audience),
+                        },
+                        handler: RouteHandler::Host(Arc::new(TestHostHandler)),
+                    },
+                ),
+                index == 0,
+            );
+        }
     }
 
     #[test]
@@ -1526,7 +1638,81 @@ mod tests {
     }
 
     #[test]
-    fn audience_matrix_rejects_same_scope_standard_caller_for_control_routes() {
+    fn every_production_registration_path_populates_the_shared_inventory() {
+        register_host_route(
+            "inventory_direct",
+            "call",
+            RouteAudience::AppSessionOnly,
+            Arc::new(TestHostHandler),
+        );
+        register_host_entry(HostRegistrationEntry::Handler(HostRegistration::stream(
+            "inventory_macro",
+            "stream",
+            RouteAudience::ControlAppOnly,
+            Arc::new(TestHostHandler),
+        )));
+        register_host_entry(HostRegistrationEntry::Channel(ChannelRegistration::new(
+            "inventory_macro",
+            "channel",
+            RouteAudience::ControlAppOnly,
+            Arc::new(TestChannelHandler),
+        )));
+
+        let standard = effective_route_inventory(&AuthenticatedCaller::standard_for_test(81));
+        assert_eq!(
+            standard["inventory_direct.call"].kind(),
+            HostRouteKind::Call
+        );
+        assert!(!standard.contains_key("inventory_macro.stream"));
+        assert!(!standard.contains_key("inventory_macro.channel"));
+
+        let control = effective_route_inventory(&AuthenticatedCaller::control_for_test(82));
+        assert_eq!(
+            control["inventory_macro.stream"].kind(),
+            HostRouteKind::Stream
+        );
+        assert_eq!(
+            control["inventory_macro.channel"].kind(),
+            HostRouteKind::Channel
+        );
+        assert_eq!(
+            control["inventory_macro.channel"].audience(),
+            RouteAudience::ControlAppOnly
+        );
+    }
+
+    #[test]
+    fn denied_route_does_not_clone_its_handler() {
+        let handler = Arc::new(TestHostHandler);
+        let mut registry = EffectiveRouteRegistry::new();
+        assert!(registry.try_register(
+            "test.control".to_string(),
+            EffectiveRouteRecord {
+                metadata: EffectiveRouteMetadata {
+                    kind: HostRouteKind::Call,
+                    policy: EffectiveRoutePolicy::new(RouteAudience::ControlAppOnly),
+                },
+                handler: RouteHandler::Host(handler.clone()),
+            },
+        ));
+        let baseline = Arc::strong_count(&handler);
+
+        assert!(
+            registry
+                .host_for_caller("test.control", &AuthenticatedCaller::standard_for_test(83))
+                .is_none()
+        );
+        assert_eq!(Arc::strong_count(&handler), baseline);
+
+        let admitted = registry
+            .host_for_caller("test.control", &AuthenticatedCaller::control_for_test(84))
+            .expect("control handler");
+        assert_eq!(Arc::strong_count(&handler), baseline + 1);
+        drop(admitted);
+    }
+
+    #[test]
+    fn audience_matrix_uses_authenticated_caller_class() {
         let standard = AuthenticatedCaller::standard_for_test(1);
         let control = AuthenticatedCaller::control_for_test(1);
         let (_, authority) =
@@ -1556,13 +1742,19 @@ mod tests {
     }
 
     #[test]
-    fn schema_visibility_matches_dispatch_for_every_audience_and_caller_class() {
+    fn same_app_id_schema_and_all_dispatch_families_use_authenticated_caller_class() {
         let (_, authority) =
             crate::issue_control_document_bootstrap(&ring::rand::SystemRandom::new())
                 .expect("native entropy");
         let callers = [
-            AuthenticatedCaller::standard_for_test(42),
-            AuthenticatedCaller::control_for_test(42),
+            AuthenticatedCaller::LxAppSession {
+                class: AppSessionClass::StandardApp,
+                scope: AppScope::for_test("same.app", 42),
+            },
+            AuthenticatedCaller::LxAppSession {
+                class: AppSessionClass::ControlApp,
+                scope: AppScope::for_test("same.app", 43),
+            },
             AuthenticatedCaller::active_browser_document(authority),
         ];
         let audiences = [
@@ -1572,26 +1764,78 @@ mod tests {
             RouteAudience::BrowserControlOnly,
             RouteAudience::ControlOnly,
         ];
-        let mut registry = HostRegistry::new();
+        let mut registry = EffectiveRouteRegistry::new();
         for (index, audience) in audiences.into_iter().enumerate() {
-            registry.register(
-                format!("test.route{index}"),
-                HostRouteRecord {
-                    handler: Arc::new(TestHostHandler),
-                    kind: HostMethodKind::Call,
-                    policy: EffectiveRoutePolicy::new(audience),
-                },
-            );
+            for kind in [
+                HostRouteKind::Call,
+                HostRouteKind::Stream,
+                HostRouteKind::Channel,
+            ] {
+                let family = match kind {
+                    HostRouteKind::Call => "call",
+                    HostRouteKind::Stream => "stream",
+                    HostRouteKind::Channel => "channel",
+                };
+                let handler = match kind {
+                    HostRouteKind::Call | HostRouteKind::Stream => {
+                        RouteHandler::Host(Arc::new(TestHostHandler))
+                    }
+                    HostRouteKind::Channel => RouteHandler::Channel(Arc::new(TestChannelHandler)),
+                };
+                assert!(registry.try_register(
+                    format!("test.{family}{index}"),
+                    EffectiveRouteRecord {
+                        metadata: EffectiveRouteMetadata {
+                            kind,
+                            policy: EffectiveRoutePolicy::new(audience),
+                        },
+                        handler,
+                    },
+                ));
+            }
         }
 
         for caller in &callers {
             let schema = registry.schema_for_caller(caller);
-            for index in 0..audiences.len() {
-                let name = format!("test.route{index}");
+            for (index, audience) in audiences.iter().copied().enumerate() {
+                let expected = authorize(caller, audience);
+                let call = format!("test.call{index}");
+                let stream = format!("test.stream{index}");
+                let channel = format!("test.channel{index}");
                 assert_eq!(
-                    schema.contains_key(&name),
-                    registry.route_for_caller(&name, caller).is_some(),
-                    "schema and dispatch diverged for {name}",
+                    schema.methods.get(&call).copied(),
+                    expected.then_some("call"),
+                    "unary schema diverged for {call}",
+                );
+                assert_eq!(
+                    schema.methods.get(&stream).copied(),
+                    expected.then_some("stream"),
+                    "stream schema diverged for {stream}",
+                );
+                assert_eq!(
+                    schema.channels.contains(&channel),
+                    expected,
+                    "channel schema diverged for {channel}",
+                );
+                assert_eq!(
+                    registry.host_for_caller(&call, caller).is_some(),
+                    expected,
+                    "request dispatch diverged for {call}",
+                );
+                assert_eq!(
+                    registry.host_for_caller(&call, caller).is_some(),
+                    expected,
+                    "notification dispatch diverged for {call}",
+                );
+                assert_eq!(
+                    registry.host_for_caller(&stream, caller).is_some(),
+                    expected,
+                    "stream dispatch diverged for {stream}",
+                );
+                assert_eq!(
+                    registry.channel_for_caller(&channel, caller).is_some(),
+                    expected,
+                    "channel-open dispatch diverged for {channel}",
                 );
             }
         }

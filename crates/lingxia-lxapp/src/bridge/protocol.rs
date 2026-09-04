@@ -576,6 +576,8 @@ pub(super) struct ReadyMsg {
     pub session_id: String,
     #[serde(rename = "hostMethods", skip_serializing_if = "HashMap::is_empty")]
     pub host_methods: HashMap<String, &'static str>,
+    #[serde(rename = "hostChannels", skip_serializing_if = "Vec::is_empty")]
+    pub host_channels: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -826,6 +828,26 @@ mod tests {
                 Err(V3CodecError::SecurityFieldInPayload)
             ));
         }
+    }
+
+    #[test]
+    fn ready_schema_advertises_channels_without_overloading_method_kinds() {
+        let message = ReadyMsg {
+            v: 2,
+            kind: "ready",
+            session_id: "session".to_string(),
+            host_methods: HashMap::from([
+                ("demo.call".to_string(), "call"),
+                ("demo.watch".to_string(), "stream"),
+            ]),
+            host_channels: vec!["demo.channel".to_string()],
+        };
+        let encoded = serde_json::to_value(message).expect("serialize ready schema");
+
+        assert_eq!(encoded["hostMethods"]["demo.call"], "call");
+        assert_eq!(encoded["hostMethods"]["demo.watch"], "stream");
+        assert!(encoded["hostMethods"].get("demo.channel").is_none());
+        assert_eq!(encoded["hostChannels"][0], "demo.channel");
     }
 
     #[test]

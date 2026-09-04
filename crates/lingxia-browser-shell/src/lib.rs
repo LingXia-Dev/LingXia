@@ -121,20 +121,23 @@ fn bundled_context_menu_script() -> Result<String, LxAppError> {
 
 #[doc(hidden)]
 pub fn register_runtime() {
-    lingxia_browser::install_runtime();
-    downloads::register();
-    bookmarks::register();
-    history::register();
-    privacy::register();
-    lingxia_browser::set_navigation_finished_handler(std::sync::Arc::new(|url, title| {
-        history::record_visit(url, title);
-    }));
-    lingxia_browser::set_title_changed_handler(std::sync::Arc::new(|url, title| {
-        history::update_title(url, title);
-    }));
-    #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
-    proxy::register();
-    settings::register();
+    static REGISTER: std::sync::Once = std::sync::Once::new();
+    REGISTER.call_once(|| {
+        lingxia_browser::install_runtime();
+        downloads::register();
+        bookmarks::register();
+        history::register();
+        privacy::register();
+        lingxia_browser::set_navigation_finished_handler(std::sync::Arc::new(|url, title| {
+            history::record_visit(url, title);
+        }));
+        lingxia_browser::set_title_changed_handler(std::sync::Arc::new(|url, title| {
+            history::update_title(url, title);
+        }));
+        #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
+        proxy::register();
+        settings::register();
+    });
 }
 
 #[doc(hidden)]
