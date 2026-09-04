@@ -81,7 +81,7 @@ host_api!(OpenUrl, OpenUrlOptions, (), |lxapp, options| {
 });
 
 pub(crate) fn register_all() {
-    register_host_module!("device", {
+    register_host_module!("device", crate::host::RouteAudience::AppSessionOnly, {
         "makePhoneCall" => Arc::new(MakePhoneCall),
         "openUrl" => Arc::new(OpenUrl)
     });

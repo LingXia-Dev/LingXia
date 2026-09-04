@@ -74,17 +74,53 @@ pub enum HostMethodKind {
     Stream,
 }
 
+/// The admission constraint attached to a host route.
+///
+/// This is deliberately a closed SDK enum. Future dispatch policy determines
+/// the caller set for each constraint; callers cannot select one from a bridge
+/// payload or an app manifest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RouteAudience {
+    AppSessionOnly,
+    AuthenticatedReadOnly,
+    ControlAppOnly,
+    BrowserControlOnly,
+    ControlOnly,
+}
+
+/// The admission policy resolved when a route is registered.
+///
+/// Policy evaluation is intentionally separate from registration so every
+/// route family can carry the same immutable metadata before dispatch starts
+/// using it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EffectiveRoutePolicy {
+    audience: RouteAudience,
+}
+
+impl EffectiveRoutePolicy {
+    pub const fn new(audience: RouteAudience) -> Self {
+        Self { audience }
+    }
+
+    pub const fn audience(self) -> RouteAudience {
+        self.audience
+    }
+}
+
 pub struct HostRegistration {
-    pub namespace: &'static str,
-    pub method: &'static str,
-    pub handler: Arc<dyn HostHandler>,
-    pub kind: HostMethodKind,
+    namespace: &'static str,
+    method: &'static str,
+    handler: Arc<dyn HostHandler>,
+    kind: HostMethodKind,
+    policy: EffectiveRoutePolicy,
 }
 
 impl HostRegistration {
     pub fn new(
         namespace: &'static str,
         method: &'static str,
+        audience: RouteAudience,
         handler: Arc<dyn HostHandler>,
     ) -> Self {
         Self {
@@ -92,12 +128,14 @@ impl HostRegistration {
             method,
             handler,
             kind: HostMethodKind::Call,
+            policy: EffectiveRoutePolicy::new(audience),
         }
     }
 
     pub fn stream(
         namespace: &'static str,
         method: &'static str,
+        audience: RouteAudience,
         handler: Arc<dyn HostHandler>,
     ) -> Self {
         Self {
@@ -105,7 +143,16 @@ impl HostRegistration {
             method,
             handler,
             kind: HostMethodKind::Stream,
+            policy: EffectiveRoutePolicy::new(audience),
         }
+    }
+
+    pub const fn policy(&self) -> EffectiveRoutePolicy {
+        self.policy
+    }
+
+    pub const fn audience(&self) -> RouteAudience {
+        self.policy.audience()
     }
 }
 
@@ -123,18 +170,33 @@ pub trait HostHandler: Send + Sync + 'static {
     ) -> HostFuture<'a>;
 }
 
-/// Host API registry - stores host handlers and their method kinds.
+/// One fully resolved host route in the registry.
+///
+/// Keep the handler, wire kind, and policy together: a duplicate registration
+/// must replace all three values atomically from the registry's perspective.
+struct HostRouteRecord {
+    handler: Arc<dyn HostHandler>,
+    kind: HostMethodKind,
+    // Dispatch authorization consumes this in the next phase. Keep it with the
+    // route now so registration cannot produce policy-less entries.
+    #[allow(dead_code)]
+    policy: EffectiveRoutePolicy,
+}
+
+/// Host API registry.
 struct HostRegistry {
-    handlers: HashMap<String, Arc<dyn HostHandler>>,
-    kinds: HashMap<String, HostMethodKind>,
+    routes: HashMap<String, HostRouteRecord>,
 }
 
 impl HostRegistry {
     fn new() -> Self {
         Self {
-            handlers: HashMap::new(),
-            kinds: HashMap::new(),
+            routes: HashMap::new(),
         }
+    }
+
+    fn register(&mut self, key: String, route: HostRouteRecord) {
+        self.routes.insert(key, route);
     }
 }
 
@@ -152,13 +214,24 @@ fn validate_host_namespace(namespace: &str) {
     );
 }
 
-pub fn register_host_route(namespace: &str, method: &str, handler: Arc<dyn HostHandler>) {
+pub fn register_host_route(
+    namespace: &str,
+    method: &str,
+    audience: RouteAudience,
+    handler: Arc<dyn HostHandler>,
+) {
     validate_host_namespace(namespace);
     let key = format!("{namespace}.{method}");
     let registry = get_host_registry();
     let mut reg = registry.lock().unwrap();
-    reg.kinds.insert(key.clone(), HostMethodKind::Call);
-    reg.handlers.insert(key, handler);
+    reg.register(
+        key,
+        HostRouteRecord {
+            handler,
+            kind: HostMethodKind::Call,
+            policy: EffectiveRoutePolicy::new(audience),
+        },
+    );
 }
 
 pub fn register_host(registration: HostRegistration) {
@@ -166,8 +239,14 @@ pub fn register_host(registration: HostRegistration) {
     let key = format!("{}.{}", registration.namespace, registration.method);
     let registry = get_host_registry();
     let mut reg = registry.lock().unwrap();
-    reg.kinds.insert(key.clone(), registration.kind);
-    reg.handlers.insert(key, registration.handler);
+    reg.register(
+        key,
+        HostRouteRecord {
+            handler: registration.handler,
+            kind: registration.kind,
+            policy: registration.policy,
+        },
+    );
 }
 
 /// Unified registration entry returned by the `#[native]` macro for all modes
@@ -176,6 +255,19 @@ pub fn register_host(registration: HostRegistration) {
 pub enum HostRegistrationEntry {
     Handler(HostRegistration),
     Channel(ChannelRegistration),
+}
+
+impl HostRegistrationEntry {
+    pub const fn policy(&self) -> EffectiveRoutePolicy {
+        match self {
+            Self::Handler(registration) => registration.policy(),
+            Self::Channel(registration) => registration.policy(),
+        }
+    }
+
+    pub const fn audience(&self) -> RouteAudience {
+        self.policy().audience()
+    }
 }
 
 pub fn register_host_entry(entry: HostRegistrationEntry) {
@@ -187,7 +279,12 @@ pub fn register_host_entry(entry: HostRegistrationEntry) {
 
 pub(crate) fn get_host(name: &str) -> Option<Arc<dyn HostHandler>> {
     let registry = get_host_registry();
-    registry.lock().unwrap().handlers.get(name).cloned()
+    registry
+        .lock()
+        .unwrap()
+        .routes
+        .get(name)
+        .map(|route| Arc::clone(&route.handler))
 }
 
 /// Returns a map of `"namespace.method"` → `"call"` | `"stream"` for all
@@ -196,10 +293,10 @@ pub(crate) fn get_host(name: &str) -> Option<Arc<dyn HostHandler>> {
 pub fn host_method_schema() -> HashMap<String, &'static str> {
     let registry = get_host_registry();
     let reg = registry.lock().unwrap();
-    reg.kinds
+    reg.routes
         .iter()
-        .map(|(k, v)| {
-            let kind_str = match v {
+        .map(|(k, route)| {
+            let kind_str = match route.kind {
                 HostMethodKind::Call => "call",
                 HostMethodKind::Stream => "stream",
             };
@@ -527,34 +624,56 @@ pub trait ChannelHandler: Send + Sync + 'static {
 
 /// A channel handler ready to be inserted into the global channel registry.
 pub struct ChannelRegistration {
-    pub namespace: &'static str,
-    pub method: &'static str,
-    pub handler: Arc<dyn ChannelHandler>,
+    namespace: &'static str,
+    method: &'static str,
+    handler: Arc<dyn ChannelHandler>,
+    policy: EffectiveRoutePolicy,
 }
 
 impl ChannelRegistration {
     pub fn new(
         namespace: &'static str,
         method: &'static str,
+        audience: RouteAudience,
         handler: Arc<dyn ChannelHandler>,
     ) -> Self {
         Self {
             namespace,
             method,
             handler,
+            policy: EffectiveRoutePolicy::new(audience),
         }
+    }
+
+    pub const fn policy(&self) -> EffectiveRoutePolicy {
+        self.policy
+    }
+
+    pub const fn audience(&self) -> RouteAudience {
+        self.policy.audience()
     }
 }
 
+struct ChannelRouteRecord {
+    handler: Arc<dyn ChannelHandler>,
+    // Channel admission is wired with request/notification authorization.
+    #[allow(dead_code)]
+    policy: EffectiveRoutePolicy,
+}
+
 struct ChannelRegistry {
-    handlers: HashMap<String, Arc<dyn ChannelHandler>>,
+    routes: HashMap<String, ChannelRouteRecord>,
 }
 
 impl ChannelRegistry {
     fn new() -> Self {
         Self {
-            handlers: HashMap::new(),
+            routes: HashMap::new(),
         }
+    }
+
+    fn register(&mut self, key: String, route: ChannelRouteRecord) {
+        self.routes.insert(key, route);
     }
 }
 
@@ -567,20 +686,22 @@ fn get_channel_registry() -> &'static Mutex<ChannelRegistry> {
 pub fn register_channel_handler(registration: ChannelRegistration) {
     validate_host_namespace(registration.namespace);
     let key = format!("{}.{}", registration.namespace, registration.method);
-    get_channel_registry()
-        .lock()
-        .unwrap()
-        .handlers
-        .insert(key, registration.handler);
+    get_channel_registry().lock().unwrap().register(
+        key,
+        ChannelRouteRecord {
+            handler: registration.handler,
+            policy: registration.policy,
+        },
+    );
 }
 
 pub(crate) fn get_channel_handler(name: &str) -> Option<Arc<dyn ChannelHandler>> {
     get_channel_registry()
         .lock()
         .unwrap()
-        .handlers
+        .routes
         .get(name)
-        .cloned()
+        .map(|route| Arc::clone(&route.handler))
 }
 
 /// Create a linked `(ChannelContext, ChannelContextSender, outbound_rx)` triple.
@@ -619,4 +740,101 @@ pub(crate) fn register_all() {
         navigation::register_all();
         navigator::register_all();
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestHostHandler;
+
+    impl HostHandler for TestHostHandler {
+        fn call<'a>(
+            &'a self,
+            _lxapp: Arc<LxApp>,
+            _input: Option<String>,
+            _cancel: HostCancel,
+        ) -> HostFuture<'a> {
+            Box::pin(async { Ok(HostOutput::Json("null".to_string())) })
+        }
+    }
+
+    struct TestChannelHandler;
+
+    impl ChannelHandler for TestChannelHandler {
+        fn on_open(&self, _lxapp: Arc<LxApp>, _ctx: ChannelContext, _params: Option<String>) {}
+    }
+
+    #[test]
+    fn host_route_inventory_keeps_kind_and_policy_together_on_overwrite() {
+        let mut registry = HostRegistry::new();
+        registry.register(
+            "test.route".to_string(),
+            HostRouteRecord {
+                handler: Arc::new(TestHostHandler),
+                kind: HostMethodKind::Call,
+                policy: EffectiveRoutePolicy::new(RouteAudience::AppSessionOnly),
+            },
+        );
+        registry.register(
+            "test.route".to_string(),
+            HostRouteRecord {
+                handler: Arc::new(TestHostHandler),
+                kind: HostMethodKind::Stream,
+                policy: EffectiveRoutePolicy::new(RouteAudience::ControlAppOnly),
+            },
+        );
+
+        assert_eq!(registry.routes.len(), 1);
+        let route = registry.routes.get("test.route").expect("registered route");
+        assert_eq!(route.kind, HostMethodKind::Stream);
+        assert_eq!(route.policy.audience(), RouteAudience::ControlAppOnly);
+    }
+
+    #[test]
+    fn channel_route_inventory_keeps_policy_on_overwrite() {
+        let mut registry = ChannelRegistry::new();
+        registry.register(
+            "test.channel".to_string(),
+            ChannelRouteRecord {
+                handler: Arc::new(TestChannelHandler),
+                policy: EffectiveRoutePolicy::new(RouteAudience::AppSessionOnly),
+            },
+        );
+        registry.register(
+            "test.channel".to_string(),
+            ChannelRouteRecord {
+                handler: Arc::new(TestChannelHandler),
+                policy: EffectiveRoutePolicy::new(RouteAudience::BrowserControlOnly),
+            },
+        );
+
+        assert_eq!(registry.routes.len(), 1);
+        let route = registry
+            .routes
+            .get("test.channel")
+            .expect("registered route");
+        assert_eq!(route.policy.audience(), RouteAudience::BrowserControlOnly);
+    }
+
+    #[test]
+    fn registration_entry_exposes_its_effective_policy() {
+        let handler = HostRegistrationEntry::Handler(HostRegistration::new(
+            "test",
+            "call",
+            RouteAudience::ControlAppOnly,
+            Arc::new(TestHostHandler),
+        ));
+        let channel = HostRegistrationEntry::Channel(ChannelRegistration::new(
+            "test",
+            "channel",
+            RouteAudience::ControlOnly,
+            Arc::new(TestChannelHandler),
+        ));
+
+        assert_eq!(handler.audience(), RouteAudience::ControlAppOnly);
+        assert_eq!(handler.policy().audience(), RouteAudience::ControlAppOnly);
+        assert_eq!(channel.audience(), RouteAudience::ControlOnly);
+        assert_eq!(channel.policy().audience(), RouteAudience::ControlOnly);
+    }
 }
