@@ -1880,7 +1880,7 @@ mod tests {
     #[test]
     fn renderer_crash_revokes_generation_and_rejects_stale_commit_before_reload() {
         let webtag = tag("document-process-failure");
-        let native_view_id = NativeWebViewId::new(8102);
+        let native_view_id = NativeWebViewId::new(8198);
         super::begin(&webtag, native_view_id);
         super::submit(
             &webtag,

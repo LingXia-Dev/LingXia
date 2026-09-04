@@ -60,7 +60,9 @@ use crate::{
 use async_trait::async_trait;
 
 const APPLE_INTERNAL_SCHEME: &str = "lx-apple";
+const MAX_WEB_MESSAGE_BYTES: usize = 64 * 1024;
 const MAX_PENDING_WEB_MESSAGES: usize = 1024;
+const MAX_PENDING_WEB_MESSAGE_BYTES: usize = 1024 * 1024;
 const WEB_MESSAGE_WORKER_COUNT: usize = 4;
 
 static NEXT_NATIVE_WEBVIEW_ID: AtomicU64 = AtomicU64::new(1);
@@ -85,17 +87,55 @@ struct WebMessageIngress {
 #[derive(Default)]
 struct WebMessageIngressState {
     queue: VecDeque<IncomingWebMessage>,
+    queued_bytes: usize,
     scheduled: bool,
     closed: bool,
     in_flight: bool,
+    rejection_counts: [u64; WebMessageRejectReason::COUNT],
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum WebMessageEnqueue {
     Queued,
     Schedule,
-    Full,
+    Rejected {
+        reason: WebMessageRejectReason,
+        count: u64,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WebMessageRejectReason {
+    MessageTooLarge,
+    QueueCountLimit,
+    QueueByteLimit,
     Closed,
+}
+
+impl WebMessageRejectReason {
+    const COUNT: usize = 4;
+
+    const fn index(self) -> usize {
+        match self {
+            Self::MessageTooLarge => 0,
+            Self::QueueCountLimit => 1,
+            Self::QueueByteLimit => 2,
+            Self::Closed => 3,
+        }
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::MessageTooLarge => "message_too_large",
+            Self::QueueCountLimit => "queue_count_limit",
+            Self::QueueByteLimit => "queue_byte_limit",
+            Self::Closed => "ingress_closed",
+        }
+    }
+}
+
+fn should_sample_rejection(count: u64) -> bool {
+    count == 1 || count.is_power_of_two()
 }
 
 impl WebMessageIngress {
@@ -104,12 +144,31 @@ impl WebMessageIngress {
     /// without limit; accepted messages remain FIFO.
     fn enqueue(&self, message: IncomingWebMessage) -> WebMessageEnqueue {
         let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        let message_bytes = message.body().len();
+        let reject = |state: &mut WebMessageIngressState, reason: WebMessageRejectReason| {
+            let count = &mut state.rejection_counts[reason.index()];
+            *count = count.saturating_add(1);
+            WebMessageEnqueue::Rejected {
+                reason,
+                count: *count,
+            }
+        };
+        if message_bytes > MAX_WEB_MESSAGE_BYTES {
+            return reject(&mut state, WebMessageRejectReason::MessageTooLarge);
+        }
         if state.closed {
-            return WebMessageEnqueue::Closed;
+            return reject(&mut state, WebMessageRejectReason::Closed);
         }
         if state.queue.len() >= MAX_PENDING_WEB_MESSAGES {
-            return WebMessageEnqueue::Full;
+            return reject(&mut state, WebMessageRejectReason::QueueCountLimit);
         }
+        let Some(next_bytes) = state.queued_bytes.checked_add(message_bytes) else {
+            return reject(&mut state, WebMessageRejectReason::QueueByteLimit);
+        };
+        if next_bytes > MAX_PENDING_WEB_MESSAGE_BYTES {
+            return reject(&mut state, WebMessageRejectReason::QueueByteLimit);
+        }
+        state.queued_bytes = next_bytes;
         state.queue.push_back(message);
         if state.scheduled {
             WebMessageEnqueue::Queued
@@ -129,6 +188,7 @@ impl WebMessageIngress {
         let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
         state.closed = true;
         state.queue.clear();
+        state.queued_bytes = 0;
         if !state.in_flight {
             state.scheduled = false;
         }
@@ -145,6 +205,10 @@ impl WebMessageIngress {
         }
         match state.queue.pop_front() {
             Some(message) => {
+                state.queued_bytes = state
+                    .queued_bytes
+                    .checked_sub(message.body().len())
+                    .expect("queued WebView message byte ledger underflow");
                 state.in_flight = true;
                 Some(message)
             }
@@ -159,6 +223,22 @@ impl WebMessageIngress {
         let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
         debug_assert!(state.in_flight);
         state.in_flight = false;
+    }
+
+    #[cfg(test)]
+    fn queued_bytes(&self) -> usize {
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .queued_bytes
+    }
+
+    #[cfg(test)]
+    fn rejection_count(&self, reason: WebMessageRejectReason) -> u64 {
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .rejection_counts[reason.index()]
     }
 
     fn drain<F>(&self, mut deliver: F)
@@ -1211,18 +1291,15 @@ impl WebView {
             .enqueue(IncomingWebMessage::new(body, context))
         {
             WebMessageEnqueue::Queued => return,
-            WebMessageEnqueue::Closed => {
-                log::debug!(
-                    "Dropping WebView message after ingress closure ({})",
-                    self.webtag()
-                );
-                return;
-            }
-            WebMessageEnqueue::Full => {
-                log::warn!(
-                    "Dropping WebView message because its ingress queue is full ({})",
-                    self.webtag()
-                );
+            WebMessageEnqueue::Rejected { reason, count } => {
+                if should_sample_rejection(count) {
+                    log::warn!(
+                        "Dropping WebView message reason={} count={} ({})",
+                        reason.as_str(),
+                        count,
+                        self.webtag()
+                    );
+                }
                 return;
             }
             WebMessageEnqueue::Schedule => {}
@@ -3032,10 +3109,11 @@ pub(crate) fn destroy_current_webview(webtag: &WebTag) {
 #[cfg(test)]
 mod tests {
     use super::{
-        MAX_PENDING_WEB_MESSAGES, WEBVIEW_SESSIONS, WebMessageEnqueue, WebMessageIngress, WebTag,
+        MAX_PENDING_WEB_MESSAGE_BYTES, MAX_PENDING_WEB_MESSAGES, MAX_WEB_MESSAGE_BYTES,
+        WEBVIEW_SESSIONS, WebMessageEnqueue, WebMessageIngress, WebMessageRejectReason, WebTag,
         WebViewCreateOptions, WebViewCreateSender, WebViewSessionSignals, block_on_scheme_future,
         next_native_webview_id, remove_arc_if_matches, remove_session_signals_if_matches,
-        replace_session_signals, snapshot_web_message_context,
+        replace_session_signals, should_sample_rejection, snapshot_web_message_context,
     };
     use crate::{
         ContextualSchemeRequest, DocumentBinding, IncomingWebMessage, NativeWebViewId,
@@ -3204,7 +3282,10 @@ mod tests {
         }
         assert_eq!(
             ingress.enqueue(message("overflow", native_view)),
-            WebMessageEnqueue::Full
+            WebMessageEnqueue::Rejected {
+                reason: WebMessageRejectReason::QueueCountLimit,
+                count: 1,
+            }
         );
 
         let mut accepted = Vec::new();
@@ -3216,6 +3297,89 @@ mod tests {
         assert_eq!(accepted.first().map(String::as_str), Some("0"));
         let last = (MAX_PENDING_WEB_MESSAGES - 1).to_string();
         assert_eq!(accepted.last().map(String::as_str), Some(last.as_str()));
+    }
+
+    #[test]
+    fn message_ingress_rejects_an_oversized_message_before_queueing() {
+        let ingress = WebMessageIngress::default();
+        let native_view = next_native_webview_id();
+        let oversized = "x".repeat(MAX_WEB_MESSAGE_BYTES + 1);
+
+        assert_eq!(
+            ingress.enqueue(message(&oversized, native_view)),
+            WebMessageEnqueue::Rejected {
+                reason: WebMessageRejectReason::MessageTooLarge,
+                count: 1,
+            }
+        );
+        assert_eq!(ingress.queued_bytes(), 0);
+        assert!(ingress.begin_delivery().is_none());
+    }
+
+    #[test]
+    fn message_ingress_byte_budget_is_released_on_delivery_and_close() {
+        let ingress = WebMessageIngress::default();
+        let native_view = next_native_webview_id();
+        let chunk = "x".repeat(MAX_WEB_MESSAGE_BYTES);
+        let accepted = MAX_PENDING_WEB_MESSAGE_BYTES / MAX_WEB_MESSAGE_BYTES;
+
+        for index in 0..accepted {
+            assert_eq!(
+                ingress.enqueue(message(&chunk, native_view)),
+                if index == 0 {
+                    WebMessageEnqueue::Schedule
+                } else {
+                    WebMessageEnqueue::Queued
+                }
+            );
+        }
+        assert_eq!(ingress.queued_bytes(), MAX_PENDING_WEB_MESSAGE_BYTES);
+        assert_eq!(
+            ingress.enqueue(message("overflow", native_view)),
+            WebMessageEnqueue::Rejected {
+                reason: WebMessageRejectReason::QueueByteLimit,
+                count: 1,
+            }
+        );
+
+        let first = ingress.begin_delivery().expect("first queued message");
+        assert_eq!(first.body().len(), MAX_WEB_MESSAGE_BYTES);
+        assert_eq!(
+            ingress.queued_bytes(),
+            MAX_PENDING_WEB_MESSAGE_BYTES - MAX_WEB_MESSAGE_BYTES
+        );
+        ingress.finish_delivery();
+        assert_eq!(
+            ingress.enqueue(message(&chunk, native_view)),
+            WebMessageEnqueue::Queued
+        );
+        ingress.close();
+        assert_eq!(ingress.queued_bytes(), 0);
+        assert!(ingress.begin_delivery().is_none());
+    }
+
+    #[test]
+    fn ingress_rejection_counters_are_reason_coded_and_logs_are_sampled() {
+        let ingress = WebMessageIngress::default();
+        let native_view = next_native_webview_id();
+        let oversized = "x".repeat(MAX_WEB_MESSAGE_BYTES + 1);
+        for expected_count in 1..=3 {
+            assert_eq!(
+                ingress.enqueue(message(&oversized, native_view)),
+                WebMessageEnqueue::Rejected {
+                    reason: WebMessageRejectReason::MessageTooLarge,
+                    count: expected_count,
+                }
+            );
+        }
+        assert_eq!(
+            ingress.rejection_count(WebMessageRejectReason::MessageTooLarge),
+            3
+        );
+        assert!(should_sample_rejection(1));
+        assert!(should_sample_rejection(2));
+        assert!(!should_sample_rejection(3));
+        assert!(should_sample_rejection(4));
     }
 
     #[test]
@@ -3290,7 +3454,10 @@ mod tests {
             ingress_for_delivery.close();
             assert_eq!(
                 ingress_for_delivery.enqueue(message("after-close", native_view)),
-                WebMessageEnqueue::Closed
+                WebMessageEnqueue::Rejected {
+                    reason: WebMessageRejectReason::Closed,
+                    count: 1,
+                }
             );
         });
 
@@ -3314,7 +3481,10 @@ mod tests {
         assert!(ingress.begin_delivery().is_none());
         assert_eq!(
             ingress.enqueue(message("late", native_view)),
-            WebMessageEnqueue::Closed
+            WebMessageEnqueue::Rejected {
+                reason: WebMessageRejectReason::Closed,
+                count: 1,
+            }
         );
     }
 

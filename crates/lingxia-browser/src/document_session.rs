@@ -3,6 +3,7 @@
 //! Native evidence reaches `BootstrapPending` only. A later V3 hello must
 //! authenticate its native-generated binding before the document is `Active`.
 
+use crate::inbound::BrowserInboundRejectReason;
 use crate::internal_pages::InternalPageTarget;
 use lingxia_webview::{
     DocumentBinding, DocumentGeneration, DocumentOutboundGate, NativeWebViewId, NavigationId,
@@ -129,7 +130,8 @@ impl PendingDocumentLease {
             || *intent != self.intent
             || *navigation_id != self.navigation_id
             || *generation != self.generation
-            || !BrowserDocumentSessions::context_matches(context, self.native_view, self.generation)
+            || BrowserDocumentSessions::validate_context(context, self.native_view, self.generation)
+                .is_err()
         {
             return false;
         }
@@ -628,22 +630,65 @@ impl Default for BrowserDocumentSessions {
 }
 
 impl BrowserDocumentSessions {
-    fn required_v3_transport(transport: WebMessageTransport) -> bool {
-        matches!(
-            transport,
-            WebMessageTransport::AppleScriptMessage | WebMessageTransport::WindowsWebMessage
-        )
-    }
-
-    fn context_matches(
+    fn validate_context(
         context: &WebMessageContext,
         native_view: NativeWebViewId,
         generation: DocumentGeneration,
-    ) -> bool {
-        context.native_view() == native_view
-            && context.document() == DocumentBinding::Bound(generation)
-            && context.frame() == WebMessageFrame::TopLevel
-            && Self::required_v3_transport(context.transport())
+    ) -> Result<(), BrowserInboundRejectReason> {
+        Self::validate_context_evidence(
+            context.native_view(),
+            context.document(),
+            context.frame(),
+            context.transport(),
+            native_view,
+            generation,
+        )
+    }
+
+    fn validate_context_evidence(
+        actual_native_view: NativeWebViewId,
+        document: DocumentBinding,
+        frame: WebMessageFrame,
+        transport: WebMessageTransport,
+        expected_native_view: NativeWebViewId,
+        expected_generation: DocumentGeneration,
+    ) -> Result<(), BrowserInboundRejectReason> {
+        if actual_native_view != expected_native_view {
+            return Err(BrowserInboundRejectReason::WrongNativeView);
+        }
+        match transport {
+            WebMessageTransport::AndroidJavascriptInterface => {
+                return Err(BrowserInboundRejectReason::AndroidLegacyDegraded);
+            }
+            WebMessageTransport::AppleScriptMessage | WebMessageTransport::WindowsWebMessage => {}
+            WebMessageTransport::AndroidMessagePort
+            | WebMessageTransport::HarmonyMessagePort
+            | WebMessageTransport::Other => {
+                return Err(BrowserInboundRejectReason::UnsupportedTransport);
+            }
+        }
+        match frame {
+            WebMessageFrame::TopLevel => {}
+            WebMessageFrame::Subframe => return Err(BrowserInboundRejectReason::ChildFrame),
+            WebMessageFrame::Unproven => {
+                return Err(BrowserInboundRejectReason::UnprovenFrame);
+            }
+        }
+        if document != DocumentBinding::Bound(expected_generation) {
+            return Err(BrowserInboundRejectReason::StaleGeneration);
+        }
+        Ok(())
+    }
+
+    fn validate_binding(
+        material: &impl SessionMaterial,
+        session_id: &str,
+        secret: &str,
+    ) -> Result<(), BrowserInboundRejectReason> {
+        material
+            .matches(session_id, secret)
+            .then_some(())
+            .ok_or(BrowserInboundRejectReason::WrongBinding)
     }
     pub(crate) fn prepare(
         &self,
@@ -769,11 +814,12 @@ impl BrowserDocumentSessions {
         secret: &str,
         mut bind: impl FnMut(ControlDocumentAuthority, Arc<dyn DocumentOutboundGate>) -> bool,
         prepare: impl FnOnce(ControlDocumentAuthority) -> Option<T>,
-    ) -> Option<T> {
+    ) -> Result<Option<T>, BrowserInboundRejectReason> {
         let native_view = context.native_view();
-        let Ok(mut sessions) = self.inner.lock() else {
-            return None;
-        };
+        let mut sessions = self
+            .inner
+            .lock()
+            .map_err(|_| BrowserInboundRejectReason::SessionNotReady)?;
 
         let pending = match sessions.sessions.get(&native_view) {
             Some(DocumentSessionState::BootstrapPending {
@@ -784,7 +830,8 @@ impl BrowserDocumentSessions {
                 navigation_id,
                 generation,
                 material,
-            }) if Self::context_matches(context, native_view, *generation) => {
+            }) => {
+                Self::validate_context(context, native_view, *generation)?;
                 Some(PendingDocumentLease {
                     registry: Arc::downgrade(&self.inner),
                     native_view,
@@ -797,29 +844,33 @@ impl BrowserDocumentSessions {
                     authority: material.clone(),
                 })
             }
-            Some(DocumentSessionState::Active { generation, .. })
-                if Self::context_matches(context, native_view, *generation) =>
-            {
+            Some(DocumentSessionState::Active {
+                generation,
+                material,
+                ..
+            }) => {
+                Self::validate_context(context, native_view, *generation)?;
+                Self::validate_binding(material, session_id, secret)?;
                 None
             }
-            _ => return None,
+            _ => return Err(BrowserInboundRejectReason::SessionNotReady),
         };
 
         if let Some(pending) = pending {
             // Authenticate before installing a RequiredV3 protocol. An
             // attacker cannot use a wrong hello to replace a live bridge
             // connection or poison BootstrapPending with a foreign binding.
-            if !pending.authority.matches(session_id, secret) {
-                return None;
-            }
+            Self::validate_binding(&pending.authority, session_id, secret)?;
             let gate: Arc<dyn DocumentOutboundGate> = Arc::new(pending.clone());
             if !bind(pending.authority(), gate) {
-                return None;
+                return Err(BrowserInboundRejectReason::SessionNotReady);
             }
         }
 
-        let active = sessions.activate_hello(native_view, session_id, secret)?;
-        prepare(active.material)
+        let Some(active) = sessions.activate_hello(native_view, session_id, secret) else {
+            return Err(BrowserInboundRejectReason::SessionNotReady);
+        };
+        Ok(prepare(active.material))
     }
 
     /// Runs a non-hello V3 frame while its exact document remains Active.
@@ -831,25 +882,33 @@ impl BrowserDocumentSessions {
         session_id: &str,
         secret: &str,
         prepare: impl FnOnce(ControlDocumentAuthority) -> Option<T>,
-    ) -> Option<T> {
+    ) -> Result<Option<T>, BrowserInboundRejectReason> {
+        self.with_active_bound_context(context, session_id, secret, prepare)
+    }
+
+    pub(crate) fn with_active_bound_context<T>(
+        &self,
+        context: &WebMessageContext,
+        session_id: &str,
+        secret: &str,
+        action: impl FnOnce(ControlDocumentAuthority) -> Option<T>,
+    ) -> Result<Option<T>, BrowserInboundRejectReason> {
         let native_view = context.native_view();
-        let Ok(sessions) = self.inner.lock() else {
-            return None;
-        };
+        let sessions = self
+            .inner
+            .lock()
+            .map_err(|_| BrowserInboundRejectReason::SessionNotReady)?;
         let Some(DocumentSessionState::Active {
             generation,
             material,
             ..
         }) = sessions.sessions.get(&native_view)
         else {
-            return None;
+            return Err(BrowserInboundRejectReason::SessionNotReady);
         };
-        if !Self::context_matches(context, native_view, *generation)
-            || !material.matches(session_id, secret)
-        {
-            return None;
-        }
-        prepare(material.clone())
+        Self::validate_context(context, native_view, *generation)?;
+        Self::validate_binding(material, session_id, secret)?;
+        Ok(action(material.clone()))
     }
 
     /// Exact-lease helper retained for registry tests and diagnostics.
@@ -1025,16 +1084,71 @@ mod tests {
     }
 
     #[test]
-    fn required_v3_accepts_only_document_bound_platform_transports() {
-        assert!(BrowserDocumentSessions::required_v3_transport(
-            WebMessageTransport::AppleScriptMessage
-        ));
-        assert!(BrowserDocumentSessions::required_v3_transport(
-            WebMessageTransport::WindowsWebMessage
-        ));
-        assert!(!BrowserDocumentSessions::required_v3_transport(
-            WebMessageTransport::Other
-        ));
+    fn required_v3_rejection_reasons_distinguish_stale_frame_and_android_degradation() {
+        let native = NativeWebViewId::for_test(10);
+        let generation = DocumentGeneration::for_test(3);
+        let validate = |document, frame, transport| {
+            BrowserDocumentSessions::validate_context_evidence(
+                native, document, frame, transport, native, generation,
+            )
+        };
+        assert!(
+            validate(
+                DocumentBinding::Bound(generation),
+                WebMessageFrame::TopLevel,
+                WebMessageTransport::WindowsWebMessage,
+            )
+            .is_ok()
+        );
+        assert_eq!(
+            validate(
+                DocumentBinding::Bound(DocumentGeneration::for_test(2)),
+                WebMessageFrame::TopLevel,
+                WebMessageTransport::WindowsWebMessage,
+            ),
+            Err(BrowserInboundRejectReason::StaleGeneration)
+        );
+        assert_eq!(
+            validate(
+                DocumentBinding::Bound(generation),
+                WebMessageFrame::Subframe,
+                WebMessageTransport::WindowsWebMessage,
+            ),
+            Err(BrowserInboundRejectReason::ChildFrame)
+        );
+        assert_eq!(
+            validate(
+                DocumentBinding::Unbound,
+                WebMessageFrame::Unproven,
+                WebMessageTransport::AndroidJavascriptInterface,
+            ),
+            Err(BrowserInboundRejectReason::AndroidLegacyDegraded)
+        );
+        assert_eq!(
+            BrowserInboundRejectReason::AndroidLegacyDegraded.as_str(),
+            "android_21_22_unproven_transport"
+        );
+    }
+
+    #[test]
+    fn required_v3_binding_mismatch_has_a_stable_reason() {
+        let material = TestMaterial("expected-session", "expected-secret");
+        assert!(
+            BrowserDocumentSessions::validate_binding(
+                &material,
+                "expected-session",
+                "expected-secret"
+            )
+            .is_ok()
+        );
+        assert_eq!(
+            BrowserDocumentSessions::validate_binding(
+                &material,
+                "expected-session",
+                "wrong-secret"
+            ),
+            Err(BrowserInboundRejectReason::WrongBinding)
+        );
     }
 
     #[test]
