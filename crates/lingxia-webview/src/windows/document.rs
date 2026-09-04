@@ -4,6 +4,20 @@ use crate::TrustedLoadIntent;
 use crate::events::normalizer::NativeKey;
 use std::sync::Mutex;
 
+/// Whether a WebView2 source callback is evidence of a restored document that
+/// bypassed the normal navigation-start invalidation path.
+///
+/// `HistoryChanged` cannot make this decision: it also fires for same-document
+/// history mutations. `SourceChanged.IsNewDocument` is the defensive evidence,
+/// while the shared binding tells us whether `NavigationStarting` already
+/// revoked the preceding document.
+pub(super) fn source_change_requires_reproof(
+    is_new_document: bool,
+    preceding_document_is_still_bound: bool,
+) -> bool {
+    is_new_document && preceding_document_is_still_bound
+}
+
 enum TrustedLoadCorrelation {
     Pending {
         intent: TrustedLoadIntent,
@@ -217,5 +231,23 @@ mod tests {
         assert!(!authority.revoke_if_matches(intent(4)));
         assert!(authority.revoke_pending() == Some(intent(5)));
         assert!(authority.revoke_pending().is_none());
+    }
+
+    #[test]
+    fn new_document_without_navigation_evidence_requires_reproof() {
+        assert!(source_change_requires_reproof(true, true));
+    }
+
+    #[test]
+    fn navigation_start_invalidates_before_new_document_source_change() {
+        assert!(!source_change_requires_reproof(true, false));
+    }
+
+    #[test]
+    fn same_document_history_changes_never_revoke_authority() {
+        // pushState/replaceState and fragment navigation may emit source and
+        // history callbacks without creating a new document.
+        assert!(!source_change_requires_reproof(false, true));
+        assert!(!source_change_requires_reproof(false, false));
     }
 }

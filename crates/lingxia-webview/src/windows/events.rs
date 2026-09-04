@@ -291,13 +291,42 @@ pub(crate) fn register_event_handlers(
         let mut token = 0;
         webview
             .add_SourceChanged(
-                &SourceChangedEventHandler::create(Box::new(move |sender, _args| {
-                    let Some(sender) = sender else {
+                &SourceChangedEventHandler::create(Box::new(move |sender, args| {
+                    let (Some(sender), Some(args)) = (sender, args) else {
+                        return Ok(());
+                    };
+                    let Some(webview) =
+                        current_native_callback_webview(&source_tag, source_native_view_id)
+                    else {
                         return Ok(());
                     };
                     let mut source = PWSTR::null();
                     sender.Source(&mut source)?;
                     let source = CoTaskMemPWSTR::from(source).to_string();
+                    let mut is_new_document = BOOL::default();
+                    args.IsNewDocument(&mut is_new_document)?;
+
+                    // WebView2 does not give SourceChanged a NavigationId. A
+                    // normal top-level navigation has already invalidated the
+                    // old binding in NavigationStarting. If IsNewDocument is
+                    // true while that binding remains active, fail closed: a
+                    // history/BFCache restore crossed a document boundary
+                    // without the callbacks needed to prove fresh authority.
+                    // IsNewDocument=false is intentionally location-only so
+                    // pushState, replaceState, and fragment changes survive.
+                    if document::source_change_requires_reproof(
+                        is_new_document.as_bool(),
+                        matches!(
+                            webview.current_document_binding(),
+                            crate::DocumentBinding::Bound(_)
+                        ),
+                    ) && normalizer::invalidate_restored_document(
+                        &source_tag,
+                        source_native_view_id,
+                    ) && let Some(delegate) = webview.get_delegate()
+                    {
+                        delegate.on_document_restored(source_native_view_id, &source);
+                    }
                     normalizer::submit(
                         &source_tag,
                         source_native_view_id,
@@ -324,6 +353,9 @@ pub(crate) fn register_event_handlers(
                     let mut can_forward = BOOL::default();
                     sender.CanGoBack(&mut can_back)?;
                     sender.CanGoForward(&mut can_forward)?;
+                    // HistoryChanged has no document or navigation identity
+                    // and also follows pushState. It updates UI state only;
+                    // SourceChanged.IsNewDocument owns defensive reproof.
                     normalizer::submit(
                         &history_tag,
                         history_native_view_id,
@@ -712,33 +744,6 @@ pub(crate) fn register_event_handlers(
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn native_callback_identity_rejects_a_reused_tag() {
-        let retired = NativeWebViewId::new(1);
-        let replacement = NativeWebViewId::new(2);
-
-        assert!(!native_callback_identity_matches(retired, replacement));
-        assert!(native_callback_identity_matches(replacement, replacement));
-    }
-
-    #[test]
-    fn windows_message_source_is_retained_for_diagnostics_only() {
-        let source = windows_message_source("https://example.test/frame".to_string());
-        assert_eq!(source.reported_url(), Some("https://example.test/frame"));
-        assert_eq!(source.reported_origin(), None);
-    }
-
-    #[test]
-    fn webview2_main_and_frame_message_events_remain_distinct() {
-        assert_eq!(windows_web_message_frame(true), WebMessageFrame::TopLevel);
-        assert_eq!(windows_web_message_frame(false), WebMessageFrame::Subframe);
-    }
-}
-
 pub(crate) fn download_request_from_operation(
     operation: &ICoreWebView2DownloadOperation,
 ) -> WinResult<DownloadRequest> {
@@ -785,4 +790,31 @@ pub(crate) fn take_request_string(
     let mut value = PWSTR::null();
     getter(&mut value)?;
     Ok(CoTaskMemPWSTR::from(value).to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_callback_identity_rejects_a_reused_tag() {
+        let retired = NativeWebViewId::new(1);
+        let replacement = NativeWebViewId::new(2);
+
+        assert!(!native_callback_identity_matches(retired, replacement));
+        assert!(native_callback_identity_matches(replacement, replacement));
+    }
+
+    #[test]
+    fn windows_message_source_is_retained_for_diagnostics_only() {
+        let source = windows_message_source("https://example.test/frame".to_string());
+        assert_eq!(source.reported_url(), Some("https://example.test/frame"));
+        assert_eq!(source.reported_origin(), None);
+    }
+
+    #[test]
+    fn webview2_main_and_frame_message_events_remain_distinct() {
+        assert_eq!(windows_web_message_frame(true), WebMessageFrame::TopLevel);
+        assert_eq!(windows_web_message_frame(false), WebMessageFrame::Subframe);
+    }
 }
