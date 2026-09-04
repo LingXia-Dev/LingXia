@@ -1013,6 +1013,13 @@ pub struct TrustedDataLoadReservation<'a> {
     intent: Option<TrustedLoadIntent>,
 }
 
+enum TrustedDataLoadEvidence {
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    NativeKey(crate::events::normalizer::NativeKey),
+    #[cfg(target_os = "windows")]
+    PlatformAttested,
+}
+
 impl TrustedDataLoadReservation<'_> {
     /// The opaque token to register before initiating the native load.
     pub fn intent(&self) -> TrustedLoadIntent {
@@ -1026,8 +1033,8 @@ impl TrustedDataLoadReservation<'_> {
             .intent
             .take()
             .expect("trusted data load reservation must be consumed once");
-        let key = match self.webview.load_trusted_data_on_platform(request) {
-            Ok(key) => key,
+        let evidence = match self.webview.load_trusted_data_on_platform(intent, request) {
+            Ok(evidence) => evidence,
             Err(error) => {
                 crate::events::normalizer::revoke_trusted_load(
                     &self.webtag,
@@ -1038,12 +1045,20 @@ impl TrustedDataLoadReservation<'_> {
             }
         };
 
-        if crate::events::normalizer::attest_trusted_load(
-            &self.webtag,
-            self.native_view_id,
-            intent,
-            key,
-        ) {
+        let attested = match evidence {
+            #[cfg(any(target_os = "ios", target_os = "macos"))]
+            TrustedDataLoadEvidence::NativeKey(key) => {
+                crate::events::normalizer::attest_trusted_load(
+                    &self.webtag,
+                    self.native_view_id,
+                    intent,
+                    key,
+                )
+            }
+            #[cfg(target_os = "windows")]
+            TrustedDataLoadEvidence::PlatformAttested => true,
+        };
+        if attested {
             Ok(intent)
         } else {
             // A destroy/recreate or concurrent later direct load won between
@@ -1149,16 +1164,30 @@ impl WebView {
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     fn load_trusted_data_on_platform(
         &self,
+        _intent: TrustedLoadIntent,
         request: LoadDataRequest<'_>,
-    ) -> Result<crate::events::normalizer::NativeKey, WebViewError> {
-        self.inner.load_trusted_data(request)
+    ) -> Result<TrustedDataLoadEvidence, WebViewError> {
+        self.inner
+            .load_trusted_data(request)
+            .map(TrustedDataLoadEvidence::NativeKey)
     }
 
-    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+    #[cfg(target_os = "windows")]
     fn load_trusted_data_on_platform(
         &self,
+        intent: TrustedLoadIntent,
+        request: LoadDataRequest<'_>,
+    ) -> Result<TrustedDataLoadEvidence, WebViewError> {
+        self.inner.load_trusted_data(intent, request)?;
+        Ok(TrustedDataLoadEvidence::PlatformAttested)
+    }
+
+    #[cfg(not(any(target_os = "ios", target_os = "macos", target_os = "windows")))]
+    fn load_trusted_data_on_platform(
+        &self,
+        _intent: TrustedLoadIntent,
         _request: LoadDataRequest<'_>,
-    ) -> Result<crate::events::normalizer::NativeKey, WebViewError> {
+    ) -> Result<TrustedDataLoadEvidence, WebViewError> {
         Err(WebViewError::Unsupported(
             "trusted direct HTML loads require a platform navigation key".to_string(),
         ))

@@ -56,6 +56,9 @@ pub(crate) enum NativeSignal {
         can_go_back: bool,
         can_go_forward: bool,
     },
+    /// The renderer/document disappeared while the native WebView remains
+    /// reusable (for example a WebView2 render-process failure).
+    DocumentInvalidated,
     Destroyed,
 }
 
@@ -955,7 +958,7 @@ impl EventNormalizer {
                 can_go_back,
                 can_go_forward,
             } => state.coalescer.back_forward(can_go_back, can_go_forward),
-            NativeSignal::Destroyed => {
+            NativeSignal::DocumentInvalidated | NativeSignal::Destroyed => {
                 state.documents.destroyed();
                 state.trusted_load.clear();
                 state.tracker.drain_destroyed()
@@ -1875,6 +1878,61 @@ mod tests {
     }
 
     #[test]
+    fn renderer_crash_revokes_generation_and_rejects_stale_commit_before_reload() {
+        let webtag = tag("document-process-failure");
+        let native_view_id = NativeWebViewId::new(8102);
+        super::begin(&webtag, native_view_id);
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(61),
+                url: "lingxia://settings".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(61) },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Bound(DocumentGeneration::new(1))
+        );
+
+        super::submit(&webtag, native_view_id, NativeSignal::DocumentInvalidated);
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(61) },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+
+        // A host reload must establish a fresh navigation and generation.
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(62),
+                url: "lingxia://settings".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(62) },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Bound(DocumentGeneration::new(2))
+        );
+        destroy(&webtag);
+    }
+
+    #[test]
     fn document_bound_action_linearizes_before_navigation_start() {
         use std::sync::mpsc::{self, RecvTimeoutError};
         use std::time::Duration;
@@ -1940,6 +1998,45 @@ mod tests {
             current_document_binding(native_view_id),
             DocumentBinding::Unbound
         );
+        destroy(&webtag);
+    }
+
+    #[test]
+    fn queued_outbound_for_stale_generation_is_dropped_after_reload_start() {
+        let webtag = tag("queued-stale-outbound");
+        let native_view_id = NativeWebViewId::new(8200);
+        super::begin(&webtag, native_view_id);
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(71),
+                url: "lingxia://settings".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(71) },
+        );
+        let queued_generation = DocumentGeneration::new(1);
+
+        // The UI-thread delivery has not happened yet when reload starts.
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(72),
+                url: "lingxia://settings".into(),
+            },
+        );
+        let mut delivered = false;
+        assert!(!with_current_document_binding(
+            native_view_id,
+            queued_generation,
+            &mut || delivered = true,
+        ));
+        assert!(!delivered);
         destroy(&webtag);
     }
 

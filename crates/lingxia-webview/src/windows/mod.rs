@@ -53,6 +53,7 @@ mod composition;
 mod console;
 mod controller;
 pub(crate) mod data_store;
+mod document;
 mod environment;
 mod events;
 #[cfg(feature = "webview-input")]

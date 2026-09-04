@@ -628,6 +628,13 @@ impl Default for BrowserDocumentSessions {
 }
 
 impl BrowserDocumentSessions {
+    fn required_v3_transport(transport: WebMessageTransport) -> bool {
+        matches!(
+            transport,
+            WebMessageTransport::AppleScriptMessage | WebMessageTransport::WindowsWebMessage
+        )
+    }
+
     fn context_matches(
         context: &WebMessageContext,
         native_view: NativeWebViewId,
@@ -636,7 +643,7 @@ impl BrowserDocumentSessions {
         context.native_view() == native_view
             && context.document() == DocumentBinding::Bound(generation)
             && context.frame() == WebMessageFrame::TopLevel
-            && context.transport() == WebMessageTransport::AppleScriptMessage
+            && Self::required_v3_transport(context.transport())
     }
     pub(crate) fn prepare(
         &self,
@@ -1015,6 +1022,19 @@ mod tests {
             intent,
             TestMaterial("session-id-012345", "secret"),
         );
+    }
+
+    #[test]
+    fn required_v3_accepts_only_document_bound_platform_transports() {
+        assert!(BrowserDocumentSessions::required_v3_transport(
+            WebMessageTransport::AppleScriptMessage
+        ));
+        assert!(BrowserDocumentSessions::required_v3_transport(
+            WebMessageTransport::WindowsWebMessage
+        ));
+        assert!(!BrowserDocumentSessions::required_v3_transport(
+            WebMessageTransport::Other
+        ));
     }
 
     #[test]
