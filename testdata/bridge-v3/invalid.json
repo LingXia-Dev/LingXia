@@ -1,0 +1,43 @@
+{
+  "documentToNative": [
+    {"frame":"{\"v\":3,\"v\":3,\"kind\":\"req\",\"sessionId\":\"v3-session\",\"secret\":\"x\"}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"v\":3,\"kind\":\"req\",\"kind\":\"req\",\"sessionId\":\"v3-session\",\"secret\":\"x\"}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"v\":3,\"kind\":\"req\",\"sessionId\":\"v3-session\",\"sessionId\":\"other\",\"secret\":\"x\"}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"v\":3,\"kind\":\"req\",\"sessionId\":\"v3-session\",\"secret\":\"x\",\"secret\":\"other\"}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"\\u0076\":3,\"v\":3,\"kind\":\"req\",\"sessionId\":\"v3-session\",\"secret\":\"x\"}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"[]","error":"MALFORMED_ENVELOPE"},
+    {"frame":"null","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"v\":3,\"kind\":\"req\",\"sessionId\":\"\",\"secret\":\"x\"}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"v\":3,\"kind\":\"req\",\"sessionId\":3,\"secret\":\"x\"}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"v\":3,\"kind\":\"req\",\"sessionId\":\"v3-session\",\"secret\":\"\"}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"v\":3,\"kind\":\"req\",\"sessionId\":\"v3-session\",\"secret\":3}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"v\":2,\"kind\":\"req\",\"sessionId\":\"v3-session\",\"secret\":\"x\"}","error":"UNSUPPORTED_VERSION"},
+    {"frame":"{\"v\":3,\"kind\":\"unknown\",\"sessionId\":\"v3-session\",\"secret\":\"x\"}","error":"UNSUPPORTED_INBOUND_KIND"}
+  ],
+  "nativeToDocument": [
+    {"frame":"{\"v\":3,\"v\":3,\"kind\":\"ready\",\"sessionId\":\"v3-session\"}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"v\":3,\"kind\":\"ready\",\"kind\":\"ready\",\"sessionId\":\"v3-session\"}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"v\":3,\"kind\":\"ready\",\"sessionId\":\"v3-session\",\"sessionId\":\"other\"}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"v\":3,\"kind\":\"ready\",\"sessionId\":\"v3-session\",\"secret\":\"x\",\"secret\":\"other\"}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"\\u0076\":3,\"v\":3,\"kind\":\"ready\",\"sessionId\":\"v3-session\"}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"[]","error":"MALFORMED_ENVELOPE"},
+    {"frame":"null","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"v\":2,\"kind\":\"ready\",\"sessionId\":\"v3-session\"}","error":"UNSUPPORTED_VERSION"},
+    {"frame":"{\"v\":3,\"kind\":\"unknown\",\"sessionId\":\"v3-session\"}","error":"UNSUPPORTED_NATIVE_KIND"},
+    {"frame":"{\"v\":3,\"kind\":\"ready\",\"sessionId\":\"\"}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"v\":3,\"kind\":\"ready\",\"sessionId\":3}","error":"MALFORMED_ENVELOPE"},
+    {"frame":"{\"v\":3,\"kind\":\"ready\",\"sessionId\":\"other\"}","error":"SESSION_MISMATCH"},
+    {"frame":"{\"v\":3,\"kind\":\"ready\",\"sessionId\":\"v3-session\",\"secret\":\"x\"}","error":"UNEXPECTED_SECRET"}
+  ],
+  "documentBindings": [
+    {"binding":null,"error":"INVALID_DOCUMENT_BINDING"},
+    {"binding":{"sessionId":"","secret":"x"},"error":"INVALID_DOCUMENT_BINDING"},
+    {"binding":{"sessionId":3,"secret":"x"},"error":"INVALID_DOCUMENT_BINDING"},
+    {"binding":{"sessionId":"v3-session","secret":""},"error":"INVALID_DOCUMENT_BINDING"},
+    {"binding":{"sessionId":"v3-session","secret":3},"error":"INVALID_DOCUMENT_BINDING"}
+  ],
+  "nestedSecurityKeysAreNotTopLevelDuplicates": {
+    "documentToNative": "{\"v\":3,\"kind\":\"req\",\"sessionId\":\"v3-session\",\"secret\":\"x\",\"params\":{\"secret\":\"one\",\"secret\":\"two\"}}",
+    "nativeToDocument": "{\"v\":3,\"kind\":\"ready\",\"sessionId\":\"v3-session\",\"payload\":{\"secret\":\"one\",\"secret\":\"two\"}}"
+  }
+}
