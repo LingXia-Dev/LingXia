@@ -206,27 +206,31 @@ fn panel_position_from_edge(edge: &str) -> Option<lingxia_app_context::PanelPosi
 
 const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
 
-fn resolved_display_language_seed(
-    saved: Option<String>,
-    runner_override: Option<&str>,
-) -> Option<String> {
-    match runner_override
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        Some("auto") => None,
-        Some(language) => Some(language.to_string()),
-        None => saved,
-    }
-}
-
-fn seed_display_language(app_data_dir: &std::path::Path) {
-    match lingxia_service::settings::display_language(app_data_dir) {
-        Ok(saved) => lxapp::apply_display_language_override(resolved_display_language_seed(
-            saved,
-            std::env::var(RUNNER_DISPLAY_LANGUAGE_ENV).ok().as_deref(),
-        )),
-        Err(error) => log::warn!("Failed to load display language: {error}"),
+fn seed_display_language(app_data_dir: &std::path::Path, system: &str) {
+    let saved = match lingxia_service::settings::display_language(app_data_dir) {
+        Ok(saved) => saved,
+        Err(error) => {
+            log::warn!("Failed to load display language: {error}");
+            None
+        }
+    };
+    let runner_override = std::env::var(RUNNER_DISPLAY_LANGUAGE_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .and_then(
+            |value| match value.parse::<lxapp::DisplayLanguagePreference>() {
+                Ok(preference) => Some(preference),
+                Err(error) => {
+                    log::warn!("Ignoring invalid Runner display language: {error}");
+                    None
+                }
+            },
+        );
+    if let Err(error) = lxapp::initialize_display_language(saved, system, runner_override) {
+        log::warn!("Failed to initialize display language: {error}; following system language");
+        if let Err(fallback_error) = lxapp::initialize_display_language(None, system, None) {
+            log::warn!("Failed to initialize system display language: {fallback_error}");
+        }
     }
 }
 
@@ -251,7 +255,7 @@ pub(crate) fn init_with_platform(
     let app_config = load_bundled_app_config(&runtime)
         .ok_or_else(|| crate::Error::internal("failed to load host app configuration"))?;
     crate::app::set_data_dir(runtime.app_data_dir());
-    seed_display_language(&runtime.app_data_dir());
+    seed_display_language(&runtime.app_data_dir(), runtime.get_system_locale());
     install_global_executor();
     lingxia_app_context::set_host_build(crate::capabilities::host_build());
     if let Err(err) = lingxia_app_context::set_app_config(app_config.clone()) {
@@ -291,7 +295,7 @@ pub(crate) fn init_with_platform(
 
 #[cfg(test)]
 mod tests {
-    use super::{panels_from_ui_config, resolved_display_language_seed, seed_display_language};
+    use super::{panels_from_ui_config, seed_display_language};
     use lingxia_app_context::PanelPosition;
 
     #[test]
@@ -300,25 +304,29 @@ mod tests {
         lingxia_service::settings::set_display_language(dir.path(), Some("zh-CN"))
             .expect("save display language");
 
-        seed_display_language(dir.path());
+        seed_display_language(dir.path(), "en-US");
 
         assert_eq!(crate::app::display_language(), "zh-CN");
-        lxapp::apply_display_language_override(None);
+        assert_eq!(
+            lxapp::display_language_state().effective_source,
+            lxapp::DisplayLanguageEffectiveSource::Preference
+        );
     }
 
     #[test]
     fn runner_display_language_override_is_session_scoped() {
+        lxapp::initialize_display_language(
+            Some("zh-CN".to_string()),
+            "en-US",
+            Some("ja-jp".parse().unwrap()),
+        )
+        .unwrap();
+        let state = lxapp::display_language_state();
+        assert_eq!(state.preference.as_str(), "zh-CN");
+        assert_eq!(state.effective.as_str(), "ja-JP");
         assert_eq!(
-            resolved_display_language_seed(Some("zh-CN".to_string()), Some("en-US")),
-            Some("en-US".to_string())
-        );
-        assert_eq!(
-            resolved_display_language_seed(Some("zh-CN".to_string()), Some("auto")),
-            None
-        );
-        assert_eq!(
-            resolved_display_language_seed(Some("zh-CN".to_string()), None),
-            Some("zh-CN".to_string())
+            state.effective_source,
+            lxapp::DisplayLanguageEffectiveSource::SessionOverride
         );
     }
 
