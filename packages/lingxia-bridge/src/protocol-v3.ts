@@ -1,10 +1,6 @@
 import type {} from "./types";
 
-/**
- * Dormant document-side V3 framing. This module is deliberately not exported
- * from the bridge package: the legacy V2 runtime remains the active protocol
- * until a host-attested RequiredV3 activation path is added.
- */
+/** Document-side framing for host-attested RequiredV3 documents. */
 
 export const V3_PROTOCOL = 3 as const;
 export const DEFAULT_MAX_V3_FRAME_BYTES = 64 * 1024;
@@ -89,6 +85,11 @@ export type V3DocumentCodec = {
   ): V3CodecResult<Record<string, unknown>>;
   parse(frame: string, maxFrameBytes?: number): V3CodecResult<V3NativeEnvelope>;
 };
+
+export type V3BootstrapActivation =
+  | { readonly kind: "absent" }
+  | { readonly kind: "required"; readonly codec: V3DocumentCodec }
+  | { readonly kind: "blocked" };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -219,10 +220,10 @@ export function createV3DocumentCodec(binding: V3DocumentBinding): V3CodecResult
  * Atomically takes the host-installed one-shot handoff. The secret remains in
  * the returned codec closure and is never copied into bridge globals/config.
  */
-export function consumeV3BootstrapForFutureRequiredProtocol(): V3DocumentCodec | undefined {
-  if (typeof window === "undefined") return undefined;
+export function consumeV3Bootstrap(): V3BootstrapActivation {
+  if (typeof window === "undefined") return { kind: "absent" };
   const take = window.__LingXiaTakeControlBootstrap;
-  if (typeof take !== "function") return undefined;
+  if (typeof take !== "function") return { kind: "absent" };
 
   try {
     const bootstrap = take();
@@ -234,15 +235,17 @@ export function consumeV3BootstrapForFutureRequiredProtocol(): V3DocumentCodec |
       typeof bootstrap.secret !== "string" ||
       bootstrap.secret.length === 0
     ) {
-      return undefined;
+      return { kind: "blocked" };
     }
     const codec = createV3DocumentCodec({
       sessionId: bootstrap.publicSessionId,
       secret: bootstrap.secret,
     });
-    return codec.ok ? codec.value : undefined;
+    return codec.ok
+      ? { kind: "required", codec: codec.value }
+      : { kind: "blocked" };
   } catch {
-    return undefined;
+    return { kind: "blocked" };
   } finally {
     // A malformed replacement must not leave a callable handoff for later.
     try {

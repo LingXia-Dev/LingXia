@@ -505,7 +505,7 @@ pub(crate) fn browser_load_internal_document(
         .prepare_trusted_data_load()
         .map_err(LxAppError::from)?;
     let intent = reservation.intent();
-    let bootstrap = documents
+    let (bootstrap, replaced_authority) = documents
         .prepare(
             webview.native_view_id(),
             session_id,
@@ -518,6 +518,12 @@ pub(crate) fn browser_load_internal_document(
                 "failed to prepare trusted browser document: {error}"
             ))
         })?;
+    // `prepare` invalidates the replaced session's gate while it owns the
+    // registry mutex. Cancel its PageBridge work only after that lock is
+    // released, before this replacement can fail or start another load.
+    if let Some(authority) = replaced_authority {
+        let _ = page.revoke_required_v3_document(authority);
+    }
     let html = match browser.generate_page_html_with_bridge_bootstrap(
         &entry_path,
         nonce.as_deref(),

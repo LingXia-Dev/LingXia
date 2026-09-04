@@ -5,12 +5,11 @@
 
 use crate::internal_pages::InternalPageTarget;
 use lingxia_webview::{
-    DocumentGeneration, DocumentOutboundGate, NativeWebViewId, NavigationId,
-    TrustedDocumentAdmission, TrustedLoadIntent,
+    DocumentBinding, DocumentGeneration, DocumentOutboundGate, NativeWebViewId, NavigationId,
+    TrustedDocumentAdmission, TrustedLoadIntent, WebMessageContext, WebMessageFrame,
+    WebMessageTransport,
 };
-use lxapp::{
-    ControlDocumentBootstrap, ControlDocumentSessionMaterial, issue_control_document_bootstrap,
-};
+use lxapp::{ControlDocumentAuthority, ControlDocumentBootstrap, issue_control_document_bootstrap};
 use ring::rand::SystemRandom;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -22,14 +21,14 @@ type BrowserSessionRegistry = DocumentSessionRegistry<
     NavigationId,
     DocumentGeneration,
     InternalPageTarget,
-    ControlDocumentSessionMaterial,
+    ControlDocumentAuthority,
 >;
 type SharedBrowserSessionRegistry = Arc<Mutex<BrowserSessionRegistry>>;
 type WeakBrowserSessionRegistry = Weak<Mutex<BrowserSessionRegistry>>;
 
 /// Read-only proof that one browser control document completed V3 hello.
 /// It intentionally has no secret or route-authority field.
-#[allow(dead_code)] // Future V3 bridge admission consumes this lease in Commit B.
+#[allow(dead_code)] // Retained for exact-lease registry tests and introspection.
 pub(crate) struct ActiveDocumentLease {
     registry: WeakBrowserSessionRegistry,
     native_view: NativeWebViewId,
@@ -41,9 +40,26 @@ pub(crate) struct ActiveDocumentLease {
     generation: DocumentGeneration,
     public_session_id: String,
     lease_token: u64,
+    authority: ControlDocumentAuthority,
 }
 
-#[allow(dead_code)] // Kept opaque until the future bridge consumer is wired.
+/// Immutable BootstrapPending binding. It proves the exact native admission
+/// is still current for RequiredV3 installation, but is not an outbound gate.
+#[allow(dead_code)] // Consumed by RequiredV3 PageBridge binding.
+#[derive(Clone)]
+pub(crate) struct PendingDocumentLease {
+    registry: WeakBrowserSessionRegistry,
+    native_view: NativeWebViewId,
+    tab_session_id: u64,
+    create_token: u64,
+    target: InternalPageTarget,
+    intent: TrustedLoadIntent,
+    navigation_id: NavigationId,
+    generation: DocumentGeneration,
+    authority: ControlDocumentAuthority,
+}
+
+#[allow(dead_code)] // Kept opaque outside the browser lifecycle TCB.
 impl ActiveDocumentLease {
     pub(crate) const fn native_view(&self) -> NativeWebViewId {
         self.native_view
@@ -63,6 +79,64 @@ impl ActiveDocumentLease {
     pub(crate) const fn generation(&self) -> DocumentGeneration {
         self.generation
     }
+
+    pub(crate) fn authority(&self) -> ControlDocumentAuthority {
+        self.authority.clone()
+    }
+}
+
+#[allow(dead_code)] // Bound by BrowserTabDelegate once bridge facade lands.
+impl PendingDocumentLease {
+    pub(crate) fn authority(&self) -> ControlDocumentAuthority {
+        self.authority.clone()
+    }
+
+    pub(crate) const fn native_view(&self) -> NativeWebViewId {
+        self.native_view
+    }
+
+    pub(crate) const fn generation(&self) -> DocumentGeneration {
+        self.generation
+    }
+
+    /// Runs only while the exact BootstrapPending admission remains current.
+    /// The closure receives the native-held binding authority and a separate
+    /// active-only outbound gate for this same immutable session identity.
+    pub(crate) fn with_bootstrap_pending_current(
+        &self,
+        context: &WebMessageContext,
+        action: &mut dyn FnMut(ControlDocumentAuthority, Arc<dyn DocumentOutboundGate>),
+    ) -> bool {
+        let Some(registry) = self.registry.upgrade() else {
+            return false;
+        };
+        let Ok(registry_guard) = registry.lock() else {
+            return false;
+        };
+        let Some(DocumentSessionState::BootstrapPending {
+            tab_session_id,
+            create_token,
+            intent,
+            navigation_id,
+            generation,
+            ..
+        }) = registry_guard.sessions.get(&self.native_view)
+        else {
+            return false;
+        };
+        if *tab_session_id != self.tab_session_id
+            || *create_token != self.create_token
+            || *intent != self.intent
+            || *navigation_id != self.navigation_id
+            || *generation != self.generation
+            || !BrowserDocumentSessions::context_matches(context, self.native_view, self.generation)
+        {
+            return false;
+        }
+        let active_gate: Arc<dyn DocumentOutboundGate> = Arc::new(self.clone());
+        action(self.authority.clone(), active_gate);
+        true
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -73,11 +147,16 @@ pub(crate) enum ControlDocumentBootstrapPrepareError {
 
 trait SessionMaterial {
     fn matches(&self, session_id: &str, secret: &str) -> bool;
+    fn revoke_execution(&self);
 }
 
-impl SessionMaterial for ControlDocumentSessionMaterial {
+impl SessionMaterial for ControlDocumentAuthority {
     fn matches(&self, session_id: &str, secret: &str) -> bool {
-        ControlDocumentSessionMaterial::matches(self, session_id, secret)
+        ControlDocumentAuthority::matches(self, session_id, secret)
+    }
+
+    fn revoke_execution(&self) {
+        ControlDocumentAuthority::revoke_execution(self);
     }
 }
 
@@ -104,8 +183,7 @@ pub(crate) enum DocumentSessionState<Intent, Navigation, Generation, Target, Mat
         tab_session_id: u64,
         create_token: u64,
         target: Target,
-        // Commit A preserves the exact core-issued intent for the later V3
-        // frame admission step, even though no production consumer reads it.
+        // Preserve the exact core-issued intent for V3 frame admission.
         intent: Intent,
         navigation_id: Navigation,
         generation: Generation,
@@ -115,7 +193,7 @@ pub(crate) enum DocumentSessionState<Intent, Navigation, Generation, Target, Mat
     },
 }
 
-struct ActiveSessionLease<Intent, Navigation, Generation, Target> {
+struct ActiveSessionLease<Intent, Navigation, Generation, Target, Material> {
     tab_session_id: u64,
     create_token: u64,
     target: Target,
@@ -124,6 +202,17 @@ struct ActiveSessionLease<Intent, Navigation, Generation, Target> {
     intent: Intent,
     public_session_id: String,
     lease_token: u64,
+    material: Material,
+}
+
+struct PendingSessionLease<Intent, Navigation, Generation, Target, Material> {
+    tab_session_id: u64,
+    create_token: u64,
+    target: Target,
+    intent: Intent,
+    navigation_id: Navigation,
+    generation: Generation,
+    material: Material,
 }
 
 struct DocumentSessionRegistry<NativeView, Intent, Navigation, Generation, Target, Material> {
@@ -151,7 +240,7 @@ where
     Navigation: Copy + Eq,
     Generation: Copy + Eq,
     Target: Clone,
-    Material: SessionMaterial,
+    Material: SessionMaterial + Clone,
 {
     fn prepare(
         &mut self,
@@ -161,8 +250,8 @@ where
         target: Target,
         intent: Intent,
         material: Material,
-    ) {
-        self.sessions.insert(
+    ) -> Option<Material> {
+        if let Some(previous) = self.sessions.insert(
             native_view,
             DocumentSessionState::Reserved {
                 tab_session_id,
@@ -172,7 +261,13 @@ where
                 navigation_id: None,
                 material,
             },
-        );
+        ) {
+            let replaced = Self::material_from_state(&previous);
+            Self::revoke_state_execution(&previous);
+            replaced
+        } else {
+            None
+        }
     }
 
     fn navigation_started(&mut self, native_view: NativeView, navigation_id: Navigation) -> bool {
@@ -195,9 +290,39 @@ where
         }
     }
 
+    fn revoke_navigation_if_matches(
+        &mut self,
+        native_view: NativeView,
+        navigation_id: Navigation,
+    ) -> bool {
+        let matches_navigation = match self.sessions.get(&native_view) {
+            Some(DocumentSessionState::Reserved {
+                navigation_id: Some(expected),
+                ..
+            }) => *expected == navigation_id,
+            Some(DocumentSessionState::BootstrapPending {
+                navigation_id: expected,
+                ..
+            })
+            | Some(DocumentSessionState::Active {
+                navigation_id: expected,
+                ..
+            }) => *expected == navigation_id,
+            _ => false,
+        };
+        if matches_navigation {
+            self.force_revoke(native_view);
+        }
+        matches_navigation
+    }
+
     fn force_revoke(&mut self, native_view: NativeView) {
-        self.sessions
-            .insert(native_view, DocumentSessionState::Revoked);
+        if let Some(previous) = self
+            .sessions
+            .insert(native_view, DocumentSessionState::Revoked)
+        {
+            Self::revoke_state_execution(&previous);
+        }
     }
 
     fn revoke_if_matches(
@@ -227,7 +352,37 @@ where
     }
 
     fn remove(&mut self, native_view: NativeView) {
-        self.sessions.remove(&native_view);
+        if let Some(previous) = self.sessions.remove(&native_view) {
+            Self::revoke_state_execution(&previous);
+        }
+    }
+
+    fn revoke_state_execution(
+        state: &DocumentSessionState<Intent, Navigation, Generation, Target, Material>,
+    ) {
+        match state {
+            DocumentSessionState::Reserved { material, .. }
+            | DocumentSessionState::BootstrapPending { material, .. }
+            | DocumentSessionState::Active { material, .. } => material.revoke_execution(),
+            DocumentSessionState::Revoked => {}
+        }
+    }
+
+    fn material_for(&self, native_view: NativeView) -> Option<Material> {
+        self.sessions
+            .get(&native_view)
+            .and_then(Self::material_from_state)
+    }
+
+    fn material_from_state(
+        state: &DocumentSessionState<Intent, Navigation, Generation, Target, Material>,
+    ) -> Option<Material> {
+        match state {
+            DocumentSessionState::Reserved { material, .. }
+            | DocumentSessionState::BootstrapPending { material, .. }
+            | DocumentSessionState::Active { material, .. } => Some(material.clone()),
+            DocumentSessionState::Revoked => None,
+        }
     }
 
     fn admit(
@@ -238,7 +393,7 @@ where
         navigation_id: Navigation,
         generation: Generation,
         intent: Intent,
-    ) -> Option<Target> {
+    ) -> Option<PendingSessionLease<Intent, Navigation, Generation, Target, Material>> {
         let state = self.sessions.get_mut(&native_view)?;
         let previous = std::mem::replace(state, DocumentSessionState::Revoked);
         let DocumentSessionState::Reserved {
@@ -268,7 +423,15 @@ where
             };
             return None;
         }
-        let admitted_target = target.clone();
+        let pending = PendingSessionLease {
+            tab_session_id,
+            create_token,
+            target: target.clone(),
+            intent,
+            navigation_id,
+            generation,
+            material: material.clone(),
+        };
         *state = DocumentSessionState::BootstrapPending {
             tab_session_id,
             create_token,
@@ -278,7 +441,7 @@ where
             generation,
             material,
         };
-        Some(admitted_target)
+        Some(pending)
     }
 
     fn activate_hello(
@@ -286,7 +449,35 @@ where
         native_view: NativeView,
         session_id: &str,
         secret: &str,
-    ) -> Option<ActiveSessionLease<Intent, Navigation, Generation, Target>> {
+    ) -> Option<ActiveSessionLease<Intent, Navigation, Generation, Target, Material>> {
+        // Retried hello for the exact same binding is idempotent. It must not
+        // mint a second lease or alter the current session.
+        if let Some(DocumentSessionState::Active {
+            tab_session_id,
+            create_token,
+            target,
+            intent,
+            navigation_id,
+            generation,
+            material,
+            public_session_id,
+            lease_token,
+        }) = self.sessions.get(&native_view)
+        {
+            return (public_session_id == session_id && material.matches(session_id, secret)).then(
+                || ActiveSessionLease {
+                    tab_session_id: *tab_session_id,
+                    create_token: *create_token,
+                    target: target.clone(),
+                    intent: *intent,
+                    navigation_id: *navigation_id,
+                    generation: *generation,
+                    public_session_id: public_session_id.clone(),
+                    lease_token: *lease_token,
+                    material: material.clone(),
+                },
+            );
+        }
         // A skipped token after an invalid hello is harmless; reusing one is
         // not. Allocate before borrowing the state entry.
         let issued_lease_token = self.next_lease_token;
@@ -327,6 +518,7 @@ where
             generation,
             public_session_id: session_id.to_owned(),
             lease_token: issued_lease_token,
+            material: material.clone(),
         };
         *state = DocumentSessionState::Active {
             tab_session_id,
@@ -347,7 +539,7 @@ where
         native_view: NativeView,
         session_id: &str,
         secret: &str,
-    ) -> Option<ActiveSessionLease<Intent, Navigation, Generation, Target>> {
+    ) -> Option<ActiveSessionLease<Intent, Navigation, Generation, Target, Material>> {
         let DocumentSessionState::Active {
             tab_session_id,
             create_token,
@@ -374,14 +566,15 @@ where
                 generation: *generation,
                 public_session_id: public_session_id.clone(),
                 lease_token: *lease_token,
+                material: material.clone(),
             })
     }
 
-    #[allow(dead_code)] // Activated by the document-bound bridge wiring in Commit D.
+    #[allow(dead_code)] // Retained for exact-lease registry tests.
     fn with_active_lease(
         &self,
         native_view: NativeView,
-        lease: &ActiveSessionLease<Intent, Navigation, Generation, Target>,
+        lease: &ActiveSessionLease<Intent, Navigation, Generation, Target, Material>,
         action: &mut dyn FnMut(),
     ) -> bool {
         let Some(DocumentSessionState::Active {
@@ -420,8 +613,8 @@ where
     }
 }
 
-/// Browser wrapper over opaque core identities. This commit records native
-/// evidence only; bridge and route authorization remain disabled.
+/// Browser wrapper over opaque core identities and the registry linearization
+/// point shared by bootstrap, ingress authorization, revoke, and outbound.
 pub(crate) struct BrowserDocumentSessions {
     inner: SharedBrowserSessionRegistry,
 }
@@ -435,6 +628,16 @@ impl Default for BrowserDocumentSessions {
 }
 
 impl BrowserDocumentSessions {
+    fn context_matches(
+        context: &WebMessageContext,
+        native_view: NativeWebViewId,
+        generation: DocumentGeneration,
+    ) -> bool {
+        context.native_view() == native_view
+            && context.document() == DocumentBinding::Bound(generation)
+            && context.frame() == WebMessageFrame::TopLevel
+            && context.transport() == WebMessageTransport::AppleScriptMessage
+    }
     pub(crate) fn prepare(
         &self,
         native_view: NativeWebViewId,
@@ -442,14 +645,17 @@ impl BrowserDocumentSessions {
         create_token: u64,
         target: InternalPageTarget,
         intent: TrustedLoadIntent,
-    ) -> Result<ControlDocumentBootstrap, ControlDocumentBootstrapPrepareError> {
+    ) -> Result<
+        (ControlDocumentBootstrap, Option<ControlDocumentAuthority>),
+        ControlDocumentBootstrapPrepareError,
+    > {
         let (bootstrap, material) = issue_control_document_bootstrap(&SystemRandom::new())
             .map_err(|_| ControlDocumentBootstrapPrepareError::EntropyUnavailable)?;
         let mut sessions = self
             .inner
             .lock()
             .map_err(|_| ControlDocumentBootstrapPrepareError::EntropyUnavailable)?;
-        sessions.prepare(
+        let replaced = sessions.prepare(
             native_view,
             tab_session_id,
             create_token,
@@ -457,17 +663,39 @@ impl BrowserDocumentSessions {
             intent,
             material,
         );
-        Ok(bootstrap)
+        Ok((bootstrap, replaced))
     }
 
-    pub(crate) fn navigation_started(
+    /// Returns the trusted-start result and, on a competing start, the exact
+    /// authority whose gate was revoked under this registry lock. Callers may
+    /// cancel its PageBridge work after releasing the lock.
+    pub(crate) fn navigation_started_with_revocation(
         &self,
         native_view: NativeWebViewId,
         navigation_id: NavigationId,
-    ) -> bool {
-        self.inner
-            .lock()
-            .is_ok_and(|mut sessions| sessions.navigation_started(native_view, navigation_id))
+    ) -> (bool, Option<ControlDocumentAuthority>) {
+        let Ok(mut sessions) = self.inner.lock() else {
+            return (false, None);
+        };
+        let authority = sessions.material_for(native_view);
+        let trusted = sessions.navigation_started(native_view, navigation_id);
+        (trusted, (!trusted).then_some(authority).flatten())
+    }
+
+    /// Revoke only the exact failed/cancelled navigation, never a successor.
+    /// PageBridge cancellation remains deliberately outside the registry lock.
+    pub(crate) fn revoke_navigation_if_matches(
+        &self,
+        native_view: NativeWebViewId,
+        navigation_id: NavigationId,
+    ) -> Option<ControlDocumentAuthority> {
+        let Ok(mut sessions) = self.inner.lock() else {
+            return None;
+        };
+        let authority = sessions.material_for(native_view)?;
+        sessions
+            .revoke_navigation_if_matches(native_view, navigation_id)
+            .then_some(authority)
     }
 
     pub(crate) fn revoke_if_matches(
@@ -482,9 +710,16 @@ impl BrowserDocumentSessions {
         })
     }
 
-    pub(crate) fn destroy_native_view(&self, native_view: NativeWebViewId) {
+    pub(crate) fn destroy_native_view(
+        &self,
+        native_view: NativeWebViewId,
+    ) -> Option<ControlDocumentAuthority> {
         if let Ok(mut sessions) = self.inner.lock() {
+            let authority = sessions.material_for(native_view);
             sessions.remove(native_view);
+            authority
+        } else {
+            None
         }
     }
 
@@ -493,19 +728,125 @@ impl BrowserDocumentSessions {
         tab_session_id: u64,
         create_token: u64,
         admission: TrustedDocumentAdmission,
-    ) -> Option<InternalPageTarget> {
-        self.inner.lock().ok()?.admit(
+    ) -> Option<PendingDocumentLease> {
+        let pending = self.inner.lock().ok()?.admit(
             admission.native_view(),
             tab_session_id,
             create_token,
             admission.navigation_id(),
             admission.generation(),
             admission.intent(),
-        )
+        )?;
+        Some(PendingDocumentLease {
+            registry: Arc::downgrade(&self.inner),
+            native_view: admission.native_view(),
+            tab_session_id: pending.tab_session_id,
+            create_token: pending.create_token,
+            target: pending.target,
+            intent: pending.intent,
+            navigation_id: pending.navigation_id,
+            generation: pending.generation,
+            authority: pending.material,
+        })
     }
 
-    /// Future V3 hello seam. No production path calls this in Commit A.
-    #[allow(dead_code)] // Reserved for Commit B's V3 hello handler.
+    /// Linearize the first V3 hello with the document registry. `bind` runs
+    /// only for the exact current BootstrapPending session; `handle` runs
+    /// only after that same session has atomically become Active.  Keeping
+    /// this mutex held across both callbacks prevents a navigation revoke
+    /// from landing between browser admission and PageBridge dispatch.
+    pub(crate) fn with_activated_hello_for_context<T>(
+        &self,
+        context: &WebMessageContext,
+        session_id: &str,
+        secret: &str,
+        mut bind: impl FnMut(ControlDocumentAuthority, Arc<dyn DocumentOutboundGate>) -> bool,
+        prepare: impl FnOnce(ControlDocumentAuthority) -> Option<T>,
+    ) -> Option<T> {
+        let native_view = context.native_view();
+        let Ok(mut sessions) = self.inner.lock() else {
+            return None;
+        };
+
+        let pending = match sessions.sessions.get(&native_view) {
+            Some(DocumentSessionState::BootstrapPending {
+                tab_session_id,
+                create_token,
+                target,
+                intent,
+                navigation_id,
+                generation,
+                material,
+            }) if Self::context_matches(context, native_view, *generation) => {
+                Some(PendingDocumentLease {
+                    registry: Arc::downgrade(&self.inner),
+                    native_view,
+                    tab_session_id: *tab_session_id,
+                    create_token: *create_token,
+                    target: target.clone(),
+                    intent: *intent,
+                    navigation_id: *navigation_id,
+                    generation: *generation,
+                    authority: material.clone(),
+                })
+            }
+            Some(DocumentSessionState::Active { generation, .. })
+                if Self::context_matches(context, native_view, *generation) =>
+            {
+                None
+            }
+            _ => return None,
+        };
+
+        if let Some(pending) = pending {
+            // Authenticate before installing a RequiredV3 protocol. An
+            // attacker cannot use a wrong hello to replace a live bridge
+            // connection or poison BootstrapPending with a foreign binding.
+            if !pending.authority.matches(session_id, secret) {
+                return None;
+            }
+            let gate: Arc<dyn DocumentOutboundGate> = Arc::new(pending.clone());
+            if !bind(pending.authority(), gate) {
+                return None;
+            }
+        }
+
+        let active = sessions.activate_hello(native_view, session_id, secret)?;
+        prepare(active.material)
+    }
+
+    /// Runs a non-hello V3 frame while its exact document remains Active.
+    /// The frame cannot be decoded, allocated, or dispatched after a revoke
+    /// slips in because the registry lock spans the supplied callback.
+    pub(crate) fn with_active_frame_for_context<T>(
+        &self,
+        context: &WebMessageContext,
+        session_id: &str,
+        secret: &str,
+        prepare: impl FnOnce(ControlDocumentAuthority) -> Option<T>,
+    ) -> Option<T> {
+        let native_view = context.native_view();
+        let Ok(sessions) = self.inner.lock() else {
+            return None;
+        };
+        let Some(DocumentSessionState::Active {
+            generation,
+            material,
+            ..
+        }) = sessions.sessions.get(&native_view)
+        else {
+            return None;
+        };
+        if !Self::context_matches(context, native_view, *generation)
+            || !material.matches(session_id, secret)
+        {
+            return None;
+        }
+        prepare(material.clone())
+    }
+
+    /// Exact-lease helper retained for registry tests and diagnostics.
+    #[allow(dead_code)]
     pub(crate) fn activate_hello(
         &self,
         native_view: NativeWebViewId,
@@ -528,11 +869,12 @@ impl BrowserDocumentSessions {
             generation: lease.generation,
             public_session_id: lease.public_session_id,
             lease_token: lease.lease_token,
+            authority: lease.material,
         })
     }
 
-    /// Future V3 per-frame seam. No production path calls this in Commit A.
-    #[allow(dead_code)] // Reserved for Commit B's per-frame V3 authentication.
+    /// Exact-lease helper retained for registry tests and diagnostics.
+    #[allow(dead_code)]
     pub(crate) fn authenticate_frame(
         &self,
         native_view: NativeWebViewId,
@@ -555,7 +897,50 @@ impl BrowserDocumentSessions {
             generation: lease.generation,
             public_session_id: lease.public_session_id,
             lease_token: lease.lease_token,
+            authority: lease.material,
         })
+    }
+}
+
+impl DocumentOutboundGate for PendingDocumentLease {
+    fn with_active(&self, action: &mut dyn FnMut()) -> bool {
+        let Some(registry) = self.registry.upgrade() else {
+            return false;
+        };
+        let Ok(registry) = registry.lock() else {
+            return false;
+        };
+        let Some(DocumentSessionState::Active {
+            tab_session_id,
+            create_token,
+            intent,
+            navigation_id,
+            generation,
+            ..
+        }) = registry.sessions.get(&self.native_view)
+        else {
+            return false;
+        };
+        if *tab_session_id != self.tab_session_id
+            || *create_token != self.create_token
+            || *intent != self.intent
+            || *navigation_id != self.navigation_id
+            || *generation != self.generation
+        {
+            return false;
+        }
+        action();
+        true
+    }
+}
+
+impl lxapp::RequiredV3DocumentGate for PendingDocumentLease {
+    fn with_bootstrap_pending_current(
+        &self,
+        context: &WebMessageContext,
+        action: &mut dyn FnMut(ControlDocumentAuthority, Arc<dyn DocumentOutboundGate>),
+    ) -> bool {
+        PendingDocumentLease::with_bootstrap_pending_current(self, context, action)
     }
 }
 
@@ -578,6 +963,7 @@ impl DocumentOutboundGate for ActiveDocumentLease {
                 generation: self.generation,
                 public_session_id: self.public_session_id.clone(),
                 lease_token: self.lease_token,
+                material: self.authority.clone(),
             },
             action,
         )
@@ -595,17 +981,33 @@ pub(crate) fn browser_document_sessions() -> Arc<BrowserDocumentSessions> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
+    #[derive(Clone)]
     struct TestMaterial(&'static str, &'static str);
     impl SessionMaterial for TestMaterial {
         fn matches(&self, session_id: &str, secret: &str) -> bool {
             self.0 == session_id && self.1 == secret
         }
+
+        fn revoke_execution(&self) {}
+    }
+
+    #[derive(Clone)]
+    struct RevocationMaterial(Arc<AtomicUsize>);
+    impl SessionMaterial for RevocationMaterial {
+        fn matches(&self, _: &str, _: &str) -> bool {
+            false
+        }
+
+        fn revoke_execution(&self) {
+            self.0.fetch_add(1, Ordering::AcqRel);
+        }
     }
     type TestRegistry = DocumentSessionRegistry<u64, u64, u64, u64, &'static str, TestMaterial>;
 
     fn prepare(sessions: &mut TestRegistry, native: u64, intent: u64) {
-        sessions.prepare(
+        let _ = sessions.prepare(
             native,
             1,
             2,
@@ -616,11 +1018,49 @@ mod tests {
     }
 
     #[test]
+    fn replacement_revokes_the_old_execution_domain_before_reserving_successor() {
+        type Registry =
+            DocumentSessionRegistry<u64, u64, u64, u64, &'static str, RevocationMaterial>;
+        let mut sessions = Registry::default();
+        let old_revocations = Arc::new(AtomicUsize::new(0));
+        let new_revocations = Arc::new(AtomicUsize::new(0));
+        assert!(
+            sessions
+                .prepare(
+                    10,
+                    1,
+                    2,
+                    "settings",
+                    7,
+                    RevocationMaterial(Arc::clone(&old_revocations)),
+                )
+                .is_none()
+        );
+        assert!(
+            sessions
+                .prepare(
+                    10,
+                    1,
+                    3,
+                    "settings",
+                    8,
+                    RevocationMaterial(Arc::clone(&new_revocations)),
+                )
+                .is_some()
+        );
+        assert_eq!(old_revocations.load(Ordering::Acquire), 1);
+        assert_eq!(new_revocations.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
     fn admission_stops_at_bootstrap_pending_until_hello_activates_once() {
         let mut sessions = TestRegistry::default();
         prepare(&mut sessions, 10, 7);
         sessions.navigation_started(10, 4);
-        assert_eq!(sessions.admit(10, 1, 2, 4, 5, 7), Some("settings"));
+        assert_eq!(
+            sessions.admit(10, 1, 2, 4, 5, 7).map(|lease| lease.target),
+            Some("settings")
+        );
         assert!(matches!(
             sessions.state(10),
             Some(DocumentSessionState::BootstrapPending { .. })
@@ -648,7 +1088,7 @@ mod tests {
         assert!(
             sessions
                 .activate_hello(10, "session-id-012345", "secret")
-                .is_none()
+                .is_some()
         );
         assert!(
             sessions
@@ -688,13 +1128,19 @@ mod tests {
         prepare(&mut sessions, 10, 8);
         assert!(!sessions.revoke_if_matches(10, 1, 2, 7));
         assert!(sessions.navigation_started(10, 4));
-        assert_eq!(sessions.admit(10, 1, 2, 4, 5, 8), Some("settings"));
+        assert_eq!(
+            sessions.admit(10, 1, 2, 4, 5, 8).map(|lease| lease.target),
+            Some("settings")
+        );
 
         sessions.remove(10);
         prepare(&mut sessions, 11, 1);
-        assert_eq!(sessions.admit(10, 1, 2, 4, 5, 8), None);
+        assert!(sessions.admit(10, 1, 2, 4, 5, 8).is_none());
         assert!(sessions.navigation_started(11, 6));
-        assert_eq!(sessions.admit(11, 1, 2, 6, 7, 1), Some("settings"));
+        assert_eq!(
+            sessions.admit(11, 1, 2, 6, 7, 1).map(|lease| lease.target),
+            Some("settings")
+        );
     }
 
     #[test]

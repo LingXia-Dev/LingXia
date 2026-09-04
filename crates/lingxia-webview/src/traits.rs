@@ -1078,6 +1078,11 @@ pub trait WebViewDelegate: Send + Sync {
     /// navigation. The data and base URL used for the load are not authority.
     fn on_trusted_document_admitted(&self, _admission: TrustedDocumentAdmission) {}
 
+    /// The platform terminated this exact WebView's content process. Only
+    /// adapters with native evidence emit it; consumers must revoke any
+    /// document authority before allowing a replacement to load.
+    fn on_web_content_process_terminated(&self, _native_view: NativeWebViewId) {}
+
     /// Handles a postMessage from the page View(WebView).
     ///
     /// The context is assembled only by the platform adapter and must travel

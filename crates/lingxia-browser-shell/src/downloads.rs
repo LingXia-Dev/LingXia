@@ -97,13 +97,11 @@ fn map_downloads_error(err: DownloadsError) -> LxAppError {
 
 #[lingxia::framework_native("downloads.list", audience = "browser-control-only")]
 fn list_downloads(app: Arc<LxApp>) -> HostResult<DownloadsSnapshot> {
-    crate::require_builtin_browser(&app)?;
     lingxia_service::downloads::snapshot(&app.app_data_dir()).map_err(map_downloads_error)
 }
 
 #[lingxia::framework_native("downloads.clearCompleted", audience = "browser-control-only")]
 fn clear_completed_downloads(app: Arc<LxApp>) -> HostResult<ClearCompletedResult> {
-    crate::require_builtin_browser(&app)?;
     let removed = lingxia_service::downloads::clear_completed(&app.app_data_dir())
         .map_err(map_downloads_error)?;
     Ok(ClearCompletedResult { removed })
@@ -111,7 +109,6 @@ fn clear_completed_downloads(app: Arc<LxApp>) -> HostResult<ClearCompletedResult
 
 #[lingxia::framework_native("downloads.remove", audience = "browser-control-only")]
 fn remove_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
             "downloads.remove requires taskId".to_string(),
@@ -124,7 +121,6 @@ fn remove_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
 
 #[lingxia::framework_native("downloads.cancel", audience = "browser-control-only")]
 fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
             "downloads.cancel requires taskId".to_string(),
@@ -136,7 +132,6 @@ fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
 
 #[lingxia::framework_native("downloads.pause", audience = "browser-control-only")]
 fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
             "downloads.pause requires taskId".to_string(),
@@ -148,7 +143,6 @@ fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
 
 #[lingxia::framework_native("downloads.retry", audience = "browser-control-only")]
 fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
             "downloads.retry requires taskId".to_string(),
@@ -160,7 +154,6 @@ fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
 
 #[lingxia::framework_native("downloads.resume", audience = "browser-control-only")]
 fn resume_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
             "downloads.resume requires taskId".to_string(),
@@ -176,7 +169,6 @@ async fn open_download_route(
     input: DownloadTaskIdInput,
     mut cancel: HostCancel,
 ) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
             "downloads.open requires taskId".to_string(),
@@ -215,7 +207,6 @@ async fn reveal_download_route(
     input: DownloadTaskIdInput,
     mut cancel: HostCancel,
 ) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     if input.task_id.trim().is_empty() {
         return Err(LxAppError::InvalidParameter(
             "downloads.reveal requires taskId".to_string(),
@@ -262,7 +253,6 @@ async fn watch_downloads(
     app: Arc<LxApp>,
     mut stream: StreamContext<DownloadEvent>,
 ) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     let mut rx: broadcast::Receiver<DownloadEvent> =
         lingxia_service::downloads::subscribe(&app.app_data_dir()).map_err(map_downloads_error)?;
 

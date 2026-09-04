@@ -886,14 +886,12 @@ fn reorder_entries(
 
 #[lingxia::framework_native("bookmarks.list", audience = "browser-control-only")]
 fn list_bookmarks(app: Arc<LxApp>) -> HostResult<BookmarksView> {
-    crate::require_builtin_browser(&app)?;
     let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
     load(&app.app_data_dir()).map(bookmarks_view)
 }
 
 #[lingxia::framework_native("bookmarks.add", audience = "browser-control-only")]
 fn add_bookmark(app: Arc<LxApp>, input: UrlInput) -> HostResult<AddResult> {
-    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
         let (entry, created) = add_entry(
             snapshot,
@@ -907,7 +905,6 @@ fn add_bookmark(app: Arc<LxApp>, input: UrlInput) -> HostResult<AddResult> {
 
 #[lingxia::framework_native("bookmarks.remove", audience = "browser-control-only")]
 fn remove_bookmark(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
         let before = snapshot.entries.len();
         snapshot.entries.retain(|e| e.id != input.id);
@@ -924,7 +921,6 @@ fn remove_bookmark(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
 
 #[lingxia::framework_native("bookmarks.toggle", audience = "browser-control-only")]
 fn toggle_bookmark_route(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusResult> {
-    crate::require_builtin_browser(&app)?;
     let (status, removed_id) = mutate(&app.app_data_dir(), |snapshot| {
         let normalized = normalize_url(&input.url);
         if let Some(existing) = find_entry(snapshot, &normalized) {
@@ -961,7 +957,6 @@ fn toggle_bookmark_route(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusR
 
 #[lingxia::framework_native("bookmarks.getStatus", audience = "browser-control-only")]
 fn bookmark_status(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusResult> {
-    crate::require_builtin_browser(&app)?;
     let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
     let snapshot = load(&app.app_data_dir())?;
     let entry = find_entry(&snapshot, &normalize_url(&input.url)).cloned();
@@ -973,7 +968,6 @@ fn bookmark_status(app: Arc<LxApp>, input: UrlInput) -> HostResult<StatusResult>
 
 #[lingxia::framework_native("bookmarks.rename", audience = "browser-control-only")]
 fn rename_bookmark(app: Arc<LxApp>, input: RenameInput) -> HostResult<BookmarkEntry> {
-    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
         rename_entry_op(snapshot, &input.id, &input.title)
     })
@@ -981,7 +975,6 @@ fn rename_bookmark(app: Arc<LxApp>, input: RenameInput) -> HostResult<BookmarkEn
 
 #[lingxia::framework_native("bookmarks.move", audience = "browser-control-only")]
 fn move_bookmark(app: Arc<LxApp>, input: MoveInput) -> HostResult<BookmarkEntry> {
-    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
         move_entry_op(snapshot, &input.id, input.group_id.clone())
     })
@@ -989,7 +982,6 @@ fn move_bookmark(app: Arc<LxApp>, input: MoveInput) -> HostResult<BookmarkEntry>
 
 #[lingxia::framework_native("bookmarks.reorder", audience = "browser-control-only")]
 fn reorder_bookmarks(app: Arc<LxApp>, input: ReorderInput) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
         reorder_entries(snapshot, input.group_id.as_deref(), &input.ordered_ids)
     })
@@ -997,7 +989,6 @@ fn reorder_bookmarks(app: Arc<LxApp>, input: ReorderInput) -> HostResult<()> {
 
 #[lingxia::framework_native("bookmarks.setPinned", audience = "browser-control-only")]
 fn set_pinned(app: Arc<LxApp>, input: SetPinnedInput) -> HostResult<PinStatus> {
-    crate::require_builtin_browser(&app)?;
     let exists = {
         let _guard = store_lock()
             .lock()
@@ -1021,7 +1012,6 @@ fn set_pinned(app: Arc<LxApp>, input: SetPinnedInput) -> HostResult<PinStatus> {
 
 #[lingxia::framework_native("bookmarks.createGroup", audience = "browser-control-only")]
 fn create_group(app: Arc<LxApp>, input: GroupNameInput) -> HostResult<BookmarkGroup> {
-    crate::require_builtin_browser(&app)?;
     let name = validated_name(&input.name, "group name")?;
     mutate(&app.app_data_dir(), |snapshot| {
         if snapshot.groups.iter().any(|g| g.name == name) {
@@ -1040,7 +1030,6 @@ fn create_group(app: Arc<LxApp>, input: GroupNameInput) -> HostResult<BookmarkGr
 
 #[lingxia::framework_native("bookmarks.renameGroup", audience = "browser-control-only")]
 fn rename_group(app: Arc<LxApp>, input: GroupRenameInput) -> HostResult<BookmarkGroup> {
-    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
         rename_group_op(snapshot, &input.id, &input.name)
     })
@@ -1048,7 +1037,6 @@ fn rename_group(app: Arc<LxApp>, input: GroupRenameInput) -> HostResult<Bookmark
 
 #[lingxia::framework_native("bookmarks.deleteGroup", audience = "browser-control-only")]
 fn delete_group(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
         delete_group_op(snapshot, &input.id)
     })
@@ -1056,7 +1044,6 @@ fn delete_group(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
 
 #[lingxia::framework_native("bookmarks.reorderGroups", audience = "browser-control-only")]
 fn reorder_groups(app: Arc<LxApp>, input: OrderedIdsInput) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     mutate(&app.app_data_dir(), |snapshot| {
         let ids: Vec<&str> = snapshot.groups.iter().map(|g| g.id.as_str()).collect();
         if !is_id_permutation(&ids, &input.ordered_ids) {
@@ -1080,7 +1067,6 @@ async fn import_html_bookmarks(
     app: Arc<LxApp>,
     mut cancel: HostCancel,
 ) -> HostResult<Option<ImportResult>> {
-    crate::require_builtin_browser(&app)?;
     let app_for_picker = app.clone();
     let is_chinese = display_locale_is_chinese();
     let selected = await_or_cancel(&mut cancel, async move {
@@ -1149,7 +1135,6 @@ async fn import_html_bookmarks(
 
 #[lingxia::framework_native("bookmarks.exportHtml", audience = "browser-control-only")]
 fn export_html_bookmarks(app: Arc<LxApp>) -> HostResult<ExportResult> {
-    crate::require_builtin_browser(&app)?;
     let snapshot = {
         let _guard = store_lock()
             .lock()
@@ -1179,7 +1164,6 @@ async fn watch_bookmarks(
     app: Arc<LxApp>,
     mut stream: StreamContext<BookmarksView>,
 ) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     let mut rx = channel().subscribe();
     // Seed subscribers with the current state so the page renders from the
     // stream alone.

@@ -12,6 +12,6 @@
     "rootDir": ".",
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["src/protocol-v3.ts"],
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

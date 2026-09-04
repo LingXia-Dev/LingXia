@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import {
   DEFAULT_MAX_V3_FRAME_BYTES,
   createV3DocumentCodec,
-  consumeV3BootstrapForFutureRequiredProtocol,
+  consumeV3Bootstrap,
 } from '../../../target/lingxia-bridge-v3-test/src/protocol-v3.js';
 
 const fixtureUrl = new URL('../../../testdata/bridge-v3/golden.json', import.meta.url);
@@ -36,6 +36,19 @@ for (const expected of fixture.outbound) {
   assert.deepEqual(parsed.value.payload, expected.payload, expected.kind);
   assert.equal(Object.hasOwn(parsed.value, 'secret'), false);
   assert.equal(Object.hasOwn(parsed.value.payload, 'secret'), false);
+}
+
+for (const expected of fixture.outbound) {
+  assert.deepEqual(
+    codec.parse(JSON.stringify({ ...expected.frame, sessionId: 'wrong-session' })),
+    { ok: false, error: 'SESSION_MISMATCH' },
+    `${expected.kind} must be session-bound before dispatch`,
+  );
+  assert.deepEqual(
+    codec.parse(JSON.stringify({ ...expected.frame, secret: 'native-must-not-send-secret' })),
+    { ok: false, error: 'UNEXPECTED_SECRET' },
+    `${expected.kind} must reject a native-supplied secret`,
+  );
 }
 
 for (const expected of invalidFixture.nativeToDocument) {
@@ -103,11 +116,12 @@ const bootstrapWindow = {
 };
 globalThis.window = bootstrapWindow;
 try {
-  const bootstrapCodec = consumeV3BootstrapForFutureRequiredProtocol();
-  assert.ok(bootstrapCodec);
+  const activation = consumeV3Bootstrap();
+  assert.equal(activation.kind, 'required');
+  const bootstrapCodec = activation.codec;
   assert.equal(bootstrapCalls, 1);
   assert.equal(Object.hasOwn(bootstrapWindow, '__LingXiaTakeControlBootstrap'), false);
-  assert.equal(consumeV3BootstrapForFutureRequiredProtocol(), undefined);
+  assert.deepEqual(consumeV3Bootstrap(), { kind: 'absent' });
   assert.equal(bootstrapCalls, 1);
   assert.equal(JSON.stringify(bootstrapWindow).includes(bootstrapSecret), false);
   assert.equal(JSON.stringify(bootstrapCodec).includes(bootstrapSecret), false);
@@ -138,8 +152,8 @@ const [indexSource, runtimeSource, es2020Bundle, es5Bundle] = await Promise.all(
   readFile(new URL('../dist/bridge-runtime.es5.js', import.meta.url), 'utf8'),
 ]);
 assert.doesNotMatch(indexSource, /protocol-v3/);
-assert.match(runtimeSource, /protocolsSupported:\s*\[2\]/);
-assert.match(runtimeSource, /consumeV3BootstrapForFutureRequiredProtocol/);
+assert.match(runtimeSource, /protocolMode\.kind === "required-v3" \? \[3\] : \[2\]/);
+assert.match(runtimeSource, /consumeV3Bootstrap/);
 assert.match(es2020Bundle, /__LingXiaTakeControlBootstrap/);
 assert.match(es5Bundle, /__LingXiaTakeControlBootstrap/);
 

@@ -103,6 +103,25 @@ impl BrowserTabDelegate {
         crate::tabs::browser_tab_document_is_internal(&self.tab_id)
     }
 
+    /// The registry has already invalidated this authority's execution gate.
+    /// PageBridge work is cancelled only after that mutex is released, so a
+    /// Page cancellation path can never re-enter the session registry while
+    /// it is being revoked.
+    fn revoke_document_authority(&self, authority: lxapp::ControlDocumentAuthority) {
+        match browser_resolve_delegate_page(&self.page_path, self.session_id) {
+            Ok(page) => {
+                let _ = page.revoke_required_v3_document(authority);
+            }
+            Err(err) => {
+                lxapp::warn!(
+                    "[InternalBrowser] Failed to cancel revoked bridge session for tab {}: {}",
+                    self.tab_id,
+                    err
+                );
+            }
+        }
+    }
+
     fn inject_document_scripts(&self) {
         let scripts = browser_document_scripts_snapshot();
         if scripts.is_empty() {
@@ -174,15 +193,26 @@ impl WebViewDelegate for BrowserTabDelegate {
         navigation.progress.apply(&event);
         match &event {
             NavigationEvent::Started { id, requested_url } => {
-                let trusted_start = self
+                let (trusted_start, revoked) = self
                     .native_view()
-                    .is_some_and(|native_view| self.documents.navigation_started(native_view, *id));
+                    .map(|native_view| {
+                        self.documents
+                            .navigation_started_with_revocation(native_view, *id)
+                    })
+                    .unwrap_or((false, None));
                 if is_error_document_url(requested_url) {
                     navigation.showing_error_page = true;
+                    drop(navigation);
+                    if let Some(authority) = revoked {
+                        self.revoke_document_authority(authority);
+                    }
                     return;
                 }
                 navigation.showing_error_page = false;
                 drop(navigation);
+                if let Some(authority) = revoked {
+                    self.revoke_document_authority(authority);
+                }
                 if !trusted_start && !self.document_is_internal() {
                     return;
                 }
@@ -237,6 +267,10 @@ impl WebViewDelegate for BrowserTabDelegate {
                 }
             }
             NavigationEvent::Failed { id, error } => {
+                let revoked = self.native_view().and_then(|native_view| {
+                    self.documents
+                        .revoke_navigation_if_matches(native_view, *id)
+                });
                 let failing_url = error.failing_url.as_deref().unwrap_or_default();
                 if is_error_document_url(failing_url) || navigation.showing_error_page {
                     // The error document itself failed to load (matched by URL,
@@ -244,18 +278,38 @@ impl WebViewDelegate for BrowserTabDelegate {
                     // reports no failing URL); give up rather than looping, and
                     // stop suppressing state updates.
                     navigation.showing_error_page = false;
+                    drop(navigation);
+                    if let Some(authority) = revoked {
+                        self.revoke_document_authority(authority);
+                    }
                     return;
                 }
                 if !navigation.progress.is_current(*id) {
+                    drop(navigation);
+                    if let Some(authority) = revoked {
+                        self.revoke_document_authority(authority);
+                    }
                     return;
                 }
                 navigation.showing_error_page = true;
                 drop(navigation);
+                if let Some(authority) = revoked {
+                    self.revoke_document_authority(authority);
+                }
                 self.show_load_error(error);
             }
             // Cancellation is control flow (superseded load, intercepted
-            // handoff); it never surfaces error UI or touches tab state.
-            NavigationEvent::Cancelled { .. } => {}
+            // handoff); it never surfaces error UI, but it does terminate the
+            // exact trusted session that owned this navigation.
+            NavigationEvent::Cancelled { id, .. } => {
+                drop(navigation);
+                if let Some(authority) = self.native_view().and_then(|native_view| {
+                    self.documents
+                        .revoke_navigation_if_matches(native_view, *id)
+                }) {
+                    self.revoke_document_authority(authority);
+                }
+            }
         }
     }
 
@@ -263,11 +317,23 @@ impl WebViewDelegate for BrowserTabDelegate {
         if self.native_view() != Some(admission.native_view()) {
             return;
         }
-        // This records native evidence only. Bridge and route admission remain
-        // unchanged in this commit.
+        // Admission records native evidence only; V3 hello performs the later
+        // authenticated activation.
         let _ = self
             .documents
             .admit(self.session_id, self.create_token, admission);
+    }
+
+    fn on_web_content_process_terminated(&self, native_view: NativeWebViewId) {
+        if self.native_view() != Some(native_view) {
+            return;
+        }
+        if let Some(authority) = self.documents.destroy_native_view(native_view) {
+            // `destroy_native_view` flips the exact execution domain under
+            // the registry lock. Page cancellation follows only after it
+            // releases that lock.
+            self.revoke_document_authority(authority);
+        }
     }
 
     fn on_webview_state_change(&self, change: WebViewStateChange) {
@@ -337,19 +403,69 @@ impl WebViewDelegate for BrowserTabDelegate {
             return;
         }
 
-        // The page bridge belongs to internal documents; an external document
-        // has no nonce and gets no page routing.
-        if !self.document_is_internal() {
-            lxapp::warn!(
-                "[InternalBrowser] Dropping bridge message from external document in tab {}",
-                self.tab_id
-            );
+        let Some(binding) = browser_v3_document_binding(message.body()) else {
+            // Browser control pages are RequiredV3. URL classification is a
+            // presentation/lifecycle concern, never bridge admission proof.
             return;
-        }
+        };
 
         match browser_resolve_delegate_page(&self.page_path, self.session_id) {
             Ok(page) => {
-                if let Err(err) = page.handle_incoming_web_message(message) {
+                let context = message.context().clone();
+                let session_id = binding.session_id.to_owned();
+                let secret = binding.secret.to_owned();
+                let mut deferred_cancellation = None;
+                let prepared = if binding.kind == "hello" {
+                    self.documents.with_activated_hello_for_context(
+                        &context,
+                        &session_id,
+                        &secret,
+                        |authority, gate| {
+                            let Ok(deferred) =
+                                page.bind_required_v3_authority(&context, authority, gate)
+                            else {
+                                return false;
+                            };
+                            deferred_cancellation = Some(deferred);
+                            true
+                        },
+                        |authority| {
+                            page.promote_active_browser_document(authority.clone())
+                                .then(|| {
+                                    page.prepare_required_v3_incoming(
+                                        message,
+                                        authority.clone(),
+                                        authority.execution_gate(),
+                                    )
+                                    .ok()
+                                })
+                                .flatten()
+                        },
+                    )
+                } else {
+                    self.documents.with_active_frame_for_context(
+                        &context,
+                        &session_id,
+                        &secret,
+                        |authority| {
+                            page.prepare_required_v3_incoming(
+                                message,
+                                authority.clone(),
+                                authority.execution_gate(),
+                            )
+                            .ok()
+                        },
+                    )
+                };
+                if let Some(deferred) = deferred_cancellation {
+                    // RequiredV3 replacement happened under the registry
+                    // lock; old work may close channels through that same
+                    // registry, so cancellation must wait until now.
+                    deferred.finish();
+                }
+                if let Some(prepared) = prepared
+                    && let Err(err) = page.execute_prepared_required_v3_incoming(prepared)
+                {
                     lxapp::warn!(
                         "[InternalBrowser] Failed to handle bridge message for tab {}: {}",
                         self.tab_id,
@@ -379,6 +495,41 @@ impl WebViewDelegate for BrowserTabDelegate {
             .with_path(&self.page_path)
             .with_appid(BUILTIN_BROWSER_APPID.to_string());
     }
+}
+
+struct BrowserV3DocumentBinding {
+    kind: String,
+    session_id: String,
+    secret: String,
+}
+
+/// Minimal envelope read before PageBridge's typed codec. The
+/// codec repeats all validation (including duplicate-key rejection) after the
+/// active registry gate succeeds; this only decides whether the browser may
+/// hand a frame to that codec at all.
+fn browser_v3_document_binding(frame: &str) -> Option<BrowserV3DocumentBinding> {
+    let value: Value = serde_json::from_str(frame).ok()?;
+    let object = value.as_object()?;
+    (object.get("v")?.as_u64() == Some(3)).then_some(())?;
+    let kind = object.get("kind")?.as_str()?;
+    matches!(
+        kind,
+        "hello"
+            | "req"
+            | "res"
+            | "notify"
+            | "cancel"
+            | "ch.open"
+            | "ch.data"
+            | "ch.close"
+            | "state.ack"
+    )
+    .then_some(())?;
+    Some(BrowserV3DocumentBinding {
+        kind: kind.to_owned(),
+        session_id: object.get("sessionId")?.as_str()?.to_owned(),
+        secret: object.get("secret")?.as_str()?.to_owned(),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -780,7 +931,12 @@ pub(crate) fn browser_destroy_webview_if_matches(
     expected: &Arc<WebView>,
 ) -> bool {
     let webtag = browser_webtag(path, session_id);
-    browser_document_sessions().destroy_native_view(expected.native_view_id());
+    if let Some(authority) =
+        browser_document_sessions().destroy_native_view(expected.native_view_id())
+        && let Ok(page) = browser_resolve_delegate_page(path, session_id)
+    {
+        let _ = page.revoke_required_v3_document(authority);
+    }
     destroy_managed_webview_if_matches(&webtag, expected)
 }
 

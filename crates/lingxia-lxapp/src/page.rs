@@ -688,6 +688,51 @@ impl PageInstance {
         self.inner.bridge.clone()
     }
 
+    /// Host-TCB entrypoint for an admitted browser control document. The
+    /// opaque pending lease owns the exact native/context check; callers never
+    /// receive V3 credentials or construct a bridge protocol directly.
+    #[doc(hidden)]
+    pub fn bind_required_v3_document(
+        &self,
+        context: &lingxia_webview::WebMessageContext,
+        pending: &dyn crate::RequiredV3DocumentGate,
+    ) -> Result<(), LxAppError> {
+        self.inner
+            .bridge
+            .bind_required_v3_document(self, context, pending)
+    }
+
+    /// Host-TCB installer for use inside BrowserDocumentSessions' held
+    /// BootstrapPending closure. Unlike [`Self::bind_required_v3_document`],
+    /// it does not re-enter the browser registry through a lease.
+    #[doc(hidden)]
+    pub fn bind_required_v3_authority(
+        &self,
+        context: &lingxia_webview::WebMessageContext,
+        authority: crate::ControlDocumentAuthority,
+        outbound_gate: std::sync::Arc<dyn lingxia_webview::DocumentOutboundGate>,
+    ) -> Result<crate::DeferredRequiredV3Cancellation, LxAppError> {
+        self.inner
+            .bridge
+            .bind_required_v3_authority(self, context, authority, outbound_gate)
+    }
+
+    #[doc(hidden)]
+    pub fn promote_active_browser_document(
+        &self,
+        authority: crate::ControlDocumentAuthority,
+    ) -> bool {
+        self.inner.bridge.promote_active_browser_document(authority)
+    }
+
+    /// Remove only the active required-V3 bridge work for this authority.
+    #[doc(hidden)]
+    pub fn revoke_required_v3_document(&self, authority: crate::ControlDocumentAuthority) -> bool {
+        self.inner
+            .bridge
+            .revoke_required_v3_document(self, authority)
+    }
+
     fn owning_lxapp(&self) -> Arc<LxApp> {
         self.inner.bridge.lxapp()
     }
@@ -812,6 +857,31 @@ impl PageInstance {
         message: IncomingWebMessage,
     ) -> Result<(), LxAppError> {
         self.inner.bridge.handle_incoming(self, message)
+    }
+
+    /// Registry-held phase of browser control ingress. It prepares an opaque
+    /// frame without invoking host code or synchronously posting to WebView.
+    #[doc(hidden)]
+    pub fn prepare_required_v3_incoming(
+        &self,
+        message: IncomingWebMessage,
+        authority: crate::ControlDocumentAuthority,
+        execution_gate: crate::RequiredV3ExecutionGate,
+    ) -> Result<crate::PreparedRequiredV3Incoming, LxAppError> {
+        self.inner
+            .bridge
+            .prepare_required_v3_incoming(self, message, authority, execution_gate)
+    }
+
+    /// Post-registry-lock phase of browser control ingress.
+    #[doc(hidden)]
+    pub fn execute_prepared_required_v3_incoming(
+        &self,
+        prepared: crate::PreparedRequiredV3Incoming,
+    ) -> Result<(), LxAppError> {
+        self.inner
+            .bridge
+            .execute_prepared_required_v3_incoming(self, prepared)
     }
 
     /// Get complete page state

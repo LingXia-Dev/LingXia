@@ -3,8 +3,9 @@
 //! Built-in host capabilities and third-party host extensions share the same
 //! registry. External crates can define handlers and register them here.
 
+use crate::ControlDocumentAuthority;
 use crate::error::LxAppError;
-use crate::lxapp::LxApp;
+use crate::lxapp::{AppSessionClass, LxApp};
 
 use futures::Stream;
 use serde::Serialize;
@@ -76,7 +77,7 @@ pub enum HostMethodKind {
 
 /// The admission constraint attached to a host route.
 ///
-/// This is deliberately a closed SDK enum. Future dispatch policy determines
+/// This is deliberately a closed SDK enum. Dispatch policy determines
 /// the caller set for each constraint; callers cannot select one from a bridge
 /// payload or an app manifest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -86,6 +87,95 @@ pub enum RouteAudience {
     ControlAppOnly,
     BrowserControlOnly,
     ControlOnly,
+}
+
+/// Native-scoped identity of an authenticated lxapp session.
+///
+/// The scope deliberately contains no app id or bundle metadata: route
+/// admission relies on the native session class, never a client-controlled
+/// identifier or payload field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AppScope {
+    session_id: u64,
+}
+
+impl AppScope {
+    pub(crate) const fn from_session_id(session_id: u64) -> Self {
+        Self { session_id }
+    }
+}
+
+/// Authenticated source for a native route invocation.
+///
+/// Browser construction is reserved for the browser document lifecycle TCB:
+/// ordinary bridge frames derive only the `LxAppSession` variant from their
+/// owning native `LxApp` session.
+#[derive(Clone)]
+pub enum AuthenticatedCaller {
+    LxAppSession {
+        class: AppSessionClass,
+        scope: AppScope,
+    },
+    BrowserDocument {
+        authority: ControlDocumentAuthority,
+    },
+}
+
+impl AuthenticatedCaller {
+    pub(crate) fn for_lxapp(app: &LxApp) -> Self {
+        Self::LxAppSession {
+            class: app.app_session_class(),
+            scope: AppScope::from_session_id(app.session_id()),
+        }
+    }
+
+    /// Host-TCB constructor used only after the browser registry has promoted
+    /// the exact document binding to Active.
+    #[doc(hidden)]
+    pub fn active_browser_document(authority: ControlDocumentAuthority) -> Self {
+        Self::BrowserDocument { authority }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn standard_for_test(scope: u64) -> Self {
+        Self::LxAppSession {
+            class: AppSessionClass::StandardApp,
+            scope: AppScope::from_session_id(scope),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn control_for_test(scope: u64) -> Self {
+        Self::LxAppSession {
+            class: AppSessionClass::ControlApp,
+            scope: AppScope::from_session_id(scope),
+        }
+    }
+}
+
+/// The sole route-audience decision point.
+pub fn authorize(caller: &AuthenticatedCaller, audience: RouteAudience) -> bool {
+    matches!(
+        (caller, audience),
+        (
+            AuthenticatedCaller::LxAppSession { .. },
+            RouteAudience::AppSessionOnly
+        ) | (
+            AuthenticatedCaller::LxAppSession { .. },
+            RouteAudience::AuthenticatedReadOnly
+        ) | (
+            AuthenticatedCaller::LxAppSession {
+                class: AppSessionClass::ControlApp,
+                ..
+            },
+            RouteAudience::ControlAppOnly | RouteAudience::ControlOnly
+        ) | (
+            AuthenticatedCaller::BrowserDocument { .. },
+            RouteAudience::AuthenticatedReadOnly
+                | RouteAudience::BrowserControlOnly
+                | RouteAudience::ControlOnly
+        )
+    )
 }
 
 /// The admission policy resolved when a route is registered.
@@ -161,6 +251,9 @@ impl HostRegistration {
 /// Design constraints:
 /// - `input` is owned to avoid capturing borrows in `'static` futures.
 /// - `cancel` is reachable so handlers can stop work early.
+/// - `call` only constructs a lazy future; it must not perform a side effect
+///   before that future is first polled. Bridge admission commits that poll
+///   against document revocation and may cancel it before polling begins.
 pub trait HostHandler: Send + Sync + 'static {
     fn call<'a>(
         &'a self,
@@ -177,9 +270,8 @@ pub trait HostHandler: Send + Sync + 'static {
 struct HostRouteRecord {
     handler: Arc<dyn HostHandler>,
     kind: HostMethodKind,
-    // Dispatch authorization consumes this in the next phase. Keep it with the
-    // route now so registration cannot produce policy-less entries.
-    #[allow(dead_code)]
+    // Keep policy with the route so registration cannot produce policy-less
+    // entries.
     policy: EffectiveRoutePolicy,
 }
 
@@ -197,6 +289,30 @@ impl HostRegistry {
 
     fn register(&mut self, key: String, route: HostRouteRecord) {
         self.routes.insert(key, route);
+    }
+
+    fn route_for_caller(
+        &self,
+        name: &str,
+        caller: &AuthenticatedCaller,
+    ) -> Option<&HostRouteRecord> {
+        self.routes
+            .get(name)
+            .filter(|route| authorize(caller, route.policy.audience()))
+    }
+
+    fn schema_for_caller(&self, caller: &AuthenticatedCaller) -> HashMap<String, &'static str> {
+        self.routes
+            .iter()
+            .filter(|(_, route)| authorize(caller, route.policy.audience()))
+            .map(|(key, route)| {
+                let kind = match route.kind {
+                    HostMethodKind::Call => "call",
+                    HostMethodKind::Stream => "stream",
+                };
+                (key.clone(), kind)
+            })
+            .collect()
     }
 }
 
@@ -277,32 +393,37 @@ pub fn register_host_entry(entry: HostRegistrationEntry) {
     }
 }
 
-pub(crate) fn get_host(name: &str) -> Option<Arc<dyn HostHandler>> {
+pub(crate) fn get_host_for_caller(
+    name: &str,
+    caller: &AuthenticatedCaller,
+) -> Option<Arc<dyn HostHandler>> {
     let registry = get_host_registry();
     registry
         .lock()
         .unwrap()
+        .route_for_caller(name, caller)
+        .map(|route| Arc::clone(&route.handler))
+}
+
+/// Inspect only immutable route policy. Browser ingress uses this while its
+/// lifecycle registry lock is held; cloning a handler is deliberately deferred
+/// until after that lock is released.
+pub(crate) fn host_route_is_authorized(name: &str, caller: &AuthenticatedCaller) -> bool {
+    get_host_registry()
+        .lock()
+        .unwrap()
         .routes
         .get(name)
-        .map(|route| Arc::clone(&route.handler))
+        .is_none_or(|route| authorize(caller, route.policy.audience()))
 }
 
 /// Returns a map of `"namespace.method"` → `"call"` | `"stream"` for all
 /// registered host methods. Included in the handshake `Ready` message so
 /// the JS bridge can automatically choose the right wire protocol.
-pub fn host_method_schema() -> HashMap<String, &'static str> {
+pub fn host_method_schema(caller: &AuthenticatedCaller) -> HashMap<String, &'static str> {
     let registry = get_host_registry();
     let reg = registry.lock().unwrap();
-    reg.routes
-        .iter()
-        .map(|(k, route)| {
-            let kind_str = match route.kind {
-                HostMethodKind::Call => "call",
-                HostMethodKind::Stream => "stream",
-            };
-            (k.clone(), kind_str)
-        })
-        .collect()
+    reg.schema_for_caller(caller)
 }
 
 pub fn parse_input<T: DeserializeOwned>(input: Option<&str>) -> HostResult<T> {
@@ -657,7 +778,6 @@ impl ChannelRegistration {
 struct ChannelRouteRecord {
     handler: Arc<dyn ChannelHandler>,
     // Channel admission is wired with request/notification authorization.
-    #[allow(dead_code)]
     policy: EffectiveRoutePolicy,
 }
 
@@ -695,13 +815,28 @@ pub fn register_channel_handler(registration: ChannelRegistration) {
     );
 }
 
-pub(crate) fn get_channel_handler(name: &str) -> Option<Arc<dyn ChannelHandler>> {
+pub(crate) fn get_channel_handler_for_caller(
+    name: &str,
+    caller: &AuthenticatedCaller,
+) -> Option<Arc<dyn ChannelHandler>> {
     get_channel_registry()
         .lock()
         .unwrap()
         .routes
         .get(name)
+        .filter(|route| authorize(caller, route.policy.audience()))
         .map(|route| Arc::clone(&route.handler))
+}
+
+/// See [`host_route_is_authorized`]. Unknown channels remain eligible for the
+/// normal post-lock "not found" response.
+pub(crate) fn channel_route_is_authorized(name: &str, caller: &AuthenticatedCaller) -> bool {
+    get_channel_registry()
+        .lock()
+        .unwrap()
+        .routes
+        .get(name)
+        .is_none_or(|route| authorize(caller, route.policy.audience()))
 }
 
 /// Create a linked `(ChannelContext, ChannelContextSender, outbound_rx)` triple.
@@ -836,5 +971,77 @@ mod tests {
         assert_eq!(handler.policy().audience(), RouteAudience::ControlAppOnly);
         assert_eq!(channel.audience(), RouteAudience::ControlOnly);
         assert_eq!(channel.policy().audience(), RouteAudience::ControlOnly);
+    }
+
+    #[test]
+    fn audience_matrix_rejects_same_scope_standard_caller_for_control_routes() {
+        let standard = AuthenticatedCaller::standard_for_test(1);
+        let control = AuthenticatedCaller::control_for_test(1);
+        let (_, authority) =
+            crate::issue_control_document_bootstrap(&ring::rand::SystemRandom::new())
+                .expect("native entropy");
+        let browser = AuthenticatedCaller::active_browser_document(authority);
+
+        let audiences = [
+            RouteAudience::AppSessionOnly,
+            RouteAudience::AuthenticatedReadOnly,
+            RouteAudience::ControlAppOnly,
+            RouteAudience::BrowserControlOnly,
+            RouteAudience::ControlOnly,
+        ];
+        assert_eq!(
+            audiences.map(|audience| authorize(&standard, audience)),
+            [true, true, false, false, false]
+        );
+        assert_eq!(
+            audiences.map(|audience| authorize(&control, audience)),
+            [true, true, true, false, true]
+        );
+        assert_eq!(
+            audiences.map(|audience| authorize(&browser, audience)),
+            [false, true, false, true, true]
+        );
+    }
+
+    #[test]
+    fn schema_visibility_matches_dispatch_for_every_audience_and_caller_class() {
+        let (_, authority) =
+            crate::issue_control_document_bootstrap(&ring::rand::SystemRandom::new())
+                .expect("native entropy");
+        let callers = [
+            AuthenticatedCaller::standard_for_test(42),
+            AuthenticatedCaller::control_for_test(42),
+            AuthenticatedCaller::active_browser_document(authority),
+        ];
+        let audiences = [
+            RouteAudience::AppSessionOnly,
+            RouteAudience::AuthenticatedReadOnly,
+            RouteAudience::ControlAppOnly,
+            RouteAudience::BrowserControlOnly,
+            RouteAudience::ControlOnly,
+        ];
+        let mut registry = HostRegistry::new();
+        for (index, audience) in audiences.into_iter().enumerate() {
+            registry.register(
+                format!("test.route{index}"),
+                HostRouteRecord {
+                    handler: Arc::new(TestHostHandler),
+                    kind: HostMethodKind::Call,
+                    policy: EffectiveRoutePolicy::new(audience),
+                },
+            );
+        }
+
+        for caller in &callers {
+            let schema = registry.schema_for_caller(caller);
+            for index in 0..audiences.len() {
+                let name = format!("test.route{index}");
+                assert_eq!(
+                    schema.contains_key(&name),
+                    registry.route_for_caller(&name, caller).is_some(),
+                    "schema and dispatch diverged for {name}",
+                );
+            }
+        }
     }
 }

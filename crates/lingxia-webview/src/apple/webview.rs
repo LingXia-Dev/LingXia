@@ -1015,6 +1015,17 @@ define_class!(
             );
         }
 
+        #[unsafe(method(webViewWebContentProcessDidTerminate:))]
+        fn web_content_process_did_terminate(&self, _webview: *mut AnyObject) {
+            let webtag = &self.ivars().webtag;
+            let native_view_id = self.ivars().native_view_id;
+            if let Some(delegate) = current_native_callback_webview(webtag, native_view_id)
+                .and_then(|webview| webview.get_delegate())
+            {
+                delegate.on_web_content_process_terminated(native_view_id);
+            }
+        }
+
         #[unsafe(method(webView:decidePolicyForNavigationAction:decisionHandler:))]
         fn decide_policy_for_navigation_action(
             &self,

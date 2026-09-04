@@ -62,6 +62,7 @@ struct PageSvcState {
     channels: HashMap<ChannelKey, ChannelState>,
     next_channel_token: u64,
     active_session_work: Option<SessionWorkId>,
+    work_cancellations: HashMap<SessionWorkId, watch::Sender<bool>>,
     /// Monotonic guard for backend queue races: an old Begin must never
     /// overwrite a successor after cancellation/recreation.
     max_seen_session_work: Option<SessionWorkId>,
@@ -157,6 +158,7 @@ impl ChannelTurn {
             return true;
         };
         tokio::select! {
+            biased;
             _ = &mut previous => !*self.cancel_rx.borrow(),
             changed = self.cancel_rx.changed() => changed.is_ok() && !*self.cancel_rx.borrow(),
         }
@@ -207,6 +209,7 @@ async fn await_js_call_or_cancel<T>(
     call: impl std::future::Future<Output = JSResult<T>>,
 ) -> Result<T, RpcError> {
     tokio::select! {
+        biased;
         _ = cancel_rx => Err(RpcError::new(BRIDGE_CANCELED, None)),
         result = call => result.map_err(rpc_error_from_rong),
     }
@@ -220,6 +223,7 @@ async fn await_channel_call_or_cancel<T>(
         return Err(RpcError::new(BRIDGE_CANCELED, None));
     }
     tokio::select! {
+        biased;
         changed = cancel_rx.changed() => {
             let _ = changed;
             Err(RpcError::new(BRIDGE_CANCELED, None))
@@ -406,6 +410,7 @@ impl PageSvc {
             };
             await_js_call_or_cancel(&mut cancel_rx, call).await?;
             return tokio::select! {
+                biased;
                 _ = &mut cancel_rx => Err(RpcError::new(BRIDGE_CANCELED, None)),
                 result = &mut end_rx => match result {
                     Ok(r) => r,
@@ -434,6 +439,7 @@ impl PageSvc {
         };
 
         let value = tokio::select! {
+            biased;
             _ = &mut cancel_rx => {
                 return Err(RpcError::new(BRIDGE_CANCELED, None));
             }
@@ -467,9 +473,12 @@ impl PageSvc {
         method: &str,
         params_json: Option<&str>,
     ) {
-        if !self.session_work_is_active(work_id).await {
+        let Some(work_id) = work_id else {
             return;
-        }
+        };
+        let Some(mut work_cancel) = self.work_cancellation_receiver(work_id).await else {
+            return;
+        };
         let Some(js_func) = self.get_js_func(method) else {
             return;
         };
@@ -486,16 +495,28 @@ impl PageSvc {
         let method_name = method.to_string();
         let page_path = self.page.path().to_string();
         let task = async move {
-            let result = match call_arg {
-                Some(val) => js_func.call_async::<_, ()>(Some(this_obj), (val,)).await,
-                None => js_func.call_async::<_, ()>(Some(this_obj), ()).await,
+            if *work_cancel.borrow() {
+                return;
+            }
+            let result = tokio::select! {
+                biased;
+                changed = work_cancel.changed() => {
+                    let _ = changed;
+                    return;
+                }
+                result = async {
+                    match call_arg {
+                        Some(val) => js_func.call_async::<_, ()>(Some(this_obj), (val,)).await,
+                        None => js_func.call_async::<_, ()>(Some(this_obj), ()).await,
+                    }
+                } => result,
             };
             if let Err(e) = result {
                 error!("[{}] notify '{}' failed: {}", page_path, method_name, e);
             }
         };
         super::context_lifecycle::spawn(&ctx, move |_ctx| {
-            with_document_callback_work(work_id, outbound, task)
+            with_document_callback_work(Some(work_id), outbound, task)
         });
     }
 
@@ -809,12 +830,16 @@ impl PageSvc {
         }
         state.max_seen_session_work = Some(work_id);
         state.active_session_work = Some(work_id);
+        state
+            .work_cancellations
+            .insert(work_id, watch::channel(false).0);
     }
 
     pub(crate) async fn cancel_session_work(&self, work_id: SessionWorkId) {
-        let (channels, callbacks) = {
+        let (channels, callbacks, work_cancel) = {
             let mut state = self.state.lock().await;
             state.active_session_work = cancel_active_work(state.active_session_work, work_id);
+            let work_cancel = state.work_cancellations.remove(&work_id);
 
             let mut channels = Vec::new();
             state.channels.retain(|key, channel| {
@@ -838,8 +863,11 @@ impl PageSvc {
                     true
                 }
             });
-            (channels, callbacks)
+            (channels, callbacks, work_cancel)
         };
+        if let Some(work_cancel) = work_cancel {
+            let _ = work_cancel.send(true);
+        }
         for channel in channels {
             let _ = channel.send(true);
         }
@@ -862,6 +890,21 @@ impl PageSvc {
                 active_work_matches(self.state.lock().await.active_session_work, Some(work_id))
             }
         }
+    }
+
+    async fn work_cancellation_receiver(
+        &self,
+        work_id: SessionWorkId,
+    ) -> Option<watch::Receiver<bool>> {
+        let state = self.state.lock().await;
+        (state.active_session_work == Some(work_id))
+            .then(|| {
+                state
+                    .work_cancellations
+                    .get(&work_id)
+                    .map(watch::Sender::subscribe)
+            })
+            .flatten()
     }
 
     pub(crate) async fn handle_bridge_ready(
@@ -957,6 +1000,7 @@ impl PageSvc {
                 channels: HashMap::new(),
                 next_channel_token: 0,
                 active_session_work: None,
+                work_cancellations: HashMap::new(),
                 max_seen_session_work: None,
             })),
             lifecycle_queue: Rc::new(RefCell::new(std::collections::VecDeque::new())),
@@ -1186,6 +1230,7 @@ impl PageSvc {
 
         loop {
             let step_obj = tokio::select! {
+                biased;
                 _ = &mut *cancel_rx => {
                     if let Some(return_fn) = return_fn.clone() {
                         let iterator = iterator.clone();
@@ -1922,6 +1967,24 @@ mod tests {
         assert_eq!(done_rx.await, Ok(()));
     }
 
+    #[tokio::test]
+    async fn notify_cancel_before_task_poll_wins_over_js_callback() {
+        let (cancel_tx, mut cancel_rx) = watch::channel(false);
+        let ran = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        cancel_tx.send(true).unwrap();
+        let callback_ran = std::sync::Arc::clone(&ran);
+        tokio::select! {
+            biased;
+            changed = cancel_rx.changed() => {
+                assert!(changed.is_ok());
+            }
+            _ = async move {
+                callback_ran.store(true, std::sync::atomic::Ordering::Release);
+            } => {}
+        }
+        assert!(!ran.load(std::sync::atomic::Ordering::Acquire));
+    }
+
     #[test]
     fn queued_work_never_crosses_a_revoked_or_recreated_session() {
         assert!(!active_work_matches(Some(7_u64), None));
@@ -1931,6 +1994,26 @@ mod tests {
         assert!(!active_work_matches(Some(8_u64), Some(7)));
         assert_eq!(cancel_active_work(Some(7_u64), 7), None);
         assert_eq!(cancel_active_work(Some(8_u64), 7), Some(8));
+    }
+
+    #[test]
+    fn cancelled_work_rejects_late_document_command_families() {
+        // Req/Notify/ChOpen/StateSnapshot each enter PageSvc through the same
+        // active-work admission guard before they can allocate handlers,
+        // streams, channels, or state callbacks. A successor must reject the
+        // old id just as a cancelled page does.
+        let old = SessionWorkId::for_test(7);
+        let successor = SessionWorkId::for_test(8);
+        for command in ["Req", "Notify", "ChOpen", "StateSnapshot"] {
+            assert!(
+                !active_work_matches(None::<SessionWorkId>, Some(old)),
+                "cancelled work admitted late {command}"
+            );
+            assert!(
+                !active_work_matches(Some(successor), Some(old)),
+                "successor admitted late {command}"
+            );
+        }
     }
 
     #[test]

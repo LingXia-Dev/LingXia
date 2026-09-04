@@ -46,10 +46,14 @@ pub use appservice::event_bus::{
 pub use appservice::event_bus::{
     BROWSER_TAB_CLOSED_EVENT, DISPLAY_LANGUAGE_CHANGE_EVENT, publish_app_event, publish_page_event,
 };
+#[doc(hidden)]
+pub use bridge::{
+    DeferredRequiredV3Cancellation, PreparedRequiredV3Incoming, RequiredV3DocumentGate,
+};
 pub use cache::touch_access_time;
 pub use control_document_bootstrap::{
-    ControlDocumentBootstrap, ControlDocumentBootstrapError, ControlDocumentSessionMaterial,
-    issue_control_document_bootstrap,
+    ControlDocumentAuthority, ControlDocumentBootstrap, ControlDocumentBootstrapError,
+    RequiredV3ExecutionGate, RequiredV3ExecutionPermit, issue_control_document_bootstrap,
 };
 pub use delegate::{LxAppDelegate, LxAppUiEventType};
 pub use error::LxAppError;
