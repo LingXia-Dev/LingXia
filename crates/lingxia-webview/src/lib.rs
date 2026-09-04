@@ -101,6 +101,9 @@ mod apple;
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
 mod harmony;
 
+#[cfg(any(all(target_os = "linux", target_env = "ohos"), test))]
+mod harmony_document;
+
 #[cfg(target_os = "windows")]
 mod windows;
 
@@ -253,7 +256,8 @@ pub mod platform {
     pub mod harmony {
         pub use crate::harmony::{
             check_navigation_policy, complete_pending_screenshot_request, notify_webview_state,
-            on_file_chooser_requested, schemehandler::register_custom_schemes, tsfn,
+            on_document_commit, on_file_chooser_requested, on_page_begin, on_page_end,
+            on_render_exited, schemehandler::register_custom_schemes, tsfn,
             webview_controller_created, webview_controller_destroyed,
         };
 
@@ -261,11 +265,19 @@ pub mod platform {
         pub fn on_load_error(
             webtag: &str,
             native_generation: &str,
+            page_epoch: u64,
             url: &str,
             error_code: i32,
             description: &str,
         ) {
-            crate::harmony::on_load_error(webtag, native_generation, url, error_code, description);
+            crate::harmony::on_load_error(
+                webtag,
+                native_generation,
+                page_epoch,
+                url,
+                error_code,
+                description,
+            );
         }
 
         #[doc(hidden)]

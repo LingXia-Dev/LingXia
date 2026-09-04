@@ -79,6 +79,7 @@ export struct LingXiaWebView {
   private embedSyncScheduled: boolean = false
   private embedSyncTimerId: number | null = null
   private lastFullscreenId: string = ''
+  private pageEpoch: string = ''
 
   aboutToDisappear() {
     this.cleanupEmbedManager();
@@ -162,10 +163,38 @@ export struct LingXiaWebView {
         handleWebViewLoadError(
           this.webTag,
           WebViewManager.getGenerationForController(this.webTag, this.controller),
+          this.pageEpoch,
           event.request.getRequestUrl() ?? '',
           event.error.getErrorCode(),
           event.error.getErrorInfo() ?? 'unknown error'
         );
+      })
+      .onPageBegin((event) => {
+        this.pageEpoch = WebViewManager.pageBegin(
+          this.webTag,
+          this.controller,
+          event?.url ?? ''
+        );
+      })
+      .onPageVisible(() => {
+        WebViewManager.documentCommit(
+          this.webTag,
+          this.controller,
+          this.pageEpoch,
+          this.controller.getUrl() ?? ''
+        );
+      })
+      .onPageEnd((event) => {
+        WebViewManager.pageEnd(
+          this.webTag,
+          this.controller,
+          this.pageEpoch,
+          event?.url ?? ''
+        );
+      })
+      .onRenderExited(() => {
+        this.pageEpoch = '';
+        WebViewManager.renderExited(this.webTag, this.controller);
       })
       .onShowFileSelector((event) => {
         if (!event) {

@@ -290,13 +290,36 @@ impl WebMessageExecutor {
                                 ingress.close();
                                 return;
                             };
-                            if let Some(delegate) = webview.get_delegate() {
-                                delegate.handle_post_message(message);
-                            } else {
-                                log::debug!(
-                                    "Dropping WebView message before delegate installation ({})",
-                                    webview.webtag()
-                                );
+                            let document = message.context().document();
+                            let mut message = Some(message);
+                            let deliver = &mut || {
+                                if let Some(delegate) = webview.get_delegate() {
+                                    delegate.handle_post_message(
+                                        message
+                                            .take()
+                                            .expect("message delivery closure runs at most once"),
+                                    );
+                                } else {
+                                    log::debug!(
+                                        "Dropping WebView message before delegate installation ({})",
+                                        webview.webtag()
+                                    );
+                                }
+                            };
+                            match document {
+                                crate::DocumentBinding::Bound(generation) => {
+                                    if !crate::events::normalizer::with_current_document_binding(
+                                        webview.native_view_id(),
+                                        generation,
+                                        deliver,
+                                    ) {
+                                        log::debug!(
+                                            "Dropping WebView message after its document generation was revoked ({})",
+                                            webview.webtag()
+                                        );
+                                    }
+                                }
+                                crate::DocumentBinding::Unbound => deliver(),
                             }
                         });
                     }
@@ -1096,7 +1119,7 @@ pub struct TrustedDataLoadReservation<'a> {
 enum TrustedDataLoadEvidence {
     #[cfg(any(target_os = "ios", target_os = "macos", target_os = "android"))]
     NativeKey(crate::events::normalizer::NativeKey),
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", all(target_os = "linux", target_env = "ohos")))]
     PlatformAttested,
 }
 
@@ -1135,7 +1158,7 @@ impl TrustedDataLoadReservation<'_> {
                     key,
                 )
             }
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", all(target_os = "linux", target_env = "ohos")))]
             TrustedDataLoadEvidence::PlatformAttested => true,
         };
         if attested {
@@ -1284,11 +1307,23 @@ impl WebView {
         Ok(TrustedDataLoadEvidence::PlatformAttested)
     }
 
+    #[cfg(all(target_os = "linux", target_env = "ohos"))]
+    fn load_trusted_data_on_platform(
+        &self,
+        intent: TrustedLoadIntent,
+        request: LoadDataRequest<'_>,
+    ) -> Result<TrustedDataLoadEvidence, WebViewError> {
+        self.inner
+            .load_trusted_data(intent, request)
+            .map(|()| TrustedDataLoadEvidence::PlatformAttested)
+    }
+
     #[cfg(not(any(
         target_os = "ios",
         target_os = "macos",
         target_os = "windows",
-        target_os = "android"
+        target_os = "android",
+        all(target_os = "linux", target_env = "ohos")
     )))]
     fn load_trusted_data_on_platform(
         &self,

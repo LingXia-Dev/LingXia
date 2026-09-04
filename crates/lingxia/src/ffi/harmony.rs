@@ -941,6 +941,50 @@ pub fn on_webview_controller_destroyed(webtag: String, native_view_token: String
     true
 }
 
+#[napi]
+pub fn on_webview_page_begin(
+    webtag: String,
+    native_view_token: String,
+    page_epoch: String,
+    url: String,
+) -> bool {
+    let Ok(page_epoch) = page_epoch.parse::<u64>() else {
+        return false;
+    };
+    webview_harmony::on_page_begin(&webtag, &native_view_token, page_epoch, &url)
+}
+
+#[napi]
+pub fn on_webview_document_commit(
+    webtag: String,
+    native_view_token: String,
+    page_epoch: String,
+    url: String,
+) -> bool {
+    let Ok(page_epoch) = page_epoch.parse::<u64>() else {
+        return false;
+    };
+    webview_harmony::on_document_commit(&webtag, &native_view_token, page_epoch, &url)
+}
+
+#[napi]
+pub fn on_webview_page_end(
+    webtag: String,
+    native_view_token: String,
+    page_epoch: String,
+    url: String,
+) -> bool {
+    let Ok(page_epoch) = page_epoch.parse::<u64>() else {
+        return false;
+    };
+    webview_harmony::on_page_end(&webtag, &native_view_token, page_epoch, &url)
+}
+
+#[napi]
+pub fn on_webview_render_exited(webtag: String, native_view_token: String) -> bool {
+    webview_harmony::on_render_exited(&webtag, &native_view_token)
+}
+
 /// ArkTS → Rust callback for `captureScreenshot`.
 /// `request_id_str` is passed as a string (not number) so JS numeric precision
 /// cannot truncate it.
@@ -1015,11 +1059,22 @@ pub fn on_download_start(
 pub fn on_load_error(
     webtag: String,
     native_generation: String,
+    page_epoch: String,
     url: String,
     error_code: i32,
     description: String,
 ) -> bool {
-    webview_harmony::on_load_error(&webtag, &native_generation, &url, error_code, &description);
+    let Ok(page_epoch) = page_epoch.parse::<u64>() else {
+        return false;
+    };
+    webview_harmony::on_load_error(
+        &webtag,
+        &native_generation,
+        page_epoch,
+        &url,
+        error_code,
+        &description,
+    );
     true
 }
 

@@ -5,6 +5,7 @@ import { display, window } from '@kit.ArkUI';
 import { Lingxia } from '../app/Lingxia';
 import { requestWebFileChooser } from './WebFileChooserBridge';
 import {
+  handleWebViewLoadError,
   WebViewManager,
   notifyWebViewControllerAttached,
   WebViewInfo
@@ -467,6 +468,7 @@ export struct LxAppBrowser {
 	  private attachRetryCount: number = 0;
 	  // Webtags whose `Web` component has already acked attachment to the runtime.
 	  private ackedWebTags: Set<string> = new Set();
+  private pageEpochs: Map<string, string> = new Map();
   private keyboardMonitorTimer: number | null = null;
   private keyboardMonitorActive: boolean = false;
   private keyboardWindow: window.Window | null = null;
@@ -781,6 +783,7 @@ export struct LxAppBrowser {
     this.canGoForward = false;
     this.attachRetryCount = 0;
     this.ackedWebTags.clear();
+    this.pageEpochs.clear();
     this.showTabSwitcher = false;
     this.showOverflowMenu = false;
     this.tabRows = [];
@@ -931,7 +934,46 @@ export struct LxAppBrowser {
           this.url
         );
       })
-      .onPageEnd(() => {
+      .onErrorReceive((event) => {
+        if (!event || !event.request || !event.error || !event.request.isMainFrame()) {
+          return;
+        }
+        handleWebViewLoadError(
+          entry.webTag,
+          WebViewManager.getGenerationForController(entry.webTag, entry.controller),
+          this.pageEpochs.get(entry.webTag) ?? '',
+          event.request.getRequestUrl() ?? '',
+          event.error.getErrorCode(),
+          event.error.getErrorInfo() ?? 'unknown error'
+        );
+      })
+      .onPageBegin((event) => {
+        const pageEpoch = WebViewManager.pageBegin(
+          entry.webTag,
+          entry.controller,
+          event?.url ?? ''
+        );
+        if (pageEpoch) {
+          this.pageEpochs.set(entry.webTag, pageEpoch);
+        } else {
+          this.pageEpochs.delete(entry.webTag);
+        }
+      })
+      .onPageVisible(() => {
+        WebViewManager.documentCommit(
+          entry.webTag,
+          entry.controller,
+          this.pageEpochs.get(entry.webTag) ?? '',
+          entry.controller.getUrl() ?? ''
+        );
+      })
+      .onPageEnd((event) => {
+        WebViewManager.pageEnd(
+          entry.webTag,
+          entry.controller,
+          this.pageEpochs.get(entry.webTag) ?? '',
+          event?.url ?? ''
+        );
         this.pushWebViewState(entry);
         if (entry.tabId === this.activeTabId) {
           this.updateActiveState();
@@ -939,6 +981,10 @@ export struct LxAppBrowser {
         if (this.showTabSwitcher) {
           this.tabRows = this.buildTabRows();
         }
+      })
+      .onRenderExited(() => {
+        this.pageEpochs.delete(entry.webTag);
+        WebViewManager.renderExited(entry.webTag, entry.controller);
       })
       .onProgressChange((event) => {
         if (event && event.newProgress > 30) {

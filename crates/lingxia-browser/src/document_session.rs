@@ -662,8 +662,9 @@ impl BrowserDocumentSessions {
             }
             WebMessageTransport::AppleScriptMessage
             | WebMessageTransport::AndroidMessagePort
+            | WebMessageTransport::HarmonyMessagePort
             | WebMessageTransport::WindowsWebMessage => {}
-            WebMessageTransport::HarmonyMessagePort | WebMessageTransport::Other => {
+            WebMessageTransport::Other => {
                 return Err(BrowserInboundRejectReason::UnsupportedTransport);
             }
         }
@@ -1105,6 +1106,14 @@ mod tests {
                 DocumentBinding::Bound(generation),
                 WebMessageFrame::TopLevel,
                 WebMessageTransport::AndroidMessagePort,
+            )
+            .is_ok()
+        );
+        assert!(
+            validate(
+                DocumentBinding::Bound(generation),
+                WebMessageFrame::TopLevel,
+                WebMessageTransport::HarmonyMessagePort,
             )
             .is_ok()
         );
