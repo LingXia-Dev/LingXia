@@ -156,7 +156,7 @@ three ids must line up or the wrong app launches, and the build enforces it:
 
 ## `settingsDestination` Section
 
-`settingsDestination` 在 `lingxia.yaml` 顶层声明产品的 Settings 入口应指向哪里。它是静态、纯数据的 descriptor；CLI 会原样写入生成的 `app.json`，不要直接修改生成文件。未配置时该字段完全省略，Host 保持既有行为。
+`settingsDestination` 在 `lingxia.yaml` 顶层声明产品的 Settings 入口应指向哪里。它是静态、纯数据的 descriptor；CLI 会原样写入生成的 `app.json`，不要直接修改生成文件。未配置时该字段完全省略，macOS/Windows shell 不显示 Settings 入口；显式调用 native resolver 会返回 `SettingsDestinationResolveError::NotConfigured`，不会回退到 home runtime 或 focus-only route。
 
 三种 `kind` 互斥，只能选择一种：
 

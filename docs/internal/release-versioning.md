@@ -27,8 +27,9 @@ Not all npm packages may drift from the workspace. They split into three tiers:
 - `@lingxia/types` is on the same line but is **not** embedded. `lingxia new`
   writes the minor-floor tilde (`~M.m.0`) so `npm install` takes the latest
   published patch after a release, without a per-package pin in the CLI.
-- `@lingxia/bridge` (JS) must speak the same bridge wire protocol (`v:2`) as the
-  native `lingxia-lxapp` bridge — it is the JS half of the runtime.
+- `@lingxia/bridge` (JS) 必须与 native `lingxia-lxapp` 使用同一 wire contract：普通 app
+  document 使用 `LegacyV2`，BrowserControlDocument 使用不可降级的 `RequiredV3`。它是 runtime
+  的 JS 半边，因此两种 mode 的 codec/bootstrap 都必须随 base runtime 同步发布。
 - **Release only via `--component all`**, at the workspace version, together with
   the rust crates / SDK / CLI. `scripts/release/version.sh` rejects
   `--component npm:bridge|polyfills|types`.
