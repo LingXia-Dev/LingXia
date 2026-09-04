@@ -1800,6 +1800,43 @@ mod tests {
         crate::terminal_automation::remove_workspace(&native, &surface_id);
     }
 
+    #[test]
+    fn terminal_handle_stays_revoked_after_same_app_id_session_takeover() {
+        let (_root, original, successor) = same_app_id_with_different_classes();
+        original.seal_resource_grants(HashSet::from([AppResourceGrant::AutomationHost]));
+        successor.seal_resource_grants(HashSet::from([AppResourceGrant::AutomationHost]));
+
+        let native = crate::terminal_automation::TerminalAutomationAuthority::native_for_test();
+        let surface_id = format!("terminal-takeover-{}", original.session_id());
+        crate::terminal_automation::publish_snapshot(
+            &native,
+            &surface_id,
+            r#"{"surfaceId":"terminal-takeover"}"#,
+        )
+        .unwrap();
+
+        let original_authority =
+            crate::terminal_automation::TerminalAutomationAuthority::for_lxapp(&original).unwrap();
+        let original_handle =
+            crate::terminal_automation::bind_surface(&original_authority, &surface_id).unwrap();
+        assert!(original_handle.snapshot().is_ok());
+
+        original.set_status(LxAppSessionStatus::Restarting);
+        assert!(original_handle.snapshot().is_err());
+
+        let successor_authority =
+            crate::terminal_automation::TerminalAutomationAuthority::for_lxapp(&successor).unwrap();
+        let successor_handle =
+            crate::terminal_automation::bind_surface(&successor_authority, &surface_id).unwrap();
+        assert!(successor_handle.snapshot().is_ok());
+        assert!(
+            original_handle.snapshot().is_err(),
+            "a live same-app successor must not reactivate the stale session handle"
+        );
+
+        crate::terminal_automation::remove_workspace(&native, &surface_id);
+    }
+
     #[cfg(feature = "process")]
     #[test]
     fn process_authority_rejects_manifest_only_and_stale_same_app_id_sessions() {
