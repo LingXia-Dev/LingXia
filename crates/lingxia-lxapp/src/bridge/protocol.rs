@@ -1,6 +1,7 @@
 //! Bridge wire protocol types — incoming and outgoing message definitions.
 
 use crate::LxAppError;
+use ring::hmac;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_json::value::RawValue;
@@ -24,11 +25,6 @@ impl DocumentSecret {
     fn new(value: String) -> Self {
         Self(value)
     }
-
-    #[cfg(test)]
-    fn matches(&self, candidate: &str) -> bool {
-        self.0 == candidate
-    }
 }
 
 /// Binding carried by every V3 document-to-native frame.
@@ -38,13 +34,39 @@ pub(crate) struct V3InboundBinding {
 }
 
 impl V3InboundBinding {
+    pub(crate) fn new(session_id: String, secret: String) -> Result<Self, V3CodecError> {
+        if session_id.is_empty() || secret.is_empty() {
+            return Err(V3CodecError::InvalidInboundBinding);
+        }
+        Ok(Self {
+            session_id,
+            secret: DocumentSecret::new(secret),
+        })
+    }
+
     pub(crate) fn session_id(&self) -> &str {
         &self.session_id
     }
 
-    #[cfg(test)]
-    fn secret_matches(&self, candidate: &str) -> bool {
-        self.secret.matches(candidate)
+    fn matches(&self, candidate: &Self) -> bool {
+        // HMAC verification is ring's maintained constant-time comparison.
+        // Evaluate both public-id and secret comparisons before combining them.
+        let key = hmac::Key::new(hmac::HMAC_SHA256, b"lingxia-v3-bridge-binding");
+        let expected_session = hmac::sign(&key, self.session_id.as_bytes());
+        let expected_secret = hmac::sign(&key, self.secret.0.as_bytes());
+        let session_matches = hmac::verify(
+            &key,
+            candidate.session_id.as_bytes(),
+            expected_session.as_ref(),
+        )
+        .is_ok();
+        let secret_matches = hmac::verify(
+            &key,
+            candidate.secret.0.as_bytes(),
+            expected_secret.as_ref(),
+        )
+        .is_ok();
+        session_matches & secret_matches
     }
 }
 
@@ -55,11 +77,98 @@ pub(crate) struct V3OutboundBinding {
 }
 
 impl V3OutboundBinding {
+    #[allow(dead_code)] // Constructed when a document session binds V3 in the next step.
     pub(crate) fn new(session_id: String) -> Result<Self, V3CodecError> {
         if session_id.is_empty() {
             return Err(V3CodecError::InvalidOutboundBinding);
         }
         Ok(Self { session_id })
+    }
+}
+
+/// The connection mode is chosen by native document-session activation. Every
+/// existing page remains `LegacyV2` until that later integration opts in.
+#[derive(Default)]
+pub(crate) enum BridgeProtocol {
+    #[default]
+    LegacyV2,
+    BoundV3(BoundV3Protocol),
+}
+
+/// Native-held credentials for one activated V3 document. The secret stays in
+/// the inbound binding and cannot flow into the outbound encoder.
+pub(crate) struct BoundV3Protocol {
+    inbound: V3InboundBinding,
+    outbound: V3OutboundBinding,
+}
+
+impl BoundV3Protocol {
+    #[allow(dead_code)] // Called by the future document-session bridge binding.
+    pub(crate) fn new(inbound: V3InboundBinding) -> Result<Self, V3CodecError> {
+        let outbound = V3OutboundBinding::new(inbound.session_id.clone())?;
+        Ok(Self { inbound, outbound })
+    }
+
+    pub(crate) fn session_id(&self) -> &str {
+        self.inbound.session_id()
+    }
+
+    fn authenticates(&self, binding: &V3InboundBinding) -> bool {
+        self.inbound.matches(binding)
+    }
+
+    fn outbound_binding(&self) -> V3OutboundBinding {
+        self.outbound.clone()
+    }
+}
+
+impl BridgeProtocol {
+    pub(crate) fn predecode_inbound(&self, frame: &str) -> Result<IncomingMessage, V3CodecError> {
+        match self {
+            Self::LegacyV2 => {
+                // Reject a V3 (or unknown) version before the legacy typed
+                // parser can create a message for downstream dispatch.
+                let version = serde_json::from_str::<VersionProbe>(frame)
+                    .map_err(|_| V3CodecError::MalformedEnvelope)?;
+                if version.v != Some(2) {
+                    return Err(V3CodecError::UnsupportedVersion);
+                }
+                IncomingMessage::from_json_str(frame).map_err(|_| V3CodecError::MalformedEnvelope)
+            }
+            Self::BoundV3(bound) => {
+                let envelope = parse_v3_inbound_envelope(frame, DEFAULT_MAX_V3_FRAME_BYTES)?;
+                if !bound.authenticates(&envelope.binding) {
+                    return Err(V3CodecError::BindingMismatch);
+                }
+                let message = IncomingMessage::from_json_str(frame)
+                    .map_err(|_| V3CodecError::MalformedEnvelope)?;
+                if message.v3_kind() != Some(envelope.kind) {
+                    return Err(V3CodecError::MalformedEnvelope);
+                }
+                Ok(message)
+            }
+        }
+    }
+
+    pub(crate) const fn accepts_version(&self, version: u8) -> bool {
+        matches!(
+            (self, version),
+            (Self::LegacyV2, 2) | (Self::BoundV3(_), V3_PROTOCOL)
+        )
+    }
+
+    pub(crate) fn outbound_binding(&self) -> Option<V3OutboundBinding> {
+        match self {
+            Self::LegacyV2 => None,
+            Self::BoundV3(bound) => Some(bound.outbound_binding()),
+        }
+    }
+
+    pub(crate) fn session_id(&self) -> Option<&str> {
+        match self {
+            Self::LegacyV2 => None,
+            Self::BoundV3(bound) => Some(bound.session_id()),
+        }
     }
 }
 
@@ -92,6 +201,7 @@ impl V3InboundKind {
         })
     }
 
+    #[cfg(test)]
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::Hello => "hello",
@@ -122,6 +232,7 @@ pub(crate) enum V3OutboundKind {
 }
 
 impl V3OutboundKind {
+    #[cfg(test)]
     pub(crate) fn parse(kind: &str) -> Option<Self> {
         Some(match kind {
             "helloAck" => Self::HelloAck,
@@ -168,7 +279,10 @@ pub(crate) enum V3CodecError {
     UnsupportedVersion,
     UnsupportedInboundKind,
     InvalidOutboundPayload,
+    #[allow(dead_code)] // Reported when a future document session creates its outbound binding.
     InvalidOutboundBinding,
+    InvalidInboundBinding,
+    BindingMismatch,
     SecurityFieldInPayload,
 }
 
@@ -179,6 +293,11 @@ struct V3EnvelopeProbe {
     #[serde(rename = "sessionId")]
     session_id: Option<String>,
     secret: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct VersionProbe {
+    v: Option<u8>,
 }
 
 /// Parse only the fixed V3 authentication envelope. This intentionally ignores
@@ -213,10 +332,7 @@ pub(crate) fn parse_v3_inbound_envelope(
 
     Ok(V3InboundEnvelope {
         kind,
-        binding: V3InboundBinding {
-            session_id,
-            secret: DocumentSecret::new(secret),
-        },
+        binding: V3InboundBinding::new(session_id, secret)?,
     })
 }
 
@@ -367,6 +483,21 @@ pub enum IncomingMessage {
 }
 
 impl IncomingMessage {
+    fn v3_kind(&self) -> Option<V3InboundKind> {
+        Some(match self {
+            Self::Hello(_) => V3InboundKind::Hello,
+            Self::Req(_) => V3InboundKind::Req,
+            Self::Res(_) => V3InboundKind::Res,
+            Self::Notify(_) => V3InboundKind::Notify,
+            Self::Cancel(_) => V3InboundKind::Cancel,
+            Self::ChOpen(_) => V3InboundKind::ChOpen,
+            Self::ChData(_) => V3InboundKind::ChData,
+            Self::ChClose(_) => V3InboundKind::ChClose,
+            Self::StateAck(_) => V3InboundKind::StateAck,
+            Self::Unknown(_) => return None,
+        })
+    }
+
     pub fn from_json_str(json_str: &str) -> Result<Self, LxAppError> {
         #[derive(Deserialize)]
         struct KindProbe {
@@ -566,13 +697,21 @@ mod tests {
     #[test]
     fn v3_inbound_envelopes_match_shared_golden_frames() {
         let golden = golden_frames();
+        let protocol = BridgeProtocol::BoundV3(
+            BoundV3Protocol::new(
+                V3InboundBinding::new(
+                    "v3-session".to_string(),
+                    "bridge-v3-test-secret".to_string(),
+                )
+                .unwrap(),
+            )
+            .unwrap(),
+        );
 
         for expected in golden.inbound {
             let raw = serde_json::to_string(&expected.frame).unwrap();
-            let envelope = parse_v3_inbound_envelope(&raw, DEFAULT_MAX_V3_FRAME_BYTES).unwrap();
-            assert_eq!(envelope.kind.as_str(), expected.kind);
-            assert_eq!(envelope.binding.session_id(), "v3-session");
-            assert!(envelope.binding.secret_matches("bridge-v3-test-secret"));
+            let message = protocol.predecode_inbound(&raw).unwrap();
+            assert_eq!(message.v3_kind().unwrap().as_str(), expected.kind);
         }
     }
 
@@ -635,6 +774,36 @@ mod tests {
     }
 
     #[test]
+    fn bound_v3_rejects_wrong_binding_and_legacy_mixing_before_typed_parse() {
+        let protocol = BridgeProtocol::BoundV3(
+            BoundV3Protocol::new(
+                V3InboundBinding::new("session".to_string(), "secret".to_string()).unwrap(),
+            )
+            .unwrap(),
+        );
+        assert!(matches!(
+            protocol.predecode_inbound(
+                r#"{"v":3,"kind":"req","sessionId":"session","secret":"wrong","id":"r","method":"host.x","cap":"host"}"#
+            ),
+            Err(V3CodecError::BindingMismatch)
+        ));
+        assert!(matches!(
+            protocol.predecode_inbound(
+                r#"{"v":2,"kind":"req","id":"r","method":"host.x","cap":"host"}"#
+            ),
+            Err(V3CodecError::UnsupportedVersion)
+        ));
+
+        let legacy = BridgeProtocol::LegacyV2;
+        assert!(matches!(
+            legacy.predecode_inbound(
+                r#"{"v":3,"kind":"req","id":"r","method":"host.x","cap":"host"}"#
+            ),
+            Err(V3CodecError::UnsupportedVersion)
+        ));
+    }
+
+    #[test]
     fn v3_outbound_rejects_security_fields_and_empty_binding() {
         assert!(matches!(
             V3OutboundBinding::new(String::new()),
@@ -653,13 +822,21 @@ mod tests {
 
     #[test]
     fn v2_parser_behavior_remains_available_while_v3_is_dormant() {
-        let parsed = IncomingMessage::from_json_str(
-            r#"{"v":2,"kind":"hello","nonce":"legacy","role":"view","protocolsSupported":[2]}"#,
-        )
-        .unwrap();
+        let legacy = BridgeProtocol::LegacyV2;
+        let parsed = legacy
+            .predecode_inbound(
+                r#"{"v":2,"kind":"hello","nonce":"legacy","role":"view","protocolsSupported":[2]}"#,
+            )
+            .unwrap();
         assert!(matches!(
             parsed,
-            IncomingMessage::Hello(HelloMsg { v: 2, .. })
+            IncomingMessage::Hello(HelloMsg { v: 2, protocols_supported, .. }) if protocols_supported == [2]
+        ));
+        assert!(matches!(
+            legacy.predecode_inbound(
+                r#"{"v":3,"kind":"hello","sessionId":"s","secret":"x","nonce":"v3","role":"view","protocolsSupported":[3]}"#
+            ),
+            Err(V3CodecError::UnsupportedVersion)
         ));
     }
 }

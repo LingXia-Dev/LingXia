@@ -9,9 +9,9 @@
     "forceConsistentCasingInFileNames": true,
     "declaration": false,
     "outDir": "../../target/lingxia-bridge-v3-test",
-    "rootDir": "test-support",
+    "rootDir": ".",
     "lib": ["ES2022", "DOM"]
   },
-  "include": ["test-support/**/*.ts"],
+  "include": ["src/protocol-v3.ts"],
   "exclude": ["node_modules", "dist"]
 }
