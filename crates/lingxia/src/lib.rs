@@ -29,6 +29,7 @@ pub use lxapp::host;
 pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
 // Required by expansions of `#[lingxia::native]`; host applications should
 // receive it through macro-generated parameters rather than orchestrate it.
+pub use lingxia_app_context::SettingsDestination;
 #[doc(hidden)]
 pub use lxapp::{AppSessionClass, LxApp};
 pub use lxapp::{
@@ -135,7 +136,12 @@ pub mod network;
 /// Provider traits and registration helpers.
 pub mod provider;
 mod runtime;
+mod settings_target;
 pub(crate) mod shell;
+pub use settings_target::{
+    SealedNativeActionRegistry, StaticSettingsTargetCatalog, StaticSettingsTargetError,
+    ValidatedStaticSettingsTargets,
+};
 /// Shared async task helpers backed by LingXia's global executor.
 pub mod task;
 #[cfg(feature = "terminal-runtime")]

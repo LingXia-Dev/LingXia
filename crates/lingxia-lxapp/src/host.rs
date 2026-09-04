@@ -836,6 +836,26 @@ pub fn host_route_schema(caller: &AuthenticatedCaller) -> HostRouteSchema {
         .schema_for_caller(caller)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("route '{name}' was registered with conflicting audiences {first:?} and {second:?}")]
+pub struct RoutePolicyConflict {
+    pub name: String,
+    pub first: RouteAudience,
+    pub second: RouteAudience,
+}
+
+/// Read one route's immutable admission policy without cloning or invoking its
+/// handler. The unified registry rejects every duplicate before it can replace
+/// the first route, so a readable record always has one sealed policy.
+pub fn route_policy(name: &str) -> Result<Option<EffectiveRoutePolicy>, RoutePolicyConflict> {
+    Ok(get_route_registry()
+        .lock()
+        .unwrap()
+        .routes
+        .get(name)
+        .map(|route| route.metadata.policy()))
+}
+
 pub fn parse_input<T: DeserializeOwned>(input: Option<&str>) -> HostResult<T> {
     match input {
         Some(json) => serde_json::from_str(json)
@@ -1255,9 +1275,11 @@ pub(crate) fn new_channel_context(
 
 /// Register built-in Host API set.
 ///
-/// This is invoked once from lxapp initialization so Host API definitions are owned
-/// by `lingxia-lxapp` (not `lingxia-logic` or the host app).
-pub(crate) fn register_all() {
+/// Bootstrap invokes this before static target validation so Host API
+/// definitions are owned by `lingxia-lxapp` and their policy is inspectable
+/// before any lxapp runtime exists.
+#[doc(hidden)]
+pub fn register_builtin_routes() {
     static REGISTERED: OnceLock<()> = OnceLock::new();
     REGISTERED.get_or_init(|| {
         device::register_all();

@@ -98,7 +98,7 @@ fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResul
     download_settings_result(&app)
 }
 
-pub(crate) fn register() {
+pub(crate) fn register_routes() {
     lxapp::host::register_host_entry(get_app_info_host());
     lxapp::host::register_host_entry(get_download_settings_host());
     lxapp::host::register_host_entry(choose_download_directory_host());

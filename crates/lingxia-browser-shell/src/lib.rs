@@ -120,23 +120,31 @@ fn bundled_context_menu_script() -> Result<String, LxAppError> {
 }
 
 #[doc(hidden)]
-pub fn register_runtime() {
-    static REGISTER: std::sync::Once = std::sync::Once::new();
-    REGISTER.call_once(|| {
-        lingxia_browser::install_runtime();
+pub fn register_route_inventory() {
+    static REGISTERED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    REGISTERED.get_or_init(|| {
         downloads::register();
         bookmarks::register();
         history::register();
         privacy::register();
+        #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
+        proxy::register();
+        settings::register_routes();
+    });
+}
+
+#[doc(hidden)]
+pub fn register_runtime() {
+    register_route_inventory();
+    static REGISTERED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        lingxia_browser::install_runtime();
         lingxia_browser::set_navigation_finished_handler(std::sync::Arc::new(|url, title| {
             history::record_visit(url, title);
         }));
         lingxia_browser::set_title_changed_handler(std::sync::Arc::new(|url, title| {
             history::update_title(url, title);
         }));
-        #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
-        proxy::register();
-        settings::register();
     });
 }
 

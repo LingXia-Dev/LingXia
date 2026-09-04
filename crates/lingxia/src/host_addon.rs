@@ -87,6 +87,10 @@ pub trait HostAddon: Send + Sync {
     fn install_product_cli(&self, _cli: &mut crate::product_cli::ProductCli) {}
     /// Runs before LingXia initialization begins.
     fn before_init(&self) {}
+    /// Contributes immutable Settings target metadata before any lxapp,
+    /// AppService, WebView, or document session is created.
+    fn configure_static_settings_targets(&self, _catalog: &mut crate::StaticSettingsTargetCatalog) {
+    }
     /// Registers JS logic extensions when the `standard` feature is enabled.
     #[cfg(feature = "standard")]
     fn install_logic_extensions(&self) {}
@@ -151,6 +155,15 @@ pub(crate) fn run_before_init() {
     let installed = snapshot_host_addons();
     for addon in installed.iter() {
         addon.before_init();
+    }
+}
+
+pub(crate) fn run_configure_static_settings_targets(
+    catalog: &mut crate::StaticSettingsTargetCatalog,
+) {
+    let installed = snapshot_host_addons();
+    for addon in installed.iter() {
+        addon.configure_static_settings_targets(catalog);
     }
 }
 
