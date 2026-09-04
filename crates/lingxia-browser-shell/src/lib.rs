@@ -61,8 +61,12 @@ const BROWSER_CONTEXT_MENU_ASSET_PATH: &str = "app.lingxia.browser/public/browse
 
 #[derive(Debug, Deserialize)]
 struct BrowserWebUiManifest {
+    #[serde(rename = "appId")]
+    app_id: String,
     #[serde(default)]
     version: Option<String>,
+    #[serde(rename = "controlProtocolVersion")]
+    control_protocol_version: u32,
     #[serde(default)]
     pages: Vec<BrowserWebUiPage>,
 }
@@ -73,18 +77,35 @@ struct BrowserWebUiPage {
     path: String,
 }
 
+fn parse_browser_webui_manifest(manifest_json: &str) -> Result<BrowserWebUiManifest, LxAppError> {
+    let manifest = serde_json::from_str::<BrowserWebUiManifest>(manifest_json).map_err(|err| {
+        LxAppError::InvalidJsonFile(format!("{}: {}", BROWSER_WEBUI_MANIFEST_ASSET_PATH, err))
+    })?;
+    if manifest.app_id != lingxia_browser::BUILTIN_BROWSER_APPID {
+        return Err(LxAppError::InvalidJsonFile(format!(
+            "{}: appId must be {}, got {}",
+            BROWSER_WEBUI_MANIFEST_ASSET_PATH,
+            lingxia_browser::BUILTIN_BROWSER_APPID,
+            manifest.app_id
+        )));
+    }
+    if manifest.control_protocol_version != lingxia_browser::CONTROL_PROTOCOL_VERSION {
+        return Err(LxAppError::InvalidJsonFile(format!(
+            "{}: controlProtocolVersion must be {}, got {}",
+            BROWSER_WEBUI_MANIFEST_ASSET_PATH,
+            lingxia_browser::CONTROL_PROTOCOL_VERSION,
+            manifest.control_protocol_version
+        )));
+    }
+    Ok(manifest)
+}
+
 fn parse_internal_pages(manifest_json: &str) -> Result<BTreeMap<String, String>, LxAppError> {
-    serde_json::from_str::<BrowserWebUiManifest>(manifest_json)
-        .map(|manifest| {
-            manifest
-                .pages
-                .into_iter()
-                .map(|page| (page.name, page.path))
-                .collect()
-        })
-        .map_err(|err| {
-            LxAppError::InvalidJsonFile(format!("{}: {}", BROWSER_WEBUI_MANIFEST_ASSET_PATH, err))
-        })
+    Ok(parse_browser_webui_manifest(manifest_json)?
+        .pages
+        .into_iter()
+        .map(|page| (page.name, page.path))
+        .collect())
 }
 
 fn read_browser_asset_text(asset_path: &str) -> Result<String, LxAppError> {
@@ -110,9 +131,7 @@ fn bundled_internal_pages() -> Result<BTreeMap<String, String>, LxAppError> {
 
 pub(crate) fn bundled_webui_version() -> Option<String> {
     let manifest = read_browser_asset_text(BROWSER_WEBUI_MANIFEST_ASSET_PATH).ok()?;
-    serde_json::from_str::<BrowserWebUiManifest>(&manifest)
-        .ok()?
-        .version
+    parse_browser_webui_manifest(&manifest).ok()?.version
 }
 
 fn bundled_context_menu_script() -> Result<String, LxAppError> {
@@ -198,6 +217,8 @@ mod tests {
     fn parses_named_internal_pages_manifest() {
         let pages = parse_internal_pages(
             r#"{
+                "appId": "app.lingxia.browser",
+                "controlProtocolVersion": 3,
                 "pages": [
                     { "name": "newtab", "path": "pages/newtab/index.html" },
                     { "name": "history", "path": "pages/history/index.html" },
@@ -227,6 +248,38 @@ mod tests {
 
     #[test]
     fn rejects_legacy_ordered_pages_manifest() {
-        assert!(parse_internal_pages(r#"{ "pages": ["pages/newtab/index.html"] }"#).is_err());
+        assert!(
+            parse_internal_pages(
+                r#"{
+                    "appId": "app.lingxia.browser",
+                    "controlProtocolVersion": 3,
+                    "pages": ["pages/newtab/index.html"]
+                }"#
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn rejects_missing_old_and_future_control_protocol_versions() {
+        for version in [None, Some(2), Some(4)] {
+            let version = version
+                .map(|version| format!(r#", "controlProtocolVersion": {version}"#))
+                .unwrap_or_default();
+            let manifest = format!(r#"{{"appId":"app.lingxia.browser"{version},"pages":[]}}"#);
+            let error = parse_internal_pages(&manifest).unwrap_err().to_string();
+            assert!(error.contains("controlProtocolVersion"), "{error}");
+        }
+    }
+
+    #[test]
+    fn rejects_non_browser_app_id_even_at_protocol_v3() {
+        let error = parse_internal_pages(
+            r#"{"appId":"example.fake","controlProtocolVersion":3,"pages":[]}"#,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("appId"), "{error}");
+        assert!(error.contains("app.lingxia.browser"), "{error}");
     }
 }

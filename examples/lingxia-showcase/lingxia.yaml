@@ -49,6 +49,7 @@ browser:
   # External apps omit this to use the npm default.
   webui:
     path: ../../crates/lingxia-browser-shell/webui
+    controlProtocolVersion: 3
 
 # Host-owned Settings chrome resolves this sealed destination on every click.
 settingsDestination:

@@ -129,6 +129,8 @@ impl Default for FeaturesConfig {
 // so a capability can never exist on one side only.
 pub use lingxia_app_context::{CapabilitiesConfig, SettingsDestination, ThemeConfig};
 
+pub(crate) const BROWSER_CONTROL_PROTOCOL_VERSION: u32 = 3;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserConfig {
@@ -145,6 +147,8 @@ pub struct BrowserWebUiConfig {
     pub package: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_protocol_version: Option<u32>,
 }
 
 fn default_true() -> bool {
@@ -2026,6 +2030,22 @@ impl LingXiaConfig {
             {
                 return Err(anyhow!("browser.webui.version must not be empty"));
             }
+            match webui.control_protocol_version {
+                Some(BROWSER_CONTROL_PROTOCOL_VERSION) => {}
+                Some(version) => {
+                    return Err(anyhow!(
+                        "browser.webui.controlProtocolVersion must be {}, got {}",
+                        BROWSER_CONTROL_PROTOCOL_VERSION,
+                        version
+                    ));
+                }
+                None => {
+                    return Err(anyhow!(
+                        "browser.webui.controlProtocolVersion is required and must be {}",
+                        BROWSER_CONTROL_PROTOCOL_VERSION
+                    ));
+                }
+            }
         }
         if let Some(ui) = &self.generated_ui
             && !ui.is_object()
@@ -2777,6 +2797,27 @@ route: /wrong
             msg.contains("app.lingxia.browser") && msg.contains("browser.webui"),
             "error must point at the new customization API; got: {msg}"
         );
+    }
+
+    #[test]
+    fn browser_webui_requires_control_protocol_v3_for_path_and_package_sources() {
+        for source in ["path: ./browser-webui", "package: '@example/browser-webui'"] {
+            let valid =
+                format!("browser:\n  webui:\n    {source}\n    controlProtocolVersion: 3\n");
+            let config: LingXiaConfig = yaml::from_str(&valid).unwrap();
+            config.validate().unwrap();
+
+            for invalid in [
+                format!("browser:\n  webui:\n    {source}\n"),
+                format!("browser:\n  webui:\n    {source}\n    controlProtocolVersion: 2\n"),
+                format!("browser:\n  webui:\n    {source}\n    controlProtocolVersion: 4\n"),
+            ] {
+                let config: LingXiaConfig = yaml::from_str(&invalid).unwrap();
+                let error = config.validate().unwrap_err().to_string();
+                assert!(error.contains("controlProtocolVersion"), "{error}");
+                assert!(error.contains('3'), "{error}");
+            }
+        }
     }
 
     #[test]

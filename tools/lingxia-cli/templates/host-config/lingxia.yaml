@@ -152,6 +152,7 @@ capabilities:
 # browser:
 #   webui:
 #     path: vendor/browser-shell-webui
+#     controlProtocolVersion: 3
 
 {{SHELL_SECTION}}
 {{APP_LINKS_SECTION}}

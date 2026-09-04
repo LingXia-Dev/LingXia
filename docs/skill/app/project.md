@@ -341,7 +341,14 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 
 ## `browser` Section
 
-`browser` overrides the in-app browser webui, used only when `capabilities.browser: true`. Normal apps omit it and use the SDK default. Set exactly one source under `webui`: a project-relative `path:` to a browser-shell webui lxapp source tree (the CLI builds it — for developing a custom webui alongside the app), or a `package:` npm name shipping a prebuilt `lxapp.json` + `dist/` (with an optional `version:`; the CLI version is used when omitted). Setting both is rejected.
+`browser` overrides the in-app browser webui, used only when `capabilities.browser: true`. Normal apps omit it and use the SDK default. Set exactly one source under `webui`: a project-relative `path:` to a browser-shell webui lxapp source tree (the CLI builds it — for developing a custom webui alongside the app), or a `package:` npm name shipping a prebuilt `lxapp.json` + `dist/` (with an optional `version:`; the CLI version is used when omitted). Setting both is rejected. A custom source must set `controlProtocolVersion: 3`, and both its source and built `lxapp.json` must declare the same `controlProtocolVersion: 3`; missing, older, and unknown future versions fail the build. The SDK's built-in browser catalog is native code fixed to protocol v3, so it needs no duplicate user setting.
+
+```yaml
+browser:
+  webui:
+    path: vendor/browser-shell-webui
+    controlProtocolVersion: 3
+```
 
 Do not use `app.homeAppId` for browser internals. When present, `homeAppId` is
 the trusted product control app; `browser.webui` is the browser UI asset.
