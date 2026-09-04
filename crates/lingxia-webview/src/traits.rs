@@ -6,6 +6,193 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 
+/// Opaque identity for one native WebView instance.
+///
+/// A [`crate::WebTag`] is a logical lookup key and may be reused after a
+/// WebView is destroyed. This identity is allocated for one concrete native
+/// instance and is therefore the only identity suitable for message binding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NativeWebViewId(u64);
+
+impl NativeWebViewId {
+    pub(crate) const fn new(raw: u64) -> Self {
+        Self(raw)
+    }
+
+    // Android's JNI binding consumes this only on its conditionally compiled target.
+    #[allow(dead_code)]
+    pub(crate) const fn raw(self) -> u64 {
+        self.0
+    }
+}
+
+/// Monotonic generation of a committed document within one native WebView.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DocumentGeneration(u64);
+
+impl DocumentGeneration {
+    /// The platform-owned ordinal, intended only for equality binding.
+    pub const fn get(self) -> u64 {
+        self.0
+    }
+}
+
+/// Whether a platform callback is bound to a committed document generation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DocumentBinding {
+    /// The adapter cannot prove which committed document emitted the message.
+    Unbound,
+    /// The adapter captured the native WebView's committed document generation.
+    Bound(DocumentGeneration),
+}
+
+/// Platform proof of the emitting frame.
+///
+/// Authorization-sensitive consumers must accept only [`Self::TopLevel`].
+/// `Unproven` is deliberately distinct from `TopLevel` so an adapter cannot
+/// silently upgrade an unavailable platform signal into authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WebMessageFrame {
+    TopLevel,
+    Subframe,
+    Unproven,
+}
+
+/// Native transport which delivered a WebView message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum WebMessageTransport {
+    AppleScriptMessage,
+    AndroidMessagePort,
+    AndroidJavascriptInterface,
+    WindowsWebMessage,
+    HarmonyMessagePort,
+    Other,
+}
+
+/// Platform-reported source information for diagnostics and auditing.
+///
+/// It is intentionally not an authorization credential: URLs and origins can
+/// be stale, unavailable, or insufficient to bind a message to an app
+/// session. Authorization must use the native view identity, document binding,
+/// and frame proof in [`WebMessageContext`].
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct WebMessageSource {
+    reported_url: Option<String>,
+    reported_origin: Option<String>,
+}
+
+impl WebMessageSource {
+    pub const fn unavailable() -> Self {
+        Self {
+            reported_url: None,
+            reported_origin: None,
+        }
+    }
+
+    pub fn diagnostic_url(reported_url: Option<String>) -> Self {
+        Self {
+            reported_url,
+            reported_origin: None,
+        }
+    }
+
+    pub fn diagnostic_origin(reported_origin: Option<String>) -> Self {
+        Self {
+            reported_url: None,
+            reported_origin,
+        }
+    }
+
+    pub fn diagnostic(reported_url: Option<String>, reported_origin: Option<String>) -> Self {
+        Self {
+            reported_url,
+            reported_origin,
+        }
+    }
+
+    /// A platform-reported URL. This is diagnostic data, never authorization.
+    pub fn reported_url(&self) -> Option<&str> {
+        self.reported_url.as_deref()
+    }
+
+    /// A platform-reported origin. This is diagnostic data, never authorization.
+    pub fn reported_origin(&self) -> Option<&str> {
+        self.reported_origin.as_deref()
+    }
+}
+
+/// Non-forgeable platform context bound to an incoming WebView message.
+///
+/// Carrying this context does not by itself authorize bridge dispatch. The
+/// bridge admission layer must explicitly evaluate its binding and proof.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WebMessageContext {
+    native_view: NativeWebViewId,
+    document: DocumentBinding,
+    frame: WebMessageFrame,
+    transport: WebMessageTransport,
+    source: WebMessageSource,
+}
+
+impl WebMessageContext {
+    pub(crate) const fn new(
+        native_view: NativeWebViewId,
+        document: DocumentBinding,
+        frame: WebMessageFrame,
+        transport: WebMessageTransport,
+        source: WebMessageSource,
+    ) -> Self {
+        Self {
+            native_view,
+            document,
+            frame,
+            transport,
+            source,
+        }
+    }
+
+    pub const fn native_view(&self) -> NativeWebViewId {
+        self.native_view
+    }
+
+    pub const fn document(&self) -> DocumentBinding {
+        self.document
+    }
+
+    pub const fn frame(&self) -> WebMessageFrame {
+        self.frame
+    }
+
+    pub const fn transport(&self) -> WebMessageTransport {
+        self.transport
+    }
+
+    pub fn source(&self) -> &WebMessageSource {
+        &self.source
+    }
+}
+
+/// A page-originated WebView message plus platform-attested context.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IncomingWebMessage {
+    body: String,
+    context: WebMessageContext,
+}
+
+impl IncomingWebMessage {
+    pub(crate) fn new(body: String, context: WebMessageContext) -> Self {
+        Self { body, context }
+    }
+
+    pub fn body(&self) -> &str {
+        &self.body
+    }
+
+    pub fn context(&self) -> &WebMessageContext {
+        &self.context
+    }
+}
+
 /// Outcome of handling a scheme request.
 #[derive(Debug)]
 pub enum SchemeOutcome {
@@ -727,8 +914,11 @@ pub trait WebViewDelegate: Send + Sync {
     /// normalizer.
     fn on_webview_state_change(&self, _change: crate::events::WebViewStateChange) {}
 
-    /// Handles a postMessage from the page View(WebView)
-    fn handle_post_message(&self, msg: String);
+    /// Handles a postMessage from the page View(WebView).
+    ///
+    /// The context is assembled only by the platform adapter and must travel
+    /// with the payload through any bridge admission decision.
+    fn handle_post_message(&self, message: IncomingWebMessage);
 
     /// Handles a native-component message posted by the page through the
     /// embedded-component channel (`window.NativeComponentBridge`), where

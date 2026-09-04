@@ -1,13 +1,15 @@
 use crate::events::normalizer::{self, NativeNavigationResult, NativeSignal};
 use crate::traits::{
     FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
-    NewWindowPolicy,
+    NewWindowPolicy, WebMessageFrame, WebMessageSource, WebMessageTransport,
 };
 use crate::webview::{
-    WebTag, WebViewCreateStage, find_webview, find_webview_delegate,
-    register_android_webview_if_current,
+    WebTag, WebViewCreateStage, find_webview, find_webview_by_native_view_id,
+    find_webview_delegate, register_android_webview_if_current,
 };
-use crate::{DownloadRequest, LogLevel, WebResourceBody, WebResourceResponse, WebViewError};
+use crate::{
+    DownloadRequest, LogLevel, NativeWebViewId, WebResourceBody, WebResourceResponse, WebViewError,
+};
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request};
 use jni::objects::{JByteArray, JObject, JObjectArray, JString, JValue};
@@ -26,21 +28,53 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage
     appid: JString,
     path: JString,
     session_id: jlong,
+    native_view_id: jlong,
+    transport: jint,
+    source_url: JString,
     message: JString,
 ) -> jint {
     env.with_env(|env| -> Result<jint, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
         let message: String = message.try_to_string(env)?;
+        let source_url: String = source_url.try_to_string(env)?;
         let session_id = if session_id > 0 {
             Some(session_id as u64)
         } else {
             None
         };
 
+        let Some(native_view_id) =
+            (native_view_id > 0).then(|| NativeWebViewId::new(native_view_id as u64))
+        else {
+            log::warn!("Dropping Android WebView message without a native-view identity");
+            return Ok(0);
+        };
+        let transport = match transport {
+            1 => WebMessageTransport::AndroidMessagePort,
+            2 => WebMessageTransport::AndroidJavascriptInterface,
+            unexpected => {
+                log::warn!(
+                    "Dropping Android WebView message with unknown transport {}",
+                    unexpected
+                );
+                return Ok(0);
+            }
+        };
         let webtag = WebTag::new(&appid, &path, session_id);
-        if let Some(delegate) = find_webview_delegate(&webtag) {
-            delegate.handle_post_message(message);
+        if let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) {
+            webview.enqueue_unbound_web_message(
+                message,
+                WebMessageFrame::Unproven,
+                transport,
+                WebMessageSource::diagnostic_url((!source_url.is_empty()).then_some(source_url)),
+            );
+        } else {
+            log::debug!(
+                "Dropping stale Android WebView message for {} (native view {:?})",
+                webtag.as_str(),
+                native_view_id
+            );
         }
         Ok(0)
     })
@@ -905,6 +939,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
                         let webview = Arc::new(crate::WebView::new(
                             webview_inner,
                             pending.effective_options.clone(),
+                            pending.sender.native_view_id(),
                         ));
 
                         // A same-route relaunch can destroy generation N while
@@ -918,6 +953,25 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
                                 webtag.as_str()
                             );
                             drop(webview);
+                            return Ok(());
+                        }
+
+                        // Bind Java callbacks to the native instance before it
+                        // enters the reusable WebTag registry. A late callback
+                        // from a replaced Java WebView must not resolve only by
+                        // appid/path/session into its successor.
+                        if let Err(error) = env.call_method(
+                            webview.get_java_webview().as_obj(),
+                            jni_str!("setNativeViewId"),
+                            jni_sig!("(J)V"),
+                            &[JValue::Long(webview.native_view_id().raw() as i64)],
+                        ) {
+                            pending.sender.fail(
+                                WebViewCreateStage::Requested,
+                                WebViewError::WebView(format!(
+                                    "Failed to bind Android WebView native identity: {error:?}"
+                                )),
+                            );
                             return Ok(());
                         }
 

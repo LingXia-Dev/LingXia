@@ -23,6 +23,7 @@ use crate::lxapp::LxApp;
 use crate::page::PageInstance;
 use base64::Engine;
 use futures::StreamExt;
+use lingxia_webview::{IncomingWebMessage, WebMessageContext};
 use serde::Serialize;
 use serde_json::Value;
 use serde_json::value::RawValue;
@@ -101,6 +102,18 @@ pub(crate) const BRIDGE_INTERNAL_ERROR: &str = "BRIDGE_INTERNAL_ERROR";
 // ViewTransport — posting messages back to the WebView
 pub(crate) trait ViewTransport {
     fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError>;
+}
+
+/// Invoke route admission before any host lookup or allocation. Keeping the
+/// context generic makes the ordering invariant directly unit-testable while
+/// production dispatch supplies the non-forgeable `WebMessageContext`.
+fn admit_before_host_dispatch<C, T>(
+    context: &C,
+    admit: impl FnOnce(&C) -> Result<(), LxAppError>,
+    dispatch: impl FnOnce() -> Result<T, LxAppError>,
+) -> Result<T, LxAppError> {
+    admit(context)?;
+    dispatch()
 }
 
 impl ViewTransport for PageInstance {
@@ -286,117 +299,195 @@ impl PageBridge {
     pub(crate) fn handle_incoming(
         &self,
         page: &PageInstance,
-        message: Arc<IncomingMessage>,
+        incoming: IncomingWebMessage,
     ) -> Result<(), LxAppError> {
-        match &*message {
-            IncomingMessage::Hello(msg) => self.handle_hello(page, msg),
-            IncomingMessage::Req(msg) => self.handle_req(page, msg),
-            IncomingMessage::Res(msg) => {
-                if msg.v != 2 {
-                    return Ok(());
-                }
+        // This is deliberately before JSON decode and before any request or
+        // channel allocation. Future audience authorization has one seam for
+        // every inbound bridge kind and receives platform-attested context.
+        let context = incoming.context();
+        self.admit_incoming(page, context)?;
+        let message = IncomingMessage::from_json_str(incoming.body())
+            .map_err(|err| LxAppError::Bridge(format!("Invalid bridge message JSON: {err}")))?;
 
-                let result = if msg.ok {
-                    Ok(msg.result.clone().unwrap_or(Value::Null))
-                } else {
-                    let err = msg.error.as_ref();
-                    Err(RpcError {
-                        code: err
-                            .map(|e| e.normalized_code())
-                            .unwrap_or_else(|| BRIDGE_INTERNAL_ERROR.to_string()),
-                        message: err.and_then(|e| e.message.clone()),
-                        data: err.and_then(|e| e.data.clone()),
-                    })
-                };
-                let page_instance_id = page.instance_id_string();
-                crate::view_call::resolve_view_call(&msg.id, Some(&page_instance_id), result);
-                Ok(())
-            }
-            IncomingMessage::Notify(msg) => self.handle_notify(page, msg),
-            IncomingMessage::ChOpen(msg) => self.handle_ch_open(page, msg),
-            IncomingMessage::ChData(msg) => {
-                if msg.v != 2 {
-                    return Ok(());
-                }
-                if self.send_data_to_host_channel(&msg.id, msg.payload.get().to_owned()) {
-                    return Ok(());
-                }
-                self.forward_js_message(
-                    page,
-                    AppServiceCommand::ChData {
-                        id: msg.id.clone(),
-                        payload_json: msg.payload.get().to_owned(),
-                    },
-                )
-            }
-            IncomingMessage::ChClose(msg) => {
-                if msg.v != 2 {
-                    return Ok(());
-                }
-                if self.close_host_channel_from_view(&msg.id, msg.code.clone(), msg.reason.clone())
-                {
-                    return Ok(());
-                }
-                self.forward_js_message(
-                    page,
-                    AppServiceCommand::ChClose {
-                        id: msg.id.clone(),
-                        code: msg.code.clone(),
-                        reason: msg.reason.clone(),
-                    },
-                )
-            }
-            IncomingMessage::Cancel(msg) => {
-                if msg.v != 2 {
-                    return Ok(());
-                }
-                self.inner.pending_requests.cancel(&msg.id);
-                Ok(())
-            }
-            IncomingMessage::StateAck(msg) => {
-                if msg.v != 2 {
-                    return Ok(());
-                }
-                self.forward_js_message(
-                    page,
-                    AppServiceCommand::StateAck {
-                        scope: msg.scope.clone(),
-                        rev: msg.rev,
-                    },
-                )
-            }
-            IncomingMessage::Unknown(unknown) => {
-                if let Some(id) = &unknown.id {
-                    let (code, message) = if unknown.v != Some(2) {
-                        (
-                            BRIDGE_PROTOCOL_MISMATCH,
-                            Some(format!(
-                                "Unsupported protocol: {}",
-                                unknown
-                                    .v
-                                    .map(|v| v.to_string())
-                                    .unwrap_or_else(|| "missing".to_string())
-                            )),
-                        )
-                    } else {
-                        (
-                            BRIDGE_MALFORMED_MESSAGE,
-                            unknown
-                                .kind
-                                .as_deref()
-                                .map(|kind| format!("Unknown kind: {}", kind))
-                                .or_else(|| unknown.parse_error.clone())
-                                .or_else(|| Some("Unknown message".to_string())),
-                        )
-                    };
-                    let _ = self.send_res_err(page, id.clone(), code, message, None);
-                }
-                Ok(())
-            }
+        match &message {
+            IncomingMessage::Hello(msg) => self.handle_hello(page, context, msg),
+            IncomingMessage::Req(msg) => self.handle_req(page, context, msg),
+            IncomingMessage::Res(msg) => self.handle_res(page, context, msg),
+            IncomingMessage::Notify(msg) => self.handle_notify(page, context, msg),
+            IncomingMessage::ChOpen(msg) => self.handle_ch_open(page, context, msg),
+            IncomingMessage::ChData(msg) => self.handle_ch_data(page, context, msg),
+            IncomingMessage::ChClose(msg) => self.handle_ch_close(page, context, msg),
+            IncomingMessage::Cancel(msg) => self.handle_cancel(page, context, msg),
+            IncomingMessage::StateAck(msg) => self.handle_state_ack(page, context, msg),
+            IncomingMessage::Unknown(unknown) => self.handle_unknown(page, context, unknown),
         }
     }
 
-    fn handle_hello(&self, page: &PageInstance, msg: &HelloMsg) -> Result<(), LxAppError> {
+    /// The single pre-decode admission seam. It intentionally permits every
+    /// context for now; authorization is introduced in a later change. This
+    /// check is deliberately idempotent: Page delegates invoke it before
+    /// handling non-bridge envelopes, and bridge dispatch invokes it again
+    /// before protocol decoding.
+    pub(crate) fn admit_incoming(
+        &self,
+        _page: &PageInstance,
+        _context: &WebMessageContext,
+    ) -> Result<(), LxAppError> {
+        Ok(())
+    }
+
+    /// Host routes are admitted before handler lookup, task/channel creation,
+    /// or mutation. Keeping this distinct from protocol admission lets future
+    /// policy evaluate a route's audience without parsing or allocation races.
+    fn admit_host_route(
+        &self,
+        _page: &PageInstance,
+        _context: &WebMessageContext,
+        _route: &str,
+    ) -> Result<(), LxAppError> {
+        Ok(())
+    }
+
+    fn handle_res(
+        &self,
+        page: &PageInstance,
+        _context: &WebMessageContext,
+        msg: &ResMsg,
+    ) -> Result<(), LxAppError> {
+        if msg.v != 2 {
+            return Ok(());
+        }
+
+        let result = if msg.ok {
+            Ok(msg.result.clone().unwrap_or(Value::Null))
+        } else {
+            let err = msg.error.as_ref();
+            Err(RpcError {
+                code: err
+                    .map(|e| e.normalized_code())
+                    .unwrap_or_else(|| BRIDGE_INTERNAL_ERROR.to_string()),
+                message: err.and_then(|e| e.message.clone()),
+                data: err.and_then(|e| e.data.clone()),
+            })
+        };
+        let page_instance_id = page.instance_id_string();
+        crate::view_call::resolve_view_call(&msg.id, Some(&page_instance_id), result);
+        Ok(())
+    }
+
+    fn handle_ch_data(
+        &self,
+        page: &PageInstance,
+        _context: &WebMessageContext,
+        msg: &ChDataMsg,
+    ) -> Result<(), LxAppError> {
+        if msg.v != 2 {
+            return Ok(());
+        }
+        if self.send_data_to_host_channel(&msg.id, msg.payload.get().to_owned()) {
+            return Ok(());
+        }
+        self.forward_js_message(
+            page,
+            AppServiceCommand::ChData {
+                id: msg.id.clone(),
+                payload_json: msg.payload.get().to_owned(),
+            },
+        )
+    }
+
+    fn handle_ch_close(
+        &self,
+        page: &PageInstance,
+        _context: &WebMessageContext,
+        msg: &ChCloseMsg,
+    ) -> Result<(), LxAppError> {
+        if msg.v != 2 {
+            return Ok(());
+        }
+        if self.close_host_channel_from_view(&msg.id, msg.code.clone(), msg.reason.clone()) {
+            return Ok(());
+        }
+        self.forward_js_message(
+            page,
+            AppServiceCommand::ChClose {
+                id: msg.id.clone(),
+                code: msg.code.clone(),
+                reason: msg.reason.clone(),
+            },
+        )
+    }
+
+    fn handle_cancel(
+        &self,
+        _page: &PageInstance,
+        _context: &WebMessageContext,
+        msg: &CancelMsg,
+    ) -> Result<(), LxAppError> {
+        if msg.v == 2 {
+            self.inner.pending_requests.cancel(&msg.id);
+        }
+        Ok(())
+    }
+
+    fn handle_state_ack(
+        &self,
+        page: &PageInstance,
+        _context: &WebMessageContext,
+        msg: &StateAckMsg,
+    ) -> Result<(), LxAppError> {
+        if msg.v != 2 {
+            return Ok(());
+        }
+        self.forward_js_message(
+            page,
+            AppServiceCommand::StateAck {
+                scope: msg.scope.clone(),
+                rev: msg.rev,
+            },
+        )
+    }
+
+    fn handle_unknown(
+        &self,
+        page: &PageInstance,
+        _context: &WebMessageContext,
+        unknown: &UnknownMsg,
+    ) -> Result<(), LxAppError> {
+        if let Some(id) = &unknown.id {
+            let (code, message) = if unknown.v != Some(2) {
+                (
+                    BRIDGE_PROTOCOL_MISMATCH,
+                    Some(format!(
+                        "Unsupported protocol: {}",
+                        unknown
+                            .v
+                            .map(|v| v.to_string())
+                            .unwrap_or_else(|| "missing".to_string())
+                    )),
+                )
+            } else {
+                (
+                    BRIDGE_MALFORMED_MESSAGE,
+                    unknown
+                        .kind
+                        .as_deref()
+                        .map(|kind| format!("Unknown kind: {kind}"))
+                        .or_else(|| unknown.parse_error.clone())
+                        .or_else(|| Some("Unknown message".to_string())),
+                )
+            };
+            let _ = self.send_res_err(page, id.clone(), code, message, None);
+        }
+        Ok(())
+    }
+
+    fn handle_hello(
+        &self,
+        page: &PageInstance,
+        _context: &WebMessageContext,
+        msg: &HelloMsg,
+    ) -> Result<(), LxAppError> {
         if msg.v != 2 {
             return Err(LxAppError::Bridge(format!(
                 "Unsupported protocol: {}",
@@ -434,7 +525,12 @@ impl PageBridge {
         Ok(())
     }
 
-    fn handle_req(&self, page: &PageInstance, msg: &ReqMsg) -> Result<(), LxAppError> {
+    fn handle_req(
+        &self,
+        page: &PageInstance,
+        context: &WebMessageContext,
+        msg: &ReqMsg,
+    ) -> Result<(), LxAppError> {
         if msg.v != 2 {
             let _ = self.send_res_err(
                 page,
@@ -503,6 +599,7 @@ impl PageBridge {
         if let Some(host_method) = msg.method.strip_prefix("host.") {
             return self.dispatch_host_req(
                 page,
+                context,
                 msg.id.clone(),
                 host_method.to_string(),
                 params_json,
@@ -524,7 +621,12 @@ impl PageBridge {
         )
     }
 
-    fn handle_notify(&self, page: &PageInstance, msg: &NotifyMsg) -> Result<(), LxAppError> {
+    fn handle_notify(
+        &self,
+        page: &PageInstance,
+        context: &WebMessageContext,
+        msg: &NotifyMsg,
+    ) -> Result<(), LxAppError> {
         if msg.v != 2 || !self.is_ready() {
             return Ok(());
         }
@@ -536,7 +638,7 @@ impl PageBridge {
 
         let params_json = msg.params.as_ref().map(|v| v.get().to_owned());
         if let Some(host_method) = msg.method.strip_prefix("host.") {
-            return self.dispatch_host_notify(page, host_method.to_string(), params_json);
+            return self.dispatch_host_notify(page, context, host_method.to_string(), params_json);
         }
 
         self.forward_js_message(
@@ -548,7 +650,12 @@ impl PageBridge {
         )
     }
 
-    fn handle_ch_open(&self, page: &PageInstance, msg: &ChOpenMsg) -> Result<(), LxAppError> {
+    fn handle_ch_open(
+        &self,
+        page: &PageInstance,
+        context: &WebMessageContext,
+        msg: &ChOpenMsg,
+    ) -> Result<(), LxAppError> {
         if msg.v != 2 {
             let _ = self.send_ch_ack_err(
                 page,
@@ -585,6 +692,7 @@ impl PageBridge {
             let host_topic = &msg.topic["host.".len()..];
             return self.dispatch_host_ch_open(
                 page,
+                context,
                 msg.id.clone(),
                 host_topic,
                 msg.params.as_ref().map(|v| v.get().to_owned()),
@@ -963,125 +1071,158 @@ impl PageBridge {
     fn dispatch_host_ch_open(
         &self,
         page: &PageInstance,
+        context: &WebMessageContext,
         id: String,
         host_topic: &str,
         params_json: Option<String>,
     ) -> Result<(), LxAppError> {
-        let Some(handler) = host::get_channel_handler(host_topic) else {
-            let _ = self.send_ch_ack_err(
-                page,
-                id,
-                BRIDGE_TOPIC_NOT_FOUND,
-                Some(format!("Channel not found: host.{}", host_topic)),
-                None,
-            );
-            return Ok(());
-        };
+        admit_before_host_dispatch(
+            context,
+            |context| self.admit_host_route(page, context, host_topic),
+            || {
+                let Some(handler) = host::get_channel_handler(host_topic) else {
+                    let _ = self.send_ch_ack_err(
+                        page,
+                        id,
+                        BRIDGE_TOPIC_NOT_FOUND,
+                        Some(format!("Channel not found: host.{}", host_topic)),
+                        None,
+                    );
+                    return Ok(());
+                };
 
-        let (ctx, sender, mut outbound_rx) = host::new_channel_context(id.clone());
-        self.register_host_channel(id.clone(), sender);
+                let (ctx, sender, mut outbound_rx) = host::new_channel_context(id.clone());
+                self.register_host_channel(id.clone(), sender);
 
-        // Acknowledge the channel open before invoking the handler.
-        self.send_ch_ack_ok(page, id.clone())?;
+                // Acknowledge the channel open before invoking the handler.
+                self.send_ch_ack_ok(page, id.clone())?;
 
-        // Spawn an outbound forwarding task that relays ChannelOutbound messages
-        // from the handler back to the View as ch.data / ch.close wire messages.
-        let bridge = self.clone();
-        let task_page = page.clone();
-        let task_id = id.clone();
-        crate::executor::spawn(async move {
-            let mut seq = 0u64;
-            while let Some(msg) = outbound_rx.recv().await {
-                match msg {
-                    host::ChannelOutbound::Data(payload_json) => {
-                        if let Err(e) =
-                            bridge.send_ch_data(&task_page, task_id.clone(), seq, payload_json)
-                        {
-                            crate::warn!("host channel '{}' data send failed: {}", task_id, e)
-                                .with_appid(task_page.appid())
-                                .with_path(task_page.path());
+                // Spawn an outbound forwarding task that relays ChannelOutbound messages
+                // from the handler back to the View as ch.data / ch.close wire messages.
+                let bridge = self.clone();
+                let task_page = page.clone();
+                let task_id = id.clone();
+                crate::executor::spawn(async move {
+                    let mut seq = 0u64;
+                    while let Some(msg) = outbound_rx.recv().await {
+                        match msg {
+                            host::ChannelOutbound::Data(payload_json) => {
+                                if let Err(e) = bridge.send_ch_data(
+                                    &task_page,
+                                    task_id.clone(),
+                                    seq,
+                                    payload_json,
+                                ) {
+                                    crate::warn!(
+                                        "host channel '{}' data send failed: {}",
+                                        task_id,
+                                        e
+                                    )
+                                    .with_appid(task_page.appid())
+                                    .with_path(task_page.path());
+                                }
+                                seq += 1;
+                            }
+                            host::ChannelOutbound::Close { code, reason } => {
+                                bridge.take_host_channel(&task_id);
+                                let _ =
+                                    bridge.send_ch_close(&task_page, task_id.clone(), code, reason);
+                                break;
+                            }
                         }
-                        seq += 1;
                     }
-                    host::ChannelOutbound::Close { code, reason } => {
-                        bridge.take_host_channel(&task_id);
-                        let _ = bridge.send_ch_close(&task_page, task_id.clone(), code, reason);
-                        break;
-                    }
-                }
-            }
-        });
+                });
 
-        // Call handler.on_open synchronously; the handler is expected to spawn
-        // its own async task if it needs to do long-running work.
-        let lxapp = self.lxapp();
-        handler.on_open(lxapp, ctx, params_json);
+                // Call handler.on_open synchronously; the handler is expected to spawn
+                // its own async task if it needs to do long-running work.
+                let lxapp = self.lxapp();
+                handler.on_open(lxapp, ctx, params_json);
 
-        Ok(())
+                Ok(())
+            },
+        )
     }
 
     fn dispatch_host_req(
         &self,
         page: &PageInstance,
+        context: &WebMessageContext,
         id: String,
         host_method: String,
         params_json: Option<String>,
     ) -> Result<(), LxAppError> {
-        let Some(handler) = host::get_host(&host_method) else {
-            let _ = self.send_res_err(
-                page,
-                id,
-                BRIDGE_METHOD_NOT_FOUND,
-                Some(format!("Method not found: host.{}", host_method)),
-                None,
-            );
-            return Ok(());
-        };
+        let route = host_method.clone();
+        admit_before_host_dispatch(
+            context,
+            |context| self.admit_host_route(page, context, &route),
+            || {
+                let Some(handler) = host::get_host(&host_method) else {
+                    let _ = self.send_res_err(
+                        page,
+                        id,
+                        BRIDGE_METHOD_NOT_FOUND,
+                        Some(format!("Method not found: host.{}", host_method)),
+                        None,
+                    );
+                    return Ok(());
+                };
 
-        let lxapp = self.lxapp();
-        let page = page.clone();
-        let task_page = page.clone();
-        let bridge = self.clone();
-        let (mut cancel_rx, pending_request) = self.inner.pending_requests.register(id.clone());
-        let task_id = id.clone();
-        let task_host_method = host_method.clone();
+                let lxapp = self.lxapp();
+                let page = page.clone();
+                let task_page = page.clone();
+                let bridge = self.clone();
+                let (mut cancel_rx, pending_request) =
+                    self.inner.pending_requests.register(id.clone());
+                let task_id = id.clone();
+                let task_host_method = host_method.clone();
 
-        crate::executor::spawn(async move {
-            let started_at = std::time::Instant::now();
-            let (tx, rx) = oneshot::channel();
-            let mut host_cancel_tx = Some(tx);
-            let mut host_fut = handler.call(lxapp, params_json, rx);
+                crate::executor::spawn(async move {
+                    let started_at = std::time::Instant::now();
+                    let (tx, rx) = oneshot::channel();
+                    let mut host_cancel_tx = Some(tx);
+                    let mut host_fut = handler.call(lxapp, params_json, rx);
 
-            let initial_result: Result<HostOutput, RpcError> = tokio::select! {
-                biased;
-                _ = &mut cancel_rx => {
-                    if let Some(tx) = host_cancel_tx.take() {
-                        let _ = tx.send(());
-                    }
-                    Err(RpcError::new(BRIDGE_CANCELED, Some(PAGE_UNLOADED.to_string())))
-                }
-                res = &mut host_fut => {
-                    match res {
-                        Ok(output) => Ok(output),
-                        Err(err) => Err(rpc_error_from_lxapp_error(&err)),
-                    }
-                }
-            };
+                    let initial_result: Result<HostOutput, RpcError> = tokio::select! {
+                        biased;
+                        _ = &mut cancel_rx => {
+                            if let Some(tx) = host_cancel_tx.take() {
+                                let _ = tx.send(());
+                            }
+                            Err(RpcError::new(BRIDGE_CANCELED, Some(PAGE_UNLOADED.to_string())))
+                        }
+                        res = &mut host_fut => {
+                            match res {
+                                Ok(output) => Ok(output),
+                                Err(err) => Err(rpc_error_from_lxapp_error(&err)),
+                            }
+                        }
+                    };
 
-            let send_result = match initial_result {
-                Ok(HostOutput::Json(json)) => bridge.send_res_ok(&task_page, task_id.clone(), json),
-                Ok(HostOutput::Stream(stream)) => {
-                    match bridge
-                        .consume_host_stream(
-                            &task_page,
-                            &task_id,
-                            stream,
-                            &mut cancel_rx,
-                            host_cancel_tx,
-                        )
-                        .await
-                    {
-                        Ok(json) => bridge.send_res_ok(&task_page, task_id.clone(), json),
+                    let send_result = match initial_result {
+                        Ok(HostOutput::Json(json)) => {
+                            bridge.send_res_ok(&task_page, task_id.clone(), json)
+                        }
+                        Ok(HostOutput::Stream(stream)) => {
+                            match bridge
+                                .consume_host_stream(
+                                    &task_page,
+                                    &task_id,
+                                    stream,
+                                    &mut cancel_rx,
+                                    host_cancel_tx,
+                                )
+                                .await
+                            {
+                                Ok(json) => bridge.send_res_ok(&task_page, task_id.clone(), json),
+                                Err(err) => bridge.send_res_err(
+                                    &task_page,
+                                    task_id.clone(),
+                                    &err.code,
+                                    err.message,
+                                    err.data,
+                                ),
+                            }
+                        }
                         Err(err) => bridge.send_res_err(
                             &task_page,
                             task_id.clone(),
@@ -1089,76 +1230,77 @@ impl PageBridge {
                             err.message,
                             err.data,
                         ),
+                    };
+
+                    drop(pending_request);
+
+                    let elapsed = started_at.elapsed();
+                    if elapsed > std::time::Duration::from_secs(3) {
+                        crate::warn!(
+                            "[{}] host req '{}' slow: {:?}",
+                            task_page.path(),
+                            task_host_method,
+                            elapsed
+                        )
+                        .with_appid(task_page.appid())
+                        .with_path(task_page.path());
                     }
-                }
-                Err(err) => bridge.send_res_err(
-                    &task_page,
-                    task_id.clone(),
-                    &err.code,
-                    err.message,
-                    err.data,
-                ),
-            };
 
-            drop(pending_request);
+                    if let Err(err) = send_result {
+                        crate::warn!("host req '{}' reply failed: {}", task_host_method, err)
+                            .with_appid(task_page.appid())
+                            .with_path(task_page.path());
+                    }
+                });
 
-            let elapsed = started_at.elapsed();
-            if elapsed > std::time::Duration::from_secs(3) {
-                crate::warn!(
-                    "[{}] host req '{}' slow: {:?}",
-                    task_page.path(),
-                    task_host_method,
-                    elapsed
-                )
-                .with_appid(task_page.appid())
-                .with_path(task_page.path());
-            }
-
-            if let Err(err) = send_result {
-                crate::warn!("host req '{}' reply failed: {}", task_host_method, err)
-                    .with_appid(task_page.appid())
-                    .with_path(task_page.path());
-            }
-        });
-
-        Ok(())
+                Ok(())
+            },
+        )
     }
 
     fn dispatch_host_notify(
         &self,
         page: &PageInstance,
+        context: &WebMessageContext,
         host_method: String,
         params_json: Option<String>,
     ) -> Result<(), LxAppError> {
-        let Some(handler) = host::get_host(&host_method) else {
-            return Ok(());
-        };
+        let route = host_method.clone();
+        admit_before_host_dispatch(
+            context,
+            |context| self.admit_host_route(page, context, &route),
+            || {
+                let Some(handler) = host::get_host(&host_method) else {
+                    return Ok(());
+                };
 
-        let lxapp = self.lxapp();
-        let appid = page.appid();
-        let path = page.path();
-        let task_host_method = host_method.clone();
-        crate::executor::spawn(async move {
-            let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
-            let _keep_alive = cancel_tx;
-            match handler.call(lxapp, params_json, cancel_rx).await {
-                Ok(HostOutput::Json(_)) => {}
-                Ok(HostOutput::Stream(_)) => {
-                    crate::warn!(
-                        "host notify '{}' returned a stream; dropping output",
-                        task_host_method
-                    )
-                    .with_appid(appid.clone())
-                    .with_path(path.clone());
-                }
-                Err(err) => {
-                    crate::warn!("host notify '{}' failed: {}", task_host_method, err)
-                        .with_appid(appid)
-                        .with_path(path);
-                }
-            }
-        });
-        Ok(())
+                let lxapp = self.lxapp();
+                let appid = page.appid();
+                let path = page.path();
+                let task_host_method = host_method.clone();
+                crate::executor::spawn(async move {
+                    let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
+                    let _keep_alive = cancel_tx;
+                    match handler.call(lxapp, params_json, cancel_rx).await {
+                        Ok(HostOutput::Json(_)) => {}
+                        Ok(HostOutput::Stream(_)) => {
+                            crate::warn!(
+                                "host notify '{}' returned a stream; dropping output",
+                                task_host_method
+                            )
+                            .with_appid(appid.clone())
+                            .with_path(path.clone());
+                        }
+                        Err(err) => {
+                            crate::warn!("host notify '{}' failed: {}", task_host_method, err)
+                                .with_appid(appid)
+                                .with_path(path);
+                        }
+                    }
+                });
+                Ok(())
+            },
+        )
     }
 
     async fn consume_host_stream(
@@ -1235,6 +1377,74 @@ fn rpc_error_from_lxapp_error(err: &LxAppError) -> RpcError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct TestContext {
+        native_view: u64,
+        frame: &'static str,
+    }
+
+    #[test]
+    fn host_admission_seam_requires_web_message_context() {
+        let _seam: fn(
+            &PageBridge,
+            &PageInstance,
+            &WebMessageContext,
+            &str,
+        ) -> Result<(), LxAppError> = PageBridge::admit_host_route;
+    }
+
+    #[test]
+    fn host_dispatch_preserves_context_identity_and_runs_after_admission() {
+        let context = TestContext {
+            native_view: 41,
+            frame: "top-level",
+        };
+        let events = RefCell::new(Vec::new());
+
+        let result = admit_before_host_dispatch(
+            &context,
+            |received| {
+                assert!(std::ptr::eq(received, &context));
+                assert_eq!(received.native_view, 41);
+                assert_eq!(received.frame, "top-level");
+                events.borrow_mut().push("admit");
+                Ok(())
+            },
+            || {
+                events.borrow_mut().push("dispatch");
+                Ok(())
+            },
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(*events.borrow(), ["admit", "dispatch"]);
+    }
+
+    #[test]
+    fn rejected_host_admission_prevents_dispatch() {
+        let context = TestContext {
+            native_view: 9,
+            frame: "subframe",
+        };
+        let dispatched = RefCell::new(false);
+
+        let result = admit_before_host_dispatch(
+            &context,
+            |received| {
+                assert!(std::ptr::eq(received, &context));
+                Err(LxAppError::Bridge("denied".to_string()))
+            },
+            || {
+                *dispatched.borrow_mut() = true;
+                Ok(())
+            },
+        );
+
+        assert!(matches!(result, Err(LxAppError::Bridge(message)) if message == "denied"));
+        assert!(!*dispatched.borrow());
+    }
 
     #[test]
     fn pending_request_registry_cancels_all_and_auto_unregisters() {

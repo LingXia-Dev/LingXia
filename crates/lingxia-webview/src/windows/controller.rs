@@ -297,6 +297,7 @@ impl WebViewInner {
         sender: WebViewCreateSender,
     ) {
         let webtag = WebTag::new(appid, path, session_id);
+        let native_view_id = sender.native_view_id();
         let webtag_for_thread = webtag.clone();
         let effective_options_for_thread = effective_options.clone();
         let (startup_tx, startup_rx) = mpsc::channel();
@@ -304,9 +305,12 @@ impl WebViewInner {
         let join_handle = thread::Builder::new()
             .name(format!("lingxia-webview-{}", webtag.as_str()))
             .spawn(move || {
-                if let Err(err) =
-                    run_ui_thread(webtag_for_thread, effective_options_for_thread, startup_tx)
-                {
+                if let Err(err) = run_ui_thread(
+                    webtag_for_thread,
+                    effective_options_for_thread,
+                    native_view_id,
+                    startup_tx,
+                ) {
                     log::error!("Windows WebView UI thread failed: {}", err);
                 }
             });
@@ -337,6 +341,7 @@ impl WebViewInner {
                         composition_hosted,
                     },
                     effective_options,
+                    native_view_id,
                 ));
                 if sender.is_destroyed() {
                     log::info!(
@@ -891,6 +896,7 @@ pub(crate) type WebViewStartup = (Sender<UiCommand>, u32, isize, bool);
 pub(crate) fn run_ui_thread(
     webtag: WebTag,
     effective_options: EffectiveWebViewCreateOptions,
+    native_view_id: NativeWebViewId,
     startup_tx: Sender<StdResult<WebViewStartup>>,
 ) -> StdResult<()> {
     // A relaunch can reuse a WebTag as soon as the retired instance leaves the
@@ -907,7 +913,7 @@ pub(crate) fn run_ui_thread(
             .map_err(|err| WebViewError::WebView(format!("OleInitialize failed: {err}")))?;
     }
 
-    let result = run_ui_thread_inner(webtag, effective_options, startup_tx);
+    let result = run_ui_thread_inner(webtag, effective_options, native_view_id, startup_tx);
 
     unsafe {
         windows::Win32::System::Ole::OleUninitialize();
@@ -945,6 +951,7 @@ impl Drop for EphemeralProfileGuard {
 pub(crate) fn run_ui_thread_inner(
     webtag: WebTag,
     effective_options: EffectiveWebViewCreateOptions,
+    native_view_id: NativeWebViewId,
     startup_tx: Sender<StdResult<WebViewStartup>>,
 ) -> StdResult<()> {
     ensure_message_queue();
@@ -985,6 +992,7 @@ pub(crate) fn run_ui_thread_inner(
             &env,
             &webview,
             webtag.clone(),
+            native_view_id,
             &effective_options.registered_schemes,
             memory_pages.clone(),
         )?;

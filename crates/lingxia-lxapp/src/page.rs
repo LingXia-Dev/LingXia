@@ -4,7 +4,7 @@ pub(crate) mod runtime;
 
 pub use definition::{register_page_resolver, resolve_page_path};
 
-use crate::bridge::{IncomingMessage, PageBridge};
+use crate::bridge::PageBridge;
 use crate::lifecycle::PageLifecycleEvent;
 use crate::lxapp::{self, LxAppSessionStatus, navbar::NavigationBarState};
 use crate::page::config::{OrientationOverride, PageConfig};
@@ -22,8 +22,8 @@ use lingxia_platform::traits::app_runtime::{
 };
 use lingxia_webview::runtime::destroy_webview;
 use lingxia_webview::{
-    LoadDataRequest, LogLevel, NavigationOutcome, NavigationPolicy, NewWindowPolicy, WebTag,
-    WebView, WebViewBuilder, WebViewController, WebViewDelegate,
+    IncomingWebMessage, LoadDataRequest, LogLevel, NavigationOutcome, NavigationPolicy,
+    NewWindowPolicy, WebTag, WebView, WebViewBuilder, WebViewController, WebViewDelegate,
 };
 use ring::rand::{SecureRandom, SystemRandom};
 
@@ -803,10 +803,15 @@ impl PageInstance {
         }
     }
 
-    pub fn handle_incoming_message_json(&self, msg: &str) -> Result<(), LxAppError> {
-        let incoming = IncomingMessage::from_json_str(msg)
-            .map_err(|err| LxAppError::Bridge(format!("Invalid bridge message JSON: {}", err)))?;
-        self.inner.bridge.handle_incoming(self, Arc::new(incoming))
+    /// Admit a platform-attested WebView message into this page's bridge.
+    ///
+    /// The message context remains attached through protocol decode and host
+    /// route dispatch so authorization can be installed at one admission seam.
+    pub fn handle_incoming_web_message(
+        &self,
+        message: IncomingWebMessage,
+    ) -> Result<(), LxAppError> {
+        self.inner.bridge.handle_incoming(self, message)
     }
 
     /// Get complete page state
@@ -1856,32 +1861,33 @@ impl WebViewDelegate for PageInstance {
     }
 
     /// Handles a postMessage from the WebView
-    fn handle_post_message(&self, msg: String) {
-        if let Some((level, message)) = decode_console_envelope(&msg) {
+    fn handle_post_message(&self, message: IncomingWebMessage) {
+        // Native-component envelopes can mutate native state without entering
+        // the JSON bridge. Admit every platform-attested message first; bridge
+        // dispatch repeats this idempotent check immediately before decoding.
+        if let Err(e) = self.inner.bridge.admit_incoming(self, message.context()) {
+            error!("Rejected postMessage: {}", e)
+                .with_appid(self.inner.appid.clone())
+                .with_path(self.inner.path.clone());
+            return;
+        }
+        let msg = message.body();
+        if let Some((level, message)) = decode_console_envelope(msg) {
             self.log(level, &message);
             return;
         }
-        if let Some(component_payload) = decode_native_component_envelope(&msg) {
+        if let Some(component_payload) = decode_native_component_envelope(msg) {
             self.handle_native_component_message(component_payload);
             return;
         }
 
-        match IncomingMessage::from_json_str(&msg) {
-            Ok(incoming) => {
-                if let Err(e) = self.bridge().handle_incoming(self, Arc::new(incoming)) {
-                    if self.document_is_departing() || self.webview().is_none() {
-                        debug!("Dropping view message after page unload")
-                            .with_appid(self.inner.appid.clone())
-                            .with_path(self.inner.path.clone());
-                    } else {
-                        error!("Failed to handle view message: {}", e)
-                            .with_appid(self.inner.appid.clone())
-                            .with_path(self.inner.path.clone());
-                    }
-                }
-            }
-            Err(e) => {
-                error!("Invalid postMessage JSON: {}", e)
+        if let Err(e) = self.handle_incoming_web_message(message) {
+            if self.document_is_departing() || self.webview().is_none() {
+                debug!("Dropping view message after page unload")
+                    .with_appid(self.inner.appid.clone())
+                    .with_path(self.inner.path.clone());
+            } else {
+                error!("Invalid postMessage: {}", e)
                     .with_appid(self.inner.appid.clone())
                     .with_path(self.inner.path.clone());
             }

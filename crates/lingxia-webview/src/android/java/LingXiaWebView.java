@@ -58,6 +58,8 @@ public class LingXiaWebView extends WebView {
     private static final AtomicLong sFileChooserRequestSeq = new AtomicLong(0L);
     private static final AtomicLong sEphemeralProfileSeq = new AtomicLong(0L);
     private static final String EPHEMERAL_PROFILE_PREFIX = "lingxia_ephemeral_";
+    static final int MESSAGE_TRANSPORT_PORT = 1;
+    static final int MESSAGE_TRANSPORT_JAVASCRIPT_INTERFACE = 2;
 
     // MessagePort bridge instance (API 23+ only), accessed via cached reflection
     private Object messagePortBridge;
@@ -68,6 +70,9 @@ public class LingXiaWebView extends WebView {
     private String appId;
     private String currentPath;
     private long sessionId;
+    // Assigned by Rust for this concrete native WebView. It is not a page
+    // credential and is used only to reject callbacks from a stale instance.
+    private final NativeViewIdBinding nativeViewIdBinding = new NativeViewIdBinding();
     private boolean pageLoaded = false;
     private CreateOptions createOptions = CreateOptions.strictDefault();
     private String ephemeralProfileName;
@@ -744,6 +749,20 @@ public class LingXiaWebView extends WebView {
         return messagePortBridge != null && sendPortMethod != null;
     }
 
+    /** Called by Rust before this WebView is registered under its reusable route tag. */
+    public void setNativeViewId(long nativeViewId) {
+        nativeViewIdBinding.assign(nativeViewId);
+    }
+
+    long getNativeViewId() {
+        return nativeViewIdBinding.current();
+    }
+
+    String getDiagnosticUrl() {
+        String url = getUrl();
+        return url != null ? url : "";
+    }
+
     private class LingXiaProxy {
         @android.webkit.JavascriptInterface
         public boolean supportsMessagePort() {
@@ -770,6 +789,9 @@ public class LingXiaWebView extends WebView {
                     getAppId() != null ? getAppId() : "",
                     getCurrentPath() != null ? getCurrentPath() : "",
                     getSessionId(),
+                    getNativeViewId(),
+                    MESSAGE_TRANSPORT_JAVASCRIPT_INTERFACE,
+                    getDiagnosticUrl(),
                     message
                 );
             } catch (Exception e) {
@@ -1471,6 +1493,14 @@ public class LingXiaWebView extends WebView {
         }
         return null;
     }
-    native int handlePostMessage(String appId, String path, long sessionId, String message);
+    native int handlePostMessage(
+            String appId,
+            String path,
+            long sessionId,
+            long nativeViewId,
+            int transport,
+            String sourceUrl,
+            String message
+    );
     native static void notifyWebViewReady(String appId, String path, long sessionId, long requestId, Object webView);
 }
