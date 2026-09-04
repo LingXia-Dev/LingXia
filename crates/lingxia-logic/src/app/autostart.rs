@@ -1,7 +1,7 @@
+use crate::authorization::{self, LogicRoute};
 use crate::i18n::js_error_from_platform_error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lxapp::LxApp;
-use rong::{HostError, JSContext, JSFunc, JSObject, JSResult};
+use rong::{HostError, JSContext, JSFunc, JSObject, JSResult, JSValue};
 
 /// `lx.app.autostart` — launch-at-startup control. The member is absent unless
 /// the host declared the `autostart` capability (and this module is compiled
@@ -26,8 +26,8 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
 /// Reads the live OS registration (login items / Run key), never a cached
 /// preference — the user can flip it outside the app at any time.
 async fn autostart_is_enabled(ctx: JSContext) -> JSResult<bool> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    super::ensure_control_caller(&lxapp, "lx.app.autostart")?;
+    let invocation = authorization::require(&ctx, LogicRoute::AppAutostartIsEnabled)?;
+    let lxapp = invocation.lxapp();
     let runtime = lxapp.runtime.clone();
     tokio::task::spawn_blocking(move || runtime.autostart_is_enabled())
         .await
@@ -40,9 +40,10 @@ async fn autostart_is_enabled(ctx: JSContext) -> JSResult<bool> {
         .map_err(|error| js_error_from_platform_error(&error))
 }
 
-async fn autostart_set_enabled(ctx: JSContext, enabled: bool) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    super::ensure_control_caller(&lxapp, "lx.app.autostart")?;
+async fn autostart_set_enabled(ctx: JSContext, enabled: JSValue) -> JSResult<()> {
+    let invocation = authorization::require(&ctx, LogicRoute::AppAutostartSetEnabled)?;
+    let enabled = enabled.to_rust::<bool>()?;
+    let lxapp = invocation.lxapp();
     let runtime = lxapp.runtime.clone();
     tokio::task::spawn_blocking(move || runtime.autostart_set_enabled(enabled))
         .await

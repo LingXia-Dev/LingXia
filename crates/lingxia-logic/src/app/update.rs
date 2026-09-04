@@ -1,3 +1,4 @@
+use crate::authorization::{self, LogicRoute};
 use crate::i18n::{
     js_error_from_business_code_with_detail, js_internal_error, js_invalid_parameter_error,
     js_resource_not_found_error,
@@ -80,8 +81,8 @@ rong::js_api! {
 /// `hasUpdate: false`; platforms that cannot apply a package may still return
 /// metadata and reject when `update.apply()` is invoked.
 async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    super::ensure_control_caller(&lxapp, "lx.app.checkUpdate")?;
+    let invocation = authorization::require(&ctx, LogicRoute::AppCheckUpdate)?;
+    let lxapp = invocation.lxapp();
 
     let update = host_update_service_from(&lxapp)
         .check()
@@ -123,22 +124,24 @@ fn create_update_object(ctx: &JSContext, update: UpdatePackageInfo) -> JSResult<
     obj.set(
         "apply",
         JSFunc::new(ctx, move |ctx: JSContext| {
+            let invocation = authorization::require(&ctx, LogicRoute::AppApplyUpdate)?;
             let package = package
                 .lock()
                 .map_err(|_| js_internal_error("app update state is poisoned"))?
                 .take()
                 .ok_or_else(|| js_resource_not_found_error("app update already applied"))?;
-            create_apply_task(&ctx, package)
+            create_apply_task(&ctx, invocation.lxapp(), package)
         })?,
     )?;
 
     Ok(obj)
 }
 
-fn create_apply_task(ctx: &JSContext, package: UpdatePackageInfo) -> JSResult<JSObject> {
-    let lxapp = LxApp::from_ctx(ctx)?;
-    super::ensure_control_caller(&lxapp, "lx.app.checkUpdate")?;
-
+fn create_apply_task(
+    ctx: &JSContext,
+    lxapp: Arc<LxApp>,
+    package: UpdatePackageInfo,
+) -> JSResult<JSObject> {
     let service = host_update_service_from(&lxapp);
     // Store-delivered platforms (iOS/HarmonyOS) update through the store and
     // never self-install; only platforms that report `self_update_supported`

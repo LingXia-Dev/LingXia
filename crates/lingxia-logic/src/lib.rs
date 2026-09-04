@@ -2,6 +2,7 @@ use ::lxapp::lx::{LxLogicExtension, register_logic_extension};
 use rong::{JSContext, JSResult};
 
 mod app;
+mod authorization;
 mod capability;
 mod device;
 mod dismissal;

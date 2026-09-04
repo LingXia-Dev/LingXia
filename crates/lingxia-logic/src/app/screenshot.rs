@@ -1,3 +1,4 @@
+use crate::authorization::{self, LogicRoute};
 use crate::i18n::{
     js_error_from_business_code_with_detail, js_error_from_platform_error, js_internal_error,
     js_service_unavailable_error,
@@ -6,7 +7,7 @@ use lingxia_platform::traits::screenshot::AppScreenshot;
 use lingxia_service::storage;
 use lxapp::LxApp;
 use rong::function::Optional;
-use rong::{FromJSObject, IntoJSObject, JSContext, JSResult};
+use rong::{FromJSObject, IntoJSObject, JSContext, JSResult, JSValue};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -52,12 +53,17 @@ rong::js_api! {
 /// restricted to the Control app, like the other host-level APIs on `lx.app`.
 async fn app_screenshot(
     ctx: JSContext,
-    options: Optional<JSAppScreenshotOptions>,
+    options: Optional<JSValue>,
 ) -> JSResult<JSAppScreenshotResult> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    super::ensure_control_caller(&lxapp, "lx.app.screenshot")?;
+    let invocation = authorization::require(&ctx, LogicRoute::AppScreenshot)?;
+    let lxapp = invocation.lxapp();
 
-    let window_id = options.as_ref().and_then(|o| o.window_id.clone());
+    let options = options
+        .0
+        .filter(|value| !value.is_undefined() && !value.is_null())
+        .map(|value| value.to_rust::<JSAppScreenshotOptions>())
+        .transpose()?;
+    let window_id = options.and_then(|options| options.window_id);
     let platform = lxapp::get_platform()
         .ok_or_else(|| js_service_unavailable_error("platform is not initialized"))?;
     let bytes = platform

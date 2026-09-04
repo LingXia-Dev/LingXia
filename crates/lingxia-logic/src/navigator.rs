@@ -1,9 +1,13 @@
 use crate::I18nKey;
+use crate::authorization;
+#[cfg(feature = "terminal")]
+use crate::authorization::LogicRoute;
 use crate::i18n::{js_error_from_lxapp_error, t};
 use crate::update;
 #[cfg(feature = "terminal")]
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
+use lxapp::host::HostInvocationContext;
 use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType};
 use rong::{FromJSObject, JSContext, JSObject, JSResult};
 use serde_json::Value;
@@ -108,9 +112,12 @@ fn should_navigate_to_app(
 pub(crate) async fn prepare_app_open(
     lxapp: &Arc<LxApp>,
     options: &NavigateToAppOptions,
+    invocation: &HostInvocationContext,
 ) -> JSResult<(LxAppStartupOptions, ReleaseType)> {
-    validate_page_selector(options).map_err(|e| js_error_from_lxapp_error(&e))?;
     let target_appid = options.appid.clone();
+    let host_terminal_settings =
+        register_host_terminal_settings_bundle(lxapp, &target_appid, invocation)?;
+    validate_page_selector(options).map_err(|e| js_error_from_lxapp_error(&e))?;
     let release_type = parse_env_version(options.env_version.as_deref())
         .map_err(|e| js_error_from_lxapp_error(&e))?;
     let target_version = options
@@ -119,7 +126,6 @@ pub(crate) async fn prepare_app_open(
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    let host_terminal_settings = register_host_terminal_settings_bundle(lxapp, &target_appid)?;
     if host_terminal_settings && target_version.is_some() {
         return Err(js_error_from_lxapp_error(&LxAppError::InvalidParameter(
             "the host-bundled Terminal Settings app does not support targetVersion".to_string(),
@@ -155,11 +161,15 @@ pub(crate) async fn prepare_app_open(
 }
 
 #[cfg(feature = "terminal")]
-fn register_host_terminal_settings_bundle(lxapp: &LxApp, target_appid: &str) -> JSResult<bool> {
+fn register_host_terminal_settings_bundle(
+    lxapp: &Arc<LxApp>,
+    target_appid: &str,
+    invocation: &HostInvocationContext,
+) -> JSResult<bool> {
     if target_appid != lingxia_terminal_config::SETTINGS_APP_ID {
         return Ok(false);
     }
-    if !lxapp.is_control_app() {
+    if authorization::authorize(invocation, LogicRoute::NavigatorHostTerminalSettings).is_err() {
         return Err(js_error_from_lxapp_error(
             &LxAppError::UnsupportedOperation(
                 "only the native ControlApp may open the host Terminal Settings control session"
@@ -178,13 +188,21 @@ fn register_host_terminal_settings_bundle(lxapp: &LxApp, target_appid: &str) -> 
 }
 
 #[cfg(not(feature = "terminal"))]
-fn register_host_terminal_settings_bundle(_lxapp: &LxApp, _target_appid: &str) -> JSResult<bool> {
+fn register_host_terminal_settings_bundle(
+    _lxapp: &Arc<LxApp>,
+    _target_appid: &str,
+    _invocation: &HostInvocationContext,
+) -> JSResult<bool> {
     Ok(false)
 }
 
-async fn do_navigate_to_app(lxapp: Arc<LxApp>, options: NavigateToAppOptions) -> JSResult<()> {
+async fn do_navigate_to_app(
+    invocation: HostInvocationContext,
+    options: NavigateToAppOptions,
+) -> JSResult<()> {
+    let lxapp = invocation.lxapp();
     let target_appid = options.appid.clone();
-    let (startup_options, _) = prepare_app_open(&lxapp, &options).await?;
+    let (startup_options, _) = prepare_app_open(&lxapp, &options, &invocation).await?;
     let release_type = startup_options.release_type;
 
     lxapp
@@ -218,7 +236,8 @@ fn do_navigate_back_lxapp(lxapp: &LxApp) -> Result<(), LxAppError> {
 /// `E_SURFACE_CONFLICT` when the target is currently docked as an aside —
 /// close that aside before opening it as a main.
 async fn navigate_to_app(ctx: JSContext, options: NavigateToAppOptions) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    let invocation = authorization::invocation_from_context(&ctx)?;
+    let lxapp = invocation.lxapp();
 
     if !should_navigate_to_app(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))? {
         return Ok(());
@@ -238,7 +257,7 @@ async fn navigate_to_app(ctx: JSContext, options: NavigateToAppOptions) -> JSRes
         .into());
     }
 
-    do_navigate_to_app(lxapp, options).await?;
+    do_navigate_to_app(invocation, options).await?;
     Ok(())
 }
 

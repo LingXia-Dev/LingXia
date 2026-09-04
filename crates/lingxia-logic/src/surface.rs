@@ -1,3 +1,4 @@
+use crate::authorization::{self, LogicRoute};
 use futures::{
     StreamExt,
     channel::{mpsc, oneshot},
@@ -446,7 +447,7 @@ async fn open_url(ctx: JSContext, url: String, options: Optional<JSObject>) -> J
     copy_options(&options, &spec, &["edge", "size"])?;
 
     let key = read_surface_key(&options)?;
-    let opened = open_url_spec(ctx.clone(), &spec).await?;
+    let opened = open_url_spec(ctx.clone(), &spec, None).await?;
     browser_tab_handle(&ctx, opened, &realized, key)
 }
 
@@ -470,7 +471,7 @@ async fn open_declared(
     }
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
-    let handle = open_declared_surface_spec(&ctx, &spec).await?;
+    let handle = open_declared_surface_spec(&ctx, &spec, None).await?;
     let realized = handle_realized_placement(&handle);
     finish_handle(&ctx, &handle, "declared", &realized, None, None)
 }
@@ -516,7 +517,10 @@ fn get_surface(ctx: JSContext, key_or_id: String) -> JSResult<JSValue> {
 
 /// `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
 /// slot. Control-app only; the namespace is the privilege.
-async fn shell_open_app(ctx: JSContext, app_id: String, options: JSObject) -> JSResult<JSObject> {
+async fn shell_open_app(ctx: JSContext, app_id: JSValue, options: JSValue) -> JSResult<JSObject> {
+    let invocation = require_control_route(&ctx, LogicRoute::ShellOpenApp)?;
+    let app_id = shell_string_argument(app_id, "lx.shell.openApp appId")?;
+    let options = shell_object_argument(options, "lx.shell.openApp options")?;
     reject_unknown_options(
         &options,
         &[
@@ -538,13 +542,15 @@ async fn shell_open_app(ctx: JSContext, app_id: String, options: JSObject) -> JS
         &["as", "edge", "page", "query", "envVersion", "targetVersion"],
     )?;
     let key = read_surface_key(&options)?;
-    let handle = open_app_spec(ctx.clone(), &spec).await?;
+    let handle = open_app_spec(ctx.clone(), &spec, &invocation).await?;
     let realized = handle_realized_placement(&handle);
     finish_handle(&ctx, &handle, "app", &realized, key, None)
 }
 
 /// `lx.shell.openBuiltin(page)` — a host builtin page. Control-app only.
-async fn shell_open_builtin(ctx: JSContext, page: String) -> JSResult<JSObject> {
+async fn shell_open_builtin(ctx: JSContext, page: JSValue) -> JSResult<JSObject> {
+    let invocation = require_control_route(&ctx, LogicRoute::ShellOpenBuiltin)?;
+    let page = shell_string_argument(page, "lx.shell.openBuiltin page")?;
     let url = match page.trim() {
         "settings" => "lingxia://settings",
         "downloads" => "lingxia://downloads",
@@ -557,7 +563,7 @@ async fn shell_open_builtin(ctx: JSContext, page: String) -> JSResult<JSObject> 
     };
     let spec = JSObject::new(&ctx);
     spec.set("url", url)?;
-    open_url_spec(ctx.clone(), &spec).await?;
+    open_url_spec(ctx.clone(), &spec, Some(&invocation)).await?;
     builtin_surface_handle(&ctx, page.trim())
 }
 
@@ -565,12 +571,17 @@ async fn shell_open_builtin(ctx: JSContext, page: String) -> JSResult<JSObject> 
 /// keyed multi-instance form and placement overrides. Control-app only.
 async fn shell_open_declared(
     ctx: JSContext,
-    id: String,
-    options: Optional<JSObject>,
+    id: JSValue,
+    options: Optional<JSValue>,
 ) -> JSResult<JSObject> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    require_control_caller(&lxapp, "lx.shell.openDeclared")?;
-    let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
+    let invocation = require_control_route(&ctx, LogicRoute::ShellOpenDeclared)?;
+    let id = shell_string_argument(id, "lx.shell.openDeclared id")?;
+    let options = options
+        .0
+        .filter(|value| !value.is_undefined() && !value.is_null())
+        .map(|value| shell_object_argument(value, "lx.shell.openDeclared options"))
+        .transpose()?
+        .unwrap_or_else(|| JSObject::new(&ctx));
     reject_unknown_options(&options, &["key", "as", "edge"], "lx.shell.openDeclared")?;
     let key = read_surface_key(&options)?;
     let spec = JSObject::new(&ctx);
@@ -581,20 +592,21 @@ async fn shell_open_declared(
     // Overriding the declared placement is the privilege; opening first and
     // reconfiguring after would present the wrong role for a frame.
     copy_options(&options, &spec, &["as", "edge"])?;
-    let handle = open_declared_surface_spec(&ctx, &spec).await?;
+    let handle = open_declared_surface_spec(&ctx, &spec, Some(&invocation)).await?;
     let realized = handle_realized_placement(&handle);
     finish_handle(&ctx, &handle, "declared", &realized, key, None)
 }
 
 /// `lx.shell.reconfigure(id, patch)` — re-place a live declared surface.
-async fn shell_reconfigure(ctx: JSContext, id: String, patch: JSObject) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    require_control_caller(&lxapp, "lx.shell.reconfigure")?;
+async fn shell_reconfigure(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResult<()> {
+    let invocation = require_control_route(&ctx, LogicRoute::ShellReconfigure)?;
+    let id = shell_string_argument(id, "lx.shell.reconfigure id")?;
+    let patch = shell_object_argument(patch, "lx.shell.reconfigure patch")?;
     reject_unknown_options(&patch, &["as", "edge"], "lx.shell.reconfigure")?;
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
     copy_options(&patch, &spec, &["as", "edge"])?;
-    let handle = open_declared_surface_spec(&ctx, &spec).await?;
+    let handle = open_declared_surface_spec(&ctx, &spec, Some(&invocation)).await?;
     // `openDeclared` hands back a cached object and stamps `realized` once, so
     // without this the handle the caller still holds reports the placement it
     // had before this call.
@@ -1052,16 +1064,36 @@ fn handle_realized_placement(handle: &JSObject) -> String {
         .unwrap_or_else(|_| "aside".to_string())
 }
 
-/// Reject callers other than the native-assigned Control app for privileged
-/// shell composition. The error remains compatible with the previous guard.
-fn require_control_caller(lxapp: &LxApp, key: &str) -> JSResult<()> {
-    if lxapp.is_control_app() {
-        return Ok(());
-    }
-    Err(surface_error(
-        SurfaceErrorCode::Denied,
-        format!("{key} is restricted to the Control app"),
-    ))
+fn require_control_route(
+    ctx: &JSContext,
+    route: LogicRoute,
+) -> JSResult<lxapp::host::HostInvocationContext> {
+    let invocation = authorization::invocation_from_context(ctx)?;
+    authorization::authorize(&invocation, route).map_err(|denied| {
+        surface_error(
+            SurfaceErrorCode::Denied,
+            format!("{} is restricted to the Control app", denied.route().name()),
+        )
+    })?;
+    Ok(invocation)
+}
+
+fn shell_string_argument(value: JSValue, label: &str) -> JSResult<String> {
+    value.to_rust::<String>().map_err(|_| {
+        surface_error(
+            SurfaceErrorCode::InvalidArg,
+            format!("{label} must be a string"),
+        )
+    })
+}
+
+fn shell_object_argument(value: JSValue, label: &str) -> JSResult<JSObject> {
+    value.into_object().ok_or_else(|| {
+        surface_error(
+            SurfaceErrorCode::InvalidArg,
+            format!("{label} must be an object"),
+        )
+    })
 }
 
 /// Backs `lx.shell.openApp`. Opens another lxapp
@@ -1069,7 +1101,12 @@ fn require_control_caller(lxapp: &LxApp, key: &str) -> JSResult<()> {
 /// through the same update path as app navigation, then composed independently
 /// from any YAML declaration. Dynamic composition supports main/aside only;
 /// floats need a declaration-owned presentation contract.
-async fn open_app_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
+async fn open_app_spec(
+    ctx: JSContext,
+    spec: &JSObject,
+    invocation: &lxapp::host::HostInvocationContext,
+) -> JSResult<JSObject> {
+    let lxapp = invocation.lxapp();
     let app_id = read_required_string(spec, "appId")?;
     let app_id = app_id.trim().to_string();
     if app_id.is_empty() {
@@ -1079,9 +1116,6 @@ async fn open_app_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
         ));
     }
     let edge = read_validated_edge(spec)?;
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    require_control_caller(&lxapp, "lx.shell.openApp")?;
-
     let as_role = read_required_string(spec, "as")?;
     let as_role = as_role.trim();
     if !matches!(as_role, "main" | "aside") {
@@ -1131,7 +1165,7 @@ async fn open_app_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
         return lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id, current_region);
     }
     let (startup_options, release_type) =
-        crate::navigator::prepare_app_open(&lxapp, &target).await?;
+        crate::navigator::prepare_app_open(&lxapp, &target, invocation).await?;
 
     let (region, shell_surface_id) = match as_role {
         "main" => {
@@ -1223,7 +1257,11 @@ fn lxapp_open_error(err: LxAppError) -> rong::RongJSError {
 }
 
 /// Declaration-id form. Provider kinds stay behind the declaration boundary.
-async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
+async fn open_declared_surface_spec(
+    ctx: &JSContext,
+    spec: &JSObject,
+    privileged_invocation: Option<&lxapp::host::HostInvocationContext>,
+) -> JSResult<JSObject> {
     let id = read_required_string(spec, "surface")?;
     let key = read_optional_string(spec, "key")?.map(|key| key.trim().to_string());
     if key.as_deref().is_some_and(str::is_empty) || key.as_ref().is_some_and(|key| key.len() > 128)
@@ -1243,6 +1281,16 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
         ));
     }
     let requested_role = read_optional_managed_role(spec)?;
+    let has_orchestration_override = has_declared_surface_orchestration_override(
+        key.as_deref(),
+        requested_role,
+        edge.as_deref(),
+    );
+    if has_orchestration_override && privileged_invocation.is_none() {
+        // Classifying the optional orchestration form needs its three shape
+        // fields, but admission still precedes surface lookup or mutation.
+        require_control_route(ctx, LogicRoute::SurfaceDeclaredOverride)?;
+    }
     if key.is_none()
         && requested_role.is_some_and(|role| role != lingxia_surface::Role::Main)
         && lxapp.surface_switcher_snapshot().root_surface_id.as_deref() == Some(id)
@@ -1260,13 +1308,9 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
         ));
     }
     let declared_app_id = declared_lxapp_app_id(&lxapp, id);
-    if has_declared_surface_orchestration_override(key.as_deref(), requested_role, edge.as_deref())
-    {
-        // Every lxapp may consume a declaration exactly as the host authored
-        // it. Instance creation and placement overrides mutate shared shell
-        // composition, so they stay under the Control app's single-writer role.
-        require_control_caller(&lxapp, "overriding a declared surface")?;
-    }
+    // Every lxapp may consume a declaration exactly as the host authored it.
+    // Instance creation and placement overrides mutate shared shell
+    // composition, so they stay under the Control app's single-writer role.
     if key.is_some() && declared_app_id.is_some() {
         return Err(surface_error(
             SurfaceErrorCode::CapabilityMissing,
@@ -1433,14 +1477,20 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
 /// With `as: 'aside'` the url is docked beside the main as a closable browser
 /// tab strip on desktop. Compact hosts project the same request into the
 /// full-screen in-app browser with aside chrome.
-async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
+async fn open_url_spec(
+    ctx: JSContext,
+    spec: &JSObject,
+    privileged_invocation: Option<&lxapp::host::HostInvocationContext>,
+) -> JSResult<JSValue> {
     let raw_url = read_required_string(spec, "url")?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     let trimmed_url = raw_url.trim_matches(|character: char| character.is_ascii_whitespace());
 
     if let Some(page) = parse_builtin_browser_page(trimmed_url) {
+        if privileged_invocation.is_none() {
+            require_control_route(&ctx, LogicRoute::SurfaceOpenBuiltin)?;
+        }
         validate_builtin_browser_surface_keys(spec)?;
-        require_control_caller(&lxapp, "lx.shell.openBuiltin")?;
         if !lingxia_app_context::browser_enabled() {
             return Err(surface_error(
                 SurfaceErrorCode::UnsupportedPlacement,

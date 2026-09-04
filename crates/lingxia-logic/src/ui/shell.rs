@@ -1,11 +1,11 @@
 //! `lx.shell.sidebarActions` — app-declared host-shell entries (Control app only).
 
-use crate::app::ensure_control_caller;
+use crate::authorization::{self, LogicRoute};
 use lingxia_shell::{
     ShellError, ShellSidebarAction, ShellSidebarActionUpdate, SidebarActionCollection,
     SidebarActionPlacement,
 };
-use lxapp::{LxApp, register_app_handler, unregister_app_handler};
+use lxapp::{register_app_handler, unregister_app_handler};
 use rong::{JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -194,9 +194,9 @@ fn parse_sidebar_action(item: &JSObject) -> JSResult<ParsedSidebarAction> {
 /// projection failure leaves the previous generation active. `replace([])` clears
 /// the chrome explicitly. Declarations are process-local, so call `replace` again
 /// on every Logic launch.
-fn sidebar_actions_replace(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_control_caller(&lxapp, "lx.shell.sidebarActions.replace")?;
+fn sidebar_actions_replace(ctx: JSContext, items: JSValue) -> JSResult<()> {
+    authorization::require(&ctx, LogicRoute::ShellSidebarReplace)?;
+    let items = items.to_rust::<Vec<JSObject>>()?;
     let parsed = items
         .iter()
         .map(parse_sidebar_action)
@@ -213,9 +213,15 @@ fn sidebar_actions_replace(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()>
 /// Only the Control app may call this API. The patch must be non-empty; unknown
 /// fields are rejected. The callback and placement stay unchanged. Throws
 /// `E_NOT_FOUND` when `id` is not in the current declaration.
-fn sidebar_actions_update(ctx: JSContext, id: String, patch: JSObject) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_control_caller(&lxapp, "lx.shell.sidebarActions.update")?;
+fn sidebar_actions_update(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResult<()> {
+    authorization::require(&ctx, LogicRoute::ShellSidebarUpdate)?;
+    let id = id.to_rust::<String>()?;
+    let patch = patch.into_object().ok_or_else(|| {
+        rong::HostError::new(
+            rong::error::E_INVALID_ARG,
+            "lx.shell.sidebarActions.update patch must be an object",
+        )
+    })?;
     reject_unknown_keys(&patch, &["label", "icon", "disabled"])?;
     let patch = ShellSidebarActionUpdate {
         label: optional_string(&patch, "label")?,
@@ -229,9 +235,9 @@ fn sidebar_actions_update(ctx: JSContext, id: String, patch: JSObject) -> JSResu
 /// Atomically removes one stable id and its generation-scoped callback. Only the
 /// Control app may call this API. Throws `E_NOT_FOUND` when `id` is not in the
 /// current declaration.
-fn sidebar_actions_remove(ctx: JSContext, id: String) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_control_caller(&lxapp, "lx.shell.sidebarActions.remove")?;
+fn sidebar_actions_remove(ctx: JSContext, id: JSValue) -> JSResult<()> {
+    authorization::require(&ctx, LogicRoute::ShellSidebarRemove)?;
+    let id = id.to_rust::<String>()?;
     let mut handlers = retained_handlers(&ctx);
     handlers.remove(id.trim());
     commit_generation(&ctx, |next| next.remove(&id), handlers)
@@ -241,8 +247,7 @@ fn sidebar_actions_remove(ctx: JSContext, id: String) -> JSResult<()> {
 /// lxapp may call this API. Equivalent to `replace([])` and safe when already
 /// empty; the Control app must still redeclare actions after the next Logic launch.
 fn sidebar_actions_clear(ctx: JSContext) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_control_caller(&lxapp, "lx.shell.sidebarActions.clear")?;
+    authorization::require(&ctx, LogicRoute::ShellSidebarClear)?;
     commit_generation(
         &ctx,
         |next| {

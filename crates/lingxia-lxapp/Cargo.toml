@@ -14,6 +14,8 @@ standard = ["js-appservice"]
 # Shared automation lower half (target resolution, nav, DOM query script)
 # consumed by the devtool handlers and the lx.automation() JS API.
 automation = []
+# Test-only constructors for exercising native caller matrices across crates.
+test-utils = []
 # OS process execution for explicitly capable desktop product hosts. Runtime
 # initialization remains restricted to the privileged home lxapp.
 process = ["js-appservice", "rong_modules/command"]

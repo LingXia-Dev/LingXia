@@ -317,7 +317,7 @@ impl AppScope {
             && self.resource_grants.owner.ptr_eq(&Arc::downgrade(app))
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-utils"))]
     fn for_test(app_id: &str, session_id: u64) -> Self {
         let app_id: Arc<str> = Arc::from(app_id);
         Self {
@@ -393,6 +393,24 @@ impl AuthenticatedCaller {
             scope: AppScope::for_test("test.control", session_id),
         }
     }
+
+    #[doc(hidden)]
+    #[cfg(feature = "test-utils")]
+    pub fn lxapp_session_for_test(app_id: &str, session_id: u64, class: AppSessionClass) -> Self {
+        Self::LxAppSession {
+            class,
+            scope: AppScope::for_test(app_id, session_id),
+        }
+    }
+
+    #[doc(hidden)]
+    #[cfg(feature = "test-utils")]
+    pub fn browser_document_for_test() -> Self {
+        let (_, authority) =
+            crate::issue_control_document_bootstrap(&ring::rand::SystemRandom::new())
+                .expect("native test entropy");
+        Self::active_browser_document(authority)
+    }
 }
 
 /// Authenticated, native-created context passed to every host handler.
@@ -406,6 +424,20 @@ pub struct HostInvocationContext {
 }
 
 impl HostInvocationContext {
+    /// Derive an invocation context from a live Logic worker context.
+    ///
+    /// Browser documents do not carry the private app-service context, so this
+    /// cannot turn a browser invocation into its owning app's authority.
+    #[doc(hidden)]
+    #[cfg(feature = "js-appservice")]
+    pub fn for_logic_context(ctx: &rong::JSContext) -> rong::JSResult<Self> {
+        let lxapp = LxApp::from_ctx(ctx)?;
+        Ok(Self {
+            caller: AuthenticatedCaller::for_lxapp(&lxapp),
+            lxapp,
+        })
+    }
+
     pub(crate) fn for_dispatch(lxapp: Arc<LxApp>, caller: &AuthenticatedCaller) -> Option<Self> {
         if let AuthenticatedCaller::LxAppSession { scope, .. } = caller
             && !scope.belongs_to(&lxapp)
