@@ -2,6 +2,8 @@
 name = "lingxia-devtools-cli"
 version.workspace = true
 edition.workspace = true
+# Distributed with the lingxia CLI GitHub Release, not through crates.io.
+publish = false
 
 [[bin]]
 name = "lxdev"
