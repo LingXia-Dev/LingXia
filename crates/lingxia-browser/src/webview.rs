@@ -20,8 +20,9 @@ use crate::policy::{
 };
 use crate::tabs::{
     TabCreateState, browser_clear_pending_if_token_matches,
-    browser_commit_navigation_if_token_matches, browser_remove_tab_if_token_matches,
-    browser_tab_create_state, ensure_browser_lxapp,
+    browser_commit_navigation_if_token_matches, browser_internal_url_if_token_matches,
+    browser_remove_tab_if_token_matches, browser_tab_create_state, browser_tab_generation_matches,
+    ensure_browser_lxapp,
 };
 use crate::types::{BrowserNavigationPolicyDecision, BrowserNavigationPolicyRequest};
 use lingxia_log::{LogBuilder, LogLevel as LxLogLevel, LogTag};
@@ -32,7 +33,7 @@ use lingxia_webview::runtime::{
 };
 use lingxia_webview::{
     IncomingWebMessage, LoadDataRequest, LoadError, LoadErrorPage, LogLevel, NativeWebViewId,
-    NavigationEvent, NavigationPolicy, NavigationProgress, NewWindowPolicy,
+    NavigationEvent, NavigationId, NavigationPolicy, NavigationProgress, NewWindowPolicy,
     TrustedDocumentAdmission, UserAgentOverride, WebTag, WebView, WebViewBuilder,
     WebViewController, WebViewDataMode, WebViewDelegate, WebViewSession, WebViewStateChange,
     render_load_error_page,
@@ -76,6 +77,27 @@ struct BrowserTabNavigationState {
     /// keeps showing the failing URL, and the error document's own lifecycle
     /// never records a visit or drives the internal page.
     showing_error_page: bool,
+    /// Whether the newest attempt was correlated to the exact host-issued
+    /// direct-load intent. History/BFCache restores have no such proof and
+    /// must be replaced by a fresh trusted load before page lifecycle runs.
+    current_attempt_trusted: bool,
+}
+
+impl BrowserTabNavigationState {
+    fn record_start_trust(&mut self, trusted: bool) {
+        self.current_attempt_trusted = trusted;
+    }
+
+    fn restored_internal_url<'a>(
+        &self,
+        navigation_id: NavigationId,
+        final_url: &'a str,
+    ) -> Option<&'a str> {
+        (self.progress.is_current(navigation_id)
+            && !self.current_attempt_trusted
+            && extract_url_scheme(final_url).as_deref() == Some(LINGXIA_SCHEME))
+        .then_some(final_url)
+    }
 }
 
 const BROWSER_LOAD_ERROR_URL: &str = "lingxia://browser/load-error";
@@ -102,10 +124,6 @@ impl BrowserTabDelegate {
         self.data_mode != WebViewDataMode::Ephemeral
             && !self.url_callback.load(Ordering::Acquire)
             && !self.standalone
-    }
-
-    fn document_is_internal(&self) -> bool {
-        crate::tabs::browser_tab_document_is_internal(&self.tab_id)
     }
 
     /// The registry has already invalidated this authority's execution gate.
@@ -190,6 +208,40 @@ impl BrowserTabDelegate {
             );
         }
     }
+
+    fn schedule_trusted_internal_reload(&self, url: String, reason: &'static str) {
+        let tab_id = self.tab_id.clone();
+        let page_path = self.page_path.clone();
+        let session_id = self.session_id;
+        let create_token = self.create_token;
+        let native_view = self.native_view();
+        let documents = Arc::clone(&self.documents);
+        rong::RongExecutor::global().spawn(async move {
+            if !browser_tab_generation_matches(&tab_id, session_id, create_token) {
+                return;
+            }
+            let Ok(webview) = browser_find_webview(&page_path, session_id) else {
+                return;
+            };
+            if native_view != Some(webview.native_view_id())
+                || !browser_tab_generation_matches(&tab_id, session_id, create_token)
+            {
+                return;
+            }
+            if let Err(error) = browser_load_internal_document(
+                webview,
+                &documents,
+                &page_path,
+                session_id,
+                create_token,
+                &url,
+            ) {
+                lxapp::warn!(
+                    "[InternalBrowser] Failed to replace {reason} document for tab {tab_id}: {error}"
+                );
+            }
+        });
+    }
 }
 
 impl WebViewDelegate for BrowserTabDelegate {
@@ -205,6 +257,7 @@ impl WebViewDelegate for BrowserTabDelegate {
                             .navigation_started_with_revocation(native_view, *id)
                     })
                     .unwrap_or((false, None));
+                navigation.record_start_trust(trusted_start);
                 if is_error_document_url(requested_url) {
                     navigation.showing_error_page = true;
                     drop(navigation);
@@ -218,7 +271,7 @@ impl WebViewDelegate for BrowserTabDelegate {
                 if let Some(authority) = revoked {
                     self.revoke_document_authority(authority);
                 }
-                if !trusted_start && !self.document_is_internal() {
+                if !trusted_start {
                     return;
                 }
                 match browser_resolve_delegate_page(&self.page_path, self.session_id) {
@@ -236,12 +289,22 @@ impl WebViewDelegate for BrowserTabDelegate {
                 if is_error_document_url(final_url) {
                     return;
                 }
+                let restored_internal = navigation.restored_internal_url(*id, final_url).is_some();
                 let is_current = navigation.progress.is_current(*id);
                 drop(navigation);
+                let internal = extract_url_scheme(final_url).as_deref() == Some(LINGXIA_SCHEME);
+                if restored_internal {
+                    // A same-URL history/BFCache restoration can revive old
+                    // HTML and credentials without re-running our loader.
+                    // Its prior registry entry was revoked at Started; replace
+                    // the document instead of ever reusing that authority.
+                    crate::internal_pages::detach_internal_tab_page(&self.page_path);
+                    self.schedule_trusted_internal_reload(final_url.clone(), "restored internal");
+                    return;
+                }
                 // Browser-owned document scripts (context menu, …) run in
                 // every successfully loaded document — internal and external.
                 self.inject_document_scripts();
-                let internal = extract_url_scheme(final_url).as_deref() == Some(LINGXIA_SCHEME);
                 if !internal {
                     // A commit that changes document kind to external
                     // terminates the internal page binding so bridge
@@ -338,6 +401,11 @@ impl WebViewDelegate for BrowserTabDelegate {
             // the registry lock. Page cancellation follows only after it
             // releases that lock.
             self.revoke_document_authority(authority);
+        }
+        if let Some(url) =
+            browser_internal_url_if_token_matches(&self.tab_id, self.session_id, self.create_token)
+        {
+            self.schedule_trusted_internal_reload(url, "terminated renderer");
         }
     }
 
@@ -928,6 +996,31 @@ pub(crate) fn browser_load_url(
     webview.load_url(url).map_err(LxAppError::from)
 }
 
+pub(crate) fn browser_reload_document(
+    tab_id: &str,
+    path: &str,
+    session_id: u64,
+    create_token: u64,
+    current_url: Option<&str>,
+) -> Result<(), LxAppError> {
+    if !browser_tab_generation_matches(tab_id, session_id, create_token) {
+        return Err(LxAppError::ResourceNotFound(format!(
+            "browser tab generation is stale: {tab_id}"
+        )));
+    }
+    if current_url.and_then(extract_url_scheme).as_deref() == Some(LINGXIA_SCHEME) {
+        return browser_load_url(
+            path,
+            session_id,
+            create_token,
+            current_url.expect("internal current URL was present"),
+        );
+    }
+    browser_find_webview(path, session_id)?
+        .reload()
+        .map_err(LxAppError::from)
+}
+
 pub(crate) fn browser_destroy_webview_if_matches(
     path: &str,
     session_id: u64,
@@ -945,7 +1038,11 @@ pub(crate) fn browser_destroy_webview_if_matches(
 
 #[cfg(test)]
 mod tests {
-    use super::{callback_blocks_file_navigation, callback_policy_blocks_file_navigation};
+    use super::{
+        BrowserTabNavigationState, callback_blocks_file_navigation,
+        callback_policy_blocks_file_navigation,
+    };
+    use lingxia_webview::{NavigationEvent, NavigationId};
     use std::sync::atomic::{AtomicBool, Ordering};
 
     #[test]
@@ -981,5 +1078,41 @@ mod tests {
             &policy,
             "file:///tmp/document.html"
         ));
+    }
+
+    #[test]
+    fn same_url_bfcache_restore_requires_a_fresh_trusted_load() {
+        let navigation_id = NavigationId::from_raw(41);
+        let mut state = BrowserTabNavigationState::default();
+        state.progress.apply(&NavigationEvent::Started {
+            id: navigation_id,
+            requested_url: "lingxia://settings".into(),
+        });
+        state.record_start_trust(false);
+
+        assert_eq!(
+            state.restored_internal_url(navigation_id, "lingxia://settings"),
+            Some("lingxia://settings")
+        );
+        assert_eq!(
+            state.restored_internal_url(navigation_id, "https://example.test/"),
+            None
+        );
+    }
+
+    #[test]
+    fn host_issued_internal_navigation_does_not_loop_through_restore_recovery() {
+        let navigation_id = NavigationId::from_raw(42);
+        let mut state = BrowserTabNavigationState::default();
+        state.progress.apply(&NavigationEvent::Started {
+            id: navigation_id,
+            requested_url: "lingxia://settings".into(),
+        });
+        state.record_start_trust(true);
+
+        assert_eq!(
+            state.restored_internal_url(navigation_id, "lingxia://settings"),
+            None
+        );
     }
 }

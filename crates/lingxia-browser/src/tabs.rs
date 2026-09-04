@@ -87,6 +87,37 @@ fn tab_generation_matches(tab: &BrowserTabState, session_id: u64, create_token: 
     tab.session_id == session_id && tab.create_token == create_token
 }
 
+pub(crate) fn browser_tab_generation_matches(
+    tab_id: &str,
+    session_id: u64,
+    create_token: u64,
+) -> bool {
+    let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
+        return false;
+    };
+    lock_state()
+        .tabs
+        .get(&normalized)
+        .is_some_and(|tab| tab_generation_matches(tab, session_id, create_token))
+}
+
+pub(crate) fn browser_internal_url_if_token_matches(
+    tab_id: &str,
+    session_id: u64,
+    create_token: u64,
+) -> Option<String> {
+    let normalized = normalize_runtime_tab_id(tab_id)?;
+    let url = {
+        let state = lock_state();
+        let tab = state.tabs.get(&normalized)?;
+        tab_generation_matches(tab, session_id, create_token)
+            .then(|| tab.pending_url.clone().or_else(|| tab.current_url.clone()))
+            .flatten()?
+    };
+    (crate::policy::extract_url_scheme(&url).as_deref() == Some(crate::policy::LINGXIA_SCHEME))
+        .then_some(url)
+}
+
 fn browser_find_webview_for_generation(
     tab_id: &str,
     tab_path: &str,
@@ -157,24 +188,6 @@ pub(crate) fn set_title_changed_handler(handler: TitleChangedHandler) {
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(handler);
     }
-}
-
-/// Whether the tab's current document is a browser-internal `lingxia://`
-/// page. Uses the pending URL while a load is in flight, else the committed
-/// URL. External documents (http/https/about:blank/…) must never drive an
-/// lxapp `PageInstance` lifecycle or receive its bridge.
-pub(crate) fn browser_tab_document_is_internal(tab_id: &str) -> bool {
-    let document_url = {
-        let state = lock_state();
-        normalize_runtime_tab_id(tab_id)
-            .and_then(|normalized| state.tabs.get(&normalized))
-            .and_then(|tab| tab.pending_url.clone().or_else(|| tab.current_url.clone()))
-    };
-    document_url
-        .as_deref()
-        .and_then(crate::policy::extract_url_scheme)
-        .as_deref()
-        == Some(crate::policy::LINGXIA_SCHEME)
 }
 
 fn records_browser_history(tab: &BrowserTabState) -> bool {
@@ -1441,6 +1454,43 @@ mod tests {
         assert!(tab_generation_matches(&tab, 42, 8));
         assert!(!tab_generation_matches(&tab, 42, 7));
         assert!(!tab_generation_matches(&tab, 41, 8));
+    }
+
+    #[test]
+    fn discarded_or_recreated_tab_rejects_stale_internal_reload() {
+        let tab_id = generate_tab_id();
+        lock_state().tabs.insert(
+            tab_id.clone(),
+            BrowserTabState {
+                session_id: 42,
+                created_order: next_browser_created_order(),
+                create_token: 8,
+                create_in_flight: false,
+                pending_url: None,
+                initial_url: Some("lingxia://settings".to_string()),
+                current_url: Some("lingxia://settings".to_string()),
+                title: None,
+                title_url: None,
+                favicon_png: None,
+                can_go_back: false,
+                can_go_forward: false,
+                discarded: false,
+                data_mode: WebViewDataMode::ProfileDefault,
+                url_callback: Arc::new(AtomicBool::new(false)),
+                standalone: false,
+                aside: false,
+                owner_appid: None,
+                owner_session_id: None,
+            },
+        );
+
+        assert_eq!(
+            browser_internal_url_if_token_matches(&tab_id, 42, 8).as_deref(),
+            Some("lingxia://settings")
+        );
+        lock_state().tabs.get_mut(&tab_id).unwrap().create_token = 9;
+        assert_eq!(browser_internal_url_if_token_matches(&tab_id, 42, 8), None);
+        lock_state().tabs.remove(&tab_id);
     }
 
     #[test]
