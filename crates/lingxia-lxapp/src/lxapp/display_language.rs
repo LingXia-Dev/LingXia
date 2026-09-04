@@ -998,6 +998,24 @@ mod tests {
     }
 
     #[test]
+    fn effective_listener_publication_is_independent_of_host_route_audience() {
+        let service = Arc::new(service_with("auto", "en-US"));
+        let observed = Arc::new(TestMutex::new(Vec::new()));
+        let observed_in_listener = observed.clone();
+        service.add_effective_listener(Arc::new(move |language| {
+            observed_in_listener
+                .lock()
+                .unwrap()
+                .push(language.to_string());
+        }));
+
+        let should_drain = service.refresh_system(tag("ja-JP"));
+        deliver(&service, should_drain);
+
+        assert_eq!(&*observed.lock().unwrap(), &["ja-JP"]);
+    }
+
+    #[test]
     fn disconnect_reconnect_and_takeover_do_not_retain_stale_override() {
         let service = service_with("auto", "en-US");
         let (disconnected, drain) = service.install_session_override("ja-JP".parse().unwrap());
