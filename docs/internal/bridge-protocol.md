@@ -5,7 +5,7 @@
 > Status: Active
 > Class: Normative internal specification
 > Scope: Bridge (Rust) <-> View (`window.LingXiaBridge`)
-> Version: protocol `v = 2`
+> Versions: `LegacyV2`（`v = 2`）与 document-bound `RequiredV3`（`v = 3`）
 
 This document defines the current LingXia bridge contract. It is the single authority for on-wire behavior between the View runtime and the Bridge endpoint. When other notes, drafts, or implementation comments disagree with this document, this document wins.
 
@@ -72,6 +72,24 @@ Routing rules:
 - View is authoritative for user interaction and channel-originated input.
 - The protocol does not require JS to sit between Host and View; Host handlers MAY produce streams and responses directly.
 
+### 2.3 连接 profile
+
+LingXia 有两个由 native 选择的 protocol profile；page 不能自行选择或向下协商：
+
+| Profile | 使用方 | Native 选择方式 | Authority 模型 |
+|---|---|---|---|
+| `LegacyV2` | ordinary lxapp View document | 不安装 control bootstrap | app-session identity 由 native page owner 提供；wire frame 不是 document credential |
+| `RequiredV3` | host-attested browser control document | native bootstrap 为一个已 commit document 固定 `requiredProtocol: 3` | 每个 frame 都绑定该 document 的 active `DocumentSession` |
+
+`hello` 中的 `role` 只描述 protocol endpoint（`view`），既不是 `CallerClass`，也不是
+`RouteAudience`。Native 从 owning app session 或 active browser `DocumentSession` 派生 caller
+identity；route registry 再将该 identity 与 route 的固定 audience 比较。`appid`、URL、`role`、
+`cap` 与 payload field 都不得提升 caller 权限。
+
+ordinary page 保持 `LegacyV2`；同一进程中存在 V3 support 不会自动升级它。browser control
+document 保持 `RequiredV3`；缺失、malformed、V2 或 future-version bootstrap/traffic 都不能使它
+降级为 V2。
+
 ## 3. Protocol Overview
 
 ### 3.1 View-initiated Families
@@ -110,7 +128,8 @@ Although streaming requests are View-initiated, the **data flows from Bridge to 
 
 ### 4.1 Version
 
-All frames in this specification use protocol version `2`.
+下文 frame definition 使用 V2 example，因为两个 profile 共享其业务 payload。
+`LegacyV2` 发出 `v: 2`；`RequiredV3` 发出 `v: 3`，并增加 4.2.1 定义的按方向 binding。
 
 ### 4.2 Envelope
 
@@ -120,6 +139,27 @@ Every frame MUST include:
 - `kind`: frame kind
 
 Frames are JSON objects transported over an ordered bidirectional message path.
+
+#### 4.2.1 每个 frame family 的 RequiredV3 binding
+
+V3 codec 独占 security field。调用方只传 family payload field；payload 若包含 `v`、`kind`、
+`sessionId` 或 `secret`，必须被拒绝，不能覆盖 envelope。
+
+| 方向 | Families | 必需 envelope |
+|---|---|---|
+| document → native | `hello`、`req`、`res`、`notify`、`cancel`、`ch.open`、`ch.data`、`ch.close`、`state.ack` | `v: 3`、exact `kind`、current public `sessionId`、document secret |
+| native → document | `helloAck`、`ready`、`req`、`res`、`event`、`state.snapshot`、`state.patch`、`ch.ack`、`ch.data`、`ch.close` | `v: 3`、exact `kind`、current public `sessionId`；不得出现 `secret` |
+
+Native 必须在 typed payload decode 或 route lookup 之前验证 frame size、version、允许的
+direction/kind、native WebView identity、committed `DocumentGeneration`、top-level proof、
+transport、public session id 与 secret。document 必须在 delivery 前验证 version、
+direction/kind 与 public session id。重复的 top-level security key 属于 malformed。secret 只由
+one-shot bootstrap codec 捕获，不得复制到 runtime config、写入 log/error 或从 native 发给
+document。
+
+console forwarding sideband 也不例外：browser control console envelope 使用 `v: 3`、
+`kind: "console"`、`sessionId` 与 `secret`，通过相同 current-document 检查后才进入独立
+rate-limit 的 log path。
 
 ### 4.3 Identifiers
 
@@ -148,9 +188,34 @@ Capability is derived from the target name (`method` for `req`/`notify`, `topic`
 
 If the declared capability does not match the derived capability, the receiver MUST reject the frame.
 
+`cap` 只是 routing-consistency assertion，不是 caller authentication。正确的 `cap` 不能满足
+`CallerClass`、`RouteAudience`、`AppScope` 或 `DocumentSession` 检查。
+
+### 4.6 Bounds、queue 与 rate limit
+
+以下边界属于 fail-closed ingress 合同，不是 tuning hint：
+
+| 边界 | 当前上限 | 超限行为 |
+|---|---:|---|
+| 单个 native WebView message | 64 KiB | enqueue 前拒绝 |
+| 单个 WebView ingress queue | 1,024 frames，合计 1 MiB | 拒绝新 frame；保持已接受 frame 的 FIFO |
+| browser V3 predecode frame | 64 KiB | 分配 typed payload 前拒绝 |
+| browser `sessionId` 或 `secret` probe field | 512 bytes | 按 malformed envelope 拒绝 |
+| document JS pre-ready outbox | 256 frames | 以 `BRIDGE_OUTBOX_FULL` 拒绝对应 operation |
+| browser console sideband | 每个一秒窗口 32 messages | 丢弃超额 message，并记录 `console_rate_limited` diagnostic |
+
+WebView ingress 使用单个 bounded FIFO dispatcher，不得为每条 message 新建 thread。close 后拒绝
+新 frame，并丢弃 queue 中尚未 admission 的 frame。request/channel timeout 从实际发送 frame
+时开始，而不是在 pre-ready outbox 中等待时开始。rejection counter 以 reason 为 label；log 只在
+count 为 1 或 2 的幂时采样，diagnostic 不得包含 frame、URL、public session id 或 secret。
+
 ## 5. Session Establishment
 
 Application traffic begins only after a successful handshake.
+
+发送 `hello` 前，JS runtime 只消费 native bootstrap 一次。不存在 bootstrap 时选择
+`LegacyV2`；合法 bootstrap 固定 `RequiredV3` 与 `protocolsSupported: [3]`；bootstrap 存在但
+非法时进入 blocked state，且不发送任何 frame。`RequiredV3` 从不宣告 `[2, 3]`。
 
 | Step | Direction | Purpose |
 |---|---|---|
@@ -211,6 +276,34 @@ LingXia profile:
 - View MUST queue outbound application frames until `ready` is received.
 - Queued operation timeouts begin when the frame is actually sent, not while queued.
 - Bridge MUST reject premature frames with `BRIDGE_NOT_READY`.
+
+### 5.5 Negotiation failure
+
+- `LegacyV2` 只接受 V2；`RequiredV3` 只接受 V3。
+- `helloAck` 必须匹配 nonce 与唯一 required protocol。V3 `helloAck` 及之后每个 native frame
+  还必须匹配 current public `sessionId`。
+- 接受合法 `helloAck` 之前忽略 `ready`。
+- document 最多尝试三次超时 handshake，每次 timeout 为 10 秒。耗尽后以
+  `BRIDGE_HANDSHAKE_FAILED` 拒绝 queued request/channel。
+- V2 traffic、mixed-version traffic、错误 binding、unsupported/future version、stale
+  generation、subframe 与 unproven transport 全部 fail closed；它们不得安装 connection、返回
+  schema 或到达 route dispatch。
+- navigation、reload、renderer loss、WebView replacement 或 teardown 必须撤销 document
+  connection 及其 queued/in-flight work；stale completion 不能通过 successor binding 发送。
+
+### 5.6 平台 provenance 与降级
+
+| Platform | RequiredV3 proof | 无法证明时的行为 |
+|---|---|---|
+| Apple | current native WebView、committed generation 与 top-level `WKScriptMessage` frame proof | fail closed |
+| Android API 23+ | host-issued load token 与 commit 关联，再创建 fresh per-document `MessagePort` | 拒绝 stale/external/reused port；navigation/reload/crash/teardown 关闭 port |
+| Android API 21/22 | 没有 document-scoped transport；`JavascriptInterface` 永远为 `Unproven` | 允许继续 render，但 BrowserControl 不可用；报告 `android_api_below_23` / `android_21_22_unproven_transport` |
+| Windows | WebView2 navigation identity + current top-level document/generation proof | stale、frame 或 source 失配时 fail closed |
+| HarmonyOS | 当前 revision 没有 production RequiredV3 provenance path | BrowserControl 拒绝 `HarmonyMessagePort`；backend 落地前 UI 保持 unauthenticated |
+
+普通 lxapp traffic 的 generic V2 delivery 可以保留 platform fallback，但 RequiredV3 禁止使用这些
+fallback：document-bound native output 必须走 platform 的 generation-aware send path，不得降级为
+裸 string 或 `evaluateJavascript` send。
 
 ## 6. Frame Definitions
 
