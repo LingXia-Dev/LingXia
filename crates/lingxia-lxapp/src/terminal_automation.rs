@@ -73,6 +73,12 @@ impl NativeHostRuntimeToken {
     pub(crate) fn runtime(&self) -> &std::sync::Weak<Platform> {
         &self.runtime
     }
+
+    #[cfg(feature = "test-utils")]
+    #[doc(hidden)]
+    pub fn for_test(runtime: &std::sync::Arc<Platform>) -> Self {
+        Self::new(runtime)
+    }
 }
 
 /// Native-derived authority for binding and using terminal surface handles.
@@ -119,13 +125,7 @@ impl TerminalAutomationAuthority {
     fn validate(&self) -> Result<(), String> {
         match &self.kind {
             AuthorityKind::NativeHost(runtime) => {
-                let runtime = runtime
-                    .upgrade()
-                    .ok_or_else(|| "native host runtime is no longer live".to_string())?;
-                crate::get_platform()
-                    .filter(|current| std::sync::Arc::ptr_eq(current, &runtime))
-                    .map(|_| ())
-                    .ok_or_else(|| "terminal authority does not match the live native host".into())
+                validate_native_runtime(runtime, crate::get_platform().as_ref())
             }
             AuthorityKind::App(scope) => scope
                 .resource_grants()
@@ -136,6 +136,18 @@ impl TerminalAutomationAuthority {
                 }),
             #[cfg(test)]
             AuthorityKind::NativeTest => Ok(()),
+        }
+    }
+
+    #[cfg(feature = "test-utils")]
+    #[doc(hidden)]
+    pub fn validate_native_runtime_for_test(
+        &self,
+        current: Option<&std::sync::Arc<Platform>>,
+    ) -> Result<(), String> {
+        match &self.kind {
+            AuthorityKind::NativeHost(runtime) => validate_native_runtime(runtime, current),
+            _ => Err("terminal authority is not native-runtime-bound".into()),
         }
     }
 
@@ -150,6 +162,19 @@ impl TerminalAutomationAuthority {
             AuthorityKind::NativeTest => SurfaceOwner::NativeHost,
         }
     }
+}
+
+fn validate_native_runtime(
+    expected: &std::sync::Weak<Platform>,
+    current: Option<&std::sync::Arc<Platform>>,
+) -> Result<(), String> {
+    let expected = expected
+        .upgrade()
+        .ok_or_else(|| "native host runtime is no longer live".to_string())?;
+    current
+        .filter(|current| std::sync::Arc::ptr_eq(current, &expected))
+        .map(|_| ())
+        .ok_or_else(|| "terminal authority does not match the live native host".into())
 }
 
 /// A terminal surface capability bound to both registry owner and caller.
