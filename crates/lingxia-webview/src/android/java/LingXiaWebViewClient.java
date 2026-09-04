@@ -91,7 +91,7 @@ public class LingXiaWebViewClient extends WebViewClient {
         // the Android signal for "URL / back-forward state changed".
         LingXiaWebView webView = webViewRef.get();
         if (webView != null) {
-            webView.pushWebViewState();
+            webView.handleVisitedHistoryUpdate(url != null ? url : "");
         }
     }
 

@@ -22,6 +22,10 @@ final class AndroidDocumentBridgeState {
     private boolean activeTrustedHostLoad;
     private long committedLoadToken;
     private long committedGeneration;
+    private boolean historyObservedForActiveLoad;
+    private long historyProofLoadToken;
+    private long historyProofGeneration;
+    private boolean historyReproofPending;
 
     static long nextLoadToken() {
         while (true) {
@@ -43,10 +47,12 @@ final class AndroidDocumentBridgeState {
         activeTrustedHostLoad = false;
         committedLoadToken = 0L;
         committedGeneration = 0L;
+        clearHistoryEvidence();
     }
 
     synchronized Navigation onPageStarted(long fallbackLoadToken) {
         requirePositive(fallbackLoadToken, "fallbackLoadToken");
+        long previousLoadToken = activeLoadToken;
         boolean replacesCommittedDocument = committedLoadToken != 0L;
         committedLoadToken = 0L;
         committedGeneration = 0L;
@@ -65,6 +71,9 @@ final class AndroidDocumentBridgeState {
             activeLoadToken = fallbackLoadToken;
             activeTrustedHostLoad = false;
         }
+        if (activeLoadToken != previousLoadToken) {
+            clearHistoryEvidence();
+        }
         return new Navigation(activeLoadToken, activeTrustedHostLoad);
     }
 
@@ -82,6 +91,48 @@ final class AndroidDocumentBridgeState {
         }
         committedLoadToken = loadToken;
         committedGeneration = generation;
+        if (historyObservedForActiveLoad) {
+            historyProofLoadToken = loadToken;
+            historyProofGeneration = generation;
+        }
+        return true;
+    }
+
+    /**
+     * A second visited-history signal for one committed trusted load has no
+     * fresh start/commit proof. Treat it as a possible history/BFCache restore,
+     * revoke the document immediately, and request exactly one trusted reproof.
+     */
+    synchronized boolean historyRestoreNeedsReproof(boolean browserProfile) {
+        if (!browserProfile || !activeTrustedHostLoad || activeLoadToken == 0L) {
+            return false;
+        }
+        if (historyReproofPending) {
+            return false;
+        }
+        if (committedLoadToken == 0L || committedGeneration == 0L) {
+            // Android may report visited history before onPageCommitVisible.
+            // bindCommit will associate this signal with the fresh attempt.
+            historyObservedForActiveLoad = true;
+            return false;
+        }
+        if (historyProofLoadToken != committedLoadToken
+                || historyProofGeneration != committedGeneration) {
+            historyProofLoadToken = committedLoadToken;
+            historyProofGeneration = committedGeneration;
+            return false;
+        }
+
+        historyReproofPending = true;
+        preparedLoadToken = 0L;
+        preparedTrustedHostLoad = false;
+        activeLoadToken = 0L;
+        activeTrustedHostLoad = false;
+        committedLoadToken = 0L;
+        committedGeneration = 0L;
+        historyObservedForActiveLoad = false;
+        historyProofLoadToken = 0L;
+        historyProofGeneration = 0L;
         return true;
     }
 
@@ -111,6 +162,14 @@ final class AndroidDocumentBridgeState {
         activeTrustedHostLoad = false;
         committedLoadToken = 0L;
         committedGeneration = 0L;
+        clearHistoryEvidence();
+    }
+
+    private void clearHistoryEvidence() {
+        historyObservedForActiveLoad = false;
+        historyProofLoadToken = 0L;
+        historyProofGeneration = 0L;
+        historyReproofPending = false;
     }
 
     private static void requirePositive(long value, String name) {

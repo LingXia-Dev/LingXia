@@ -906,6 +906,24 @@ pub(crate) fn current_document_binding(native_view_id: NativeWebViewId) -> Docum
     })
 }
 
+/// Revoke one currently bound document restored without fresh navigation
+/// evidence. Returns false after the first revocation so platform callbacks
+/// cannot schedule duplicate trusted reloads for the same stale document.
+#[cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
+pub(crate) fn invalidate_restored_document(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+) -> bool {
+    if !matches!(
+        current_document_binding(native_view_id),
+        DocumentBinding::Bound(_)
+    ) {
+        return false;
+    }
+    submit(webtag, native_view_id, NativeSignal::DocumentInvalidated);
+    true
+}
+
 /// Run one native action while an exact committed document remains current.
 ///
 /// Keep both the registry and per-WebView state locks through `action`: a
@@ -2062,6 +2080,68 @@ mod tests {
             &mut || delivered = true,
         ));
         assert!(!delivered);
+        destroy(&webtag);
+    }
+
+    #[test]
+    fn restored_document_revokes_inbound_and_queued_outbound_once() {
+        let webtag = tag("restored-stale-delivery");
+        let native_view_id = NativeWebViewId::new(8201);
+        super::begin(&webtag, native_view_id);
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(81),
+                url: "lingxia://settings".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(81) },
+        );
+        let stale_generation = DocumentGeneration::new(1);
+
+        assert!(super::invalidate_restored_document(&webtag, native_view_id));
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+        let mut stale_outbound_delivered = false;
+        assert!(!with_current_document_binding(
+            native_view_id,
+            stale_generation,
+            &mut || stale_outbound_delivered = true,
+        ));
+        assert!(!stale_outbound_delivered);
+        assert!(
+            !super::invalidate_restored_document(&webtag, native_view_id),
+            "repeat restore evidence cannot schedule another replacement"
+        );
+
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(82),
+                url: "lingxia://settings".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(82) },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Bound(DocumentGeneration::new(2))
+        );
+        assert!(!with_current_document_binding(
+            native_view_id,
+            stale_generation,
+            &mut || stale_outbound_delivered = true,
+        ));
         destroy(&webtag);
     }
 

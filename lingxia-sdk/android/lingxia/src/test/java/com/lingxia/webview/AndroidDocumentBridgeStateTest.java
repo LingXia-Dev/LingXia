@@ -89,4 +89,68 @@ public final class AndroidDocumentBridgeStateTest {
         assertFalse(state.acceptsPort(current.loadToken, 1L));
         assertNull(state.pendingCommit());
     }
+
+    @Test
+    public void sameUrlHistoryRestoreWithoutCallbacksRevokesOldPortOnce() {
+        AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
+        state.prepareHostLoad(61L, true);
+        AndroidDocumentBridgeState.Navigation current = state.onPageStarted(107L);
+        assertTrue(state.bindCommit(current.loadToken, 3L));
+
+        assertFalse(state.historyRestoreNeedsReproof(true));
+        assertTrue(state.acceptsPort(current.loadToken, 3L));
+        // No new start/commit callbacks: a same-URL restore reports history
+        // against the already consumed proof.
+        assertTrue(state.historyRestoreNeedsReproof(true));
+        assertFalse(state.acceptsPort(current.loadToken, 3L));
+        assertFalse(state.historyRestoreNeedsReproof(true));
+    }
+
+    @Test
+    public void visitedHistoryBeforeCommitConsumesTheFreshProof() {
+        AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
+        state.prepareHostLoad(71L, true);
+        AndroidDocumentBridgeState.Navigation current = state.onPageStarted(108L);
+
+        assertFalse(state.historyRestoreNeedsReproof(true));
+        assertTrue(state.bindCommit(current.loadToken, 4L));
+        assertTrue(state.acceptsPort(current.loadToken, 4L));
+        assertTrue(state.historyRestoreNeedsReproof(true));
+        assertFalse(state.acceptsPort(current.loadToken, 4L));
+    }
+
+    @Test
+    public void freshTrustedReloadGetsNewProofAfterRestoreRevocation() {
+        AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
+        state.prepareHostLoad(81L, true);
+        AndroidDocumentBridgeState.Navigation old = state.onPageStarted(109L);
+        assertTrue(state.bindCommit(old.loadToken, 5L));
+        assertFalse(state.historyRestoreNeedsReproof(true));
+        assertTrue(state.historyRestoreNeedsReproof(true));
+
+        state.prepareHostLoad(82L, true);
+        AndroidDocumentBridgeState.Navigation fresh = state.onPageStarted(110L);
+        assertTrue(state.bindCommit(fresh.loadToken, 6L));
+        assertFalse(state.acceptsPort(old.loadToken, 5L));
+        assertTrue(state.acceptsPort(fresh.loadToken, 6L));
+        assertFalse(state.historyRestoreNeedsReproof(true));
+    }
+
+    @Test
+    public void ordinaryOrExternalDocumentsIgnoreHistoryReproofPolicy() {
+        AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
+        state.prepareHostLoad(91L, false);
+        AndroidDocumentBridgeState.Navigation external = state.onPageStarted(111L);
+        assertTrue(state.bindCommit(external.loadToken, 7L));
+
+        assertFalse(state.historyRestoreNeedsReproof(true));
+        assertFalse(state.historyRestoreNeedsReproof(true));
+
+        state.prepareHostLoad(92L, true);
+        AndroidDocumentBridgeState.Navigation ordinary = state.onPageStarted(112L);
+        assertTrue(state.bindCommit(ordinary.loadToken, 8L));
+        assertFalse(state.historyRestoreNeedsReproof(false));
+        assertFalse(state.historyRestoreNeedsReproof(false));
+        assertTrue(state.acceptsPort(ordinary.loadToken, 8L));
+    }
 }

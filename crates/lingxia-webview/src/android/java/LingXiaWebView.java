@@ -813,6 +813,23 @@ public class LingXiaWebView extends WebView {
         return documentBridgeState.acceptsPort(loadToken, documentGeneration);
     }
 
+    void handleVisitedHistoryUpdate(String url) {
+        if (documentBridgeState.historyRestoreNeedsReproof(isBrowserProfile())) {
+            // The Java gate closes before JNI/delegate work so neither stale
+            // inbound nor queued platform delivery can race the trusted reload.
+            messagePortRequested = false;
+            cleanupDocumentMessagePort();
+            onDocumentRestored(
+                    getAppId() != null ? getAppId() : "",
+                    getCurrentPath() != null ? getCurrentPath() : "",
+                    getSessionId(),
+                    getNativeViewId(),
+                    url != null ? url : ""
+            );
+        }
+        pushWebViewState();
+    }
+
     private void installDocumentMessagePort(long loadToken, long documentGeneration) {
         cleanupDocumentMessagePort();
         if (!messagePortCapable || createPortMethod == null) {
@@ -1499,6 +1516,7 @@ public class LingXiaWebView extends WebView {
     native void onPageStarted(String appId, String path, long sessionId, long nativeViewId, long loadToken, String url);
     native void onPageFinished(String appId, String path, long sessionId, long nativeViewId, long loadToken, String url);
     native long onPageCommitVisible(String appId, String path, long sessionId, long nativeViewId, long loadToken);
+    native void onDocumentRestored(String appId, String path, long sessionId, long nativeViewId, String url);
     native void onRendererProcessGone(String appId, String path, long sessionId, long nativeViewId);
     native void onBrowserControlBridgeDegraded(String reason);
     native void onWebViewStateChanged(String appId, String path, long sessionId, long nativeViewId, String url, String title, boolean canGoBack, boolean canGoForward);
