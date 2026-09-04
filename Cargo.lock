@@ -3202,6 +3202,7 @@ dependencies = [
  "lingxia-settings",
  "lingxia-transfer",
  "lingxia-webview",
+ "ring",
  "rong",
  "serde",
  "serde_json",
