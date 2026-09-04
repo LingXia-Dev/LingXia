@@ -149,7 +149,12 @@ pub(crate) async fn prepare_app_open(
     }
 
     let target_app = if host_terminal_settings {
-        lxapp::ensure_control_lxapp(&target_appid, release_type)
+        let authority = crate::native_control_authority().ok_or_else(|| {
+            js_error_from_lxapp_error(&LxAppError::UnsupportedOperation(
+                "native control authority is not initialized".to_string(),
+            ))
+        })?;
+        lxapp::ensure_control_lxapp(authority, &target_appid, release_type)
     } else {
         lxapp::ensure_lxapp(&target_appid, release_type)
     }

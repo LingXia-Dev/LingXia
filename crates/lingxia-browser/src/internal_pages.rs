@@ -530,7 +530,7 @@ pub(crate) fn browser_load_internal_document(
     // registry mutex. Cancel its PageBridge work only after that lock is
     // released, before this replacement can fail or start another load.
     if let Some(authority) = replaced_authority {
-        let _ = page.revoke_required_v3_document(authority);
+        let _ = page.revoke_required_v3_document(documents.native_authority(), authority);
     }
     let html = match browser.generate_page_html_with_bridge_bootstrap(
         &entry_path,

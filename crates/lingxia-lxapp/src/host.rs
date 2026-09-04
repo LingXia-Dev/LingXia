@@ -538,8 +538,16 @@ impl AuthenticatedCaller {
     /// Host-TCB constructor used only after the browser registry has promoted
     /// the exact document binding to Active.
     #[doc(hidden)]
-    pub fn active_browser_document(authority: ControlDocumentAuthority) -> Self {
-        Self::BrowserDocument { authority }
+    pub fn active_browser_document(
+        native_authority: &crate::NativeControlPlaneAuthority,
+        authority: ControlDocumentAuthority,
+    ) -> Result<Self, LxAppError> {
+        if !native_authority.validate() {
+            return Err(LxAppError::UnsupportedOperation(
+                "browser caller promotion requires the live native host authority".to_string(),
+            ));
+        }
+        Ok(Self::BrowserDocument { authority })
     }
 
     pub fn app_scope(&self) -> Option<&AppScope> {
@@ -577,10 +585,13 @@ impl AuthenticatedCaller {
     #[doc(hidden)]
     #[cfg(feature = "test-utils")]
     pub fn browser_document_for_test() -> Self {
-        let (_, authority) =
-            crate::issue_control_document_bootstrap(&ring::rand::SystemRandom::new())
-                .expect("native test entropy");
-        Self::active_browser_document(authority)
+        let native_authority = crate::NativeControlPlaneAuthority::for_test();
+        let (_, authority) = crate::issue_control_document_bootstrap(
+            &native_authority,
+            &ring::rand::SystemRandom::new(),
+        )
+        .expect("native test entropy");
+        Self::active_browser_document(&native_authority, authority).expect("native test authority")
     }
 }
 
@@ -1972,10 +1983,14 @@ mod tests {
     fn audience_matrix_uses_authenticated_caller_class() {
         let standard = AuthenticatedCaller::standard_for_test(1);
         let control = AuthenticatedCaller::control_for_test(1);
-        let (_, authority) =
-            crate::issue_control_document_bootstrap(&ring::rand::SystemRandom::new())
-                .expect("native entropy");
-        let browser = AuthenticatedCaller::active_browser_document(authority);
+        let native_authority = crate::NativeControlPlaneAuthority::for_test();
+        let (_, authority) = crate::issue_control_document_bootstrap(
+            &native_authority,
+            &ring::rand::SystemRandom::new(),
+        )
+        .expect("native entropy");
+        let browser = AuthenticatedCaller::active_browser_document(&native_authority, authority)
+            .expect("native test authority");
 
         let audiences = [
             RouteAudience::AppSessionOnly,
@@ -2000,9 +2015,12 @@ mod tests {
 
     #[test]
     fn same_app_id_schema_and_all_dispatch_families_use_authenticated_caller_class() {
-        let (_, authority) =
-            crate::issue_control_document_bootstrap(&ring::rand::SystemRandom::new())
-                .expect("native entropy");
+        let native_authority = crate::NativeControlPlaneAuthority::for_test();
+        let (_, authority) = crate::issue_control_document_bootstrap(
+            &native_authority,
+            &ring::rand::SystemRandom::new(),
+        )
+        .expect("native entropy");
         let callers = [
             AuthenticatedCaller::LxAppSession {
                 class: AppSessionClass::StandardApp,
@@ -2012,7 +2030,8 @@ mod tests {
                 class: AppSessionClass::ControlApp,
                 scope: AppScope::for_test("same.app", 43),
             },
-            AuthenticatedCaller::active_browser_document(authority),
+            AuthenticatedCaller::active_browser_document(&native_authority, authority)
+                .expect("native test authority"),
         ];
         let audiences = [
             RouteAudience::AppSessionOnly,

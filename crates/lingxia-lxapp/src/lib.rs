@@ -21,6 +21,7 @@ pub mod log {
 #[cfg(feature = "js-appservice")]
 pub mod lx;
 mod lxapp;
+mod native_authority;
 mod native_component;
 mod page;
 pub(crate) mod plugin;
@@ -103,6 +104,8 @@ pub use lxapp::{
     set_display_language_preference_in, subscribe_display_language_effective,
     subscribe_display_language_state, tabbar, touch_page_instance_by_id, try_get, uninstall_lxapp,
 };
+#[doc(hidden)]
+pub use native_authority::NativeControlPlaneAuthority;
 pub use native_component::{
     NativeComponentHost, on_native_component_event, register_native_component_host,
 };

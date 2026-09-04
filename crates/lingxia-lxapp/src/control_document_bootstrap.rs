@@ -58,6 +58,8 @@ pub struct ControlDocumentAuthority(Arc<ControlDocumentAuthorityMaterial>);
 
 #[derive(Debug, thiserror::Error, Clone, Copy, PartialEq, Eq)]
 pub enum ControlDocumentBootstrapError {
+    #[error("control document bootstrap requires the live native host authority")]
+    NativeAuthorityRequired,
     #[error("secure random generation for control document bootstrap failed")]
     EntropyUnavailable,
 }
@@ -65,8 +67,12 @@ pub enum ControlDocumentBootstrapError {
 /// Issue a bootstrap plus matching native-only authentication material.
 /// Browser code supplies `SystemRandom`; failure leaves no material to retain.
 pub fn issue_control_document_bootstrap(
+    native_authority: &crate::NativeControlPlaneAuthority,
     rng: &dyn SecureRandom,
 ) -> Result<(ControlDocumentBootstrap, ControlDocumentAuthority), ControlDocumentBootstrapError> {
+    if !native_authority.validate() {
+        return Err(ControlDocumentBootstrapError::NativeAuthorityRequired);
+    }
     let mut public_session_id = [0_u8; 16];
     let mut secret = [0_u8; 32];
     rng.fill(&mut public_session_id)
@@ -212,10 +218,16 @@ mod tests {
 
     #[test]
     fn issued_material_is_fresh_and_authenticates_only_its_tuple() {
-        let (first_bootstrap, first) =
-            issue_control_document_bootstrap(&SystemRandom::new()).unwrap();
-        let (_second_bootstrap, second) =
-            issue_control_document_bootstrap(&SystemRandom::new()).unwrap();
+        let (first_bootstrap, first) = issue_control_document_bootstrap(
+            &crate::NativeControlPlaneAuthority::for_test(),
+            &SystemRandom::new(),
+        )
+        .unwrap();
+        let (_second_bootstrap, second) = issue_control_document_bootstrap(
+            &crate::NativeControlPlaneAuthority::for_test(),
+            &SystemRandom::new(),
+        )
+        .unwrap();
         let (session_id, secret) = first_bootstrap.take_binding();
         assert!(first.matches(&session_id, &secret));
         assert!(!second.matches(&session_id, &secret));

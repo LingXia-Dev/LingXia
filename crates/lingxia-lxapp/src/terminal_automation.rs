@@ -69,6 +69,10 @@ impl NativeHostRuntimeToken {
             runtime: std::sync::Arc::downgrade(runtime),
         }
     }
+
+    pub(crate) fn runtime(&self) -> &std::sync::Weak<Platform> {
+        &self.runtime
+    }
 }
 
 /// Native-derived authority for binding and using terminal surface handles.

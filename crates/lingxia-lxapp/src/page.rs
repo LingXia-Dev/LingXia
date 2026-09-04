@@ -694,12 +694,13 @@ impl PageInstance {
     #[doc(hidden)]
     pub fn bind_required_v3_document(
         &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
         context: &lingxia_webview::WebMessageContext,
         pending: &dyn crate::RequiredV3DocumentGate,
     ) -> Result<(), LxAppError> {
         self.inner
             .bridge
-            .bind_required_v3_document(self, context, pending)
+            .bind_required_v3_document(native_authority, self, context, pending)
     }
 
     /// Host-TCB installer for use inside BrowserDocumentSessions' held
@@ -708,29 +709,41 @@ impl PageInstance {
     #[doc(hidden)]
     pub fn bind_required_v3_authority(
         &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
         context: &lingxia_webview::WebMessageContext,
         authority: crate::ControlDocumentAuthority,
         outbound_gate: std::sync::Arc<dyn lingxia_webview::DocumentOutboundGate>,
     ) -> Result<crate::DeferredRequiredV3Cancellation, LxAppError> {
-        self.inner
-            .bridge
-            .bind_required_v3_authority(self, context, authority, outbound_gate)
+        self.inner.bridge.bind_required_v3_authority(
+            native_authority,
+            self,
+            context,
+            authority,
+            outbound_gate,
+        )
     }
 
     #[doc(hidden)]
     pub fn promote_active_browser_document(
         &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
         authority: crate::ControlDocumentAuthority,
     ) -> bool {
-        self.inner.bridge.promote_active_browser_document(authority)
+        self.inner
+            .bridge
+            .promote_active_browser_document(native_authority, authority)
     }
 
     /// Remove only the active required-V3 bridge work for this authority.
     #[doc(hidden)]
-    pub fn revoke_required_v3_document(&self, authority: crate::ControlDocumentAuthority) -> bool {
+    pub fn revoke_required_v3_document(
+        &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
+        authority: crate::ControlDocumentAuthority,
+    ) -> bool {
         self.inner
             .bridge
-            .revoke_required_v3_document(self, authority)
+            .revoke_required_v3_document(native_authority, self, authority)
     }
 
     fn owning_lxapp(&self) -> Arc<LxApp> {
@@ -864,13 +877,18 @@ impl PageInstance {
     #[doc(hidden)]
     pub fn prepare_required_v3_incoming(
         &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
         message: IncomingWebMessage,
         authority: crate::ControlDocumentAuthority,
         execution_gate: crate::RequiredV3ExecutionGate,
     ) -> Result<crate::PreparedRequiredV3Incoming, LxAppError> {
-        self.inner
-            .bridge
-            .prepare_required_v3_incoming(self, message, authority, execution_gate)
+        self.inner.bridge.prepare_required_v3_incoming(
+            native_authority,
+            self,
+            message,
+            authority,
+            execution_gate,
+        )
     }
 
     /// Post-registry-lock phase of browser control ingress.

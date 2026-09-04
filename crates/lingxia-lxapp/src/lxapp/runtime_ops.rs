@@ -12,9 +12,15 @@ pub fn ensure_lxapp(appid: &str, release_type: ReleaseType) -> Result<Arc<LxApp>
 /// select this class; the host calls it only after resolving its own resource.
 #[doc(hidden)]
 pub fn ensure_control_lxapp(
+    authority: &crate::NativeControlPlaneAuthority,
     appid: &str,
     release_type: ReleaseType,
 ) -> Result<Arc<LxApp>, LxAppError> {
+    if !authority.validate() {
+        return Err(LxAppError::UnsupportedOperation(
+            "control app bootstrap requires the live native host authority".to_string(),
+        ));
+    }
     let manager = super::runtime_registry::get_lxapps_manager()
         .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
     manager.ensure_lxapp_for_native_control(appid.to_string(), release_type)
@@ -49,9 +55,15 @@ pub fn open_lxapp(appid: &str, options: LxAppStartupOptions) -> Result<Arc<LxApp
 /// StandardApp instance is replaced with a ControlApp before navigation.
 #[doc(hidden)]
 pub fn open_control_lxapp_page(
+    authority: &crate::NativeControlPlaneAuthority,
     appid: &str,
     options: LxAppStartupOptions,
 ) -> Result<Arc<LxApp>, LxAppError> {
+    if !authority.validate() {
+        return Err(LxAppError::UnsupportedOperation(
+            "control app bootstrap requires the live native host authority".to_string(),
+        ));
+    }
     let expected = lingxia_app_context::home_app_id().ok_or_else(|| {
         LxAppError::Runtime("control app identity is not initialized".to_string())
     })?;
@@ -60,7 +72,7 @@ pub fn open_control_lxapp_page(
             "control app identity mismatch: expected {expected}, got {appid}"
         )));
     }
-    let app = ensure_control_lxapp(appid, options.release_type)?;
+    let app = ensure_control_lxapp(authority, appid, options.release_type)?;
     if !app.is_control_app() {
         return Err(LxAppError::Runtime(format!(
             "current app session is not ControlApp: {appid}"

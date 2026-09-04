@@ -10,7 +10,10 @@ use lingxia_webview::{
     TrustedDocumentAdmission, TrustedLoadIntent, WebMessageContext, WebMessageFrame,
     WebMessageTransport,
 };
-use lxapp::{ControlDocumentAuthority, ControlDocumentBootstrap, issue_control_document_bootstrap};
+use lxapp::{
+    ControlDocumentAuthority, ControlDocumentBootstrap, NativeControlPlaneAuthority,
+    issue_control_document_bootstrap,
+};
 use ring::rand::SystemRandom;
 use std::collections::HashMap;
 use std::hash::Hash;
@@ -619,17 +622,21 @@ where
 /// point shared by bootstrap, ingress authorization, revoke, and outbound.
 pub(crate) struct BrowserDocumentSessions {
     inner: SharedBrowserSessionRegistry,
-}
-
-impl Default for BrowserDocumentSessions {
-    fn default() -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(DocumentSessionRegistry::default())),
-        }
-    }
+    native_authority: NativeControlPlaneAuthority,
 }
 
 impl BrowserDocumentSessions {
+    fn new(native_authority: NativeControlPlaneAuthority) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(DocumentSessionRegistry::default())),
+            native_authority,
+        }
+    }
+
+    pub(crate) fn native_authority(&self) -> &NativeControlPlaneAuthority {
+        &self.native_authority
+    }
+
     fn validate_context(
         context: &WebMessageContext,
         native_view: NativeWebViewId,
@@ -702,8 +709,9 @@ impl BrowserDocumentSessions {
         (ControlDocumentBootstrap, Option<ControlDocumentAuthority>),
         ControlDocumentBootstrapPrepareError,
     > {
-        let (bootstrap, material) = issue_control_document_bootstrap(&SystemRandom::new())
-            .map_err(|_| ControlDocumentBootstrapPrepareError::EntropyUnavailable)?;
+        let (bootstrap, material) =
+            issue_control_document_bootstrap(&self.native_authority, &SystemRandom::new())
+                .map_err(|_| ControlDocumentBootstrapPrepareError::EntropyUnavailable)?;
         let mut sessions = self
             .inner
             .lock()
@@ -1039,9 +1047,26 @@ impl DocumentOutboundGate for ActiveDocumentLease {
 
 static BROWSER_DOCUMENT_SESSIONS: OnceLock<Arc<BrowserDocumentSessions>> = OnceLock::new();
 
-pub(crate) fn browser_document_sessions() -> Arc<BrowserDocumentSessions> {
+pub(crate) fn install_browser_document_authority(authority: NativeControlPlaneAuthority) -> bool {
     BROWSER_DOCUMENT_SESSIONS
-        .get_or_init(|| Arc::new(BrowserDocumentSessions::default()))
+        .set(Arc::new(BrowserDocumentSessions::new(authority)))
+        .is_ok()
+}
+
+pub(crate) fn browser_document_sessions() -> Arc<BrowserDocumentSessions> {
+    #[cfg(test)]
+    return BROWSER_DOCUMENT_SESSIONS
+        .get_or_init(|| {
+            Arc::new(BrowserDocumentSessions::new(
+                NativeControlPlaneAuthority::for_test(),
+            ))
+        })
+        .clone();
+
+    #[cfg(not(test))]
+    BROWSER_DOCUMENT_SESSIONS
+        .get()
+        .expect("browser native authority must be installed before runtime use")
         .clone()
 }
 
