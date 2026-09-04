@@ -91,6 +91,14 @@ pub trait HostAddon: Send + Sync {
     /// AppService, WebView, or document session is created.
     fn configure_static_settings_targets(&self, _catalog: &mut crate::StaticSettingsTargetCatalog) {
     }
+    /// Installs callbacks only for NativeAction ids declared in the static
+    /// Settings target catalog. The registrar is sealed before runtime starts.
+    fn install_native_settings_actions(
+        &self,
+        _registrar: &mut crate::NativeSettingsActionRegistrar,
+    ) -> Result<(), String> {
+        Ok(())
+    }
     /// Registers JS logic extensions when the `standard` feature is enabled.
     #[cfg(feature = "standard")]
     fn install_logic_extensions(&self) {}
@@ -165,6 +173,16 @@ pub(crate) fn run_configure_static_settings_targets(
     for addon in installed.iter() {
         addon.configure_static_settings_targets(catalog);
     }
+}
+
+pub(crate) fn run_install_native_settings_actions(
+    registrar: &mut crate::NativeSettingsActionRegistrar,
+) -> Result<(), String> {
+    let installed = snapshot_host_addons();
+    for addon in installed.iter() {
+        addon.install_native_settings_actions(registrar)?;
+    }
+    Ok(())
 }
 
 pub(crate) fn run_install_logic_extensions() {
