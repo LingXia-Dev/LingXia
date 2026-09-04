@@ -2508,6 +2508,10 @@ extern "C" fn on_web_message_received(
             );
             return;
         }
+        if !crate::webview::web_message_bytes_within_limit(data_length) {
+            webview.reject_oversized_web_message();
+            return;
+        }
 
         let data_slice = std::slice::from_raw_parts(data_ptr as *const u8, data_length);
         let Ok(msg_str) = std::str::from_utf8(data_slice) else {
@@ -2785,6 +2789,13 @@ extern "C" fn on_console_message_received(
         let mut data_length: usize = 0;
         let data_ptr = get_data(message, &mut data_length);
         if data_ptr.is_null() || data_length == 0 {
+            return;
+        }
+        if !crate::webview::web_message_bytes_within_limit(data_length) {
+            let full_webtag = WebTag::from(webtag);
+            if let Some(webview) = find_webview_by_native_view_id(&full_webtag, native_view_id) {
+                webview.reject_oversized_web_message();
+            }
             return;
         }
 

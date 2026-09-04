@@ -58,6 +58,10 @@ public final class AndroidMessagePortBridge {
                         if (!webView.acceptsDocumentPort(loadToken, documentGeneration)) {
                             return;
                         }
+                        if (!WebMessageSizePolicy.isWithinLimit(messageData)) {
+                            webView.rejectOversizedPostMessage();
+                            return;
+                        }
                         webView.handlePostMessage(
                                 webView.getAppId() != null ? webView.getAppId() : "",
                                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",

@@ -572,7 +572,9 @@ function postToNative(message: unknown): void {
     console.log("→", JSON.stringify(message, null, 2));
   try {
     if (communicationMethod === "webkit") {
-      window.webkit?.messageHandlers[NATIVE_HANDLER_NAME]?.postMessage(encodedMessage);
+      window.webkit?.messageHandlers[NATIVE_HANDLER_NAME]?.postMessage(
+        stringifyForNative(encodedMessage),
+      );
       return;
     }
     const messageString = stringifyForNative(encodedMessage);

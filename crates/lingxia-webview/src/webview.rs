@@ -60,7 +60,7 @@ use crate::{
 use async_trait::async_trait;
 
 const APPLE_INTERNAL_SCHEME: &str = "lx-apple";
-const MAX_WEB_MESSAGE_BYTES: usize = 64 * 1024;
+pub(crate) const MAX_WEB_MESSAGE_BYTES: usize = 64 * 1024;
 const MAX_PENDING_WEB_MESSAGES: usize = 1024;
 const MAX_PENDING_WEB_MESSAGE_BYTES: usize = 1024 * 1024;
 const WEB_MESSAGE_WORKER_COUNT: usize = 4;
@@ -138,35 +138,55 @@ fn should_sample_rejection(count: u64) -> bool {
     count == 1 || count.is_power_of_two()
 }
 
+pub(crate) const fn web_message_bytes_within_limit(bytes: usize) -> bool {
+    bytes <= MAX_WEB_MESSAGE_BYTES
+}
+
 impl WebMessageIngress {
+    fn reject_locked(
+        state: &mut WebMessageIngressState,
+        reason: WebMessageRejectReason,
+    ) -> WebMessageEnqueue {
+        let count = &mut state.rejection_counts[reason.index()];
+        *count = count.saturating_add(1);
+        WebMessageEnqueue::Rejected {
+            reason,
+            count: *count,
+        }
+    }
+
+    #[cfg(any(
+        test,
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        all(target_os = "linux", target_env = "ohos")
+    ))]
+    fn reject(&self, reason: WebMessageRejectReason) -> WebMessageEnqueue {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        Self::reject_locked(&mut state, reason)
+    }
+
     /// Enqueue one message and report whether this instance must be scheduled.
     /// A bounded queue prevents an untrusted page from growing native memory
     /// without limit; accepted messages remain FIFO.
     fn enqueue(&self, message: IncomingWebMessage) -> WebMessageEnqueue {
         let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
         let message_bytes = message.body().len();
-        let reject = |state: &mut WebMessageIngressState, reason: WebMessageRejectReason| {
-            let count = &mut state.rejection_counts[reason.index()];
-            *count = count.saturating_add(1);
-            WebMessageEnqueue::Rejected {
-                reason,
-                count: *count,
-            }
-        };
-        if message_bytes > MAX_WEB_MESSAGE_BYTES {
-            return reject(&mut state, WebMessageRejectReason::MessageTooLarge);
+        if !web_message_bytes_within_limit(message_bytes) {
+            return Self::reject_locked(&mut state, WebMessageRejectReason::MessageTooLarge);
         }
         if state.closed {
-            return reject(&mut state, WebMessageRejectReason::Closed);
+            return Self::reject_locked(&mut state, WebMessageRejectReason::Closed);
         }
         if state.queue.len() >= MAX_PENDING_WEB_MESSAGES {
-            return reject(&mut state, WebMessageRejectReason::QueueCountLimit);
+            return Self::reject_locked(&mut state, WebMessageRejectReason::QueueCountLimit);
         }
         let Some(next_bytes) = state.queued_bytes.checked_add(message_bytes) else {
-            return reject(&mut state, WebMessageRejectReason::QueueByteLimit);
+            return Self::reject_locked(&mut state, WebMessageRejectReason::QueueByteLimit);
         };
         if next_bytes > MAX_PENDING_WEB_MESSAGE_BYTES {
-            return reject(&mut state, WebMessageRejectReason::QueueByteLimit);
+            return Self::reject_locked(&mut state, WebMessageRejectReason::QueueByteLimit);
         }
         state.queued_bytes = next_bytes;
         state.queue.push_back(message);
@@ -1258,6 +1278,31 @@ impl WebView {
     /// consumers.
     pub const fn native_view_id(&self) -> NativeWebViewId {
         self.native_view_id
+    }
+
+    /// Account for a platform adapter rejecting an oversized raw message
+    /// before it allocates the cross-platform `String` used by the queue.
+    #[cfg(any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        all(target_os = "linux", target_env = "ohos")
+    ))]
+    pub(crate) fn reject_oversized_web_message(&self) {
+        let WebMessageEnqueue::Rejected { reason, count } = self
+            .message_ingress
+            .reject(WebMessageRejectReason::MessageTooLarge)
+        else {
+            unreachable!("rejecting an ingress message must return a rejection")
+        };
+        if should_sample_rejection(count) {
+            log::warn!(
+                "Dropping WebView message reason={} count={} ({})",
+                reason.as_str(),
+                count,
+                self.webtag()
+            );
+        }
     }
 
     /// Reserve a trusted native HTML load before starting the native operation.
@@ -3229,7 +3274,7 @@ mod tests {
         WebViewCreateOptions, WebViewCreateSender, WebViewSessionSignals,
         android_document_port_context, block_on_scheme_future, next_native_webview_id,
         remove_arc_if_matches, remove_session_signals_if_matches, replace_session_signals,
-        should_sample_rejection, snapshot_web_message_context,
+        should_sample_rejection, snapshot_web_message_context, web_message_bytes_within_limit,
     };
     use crate::{
         ContextualSchemeRequest, DocumentBinding, IncomingWebMessage, NativeWebViewId,
@@ -3472,6 +3517,14 @@ mod tests {
     }
 
     #[test]
+    fn raw_web_message_byte_cap_includes_the_exact_boundary() {
+        assert!(web_message_bytes_within_limit(MAX_WEB_MESSAGE_BYTES - 1));
+        assert!(web_message_bytes_within_limit(MAX_WEB_MESSAGE_BYTES));
+        assert!(!web_message_bytes_within_limit(MAX_WEB_MESSAGE_BYTES + 1));
+        assert!(!web_message_bytes_within_limit(usize::MAX));
+    }
+
+    #[test]
     fn message_ingress_byte_budget_is_released_on_delivery_and_close() {
         let ingress = WebMessageIngress::default();
         let native_view = next_native_webview_id();
@@ -3518,7 +3571,14 @@ mod tests {
         let ingress = WebMessageIngress::default();
         let native_view = next_native_webview_id();
         let oversized = "x".repeat(MAX_WEB_MESSAGE_BYTES + 1);
-        for expected_count in 1..=3 {
+        assert_eq!(
+            ingress.reject(WebMessageRejectReason::MessageTooLarge),
+            WebMessageEnqueue::Rejected {
+                reason: WebMessageRejectReason::MessageTooLarge,
+                count: 1,
+            }
+        );
+        for expected_count in 2..=4 {
             assert_eq!(
                 ingress.enqueue(message(&oversized, native_view)),
                 WebMessageEnqueue::Rejected {
@@ -3529,7 +3589,7 @@ mod tests {
         }
         assert_eq!(
             ingress.rejection_count(WebMessageRejectReason::MessageTooLarge),
-            3
+            4
         );
         assert!(should_sample_rejection(1));
         assert!(should_sample_rejection(2));
