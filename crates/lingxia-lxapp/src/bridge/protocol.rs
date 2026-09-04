@@ -8,6 +8,244 @@ use std::collections::HashMap;
 
 use super::BRIDGE_INTERNAL_ERROR;
 
+/// Protocol version reserved for document-session binding. Production bridge
+/// negotiation remains on V2 until both endpoints opt in together.
+pub(crate) const V3_PROTOCOL: u8 = 3;
+
+/// Upper bound for a single unauthenticated V3 frame. The production ingress
+/// will apply this before parsing once V3 is enabled.
+pub(crate) const DEFAULT_MAX_V3_FRAME_BYTES: usize = 64 * 1024;
+
+/// A document-to-native secret. It deliberately has no `Debug` or serde
+/// implementation so diagnostics and outbound codecs cannot expose it.
+pub(crate) struct DocumentSecret(String);
+
+impl DocumentSecret {
+    fn new(value: String) -> Self {
+        Self(value)
+    }
+
+    #[cfg(test)]
+    fn matches(&self, candidate: &str) -> bool {
+        self.0 == candidate
+    }
+}
+
+/// Binding carried by every V3 document-to-native frame.
+pub(crate) struct V3InboundBinding {
+    session_id: String,
+    secret: DocumentSecret,
+}
+
+impl V3InboundBinding {
+    pub(crate) fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    #[cfg(test)]
+    fn secret_matches(&self, candidate: &str) -> bool {
+        self.secret.matches(candidate)
+    }
+}
+
+/// Binding carried by every V3 native-to-document frame.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct V3OutboundBinding {
+    session_id: String,
+}
+
+impl V3OutboundBinding {
+    pub(crate) fn new(session_id: String) -> Result<Self, V3CodecError> {
+        if session_id.is_empty() {
+            return Err(V3CodecError::InvalidOutboundBinding);
+        }
+        Ok(Self { session_id })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum V3InboundKind {
+    Hello,
+    Req,
+    Res,
+    Notify,
+    Cancel,
+    ChOpen,
+    ChData,
+    ChClose,
+    StateAck,
+}
+
+impl V3InboundKind {
+    fn parse(kind: &str) -> Option<Self> {
+        Some(match kind {
+            "hello" => Self::Hello,
+            "req" => Self::Req,
+            "res" => Self::Res,
+            "notify" => Self::Notify,
+            "cancel" => Self::Cancel,
+            "ch.open" => Self::ChOpen,
+            "ch.data" => Self::ChData,
+            "ch.close" => Self::ChClose,
+            "state.ack" => Self::StateAck,
+            _ => return None,
+        })
+    }
+
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Hello => "hello",
+            Self::Req => "req",
+            Self::Res => "res",
+            Self::Notify => "notify",
+            Self::Cancel => "cancel",
+            Self::ChOpen => "ch.open",
+            Self::ChData => "ch.data",
+            Self::ChClose => "ch.close",
+            Self::StateAck => "state.ack",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum V3OutboundKind {
+    HelloAck,
+    Ready,
+    Req,
+    Res,
+    Event,
+    StateSnapshot,
+    StatePatch,
+    ChAck,
+    ChData,
+    ChClose,
+}
+
+impl V3OutboundKind {
+    pub(crate) fn parse(kind: &str) -> Option<Self> {
+        Some(match kind {
+            "helloAck" => Self::HelloAck,
+            "ready" => Self::Ready,
+            "req" => Self::Req,
+            "res" => Self::Res,
+            "event" => Self::Event,
+            "state.snapshot" => Self::StateSnapshot,
+            "state.patch" => Self::StatePatch,
+            "ch.ack" => Self::ChAck,
+            "ch.data" => Self::ChData,
+            "ch.close" => Self::ChClose,
+            _ => return None,
+        })
+    }
+
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::HelloAck => "helloAck",
+            Self::Ready => "ready",
+            Self::Req => "req",
+            Self::Res => "res",
+            Self::Event => "event",
+            Self::StateSnapshot => "state.snapshot",
+            Self::StatePatch => "state.patch",
+            Self::ChAck => "ch.ack",
+            Self::ChData => "ch.data",
+            Self::ChClose => "ch.close",
+        }
+    }
+}
+
+/// The result of the intentionally small V3 authentication-envelope parse.
+/// Route-specific payload decoding remains a separate, later operation.
+pub(crate) struct V3InboundEnvelope {
+    pub(crate) kind: V3InboundKind,
+    pub(crate) binding: V3InboundBinding,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum V3CodecError {
+    FrameTooLarge,
+    MalformedEnvelope,
+    UnsupportedVersion,
+    UnsupportedInboundKind,
+    InvalidOutboundPayload,
+    InvalidOutboundBinding,
+    SecurityFieldInPayload,
+}
+
+#[derive(Deserialize)]
+struct V3EnvelopeProbe {
+    v: Option<u8>,
+    kind: Option<String>,
+    #[serde(rename = "sessionId")]
+    session_id: Option<String>,
+    secret: Option<String>,
+}
+
+/// Parse only the fixed V3 authentication envelope. This intentionally ignores
+/// route and parameter fields so a future admission layer can authenticate
+/// before route-specific decoding or allocation.
+pub(crate) fn parse_v3_inbound_envelope(
+    frame: &str,
+    max_frame_bytes: usize,
+) -> Result<V3InboundEnvelope, V3CodecError> {
+    if frame.len() > max_frame_bytes {
+        return Err(V3CodecError::FrameTooLarge);
+    }
+
+    let probe = serde_json::from_str::<V3EnvelopeProbe>(frame)
+        .map_err(|_| V3CodecError::MalformedEnvelope)?;
+    if probe.v != Some(V3_PROTOCOL) {
+        return Err(V3CodecError::UnsupportedVersion);
+    }
+    let kind = probe
+        .kind
+        .as_deref()
+        .and_then(V3InboundKind::parse)
+        .ok_or(V3CodecError::UnsupportedInboundKind)?;
+    let session_id = probe
+        .session_id
+        .filter(|value| !value.is_empty())
+        .ok_or(V3CodecError::MalformedEnvelope)?;
+    let secret = probe
+        .secret
+        .filter(|value| !value.is_empty())
+        .ok_or(V3CodecError::MalformedEnvelope)?;
+
+    Ok(V3InboundEnvelope {
+        kind,
+        binding: V3InboundBinding {
+            session_id,
+            secret: DocumentSecret::new(secret),
+        },
+    })
+}
+
+/// Compose a native-to-document V3 frame. Protocol identity belongs only to
+/// the binding, so matching route-payload fields are rejected.
+pub(crate) fn encode_v3_outbound_frame(
+    binding: &V3OutboundBinding,
+    kind: V3OutboundKind,
+    payload: Value,
+) -> Result<Value, V3CodecError> {
+    let mut frame = payload
+        .as_object()
+        .cloned()
+        .ok_or(V3CodecError::InvalidOutboundPayload)?;
+    if ["v", "kind", "sessionId", "secret"]
+        .iter()
+        .any(|field| frame.contains_key(*field))
+    {
+        return Err(V3CodecError::SecurityFieldInPayload);
+    }
+    frame.insert("v".to_string(), Value::from(V3_PROTOCOL));
+    frame.insert("kind".to_string(), Value::from(kind.as_str()));
+    frame.insert(
+        "sessionId".to_string(),
+        Value::from(binding.session_id.clone()),
+    );
+    Ok(Value::Object(frame))
+}
+
 // ── Incoming (View → Logic) ─────────────────────────────────────────────
 
 #[derive(Deserialize, Debug, Clone)]
@@ -274,4 +512,154 @@ pub(super) struct ChCloseOut {
     pub code: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct GoldenFrame {
+        kind: String,
+        #[serde(default)]
+        payload: Option<Value>,
+        frame: Value,
+    }
+
+    #[derive(Deserialize)]
+    struct InvalidGoldenFrame {
+        frame: String,
+        error: String,
+    }
+
+    #[derive(Deserialize)]
+    struct InvalidFrames {
+        #[serde(rename = "documentToNative")]
+        document_to_native: Vec<InvalidGoldenFrame>,
+        #[serde(rename = "nestedSecurityKeysAreNotTopLevelDuplicates")]
+        nested_security_keys: NestedSecurityKeys,
+    }
+
+    #[derive(Deserialize)]
+    struct NestedSecurityKeys {
+        #[serde(rename = "documentToNative")]
+        document_to_native: String,
+    }
+
+    #[derive(Deserialize)]
+    struct GoldenFrames {
+        inbound: Vec<GoldenFrame>,
+        outbound: Vec<GoldenFrame>,
+    }
+
+    fn golden_frames() -> GoldenFrames {
+        serde_json::from_str(include_str!("../../../../testdata/bridge-v3/golden.json"))
+            .expect("shared V3 golden fixture must be valid JSON")
+    }
+
+    fn invalid_frames() -> InvalidFrames {
+        serde_json::from_str(include_str!("../../../../testdata/bridge-v3/invalid.json"))
+            .expect("shared V3 invalid fixture must be valid JSON")
+    }
+
+    #[test]
+    fn v3_inbound_envelopes_match_shared_golden_frames() {
+        let golden = golden_frames();
+
+        for expected in golden.inbound {
+            let raw = serde_json::to_string(&expected.frame).unwrap();
+            let envelope = parse_v3_inbound_envelope(&raw, DEFAULT_MAX_V3_FRAME_BYTES).unwrap();
+            assert_eq!(envelope.kind.as_str(), expected.kind);
+            assert_eq!(envelope.binding.session_id(), "v3-session");
+            assert!(envelope.binding.secret_matches("bridge-v3-test-secret"));
+        }
+    }
+
+    #[test]
+    fn v3_outbound_frames_match_shared_golden_frames() {
+        let binding = V3OutboundBinding::new("v3-session".to_string()).unwrap();
+        let golden = golden_frames();
+
+        for expected in golden.outbound {
+            let kind = V3OutboundKind::parse(&expected.kind)
+                .expect("shared fixture must use a known outbound kind");
+            let encoded = encode_v3_outbound_frame(
+                &binding,
+                kind,
+                expected.payload.expect("outbound fixture needs a payload"),
+            )
+            .unwrap();
+            assert_eq!(encoded, expected.frame, "kind={}", expected.kind);
+        }
+    }
+
+    #[test]
+    fn v3_envelope_rejects_shared_invalid_frames() {
+        for expected in invalid_frames().document_to_native {
+            let actual = parse_v3_inbound_envelope(&expected.frame, DEFAULT_MAX_V3_FRAME_BYTES);
+            let expected_error = match expected.error.as_str() {
+                "MALFORMED_ENVELOPE" => V3CodecError::MalformedEnvelope,
+                "UNSUPPORTED_VERSION" => V3CodecError::UnsupportedVersion,
+                "UNSUPPORTED_INBOUND_KIND" => V3CodecError::UnsupportedInboundKind,
+                other => panic!("unknown shared V3 codec error: {other}"),
+            };
+            assert!(matches!(actual, Err(error) if error == expected_error));
+        }
+    }
+
+    #[test]
+    fn v3_envelope_allows_nested_security_keys() {
+        let frame = invalid_frames().nested_security_keys.document_to_native;
+        assert!(parse_v3_inbound_envelope(&frame, DEFAULT_MAX_V3_FRAME_BYTES).is_ok());
+    }
+
+    #[test]
+    fn v3_envelope_rejects_oversized_or_unbound_frames() {
+        let oversized = format!(
+            r#"{{"v":3,"kind":"req","sessionId":"s","secret":"x","pad":"{}"}}"#,
+            "a".repeat(32)
+        );
+        assert!(matches!(
+            parse_v3_inbound_envelope(&oversized, 16),
+            Err(V3CodecError::FrameTooLarge)
+        ));
+        assert!(matches!(
+            parse_v3_inbound_envelope(r#"{"v":3,"kind":"req","sessionId":"s"}"#, 1024),
+            Err(V3CodecError::MalformedEnvelope)
+        ));
+        assert!(matches!(
+            parse_v3_inbound_envelope(r#"{"v":2,"kind":"req","sessionId":"s","secret":"x"}"#, 1024),
+            Err(V3CodecError::UnsupportedVersion)
+        ));
+    }
+
+    #[test]
+    fn v3_outbound_rejects_security_fields_and_empty_binding() {
+        assert!(matches!(
+            V3OutboundBinding::new(String::new()),
+            Err(V3CodecError::InvalidOutboundBinding)
+        ));
+        let binding = V3OutboundBinding::new("v3-session".to_string()).unwrap();
+        for field in ["v", "kind", "sessionId", "secret"] {
+            let mut payload = serde_json::Map::new();
+            payload.insert(field.to_string(), Value::String("forged".to_string()));
+            assert!(matches!(
+                encode_v3_outbound_frame(&binding, V3OutboundKind::Ready, Value::Object(payload)),
+                Err(V3CodecError::SecurityFieldInPayload)
+            ));
+        }
+    }
+
+    #[test]
+    fn v2_parser_behavior_remains_available_while_v3_is_dormant() {
+        let parsed = IncomingMessage::from_json_str(
+            r#"{"v":2,"kind":"hello","nonce":"legacy","role":"view","protocolsSupported":[2]}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            parsed,
+            IncomingMessage::Hello(HelloMsg { v: 2, .. })
+        ));
+    }
 }
