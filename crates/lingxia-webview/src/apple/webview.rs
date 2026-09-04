@@ -82,6 +82,21 @@ fn invalidate_terminated_content_process(webtag: &WebTag, native_view_id: Native
     normalizer::submit(webtag, native_view_id, NativeSignal::DocumentInvalidated);
 }
 
+fn invalidate_restored_document(webtag: &WebTag, native_view_id: NativeWebViewId) -> bool {
+    if !matches!(
+        normalizer::current_document_binding(native_view_id),
+        crate::DocumentBinding::Bound(_)
+    ) {
+        return false;
+    }
+    normalizer::submit(webtag, native_view_id, NativeSignal::DocumentInvalidated);
+    true
+}
+
+fn is_apple_bfcache_restore(message: &str, frame: WebMessageFrame) -> bool {
+    message == "bfcache-restored" && frame == WebMessageFrame::TopLevel
+}
+
 #[link(name = "Network", kind = "framework")]
 unsafe extern "C" {
     fn nw_endpoint_create_host(hostname: *const c_char, port: *const c_char) -> *mut AnyObject;
@@ -2505,6 +2520,27 @@ impl WebViewInner {
 
             let _: () = msg_send![user_content_controller, addUserScript: console_user_script];
 
+            // WebKit may restore a page from BFCache without producing a new
+            // native start/commit pair. `pageshow.persisted` is document-local
+            // evidence; the native callback still verifies main-frame and
+            // concrete WebView identity before revoking the old generation.
+            let restoration_script = r#"
+                window.addEventListener('pageshow', function(event) {
+                    if (event.persisted === true) {
+                        try {
+                            window.webkit.messageHandlers.LingXiaLifecycle.postMessage('bfcache-restored');
+                        } catch (_) {}
+                    }
+                }, true);
+            "#;
+            let restoration_js_string = NSString::from_str(restoration_script);
+            let restoration_user_script: *mut AnyObject = msg_send![user_script_class, alloc];
+            let restoration_user_script: *mut AnyObject = msg_send![restoration_user_script,
+                initWithSource: &*restoration_js_string,
+                injectionTime: injection_time,
+                forMainFrameOnly: true];
+            let _: () = msg_send![user_content_controller, addUserScript: restoration_user_script];
+
             #[cfg(all(feature = "webview-input", target_os = "macos"))]
             {
                 let input_helper_string = NSString::from_str(INPUT_HELPER_BOOTSTRAP);
@@ -2572,8 +2608,10 @@ impl WebViewInner {
             // Register message handlers with userContentController (like Swift version)
             let lingxia_name = NSString::from_str("LingXia");
             let console_name = NSString::from_str("LingXiaConsole");
+            let lifecycle_name = NSString::from_str("LingXiaLifecycle");
             let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*lingxia_name];
             let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*console_name];
+            let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*lifecycle_name];
             Ok(message_handler)
         }
     }
@@ -4505,6 +4543,10 @@ define_class!(
                     "LingXiaConsole" => {
                         self.handle_console_message(message_string);
                     }
+                    "LingXiaLifecycle" => {
+                        let (frame, _) = apple_message_frame_and_source(message);
+                        self.handle_document_restored(message_string, frame);
+                    }
                     _ => {
                         log::warn!("Unknown message handler: {}", handler_name);
                     }
@@ -4600,6 +4642,27 @@ impl LingXiaMessageHandler {
             }
         } else {
             log::error!("Failed to parse Apple console message JSON");
+        }
+    }
+
+    fn handle_document_restored(&self, message: String, frame: WebMessageFrame) {
+        if !is_apple_bfcache_restore(&message, frame) {
+            return;
+        }
+        let ivars = self.ivars();
+        let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
+        let native_webview = ivars.native_webview as *mut AnyObject;
+        let Some(webview) = find_webview_for_native(&webtag, native_webview) else {
+            return;
+        };
+        let native_view_id = webview.native_view_id();
+        if !invalidate_restored_document(&webtag, native_view_id) {
+            return;
+        }
+        let url = source_page_url_from_webview(native_webview)
+            .unwrap_or_else(|| "about:blank".to_string());
+        if let Some(delegate) = webview.get_delegate() {
+            delegate.on_document_restored(native_view_id, &url);
         }
     }
 }
@@ -4699,6 +4762,52 @@ mod tests {
             normalizer::current_document_binding(native_view_id),
             crate::DocumentBinding::Unbound
         );
+        normalizer::destroy(&webtag);
+    }
+
+    #[test]
+    fn apple_bfcache_restore_without_navigation_callbacks_revokes_once() {
+        assert!(is_apple_bfcache_restore(
+            "bfcache-restored",
+            WebMessageFrame::TopLevel
+        ));
+        assert!(!is_apple_bfcache_restore(
+            "bfcache-restored",
+            WebMessageFrame::Subframe
+        ));
+
+        let webtag = WebTag::new("com.example.browser", "/tabs/history", Some(8));
+        let native_view_id = NativeWebViewId::new(9_302);
+        normalizer::begin(&webtag, native_view_id);
+        normalizer::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(72),
+                url: "lingxia://settings".into(),
+            },
+        );
+        normalizer::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(72) },
+        );
+        let crate::DocumentBinding::Bound(generation) =
+            normalizer::current_document_binding(native_view_id)
+        else {
+            panic!("test document must commit")
+        };
+
+        // No new start/commit is submitted: this models same-URL BFCache.
+        assert!(invalidate_restored_document(&webtag, native_view_id));
+        assert!(!invalidate_restored_document(&webtag, native_view_id));
+        let mut stale_outbound_ran = false;
+        assert!(!normalizer::with_current_document_binding(
+            native_view_id,
+            generation,
+            &mut || stale_outbound_ran = true,
+        ));
+        assert!(!stale_outbound_ran);
         normalizer::destroy(&webtag);
     }
 }

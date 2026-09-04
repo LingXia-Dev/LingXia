@@ -46,6 +46,7 @@ struct ActiveNavigation {
     platform_url: String,
     page_epoch: u64,
     committed: bool,
+    finished: bool,
     generation: Option<DocumentGeneration>,
 }
 
@@ -79,6 +80,12 @@ pub(crate) enum PageBegin {
 pub(crate) struct PageTerminal {
     pub(crate) key: NativeKey,
     pub(crate) public_url: String,
+}
+
+pub(crate) enum DocumentCommit {
+    Committed(PageTerminal),
+    Restored { public_url: String },
+    Invalid,
 }
 
 /// One native WebView's trusted-load and ArkTS callback correlation.
@@ -136,6 +143,7 @@ impl HarmonyDocumentAuthority {
                     platform_url: trusted.platform_url.clone(),
                     page_epoch,
                     committed: false,
+                    finished: false,
                     generation: None,
                 });
                 let intent = trusted.intent;
@@ -158,6 +166,7 @@ impl HarmonyDocumentAuthority {
                     platform_url: observed_url.to_owned(),
                     page_epoch,
                     committed: false,
+                    finished: false,
                     generation: None,
                 });
                 PageBegin::Untrusted {
@@ -169,27 +178,32 @@ impl HarmonyDocumentAuthority {
         }
     }
 
-    pub(crate) fn document_commit(
-        &self,
-        observed_url: &str,
-        page_epoch: u64,
-    ) -> Option<PageTerminal> {
+    pub(crate) fn document_commit(&self, observed_url: &str, page_epoch: u64) -> DocumentCommit {
         let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-        let active = state.active.as_ref()?.clone();
-        if active.page_epoch != page_epoch
-            || active.platform_url != observed_url
-            || active.committed
-        {
+        let Some(active) = state.active.as_ref().cloned() else {
+            return DocumentCommit::Invalid;
+        };
+        if active.page_epoch != page_epoch || active.platform_url != observed_url {
+            state.active = None;
             state.trusted = None;
             state.committed_urls = None;
-            return None;
+            return DocumentCommit::Invalid;
+        }
+        if active.committed {
+            state.active = None;
+            state.trusted = None;
+            state.committed_urls = None;
+            return DocumentCommit::Restored {
+                public_url: active.public_url,
+            };
         }
         if let Some(trusted) = state.trusted.as_ref()
             && (trusted.key != active.key || trusted.page_epoch != Some(page_epoch))
         {
+            state.active = None;
             state.trusted = None;
             state.committed_urls = None;
-            return None;
+            return DocumentCommit::Invalid;
         }
         state
             .active
@@ -202,7 +216,7 @@ impl HarmonyDocumentAuthority {
         };
         state.trusted = None;
         state.committed_urls = Some((active.platform_url.clone(), active.public_url.clone()));
-        Some(terminal)
+        DocumentCommit::Committed(terminal)
     }
 
     pub(crate) fn bind_generation(&self, key: NativeKey, generation: DocumentGeneration) -> bool {
@@ -232,14 +246,17 @@ impl HarmonyDocumentAuthority {
 
     pub(crate) fn page_end(&self, observed_url: &str, page_epoch: u64) -> Option<PageTerminal> {
         let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-        let active = state.active.take()?;
-        if active.page_epoch != page_epoch || active.platform_url != observed_url {
+        let active = state.active.as_mut()?;
+        if active.page_epoch != page_epoch || active.platform_url != observed_url || active.finished
+        {
+            state.active = None;
             state.trusted = None;
             return None;
         }
+        active.finished = true;
         Some(PageTerminal {
             key: active.key,
-            public_url: active.public_url,
+            public_url: active.public_url.clone(),
         })
     }
 
@@ -296,6 +313,13 @@ mod tests {
         TrustedLoadIntent::new(raw)
     }
 
+    fn committed(result: DocumentCommit) -> PageTerminal {
+        match result {
+            DocumentCommit::Committed(committed) => committed,
+            _ => panic!("expected a fresh document commit"),
+        }
+    }
+
     #[test]
     fn trusted_load_requires_its_marked_top_level_begin_and_commit() {
         let authority = HarmonyDocumentAuthority::default();
@@ -305,7 +329,7 @@ mod tests {
             PageBegin::Attest { intent: value, key, .. }
                 if value == intent(1) && key == armed.key
         ));
-        let terminal = authority.document_commit(&armed.platform_url, 11).unwrap();
+        let terminal = committed(authority.document_commit(&armed.platform_url, 11));
         assert_eq!(terminal.key, armed.key);
         assert_eq!(terminal.public_url, "lingxia://settings");
         assert_eq!(
@@ -324,11 +348,10 @@ mod tests {
             authority.page_begin(&stale.platform_url, 12),
             PageBegin::Untrusted { revoked: Some(value), .. } if value == intent(3)
         ));
-        assert!(
-            authority
-                .document_commit(&current.platform_url, 13)
-                .is_none()
-        );
+        assert!(matches!(
+            authority.document_commit(&current.platform_url, 13),
+            DocumentCommit::Invalid
+        ));
     }
 
     #[test]
@@ -339,14 +362,20 @@ mod tests {
             authority.page_begin(&first.platform_url, 20),
             PageBegin::Attest { .. }
         ));
-        assert!(authority.document_commit(&first.platform_url, 19).is_none());
+        assert!(matches!(
+            authority.document_commit(&first.platform_url, 19),
+            DocumentCommit::Invalid
+        ));
 
         let reload = authority.arm(intent(5), "lingxia://downloads", "native-9");
         assert!(matches!(
             authority.page_begin(&reload.platform_url, 21),
             PageBegin::Attest { .. }
         ));
-        assert!(authority.document_commit(&first.platform_url, 20).is_none());
+        assert!(matches!(
+            authority.document_commit(&first.platform_url, 20),
+            DocumentCommit::Invalid
+        ));
     }
 
     #[test]
@@ -357,7 +386,7 @@ mod tests {
             authority.page_begin(&first.platform_url, 60),
             PageBegin::Attest { .. }
         ));
-        let committed = authority.document_commit(&first.platform_url, 60).unwrap();
+        let committed = committed(authority.document_commit(&first.platform_url, 60));
         let generation = DocumentGeneration::new(4);
         assert!(authority.bind_generation(committed.key, generation));
         let mut delivered = false;
@@ -374,6 +403,35 @@ mod tests {
     }
 
     #[test]
+    fn repeated_visible_commit_detects_same_url_bfcache_without_new_callbacks() {
+        let authority = HarmonyDocumentAuthority::default();
+        let load = authority.arm(intent(12), "lingxia://settings", "native-14");
+        assert!(matches!(
+            authority.page_begin(&load.platform_url, 70),
+            PageBegin::Attest { .. }
+        ));
+        let first = committed(authority.document_commit(&load.platform_url, 70));
+        let generation = DocumentGeneration::new(5);
+        assert!(authority.bind_generation(first.key, generation));
+        assert!(authority.page_end(&load.platform_url, 70).is_some());
+
+        // ArkWeb exposes a new page-visible callback but no new begin/commit
+        // identity for a history/BFCache restoration.
+        assert!(matches!(
+            authority.document_commit(&load.platform_url, 70),
+            DocumentCommit::Restored { ref public_url }
+                if public_url == "lingxia://settings"
+        ));
+        assert!(!authority.with_current_generation(generation, &mut || {
+            panic!("restored document must lose outbound authority")
+        }));
+        assert!(matches!(
+            authority.document_commit(&load.platform_url, 70),
+            DocumentCommit::Invalid
+        ));
+    }
+
+    #[test]
     fn external_or_second_begin_revokes_trusted_correlation() {
         let authority = HarmonyDocumentAuthority::default();
         let armed = authority.arm(intent(6), "lingxia://history", "native-10");
@@ -381,7 +439,10 @@ mod tests {
             authority.page_begin("https://example.test", 30),
             PageBegin::Untrusted { revoked: Some(value), .. } if value == intent(6)
         ));
-        assert!(authority.document_commit(&armed.platform_url, 31).is_none());
+        assert!(matches!(
+            authority.document_commit(&armed.platform_url, 31),
+            DocumentCommit::Invalid
+        ));
 
         let armed = authority.arm(intent(7), "lingxia://history", "native-10");
         assert!(matches!(
@@ -403,7 +464,10 @@ mod tests {
             PageBegin::Attest { .. }
         ));
         assert!(authority.invalidate() == Some(intent(8)));
-        assert!(authority.document_commit(&armed.platform_url, 40).is_none());
+        assert!(matches!(
+            authority.document_commit(&armed.platform_url, 40),
+            DocumentCommit::Invalid
+        ));
         assert_eq!(
             authority.public_url(&armed.platform_url),
             armed.platform_url
