@@ -3082,7 +3082,6 @@ fn resolved_sidebar_actions_for_placement(
             item.placement == placement
                 && crate::static_settings::WindowsStaticSettingsSource::accepts_runtime_action(
                     &item.id,
-                    &item.label,
                 )
         })
         .collect()
