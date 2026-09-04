@@ -1851,6 +1851,16 @@ impl WebViewController for WebView {
         self.inner.post_message(message)
     }
 
+    fn post_message_to_document(
+        &self,
+        expected_generation: crate::DocumentGeneration,
+        gate: Arc<dyn crate::DocumentOutboundGate>,
+        message: &str,
+    ) -> Result<(), WebViewError> {
+        self.inner
+            .post_message_to_document(expected_generation, gate, message)
+    }
+
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
         self.inner.clear_browsing_data()
     }

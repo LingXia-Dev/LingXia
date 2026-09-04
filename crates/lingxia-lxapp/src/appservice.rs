@@ -175,7 +175,9 @@ mod no_js_runtime {
 
             match message {
                 // Keep bridge handshake/state plumbing alive for native-only pages.
-                crate::bridge::AppServiceCommand::Ready
+                crate::bridge::AppServiceCommand::BeginSessionWork { .. }
+                | crate::bridge::AppServiceCommand::CancelSessionWork { .. }
+                | crate::bridge::AppServiceCommand::Ready { .. }
                 | crate::bridge::AppServiceCommand::StateSnapshot { .. }
                 | crate::bridge::AppServiceCommand::StateAck { .. } => Ok(()),
                 // Real AppService traffic is unavailable in native-only mode.

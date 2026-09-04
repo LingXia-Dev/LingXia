@@ -112,6 +112,15 @@ pub enum DocumentBinding {
     Bound(DocumentGeneration),
 }
 
+/// A document-session authority check for one outbound native message.
+///
+/// Implementations must invoke `action` only while the document session is
+/// still active. The closure makes it possible for a registry-backed gate to
+/// keep its lock for the check and the native post as one operation.
+pub trait DocumentOutboundGate: Send + Sync {
+    fn with_active(&self, action: &mut dyn FnMut()) -> bool;
+}
+
 /// Platform proof of the emitting frame.
 ///
 /// Authorization-sensitive consumers must accept only [`Self::TopLevel`].
@@ -647,6 +656,22 @@ pub trait WebViewController: Send + Sync {
 
     /// Post a message to the WebView
     fn post_message(&self, message: &str) -> Result<(), WebViewError>;
+
+    /// Post a message only if an exact committed document and its session gate
+    /// are still current.
+    ///
+    /// This is intentionally unsupported unless a platform can perform the
+    /// final identity check at its actual JavaScript execution point.
+    fn post_message_to_document(
+        &self,
+        _expected_generation: DocumentGeneration,
+        _gate: Arc<dyn DocumentOutboundGate>,
+        _message: &str,
+    ) -> Result<(), WebViewError> {
+        Err(WebViewError::Unsupported(
+            "document-bound message posting".to_string(),
+        ))
+    }
 
     /// Clear browsing data from the WebView
     fn clear_browsing_data(&self) -> Result<(), WebViewError>;

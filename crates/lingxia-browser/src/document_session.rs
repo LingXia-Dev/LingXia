@@ -5,7 +5,8 @@
 
 use crate::internal_pages::InternalPageTarget;
 use lingxia_webview::{
-    DocumentGeneration, NativeWebViewId, NavigationId, TrustedDocumentAdmission, TrustedLoadIntent,
+    DocumentGeneration, DocumentOutboundGate, NativeWebViewId, NavigationId,
+    TrustedDocumentAdmission, TrustedLoadIntent,
 };
 use lxapp::{
     ControlDocumentBootstrap, ControlDocumentSessionMaterial, issue_control_document_bootstrap,
@@ -13,22 +14,37 @@ use lxapp::{
 use ring::rand::SystemRandom;
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
+
+type BrowserSessionRegistry = DocumentSessionRegistry<
+    NativeWebViewId,
+    TrustedLoadIntent,
+    NavigationId,
+    DocumentGeneration,
+    InternalPageTarget,
+    ControlDocumentSessionMaterial,
+>;
+type SharedBrowserSessionRegistry = Arc<Mutex<BrowserSessionRegistry>>;
+type WeakBrowserSessionRegistry = Weak<Mutex<BrowserSessionRegistry>>;
 
 /// Read-only proof that one browser control document completed V3 hello.
 /// It intentionally has no secret or route-authority field.
 #[allow(dead_code)] // Future V3 bridge admission consumes this lease in Commit B.
-pub(crate) struct ActiveControlDocumentLease {
+pub(crate) struct ActiveDocumentLease {
+    registry: WeakBrowserSessionRegistry,
     native_view: NativeWebViewId,
     tab_session_id: u64,
     create_token: u64,
     target: InternalPageTarget,
+    intent: TrustedLoadIntent,
     navigation_id: NavigationId,
     generation: DocumentGeneration,
+    public_session_id: String,
+    lease_token: u64,
 }
 
 #[allow(dead_code)] // Kept opaque until the future bridge consumer is wired.
-impl ActiveControlDocumentLease {
+impl ActiveDocumentLease {
     pub(crate) const fn native_view(&self) -> NativeWebViewId {
         self.native_view
     }
@@ -90,25 +106,30 @@ pub(crate) enum DocumentSessionState<Intent, Navigation, Generation, Target, Mat
         target: Target,
         // Commit A preserves the exact core-issued intent for the later V3
         // frame admission step, even though no production consumer reads it.
-        #[allow(dead_code)]
         intent: Intent,
         navigation_id: Navigation,
         generation: Generation,
         material: Material,
+        public_session_id: String,
+        lease_token: u64,
     },
 }
 
-struct ActiveSessionLease<Target, Navigation, Generation> {
+struct ActiveSessionLease<Intent, Navigation, Generation, Target> {
     tab_session_id: u64,
     create_token: u64,
     target: Target,
     navigation_id: Navigation,
     generation: Generation,
+    intent: Intent,
+    public_session_id: String,
+    lease_token: u64,
 }
 
 struct DocumentSessionRegistry<NativeView, Intent, Navigation, Generation, Target, Material> {
     sessions:
         HashMap<NativeView, DocumentSessionState<Intent, Navigation, Generation, Target, Material>>,
+    next_lease_token: u64,
 }
 
 impl<NativeView, Intent, Navigation, Generation, Target, Material> Default
@@ -117,6 +138,7 @@ impl<NativeView, Intent, Navigation, Generation, Target, Material> Default
     fn default() -> Self {
         Self {
             sessions: HashMap::new(),
+            next_lease_token: 1,
         }
     }
 }
@@ -264,7 +286,11 @@ where
         native_view: NativeView,
         session_id: &str,
         secret: &str,
-    ) -> Option<ActiveSessionLease<Target, Navigation, Generation>> {
+    ) -> Option<ActiveSessionLease<Intent, Navigation, Generation, Target>> {
+        // A skipped token after an invalid hello is harmless; reusing one is
+        // not. Allocate before borrowing the state entry.
+        let issued_lease_token = self.next_lease_token;
+        self.next_lease_token = self.next_lease_token.checked_add(1)?;
         let state = self.sessions.get_mut(&native_view)?;
         let previous = std::mem::replace(state, DocumentSessionState::Revoked);
         let DocumentSessionState::BootstrapPending {
@@ -296,8 +322,11 @@ where
             tab_session_id,
             create_token,
             target: target.clone(),
+            intent,
             navigation_id,
             generation,
+            public_session_id: session_id.to_owned(),
+            lease_token: issued_lease_token,
         };
         *state = DocumentSessionState::Active {
             tab_session_id,
@@ -307,6 +336,8 @@ where
             navigation_id,
             generation,
             material,
+            public_session_id: session_id.to_owned(),
+            lease_token: issued_lease_token,
         };
         Some(lease)
     }
@@ -316,14 +347,17 @@ where
         native_view: NativeView,
         session_id: &str,
         secret: &str,
-    ) -> Option<ActiveSessionLease<Target, Navigation, Generation>> {
+    ) -> Option<ActiveSessionLease<Intent, Navigation, Generation, Target>> {
         let DocumentSessionState::Active {
             tab_session_id,
             create_token,
             target,
+            intent,
             navigation_id,
             generation,
             material,
+            public_session_id,
+            lease_token,
             ..
         } = self.sessions.get(&native_view)?
         else {
@@ -335,9 +369,46 @@ where
                 tab_session_id: *tab_session_id,
                 create_token: *create_token,
                 target: target.clone(),
+                intent: *intent,
                 navigation_id: *navigation_id,
                 generation: *generation,
+                public_session_id: public_session_id.clone(),
+                lease_token: *lease_token,
             })
+    }
+
+    #[allow(dead_code)] // Activated by the document-bound bridge wiring in Commit D.
+    fn with_active_lease(
+        &self,
+        native_view: NativeView,
+        lease: &ActiveSessionLease<Intent, Navigation, Generation, Target>,
+        action: &mut dyn FnMut(),
+    ) -> bool {
+        let Some(DocumentSessionState::Active {
+            tab_session_id,
+            create_token,
+            intent,
+            navigation_id,
+            generation,
+            public_session_id,
+            lease_token,
+            ..
+        }) = self.sessions.get(&native_view)
+        else {
+            return false;
+        };
+        if *tab_session_id != lease.tab_session_id
+            || *create_token != lease.create_token
+            || *intent != lease.intent
+            || *navigation_id != lease.navigation_id
+            || *generation != lease.generation
+            || *public_session_id != lease.public_session_id
+            || *lease_token != lease.lease_token
+        {
+            return false;
+        }
+        action();
+        true
     }
 
     #[cfg(test)]
@@ -352,22 +423,13 @@ where
 /// Browser wrapper over opaque core identities. This commit records native
 /// evidence only; bridge and route authorization remain disabled.
 pub(crate) struct BrowserDocumentSessions {
-    inner: Mutex<
-        DocumentSessionRegistry<
-            NativeWebViewId,
-            TrustedLoadIntent,
-            NavigationId,
-            DocumentGeneration,
-            InternalPageTarget,
-            ControlDocumentSessionMaterial,
-        >,
-    >,
+    inner: SharedBrowserSessionRegistry,
 }
 
 impl Default for BrowserDocumentSessions {
     fn default() -> Self {
         Self {
-            inner: Mutex::new(DocumentSessionRegistry::default()),
+            inner: Arc::new(Mutex::new(DocumentSessionRegistry::default())),
         }
     }
 }
@@ -449,19 +511,23 @@ impl BrowserDocumentSessions {
         native_view: NativeWebViewId,
         session_id: &str,
         secret: &str,
-    ) -> Option<ActiveControlDocumentLease> {
+    ) -> Option<ActiveDocumentLease> {
         let lease = self
             .inner
             .lock()
             .ok()?
             .activate_hello(native_view, session_id, secret)?;
-        Some(ActiveControlDocumentLease {
+        Some(ActiveDocumentLease {
+            registry: Arc::downgrade(&self.inner),
             native_view,
             tab_session_id: lease.tab_session_id,
             create_token: lease.create_token,
             target: lease.target,
+            intent: lease.intent,
             navigation_id: lease.navigation_id,
             generation: lease.generation,
+            public_session_id: lease.public_session_id,
+            lease_token: lease.lease_token,
         })
     }
 
@@ -472,20 +538,49 @@ impl BrowserDocumentSessions {
         native_view: NativeWebViewId,
         session_id: &str,
         secret: &str,
-    ) -> Option<ActiveControlDocumentLease> {
+    ) -> Option<ActiveDocumentLease> {
         let lease = self
             .inner
             .lock()
             .ok()?
             .authenticate_frame(native_view, session_id, secret)?;
-        Some(ActiveControlDocumentLease {
+        Some(ActiveDocumentLease {
+            registry: Arc::downgrade(&self.inner),
             native_view,
             tab_session_id: lease.tab_session_id,
             create_token: lease.create_token,
             target: lease.target,
+            intent: lease.intent,
             navigation_id: lease.navigation_id,
             generation: lease.generation,
+            public_session_id: lease.public_session_id,
+            lease_token: lease.lease_token,
         })
+    }
+}
+
+impl DocumentOutboundGate for ActiveDocumentLease {
+    fn with_active(&self, action: &mut dyn FnMut()) -> bool {
+        let Some(registry) = self.registry.upgrade() else {
+            return false;
+        };
+        let Ok(registry) = registry.lock() else {
+            return false;
+        };
+        registry.with_active_lease(
+            self.native_view,
+            &ActiveSessionLease {
+                tab_session_id: self.tab_session_id,
+                create_token: self.create_token,
+                target: self.target.clone(),
+                intent: self.intent,
+                navigation_id: self.navigation_id,
+                generation: self.generation,
+                public_session_id: self.public_session_id.clone(),
+                lease_token: self.lease_token,
+            },
+            action,
+        )
     }
 }
 
@@ -600,5 +695,53 @@ mod tests {
         assert_eq!(sessions.admit(10, 1, 2, 4, 5, 8), None);
         assert!(sessions.navigation_started(11, 6));
         assert_eq!(sessions.admit(11, 1, 2, 6, 7, 1), Some("settings"));
+    }
+
+    #[test]
+    fn active_lease_executes_once_and_revocation_drops_a_queued_post() {
+        let mut sessions = TestRegistry::default();
+        prepare(&mut sessions, 10, 7);
+        assert!(sessions.navigation_started(10, 4));
+        assert!(sessions.admit(10, 1, 2, 4, 5, 7).is_some());
+        let lease = sessions
+            .activate_hello(10, "session-id-012345", "secret")
+            .expect("valid hello activates one lease");
+
+        let mut delivered = 0;
+        assert!(sessions.with_active_lease(10, &lease, &mut || delivered += 1));
+        assert_eq!(delivered, 1);
+
+        // This models a post that was queued for a UI thread, then revoked by
+        // navigation before the UI action enters the registry gate.
+        sessions.force_revoke(10);
+        assert!(!sessions.with_active_lease(10, &lease, &mut || delivered += 1));
+        assert_eq!(delivered, 1);
+    }
+
+    #[test]
+    fn recreated_or_generation_mismatched_record_cannot_use_old_lease() {
+        let mut sessions = TestRegistry::default();
+        prepare(&mut sessions, 10, 7);
+        assert!(sessions.navigation_started(10, 4));
+        assert!(sessions.admit(10, 1, 2, 4, 5, 7).is_some());
+        let old_lease = sessions
+            .activate_hello(10, "session-id-012345", "secret")
+            .expect("valid hello activates one lease");
+
+        // A replacement under the same logical slot gets a new intent and
+        // generation. Neither a tag-style lookup nor a stale lease may cross
+        // that boundary.
+        prepare(&mut sessions, 10, 8);
+        assert!(sessions.navigation_started(10, 6));
+        assert!(sessions.admit(10, 1, 2, 6, 9, 8).is_some());
+        assert!(
+            sessions
+                .activate_hello(10, "session-id-012345", "secret")
+                .is_some()
+        );
+
+        let mut delivered = 0;
+        assert!(!sessions.with_active_lease(10, &old_lease, &mut || delivered += 1));
+        assert_eq!(delivered, 0);
     }
 }

@@ -117,7 +117,7 @@ impl BoundV3Protocol {
         self.inbound.matches(binding)
     }
 
-    fn outbound_binding(&self) -> V3OutboundBinding {
+    pub(crate) fn outbound_binding(&self) -> V3OutboundBinding {
         self.outbound.clone()
     }
 }
@@ -155,13 +155,6 @@ impl BridgeProtocol {
             (self, version),
             (Self::LegacyV2, 2) | (Self::BoundV3(_), V3_PROTOCOL)
         )
-    }
-
-    pub(crate) fn outbound_binding(&self) -> Option<V3OutboundBinding> {
-        match self {
-            Self::LegacyV2 => None,
-            Self::BoundV3(bound) => Some(bound.outbound_binding()),
-        }
     }
 
     pub(crate) fn session_id(&self) -> Option<&str> {
@@ -483,6 +476,21 @@ pub enum IncomingMessage {
 }
 
 impl IncomingMessage {
+    pub(crate) fn version(&self) -> Option<u8> {
+        match self {
+            Self::Hello(message) => Some(message.v),
+            Self::Req(message) => Some(message.v),
+            Self::Res(message) => Some(message.v),
+            Self::Notify(message) => Some(message.v),
+            Self::Cancel(message) => Some(message.v),
+            Self::ChOpen(message) => Some(message.v),
+            Self::ChData(message) => Some(message.v),
+            Self::ChClose(message) => Some(message.v),
+            Self::StateAck(message) => Some(message.v),
+            Self::Unknown(message) => message.v,
+        }
+    }
+
     fn v3_kind(&self) -> Option<V3InboundKind> {
         Some(match self {
             Self::Hello(_) => V3InboundKind::Hello,
