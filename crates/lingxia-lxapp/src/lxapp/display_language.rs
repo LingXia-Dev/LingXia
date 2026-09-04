@@ -389,6 +389,10 @@ fn publish_state(state: &DisplayLanguageState) {
 }
 
 /// Initialize the service from persisted state and the current host locale.
+///
+/// The returned owner belongs to the native Runner session. The host retains
+/// it through graceful teardown; a crash or process exit drops the entire
+/// in-memory service, and a later takeover receives a distinct owner token.
 pub fn initialize_display_language(
     persisted: Option<String>,
     system: &str,
@@ -473,93 +477,6 @@ pub fn add_display_language_state_listener(
 /// Register a listener only for actual effective-tag changes.
 pub fn add_display_language_effective_listener(listener: Box<dyn Fn(LanguageTag) + Send + Sync>) {
     service().add_effective_listener(Arc::from(listener));
-}
-
-/// Legacy closed-catalog preference retained until public consumers migrate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum DisplayLanguage {
-    Auto,
-    EnUs,
-    ZhCn,
-}
-
-impl DisplayLanguage {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Auto => "auto",
-            Self::EnUs => "en-US",
-            Self::ZhCn => "zh-CN",
-        }
-    }
-
-    pub fn override_tag(self) -> Option<&'static str> {
-        match self {
-            Self::Auto => None,
-            Self::EnUs | Self::ZhCn => Some(self.as_str()),
-        }
-    }
-
-    fn into_preference(self) -> DisplayLanguagePreference {
-        self.as_str().parse().expect("legacy language is valid")
-    }
-}
-
-impl fmt::Display for DisplayLanguage {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl FromStr for DisplayLanguage {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value.trim() {
-            "auto" => Ok(Self::Auto),
-            "en-US" => Ok(Self::EnUs),
-            "zh-CN" => Ok(Self::ZhCn),
-            _ => Err("language must be auto, en-US, or zh-CN".to_string()),
-        }
-    }
-}
-
-/// Legacy effective listener retained until adapters migrate.
-pub fn add_display_language_change_listener(listener: Box<dyn Fn() + Send + Sync>) {
-    add_display_language_effective_listener(Box::new(move |_| listener()));
-}
-
-/// Legacy closed-catalog setter retained until adapters migrate.
-pub fn set_display_language(language: DisplayLanguage) -> Result<(), LxAppError> {
-    set_display_language_preference(language.into_preference())
-}
-
-/// Legacy explicit-directory setter retained until adapters migrate.
-pub fn set_display_language_in(
-    app_data_dir: &Path,
-    language: DisplayLanguage,
-) -> Result<(), LxAppError> {
-    set_display_language_preference_in(app_data_dir, language.into_preference())
-}
-
-/// Legacy non-persistent override retained until bootstrap migration completes.
-pub fn apply_display_language_override(language: Option<String>) {
-    static LEGACY_OWNER: Mutex<Option<DisplayLanguageSessionOwner>> = Mutex::new(None);
-    let mut owner = LEGACY_OWNER
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    if let Some(active) = owner.take() {
-        clear_display_language_session_override(active);
-    }
-    if let Some(language) = language.filter(|value| !value.trim().is_empty()) {
-        match language.parse::<DisplayLanguagePreference>() {
-            Ok(preference) => {
-                *owner = Some(install_display_language_session_override(preference));
-            }
-            Err(error) => {
-                crate::warn!("Ignoring invalid display-language override: {error}");
-            }
-        }
-    }
 }
 
 fn publish_effective(language: &LanguageTag) {
@@ -677,6 +594,33 @@ mod tests {
         assert_eq!(states.load(Ordering::Relaxed), 1);
         assert_eq!(effective.load(Ordering::Relaxed), 1);
         assert_eq!(service.state().effective.as_str(), "zh-CN");
+    }
+
+    #[test]
+    fn explicit_preference_ignores_system_refresh() {
+        let service = service_with("ja-JP", "en-US");
+        let (states, effective) = counts(&service);
+        deliver(service.refresh_system(tag("zh-CN")));
+        assert_eq!(service.state().effective.as_str(), "ja-JP");
+        assert_eq!(states.load(Ordering::Relaxed), 0);
+        assert_eq!(effective.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn repeated_preference_is_persisted_without_duplicate_observer_events() {
+        let service = service_with("ja-JP", "en-US");
+        let (states, effective) = counts(&service);
+        let mut persisted = false;
+        let transition = service
+            .set_preference_persisted("JA-jp".parse().unwrap(), |_| {
+                persisted = true;
+                Ok(())
+            })
+            .unwrap();
+        deliver(transition);
+        assert!(persisted);
+        assert_eq!(states.load(Ordering::Relaxed), 0);
+        assert_eq!(effective.load(Ordering::Relaxed), 0);
     }
 
     #[test]

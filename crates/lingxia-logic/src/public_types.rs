@@ -314,8 +314,16 @@ rong::js_api! {
         type BinaryFileData = r###"ArrayBuffer | ArrayBufferView"###;
 
         type AppearancePreference = r###"'auto' | 'light' | 'dark'"###;
-        /// Host display-language setting. `"auto"` follows the system locale.
-        type DisplayLanguageSetting = r###"'auto' | 'en-US' | 'zh-CN'"###;
+        /// Canonical BCP-47 language tag.
+        type LanguageTag = r###"string"###;
+        /// Host display-language preference. `"auto"` follows the system locale.
+        type DisplayLanguagePreference = r###"'auto' | LanguageTag"###;
+        type DisplayLanguageEffectiveSource = r###"'system' | 'preference' | 'sessionOverride'"###;
+        type DisplayLanguageState = r###"{
+    preference: DisplayLanguagePreference;
+    effective: LanguageTag;
+    effectiveSource: DisplayLanguageEffectiveSource;
+}"###;
         type ResolvedAppearance = r###"'light' | 'dark'"###;
         type VisibilityPreference = r###"'auto' | 'hidden'"###;
         type TabBarVisibilityPreference = r###"'auto' | 'visible' | 'hidden'"###;

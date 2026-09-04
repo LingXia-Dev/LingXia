@@ -73,6 +73,7 @@ public final class LxAppRuntime {
                 message: initResult.error.toString()
             )
         }
+        LxAppAppearanceRegistry.observeHostLocale()
 
         let rawLxAppId = initResult.home_app_id.toString()
         let lxAppId = rawLxAppId.isEmpty ? nil : rawLxAppId

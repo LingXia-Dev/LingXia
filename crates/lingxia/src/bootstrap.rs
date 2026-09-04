@@ -1,4 +1,5 @@
 use rong_rt::{InstallGlobalExecutorError, RongExecutor};
+use std::sync::{Mutex, OnceLock};
 
 fn default_runtime_threads() -> usize {
     std::thread::available_parallelism()
@@ -206,6 +207,28 @@ fn panel_position_from_edge(edge: &str) -> Option<lingxia_app_context::PanelPosi
 
 const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
 
+fn runner_display_language_owner() -> &'static Mutex<Option<lxapp::DisplayLanguageSessionOwner>> {
+    static OWNER: OnceLock<Mutex<Option<lxapp::DisplayLanguageSessionOwner>>> = OnceLock::new();
+    OWNER.get_or_init(|| Mutex::new(None))
+}
+
+fn replace_runner_display_language_owner(owner: Option<lxapp::DisplayLanguageSessionOwner>) {
+    let mut active = runner_display_language_owner()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let previous = std::mem::replace(&mut *active, owner);
+    drop(active);
+    if let Some(previous) = previous {
+        // Initialization may already have replaced it. Owner matching makes
+        // this cleanup harmless after takeover and decisive during teardown.
+        lxapp::clear_display_language_session_override(previous);
+    }
+}
+
+pub(crate) fn teardown_runner_display_language_session() {
+    replace_runner_display_language_owner(None);
+}
+
 fn seed_display_language(app_data_dir: &std::path::Path, system: &str) {
     let saved = match lingxia_service::settings::display_language(app_data_dir) {
         Ok(saved) => saved,
@@ -226,12 +249,20 @@ fn seed_display_language(app_data_dir: &std::path::Path, system: &str) {
                 }
             },
         );
-    if let Err(error) = lxapp::initialize_display_language(saved, system, runner_override) {
-        log::warn!("Failed to initialize display language: {error}; following system language");
-        if let Err(fallback_error) = lxapp::initialize_display_language(None, system, None) {
-            log::warn!("Failed to initialize system display language: {fallback_error}");
+    let owner = match lxapp::initialize_display_language(saved, system, runner_override) {
+        Ok(owner) => owner,
+        Err(error) => {
+            log::warn!("Failed to initialize display language: {error}; following system language");
+            match lxapp::initialize_display_language(None, system, None) {
+                Ok(owner) => owner,
+                Err(fallback_error) => {
+                    log::warn!("Failed to initialize system display language: {fallback_error}");
+                    None
+                }
+            }
         }
-    }
+    };
+    replace_runner_display_language_owner(owner);
 }
 
 /// Common initialization after Platform is created.
@@ -270,6 +301,7 @@ pub(crate) fn init_with_platform(
     crate::devtool::prepare_bundle_sources(&runtime);
     crate::host_addon::run_install_logic_extensions();
     crate::host_addon::run_install_host_apis();
+    crate::display_language_host::register();
     crate::browser::register_bundled_app();
     crate::browser::register_builtin_runtime();
     crate::applink::install_handler();

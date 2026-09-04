@@ -53,7 +53,6 @@ pub use lxapp::LxApp;
 pub use lxapp::host;
 pub use panel::{open_panel_lxapp, panel_item_for_id, panels_config_json};
 use serde::Deserialize;
-pub use settings::set_display_language_change_listener;
 use std::collections::BTreeMap;
 use std::io::Read;
 

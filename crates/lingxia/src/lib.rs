@@ -91,6 +91,7 @@ mod applink;
 pub mod assets;
 mod bootstrap;
 mod capabilities;
+mod display_language_host;
 pub mod splash;
 /// LxApp devtool helpers for host-side inspection and automation.
 #[cfg(feature = "devtool")]

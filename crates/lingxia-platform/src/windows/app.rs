@@ -322,7 +322,7 @@ impl Default for Platform {
                 data_dir: base.join("data"),
                 cache_dir: base.join("cache"),
                 asset_dir: default_asset_dir(),
-                locale: default_locale(),
+                locale: current_locale(),
                 app_identifier: DEFAULT_APP_IDENTIFIER.to_string(),
                 product_name: "LingXia".to_string(),
             }
@@ -347,7 +347,7 @@ impl Platform {
             data_dir: root.join("data"),
             cache_dir: root.join("cache"),
             asset_dir,
-            locale: default_locale(),
+            locale: current_locale(),
             app_identifier,
             product_name,
         })
@@ -787,7 +787,7 @@ fn default_asset_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("assets"))
 }
 
-fn default_locale() -> String {
+pub fn current_locale() -> String {
     use windows::Win32::Globalization::GetUserDefaultLocaleName;
 
     // LOCALE_NAME_MAX_LENGTH (85); the pinned windows-rs rev does not export it.

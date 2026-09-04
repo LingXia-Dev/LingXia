@@ -158,6 +158,13 @@ pub fn on_host_appearance_changed(dark: bool) {
     lxapp::refresh_auto_appearances();
 }
 
+#[napi]
+pub fn on_host_locale_changed(locale: String) {
+    if let Err(error) = lxapp::refresh_display_language_system(&locale) {
+        log::warn!("Ignoring invalid HarmonyOS host locale '{locale}': {error}");
+    }
+}
+
 /// Return the effective display language selected by the runtime.
 #[napi]
 pub fn get_display_language() -> String {

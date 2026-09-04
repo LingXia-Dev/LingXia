@@ -204,6 +204,9 @@ mod bridge {
         #[swift_bridge(swift_name = "getDisplayLanguage")]
         fn get_display_language() -> String;
 
+        #[swift_bridge(swift_name = "onHostLocaleChanged")]
+        fn on_host_locale_changed(locale: &str);
+
         #[swift_bridge(swift_name = "splashMarkLaunchFace")]
         fn splash_mark_launch_face(dark: bool);
 
@@ -811,7 +814,7 @@ fn product_run_cli_if_invoked(data_dir: &str) -> i32 {
 pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::LingxiaInitResult {
     crate::logging::init();
     install_browser_native_input_host();
-    lxapp::add_display_language_change_listener(Box::new(|| {
+    lxapp::add_display_language_effective_listener(Box::new(|_| {
         self::bridge::display_language_changed();
     }));
 
@@ -854,6 +857,13 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::Li
 /// Return the effective display language selected by the runtime.
 pub fn get_display_language() -> String {
     crate::app::display_language()
+}
+
+/// Refresh the system input after Foundation reports a locale change.
+pub fn on_host_locale_changed(locale: &str) {
+    if let Err(error) = lxapp::refresh_display_language_system(locale) {
+        log::warn!("Ignoring invalid Apple host locale '{locale}': {error}");
+    }
 }
 
 /// The launch face is on screen, in this appearance — the one the OS frame

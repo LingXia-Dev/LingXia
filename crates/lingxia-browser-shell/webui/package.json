@@ -14,6 +14,7 @@
     "lxapp.json"
   ],
   "scripts": {
+    "test": "node --test tests/i18n.test.mjs",
     "build": "cargo run -p lingxia-cli -- build --release",
     "prepublishOnly": "npm run build"
   },

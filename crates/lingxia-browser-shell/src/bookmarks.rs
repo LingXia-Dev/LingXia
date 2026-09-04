@@ -738,9 +738,8 @@ struct ExportResult {
 }
 
 /// File-picker labels follow the product display language:
-/// `lxapp::display_language` resolves the user override behind
-/// `settings.getLanguage`, else the system locale — exactly like the webui
-/// i18n resolution.
+/// `lxapp::display_language` resolves the shared display-language service —
+/// exactly like the webui i18n resolution.
 fn display_locale_is_chinese() -> bool {
     is_chinese_locale(&lxapp::display_language())
 }

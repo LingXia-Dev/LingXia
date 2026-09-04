@@ -9127,6 +9127,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             | WindowsAndMessaging::WM_SYSCOLORCHANGE
             | WindowsAndMessaging::WM_THEMECHANGED
             | WM_DWMCOLORIZATIONCOLORCHANGED => {
+                let locale = lingxia_platform::windows::current_locale();
+                if let Err(error) = lxapp::refresh_display_language_system(&locale) {
+                    log::warn!("Ignoring invalid Windows host locale '{locale}': {error}");
+                }
                 // refresh_system_theme() reports the change exactly once per
                 // process, and the broadcast may reach a hidden parked parent
                 // window first — so the winner refreshes EVERY registered

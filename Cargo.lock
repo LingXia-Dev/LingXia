@@ -3269,6 +3269,7 @@ dependencies = [
  "indicatif",
  "json5",
  "jsonschema",
+ "language-tags",
  "libc",
  "lingxia-app-context",
  "lingxia-control-protocol",
