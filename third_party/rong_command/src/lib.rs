@@ -16,7 +16,7 @@ use std::time::Duration;
 ///
 /// The JavaScript namespace cannot install or replace this object. Embedders
 /// should bind it to the exact live session that owns process execution.
-pub trait ProcessAuthority: Send + Sync + 'static {
+trait ProcessAuthority: Send + Sync + 'static {
     fn authorize(&self) -> Result<(), String>;
 }
 
@@ -31,10 +31,17 @@ pub(crate) fn process_authority(ctx: &JSContext) -> Option<Arc<dyn ProcessAuthor
 }
 
 pub(crate) fn authorize_process(ctx: &JSContext) -> JSResult<()> {
-    if let Some(authority) = process_authority(ctx) {
-        authorize_process_with(authority.as_ref())?;
-    }
-    Ok(())
+    authorize_installed_process(process_authority(ctx))
+}
+
+fn authorize_installed_process(authority: Option<Arc<dyn ProcessAuthority>>) -> JSResult<()> {
+    let authority = authority.ok_or_else(|| {
+        HostError::new(
+            rong::error::E_PERMISSION_DENIED,
+            "process execution requires a sealed live session authority",
+        )
+    })?;
+    authorize_process_with(authority.as_ref())
 }
 
 pub(crate) fn authorize_process_with(authority: &dyn ProcessAuthority) -> JSResult<()> {
@@ -71,7 +78,7 @@ fn create_string_array(
     Ok(array.into_js_value(ctx))
 }
 
-pub fn init(ctx: &JSContext) -> JSResult<()> {
+fn init(ctx: &JSContext) -> JSResult<()> {
     let rong = ctx.host_namespace();
     rong.set("env", create_env_object(ctx)?)?;
     rong.set("argv", create_string_array(ctx, env::args())?)?;
@@ -92,7 +99,7 @@ pub fn init(ctx: &JSContext) -> JSResult<()> {
 ///
 /// A second installation is rejected so later native modules cannot silently
 /// replace the session authority selected by the embedder.
-pub fn init_with_authority(ctx: &JSContext, authority: Arc<dyn ProcessAuthority>) -> JSResult<()> {
+fn init_with_authority(ctx: &JSContext, authority: Arc<dyn ProcessAuthority>) -> JSResult<()> {
     if ctx.get_service::<ProcessAuthorityService>().is_some() {
         return Err(HostError::new(
             rong::error::E_ALREADY_EXISTS,
@@ -105,6 +112,25 @@ pub fn init_with_authority(ctx: &JSContext, authority: Arc<dyn ProcessAuthority>
         .map_err(|message| HostError::new(rong::error::E_PERMISSION_DENIED, message))?;
     ctx.set_service(ProcessAuthorityService(authority));
     init(ctx)
+}
+
+struct CallbackAuthority(Arc<dyn Fn() -> Result<(), String> + Send + Sync + 'static>);
+
+impl ProcessAuthority for CallbackAuthority {
+    fn authorize(&self) -> Result<(), String> {
+        (self.0)()
+    }
+}
+
+/// Private Rust ABI used only by lingxia-lxapp's session bootstrap. There is
+/// no safe downstream trait or installer that can substitute an always-allow
+/// authority.
+#[unsafe(export_name = "lingxia_rong_command_init_with_authority_v1")]
+pub(crate) extern "Rust" fn init_from_lxapp(
+    ctx: &JSContext,
+    authorize: Arc<dyn Fn() -> Result<(), String> + Send + Sync + 'static>,
+) -> JSResult<()> {
+    init_with_authority(ctx, Arc::new(CallbackAuthority(authorize)))
 }
 
 #[cfg(test)]
@@ -132,5 +158,28 @@ mod tests {
             .await
             .expect("revocation waiter must finish")
             .expect("waiter task");
+    }
+
+    #[test]
+    fn allow_and_stale_authorities_are_checked_on_every_operation() {
+        let authority = RevocableAuthority(AtomicBool::new(true));
+        assert!(authorize_process_with(&authority).is_ok());
+        authority.0.store(false, Ordering::SeqCst);
+        let error = authorize_process_with(&authority).expect_err("stale authority must fail");
+        assert!(error.to_string().contains("revoked"));
+    }
+
+    #[test]
+    fn missing_authority_fails_closed() {
+        let error = authorize_installed_process(None).expect_err("missing authority must fail");
+        assert!(error.to_string().contains("sealed live session authority"));
+    }
+
+    #[test]
+    fn package_exposes_no_safe_authority_installer() {
+        let source = include_str!("lib.rs");
+        assert!(!source.contains(concat!("pub trait ", "ProcessAuthority")));
+        assert!(!source.contains(concat!("pub fn ", "init(ctx")));
+        assert!(!source.contains(concat!("pub fn ", "init_with_authority")));
     }
 }
