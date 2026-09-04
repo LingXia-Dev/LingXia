@@ -861,6 +861,30 @@ pub(crate) fn submit(webtag: &WebTag, native_view_id: NativeWebViewId, signal: N
     }
 }
 
+/// Submit an Android-style keyed commit and return only the generation minted
+/// for that exact callback key. Reading `current_document_binding` afterwards
+/// would let a stale callback accidentally claim a successor generation.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) fn submit_document_commit(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+    key: NativeKey,
+) -> Option<DocumentGeneration> {
+    let normalizer = normalizer_for(webtag)?;
+    if normalizer.native_view_id != native_view_id {
+        return None;
+    }
+    let mut state = normalizer.state.lock().unwrap_or_else(|e| e.into_inner());
+    let outputs = document_committed_outputs(webtag, native_view_id, &mut state, Some(key));
+    let generation = outputs.iter().find_map(|output| match output {
+        Output::DocumentCommitted { generation, .. } => Some(*generation),
+        _ => None,
+    });
+    state.queue.extend(outputs);
+    normalizer.drain_locked(state);
+    generation
+}
+
 /// Snapshot the currently committed document for a concrete native WebView.
 /// The only mutation path is the normalizer's accepted-start/commit sequence;
 /// adapters cannot synthesize a bound generation.
