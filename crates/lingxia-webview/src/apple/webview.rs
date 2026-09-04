@@ -76,6 +76,13 @@ fn navigation_type_has_user_gesture(navigation_type: WKNavigationType) -> bool {
     )
 }
 
+fn invalidate_terminated_content_process(webtag: &WebTag, native_view_id: NativeWebViewId) {
+    // WKWebView survives a renderer termination, but its committed document
+    // does not. Clear the generation before notifying consumers so no stale
+    // inbound context or queued outbound gate can cross into the replacement.
+    normalizer::submit(webtag, native_view_id, NativeSignal::DocumentInvalidated);
+}
+
 #[link(name = "Network", kind = "framework")]
 unsafe extern "C" {
     fn nw_endpoint_create_host(hostname: *const c_char, port: *const c_char) -> *mut AnyObject;
@@ -1019,6 +1026,7 @@ define_class!(
         fn web_content_process_did_terminate(&self, _webview: *mut AnyObject) {
             let webtag = &self.ivars().webtag;
             let native_view_id = self.ivars().native_view_id;
+            invalidate_terminated_content_process(webtag, native_view_id);
             if let Some(delegate) = current_native_callback_webview(webtag, native_view_id)
                 .and_then(|webview| webview.get_delegate())
             {
@@ -4665,5 +4673,37 @@ mod tests {
         assert!(script.contains("window.__LingXiaRecvMessage"));
         assert!(script.contains(&format!("fn({})", serde_json::to_string(message).unwrap())));
         assert!(!script.contains("fn({\"kind\""));
+    }
+
+    #[test]
+    fn apple_renderer_termination_clears_the_committed_generation() {
+        let webtag = WebTag::new("com.example.browser", "/tabs/crash", Some(7));
+        let native_view_id = NativeWebViewId::new(9_301);
+        normalizer::begin(&webtag, native_view_id);
+        normalizer::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(71),
+                url: "lingxia://settings".into(),
+            },
+        );
+        normalizer::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(71) },
+        );
+        assert!(matches!(
+            normalizer::current_document_binding(native_view_id),
+            crate::DocumentBinding::Bound(_)
+        ));
+
+        invalidate_terminated_content_process(&webtag, native_view_id);
+
+        assert_eq!(
+            normalizer::current_document_binding(native_view_id),
+            crate::DocumentBinding::Unbound
+        );
+        normalizer::destroy(&webtag);
     }
 }
