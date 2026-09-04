@@ -181,6 +181,7 @@ pub struct NativeDevtoolsAuthority<'a> {
     app_id: &'a str,
     session_id: u64,
     session_class: AppSessionClass,
+    requested: HashSet<AppResourceGrant>,
     grants: &'a mut HashSet<AppResourceGrant>,
 }
 
@@ -197,9 +198,26 @@ impl NativeDevtoolsAuthority<'_> {
         self.session_class
     }
 
-    pub fn grant_automation(&mut self) {
-        self.grants.insert(AppResourceGrant::Automation);
-        self.grants.insert(AppResourceGrant::AutomationHost);
+    pub fn requested(&self, grant: AppResourceGrant) -> bool {
+        self.requested.contains(&grant)
+    }
+
+    pub fn grant(&mut self, grant: AppResourceGrant) -> bool {
+        if !matches!(
+            grant,
+            AppResourceGrant::Automation | AppResourceGrant::AutomationHost
+        ) || !self.requested(grant)
+        {
+            return false;
+        }
+        self.grants.insert(grant);
+        true
+    }
+
+    pub fn grant_automation(&mut self) -> bool {
+        let automation = self.grant(AppResourceGrant::Automation);
+        let host = self.grant(AppResourceGrant::AutomationHost);
+        automation | host
     }
 
     #[doc(hidden)]
@@ -208,12 +226,14 @@ impl NativeDevtoolsAuthority<'_> {
         app_id: &'a str,
         session_id: u64,
         session_class: AppSessionClass,
+        requested: impl IntoIterator<Item = AppResourceGrant>,
         grants: &'a mut HashSet<AppResourceGrant>,
     ) -> NativeDevtoolsAuthority<'a> {
         NativeDevtoolsAuthority {
             app_id,
             session_id,
             session_class,
+            requested: requested.into_iter().collect(),
             grants,
         }
     }
@@ -231,19 +251,29 @@ static DEVTOOLS_RESOURCE_GRANT_RESOLVER: OnceLock<Arc<DevtoolsResourceGrantResol
 /// Install the native host's per-session grant resolver before lxapp runtime
 /// initialization. The resolver and each resulting grant set are sealed once.
 #[doc(hidden)]
-pub fn __install_app_resource_grant_resolver(resolver: Arc<AppResourceGrantResolver>) -> bool {
+pub fn __install_app_resource_grant_resolver(
+    native_authority: &crate::NativeControlPlaneAuthority,
+    resolver: Arc<AppResourceGrantResolver>,
+) -> bool {
+    if !native_authority.validate() {
+        return false;
+    }
     APP_RESOURCE_GRANT_RESOLVER.set(resolver).is_ok()
 }
 
 #[doc(hidden)]
 pub fn __install_devtools_resource_grant_resolver(
+    native_authority: &crate::NativeControlPlaneAuthority,
     resolver: Arc<DevtoolsResourceGrantResolver>,
 ) -> bool {
+    if !native_authority.validate() {
+        return false;
+    }
     DEVTOOLS_RESOURCE_GRANT_RESOLVER.set(resolver).is_ok()
 }
 
 pub(crate) fn seal_app_resource_grants(app: &Arc<LxApp>) {
-    let requested = [
+    let requested: HashSet<_> = [
         AppResourceGrant::Process,
         AppResourceGrant::Downloads,
         AppResourceGrant::Automation,
@@ -262,7 +292,7 @@ pub(crate) fn seal_app_resource_grants(app: &Arc<LxApp>) {
             app_id: &app.appid,
             session_id: app.session_id(),
             session_class: app.app_session_class(),
-            requested,
+            requested: requested.clone(),
             grants: &mut grants,
         };
         resolver(app, &mut authority);
@@ -272,6 +302,7 @@ pub(crate) fn seal_app_resource_grants(app: &Arc<LxApp>) {
             app_id: &app.appid,
             session_id: app.session_id(),
             session_class: app.app_session_class(),
+            requested,
             grants: &mut grants,
         };
         resolver(app, &mut authority);
