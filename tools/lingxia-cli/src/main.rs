@@ -3,14 +3,22 @@ use clap::{Parser, Subcommand, error::ErrorKind};
 
 fn parse_display_language(value: &str) -> std::result::Result<String, String> {
     let value = value.trim();
-    if value == "auto" {
-        return Ok(value.to_string());
+    if value.eq_ignore_ascii_case("auto") {
+        return Ok("auto".to_string());
     }
-    language_tags::LanguageTag::parse(value)
-        .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))?
+    let parsed = language_tags::LanguageTag::parse(value)
+        .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))?;
+    parsed
+        .validate()
+        .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))?;
+    let canonical = parsed
         .canonicalize()
-        .map(|tag| tag.into_string())
-        .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))
+        .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))?
+        .into_string();
+    if canonical.eq_ignore_ascii_case("auto") {
+        return Err("'auto' is reserved for the automatic display-language preference".into());
+    }
+    Ok(canonical)
 }
 
 mod appicon;
@@ -1226,7 +1234,9 @@ mod cli_tests {
     fn display_language_accepts_and_canonicalizes_arbitrary_bcp47_tags() {
         assert_eq!(parse_display_language("sr-latn-rs").unwrap(), "sr-Latn-RS");
         assert_eq!(parse_display_language("auto").unwrap(), "auto");
+        assert_eq!(parse_display_language("AUTO").unwrap(), "auto");
         assert!(parse_display_language("en--US").is_err());
+        assert!(parse_display_language("zzz-Latn-RS").is_err());
     }
 
     #[test]

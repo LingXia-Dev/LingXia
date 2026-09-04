@@ -2,22 +2,11 @@ use crate::host::{HostResult, StreamContext};
 use lxapp::{DisplayLanguagePreference, DisplayLanguageState, LanguageTag};
 use serde::Deserialize;
 use std::sync::OnceLock;
-use tokio::sync::broadcast;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SetPreferenceInput {
     preference: DisplayLanguagePreference,
-}
-
-fn state_channel() -> &'static broadcast::Sender<DisplayLanguageState> {
-    static CHANNEL: OnceLock<broadcast::Sender<DisplayLanguageState>> = OnceLock::new();
-    CHANNEL.get_or_init(|| broadcast::channel(16).0)
-}
-
-fn effective_channel() -> &'static broadcast::Sender<LanguageTag> {
-    static CHANNEL: OnceLock<broadcast::Sender<LanguageTag>> = OnceLock::new();
-    CHANNEL.get_or_init(|| broadcast::channel(16).0)
 }
 
 #[lingxia::framework_native("app.getDisplayLanguage", audience = "authenticated-read-only")]
@@ -31,17 +20,19 @@ fn get_display_language() -> HostResult<LanguageTag> {
     audience = "authenticated-read-only"
 )]
 async fn watch_display_language(mut stream: StreamContext<LanguageTag>) -> HostResult<()> {
-    let mut receiver = effective_channel().subscribe();
-    stream.send(lxapp::display_language_state().effective)?;
+    let (initial, mut receiver) = lxapp::subscribe_display_language_effective();
+    let mut revision = initial.revision;
+    stream.send(initial.effective)?;
     loop {
         tokio::select! {
             _ = stream.canceled() => return Ok(()),
             received = receiver.recv() => match received {
-                Ok(language) => stream.send(language)?,
-                Err(broadcast::error::RecvError::Lagged(_)) => {
-                    stream.send(lxapp::display_language_state().effective)?;
+                Some(update) if update.revision > revision => {
+                    revision = update.revision;
+                    stream.send(update.effective)?;
                 }
-                Err(broadcast::error::RecvError::Closed) => return stream.end(()),
+                Some(_) => {}
+                None => return stream.end(()),
             }
         }
     }
@@ -62,17 +53,19 @@ fn set_display_language_preference(input: SetPreferenceInput) -> HostResult<Disp
 async fn watch_display_language_state(
     mut stream: StreamContext<DisplayLanguageState>,
 ) -> HostResult<()> {
-    let mut receiver = state_channel().subscribe();
-    stream.send(lxapp::display_language_state())?;
+    let (initial, mut receiver) = lxapp::subscribe_display_language_state();
+    let mut revision = initial.revision;
+    stream.send(initial.state)?;
     loop {
         tokio::select! {
             _ = stream.canceled() => return Ok(()),
             received = receiver.recv() => match received {
-                Ok(state) => stream.send(state)?,
-                Err(broadcast::error::RecvError::Lagged(_)) => {
-                    stream.send(lxapp::display_language_state())?;
+                Some(update) if update.revision > revision => {
+                    revision = update.revision;
+                    stream.send(update.state)?;
                 }
-                Err(broadcast::error::RecvError::Closed) => return stream.end(()),
+                Some(_) => {}
+                None => return stream.end(()),
             }
         }
     }
@@ -86,12 +79,6 @@ pub(crate) fn register() {
         crate::host::register_host_entry(get_display_language_state_host());
         crate::host::register_host_entry(set_display_language_preference_host());
         crate::host::register_host_entry(watch_display_language_state_host());
-        lxapp::add_display_language_effective_listener(Box::new(|language| {
-            let _ = effective_channel().send(language);
-        }));
-        lxapp::add_display_language_state_listener(Box::new(|state| {
-            let _ = state_channel().send(state);
-        }));
     });
 }
 

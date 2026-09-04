@@ -12,7 +12,7 @@ use lingxia_control_protocol::dev_session::{
 use lingxia_log::{AttachedLogStream, LogLevel, LogMessage, LogTag, attach_log_stream_default};
 use std::sync::OnceLock;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tungstenite::protocol::Message;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Error as WsError, WebSocket};
@@ -20,6 +20,39 @@ use tungstenite::{Error as WsError, WebSocket};
 use crate::dispatch;
 
 const DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
+const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
+const SESSION_STALE_AFTER: Duration = Duration::from_secs(15);
+
+struct RunnerDisplayLanguageLease(Option<lxapp::DisplayLanguageSessionOwner>);
+
+impl RunnerDisplayLanguageLease {
+    fn acquire() -> Self {
+        let owner = std::env::var(RUNNER_DISPLAY_LANGUAGE_ENV)
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .and_then(
+                |value| match value.parse::<lxapp::DisplayLanguagePreference>() {
+                    Ok(preference) => {
+                        Some(lxapp::install_display_language_session_override(preference))
+                    }
+                    Err(error) => {
+                        log::warn!("Ignoring invalid Runner display language: {error}");
+                        None
+                    }
+                },
+            );
+        Self(owner)
+    }
+}
+
+impl Drop for RunnerDisplayLanguageLease {
+    fn drop(&mut self) {
+        if let Some(owner) = self.0.take() {
+            lxapp::clear_display_language_session_override(owner);
+        }
+    }
+}
 
 pub fn start_dev_session_bridge_from_env() {
     static STARTED: OnceLock<()> = OnceLock::new();
@@ -147,12 +180,18 @@ fn run_dev_bridge(ws_url: String) {
                     continue;
                 }
 
+                // The override belongs to this concrete websocket session.
+                // Dropping this lease clears normal disconnects, failed setup,
+                // crashes of the peer, and every reconnect attempt.
+                let _display_language_lease = RunnerDisplayLanguageLease::acquire();
+
                 configure_read_timeout(&mut websocket);
 
                 let attached = match attach_log_stream_default() {
                     Ok(attached) => attached,
                     Err(err) => {
                         log::warn!("Failed to attach devtool log stream: {}", err);
+                        drop(_display_language_lease);
                         thread::sleep(Duration::from_millis(500));
                         continue;
                     }
@@ -207,6 +246,8 @@ fn bridge_loop(
     attached: AttachedLogStream,
 ) -> Result<(), String> {
     let (recent, mut receiver) = attached.into_parts();
+    let mut last_received = Instant::now();
+    let mut last_ping = Instant::now();
     for chunk in recent.chunks(128) {
         send_log_batch(websocket, chunk)?;
     }
@@ -233,6 +274,7 @@ fn bridge_loop(
 
         match websocket.read() {
             Ok(message) => {
+                last_received = Instant::now();
                 if let Some(wire) = parse_wire_message(message)? {
                     handle_incoming_message(websocket, wire)?;
                 }
@@ -242,6 +284,16 @@ fn bridge_loop(
                 return Err("websocket closed".to_string());
             }
             Err(err) => return Err(err.to_string()),
+        }
+
+        if last_received.elapsed() >= SESSION_STALE_AFTER {
+            return Err("devtool websocket heartbeat timed out".to_string());
+        }
+        if last_ping.elapsed() >= HEARTBEAT_INTERVAL {
+            websocket
+                .send(Message::Ping(Vec::new().into()))
+                .map_err(|error| error.to_string())?;
+            last_ping = Instant::now();
         }
 
         thread::sleep(Duration::from_millis(50));

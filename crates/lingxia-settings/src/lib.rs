@@ -82,6 +82,14 @@ pub fn load(app_data_dir: &Path) -> Result<Settings, SettingsError> {
 }
 
 pub fn save(app_data_dir: &Path, settings: &Settings) -> Result<(), SettingsError> {
+    save_with_replace(app_data_dir, settings, replace_saved_file)
+}
+
+fn save_with_replace(
+    app_data_dir: &Path,
+    settings: &Settings,
+    replace: impl FnOnce(&Path, &Path) -> Result<(), SettingsError>,
+) -> Result<(), SettingsError> {
     let path = settings_path(app_data_dir);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -90,7 +98,7 @@ pub fn save(app_data_dir: &Path, settings: &Settings) -> Result<(), SettingsErro
     // Temp-write + rename so a crash mid-write cannot truncate the file.
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, bytes)?;
-    replace_saved_file(&tmp, &path)?;
+    replace(&tmp, &path)?;
     cache().insert(settings_key(app_data_dir), settings.clone());
     Ok(())
 }
@@ -102,24 +110,41 @@ fn replace_saved_file(tmp: &Path, path: &Path) -> Result<(), SettingsError> {
 
 #[cfg(windows)]
 fn replace_saved_file(tmp: &Path, path: &Path) -> Result<(), SettingsError> {
-    let backup = path.with_extension("json.bak");
-    if backup.exists() {
-        std::fs::remove_file(&backup)?;
-    }
-    let had_previous = path.exists();
-    if had_previous {
-        std::fs::rename(path, &backup)?;
-    }
-    if let Err(err) = std::fs::rename(tmp, path) {
-        if had_previous {
-            let _ = std::fs::rename(&backup, path);
+    use std::os::windows::ffi::OsStrExt;
+    use windows::Win32::Storage::FileSystem::{
+        MOVEFILE_WRITE_THROUGH, MoveFileExW, REPLACEFILE_WRITE_THROUGH, ReplaceFileW,
+    };
+    use windows::core::PCWSTR;
+
+    let wide = |value: &Path| {
+        value
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>()
+    };
+    let target_exists = path.exists();
+    let tmp = wide(tmp);
+    let path = wide(path);
+    let result = unsafe {
+        if target_exists {
+            ReplaceFileW(
+                PCWSTR(path.as_ptr()),
+                PCWSTR(tmp.as_ptr()),
+                PCWSTR::null(),
+                REPLACEFILE_WRITE_THROUGH,
+                None,
+                None,
+            )
+        } else {
+            MoveFileExW(
+                PCWSTR(tmp.as_ptr()),
+                PCWSTR(path.as_ptr()),
+                MOVEFILE_WRITE_THROUGH,
+            )
         }
-        return Err(SettingsError::Io(err));
-    }
-    if had_previous {
-        let _ = std::fs::remove_file(backup);
-    }
-    Ok(())
+    };
+    result.map_err(|error| SettingsError::Io(std::io::Error::other(error.to_string())))
 }
 
 pub fn get_download_dir(app_data_dir: &Path) -> Result<Option<PathBuf>, SettingsError> {
@@ -243,6 +268,37 @@ mod tests {
         set_display_language(dir.path(), Some("en-US")).unwrap();
         assert_eq!(
             get_display_language(dir.path()).unwrap().as_deref(),
+            Some("en-US")
+        );
+    }
+
+    #[test]
+    fn failed_replacement_preserves_file_and_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = Settings {
+            display_language: Some("en-US".to_string()),
+            ..Settings::default()
+        };
+        save(dir.path(), &original).unwrap();
+        let original_bytes = std::fs::read(settings_path(dir.path())).unwrap();
+
+        let replacement = Settings {
+            display_language: Some("ja-JP".to_string()),
+            ..Settings::default()
+        };
+        let result = save_with_replace(dir.path(), &replacement, |_, _| {
+            Err(SettingsError::Io(std::io::Error::other(
+                "injected replacement failure",
+            )))
+        });
+
+        assert!(result.is_err());
+        assert_eq!(
+            std::fs::read(settings_path(dir.path())).unwrap(),
+            original_bytes
+        );
+        assert_eq!(
+            load(dir.path()).unwrap().display_language.as_deref(),
             Some("en-US")
         );
     }

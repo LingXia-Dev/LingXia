@@ -218,10 +218,17 @@ export class Lingxia {
   private static getSystemLocale(): string {
     const systemLanguage = i18n.System.getSystemLanguage();
     const systemRegion = i18n.System.getSystemRegion();
-    // HarmonyOS may include a script (for example zh-Hans); the runtime
-    // locale contract uses the primary language plus region.
-    const normalizedLanguage = systemLanguage.split('-')[0];
-    return `${normalizedLanguage}-${systemRegion}`;
+    // Keep script and variant subtags reported by HarmonyOS; stripping them
+    // changes the meaning of locales such as zh-Hans and sr-Latn.
+    const normalizedLanguage = systemLanguage.replace('_', '-');
+    if (systemRegion.length === 0) {
+      return normalizedLanguage;
+    }
+    const subtags = normalizedLanguage.split('-');
+    const hasRegion = subtags.some((subtag: string, index: number): boolean =>
+      index > 0 && (subtag.length === 2 || (subtag.length === 3 && !Number.isNaN(Number(subtag))))
+    );
+    return hasRegion ? normalizedLanguage : `${normalizedLanguage}-${systemRegion}`;
   }
 
   /**

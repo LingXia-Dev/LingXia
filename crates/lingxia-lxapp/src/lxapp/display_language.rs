@@ -6,17 +6,18 @@ use language_tags::LanguageTag as ParsedLanguageTag;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_webview::WebViewController;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::collections::VecDeque;
 use std::fmt;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use tokio::sync::mpsc;
 
 const FALLBACK_LANGUAGE: &str = "en-US";
 
 /// A validated, canonical BCP-47 language tag.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LanguageTag(String);
 
 impl LanguageTag {
@@ -26,11 +27,22 @@ impl LanguageTag {
         if value.is_empty() {
             return Err("language tag must not be empty".to_string());
         }
-        ParsedLanguageTag::parse(value)
-            .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))?
+        if value.eq_ignore_ascii_case("auto") {
+            return Err("'auto' is reserved for the automatic display-language preference".into());
+        }
+        let parsed = ParsedLanguageTag::parse(value)
+            .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))?;
+        parsed
+            .validate()
+            .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))?;
+        let canonical = parsed
             .canonicalize()
-            .map(|tag| Self(tag.into_string()))
-            .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))
+            .map_err(|error| format!("invalid BCP-47 language tag '{value}': {error}"))?
+            .into_string();
+        if canonical.eq_ignore_ascii_case("auto") {
+            return Err("'auto' is reserved for the automatic display-language preference".into());
+        }
+        Ok(Self(canonical))
     }
 
     /// Return the canonical wire value.
@@ -54,6 +66,24 @@ impl FromStr for LanguageTag {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         Self::parse(value)
+    }
+}
+
+impl Serialize for LanguageTag {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for LanguageTag {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Self::parse(&String::deserialize(deserializer)?).map_err(serde::de::Error::custom)
     }
 }
 
@@ -94,7 +124,7 @@ impl FromStr for DisplayLanguagePreference {
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         let value = value.trim();
-        if value == "auto" {
+        if value.eq_ignore_ascii_case("auto") {
             Ok(Self::Auto)
         } else {
             LanguageTag::parse(value).map(Self::LanguageTag)
@@ -166,11 +196,33 @@ struct SessionOverride {
 type StateListener = Arc<dyn Fn(DisplayLanguageState) + Send + Sync>;
 type EffectiveListener = Arc<dyn Fn(LanguageTag) + Send + Sync>;
 
+/// A revisioned state update used to make stream subscription atomic.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DisplayLanguageStateUpdate {
+    pub revision: u64,
+    pub state: DisplayLanguageState,
+}
+
+/// A revisioned effective-language update used to make stream subscription atomic.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DisplayLanguageEffectiveUpdate {
+    pub revision: u64,
+    pub effective: LanguageTag,
+}
+
 struct ServiceInner {
     preference: DisplayLanguagePreference,
     system: LanguageTag,
     session_override: Option<SessionOverride>,
     state: DisplayLanguageState,
+    revision: u64,
+    effective_revision: u64,
+    pending: VecDeque<Transition>,
+    publishing: bool,
+    state_subscribers: Vec<mpsc::UnboundedSender<DisplayLanguageStateUpdate>>,
+    effective_subscribers: Vec<mpsc::UnboundedSender<DisplayLanguageEffectiveUpdate>>,
     state_listeners: Vec<StateListener>,
     effective_listeners: Vec<EffectiveListener>,
 }
@@ -211,6 +263,7 @@ struct DisplayLanguageService {
 }
 
 struct Transition {
+    revision: u64,
     state: DisplayLanguageState,
     state_listeners: Vec<StateListener>,
     effective_listeners: Vec<EffectiveListener>,
@@ -229,6 +282,12 @@ impl DisplayLanguageService {
             system,
             session_override: None,
             state: initial,
+            revision: 0,
+            effective_revision: 0,
+            pending: VecDeque::new(),
+            publishing: false,
+            state_subscribers: Vec::new(),
+            effective_subscribers: Vec::new(),
             state_listeners: Vec::new(),
             effective_listeners: Vec::new(),
         };
@@ -246,17 +305,72 @@ impl DisplayLanguageService {
             .clone()
     }
 
-    fn update(&self, mutate: impl FnOnce(&mut ServiceInner)) -> Option<Transition> {
+    fn snapshot(&self) -> DisplayLanguageStateUpdate {
+        let inner = self.inner.lock().unwrap_or_else(|error| error.into_inner());
+        DisplayLanguageStateUpdate {
+            revision: inner.revision,
+            state: inner.state.clone(),
+        }
+    }
+
+    fn subscribe_state(
+        &self,
+    ) -> (
+        DisplayLanguageStateUpdate,
+        mpsc::UnboundedReceiver<DisplayLanguageStateUpdate>,
+    ) {
         let mut inner = self.inner.lock().unwrap_or_else(|error| error.into_inner());
-        let previous = inner.state.clone();
-        mutate(&mut inner);
+        let (sender, receiver) = mpsc::unbounded_channel();
+        inner
+            .state_subscribers
+            .retain(|subscriber| !subscriber.is_closed());
+        inner.state_subscribers.push(sender);
+        (
+            DisplayLanguageStateUpdate {
+                revision: inner.revision,
+                state: inner.state.clone(),
+            },
+            receiver,
+        )
+    }
+
+    fn subscribe_effective(
+        &self,
+    ) -> (
+        DisplayLanguageEffectiveUpdate,
+        mpsc::UnboundedReceiver<DisplayLanguageEffectiveUpdate>,
+    ) {
+        let mut inner = self.inner.lock().unwrap_or_else(|error| error.into_inner());
+        let (sender, receiver) = mpsc::unbounded_channel();
+        inner
+            .effective_subscribers
+            .retain(|subscriber| !subscriber.is_closed());
+        inner.effective_subscribers.push(sender);
+        (
+            DisplayLanguageEffectiveUpdate {
+                revision: inner.effective_revision,
+                effective: inner.state.effective.clone(),
+            },
+            receiver,
+        )
+    }
+
+    fn enqueue_locked(inner: &mut ServiceInner, previous: DisplayLanguageState) -> bool {
         let next = inner.resolve();
         if previous == next {
-            return None;
+            return false;
         }
         let effective_changed = previous.effective != next.effective;
+        inner.revision = inner
+            .revision
+            .checked_add(1)
+            .expect("display-language revision exhausted");
+        if effective_changed {
+            inner.effective_revision = inner.revision;
+        }
         inner.state = next.clone();
-        Some(Transition {
+        let transition = Transition {
+            revision: inner.revision,
             state: next,
             state_listeners: inner.state_listeners.clone(),
             effective_listeners: if effective_changed {
@@ -265,42 +379,41 @@ impl DisplayLanguageService {
                 Vec::new()
             },
             effective_changed,
-        })
+        };
+        inner.pending.push_back(transition);
+        if inner.publishing {
+            false
+        } else {
+            inner.publishing = true;
+            true
+        }
+    }
+
+    fn update(&self, mutate: impl FnOnce(&mut ServiceInner)) -> bool {
+        let mut inner = self.inner.lock().unwrap_or_else(|error| error.into_inner());
+        let previous = inner.state.clone();
+        mutate(&mut inner);
+        Self::enqueue_locked(&mut inner, previous)
     }
 
     fn set_preference_persisted(
         &self,
         preference: DisplayLanguagePreference,
         persist: impl FnOnce(&DisplayLanguagePreference) -> Result<(), LxAppError>,
-    ) -> Result<Option<Transition>, LxAppError> {
+    ) -> Result<bool, LxAppError> {
         // Keep persistence and publication serialized. A failed write never
         // mutates memory or emits either event.
         let mut inner = self.inner.lock().unwrap_or_else(|error| error.into_inner());
         persist(&preference)?;
         let previous = inner.state.clone();
         inner.preference = preference;
-        let next = inner.resolve();
-        if previous == next {
-            return Ok(None);
-        }
-        let effective_changed = previous.effective != next.effective;
-        inner.state = next.clone();
-        Ok(Some(Transition {
-            state: next,
-            state_listeners: inner.state_listeners.clone(),
-            effective_listeners: if effective_changed {
-                inner.effective_listeners.clone()
-            } else {
-                Vec::new()
-            },
-            effective_changed,
-        }))
+        Ok(Self::enqueue_locked(&mut inner, previous))
     }
 
     fn install_session_override(
         &self,
         preference: DisplayLanguagePreference,
-    ) -> (DisplayLanguageSessionOwner, Option<Transition>) {
+    ) -> (DisplayLanguageSessionOwner, bool) {
         let owner = DisplayLanguageSessionOwner::next();
         let transition = self.update(|inner| {
             inner.session_override = Some(SessionOverride { owner, preference });
@@ -308,7 +421,7 @@ impl DisplayLanguageService {
         (owner, transition)
     }
 
-    fn clear_session_override(&self, owner: DisplayLanguageSessionOwner) -> Option<Transition> {
+    fn clear_session_override(&self, owner: DisplayLanguageSessionOwner) -> bool {
         self.update(|inner| {
             if inner
                 .session_override
@@ -320,7 +433,11 @@ impl DisplayLanguageService {
         })
     }
 
-    fn refresh_system(&self, system: LanguageTag) -> Option<Transition> {
+    fn clear_active_session_override(&self) -> bool {
+        self.update(|inner| inner.session_override = None)
+    }
+
+    fn refresh_system(&self, system: LanguageTag) -> bool {
         self.update(|inner| inner.system = system)
     }
 
@@ -339,6 +456,38 @@ impl DisplayLanguageService {
             .effective_listeners
             .push(listener);
     }
+
+    fn send_state_update(&self, update: &DisplayLanguageStateUpdate) {
+        self.inner
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .state_subscribers
+            .retain(|subscriber| subscriber.send(update.clone()).is_ok());
+    }
+
+    fn send_effective_update(&self, update: &DisplayLanguageEffectiveUpdate) {
+        self.inner
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .effective_subscribers
+            .retain(|subscriber| subscriber.send(update.clone()).is_ok());
+    }
+
+    fn drain(&self, mut publish: impl FnMut(Transition)) {
+        loop {
+            let transition = {
+                let mut inner = self.inner.lock().unwrap_or_else(|error| error.into_inner());
+                match inner.pending.pop_front() {
+                    Some(transition) => transition,
+                    None => {
+                        inner.publishing = false;
+                        return;
+                    }
+                }
+            };
+            publish(transition);
+        }
+    }
 }
 
 fn service() -> &'static DisplayLanguageService {
@@ -351,27 +500,44 @@ fn service() -> &'static DisplayLanguageService {
     })
 }
 
-fn dispatch(transition: Option<Transition>) {
-    let Some(transition) = transition else {
+fn dispatch(should_drain: bool) {
+    if !should_drain {
         return;
+    }
+    service().drain(publish_transition);
+}
+
+fn publish_transition(transition: Transition) {
+    let state_update = DisplayLanguageStateUpdate {
+        revision: transition.revision,
+        state: transition.state.clone(),
     };
-    publish_state(&transition.state);
+    service().send_state_update(&state_update);
+    publish_state(&state_update);
     for listener in transition.state_listeners {
         listener(transition.state.clone());
     }
     if transition.effective_changed {
-        publish_effective(&transition.state.effective);
+        let effective_update = DisplayLanguageEffectiveUpdate {
+            revision: transition.revision,
+            effective: transition.state.effective.clone(),
+        };
+        service().send_effective_update(&effective_update);
+        publish_effective(&effective_update);
         for listener in transition.effective_listeners {
             listener(transition.state.effective.clone());
         }
     }
 }
 
-fn publish_state(state: &DisplayLanguageState) {
+fn publish_state(update: &DisplayLanguageStateUpdate) {
     let Some(manager) = get_lxapps_manager() else {
         return;
     };
-    let Ok(payload) = serde_json::to_string(state) else {
+    let Ok(payload) = serde_json::to_string(&serde_json::json!({
+        "revision": update.revision,
+        "state": update.state,
+    })) else {
         return;
     };
     let appids: Vec<_> = manager
@@ -417,6 +583,30 @@ pub fn display_language_state() -> DisplayLanguageState {
     service().state()
 }
 
+/// Snapshot the state and its revision in one linearized read.
+#[doc(hidden)]
+pub fn display_language_state_update() -> DisplayLanguageStateUpdate {
+    service().snapshot()
+}
+
+/// Subscribe without a gap between the initial snapshot and later updates.
+#[doc(hidden)]
+pub fn subscribe_display_language_state() -> (
+    DisplayLanguageStateUpdate,
+    mpsc::UnboundedReceiver<DisplayLanguageStateUpdate>,
+) {
+    service().subscribe_state()
+}
+
+/// Subscribe to effective-language changes without an initial-snapshot race.
+#[doc(hidden)]
+pub fn subscribe_display_language_effective() -> (
+    DisplayLanguageEffectiveUpdate,
+    mpsc::UnboundedReceiver<DisplayLanguageEffectiveUpdate>,
+) {
+    service().subscribe_effective()
+}
+
 /// Effective canonical language tag rendered by every host surface.
 pub fn display_language() -> String {
     display_language_state().effective.to_string()
@@ -460,6 +650,12 @@ pub fn clear_display_language_session_override(owner: DisplayLanguageSessionOwne
     dispatch(service().clear_session_override(owner));
 }
 
+/// Clear whichever Runner session override is active during host teardown.
+#[doc(hidden)]
+pub fn clear_active_display_language_session_override() {
+    dispatch(service().clear_active_session_override());
+}
+
 /// Refresh the system input after the native host reports a locale change.
 pub fn refresh_display_language_system(system: &str) -> Result<(), LxAppError> {
     let system = LanguageTag::from_system(system).map_err(LxAppError::InvalidParameter)?;
@@ -479,11 +675,11 @@ pub fn add_display_language_effective_listener(listener: Box<dyn Fn(LanguageTag)
     service().add_effective_listener(Arc::from(listener));
 }
 
-fn publish_effective(language: &LanguageTag) {
+fn publish_effective(update: &DisplayLanguageEffectiveUpdate) {
     let Some(manager) = get_lxapps_manager() else {
         return;
     };
-    let quoted = serde_json::to_string(language.as_str())
+    let quoted = serde_json::to_string(update.effective.as_str())
         .unwrap_or_else(|_| format!("\"{FALLBACK_LANGUAGE}\""));
     let script = format!("var f = globalThis.__lingxiaApplyDisplayLanguage; if (f) f({quoted});");
     let apps: Vec<_> = manager
@@ -500,7 +696,18 @@ fn publish_effective(language: &LanguageTag) {
         crate::appservice::event_bus::publish_app_event(
             &appid,
             crate::DISPLAY_LANGUAGE_CHANGE_EVENT,
-            Some(quoted.clone()),
+            Some(
+                serde_json::to_string(&serde_json::json!({
+                    "revision": update.revision,
+                    "effective": update.effective,
+                }))
+                .unwrap_or_else(|_| {
+                    format!(
+                        "{{\"revision\":{},\"effective\":{quoted}}}",
+                        update.revision
+                    )
+                }),
+            ),
         );
     }
 }
@@ -509,6 +716,7 @@ fn publish_effective(language: &LanguageTag) {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Barrier, Mutex as TestMutex};
 
     fn tag(value: &str) -> LanguageTag {
         LanguageTag::parse(value).unwrap()
@@ -532,16 +740,28 @@ mod tests {
         (states, effective)
     }
 
-    fn deliver(transition: Option<Transition>) {
-        let Some(transition) = transition else {
+    fn deliver(service: &DisplayLanguageService, should_drain: bool) {
+        if !should_drain {
             return;
-        };
-        for listener in transition.state_listeners {
-            listener(transition.state.clone());
         }
-        for listener in transition.effective_listeners {
-            listener(transition.state.effective.clone());
-        }
+        service.drain(|transition| {
+            service.send_state_update(&DisplayLanguageStateUpdate {
+                revision: transition.revision,
+                state: transition.state.clone(),
+            });
+            if transition.effective_changed {
+                service.send_effective_update(&DisplayLanguageEffectiveUpdate {
+                    revision: transition.revision,
+                    effective: transition.state.effective.clone(),
+                });
+            }
+            for listener in transition.state_listeners {
+                listener(transition.state.clone());
+            }
+            for listener in transition.effective_listeners {
+                listener(transition.state.effective.clone());
+            }
+        });
     }
 
     #[test]
@@ -551,6 +771,9 @@ mod tests {
         assert_eq!(tag("de-DE-u-co-phonebk").as_str(), "de-DE-u-co-phonebk");
         assert!(LanguageTag::parse("").is_err());
         assert!(LanguageTag::parse("en--US").is_err());
+        assert!(LanguageTag::parse("zzz-Latn-RS").is_err());
+        assert!(LanguageTag::parse("auto").is_err());
+        assert!(LanguageTag::parse("AUTO").is_err());
     }
 
     #[test]
@@ -568,6 +791,15 @@ mod tests {
                 "effectiveSource": "preference"
             })
         );
+        for wire in ["auto", "AUTO"] {
+            let preference: DisplayLanguagePreference =
+                serde_json::from_str(&format!("\"{wire}\"")).unwrap();
+            assert_eq!(preference, DisplayLanguagePreference::Auto);
+            assert_eq!(serde_json::to_string(&preference).unwrap(), "\"auto\"");
+        }
+        let explicit: DisplayLanguagePreference = serde_json::from_str("\"JA-jp\"").unwrap();
+        assert_eq!(serde_json::to_string(&explicit).unwrap(), "\"ja-JP\"");
+        assert!(serde_json::from_str::<LanguageTag>("\"auto\"").is_err());
     }
 
     #[test]
@@ -588,9 +820,11 @@ mod tests {
     fn auto_tracks_system_and_deduplicates_refresh() {
         let service = service_with("auto", "en-US");
         let (states, effective) = counts(&service);
-        deliver(service.refresh_system(tag("en-us")));
+        let drain = service.refresh_system(tag("en-us"));
+        deliver(&service, drain);
         assert_eq!(states.load(Ordering::Relaxed), 0);
-        deliver(service.refresh_system(tag("zh-CN")));
+        let drain = service.refresh_system(tag("zh-CN"));
+        deliver(&service, drain);
         assert_eq!(states.load(Ordering::Relaxed), 1);
         assert_eq!(effective.load(Ordering::Relaxed), 1);
         assert_eq!(service.state().effective.as_str(), "zh-CN");
@@ -600,7 +834,8 @@ mod tests {
     fn explicit_preference_ignores_system_refresh() {
         let service = service_with("ja-JP", "en-US");
         let (states, effective) = counts(&service);
-        deliver(service.refresh_system(tag("zh-CN")));
+        let drain = service.refresh_system(tag("zh-CN"));
+        deliver(&service, drain);
         assert_eq!(service.state().effective.as_str(), "ja-JP");
         assert_eq!(states.load(Ordering::Relaxed), 0);
         assert_eq!(effective.load(Ordering::Relaxed), 0);
@@ -617,7 +852,7 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        deliver(transition);
+        deliver(&service, transition);
         assert!(persisted);
         assert_eq!(states.load(Ordering::Relaxed), 0);
         assert_eq!(effective.load(Ordering::Relaxed), 0);
@@ -628,16 +863,17 @@ mod tests {
         let service = service_with("en-US", "de-DE");
         let (states, effective) = counts(&service);
         let (owner, transition) = service.install_session_override("ja-JP".parse().unwrap());
-        deliver(transition);
+        deliver(&service, transition);
         let transition = service
             .set_preference_persisted("zh-CN".parse().unwrap(), |_| Ok(()))
             .unwrap();
-        deliver(transition);
+        deliver(&service, transition);
         assert_eq!(service.state().effective.as_str(), "ja-JP");
         assert_eq!(service.state().preference.as_str(), "zh-CN");
         assert_eq!(states.load(Ordering::Relaxed), 2);
         assert_eq!(effective.load(Ordering::Relaxed), 1);
-        deliver(service.clear_session_override(owner));
+        let drain = service.clear_session_override(owner);
+        deliver(&service, drain);
         assert_eq!(service.state().effective.as_str(), "zh-CN");
         assert_eq!(states.load(Ordering::Relaxed), 3);
         assert_eq!(effective.load(Ordering::Relaxed), 2);
@@ -647,27 +883,31 @@ mod tests {
     fn session_auto_keeps_session_source_and_follows_system() {
         let service = service_with("zh-CN", "en-US");
         let (owner, transition) = service.install_session_override(DisplayLanguagePreference::Auto);
-        deliver(transition);
+        deliver(&service, transition);
         assert_eq!(
             service.state().effective_source,
             DisplayLanguageEffectiveSource::SessionOverride
         );
         assert_eq!(service.state().effective.as_str(), "en-US");
-        deliver(service.refresh_system(tag("fr-FR")));
+        let drain = service.refresh_system(tag("fr-FR"));
+        deliver(&service, drain);
         assert_eq!(service.state().effective.as_str(), "fr-FR");
-        deliver(service.clear_session_override(owner));
+        let drain = service.clear_session_override(owner);
+        deliver(&service, drain);
     }
 
     #[test]
     fn stale_crash_cleanup_cannot_clear_takeover_owner() {
         let service = service_with("auto", "en-US");
         let (crashed_owner, first) = service.install_session_override("ja-JP".parse().unwrap());
-        deliver(first);
+        deliver(&service, first);
         let (takeover_owner, second) = service.install_session_override("fr-FR".parse().unwrap());
-        deliver(second);
-        deliver(service.clear_session_override(crashed_owner));
+        deliver(&service, second);
+        let drain = service.clear_session_override(crashed_owner);
+        deliver(&service, drain);
         assert_eq!(service.state().effective.as_str(), "fr-FR");
-        deliver(service.clear_session_override(takeover_owner));
+        let drain = service.clear_session_override(takeover_owner);
+        deliver(&service, drain);
         assert_eq!(service.state().effective.as_str(), "en-US");
     }
 
@@ -676,11 +916,105 @@ mod tests {
         let service = service_with("en-US", "zh-CN");
         let (states, effective) = counts(&service);
         let (owner, transition) = service.install_session_override("en-us".parse().unwrap());
-        deliver(transition);
+        deliver(&service, transition);
         assert_eq!(states.load(Ordering::Relaxed), 1);
         assert_eq!(effective.load(Ordering::Relaxed), 0);
-        deliver(service.clear_session_override(owner));
+        let drain = service.clear_session_override(owner);
+        deliver(&service, drain);
         assert_eq!(states.load(Ordering::Relaxed), 2);
         assert_eq!(effective.load(Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn subscribe_snapshot_deduplicates_a_pending_boundary_update() {
+        let service = service_with("auto", "en-US");
+        let should_drain = service.refresh_system(tag("ja-JP"));
+        let (initial, mut receiver) = service.subscribe_state();
+        assert_eq!(initial.revision, 1);
+        assert_eq!(initial.state.effective.as_str(), "ja-JP");
+
+        deliver(&service, should_drain);
+        let queued = receiver.try_recv().unwrap();
+        assert_eq!(queued.revision, initial.revision);
+        assert!(queued.revision <= initial.revision);
+
+        let should_drain = service.refresh_system(tag("fr-FR"));
+        deliver(&service, should_drain);
+        let next = receiver.try_recv().unwrap();
+        assert_eq!(next.revision, initial.revision + 1);
+        assert_eq!(next.state.effective.as_str(), "fr-FR");
+    }
+
+    #[test]
+    fn concurrent_transitions_publish_in_strict_revision_order() {
+        let service = Arc::new(service_with("auto", "en-US"));
+        let (initial, mut receiver) = service.subscribe_state();
+        let barrier = Arc::new(Barrier::new(65));
+        let mut threads = Vec::new();
+        for index in 0..64 {
+            let service = service.clone();
+            let barrier = barrier.clone();
+            threads.push(std::thread::spawn(move || {
+                barrier.wait();
+                let should_drain = service.refresh_system(tag(&format!("en-x-t{index}")));
+                deliver(&service, should_drain);
+            }));
+        }
+        barrier.wait();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+
+        let mut revisions = Vec::new();
+        while let Ok(update) = receiver.try_recv() {
+            revisions.push(update.revision);
+        }
+        assert_eq!(revisions.len(), 64);
+        assert_eq!(
+            revisions,
+            (initial.revision + 1..=initial.revision + 64).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn reentrant_transition_is_queued_after_the_current_publication() {
+        let service = Arc::new(service_with("auto", "en-US"));
+        let observed = Arc::new(TestMutex::new(Vec::new()));
+        let service_in_listener = service.clone();
+        let observed_in_listener = observed.clone();
+        service.add_effective_listener(Arc::new(move |language| {
+            observed_in_listener
+                .lock()
+                .unwrap()
+                .push(language.to_string());
+            if language.as_str() == "ja-JP" {
+                assert!(!service_in_listener.refresh_system(tag("fr-FR")));
+            }
+        }));
+
+        let should_drain = service.refresh_system(tag("ja-JP"));
+        deliver(&service, should_drain);
+        assert_eq!(&*observed.lock().unwrap(), &["ja-JP", "fr-FR"]);
+    }
+
+    #[test]
+    fn disconnect_reconnect_and_takeover_do_not_retain_stale_override() {
+        let service = service_with("auto", "en-US");
+        let (disconnected, drain) = service.install_session_override("ja-JP".parse().unwrap());
+        deliver(&service, drain);
+        let drain = service.clear_session_override(disconnected);
+        deliver(&service, drain);
+        assert_eq!(service.state().effective.as_str(), "en-US");
+
+        let (reconnected, drain) = service.install_session_override("fr-FR".parse().unwrap());
+        deliver(&service, drain);
+        let (takeover, drain) = service.install_session_override("de-DE".parse().unwrap());
+        deliver(&service, drain);
+        let drain = service.clear_session_override(reconnected);
+        deliver(&service, drain);
+        assert_eq!(service.state().effective.as_str(), "de-DE");
+        let drain = service.clear_session_override(takeover);
+        deliver(&service, drain);
+        assert_eq!(service.state().effective.as_str(), "en-US");
     }
 }
