@@ -389,6 +389,44 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageCommitVisib
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onDocumentRestored(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    native_view_id: jlong,
+    url: JString,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let url: String = url.try_to_string(env)?;
+        let session_id = (session_id > 0).then_some(session_id as u64);
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "document-restored")
+        else {
+            return Ok(());
+        };
+        let webtag = WebTag::new(&appid, &path, session_id);
+        let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) else {
+            return Ok(());
+        };
+        if !normalizer::invalidate_restored_document(&webtag, native_view_id) {
+            return Ok(());
+        }
+
+        // Close the shared generation/outbound gate before asking the browser
+        // owner to replace the restored document with a fresh trusted load.
+        if let Some(delegate) = webview.get_delegate() {
+            let url = if url.is_empty() { "about:blank" } else { &url };
+            delegate.on_document_restored(native_view_id, url);
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onRendererProcessGone(
     mut env: EnvUnowned,
     _this: JObject,
