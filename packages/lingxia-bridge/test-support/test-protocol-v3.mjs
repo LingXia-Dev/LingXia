@@ -95,6 +95,25 @@ for (const expected of invalidFixture.documentBindings) {
   });
 }
 assert.deepEqual(codec.encode('req', null), { ok: false, error: 'INVALID_DOCUMENT_PAYLOAD' });
+assert.deepEqual(
+  codec.encode('console', {
+    __lingxia_console__: true,
+    level: 'warn',
+    message: 'bound only',
+  }),
+  {
+    ok: true,
+    value: {
+      v: 3,
+      kind: 'console',
+      sessionId: 'v3-session',
+      secret: 'bridge-v3-test-secret',
+      __lingxia_console__: true,
+      level: 'warn',
+      message: 'bound only',
+    },
+  },
+);
 
 const nested = invalidFixture.nestedSecurityKeysAreNotTopLevelDuplicates;
 assert.equal(codec.parse(nested.nativeToDocument).ok, true);

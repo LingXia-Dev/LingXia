@@ -2462,8 +2462,11 @@ impl WebViewInner {
             // Get the configuration from the WebView
             let config: *mut AnyObject = msg_send![webview, configuration];
             let user_content_controller: *mut AnyObject = msg_send![config, userContentController];
+            let user_script_class = objc2::class!(WKUserScript);
+            let injection_time: objc2::ffi::NSInteger = 0; // WKUserScriptInjectionTimeAtDocumentStart
 
-            let console_script = r#"
+            if inject_platform_baseline {
+                let console_script = r#"
                 (function() {
                     const originalLog = console.log;
                     const originalError = console.error;
@@ -2508,17 +2511,16 @@ impl WebViewInner {
                 })();
             "#;
 
-            // Inject console interceptor script
-            let console_js_string = NSString::from_str(console_script);
-            let user_script_class = objc2::class!(WKUserScript);
-            let console_user_script: *mut AnyObject = msg_send![user_script_class, alloc];
-            let injection_time: objc2::ffi::NSInteger = 0; // WKUserScriptInjectionTimeAtDocumentStart
-            let console_user_script: *mut AnyObject = msg_send![console_user_script,
+                // Inject console interceptor script
+                let console_js_string = NSString::from_str(console_script);
+                let console_user_script: *mut AnyObject = msg_send![user_script_class, alloc];
+                let console_user_script: *mut AnyObject = msg_send![console_user_script,
                 initWithSource: &*console_js_string,
                 injectionTime: injection_time,
                 forMainFrameOnly: false];
 
-            let _: () = msg_send![user_content_controller, addUserScript: console_user_script];
+                let _: () = msg_send![user_content_controller, addUserScript: console_user_script];
+            }
 
             // WebKit may restore a page from BFCache without producing a new
             // native start/commit pair. `pageshow.persisted` is document-local
@@ -2607,10 +2609,12 @@ impl WebViewInner {
 
             // Register message handlers with userContentController (like Swift version)
             let lingxia_name = NSString::from_str("LingXia");
-            let console_name = NSString::from_str("LingXiaConsole");
             let lifecycle_name = NSString::from_str("LingXiaLifecycle");
             let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*lingxia_name];
-            let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*console_name];
+            if inject_platform_baseline {
+                let console_name = NSString::from_str("LingXiaConsole");
+                let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*console_name];
+            }
             let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*lifecycle_name];
             Ok(message_handler)
         }
@@ -4616,6 +4620,18 @@ impl LingXiaMessageHandler {
     /// Handle console messages
     fn handle_console_message(&self, message: String) {
         let ivars = self.ivars();
+        let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
+        let native_webview = ivars.native_webview as *mut AnyObject;
+        let Some(webview) = find_webview_for_native(&webtag, native_webview) else {
+            return;
+        };
+        if crate::webview::platform_console_delivery(
+            webview.effective_options().profile,
+            crate::webview::PlatformConsoleBackend::Apple,
+        ) != crate::webview::PlatformConsoleDelivery::DirectDelegate
+        {
+            return;
+        }
 
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&message) {
             if let (Some(level), Some(console_message)) = (
@@ -4630,18 +4646,14 @@ impl LingXiaMessageHandler {
                     _ => LogLevel::Info,
                 };
 
-                let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
-                let native_webview = ivars.native_webview as *mut AnyObject;
-                if let Some(delegate) = find_webview_for_native(&webtag, native_webview)
-                    .and_then(|webview| webview.get_delegate())
-                {
+                if let Some(delegate) = webview.get_delegate() {
                     delegate.log(log_level, console_message);
                 }
             } else {
-                log::error!("Failed to parse Apple console message fields");
+                log::error!("Failed to parse direct console message fields");
             }
         } else {
-            log::error!("Failed to parse Apple console message JSON");
+            log::error!("Failed to parse direct console message JSON");
         }
     }
 

@@ -26,6 +26,8 @@ const fakeConsole = {
   log: (...values) => consoleOutput.push(values),
   warn: (...values) => consoleOutput.push(values),
   error: (...values) => consoleOutput.push(values),
+  info: (...values) => consoleOutput.push(values),
+  debug: (...values) => consoleOutput.push(values),
   group() {},
   groupEnd() {},
 };
@@ -165,6 +167,9 @@ assert.deepEqual(frames[0], {
   sessionId,
   secret,
 });
+const preHandshakeFrameCount = sent.length;
+console.warn('must-not-send-before-active');
+assert.equal(sent.length, preHandshakeFrameCount);
 
 receive({ v: 2, kind: 'helloAck', nonce: 'nonce-1', protocol: 2, sessionId });
 receive({ v: 3, kind: 'helloAck', nonce: 'nonce-1', protocol: 3, sessionId: 'wrong' });
@@ -188,6 +193,18 @@ receive({
   hostChannels: ['demo.channel'],
 });
 assert.equal(bridge.LingXiaBridge.isReady(), true);
+
+console.warn('bound-control-console', { platform: window.__LX_BRIDGE_CFG.os });
+let consoleFrame = decoded().at(-1);
+assert.deepEqual(consoleFrame, {
+  v: 3,
+  kind: 'console',
+  sessionId,
+  secret,
+  __lingxia_console__: true,
+  level: 'warn',
+  message: `bound-control-console {"platform":"${window.__LX_BRIDGE_CFG.os}"}`,
+});
 
 const call = bridge.LingXiaBridge.raw.call('host.echo', { value: 1 }, { cap: 'host' });
 let request = decoded().at(-1);
@@ -257,7 +274,7 @@ receive({ v: 3, kind: 'ch.close', sessionId, id: request.id, code: 'DONE' });
 frames = decoded();
 assert.deepEqual(
   new Set(frames.map((frame) => frame.kind)),
-  new Set(['hello', 'req', 'res', 'notify', 'cancel', 'ch.open', 'ch.data', 'ch.close', 'state.ack']),
+  new Set(['hello', 'req', 'res', 'notify', 'cancel', 'ch.open', 'ch.data', 'ch.close', 'state.ack', 'console']),
 );
 for (const frame of frames) {
   assert.equal(frame.v, 3, frame.kind);

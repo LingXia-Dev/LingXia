@@ -14,7 +14,8 @@ export type V3DocumentToNativeKind =
   | "ch.open"
   | "ch.data"
   | "ch.close"
-  | "state.ack";
+  | "state.ack"
+  | "console";
 
 export type V3NativeToDocumentKind =
   | "helloAck"
@@ -38,6 +39,7 @@ const documentToNativeKinds = new Set<V3DocumentToNativeKind>([
   "ch.data",
   "ch.close",
   "state.ack",
+  "console",
 ]);
 
 const nativeToDocumentKinds = new Set<V3NativeToDocumentKind>([

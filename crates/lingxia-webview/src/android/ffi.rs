@@ -1135,6 +1135,16 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
         };
 
         let webtag = WebTag::new(&appid, &path, session_id);
+        let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) else {
+            return Ok(0);
+        };
+        if crate::webview::platform_console_delivery(
+            webview.effective_options().profile,
+            crate::webview::PlatformConsoleBackend::Android,
+        ) != crate::webview::PlatformConsoleDelivery::DirectDelegate
+        {
+            return Ok(0);
+        }
         let log_level = match level {
             2 => LogLevel::Verbose, // VERBOSE
             3 => LogLevel::Debug,   // DEBUG
@@ -1144,9 +1154,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
             _ => LogLevel::Info,    // Default to INFO
         };
 
-        if let Some(delegate) = find_webview_by_native_view_id(&webtag, native_view_id)
-            .and_then(|webview| webview.get_delegate())
-        {
+        if let Some(delegate) = webview.get_delegate() {
             delegate.log(log_level, &message);
         }
         Ok(1)

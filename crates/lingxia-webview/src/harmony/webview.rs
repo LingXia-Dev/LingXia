@@ -890,6 +890,14 @@ unsafe extern "C" fn get_port_callback(
                     return;
                 }
             };
+            if port_type == PortType::Console
+                && crate::webview::platform_console_delivery(
+                    webview.effective_options().profile,
+                    crate::webview::PlatformConsoleBackend::Harmony,
+                ) != crate::webview::PlatformConsoleDelivery::DirectDelegate
+            {
+                return;
+            }
             let DocumentBinding::Bound(document_generation) = webview.current_document_binding()
             else {
                 webview.inner.defer_port_request(port_type);
@@ -2147,8 +2155,14 @@ pub fn on_document_commit(
     if !fulfilled {
         return false;
     }
-    if let Err(error) = inject_console_script(&webtag, webview.native_view_id()) {
-        log::debug!("Harmony console injection at commit failed for {webtag}: {error}");
+    if crate::webview::platform_console_delivery(
+        webview.effective_options().profile,
+        crate::webview::PlatformConsoleBackend::Harmony,
+    ) == crate::webview::PlatformConsoleDelivery::DirectDelegate
+    {
+        if let Err(error) = inject_console_script(&webtag, webview.native_view_id()) {
+            log::debug!("Harmony console injection at commit failed for {webtag}: {error}");
+        }
     }
     true
 }
@@ -2784,6 +2798,17 @@ extern "C" fn on_console_message_received(
     let Ok(webtag) = (unsafe { CStr::from_ptr(web_tag).to_str() }) else {
         return;
     };
+    let full_webtag = WebTag::from(webtag);
+    let Some(webview) = find_webview_by_native_view_id(&full_webtag, native_view_id) else {
+        return;
+    };
+    if crate::webview::platform_console_delivery(
+        webview.effective_options().profile,
+        crate::webview::PlatformConsoleBackend::Harmony,
+    ) != crate::webview::PlatformConsoleDelivery::DirectDelegate
+    {
+        return;
+    }
     if message.is_null() {
         return;
     }
@@ -2824,7 +2849,6 @@ extern "C" fn on_console_message_received(
             )
         {
             // Extract appid and path from webtag
-            let full_webtag = WebTag::from(webtag);
             // Convert log level for lxapp crate
             let log_level = match level {
                 "error" => LogLevel::Error,
