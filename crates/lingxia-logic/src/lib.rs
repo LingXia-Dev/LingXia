@@ -1,5 +1,6 @@
 use ::lxapp::lx::{LxLogicExtension, register_logic_extension};
 use rong::{JSContext, JSResult};
+use std::sync::OnceLock;
 
 mod app;
 mod authorization;
@@ -82,6 +83,19 @@ pub fn register_logic_runtime() {
     ::lxapp::register_surface_context_observer(surface::notify_surface_context_changed);
     register_logic_extension(Box::new(LxLogicRuntime));
     register_platform_i18n();
+}
+
+static NATIVE_CONTROL_AUTHORITY: OnceLock<::lxapp::NativeControlPlaneAuthority> = OnceLock::new();
+
+/// Seal the native authority used by the few Logic routes that open a
+/// host-owned control session. Duplicate installation is rejected.
+#[doc(hidden)]
+pub fn __install_native_control_authority(authority: ::lxapp::NativeControlPlaneAuthority) -> bool {
+    NATIVE_CONTROL_AUTHORITY.set(authority).is_ok()
+}
+
+pub(crate) fn native_control_authority() -> Option<&'static ::lxapp::NativeControlPlaneAuthority> {
+    NATIVE_CONTROL_AUTHORITY.get()
 }
 
 /// Installs one locale-aware lookup for platform-owned UI. Individual scenes

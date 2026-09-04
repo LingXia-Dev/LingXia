@@ -69,6 +69,13 @@ pub fn install_runtime() {
     );
 }
 
+/// Seal the native authority used by browser document lifecycle operations.
+/// Duplicate installation is rejected; there is no getter.
+#[doc(hidden)]
+pub fn __install_native_control_authority(authority: lxapp::NativeControlPlaneAuthority) -> bool {
+    document_session::install_browser_document_authority(authority)
+}
+
 #[doc(hidden)]
 pub fn register_internal_page(
     route: impl Into<String>,

@@ -29,3 +29,4 @@ ring = "0.17.14"
 
 [dev-dependencies]
 lingxia-webview = { workspace = true, features = ["test-support"] }
+lxapp = { workspace = true, default-features = false, features = ["test-utils"] }

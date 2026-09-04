@@ -325,6 +325,26 @@ pub(crate) fn init_with_platform(
     #[cfg(feature = "automation")]
     lingxia_automation::register_automation_runtime();
     let (home_app_id, native_authority) = lxapp::__init_with_native_authority(platform)?;
+    crate::settings_destination::install_control_authority(
+        lxapp::NativeControlPlaneAuthority::for_native_runtime(&native_authority),
+    )
+    .map_err(crate::Error::internal)?;
+    #[cfg(feature = "standard")]
+    if !lingxia_logic::__install_native_control_authority(
+        lxapp::NativeControlPlaneAuthority::for_native_runtime(&native_authority),
+    ) {
+        return Err(crate::Error::internal(
+            "Logic native control authority was already installed",
+        ));
+    }
+    #[cfg(feature = "browser-runtime")]
+    if !lingxia_browser::__install_native_control_authority(
+        lxapp::NativeControlPlaneAuthority::for_native_runtime(&native_authority),
+    ) {
+        return Err(crate::Error::internal(
+            "browser native control authority was already installed",
+        ));
+    }
     if !crate::terminal_automation::install(&native_authority) {
         return Err(crate::Error::internal(
             "native terminal authority was already installed",

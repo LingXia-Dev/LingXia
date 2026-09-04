@@ -133,7 +133,8 @@ impl BrowserTabDelegate {
     fn revoke_document_authority(&self, authority: lxapp::ControlDocumentAuthority) {
         match browser_resolve_delegate_page(&self.page_path, self.session_id) {
             Ok(page) => {
-                let _ = page.revoke_required_v3_document(authority);
+                let _ =
+                    page.revoke_required_v3_document(self.documents.native_authority(), authority);
             }
             Err(err) => {
                 lxapp::warn!(
@@ -542,28 +543,35 @@ impl WebViewDelegate for BrowserTabDelegate {
                         &session_id,
                         &secret,
                         |authority, gate| {
-                            let Ok(deferred) =
-                                page.bind_required_v3_authority(&context, authority, gate)
-                            else {
+                            let Ok(deferred) = page.bind_required_v3_authority(
+                                self.documents.native_authority(),
+                                &context,
+                                authority,
+                                gate,
+                            ) else {
                                 return false;
                             };
                             deferred_cancellation = Some(deferred);
                             true
                         },
                         |authority| {
-                            page.promote_active_browser_document(authority.clone())
-                                .then(|| {
-                                    let prepared = page.prepare_required_v3_incoming(
-                                        message,
-                                        authority.clone(),
-                                        authority.execution_gate(),
-                                    );
-                                    if prepared.is_err() {
-                                        typed_rejected.set(true);
-                                    }
-                                    prepared.ok()
-                                })
-                                .flatten()
+                            page.promote_active_browser_document(
+                                self.documents.native_authority(),
+                                authority.clone(),
+                            )
+                            .then(|| {
+                                let prepared = page.prepare_required_v3_incoming(
+                                    self.documents.native_authority(),
+                                    message,
+                                    authority.clone(),
+                                    authority.execution_gate(),
+                                );
+                                if prepared.is_err() {
+                                    typed_rejected.set(true);
+                                }
+                                prepared.ok()
+                            })
+                            .flatten()
                         },
                     )
                 } else {
@@ -573,6 +581,7 @@ impl WebViewDelegate for BrowserTabDelegate {
                         &secret,
                         |authority| {
                             let prepared = page.prepare_required_v3_incoming(
+                                self.documents.native_authority(),
                                 message,
                                 authority.clone(),
                                 authority.execution_gate(),
@@ -1040,11 +1049,11 @@ pub(crate) fn browser_destroy_webview_if_matches(
     expected: &Arc<WebView>,
 ) -> bool {
     let webtag = browser_webtag(path, session_id);
-    if let Some(authority) =
-        browser_document_sessions().destroy_native_view(expected.native_view_id())
+    let documents = browser_document_sessions();
+    if let Some(authority) = documents.destroy_native_view(expected.native_view_id())
         && let Ok(page) = browser_resolve_delegate_page(path, session_id)
     {
-        let _ = page.revoke_required_v3_document(authority);
+        let _ = page.revoke_required_v3_document(documents.native_authority(), authority);
     }
     destroy_managed_webview_if_matches(&webtag, expected)
 }

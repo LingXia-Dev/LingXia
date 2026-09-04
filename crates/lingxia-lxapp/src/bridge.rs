@@ -618,15 +618,27 @@ impl PageBridge {
     #[doc(hidden)]
     pub fn bind_required_v3_document(
         &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
         page: &PageInstance,
         context: &WebMessageContext,
         pending: &dyn RequiredV3DocumentGate,
     ) -> Result<(), LxAppError> {
+        if !native_authority.validate() {
+            return Err(LxAppError::UnsupportedOperation(
+                "browser document binding requires the live native host authority".to_string(),
+            ));
+        }
         let mut outcome = Ok(());
         let mut deferred = None;
         let mut install = |authority: crate::ControlDocumentAuthority,
                            outbound_gate: Arc<dyn DocumentOutboundGate>| {
-            match self.bind_required_v3_authority(page, context, authority, outbound_gate) {
+            match self.bind_required_v3_authority(
+                native_authority,
+                page,
+                context,
+                authority,
+                outbound_gate,
+            ) {
                 Ok(cancellation) => deferred = Some(cancellation),
                 Err(error) => outcome = Err(error),
             }
@@ -650,11 +662,17 @@ impl PageBridge {
     #[doc(hidden)]
     pub fn bind_required_v3_authority(
         &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
         page: &PageInstance,
         context: &WebMessageContext,
         authority: crate::ControlDocumentAuthority,
         outbound_gate: Arc<dyn DocumentOutboundGate>,
     ) -> Result<DeferredRequiredV3Cancellation, LxAppError> {
+        if !native_authority.validate() {
+            return Err(LxAppError::UnsupportedOperation(
+                "browser document binding requires the live native host authority".to_string(),
+            ));
+        }
         let expected_generation = match context.document() {
             lingxia_webview::DocumentBinding::Bound(generation) => generation,
             lingxia_webview::DocumentBinding::Unbound => {
@@ -701,9 +719,13 @@ impl PageBridge {
     #[doc(hidden)]
     pub fn revoke_required_v3_document(
         &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
         page: &PageInstance,
         authority: crate::ControlDocumentAuthority,
     ) -> bool {
+        if !native_authority.validate() {
+            return false;
+        }
         let binding = authority.v3_inbound_binding();
         let previous = {
             let mut handshake = self.inner.handshake.lock().unwrap();
@@ -730,8 +752,12 @@ impl PageBridge {
     #[doc(hidden)]
     pub fn promote_active_browser_document(
         &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
         authority: crate::ControlDocumentAuthority,
     ) -> bool {
+        if !native_authority.validate() {
+            return false;
+        }
         let binding = authority.v3_inbound_binding();
         let handshake = self.inner.handshake.lock().unwrap();
         let BridgeProtocol::BoundV3(protocol) = &handshake.protocol else {
@@ -915,11 +941,17 @@ impl PageBridge {
     #[doc(hidden)]
     pub fn prepare_required_v3_incoming(
         &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
         page: &PageInstance,
         incoming: IncomingWebMessage,
         authority: crate::ControlDocumentAuthority,
         execution_gate: crate::RequiredV3ExecutionGate,
     ) -> Result<PreparedRequiredV3Incoming, LxAppError> {
+        if !native_authority.validate() {
+            return Err(LxAppError::UnsupportedOperation(
+                "browser caller promotion requires the live native host authority".to_string(),
+            ));
+        }
         self.admit_incoming(page, incoming.context())?;
         let binding = authority.v3_inbound_binding();
         {
@@ -941,7 +973,8 @@ impl PageBridge {
                 "browser document work was revoked".to_string(),
             ));
         }
-        let caller = host::AuthenticatedCaller::active_browser_document(authority);
+        let caller =
+            host::AuthenticatedCaller::active_browser_document(native_authority, authority)?;
         self.pre_authorize_browser_route(&decoded.message, &caller)?;
         decoded.work.caller = Some(caller);
         Ok(PreparedRequiredV3Incoming {

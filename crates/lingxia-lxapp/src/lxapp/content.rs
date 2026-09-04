@@ -525,7 +525,11 @@ mod tests {
 
     #[test]
     fn control_bootstrap_is_hidden_one_shot_and_precedes_bridge_runtime() {
-        let (bootstrap, _) = issue_control_document_bootstrap(&SystemRandom::new()).unwrap();
+        let (bootstrap, _) = issue_control_document_bootstrap(
+            &crate::NativeControlPlaneAuthority::for_test(),
+            &SystemRandom::new(),
+        )
+        .unwrap();
         let script = build_control_document_bootstrap_script(bootstrap);
         assert!(script.contains(
             "Object.defineProperty(window,\"__LingXiaTakeControlBootstrap\",{enumerable:false"
@@ -563,7 +567,11 @@ mod tests {
     #[test]
     fn trusted_bootstrap_requires_the_generated_runtime_tag_and_precedes_it() {
         let html = format!("<html><head>{TRUSTED_BRIDGE_RUNTIME_TAG}</script></head></html>");
-        let (bootstrap, _) = issue_control_document_bootstrap(&SystemRandom::new()).unwrap();
+        let (bootstrap, _) = issue_control_document_bootstrap(
+            &crate::NativeControlPlaneAuthority::for_test(),
+            &SystemRandom::new(),
+        )
+        .unwrap();
         let trusted =
             inject_bridge_config_with_bootstrap(html.as_bytes(), None, Some(bootstrap)).unwrap();
         let trusted = String::from_utf8(trusted).unwrap();
@@ -573,7 +581,11 @@ mod tests {
         let runtime_at = trusted.find(TRUSTED_BRIDGE_RUNTIME_TAG).unwrap();
         assert!(bootstrap_at < runtime_at);
 
-        let (bootstrap, _) = issue_control_document_bootstrap(&SystemRandom::new()).unwrap();
+        let (bootstrap, _) = issue_control_document_bootstrap(
+            &crate::NativeControlPlaneAuthority::for_test(),
+            &SystemRandom::new(),
+        )
+        .unwrap();
         assert!(inject_bridge_config_with_bootstrap(
             b"<html><head><script src=\"lx://assets/bridge-runtime.js\"></script></head></html>",
             None,

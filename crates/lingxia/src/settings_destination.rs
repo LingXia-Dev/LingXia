@@ -67,11 +67,20 @@ impl SealedNativeSettingsActions {
 }
 
 static NATIVE_ACTIONS: OnceLock<SealedNativeSettingsActions> = OnceLock::new();
+static CONTROL_AUTHORITY: OnceLock<lxapp::NativeControlPlaneAuthority> = OnceLock::new();
 
 pub(crate) fn install_native_actions(actions: SealedNativeSettingsActions) -> Result<(), String> {
     NATIVE_ACTIONS
         .set(actions)
         .map_err(|_| "native Settings actions were already initialized".to_string())
+}
+
+pub(crate) fn install_control_authority(
+    authority: lxapp::NativeControlPlaneAuthority,
+) -> Result<(), String> {
+    CONTROL_AUTHORITY
+        .set(authority)
+        .map_err(|_| "native Settings control authority was already initialized".to_string())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -160,8 +169,11 @@ impl SettingsDestinationRuntime for BootstrapSettingsDestinationRuntime {
     ) -> Result<ControlPageIdentity, String> {
         let query = query_value(query);
         let options = lxapp::LxAppStartupOptions::for_page(Some(page), query.as_ref())?;
-        let app =
-            lxapp::open_control_lxapp_page(app_id, options).map_err(|error| error.to_string())?;
+        let authority = CONTROL_AUTHORITY
+            .get()
+            .ok_or_else(|| "native Settings control authority is not initialized".to_string())?;
+        let app = lxapp::open_control_lxapp_page(authority, app_id, options)
+            .map_err(|error| error.to_string())?;
         Ok(ControlPageIdentity {
             app_id: app.appid.clone(),
             session_id: app.session_id(),
