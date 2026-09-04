@@ -1790,17 +1790,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // declaration is held; `setupSidebarInterface` projects it.
         guard sidebarView != nil else { return }
         updateSidebarHeaderActions(runtimeSidebarActionItems(placement: "header"))
-        var footer = runtimeSidebarActionItems(placement: "footer")
-        if staticSettingsSource != nil {
-            footer.append(LxAppUIActionItem(
-                id: LxAppStaticSettingsSource.sidebarItemID,
-                label: "Settings",
-                iconURL: nil,
-                builtInIcon: "gearshape",
-                closable: false,
-                sidebarActionSource: .staticSettings
-            ))
-        }
+        let footer = LxAppStaticSettingsSource.mergeFooter(
+            runtimeItems: runtimeSidebarActionItems(placement: "footer"),
+            source: staticSettingsSource
+        )
         updateSidebarHostActions(footer)
     }
 
@@ -1809,8 +1802,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             .filter { $0.placement == placement }
             .filter {
                 LxAppStaticSettingsSource.acceptsRuntimeSidebarAction(
-                    id: $0.id,
-                    label: $0.label
+                    id: $0.id
                 )
             }
             .map { item in

@@ -73,6 +73,39 @@ async function desktopApp(): Promise<LxAppDriver> {
   return app;
 }
 
+async function openSettingsMain(
+  app: LxAppDriver,
+  platform: string,
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+): Promise<void> {
+  if (platform !== 'macos') {
+    await app.eval({
+      timeoutMs: 20_000,
+      script: `await lx.shell.openBuiltin('settings');`,
+    });
+    return;
+  }
+
+  const current = (await desktop.windows()).find((window) => window.id === host.id) ?? host;
+  await desktop.window.focus({ window: current.id });
+  const buttons = await desktop.ax.query({
+    window: current.id,
+    match: 'name:Settings',
+    all: true,
+  });
+  const settings = buttons.filter((node) => (
+    node.role === 'button'
+    && node.enabled
+    && node.name.trim() === 'Settings'
+    && node.rect.w > 0
+    && node.rect.h > 0
+    && node.rect.x < current.bounds.x + Math.min(220, current.bounds.w * 0.3)
+  ));
+  expect(settings.length).toBe(1);
+  await desktop.ax.invoke({ window: current.id, match: `id:${settings[0].id}` });
+}
+
 function switcherIds(layout: SurfaceLayoutSnapshot): string[] {
   return layout.mainSwitcher.items.map((item) => item.surfaceId);
 }
@@ -1352,10 +1385,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     // only graph state, so a sidebar that failed to reach its icon rail cannot pass.
     await closeChatSurface(app);
     chatOpened = false;
-    await app.eval({
-      timeoutMs: 20_000,
-      script: `await lx.shell.openBuiltin('settings');`,
-    });
+    await openSettingsMain(app, platform, desktop, host);
     const settingsTab = await waitForValue(async () => {
       const current = await browser.current();
       return current?.current_url?.startsWith('lingxia://settings') ? current : undefined;
@@ -1971,10 +2001,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
     // changing its lifecycle visibility. A retained handle.show() is an
     // explicit product-level activation request: it must replace that cover,
     // restore the same physical Chat WebView, and emit no duplicate show event.
-    await app.eval({
-      timeoutMs: 20_000,
-      script: `await lx.shell.openBuiltin('settings');`,
-    });
+    await openSettingsMain(app, platform, desktop, host);
     const browserMain = await waitForValue(async () => {
       const current = await browser.current();
       return current?.current_url?.startsWith('lingxia://settings') ? current : undefined;

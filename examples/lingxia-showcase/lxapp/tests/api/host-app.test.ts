@@ -322,6 +322,31 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
     expect(result.value).toMatch(/^lx:\/\//);
   });
 
+  await t.step('keep settings-shaped declarations on the generic runtime channel', async () => {
+    const result = await evalCaught(app, `
+      lx.shell.sidebarActions.replace([
+        { id: 'settings', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'ID spoof', onActivate() {} },
+        { id: 'label-spoof', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Settings', onActivate() {} },
+        { id: 'icon-spoof', placement: 'footer', icon: 'public/sidebar-settings.svg', label: 'Icon spoof', onActivate() {} },
+      ]);
+      lx.shell.sidebarActions.update('settings', { label: 'ID spoof live' });
+      lx.shell.sidebarActions.update('label-spoof', { disabled: true });
+      lx.shell.sidebarActions.update('icon-spoof', { label: 'Icon spoof live' });
+      return 'generic';
+    `);
+    expect(result.ok).toBeTruthy();
+
+    // Restore the live set used by the following rollback assertions.
+    const restored = await evalCaught(app, `
+      lx.shell.sidebarActions.replace([
+        { id: 'probe-header', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Probe header', onActivate() {} },
+        { id: 'probe-footer', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Probe footer 2', disabled: true, onActivate() {} },
+      ]);
+      return 'restored';
+    `);
+    expect(restored.ok).toBeTruthy();
+  });
+
   await t.step('reject a patch for an id outside the declaration', async () => {
     const result = await evalCaught(app, `
       lx.shell.sidebarActions.update('probe-missing', { label: 'nope' });

@@ -151,6 +151,22 @@ fn generated_app_json_emits_settings_destination_only_when_configured() {
 }
 
 #[test]
+fn showcase_generated_app_json_uses_the_static_browser_settings_page() {
+    let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/lingxia-showcase");
+    let config = LingXiaConfig::load(&project).unwrap();
+    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
+    let generated: serde_json::Value = serde_json::from_str(&app_json).unwrap();
+
+    assert_eq!(
+        generated["settingsDestination"],
+        serde_json::json!({
+            "kind": "browserControlPage",
+            "route": "/settings"
+        })
+    );
+}
+
+#[test]
 fn generated_app_json_includes_dev_ws_url_when_configured() {
     let config = LingXiaConfig {
         app: Some(HostAppConfig {
