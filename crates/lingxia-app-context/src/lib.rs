@@ -1,7 +1,7 @@
 use semver::Version;
 use serde::de::Error as _;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use thiserror::Error;
@@ -159,6 +159,84 @@ impl ThemeConfig {
     }
 }
 
+/// Static host configuration describing where a product's Settings affordance
+/// should navigate. Resolution and opening remain platform responsibilities.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum SettingsDestination {
+    ControlAppPage {
+        #[serde(rename = "appId")]
+        app_id: String,
+        page: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        query: Option<BTreeMap<String, serde_json::Value>>,
+    },
+    BrowserControlPage {
+        route: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        query: Option<BTreeMap<String, serde_json::Value>>,
+    },
+    NativeAction {
+        #[serde(rename = "actionId")]
+        action_id: String,
+    },
+}
+
+impl SettingsDestination {
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::ControlAppPage {
+                app_id,
+                page,
+                query,
+            } => {
+                validate_settings_destination_field("appId", app_id)?;
+                validate_settings_destination_field("page", page)?;
+                validate_settings_destination_query(query.as_ref())
+            }
+            Self::BrowserControlPage { route, query } => {
+                validate_settings_destination_field("route", route)?;
+                validate_settings_destination_query(query.as_ref())
+            }
+            Self::NativeAction { action_id } => {
+                validate_settings_destination_field("actionId", action_id)
+            }
+        }
+    }
+}
+
+fn validate_settings_destination_field(name: &str, value: &str) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err(format!("settingsDestination.{name} must not be empty"));
+    }
+    Ok(())
+}
+
+fn validate_settings_destination_query(
+    query: Option<&BTreeMap<String, serde_json::Value>>,
+) -> Result<(), String> {
+    let Some(query) = query else {
+        return Ok(());
+    };
+    for (key, value) in query {
+        if key.trim().is_empty() {
+            return Err("settingsDestination query keys must not be empty".to_string());
+        }
+        if !matches!(
+            value,
+            serde_json::Value::String(_)
+                | serde_json::Value::Number(_)
+                | serde_json::Value::Bool(_)
+                | serde_json::Value::Null
+        ) {
+            return Err(format!(
+                "settingsDestination query value for '{key}' must be a string, number, boolean, or null"
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AppConfig {
     #[serde(rename = "productName")]
@@ -215,6 +293,13 @@ pub struct AppConfig {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<ThemeConfig>,
+
+    #[serde(
+        rename = "settingsDestination",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub settings_destination: Option<SettingsDestination>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<CapabilitiesConfig>,
@@ -477,6 +562,11 @@ impl AppConfig {
                     "homeAppVersion must be a semantic version (major.minor.patch)".to_string(),
                 )
             })?;
+        }
+        if let Some(destination) = self.settings_destination.as_ref() {
+            destination
+                .validate()
+                .map_err(AppContextError::InvalidConfig)?;
         }
         validate_panels(self.panels.as_ref())
     }
@@ -953,7 +1043,8 @@ fn panel_position_name(position: PanelPosition) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        AppConfig, AppContextError, CampaignHandoff, ThemeColor, ThemeConfig, set_app_config,
+        AppConfig, AppContextError, CampaignHandoff, SettingsDestination, ThemeColor, ThemeConfig,
+        set_app_config,
     };
 
     fn test_config(product_name: &str) -> AppConfig {
@@ -972,6 +1063,7 @@ mod tests {
             dev_bundle_base_url: None,
             app_links: None,
             theme: None,
+            settings_destination: None,
             capabilities: None,
             panels: None,
         }
@@ -1051,6 +1143,83 @@ mod tests {
         let theme: ThemeConfig =
             serde_json::from_str(r#"{ "light": {}, "dark": {} }"#).expect("parse empty theme");
         assert!(theme.normalized().is_none());
+    }
+
+    #[test]
+    fn settings_destination_is_optional_and_round_trips_all_variants() {
+        let config = test_config("Settings Test");
+        let json = serde_json::to_value(&config).expect("serialize config without destination");
+        assert!(json.get("settingsDestination").is_none());
+
+        let variants = [
+            serde_json::json!({
+                "kind": "controlAppPage",
+                "appId": "com.example.control",
+                "page": "settings",
+                "query": { "tab": "general", "enabled": true, "count": 2, "empty": null }
+            }),
+            serde_json::json!({
+                "kind": "browserControlPage",
+                "route": "/settings/privacy",
+                "query": { "source": "menu" }
+            }),
+            serde_json::json!({ "kind": "nativeAction", "actionId": "openPreferences" }),
+        ];
+
+        for destination_json in variants {
+            let destination: SettingsDestination =
+                serde_json::from_value(destination_json.clone()).expect("decode destination");
+            destination.validate().expect("valid destination");
+            assert_eq!(
+                serde_json::to_value(destination).expect("encode destination"),
+                destination_json
+            );
+        }
+    }
+
+    #[test]
+    fn settings_destination_schema_and_values_are_strict() {
+        for destination in [
+            serde_json::json!({
+                "kind": "controlAppPage",
+                "appId": "control",
+                "page": "settings",
+                "extra": true
+            }),
+            serde_json::json!({ "kind": "browserControlPage", "route": "/settings", "appId": "wrong" }),
+            serde_json::json!({ "kind": "nativeAction", "actionId": "open", "query": {} }),
+        ] {
+            assert!(
+                serde_json::from_value::<SettingsDestination>(destination).is_err(),
+                "unknown fields must be rejected"
+            );
+        }
+
+        for destination in [
+            serde_json::json!({ "kind": "controlAppPage", "appId": " ", "page": "settings" }),
+            serde_json::json!({ "kind": "controlAppPage", "appId": "control", "page": "" }),
+            serde_json::json!({ "kind": "browserControlPage", "route": " " }),
+            serde_json::json!({ "kind": "nativeAction", "actionId": "" }),
+            serde_json::json!({
+                "kind": "browserControlPage",
+                "route": "/settings",
+                "query": { " ": "value" }
+            }),
+            serde_json::json!({
+                "kind": "browserControlPage",
+                "route": "/settings",
+                "query": { "nested": { "not": "scalar" } }
+            }),
+        ] {
+            let app_json = serde_json::json!({
+                "productName": "Settings Test",
+                "productVersion": "1.0.0",
+                "settingsDestination": destination
+            });
+            let error = AppConfig::parse_and_validate(&app_json.to_string())
+                .expect_err("invalid settings destination");
+            assert!(matches!(error, AppContextError::InvalidConfig(_)));
+        }
     }
 
     #[test]
