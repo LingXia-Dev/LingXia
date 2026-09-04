@@ -293,9 +293,9 @@ native message endpoint 可以留在 WebView 中，但 endpoint 本身不授予 
 主线已建立 WebView/browser 跨层关联：normalizer 分配不复用的 `NavigationId`，
 `PendingNavigation` 将 accepted attempt、expected loader 与 top-level commit 关联；native-owned
 load path 再提供不可由 document 伪造的 `NativeKey` 或 platform attestation。URL、`WebTag`、
-appid 与当前可见地址都不参与授权。Apple、Windows 与 Android API 23+ 已具有正向证明路径；
-HarmonyOS 保持 `Unsupported`/fail closed。history/BFCache 恢复的 internal document 不复用旧
-证明，而是先保持 unauthenticated，再由 host 发起 fresh trusted load。
+appid 与当前可见地址都不参与授权。Apple、Windows、Android API 23+ 与 HarmonyOS 已具有
+正向证明路径。history/BFCache 恢复的 internal document 不复用旧证明，而是先保持
+unauthenticated，再由 host 发起 fresh trusted load。
 browser tabs 的 generation token 只用于 stale-drop，仍不单独构成 document auth。internal
 browser page 的 `frame-ancestors 'none'` / `X-Frame-Options: DENY` 只缩小攻击面，不替代
 provenance。
@@ -325,8 +325,21 @@ document，却不能创建或 activate `BrowserControlDocument` session。delega
 | Apple | native load key + accepted `NavigationId`/generation + `WKScriptMessage.frameInfo` top-level proof | 任一 binding 不匹配即拒绝，不从 URL 重建 provenance |
 | Android API 23+ | host-issued load token 关联 start/commit；每 document 新建、绑定 generation 的 `MessagePort` | stale navigation/frame/external/旧 port 一律拒绝并撤销旧 session |
 | Android API 21/22 | process-wide JavaScript interface，无 provenance | `BrowserControlOnly` bridge fail closed；可渲染 internal UI，但 privileged UI 实际不可用，并记录产品影响与拒绝/降级 metrics |
-| HarmonyOS | 尚无可证明 current generation 的完整 backend | browser control transport 当前拒绝；完成 per-document port/generation 与 commit 关联前不得启用 |
+| HarmonyOS | host-issued trusted load intent/non-reused native key + ArkTS page epoch 关联 accepted start/commit；每 document 新建 port，并绑定 native WebView、generation、port 与 callback token | stale/external/reused port、reload、renderer loss 或 teardown 撤销 binding 并拒绝 |
 | Windows | WebView2 native navigation/top-level context + platform attestation；per-WebView FIFO dispatcher 保留 enqueue-time context | source、navigation 或 generation 失配即拒绝，不按 `WebTag`/当前 URL 补证 |
+
+### Native message outer cap
+
+64 KiB outer cap 必须尽量先于 LingXia-owned payload materialization。Apple 在复制 `NSString`
+为 Rust `String` 前按 UTF-8 字节数拒绝，且不再为非 string body 调用
+`NSJSONSerialization`；Android 在 `MessagePort` 与 API 21/22 `JavascriptInterface` 入口用
+无分配 UTF-16 扫描计算标准 UTF-8 长度，在 payload 进入 JNI/Rust 前拒绝；HarmonyOS regular
+与 console port 在 ArkWeb `data_length` 处、建立 slice/UTF-8 `String` 前拒绝。Windows 的
+WebView2 callback 已交付 `HSTRING`，无法在 WebView2 内部 string materialization 前读取 raw
+length，因此在 LingXia enqueue/V3 typed decode 前执行同一上限。所有 early rejection 都计入
+统一的 reason counter，采样日志不得包含 payload。Android API 21/22 的 ordinary traffic
+仍可走受限 fallback，但其 provenance 仍为 `Unproven`，不能因此启用 BrowserControl；outer
+cap 不是 authority fallback。
 
 ### 可信内部 document
 
@@ -776,15 +789,15 @@ BCP-47 tag；这是 storage continuity，不是 public API alias。
 | --- | --- |
 | caller/audience 与 route inventory | `crates/lingxia-lxapp/src/host.rs`、`bridge.rs`、`crates/lingxia-native-macros`、`crates/lingxia-logic/src/authorization.rs` |
 | app/resource authority | `crates/lingxia-lxapp/src/host.rs`、`page.rs`、`terminal_automation.rs`，以及 Logic fs/media/process per-call gates |
-| document identity 与平台 provenance | `crates/lingxia-webview/src/events/normalizer.rs`、`webview.rs`、`apple/webview.rs`、`android/{ffi.rs,webview.rs,java/*}`、`windows/document.rs` |
+| document identity 与平台 provenance | `crates/lingxia-webview/src/events/normalizer.rs`、`webview.rs`、`apple/webview.rs`、`android/{ffi.rs,webview.rs,java/*}`、`harmony_document.rs`、`harmony/webview.rs`、`windows/document.rs` |
 | BrowserControl session/ingress | `crates/lingxia-browser/src/document_session.rs`、`inbound.rs`、`webview.rs`、`internal_pages.rs` |
 | RequiredV3 codec/bootstrap | `crates/lingxia-lxapp/src/bridge/{protocol.rs}`、`bridge.rs`、`control_document_bootstrap.rs`、`lxapp/content.rs`、`packages/lingxia-bridge/src/protocol-v3.ts`、`bridge.ts` |
 | DisplayLanguage service/lease | `crates/lingxia-lxapp/src/lxapp/display_language.rs`、`crates/lingxia-control-runtime/src/bridge.rs`、`crates/lingxia/src/{app.rs,display_language_host.rs}`、`crates/lingxia-logic/src/app.rs`、`packages/lingxia-types` |
 | Settings static destination | `crates/lingxia-app-context/src/lib.rs`、`tools/lingxia-cli/src/config.rs`、`crates/lingxia/src/{settings_target.rs,settings_destination.rs,bootstrap.rs}`、Apple `LxAppStaticSettingsSource.swift`、Windows `static_settings.rs`/shell runtime |
 
-当前仍需后续实现并更新本文状态的是 HarmonyOS RequiredV3 provenance/outbound；完成前保持
-fail closed。BFCache/history restoration 已通过 fresh trusted reload 收口，Apple renderer
-termination 也会在上层 callback 前清除 committed generation。
+HarmonyOS RequiredV3 provenance/outbound 已通过 trusted-load/page-epoch correlation 与
+generation-bound fresh port 落地。BFCache/history restoration 已通过 fresh trusted reload
+收口，renderer termination 也会先清除 committed generation、port/session，再通知上层。
 
 ### 第一阶段：显式 route policy 与资源边界
 
@@ -810,7 +823,8 @@ app/surface/browser-shell guards。退出条件：全 registry inventory 通过�
 ### 第二阶段：将 browser authority 绑定到 document
 
 落地状态：core registry/RequiredV3、restoration trusted reload 与 Apple、Windows、Android
-API 23+ 已完成；HarmonyOS 未完成前 fail closed。
+API 23+、HarmonyOS 已完成；Android API 21/22 因 transport 无法证明 provenance，继续 fail
+closed。
 
 1. 用现有 `NavigationId`、`NavigationProgress`、`Superseded` normalizer 建立
    `PendingNavigation`，新增 loader-to-commit 跨层关联、random secret、loader attestation、
@@ -898,9 +912,9 @@ host-wide bypass；无 destination E2E 无显示/调用；每种 descriptor 的 
   任一不匹配时 fail closed；stale event 不得撤销较新 session；
 - `NavigationId` 是不复用的进程级 attempt identity，generation 仅在证实 per-WebView
   top-level replacement commit 后递增；commit 不能跨层关联时不得以 counter 伪造通过；
-- Apple `frameInfo`、Android 23+ per-document port/generation、Windows per-WebView
-  FIFO/context preservation 各有正向 backend test；HarmonyOS 在可信 backend 落地前断言
-  `Unsupported`/fail closed；Android 21/22 断言 privileged UI 不可用并记录拒绝/降级 metrics；
+- Apple `frameInfo`、Android 23+ per-document port/generation、HarmonyOS trusted
+  load/page-epoch/fresh-port binding、Windows per-WebView FIFO/context preservation 各有正向
+  backend test；Android 21/22 断言 privileged UI 不可用并记录拒绝/降级 metrics；
 - Rust protocol、`bridge.ts`、injected/bootstrap/generated client 的 V3 version negotiation
   与全 frame-family binding 双端测试，拒绝任一端单独启用；`required_protocol = 3` 下 V2、旧 JS、
   混合版本、payload 降级、首帧 secret/public-session/context 不匹配均不建 session、不返 schema；
