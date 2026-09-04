@@ -240,13 +240,39 @@ pub(crate) fn init_with_platform(
     crate::host_addon::run_before_init();
 
     let runtime = std::sync::Arc::new(platform.clone());
-    crate::runtime::set_platform(runtime.clone());
     #[cfg(feature = "devtool")]
     let app_config = crate::devtool::prepare_host_app_config(&runtime, load_bundled_app_config)
         .ok_or_else(|| crate::Error::internal("failed to load host app configuration"))?;
     #[cfg(not(feature = "devtool"))]
     let app_config = load_bundled_app_config(&runtime)
         .ok_or_else(|| crate::Error::internal("failed to load host app configuration"))?;
+
+    let mut settings_catalog = crate::StaticSettingsTargetCatalog::new();
+    if let Some(destination) = app_config.settings_destination.clone() {
+        settings_catalog.set_destination("app.json", destination);
+    }
+    crate::browser::configure_static_settings_targets(&mut settings_catalog);
+    crate::host_addon::run_configure_static_settings_targets(&mut settings_catalog);
+    // Policy inventory is registered before validation, but no runtime object
+    // is created and no handler is invoked. Conflicting policies remain visible
+    // through the read-only lookup used by validation.
+    crate::host_addon::run_install_host_apis();
+    crate::display_language_host::register();
+    crate::browser::register_builtin_route_inventory();
+    lxapp::host::register_builtin_routes();
+    let validated_settings = crate::settings_target::validate_for_startup(
+        &app_config,
+        settings_catalog,
+        runtime.as_ref(),
+    )
+    .map_err(|error| {
+        crate::Error::internal(format!(
+            "failed to validate static Settings target: {error}"
+        ))
+    })?;
+
+    // Global runtime state begins only after static validation succeeds.
+    crate::runtime::set_platform(runtime.clone());
     crate::app::set_data_dir(runtime.app_data_dir());
     seed_display_language(&runtime.app_data_dir(), runtime.get_system_locale());
     install_global_executor();
@@ -256,14 +282,17 @@ pub(crate) fn init_with_platform(
             "failed to initialize app configuration: {err}"
         )));
     }
+    crate::settings_target::install_validated(validated_settings).map_err(|error| {
+        crate::Error::internal(format!(
+            "failed to install static Settings targets: {error}"
+        ))
+    })?;
     // App config (with the device dev-ws-url) is now loaded, so a dev session is
     // detectable: default logging to debug unless LINGXIA_LOG_LEVEL pinned it.
     crate::logging::apply_dev_session_level();
     #[cfg(feature = "devtool")]
     crate::devtool::prepare_bundle_sources(&runtime);
     crate::host_addon::run_install_logic_extensions();
-    crate::host_addon::run_install_host_apis();
-    crate::display_language_host::register();
     let _ = lxapp::host::__install_app_resource_grant_resolver(std::sync::Arc::new(
         crate::host_addon::resolve_app_resource_grants,
     ));

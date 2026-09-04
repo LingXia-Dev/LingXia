@@ -43,11 +43,52 @@ pub(crate) fn classify_navigation_json(request_json: &str) -> Option<String> {
     runtime::classify_navigation_json(request_json)
 }
 
-pub(crate) fn register_builtin_runtime() {
+pub(crate) fn configure_static_settings_targets(catalog: &mut crate::StaticSettingsTargetCatalog) {
     #[cfg(feature = "browser-shell")]
-    shell::register_runtime();
-    #[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
-    runtime::install_runtime_once();
+    {
+        let routes = [
+            "app.getInfo",
+            "downloads.chooseDirectory",
+            "downloads.getSettings",
+            "downloads.resetDirectory",
+            "privacy.clearBrowsingData",
+            "privacy.clearSiteData",
+            "privacy.getSiteDataContext",
+            "privacy.getUsage",
+            "app.getDisplayLanguageState",
+            "app.setDisplayLanguagePreference",
+            "app.watchDisplayLanguageState",
+        ]
+        .into_iter();
+        #[cfg(feature = "proxy")]
+        let routes = routes.chain(
+            [
+                "proxy.getSettings",
+                "proxy.refreshGfwList",
+                "proxy.updateSettings",
+                "proxy.watch",
+            ]
+            .into_iter(),
+        );
+        catalog.require_browser_page_routes("/settings", routes);
+    }
+    #[cfg(not(feature = "browser-shell"))]
+    let _ = catalog;
+}
+
+pub(crate) fn register_builtin_route_inventory() {
+    #[cfg(feature = "browser-shell")]
+    shell::register_route_inventory();
+}
+
+pub(crate) fn register_builtin_runtime() {
+    static REGISTERED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        #[cfg(feature = "browser-shell")]
+        shell::register_runtime();
+        #[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
+        runtime::install_runtime_once();
+    });
 }
 
 pub(crate) fn register_builtin_assets() {

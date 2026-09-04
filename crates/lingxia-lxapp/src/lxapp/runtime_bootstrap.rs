@@ -139,9 +139,9 @@ pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
         error!("RUST PANIC: {} at {}", message, location);
     }));
 
-    // Register built-in Host API set. This ensures view->host calls work regardless of
-    // which logic extensions are loaded.
-    crate::host::register_all();
+    // LingXia bootstrap pre-registers these for static validation. Keep the
+    // idempotent call here for embedders that initialize lingxia-lxapp directly.
+    crate::host::register_builtin_routes();
 
     let runtime_arc = Arc::new(runtime.clone());
     super::runtime_registry::set_runtime(runtime_arc.clone());
