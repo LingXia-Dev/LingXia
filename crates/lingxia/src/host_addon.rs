@@ -116,10 +116,21 @@ pub(crate) fn run_install_native_settings_actions(
 pub(crate) fn run_install_logic_extensions() {
     #[cfg(feature = "standard")]
     {
-        let installed = snapshot_host_addons();
-        for addon in installed.iter() {
-            addon.install_logic_extensions();
+        unsafe extern "Rust" {
+            #[link_name = "lingxia_lxapp_run_host_extension_registration_v1"]
+            fn run_host_extension_registration(action: Box<dyn FnOnce()>);
         }
+        let installed = snapshot_host_addons();
+        // SAFETY: this private ABI marks only the synchronous HostAddon hook as
+        // control-capable registration. Calls through the public extension API
+        // outside this phase remain StandardApp-only.
+        unsafe {
+            run_host_extension_registration(Box::new(move || {
+                for addon in installed.iter() {
+                    addon.install_logic_extensions();
+                }
+            }))
+        };
     }
 }
 
@@ -160,46 +171,27 @@ fn issue_builtin_host_grants(
     authority: &mut NativeHostRuntimeAuthority<'_>,
     process_enabled: bool,
 ) {
-    if authority.session_class() == AppSessionClass::ControlApp && process_enabled {
+    if should_issue_builtin_process(
+        authority.session_class(),
+        process_enabled,
+        authority.requested(AppResourceGrant::Process),
+    ) {
         authority.grant(AppResourceGrant::Process);
     }
+}
+
+const fn should_issue_builtin_process(
+    class: AppSessionClass,
+    process_enabled: bool,
+    requested: bool,
+) -> bool {
+    matches!(class, AppSessionClass::ControlApp) && process_enabled && requested
 }
 
 #[cfg(test)]
 #[allow(clippy::items_after_test_module)]
 mod resource_grant_tests {
     use super::*;
-    use std::collections::HashSet;
-
-    fn authority<'a>(
-        session_id: u64,
-        session_class: AppSessionClass,
-        requested: impl IntoIterator<Item = AppResourceGrant>,
-        grants: &'a mut HashSet<AppResourceGrant>,
-    ) -> NativeHostRuntimeAuthority<'a> {
-        NativeHostRuntimeAuthority::for_test(
-            "same.app",
-            session_id,
-            session_class,
-            requested,
-            grants,
-        )
-    }
-
-    #[test]
-    fn manifest_request_is_not_a_grant_and_native_issuer_cannot_expand_it() {
-        let mut grants = HashSet::new();
-        let mut authority = authority(
-            7,
-            AppSessionClass::ControlApp,
-            [AppResourceGrant::Downloads],
-            &mut grants,
-        );
-        assert!(authority.requested(AppResourceGrant::Downloads));
-        assert!(!authority.grant(AppResourceGrant::Process));
-        assert!(authority.grant(AppResourceGrant::Downloads));
-        assert_eq!(grants, HashSet::from([AppResourceGrant::Downloads]));
-    }
 
     #[test]
     fn process_bootstrap_grant_requires_control_class_host_policy_and_manifest_request() {
@@ -209,82 +201,10 @@ mod resource_grant_tests {
             (AppSessionClass::ControlApp, true, false, false),
             (AppSessionClass::ControlApp, true, true, true),
         ] {
-            let mut grants = HashSet::new();
-            let requests = requested.then_some(AppResourceGrant::Process).into_iter();
-            let mut authority = authority(9, class, requests, &mut grants);
-            issue_builtin_host_grants(&mut authority, enabled);
-            assert_eq!(grants.contains(&AppResourceGrant::Process), expected);
-        }
-    }
-
-    #[test]
-    fn same_app_id_authorities_do_not_share_session_grants() {
-        let mut first = HashSet::new();
-        let mut second = HashSet::new();
-        authority(
-            10,
-            AppSessionClass::ControlApp,
-            [AppResourceGrant::AutomationHost],
-            &mut first,
-        )
-        .grant(AppResourceGrant::AutomationHost);
-        let second_authority = authority(
-            11,
-            AppSessionClass::ControlApp,
-            [AppResourceGrant::AutomationHost],
-            &mut second,
-        );
-        assert_eq!(second_authority.app_id(), "same.app");
-        assert_ne!(second_authority.session_id(), 10);
-        assert!(first.contains(&AppResourceGrant::AutomationHost));
-        assert!(second.is_empty());
-    }
-
-    #[cfg(feature = "devtool")]
-    #[test]
-    fn devtools_authority_can_issue_only_session_bound_automation() {
-        let mut grants = HashSet::new();
-        let mut authority = NativeDevtoolsAuthority::for_test(
-            "dev.app",
-            13,
-            AppSessionClass::StandardApp,
-            [
-                AppResourceGrant::Automation,
-                AppResourceGrant::AutomationHost,
-            ],
-            &mut grants,
-        );
-        assert!(authority.grant_automation());
-        assert_eq!(authority.app_id(), "dev.app");
-        assert_eq!(authority.session_id(), 13);
-        assert_eq!(authority.session_class(), AppSessionClass::StandardApp);
-        assert_eq!(
-            grants,
-            HashSet::from([
-                AppResourceGrant::Automation,
-                AppResourceGrant::AutomationHost
-            ])
-        );
-    }
-
-    #[cfg(feature = "devtool")]
-    #[test]
-    fn devtools_native_policy_cannot_expand_manifest_requests() {
-        for requested in [
-            Vec::new(),
-            vec![AppResourceGrant::Automation],
-            vec![AppResourceGrant::AutomationHost],
-        ] {
-            let mut grants = HashSet::new();
-            let mut authority = NativeDevtoolsAuthority::for_test(
-                "same.app",
-                21,
-                AppSessionClass::StandardApp,
-                requested.clone(),
-                &mut grants,
+            assert_eq!(
+                should_issue_builtin_process(class, enabled, requested),
+                expected
             );
-            authority.grant_automation();
-            assert_eq!(grants, requested.into_iter().collect());
         }
     }
 }

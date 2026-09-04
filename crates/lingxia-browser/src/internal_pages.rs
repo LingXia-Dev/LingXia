@@ -14,6 +14,7 @@ use lingxia_webview::{
 };
 use lxapp::{LxApp, LxAppError, PageInstance};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 const BROWSER_LINGXIA_ASSET_HOSTS: &[&str] = &[
@@ -29,6 +30,7 @@ static BROWSER_STARTUP_PAGE_INIT_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 static BROWSER_DOCUMENT_SCRIPTS: OnceLock<Mutex<Vec<Arc<str>>>> = OnceLock::new();
 static BROWSER_INTERNAL_PAGES: OnceLock<Mutex<HashMap<String, BrowserInternalPageRegistration>>> =
     OnceLock::new();
+static BROWSER_REGISTRATION_SEALED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct BrowserInternalPageRegistration {
@@ -47,11 +49,17 @@ pub(crate) enum InternalPageTarget {
 /// Injection happens in the tab delegate, not through an lxapp
 /// `PageInstance`, so external documents get the scripts without driving any
 /// page lifecycle.
-pub(crate) fn register_browser_document_script(js: impl Into<String>) {
+pub(crate) fn register_browser_document_script(js: impl Into<String>) -> Result<(), LxAppError> {
+    if BROWSER_REGISTRATION_SEALED.load(Ordering::Acquire) {
+        return Err(LxAppError::UnsupportedOperation(
+            "browser control registration is sealed".to_string(),
+        ));
+    }
     let scripts = BROWSER_DOCUMENT_SCRIPTS.get_or_init(|| Mutex::new(Vec::new()));
     if let Ok(mut guard) = scripts.lock() {
         guard.push(Arc::from(js.into()));
     }
+    Ok(())
 }
 
 /// Snapshot of the registered browser document scripts, in registration order.
@@ -72,12 +80,21 @@ pub(crate) fn register_browser_internal_page(
     route: impl Into<String>,
     entry_asset: impl Into<String>,
 ) -> Result<(), LxAppError> {
+    if BROWSER_REGISTRATION_SEALED.load(Ordering::Acquire) {
+        return Err(LxAppError::UnsupportedOperation(
+            "browser control registration is sealed".to_string(),
+        ));
+    }
     let route = normalize_internal_page_route_key(&route.into())?;
     let entry_asset = normalize_internal_page_entry_asset(&entry_asset.into())?;
     let pages = BROWSER_INTERNAL_PAGES.get_or_init(|| Mutex::new(HashMap::new()));
     let mut guard = pages.lock().unwrap_or_else(|e| e.into_inner());
     guard.insert(route, BrowserInternalPageRegistration { entry_asset });
     Ok(())
+}
+
+pub(crate) fn seal_browser_control_registration() {
+    BROWSER_REGISTRATION_SEALED.store(true, Ordering::Release);
 }
 
 fn normalize_internal_page_route_key(raw: &str) -> Result<String, LxAppError> {

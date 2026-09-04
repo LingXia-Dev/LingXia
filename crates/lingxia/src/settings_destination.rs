@@ -190,8 +190,12 @@ impl SettingsDestinationRuntime for BootstrapSettingsDestinationRuntime {
         if let Some(query) = query_value(query) {
             url = lxapp::append_page_query(url, &query)?;
         }
-        let (tab_id, browser_session_id) = crate::browser::navigate_trusted_control_page(&url)
-            .map_err(|error| error.to_string())?;
+        let authority = CONTROL_AUTHORITY
+            .get()
+            .ok_or_else(|| "native Settings control authority is not initialized".to_string())?;
+        let (tab_id, browser_session_id) =
+            crate::browser::navigate_trusted_control_page(authority, &url)
+                .map_err(|error| error.to_string())?;
         Ok(BrowserPageIdentity {
             tab_id,
             browser_session_id,
@@ -209,8 +213,14 @@ impl SettingsDestinationRuntime for BootstrapSettingsDestinationRuntime {
 /// Resolve and execute the sealed Settings destination against current runtime
 /// registries. No live app, tab, WebView, session, handler, or closure is kept
 /// between calls.
-pub fn resolve_settings_destination()
+pub(crate) fn resolve_settings_destination()
 -> Result<SettingsDestinationResolution, SettingsDestinationResolveError> {
+    if !CONTROL_AUTHORITY
+        .get()
+        .is_some_and(lxapp::NativeControlPlaneAuthority::is_live)
+    {
+        return Err(SettingsDestinationResolveError::NotInitialized);
+    }
     let snapshot = crate::settings_target::validated()
         .ok_or(SettingsDestinationResolveError::NotInitialized)?;
     resolve_from_snapshot(snapshot, &BootstrapSettingsDestinationRuntime)

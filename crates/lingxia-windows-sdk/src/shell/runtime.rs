@@ -3003,10 +3003,13 @@ fn build_footer_actions(app: &LxApp) -> Vec<WindowsShellFooterActionLayout> {
 static STATIC_SETTINGS_SOURCE: OnceLock<
     Mutex<Option<crate::static_settings::WindowsStaticSettingsSource>>,
 > = OnceLock::new();
+static SETTINGS_RUNTIME: OnceLock<lingxia::RuntimeInfo> = OnceLock::new();
 
 pub(crate) fn configure_static_settings_source(
     destination: Option<&lingxia_app_context::SettingsDestination>,
+    runtime: &lingxia::RuntimeInfo,
 ) {
+    let _ = SETTINGS_RUNTIME.set(runtime.clone());
     let source = crate::static_settings::WindowsStaticSettingsSource::from_destination(destination);
     let state = STATIC_SETTINGS_SOURCE.get_or_init(|| Mutex::new(None));
     if let Ok(mut state) = state.lock() {
@@ -3025,8 +3028,11 @@ fn static_settings_source() -> Option<crate::static_settings::WindowsStaticSetti
 }
 
 fn activate_static_settings(item_id: &str) -> bool {
-    static_settings_source()
-        .is_some_and(|source| source.activate(item_id, lingxia::resolve_settings_destination))
+    static_settings_source().is_some_and(|source| {
+        SETTINGS_RUNTIME.get().is_some_and(|runtime| {
+            source.activate(item_id, || runtime.resolve_settings_destination())
+        })
+    })
 }
 
 fn resolved_sidebar_actions_for_placement(
@@ -4098,8 +4104,20 @@ fn handle_browser_new_tab(appid: &str, session_id: u64) {
     const NEW_TAB_URL: &str = "lingxia://newtab";
     #[cfg(not(feature = "browser-shell"))]
     const NEW_TAB_URL: &str = "about:blank";
+    let trusted_runtime = SETTINGS_RUNTIME.get();
     if SELF_BROWSER_HOST.load(Ordering::Acquire) {
-        match lingxia_browser::open(NEW_TAB_URL, None) {
+        let opened = if NEW_TAB_URL.starts_with("lingxia://") {
+            trusted_runtime
+                .ok_or_else(|| {
+                    lxapp::LxAppError::UnsupportedOperation(
+                        "native browser runtime authority is not initialized".to_string(),
+                    )
+                })
+                .and_then(|runtime| runtime.open_trusted_browser_page(NEW_TAB_URL, None))
+        } else {
+            lingxia_browser::open(NEW_TAB_URL, None)
+        };
+        match opened {
             Ok(tab_id) => present_browser_tab_when_ready_with_policy(
                 lingxia_browser::BUILTIN_BROWSER_APPID,
                 tab_id,
@@ -4109,7 +4127,20 @@ fn handle_browser_new_tab(appid: &str, session_id: u64) {
         }
         return;
     }
-    match lingxia_browser::open_for_app(appid, session_id, NEW_TAB_URL, None) {
+    let opened = if NEW_TAB_URL.starts_with("lingxia://") {
+        trusted_runtime
+            .ok_or_else(|| {
+                lxapp::LxAppError::UnsupportedOperation(
+                    "native browser runtime authority is not initialized".to_string(),
+                )
+            })
+            .and_then(|runtime| {
+                runtime.open_trusted_browser_page_for_app(appid, session_id, NEW_TAB_URL, None)
+            })
+    } else {
+        lingxia_browser::open_for_app(appid, session_id, NEW_TAB_URL, None)
+    };
+    match opened {
         Ok(tab_id) => {
             present_browser_tab_when_ready_with_policy(appid, tab_id, NEW_TAB_URL == "about:blank")
         }

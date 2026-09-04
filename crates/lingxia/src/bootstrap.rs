@@ -227,6 +227,39 @@ fn seed_display_language(app_data_dir: &std::path::Path, system: &str) {
     }
 }
 
+type AppResourceGrantResolver = dyn for<'a> Fn(&std::sync::Arc<lxapp::LxApp>, &mut lxapp::host::NativeHostRuntimeAuthority<'a>)
+    + Send
+    + Sync
+    + 'static;
+type DevtoolsResourceGrantResolver = dyn for<'a> Fn(&std::sync::Arc<lxapp::LxApp>, &mut lxapp::host::NativeDevtoolsAuthority<'a>)
+    + Send
+    + Sync
+    + 'static;
+type NativeAuthorityInstaller = dyn FnOnce(
+        lxapp::NativeControlPlaneAuthority,
+        lxapp::NativeControlPlaneAuthority,
+        lxapp::NativeControlPlaneAuthority,
+        lxapp::terminal_automation::TerminalAutomationAuthority,
+    ) -> Result<(), lxapp::LxAppError>
+    + 'static;
+
+unsafe extern "Rust" {
+    #[link_name = "lingxia_lxapp_platform_bootstrap_v1"]
+    fn lxapp_platform_bootstrap(
+        runtime: lingxia_platform::Platform,
+        app_grant_resolver: Option<std::sync::Arc<AppResourceGrantResolver>>,
+        devtools_grant_resolver: Option<std::sync::Arc<DevtoolsResourceGrantResolver>>,
+        install_authorities: Box<NativeAuthorityInstaller>,
+    ) -> Result<
+        (
+            Option<String>,
+            lxapp::terminal_automation::TerminalAutomationAuthority,
+            lxapp::NativeControlPlaneAuthority,
+        ),
+        lxapp::LxAppError,
+    >;
+}
+
 /// Common initialization after Platform is created.
 /// Registers built-in runtime and initializes the lxapp system.
 pub(crate) fn init_with_platform(
@@ -317,69 +350,67 @@ pub(crate) fn init_with_platform(
     lingxia_logic::register_logic_runtime();
     #[cfg(feature = "automation")]
     lingxia_automation::register_automation_runtime();
-    let (home_app_id, native_authority) =
-        lxapp::__init_with_native_authority(platform, |runtime_authority| {
-            let control_authority =
-                lxapp::NativeControlPlaneAuthority::for_native_runtime(runtime_authority);
-            if !lxapp::host::__install_app_resource_grant_resolver(
-                &control_authority,
-                std::sync::Arc::new(crate::host_addon::resolve_app_resource_grants),
-            ) {
-                return Err(lxapp::LxAppError::Runtime(
-                    "native app resource grant resolver was already installed".to_string(),
-                ));
-            }
-            #[cfg(feature = "devtool")]
-            if !lxapp::host::__install_devtools_resource_grant_resolver(
-                &control_authority,
-                std::sync::Arc::new(crate::host_addon::resolve_devtools_resource_grants),
-            ) {
-                return Err(lxapp::LxAppError::Runtime(
-                    "native devtools grant resolver was already installed".to_string(),
-                ));
-            }
-            Ok(())
-        })?;
-    crate::settings_destination::install_control_authority(
-        lxapp::NativeControlPlaneAuthority::for_native_runtime(&native_authority),
-    )
-    .map_err(crate::Error::internal)?;
-    #[cfg(feature = "standard")]
-    if !lingxia_logic::__install_native_control_authority(
-        lxapp::NativeControlPlaneAuthority::for_native_runtime(&native_authority),
-    ) {
-        return Err(crate::Error::internal(
-            "Logic native control authority was already installed",
-        ));
-    }
-    #[cfg(feature = "browser-runtime")]
-    if !lingxia_browser::__install_native_control_authority(
-        lxapp::NativeControlPlaneAuthority::for_native_runtime(&native_authority),
-    ) {
-        return Err(crate::Error::internal(
-            "browser native control authority was already installed",
-        ));
-    }
-    if !crate::terminal_automation::install(&native_authority) {
-        return Err(crate::Error::internal(
-            "native terminal authority was already installed",
-        ));
-    }
-    #[cfg(feature = "automation")]
-    if !lingxia_automation::__install_native_terminal_authority(
-        lxapp::terminal_automation::TerminalAutomationAuthority::for_native_runtime(
-            &native_authority,
-        ),
-    ) {
-        return Err(crate::Error::internal(
-            "automation terminal authority was already installed",
-        ));
-    }
+    let app_grant_resolver: std::sync::Arc<AppResourceGrantResolver> =
+        std::sync::Arc::new(crate::host_addon::resolve_app_resource_grants);
+    #[cfg(feature = "devtool")]
+    let devtools_grant_resolver: Option<std::sync::Arc<DevtoolsResourceGrantResolver>> = Some(
+        std::sync::Arc::new(crate::host_addon::resolve_devtools_resource_grants),
+    );
+    #[cfg(not(feature = "devtool"))]
+    let devtools_grant_resolver: Option<std::sync::Arc<DevtoolsResourceGrantResolver>> = None;
+    // SAFETY: this private declaration binds the matching non-public Rust ABI
+    // symbol in lingxia-lxapp. It is entered once from the platform bootstrap
+    // after host configuration is sealed; no proof or resolver installer is
+    // exported through either crate's safe Rust API.
+    let (home_app_id, terminal_authority, browser_registration_authority) = unsafe {
+        lxapp_platform_bootstrap(
+            platform,
+            Some(app_grant_resolver),
+            devtools_grant_resolver,
+            Box::new(
+                |settings_authority, logic_authority, browser_authority, terminal_authority| {
+                    crate::settings_destination::install_control_authority(settings_authority)
+                        .map_err(lxapp::LxAppError::Runtime)?;
+                    #[cfg(feature = "standard")]
+                    if !lingxia_logic::__install_native_control_authority(logic_authority) {
+                        return Err(lxapp::LxAppError::Runtime(
+                            "Logic native control authority was already installed".to_string(),
+                        ));
+                    }
+                    #[cfg(not(feature = "standard"))]
+                    drop(logic_authority);
+                    #[cfg(feature = "browser-runtime")]
+                    if !lingxia_browser::__install_native_control_authority(browser_authority) {
+                        return Err(lxapp::LxAppError::Runtime(
+                            "browser native control authority was already installed".to_string(),
+                        ));
+                    }
+                    #[cfg(not(feature = "browser-runtime"))]
+                    drop(browser_authority);
+                    if !crate::terminal_automation::install(terminal_authority.clone()) {
+                        return Err(lxapp::LxAppError::Runtime(
+                            "native terminal authority was already installed".to_string(),
+                        ));
+                    }
+                    #[cfg(feature = "automation")]
+                    if !lingxia_automation::__install_native_terminal_authority(terminal_authority)
+                    {
+                        return Err(lxapp::LxAppError::Runtime(
+                            "automation terminal authority was already installed".to_string(),
+                        ));
+                    }
+                    Ok(())
+                },
+            ),
+        )
+    }?;
     if let Err(error) = crate::shell::initialize(runtime.clone()) {
         log::error!("Failed to initialize host shell state: {error}");
     }
     crate::update::install_auto_trigger(runtime.clone());
-    crate::browser::register_builtin_assets();
+    crate::browser::register_builtin_assets(&browser_registration_authority);
+    crate::browser::install_native_control_authority(browser_registration_authority)
+        .map_err(crate::Error::internal)?;
     crate::host_addon::run_after_init();
     // Between the runtime being up and the home page being ready: the only
     // window where asking the host for a campaign costs the launch nothing.
@@ -387,7 +418,7 @@ pub(crate) fn init_with_platform(
     crate::task::release_deferred();
     crate::browser::warmup();
     crate::host_addon::run_start_services();
-    Ok(crate::RuntimeInfo::new(home_app_id, native_authority))
+    Ok(crate::RuntimeInfo::new(home_app_id, terminal_authority))
 }
 
 #[cfg(test)]

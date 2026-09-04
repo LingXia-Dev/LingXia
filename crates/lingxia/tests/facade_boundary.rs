@@ -235,3 +235,38 @@ fn native_channel_macro_closes_on_handler_error() {
     assert!(macro_src.contains("let __lingxia_close = __lingxia_ctx.close_handle();"));
     assert!(macro_src.contains("__lingxia_close.close_with(\"HOST_ERROR\", err.to_string())"));
 }
+
+#[test]
+fn authority_escape_fixture_covers_all_feature_unification_paths() {
+    let manifest = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/authority-escape/Cargo.toml"
+    ))
+    .expect("read authority escape fixture manifest");
+    let source = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/authority-escape/src/main.rs"
+    ))
+    .expect("read authority escape fixture");
+
+    assert!(manifest.contains("lxapp/test-utils"));
+    for forbidden in [
+        "__init_with_native_authority",
+        "NativeHostRuntimeToken",
+        "NativeControlPlaneAuthority::for_test",
+        "NativeControlPlaneAuthority::for_native_runtime",
+        "__install_app_resource_grant_resolver",
+        "__install_devtools_resource_grant_resolver",
+        "AuthenticatedCaller::LxAppSession",
+        "AuthenticatedCaller::BrowserDocument",
+        "add_global_page_script",
+        "LxApp::add_page_script",
+        "resolve_settings_destination",
+        "apple::resolve_settings_destination_for_host",
+    ] {
+        assert!(
+            source.contains(forbidden),
+            "fixture must attempt {forbidden}"
+        );
+    }
+}

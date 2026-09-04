@@ -46,17 +46,17 @@ pub use lxapp::{
 #[derive(Clone)]
 pub struct RuntimeInfo {
     lxapp_id: Option<String>,
-    native_authority: std::sync::Arc<lxapp::terminal_automation::NativeHostRuntimeToken>,
+    terminal_authority: std::sync::Arc<lxapp::terminal_automation::TerminalAutomationAuthority>,
 }
 
 impl RuntimeInfo {
     pub(crate) fn new(
         lxapp_id: Option<String>,
-        native_authority: lxapp::terminal_automation::NativeHostRuntimeToken,
+        terminal_authority: lxapp::terminal_automation::TerminalAutomationAuthority,
     ) -> Self {
         Self {
             lxapp_id,
-            native_authority: std::sync::Arc::new(native_authority),
+            terminal_authority: std::sync::Arc::new(terminal_authority),
         }
     }
 
@@ -77,8 +77,42 @@ impl RuntimeInfo {
     pub fn terminal_automation_authority(
         &self,
     ) -> lxapp::terminal_automation::TerminalAutomationAuthority {
-        lxapp::terminal_automation::TerminalAutomationAuthority::for_native_runtime(
-            &self.native_authority,
+        self.terminal_authority.as_ref().clone()
+    }
+
+    /// Resolve the sealed host Settings destination through this initialized
+    /// platform runtime handle. There is no process-global safe entrypoint.
+    pub fn resolve_settings_destination(
+        &self,
+    ) -> std::result::Result<SettingsDestinationResolution, SettingsDestinationResolveError> {
+        settings_destination::resolve_settings_destination()
+    }
+
+    #[cfg(feature = "browser-runtime")]
+    #[doc(hidden)]
+    pub fn open_trusted_browser_page(
+        &self,
+        url: &str,
+        tab_id: Option<&str>,
+    ) -> std::result::Result<String, lxapp::LxAppError> {
+        lingxia_browser::open_trusted(crate::browser::native_control_authority()?, url, tab_id)
+    }
+
+    #[cfg(feature = "browser-runtime")]
+    #[doc(hidden)]
+    pub fn open_trusted_browser_page_for_app(
+        &self,
+        app_id: &str,
+        session_id: u64,
+        url: &str,
+        tab_id: Option<&str>,
+    ) -> std::result::Result<String, lxapp::LxAppError> {
+        lingxia_browser::open_trusted_for_app(
+            crate::browser::native_control_authority()?,
+            app_id,
+            session_id,
+            url,
+            tab_id,
         )
     }
 }
@@ -95,7 +129,7 @@ impl std::fmt::Debug for RuntimeInfo {
 impl PartialEq for RuntimeInfo {
     fn eq(&self, other: &Self) -> bool {
         self.lxapp_id == other.lxapp_id
-            && std::sync::Arc::ptr_eq(&self.native_authority, &other.native_authority)
+            && std::sync::Arc::ptr_eq(&self.terminal_authority, &other.terminal_authority)
     }
 }
 
@@ -180,7 +214,6 @@ mod settings_target;
 pub(crate) mod shell;
 pub use settings_destination::{
     NativeSettingsActionRegistrar, SettingsDestinationResolution, SettingsDestinationResolveError,
-    resolve_settings_destination,
 };
 pub use settings_target::{
     SealedNativeActionRegistry, StaticSettingsTargetCatalog, StaticSettingsTargetError,

@@ -2,7 +2,7 @@
 
 use std::sync::OnceLock;
 
-use lxapp::terminal_automation::{NativeHostRuntimeToken, TerminalAutomationAuthority};
+use lxapp::terminal_automation::TerminalAutomationAuthority;
 
 struct NativeAuthoritySlot(OnceLock<TerminalAutomationAuthority>);
 
@@ -11,10 +11,8 @@ impl NativeAuthoritySlot {
         Self(OnceLock::new())
     }
 
-    fn install(&self, proof: &NativeHostRuntimeToken) -> bool {
-        self.0
-            .set(TerminalAutomationAuthority::for_native_runtime(proof))
-            .is_ok()
+    fn install(&self, authority: TerminalAutomationAuthority) -> bool {
+        self.0.set(authority).is_ok()
     }
 
     fn with<T>(&self, fallback: T, action: impl FnOnce(&TerminalAutomationAuthority) -> T) -> T {
@@ -29,8 +27,8 @@ impl NativeAuthoritySlot {
 
 static AUTHORITY: NativeAuthoritySlot = NativeAuthoritySlot::new();
 
-pub(crate) fn install(proof: &NativeHostRuntimeToken) -> bool {
-    AUTHORITY.install(proof)
+pub(crate) fn install(authority: TerminalAutomationAuthority) -> bool {
+    AUTHORITY.install(authority)
 }
 
 fn with_authority<T>(fallback: T, action: impl FnOnce(&TerminalAutomationAuthority) -> T) -> T {
@@ -80,33 +78,38 @@ mod tests {
 
     #[test]
     fn native_token_installation_is_single_owner_and_expires_with_its_runtime() {
+        unsafe extern "Rust" {
+            #[link_name = "lingxia_lxapp_test_terminal_authority_v1"]
+            fn test_terminal_authority(runtime: &Arc<Platform>) -> TerminalAutomationAuthority;
+            #[link_name = "lingxia_lxapp_test_validate_terminal_authority_v1"]
+            fn test_validate_terminal_authority(
+                authority: &TerminalAutomationAuthority,
+                runtime: Option<&Arc<Platform>>,
+            ) -> Result<(), String>;
+        }
         let first_root = tempfile::tempdir().expect("first runtime root");
         let successor_root = tempfile::tempdir().expect("successor runtime root");
         let first = runtime(first_root.path());
         let successor = runtime(successor_root.path());
-        let first_token = NativeHostRuntimeToken::for_test(&first);
-        let successor_token = NativeHostRuntimeToken::for_test(&successor);
+        // SAFETY: these private workspace test harness symbols are absent from
+        // lxapp's safe downstream API.
+        let first_authority = unsafe { test_terminal_authority(&first) };
+        let successor_authority = unsafe { test_terminal_authority(&successor) };
         let slot = NativeAuthoritySlot::new();
 
-        assert!(slot.install(&first_token));
-        assert!(!slot.install(&successor_token));
+        assert!(slot.install(first_authority));
+        assert!(!slot.install(successor_authority));
         let installed = slot.authority().expect("installed authority");
+        assert!(unsafe { test_validate_terminal_authority(installed, Some(&first)) }.is_ok());
         assert!(
-            installed
-                .validate_native_runtime_for_test(Some(&first))
-                .is_ok()
-        );
-        assert!(
-            installed
-                .validate_native_runtime_for_test(Some(&successor))
+            unsafe { test_validate_terminal_authority(installed, Some(&successor)) }
                 .expect_err("successor cannot reuse the first runtime token")
                 .contains("does not match")
         );
 
         drop(first);
         assert!(
-            installed
-                .validate_native_runtime_for_test(None)
+            unsafe { test_validate_terminal_authority(installed, None) }
                 .expect_err("dropped runtime revokes its token")
                 .contains("no longer live")
         );

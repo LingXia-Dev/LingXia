@@ -7,6 +7,38 @@
 mod runtime;
 mod shell;
 
+#[cfg(feature = "browser-runtime")]
+static NATIVE_CONTROL_AUTHORITY: std::sync::OnceLock<lxapp::NativeControlPlaneAuthority> =
+    std::sync::OnceLock::new();
+
+pub(crate) fn install_native_control_authority(
+    authority: lxapp::NativeControlPlaneAuthority,
+) -> Result<(), &'static str> {
+    #[cfg(feature = "browser-runtime")]
+    return NATIVE_CONTROL_AUTHORITY
+        .set(authority)
+        .map_err(|_| "native browser control authority was already installed");
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = authority;
+        Ok(())
+    }
+}
+
+pub(crate) fn native_control_authority()
+-> Result<&'static lxapp::NativeControlPlaneAuthority, lxapp::LxAppError> {
+    #[cfg(feature = "browser-runtime")]
+    return NATIVE_CONTROL_AUTHORITY.get().ok_or_else(|| {
+        lxapp::LxAppError::UnsupportedOperation(
+            "native browser control authority is not initialized".to_string(),
+        )
+    });
+    #[cfg(not(feature = "browser-runtime"))]
+    Err(lxapp::LxAppError::UnsupportedOperation(
+        "browser not available (browser feature disabled)".to_string(),
+    ))
+}
+
 #[cfg(target_os = "android")]
 pub(crate) use runtime::navigate;
 #[cfg(all(target_env = "ohos", not(any(target_os = "ios", target_os = "macos"))))]
@@ -96,11 +128,13 @@ pub(crate) fn register_builtin_runtime() {
     });
 }
 
-pub(crate) fn register_builtin_assets() {
+pub(crate) fn register_builtin_assets(authority: &lxapp::NativeControlPlaneAuthority) {
     #[cfg(feature = "browser-shell")]
-    shell::register_bundled_assets();
+    shell::register_bundled_assets(authority);
     #[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
     runtime::register_bundled_app_once();
+    #[cfg(not(feature = "browser-shell"))]
+    let _ = authority;
 }
 
 pub(crate) fn warmup() {

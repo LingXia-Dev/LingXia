@@ -700,27 +700,29 @@ pub(crate) async fn lxapp_service_handler(
                 }
             }
             let _ = lx::init(&ctx);
-
             // Execute a closure with access to the list of registered extensions.
-            crate::lx::extension::with_registered_extensions(|user_extensions| {
-                info!(
-                    "[Worker {}] Initializing {} user-registered extensions",
-                    worker_id,
-                    user_extensions.len()
-                )
-                .with_appid(lxapp.appid.clone());
+            crate::lx::extension::with_registered_extensions(
+                lxapp.app_session_class(),
+                |user_extensions| {
+                    info!(
+                        "[Worker {}] Initializing {} user-registered extensions",
+                        worker_id,
+                        user_extensions.len()
+                    )
+                    .with_appid(lxapp.appid.clone());
 
-                // Iterate through the list and initialize each extension.
-                for (index, user_extension) in user_extensions.iter().enumerate() {
-                    if let Err(e) = user_extension.init(&ctx) {
-                        error!(
-                            "[Worker {}] Failed to initialize user extension #{}: {}",
-                            worker_id, index, e
-                        )
-                        .with_appid(lxapp.appid.clone());
+                    // Iterate through the list and initialize each extension.
+                    for (index, user_extension) in user_extensions.iter().enumerate() {
+                        if let Err(e) = user_extension.init(&ctx) {
+                            error!(
+                                "[Worker {}] Failed to initialize user extension #{}: {}",
+                                worker_id, index, e
+                            )
+                            .with_appid(lxapp.appid.clone());
+                        }
                     }
-                }
-            });
+                },
+            );
 
             info!("[Worker {}] Created JS context", worker_id).with_appid(lxapp.appid.clone());
 

@@ -277,6 +277,32 @@ mod tests {
     use lxapp::AppSessionClass;
     use std::collections::HashSet;
 
+    unsafe extern "Rust" {
+        #[link_name = "lingxia_lxapp_test_authenticated_caller_v1"]
+        fn test_authenticated_caller(
+            app_id: &str,
+            session_id: u64,
+            class: AppSessionClass,
+        ) -> host::AuthenticatedCaller;
+        #[link_name = "lingxia_lxapp_test_browser_caller_v1"]
+        fn test_browser_caller() -> host::AuthenticatedCaller;
+    }
+
+    fn app_caller(
+        app_id: &str,
+        session_id: u64,
+        class: AppSessionClass,
+    ) -> host::AuthenticatedCaller {
+        // SAFETY: the symbol is a private workspace test harness supplied by
+        // the lxapp dev-dependency; it is absent from the safe public API.
+        unsafe { test_authenticated_caller(app_id, session_id, class) }
+    }
+
+    fn browser_caller() -> host::AuthenticatedCaller {
+        // SAFETY: see `app_caller`.
+        unsafe { test_browser_caller() }
+    }
+
     #[test]
     fn production_inventory_is_complete_unique_and_control_only() {
         let inventory = logic_route_inventory();
@@ -292,17 +318,9 @@ mod tests {
 
     #[test]
     fn same_app_id_standard_and_browser_are_denied_for_every_direct_family() {
-        let standard = host::AuthenticatedCaller::lxapp_session_for_test(
-            "same.app",
-            41,
-            AppSessionClass::StandardApp,
-        );
-        let control = host::AuthenticatedCaller::lxapp_session_for_test(
-            "same.app",
-            42,
-            AppSessionClass::ControlApp,
-        );
-        let browser = host::AuthenticatedCaller::browser_document_for_test();
+        let standard = app_caller("same.app", 41, AppSessionClass::StandardApp);
+        let control = app_caller("same.app", 42, AppSessionClass::ControlApp);
+        let browser = browser_caller();
 
         for route in LogicRoute::ALL {
             assert!(
@@ -325,16 +343,8 @@ mod tests {
 
     #[test]
     fn unauthorized_raw_call_never_decodes_malformed_arguments() {
-        let standard = host::AuthenticatedCaller::lxapp_session_for_test(
-            "same.app",
-            51,
-            AppSessionClass::StandardApp,
-        );
-        let control = host::AuthenticatedCaller::lxapp_session_for_test(
-            "same.app",
-            52,
-            AppSessionClass::ControlApp,
-        );
+        let standard = app_caller("same.app", 51, AppSessionClass::StandardApp);
+        let control = app_caller("same.app", 52, AppSessionClass::ControlApp);
         let mut decoded = false;
         let denied = authorize_caller_then(
             &standard,

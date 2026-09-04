@@ -77,8 +77,6 @@ pub use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 pub use lingxia_surface::Role as SurfaceRole;
 pub use lingxia_update::ReleaseType;
 use lingxia_webview::runtime::destroy_webview_if_matches;
-#[doc(hidden)]
-pub use runtime_bootstrap::__init_with_native_authority;
 pub use runtime_bootstrap::dev_session_active as is_dev_session;
 pub use runtime_bootstrap::init;
 pub use runtime_bootstrap::runner_active as is_runner;
@@ -2458,16 +2456,6 @@ impl LxApp {
         matches!(self.status(), LxAppSessionStatus::Opened)
     }
 
-    /// Register a script to inject on every page load within this LxApp.
-    ///
-    /// Use this for app-specific scripts (e.g. browser context-menu).
-    /// For scripts that should run in *all* apps, use [`add_global_page_script`].
-    pub fn add_page_script(&self, js: impl Into<String>) {
-        if let Ok(mut scripts) = self.page_scripts.lock() {
-            scripts.push(Arc::from(js.into()));
-        }
-    }
-
     pub(crate) fn document_start_scripts_snapshot(&self) -> Vec<Arc<str>> {
         self.document_start_scripts
             .lock()
@@ -2475,13 +2463,12 @@ impl LxApp {
             .unwrap_or_default()
     }
 
-    /// Snapshot page scripts for a new PageInstance: global scripts + this app's scripts.
+    /// Snapshot page scripts for a new PageInstance.
     pub(crate) fn page_scripts_snapshot(&self) -> Vec<Arc<str>> {
-        let mut scripts = crate::page::global_page_scripts_snapshot();
-        if let Ok(app_scripts) = self.page_scripts.lock() {
-            scripts.extend(app_scripts.iter().cloned());
-        }
-        scripts
+        self.page_scripts
+            .lock()
+            .map(|scripts| scripts.clone())
+            .unwrap_or_default()
     }
 
     /// Check if a domain is allowed for network access

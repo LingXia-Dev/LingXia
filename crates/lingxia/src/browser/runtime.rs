@@ -18,15 +18,18 @@ pub(crate) fn register_bundled_app() {
     lingxia_browser::register_bundled_app();
 }
 
-pub(crate) fn navigate_trusted_control_page(url: &str) -> Result<(String, u64), lxapp::LxAppError> {
+pub(crate) fn navigate_trusted_control_page(
+    authority: &lxapp::NativeControlPlaneAuthority,
+    url: &str,
+) -> Result<(String, u64), lxapp::LxAppError> {
     #[cfg(feature = "browser-runtime")]
     {
-        let navigation = lingxia_browser::navigate_trusted_control_page(url)?;
+        let navigation = lingxia_browser::navigate_trusted_control_page(authority, url)?;
         Ok((navigation.tab_id, navigation.browser_session_id))
     }
     #[cfg(not(feature = "browser-runtime"))]
     {
-        let _ = url;
+        let _ = (authority, url);
         unavailable()
     }
 }
@@ -53,7 +56,11 @@ pub(crate) fn warmup() {
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) fn open(url: &str, tab_id: Option<&str>) -> Result<String, lxapp::LxAppError> {
     #[cfg(feature = "browser-runtime")]
-    return lingxia_browser::open(url, tab_id);
+    return if lingxia_browser::extract_url_scheme(url).as_deref() == Some("lingxia") {
+        lingxia_browser::open_trusted(super::native_control_authority()?, url, tab_id)
+    } else {
+        lingxia_browser::open(url, tab_id)
+    };
     #[cfg(not(feature = "browser-runtime"))]
     {
         let _ = (url, tab_id);

@@ -30,6 +30,8 @@ mod route;
 pub mod startup;
 /// Host-published terminal workspace state for trusted automation drivers.
 pub mod terminal_automation;
+#[cfg(feature = "test-utils")]
+mod test_authority_harness;
 mod update;
 pub(crate) mod view_call;
 
@@ -71,8 +73,6 @@ pub use lingxia_update::{
     ReleaseType, RuntimeCompatibilityError, SemanticVersion, Version, VersionError,
 };
 pub use lingxia_webview::url_callback;
-#[doc(hidden)]
-pub use lxapp::__init_with_native_authority;
 pub use lxapp::set_num_workers;
 pub use lxapp::{
     AppSessionClass, CloseReason, CreatePageInstanceRequest, CreatedPageInstance,
@@ -90,14 +90,14 @@ pub use lxapp::{
     clear_display_language_session_override, close_lxapp, config::LxAppInfo, create_page_instance,
     display_language, display_language_state, display_language_state_update, dispose_page_instance,
     dispose_page_instance_by_id, ensure_builtin_lxapp, ensure_control_lxapp,
-    ensure_host_surface_owner, ensure_lxapp,
-    find_page_by_instance_id, get_current_lxapp, get_platform, host_class, init,
-    initialize_display_language, install_display_language_session_override, installed_lxapp_path,
-    is_dev_session, is_public_network_address, is_pull_down_refresh_enabled, list_lxapps,
-    mark_lxapp_active, navbar, notify_lxapp_host_visibility, notify_page_host_visibility,
-    notify_page_instance, notify_page_instance_by_id, on_low_memory, open_control_lxapp_page,
-    open_lxapp, open_region, page_chrome, refresh_auto_appearances,
-    refresh_display_language_system, register_builtin_asset_bundle, register_dev_bundle_source,
+    ensure_host_surface_owner, ensure_lxapp, find_page_by_instance_id, get_current_lxapp,
+    get_platform, host_class, init, initialize_display_language,
+    install_display_language_session_override, installed_lxapp_path, is_dev_session,
+    is_public_network_address, is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active,
+    navbar, notify_lxapp_host_visibility, notify_page_host_visibility, notify_page_instance,
+    notify_page_instance_by_id, on_low_memory, open_control_lxapp_page, open_lxapp, open_region,
+    page_chrome, refresh_auto_appearances, refresh_display_language_system,
+    register_builtin_asset_bundle, register_dev_bundle_source,
     register_surface_active_main_observer, register_surface_close_observer,
     register_surface_context_observer, register_surface_visibility_observer,
     register_synthetic_lxapp, restart_lxapp, set_display_language_preference,
@@ -112,7 +112,7 @@ pub use native_component::{
 pub use page::config::{OrientationConfig, PageOrientation};
 pub use page::{
     NavigationType, PageAutomationState, PageInstance, PageInstanceId, ViewCallOptions,
-    add_global_page_script, register_page_resolver, resolve_page_path,
+    register_page_resolver, resolve_page_path,
 };
 pub use plugin::{build_plugin_page_path, parse_plugin_page_path, parse_plugin_url};
 pub use provider::{

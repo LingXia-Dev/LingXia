@@ -22,10 +22,7 @@ pub struct NativeControlPlaneAuthority {
 }
 
 impl NativeControlPlaneAuthority {
-    /// Derive a scoped control-plane proof from the one-shot native runtime
-    /// token returned during host bootstrap.
-    #[doc(hidden)]
-    pub fn for_native_runtime(proof: &NativeHostRuntimeToken) -> Self {
+    pub(crate) fn for_native_runtime(proof: &NativeHostRuntimeToken) -> Self {
         Self {
             runtime: proof.runtime().clone(),
             #[cfg(any(test, feature = "test-utils"))]
@@ -45,9 +42,20 @@ impl NativeControlPlaneAuthority {
         crate::get_platform().is_some_and(|current| std::sync::Arc::ptr_eq(&current, &runtime))
     }
 
+    /// Whether this opaque proof still belongs to the live platform runtime.
+    /// This reveals no credential and cannot mint or promote authority.
     #[doc(hidden)]
+    pub fn is_live(&self) -> bool {
+        self.validate()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test() -> Self {
+        Self::for_test_harness()
+    }
+
     #[cfg(any(test, feature = "test-utils"))]
-    pub fn for_test() -> Self {
+    pub(crate) fn for_test_harness() -> Self {
         Self {
             runtime: Weak::new(),
             test_authority: true,

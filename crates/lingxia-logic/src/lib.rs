@@ -1,4 +1,4 @@
-use ::lxapp::lx::{LxLogicExtension, register_logic_extension};
+use ::lxapp::lx::LxLogicExtension;
 use rong::{JSContext, JSResult};
 use std::sync::OnceLock;
 
@@ -33,6 +33,11 @@ mod i18n_generated;
 pub use self::i18n_generated::*;
 
 pub struct LxLogicRuntime;
+
+unsafe extern "Rust" {
+    #[link_name = "lingxia_lxapp_register_framework_logic_extension_v1"]
+    fn register_framework_logic_extension(extension: Box<dyn LxLogicExtension>);
+}
 
 impl LxLogicExtension for LxLogicRuntime {
     fn init(&self, ctx: &JSContext) -> JSResult<()> {
@@ -81,7 +86,9 @@ pub fn register_logic_runtime() {
     ::lxapp::register_surface_active_main_observer(surface::notify_active_main_changed);
     ::lxapp::register_surface_visibility_observer(surface::notify_surface_visibility);
     ::lxapp::register_surface_context_observer(surface::notify_surface_context_changed);
-    register_logic_extension(Box::new(LxLogicRuntime));
+    // SAFETY: the symbol is lxapp's private framework registration edge. It
+    // is intentionally absent from the downstream extension API.
+    unsafe { register_framework_logic_extension(Box::new(LxLogicRuntime)) };
     register_platform_i18n();
 }
 

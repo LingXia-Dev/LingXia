@@ -156,9 +156,8 @@ impl NativeHostRuntimeAuthority<'_> {
         true
     }
 
-    #[doc(hidden)]
-    #[cfg(any(test, feature = "test-utils"))]
-    pub fn for_test<'a>(
+    #[cfg(test)]
+    pub(crate) fn for_test<'a>(
         app_id: &'a str,
         session_id: u64,
         session_class: AppSessionClass,
@@ -220,9 +219,8 @@ impl NativeDevtoolsAuthority<'_> {
         automation | host
     }
 
-    #[doc(hidden)]
-    #[cfg(any(test, feature = "test-utils"))]
-    pub fn for_test<'a>(
+    #[cfg(test)]
+    pub(crate) fn for_test<'a>(
         app_id: &'a str,
         session_id: u64,
         session_class: AppSessionClass,
@@ -239,37 +237,39 @@ impl NativeDevtoolsAuthority<'_> {
     }
 }
 
-type AppResourceGrantResolver =
+pub(crate) type AppResourceGrantResolver =
     dyn for<'a> Fn(&Arc<LxApp>, &mut NativeHostRuntimeAuthority<'a>) + Send + Sync + 'static;
-type DevtoolsResourceGrantResolver =
+pub(crate) type DevtoolsResourceGrantResolver =
     dyn for<'a> Fn(&Arc<LxApp>, &mut NativeDevtoolsAuthority<'a>) + Send + Sync + 'static;
 
 static APP_RESOURCE_GRANT_RESOLVER: OnceLock<Arc<AppResourceGrantResolver>> = OnceLock::new();
 static DEVTOOLS_RESOURCE_GRANT_RESOLVER: OnceLock<Arc<DevtoolsResourceGrantResolver>> =
     OnceLock::new();
 
-/// Install the native host's per-session grant resolver before lxapp runtime
-/// initialization. The resolver and each resulting grant set are sealed once.
-#[doc(hidden)]
-pub fn __install_app_resource_grant_resolver(
-    native_authority: &crate::NativeControlPlaneAuthority,
-    resolver: Arc<AppResourceGrantResolver>,
-) -> bool {
-    if !native_authority.validate() {
-        return false;
+/// Seal the native host's per-session grant resolvers during the lxapp
+/// bootstrap transaction. There is deliberately no downstream installer:
+/// extensions can contribute through `HostAddon`, but cannot win a race for
+/// these process-wide slots.
+pub(crate) fn install_bootstrap_resource_grant_resolvers(
+    app: Option<Arc<AppResourceGrantResolver>>,
+    devtools: Option<Arc<DevtoolsResourceGrantResolver>>,
+) -> Result<(), &'static str> {
+    if APP_RESOURCE_GRANT_RESOLVER.get().is_some()
+        || (devtools.is_some() && DEVTOOLS_RESOURCE_GRANT_RESOLVER.get().is_some())
+    {
+        return Err("native resource grant resolvers were already installed");
     }
-    APP_RESOURCE_GRANT_RESOLVER.set(resolver).is_ok()
-}
-
-#[doc(hidden)]
-pub fn __install_devtools_resource_grant_resolver(
-    native_authority: &crate::NativeControlPlaneAuthority,
-    resolver: Arc<DevtoolsResourceGrantResolver>,
-) -> bool {
-    if !native_authority.validate() {
-        return false;
+    if let Some(resolver) = app {
+        APP_RESOURCE_GRANT_RESOLVER
+            .set(resolver)
+            .map_err(|_| "native app resource grant resolver was already installed")?;
     }
-    DEVTOOLS_RESOURCE_GRANT_RESOLVER.set(resolver).is_ok()
+    if let Some(resolver) = devtools {
+        DEVTOOLS_RESOURCE_GRANT_RESOLVER
+            .set(resolver)
+            .map_err(|_| "native devtools grant resolver was already installed")?;
+    }
+    Ok(())
 }
 
 pub(crate) fn seal_app_resource_grants(app: &Arc<LxApp>) {
@@ -548,21 +548,28 @@ impl rong_command::ProcessAuthority for ProcessSessionAuthority {
 /// ordinary bridge frames derive only the `LxAppSession` variant from their
 /// owning native `LxApp` session.
 #[derive(Clone)]
-pub enum AuthenticatedCaller {
+pub struct AuthenticatedCaller {
+    source: AuthenticatedCallerSource,
+}
+
+#[derive(Clone)]
+enum AuthenticatedCallerSource {
     LxAppSession {
         class: AppSessionClass,
         scope: AppScope,
     },
     BrowserDocument {
-        authority: ControlDocumentAuthority,
+        _authority: ControlDocumentAuthority,
     },
 }
 
 impl AuthenticatedCaller {
     pub(crate) fn for_lxapp(app: &Arc<LxApp>) -> Self {
-        Self::LxAppSession {
-            class: app.app_session_class(),
-            scope: AppScope::from_lxapp(app),
+        Self {
+            source: AuthenticatedCallerSource::LxAppSession {
+                class: app.app_session_class(),
+                scope: AppScope::from_lxapp(app),
+            },
         }
     }
 
@@ -578,45 +585,65 @@ impl AuthenticatedCaller {
                 "browser caller promotion requires the live native host authority".to_string(),
             ));
         }
-        Ok(Self::BrowserDocument { authority })
+        Ok(Self {
+            source: AuthenticatedCallerSource::BrowserDocument {
+                _authority: authority,
+            },
+        })
     }
 
     pub fn app_scope(&self) -> Option<&AppScope> {
-        match self {
-            Self::LxAppSession { scope, .. } => Some(scope),
-            Self::BrowserDocument { .. } => None,
+        match &self.source {
+            AuthenticatedCallerSource::LxAppSession { scope, .. } => Some(scope),
+            AuthenticatedCallerSource::BrowserDocument { .. } => None,
+        }
+    }
+
+    #[cfg(test)]
+    fn app_session_for_test(&self) -> Option<(AppSessionClass, &AppScope)> {
+        match &self.source {
+            AuthenticatedCallerSource::LxAppSession { class, scope } => Some((*class, scope)),
+            AuthenticatedCallerSource::BrowserDocument { .. } => None,
         }
     }
 
     #[cfg(test)]
     pub(crate) fn standard_for_test(session_id: u64) -> Self {
-        Self::LxAppSession {
-            class: AppSessionClass::StandardApp,
-            scope: AppScope::for_test("test.standard", session_id),
+        Self {
+            source: AuthenticatedCallerSource::LxAppSession {
+                class: AppSessionClass::StandardApp,
+                scope: AppScope::for_test("test.standard", session_id),
+            },
         }
     }
 
     #[cfg(test)]
     pub(crate) fn control_for_test(session_id: u64) -> Self {
-        Self::LxAppSession {
-            class: AppSessionClass::ControlApp,
-            scope: AppScope::for_test("test.control", session_id),
+        Self {
+            source: AuthenticatedCallerSource::LxAppSession {
+                class: AppSessionClass::ControlApp,
+                scope: AppScope::for_test("test.control", session_id),
+            },
         }
     }
 
-    #[doc(hidden)]
     #[cfg(feature = "test-utils")]
-    pub fn lxapp_session_for_test(app_id: &str, session_id: u64, class: AppSessionClass) -> Self {
-        Self::LxAppSession {
-            class,
-            scope: AppScope::for_test(app_id, session_id),
+    pub(crate) fn lxapp_session_for_test(
+        app_id: &str,
+        session_id: u64,
+        class: AppSessionClass,
+    ) -> Self {
+        Self {
+            source: AuthenticatedCallerSource::LxAppSession {
+                class,
+                scope: AppScope::for_test(app_id, session_id),
+            },
         }
     }
 
-    #[doc(hidden)]
     #[cfg(feature = "test-utils")]
-    pub fn browser_document_for_test() -> Self {
-        let native_authority = crate::NativeControlPlaneAuthority::for_test();
+    pub(crate) fn browser_document_for_test() -> Self {
+        let native_authority = crate::NativeControlPlaneAuthority::for_test_harness();
         let (_, authority) = crate::issue_control_document_bootstrap(
             &native_authority,
             &ring::rand::SystemRandom::new(),
@@ -652,7 +679,7 @@ impl HostInvocationContext {
     }
 
     pub(crate) fn for_dispatch(lxapp: Arc<LxApp>, caller: &AuthenticatedCaller) -> Option<Self> {
-        if let AuthenticatedCaller::LxAppSession { scope, .. } = caller
+        if let AuthenticatedCallerSource::LxAppSession { scope, .. } = &caller.source
             && !scope.belongs_to(&lxapp)
         {
             return None;
@@ -679,21 +706,21 @@ impl HostInvocationContext {
 /// The sole route-audience decision point.
 pub fn authorize(caller: &AuthenticatedCaller, audience: RouteAudience) -> bool {
     matches!(
-        (caller, audience),
+        (&caller.source, audience),
         (
-            AuthenticatedCaller::LxAppSession { .. },
+            AuthenticatedCallerSource::LxAppSession { .. },
             RouteAudience::AppSessionOnly
         ) | (
-            AuthenticatedCaller::LxAppSession { .. },
+            AuthenticatedCallerSource::LxAppSession { .. },
             RouteAudience::AuthenticatedReadOnly
         ) | (
-            AuthenticatedCaller::LxAppSession {
+            AuthenticatedCallerSource::LxAppSession {
                 class: AppSessionClass::ControlApp,
                 ..
             },
             RouteAudience::ControlAppOnly | RouteAudience::ControlOnly
         ) | (
-            AuthenticatedCaller::BrowserDocument { .. },
+            AuthenticatedCallerSource::BrowserDocument { .. },
             RouteAudience::AuthenticatedReadOnly
                 | RouteAudience::BrowserControlOnly
                 | RouteAudience::ControlOnly
@@ -1509,6 +1536,54 @@ mod tests {
     use lingxia_platform::Platform;
     use uuid::Uuid;
 
+    #[test]
+    fn native_resource_issuer_cannot_expand_manifest_requests() {
+        let mut grants = HashSet::new();
+        let mut authority = NativeHostRuntimeAuthority::for_test(
+            "same.app",
+            7,
+            AppSessionClass::ControlApp,
+            [AppResourceGrant::Downloads],
+            &mut grants,
+        );
+        assert!(authority.requested(AppResourceGrant::Downloads));
+        assert!(!authority.grant(AppResourceGrant::Process));
+        assert!(authority.grant(AppResourceGrant::Downloads));
+        assert_eq!(grants, HashSet::from([AppResourceGrant::Downloads]));
+    }
+
+    #[test]
+    fn devtools_authority_is_manifest_bounded_and_automation_only() {
+        for requested in [
+            Vec::new(),
+            vec![AppResourceGrant::Automation],
+            vec![AppResourceGrant::AutomationHost],
+            vec![AppResourceGrant::Process, AppResourceGrant::Downloads],
+        ] {
+            let mut grants = HashSet::new();
+            let mut authority = NativeDevtoolsAuthority::for_test(
+                "same.app",
+                21,
+                AppSessionClass::StandardApp,
+                requested.clone(),
+                &mut grants,
+            );
+            authority.grant_automation();
+            assert!(!authority.grant(AppResourceGrant::Process));
+            assert!(!authority.grant(AppResourceGrant::Downloads));
+            assert_eq!(
+                grants,
+                requested
+                    .into_iter()
+                    .filter(|grant| matches!(
+                        grant,
+                        AppResourceGrant::Automation | AppResourceGrant::AutomationHost
+                    ))
+                    .collect()
+            );
+        }
+    }
+
     fn same_app_id_with_different_classes() -> (tempfile::TempDir, Arc<LxApp>, Arc<LxApp>) {
         let root = tempfile::tempdir().expect("test app root");
         let runtime = Arc::new(
@@ -1590,11 +1665,12 @@ mod tests {
     }
 
     fn observe_scope(invocation: &HostInvocationContext) -> ObservedScope {
-        let AuthenticatedCaller::LxAppSession { class, scope } = invocation.caller() else {
-            panic!("expected lxapp caller");
-        };
+        let (class, scope) = invocation
+            .caller()
+            .app_session_for_test()
+            .expect("expected lxapp caller");
         ObservedScope {
-            class: *class,
+            class,
             app_id: scope.identity().app_id().to_string(),
             session_id: scope.identity().session_id(),
         }
@@ -2090,13 +2166,17 @@ mod tests {
         )
         .expect("native entropy");
         let callers = [
-            AuthenticatedCaller::LxAppSession {
-                class: AppSessionClass::StandardApp,
-                scope: AppScope::for_test("same.app", 42),
+            AuthenticatedCaller {
+                source: AuthenticatedCallerSource::LxAppSession {
+                    class: AppSessionClass::StandardApp,
+                    scope: AppScope::for_test("same.app", 42),
+                },
             },
-            AuthenticatedCaller::LxAppSession {
-                class: AppSessionClass::ControlApp,
-                scope: AppScope::for_test("same.app", 43),
+            AuthenticatedCaller {
+                source: AuthenticatedCallerSource::LxAppSession {
+                    class: AppSessionClass::ControlApp,
+                    scope: AppScope::for_test("same.app", 43),
+                },
             },
             AuthenticatedCaller::active_browser_document(&native_authority, authority)
                 .expect("native test authority"),

@@ -871,8 +871,8 @@ pub fn on_host_locale_changed(locale: &str) {
 
 /// Resolve the bootstrap-sealed Settings destination against current runtime
 /// registries for a native host entry click.
-pub fn resolve_settings_destination_for_host() -> bool {
-    settings_destination_result_to_bool(crate::resolve_settings_destination())
+pub(crate) fn resolve_settings_destination_for_host() -> bool {
+    settings_destination_result_to_bool(crate::settings_destination::resolve_settings_destination())
 }
 
 fn settings_destination_result_to_bool(
