@@ -25,6 +25,10 @@ import { BRIDGE_ERROR } from "./types";
 import { toBridgeError, toNativeError } from "./invocation";
 import { installNativeComponentCoverageMonitor } from "./nativecomponents/coverage-monitor";
 import {
+  consumeV3BootstrapForFutureRequiredProtocol,
+  type V3DocumentCodec,
+} from "./protocol-v3";
+import {
   BRIDGE_CONFIG,
   getCommunicationMethod,
   getPlatformOS,
@@ -56,6 +60,10 @@ const APPLE_RECONNECT_MAX_MS = 2000;
 
 const debugFlags = { data: false, proto: false, all: false };
 const earlyNativeMessages: string[] = [];
+
+// Kept entirely inside this module until a later, host-attested RequiredV3
+// activation path is introduced. V2 does not read or use this codec.
+let futureRequiredV3Codec: V3DocumentCodec | undefined;
 
 // Plain-object equivalent of `new Proxy(debugFlags, ...)`. Avoids referencing
 // the `Proxy` global so the module loads on older WebViews (Android 5.x stock
@@ -2129,6 +2137,7 @@ export function initBridge(): void {
   window.__LX_BRIDGE_INIT_STATE = "initializing";
 
   try {
+    futureRequiredV3Codec = consumeV3BootstrapForFutureRequiredProtocol();
     log(`Method: ${communicationMethod}`);
     activateReceiver(LingXiaBridge._receiveEvaluateMessage);
 

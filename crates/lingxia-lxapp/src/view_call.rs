@@ -1,7 +1,6 @@
 use crate::bridge::{BRIDGE_CANCELED, BRIDGE_TIMEOUT, RpcError, required_cap_for_name};
 use crate::error::LxAppError;
 use crate::page::PageInstance;
-use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -40,17 +39,6 @@ fn registry() -> &'static ViewCallRegistry {
     REGISTRY.get_or_init(ViewCallRegistry::new)
 }
 
-#[derive(Serialize)]
-struct ViewReq {
-    v: u8,
-    kind: &'static str,
-    id: String,
-    method: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    params: Option<Value>,
-    cap: String,
-}
-
 /// Send a request to the View (WebView) and return a receiver for the response.
 pub(crate) fn call_view(
     page: &PageInstance,
@@ -63,21 +51,6 @@ pub(crate) fn call_view(
     let page_instance_id = page.instance_id_string();
 
     let cap = required_cap_for_name(method);
-    let msg = ViewReq {
-        v: 2,
-        kind: "req",
-        id: id.clone(),
-        method: method.to_string(),
-        params,
-        cap,
-    };
-
-    let json = serde_json::to_string(&msg)?;
-
-    let controller = page
-        .webview_controller()
-        .ok_or_else(|| LxAppError::WebView("WebView not ready".to_string()))?;
-
     let (tx, rx) = oneshot::channel();
     reg.pending.lock().unwrap().insert(
         id.clone(),
@@ -87,10 +60,13 @@ pub(crate) fn call_view(
         },
     );
 
-    if let Err(e) = controller.post_message(&json) {
+    if let Err(e) =
+        page.bridge()
+            .send_view_request(page, id.clone(), method.to_string(), params, cap)
+    {
         // Remove pending entry on send failure
         reg.pending.lock().unwrap().remove(&id);
-        return Err(LxAppError::from(e));
+        return Err(e);
     }
 
     Ok(PendingViewCall { id, rx })

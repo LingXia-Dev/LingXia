@@ -13,7 +13,11 @@
 
 mod protocol;
 
-pub(crate) use protocol::{ChOpenMsg, HelloMsg, IncomingMessage, JsonPatchOp, NotifyMsg, ReqMsg};
+#[allow(unused_imports)] // Re-exported for the next document-session binding step.
+pub(crate) use protocol::{
+    BoundV3Protocol, ChOpenMsg, HelloMsg, IncomingMessage, JsonPatchOp, NotifyMsg, ReqMsg,
+    V3InboundBinding,
+};
 
 use protocol::*;
 
@@ -99,6 +103,17 @@ pub(crate) const BRIDGE_METHOD_NOT_FOUND: &str = "BRIDGE_METHOD_NOT_FOUND";
 pub(crate) const BRIDGE_TOPIC_NOT_FOUND: &str = "BRIDGE_TOPIC_NOT_FOUND";
 pub(crate) const BRIDGE_INTERNAL_ERROR: &str = "BRIDGE_INTERNAL_ERROR";
 
+#[derive(Serialize)]
+struct ViewReqOut {
+    v: u8,
+    kind: &'static str,
+    id: String,
+    method: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    params: Option<Value>,
+    cap: String,
+}
+
 // ViewTransport — posting messages back to the WebView
 pub(crate) trait ViewTransport {
     fn post_message_to_view(&self, message_json: String) -> Result<(), LxAppError>;
@@ -167,10 +182,11 @@ impl RpcError {
 }
 
 // PageBridge — per-page bridge state and routing
-#[derive(Debug, Default)]
+#[derive(Default)]
 struct HandshakeState {
     session_id: Option<String>,
     ready: bool,
+    protocol: BridgeProtocol,
 }
 
 #[derive(Default)]
@@ -292,6 +308,21 @@ impl PageBridge {
         self.inner.handshake.lock().unwrap().ready
     }
 
+    /// Future document-session activation binds the bridge before a V3 hello.
+    /// No existing Page invokes this in Commit B.
+    #[allow(dead_code)] // Consumed by BrowserDocumentSessions integration in Commit C.
+    pub(crate) fn bind_v3_protocol(&self, protocol: BoundV3Protocol) -> Result<(), LxAppError> {
+        let mut handshake = self.inner.handshake.lock().unwrap();
+        if handshake.ready {
+            return Err(LxAppError::Bridge(
+                "cannot bind V3 protocol after bridge readiness".to_string(),
+            ));
+        }
+        handshake.protocol = BridgeProtocol::BoundV3(protocol);
+        handshake.session_id = None;
+        Ok(())
+    }
+
     pub(crate) fn lxapp(&self) -> Arc<LxApp> {
         self.inner.lxapp.clone()
     }
@@ -306,8 +337,7 @@ impl PageBridge {
         // every inbound bridge kind and receives platform-attested context.
         let context = incoming.context();
         self.admit_incoming(page, context)?;
-        let message = IncomingMessage::from_json_str(incoming.body())
-            .map_err(|err| LxAppError::Bridge(format!("Invalid bridge message JSON: {err}")))?;
+        let message = self.predecode_inbound(incoming.body())?;
 
         match &message {
             IncomingMessage::Hello(msg) => self.handle_hello(page, context, msg),
@@ -321,6 +351,39 @@ impl PageBridge {
             IncomingMessage::StateAck(msg) => self.handle_state_ack(page, context, msg),
             IncomingMessage::Unknown(unknown) => self.handle_unknown(page, context, unknown),
         }
+    }
+
+    fn predecode_inbound(&self, frame: &str) -> Result<IncomingMessage, LxAppError> {
+        self.inner
+            .handshake
+            .lock()
+            .unwrap()
+            .protocol
+            .predecode_inbound(frame)
+            .map_err(|_| LxAppError::Bridge("invalid bridge protocol envelope".to_string()))
+    }
+
+    fn accepts_message_version(&self, version: u8) -> bool {
+        self.inner
+            .handshake
+            .lock()
+            .unwrap()
+            .protocol
+            .accepts_version(version)
+    }
+
+    fn bound_v3_session_id(&self) -> Option<String> {
+        self.inner
+            .handshake
+            .lock()
+            .unwrap()
+            .protocol
+            .session_id()
+            .map(str::to_string)
+    }
+
+    fn is_bound_v3(&self) -> bool {
+        self.bound_v3_session_id().is_some()
     }
 
     /// The single pre-decode admission seam. It intentionally permits every
@@ -354,7 +417,7 @@ impl PageBridge {
         _context: &WebMessageContext,
         msg: &ResMsg,
     ) -> Result<(), LxAppError> {
-        if msg.v != 2 {
+        if !self.accepts_message_version(msg.v) {
             return Ok(());
         }
 
@@ -381,7 +444,7 @@ impl PageBridge {
         _context: &WebMessageContext,
         msg: &ChDataMsg,
     ) -> Result<(), LxAppError> {
-        if msg.v != 2 {
+        if !self.accepts_message_version(msg.v) {
             return Ok(());
         }
         if self.send_data_to_host_channel(&msg.id, msg.payload.get().to_owned()) {
@@ -402,7 +465,7 @@ impl PageBridge {
         _context: &WebMessageContext,
         msg: &ChCloseMsg,
     ) -> Result<(), LxAppError> {
-        if msg.v != 2 {
+        if !self.accepts_message_version(msg.v) {
             return Ok(());
         }
         if self.close_host_channel_from_view(&msg.id, msg.code.clone(), msg.reason.clone()) {
@@ -424,7 +487,7 @@ impl PageBridge {
         _context: &WebMessageContext,
         msg: &CancelMsg,
     ) -> Result<(), LxAppError> {
-        if msg.v == 2 {
+        if self.accepts_message_version(msg.v) {
             self.inner.pending_requests.cancel(&msg.id);
         }
         Ok(())
@@ -436,7 +499,7 @@ impl PageBridge {
         _context: &WebMessageContext,
         msg: &StateAckMsg,
     ) -> Result<(), LxAppError> {
-        if msg.v != 2 {
+        if !self.accepts_message_version(msg.v) {
             return Ok(());
         }
         self.forward_js_message(
@@ -455,7 +518,7 @@ impl PageBridge {
         unknown: &UnknownMsg,
     ) -> Result<(), LxAppError> {
         if let Some(id) = &unknown.id {
-            let (code, message) = if unknown.v != Some(2) {
+            let (code, message) = if !unknown.v.is_some_and(|v| self.accepts_message_version(v)) {
                 (
                     BRIDGE_PROTOCOL_MISMATCH,
                     Some(format!(
@@ -488,6 +551,9 @@ impl PageBridge {
         _context: &WebMessageContext,
         msg: &HelloMsg,
     ) -> Result<(), LxAppError> {
+        if self.is_bound_v3() {
+            return self.handle_bound_v3_hello(page, msg);
+        }
         if msg.v != 2 {
             return Err(LxAppError::Bridge(format!(
                 "Unsupported protocol: {}",
@@ -525,13 +591,47 @@ impl PageBridge {
         Ok(())
     }
 
+    fn handle_bound_v3_hello(&self, page: &PageInstance, msg: &HelloMsg) -> Result<(), LxAppError> {
+        if msg.v != V3_PROTOCOL || !msg.protocols_supported.contains(&(V3_PROTOCOL as u32)) {
+            return Err(LxAppError::Bridge(
+                "V3 hello does not negotiate V3".to_string(),
+            ));
+        }
+        if msg.role != "view" {
+            return Err(LxAppError::Bridge("Unexpected V3 hello role".to_string()));
+        }
+        if let Some(expected) = page.bridge_nonce()
+            && expected != msg.nonce
+        {
+            return Err(LxAppError::Bridge("Nonce mismatch".to_string()));
+        }
+        let session_id = self
+            .bound_v3_session_id()
+            .ok_or_else(|| LxAppError::Bridge("missing V3 bridge binding".to_string()))?;
+        let first_hello = !self.is_ready();
+        if first_hello {
+            self.reset_session(page);
+            self.set_ready(session_id.clone());
+            // Do this once only: a retransmitted authenticated hello must not
+            // cancel in-flight work or initialize the backend a second time.
+            if let Err(err) = self.forward_js_message(page, AppServiceCommand::Ready) {
+                crate::warn!("bridge ready bootstrap failed: {}", err)
+                    .with_appid(page.appid())
+                    .with_path(page.path());
+            }
+        }
+        self.send_hello_ack(page, msg.nonce.clone(), session_id.clone())?;
+        self.send_ready(page, session_id)?;
+        Ok(())
+    }
+
     fn handle_req(
         &self,
         page: &PageInstance,
         context: &WebMessageContext,
         msg: &ReqMsg,
     ) -> Result<(), LxAppError> {
-        if msg.v != 2 {
+        if !self.accepts_message_version(msg.v) {
             let _ = self.send_res_err(
                 page,
                 msg.id.clone(),
@@ -627,7 +727,7 @@ impl PageBridge {
         context: &WebMessageContext,
         msg: &NotifyMsg,
     ) -> Result<(), LxAppError> {
-        if msg.v != 2 || !self.is_ready() {
+        if !self.accepts_message_version(msg.v) || !self.is_ready() {
             return Ok(());
         }
 
@@ -656,7 +756,7 @@ impl PageBridge {
         context: &WebMessageContext,
         msg: &ChOpenMsg,
     ) -> Result<(), LxAppError> {
-        if msg.v != 2 {
+        if !self.accepts_message_version(msg.v) {
             let _ = self.send_ch_ack_err(
                 page,
                 msg.id.clone(),
@@ -764,7 +864,26 @@ impl PageBridge {
             result: Some(result),
             error: None,
         };
-        self.send_json(transport, &msg)
+        self.send_json(transport, V3OutboundKind::Res, &msg)
+    }
+
+    pub(crate) fn send_view_request<T: ViewTransport>(
+        &self,
+        transport: &T,
+        id: String,
+        method: String,
+        params: Option<Value>,
+        cap: String,
+    ) -> Result<(), LxAppError> {
+        let msg = ViewReqOut {
+            v: 2,
+            kind: "req",
+            id,
+            method,
+            params,
+            cap,
+        };
+        self.send_json(transport, V3OutboundKind::Req, &msg)
     }
 
     pub(crate) fn send_res_err<T: ViewTransport>(
@@ -794,7 +913,7 @@ impl PageBridge {
                 data,
             }),
         };
-        self.send_json(transport, &msg)
+        self.send_json(transport, V3OutboundKind::Res, &msg)
     }
 
     pub(crate) fn send_state_snapshot<T: ViewTransport>(
@@ -813,7 +932,7 @@ impl PageBridge {
             rev,
             state,
         };
-        self.send_json(transport, &msg)
+        self.send_json(transport, V3OutboundKind::StateSnapshot, &msg)
     }
 
     pub(crate) fn send_state_patch<T: ViewTransport>(
@@ -834,7 +953,7 @@ impl PageBridge {
             ops,
             ack,
         };
-        self.send_json(transport, &msg)
+        self.send_json(transport, V3OutboundKind::StatePatch, &msg)
     }
 
     pub(crate) fn send_event<T: ViewTransport>(
@@ -844,7 +963,14 @@ impl PageBridge {
         seq: u64,
         payload_json: String,
     ) -> Result<(), LxAppError> {
-        self.send_seq_frame_with_payload(transport, "event", id.into(), seq, &payload_json)
+        self.send_seq_frame_with_payload(
+            transport,
+            V3OutboundKind::Event,
+            "event",
+            id.into(),
+            seq,
+            &payload_json,
+        )
     }
 
     pub(crate) fn send_ch_ack_ok<T: ViewTransport>(
@@ -859,7 +985,7 @@ impl PageBridge {
             ok: true,
             error: None,
         };
-        self.send_json(transport, &msg)
+        self.send_json(transport, V3OutboundKind::ChAck, &msg)
     }
 
     pub(crate) fn send_ch_ack_err<T: ViewTransport>(
@@ -881,7 +1007,7 @@ impl PageBridge {
                 data,
             }),
         };
-        self.send_json(transport, &msg)
+        self.send_json(transport, V3OutboundKind::ChAck, &msg)
     }
 
     pub(crate) fn send_ch_data<T: ViewTransport>(
@@ -891,7 +1017,14 @@ impl PageBridge {
         seq: u64,
         payload_json: String,
     ) -> Result<(), LxAppError> {
-        self.send_seq_frame_with_payload(transport, "ch.data", id.into(), seq, &payload_json)
+        self.send_seq_frame_with_payload(
+            transport,
+            V3OutboundKind::ChData,
+            "ch.data",
+            id.into(),
+            seq,
+            &payload_json,
+        )
     }
 
     pub(crate) fn send_ch_close<T: ViewTransport>(
@@ -908,26 +1041,66 @@ impl PageBridge {
             code,
             reason,
         };
-        self.send_json(transport, &msg)
+        self.send_json(transport, V3OutboundKind::ChClose, &msg)
     }
 
     fn send_json<T: ViewTransport, S: Serialize>(
         &self,
         transport: &T,
+        kind: V3OutboundKind,
         msg: &S,
     ) -> Result<(), LxAppError> {
-        let serialized = serde_json::to_string(msg)?;
+        let serialized = if let Some(binding) = self
+            .inner
+            .handshake
+            .lock()
+            .unwrap()
+            .protocol
+            .outbound_binding()
+        {
+            let mut payload = serde_json::to_value(msg)?;
+            let object = payload
+                .as_object_mut()
+                .ok_or_else(|| LxAppError::Bridge("invalid outbound bridge payload".to_string()))?;
+            // V2 model structs retain their exact serialization for the
+            // Legacy branch. Bound V3 owns protocol identity centrally.
+            object.remove("v");
+            object.remove("kind");
+            object.remove("sessionId");
+            serde_json::to_string(
+                &encode_v3_outbound_frame(&binding, kind, payload)
+                    .map_err(|_| LxAppError::Bridge("invalid V3 outbound payload".to_string()))?,
+            )?
+        } else {
+            serde_json::to_string(msg)?
+        };
         transport.post_message_to_view(serialized)
     }
 
     fn send_seq_frame_with_payload<T: ViewTransport>(
         &self,
         transport: &T,
+        v3_kind: V3OutboundKind,
         kind: &'static str,
         id: String,
         seq: u64,
         payload_json: &str,
     ) -> Result<(), LxAppError> {
+        if let Some(binding) = self
+            .inner
+            .handshake
+            .lock()
+            .unwrap()
+            .protocol
+            .outbound_binding()
+        {
+            let payload: Value = serde_json::from_str(payload_json)
+                .map_err(|_| LxAppError::Bridge("invalid V3 outbound payload".to_string()))?;
+            let frame = serde_json::json!({ "id": id, "seq": seq, "payload": payload });
+            let frame = encode_v3_outbound_frame(&binding, v3_kind, frame)
+                .map_err(|_| LxAppError::Bridge("invalid V3 outbound payload".to_string()))?;
+            return transport.post_message_to_view(serde_json::to_string(&frame)?);
+        }
         transport.post_message_to_view(serialize_seq_frame_with_payload(
             kind,
             id,
@@ -942,14 +1115,15 @@ impl PageBridge {
         nonce: String,
         session_id: String,
     ) -> Result<(), LxAppError> {
+        let protocol = if self.is_bound_v3() { V3_PROTOCOL } else { 2 };
         let msg = HelloAck {
             v: 2,
             kind: "helloAck",
             nonce,
-            protocol: 2,
+            protocol,
             session_id,
         };
-        self.send_json(transport, &msg)
+        self.send_json(transport, V3OutboundKind::HelloAck, &msg)
     }
 
     fn send_ready<T: ViewTransport>(
@@ -963,7 +1137,7 @@ impl PageBridge {
             session_id,
             host_methods: host::host_method_schema(),
         };
-        self.send_json(transport, &msg)
+        self.send_json(transport, V3OutboundKind::Ready, &msg)
     }
 
     fn set_ready(&self, session_id: String) {
@@ -1496,6 +1670,39 @@ mod tests {
         assert_eq!(
             serialize_seq_frame_with_payload("ch.data", "ch-1".to_string(), 3, "true").unwrap(),
             r#"{"v":2,"kind":"ch.data","id":"ch-1","seq":3,"payload":true}"#
+        );
+    }
+
+    #[test]
+    fn legacy_v2_view_request_wire_remains_byte_stable() {
+        let frame = serde_json::to_string(&ViewReqOut {
+            v: 2,
+            kind: "req",
+            id: "lv_1".to_string(),
+            method: "view.confirm".to_string(),
+            params: Some(serde_json::json!({ "title": "Confirm" })),
+            cap: "view".to_string(),
+        })
+        .unwrap();
+        assert_eq!(
+            frame,
+            r#"{"v":2,"kind":"req","id":"lv_1","method":"view.confirm","params":{"title":"Confirm"},"cap":"view"}"#
+        );
+    }
+
+    #[test]
+    fn legacy_v2_hello_ack_wire_remains_byte_stable() {
+        let frame = serde_json::to_string(&HelloAck {
+            v: 2,
+            kind: "helloAck",
+            nonce: "legacy-nonce".to_string(),
+            protocol: 2,
+            session_id: "legacy-session".to_string(),
+        })
+        .unwrap();
+        assert_eq!(
+            frame,
+            r#"{"v":2,"kind":"helloAck","nonce":"legacy-nonce","protocol":2,"sessionId":"legacy-session"}"#
         );
     }
 }
