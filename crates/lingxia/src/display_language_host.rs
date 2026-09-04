@@ -14,11 +14,7 @@ fn get_display_language() -> HostResult<LanguageTag> {
     Ok(lxapp::display_language_state().effective)
 }
 
-#[lingxia::framework_native(
-    "app.watchDisplayLanguage",
-    stream,
-    audience = "authenticated-read-only"
-)]
+#[lingxia::framework_native("app.watchDisplayLanguage", stream, audience = "control-only")]
 async fn watch_display_language(mut stream: StreamContext<LanguageTag>) -> HostResult<()> {
     let (initial, mut receiver) = lxapp::subscribe_display_language_effective();
     let mut revision = initial.revision;
@@ -87,19 +83,60 @@ mod tests {
     use super::*;
 
     #[test]
-    fn effective_routes_are_read_only_and_state_routes_are_control_only() {
-        for route in [get_display_language_host(), watch_display_language_host()] {
-            assert_eq!(
-                route.audience(),
-                crate::host::RouteAudience::AuthenticatedReadOnly
-            );
-        }
+    fn effective_get_is_read_only_but_persistent_streams_are_control_only() {
+        assert_eq!(
+            get_display_language_host().audience(),
+            crate::host::RouteAudience::AuthenticatedReadOnly
+        );
         for route in [
+            watch_display_language_host(),
             get_display_language_state_host(),
             set_display_language_preference_host(),
             watch_display_language_state_host(),
         ] {
             assert_eq!(route.audience(), crate::host::RouteAudience::ControlOnly);
         }
+    }
+
+    #[test]
+    fn effective_watch_schema_and_dispatch_require_a_control_caller() {
+        use crate::host::{AuthenticatedCaller, authorize, host_route_schema};
+        use lxapp::AppSessionClass;
+
+        register();
+        let standard = AuthenticatedCaller::lxapp_session_for_test(
+            "test.standard",
+            1,
+            AppSessionClass::StandardApp,
+        );
+        let control = AuthenticatedCaller::lxapp_session_for_test(
+            "test.control",
+            2,
+            AppSessionClass::ControlApp,
+        );
+        let browser = AuthenticatedCaller::browser_document_for_test();
+        let watch_audience = watch_display_language_host().audience();
+
+        assert!(
+            host_route_schema(&standard)
+                .methods
+                .contains_key("app.getDisplayLanguage")
+        );
+        assert!(
+            !host_route_schema(&standard)
+                .methods
+                .contains_key("app.watchDisplayLanguage")
+        );
+        for caller in [&control, &browser] {
+            assert!(
+                host_route_schema(caller)
+                    .methods
+                    .contains_key("app.watchDisplayLanguage")
+            );
+        }
+
+        assert!(!authorize(&standard, watch_audience));
+        assert!(authorize(&control, watch_audience));
+        assert!(authorize(&browser, watch_audience));
     }
 }
