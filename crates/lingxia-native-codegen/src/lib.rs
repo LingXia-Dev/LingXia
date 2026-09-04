@@ -1,7 +1,7 @@
 //! Code generation for `#[lingxia::native]` host handlers.
 //!
-//! Scans Rust source files for `#[lingxia::native("route")]` / `#[native("route")]`
-//! function attributes and `pub struct` definitions, then emits one of:
+//! Scans Rust source files for public `#[lingxia::native("route")]` handlers
+//! and their unqualified forms, then emits one of:
 //!
 //! - `.ts` — TypeScript client with typed `invoke` / `stream` / `channel` bindings
 //! - `.js` — browser global JS client
@@ -15,7 +15,8 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow};
-use syn::{Attribute, FnArg, ItemFn, ItemStruct, ReturnType};
+use syn::punctuated::Punctuated;
+use syn::{Attribute, Expr, FnArg, ItemFn, ItemStruct, Lit, ReturnType, Token};
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -194,47 +195,62 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) -> Result<(),
     Ok(())
 }
 
-/// Match `#[lingxia::native("route")]` or `#[native("route")]` with optional flags.
+/// Match a public native route attribute and parse its route/mode metadata.
+/// Framework-owned routes use a separate macro and are intentionally omitted
+/// from generated View clients.
 fn parse_attr(attrs: &[Attribute]) -> Option<(String, RouteKind)> {
     for attr in attrs {
-        let is_match = attr.path().is_ident("native")
-            || attr
-                .path()
-                .segments
-                .iter()
-                .map(|s| s.ident.to_string())
-                .collect::<Vec<_>>()
-                .join("::")
-                .ends_with("lingxia::native");
-        if !is_match {
+        if !is_public_native_attr(attr) {
             continue;
         }
 
-        let args: String = attr
+        let parser = Punctuated::<Expr, Token![,]>::parse_terminated;
+        let args = attr
             .meta
             .require_list()
             .ok()?
-            .tokens
-            .clone()
-            .into_iter()
-            .map(|t| t.to_string())
-            .collect::<Vec<_>>()
-            .join("");
+            .parse_args_with(parser)
+            .ok()?;
+        let Expr::Lit(route) = args.first()? else {
+            return None;
+        };
+        let Lit::Str(route) = &route.lit else {
+            return None;
+        };
 
-        let route = args.split('"').nth(1).map(str::to_owned)?;
-        let rest = args.split('"').nth(2).unwrap_or("");
-
-        let kind = if rest.contains("channel") {
+        let kind = if args.iter().skip(1).any(is_channel_flag) {
             RouteKind::Channel
-        } else if rest.contains("stream") {
+        } else if args.iter().skip(1).any(is_stream_flag) {
             RouteKind::Stream
         } else {
             RouteKind::Call
         };
 
-        return Some((route, kind));
+        return Some((route.value(), kind));
     }
     None
+}
+
+fn is_public_native_attr(attr: &Attribute) -> bool {
+    let path = attr.path();
+    if path.is_ident("native") {
+        return true;
+    }
+
+    let mut segments = path.segments.iter().rev();
+    matches!(
+        (segments.next(), segments.next()),
+        (Some(last), Some(prefix))
+            if prefix.ident == "lingxia" && last.ident == "native"
+    )
+}
+
+fn is_stream_flag(expr: &Expr) -> bool {
+    matches!(expr, Expr::Path(path) if path.path.is_ident("stream"))
+}
+
+fn is_channel_flag(expr: &Expr) -> bool {
+    matches!(expr, Expr::Path(path) if path.path.is_ident("channel"))
 }
 
 fn extract_route_info(route: &str, kind: RouteKind, item_fn: &ItemFn) -> NativeRoute {
@@ -896,6 +912,45 @@ mod tests {
         );
         assert_eq!(manifest.routes[0].kind, RouteKind::Call);
         assert_eq!(manifest.routes[1].kind, RouteKind::Call);
+    }
+
+    #[test]
+    fn ignores_framework_routes_in_public_clients() {
+        let manifest = scan_source(
+            r#"
+            #[lingxia::native("editor.load", audience = "app-session-only")]
+            pub fn load() -> HostResult<String> { todo!() }
+
+            #[lingxia::framework_native(
+                "browser.watch",
+                stream,
+                audience = "browser-control-only"
+            )]
+            pub async fn watch(ctx: StreamContext<String, ()>) -> HostResult<()> { todo!() }
+
+            #[framework_native("host.update", audience = "control-only", channel)]
+            pub async fn update(ctx: ChannelContext<String>) -> HostResult<()> { todo!() }
+        "#,
+        );
+
+        assert_eq!(manifest.routes.len(), 1);
+        assert_eq!(
+            manifest
+                .routes
+                .iter()
+                .find(|route| route.route == "editor.load")
+                .expect("public native route")
+                .kind,
+            RouteKind::Call
+        );
+
+        let generated = render(&manifest, OutputKind::TypeScriptModule).unwrap();
+        assert!(!generated.contains("app-session-only"));
+        assert!(!generated.contains("browser-control-only"));
+        assert!(!generated.contains("control-only"));
+        assert!(generated.contains("editor"));
+        assert!(!generated.contains("browser.watch"));
+        assert!(!generated.contains("host.update"));
     }
 
     #[test]

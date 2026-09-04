@@ -56,12 +56,24 @@ async fn facade_channel(
     Ok(())
 }
 
+#[lingxia::native("facade.control", audience = "control-app-only")]
+fn facade_control() -> lingxia::Result<()> {
+    Ok(())
+}
+
+#[lingxia::framework_native("facade.browser", audience = "browser-control-only")]
+fn facade_browser_control() -> lingxia::Result<()> {
+    Ok(())
+}
+
 #[test]
 fn native_macro_accepts_lingxia_result_handlers() {
     let _ = facade_echo_host();
     let _ = facade_blocking_echo_host();
     let _ = facade_stream_host();
     let _ = facade_channel_host();
+    let _ = facade_control_host();
+    let _ = facade_browser_control_host();
 }
 
 #[test]

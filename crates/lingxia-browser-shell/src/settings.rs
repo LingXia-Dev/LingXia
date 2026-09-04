@@ -72,7 +72,7 @@ fn download_settings_result(app: &LxApp) -> HostResult<DownloadSettingsResult> {
     })
 }
 
-#[lingxia::native("app.getInfo")]
+#[lingxia::framework_native("app.getInfo", audience = "browser-control-only")]
 fn get_app_info(app: Arc<LxApp>) -> HostResult<AppInfo> {
     crate::require_builtin_browser(&app)?;
     let (product_name, version) = match app_config() {
@@ -88,13 +88,13 @@ fn get_app_info(app: Arc<LxApp>) -> HostResult<AppInfo> {
     })
 }
 
-#[lingxia::native("downloads.getSettings")]
+#[lingxia::framework_native("downloads.getSettings", audience = "browser-control-only")]
 fn get_download_settings(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
     crate::require_builtin_browser(&app)?;
     download_settings_result(&app)
 }
 
-#[lingxia::native("downloads.chooseDirectory")]
+#[lingxia::framework_native("downloads.chooseDirectory", audience = "browser-control-only")]
 async fn choose_download_directory(
     app: Arc<LxApp>,
     mut cancel: HostCancel,
@@ -127,7 +127,7 @@ async fn choose_download_directory(
     download_settings_result(&app)
 }
 
-#[lingxia::native("downloads.resetDirectory")]
+#[lingxia::framework_native("downloads.resetDirectory", audience = "browser-control-only")]
 fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
     crate::require_builtin_browser(&app)?;
     lingxia_service::downloads::reset_dir(&app.app_data_dir())
@@ -139,12 +139,12 @@ fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResul
 /// to render in, and a Logic worker already reads it from `lx.app` base info.
 /// This write path stays browser-private; the home lxapp writes through
 /// `lx.app.setDisplayLanguage`.
-#[lingxia::native("settings.getLanguage")]
+#[lingxia::framework_native("settings.getLanguage", audience = "browser-control-only")]
 fn get_display_language(app: Arc<LxApp>) -> HostResult<LanguageSettingsResult> {
     language_settings_result(&app)
 }
 
-#[lingxia::native("settings.setLanguage")]
+#[lingxia::framework_native("settings.setLanguage", audience = "browser-control-only")]
 fn set_display_language(
     app: Arc<LxApp>,
     input: SetLanguageInput,
@@ -158,7 +158,7 @@ fn set_display_language(
     language_settings_result(&app)
 }
 
-#[lingxia::native("settings.watchLanguage", stream)]
+#[lingxia::framework_native("settings.watchLanguage", stream, audience = "browser-control-only")]
 async fn watch_display_language(
     app: Arc<LxApp>,
     mut stream: StreamContext<LanguageSettingsResult>,
@@ -199,4 +199,27 @@ pub(crate) fn register() {
         };
         let _ = language_channel().send(LanguageSettingsResult { language });
     }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn framework_routes_are_browser_control_only() {
+        for route in [
+            get_app_info_host(),
+            get_download_settings_host(),
+            choose_download_directory_host(),
+            reset_download_directory_host(),
+            get_display_language_host(),
+            set_display_language_host(),
+            watch_display_language_host(),
+        ] {
+            assert_eq!(
+                route.audience(),
+                lxapp::host::RouteAudience::BrowserControlOnly
+            );
+        }
+    }
 }

@@ -127,6 +127,56 @@ Rules:
 - Return values must implement `serde::Serialize`.
 - Handler errors should use `lingxia::Result`.
 
+### Route audience metadata
+
+`#[lingxia::native]` accepts optional registration metadata that describes the
+caller class intended for a route. Ordinary host-defined routes may omit it;
+the macro then records `AppSessionOnly` at compile time:
+
+```rust
+#[lingxia::native("editor.loadDocument")]
+async fn load_document() -> lingxia::Result<()> {
+    Ok(())
+}
+
+#[lingxia::native("host.setAccount", audience = "control-app-only")]
+fn set_account() -> lingxia::Result<()> {
+    Ok(())
+}
+
+#[lingxia::native("host.watch", stream, audience = "control-only")]
+async fn watch_host(
+    mut stream: lingxia::host::StreamContext<lingxia::host::JsonValue>,
+) -> lingxia::Result<()> {
+    stream.end(())?;
+    Ok(())
+}
+```
+
+The accepted string values are fixed by the SDK:
+
+| String | Registration metadata |
+| --- | --- |
+| `app-session-only` | `AppSessionOnly` (the default for `native`) |
+| `authenticated-read-only` | `AuthenticatedReadOnly` |
+| `control-app-only` | `ControlAppOnly` |
+| `browser-control-only` | `BrowserControlOnly` |
+| `control-only` | `ControlOnly` |
+
+An unknown value, a non-string value, or duplicate `audience` metadata is a
+compile error. This metadata is fixed in the generated registration companion;
+it is not a client-provided parameter and is not emitted into the generated
+TypeScript or browser-global client.
+
+`#[lingxia::framework_native(...)]` is a doc-hidden framework macro for
+framework-owned routes. It shares the same syntax but requires an explicit
+`audience`; application and extension authors should use `native` instead.
+
+> **Current stage:** audience is registration metadata only. This change alone
+> does not make bridge dispatch enforce authorization; do not treat an
+> `audience` annotation as a security boundary until the host bridge's matching
+> schema filtering and dispatch authorization are in place.
+
 ### The macro-generated `<fn>_host()` companion
 
 `#[lingxia::native(...)]` is an attribute macro. In addition to wrapping the

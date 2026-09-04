@@ -95,13 +95,13 @@ fn map_downloads_error(err: DownloadsError) -> LxAppError {
     }
 }
 
-#[lingxia::native("downloads.list")]
+#[lingxia::framework_native("downloads.list", audience = "browser-control-only")]
 fn list_downloads(app: Arc<LxApp>) -> HostResult<DownloadsSnapshot> {
     crate::require_builtin_browser(&app)?;
     lingxia_service::downloads::snapshot(&app.app_data_dir()).map_err(map_downloads_error)
 }
 
-#[lingxia::native("downloads.clearCompleted")]
+#[lingxia::framework_native("downloads.clearCompleted", audience = "browser-control-only")]
 fn clear_completed_downloads(app: Arc<LxApp>) -> HostResult<ClearCompletedResult> {
     crate::require_builtin_browser(&app)?;
     let removed = lingxia_service::downloads::clear_completed(&app.app_data_dir())
@@ -109,7 +109,7 @@ fn clear_completed_downloads(app: Arc<LxApp>) -> HostResult<ClearCompletedResult
     Ok(ClearCompletedResult { removed })
 }
 
-#[lingxia::native("downloads.remove")]
+#[lingxia::framework_native("downloads.remove", audience = "browser-control-only")]
 fn remove_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     crate::require_builtin_browser(&app)?;
     if input.task_id.trim().is_empty() {
@@ -122,7 +122,7 @@ fn remove_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
     Ok(())
 }
 
-#[lingxia::native("downloads.cancel")]
+#[lingxia::framework_native("downloads.cancel", audience = "browser-control-only")]
 fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     crate::require_builtin_browser(&app)?;
     if input.task_id.trim().is_empty() {
@@ -134,7 +134,7 @@ fn cancel_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
         .map_err(map_downloads_error)
 }
 
-#[lingxia::native("downloads.pause")]
+#[lingxia::framework_native("downloads.pause", audience = "browser-control-only")]
 fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     crate::require_builtin_browser(&app)?;
     if input.task_id.trim().is_empty() {
@@ -146,7 +146,7 @@ fn pause_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
         .map_err(map_downloads_error)
 }
 
-#[lingxia::native("downloads.retry")]
+#[lingxia::framework_native("downloads.retry", audience = "browser-control-only")]
 fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     crate::require_builtin_browser(&app)?;
     if input.task_id.trim().is_empty() {
@@ -158,7 +158,7 @@ fn retry_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResu
         .map_err(map_downloads_error)
 }
 
-#[lingxia::native("downloads.resume")]
+#[lingxia::framework_native("downloads.resume", audience = "browser-control-only")]
 fn resume_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostResult<()> {
     crate::require_builtin_browser(&app)?;
     if input.task_id.trim().is_empty() {
@@ -170,7 +170,7 @@ fn resume_download_route(app: Arc<LxApp>, input: DownloadTaskIdInput) -> HostRes
         .map_err(map_downloads_error)
 }
 
-#[lingxia::native("downloads.open")]
+#[lingxia::framework_native("downloads.open", audience = "browser-control-only")]
 async fn open_download_route(
     app: Arc<LxApp>,
     input: DownloadTaskIdInput,
@@ -209,7 +209,7 @@ async fn open_download_route(
     .await
 }
 
-#[lingxia::native("downloads.reveal")]
+#[lingxia::framework_native("downloads.reveal", audience = "browser-control-only")]
 async fn reveal_download_route(
     app: Arc<LxApp>,
     input: DownloadTaskIdInput,
@@ -257,7 +257,7 @@ async fn reveal_download_route(
     .await
 }
 
-#[lingxia::native("downloads.watch", stream)]
+#[lingxia::framework_native("downloads.watch", stream, audience = "browser-control-only")]
 async fn watch_downloads(
     app: Arc<LxApp>,
     mut stream: StreamContext<DownloadEvent>,
@@ -299,7 +299,7 @@ pub(crate) fn register() {
 
 #[cfg(test)]
 mod tests {
-    use super::file_url_for;
+    use super::*;
     use std::path::PathBuf;
 
     #[test]
@@ -324,5 +324,26 @@ mod tests {
             file_url_for(&PathBuf::from("/home/user/downloads")),
             "file:///home/user/downloads"
         );
+    }
+
+    #[test]
+    fn framework_routes_are_browser_control_only() {
+        for route in [
+            list_downloads_host(),
+            clear_completed_downloads_host(),
+            remove_download_route_host(),
+            cancel_download_route_host(),
+            pause_download_route_host(),
+            retry_download_route_host(),
+            resume_download_route_host(),
+            open_download_route_host(),
+            reveal_download_route_host(),
+            watch_downloads_host(),
+        ] {
+            assert_eq!(
+                route.audience(),
+                lxapp::host::RouteAudience::BrowserControlOnly
+            );
+        }
     }
 }

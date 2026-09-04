@@ -45,7 +45,7 @@ pub use lingxia_browser::{
     BrowserNavigationPolicyResponse, BrowserTabInfo,
 };
 #[doc(hidden)]
-pub use lingxia_native_macros::native;
+pub use lingxia_native_macros::framework_native;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 #[doc(hidden)]
 pub use lxapp::LxApp;

@@ -478,7 +478,7 @@ pub(crate) fn count_in(app_data_dir: &Path) -> Result<usize, LxAppError> {
 /// Returns at most `MAX_ENTRIES` (10k) newest visits — the store itself is
 /// pruned to that cap. No query input: this is an internal webui route and the
 /// history page filters/searches client-side by design.
-#[lingxia::native("history.list")]
+#[lingxia::framework_native("history.list", audience = "browser-control-only")]
 fn list_history(app: Arc<LxApp>) -> HostResult<HistorySnapshot> {
     crate::require_builtin_browser(&app)?;
     let _guard = store_lock()
@@ -487,7 +487,7 @@ fn list_history(app: Arc<LxApp>) -> HostResult<HistorySnapshot> {
     load(&app.app_data_dir())
 }
 
-#[lingxia::native("history.remove")]
+#[lingxia::framework_native("history.remove", audience = "browser-control-only")]
 fn remove_history_entry(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
     crate::require_builtin_browser(&app)?;
     let _guard = store_lock()
@@ -509,13 +509,13 @@ fn remove_history_entry(app: Arc<LxApp>, input: IdInput) -> HostResult<()> {
     Ok(())
 }
 
-#[lingxia::native("history.clear")]
+#[lingxia::framework_native("history.clear", audience = "browser-control-only")]
 fn clear_history(app: Arc<LxApp>, input: ClearInput) -> HostResult<ClearResult> {
     crate::require_builtin_browser(&app)?;
     clear_since_in(&app.app_data_dir(), input.since_ms).map(|removed| ClearResult { removed })
 }
 
-#[lingxia::native("history.watch", stream)]
+#[lingxia::framework_native("history.watch", stream, audience = "browser-control-only")]
 async fn watch_history(
     app: Arc<LxApp>,
     mut stream: StreamContext<HistoryWatchEvent>,
@@ -605,5 +605,20 @@ mod tests {
         record_in(dir.path(), "https://example.com", "Example", 1_000).unwrap();
         let header = std::fs::read(history_path(dir.path())).unwrap();
         assert!(header.starts_with(b"SQLite format 3\0"));
+    }
+
+    #[test]
+    fn framework_routes_are_browser_control_only() {
+        for route in [
+            list_history_host(),
+            remove_history_entry_host(),
+            clear_history_host(),
+            watch_history_host(),
+        ] {
+            assert_eq!(
+                route.audience(),
+                lxapp::host::RouteAudience::BrowserControlOnly
+            );
+        }
     }
 }
