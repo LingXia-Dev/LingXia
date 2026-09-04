@@ -5,6 +5,10 @@ use crate::BUILTIN_BROWSER_APPID;
 use crate::chooser::browser_choose_files;
 use crate::document_session::{BrowserDocumentSessions, browser_document_sessions};
 use crate::downloads::browser_download_resource;
+use crate::inbound::{
+    BorrowedBrowserEnvelope, BrowserInboundDiagnostics, BrowserInboundRejectReason,
+    BrowserV3InboundKind, ConsoleRateLimiter, parse_browser_envelope,
+};
 use crate::internal_pages::{
     LingxiaSchemeContext, browser_attach_tab_page, browser_document_scripts_snapshot,
     browser_load_internal_document, browser_resolve_delegate_context,
@@ -34,7 +38,6 @@ use lingxia_webview::{
     render_load_error_page,
 };
 use lxapp::LxAppError;
-use serde_json::Value;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -60,6 +63,8 @@ struct BrowserTabDelegate {
     documents: Arc<BrowserDocumentSessions>,
     native_view: std::sync::Mutex<Option<NativeWebViewId>>,
     navigation: std::sync::Mutex<BrowserTabNavigationState>,
+    inbound_diagnostics: BrowserInboundDiagnostics,
+    console_rate_limiter: std::sync::Mutex<ConsoleRateLimiter>,
 }
 
 #[derive(Default)]
@@ -395,27 +400,62 @@ impl WebViewDelegate for BrowserTabDelegate {
     }
 
     fn handle_post_message(&self, message: IncomingWebMessage) {
-        // Console envelopes are diagnostic-only and never enter PageBridge or
-        // a host route. Every other message retains its attested context for
-        // PageBridge admission below.
-        if let Some((level, console_message)) = decode_console_envelope(message.body()) {
-            self.log(level, &console_message);
+        let envelope = match parse_browser_envelope(message.body()) {
+            Ok(envelope) => envelope,
+            Err(reason) => {
+                self.inbound_diagnostics.reject(reason);
+                return;
+            }
+        };
+        let context = message.context().clone();
+
+        if let BorrowedBrowserEnvelope::Console {
+            binding,
+            level,
+            message,
+        } = envelope
+        {
+            let result = self.documents.with_active_bound_context(
+                &context,
+                binding.session_id,
+                binding.secret,
+                |_| {
+                    let Ok(mut limiter) = self.console_rate_limiter.lock() else {
+                        self.inbound_diagnostics
+                            .reject(BrowserInboundRejectReason::SessionNotReady);
+                        return None;
+                    };
+                    if !limiter.allow() {
+                        self.inbound_diagnostics
+                            .reject(BrowserInboundRejectReason::ConsoleRateLimited);
+                        return None;
+                    }
+                    // Authenticated console text is the explicit log payload;
+                    // rejection diagnostics above never include it or its binding.
+                    self.log(level, message);
+                    Some(())
+                },
+            );
+            if let Err(reason) = result {
+                self.inbound_diagnostics.reject(reason);
+            }
             return;
         }
 
-        let Some(binding) = browser_v3_document_binding(message.body()) else {
-            // Browser control pages are RequiredV3. URL classification is a
-            // presentation/lifecycle concern, never bridge admission proof.
-            return;
+        let BorrowedBrowserEnvelope::Bridge { kind, binding } = envelope else {
+            unreachable!("console envelope returned above");
         };
+        // Keep only the two bounded authentication fields across ownership of
+        // the full frame. PageBridge repeats its strict typed decode later.
+        let is_hello = kind == BrowserV3InboundKind::Hello;
+        let session_id = binding.session_id.to_owned();
+        let secret = binding.secret.to_owned();
 
         match browser_resolve_delegate_page(&self.page_path, self.session_id) {
             Ok(page) => {
-                let context = message.context().clone();
-                let session_id = binding.session_id.to_owned();
-                let secret = binding.secret.to_owned();
                 let mut deferred_cancellation = None;
-                let prepared = if binding.kind == "hello" {
+                let typed_rejected = std::cell::Cell::new(false);
+                let prepared = if is_hello {
                     self.documents.with_activated_hello_for_context(
                         &context,
                         &session_id,
@@ -432,12 +472,15 @@ impl WebViewDelegate for BrowserTabDelegate {
                         |authority| {
                             page.promote_active_browser_document(authority.clone())
                                 .then(|| {
-                                    page.prepare_required_v3_incoming(
+                                    let prepared = page.prepare_required_v3_incoming(
                                         message,
                                         authority.clone(),
                                         authority.execution_gate(),
-                                    )
-                                    .ok()
+                                    );
+                                    if prepared.is_err() {
+                                        typed_rejected.set(true);
+                                    }
+                                    prepared.ok()
                                 })
                                 .flatten()
                         },
@@ -448,15 +491,29 @@ impl WebViewDelegate for BrowserTabDelegate {
                         &session_id,
                         &secret,
                         |authority| {
-                            page.prepare_required_v3_incoming(
+                            let prepared = page.prepare_required_v3_incoming(
                                 message,
                                 authority.clone(),
                                 authority.execution_gate(),
-                            )
-                            .ok()
+                            );
+                            if prepared.is_err() {
+                                typed_rejected.set(true);
+                            }
+                            prepared.ok()
                         },
                     )
                 };
+                let prepared = match prepared {
+                    Ok(prepared) => prepared,
+                    Err(reason) => {
+                        self.inbound_diagnostics.reject(reason);
+                        return;
+                    }
+                };
+                if typed_rejected.get() {
+                    self.inbound_diagnostics
+                        .reject(BrowserInboundRejectReason::MalformedEnvelope);
+                }
                 if let Some(deferred) = deferred_cancellation {
                     // RequiredV3 replacement happened under the registry
                     // lock; old work may close channels through that same
@@ -464,21 +521,17 @@ impl WebViewDelegate for BrowserTabDelegate {
                     deferred.finish();
                 }
                 if let Some(prepared) = prepared
-                    && let Err(err) = page.execute_prepared_required_v3_incoming(prepared)
+                    && page
+                        .execute_prepared_required_v3_incoming(prepared)
+                        .is_err()
                 {
-                    lxapp::warn!(
-                        "[InternalBrowser] Failed to handle bridge message for tab {}: {}",
-                        self.tab_id,
-                        err
-                    );
+                    self.inbound_diagnostics
+                        .reject(BrowserInboundRejectReason::DispatchFailed);
                 }
             }
-            Err(err) => {
-                lxapp::warn!(
-                    "[InternalBrowser] Failed to resolve delegate page for tab {}: {}",
-                    self.tab_id,
-                    err
-                );
+            Err(_) => {
+                self.inbound_diagnostics
+                    .reject(BrowserInboundRejectReason::SessionNotReady);
             }
         }
     }
@@ -497,61 +550,9 @@ impl WebViewDelegate for BrowserTabDelegate {
     }
 }
 
-struct BrowserV3DocumentBinding {
-    kind: String,
-    session_id: String,
-    secret: String,
-}
-
-/// Minimal envelope read before PageBridge's typed codec. The
-/// codec repeats all validation (including duplicate-key rejection) after the
-/// active registry gate succeeds; this only decides whether the browser may
-/// hand a frame to that codec at all.
-fn browser_v3_document_binding(frame: &str) -> Option<BrowserV3DocumentBinding> {
-    let value: Value = serde_json::from_str(frame).ok()?;
-    let object = value.as_object()?;
-    (object.get("v")?.as_u64() == Some(3)).then_some(())?;
-    let kind = object.get("kind")?.as_str()?;
-    matches!(
-        kind,
-        "hello"
-            | "req"
-            | "res"
-            | "notify"
-            | "cancel"
-            | "ch.open"
-            | "ch.data"
-            | "ch.close"
-            | "state.ack"
-    )
-    .then_some(())?;
-    Some(BrowserV3DocumentBinding {
-        kind: kind.to_owned(),
-        session_id: object.get("sessionId")?.as_str()?.to_owned(),
-        secret: object.get("secret")?.as_str()?.to_owned(),
-    })
-}
-
 // ---------------------------------------------------------------------------
 // WebView helpers — thin wrappers around lingxia-webview cross-platform API
 // ---------------------------------------------------------------------------
-
-fn decode_console_envelope(msg: &str) -> Option<(LogLevel, String)> {
-    let json = serde_json::from_str::<Value>(msg).ok()?;
-    json.get("__lingxia_console__")
-        .and_then(Value::as_bool)
-        .filter(|enabled| *enabled)?;
-    let level = match json.get("level").and_then(Value::as_str) {
-        Some("error") => LogLevel::Error,
-        Some("warn") => LogLevel::Warn,
-        Some("debug") => LogLevel::Debug,
-        Some("info") => LogLevel::Info,
-        Some("verbose") => LogLevel::Verbose,
-        _ => LogLevel::Info,
-    };
-    let message = json.get("message").and_then(Value::as_str)?.to_string();
-    Some((level, message))
-}
 
 fn browser_webtag(path: &str, session_id: u64) -> WebTag {
     WebTag::new(BUILTIN_BROWSER_APPID, path, Some(session_id))
@@ -617,6 +618,8 @@ pub(crate) fn browser_create_webview(
         documents: documents.clone(),
         native_view: std::sync::Mutex::new(None),
         navigation: std::sync::Mutex::new(BrowserTabNavigationState::default()),
+        inbound_diagnostics: BrowserInboundDiagnostics::default(),
+        console_rate_limiter: std::sync::Mutex::new(ConsoleRateLimiter::default()),
     });
     let session = WebViewBuilder::browser(webtag)
         .data_mode(data_mode)

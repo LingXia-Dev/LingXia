@@ -19,6 +19,12 @@ impl NativeWebViewId {
         Self(raw)
     }
 
+    /// Construct a synthetic native identity in downstream unit tests.
+    #[cfg(feature = "test-support")]
+    pub const fn for_test(raw: u64) -> Self {
+        Self(raw)
+    }
+
     // Android's JNI binding consumes this only on its conditionally compiled target.
     #[allow(dead_code)]
     pub(crate) const fn raw(self) -> u64 {
@@ -34,6 +40,12 @@ impl DocumentGeneration {
     /// Constructed only by the navigation normalizer after reliable commit
     /// evidence. Adapters never receive this constructor.
     pub(crate) const fn new(raw: u64) -> Self {
+        Self(raw)
+    }
+
+    /// Construct a synthetic document generation in downstream unit tests.
+    #[cfg(feature = "test-support")]
+    pub const fn for_test(raw: u64) -> Self {
         Self(raw)
     }
 

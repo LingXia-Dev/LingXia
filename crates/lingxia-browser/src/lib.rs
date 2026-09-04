@@ -2,6 +2,7 @@ mod automation;
 mod chooser;
 mod document_session;
 mod downloads;
+mod inbound;
 mod internal_pages;
 mod policy;
 mod tabs;
