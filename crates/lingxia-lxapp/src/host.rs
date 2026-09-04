@@ -5,17 +5,18 @@
 
 use crate::ControlDocumentAuthority;
 use crate::error::LxAppError;
-use crate::lxapp::{AppSessionClass, LxApp};
+use crate::lxapp::{AppSessionClass, LxApp, LxAppSessionStatus};
 
 use futures::Stream;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
+use std::fmt;
 use std::future::Future;
 use std::marker::PhantomData;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::Arc;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use tokio::sync::{mpsc, oneshot};
 
 #[macro_use]
@@ -89,19 +90,195 @@ pub enum RouteAudience {
     ControlOnly,
 }
 
-/// Native-scoped identity of an authenticated lxapp session.
+/// Native identity of one authenticated lxapp session.
 ///
-/// The scope deliberately contains no app id or bundle metadata: route
-/// admission relies on the native session class, never a client-controlled
-/// identifier or payload field.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AppScope {
+/// The constructor is crate-private: an app id in a bridge payload or manifest
+/// cannot create or replace this identity.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AppIdentity {
+    app_id: Arc<str>,
     session_id: u64,
 }
 
+impl AppIdentity {
+    pub fn app_id(&self) -> &str {
+        &self.app_id
+    }
+
+    pub const fn session_id(&self) -> u64 {
+        self.session_id
+    }
+}
+
+/// Filesystem namespace assigned to an lxapp by the native runtime.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppStorageNamespace {
+    storage_file: PathBuf,
+    user_data: PathBuf,
+    user_cache: PathBuf,
+    temporary: PathBuf,
+}
+
+impl AppStorageNamespace {
+    pub fn storage_file(&self) -> &Path {
+        &self.storage_file
+    }
+
+    pub fn user_data(&self) -> &Path {
+        &self.user_data
+    }
+
+    pub fn user_cache(&self) -> &Path {
+        &self.user_cache
+    }
+
+    pub fn temporary(&self) -> &Path {
+        &self.temporary
+    }
+}
+
+/// Native-issued resource grants attached to one live lxapp session.
+///
+/// Transient paths and references are issued by native pickers and keyed by
+/// the immutable app/session identity. A retained scope fails closed once the
+/// native app session is gone.
+#[derive(Clone)]
+pub struct AppResourceGrants {
+    app_id: Arc<str>,
+    session_id: u64,
+    owner: Weak<LxApp>,
+}
+
+impl fmt::Debug for AppResourceGrants {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AppResourceGrants")
+            .field("app_id", &self.app_id)
+            .field("session_id", &self.session_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl AppResourceGrants {
+    fn live_owner(&self) -> Result<Arc<LxApp>, LxAppError> {
+        let app = self.owner.upgrade().ok_or_else(|| {
+            LxAppError::ResourceNotFound("lxapp resource scope is no longer live".to_string())
+        })?;
+        if app.appid != self.app_id.as_ref()
+            || app.session_id() != self.session_id
+            || matches!(
+                app.status(),
+                LxAppSessionStatus::Closed
+                    | LxAppSessionStatus::Closing
+                    | LxAppSessionStatus::Restarting
+            )
+        {
+            return Err(LxAppError::ResourceNotFound(
+                "lxapp resource scope no longer matches its native session".to_string(),
+            ));
+        }
+        Ok(app)
+    }
+
+    /// Resolve a native-issued transient `lx://temp/...` grant.
+    pub fn resolve_transient_file(&self, resource: &str) -> Result<PathBuf, LxAppError> {
+        if !resource.trim().starts_with("lx://temp/") {
+            return Err(LxAppError::InvalidParameter(
+                "expected a native-issued lx://temp resource grant".to_string(),
+            ));
+        }
+        self.live_owner()?.resolve_accessible_path(resource)
+    }
+
+    /// Test a native-issued opaque file reference for this exact app session.
+    pub fn contains_file_reference(&self, reference: &str) -> bool {
+        self.live_owner()
+            .is_ok_and(|app| app.has_transient_file_reference(reference))
+    }
+}
+
+/// Native-derived resource scope of an authenticated lxapp session.
+///
+/// This value is constructed from the owning [`LxApp`], never from bridge
+/// payload fields. Route audience admission and resource authorization remain
+/// distinct: handlers use this scope after admission to resolve app-owned
+/// storage or native-issued resource grants.
+#[derive(Debug, Clone)]
+pub struct AppScope {
+    identity: AppIdentity,
+    storage: AppStorageNamespace,
+    resource_grants: AppResourceGrants,
+}
+
 impl AppScope {
-    pub(crate) const fn from_session_id(session_id: u64) -> Self {
-        Self { session_id }
+    fn from_lxapp(app: &Arc<LxApp>) -> Self {
+        let app_id: Arc<str> = Arc::from(app.appid.as_str());
+        let session_id = app.session_id();
+        Self {
+            identity: AppIdentity {
+                app_id: Arc::clone(&app_id),
+                session_id,
+            },
+            storage: AppStorageNamespace {
+                storage_file: app.storage_file_path.clone(),
+                user_data: app.user_data_dir.clone(),
+                user_cache: app.user_cache_dir.clone(),
+                temporary: app.temp_dir.clone(),
+            },
+            resource_grants: AppResourceGrants {
+                app_id,
+                session_id,
+                owner: Arc::downgrade(app),
+            },
+        }
+    }
+
+    pub fn identity(&self) -> &AppIdentity {
+        &self.identity
+    }
+
+    pub fn storage(&self) -> &AppStorageNamespace {
+        &self.storage
+    }
+
+    pub fn resource_grants(&self) -> &AppResourceGrants {
+        &self.resource_grants
+    }
+
+    /// Resolve a path only within this app's native storage namespace or its
+    /// native-issued transient grants.
+    pub fn resolve_accessible_path(&self, resource: &str) -> Result<PathBuf, LxAppError> {
+        self.resource_grants
+            .live_owner()?
+            .resolve_accessible_path(resource)
+    }
+
+    fn belongs_to(&self, app: &Arc<LxApp>) -> bool {
+        self.identity.app_id() == app.appid
+            && self.identity.session_id() == app.session_id()
+            && self.resource_grants.owner.ptr_eq(&Arc::downgrade(app))
+    }
+
+    #[cfg(test)]
+    fn for_test(app_id: &str, session_id: u64) -> Self {
+        let app_id: Arc<str> = Arc::from(app_id);
+        Self {
+            identity: AppIdentity {
+                app_id: Arc::clone(&app_id),
+                session_id,
+            },
+            storage: AppStorageNamespace {
+                storage_file: PathBuf::new(),
+                user_data: PathBuf::new(),
+                user_cache: PathBuf::new(),
+                temporary: PathBuf::new(),
+            },
+            resource_grants: AppResourceGrants {
+                app_id,
+                session_id,
+                owner: Weak::new(),
+            },
+        }
     }
 }
 
@@ -122,10 +299,10 @@ pub enum AuthenticatedCaller {
 }
 
 impl AuthenticatedCaller {
-    pub(crate) fn for_lxapp(app: &LxApp) -> Self {
+    pub(crate) fn for_lxapp(app: &Arc<LxApp>) -> Self {
         Self::LxAppSession {
             class: app.app_session_class(),
-            scope: AppScope::from_session_id(app.session_id()),
+            scope: AppScope::from_lxapp(app),
         }
     }
 
@@ -136,20 +313,63 @@ impl AuthenticatedCaller {
         Self::BrowserDocument { authority }
     }
 
-    #[cfg(test)]
-    pub(crate) fn standard_for_test(scope: u64) -> Self {
-        Self::LxAppSession {
-            class: AppSessionClass::StandardApp,
-            scope: AppScope::from_session_id(scope),
+    pub fn app_scope(&self) -> Option<&AppScope> {
+        match self {
+            Self::LxAppSession { scope, .. } => Some(scope),
+            Self::BrowserDocument { .. } => None,
         }
     }
 
     #[cfg(test)]
-    pub(crate) fn control_for_test(scope: u64) -> Self {
+    pub(crate) fn standard_for_test(session_id: u64) -> Self {
+        Self::LxAppSession {
+            class: AppSessionClass::StandardApp,
+            scope: AppScope::for_test("test.standard", session_id),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn control_for_test(session_id: u64) -> Self {
         Self::LxAppSession {
             class: AppSessionClass::ControlApp,
-            scope: AppScope::from_session_id(scope),
+            scope: AppScope::for_test("test.control", session_id),
         }
+    }
+}
+
+/// Authenticated, native-created context passed to every host handler.
+///
+/// Its constructor is private to bridge dispatch. Third-party handlers may
+/// inspect or clone it, but cannot mint a different caller or app scope.
+#[derive(Clone)]
+pub struct HostInvocationContext {
+    caller: AuthenticatedCaller,
+    lxapp: Arc<LxApp>,
+}
+
+impl HostInvocationContext {
+    pub(crate) fn for_dispatch(lxapp: Arc<LxApp>, caller: &AuthenticatedCaller) -> Option<Self> {
+        if let AuthenticatedCaller::LxAppSession { scope, .. } = caller
+            && !scope.belongs_to(&lxapp)
+        {
+            return None;
+        }
+        Some(Self {
+            caller: caller.clone(),
+            lxapp,
+        })
+    }
+
+    pub fn caller(&self) -> &AuthenticatedCaller {
+        &self.caller
+    }
+
+    pub fn app_scope(&self) -> Option<&AppScope> {
+        self.caller.app_scope()
+    }
+
+    pub fn lxapp(&self) -> Arc<LxApp> {
+        Arc::clone(&self.lxapp)
     }
 }
 
@@ -257,7 +477,7 @@ impl HostRegistration {
 pub trait HostHandler: Send + Sync + 'static {
     fn call<'a>(
         &'a self,
-        lxapp: Arc<LxApp>,
+        invocation: HostInvocationContext,
         input: Option<String>,
         cancel: HostCancel,
     ) -> HostFuture<'a>;
@@ -740,7 +960,12 @@ pub trait ChannelHandler: Send + Sync + 'static {
     /// its own async task if it needs to do async work (e.g. via
     /// `tokio::task::spawn`). The method is synchronous so the bridge is not
     /// blocked waiting for the handler.
-    fn on_open(&self, lxapp: Arc<LxApp>, ctx: ChannelContext, params: Option<String>);
+    fn on_open(
+        &self,
+        invocation: HostInvocationContext,
+        ctx: ChannelContext,
+        params: Option<String>,
+    );
 }
 
 /// A channel handler ready to be inserted into the global channel registry.
@@ -880,13 +1105,55 @@ pub(crate) fn register_all() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::appservice::LxAppWorkers;
+    use crate::register_synthetic_lxapp;
+    use lingxia_platform::Platform;
+    use uuid::Uuid;
+
+    fn same_app_id_with_different_classes() -> (tempfile::TempDir, Arc<LxApp>, Arc<LxApp>) {
+        let root = tempfile::tempdir().expect("test app root");
+        let runtime = Arc::new(
+            Platform::new(
+                root.path().join("data").display().to_string(),
+                root.path().join("cache").display().to_string(),
+                "en-US".to_string(),
+            )
+            .expect("test platform"),
+        );
+        let workers = LxAppWorkers::init(1);
+        let app_id = format!("app.lingxia.scope-test.{}", Uuid::new_v4());
+        register_synthetic_lxapp(app_id.clone());
+        let standard = Arc::new(
+            LxApp::new_with_session_class_for_test(
+                app_id.clone(),
+                Arc::clone(&runtime),
+                Arc::clone(&workers),
+                AppSessionClass::StandardApp,
+            )
+            .expect("standard app"),
+        );
+        standard.bind_arc();
+        standard.set_status(LxAppSessionStatus::Opened);
+        let control = Arc::new(
+            LxApp::new_with_session_class_for_test(
+                app_id,
+                runtime,
+                workers,
+                AppSessionClass::ControlApp,
+            )
+            .expect("control app"),
+        );
+        control.bind_arc();
+        control.set_status(LxAppSessionStatus::Opened);
+        (root, standard, control)
+    }
 
     struct TestHostHandler;
 
     impl HostHandler for TestHostHandler {
         fn call<'a>(
             &'a self,
-            _lxapp: Arc<LxApp>,
+            _invocation: HostInvocationContext,
             _input: Option<String>,
             _cancel: HostCancel,
         ) -> HostFuture<'a> {
@@ -897,7 +1164,173 @@ mod tests {
     struct TestChannelHandler;
 
     impl ChannelHandler for TestChannelHandler {
-        fn on_open(&self, _lxapp: Arc<LxApp>, _ctx: ChannelContext, _params: Option<String>) {}
+        fn on_open(
+            &self,
+            _invocation: HostInvocationContext,
+            _ctx: ChannelContext,
+            _params: Option<String>,
+        ) {
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct ObservedScope {
+        class: AppSessionClass,
+        app_id: String,
+        session_id: u64,
+    }
+
+    fn observe_scope(invocation: &HostInvocationContext) -> ObservedScope {
+        let AuthenticatedCaller::LxAppSession { class, scope } = invocation.caller() else {
+            panic!("expected lxapp caller");
+        };
+        ObservedScope {
+            class: *class,
+            app_id: scope.identity().app_id().to_string(),
+            session_id: scope.identity().session_id(),
+        }
+    }
+
+    struct ScopeRecordingHostHandler {
+        observed: Arc<Mutex<Vec<ObservedScope>>>,
+    }
+
+    impl HostHandler for ScopeRecordingHostHandler {
+        fn call<'a>(
+            &'a self,
+            invocation: HostInvocationContext,
+            _input: Option<String>,
+            _cancel: HostCancel,
+        ) -> HostFuture<'a> {
+            Box::pin(async move {
+                self.observed
+                    .lock()
+                    .unwrap()
+                    .push(observe_scope(&invocation));
+                Ok(HostOutput::Json("null".to_string()))
+            })
+        }
+    }
+
+    struct ScopeRecordingChannelHandler {
+        observed: Arc<Mutex<Vec<ObservedScope>>>,
+    }
+
+    impl ChannelHandler for ScopeRecordingChannelHandler {
+        fn on_open(
+            &self,
+            invocation: HostInvocationContext,
+            _ctx: ChannelContext,
+            _params: Option<String>,
+        ) {
+            self.observed
+                .lock()
+                .unwrap()
+                .push(observe_scope(&invocation));
+        }
+    }
+
+    #[tokio::test]
+    async fn invocation_context_carries_native_scope_to_unary_stream_and_channel_handlers() {
+        let (_root, standard, control) = same_app_id_with_different_classes();
+        let standard_caller = AuthenticatedCaller::for_lxapp(&standard);
+        let control_caller = AuthenticatedCaller::for_lxapp(&control);
+
+        assert!(
+            HostInvocationContext::for_dispatch(Arc::clone(&control), &standard_caller).is_none()
+        );
+
+        let host_observed = Arc::new(Mutex::new(Vec::new()));
+        let host_handler = Arc::new(ScopeRecordingHostHandler {
+            observed: Arc::clone(&host_observed),
+        });
+        let stream_registration = HostRegistration::stream(
+            "scope",
+            "stream",
+            RouteAudience::AppSessionOnly,
+            host_handler.clone(),
+        );
+        assert_eq!(stream_registration.kind, HostMethodKind::Stream);
+
+        for (app, caller) in [
+            (Arc::clone(&standard), &standard_caller),
+            (Arc::clone(&control), &control_caller),
+        ] {
+            let invocation =
+                HostInvocationContext::for_dispatch(app, caller).expect("matching scope");
+            let (_cancel_tx, cancel) = oneshot::channel();
+            host_handler
+                .call(invocation, None, cancel)
+                .await
+                .expect("handler result");
+        }
+
+        let channel_observed = Arc::new(Mutex::new(Vec::new()));
+        let channel_handler = ScopeRecordingChannelHandler {
+            observed: Arc::clone(&channel_observed),
+        };
+        for (index, (app, caller)) in [
+            (Arc::clone(&standard), &standard_caller),
+            (Arc::clone(&control), &control_caller),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let invocation =
+                HostInvocationContext::for_dispatch(app, caller).expect("matching scope");
+            let (channel, _sender, _outbound) = new_channel_context(format!("scope-{index}"));
+            channel_handler.on_open(invocation, channel, None);
+        }
+
+        let host_observed = host_observed.lock().unwrap();
+        let channel_observed = channel_observed.lock().unwrap();
+        assert_eq!(host_observed.as_slice(), channel_observed.as_slice());
+        assert_eq!(host_observed.len(), 2);
+        assert_eq!(host_observed[0].app_id, host_observed[1].app_id);
+        assert_ne!(host_observed[0].session_id, host_observed[1].session_id);
+        assert_eq!(host_observed[0].class, AppSessionClass::StandardApp);
+        assert_eq!(host_observed[1].class, AppSessionClass::ControlApp);
+    }
+
+    #[test]
+    fn same_app_id_does_not_share_storage_or_native_resource_grants_between_sessions() {
+        let (_root, standard, control) = same_app_id_with_different_classes();
+        let standard_caller = AuthenticatedCaller::for_lxapp(&standard);
+        let control_caller = AuthenticatedCaller::for_lxapp(&control);
+        let standard_scope = standard_caller.app_scope().expect("standard scope");
+        let control_scope = control_caller.app_scope().expect("control scope");
+
+        assert_eq!(
+            standard_scope.identity().app_id(),
+            control_scope.identity().app_id()
+        );
+        assert_ne!(
+            standard_scope.identity().session_id(),
+            control_scope.identity().session_id()
+        );
+        assert_eq!(standard_scope.storage().user_data(), standard.user_data_dir);
+        assert_eq!(control_scope.storage().temporary(), control.temp_dir);
+
+        let file = standard.temp_dir.join("native-grant.txt");
+        std::fs::write(&file, b"scope-owned").expect("write grant fixture");
+        let granted = standard
+            .grant_transient_file_access(&file)
+            .expect("native grant")
+            .to_string();
+        assert_eq!(
+            standard_scope
+                .resource_grants()
+                .resolve_transient_file(&granted)
+                .expect("owner resolves grant"),
+            file
+        );
+        assert!(
+            control_scope
+                .resource_grants()
+                .resolve_transient_file(&granted)
+                .is_err(),
+            "same app id must not confer another session's native grant"
+        );
     }
 
     #[test]

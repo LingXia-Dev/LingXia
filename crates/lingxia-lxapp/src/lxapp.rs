@@ -1856,6 +1856,21 @@ impl LxApp {
         Ok(app)
     }
 
+    #[cfg(test)]
+    pub(crate) fn new_with_session_class_for_test(
+        appid: String,
+        runtime: Arc<Platform>,
+        executor: Arc<LxAppWorkers>,
+        class: AppSessionClass,
+    ) -> Result<Self, LxAppError> {
+        match class {
+            AppSessionClass::StandardApp => {
+                Self::new(appid, runtime, executor, ReleaseType::Release)
+            }
+            AppSessionClass::ControlApp => Self::new_as_home(appid, runtime, executor),
+        }
+    }
+
     /// Initialize paths and directories for the lxapp
     fn initialize_paths(&mut self) -> Result<(), LxAppError> {
         // Load metadata if available to determine version and install path
