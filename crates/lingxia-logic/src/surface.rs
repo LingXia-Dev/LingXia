@@ -515,7 +515,7 @@ fn get_surface(ctx: JSContext, key_or_id: String) -> JSResult<JSValue> {
 }
 
 /// `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
-/// slot. Home-lxapp only; the namespace is the privilege.
+/// slot. Control-app only; the namespace is the privilege.
 async fn shell_open_app(ctx: JSContext, app_id: String, options: JSObject) -> JSResult<JSObject> {
     reject_unknown_options(
         &options,
@@ -543,7 +543,7 @@ async fn shell_open_app(ctx: JSContext, app_id: String, options: JSObject) -> JS
     finish_handle(&ctx, &handle, "app", &realized, key, None)
 }
 
-/// `lx.shell.openBuiltin(page)` — a host builtin page. Home-lxapp only.
+/// `lx.shell.openBuiltin(page)` — a host builtin page. Control-app only.
 async fn shell_open_builtin(ctx: JSContext, page: String) -> JSResult<JSObject> {
     let url = match page.trim() {
         "settings" => "lingxia://settings",
@@ -562,14 +562,14 @@ async fn shell_open_builtin(ctx: JSContext, page: String) -> JSResult<JSObject> 
 }
 
 /// `lx.shell.openDeclared(id, options?)` — the declared surface, plus the
-/// keyed multi-instance form and placement overrides. Home-lxapp only.
+/// keyed multi-instance form and placement overrides. Control-app only.
 async fn shell_open_declared(
     ctx: JSContext,
     id: String,
     options: Optional<JSObject>,
 ) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    require_home_caller(&lxapp, "lx.shell.openDeclared")?;
+    require_control_caller(&lxapp, "lx.shell.openDeclared")?;
     let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
     reject_unknown_options(&options, &["key", "as", "edge"], "lx.shell.openDeclared")?;
     let key = read_surface_key(&options)?;
@@ -589,7 +589,7 @@ async fn shell_open_declared(
 /// `lx.shell.reconfigure(id, patch)` — re-place a live declared surface.
 async fn shell_reconfigure(ctx: JSContext, id: String, patch: JSObject) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    require_home_caller(&lxapp, "lx.shell.reconfigure")?;
+    require_control_caller(&lxapp, "lx.shell.reconfigure")?;
     reject_unknown_options(&patch, &["as", "edge"], "lx.shell.reconfigure")?;
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
@@ -1052,17 +1052,15 @@ fn handle_realized_placement(handle: &JSObject) -> String {
         .unwrap_or_else(|_| "aside".to_string())
 }
 
-/// Reject callers other than the home lxapp for the privileged content keys
-/// (`appId`) — the same single-writer model as `lx.shell`. Gates on
-/// the configured home appId (like `ensure_home_lxapp`), not the instance
-/// flag, which a dev-mode reinstall can recreate without.
-fn require_home_caller(lxapp: &LxApp, key: &str) -> JSResult<()> {
-    if lingxia_app_context::home_app_id().is_some_and(|home| lxapp.appid == home) {
+/// Reject callers other than the native-assigned Control app for privileged
+/// shell composition. The error remains compatible with the previous guard.
+fn require_control_caller(lxapp: &LxApp, key: &str) -> JSResult<()> {
+    if lxapp.is_control_app() {
         return Ok(());
     }
     Err(surface_error(
         SurfaceErrorCode::Denied,
-        format!("{key} is restricted to the home lxapp"),
+        format!("{key} is restricted to the Control app"),
     ))
 }
 
@@ -1082,7 +1080,7 @@ async fn open_app_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
     }
     let edge = read_validated_edge(spec)?;
     let lxapp = LxApp::from_ctx(&ctx)?;
-    require_home_caller(&lxapp, "lx.shell.openApp")?;
+    require_control_caller(&lxapp, "lx.shell.openApp")?;
 
     let as_role = read_required_string(spec, "as")?;
     let as_role = as_role.trim();
@@ -1266,8 +1264,8 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
     {
         // Every lxapp may consume a declaration exactly as the host authored
         // it. Instance creation and placement overrides mutate shared shell
-        // composition, so they stay under the home lxapp's single-writer role.
-        require_home_caller(&lxapp, "overriding a declared surface")?;
+        // composition, so they stay under the Control app's single-writer role.
+        require_control_caller(&lxapp, "overriding a declared surface")?;
     }
     if key.is_some() && declared_app_id.is_some() {
         return Err(surface_error(
@@ -1442,7 +1440,7 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
 
     if let Some(page) = parse_builtin_browser_page(trimmed_url) {
         validate_builtin_browser_surface_keys(spec)?;
-        require_home_caller(&lxapp, "lx.shell.openBuiltin")?;
+        require_control_caller(&lxapp, "lx.shell.openBuiltin")?;
         if !lingxia_app_context::browser_enabled() {
             return Err(surface_error(
                 SurfaceErrorCode::UnsupportedPlacement,

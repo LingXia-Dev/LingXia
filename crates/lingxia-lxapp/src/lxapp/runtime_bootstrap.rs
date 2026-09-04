@@ -278,25 +278,15 @@ pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
             }
         }
     }
-    // Create the home LxApp instance (loads lxapp.json once)
-    let home_lxapp =
-        match LxApp::new_as_home(home_app_id.clone(), runtime_arc.clone(), executor.clone()) {
-            Ok(app) => app,
-            Err(e) => {
-                error!("Failed to setup home LxApp: {}", e).with_appid(home_app_id.clone());
-                return Err(e);
-            }
-        };
-
-    let initial_route = home_lxapp.config.get_initial_route();
-    home_lxapp.state.lock().unwrap().startup_options.path = initial_route;
-
-    // Add home lxapp to the manager
-    let home_app = Arc::new(home_lxapp);
-    home_app.bind_arc();
-    lxapps_manager
-        .lxapps
-        .insert(home_app_id.clone(), home_app.clone());
+    // Create the home LxApp instance (loads lxapp.json once) under the same
+    // per-app transition lock used by ordinary opens and restarts.
+    let home_app = match lxapps_manager.initialize_home_lxapp(home_app_id.clone()) {
+        Ok(app) => app,
+        Err(e) => {
+            error!("Failed to setup home LxApp: {}", e).with_appid(home_app_id.clone());
+            return Err(e);
+        }
+    };
 
     // Pre-create JS worker for home lxapp when enabled. Native-only hosts skip this path.
     if let Err(e) = home_app.executor.create_app_svc(home_app.clone()) {

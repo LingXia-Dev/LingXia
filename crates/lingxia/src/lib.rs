@@ -32,7 +32,7 @@ pub use lxapp::set_automation_auto_grant;
 // Required by expansions of `#[lingxia::native]`; host applications should
 // receive it through macro-generated parameters rather than orchestrate it.
 #[doc(hidden)]
-pub use lxapp::LxApp;
+pub use lxapp::{AppSessionClass, LxApp};
 pub use lxapp::{
     FloatDismiss, LxAppSecurityPrivilege, PageQueryInput, PageSurface, PageSurfaceRequest,
     PageSurfaceTarget, SurfaceInteraction, SurfaceKind, SurfacePosition, SurfaceRole,

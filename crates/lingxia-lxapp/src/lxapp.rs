@@ -262,6 +262,10 @@ pub struct LxApps {
     /// Pending delayed-destroy timers keyed by appid
     pending_destroy: Mutex<HashMap<String, PendingDestroy>>,
     next_destroy_generation: AtomicU64,
+
+    /// Serializes replacement of one app's session so its native-assigned class
+    /// cannot be lost between removal and reinsertion.
+    session_transition_locks: DashMap<String, Arc<Mutex<()>>>,
 }
 
 struct PendingDestroy {
@@ -314,7 +318,36 @@ impl LxApps {
             lxapp_stack: Mutex::new(VecDeque::with_capacity(capacity)),
             pending_destroy: Mutex::new(HashMap::new()),
             next_destroy_generation: AtomicU64::new(1),
+            session_transition_locks: DashMap::new(),
         }
+    }
+
+    fn session_transition_lock(&self, appid: &str) -> Arc<Mutex<()>> {
+        self.session_transition_locks
+            .entry(appid.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    }
+
+    fn cleanup_session_transition_lock(&self, appid: &str) {
+        // The map owns one strong reference. A transition in progress (or
+        // waiting for this lock) owns another, so remove only idle entries.
+        // `remove_if` evaluates and removes while holding the map shard write
+        // lock, preventing a concurrent lookup from acquiring a stale lock
+        // between the count check and removal.
+        self.session_transition_locks
+            .remove_if(appid, |_, lock| Arc::strong_count(lock) == 1);
+    }
+
+    fn with_session_transition<T>(&self, appid: &str, operation: impl FnOnce() -> T) -> T {
+        let transition_lock = self.session_transition_lock(appid);
+        let result = {
+            let _transition_guard = transition_lock.lock().unwrap();
+            operation()
+        };
+        drop(transition_lock);
+        self.cleanup_session_transition_lock(appid);
+        result
     }
 
     /// Ensure an LxApp instance exists for the given appid.
@@ -322,6 +355,71 @@ impl LxApps {
         &self,
         appid: String,
         release_type: ReleaseType,
+    ) -> Result<Arc<LxApp>, LxAppError> {
+        let transition_appid = appid.clone();
+        self.with_session_transition(&transition_appid, move || {
+            let session_class = self
+                .lxapps
+                .get(&appid)
+                .map(|app| app.app_session_class())
+                .unwrap_or(AppSessionClass::StandardApp);
+            self.ensure_lxapp_with_session_class(appid, release_type, session_class)
+        })
+    }
+
+    fn ensure_builtin_lxapp(&self, appid: &str) -> Result<Arc<LxApp>, LxAppError> {
+        self.with_session_transition(appid, || {
+            if let Some(app) = self.lxapps.get(appid) {
+                return Ok(app.clone());
+            }
+            if !matches!(
+                lxapp_bundle_source_for(appid),
+                Some(LxAppBundleSource::BuiltinAssets | LxAppBundleSource::Synthetic)
+            ) {
+                return Err(LxAppError::ResourceNotFound(format!(
+                    "builtin lxapp source not registered: {appid}"
+                )));
+            }
+
+            let app = Arc::new(LxApp::new(
+                appid.to_string(),
+                self.runtime.clone(),
+                self.executor.clone(),
+                ReleaseType::Release,
+            )?);
+            app.bind_arc();
+            self.lxapps.insert(appid.to_string(), app.clone());
+            Ok(app)
+        })
+    }
+
+    fn initialize_home_lxapp(&self, appid: String) -> Result<Arc<LxApp>, LxAppError> {
+        let transition_appid = appid.clone();
+        self.with_session_transition(&transition_appid, move || {
+            if let Some(app) = self.lxapps.get(&appid) {
+                if app.is_control_app() {
+                    return Ok(app.clone());
+                }
+                drop(app);
+                self.destroy_lxapp_with_options(&appid, true);
+            }
+
+            let app = Arc::new(LxApp::new_as_home(
+                appid.clone(),
+                self.runtime.clone(),
+                self.executor.clone(),
+            )?);
+            app.bind_arc();
+            self.lxapps.insert(appid, app.clone());
+            Ok(app)
+        })
+    }
+
+    fn ensure_lxapp_with_session_class(
+        &self,
+        appid: String,
+        release_type: ReleaseType,
+        session_class: AppSessionClass,
     ) -> Result<Arc<LxApp>, LxAppError> {
         let has_pending_update = metadata::downloaded_get(&appid, release_type)
             .map(|opt| opt.is_some())
@@ -345,12 +443,17 @@ impl LxApps {
         }
 
         // Create new LxApp
-        let new_lxapp = Arc::new(LxApp::new(
-            appid.clone(),
-            self.runtime.clone(),
-            self.executor.clone(),
-            release_type,
-        )?);
+        let new_lxapp = Arc::new(match session_class {
+            AppSessionClass::StandardApp => LxApp::new(
+                appid.clone(),
+                self.runtime.clone(),
+                self.executor.clone(),
+                release_type,
+            )?,
+            AppSessionClass::ControlApp => {
+                LxApp::new_as_home(appid.clone(), self.runtime.clone(), self.executor.clone())?
+            }
+        });
         new_lxapp.bind_arc();
 
         // Publish with the map entry API. Two concurrent cold opens must both
@@ -386,12 +489,21 @@ impl LxApps {
         appid: String,
         release_type: ReleaseType,
     ) -> Result<Arc<LxApp>, LxAppError> {
-        // Close handshake is handled by restart state machine; avoid a second hide while recreating.
-        self.destroy_lxapp_with_options(&appid, true);
+        let transition_appid = appid.clone();
+        self.with_session_transition(&transition_appid, move || {
+            let session_class = self
+                .lxapps
+                .get(&appid)
+                .map(|app| app.app_session_class())
+                .unwrap_or(AppSessionClass::StandardApp);
 
-        // Delegate to ensure_lxapp so pending downloaded updates are applied
-        // consistently (same path as cold-start navigation).
-        self.ensure_lxapp(appid, release_type)
+            // Close handshake is handled by restart state machine; avoid a second hide while recreating.
+            self.destroy_lxapp_with_options(&appid, true);
+
+            // Delegate to ensure_lxapp so pending downloaded updates are applied
+            // consistently (same path as cold-start navigation).
+            self.ensure_lxapp_with_session_class(appid, release_type, session_class)
+        })
     }
 
     /// Finds and evicts the least recently used LxApp to free up memory.
@@ -621,6 +733,15 @@ pub(crate) enum LxAppBundleSource {
     Synthetic,
 }
 
+/// Native-assigned class for a live LxApp session.
+///
+/// This is not inferred from an app id, bundle source, or manifest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppSessionClass {
+    StandardApp,
+    ControlApp,
+}
+
 pub struct LxApp {
     // Immutable data - initialized once and never changed
     pub appid: String,
@@ -633,6 +754,7 @@ pub struct LxApp {
     pub temp_dir: PathBuf,
     pub fingermark: String,
     pub is_home_lxapp: bool,
+    app_session_class: AppSessionClass,
     pub(crate) release_type: ReleaseType,
     pub(crate) config: LxAppConfig,
     pub(crate) executor: Arc<LxAppWorkers>,
@@ -850,6 +972,16 @@ impl LxApp {
 
     pub fn session_id(&self) -> LxAppSessionId {
         self.session.id
+    }
+
+    /// Returns the native-assigned class for this live app session.
+    pub fn app_session_class(&self) -> AppSessionClass {
+        self.app_session_class
+    }
+
+    /// Whether this session is the native-bootstrapped ControlApp.
+    pub fn is_control_app(&self) -> bool {
+        self.app_session_class == AppSessionClass::ControlApp
     }
 
     pub fn sync_host_ui(&self) {
@@ -1627,6 +1759,7 @@ impl LxApp {
         runtime: Arc<Platform>,
         executor: Arc<LxAppWorkers>,
         release_type: ReleaseType,
+        app_session_class: AppSessionClass,
     ) -> Self {
         let session = LxAppSession::new();
         let bundle_source = lxapp_bundle_source_for(&appid).unwrap_or(LxAppBundleSource::Installed);
@@ -1649,6 +1782,7 @@ impl LxApp {
             temp_dir: PathBuf::new(),
             fingermark: String::new(),
             is_home_lxapp: false,
+            app_session_class,
             release_type,
             config: LxAppConfig::default(),
             executor,
@@ -1673,7 +1807,13 @@ impl LxApp {
         executor: Arc<LxAppWorkers>,
         release_type: ReleaseType,
     ) -> Result<Self, LxAppError> {
-        let mut app = Self::_new(appid, runtime, executor, release_type);
+        let mut app = Self::_new(
+            appid,
+            runtime,
+            executor,
+            release_type,
+            AppSessionClass::StandardApp,
+        );
         app.setup().inspect_err(|e| {
             error!("Setup failed: {}", e).with_appid(&app.appid);
         })?;
@@ -1686,7 +1826,13 @@ impl LxApp {
         runtime: Arc<Platform>,
         executor: Arc<LxAppWorkers>,
     ) -> Result<Self, LxAppError> {
-        let mut app = Self::_new(appid, runtime, executor, crate::host_channel());
+        let mut app = Self::_new(
+            appid,
+            runtime,
+            executor,
+            crate::host_channel(),
+            AppSessionClass::ControlApp,
+        );
 
         // Mark as home lxapp
         app.is_home_lxapp = true;
@@ -1694,6 +1840,7 @@ impl LxApp {
         app.setup().inspect_err(|e| {
             error!("Setup failed for home app: {}", e).with_appid(&app.appid);
         })?;
+        app.state.lock().unwrap().startup_options.path = app.config.get_initial_route();
         Ok(app)
     }
 
@@ -3079,6 +3226,78 @@ pub fn open_region(appid: &str) -> Option<LxAppOpenRegion> {
 mod delayed_destroy_tests {
     use super::*;
     use tokio::sync::oneshot::error::TryRecvError;
+
+    fn class_test_runtime() -> Arc<Platform> {
+        let root = std::env::temp_dir().join(format!("lingxia-lxapp-class-{}", Uuid::new_v4()));
+        Arc::new(
+            Platform::new(
+                root.join("data").display().to_string(),
+                root.join("cache").display().to_string(),
+                "en-US".to_string(),
+            )
+            .expect("test platform"),
+        )
+    }
+
+    #[test]
+    fn app_session_class_is_constructor_assigned_and_preserved_on_rebuild() {
+        let appid = format!("app.lingxia.class-test.{}", Uuid::new_v4());
+        register_synthetic_lxapp(appid.clone());
+
+        let runtime = class_test_runtime();
+        let workers = LxAppWorkers::init(1);
+        let manager = LxApps::new((*runtime).clone(), workers, 1);
+        let standard = manager
+            .ensure_lxapp(appid.clone(), ReleaseType::Release)
+            .expect("standard app");
+        assert!(!manager.session_transition_locks.contains_key(&appid));
+        let control = manager
+            .initialize_home_lxapp(appid.clone())
+            .expect("control app");
+        assert!(!manager.session_transition_locks.contains_key(&appid));
+
+        assert_eq!(standard.appid, control.appid);
+        assert_eq!(standard.bundle_source, control.bundle_source);
+        assert_eq!(standard.app_session_class(), AppSessionClass::StandardApp);
+        assert!(!standard.is_control_app());
+        assert_eq!(control.app_session_class(), AppSessionClass::ControlApp);
+        assert!(control.is_control_app());
+        assert_eq!(
+            control.state.lock().unwrap().startup_options.path,
+            control.config.get_initial_route()
+        );
+
+        let rebuilt = manager
+            .recreate_lxapp(appid.clone(), ReleaseType::Release)
+            .expect("rebuilt control app");
+        assert!(!manager.session_transition_locks.contains_key(&appid));
+        assert_eq!(rebuilt.app_session_class(), AppSessionClass::ControlApp);
+        assert!(rebuilt.is_control_app());
+
+        let ensured = manager
+            .ensure_lxapp(appid, ReleaseType::Release)
+            .expect("ordinary ensure after rebuild");
+        assert_eq!(ensured.app_session_class(), AppSessionClass::ControlApp);
+    }
+
+    #[test]
+    fn session_transition_locks_are_reused_while_live_and_removed_when_idle() {
+        let runtime = class_test_runtime();
+        let manager = LxApps::new((*runtime).clone(), LxAppWorkers::init(1), 1);
+        let appid = format!("app.lingxia.transition-lock-test.{}", Uuid::new_v4());
+
+        let first = manager.session_transition_lock(&appid);
+        manager.cleanup_session_transition_lock(&appid);
+        assert!(manager.session_transition_locks.contains_key(&appid));
+
+        let second = manager.session_transition_lock(&appid);
+        assert!(Arc::ptr_eq(&first, &second));
+
+        drop(second);
+        drop(first);
+        manager.cleanup_session_transition_lock(&appid);
+        assert!(!manager.session_transition_locks.contains_key(&appid));
+    }
 
     #[test]
     fn first_timer_is_registered_and_replacement_is_cancelled() {

@@ -75,13 +75,13 @@ rong::js_api! {
 
 /// Check whether the host app has an update.
 ///
-/// This host-level capability is restricted to the home lxapp. Calling it opts
+/// This host-level capability is restricted to the Control app. Calling it opts
 /// the process into custom update handling. Incompatible updates are hidden as
 /// `hasUpdate: false`; platforms that cannot apply a package may still return
 /// metadata and reject when `update.apply()` is invoked.
 async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    super::ensure_home_lxapp(&lxapp, "lx.app.checkUpdate")?;
+    super::ensure_control_caller(&lxapp, "lx.app.checkUpdate")?;
 
     let update = host_update_service_from(&lxapp)
         .check()
@@ -137,7 +137,7 @@ fn create_update_object(ctx: &JSContext, update: UpdatePackageInfo) -> JSResult<
 
 fn create_apply_task(ctx: &JSContext, package: UpdatePackageInfo) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(ctx)?;
-    super::ensure_home_lxapp(&lxapp, "lx.app.checkUpdate")?;
+    super::ensure_control_caller(&lxapp, "lx.app.checkUpdate")?;
 
     let service = host_update_service_from(&lxapp);
     // Store-delivered platforms (iOS/HarmonyOS) update through the store and
