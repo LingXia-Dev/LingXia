@@ -909,7 +909,10 @@ pub(crate) fn current_document_binding(native_view_id: NativeWebViewId) -> Docum
 /// Revoke one currently bound document restored without fresh navigation
 /// evidence. Returns false after the first revocation so platform callbacks
 /// cannot schedule duplicate trusted reloads for the same stale document.
-#[cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
+#[cfg_attr(
+    not(any(target_os = "android", target_os = "windows", test)),
+    allow(dead_code)
+)]
 pub(crate) fn invalidate_restored_document(
     webtag: &WebTag,
     native_view_id: NativeWebViewId,
