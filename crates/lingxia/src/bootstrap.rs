@@ -313,6 +313,10 @@ pub(crate) fn init_with_platform(
     let _ = lxapp::host::__install_app_resource_grant_resolver(std::sync::Arc::new(
         crate::host_addon::resolve_app_resource_grants,
     ));
+    #[cfg(feature = "devtool")]
+    let _ = lxapp::host::__install_devtools_resource_grant_resolver(std::sync::Arc::new(
+        crate::host_addon::resolve_devtools_resource_grants,
+    ));
     crate::browser::register_bundled_app();
     crate::browser::register_builtin_runtime();
     crate::applink::install_handler();
@@ -320,7 +324,22 @@ pub(crate) fn init_with_platform(
     lingxia_logic::register_logic_runtime();
     #[cfg(feature = "automation")]
     lingxia_automation::register_automation_runtime();
-    let home_app_id = lxapp::init(platform)?;
+    let (home_app_id, native_authority) = lxapp::__init_with_native_authority(platform)?;
+    if !crate::terminal_automation::install(&native_authority) {
+        return Err(crate::Error::internal(
+            "native terminal authority was already installed",
+        ));
+    }
+    #[cfg(feature = "automation")]
+    if !lingxia_automation::__install_native_terminal_authority(
+        lxapp::terminal_automation::TerminalAutomationAuthority::for_native_runtime(
+            &native_authority,
+        ),
+    ) {
+        return Err(crate::Error::internal(
+            "automation terminal authority was already installed",
+        ));
+    }
     if let Err(error) = crate::shell::initialize(runtime.clone()) {
         log::error!("Failed to initialize host shell state: {error}");
     }
@@ -333,7 +352,7 @@ pub(crate) fn init_with_platform(
     crate::task::release_deferred();
     crate::browser::warmup();
     crate::host_addon::run_start_services();
-    Ok(crate::RuntimeInfo::new(home_app_id))
+    Ok(crate::RuntimeInfo::new(home_app_id, native_authority))
 }
 
 #[cfg(test)]

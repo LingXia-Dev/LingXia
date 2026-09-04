@@ -18,12 +18,13 @@
 //! internals and advanced integrations.
 
 extern crate self as lingxia;
-#[cfg(feature = "devtool")]
-pub use host_addon::NativeDevtoolsAuthority;
-pub use host_addon::{HostAddon, NativeHostRuntimeAuthority, register_host_addon};
+pub use host_addon::{HostAddon, register_host_addon};
 #[doc(hidden)]
 pub use lingxia_native_macros::framework_native;
 pub use lingxia_native_macros::native;
+#[cfg(feature = "devtool")]
+pub use lxapp::host::NativeDevtoolsAuthority;
+pub use lxapp::host::NativeHostRuntimeAuthority;
 
 pub use lxapp::host;
 pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
@@ -42,14 +43,21 @@ pub use lxapp::{
 ///
 /// A browser-only host is valid without a configured lxapp; callers can inspect
 /// [`RuntimeInfo::lxapp_id`] when their launch policy requires one.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct RuntimeInfo {
     lxapp_id: Option<String>,
+    native_authority: std::sync::Arc<lxapp::terminal_automation::NativeHostRuntimeToken>,
 }
 
 impl RuntimeInfo {
-    pub(crate) fn new(lxapp_id: Option<String>) -> Self {
-        Self { lxapp_id }
+    pub(crate) fn new(
+        lxapp_id: Option<String>,
+        native_authority: lxapp::terminal_automation::NativeHostRuntimeToken,
+    ) -> Self {
+        Self {
+            lxapp_id,
+            native_authority: std::sync::Arc::new(native_authority),
+        }
     }
 
     /// The configured launch lxapp id, when this host has one.
@@ -61,7 +69,37 @@ impl RuntimeInfo {
     pub fn into_lxapp_id(self) -> Option<String> {
         self.lxapp_id
     }
+
+    /// Native terminal authority for this exact successfully bootstrapped host.
+    /// The capability is available only through this runtime handle; there is
+    /// no process-global getter.
+    #[doc(hidden)]
+    pub fn terminal_automation_authority(
+        &self,
+    ) -> lxapp::terminal_automation::TerminalAutomationAuthority {
+        lxapp::terminal_automation::TerminalAutomationAuthority::for_native_runtime(
+            &self.native_authority,
+        )
+    }
 }
+
+impl std::fmt::Debug for RuntimeInfo {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RuntimeInfo")
+            .field("lxapp_id", &self.lxapp_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for RuntimeInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.lxapp_id == other.lxapp_id
+            && std::sync::Arc::ptr_eq(&self.native_authority, &other.native_authority)
+    }
+}
+
+impl Eq for RuntimeInfo {}
 
 /// Explicitly installed realtime capture providers. Only compiled when the
 /// host declared capture; the contract is never an `AppRuntime` supertrait.
@@ -84,6 +122,7 @@ pub mod product_cli;
 
 /// Host app metadata, state-path helpers, and lifecycle helpers.
 pub mod app;
+mod terminal_automation;
 pub use app::{home_app_id, lingxia_id, product_version};
 mod applink;
 /// Host assets packaged by the CLI (`assets:` in `lingxia.yaml`).

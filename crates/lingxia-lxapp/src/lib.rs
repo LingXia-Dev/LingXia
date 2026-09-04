@@ -70,6 +70,8 @@ pub use lingxia_update::{
     ReleaseType, RuntimeCompatibilityError, SemanticVersion, Version, VersionError,
 };
 pub use lingxia_webview::url_callback;
+#[doc(hidden)]
+pub use lxapp::__init_with_native_authority;
 pub use lxapp::set_num_workers;
 pub use lxapp::{
     AppSessionClass, CloseReason, CreatePageInstanceRequest, CreatedPageInstance,

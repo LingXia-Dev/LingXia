@@ -6,6 +6,7 @@
 
 use crate::LxApp;
 use crate::host::{AppResourceGrant, AppScope};
+use lingxia_platform::Platform;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
@@ -49,8 +50,25 @@ struct SurfaceKey {
 
 #[derive(Clone)]
 enum AuthorityKind {
-    NativeHost,
+    NativeHost(std::sync::Weak<Platform>),
     App(AppScope),
+    #[cfg(test)]
+    NativeTest,
+}
+
+/// Opaque proof returned only to the native caller that successfully boots the
+/// process-wide lxapp runtime. Native extensions must be handed this proof by
+/// that host; there is no global accessor or standalone constructor.
+pub struct NativeHostRuntimeToken {
+    runtime: std::sync::Weak<Platform>,
+}
+
+impl NativeHostRuntimeToken {
+    pub(crate) fn new(runtime: &std::sync::Arc<Platform>) -> Self {
+        Self {
+            runtime: std::sync::Arc::downgrade(runtime),
+        }
+    }
 }
 
 /// Native-derived authority for binding and using terminal surface handles.
@@ -61,6 +79,13 @@ pub struct TerminalAutomationAuthority {
 }
 
 impl TerminalAutomationAuthority {
+    #[cfg(test)]
+    pub(crate) fn native_for_test() -> Self {
+        Self {
+            kind: AuthorityKind::NativeTest,
+        }
+    }
+
     /// Derive authority from an authenticated native lxapp object.
     pub fn for_lxapp(app: &std::sync::Arc<LxApp>) -> Result<Self, String> {
         Self::for_app(AppScope::from_lxapp(app))
@@ -79,17 +104,25 @@ impl TerminalAutomationAuthority {
         })
     }
 
-    /// Native platform/isolated-automation TCB entrypoint.
-    #[doc(hidden)]
-    pub fn __native_host() -> Self {
+    /// Derive terminal authority from the opaque proof returned to the native
+    /// host at successful runtime bootstrap.
+    pub fn for_native_runtime(proof: &NativeHostRuntimeToken) -> Self {
         Self {
-            kind: AuthorityKind::NativeHost,
+            kind: AuthorityKind::NativeHost(proof.runtime.clone()),
         }
     }
 
     fn validate(&self) -> Result<(), String> {
         match &self.kind {
-            AuthorityKind::NativeHost => Ok(()),
+            AuthorityKind::NativeHost(runtime) => {
+                let runtime = runtime
+                    .upgrade()
+                    .ok_or_else(|| "native host runtime is no longer live".to_string())?;
+                crate::get_platform()
+                    .filter(|current| std::sync::Arc::ptr_eq(current, &runtime))
+                    .map(|_| ())
+                    .ok_or_else(|| "terminal authority does not match the live native host".into())
+            }
             AuthorityKind::App(scope) => scope
                 .resource_grants()
                 .contains(AppResourceGrant::AutomationHost)
@@ -97,16 +130,20 @@ impl TerminalAutomationAuthority {
                 .ok_or_else(|| {
                     "terminal automation authority no longer matches a live app session".into()
                 }),
+            #[cfg(test)]
+            AuthorityKind::NativeTest => Ok(()),
         }
     }
 
     fn owner(&self) -> SurfaceOwner {
         match &self.kind {
-            AuthorityKind::NativeHost => SurfaceOwner::NativeHost,
+            AuthorityKind::NativeHost(_) => SurfaceOwner::NativeHost,
             AuthorityKind::App(scope) => SurfaceOwner::App {
                 app_id: scope.identity().app_id().to_string(),
                 session_id: scope.identity().session_id(),
             },
+            #[cfg(test)]
+            AuthorityKind::NativeTest => SurfaceOwner::NativeHost,
         }
     }
 }
@@ -359,7 +396,7 @@ mod tests {
 
     #[tokio::test]
     async fn native_snapshot_and_command_share_one_surface_identity() {
-        let authority = TerminalAutomationAuthority::__native_host();
+        let authority = TerminalAutomationAuthority::native_for_test();
         let surface = "terminal-automation-registry-test";
         remove_workspace(&authority, surface);
         publish_snapshot(
@@ -400,7 +437,7 @@ mod tests {
 
     #[tokio::test]
     async fn closing_a_surface_fails_a_command_already_taken_by_the_host() {
-        let authority = TerminalAutomationAuthority::__native_host();
+        let authority = TerminalAutomationAuthority::native_for_test();
         let surface = "terminal-automation-close-test";
         remove_workspace(&authority, surface);
         publish_snapshot(
@@ -432,7 +469,7 @@ mod tests {
 
     #[test]
     fn native_handle_cannot_guess_an_app_owned_surface_id() {
-        let authority = TerminalAutomationAuthority::__native_host();
+        let authority = TerminalAutomationAuthority::native_for_test();
         let surface = "terminal-owner-isolation-test";
         let key = SurfaceKey {
             owner: SurfaceOwner::App {

@@ -122,6 +122,21 @@ pub fn runner_active() -> bool {
 
 /// Initialize the LxApps singleton using the host app configuration from app-context.
 pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
+    __init_with_native_authority(runtime).map(|(home_app_id, _)| home_app_id)
+}
+
+/// Bootstrap entrypoint for the native host facade. The returned opaque token
+/// is the only way to derive process-wide native terminal authority.
+#[doc(hidden)]
+pub fn __init_with_native_authority(
+    runtime: Platform,
+) -> Result<
+    (
+        Option<String>,
+        crate::terminal_automation::NativeHostRuntimeToken,
+    ),
+    LxAppError,
+> {
     // Set up panic hook to capture panic information
     std::panic::set_hook(Box::new(|panic_info| {
         let location = panic_info
@@ -145,6 +160,7 @@ pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
 
     let runtime_arc = Arc::new(runtime.clone());
     super::runtime_registry::set_runtime(runtime_arc.clone());
+    let native_authority = crate::terminal_automation::NativeHostRuntimeToken::new(&runtime_arc);
 
     // Prepare directory structure
     if let Err(e) = prepare_directory_structure(runtime_arc.clone()) {
@@ -169,7 +185,7 @@ pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
     ) else {
         info!("LxApps initialized without a home lxapp");
         spawn_cache_cleanup(runtime_arc);
-        return Ok(None);
+        return Ok((None, native_authority));
     };
     let home_app_id = home_app_id.to_string();
 
@@ -276,5 +292,5 @@ pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
     info!("LxApps initialized successfully");
 
     spawn_cache_cleanup(runtime_arc.clone());
-    Ok(Some(home_app_id))
+    Ok((Some(home_app_id), native_authority))
 }

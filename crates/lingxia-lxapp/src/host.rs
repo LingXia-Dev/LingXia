@@ -121,10 +121,112 @@ impl AppResourceGrant {
     }
 }
 
+/// One-shot authority for assigning manifest-requested resources to a newly
+/// created app session. Only the lxapp session bootstrap constructs it.
+pub struct NativeHostRuntimeAuthority<'a> {
+    app_id: &'a str,
+    session_id: u64,
+    session_class: AppSessionClass,
+    requested: HashSet<AppResourceGrant>,
+    grants: &'a mut HashSet<AppResourceGrant>,
+}
+
+impl NativeHostRuntimeAuthority<'_> {
+    pub fn app_id(&self) -> &str {
+        self.app_id
+    }
+
+    pub const fn session_id(&self) -> u64 {
+        self.session_id
+    }
+
+    pub const fn session_class(&self) -> AppSessionClass {
+        self.session_class
+    }
+
+    pub fn requested(&self, grant: AppResourceGrant) -> bool {
+        self.requested.contains(&grant)
+    }
+
+    pub fn grant(&mut self, grant: AppResourceGrant) -> bool {
+        if !self.requested(grant) {
+            return false;
+        }
+        self.grants.insert(grant);
+        true
+    }
+
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "test-utils"))]
+    pub fn for_test<'a>(
+        app_id: &'a str,
+        session_id: u64,
+        session_class: AppSessionClass,
+        requested: impl IntoIterator<Item = AppResourceGrant>,
+        grants: &'a mut HashSet<AppResourceGrant>,
+    ) -> NativeHostRuntimeAuthority<'a> {
+        NativeHostRuntimeAuthority {
+            app_id,
+            session_id,
+            session_class,
+            requested: requested.into_iter().collect(),
+            grants,
+        }
+    }
+}
+
+/// One-shot authority reserved for native devtools bootstrap. It cannot grant
+/// process execution or Downloads access.
+pub struct NativeDevtoolsAuthority<'a> {
+    app_id: &'a str,
+    session_id: u64,
+    session_class: AppSessionClass,
+    grants: &'a mut HashSet<AppResourceGrant>,
+}
+
+impl NativeDevtoolsAuthority<'_> {
+    pub fn app_id(&self) -> &str {
+        self.app_id
+    }
+
+    pub const fn session_id(&self) -> u64 {
+        self.session_id
+    }
+
+    pub const fn session_class(&self) -> AppSessionClass {
+        self.session_class
+    }
+
+    pub fn grant_automation(&mut self) {
+        self.grants.insert(AppResourceGrant::Automation);
+        self.grants.insert(AppResourceGrant::AutomationHost);
+    }
+
+    #[doc(hidden)]
+    #[cfg(any(test, feature = "test-utils"))]
+    pub fn for_test<'a>(
+        app_id: &'a str,
+        session_id: u64,
+        session_class: AppSessionClass,
+        grants: &'a mut HashSet<AppResourceGrant>,
+    ) -> NativeDevtoolsAuthority<'a> {
+        NativeDevtoolsAuthority {
+            app_id,
+            session_id,
+            session_class,
+            grants,
+        }
+    }
+}
+
 type AppResourceGrantResolver =
-    dyn Fn(&Arc<LxApp>) -> HashSet<AppResourceGrant> + Send + Sync + 'static;
+    dyn for<'a> Fn(&Arc<LxApp>, &mut NativeHostRuntimeAuthority<'a>) + Send + Sync + 'static;
+type DevtoolsResourceGrantResolver =
+    dyn for<'a> Fn(&Arc<LxApp>, &mut NativeDevtoolsAuthority<'a>) + Send + Sync + 'static;
 
 static APP_RESOURCE_GRANT_RESOLVER: OnceLock<Arc<AppResourceGrantResolver>> = OnceLock::new();
+static DEVTOOLS_RESOURCE_GRANT_RESOLVER: OnceLock<Arc<DevtoolsResourceGrantResolver>> =
+    OnceLock::new();
 
 /// Install the native host's per-session grant resolver before lxapp runtime
 /// initialization. The resolver and each resulting grant set are sealed once.
@@ -133,11 +235,47 @@ pub fn __install_app_resource_grant_resolver(resolver: Arc<AppResourceGrantResol
     APP_RESOURCE_GRANT_RESOLVER.set(resolver).is_ok()
 }
 
+#[doc(hidden)]
+pub fn __install_devtools_resource_grant_resolver(
+    resolver: Arc<DevtoolsResourceGrantResolver>,
+) -> bool {
+    DEVTOOLS_RESOURCE_GRANT_RESOLVER.set(resolver).is_ok()
+}
+
 pub(crate) fn seal_app_resource_grants(app: &Arc<LxApp>) {
-    let grants = APP_RESOURCE_GRANT_RESOLVER
-        .get()
-        .map(|resolver| resolver(app))
-        .unwrap_or_default();
+    let requested = [
+        AppResourceGrant::Process,
+        AppResourceGrant::Downloads,
+        AppResourceGrant::Automation,
+        AppResourceGrant::AutomationHost,
+    ]
+    .into_iter()
+    .filter(|grant| {
+        let privilege = crate::LxAppSecurityPrivilege::new(grant.manifest_privilege())
+            .expect("resource grants use valid manifest privilege ids");
+        app.has_security_privilege(&privilege)
+    })
+    .collect();
+    let mut grants = HashSet::new();
+    if let Some(resolver) = APP_RESOURCE_GRANT_RESOLVER.get() {
+        let mut authority = NativeHostRuntimeAuthority {
+            app_id: &app.appid,
+            session_id: app.session_id(),
+            session_class: app.app_session_class(),
+            requested,
+            grants: &mut grants,
+        };
+        resolver(app, &mut authority);
+    }
+    if let Some(resolver) = DEVTOOLS_RESOURCE_GRANT_RESOLVER.get() {
+        let mut authority = NativeDevtoolsAuthority {
+            app_id: &app.appid,
+            session_id: app.session_id(),
+            session_class: app.app_session_class(),
+            grants: &mut grants,
+        };
+        resolver(app, &mut authority);
+    }
     app.seal_resource_grants(grants);
 }
 
@@ -1561,7 +1699,7 @@ mod tests {
             "same app id on a different native session must not inherit grants"
         );
 
-        let native = crate::terminal_automation::TerminalAutomationAuthority::__native_host();
+        let native = crate::terminal_automation::TerminalAutomationAuthority::native_for_test();
         let surface_id = format!("terminal-session-{}", standard.session_id());
         crate::terminal_automation::publish_snapshot(
             &native,

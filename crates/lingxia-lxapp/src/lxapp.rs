@@ -77,6 +77,8 @@ pub use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 pub use lingxia_surface::Role as SurfaceRole;
 pub use lingxia_update::ReleaseType;
 use lingxia_webview::runtime::destroy_webview_if_matches;
+#[doc(hidden)]
+pub use runtime_bootstrap::__init_with_native_authority;
 pub use runtime_bootstrap::dev_session_active as is_dev_session;
 pub use runtime_bootstrap::init;
 pub use runtime_bootstrap::runner_active as is_runner;

@@ -1,80 +1,8 @@
-use crate::host::AppResourceGrant;
-use crate::{AppSessionClass, LxApp, LxAppSecurityPrivilege};
-use std::collections::HashSet;
+#[cfg(feature = "devtool")]
+use crate::host::NativeDevtoolsAuthority;
+use crate::host::{AppResourceGrant, NativeHostRuntimeAuthority};
+use crate::{AppSessionClass, LxApp};
 use std::sync::{Arc, Mutex, OnceLock};
-
-/// One-shot authority for assigning declared resources to a newly created
-/// lxapp session. Only the native runtime constructs this value.
-pub struct NativeHostRuntimeAuthority<'a> {
-    app_id: &'a str,
-    session_id: u64,
-    session_class: AppSessionClass,
-    requested: HashSet<AppResourceGrant>,
-    grants: &'a mut HashSet<AppResourceGrant>,
-    _private: (),
-}
-
-impl NativeHostRuntimeAuthority<'_> {
-    pub fn app_id(&self) -> &str {
-        self.app_id
-    }
-
-    pub fn session_id(&self) -> u64 {
-        self.session_id
-    }
-
-    pub fn session_class(&self) -> AppSessionClass {
-        self.session_class
-    }
-
-    pub fn requested(&self, grant: AppResourceGrant) -> bool {
-        self.requested.contains(&grant)
-    }
-
-    /// Grant a resource requested by this session's immutable manifest.
-    /// Returns false, without granting, when the manifest did not request it.
-    pub fn grant(&mut self, grant: AppResourceGrant) -> bool {
-        if !self.requested(grant) {
-            return false;
-        }
-        self.grants.insert(grant);
-        true
-    }
-}
-
-/// One-shot authority reserved for a native devtools bootstrap.
-///
-/// It can grant only automation resources and deliberately does not confer
-/// process execution or OS Downloads access.
-#[cfg(feature = "devtool")]
-pub struct NativeDevtoolsAuthority<'a> {
-    app_id: &'a str,
-    session_id: u64,
-    session_class: AppSessionClass,
-    grants: &'a mut HashSet<AppResourceGrant>,
-    _private: (),
-}
-
-#[cfg(feature = "devtool")]
-impl NativeDevtoolsAuthority<'_> {
-    pub fn app_id(&self) -> &str {
-        self.app_id
-    }
-
-    pub fn session_id(&self) -> u64 {
-        self.session_id
-    }
-
-    pub fn session_class(&self) -> AppSessionClass {
-        self.session_class
-    }
-
-    /// Grant the self and host automation tiers to this exact dev session.
-    pub fn grant_automation(&mut self) {
-        self.grants.insert(AppResourceGrant::Automation);
-        self.grants.insert(AppResourceGrant::AutomationHost);
-    }
-}
 
 /// Host lifecycle extension points that can register additional runtime behavior.
 pub trait HostAddon: Send + Sync {
@@ -202,58 +130,30 @@ pub(crate) fn run_install_host_apis() {
     }
 }
 
-pub(crate) fn resolve_app_resource_grants(app: &Arc<LxApp>) -> HashSet<AppResourceGrant> {
-    let mut grants = HashSet::new();
-    let requested = [
-        AppResourceGrant::Process,
-        AppResourceGrant::Downloads,
-        AppResourceGrant::Automation,
-        AppResourceGrant::AutomationHost,
-    ]
-    .into_iter()
-    .filter(|grant| {
-        let privilege = LxAppSecurityPrivilege::new(grant.manifest_privilege())
-            .expect("resource grants use valid manifest privilege ids");
-        app.has_security_privilege(&privilege)
-    })
-    .collect();
-    {
-        let mut authority = NativeHostRuntimeAuthority {
-            app_id: &app.appid,
-            session_id: app.session_id(),
-            session_class: app.app_session_class(),
-            requested,
-            grants: &mut grants,
-            _private: (),
-        };
+pub(crate) fn resolve_app_resource_grants(
+    _app: &Arc<LxApp>,
+    authority: &mut NativeHostRuntimeAuthority<'_>,
+) {
+    // `capabilities.process` is native-authored bootstrap policy, but it
+    // applies only to the native-assigned ControlApp and still intersects the
+    // lxapp's manifest request.
+    issue_builtin_host_grants(authority, lingxia_app_context::process_enabled());
 
-        // `capabilities.process` is native-authored bootstrap policy, but it
-        // applies only to the native-assigned ControlApp and still intersects
-        // the lxapp's manifest request.
-        issue_builtin_host_grants(&mut authority, lingxia_app_context::process_enabled());
-
-        for addon in snapshot_host_addons() {
-            addon.issue_app_resource_grants(&mut authority);
-        }
+    for addon in snapshot_host_addons() {
+        addon.issue_app_resource_grants(authority);
     }
+}
 
-    #[cfg(feature = "devtool")]
-    {
-        let mut authority = NativeDevtoolsAuthority {
-            app_id: &app.appid,
-            session_id: app.session_id(),
-            session_class: app.app_session_class(),
-            grants: &mut grants,
-            _private: (),
-        };
-        // Only a linked native devtools addon receives this authority. A dev
-        // websocket/env signal alone never grants host automation.
-        for addon in snapshot_host_addons() {
-            addon.issue_devtools_app_resource_grants(&mut authority);
-        }
+#[cfg(feature = "devtool")]
+pub(crate) fn resolve_devtools_resource_grants(
+    _app: &Arc<LxApp>,
+    authority: &mut NativeDevtoolsAuthority<'_>,
+) {
+    // Only a linked native devtools addon receives this authority. A dev
+    // websocket/env signal alone never grants host automation.
+    for addon in snapshot_host_addons() {
+        addon.issue_devtools_app_resource_grants(authority);
     }
-
-    grants
 }
 
 fn issue_builtin_host_grants(
@@ -266,8 +166,10 @@ fn issue_builtin_host_grants(
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod resource_grant_tests {
     use super::*;
+    use std::collections::HashSet;
 
     fn authority<'a>(
         session_id: u64,
@@ -275,14 +177,13 @@ mod resource_grant_tests {
         requested: impl IntoIterator<Item = AppResourceGrant>,
         grants: &'a mut HashSet<AppResourceGrant>,
     ) -> NativeHostRuntimeAuthority<'a> {
-        NativeHostRuntimeAuthority {
-            app_id: "same.app",
+        NativeHostRuntimeAuthority::for_test(
+            "same.app",
             session_id,
             session_class,
-            requested: requested.into_iter().collect(),
+            requested,
             grants,
-            _private: (),
-        }
+        )
     }
 
     #[test]
@@ -343,13 +244,12 @@ mod resource_grant_tests {
     #[test]
     fn devtools_authority_can_issue_only_session_bound_automation() {
         let mut grants = HashSet::new();
-        let mut authority = NativeDevtoolsAuthority {
-            app_id: "dev.app",
-            session_id: 13,
-            session_class: AppSessionClass::StandardApp,
-            grants: &mut grants,
-            _private: (),
-        };
+        let mut authority = NativeDevtoolsAuthority::for_test(
+            "dev.app",
+            13,
+            AppSessionClass::StandardApp,
+            &mut grants,
+        );
         authority.grant_automation();
         assert_eq!(authority.app_id(), "dev.app");
         assert_eq!(authority.session_id(), 13);

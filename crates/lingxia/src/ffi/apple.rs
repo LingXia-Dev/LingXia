@@ -2593,35 +2593,19 @@ pub fn terminal_refresh_appearance(system_is_dark: bool) {
 }
 
 pub fn terminal_automation_publish_snapshot(surface_id: &str, snapshot_json: &str) -> bool {
-    lxapp::terminal_automation::publish_snapshot(
-        &lxapp::terminal_automation::TerminalAutomationAuthority::__native_host(),
-        surface_id,
-        snapshot_json,
-    )
-    .is_ok()
+    crate::terminal_automation::publish_snapshot(surface_id, snapshot_json)
 }
 
 pub fn terminal_automation_remove_workspace(surface_id: &str) {
-    lxapp::terminal_automation::remove_workspace(
-        &lxapp::terminal_automation::TerminalAutomationAuthority::__native_host(),
-        surface_id,
-    );
+    crate::terminal_automation::remove_workspace(surface_id);
 }
 
 pub fn terminal_automation_take_command(surface_id: &str) -> String {
-    lxapp::terminal_automation::take_command(
-        &lxapp::terminal_automation::TerminalAutomationAuthority::__native_host(),
-        surface_id,
-    )
+    crate::terminal_automation::take_command(surface_id)
 }
 
 pub fn terminal_automation_complete_command(id: u64, ok: bool, payload: &str) -> bool {
-    lxapp::terminal_automation::complete_command(
-        &lxapp::terminal_automation::TerminalAutomationAuthority::__native_host(),
-        id,
-        ok,
-        payload,
-    )
+    crate::terminal_automation::complete_command(id, ok, payload)
 }
 
 pub fn terminal_register_fonts(fonts_json: &str) {
