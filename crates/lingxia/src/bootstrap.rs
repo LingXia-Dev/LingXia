@@ -1,5 +1,4 @@
 use rong_rt::{InstallGlobalExecutorError, RongExecutor};
-use std::sync::{Mutex, OnceLock};
 
 fn default_runtime_threads() -> usize {
     std::thread::available_parallelism()
@@ -205,28 +204,8 @@ fn panel_position_from_edge(edge: &str) -> Option<lingxia_app_context::PanelPosi
     }
 }
 
-const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
-
-fn runner_display_language_owner() -> &'static Mutex<Option<lxapp::DisplayLanguageSessionOwner>> {
-    static OWNER: OnceLock<Mutex<Option<lxapp::DisplayLanguageSessionOwner>>> = OnceLock::new();
-    OWNER.get_or_init(|| Mutex::new(None))
-}
-
-fn replace_runner_display_language_owner(owner: Option<lxapp::DisplayLanguageSessionOwner>) {
-    let mut active = runner_display_language_owner()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    let previous = std::mem::replace(&mut *active, owner);
-    drop(active);
-    if let Some(previous) = previous {
-        // Initialization may already have replaced it. Owner matching makes
-        // this cleanup harmless after takeover and decisive during teardown.
-        lxapp::clear_display_language_session_override(previous);
-    }
-}
-
 pub(crate) fn teardown_runner_display_language_session() {
-    replace_runner_display_language_owner(None);
+    lxapp::clear_active_display_language_session_override();
 }
 
 fn seed_display_language(app_data_dir: &std::path::Path, system: &str) {
@@ -237,32 +216,15 @@ fn seed_display_language(app_data_dir: &std::path::Path, system: &str) {
             None
         }
     };
-    let runner_override = std::env::var(RUNNER_DISPLAY_LANGUAGE_ENV)
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .and_then(
-            |value| match value.parse::<lxapp::DisplayLanguagePreference>() {
-                Ok(preference) => Some(preference),
-                Err(error) => {
-                    log::warn!("Ignoring invalid Runner display language: {error}");
-                    None
-                }
-            },
-        );
-    let owner = match lxapp::initialize_display_language(saved, system, runner_override) {
-        Ok(owner) => owner,
+    match lxapp::initialize_display_language(saved, system, None) {
+        Ok(_) => {}
         Err(error) => {
             log::warn!("Failed to initialize display language: {error}; following system language");
-            match lxapp::initialize_display_language(None, system, None) {
-                Ok(owner) => owner,
-                Err(fallback_error) => {
-                    log::warn!("Failed to initialize system display language: {fallback_error}");
-                    None
-                }
+            if let Err(fallback_error) = lxapp::initialize_display_language(None, system, None) {
+                log::warn!("Failed to initialize system display language: {fallback_error}");
             }
         }
-    };
-    replace_runner_display_language_owner(owner);
+    }
 }
 
 /// Common initialization after Platform is created.
@@ -347,11 +309,12 @@ mod tests {
 
     #[test]
     fn runner_display_language_override_is_session_scoped() {
-        lxapp::initialize_display_language(
+        let owner = lxapp::initialize_display_language(
             Some("zh-CN".to_string()),
             "en-US",
             Some("ja-jp".parse().unwrap()),
         )
+        .unwrap()
         .unwrap();
         let state = lxapp::display_language_state();
         assert_eq!(state.preference.as_str(), "zh-CN");
@@ -360,6 +323,7 @@ mod tests {
             state.effective_source,
             lxapp::DisplayLanguageEffectiveSource::SessionOverride
         );
+        lxapp::clear_display_language_session_override(owner);
     }
 
     #[test]

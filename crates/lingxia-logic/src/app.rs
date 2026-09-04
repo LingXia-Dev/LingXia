@@ -9,8 +9,9 @@ use lxapp::{
     DISPLAY_LANGUAGE_CHANGE_EVENT, DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, register_app_handler,
     unregister_app_handler_token,
 };
-use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue};
+use rong::{FromJSObject, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue};
 use std::cell::Cell;
+use std::rc::Rc;
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod autostart;
@@ -49,8 +50,40 @@ struct JsDisplayLanguageState {
     effective_source: String,
 }
 
-fn js_display_language_state() -> JsDisplayLanguageState {
-    let state = lxapp::display_language_state();
+#[derive(FromJSObject)]
+#[ts_skip]
+struct JsIncomingDisplayLanguageState {
+    preference: String,
+    effective: String,
+    #[js_name = "effectiveSource"]
+    effective_source: String,
+}
+
+impl From<JsIncomingDisplayLanguageState> for JsDisplayLanguageState {
+    fn from(state: JsIncomingDisplayLanguageState) -> Self {
+        Self {
+            preference: state.preference,
+            effective: state.effective,
+            effective_source: state.effective_source,
+        }
+    }
+}
+
+#[derive(FromJSObject)]
+#[ts_skip]
+struct JsDisplayLanguageEvent {
+    revision: u64,
+    effective: String,
+}
+
+#[derive(FromJSObject)]
+#[ts_skip]
+struct JsDisplayLanguageStateEvent {
+    revision: u64,
+    state: JsIncomingDisplayLanguageState,
+}
+
+fn js_display_language_state_from(state: lxapp::DisplayLanguageState) -> JsDisplayLanguageState {
     let effective_source = match state.effective_source {
         lxapp::DisplayLanguageEffectiveSource::System => "system",
         lxapp::DisplayLanguageEffectiveSource::Preference => "preference",
@@ -61,6 +94,10 @@ fn js_display_language_state() -> JsDisplayLanguageState {
         effective: state.effective.to_string(),
         effective_source: effective_source.to_string(),
     }
+}
+
+fn js_display_language_state() -> JsDisplayLanguageState {
+    js_display_language_state_from(lxapp::display_language_state())
 }
 
 /// Read the host app's identity: locale, display language, OS, product name,
@@ -86,6 +123,7 @@ fn get_app_base_info(ctx: JSContext) -> JSResult<AppBaseInfo> {
 /// only after confirmation.
 fn exit_app(ctx: JSContext) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
+    lxapp::clear_active_display_language_session_override();
     lxapp
         .runtime
         .exit()
@@ -225,10 +263,28 @@ fn set_js_display_language_preference(ctx: JSContext, preference: String) -> JSR
 /// navigation bar titles, tab bar labels, modal and action-sheet text — are the
 /// app's own, and nothing re-renders them on its behalf.
 fn on_display_language_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
-    // Invoke immediately with the current value, like every other `on*`
-    // subscription, so a caller never needs a separate read to get started.
-    let _ = callback.call::<_, ()>(None, (lxapp::display_language(),));
-    let token = register_app_handler(&ctx, DISPLAY_LANGUAGE_CHANGE_EVENT, callback)?;
+    let last_revision = Rc::new(Cell::new(0));
+    let delivered = Rc::new(Cell::new(false));
+    let event_revision = last_revision.clone();
+    let event_delivered = delivered.clone();
+    let event_callback = callback.clone();
+    let handler = JSFunc::new(&ctx, move |event: JsDisplayLanguageEvent| {
+        if event.revision <= event_revision.get() {
+            return;
+        }
+        event_revision.set(event.revision);
+        event_delivered.set(true);
+        let _ = event_callback.call::<_, ()>(None, (event.effective,));
+    })?;
+    // Register first, then snapshot. Events queued across this boundary carry
+    // revisions and are discarded when the snapshot already includes them.
+    let token = register_app_handler(&ctx, DISPLAY_LANGUAGE_CHANGE_EVENT, handler)?;
+    let snapshot = lxapp::display_language_state_update();
+    if !delivered.get() || snapshot.revision > last_revision.get() {
+        last_revision.set(snapshot.revision);
+        delivered.set(true);
+        let _ = callback.call::<_, ()>(None, (snapshot.state.effective.to_string(),));
+    }
     let off_ctx = ctx.clone();
     let unsubscribed = Cell::new(false);
     JSFunc::new(&ctx, move || {
@@ -243,8 +299,26 @@ fn on_display_language_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFu
 fn on_display_language_state_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     ensure_control_caller(&lxapp, "lx.app.onDisplayLanguageStateChange")?;
-    let _ = callback.call::<_, ()>(None, (js_display_language_state(),));
-    let token = register_app_handler(&ctx, DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, callback)?;
+    let last_revision = Rc::new(Cell::new(0));
+    let delivered = Rc::new(Cell::new(false));
+    let event_revision = last_revision.clone();
+    let event_delivered = delivered.clone();
+    let event_callback = callback.clone();
+    let handler = JSFunc::new(&ctx, move |event: JsDisplayLanguageStateEvent| {
+        if event.revision <= event_revision.get() {
+            return;
+        }
+        event_revision.set(event.revision);
+        event_delivered.set(true);
+        let _ = event_callback.call::<_, ()>(None, (JsDisplayLanguageState::from(event.state),));
+    })?;
+    let token = register_app_handler(&ctx, DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, handler)?;
+    let snapshot = lxapp::display_language_state_update();
+    if !delivered.get() || snapshot.revision > last_revision.get() {
+        last_revision.set(snapshot.revision);
+        delivered.set(true);
+        let _ = callback.call::<_, ()>(None, (js_display_language_state_from(snapshot.state),));
+    }
     let off_ctx = ctx.clone();
     let unsubscribed = Cell::new(false);
     JSFunc::new(&ctx, move || {

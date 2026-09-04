@@ -129,10 +129,10 @@ pub fn state_file_for(app: &crate::LxApp, name: &str) -> crate::Result<PathBuf> 
 
 /// Requests host app termination through the active platform runtime.
 pub fn exit() -> crate::Result<()> {
+    crate::bootstrap::teardown_runner_display_language_session();
     crate::runtime::platform()?
         .exit()
         .map_err(crate::Error::from)?;
-    crate::bootstrap::teardown_runner_display_language_session();
     Ok(())
 }
 
