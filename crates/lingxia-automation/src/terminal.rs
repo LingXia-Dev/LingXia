@@ -1,7 +1,7 @@
 //! Trusted automation for native terminal workspace state.
 
 use crate::resolve::json_to_js;
-use crate::{auto_err, host_automation_authority, require_host_context};
+use crate::{auto_err, host_automation_authority, native_terminal_authority, require_host_context};
 use lxapp::LxApp;
 use rong::{FromJSObject, HostError, JSContext, JSResult, JSValue, js_class, js_method};
 use serde_json::json;
@@ -44,7 +44,9 @@ struct MaximizeOptions {
 fn authority(ctx: &JSContext) -> JSResult<lxapp::terminal_automation::TerminalAutomationAuthority> {
     require_host_context(ctx)?;
     if host_automation_authority(ctx).is_some() {
-        return Ok(lxapp::terminal_automation::TerminalAutomationAuthority::__native_host());
+        return native_terminal_authority().cloned().ok_or_else(|| {
+            auto_err("native terminal automation authority was not installed by host bootstrap")
+        });
     }
     let app = LxApp::from_ctx(ctx)?;
     lxapp::terminal_automation::TerminalAutomationAuthority::for_lxapp(&app).map_err(auto_err)

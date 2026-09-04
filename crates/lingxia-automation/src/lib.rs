@@ -23,7 +23,7 @@ use rong::{
     Class, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError,
     function::Optional, js_class, js_method,
 };
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, OnceLock, Weak};
 
 /// Operate on the calling lxapp itself.
 const PRIV_AUTOMATION: &str = "automation";
@@ -75,6 +75,25 @@ pub(crate) fn require_target_context(ctx: &JSContext, target: &Arc<LxApp>) -> JS
 /// Sealed marker for an isolated context created by `AutomationRuntime`.
 #[derive(Debug, Clone)]
 struct HostAutomationAuthority;
+
+static NATIVE_TERMINAL_AUTHORITY: OnceLock<
+    lxapp::terminal_automation::TerminalAutomationAuthority,
+> = OnceLock::new();
+
+/// Install terminal access issued by the native host bootstrap. An isolated
+/// automation context carries only its private marker; it cannot mint this
+/// process capability itself.
+#[doc(hidden)]
+pub fn __install_native_terminal_authority(
+    authority: lxapp::terminal_automation::TerminalAutomationAuthority,
+) -> bool {
+    NATIVE_TERMINAL_AUTHORITY.set(authority).is_ok()
+}
+
+pub(crate) fn native_terminal_authority()
+-> Option<&'static lxapp::terminal_automation::TerminalAutomationAuthority> {
+    NATIVE_TERMINAL_AUTHORITY.get()
+}
 
 #[cfg(feature = "runtime")]
 fn attach_host_automation_authority(ctx: &JSContext) {

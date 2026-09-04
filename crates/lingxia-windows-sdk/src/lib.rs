@@ -354,6 +354,12 @@ pub fn init_runtime(app: WindowsApp) -> Result<RuntimeInfo> {
     let runtime = lingxia::windows::init(platform)?;
     #[cfg(feature = "shell-chrome")]
     shell::configure_static_settings_source(lingxia::static_settings_destination());
+    #[cfg(feature = "terminal-runtime")]
+    if !shell::install_terminal_automation_authority(runtime.terminal_automation_authority()) {
+        return Err(WindowsHostError::OpenTerminal(
+            "native terminal automation authority was already installed".to_string(),
+        ));
+    }
     Ok(runtime)
 }
 

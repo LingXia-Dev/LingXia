@@ -187,6 +187,8 @@ pub(crate) fn windows_shell_frame_colors() -> (u32, u32, bool) {
         theme::is_dark(),
     )
 }
+#[cfg(feature = "terminal-runtime")]
+pub(crate) use terminal_panel::install_terminal_automation_authority;
 pub(crate) use terminal_panel::{
     begin_divider_drag, begin_pane_drag, begin_terminal_selection, close_pane_at,
     divider_orientation_at, end_divider_drag, end_pane_drag, end_terminal_selection,
