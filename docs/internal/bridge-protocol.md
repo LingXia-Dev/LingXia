@@ -197,7 +197,7 @@ If the declared capability does not match the derived capability, the receiver M
 
 | 边界 | 当前上限 | 超限行为 |
 |---|---:|---|
-| 单个 native WebView message | 64 KiB | enqueue 前拒绝 |
+| 单个 native WebView message | 64 KiB | 在平台 adapter 可取得 raw 长度时先于 LingXia-owned payload materialization 拒绝；所有平台最迟在 enqueue 前拒绝 |
 | 单个 WebView ingress queue | 1,024 frames，合计 1 MiB | 拒绝新 frame；保持已接受 frame 的 FIFO |
 | browser V3 predecode frame | 64 KiB | 分配 typed payload 前拒绝 |
 | browser `sessionId` 或 `secret` probe field | 512 bytes | 按 malformed envelope 拒绝 |
@@ -208,6 +208,15 @@ WebView ingress 使用单个 bounded FIFO dispatcher，不得为每条 message �
 新 frame，并丢弃 queue 中尚未 admission 的 frame。request/channel timeout 从实际发送 frame
 时开始，而不是在 pre-ready outbox 中等待时开始。rejection counter 以 reason 为 label；log 只在
 count 为 1 或 2 的幂时采样，diagnostic 不得包含 frame、URL、public session id 或 secret。
+
+native outer cap 不依赖 JSON/typed decode。Apple 只接受 `NSString` body，并在复制为 Rust
+`String` 前按 UTF-8 字节数检查；非 string body 不再进入 `NSJSONSerialization`。Android 在
+`MessagePort` 与 API 21/22 `JavascriptInterface` 两条入口扫描 Java UTF-16、计算标准 UTF-8
+长度，并在 payload 进入 JNI、生成 Rust `String` 前拒绝。HarmonyOS 的 regular 与 console
+port 都直接使用 ArkWeb `data_length`，在建立 byte slice 或 UTF-8 `String` 前拒绝。WebView2
+callback API 已经向 Windows host 提供 `HSTRING`，因此 LingXia 无法在 WebView2 自身物化该
+string 前读取 raw byte length；Windows 仍在进入 bounded queue 与 V3 typed decode 前执行相同
+64 KiB 拒绝。这项平台限制不产生协议或权限降级。
 
 ## 5. Session Establishment
 
@@ -299,7 +308,7 @@ LingXia profile:
 | Android API 23+ | host-issued load token 与 commit 关联，再创建 fresh per-document `MessagePort` | 拒绝 stale/external/reused port；navigation/reload/crash/teardown 关闭 port |
 | Android API 21/22 | 没有 document-scoped transport；`JavascriptInterface` 永远为 `Unproven` | 允许继续 render，但 BrowserControl 不可用；报告 `android_api_below_23` / `android_21_22_unproven_transport` |
 | Windows | WebView2 navigation identity + current top-level document/generation proof | stale、frame 或 source 失配时 fail closed |
-| HarmonyOS | 当前 revision 没有 production RequiredV3 provenance path | BrowserControl 拒绝 `HarmonyMessagePort`；backend 落地前 UI 保持 unauthenticated |
+| HarmonyOS | host-issued trusted load intent/non-reused native key 与 ArkTS page epoch 关联 accepted start/commit；fresh per-document port 再绑定 native WebView、generation、port 与 callback token | stale/external/reused port、reload、renderer loss 或 teardown 撤销 binding 并 fail closed |
 
 普通 lxapp traffic 的 generic V2 delivery 可以保留 platform fallback，但 RequiredV3 禁止使用这些
 fallback：document-bound native output 必须走 platform 的 generation-aware send path，不得降级为
