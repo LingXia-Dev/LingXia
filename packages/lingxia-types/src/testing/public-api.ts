@@ -126,10 +126,12 @@ const HOST_APP_API = [
   'envVersion',
   'exit',
   'getBaseInfo',
+  'getDisplayLanguageState',
   'onDisplayLanguageChange',
+  'onDisplayLanguageStateChange',
   'screenshot',
   'setBadge',
-  'setDisplayLanguage',
+  'setDisplayLanguagePreference',
 ] as const;
 const HOST_APP_RUNTIME_API = HOST_APP_API.filter((name) => name !== 'autostart');
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;

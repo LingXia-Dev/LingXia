@@ -371,12 +371,16 @@ async fn cache_state(app: Arc<lingxia::LxApp>) -> lingxia::Result<String> {
 }
 ```
 
-Host display language is a product preference on that same facade — `Auto`
-follows the system locale; `EnUs` / `ZhCn` pin the catalogs native chrome
-ships. Every lxapp inherits the resolved tag from `display_language()`.
+Host display language is a product preference on that same facade. `Auto`
+follows the system locale; `LanguageTag` accepts any canonical BCP-47 tag.
+Every lxapp inherits the resolved tag from `display_language()`.
 
 ```rust
-lingxia::app::set_display_language(lingxia::app::DisplayLanguage::ZhCn)?;
+let preference = "zh-CN"
+    .parse::<lingxia::app::DisplayLanguagePreference>()
+    .expect("valid BCP-47 tag");
+lingxia::app::set_display_language_preference(preference)?;
+let state = lingxia::app::display_language_state();
 let tag = lingxia::app::display_language();
 ```
 

@@ -585,17 +585,7 @@
     var bridge = global.LingXiaBridge;
     if (!bridge || typeof bridge.invoke !== 'function') return;
     function adoptHostLocale(result) {
-      if (result && result.language == null) {
-        var previousLocale = locale;
-        var hadStoredLocale = !!storedLocale();
-        useSystemLocale();
-        if ((hadStoredLocale || previousLocale !== locale) &&
-            global.location && typeof global.location.reload === 'function') {
-          global.location.reload();
-        }
-        return;
-      }
-      var hostLocale = normalizeLocale(result && result.language);
+      var hostLocale = normalizeLocale(result);
       if (!hostLocale || hostLocale === locale) return;
       setLocale(hostLocale);
       // Reload only when the locale actually persisted; if localStorage is
@@ -607,7 +597,7 @@
       }
     }
     function refreshFromHost() {
-      bridge.invoke('settings.getLanguage').then(adoptHostLocale, function () {});
+      bridge.invoke('app.getDisplayLanguage').then(adoptHostLocale, function () {});
     }
     var languageWatchRetryMs = 1000;
     var languageWatchRetryTimer = null;
@@ -621,7 +611,7 @@
     }
     function attachLanguageWatch() {
       if (typeof bridge.stream !== 'function') return;
-      var watch = bridge.stream('settings.watchLanguage');
+      var watch = bridge.stream('app.watchDisplayLanguage');
       var startedAt = Date.now();
       api.languageWatch = watch;
       watch.onEvent(adoptHostLocale);

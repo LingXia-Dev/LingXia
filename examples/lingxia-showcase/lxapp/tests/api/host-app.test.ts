@@ -141,20 +141,20 @@ spec('answer checkUpdate with a decision instead of throwing', {
 
 spec('reject an invalid host display language', {
   id: 'HOSTAPP-LANG-002',
-  covers: ['lx.app.setDisplayLanguage'],
+  covers: ['lx.app.setDisplayLanguagePreference'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-002');
 
   const offered = await app.eval({
-    script: `return typeof lx.app.setDisplayLanguage`,
+    script: `return typeof lx.app.setDisplayLanguagePreference`,
   }) as string;
   expect(offered).toBe('function');
 
-  for (const language of ['', 'ja-JP']) {
+  for (const language of ['', 'en--US']) {
     const rejected = await evalCaught(
       app,
-      `lx.app.setDisplayLanguage(${JSON.stringify(language)})`,
+      `lx.app.setDisplayLanguagePreference(${JSON.stringify(language)})`,
     );
     expect(rejected.ok).toBe(false);
     expect(String(rejected.code)).toBe('E_INVALID_ARG');

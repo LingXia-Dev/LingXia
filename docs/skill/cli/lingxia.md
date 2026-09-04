@@ -159,7 +159,7 @@ Session state stays in the directory where `lingxia dev <target>` was invoked.
 Override the display language for one Runner session when testing localization:
 
 ```bash
-lingxia dev --display-language zh-CN  # explicit language
+lingxia dev --display-language sr-Latn-RS  # any BCP-47 language tag
 lingxia dev --display-language auto   # system locale
 ```
 

@@ -18,6 +18,7 @@ import {
   getDisplayLanguage as getRuntimeDisplayLanguage,
   shouldEnableWebViewDebugging,
   onHostAppearanceChanged,
+  onHostLocaleChanged,
   onApplinkReceived,
   CurrentLxApp
 } from 'liblingxia.so';
@@ -204,6 +205,7 @@ export class Lingxia {
     }
     const callback: EnvironmentCallback = {
       onConfigurationUpdated: (config: Configuration): void => {
+        onHostLocaleChanged(Lingxia.getSystemLocale());
         const dark = config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
         onHostAppearanceChanged(dark);
       },

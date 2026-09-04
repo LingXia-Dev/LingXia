@@ -797,28 +797,29 @@
           option.disabled = !!disabled;
         });
       }
+      function applyLanguageState(state) {
+        if (!state) return;
+        configuredLanguage = state.preference || 'auto';
+        syncLanguageOptions(configuredLanguage, false);
+        if (state.effective) i18n.setLocale(state.effective);
+      }
       syncLanguageOptions('auto', false);
-      callHost('settings.getLanguage').then(function (result) {
-        configuredLanguage = result && result.language || null;
-        syncLanguageOptions(configuredLanguage || 'auto', false);
-      }, function () {
+      callHost('app.getDisplayLanguageState').then(applyLanguageState, function () {
         syncLanguageOptions('auto', false);
       });
+      if (window.LingXiaBridge && typeof window.LingXiaBridge.stream === 'function') {
+        var languageStateWatch = window.LingXiaBridge.stream('app.watchDisplayLanguageState');
+        languageStateWatch.onEvent(applyLanguageState);
+      }
       languageOptions.forEach(function (option) {
         option.addEventListener('click', function () {
           var next = option.dataset.language;
           if (next === (configuredLanguage || 'auto')) return;
           syncLanguageOptions(next, true);
-          callHost('settings.setLanguage', { language: next }).then(function (result) {
-            configuredLanguage = result && result.language || null;
-            if (configuredLanguage) {
-              i18n.setLocale(configuredLanguage);
-            } else {
-              i18n.useSystemLocale();
-            }
-            window.location.reload();
+          callHost('app.setDisplayLanguagePreference', { preference: next }).then(function (state) {
+            applyLanguageState(state);
           }, function (error) {
-            console.error('[Settings] settings.setLanguage error:', error);
+            console.error('[Settings] app.setDisplayLanguagePreference error:', error);
             syncLanguageOptions(configuredLanguage || 'auto', false);
             languageStatus.textContent = t('settings.languageSaveFailed');
             languageStatus.style.color = '#c01048';

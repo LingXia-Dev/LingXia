@@ -140,9 +140,11 @@ declare module 'liblingxia.so' {
 
   export function onHostAppearanceChanged(dark: boolean): void;
 
+  export function onHostLocaleChanged(locale: string): void;
+
   /**
-   * Effective display language. A saved user choice takes precedence over
-   * the locale supplied to lingxiaInit.
+   * Effective display language after resolving a Runner session override,
+   * saved preference, and current system locale.
    */
   export function getDisplayLanguage(): string;
 

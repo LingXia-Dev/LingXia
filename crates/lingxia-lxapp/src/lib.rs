@@ -72,7 +72,7 @@ pub use lingxia_update::{
 pub use lingxia_webview::url_callback;
 pub use lxapp::set_num_workers;
 pub use lxapp::{
-    AppSessionClass, CloseReason, CreatePageInstanceRequest, CreatedPageInstance, DisplayLanguage,
+    AppSessionClass, CloseReason, CreatePageInstanceRequest, CreatedPageInstance,
     DisplayLanguageEffectiveSource, DisplayLanguagePreference, DisplayLanguageSessionOwner,
     DisplayLanguageState, HOST_SURFACE_OWNER_APP_ID, HostMainSurfaceRegistration,
     HostSurfaceMenuExecution, LXAPP_MORE_ACTION_LIMIT, LanguageTag, LxApp, LxAppMoreAction,
@@ -81,10 +81,9 @@ pub use lxapp::{
     PageInstanceEvent, PageInstanceRuntimeInfo, PageOwner, PageQueryInput, PageSurface,
     PageSurfaceRequest, PageSurfaceTarget, PageTarget, PresentationKind, ResolvedPage, SceneId,
     SurfaceKind, SurfacePosition, SurfaceRole, UrlCallbackSurface, UrlCallbackWaitError,
-    add_display_language_change_listener, add_display_language_effective_listener,
-    add_display_language_state_listener, apply_display_language_override, automation_auto_grant,
-    bundled_lxapp_asset_available, clear_display_language_session_override, close_lxapp,
-    config::LxAppInfo, create_page_instance, display_language, display_language_state,
+    add_display_language_effective_listener, add_display_language_state_listener,
+    automation_auto_grant, bundled_lxapp_asset_available, clear_display_language_session_override,
+    close_lxapp, config::LxAppInfo, create_page_instance, display_language, display_language_state,
     dispose_page_instance, dispose_page_instance_by_id, ensure_builtin_lxapp,
     ensure_host_surface_owner, ensure_lxapp, find_page_by_instance_id, get_current_lxapp,
     get_platform, host_class, init, initialize_display_language,
@@ -104,7 +103,7 @@ pub use lxapp::{
         set_open_blocked_listener as set_lxapp_open_blocked_listener,
         set_registry_change_listener as set_lxapp_registry_change_listener,
     },
-    restart_lxapp, set_automation_auto_grant, set_display_language, set_display_language_in,
+    restart_lxapp, set_automation_auto_grant,
     set_display_language_preference, set_display_language_preference_in, tabbar,
     touch_page_instance_by_id, try_get, uninstall_lxapp,
 };

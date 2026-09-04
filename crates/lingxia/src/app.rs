@@ -9,7 +9,7 @@
 //! - read product metadata such as `product_version` and `lingxia_id`;
 //! - resolve host-owned state paths such as `state_dir` and `state_file`;
 //! - read or set the host display language (`display_language`,
-//!   `set_display_language`);
+//!   `set_display_language_preference`);
 //! - request host app termination with `exit`.
 
 use std::path::{Component, Path, PathBuf};
@@ -19,8 +19,7 @@ use lingxia_platform::traits::app_runtime::AppRuntime;
 
 pub use lingxia_app_context::EnvVersion;
 pub use lxapp::{
-    DisplayLanguage, DisplayLanguageEffectiveSource, DisplayLanguagePreference,
-    DisplayLanguageState, LanguageTag,
+    DisplayLanguageEffectiveSource, DisplayLanguagePreference, DisplayLanguageState, LanguageTag,
 };
 
 static APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -73,9 +72,8 @@ pub fn notifications_enabled() -> bool {
 
 /// Returns the effective host display language.
 ///
-/// A pinned [`DisplayLanguage`] takes precedence over the locale supplied
-/// by the native host during runtime initialization. `Auto` follows that
-/// locale.
+/// A pinned [`DisplayLanguagePreference::LanguageTag`] takes precedence over
+/// the native host locale. [`DisplayLanguagePreference::Auto`] follows it.
 pub fn display_language() -> String {
     lxapp::display_language()
 }
@@ -100,14 +98,6 @@ pub fn on_display_language_state_change(
     listener: impl Fn(DisplayLanguageState) + Send + Sync + 'static,
 ) {
     lxapp::add_display_language_state_listener(Box::new(listener));
-}
-
-/// Set the host display language and persist it.
-///
-/// [`DisplayLanguage::Auto`] follows the system locale. Every lxapp inherits
-/// the resolved tag from [`display_language`].
-pub fn set_display_language(language: DisplayLanguage) -> crate::Result<()> {
-    lxapp::set_display_language_in(&data_dir()?, language).map_err(Into::into)
 }
 
 pub(crate) fn data_dir() -> crate::Result<PathBuf> {
@@ -139,7 +129,11 @@ pub fn state_file_for(app: &crate::LxApp, name: &str) -> crate::Result<PathBuf> 
 
 /// Requests host app termination through the active platform runtime.
 pub fn exit() -> crate::Result<()> {
-    crate::runtime::platform()?.exit().map_err(Into::into)
+    crate::runtime::platform()?
+        .exit()
+        .map_err(crate::Error::from)?;
+    crate::bootstrap::teardown_runner_display_language_session();
+    Ok(())
 }
 
 fn state_file_in(root: impl AsRef<Path>, name: &str) -> crate::Result<PathBuf> {

@@ -5,7 +5,10 @@ use crate::i18n::{
 use lingxia_app_context::{app_config, env_version};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::LxApp;
-use lxapp::{DISPLAY_LANGUAGE_CHANGE_EVENT, register_app_handler, unregister_app_handler_token};
+use lxapp::{
+    DISPLAY_LANGUAGE_CHANGE_EVENT, DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, register_app_handler,
+    unregister_app_handler_token,
+};
 use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue};
 use std::cell::Cell;
 
@@ -21,8 +24,9 @@ struct AppBaseInfo {
     /// For the language the UI should actually render in, use
     /// `display_language` instead.
     locale: String,
-    /// Effective display language: a saved user override when set, else
-    /// `locale`. This is what native chrome and `lx.*` i18n strings follow.
+    /// Effective display language after Runner session override, persisted
+    /// preference, and system locale resolution. Native chrome and `lx.*`
+    /// i18n strings follow this value.
     #[js_name = "displayLanguage"]
     display_language: String,
     /// Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
@@ -34,6 +38,29 @@ struct AppBaseInfo {
     version: String,
     #[js_name = "SDKVersion"]
     sdk_version: String,
+}
+
+#[derive(Debug, Clone, IntoJSObject)]
+#[ts_skip]
+struct JsDisplayLanguageState {
+    preference: String,
+    effective: String,
+    #[js_name = "effectiveSource"]
+    effective_source: String,
+}
+
+fn js_display_language_state() -> JsDisplayLanguageState {
+    let state = lxapp::display_language_state();
+    let effective_source = match state.effective_source {
+        lxapp::DisplayLanguageEffectiveSource::System => "system",
+        lxapp::DisplayLanguageEffectiveSource::Preference => "preference",
+        lxapp::DisplayLanguageEffectiveSource::SessionOverride => "sessionOverride",
+    };
+    JsDisplayLanguageState {
+        preference: state.preference.to_string(),
+        effective: state.effective.to_string(),
+        effective_source: effective_source.to_string(),
+    }
 }
 
 /// Read the host app's identity: locale, display language, OS, product name,
@@ -157,16 +184,38 @@ rong::js_api! {
     }
 }
 
-/// Set the host display language. `"auto"` follows the system locale;
-/// `"en-US"` and `"zh-CN"` pin the product. Every lxapp inherits the resolved
-/// tag from `getBaseInfo().displayLanguage`. Restricted to the Control app.
-fn set_js_display_language(ctx: JSContext, language: String) -> JSResult<()> {
+#[cfg(test)]
+mod tests {
+    use super::ensure_control_classification;
+
+    #[test]
+    fn host_display_language_controls_require_native_control_classification() {
+        for api in [
+            "lx.app.getDisplayLanguageState",
+            "lx.app.setDisplayLanguagePreference",
+            "lx.app.onDisplayLanguageStateChange",
+        ] {
+            assert!(ensure_control_classification(true, api).is_ok());
+            assert!(ensure_control_classification(false, api).is_err());
+        }
+    }
+}
+
+fn get_display_language_state(ctx: JSContext) -> JSResult<JsDisplayLanguageState> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_control_caller(&lxapp, "lx.app.setDisplayLanguage")?;
-    let language = language
-        .parse::<lxapp::DisplayLanguage>()
+    ensure_control_caller(&lxapp, "lx.app.getDisplayLanguageState")?;
+    Ok(js_display_language_state())
+}
+
+/// Persist an arbitrary BCP-47 preference, or `"auto"` to follow the system.
+fn set_js_display_language_preference(ctx: JSContext, preference: String) -> JSResult<()> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    ensure_control_caller(&lxapp, "lx.app.setDisplayLanguagePreference")?;
+    let preference = preference
+        .parse::<lxapp::DisplayLanguagePreference>()
         .map_err(js_invalid_parameter_error)?;
-    lxapp::set_display_language(language).map_err(|error| js_error_from_lxapp_error(&error))
+    lxapp::set_display_language_preference(preference)
+        .map_err(|error| js_error_from_lxapp_error(&error))
 }
 
 /// Follow the host's effective display language.
@@ -191,6 +240,22 @@ fn on_display_language_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFu
     })
 }
 
+fn on_display_language_state_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
+    let lxapp = LxApp::from_ctx(&ctx)?;
+    ensure_control_caller(&lxapp, "lx.app.onDisplayLanguageStateChange")?;
+    let _ = callback.call::<_, ()>(None, (js_display_language_state(),));
+    let token = register_app_handler(&ctx, DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, callback)?;
+    let off_ctx = ctx.clone();
+    let unsubscribed = Cell::new(false);
+    JSFunc::new(&ctx, move || {
+        if unsubscribed.get() {
+            return;
+        }
+        unregister_app_handler_token(&off_ctx, DISPLAY_LANGUAGE_STATE_CHANGE_EVENT, token);
+        unsubscribed.set(true);
+    })
+}
+
 rong::js_api! {
     fn register_app_base_api(ctx) {
         namespace HostAppApi = app_namespace(ctx)?;
@@ -207,8 +272,16 @@ rong::js_api! {
     fn register_app_controls(ctx) {
         namespace HostAppApi = app_namespace(ctx)?;
         fn exit = exit_app;
+        fn getDisplayLanguageState(
+            ts_return = "DisplayLanguageState"
+        ) = get_display_language_state;
+        fn onDisplayLanguageStateChange(
+            ts_params = "callback: (state: DisplayLanguageState) => void",
+            ts_return = "() => void"
+        ) = on_display_language_state_change;
         fn setBadge(ts_params = "value: string | number | null") = set_app_badge;
-        fn setDisplayLanguage(ts_params = "language: DisplayLanguageSetting") =
-            set_js_display_language;
+        fn setDisplayLanguagePreference(
+            ts_params = "preference: DisplayLanguagePreference"
+        ) = set_js_display_language_preference;
     }
 }

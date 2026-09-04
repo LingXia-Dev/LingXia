@@ -457,6 +457,22 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_onHostAppearanceChanged(
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onHostLocaleChanged(
+    mut env: EnvUnowned,
+    _class: JClass,
+    locale: JString,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let locale: String = locale.try_to_string(env)?;
+        if let Err(error) = lxapp::refresh_display_language_system(&locale) {
+            log::warn!("Ignoring invalid Android host locale '{locale}': {error}");
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_notifyPageInstanceVisible(
     mut env: EnvUnowned,
     _class: JClass,
