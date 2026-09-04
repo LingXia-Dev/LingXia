@@ -524,8 +524,8 @@ impl ProcessSessionAuthority {
 }
 
 #[cfg(feature = "process")]
-impl rong_command::ProcessAuthority for ProcessSessionAuthority {
-    fn authorize(&self) -> Result<(), String> {
+impl ProcessSessionAuthority {
+    pub(crate) fn authorize(&self) -> Result<(), String> {
         if self
             .scope
             .resource_grants()
@@ -1916,8 +1916,6 @@ mod tests {
     #[cfg(feature = "process")]
     #[test]
     fn process_authority_rejects_manifest_only_and_stale_same_app_id_sessions() {
-        use rong_command::ProcessAuthority;
-
         let (_root, original, successor) = same_app_id_with_different_classes();
         let original_authority = ProcessSessionAuthority::for_lxapp(&original);
 

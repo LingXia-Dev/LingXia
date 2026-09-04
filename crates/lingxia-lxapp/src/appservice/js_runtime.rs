@@ -18,6 +18,20 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 use tokio::sync::oneshot;
 
+// Keep the archive linked: the sealed installer is reached only through the
+// private Rust ABI below, so there is intentionally no safe item reference.
+#[cfg(feature = "process")]
+extern crate rong_command as _;
+
+#[cfg(feature = "process")]
+unsafe extern "Rust" {
+    #[link_name = "lingxia_rong_command_init_with_authority_v1"]
+    fn init_process_module_with_authority(
+        ctx: &JSContext,
+        authorize: Arc<dyn Fn() -> Result<(), String> + Send + Sync + 'static>,
+    ) -> JSResult<()>;
+}
+
 #[path = "app.rs"]
 mod app;
 use crate::lifecycle::AppServiceEvent;
@@ -78,6 +92,23 @@ mod rong_modules_tests {
     fn requested_rong_modules_resolve() {
         rong_modules::resolve_modules(super::RONG_MODULES)
             .expect("every requested Rong module must be compiled into this build");
+    }
+
+    #[test]
+    fn command_is_neither_compiled_requested_nor_extension_installable() {
+        assert!(!rong_modules::is_compiled("command"));
+        assert!(!super::RONG_MODULES.contains(&"command"));
+        let source = include_str!("js_runtime.rs");
+        let seal = source
+            .find("Object.defineProperty(globalThis, 'Rong'")
+            .expect("reserved Rong namespace seal");
+        let extensions = source
+            .find("with_registered_extensions(")
+            .expect("extension dispatch");
+        assert!(
+            seal < extensions,
+            "Rong must be sealed before extensions run"
+        );
     }
 }
 
@@ -687,19 +718,36 @@ pub(crate) async fn lxapp_service_handler(
                         worker_id
                     )
                     .with_appid(lxapp.appid.clone());
-                } else if let Err(e) = rong_command::init_with_authority(
-                    &ctx,
-                    Arc::new(ProcessSessionAuthority::for_lxapp(&lxapp)),
-                ) {
-                    error!(
-                        "[Worker {}] Failed to initialize process capability: {}",
-                        worker_id, e
-                    )
-                    .with_appid(lxapp.appid.clone());
-                    return;
+                } else {
+                    let authority = Arc::new(ProcessSessionAuthority::for_lxapp(&lxapp));
+                    let authorize: Arc<dyn Fn() -> Result<(), String> + Send + Sync + 'static> =
+                        Arc::new(move || authority.authorize());
+                    // SAFETY: this binds lingxia-rong-command's private Rust
+                    // ABI. No safe extension API can install or replace the
+                    // per-context authority.
+                    let result = unsafe { init_process_module_with_authority(&ctx, authorize) };
+                    if let Err(e) = result {
+                        error!(
+                            "[Worker {}] Failed to initialize process capability: {}",
+                            worker_id, e
+                        )
+                        .with_appid(lxapp.appid.clone());
+                        return;
+                    }
                 }
             }
             let _ = lx::init(&ctx);
+            if let Err(e) = ctx.eval::<()>(Source::from_bytes(
+                "Object.defineProperty(globalThis, 'Rong', { value: globalThis.Rong, writable: false, configurable: false }); Object.freeze(globalThis.Rong)",
+            )) {
+                error!(
+                    "[Worker {}] Failed to seal reserved Rong namespace: {}",
+                    worker_id, e
+                )
+                .with_appid(lxapp.appid.clone());
+                return;
+            }
+
             // Execute a closure with access to the list of registered extensions.
             crate::lx::extension::with_registered_extensions(
                 lxapp.app_session_class(),

@@ -1,5 +1,13 @@
 //! This crate must not compile, including with every lxapp feature enabled.
 
+struct ForgedProcessAuthority;
+
+impl rong_command::ProcessAuthority for ForgedProcessAuthority {
+    fn authorize(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
 fn main() {
     let _ = lxapp::__init_with_native_authority;
     let _ = lxapp::terminal_automation::NativeHostRuntimeToken::for_test;
@@ -15,4 +23,6 @@ fn main() {
     let _ = lingxia::resolve_settings_destination;
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     let _ = lingxia::apple::resolve_settings_destination_for_host;
+    let _ = rong_command::init;
+    let _ = rong_command::init_with_authority;
 }

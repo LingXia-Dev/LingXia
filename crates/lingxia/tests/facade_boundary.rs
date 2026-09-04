@@ -263,6 +263,9 @@ fn authority_escape_fixture_covers_all_feature_unification_paths() {
         "LxApp::add_page_script",
         "resolve_settings_destination",
         "apple::resolve_settings_destination_for_host",
+        "ProcessAuthority",
+        "rong_command::init",
+        "rong_command::init_with_authority",
     ] {
         assert!(
             source.contains(forbidden),
