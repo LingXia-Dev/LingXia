@@ -1,7 +1,7 @@
 use super::bridge_transport::{bridge_downstream_shutdown_response, is_bridge_downstream_request};
 use super::webview::find_webview_for_native;
 use crate::webview::WebTag;
-use crate::{WebResourceBody, WebResourceResponse};
+use crate::{ContextualSchemeRequest, SchemeRequestFrame, WebResourceBody, WebResourceResponse};
 use dispatch2::DispatchQueue;
 use objc2::runtime::{AnyObject, NSObject, Sel};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, rc::Retained};
@@ -27,6 +27,14 @@ unsafe fn nsdata_bytes_ptr_unchecked(ns_data: *mut AnyObject) -> *const u8 {
     let func: unsafe extern "C" fn(*mut AnyObject, Sel) -> *const core::ffi::c_void =
         unsafe { core::mem::transmute(objc2::ffi::objc_msgSend as *const ()) };
     unsafe { func(ns_data, sel) }.cast()
+}
+
+/// `WKURLSchemeTask` exposes no trustworthy frame identity. A request URL
+/// matching `mainDocumentURL` is not proof: a subframe may request the same
+/// URL. Keep every Apple scheme request unproven until WebKit exposes an
+/// unambiguous main-frame signal.
+fn apple_scheme_request_frame() -> SchemeRequestFrame {
+    SchemeRequestFrame::Unproven
 }
 
 fn pipe_task_registry() -> &'static Mutex<HashMap<usize, Arc<AtomicBool>>> {
@@ -146,6 +154,7 @@ define_class!(
                 let url = std::ffi::CStr::from_ptr(url_cstring)
                     .to_string_lossy()
                     .to_string();
+                let frame = apple_scheme_request_frame();
 
                 // Get HTTP method
                 let method_obj: *mut AnyObject = msg_send![request, HTTPMethod];
@@ -239,7 +248,14 @@ define_class!(
                 let response = if let Some(managed_webview) =
                     find_webview_for_native(webtag, webview)
                 {
-                    managed_webview.handle_scheme_request(&scheme, http_request)
+                    managed_webview.handle_contextual_scheme_request(
+                        &scheme,
+                        ContextualSchemeRequest::new(
+                            http_request,
+                            managed_webview.native_view_id(),
+                            frame,
+                        ),
+                    )
                 } else {
                     log::debug!(
                         "Dropping scheme request from stale Apple WebView webtag={} (scheme={} url={})",
@@ -565,5 +581,15 @@ impl LingXiaSchemeHandler {
 
             log::error!("SchemeHandler error: {}", error_message);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scheme_request_is_unproven_even_when_urls_match() {
+        assert_eq!(apple_scheme_request_frame(), SchemeRequestFrame::Unproven);
     }
 }

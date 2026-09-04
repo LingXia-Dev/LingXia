@@ -1,5 +1,8 @@
 use crate::webview::{WebTag, find_webview_by_native_view_id};
-use crate::{NativeWebViewId, WebResourceBody, WebResourceResponse};
+use crate::{
+    ContextualSchemeRequest, NativeWebViewId, SchemeRequestFrame, WebResourceBody,
+    WebResourceResponse,
+};
 use napi_ohos::Result as NapiResult;
 use ohos_web_sys::*;
 use std::collections::HashMap;
@@ -157,7 +160,17 @@ pub unsafe extern "C" fn on_lx_request_start(
     let scheme = url.split("://").next().unwrap_or("").to_string();
 
     // Dispatch to closure-based scheme handler
-    let http_response = webview.handle_scheme_request(&scheme, http_request);
+    // ArkWeb's scheme callback does not attest a frame relationship. Do not
+    // combine it with navigation-policy state: that would be a forgeable
+    // cross-callback inference rather than evidence for this request.
+    let http_response = webview.handle_contextual_scheme_request(
+        &scheme,
+        ContextualSchemeRequest::new(
+            http_request,
+            webview.native_view_id(),
+            SchemeRequestFrame::Unproven,
+        ),
+    );
     if let Some(http_response) = http_response {
         unsafe {
             *intercept = true;

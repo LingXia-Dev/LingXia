@@ -65,6 +65,10 @@ pub(crate) enum NativeNavigationResult {
 enum Output {
     Nav(NavigationEvent),
     State(WebViewStateChange),
+    DocumentCommitted {
+        generation: DocumentGeneration,
+        navigation_id: NavigationId,
+    },
 }
 
 /// Navigation identity and exactly-once terminal bookkeeping.
@@ -87,6 +91,16 @@ struct NavigationTracker {
 }
 
 impl NavigationTracker {
+    /// The accepted navigation which a reliable commit signal is allowed to
+    /// bind. `DocumentTracker` only mints after the corresponding start, so
+    /// this is present for every valid commit.
+    fn active_for_commit(&self, key: Option<NativeKey>) -> Option<NavigationId> {
+        match key {
+            Some(key) => self.by_key.get(&key).copied(),
+            None => self.keyless_active,
+        }
+    }
+
     fn start(&mut self, webtag: &WebTag, key: Option<NativeKey>, url: String) -> Vec<Output> {
         let mut out = Vec::new();
         match key {
@@ -591,12 +605,7 @@ impl EventNormalizer {
                 Vec::new()
             }
             NativeSignal::DocumentCommitted { key } => {
-                // Metadata reset is an observable platform commit signal in
-                // its own right. Generation minting is stricter and may drop
-                // a stale or duplicate attempt without suppressing that state
-                // maintenance.
-                state.documents.committed(key);
-                state.coalescer.document_committed()
+                document_committed_outputs(&self.webtag, &mut state, key)
             }
             NativeSignal::NavigationFinished { key, result } => {
                 state.documents.finished(key);
@@ -661,8 +670,64 @@ impl EventNormalizer {
                     observer(WebViewObservedEvent::State(change));
                 }
             }
+            Output::DocumentCommitted {
+                generation,
+                navigation_id,
+            } => {
+                if let Some(delegate) = &delegate {
+                    notify_document_committed(
+                        delegate,
+                        self.native_view_id,
+                        *generation,
+                        *navigation_id,
+                    );
+                }
+            }
         }
     }
+}
+
+fn document_committed_outputs(
+    webtag: &WebTag,
+    state: &mut NormalizerState,
+    key: Option<NativeKey>,
+) -> Vec<Output> {
+    // Metadata reset is an observable platform commit signal in its own right.
+    // Generation minting is stricter and may drop a stale or duplicate attempt
+    // without suppressing that state maintenance.
+    let navigation_id = state.tracker.active_for_commit(key);
+    let minted = state.documents.committed(key);
+    let mut outputs = state.coalescer.document_committed();
+    if minted {
+        let DocumentBinding::Bound(generation) = state.documents.current() else {
+            unreachable!("accepted document commit must bind a generation");
+        };
+        if let Some(navigation_id) = navigation_id {
+            // Queue the hook before metadata reset state. FIFO delivery
+            // preserves the successful mint as the document-binding
+            // linearization point without invoking application code under the
+            // state mutex.
+            outputs.insert(
+                0,
+                Output::DocumentCommitted {
+                    generation,
+                    navigation_id,
+                },
+            );
+        } else {
+            log::error!("{webtag}: accepted document commit had no active navigation");
+        }
+    }
+    outputs
+}
+
+fn notify_document_committed(
+    delegate: &Arc<dyn crate::WebViewDelegate>,
+    native_view_id: NativeWebViewId,
+    generation: DocumentGeneration,
+    navigation_id: NavigationId,
+) {
+    delegate.on_document_committed(native_view_id, generation, navigation_id);
 }
 
 /// Remove the webtag's normalizer after draining teardown cancellations.
@@ -679,9 +744,109 @@ pub(crate) fn destroy(webtag: &WebTag) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::traits::LoadErrorKind;
+    use crate::traits::{IncomingWebMessage, LoadErrorKind};
+    use crate::{LogLevel, WebViewDelegate};
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
+
+    struct CommitCapture(Arc<Mutex<Vec<(NativeWebViewId, DocumentGeneration, NavigationId)>>>);
+
+    impl WebViewDelegate for CommitCapture {
+        fn on_navigation_event(&self, _event: NavigationEvent) {}
+
+        fn handle_post_message(&self, _message: IncomingWebMessage) {}
+
+        fn log(&self, _level: LogLevel, _message: &str) {}
+
+        fn on_document_committed(
+            &self,
+            native_view: NativeWebViewId,
+            generation: DocumentGeneration,
+            navigation_id: NavigationId,
+        ) {
+            self.0
+                .lock()
+                .unwrap()
+                .push((native_view, generation, navigation_id));
+        }
+    }
+
+    #[test]
+    fn document_commit_hook_receives_exact_binding_identity() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let delegate: Arc<dyn WebViewDelegate> = Arc::new(CommitCapture(calls.clone()));
+        notify_document_committed(
+            &delegate,
+            NativeWebViewId::new(87),
+            DocumentGeneration::new(4),
+            NavigationId::next(),
+        );
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].0, NativeWebViewId::new(87));
+        assert_eq!(calls[0].1, DocumentGeneration::new(4));
+    }
+
+    #[test]
+    fn document_commit_output_only_exists_for_an_accepted_binding() {
+        let webtag = tag("document-commit-output");
+        let mut state = NormalizerState {
+            tracker: NavigationTracker::default(),
+            documents: DocumentTracker::default(),
+            coalescer: StateCoalescer::default(),
+            queue: VecDeque::new(),
+            draining: false,
+            observers: Vec::new(),
+        };
+
+        state
+            .tracker
+            .start(&webtag, Some(11), "https://one/".into());
+        state.documents.started(Some(11));
+        let accepted = document_committed_outputs(&webtag, &mut state, Some(11));
+        assert!(matches!(
+            accepted.first(),
+            Some(Output::DocumentCommitted { generation, .. }) if *generation == DocumentGeneration::new(1)
+        ));
+
+        let duplicate = document_committed_outputs(&webtag, &mut state, Some(11));
+        assert!(
+            !duplicate
+                .iter()
+                .any(|output| matches!(output, Output::DocumentCommitted { .. }))
+        );
+
+        state
+            .tracker
+            .start(&webtag, Some(12), "https://two/".into());
+        state.documents.started(Some(12));
+        let stale = document_committed_outputs(&webtag, &mut state, Some(11));
+        assert!(
+            !stale
+                .iter()
+                .any(|output| matches!(output, Output::DocumentCommitted { .. }))
+        );
+
+        let mut keyless = NormalizerState {
+            tracker: NavigationTracker::default(),
+            documents: DocumentTracker::default(),
+            coalescer: StateCoalescer::default(),
+            queue: VecDeque::new(),
+            draining: false,
+            observers: Vec::new(),
+        };
+        keyless.tracker.start(&webtag, None, "https://one/".into());
+        keyless.documents.started(None);
+        keyless.tracker.start(&webtag, None, "https://two/".into());
+        keyless.documents.started(None);
+        let tainted = document_committed_outputs(&webtag, &mut keyless, None);
+        assert!(
+            !tainted
+                .iter()
+                .any(|output| matches!(output, Output::DocumentCommitted { .. }))
+        );
+    }
 
     fn test_native_view_id(webtag: &WebTag) -> NativeWebViewId {
         let mut hasher = DefaultHasher::new();

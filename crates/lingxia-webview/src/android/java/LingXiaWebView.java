@@ -1329,7 +1329,7 @@ public class LingXiaWebView extends WebView {
     native void onWebViewStateChanged(String appId, String path, long sessionId, long nativeViewId, String url, String title, boolean canGoBack, boolean canGoForward);
     native void onFaviconChanged(String appId, String path, long sessionId, long nativeViewId, byte[] pngBytes);
     native void onLoadError(String appId, String path, long sessionId, long nativeViewId, String url, int errorCode, String description);
-    native WebResourceResponseData handleRequest(String appId, String path, long sessionId, long nativeViewId, String url, String method, String[] headerKeysAndValues);
+    native WebResourceResponseData handleRequest(String appId, String path, long sessionId, long nativeViewId, String url, String method, String[] headerKeysAndValues, boolean isMainFrame);
     native boolean handleNavigationPolicy(
         String appId,
         String path,
