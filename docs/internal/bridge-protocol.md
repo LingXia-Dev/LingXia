@@ -305,6 +305,19 @@ LingXia profile:
 fallback：document-bound native output 必须走 platform 的 generation-aware send path，不得降级为
 裸 string 或 `evaluateJavascript` send。
 
+### 5.7 Restoration 与 renderer termination
+
+history/BFCache 可能恢复旧 HTML 与旧 credential，却不重走 host-issued loader。若 internal
+document 的 commit 没有匹配当前 trusted start，native 必须保持它 unauthenticated、detach 旧
+page lifecycle，并调度一次新的 trusted native load。只有 fresh load 产生的新
+`NavigationId`、generation、attestation、secret 与 public `sessionId` 全部匹配后，才能建立新
+session；恢复出的旧 frame 与 stale reload completion 都不得进入 successor。
+
+renderer termination 必须先清除 committed document generation，再通知上层或尝试 reload。
+Apple 的 content-process termination 走该顺序；navigation/reload/crash/teardown 在其他已启用
+backend 上同样撤销旧 port/session。external history entry 可以正常展示，但永远不会因此得到
+BrowserControl authority。
+
 ## 6. Frame Definitions
 
 ### 6.1 `req`

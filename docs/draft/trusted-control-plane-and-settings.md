@@ -294,7 +294,8 @@ native message endpoint 可以留在 WebView 中，但 endpoint 本身不授予 
 `PendingNavigation` 将 accepted attempt、expected loader 与 top-level commit 关联；native-owned
 load path 再提供不可由 document 伪造的 `NativeKey` 或 platform attestation。URL、`WebTag`、
 appid 与当前可见地址都不参与授权。Apple、Windows 与 Android API 23+ 已具有正向证明路径；
-HarmonyOS 与不能证明 document provenance 的恢复路径保持 `Unsupported`/fail closed。
+HarmonyOS 保持 `Unsupported`/fail closed。history/BFCache 恢复的 internal document 不复用旧
+证明，而是先保持 unauthenticated，再由 host 发起 fresh trusted load。
 browser tabs 的 generation token 只用于 stale-drop，仍不单独构成 document auth。internal
 browser page 的 `frame-ancestors 'none'` / `X-Frame-Options: DENY` 只缩小攻击面，不替代
 provenance。
@@ -424,8 +425,10 @@ cancellation 仅在其 `NavigationId` 是最新 pending attempt、且无更新 a
 bootstrap 当前 document。较早 attempt 的 `Superseded` terminal event 永不重新 activate。
 re-bootstrap 必须重新取得当前 top-level provenance、document generation、loader attestation
 与 `NavigationId` 跨层关联，再签发新的 secret、public session id；不得仅相信存储的旧
-attestation。BFCache/back/forward restoration 同样取得新 generation、secret、public session id；
-backend 无法安全 attest/re-bootstrap 时必须 trusted reload。
+attestation。当前 history/BFCache restoration 路径将没有 fresh trusted start 的 internal
+commit 保持为 unauthenticated，detach 旧 page lifecycle，并调度新的 host-issued trusted load；
+新 load 重新取得 `NavigationId`、generation、secret 与 public session id。backend 无法安全
+attest/re-bootstrap 时必须继续 fail closed。
 
 新 window/tab 永不继承 opener 的 session、secret、outbound sink 或 pending navigation；
 它拥有独立 WebView instance identity、registry、bootstrap 和 lifecycle。
@@ -779,9 +782,9 @@ BCP-47 tag；这是 storage continuity，不是 public API alias。
 | DisplayLanguage service/lease | `crates/lingxia-lxapp/src/lxapp/display_language.rs`、`crates/lingxia-control-runtime/src/bridge.rs`、`crates/lingxia/src/{app.rs,display_language_host.rs}`、`crates/lingxia-logic/src/app.rs`、`packages/lingxia-types` |
 | Settings static destination | `crates/lingxia-app-context/src/lib.rs`、`tools/lingxia-cli/src/config.rs`、`crates/lingxia/src/{settings_target.rs,settings_destination.rs,bootstrap.rs}`、Apple `LxAppStaticSettingsSource.swift`、Windows `static_settings.rs`/shell runtime |
 
-当前仍需与并行实现合并后再补齐本文状态：HarmonyOS RequiredV3 provenance/outbound，以及
-BFCache/history restoration 的最终 backend 行为。它们未完成时保持 fail closed；本清单不把
-计划中的路径写成已支持。
+当前仍需后续实现并更新本文状态的是 HarmonyOS RequiredV3 provenance/outbound；完成前保持
+fail closed。BFCache/history restoration 已通过 fresh trusted reload 收口，Apple renderer
+termination 也会在上层 callback 前清除 committed generation。
 
 ### 第一阶段：显式 route policy 与资源边界
 
@@ -806,8 +809,8 @@ app/surface/browser-shell guards。退出条件：全 registry inventory 通过�
 
 ### 第二阶段：将 browser authority 绑定到 document
 
-落地状态：core registry/RequiredV3 与 Apple、Windows、Android API 23+ 已完成；HarmonyOS 与
-restoration 收口仍待并行分支集成，未集成前 fail closed。
+落地状态：core registry/RequiredV3、restoration trusted reload 与 Apple、Windows、Android
+API 23+ 已完成；HarmonyOS 未完成前 fail closed。
 
 1. 用现有 `NavigationId`、`NavigationProgress`、`Superseded` normalizer 建立
    `PendingNavigation`，新增 loader-to-commit 跨层关联、random secret、loader attestation、
