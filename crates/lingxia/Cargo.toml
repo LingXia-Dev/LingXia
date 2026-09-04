@@ -53,6 +53,8 @@ android-capture = ["realtime-capture", "lingxia-platform/android-capture-provide
 apple-capture = ["realtime-capture", "lingxia-platform/apple-capture-provider"]
 harmony-capture = ["realtime-capture", "lingxia-platform/harmony-capture-provider"]
 webview-input = ["lingxia-webview/webview-input"]
+# Experimental Android backend embedded through Servo's public Rust API.
+servo = ["lingxia-webview/servo"]
 
 [dependencies]
 rong_rt = { workspace = true, default-features = false }

@@ -12,13 +12,14 @@ import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.lingxia.lxapp.NativeComponents.NativeBridge
 import com.lingxia.webview.LingXiaWebView
+import com.lingxia.webview.LingXiaWebViewHost
 
 internal class WebView(context: Context) : LingXiaWebView(context) {
 
     companion object {
         private const val TAG = "LingXia.WebView"
 
-        fun findWebView(appId: String, path: String, sessionId: Long): WebView? {
+        fun findWebView(appId: String, path: String, sessionId: Long): LingXiaWebViewHost? {
             Log.d(TAG, "Finding WebView for appId: $appId, path: $path")
             return NativeApi.findWebView(appId, path, sessionId)
         }
@@ -76,13 +77,13 @@ internal class WebView(context: Context) : LingXiaWebView(context) {
         return super.onTouchEvent(event)
     }
 
-    fun pause() {
+    override fun pause() {
         Log.d(TAG, "Pausing WebView operations")
         NativeBridge.notifyPageInactive(this)
         onPause()
     }
 
-    fun resume() {
+    override fun resume() {
         Log.d(TAG, "Resuming WebView operations")
         onResume()
     }
