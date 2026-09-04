@@ -4,7 +4,7 @@ use super::bridge_transport::{
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::WebViewInputError;
-use crate::events::normalizer::{self, NativeNavigationResult, NativeSignal};
+use crate::events::normalizer::{self, NativeKey, NativeNavigationResult, NativeSignal};
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::input_helper::INPUT_HELPER_BOOTSTRAP;
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
@@ -2564,6 +2564,29 @@ impl WebViewInner {
         }
     }
 
+    /// Start a direct native HTML load and retain WebKit's exact navigation
+    /// object identity for the normalizer. Unlike `load_data`, this cannot be
+    /// fire-and-forget: the returned `WKNavigation*` is the only evidence that
+    /// binds a later commit to this host-initiated load.
+    fn load_trusted_data_on_main_thread(
+        &self,
+        request: LoadDataRequest<'_>,
+    ) -> Result<NativeKey, WebViewError> {
+        unsafe {
+            let data_nsstring = NSString::from_str(request.data);
+            let base_url_nsstring = NSString::from_str(request.base_url);
+            let Some(base_url) = NSURL::URLWithString(&base_url_nsstring) else {
+                return Err(WebViewError::WebView(format!(
+                    "Invalid base URL: {}",
+                    request.base_url
+                )));
+            };
+            let navigation: *mut WKNavigation =
+                msg_send![self.webview, loadHTMLString: &*data_nsstring, baseURL: &*base_url];
+            apple_navigation_key(navigation)
+        }
+    }
+
     /// Dispatch `body` through WKWebView's `callAsyncJavaScript:` selector —
     /// WebKit wraps `body` in an async function and natively awaits Promises
     /// before invoking the completion handler. Used by `eval_js` to give
@@ -4090,6 +4113,59 @@ impl WebViewInner {
     }
 }
 
+impl WebViewInner {
+    /// Execute `loadHTMLString:baseURL:` on WebKit's UI thread and return the
+    /// exact `WKNavigation*` from that same invocation. The synchronous hop is
+    /// intentional: issuing a trusted intent without this key must fail closed.
+    pub(crate) fn load_trusted_data(
+        &self,
+        request: LoadDataRequest<'_>,
+    ) -> Result<NativeKey, WebViewError> {
+        if MainThreadMarker::new().is_some() {
+            return self.load_trusted_data_on_main_thread(request);
+        }
+
+        let webview_retained_addr = self.retain_webview_for_dispatch();
+        let data = request.data.to_string();
+        let base_url = request.base_url.to_string();
+        let (tx, rx) = sync_channel(1);
+        DispatchQueue::main().exec_async(move || unsafe {
+            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
+            let result = load_trusted_html_with_navigation(webview, &data, &base_url);
+            let _ = tx.send(result);
+        });
+        rx.recv().map_err(|_| {
+            WebViewError::WebView("Apple trusted data load did not return a navigation key".into())
+        })?
+    }
+}
+
+fn apple_navigation_key(navigation: *mut WKNavigation) -> Result<NativeKey, WebViewError> {
+    if navigation.is_null() {
+        return Err(WebViewError::WebView(
+            "WKWebView did not return a navigation for trusted data load".to_string(),
+        ));
+    }
+    Ok(navigation as usize as NativeKey)
+}
+
+unsafe fn load_trusted_html_with_navigation(
+    webview: *mut AnyObject,
+    data: &str,
+    base_url: &str,
+) -> Result<NativeKey, WebViewError> {
+    let data = NSString::from_str(data);
+    let base_url_string = NSString::from_str(base_url);
+    let Some(base_url) = NSURL::URLWithString(&base_url_string) else {
+        return Err(WebViewError::WebView(format!(
+            "Invalid base URL: {base_url}"
+        )));
+    };
+    let navigation: *mut WKNavigation =
+        unsafe { msg_send![webview, loadHTMLString: &*data, baseURL: &*base_url] };
+    apple_navigation_key(navigation)
+}
+
 impl Drop for WebViewInner {
     fn drop(&mut self) {
         self.apple_bridge_transport.shutdown();
@@ -4472,5 +4548,15 @@ mod tests {
     fn apple_script_message_frame_is_preserved_without_binding_a_document() {
         assert_eq!(apple_message_frame(true), WebMessageFrame::TopLevel);
         assert_eq!(apple_message_frame(false), WebMessageFrame::Subframe);
+    }
+
+    #[test]
+    fn trusted_html_requires_a_non_null_navigation_key() {
+        assert!(apple_navigation_key(std::ptr::null_mut()).is_err());
+        let navigation = std::ptr::NonNull::<WKNavigation>::dangling().as_ptr();
+        assert_eq!(
+            apple_navigation_key(navigation).expect("non-null navigation key"),
+            navigation as usize as NativeKey
+        );
     }
 }

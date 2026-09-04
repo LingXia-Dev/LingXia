@@ -923,7 +923,14 @@ fn open_internal_browser_tab_with_scope(
 
     // Existing tab — load target URL if provided.
     if has_target_url {
-        match browser_load_url(&path, session_id, &normalized_target_url) {
+        let create_token = lock_state()
+            .tabs
+            .get(&tab_id)
+            .map(|tab| tab.create_token)
+            .ok_or_else(|| {
+                LxAppError::ResourceNotFound(format!("browser tab not found: {tab_id}"))
+            })?;
+        match browser_load_url(&path, session_id, create_token, &normalized_target_url) {
             Ok(()) => {
                 if let Some(s) = lock_state().tabs.get_mut(&tab_id) {
                     s.pending_url = None;

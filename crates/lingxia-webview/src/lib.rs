@@ -118,15 +118,16 @@ pub use traits::{
     FileChooserResponse, FillOptions, IncomingWebMessage, LoadDataRequest, LoadError,
     LoadErrorKind, NativeWebViewId, NavigationPolicy, NavigationRequest, NetworkBody,
     NetworkCaptureSnapshot, NetworkEntry, NewWindowPolicy, PressOptions, SchemeOutcome,
-    SchemeRequestFrame, ScrollOptions, SystemPipeReader, TypeOptions, UserAgentOverride,
-    WebMessageContext, WebMessageFrame, WebMessageSource, WebMessageTransport, WebResourceBody,
-    WebResourceResponse, WebViewController, WebViewCookie, WebViewCookieSameSite,
-    WebViewCookieSetRequest, WebViewDelegate, WebViewInputController,
+    SchemeRequestFrame, ScrollOptions, SystemPipeReader, TrustedDocumentAdmission,
+    TrustedLoadIntent, TypeOptions, UserAgentOverride, WebMessageContext, WebMessageFrame,
+    WebMessageSource, WebMessageTransport, WebResourceBody, WebResourceResponse, WebViewController,
+    WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest, WebViewDelegate,
+    WebViewInputController,
 };
 pub use webview::{
     BrowserWebViewBuilder, ProxyActivation, ProxyApplyReport, ProxyApplyStatus, ProxyConfig,
-    StrictWebViewBuilder, WebTag, WebView, WebViewBuilder, WebViewCreateStage, WebViewDataMode,
-    WebViewEvent, WebViewEventSubscription, WebViewSession,
+    StrictWebViewBuilder, TrustedDataLoadReservation, WebTag, WebView, WebViewBuilder,
+    WebViewCreateStage, WebViewDataMode, WebViewEvent, WebViewEventSubscription, WebViewSession,
 };
 
 /// Global website-data operations for privacy surfaces: usage counts,

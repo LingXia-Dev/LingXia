@@ -7,10 +7,14 @@ use super::{
     NavigationCancellationReason, NavigationEvent, NavigationId, WebViewEventObserver,
     WebViewObservedEvent, WebViewStateChange,
 };
-use crate::traits::{DocumentBinding, DocumentGeneration, LoadError, NativeWebViewId};
+use crate::traits::{
+    DocumentBinding, DocumentGeneration, LoadError, NativeWebViewId, TrustedDocumentAdmission,
+    TrustedLoadIntent,
+};
 use crate::webview::{WebTag, find_webview_delegate_by_native_view_id};
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 /// Backend-private correlation key (e.g. WebView2 navigation ID, WKNavigation
 /// identity). Meaningless outside one adapter.
@@ -69,6 +73,20 @@ enum Output {
         generation: DocumentGeneration,
         navigation_id: NavigationId,
     },
+    TrustedDocumentAdmitted(TrustedDocumentAdmission),
+}
+
+static NEXT_TRUSTED_LOAD_INTENT: AtomicU64 = AtomicU64::new(1);
+
+fn next_trusted_load_intent() -> TrustedLoadIntent {
+    // Like the native WebView identity, this value must never wrap: a stale
+    // token matching a future native load would be an authority escalation.
+    let raw = NEXT_TRUSTED_LOAD_INTENT
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .expect("trusted load intent space exhausted");
+    TrustedLoadIntent::new(raw)
 }
 
 /// Navigation identity and exactly-once terminal bookkeeping.
@@ -88,6 +106,10 @@ struct NavigationTracker {
     /// Recently terminated native keys: duplicate completion callbacks for
     /// an already-terminal attempt are dropped, not re-synthesized.
     recent_terminated: VecDeque<NativeKey>,
+    /// A just-finished success can still be the current committed document
+    /// when WebKit re-enters through didCommit/didFinish before loadHTMLString
+    /// returns its navigation object to Rust.
+    recent_succeeded: VecDeque<(NativeKey, NavigationId)>,
 }
 
 impl NavigationTracker {
@@ -99,6 +121,19 @@ impl NavigationTracker {
             Some(key) => self.by_key.get(&key).copied(),
             None => self.keyless_active,
         }
+    }
+
+    fn navigation_for_trusted_attestation(&self, key: NativeKey) -> Option<NavigationId> {
+        self.by_key.get(&key).copied().or_else(|| {
+            self.recent_succeeded
+                .iter()
+                .rev()
+                .find_map(|(finished_key, id)| (*finished_key == key).then_some(*id))
+        })
+    }
+
+    fn recently_terminated(&self, key: NativeKey) -> bool {
+        self.recent_terminated.contains(&key)
     }
 
     fn start(&mut self, webtag: &WebTag, key: Option<NativeKey>, url: String) -> Vec<Output> {
@@ -115,6 +150,8 @@ impl NavigationTracker {
                 // swallow the new attempt's completion.
                 self.recent_terminated
                     .retain(|terminated| *terminated != key);
+                self.recent_succeeded
+                    .retain(|(terminated, _)| *terminated != key);
                 let id = NavigationId::next();
                 self.by_key.insert(key, id);
                 self.active.push(id);
@@ -228,6 +265,13 @@ impl NavigationTracker {
             },
         };
 
+        if let (Some(key), NativeNavigationResult::Succeeded { .. }) = (key, &result) {
+            self.recent_succeeded.push_back((key, id));
+            if self.recent_succeeded.len() > 8 {
+                self.recent_succeeded.pop_front();
+            }
+        }
+
         out.push(Output::Nav(match result {
             NativeNavigationResult::Succeeded { final_url } => {
                 self.consume_next_orphan_success = false;
@@ -330,6 +374,10 @@ impl StateCoalescer {
 /// document which has actually committed in this native WebView.
 struct DocumentTracker {
     binding: DocumentBinding,
+    /// The key which produced `binding`, retained across a successful terminal
+    /// callback so a reentrant direct-loader attestation can still prove the
+    /// document is current.
+    current_key: Option<NativeKey>,
     next_generation: u64,
     /// An overlap from a backend without native attempt keys is permanently
     /// unresolvable for this WebView instance. Subsequent keyless commits may
@@ -360,6 +408,7 @@ impl Default for DocumentTracker {
     fn default() -> Self {
         Self {
             binding: DocumentBinding::Unbound,
+            current_key: None,
             next_generation: 0,
             keyless_tainted: false,
             pending: None,
@@ -386,6 +435,7 @@ impl DocumentTracker {
             }
             Some(key) => {
                 self.binding = DocumentBinding::Unbound;
+                self.current_key = None;
                 self.pending = Some(PendingDocumentCommit::Keyed {
                     key,
                     committed: false,
@@ -393,6 +443,7 @@ impl DocumentTracker {
             }
             None => {
                 self.binding = DocumentBinding::Unbound;
+                self.current_key = None;
                 let ambiguous = self.keyless_tainted
                     || matches!(self.pending, Some(PendingDocumentCommit::Keyless { .. }));
                 self.keyless_tainted |= ambiguous;
@@ -436,6 +487,7 @@ impl DocumentTracker {
             .checked_add(1)
             .expect("document generation sequence exhausted");
         self.binding = DocumentBinding::Bound(DocumentGeneration::new(self.next_generation));
+        self.current_key = key;
         true
     }
 
@@ -453,9 +505,168 @@ impl DocumentTracker {
         }
     }
 
+    /// Whether an issued trusted load may still bind this native key.
+    ///
+    /// A missing pending record is allowed only for the key-before-start race.
+    /// Once another keyed start has replaced this key, late platform attestation
+    /// is permanently ineligible rather than being retained for a future
+    /// callback.
+    fn trusted_attestation_state(&self, key: NativeKey) -> TrustedAttestationState {
+        match (self.current_key, self.binding, self.pending) {
+            (Some(current), DocumentBinding::Bound(generation), _) if current == key => {
+                TrustedAttestationState::CommittedCurrent(generation)
+            }
+            (
+                _,
+                _,
+                Some(PendingDocumentCommit::Keyed {
+                    key: pending,
+                    committed: false,
+                }),
+            ) if pending == key => TrustedAttestationState::AwaitingCommit,
+            (
+                _,
+                _,
+                Some(PendingDocumentCommit::Keyed {
+                    key: pending,
+                    committed: true,
+                }),
+            ) if pending == key => TrustedAttestationState::Rejected,
+            (_, _, None) => TrustedAttestationState::BeforeStart,
+            _ => TrustedAttestationState::Rejected,
+        }
+    }
+
     fn destroyed(&mut self) {
         self.binding = DocumentBinding::Unbound;
+        self.current_key = None;
         self.keyless_tainted = false;
+        self.pending = None;
+    }
+}
+
+#[derive(Clone, Copy)]
+enum TrustedAttestationState {
+    BeforeStart,
+    AwaitingCommit,
+    CommittedCurrent(DocumentGeneration),
+    Rejected,
+}
+
+/// One direct native HTML load may be awaiting platform correlation for this
+/// concrete WebView. A later explicit trusted load supersedes it before its
+/// platform callback can create authority.
+#[derive(Default)]
+struct TrustedLoadTracker {
+    pending: Option<TrustedLoadState>,
+}
+
+#[derive(Clone, Copy)]
+enum TrustedLoadState {
+    Issued {
+        intent: TrustedLoadIntent,
+    },
+    Attested {
+        intent: TrustedLoadIntent,
+        key: NativeKey,
+        navigation_id: Option<NavigationId>,
+    },
+}
+
+impl TrustedLoadTracker {
+    fn issue(&mut self) -> TrustedLoadIntent {
+        let intent = next_trusted_load_intent();
+        self.pending = Some(TrustedLoadState::Issued { intent });
+        intent
+    }
+
+    fn attest(
+        &mut self,
+        intent: TrustedLoadIntent,
+        key: NativeKey,
+        navigation_id: Option<NavigationId>,
+    ) -> bool {
+        if key == 0
+            || !matches!(self.pending, Some(TrustedLoadState::Issued { intent: issued }) if issued == intent)
+        {
+            return false;
+        }
+        self.pending = Some(TrustedLoadState::Attested {
+            intent,
+            key,
+            navigation_id,
+        });
+        true
+    }
+
+    fn navigation_started(&mut self, key: Option<NativeKey>, navigation_id: NavigationId) {
+        match self.pending {
+            // A matching native key may arrive before or after the platform
+            // returns it from loadHTMLString:. Redirect starts reuse that key
+            // and therefore cannot rebind the intent to another navigation.
+            Some(TrustedLoadState::Attested {
+                intent,
+                key: trusted_key,
+                navigation_id: None,
+            }) if key == Some(trusted_key) => {
+                self.pending = Some(TrustedLoadState::Attested {
+                    intent,
+                    key: trusted_key,
+                    navigation_id: Some(navigation_id),
+                });
+            }
+            Some(TrustedLoadState::Attested {
+                key: trusted_key, ..
+            }) if key != Some(trusted_key) => self.pending = None,
+            // An issued load has not yet disclosed a key. Keep it pending
+            // until the direct platform call returns its exact key; binding a
+            // different callback is impossible without that key.
+            _ => {}
+        }
+    }
+
+    fn navigation_finished(&mut self, key: Option<NativeKey>) {
+        if matches!(self.pending, Some(TrustedLoadState::Attested { key: trusted_key, .. }) if key == Some(trusted_key))
+        {
+            self.pending = None;
+        }
+    }
+
+    fn admit(
+        &mut self,
+        native_view: NativeWebViewId,
+        key: Option<NativeKey>,
+        navigation_id: NavigationId,
+        generation: DocumentGeneration,
+    ) -> Option<TrustedDocumentAdmission> {
+        let TrustedLoadState::Attested {
+            intent,
+            key: trusted_key,
+            navigation_id: Some(trusted_navigation_id),
+        } = self.pending?
+        else {
+            return None;
+        };
+        if key != Some(trusted_key) || navigation_id != trusted_navigation_id {
+            return None;
+        }
+        self.pending = None;
+        Some(TrustedDocumentAdmission::new(
+            native_view,
+            generation,
+            navigation_id,
+            intent,
+        ))
+    }
+
+    fn revoke(&mut self, intent: TrustedLoadIntent) {
+        if matches!(self.pending, Some(TrustedLoadState::Issued { intent: current } | TrustedLoadState::Attested { intent: current, .. }) if current == intent)
+        {
+            self.pending = None;
+        }
+    }
+
+    fn clear(&mut self) {
         self.pending = None;
     }
 }
@@ -463,6 +674,7 @@ impl DocumentTracker {
 struct NormalizerState {
     tracker: NavigationTracker,
     documents: DocumentTracker,
+    trusted_load: TrustedLoadTracker,
     coalescer: StateCoalescer,
     queue: VecDeque<Output>,
     draining: bool,
@@ -489,6 +701,7 @@ fn new_normalizer(webtag: &WebTag, native_view_id: NativeWebViewId) -> Arc<Event
         state: Mutex::new(NormalizerState {
             tracker: NavigationTracker::default(),
             documents: DocumentTracker::default(),
+            trusted_load: TrustedLoadTracker::default(),
             coalescer: StateCoalescer::default(),
             queue: VecDeque::new(),
             draining: false,
@@ -506,12 +719,106 @@ pub(crate) fn begin(webtag: &WebTag, native_view_id: NativeWebViewId) {
     match map.get(webtag.key()) {
         Some(existing) if existing.native_view_id == native_view_id => {}
         _ => {
+            if let Some(existing) = map.get(webtag.key()) {
+                existing.revoke_all_trusted_loads();
+            }
             map.insert(
                 webtag.key().to_string(),
                 new_normalizer(webtag, native_view_id),
             );
         }
     }
+}
+
+/// Issue a token before a platform direct-data-load call. The token is not
+/// authority until [`attest_trusted_load`] associates it with the native
+/// navigation object returned by that exact call.
+pub(crate) fn issue_trusted_load(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+) -> Option<TrustedLoadIntent> {
+    let normalizer = normalizer_for(webtag)?;
+    if normalizer.native_view_id != native_view_id {
+        return None;
+    }
+    let mut state = normalizer.state.lock().unwrap_or_else(|e| e.into_inner());
+    Some(state.trusted_load.issue())
+}
+
+/// Bind a just-issued token to the exact platform navigation key returned by
+/// the direct native load. It is valid whether the platform start callback
+/// arrived immediately before or after this function.
+pub(crate) fn attest_trusted_load(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+    intent: TrustedLoadIntent,
+    key: NativeKey,
+) -> bool {
+    let Some(normalizer) = normalizer_for(webtag) else {
+        return false;
+    };
+    if normalizer.native_view_id != native_view_id {
+        return false;
+    }
+    let mut state = normalizer.state.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(admission) = attest_trusted_load_state(&mut state, native_view_id, intent, key) else {
+        return false;
+    };
+    if let Some(admission) = admission {
+        state
+            .queue
+            .push_back(Output::TrustedDocumentAdmitted(admission));
+    }
+    normalizer.drain_locked(state);
+    true
+}
+
+/// Returns `None` for an ineligible key; `Some(None)` for an accepted load
+/// whose start has not committed yet; and an admission for the reentrant
+/// start → commit → platform-key ordering.
+fn attest_trusted_load_state(
+    state: &mut NormalizerState,
+    native_view_id: NativeWebViewId,
+    intent: TrustedLoadIntent,
+    key: NativeKey,
+) -> Option<Option<TrustedDocumentAdmission>> {
+    let navigation_id = state.tracker.navigation_for_trusted_attestation(key);
+    let document_state = state.documents.trusted_attestation_state(key);
+    if matches!(document_state, TrustedAttestationState::Rejected)
+        || (matches!(document_state, TrustedAttestationState::BeforeStart)
+            && navigation_id.is_none()
+            && state.tracker.recently_terminated(key))
+        || !state.trusted_load.attest(intent, key, navigation_id)
+    {
+        return None;
+    }
+    let admission = match (document_state, navigation_id) {
+        (TrustedAttestationState::CommittedCurrent(generation), Some(navigation_id)) => state
+            .trusted_load
+            .admit(native_view_id, Some(key), navigation_id, generation),
+        _ => None,
+    };
+    Some(admission)
+}
+
+/// Forget an issued token after a platform direct-load failure.
+pub(crate) fn revoke_trusted_load(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+    intent: TrustedLoadIntent,
+) {
+    let Some(normalizer) = normalizer_for(webtag) else {
+        return;
+    };
+    if normalizer.native_view_id != native_view_id {
+        return;
+    }
+    normalizer
+        .state
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .trusted_load
+        .revoke(intent);
 }
 
 /// Confirm that a ready WebView owns the normalizer lifecycle reserved for
@@ -587,11 +894,12 @@ impl EventNormalizer {
         let outputs = match signal {
             NativeSignal::NavigationStarted { key, url } => {
                 let outputs = state.tracker.start(&self.webtag, key, url);
-                if outputs
-                    .iter()
-                    .any(|output| matches!(output, Output::Nav(NavigationEvent::Started { .. })))
-                {
+                if let Some(navigation_id) = outputs.iter().find_map(|output| match output {
+                    Output::Nav(NavigationEvent::Started { id, .. }) => Some(*id),
+                    _ => None,
+                }) {
                     state.documents.started(key);
+                    state.trusted_load.navigation_started(key, navigation_id);
                 }
                 outputs
             }
@@ -602,13 +910,17 @@ impl EventNormalizer {
                     }
                     None => state.tracker.suppressed_keyless += 1,
                 }
+                // A policy-cancelled native navigation cannot later claim a
+                // trusted document even if its callback tail arrives late.
+                state.trusted_load.navigation_finished(key);
                 Vec::new()
             }
             NativeSignal::DocumentCommitted { key } => {
-                document_committed_outputs(&self.webtag, &mut state, key)
+                document_committed_outputs(&self.webtag, self.native_view_id, &mut state, key)
             }
             NativeSignal::NavigationFinished { key, result } => {
                 state.documents.finished(key);
+                state.trusted_load.navigation_finished(key);
                 state.tracker.finish(&self.webtag, key, result)
             }
             NativeSignal::LocationChanged { url } => state.coalescer.location(url),
@@ -620,14 +932,19 @@ impl EventNormalizer {
             } => state.coalescer.back_forward(can_go_back, can_go_forward),
             NativeSignal::Destroyed => {
                 state.documents.destroyed();
+                state.trusted_load.clear();
                 state.tracker.drain_destroyed()
             }
         };
         state.queue.extend(outputs);
 
-        // Flattened, non-reentrant FIFO drain: if a delegate callback causes
-        // another submission (same thread) or another thread submits while we
-        // drain, those events are appended and delivered by the active drain.
+        self.drain_locked(state);
+    }
+
+    // Flattened, non-reentrant FIFO drain: if a delegate callback causes
+    // another submission (same thread) or another thread submits while we
+    // drain, those events are appended and delivered by the active drain.
+    fn drain_locked<'a>(&'a self, mut state: MutexGuard<'a, NormalizerState>) {
         if state.draining {
             return;
         }
@@ -683,12 +1000,18 @@ impl EventNormalizer {
                     );
                 }
             }
+            Output::TrustedDocumentAdmitted(admission) => {
+                if let Some(delegate) = &delegate {
+                    delegate.on_trusted_document_admitted(*admission);
+                }
+            }
         }
     }
 }
 
 fn document_committed_outputs(
     webtag: &WebTag,
+    native_view_id: NativeWebViewId,
     state: &mut NormalizerState,
     key: Option<NativeKey>,
 ) -> Vec<Output> {
@@ -714,11 +1037,28 @@ fn document_committed_outputs(
                     navigation_id,
                 },
             );
+            if let Some(admission) =
+                state
+                    .trusted_load
+                    .admit(native_view_id, key, navigation_id, generation)
+            {
+                outputs.insert(1, Output::TrustedDocumentAdmitted(admission));
+            }
         } else {
             log::error!("{webtag}: accepted document commit had no active navigation");
         }
     }
     outputs
+}
+
+impl EventNormalizer {
+    fn revoke_all_trusted_loads(&self) {
+        self.state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .trusted_load
+            .clear();
+    }
 }
 
 fn notify_document_committed(
@@ -794,6 +1134,7 @@ mod tests {
         let mut state = NormalizerState {
             tracker: NavigationTracker::default(),
             documents: DocumentTracker::default(),
+            trusted_load: TrustedLoadTracker::default(),
             coalescer: StateCoalescer::default(),
             queue: VecDeque::new(),
             draining: false,
@@ -804,13 +1145,15 @@ mod tests {
             .tracker
             .start(&webtag, Some(11), "https://one/".into());
         state.documents.started(Some(11));
-        let accepted = document_committed_outputs(&webtag, &mut state, Some(11));
+        let accepted =
+            document_committed_outputs(&webtag, NativeWebViewId::new(1), &mut state, Some(11));
         assert!(matches!(
             accepted.first(),
             Some(Output::DocumentCommitted { generation, .. }) if *generation == DocumentGeneration::new(1)
         ));
 
-        let duplicate = document_committed_outputs(&webtag, &mut state, Some(11));
+        let duplicate =
+            document_committed_outputs(&webtag, NativeWebViewId::new(1), &mut state, Some(11));
         assert!(
             !duplicate
                 .iter()
@@ -821,7 +1164,8 @@ mod tests {
             .tracker
             .start(&webtag, Some(12), "https://two/".into());
         state.documents.started(Some(12));
-        let stale = document_committed_outputs(&webtag, &mut state, Some(11));
+        let stale =
+            document_committed_outputs(&webtag, NativeWebViewId::new(1), &mut state, Some(11));
         assert!(
             !stale
                 .iter()
@@ -831,6 +1175,7 @@ mod tests {
         let mut keyless = NormalizerState {
             tracker: NavigationTracker::default(),
             documents: DocumentTracker::default(),
+            trusted_load: TrustedLoadTracker::default(),
             coalescer: StateCoalescer::default(),
             queue: VecDeque::new(),
             draining: false,
@@ -840,12 +1185,287 @@ mod tests {
         keyless.documents.started(None);
         keyless.tracker.start(&webtag, None, "https://two/".into());
         keyless.documents.started(None);
-        let tainted = document_committed_outputs(&webtag, &mut keyless, None);
+        let tainted =
+            document_committed_outputs(&webtag, NativeWebViewId::new(1), &mut keyless, None);
         assert!(
             !tainted
                 .iter()
                 .any(|output| matches!(output, Output::DocumentCommitted { .. }))
         );
+    }
+
+    #[test]
+    fn trusted_load_admission_binds_the_returned_key_before_or_after_start() {
+        let webtag = tag("trusted-load-admission");
+        let native_view = NativeWebViewId::new(19);
+        let mut state = NormalizerState {
+            tracker: NavigationTracker::default(),
+            documents: DocumentTracker::default(),
+            trusted_load: TrustedLoadTracker::default(),
+            coalescer: StateCoalescer::default(),
+            queue: VecDeque::new(),
+            draining: false,
+            observers: Vec::new(),
+        };
+
+        // WebKit may report didStart before the host thread regains control
+        // from loadHTMLString: and can submit the returned key for attestation.
+        let started = state
+            .tracker
+            .start(&webtag, Some(71), "https://assets.example/".into());
+        let navigation_id = match started.as_slice() {
+            [Output::Nav(NavigationEvent::Started { id, .. })] => *id,
+            _ => panic!("expected one accepted navigation start"),
+        };
+        state.documents.started(Some(71));
+        let intent = state.trusted_load.issue();
+        assert!(
+            state
+                .trusted_load
+                .attest(intent, 71, state.tracker.active_for_commit(Some(71)))
+        );
+
+        // A redirect restart shares WebKit's navigation object and cannot
+        // create a replacement NavigationId or rebind this intent.
+        assert!(
+            state
+                .tracker
+                .start(&webtag, Some(71), "https://assets.example/redirect".into())
+                .is_empty()
+        );
+
+        let committed = document_committed_outputs(&webtag, native_view, &mut state, Some(71));
+        let admission = committed.iter().find_map(|output| match output {
+            Output::TrustedDocumentAdmitted(admission) => Some(*admission),
+            _ => None,
+        });
+        let admission = admission.expect("matching trusted load must be admitted once");
+        assert_eq!(admission.native_view(), native_view);
+        assert_eq!(admission.navigation_id(), navigation_id);
+        assert_eq!(admission.generation(), DocumentGeneration::new(1));
+        // TrustedLoadIntent intentionally has no Debug implementation, so a
+        // failing assertion must not expose the opaque capability in logs.
+        assert!(admission.intent() == intent);
+
+        let duplicate = document_committed_outputs(&webtag, native_view, &mut state, Some(71));
+        assert!(
+            !duplicate
+                .iter()
+                .any(|output| matches!(output, Output::TrustedDocumentAdmitted(_)))
+        );
+    }
+
+    #[test]
+    fn trusted_load_is_revoked_by_supersede_terminal_failure_and_drop() {
+        let mut trusted = TrustedLoadTracker::default();
+        let first = trusted.issue();
+        assert!(trusted.attest(first, 1, Some(NavigationId::next())));
+        trusted.navigation_started(Some(2), NavigationId::next());
+        assert!(
+            trusted
+                .admit(
+                    NativeWebViewId::new(1),
+                    Some(1),
+                    NavigationId::next(),
+                    DocumentGeneration::new(1)
+                )
+                .is_none()
+        );
+
+        let second = trusted.issue();
+        let second_navigation = NavigationId::next();
+        assert!(trusted.attest(second, 2, Some(second_navigation)));
+        trusted.navigation_finished(Some(2));
+        assert!(
+            trusted
+                .admit(
+                    NativeWebViewId::new(1),
+                    Some(2),
+                    second_navigation,
+                    DocumentGeneration::new(2)
+                )
+                .is_none()
+        );
+
+        let third = trusted.issue();
+        // Reservation Drop and an immediate platform-load error use the same
+        // explicit revoke path; neither can leave a later callback eligible.
+        trusted.revoke(third);
+        assert!(!trusted.attest(third, 3, None));
+
+        let fourth = trusted.issue();
+        trusted.clear();
+        assert!(!trusted.attest(fourth, 4, None));
+    }
+
+    #[test]
+    fn trusted_load_key_can_arrive_before_navigation_start() {
+        let webtag = tag("trusted-load-key-first");
+        let native_view = NativeWebViewId::new(23);
+        let mut state = NormalizerState {
+            tracker: NavigationTracker::default(),
+            documents: DocumentTracker::default(),
+            trusted_load: TrustedLoadTracker::default(),
+            coalescer: StateCoalescer::default(),
+            queue: VecDeque::new(),
+            draining: false,
+            observers: Vec::new(),
+        };
+
+        let intent = state.trusted_load.issue();
+        assert!(state.trusted_load.attest(intent, 83, None));
+        let started = state
+            .tracker
+            .start(&webtag, Some(83), "https://assets.example/".into());
+        let navigation_id = match started.as_slice() {
+            [Output::Nav(NavigationEvent::Started { id, .. })] => *id,
+            _ => panic!("expected one accepted navigation start"),
+        };
+        state.documents.started(Some(83));
+        state
+            .trusted_load
+            .navigation_started(Some(83), navigation_id);
+
+        let committed = document_committed_outputs(&webtag, native_view, &mut state, Some(83));
+        assert!(committed.iter().any(|output| {
+            matches!(output, Output::TrustedDocumentAdmitted(admission) if admission.intent() == intent)
+        }));
+    }
+
+    #[test]
+    fn late_trusted_attestation_admits_a_current_reentrant_commit_once() {
+        let webtag = tag("trusted-load-commit-before-attest");
+        let native_view = NativeWebViewId::new(29);
+        let mut state = NormalizerState {
+            tracker: NavigationTracker::default(),
+            documents: DocumentTracker::default(),
+            trusted_load: TrustedLoadTracker::default(),
+            coalescer: StateCoalescer::default(),
+            queue: VecDeque::new(),
+            draining: false,
+            observers: Vec::new(),
+        };
+        let intent = state.trusted_load.issue();
+        let started = state
+            .tracker
+            .start(&webtag, Some(91), "https://assets.example/".into());
+        let navigation_id = match started.as_slice() {
+            [Output::Nav(NavigationEvent::Started { id, .. })] => *id,
+            _ => panic!("expected one accepted navigation start"),
+        };
+        state.documents.started(Some(91));
+        state
+            .trusted_load
+            .navigation_started(Some(91), navigation_id);
+        let committed = document_committed_outputs(&webtag, native_view, &mut state, Some(91));
+        assert!(
+            !committed
+                .iter()
+                .any(|output| matches!(output, Output::TrustedDocumentAdmitted(_)))
+        );
+
+        let admission = attest_trusted_load_state(&mut state, native_view, intent, 91)
+            .expect("current committed key remains eligible")
+            .expect("late exact key must admit once");
+        assert!(admission.intent() == intent);
+        assert_eq!(admission.native_view(), native_view);
+        assert_eq!(admission.navigation_id(), navigation_id);
+        assert_eq!(admission.generation(), DocumentGeneration::new(1));
+        assert!(attest_trusted_load_state(&mut state, native_view, intent, 91).is_none());
+    }
+
+    #[test]
+    fn late_trusted_attestation_cannot_claim_a_superseded_document() {
+        let webtag = tag("trusted-load-superseded-before-attest");
+        let native_view = NativeWebViewId::new(31);
+        let mut state = NormalizerState {
+            tracker: NavigationTracker::default(),
+            documents: DocumentTracker::default(),
+            trusted_load: TrustedLoadTracker::default(),
+            coalescer: StateCoalescer::default(),
+            queue: VecDeque::new(),
+            draining: false,
+            observers: Vec::new(),
+        };
+        let intent = state.trusted_load.issue();
+        let first = state
+            .tracker
+            .start(&webtag, Some(101), "https://assets.example/one".into());
+        let first_id = match first.as_slice() {
+            [Output::Nav(NavigationEvent::Started { id, .. })] => *id,
+            _ => panic!("expected one accepted navigation start"),
+        };
+        state.documents.started(Some(101));
+        state.trusted_load.navigation_started(Some(101), first_id);
+        document_committed_outputs(&webtag, native_view, &mut state, Some(101));
+
+        let second = state
+            .tracker
+            .start(&webtag, Some(102), "https://assets.example/two".into());
+        let second_id = match second.as_slice() {
+            [Output::Nav(NavigationEvent::Started { id, .. })] => *id,
+            _ => panic!("expected one accepted navigation start"),
+        };
+        state.documents.started(Some(102));
+        state.trusted_load.navigation_started(Some(102), second_id);
+
+        assert!(attest_trusted_load_state(&mut state, native_view, intent, 101).is_none());
+        assert!(matches!(
+            state.documents.current(),
+            DocumentBinding::Unbound
+        ));
+    }
+
+    #[test]
+    fn late_trusted_attestation_rejects_a_failed_navigation() {
+        let webtag = tag("trusted-load-failed-before-attest");
+        let native_view = NativeWebViewId::new(37);
+        let mut state = NormalizerState {
+            tracker: NavigationTracker::default(),
+            documents: DocumentTracker::default(),
+            trusted_load: TrustedLoadTracker::default(),
+            coalescer: StateCoalescer::default(),
+            queue: VecDeque::new(),
+            draining: false,
+            observers: Vec::new(),
+        };
+        let intent = state.trusted_load.issue();
+        let started = state
+            .tracker
+            .start(&webtag, Some(111), "https://assets.example/".into());
+        let navigation_id = match started.as_slice() {
+            [Output::Nav(NavigationEvent::Started { id, .. })] => *id,
+            _ => panic!("expected one accepted navigation start"),
+        };
+        state.documents.started(Some(111));
+        state
+            .trusted_load
+            .navigation_started(Some(111), navigation_id);
+        state.documents.finished(Some(111));
+        state.tracker.finish(
+            &webtag,
+            Some(111),
+            NativeNavigationResult::Failed(LoadError {
+                failing_url: Some("https://assets.example/".into()),
+                kind: LoadErrorKind::Network,
+                description: "test failure".into(),
+            }),
+        );
+
+        assert!(attest_trusted_load_state(&mut state, native_view, intent, 111).is_none());
+    }
+
+    #[test]
+    fn stale_native_identity_cannot_late_attest_a_retired_normalizer() {
+        let webtag = tag("trusted-load-stale-native-attest");
+        let retired = NativeWebViewId::new(401);
+        let replacement = NativeWebViewId::new(402);
+        super::begin(&webtag, retired);
+        let intent = issue_trusted_load(&webtag, retired).expect("active reservation");
+        super::begin(&webtag, replacement);
+
+        assert!(!attest_trusted_load(&webtag, retired, intent, 1));
+        destroy(&webtag);
     }
 
     fn test_native_view_id(webtag: &WebTag) -> NativeWebViewId {

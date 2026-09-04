@@ -3,11 +3,12 @@
 
 use crate::BUILTIN_BROWSER_APPID;
 use crate::chooser::browser_choose_files;
+use crate::document_session::{BrowserDocumentSessions, browser_document_sessions};
 use crate::downloads::browser_download_resource;
 use crate::internal_pages::{
     LingxiaSchemeContext, browser_attach_tab_page, browser_document_scripts_snapshot,
-    browser_resolve_delegate_context, browser_resolve_delegate_page, ensure_browser_startup_page,
-    handle_browser_lingxia_scheme,
+    browser_load_internal_document, browser_resolve_delegate_context,
+    browser_resolve_delegate_page, ensure_browser_startup_page, handle_browser_lingxia_scheme,
 };
 use crate::policy::{
     BrowserNavigationPolicySession, LINGXIA_SCHEME, extract_url_scheme,
@@ -26,10 +27,11 @@ use lingxia_webview::runtime::{
     find_webview as find_managed_webview,
 };
 use lingxia_webview::{
-    IncomingWebMessage, LoadDataRequest, LoadError, LoadErrorPage, LogLevel, NavigationEvent,
-    NavigationPolicy, NavigationProgress, NewWindowPolicy, UserAgentOverride, WebTag, WebView,
-    WebViewBuilder, WebViewController, WebViewDataMode, WebViewDelegate, WebViewSession,
-    WebViewStateChange, render_load_error_page,
+    IncomingWebMessage, LoadDataRequest, LoadError, LoadErrorPage, LogLevel, NativeWebViewId,
+    NavigationEvent, NavigationPolicy, NavigationProgress, NewWindowPolicy,
+    TrustedDocumentAdmission, UserAgentOverride, WebTag, WebView, WebViewBuilder,
+    WebViewController, WebViewDataMode, WebViewDelegate, WebViewSession, WebViewStateChange,
+    render_load_error_page,
 };
 use lxapp::LxAppError;
 use serde_json::Value;
@@ -55,6 +57,8 @@ struct BrowserTabDelegate {
     data_mode: WebViewDataMode,
     url_callback: Arc<AtomicBool>,
     standalone: bool,
+    documents: Arc<BrowserDocumentSessions>,
+    native_view: std::sync::Mutex<Option<NativeWebViewId>>,
     navigation: std::sync::Mutex<BrowserTabNavigationState>,
 }
 
@@ -79,6 +83,16 @@ fn is_error_document_url(url: &str) -> bool {
 }
 
 impl BrowserTabDelegate {
+    fn bind_native_view(&self, native_view: NativeWebViewId) {
+        if let Ok(mut slot) = self.native_view.lock() {
+            *slot = Some(native_view);
+        }
+    }
+
+    fn native_view(&self) -> Option<NativeWebViewId> {
+        self.native_view.lock().ok().and_then(|slot| *slot)
+    }
+
     fn records_browser_history(&self) -> bool {
         self.data_mode != WebViewDataMode::Ephemeral
             && !self.url_callback.load(Ordering::Acquire)
@@ -159,14 +173,17 @@ impl WebViewDelegate for BrowserTabDelegate {
         let mut navigation = self.navigation.lock().unwrap_or_else(|e| e.into_inner());
         navigation.progress.apply(&event);
         match &event {
-            NavigationEvent::Started { requested_url, .. } => {
+            NavigationEvent::Started { id, requested_url } => {
+                let trusted_start = self
+                    .native_view()
+                    .is_some_and(|native_view| self.documents.navigation_started(native_view, *id));
                 if is_error_document_url(requested_url) {
                     navigation.showing_error_page = true;
                     return;
                 }
                 navigation.showing_error_page = false;
                 drop(navigation);
-                if !self.document_is_internal() {
+                if !trusted_start && !self.document_is_internal() {
                     return;
                 }
                 match browser_resolve_delegate_page(&self.page_path, self.session_id) {
@@ -240,6 +257,17 @@ impl WebViewDelegate for BrowserTabDelegate {
             // handoff); it never surfaces error UI or touches tab state.
             NavigationEvent::Cancelled { .. } => {}
         }
+    }
+
+    fn on_trusted_document_admitted(&self, admission: TrustedDocumentAdmission) {
+        if self.native_view() != Some(admission.native_view()) {
+            return;
+        }
+        // This records native evidence only. Bridge and route admission remain
+        // unchanged in this commit.
+        let _ = self
+            .documents
+            .admit(self.session_id, self.create_token, admission);
     }
 
     fn on_webview_state_change(&self, change: WebViewStateChange) {
@@ -405,6 +433,7 @@ pub(crate) fn browser_create_webview(
 
     let tab_id_for_lx = tab_id_owned.clone();
     let tab_path_for_lx = tab_path_owned.clone();
+    let documents = browser_document_sessions();
     let lingxia_ctx = Arc::new(LingxiaSchemeContext {
         browser: browser_owner.clone(),
         startup_path: browser_owner.initial_route(),
@@ -426,18 +455,21 @@ pub(crate) fn browser_create_webview(
     let policy_session_for_navigation = Arc::new(std::sync::Mutex::new(
         BrowserNavigationPolicySession::default(),
     ));
+    let delegate = Arc::new(BrowserTabDelegate {
+        tab_id: tab_id_owned.clone(),
+        page_path: tab_path_owned.clone(),
+        session_id,
+        create_token,
+        data_mode,
+        url_callback: url_callback.clone(),
+        standalone,
+        documents: documents.clone(),
+        native_view: std::sync::Mutex::new(None),
+        navigation: std::sync::Mutex::new(BrowserTabNavigationState::default()),
+    });
     let session = WebViewBuilder::browser(webtag)
         .data_mode(data_mode)
-        .delegate(Arc::new(BrowserTabDelegate {
-            tab_id: tab_id_owned.clone(),
-            page_path: tab_path_owned.clone(),
-            session_id,
-            create_token,
-            data_mode,
-            url_callback: url_callback.clone(),
-            standalone,
-            navigation: std::sync::Mutex::new(BrowserTabNavigationState::default()),
-        }))
+        .delegate(delegate.clone())
         .on_scheme("lx", move |req| {
             let tab_id = tab_id_for_lx.clone();
             let tab_path = tab_path_for_lx.clone();
@@ -571,6 +603,8 @@ pub(crate) fn browser_create_webview(
             tab_id_owned,
             create_token,
             session,
+            delegate,
+            documents,
         )
         .await;
     });
@@ -583,6 +617,8 @@ async fn browser_on_webview_ready(
     tab_id: String,
     create_token: u64,
     session: WebViewSession,
+    delegate: Arc<BrowserTabDelegate>,
+    documents: Arc<BrowserDocumentSessions>,
 ) {
     let webview = match session.wait_ready().await {
         Ok(webview) => webview,
@@ -596,6 +632,7 @@ async fn browser_on_webview_ready(
             return;
         }
     };
+    delegate.bind_native_view(webview.native_view_id());
     let tab_state = browser_tab_create_state(&tab_id, session_id, create_token);
     match tab_state {
         TabCreateState::Missing => {
@@ -629,8 +666,10 @@ async fn browser_on_webview_ready(
                 if is_browser_internal {
                     if let Err(e) = browser_attach_tab_page(
                         webview.clone(),
+                        &documents,
                         &path,
                         session_id,
+                        create_token,
                         &tab_id,
                         Some(url.as_str()),
                     )
@@ -671,8 +710,16 @@ async fn browser_on_webview_ready(
                 }
             } else {
                 // Startup page: attach WebView to the tab's headless PageInstance, then load with nonce.
-                if let Err(e) =
-                    browser_attach_tab_page(webview.clone(), &path, session_id, &tab_id, None).await
+                if let Err(e) = browser_attach_tab_page(
+                    webview.clone(),
+                    &documents,
+                    &path,
+                    session_id,
+                    create_token,
+                    &tab_id,
+                    None,
+                )
+                .await
                 {
                     lxapp::warn!(
                         "[InternalBrowser] Failed to load startup page for tab {}: {}",
@@ -707,8 +754,23 @@ pub(crate) fn browser_find_webview(
     })
 }
 
-pub(crate) fn browser_load_url(path: &str, session_id: u64, url: &str) -> Result<(), LxAppError> {
+pub(crate) fn browser_load_url(
+    path: &str,
+    session_id: u64,
+    create_token: u64,
+    url: &str,
+) -> Result<(), LxAppError> {
     let webview = browser_find_webview(path, session_id)?;
+    if extract_url_scheme(url).as_deref() == Some(LINGXIA_SCHEME) {
+        return browser_load_internal_document(
+            webview,
+            &browser_document_sessions(),
+            path,
+            session_id,
+            create_token,
+            url,
+        );
+    }
     webview.load_url(url).map_err(LxAppError::from)
 }
 
@@ -718,6 +780,7 @@ pub(crate) fn browser_destroy_webview_if_matches(
     expected: &Arc<WebView>,
 ) -> bool {
     let webtag = browser_webtag(path, session_id);
+    browser_document_sessions().destroy_native_view(expected.native_view_id());
     destroy_managed_webview_if_matches(&webtag, expected)
 }
 
