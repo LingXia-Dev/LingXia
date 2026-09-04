@@ -609,6 +609,7 @@ pub struct LxApp {
     pub user_data_dir: PathBuf,
     pub user_cache_dir: PathBuf,
     pub temp_dir: PathBuf,
+    temp_cleanup_protection: Option<crate::cache::CleanupProtection>,
     pub fingermark: String,
     pub is_home_lxapp: bool,
     pub(crate) release_type: ReleaseType,
@@ -1625,6 +1626,7 @@ impl LxApp {
             user_data_dir: PathBuf::new(),
             user_cache_dir: PathBuf::new(),
             temp_dir: PathBuf::new(),
+            temp_cleanup_protection: None,
             fingermark: String::new(),
             is_home_lxapp: false,
             release_type,
@@ -1769,12 +1771,14 @@ impl LxApp {
                     .file_name()
                     .and_then(|name| name.to_str())
                     .is_some_and(|name| name != self.session_id().to_string());
-                if stale && path.is_dir() {
+                if stale && path.is_dir() && !crate::cache::is_protected_from_cleanup(&path) {
                     let _ = std::fs::remove_dir_all(path);
                 }
             }
         }
         self.temp_dir = temp_base_dir.join(self.session_id().to_string());
+        self.temp_cleanup_protection =
+            Some(crate::cache::protect_from_cleanup([self.temp_dir.clone()]));
         if !self.temp_dir.exists() {
             std::fs::create_dir_all(&self.temp_dir).map_err(|e| {
                 LxAppError::IoError(format!("Failed to create temp directory: {}", e))

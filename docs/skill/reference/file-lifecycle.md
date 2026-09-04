@@ -198,7 +198,9 @@ refresh it explicitly with `lx.fs.stat(path)` / `lx.fs.exists(path)` at session
 start.
 
 **User data** is never auto-cleaned to satisfy quota. It is deleted only by
-explicit delete APIs, lxapp uninstall, or the user clearing app data. Writes
+explicit delete APIs, lxapp uninstall, or the user clearing app data — notably
+*not* by `lx.app.cache.clear()`, which is a cache control and never touches
+userdata. Writes
 that would exceed `dataMaxSizeMB` fail with `USERDATA_QUOTA_EXCEEDED`; writes
 that would exceed `appStorageMaxSizeMB` first trigger usercache cleanup, then
 fail with `APP_STORAGE_QUOTA_EXCEEDED`. Quota failures are ordinary errors to
@@ -209,6 +211,60 @@ succeed.
 first. `lx.fs` writes and `downloadFile` finalization then evict LRU
 usercache (never userdata) and retry once; if the retry still fails, the IO
 error surfaces to the caller and the lxapp should tell the user.
+
+## Clearing the product's cache
+
+A settings screen's "clear cache" control is backed by `lx.app.cache`:
+
+```ts
+const bytes = await lx.app.cache.size();
+const freed = await lx.app.cache.clear();
+```
+
+It is **app-scoped, not lxapp-scoped**: the figure a user sees covers the whole
+product, so it spans every lxapp the host has run. That is also why it is
+**restricted to the home lxapp** — an ordinary lxapp clearing every other
+lxapp's cache is not a capability it should have. Other callers get a
+permission error, the same as `checkUpdate` and `screenshot`.
+
+What `clear()` drops:
+
+| | Why it is safe |
+| --- | --- |
+| every lxapp's `lx://usercache` | regenerable by contract, already LRU-evicted |
+| every **idle** session's temp | disposable by definition |
+| shared runtime artwork | re-fetched on demand |
+| the WebView's regenerable HTTP cache | re-fetched on demand; cookies and logins are untouched |
+| orphaned lxapp installs and staged update archives | referenced by no record, so nothing can load them |
+
+What it never touches — none of these are regenerable, so removing them behind
+a "clear cache" control is data loss, not maintenance:
+
+- `lx://userdata` for any lxapp
+- the `lx.getStorage` key-value store
+- files in the user's Downloads directory
+- installed lxapp packages
+- cookies and site data, so nobody is signed out — clearing those logs the user
+  out of every site, which is a different control with a different name; the
+  browser shell exposes it separately as `privacy.clearBrowsingData`
+- any install or staged archive a record still points at, or anything written in
+  the last hour: an install is unpacked before its record is written, so a
+  narrower rule would delete the very update the user is waiting for
+- install, download, and session paths currently owned by active runtime work;
+  unreadable or future timestamps are kept rather than guessed to be garbage
+
+The **live session's temp is preserved** for every lxapp that is currently
+running: those files back in-flight work — an upload body, a preview being
+written — and the app that owns them has no way to notice they vanished.
+
+`size()` counts LingXia-managed files only. The WebView's HTTP cache is
+excluded because the platform stores report a site count rather than a byte
+total, and any figure would be invented — so `clear()` usually frees more than
+`size()` reported. Present the number as a lower bound. Platforms without a
+WebView cache API simply skip that part rather than failing the call. If any
+LingXia-managed path cannot be removed, `clear()` still attempts the remaining
+categories and then rejects so the UI cannot mistake a partial clear for full
+success.
 
 ## Storage Summary
 
@@ -232,3 +288,5 @@ usercache     -> lx://usercache/<path>
 - Use `downloadFile({ filePath })` only for durable userdata destinations.
 - Do not pass `lx://usercache`, host download directories, or native paths to `downloadFile.filePath`.
 - Do not store business-critical references to `tempFilePath`.
+- Use `lx.app.cache` from the home lxapp for a product-wide "clear cache"
+  control; it is unavailable to other lxapps.

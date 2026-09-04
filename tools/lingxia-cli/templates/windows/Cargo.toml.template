@@ -29,6 +29,9 @@ cloud = ["host/cloud"]  # activated by `--with-provider cloud`
 # with the published `windows` pulled in by lingxia-platform/-webview.
 lingxia-windows-sdk = { git = "https://github.com/LingXia-Dev/LingXia.git", {{LINGXIA_WINDOWS_SDK_GIT_REF}}, package = "lingxia-windows-sdk", default-features = false }
 host = { package = "{{HOST_CRATE_NAME}}", path = "../{{HOST_CRATE_NAME}}", default-features = false }
+# 1.13.0 does not compile (Lokathor/tinyvec#225). A generated Windows host is
+# its own workspace, so the first `lingxia dev` re-resolves from crates.io.
+tinyvec = "=1.12.0"
 
 [build-dependencies]
 lingxia-windows-build = { version = "{{LINGXIA_VERSION}}" }

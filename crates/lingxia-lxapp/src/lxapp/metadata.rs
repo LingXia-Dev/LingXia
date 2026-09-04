@@ -1,6 +1,7 @@
 use lingxia_update::{ReleaseType, SemanticVersion};
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::fmt;
 use std::fs;
 use std::path::PathBuf;
@@ -314,4 +315,53 @@ pub(crate) fn downloaded_upsert(
     txn.commit()
         .map_err(|e| metadata_error("commit downloaded write", e))?;
     Ok(())
+}
+
+/// Every install directory some record still points at. The survivor set for
+/// sweeping orphaned installs: an extraction that outlived its record — a
+/// crash between unpack and upsert, or an old version whose best-effort removal
+/// failed — is referenced by nothing and is pure garbage.
+pub(crate) fn installed_paths() -> Result<BTreeSet<String>, LxAppError> {
+    let db = database()?;
+    let txn = db
+        .begin_read()
+        .map_err(|e| metadata_error("begin read transaction", e))?;
+    let table = txn
+        .open_table(INSTALLED_TABLE)
+        .map_err(|e| metadata_error("open installed table", e))?;
+    let mut paths = BTreeSet::new();
+    for entry in table
+        .iter()
+        .map_err(|e| metadata_error("iterate installed records", e))?
+    {
+        let (_, value) = entry.map_err(|e| metadata_error("read installed record", e))?;
+        let record: LxAppRecord = serde_json::from_slice(value.value())?;
+        if !record.install_path.trim().is_empty() {
+            paths.insert(record.install_path);
+        }
+    }
+    Ok(paths)
+}
+
+/// Every staged update archive a pending record still points at.
+pub(crate) fn downloaded_archives() -> Result<BTreeSet<String>, LxAppError> {
+    let db = database()?;
+    let txn = db
+        .begin_read()
+        .map_err(|e| metadata_error("begin read transaction", e))?;
+    let table = txn
+        .open_table(DOWNLOADED_TABLE)
+        .map_err(|e| metadata_error("open downloaded table", e))?;
+    let mut paths = BTreeSet::new();
+    for entry in table
+        .iter()
+        .map_err(|e| metadata_error("iterate downloaded records", e))?
+    {
+        let (_, value) = entry.map_err(|e| metadata_error("read downloaded record", e))?;
+        let record: PendingUpdateRecord = serde_json::from_slice(value.value())?;
+        if !record.zip_path.trim().is_empty() {
+            paths.insert(record.zip_path);
+        }
+    }
+    Ok(paths)
 }

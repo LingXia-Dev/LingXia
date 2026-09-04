@@ -63,6 +63,7 @@ export default {
     { "api": "lx.stopPullDownRefresh", "mode": "automated", "owner": "PULL-001" },
     { "api": "lx.share", "mode": "external-ui", "owner": "PEND-SHARE-001" },
     { "api": "lx.app.autostart", "mode": "automated", "owner": "HOSTAPP-AUTOSTART-001" },
+    { "api": "lx.app.cache", "mode": "automated", "owner": "HOSTAPP-CACHE-001" },
     { "api": "lx.getSystemSetting", "mode": "automated", "owner": "SYSTEM-001" },
     { "api": "lx.supports", "mode": "automated", "owner": "LOGIC-006" },
     { "api": "lx.getStorage", "mode": "automated", "owner": "TODO-001" },
