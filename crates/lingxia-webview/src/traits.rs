@@ -1095,6 +1095,11 @@ pub trait WebViewDelegate: Send + Sync {
     /// document authority before allowing a replacement to load.
     fn on_web_content_process_terminated(&self, _native_view: NativeWebViewId) {}
 
+    /// A backend proved that a previously committed document was restored
+    /// without a fresh native start/commit chain (for example from BFCache).
+    /// The adapter revokes its generation before invoking this hook.
+    fn on_document_restored(&self, _native_view: NativeWebViewId, _url: &str) {}
+
     /// Handles a postMessage from the page View(WebView).
     ///
     /// The context is assembled only by the platform adapter and must travel

@@ -409,6 +409,19 @@ impl WebViewDelegate for BrowserTabDelegate {
         }
     }
 
+    fn on_document_restored(&self, native_view: NativeWebViewId, url: &str) {
+        if self.native_view() != Some(native_view) {
+            return;
+        }
+        if let Some(authority) = self.documents.destroy_native_view(native_view) {
+            self.revoke_document_authority(authority);
+        }
+        crate::internal_pages::detach_internal_tab_page(&self.page_path);
+        if extract_url_scheme(url).as_deref() == Some(LINGXIA_SCHEME) {
+            self.schedule_trusted_internal_reload(url.to_owned(), "restored document");
+        }
+    }
+
     fn on_webview_state_change(&self, change: WebViewStateChange) {
         if self
             .navigation

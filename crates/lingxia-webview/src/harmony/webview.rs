@@ -4,7 +4,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use crate::events::normalizer::{self, NativeNavigationResult, NativeSignal};
 use crate::harmony::schemehandler::set_webview_scheme_handler;
 use crate::harmony::tsfn::call_arkts;
-use crate::harmony_document::{HarmonyDocumentAuthority, PageBegin};
+use crate::harmony_document::{DocumentCommit, HarmonyDocumentAuthority, PageBegin};
 use crate::input_helper::{build_async_eval_body, new_eval_token, parse_wrapped_eval_result};
 use crate::traits::{
     DocumentBinding, DocumentGeneration, DocumentOutboundGate, FileChooserRequest,
@@ -2091,12 +2091,25 @@ pub fn on_document_commit(
     let Some(webview) = webview_for_native_generation(&webtag, native_generation) else {
         return false;
     };
-    let Some(committed) = webview
+    let committed = match webview
         .inner
         .document_authority
         .document_commit(url, page_epoch)
-    else {
-        return false;
+    {
+        DocumentCommit::Committed(committed) => committed,
+        DocumentCommit::Restored { public_url } => {
+            normalizer::submit(
+                &webtag,
+                webview.native_view_id(),
+                NativeSignal::DocumentInvalidated,
+            );
+            webview.inner.cleanup_webmessage_ports();
+            if let Some(delegate) = webview.get_delegate() {
+                delegate.on_document_restored(webview.native_view_id(), &public_url);
+            }
+            return true;
+        }
+        DocumentCommit::Invalid => return false,
     };
     normalizer::submit(
         &webtag,
