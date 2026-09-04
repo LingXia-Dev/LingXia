@@ -1094,7 +1094,7 @@ pub struct TrustedDataLoadReservation<'a> {
 }
 
 enum TrustedDataLoadEvidence {
-    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    #[cfg(any(target_os = "ios", target_os = "macos", target_os = "android"))]
     NativeKey(crate::events::normalizer::NativeKey),
     #[cfg(target_os = "windows")]
     PlatformAttested,
@@ -1126,7 +1126,7 @@ impl TrustedDataLoadReservation<'_> {
         };
 
         let attested = match evidence {
-            #[cfg(any(target_os = "ios", target_os = "macos"))]
+            #[cfg(any(target_os = "ios", target_os = "macos", target_os = "android"))]
             TrustedDataLoadEvidence::NativeKey(key) => {
                 crate::events::normalizer::attest_trusted_load(
                     &self.webtag,
@@ -1186,6 +1186,28 @@ fn snapshot_web_message_context(
     )
 }
 
+/// Android may label a frame top-level only when it arrived through the
+/// one-shot port delivered to the exact currently committed document.
+fn android_document_port_context(
+    native_view: NativeWebViewId,
+    current: crate::DocumentBinding,
+    expected_generation: crate::DocumentGeneration,
+    transport: WebMessageTransport,
+    source: WebMessageSource,
+) -> Option<WebMessageContext> {
+    (transport == WebMessageTransport::AndroidMessagePort
+        && current == crate::DocumentBinding::Bound(expected_generation))
+    .then(|| {
+        WebMessageContext::new(
+            native_view,
+            crate::DocumentBinding::Bound(expected_generation),
+            WebMessageFrame::TopLevel,
+            transport,
+            source,
+        )
+    })
+}
+
 impl WebView {
     pub(crate) fn new(
         inner: WebViewInner,
@@ -1241,7 +1263,7 @@ impl WebView {
         })
     }
 
-    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    #[cfg(any(target_os = "ios", target_os = "macos", target_os = "android"))]
     fn load_trusted_data_on_platform(
         &self,
         _intent: TrustedLoadIntent,
@@ -1262,7 +1284,12 @@ impl WebView {
         Ok(TrustedDataLoadEvidence::PlatformAttested)
     }
 
-    #[cfg(not(any(target_os = "ios", target_os = "macos", target_os = "windows")))]
+    #[cfg(not(any(
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "windows",
+        target_os = "android"
+    )))]
     fn load_trusted_data_on_platform(
         &self,
         _intent: TrustedLoadIntent,
@@ -1319,6 +1346,59 @@ impl WebView {
                 "Dropping WebView message queue because the fixed executor stopped ({})",
                 self.webtag()
             );
+        }
+    }
+
+    /// Enqueue a MessagePort frame only for the exact generation captured
+    /// when that one-shot port was created. A port retained by an old page can
+    /// never be rebound by sampling the successor document's current state.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub(crate) fn enqueue_document_web_message(
+        self: &Arc<Self>,
+        body: String,
+        expected_generation: crate::DocumentGeneration,
+        transport: WebMessageTransport,
+        source: WebMessageSource,
+    ) {
+        let Some(context) = android_document_port_context(
+            self.native_view_id,
+            crate::events::normalizer::current_document_binding(self.native_view_id),
+            expected_generation,
+            transport,
+            source,
+        ) else {
+            log::debug!(
+                "Dropping stale document MessagePort frame ({})",
+                self.webtag()
+            );
+            return;
+        };
+        match self
+            .message_ingress
+            .enqueue(IncomingWebMessage::new(body, context))
+        {
+            WebMessageEnqueue::Queued => return,
+            WebMessageEnqueue::Rejected { reason, count } => {
+                if should_sample_rejection(count) {
+                    log::warn!(
+                        "Dropping document MessagePort frame reason={} count={} ({})",
+                        reason.as_str(),
+                        count,
+                        self.webtag()
+                    );
+                }
+                return;
+            }
+            WebMessageEnqueue::Schedule => {}
+        }
+        if WebMessageExecutor::global()
+            .schedule(WebMessageJob {
+                ingress: Arc::clone(&self.message_ingress),
+                webview: Arc::downgrade(self),
+            })
+            .is_err()
+        {
+            self.message_ingress.close();
         }
     }
 
@@ -3111,9 +3191,10 @@ mod tests {
     use super::{
         MAX_PENDING_WEB_MESSAGE_BYTES, MAX_PENDING_WEB_MESSAGES, MAX_WEB_MESSAGE_BYTES,
         WEBVIEW_SESSIONS, WebMessageEnqueue, WebMessageIngress, WebMessageRejectReason, WebTag,
-        WebViewCreateOptions, WebViewCreateSender, WebViewSessionSignals, block_on_scheme_future,
-        next_native_webview_id, remove_arc_if_matches, remove_session_signals_if_matches,
-        replace_session_signals, should_sample_rejection, snapshot_web_message_context,
+        WebViewCreateOptions, WebViewCreateSender, WebViewSessionSignals,
+        android_document_port_context, block_on_scheme_future, next_native_webview_id,
+        remove_arc_if_matches, remove_session_signals_if_matches, replace_session_signals,
+        should_sample_rejection, snapshot_web_message_context,
     };
     use crate::{
         ContextualSchemeRequest, DocumentBinding, IncomingWebMessage, NativeWebViewId,
@@ -3146,6 +3227,45 @@ mod tests {
         let late_message = message("late", retired);
         assert_ne!(late_message.context().native_view(), replacement);
         assert_eq!(late_message.context().document(), DocumentBinding::Unbound);
+    }
+
+    #[test]
+    fn android_top_level_proof_requires_current_document_port() {
+        let native_view = next_native_webview_id();
+        let current = crate::DocumentGeneration::new(42);
+        let stale = crate::DocumentGeneration::new(41);
+
+        let context = android_document_port_context(
+            native_view,
+            DocumentBinding::Bound(current),
+            current,
+            WebMessageTransport::AndroidMessagePort,
+            WebMessageSource::unavailable(),
+        )
+        .expect("the exact document port proves the top-level document");
+        assert_eq!(context.frame(), WebMessageFrame::TopLevel);
+        assert_eq!(context.document(), DocumentBinding::Bound(current));
+
+        assert!(
+            android_document_port_context(
+                native_view,
+                DocumentBinding::Bound(current),
+                stale,
+                WebMessageTransport::AndroidMessagePort,
+                WebMessageSource::unavailable(),
+            )
+            .is_none()
+        );
+        assert!(
+            android_document_port_context(
+                native_view,
+                DocumentBinding::Bound(current),
+                current,
+                WebMessageTransport::AndroidJavascriptInterface,
+                WebMessageSource::unavailable(),
+            )
+            .is_none()
+        );
     }
 
     #[test]

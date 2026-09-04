@@ -622,6 +622,18 @@ suppressed in strict, allowed in browser.
   delegate callbacks.
 - JNI forwards page events (`onPageStarted`/`onPageFinished`) to the
   `WebViewDelegate`.
+- Direct native HTML loads receive an opaque, process-monotonic load token.
+  `onPageStarted` and `onPageCommitVisible` must match that token before the
+  normalizer can mint a `DocumentGeneration`. The token identifies a native
+  navigation attempt; the generation identifies its committed document, so
+  neither may be substituted for the other.
+- API 23+ creates a fresh `MessagePort` pair only after a matching top-level
+  commit. The pair is bound to that generation and is revoked on navigation,
+  reload, renderer loss, or teardown. Only this pair can prove top-level
+  BrowserControl traffic; `JavascriptInterface` traffic remains `Unproven`.
+- API 21/22 can render the internal browser UI but cannot prove document or
+  frame provenance. BrowserControl therefore fails closed and reports the
+  `android_api_below_23` degradation reason.
 - Navigation: `LingXiaWebViewClient.shouldOverrideUrlLoading` →
   `handleNavigationPolicy` → the creator's navigation handler.
 - `Drop for WebViewInner` calls Java `destroy()`.

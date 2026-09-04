@@ -63,9 +63,14 @@ public class LingXiaWebView extends WebView {
 
     // MessagePort bridge instance (API 23+ only), accessed via cached reflection
     private Object messagePortBridge;
+    private java.lang.reflect.Method createPortMethod;
     private java.lang.reflect.Method sendPortMethod;
     private java.lang.reflect.Method postMessageMethod;
     private java.lang.reflect.Method cleanupMethod;
+    private boolean messagePortCapable;
+    private boolean messagePortRequested;
+    private final AndroidDocumentBridgeState documentBridgeState =
+            new AndroidDocumentBridgeState();
 
     private String appId;
     private String currentPath;
@@ -77,6 +82,7 @@ public class LingXiaWebView extends WebView {
     private CreateOptions createOptions = CreateOptions.strictDefault();
     private String ephemeralProfileName;
     private boolean usesGlobalEphemeralFallback;
+    private boolean browserControlDegradationReported;
     private static volatile boolean sHttpProxyEnabled = false;
     private final ConcurrentHashMap<Long, ValueCallback<android.net.Uri[]>> pendingFileChoosers =
             new ConcurrentHashMap<>();
@@ -566,35 +572,56 @@ public class LingXiaWebView extends WebView {
     private void maybeInitMessagePortBridge() {
         // Android 5 (API 21/22) does not have WebMessagePort, must not load those classes.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            messagePortBridge = null;
+            clearMessagePortReflection();
+            reportBrowserControlDegradation(
+                    BrowserControlBridgePolicy.degradationReason(
+                            Build.VERSION.SDK_INT, false));
             return;
         }
         // createWebMessageChannel can SIGSEGV on old Chromium builds — a native
         // crash Java try/catch cannot rescue. Probe capability before touching it.
         if (!isMessagePortSafe()) {
-            messagePortBridge = null;
-            sendPortMethod = null;
-            postMessageMethod = null;
-            cleanupMethod = null;
-            Log.i(TAG, "MessagePort bridge disabled; fallback to evaluateJavascript");
+            clearMessagePortReflection();
+            reportBrowserControlDegradation(
+                    BrowserControlBridgePolicy.degradationReason(
+                            Build.VERSION.SDK_INT, false));
+            Log.i(TAG, "MessagePort bridge disabled; BrowserControl remains fail closed");
             return;
         }
         try {
             Class<?> bridgeClz = Class.forName(MESSAGEPORT_BRIDGE_CLASS);
-            java.lang.reflect.Method create = bridgeClz.getMethod("create", LingXiaWebView.class);
-            messagePortBridge = create.invoke(null, this);
-            // Cache reflection methods for performance
+            createPortMethod = bridgeClz.getMethod(
+                    "create", LingXiaWebView.class, long.class, long.class);
             sendPortMethod = bridgeClz.getMethod("sendMessagePortToWebView");
             postMessageMethod = bridgeClz.getMethod("postMessageToWebView", String.class);
             cleanupMethod = bridgeClz.getMethod("cleanup");
+            messagePortCapable = true;
             Log.i(TAG, "MessagePort bridge enabled (API=" + Build.VERSION.SDK_INT + ")");
         } catch (Throwable t) {
-            messagePortBridge = null;
-            sendPortMethod = null;
-            postMessageMethod = null;
-            cleanupMethod = null;
-            Log.w(TAG, "MessagePort bridge unavailable, fallback to jsinterface", t);
+            clearMessagePortReflection();
+            reportBrowserControlDegradation(
+                    BrowserControlBridgePolicy.REASON_MESSAGE_PORT_UNAVAILABLE);
+            Log.w(TAG, "MessagePort bridge unavailable; BrowserControl remains fail closed", t);
         }
+    }
+
+    private void clearMessagePortReflection() {
+        cleanupDocumentMessagePort();
+        createPortMethod = null;
+        sendPortMethod = null;
+        postMessageMethod = null;
+        cleanupMethod = null;
+        messagePortCapable = false;
+    }
+
+    private void reportBrowserControlDegradation(String reason) {
+        if (!isBrowserProfile() || browserControlDegradationReported) {
+            return;
+        }
+        browserControlDegradationReported = true;
+        Log.w(TAG, "metric=browser_control_bridge_degraded reason=" + reason
+                + " sdk=" + Build.VERSION.SDK_INT);
+        onBrowserControlBridgeDegraded(reason);
     }
 
     // Two gates: androidx feature flag, then a Chromium major-version floor
@@ -635,9 +662,21 @@ public class LingXiaWebView extends WebView {
         ensureMainThread(new Runnable() {
             @Override
             public void run() {
+                prepareHostLoad(AndroidDocumentBridgeState.nextLoadToken(), false);
                 LingXiaWebView.super.loadUrl(url);
                 Log.d(TAG, "URL loaded on main thread: " + url);
             }
+        });
+    }
+
+    @Override
+    public void reload() {
+        ensureMainThread(() -> {
+            // WebView.reload() does not replay the native trusted-data loader,
+            // so it starts untrusted. Browser UI can regain authority only by
+            // asking the host to regenerate the internal document.
+            prepareHostLoad(AndroidDocumentBridgeState.nextLoadToken(), false);
+            LingXiaWebView.super.reload();
         });
     }
 
@@ -730,6 +769,85 @@ public class LingXiaWebView extends WebView {
         addJavascriptInterface(new LingXiaProxy(), "LingXiaProxy");
     }
 
+    private void prepareHostLoad(long loadToken, boolean trustedHostLoad) {
+        messagePortRequested = false;
+        cleanupDocumentMessagePort();
+        documentBridgeState.prepareHostLoad(loadToken, trustedHostLoad);
+    }
+
+    AndroidDocumentBridgeState.Navigation beginTopLevelNavigation() {
+        messagePortRequested = false;
+        cleanupDocumentMessagePort();
+        return documentBridgeState.onPageStarted(AndroidDocumentBridgeState.nextLoadToken());
+    }
+
+    long currentNavigationLoadToken() {
+        return documentBridgeState.currentLoadToken();
+    }
+
+    void commitTopLevelDocument() {
+        AndroidDocumentBridgeState.Navigation pending = documentBridgeState.pendingCommit();
+        if (pending == null) {
+            return;
+        }
+        long generation = onPageCommitVisible(
+                getAppId() != null ? getAppId() : "",
+                getCurrentPath() != null ? getCurrentPath() : "",
+                getSessionId(),
+                getNativeViewId(),
+                pending.loadToken
+        );
+        if (generation <= 0L
+                || !documentBridgeState.bindCommit(pending.loadToken, generation)) {
+            revokeDocumentTransport();
+            return;
+        }
+        if (messagePortCapable
+                && documentBridgeState.mayInstallPort(
+                        pending.loadToken, generation, isBrowserProfile())) {
+            installDocumentMessagePort(pending.loadToken, generation);
+        }
+    }
+
+    boolean acceptsDocumentPort(long loadToken, long documentGeneration) {
+        return documentBridgeState.acceptsPort(loadToken, documentGeneration);
+    }
+
+    private void installDocumentMessagePort(long loadToken, long documentGeneration) {
+        cleanupDocumentMessagePort();
+        if (!messagePortCapable || createPortMethod == null) {
+            return;
+        }
+        try {
+            messagePortBridge = createPortMethod.invoke(
+                    null, this, loadToken, documentGeneration);
+            if (messagePortRequested) {
+                sendMessagePortToWebView();
+            }
+        } catch (Throwable t) {
+            cleanupDocumentMessagePort();
+            reportBrowserControlDegradation(
+                    BrowserControlBridgePolicy.REASON_MESSAGE_PORT_UNAVAILABLE);
+            Log.w(TAG, "Failed to install document MessagePort", t);
+        }
+    }
+
+    private void cleanupDocumentMessagePort() {
+        if (messagePortBridge != null && cleanupMethod != null) {
+            try {
+                cleanupMethod.invoke(messagePortBridge);
+            } catch (Throwable t) {
+                Log.w(TAG, "Failed to cleanup document MessagePort", t);
+            }
+        }
+        messagePortBridge = null;
+    }
+
+    private void revokeDocumentTransport() {
+        cleanupDocumentMessagePort();
+        documentBridgeState.revoke();
+    }
+
     /**
      * Send MessagePort to WebView for bidirectional communication.
      * Called from NativeBridge or LingXiaProxy. Must be called on main thread.
@@ -747,7 +865,7 @@ public class LingXiaWebView extends WebView {
      * Check if MessagePort is available (API 23+ and bridge initialized).
      */
     public boolean hasMessagePort() {
-        return messagePortBridge != null && sendPortMethod != null;
+        return messagePortCapable && sendPortMethod != null;
     }
 
     /** Called by Rust before this WebView is registered under its reusable route tag. */
@@ -778,6 +896,7 @@ public class LingXiaWebView extends WebView {
             if (!hasMessagePort()) {
                 return "MessagePort unsupported";
             }
+            messagePortRequested = true;
             ensureMainThread(LingXiaWebView.this::sendMessagePortToWebView);
             return "Message port sent";
         }
@@ -792,6 +911,8 @@ public class LingXiaWebView extends WebView {
                     getSessionId(),
                     getNativeViewId(),
                     MESSAGE_TRANSPORT_JAVASCRIPT_INTERFACE,
+                    0L,
+                    0L,
                     getDiagnosticUrl(),
                     message
                 );
@@ -901,6 +1022,27 @@ public class LingXiaWebView extends WebView {
             }
             }
         });
+    }
+
+    /** Queue a RequiredV3 outbound operation onto the UI thread. */
+    public void scheduleDocumentMessage(final long requestId) {
+        ensureMainThread(() -> dispatchDocumentMessage(requestId));
+    }
+
+    /** Called back by Rust while both the session and generation gates are held. */
+    boolean postDocumentMessageNow(long documentGeneration, String message) {
+        if (Looper.myLooper() != Looper.getMainLooper()
+                || messagePortBridge == null
+                || postMessageMethod == null) {
+            return false;
+        }
+        try {
+            Object ok = postMessageMethod.invoke(messagePortBridge, message);
+            return ok instanceof Boolean && ((Boolean) ok);
+        } catch (Throwable t) {
+            Log.w(TAG, "Document-bound MessagePort send failed", t);
+            return false;
+        }
     }
 
     public void evaluateJavascript(String script, android.webkit.ValueCallback<String> callback) {
@@ -1174,10 +1316,25 @@ public class LingXiaWebView extends WebView {
         ensureMainThread(new Runnable() {
             @Override
             public void run() {
+                prepareHostLoad(AndroidDocumentBridgeState.nextLoadToken(), false);
                 resetViewport();
                 loadDataWithBaseURL(baseUrl, data, "text/html", "UTF-8", historyUrl);
             }
         });
+    }
+
+    /** Start one host-attested direct HTML load and return its opaque callback key. */
+    public long loadTrustedHtmlData(String data, String baseUrl, String historyUrl) {
+        final long loadToken = AndroidDocumentBridgeState.nextLoadToken();
+        ensureMainThread(new Runnable() {
+            @Override
+            public void run() {
+                prepareHostLoad(loadToken, true);
+                resetViewport();
+                loadDataWithBaseURL(baseUrl, data, "text/html", "UTF-8", historyUrl);
+            }
+        });
+        return loadToken;
     }
 
     public void resetViewport() {
@@ -1210,18 +1367,12 @@ public class LingXiaWebView extends WebView {
                     stopLoading();
                     setWebViewClient(new WebViewClient());
                     setWebChromeClient(new WebChromeClient());
-                    if (messagePortBridge != null && cleanupMethod != null) {
-                        try {
-                            cleanupMethod.invoke(messagePortBridge);
-                        } catch (Throwable t) {
-                            Log.w(TAG, "Failed to cleanup MessagePort bridge", t);
-                        } finally {
-                            messagePortBridge = null;
-                            sendPortMethod = null;
-                            postMessageMethod = null;
-                            cleanupMethod = null;
-                        }
-                    }
+                    revokeDocumentTransport();
+                    createPortMethod = null;
+                    sendPortMethod = null;
+                    postMessageMethod = null;
+                    cleanupMethod = null;
+                    messagePortCapable = false;
 
                     try {
                         clearHistory();
@@ -1286,6 +1437,16 @@ public class LingXiaWebView extends WebView {
         this.pageLoaded = loaded;
     }
 
+    void handleRendererProcessGone() {
+        revokeDocumentTransport();
+        onRendererProcessGone(
+                getAppId() != null ? getAppId() : "",
+                getCurrentPath() != null ? getCurrentPath() : "",
+                getSessionId(),
+                getNativeViewId()
+        );
+    }
+
     /**
      * Sample this WebView's observable state (URL, title, back/forward
      * availability) and push it into the Rust delegate. Called from the
@@ -1323,12 +1484,14 @@ public class LingXiaWebView extends WebView {
     }
 
     native void onConsoleMessage(String appId, String path, long sessionId, long nativeViewId, int level, String message);
-    native void onPageStarted(String appId, String path, long sessionId, long nativeViewId, String url);
-    native void onPageFinished(String appId, String path, long sessionId, long nativeViewId, String url);
-    native void onPageCommitVisible(String appId, String path, long sessionId, long nativeViewId);
+    native void onPageStarted(String appId, String path, long sessionId, long nativeViewId, long loadToken, String url);
+    native void onPageFinished(String appId, String path, long sessionId, long nativeViewId, long loadToken, String url);
+    native long onPageCommitVisible(String appId, String path, long sessionId, long nativeViewId, long loadToken);
+    native void onRendererProcessGone(String appId, String path, long sessionId, long nativeViewId);
+    native void onBrowserControlBridgeDegraded(String reason);
     native void onWebViewStateChanged(String appId, String path, long sessionId, long nativeViewId, String url, String title, boolean canGoBack, boolean canGoForward);
     native void onFaviconChanged(String appId, String path, long sessionId, long nativeViewId, byte[] pngBytes);
-    native void onLoadError(String appId, String path, long sessionId, long nativeViewId, String url, int errorCode, String description);
+    native void onLoadError(String appId, String path, long sessionId, long nativeViewId, long loadToken, String url, int errorCode, String description);
     native WebResourceResponseData handleRequest(String appId, String path, long sessionId, long nativeViewId, String url, String method, String[] headerKeysAndValues, boolean isMainFrame);
     native boolean handleNavigationPolicy(
         String appId,
@@ -1507,8 +1670,11 @@ public class LingXiaWebView extends WebView {
             long sessionId,
             long nativeViewId,
             int transport,
+            long loadToken,
+            long documentGeneration,
             String sourceUrl,
             String message
     );
+    native boolean dispatchDocumentMessage(long requestId);
     native static void notifyWebViewReady(String appId, String path, long sessionId, long requestId, Object webView);
 }

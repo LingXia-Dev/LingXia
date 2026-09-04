@@ -660,10 +660,10 @@ impl BrowserDocumentSessions {
             WebMessageTransport::AndroidJavascriptInterface => {
                 return Err(BrowserInboundRejectReason::AndroidLegacyDegraded);
             }
-            WebMessageTransport::AppleScriptMessage | WebMessageTransport::WindowsWebMessage => {}
-            WebMessageTransport::AndroidMessagePort
-            | WebMessageTransport::HarmonyMessagePort
-            | WebMessageTransport::Other => {
+            WebMessageTransport::AppleScriptMessage
+            | WebMessageTransport::AndroidMessagePort
+            | WebMessageTransport::WindowsWebMessage => {}
+            WebMessageTransport::HarmonyMessagePort | WebMessageTransport::Other => {
                 return Err(BrowserInboundRejectReason::UnsupportedTransport);
             }
         }
@@ -1097,6 +1097,14 @@ mod tests {
                 DocumentBinding::Bound(generation),
                 WebMessageFrame::TopLevel,
                 WebMessageTransport::WindowsWebMessage,
+            )
+            .is_ok()
+        );
+        assert!(
+            validate(
+                DocumentBinding::Bound(generation),
+                WebMessageFrame::TopLevel,
+                WebMessageTransport::AndroidMessagePort,
             )
             .is_ok()
         );

@@ -5,6 +5,7 @@ import android.util.Log;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.annotation.RequiresApi;
@@ -36,11 +37,14 @@ public class LingXiaWebViewClient extends WebViewClient {
         LingXiaWebView webView = webViewRef.get();
         if (webView != null) {
             webView.setPageLoaded(false);
+            AndroidDocumentBridgeState.Navigation navigation =
+                    webView.beginTopLevelNavigation();
             webView.onPageStarted(
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 webView.getSessionId(),
                 webView.getNativeViewId(),
+                navigation.loadToken,
                 url != null ? url : ""
             );
         }
@@ -64,6 +68,7 @@ public class LingXiaWebViewClient extends WebViewClient {
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 webView.getSessionId(),
                 webView.getNativeViewId(),
+                webView.currentNavigationLoadToken(),
                 url != null ? url : ""
             );
         }
@@ -75,12 +80,7 @@ public class LingXiaWebViewClient extends WebViewClient {
         // Commit evidence: the displayed document was replaced.
         LingXiaWebView webView = webViewRef.get();
         if (webView != null && DocumentCommitCallbackPolicy.canBindDocument(Build.VERSION.SDK_INT)) {
-            webView.onPageCommitVisible(
-                webView.getAppId() != null ? webView.getAppId() : "",
-                webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
-                webView.getSessionId(),
-                webView.getNativeViewId()
-            );
+            webView.commitTopLevelDocument();
         }
     }
 
@@ -127,6 +127,7 @@ public class LingXiaWebViewClient extends WebViewClient {
             webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
             webView.getSessionId(),
             webView.getNativeViewId(),
+            webView.currentNavigationLoadToken(),
             failingUrl,
             errorCode,
             description
@@ -161,6 +162,17 @@ public class LingXiaWebViewClient extends WebViewClient {
               ", code: " + errorCode +
               ", failing URL: " + safeUrl);
         reportMainFrameLoadError(safeUrl, errorCode, safeDescription);
+    }
+
+    @Override
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+        LingXiaWebView webView = webViewRef.get();
+        if (webView != null) {
+            webView.handleRendererProcessGone();
+        }
+        // This WebView is no longer reusable. The owner will replace or close it.
+        return true;
     }
 
     @Override
