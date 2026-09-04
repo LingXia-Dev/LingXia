@@ -36,6 +36,7 @@ struct LxAppUIActionItem: Sendable {
     var renameable: Bool = false
     var titleOverridden: Bool = false
     var disabled: Bool = false
+    var sidebarActionSource: SidebarActionSource = .runtime
 }
 
 @MainActor
@@ -173,6 +174,9 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.setTitlebarHostActionHandler { [weak self] actionID in
             self?.performActivator(id: actionID)
         }
+        shell.configureStaticSettingsSource(
+            LxAppStaticSettingsSource(appConfig.settingsDestination)
+        )
         shell.configureDeclaredBrowser(
             ownerAppId: graphOwnerAppId,
             onSurfaceActivate: { [weak self] surfaceID in
@@ -432,10 +436,6 @@ final class LxAppMacAppUIRuntime: NSObject {
         shell.hide()
         visibleSurfaceIDs.remove(rootSurface.id)
         refreshChromeActions()
-    }
-
-    func openBuiltinBrowserPage(id: String) -> Bool {
-        shell.openBuiltinShellSurface(id: id)
     }
 
     private func performActivator(id: String) {

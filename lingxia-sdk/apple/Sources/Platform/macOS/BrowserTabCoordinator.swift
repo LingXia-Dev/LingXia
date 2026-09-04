@@ -79,7 +79,6 @@ final class BrowserTabCoordinator: NSObject {
     weak var host: BrowserCoordinatorHost?
 
     // Tab state
-    private let settingsTabId = "settings"
     private let downloadsTabId = "downloads"
     private let bookmarksTabId = "bookmarks"
     private let historyTabId = "history"
@@ -289,8 +288,9 @@ final class BrowserTabCoordinator: NSObject {
         addTabWithURL(host?.usesBlankBrowserNewTabs == true ? "about:blank" : "")
     }
 
-    func openSettings() {
-        addTabWithURL("lingxia://settings", stableTabId: settingsTabId)
+    func openBrowserLocalSettings() {
+        let navigation = BrowserLocalNavigation.settings
+        addTabWithURL(navigation.url, stableTabId: navigation.stableTabID)
     }
 
     func openDownloads() {
@@ -306,10 +306,11 @@ final class BrowserTabCoordinator: NSObject {
         addTabWithURL("lingxia://history", stableTabId: historyTabId)
     }
 
-    func openClearSiteData(tabId: String) {
+    func openBrowserLocalClearSiteData(tabId: String) {
+        let navigation = BrowserLocalNavigation.clearSiteData(tabID: tabIdString(tabId))
         addTabWithURL(
-            "lingxia://settings#clear-site-data?tabId=\(tabIdString(tabId))",
-            stableTabId: settingsTabId
+            navigation.url,
+            stableTabId: navigation.stableTabID
         )
     }
 
@@ -1315,9 +1316,12 @@ final class BrowserTabCoordinator: NSObject {
             onOpenHistory: { [weak self] in
                 self?.openHistory()
             },
+            onOpenSettings: { [weak self] in
+                self?.openBrowserLocalSettings()
+            },
             onClearSiteData: { [weak self] in
                 guard let self, let tabId = self.activeTabId else { return }
-                self.openClearSiteData(tabId: tabId)
+                self.openBrowserLocalClearSiteData(tabId: tabId)
             }
         )
         let menu = BrowserPageMenu.menu(for: context)
