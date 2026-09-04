@@ -216,17 +216,19 @@ The accepted string values are fixed by the SDK:
 
 An unknown value, a non-string value, or duplicate `audience` metadata is a
 compile error. This metadata is fixed in the generated registration companion;
-it is not a client-provided parameter and is not emitted into the generated
-TypeScript or browser-global client.
+it is not a client-provided parameter. Registration seals it into the
+production effective route inventory alongside the handler kind. The Ready
+schema and unary, notification, stream, and channel admission all read that
+same caller-filtered inventory.
 
 `#[lingxia::framework_native(...)]` is a doc-hidden framework macro for
 framework-owned routes. It shares the same syntax but requires an explicit
 `audience`; application and extension authors should use `native` instead.
 
-> **Current stage:** audience is registration metadata only. This change alone
-> does not make bridge dispatch enforce authorization; do not treat an
-> `audience` annotation as a security boundary until the host bridge's matching
-> schema filtering and dispatch authorization are in place.
+Any duplicate route name is rejected during registration, including a later
+handler that repeats the same kind and audience. Channels are advertised
+separately from `hostMethods`, so older V2 clients can ignore the additional
+schema without mistaking a channel for a call.
 
 ### The macro-generated `<fn>_host()` companion
 

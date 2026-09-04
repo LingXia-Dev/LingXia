@@ -612,7 +612,13 @@ type HelloAck = {
   protocol: number;
   sessionId: string;
 };
-type Ready = { v: 2; kind: "ready"; sessionId: string; hostMethods?: Record<string, string> };
+type Ready = {
+  v: 2;
+  kind: "ready";
+  sessionId: string;
+  hostMethods?: Record<string, string>;
+  hostChannels?: string[];
+};
 type Req = {
   v: 2;
   kind: "req";
@@ -725,6 +731,7 @@ let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
 // Host method schema — populated from handshake `Ready` message.
 // Maps "namespace.method" → "call" | "stream".
 const hostMethodKinds: Record<string, string> = {};
+const hostChannelNames = new Set<string>();
 
 // Request tracking
 let requestCounter = 0;
@@ -1505,7 +1512,15 @@ function handleIncomingMessage(msg: unknown): void {
           hostMethodKinds[k] = v;
         }
       }
-      if (isDebugEnabled("proto")) log("Handshake complete, hostMethods:", Object.keys(hostMethodKinds).length);
+      if (message.hostChannels) {
+        for (const name of message.hostChannels) hostChannelNames.add(name);
+      }
+      if (isDebugEnabled("proto")) {
+        log(
+          "Handshake complete, host routes:",
+          Object.keys(hostMethodKinds).length + hostChannelNames.size,
+        );
+      }
       flushOutbox();
       return;
 
