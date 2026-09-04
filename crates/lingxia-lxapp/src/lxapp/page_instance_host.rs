@@ -505,6 +505,7 @@ impl LxApp {
             page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnHide);
         }
         page.dispatch_lifecycle_event(crate::lifecycle::PageLifecycleEvent::OnUnload);
+        let webview = page.webview();
         page.detach_webview();
 
         crate::view_call::cancel_view_calls_for_page_instances(
@@ -530,7 +531,9 @@ impl LxApp {
             state.page_chrome_layouts.remove(id.as_str());
         }
 
-        destroy_webview(&page.webtag());
+        if let Some(webview) = webview {
+            destroy_webview_if_matches(&page.webtag(), &webview);
+        }
 
         if let Err(e) =
             self.executor
@@ -810,7 +813,11 @@ impl LxApp {
                 .lock()
                 .unwrap()
                 .remove(id.as_str());
-            destroy_webview(&removed_page.webtag());
+            let webview = removed_page.webview();
+            removed_page.detach_webview();
+            if let Some(webview) = webview {
+                destroy_webview_if_matches(&removed_page.webtag(), &webview);
+            }
             info!("Evicted inactive page: {}", removed_page.path()).with_appid(self.appid.clone());
         }
     }

@@ -48,6 +48,7 @@ export interface EffectiveWebViewCreateOptions {
 
 export interface WebViewDownloadRequest {
   webtag: string;
+  nativeViewToken: string;
   url: string;
   userAgent: string;
   contentDisposition: string;
@@ -57,16 +58,19 @@ export interface WebViewDownloadRequest {
 
 export interface WebViewLoadError {
   webtag: string;
+  // Native-view callback token, not a document generation.
+  nativeGeneration: string;
   url: string;
   errorCode: number;
   description: string;
 }
 
 export interface WebViewHostHooks {
-  onControllerCreated?: (webtag: string) => void;
-  onControllerDestroyed?: (webtag: string) => void;
+  onControllerCreated?: (webtag: string, nativeViewToken: string) => void;
+  onControllerDestroyed?: (webtag: string, nativeViewToken: string) => void;
   onNavigationPolicy?: (
     webtag: string,
+    nativeViewToken: string,
     url: string,
     hasUserGesture: boolean,
     isMainFrame: boolean
@@ -116,23 +120,25 @@ function bindDefaultHostHooksIfNeeded(): void {
   }
 
   hostHooks = {
-    onControllerCreated: (webtag: string): void => {
-      hostOnWebviewControllerCreated(webtag);
+    onControllerCreated: (webtag: string, nativeViewToken: string): void => {
+      hostOnWebviewControllerCreated(webtag, nativeViewToken);
     },
-    onControllerDestroyed: (webtag: string): void => {
-      hostOnWebviewControllerDestroyed(webtag);
+    onControllerDestroyed: (webtag: string, nativeViewToken: string): void => {
+      hostOnWebviewControllerDestroyed(webtag, nativeViewToken);
     },
     onNavigationPolicy: (
       webtag: string,
+      nativeViewToken: string,
       url: string,
       hasUserGesture: boolean,
       isMainFrame: boolean
     ): boolean => {
-      return hostOnNavigationPolicy(webtag, url, hasUserGesture, isMainFrame);
+      return hostOnNavigationPolicy(webtag, nativeViewToken, url, hasUserGesture, isMainFrame);
     },
     onDownloadStart: (request: WebViewDownloadRequest): void => {
       hostOnDownloadStart(
         request.webtag,
+        request.nativeViewToken,
         request.url,
         request.userAgent,
         request.contentDisposition,
@@ -141,7 +147,13 @@ function bindDefaultHostHooksIfNeeded(): void {
       );
     },
     onLoadError: (error: WebViewLoadError): void => {
-      hostOnLoadError(error.webtag, error.url, error.errorCode, error.description);
+      hostOnLoadError(
+        error.webtag,
+        error.nativeGeneration,
+        error.url,
+        error.errorCode,
+        error.description
+      );
     }
   };
   defaultHostHooksBound = true;
@@ -238,25 +250,25 @@ function optionsEqual(a: EffectiveWebViewCreateOptions, b: EffectiveWebViewCreat
     && a.surfaceOwned === b.surfaceOwned;
 }
 
-function notifyControllerCreated(webtag: string): void {
+function notifyControllerCreated(webtag: string, nativeViewToken: string): void {
   const callback = hostHooks.onControllerCreated;
   if (!callback) {
     return;
   }
   try {
-    callback(webtag);
+    callback(webtag, nativeViewToken);
   } catch (error) {
     hilog.error(DOMAIN, TAG, `Host hook onControllerCreated failed for ${webtag}: ${error}`);
   }
 }
 
-function notifyControllerDestroyed(webtag: string): void {
+function notifyControllerDestroyed(webtag: string, nativeViewToken: string): void {
   const callback = hostHooks.onControllerDestroyed;
   if (!callback) {
     return;
   }
   try {
-    callback(webtag);
+    callback(webtag, nativeViewToken);
   } catch (error) {
     hilog.error(DOMAIN, TAG, `Host hook onControllerDestroyed failed for ${webtag}: ${error}`);
   }
@@ -472,6 +484,14 @@ export class WebViewManager {
     return WebViewManager.generations.get(webtag) ?? '';
   }
 
+  /// Return the native-issued generation only when this exact controller still
+  /// owns the tag. A delayed callback from a retired controller fails closed.
+  static getGenerationForController(webtag: string, controller: webview.WebviewController): string {
+    return WebViewManager.controllers.get(webtag) === controller
+      ? WebViewManager.getGeneration(webtag)
+      : '';
+  }
+
   /// True when a destroy notification refers to an older native generation
   /// than the WebView currently registered under the tag.
   static isStaleDestroy(webtag: string, generation?: string): boolean {
@@ -516,7 +536,7 @@ export class WebViewManager {
       }
     });
 
-    notifyControllerDestroyed(webtag);
+    notifyControllerDestroyed(webtag, currentGeneration ?? '');
     hilog.info(DOMAIN, TAG, `WebViewManager.destroyWebview completed -> webtag=${webtag} (logical: ${logicalTag})`);
     return true;
   }
@@ -855,8 +875,8 @@ export function removeWebViewUiCallback(callback: (action: string, info: WebView
  * @param webtag - WebView tag
  * @returns true if created successfully, false otherwise
  */
-export function createWebViewController(webtag: string, optionsToken?: string): boolean {
-  return WebViewManager.createWebview(webtag, optionsToken);
+export function createWebViewController(webtag: string, optionsToken?: string, generation?: string): boolean {
+  return WebViewManager.createWebview(webtag, optionsToken, generation);
 }
 
 /**
@@ -900,6 +920,7 @@ export function isEphemeralDataMode(webtag: string): boolean {
 
 export function handleWebViewLoadError(
   webtag: string,
+  nativeGeneration: string,
   url: string,
   errorCode: number,
   description: string
@@ -910,7 +931,7 @@ export function handleWebViewLoadError(
     return;
   }
   try {
-    callback({ webtag, url, errorCode, description });
+    callback({ webtag, nativeGeneration, url, errorCode, description });
   } catch (error) {
     hilog.error(DOMAIN, TAG, `Host hook onLoadError failed for ${webtag}: ${error}`);
   }
@@ -927,13 +948,14 @@ export function setWebViewHostHooks(hooks: WebViewHostHooks): void {
   defaultHostHooksBound = true;
 }
 
-export function notifyWebViewControllerCreated(webtag: string): void {
+export function notifyWebViewControllerCreated(webtag: string, nativeViewToken: string): void {
   bindDefaultHostHooksIfNeeded();
-  notifyControllerCreated(webtag);
+  notifyControllerCreated(webtag, nativeViewToken);
 }
 
 export function handleWebViewNavigationPolicy(
   webtag: string,
+  nativeViewToken: string,
   url: string,
   hasUserGesture: boolean,
   isMainFrame: boolean
@@ -947,7 +969,7 @@ export function handleWebViewNavigationPolicy(
     return false;
   }
   try {
-    return callback(webtag, url, hasUserGesture, isMainFrame) === true;
+    return callback(webtag, nativeViewToken, url, hasUserGesture, isMainFrame) === true;
   } catch (error) {
     hilog.error(DOMAIN, TAG, `Host hook onNavigationPolicy failed for ${webtag}: ${error}`);
     return false;
@@ -956,6 +978,7 @@ export function handleWebViewNavigationPolicy(
 
 export function handleWebViewDownloadStart(
   webtag: string,
+  nativeViewToken: string,
   url: string,
   userAgent: string,
   contentDisposition: string,
@@ -975,6 +998,7 @@ export function handleWebViewDownloadStart(
 
   const request: WebViewDownloadRequest = {
     webtag,
+    nativeViewToken,
     url,
     userAgent,
     contentDisposition,

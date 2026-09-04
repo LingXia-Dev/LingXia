@@ -968,6 +968,24 @@ pub struct WebView {
     message_ingress: Arc<WebMessageIngress>,
 }
 
+fn snapshot_web_message_context(
+    native_view_id: NativeWebViewId,
+    frame: WebMessageFrame,
+    transport: WebMessageTransport,
+    source: WebMessageSource,
+) -> WebMessageContext {
+    // This load is the message callback's document-binding linearization
+    // point. A navigation start which wins it produces Unbound; a commit which
+    // wins it produces that generation. The queued message retains this value.
+    WebMessageContext::new(
+        native_view_id,
+        crate::events::normalizer::current_document_binding(native_view_id),
+        frame,
+        transport,
+        source,
+    )
+}
+
 impl WebView {
     pub(crate) fn new(
         inner: WebViewInner,
@@ -995,25 +1013,19 @@ impl WebView {
         self.native_view_id
     }
 
-    /// Enqueue a platform message whose frame proof is known but whose
-    /// document generation is not yet bound by this adapter.
+    /// Enqueue a platform message whose frame proof is known by the adapter.
     ///
-    /// Callers cannot construct a context with another WebView's identity or
-    /// claim a document generation through this entry point.
-    pub(crate) fn enqueue_unbound_web_message(
+    /// The document binding is snapshotted from the normalizer while this
+    /// concrete native WebView is current; adapters cannot claim a generation
+    /// through this entry point.
+    pub(crate) fn enqueue_web_message(
         self: &Arc<Self>,
         body: String,
         frame: WebMessageFrame,
         transport: WebMessageTransport,
         source: WebMessageSource,
     ) {
-        let context = WebMessageContext::new(
-            self.native_view_id,
-            crate::DocumentBinding::Unbound,
-            frame,
-            transport,
-            source,
-        );
+        let context = snapshot_web_message_context(self.native_view_id, frame, transport, source);
         match self
             .message_ingress
             .enqueue(IncomingWebMessage::new(body, context))
@@ -1055,6 +1067,14 @@ impl WebView {
 
     fn close_message_ingress(&self) {
         self.message_ingress.close();
+    }
+
+    /// Read the document binding currently owned by this native WebView.
+    ///
+    /// This is intentionally read-only. Only accepted top-level navigation
+    /// starts and reliable commits in the event normalizer can change it.
+    pub fn current_document_binding(&self) -> crate::DocumentBinding {
+        crate::events::normalizer::current_document_binding(self.native_view_id)
     }
 
     /// Get the appid
@@ -2564,7 +2584,7 @@ fn create_webview_session(webtag: WebTag, options: WebViewCreateOptions) -> WebV
     let session = signals.subscribe(webtag.clone());
     let sender = WebViewCreateSender::new(webtag.clone(), signals.clone());
     replace_session_signals(&webtag, signals);
-    crate::events::normalizer::begin(&webtag);
+    crate::events::normalizer::begin(&webtag, sender.native_view_id());
     request_create_webview(&webtag, sender, options);
     session
 }
@@ -2585,6 +2605,7 @@ fn windows_webview_create_lock(webtag_key: &str) -> Arc<Mutex<()>> {
 #[cfg_attr(target_os = "android", allow(dead_code))]
 pub(crate) fn register_webview(webview: Arc<WebView>) {
     let webtag = webview.webtag();
+    crate::events::normalizer::bind_native_view(&webtag, webview.native_view_id());
 
     // Install any pending callbacks
     if let Some(pending) = PENDING_CALLBACKS.get()
@@ -2640,6 +2661,7 @@ pub(crate) fn register_android_webview_if_current(
 
     let instances = WEBVIEW_INSTANCES.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
     let mut webviews = lock_or_recover(instances, "webview_instances.register_android");
+    crate::events::normalizer::bind_native_view(&webtag, webview.native_view_id());
     webviews.insert(webtag.key().to_string(), webview);
     true
 }
@@ -2696,8 +2718,15 @@ pub(crate) fn list_webviews() -> Vec<WebTag> {
     Vec::new()
 }
 
-pub(crate) fn find_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDelegate>> {
-    find_webview(webtag).and_then(|webview| webview.get_delegate())
+/// Resolve a delegate only while a callback's concrete native WebView still
+/// owns the logical tag. A retired normalizer must never deliver its queued
+/// output to a replacement delegate.
+pub(crate) fn find_webview_delegate_by_native_view_id(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+) -> Option<Arc<dyn WebViewDelegate>> {
+    find_webview_by_native_view_id(webtag, native_view_id)
+        .and_then(|webview| webview.get_delegate())
 }
 
 fn remove_arc_if_matches<T>(
@@ -2740,8 +2769,11 @@ pub(crate) fn destroy_webview_if_matches(webtag: &WebTag, expected: &Arc<WebView
     }
 }
 
-/// Destroy a WebView instance by WebTag and remove it from global storage
-pub(crate) fn destroy_webview(webtag: &WebTag) {
+/// Destroy whichever WebView is currently registered for `webtag`.
+///
+/// This is intentionally tag-scoped host lifecycle behavior. Callers that
+/// retain a concrete instance must use [`destroy_webview_if_matches`] instead.
+pub(crate) fn destroy_current_webview(webtag: &WebTag) {
     // Close ingress before lifecycle notifications and native teardown. A
     // delivery already admitted under its own mutex may finish; queued and
     // future callbacks are rejected immediately.
@@ -2789,7 +2821,7 @@ mod tests {
     use super::{
         MAX_PENDING_WEB_MESSAGES, WEBVIEW_SESSIONS, WebMessageEnqueue, WebMessageIngress, WebTag,
         WebViewCreateSender, WebViewSessionSignals, next_native_webview_id, remove_arc_if_matches,
-        remove_session_signals_if_matches, replace_session_signals,
+        remove_session_signals_if_matches, replace_session_signals, snapshot_web_message_context,
     };
     use crate::{
         DocumentBinding, IncomingWebMessage, WebMessageContext, WebMessageFrame, WebMessageSource,
@@ -2821,6 +2853,76 @@ mod tests {
         let late_message = message("late", retired);
         assert_ne!(late_message.context().native_view(), replacement);
         assert_eq!(late_message.context().document(), DocumentBinding::Unbound);
+    }
+
+    #[test]
+    fn ingress_snapshots_document_binding_at_enqueue_time() {
+        let webtag = WebTag::new("test-app", "binding-snapshot", Some(1));
+        let native_view = next_native_webview_id();
+        crate::events::normalizer::begin(&webtag, native_view);
+        crate::events::normalizer::submit(
+            &webtag,
+            native_view,
+            crate::events::normalizer::NativeSignal::NavigationStarted {
+                key: Some(71),
+                url: "https://first/".into(),
+            },
+        );
+        crate::events::normalizer::submit(
+            &webtag,
+            native_view,
+            crate::events::normalizer::NativeSignal::DocumentCommitted { key: Some(71) },
+        );
+
+        let ingress = WebMessageIngress::default();
+        let bound = IncomingWebMessage::new(
+            "bound".to_string(),
+            snapshot_web_message_context(
+                native_view,
+                WebMessageFrame::Unproven,
+                WebMessageTransport::Other,
+                WebMessageSource::unavailable(),
+            ),
+        );
+        assert_eq!(
+            bound.context().document(),
+            DocumentBinding::Bound(crate::DocumentGeneration::new(1))
+        );
+        assert_eq!(ingress.enqueue(bound), WebMessageEnqueue::Schedule);
+
+        crate::events::normalizer::submit(
+            &webtag,
+            native_view,
+            crate::events::normalizer::NativeSignal::NavigationStarted {
+                key: Some(72),
+                url: "https://second/".into(),
+            },
+        );
+        let revoked = IncomingWebMessage::new(
+            "revoked".to_string(),
+            snapshot_web_message_context(
+                native_view,
+                WebMessageFrame::Unproven,
+                WebMessageTransport::Other,
+                WebMessageSource::unavailable(),
+            ),
+        );
+        assert_eq!(revoked.context().document(), DocumentBinding::Unbound);
+        assert_eq!(ingress.enqueue(revoked), WebMessageEnqueue::Queued);
+
+        let mut bindings = Vec::new();
+        while let Some(message) = ingress.begin_delivery() {
+            bindings.push(message.context().document());
+            ingress.finish_delivery();
+        }
+        assert_eq!(
+            bindings,
+            vec![
+                DocumentBinding::Bound(crate::DocumentGeneration::new(1)),
+                DocumentBinding::Unbound,
+            ]
+        );
+        crate::events::normalizer::destroy(&webtag);
     }
 
     #[test]

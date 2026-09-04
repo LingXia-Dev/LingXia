@@ -1,12 +1,74 @@
-use crate::webview::{WebTag, find_webview};
-use crate::{WebResourceBody, WebResourceResponse};
+use crate::webview::{WebTag, find_webview_by_native_view_id};
+use crate::{NativeWebViewId, WebResourceBody, WebResourceResponse};
 use napi_ohos::Result as NapiResult;
 use ohos_web_sys::*;
+use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::fs::File;
 use std::io::Read;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
+use std::sync::{Mutex, OnceLock};
+
+/// Non-dereferenced native callback identity, not a document generation.
+/// ArkWeb can deliver a request after a logical web tag has been reused, so a
+/// handler must resolve this token before it may dispatch to a WebView.
+#[derive(Clone)]
+struct SchemeCallbackBinding {
+    webtag: WebTag,
+    native_view_id: NativeWebViewId,
+}
+
+static NEXT_SCHEME_CALLBACK_TOKEN: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1);
+static SCHEME_CALLBACK_BINDINGS: OnceLock<Mutex<HashMap<u64, SchemeCallbackBinding>>> =
+    OnceLock::new();
+
+fn scheme_callback_bindings() -> &'static Mutex<HashMap<u64, SchemeCallbackBinding>> {
+    SCHEME_CALLBACK_BINDINGS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn bind_scheme_callback(webtag: WebTag, native_view_id: NativeWebViewId) -> u64 {
+    let token = NEXT_SCHEME_CALLBACK_TOKEN
+        .fetch_update(
+            std::sync::atomic::Ordering::Relaxed,
+            std::sync::atomic::Ordering::Relaxed,
+            |current| current.checked_add(1),
+        )
+        .expect("Harmony scheme callback token space exhausted");
+    scheme_callback_bindings()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .insert(
+            token,
+            SchemeCallbackBinding {
+                webtag,
+                native_view_id,
+            },
+        );
+    token
+}
+
+fn scheme_callback_binding(user_data: *mut std::ffi::c_void) -> Option<SchemeCallbackBinding> {
+    let token = user_data as usize as u64;
+    (token != 0).then(|| {
+        scheme_callback_bindings()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .get(&token)
+            .cloned()
+    })?
+}
+
+fn unbind_scheme_callback(user_data: *mut std::ffi::c_void) {
+    let token = user_data as usize as u64;
+    if token != 0 {
+        scheme_callback_bindings()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(&token);
+    }
+}
 
 /// Callback function for handling lx:// and https:// scheme requests
 pub unsafe extern "C" fn on_lx_request_start(
@@ -20,22 +82,22 @@ pub unsafe extern "C" fn on_lx_request_start(
         return;
     }
 
-    // Get webtag from user data
+    // Resolve the concrete native WebView identity from the callback token.
+    // Never dereference ArkWeb-retained user data: an old callback must merely
+    // miss its binding after cleanup rather than access freed memory.
     let user_data = unsafe { OH_ArkWebSchemeHandler_GetUserData(scheme_handler) };
-    if user_data.is_null() {
-        log::error!("No user data found in scheme handler");
+    let Some(binding) = scheme_callback_binding(user_data) else {
+        log::debug!("Dropping Harmony scheme request without a live native-view binding");
         return;
-    }
-
-    let webtag_cstr = unsafe { CStr::from_ptr(user_data as *const c_char) };
-    let webtag_str = match webtag_cstr.to_str() {
-        Ok(s) => s,
-        Err(_) => {
-            log::error!("Invalid webtag in user data");
-            return;
-        }
     };
-    let webtag = WebTag::from(webtag_str);
+    let Some(webview) = find_webview_by_native_view_id(&binding.webtag, binding.native_view_id)
+    else {
+        log::debug!(
+            "Dropping stale Harmony scheme request for {}",
+            binding.webtag.as_str()
+        );
+        return;
+    };
 
     // Get request URL
     let mut url_ptr: *mut c_char = ptr::null_mut();
@@ -75,7 +137,7 @@ pub unsafe extern "C" fn on_lx_request_start(
         "Processing request: {} {} for webtag: {}",
         method,
         url,
-        webtag.as_str()
+        binding.webtag.as_str()
     );
 
     // Build HTTP request to check if lxapp wants to handle it
@@ -95,11 +157,7 @@ pub unsafe extern "C" fn on_lx_request_start(
     let scheme = url.split("://").next().unwrap_or("").to_string();
 
     // Dispatch to closure-based scheme handler
-    let http_response = if let Some(webview) = find_webview(&webtag) {
-        webview.handle_scheme_request(&scheme, http_request)
-    } else {
-        None
-    };
+    let http_response = webview.handle_scheme_request(&scheme, http_request);
     if let Some(http_response) = http_response {
         unsafe {
             *intercept = true;
@@ -282,13 +340,10 @@ pub unsafe fn cleanup_scheme_handler(scheme_handler: *mut ArkWeb_SchemeHandler) 
     }
 
     unsafe {
-        // Get and free the user data (webtag CString)
+        // Removing the numeric callback binding makes an asynchronous late
+        // ArkWeb callback fail closed even when the same logical tag is reused.
         let user_data = OH_ArkWebSchemeHandler_GetUserData(scheme_handler);
-        if !user_data.is_null() {
-            // Reconstruct CString from raw pointer to properly free it
-            let _webtag_cstr = CString::from_raw(user_data as *mut c_char);
-            // CString will be automatically dropped here, freeing the memory
-        }
+        unbind_scheme_callback(user_data);
 
         // Destroy the scheme handler
         OH_ArkWeb_DestroySchemeHandler(scheme_handler);
@@ -324,8 +379,11 @@ pub fn register_custom_schemes() -> NapiResult<()> {
 /// Reads `registered_schemes` from the WebView's effective options to determine
 /// which schemes need native ArkWeb handlers. Skips if no schemes are registered
 /// (e.g. browser-relaxed mode).
-pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
-    let webview = find_webview(webtag).ok_or_else(|| {
+pub fn set_webview_scheme_handler(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+) -> NapiResult<()> {
+    let webview = find_webview_by_native_view_id(webtag, native_view_id).ok_or_else(|| {
         napi_ohos::Error::new(
             napi_ohos::Status::GenericFailure,
             format!("WebView not found for tag: {}", webtag),
@@ -349,10 +407,11 @@ pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
             let mut handler: *mut ArkWeb_SchemeHandler = std::ptr::null_mut();
             OH_ArkWeb_CreateSchemeHandler(&mut handler);
 
-            // Store webtag as user data
-            let webtag_cstr = CString::new(webtag.as_str()).unwrap();
-            let webtag_ptr = webtag_cstr.into_raw();
-            OH_ArkWebSchemeHandler_SetUserData(handler, webtag_ptr as *mut std::ffi::c_void);
+            // ArkWeb retains callback data. Store a monotonic token rather
+            // than a tag pointer so callbacks cannot target a replacement
+            // WebView which reused the logical tag.
+            let token = bind_scheme_callback(webtag.clone(), webview.native_view_id());
+            OH_ArkWebSchemeHandler_SetUserData(handler, token as usize as *mut std::ffi::c_void);
 
             // Set callbacks
             OH_ArkWebSchemeHandler_SetOnRequestStart(handler, Some(on_lx_request_start));
@@ -400,4 +459,22 @@ pub fn set_webview_scheme_handler(webtag: &WebTag) -> NapiResult<()> {
         summary.join(", ")
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scheme_callback_token_cannot_target_a_reused_webtag() {
+        let token = bind_scheme_callback(WebTag::from("app/page"), NativeWebViewId::new(17));
+        let user_data = token as usize as *mut std::ffi::c_void;
+
+        let binding = scheme_callback_binding(user_data).expect("live binding");
+        assert_eq!(binding.webtag, WebTag::from("app/page"));
+        assert_eq!(binding.native_view_id, NativeWebViewId::new(17));
+
+        unbind_scheme_callback(user_data);
+        assert!(scheme_callback_binding(user_data).is_none());
+    }
 }

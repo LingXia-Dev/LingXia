@@ -31,6 +31,12 @@ impl NativeWebViewId {
 pub struct DocumentGeneration(u64);
 
 impl DocumentGeneration {
+    /// Constructed only by the navigation normalizer after reliable commit
+    /// evidence. Adapters never receive this constructor.
+    pub(crate) const fn new(raw: u64) -> Self {
+        Self(raw)
+    }
+
     /// The platform-owned ordinal, intended only for equality binding.
     pub const fn get(self) -> u64 {
         self.0

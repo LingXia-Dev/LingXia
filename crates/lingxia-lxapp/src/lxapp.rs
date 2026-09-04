@@ -69,7 +69,7 @@ pub use display_language::{
 pub use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 pub use lingxia_surface::Role as SurfaceRole;
 pub use lingxia_update::ReleaseType;
-use lingxia_webview::runtime::destroy_webview;
+use lingxia_webview::runtime::destroy_webview_if_matches;
 pub use runtime_bootstrap::dev_session_active as is_dev_session;
 pub use runtime_bootstrap::init;
 pub use runtime_bootstrap::runner_active as is_runner;
@@ -1717,7 +1717,10 @@ impl LxApp {
                 .cloned()
                 .collect::<Vec<_>>()
         };
-        let page_webtags = pages.iter().map(|page| page.webtag()).collect::<Vec<_>>();
+        let page_webviews = pages
+            .iter()
+            .map(|page| (page.webtag(), page.webview()))
+            .collect::<Vec<_>>();
         let page_instance_ids = pages
             .iter()
             .map(|page| page.instance_id_string())
@@ -1739,8 +1742,10 @@ impl LxApp {
             state.page_instance_runtime.lock().unwrap().clear();
             state.page_chrome_layouts.clear();
         }
-        for webtag in &page_webtags {
-            destroy_webview(webtag);
+        for (webtag, webview) in &page_webviews {
+            if let Some(webview) = webview {
+                destroy_webview_if_matches(webtag, webview);
+            }
         }
         let _ = self.clear_page_stack();
         // Terminate AppService (receiver handles its own state)
@@ -2756,8 +2761,11 @@ impl LxApp {
         }
 
         page.cancel_bridge_work();
+        let webview = page.webview();
         page.detach_webview();
-        destroy_webview(&page.webtag());
+        if let Some(webview) = webview {
+            destroy_webview_if_matches(&page.webtag(), &webview);
+        }
     }
 
     pub fn ensure_headless_page_service(&self, path: &str) -> Result<PageInstance, LxAppError> {

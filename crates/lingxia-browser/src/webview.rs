@@ -22,7 +22,6 @@ use crate::types::{BrowserNavigationPolicyDecision, BrowserNavigationPolicyReque
 use lingxia_log::{LogBuilder, LogLevel as LxLogLevel, LogTag};
 use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_webview::runtime::{
-    destroy_webview as destroy_managed_webview,
     destroy_webview_if_matches as destroy_managed_webview_if_matches,
     find_webview as find_managed_webview,
 };
@@ -713,15 +712,13 @@ pub(crate) fn browser_load_url(path: &str, session_id: u64, url: &str) -> Result
     webview.load_url(url).map_err(LxAppError::from)
 }
 
-pub(crate) fn browser_destroy_webview(path: &str, session_id: u64) {
+pub(crate) fn browser_destroy_webview_if_matches(
+    path: &str,
+    session_id: u64,
+    expected: &Arc<WebView>,
+) -> bool {
     let webtag = browser_webtag(path, session_id);
-    // Remove from global registry (triggers platform-specific cleanup on Drop).
-    destroy_managed_webview(&webtag);
-}
-
-fn browser_destroy_webview_if_matches(path: &str, session_id: u64, expected: &Arc<WebView>) {
-    let webtag = browser_webtag(path, session_id);
-    destroy_managed_webview_if_matches(&webtag, expected);
+    destroy_managed_webview_if_matches(&webtag, expected)
 }
 
 #[cfg(test)]

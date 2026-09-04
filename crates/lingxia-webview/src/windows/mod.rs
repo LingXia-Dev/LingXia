@@ -16,7 +16,7 @@ use crate::traits::{
 use crate::webview::{
     EffectiveWebViewCreateOptions, SecurityProfile, WebTag, WebViewCreateSender,
     WebViewCreateStage, WebViewDataMode, find_webview, find_webview_by_native_view_id,
-    find_webview_delegate, register_webview,
+    register_webview,
 };
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, UserAgentOverride, WebResourceBody,

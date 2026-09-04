@@ -5,9 +5,10 @@ use crate::BUILTIN_BROWSER_APPID;
 use crate::policy::{is_lingxia_startup_url, normalize_browser_target_url};
 use crate::types::{BrowserAutomationError, BrowserTabInfo};
 use crate::webview::{
-    browser_create_webview, browser_destroy_webview, browser_find_webview, browser_load_url,
+    browser_create_webview, browser_destroy_webview_if_matches, browser_find_webview,
+    browser_load_url,
 };
-use lingxia_webview::WebViewDataMode;
+use lingxia_webview::{WebView, WebViewDataMode};
 use lxapp::{LxApp, LxAppError};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -79,6 +80,25 @@ pub(crate) struct BrowserTabState {
     /// Session that owned the tab. Keeping this separately from the browser
     /// lxapp's `session_id` lets shells retire tabs after their owner restarts.
     pub(crate) owner_session_id: Option<u64>,
+}
+
+fn tab_generation_matches(tab: &BrowserTabState, session_id: u64, create_token: u64) -> bool {
+    tab.session_id == session_id && tab.create_token == create_token
+}
+
+fn browser_find_webview_for_generation(
+    tab_id: &str,
+    tab_path: &str,
+    session_id: u64,
+    create_token: u64,
+) -> Option<Arc<WebView>> {
+    let current_generation = lock_state()
+        .tabs
+        .get(tab_id)
+        .is_some_and(|tab| tab_generation_matches(tab, session_id, create_token));
+    current_generation
+        .then(|| browser_find_webview(tab_path, session_id).ok())
+        .flatten()
 }
 
 pub(crate) struct BrowserState {
@@ -1061,20 +1081,33 @@ pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
         LxAppError::InvalidParameter("tab_id must be a valid runtime browser tab id".to_string())
     })?;
 
+    let tab_path = browser_tab_path_for_runtime_id(&normalized);
+    let generation = {
+        let state = lock_state();
+        state
+            .tabs
+            .get(&normalized)
+            .map(|tab| (tab.session_id, tab.create_token))
+    };
+    // Resolve the concrete instance while this close still names the current
+    // tab generation. A delayed close must never tear down a successor that
+    // reused the same logical tab path.
+    let closing_webview = generation.and_then(|(session_id, create_token)| {
+        browser_find_webview_for_generation(&normalized, &tab_path, session_id, create_token)
+    });
     let removed = {
         let mut state = lock_state();
         state.tabs.remove(&normalized)
     };
     let removed_any = removed.is_some();
     if let Some(tab) = removed {
-        let tab_path = browser_tab_path_for_runtime_id(&normalized);
         // Detach only when this tab currently backs the startup page bridge.
         // Closing a background tab must not break the active tab bridge.
         if let Ok(browser) = ensure_browser_lxapp() {
             let startup_path = browser.initial_route();
             if let Some(page) = browser.get_page(&startup_path) {
                 let startup_webview = page.webview();
-                let closing_tab_webview = browser_find_webview(&tab_path, tab.session_id).ok();
+                let closing_tab_webview = closing_webview.clone();
                 if let (Some(startup_webview), Some(closing_tab_webview)) =
                     (startup_webview, closing_tab_webview)
                     && Arc::ptr_eq(&startup_webview, &closing_tab_webview)
@@ -1090,7 +1123,9 @@ pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
                 browser.remove_pages(std::slice::from_ref(&page.instance_id_string()));
             }
         }
-        browser_destroy_webview(&tab_path, tab.session_id);
+        if let Some(webview) = closing_webview {
+            browser_destroy_webview_if_matches(&tab_path, tab.session_id, &webview);
+        }
     }
     let active_matches_closed = lock_active_tab().as_deref() == Some(normalized.as_str());
     if active_matches_closed {
@@ -1147,6 +1182,13 @@ pub(crate) fn discard_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
     };
     let tab_path = browser_tab_path_for_runtime_id(&normalized);
 
+    let webview = browser_find_webview_for_generation(
+        &normalized,
+        &tab_path,
+        tab.session_id,
+        tab.create_token,
+    );
+
     // Bump the create token BEFORE destroying the WebView. If the WebView is
     // still being created, its in-flight `browser_on_webview_ready` holds the
     // old token; once `wait_ready()` errors after the destroy below, its
@@ -1162,7 +1204,7 @@ pub(crate) fn discard_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
         let startup_path = browser.initial_route();
         if let Some(page) = browser.get_page(&startup_path) {
             let startup_webview = page.webview();
-            let tab_webview = browser_find_webview(&tab_path, tab.session_id).ok();
+            let tab_webview = webview.clone();
             if let (Some(startup_webview), Some(tab_webview)) = (startup_webview, tab_webview)
                 && Arc::ptr_eq(&startup_webview, &tab_webview)
             {
@@ -1177,7 +1219,9 @@ pub(crate) fn discard_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
             browser.remove_pages(std::slice::from_ref(&page.instance_id_string()));
         }
     }
-    browser_destroy_webview(&tab_path, tab.session_id);
+    if let Some(webview) = webview {
+        browser_destroy_webview_if_matches(&tab_path, tab.session_id, &webview);
+    }
 
     // Keep the entry; remember where to reload from on reactivation. Preserve
     // an in-flight `pending_url` (WebView not yet loaded / mid-navigation);
@@ -1324,6 +1368,35 @@ mod tests {
         let mut state = lock_state();
         state.tabs.remove(&tab_id);
         state.user_agent_override = previous_user_agent;
+    }
+
+    #[test]
+    fn tab_generation_match_rejects_a_recreated_tab() {
+        let tab = BrowserTabState {
+            session_id: 42,
+            created_order: 1,
+            create_token: 8,
+            create_in_flight: false,
+            pending_url: None,
+            initial_url: None,
+            current_url: None,
+            title: None,
+            title_url: None,
+            favicon_png: None,
+            can_go_back: false,
+            can_go_forward: false,
+            discarded: false,
+            data_mode: WebViewDataMode::ProfileDefault,
+            url_callback: Arc::new(AtomicBool::new(false)),
+            standalone: false,
+            aside: false,
+            owner_appid: None,
+            owner_session_id: None,
+        };
+
+        assert!(tab_generation_matches(&tab, 42, 8));
+        assert!(!tab_generation_matches(&tab, 42, 7));
+        assert!(!tab_generation_matches(&tab, 41, 8));
     }
 
     #[test]

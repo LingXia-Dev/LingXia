@@ -20,7 +20,7 @@ use lingxia_log::{LogBuilder, LogLevel as LxLogLevel, LogTag};
 use lingxia_platform::traits::app_runtime::{
     AnimationType, AppRuntime, OpenUrlRequest, OpenUrlTarget,
 };
-use lingxia_webview::runtime::destroy_webview;
+use lingxia_webview::runtime::destroy_webview_if_matches;
 use lingxia_webview::{
     IncomingWebMessage, LoadDataRequest, LogLevel, NavigationOutcome, NavigationPolicy,
     NewWindowPolicy, WebTag, WebView, WebViewBuilder, WebViewController, WebViewDelegate,
@@ -1488,8 +1488,11 @@ impl PageInstance {
                     let stack_pages = lxapp.get_page_stack_pages();
                     for page in &stack_pages {
                         page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
+                        let webview = page.webview();
                         page.detach_webview();
-                        destroy_webview(&page.webtag());
+                        if let Some(webview) = webview {
+                            destroy_webview_if_matches(&page.webtag(), &webview);
+                        }
                     }
                     let stack_ids: Vec<String> = stack_pages
                         .iter()

@@ -637,12 +637,13 @@ fn teardown_surface(entry: &SurfaceEntry, id: &str, reason: &str) {
         // Disposing the page instance detaches + destroys its webview (closing
         // the window; a presented overlay is restored by cleanup_window_state).
         Some(page_instance_id) => dispose_surface_page(page_instance_id, reason),
-        // A Url-content surface has no page instance; destroy its webview.
+        // A Url-content surface has no page instance. The host owns this
+        // tag-scoped lifecycle, so it intentionally destroys the current view.
         None => {
             if let Some(cleanup) = &entry.cleanup {
                 cleanup();
             }
-            webview_runtime::destroy_webview(&entry.webtag);
+            webview_runtime::destroy_current_webview(&entry.webtag);
         }
     }
 }

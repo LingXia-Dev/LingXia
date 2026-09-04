@@ -33,6 +33,7 @@ pub(crate) const CONSOLE_CAPTURE_EVENTS: &[&str] = &[
 pub(crate) fn subscribe(
     webview: &ICoreWebView2,
     webtag: &WebTag,
+    native_view_id: NativeWebViewId,
 ) -> StdResult<Vec<(ICoreWebView2DevToolsProtocolEventReceiver, i64)>> {
     let mut receivers = Vec::with_capacity(CONSOLE_CAPTURE_EVENTS.len());
     for event in CONSOLE_CAPTURE_EVENTS {
@@ -58,7 +59,8 @@ pub(crate) fn subscribe(
                 let params: Value = serde_json::from_str(&CoTaskMemPWSTR::from(json).to_string())
                     .unwrap_or(Value::Null);
                 if let Some((level, message)) = decode_cdp_event(&method, &params)
-                    && let Some(delegate) = find_webview_delegate(&webtag)
+                    && let Some(delegate) = find_webview_by_native_view_id(&webtag, native_view_id)
+                        .and_then(|webview| webview.get_delegate())
                 {
                     delegate.log(level, &message);
                 }
