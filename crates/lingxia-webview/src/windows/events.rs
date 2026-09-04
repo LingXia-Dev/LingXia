@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::events::normalizer::{self, NativeNavigationResult, NativeSignal};
-use crate::traits::{LoadError, LoadErrorKind};
+use crate::traits::{ContextualSchemeRequest, LoadError, LoadErrorKind, SchemeRequestFrame};
 
 /// Map a WebView2 `COREWEBVIEW2_WEB_ERROR_STATUS` to the normalized error
 /// kind. Numeric values per the WebView2 SDK enum.
@@ -19,6 +19,14 @@ fn windows_load_error_kind(status: i32) -> LoadErrorKind {
 
 fn windows_message_source(source: String) -> WebMessageSource {
     WebMessageSource::diagnostic_url(Some(source))
+}
+
+fn windows_scheme_request_frame(_context: COREWEBVIEW2_WEB_RESOURCE_CONTEXT) -> SchemeRequestFrame {
+    // WebResourceContext names a resource *type* only. In particular,
+    // `Document` does not bind this request to the top-level frame, and the
+    // callback exposes no frame identity or matching navigation proof. IFRAME
+    // must therefore never be promoted, and neither may Document.
+    SchemeRequestFrame::Unproven
 }
 
 fn native_callback_identity_matches(
@@ -496,6 +504,9 @@ pub(crate) fn register_event_handlers(
                     };
 
                     let request = args.Request()?;
+                    let mut resource_context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT::default();
+                    args.ResourceContext(&mut resource_context)?;
+                    let frame = windows_scheme_request_frame(resource_context);
                     let uri = take_request_string(|slot| request.Uri(slot))?;
                     let method = take_request_string(|slot| request.Method(slot))?;
                     if let Some(html) = find_memory_page(&memory_pages, &uri) {
@@ -521,7 +532,14 @@ pub(crate) fn register_event_handlers(
                     let response =
                         current_native_callback_webview(&request_tag, request_native_view_id)
                             .and_then(|webview| {
-                                webview.handle_scheme_request(scheme, http_request)
+                                webview.handle_contextual_scheme_request(
+                                    scheme,
+                                    ContextualSchemeRequest::new(
+                                        http_request,
+                                        webview.native_view_id(),
+                                        frame,
+                                    ),
+                                )
                             });
 
                     let Some(response) = response else {

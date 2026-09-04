@@ -199,6 +199,61 @@ impl IncomingWebMessage {
     }
 }
 
+/// Platform proof of which document scope initiated a scheme request.
+///
+/// `Unproven` is intentionally not treated as a top-level document. Platform
+/// adapters must preserve unavailable or ambiguous evidence rather than
+/// upgrading it at the Rust boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SchemeRequestFrame {
+    TopLevelDocument,
+    Subresource,
+    Unproven,
+}
+
+/// A scheme request plus the concrete native WebView and frame proof which
+/// delivered it.
+///
+/// Construction is crate-private: only platform adapters, after validating
+/// their callback's native identity, may attach this authority-relevant
+/// context. Consumers can inspect it but cannot forge a replacement.
+#[derive(Debug)]
+pub struct ContextualSchemeRequest {
+    request: http::Request<Vec<u8>>,
+    native_view: NativeWebViewId,
+    frame: SchemeRequestFrame,
+}
+
+impl ContextualSchemeRequest {
+    pub(crate) fn new(
+        request: http::Request<Vec<u8>>,
+        native_view: NativeWebViewId,
+        frame: SchemeRequestFrame,
+    ) -> Self {
+        Self {
+            request,
+            native_view,
+            frame,
+        }
+    }
+
+    pub fn request(&self) -> &http::Request<Vec<u8>> {
+        &self.request
+    }
+
+    pub fn into_request(self) -> http::Request<Vec<u8>> {
+        self.request
+    }
+
+    pub const fn native_view(&self) -> NativeWebViewId {
+        self.native_view
+    }
+
+    pub const fn frame(&self) -> SchemeRequestFrame {
+        self.frame
+    }
+}
+
 /// Outcome of handling a scheme request.
 #[derive(Debug)]
 pub enum SchemeOutcome {
@@ -211,7 +266,7 @@ pub enum SchemeOutcome {
 /// Async scheme handler signature.
 pub(crate) type AsyncSchemeFuture = Pin<Box<dyn Future<Output = SchemeOutcome> + Send + 'static>>;
 pub(crate) type AsyncSchemeHandler =
-    Arc<dyn Fn(http::Request<Vec<u8>>) -> AsyncSchemeFuture + Send + Sync>;
+    Arc<dyn Fn(ContextualSchemeRequest) -> AsyncSchemeFuture + Send + Sync>;
 
 /// Navigation policy decision returned by the navigation handler.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -920,6 +975,16 @@ pub trait WebViewDelegate: Send + Sync {
     /// normalizer.
     fn on_webview_state_change(&self, _change: crate::events::WebViewStateChange) {}
 
+    /// A top-level document binding minted from reliable, non-stale commit
+    /// evidence. It is never emitted for duplicate or ambiguous commits.
+    fn on_document_committed(
+        &self,
+        _native_view: NativeWebViewId,
+        _generation: DocumentGeneration,
+        _navigation_id: crate::events::NavigationId,
+    ) {
+    }
+
     /// Handles a postMessage from the page View(WebView).
     ///
     /// The context is assembled only by the platform adapter and must travel
@@ -1072,5 +1137,28 @@ impl WebResourceResponse {
     /// Add CORS header `Access-Control-Allow-Origin: null` (builder pattern).
     pub fn cors(self) -> Self {
         self.header("access-control-allow-origin", "null")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn contextual_scheme_request_preserves_platform_context() {
+        let request = http::Request::builder()
+            .uri("lx://app/index.html")
+            .body(vec![1, 2, 3])
+            .unwrap();
+        let request = ContextualSchemeRequest::new(
+            request,
+            NativeWebViewId::new(91),
+            SchemeRequestFrame::TopLevelDocument,
+        );
+
+        assert_eq!(request.native_view(), NativeWebViewId::new(91));
+        assert_eq!(request.frame(), SchemeRequestFrame::TopLevelDocument);
+        assert_eq!(request.request().uri(), "lx://app/index.html");
+        assert_eq!(request.into_request().into_body(), vec![1, 2, 3]);
     }
 }

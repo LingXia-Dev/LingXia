@@ -11,8 +11,9 @@ use crate::input_helper::INPUT_HELPER_BOOTSTRAP;
 use crate::input_helper::build_helper_invocation;
 use crate::input_helper::{build_async_eval_body, parse_wrapped_eval_result};
 use crate::traits::{
-    FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NativeWebViewId,
-    NavigationPolicy, NewWindowPolicy, WebMessageFrame, WebMessageSource, WebMessageTransport,
+    ContextualSchemeRequest, FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind,
+    NativeWebViewId, NavigationPolicy, NewWindowPolicy, SchemeRequestFrame, WebMessageFrame,
+    WebMessageSource, WebMessageTransport,
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::traits::{PressOptions, ScrollOptions, TypeOptions};
@@ -1152,7 +1153,16 @@ define_class!(
             let response = if let Some(webview) =
                 current_native_callback_webview(webtag, self.ivars().native_view_id)
             {
-                webview.handle_scheme_request("https", http_request)
+                // This navigation-policy callback does not prove a document
+                // relationship for the intercepted request.
+                webview.handle_contextual_scheme_request(
+                    "https",
+                    ContextualSchemeRequest::new(
+                        http_request,
+                        webview.native_view_id(),
+                        SchemeRequestFrame::Unproven,
+                    ),
+                )
             } else {
                 None
             };

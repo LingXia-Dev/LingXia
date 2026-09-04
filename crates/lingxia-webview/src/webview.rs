@@ -44,11 +44,12 @@ pub(crate) struct WebViewInner {
 }
 
 use crate::traits::{
-    AsyncSchemeHandler, ClickOptions, DownloadHandler, DownloadRequest, FileChooserRequest,
-    FileChooserResponse, FillOptions, NativeWebViewId, NavigationHandler, NavigationPolicy,
-    NavigationRequest, NewWindowHandler, NewWindowPolicy, PressOptions, SchemeOutcome,
-    ScrollOptions, TypeOptions, UserAgentOverride, WebMessageContext, WebMessageFrame,
-    WebMessageSource, WebMessageTransport, WebViewInputController,
+    AsyncSchemeHandler, ClickOptions, ContextualSchemeRequest, DownloadHandler, DownloadRequest,
+    FileChooserRequest, FileChooserResponse, FillOptions, NativeWebViewId, NavigationHandler,
+    NavigationPolicy, NavigationRequest, NewWindowHandler, NewWindowPolicy, PressOptions,
+    SchemeOutcome, SchemeRequestFrame, ScrollOptions, TypeOptions, UserAgentOverride,
+    WebMessageContext, WebMessageFrame, WebMessageSource, WebMessageTransport,
+    WebViewInputController,
 };
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, IncomingWebMessage, LoadDataRequest,
@@ -632,9 +633,9 @@ impl WebViewCreateOptions {
     ///   `options.on_scheme("lx", |req| async move { ... })`
     /// - Immediate response:
     ///   `options.on_scheme("lx", |req| async move { immediate(req).into() })`
-    fn on_scheme<F, Fut>(mut self, scheme: &str, handler: F) -> Self
+    fn on_contextual_scheme<F, Fut>(mut self, scheme: &str, handler: F) -> Self
     where
-        F: Fn(http::Request<Vec<u8>>) -> Fut + Send + Sync + 'static,
+        F: Fn(ContextualSchemeRequest) -> Fut + Send + Sync + 'static,
         Fut: std::future::Future<Output = SchemeOutcome> + Send + 'static,
     {
         let normalized = scheme.trim().to_ascii_lowercase();
@@ -648,6 +649,14 @@ impl WebViewCreateOptions {
             );
         }
         self
+    }
+
+    fn on_scheme<F, Fut>(self, scheme: &str, handler: F) -> Self
+    where
+        F: Fn(http::Request<Vec<u8>>) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = SchemeOutcome> + Send + 'static,
+    {
+        self.on_contextual_scheme(scheme, move |request| handler(request.into_request()))
     }
 
     /// Register a navigation handler that decides whether to allow or cancel navigations.
@@ -822,6 +831,17 @@ impl StrictWebViewBuilder {
         self
     }
 
+    /// Register a scheme handler which receives native-instance and frame
+    /// context alongside the HTTP request.
+    pub fn on_contextual_scheme<F, Fut>(mut self, scheme: &str, handler: F) -> Self
+    where
+        F: Fn(ContextualSchemeRequest) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = SchemeOutcome> + Send + 'static,
+    {
+        self.options = self.options.on_contextual_scheme(scheme, handler);
+        self
+    }
+
     pub fn on_navigation<F>(mut self, handler: F) -> Self
     where
         F: Fn(&NavigationRequest) -> NavigationPolicy + Send + Sync + 'static,
@@ -873,6 +893,17 @@ impl BrowserWebViewBuilder {
         Fut: std::future::Future<Output = SchemeOutcome> + Send + 'static,
     {
         self.options = self.options.on_scheme(scheme, handler);
+        self
+    }
+
+    /// Register a scheme handler which receives native-instance and frame
+    /// context alongside the HTTP request.
+    pub fn on_contextual_scheme<F, Fut>(mut self, scheme: &str, handler: F) -> Self
+    where
+        F: Fn(ContextualSchemeRequest) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = SchemeOutcome> + Send + 'static,
+    {
+        self.options = self.options.on_contextual_scheme(scheme, handler);
         self
     }
 
@@ -1006,10 +1037,12 @@ impl WebView {
         }
     }
 
-    /// Opaque identity for this concrete native WebView.
-    // This is consumed by conditionally compiled platform callback adapters.
-    #[allow(dead_code)]
-    pub(crate) const fn native_view_id(&self) -> NativeWebViewId {
+    /// Opaque identity for this concrete native WebView instance.
+    ///
+    /// It is readable for identity comparison across crates, but cannot be
+    /// constructed, serialized, or converted to a raw platform handle by
+    /// consumers.
+    pub const fn native_view_id(&self) -> NativeWebViewId {
         self.native_view_id
     }
 
@@ -1150,13 +1183,36 @@ impl WebView {
 
     /// Synchronously invoke the registered scheme handler for `scheme`.
     /// Returns `None` if no handler is registered or the handler declines.
+    ///
+    /// Compatibility ingress for out-of-tree / older adapters. It preserves
+    /// the exact owning native instance but has no frame proof, so it always
+    /// invokes contextual handlers with [`SchemeRequestFrame::Unproven`].
+    #[allow(dead_code)]
     pub(crate) fn handle_scheme_request(
         &self,
         scheme: &str,
         request: http::Request<Vec<u8>>,
     ) -> Option<WebResourceResponse> {
+        self.handle_contextual_scheme_request(
+            scheme,
+            ContextualSchemeRequest::new(
+                request,
+                self.native_view_id(),
+                SchemeRequestFrame::Unproven,
+            ),
+        )
+    }
+
+    /// Invoke a registered scheme handler with adapter-attested callback
+    /// context. Platform code must validate its callback identity before
+    /// constructing the request.
+    pub(crate) fn handle_contextual_scheme_request(
+        &self,
+        scheme: &str,
+        request: ContextualSchemeRequest,
+    ) -> Option<WebResourceResponse> {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
-        if let Some(response) = self.inner.handle_internal_bridge_request(&request) {
+        if let Some(response) = self.inner.handle_internal_bridge_request(request.request()) {
             return Some(response);
         }
 
@@ -2820,11 +2876,13 @@ pub(crate) fn destroy_current_webview(webtag: &WebTag) {
 mod tests {
     use super::{
         MAX_PENDING_WEB_MESSAGES, WEBVIEW_SESSIONS, WebMessageEnqueue, WebMessageIngress, WebTag,
-        WebViewCreateSender, WebViewSessionSignals, next_native_webview_id, remove_arc_if_matches,
-        remove_session_signals_if_matches, replace_session_signals, snapshot_web_message_context,
+        WebViewCreateOptions, WebViewCreateSender, WebViewSessionSignals, block_on_scheme_future,
+        next_native_webview_id, remove_arc_if_matches, remove_session_signals_if_matches,
+        replace_session_signals, snapshot_web_message_context,
     };
     use crate::{
-        DocumentBinding, IncomingWebMessage, WebMessageContext, WebMessageFrame, WebMessageSource,
+        ContextualSchemeRequest, DocumentBinding, IncomingWebMessage, NativeWebViewId,
+        SchemeOutcome, SchemeRequestFrame, WebMessageContext, WebMessageFrame, WebMessageSource,
         WebMessageTransport,
     };
     use std::collections::HashMap;
@@ -2853,6 +2911,25 @@ mod tests {
         let late_message = message("late", retired);
         assert_ne!(late_message.context().native_view(), replacement);
         assert_eq!(late_message.context().document(), DocumentBinding::Unbound);
+    }
+
+    #[test]
+    fn legacy_scheme_handler_runs_from_contextual_ingress() {
+        let options = WebViewCreateOptions::strict().on_scheme("lx", |request| async move {
+            assert_eq!(request.uri(), "lx://app/index.html");
+            SchemeOutcome::PassThrough
+        });
+        let (_, callbacks) = options.normalize().unwrap();
+        let handler = callbacks.scheme_handlers.get("lx").unwrap();
+        let outcome = block_on_scheme_future(handler(ContextualSchemeRequest::new(
+            http::Request::builder()
+                .uri("lx://app/index.html")
+                .body(Vec::new())
+                .unwrap(),
+            NativeWebViewId::new(101),
+            SchemeRequestFrame::TopLevelDocument,
+        )));
+        assert!(matches!(outcome, SchemeOutcome::PassThrough));
     }
 
     #[test]

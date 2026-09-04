@@ -7,7 +7,8 @@ use crate::webview::{
     WebTag, WebViewCreateStage, find_webview_by_native_view_id, register_android_webview_if_current,
 };
 use crate::{
-    DownloadRequest, LogLevel, NativeWebViewId, WebResourceBody, WebResourceResponse, WebViewError,
+    ContextualSchemeRequest, DownloadRequest, LogLevel, NativeWebViewId, SchemeRequestFrame,
+    WebResourceBody, WebResourceResponse, WebViewError,
 };
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request};
@@ -669,6 +670,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
     url: JString<'a>,
     method: JString<'a>,
     headers_array: jni::sys::jobjectArray,
+    is_main_frame: jboolean,
 ) -> JObject<'a> {
     env.with_env(|env| -> Result<JObject<'a>, jni::errors::Error> {
         // Convert Java strings to Rust strings
@@ -747,7 +749,15 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
         let scheme = request.uri().scheme_str().unwrap_or("").to_string();
         let response =
             if let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) {
-                webview.handle_scheme_request(&scheme, request)
+                let frame = if is_main_frame {
+                    SchemeRequestFrame::TopLevelDocument
+                } else {
+                    SchemeRequestFrame::Subresource
+                };
+                webview.handle_contextual_scheme_request(
+                    &scheme,
+                    ContextualSchemeRequest::new(request, webview.native_view_id(), frame),
+                )
             } else {
                 None
             };

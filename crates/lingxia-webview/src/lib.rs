@@ -113,13 +113,14 @@ pub use events::{
     WebViewStateChange,
 };
 pub use traits::{
-    ClearSiteDataOptions, ClearSiteDataResult, ClickOptions, DocumentBinding, DocumentGeneration,
-    DownloadRequest, FileChooserFile, FileChooserRequest, FileChooserResponse, FillOptions,
-    IncomingWebMessage, LoadDataRequest, LoadError, LoadErrorKind, NativeWebViewId,
-    NavigationPolicy, NavigationRequest, NetworkBody, NetworkCaptureSnapshot, NetworkEntry,
-    NewWindowPolicy, PressOptions, SchemeOutcome, ScrollOptions, SystemPipeReader, TypeOptions,
-    UserAgentOverride, WebMessageContext, WebMessageFrame, WebMessageSource, WebMessageTransport,
-    WebResourceBody, WebResourceResponse, WebViewController, WebViewCookie, WebViewCookieSameSite,
+    ClearSiteDataOptions, ClearSiteDataResult, ClickOptions, ContextualSchemeRequest,
+    DocumentBinding, DocumentGeneration, DownloadRequest, FileChooserFile, FileChooserRequest,
+    FileChooserResponse, FillOptions, IncomingWebMessage, LoadDataRequest, LoadError,
+    LoadErrorKind, NativeWebViewId, NavigationPolicy, NavigationRequest, NetworkBody,
+    NetworkCaptureSnapshot, NetworkEntry, NewWindowPolicy, PressOptions, SchemeOutcome,
+    SchemeRequestFrame, ScrollOptions, SystemPipeReader, TypeOptions, UserAgentOverride,
+    WebMessageContext, WebMessageFrame, WebMessageSource, WebMessageTransport, WebResourceBody,
+    WebResourceResponse, WebViewController, WebViewCookie, WebViewCookieSameSite,
     WebViewCookieSetRequest, WebViewDelegate, WebViewInputController,
 };
 pub use webview::{

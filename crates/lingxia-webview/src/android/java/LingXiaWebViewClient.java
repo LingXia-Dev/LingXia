@@ -196,7 +196,8 @@ public class LingXiaWebViewClient extends WebViewClient {
                 webView.getNativeViewId(),
                 url,
                 method,
-                headerArray
+                headerArray,
+                request.isForMainFrame()
             );
 
             if (response == null) {
