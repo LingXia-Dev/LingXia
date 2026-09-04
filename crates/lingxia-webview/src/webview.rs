@@ -53,8 +53,9 @@ use crate::traits::{
 };
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, IncomingWebMessage, LoadDataRequest,
-    NetworkCaptureSnapshot, WebResourceResponse, WebViewController, WebViewCookie,
-    WebViewCookieSetRequest, WebViewDelegate, WebViewError, WebViewInputError, WebViewScriptError,
+    NetworkCaptureSnapshot, TrustedLoadIntent, WebResourceResponse, WebViewController,
+    WebViewCookie, WebViewCookieSetRequest, WebViewDelegate, WebViewError, WebViewInputError,
+    WebViewScriptError,
 };
 use async_trait::async_trait;
 
@@ -999,6 +1000,79 @@ pub struct WebView {
     message_ingress: Arc<WebMessageIngress>,
 }
 
+/// A one-shot reservation for a trusted native HTML load.
+///
+/// It is issued for one exact [`WebView`] and can neither be cloned nor moved
+/// to another view. Consumers register [`Self::intent`] with their own
+/// document state before calling [`Self::load`]. Dropping it, or a failed
+/// load, revokes the intent before it can become an admission.
+pub struct TrustedDataLoadReservation<'a> {
+    webview: &'a WebView,
+    webtag: WebTag,
+    native_view_id: NativeWebViewId,
+    intent: Option<TrustedLoadIntent>,
+}
+
+impl TrustedDataLoadReservation<'_> {
+    /// The opaque token to register before initiating the native load.
+    pub fn intent(&self) -> TrustedLoadIntent {
+        self.intent
+            .expect("trusted data load reservation must retain its intent until consumed")
+    }
+
+    /// Consume this reservation and start its one native HTML load.
+    pub fn load(mut self, request: LoadDataRequest<'_>) -> Result<TrustedLoadIntent, WebViewError> {
+        let intent = self
+            .intent
+            .take()
+            .expect("trusted data load reservation must be consumed once");
+        let key = match self.webview.load_trusted_data_on_platform(request) {
+            Ok(key) => key,
+            Err(error) => {
+                crate::events::normalizer::revoke_trusted_load(
+                    &self.webtag,
+                    self.native_view_id,
+                    intent,
+                );
+                return Err(error);
+            }
+        };
+
+        if crate::events::normalizer::attest_trusted_load(
+            &self.webtag,
+            self.native_view_id,
+            intent,
+            key,
+        ) {
+            Ok(intent)
+        } else {
+            // A destroy/recreate or concurrent later direct load won between
+            // issuing and binding. The native load may still render, but it is
+            // intentionally ineligible for trusted admission.
+            crate::events::normalizer::revoke_trusted_load(
+                &self.webtag,
+                self.native_view_id,
+                intent,
+            );
+            Err(WebViewError::WebView(
+                "trusted data load lost its WebView lifecycle binding".to_string(),
+            ))
+        }
+    }
+}
+
+impl Drop for TrustedDataLoadReservation<'_> {
+    fn drop(&mut self) {
+        if let Some(intent) = self.intent.take() {
+            crate::events::normalizer::revoke_trusted_load(
+                &self.webtag,
+                self.native_view_id,
+                intent,
+            );
+        }
+    }
+}
+
 fn snapshot_web_message_context(
     native_view_id: NativeWebViewId,
     frame: WebMessageFrame,
@@ -1044,6 +1118,50 @@ impl WebView {
     /// consumers.
     pub const fn native_view_id(&self) -> NativeWebViewId {
         self.native_view_id
+    }
+
+    /// Reserve a trusted native HTML load before starting the native operation.
+    ///
+    /// Register [`TrustedDataLoadReservation::intent`] with document state
+    /// before calling `load`; a native callback is permitted to arrive before
+    /// `load` returns. The reservation's Drop implementation revokes an
+    /// unused token. HTML and base URLs are resource-location inputs, never
+    /// authority.
+    pub fn prepare_trusted_data_load(
+        &self,
+    ) -> Result<TrustedDataLoadReservation<'_>, WebViewError> {
+        let webtag = self.webtag();
+        let native_view_id = self.native_view_id;
+        let intent = crate::events::normalizer::issue_trusted_load(&webtag, native_view_id)
+            .ok_or_else(|| {
+                WebViewError::WebView(
+                    "trusted data load requires a live matching WebView lifecycle".to_string(),
+                )
+            })?;
+        Ok(TrustedDataLoadReservation {
+            webview: self,
+            webtag,
+            native_view_id,
+            intent: Some(intent),
+        })
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    fn load_trusted_data_on_platform(
+        &self,
+        request: LoadDataRequest<'_>,
+    ) -> Result<crate::events::normalizer::NativeKey, WebViewError> {
+        self.inner.load_trusted_data(request)
+    }
+
+    #[cfg(not(any(target_os = "ios", target_os = "macos")))]
+    fn load_trusted_data_on_platform(
+        &self,
+        _request: LoadDataRequest<'_>,
+    ) -> Result<crate::events::normalizer::NativeKey, WebViewError> {
+        Err(WebViewError::Unsupported(
+            "trusted direct HTML loads require a platform navigation key".to_string(),
+        ))
     }
 
     /// Enqueue a platform message whose frame proof is known by the adapter.
