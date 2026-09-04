@@ -206,12 +206,19 @@ pub struct WindowsShellAddressBarLayout {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WindowsShellSidebarActionSource {
+    Runtime,
+    StaticSettings(crate::static_settings::StaticSettingsDestinationKind),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WindowsShellFooterActionLayout {
     pub generation: u64,
     pub id: String,
     pub label: String,
     pub icon_path: String,
     pub disabled: bool,
+    pub source: WindowsShellSidebarActionSource,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]

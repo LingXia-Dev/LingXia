@@ -145,7 +145,7 @@ pub use settings_destination::{
 };
 pub use settings_target::{
     SealedNativeActionRegistry, StaticSettingsTargetCatalog, StaticSettingsTargetError,
-    ValidatedStaticSettingsTargets,
+    ValidatedStaticSettingsTargets, static_settings_destination,
 };
 /// Shared async task helpers backed by LingXia's global executor.
 pub mod task;

@@ -10,8 +10,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use super::{
     WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellFooterActionLayout,
-    WindowsShellHeaderActionLayout, WindowsShellNavigationBarLayout, WindowsShellTabBarItemLayout,
-    WindowsShellTabBarLayout, WindowsShellTabBarPosition, WindowsShellWindowLayout,
+    WindowsShellHeaderActionLayout, WindowsShellNavigationBarLayout,
+    WindowsShellSidebarActionSource, WindowsShellTabBarItemLayout, WindowsShellTabBarLayout,
+    WindowsShellTabBarPosition, WindowsShellWindowLayout,
 };
 #[cfg(feature = "browser-runtime")]
 use lingxia_browser::BrowserTabInfo;
@@ -22,7 +23,7 @@ use lingxia_browser_shell::{
 };
 use lingxia_platform::error::PlatformError;
 use lingxia_platform::traits::app_runtime::{
-    AppRuntime, BuiltinBrowserPage, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
+    AppRuntime, LxAppOpenMode, OpenUrlRequest, OpenUrlTarget,
 };
 use lingxia_platform::traits::ui::{ManagedSurfaceCompletion, ManagedSurfaceFuture};
 use lingxia_shell::{
@@ -483,6 +484,7 @@ mod chrome_command {
     pub(super) const TAB_BAR_CLICK: &str = "tabbar.click";
     pub(super) const TAB_BAR_MORE_CLICK: &str = "tabbar.more.click";
     pub(super) const FOOTER_ACTION_CLICK: &str = "sidebar-footer-action.click";
+    pub(super) const STATIC_SETTINGS_CLICK: &str = "static-settings.click";
     pub(super) const NAVIGATION_BACK: &str = "navigation.back";
     pub(super) const NAVIGATION_HOME: &str = "navigation.home";
     pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
@@ -1114,7 +1116,9 @@ pub(super) fn install() {
         open_managed_native_surface_for_api,
     ));
     lingxia_platform::set_windows_sidebar_actions_handler(Arc::new(set_runtime_sidebar_actions));
-    lingxia_platform::set_windows_builtin_browser_page_handler(Arc::new(open_builtin_browser_page));
+    lingxia_platform::set_windows_builtin_browser_downloads_handler(Arc::new(
+        open_builtin_browser_downloads,
+    ));
     lingxia_platform::set_windows_shell_pins_handler(Arc::new(set_runtime_shell_pins));
     lingxia_platform::set_windows_lxapp_main_activation_handler(Arc::new(
         request_lxapp_main_activation,
@@ -2927,10 +2931,9 @@ fn set_runtime_sidebar_actions(items: &[ResolvedShellSidebarAction]) -> bool {
     true
 }
 
-fn open_builtin_browser_page(page: BuiltinBrowserPage) -> bool {
+fn open_builtin_browser_downloads() -> bool {
     #[cfg(not(feature = "browser-runtime"))]
     {
-        let _ = page;
         false
     }
     #[cfg(feature = "browser-runtime")]
@@ -2941,11 +2944,7 @@ fn open_builtin_browser_page(page: BuiltinBrowserPage) -> bool {
         let Some(app) = lxapp::try_get(&appid) else {
             return false;
         };
-        let url = match page {
-            BuiltinBrowserPage::Settings => "lingxia://settings",
-            BuiltinBrowserPage::Downloads => "lingxia://downloads",
-        };
-        open_or_present_browser_page(&appid, app.session_id(), url)
+        open_or_present_browser_page(&appid, app.session_id(), "lingxia://downloads")
     }
 }
 
@@ -2970,7 +2969,7 @@ fn build_footer_actions(app: &LxApp) -> Vec<WindowsShellFooterActionLayout> {
     {
         return Vec::new();
     }
-    resolved_sidebar_actions_for_placement(app, SidebarActionPlacement::Footer)
+    let mut actions = resolved_sidebar_actions_for_placement(app, SidebarActionPlacement::Footer)
         .into_iter()
         .map(|item| WindowsShellFooterActionLayout {
             generation: item.generation,
@@ -2978,8 +2977,56 @@ fn build_footer_actions(app: &LxApp) -> Vec<WindowsShellFooterActionLayout> {
             label: item.label,
             icon_path: resolved_sidebar_action_icon_path(app, item.icon_path.as_deref()),
             disabled: item.disabled,
+            source: WindowsShellSidebarActionSource::Runtime,
         })
-        .collect()
+        .collect::<Vec<_>>();
+    if let Some(source) = static_settings_source() {
+        actions.push(WindowsShellFooterActionLayout {
+            generation: 0,
+            id: crate::static_settings::STATIC_SETTINGS_ACTION_ID.to_string(),
+            label: "Settings".to_string(),
+            icon_path: app
+                .runtime
+                .asset_dir()
+                .join("icons")
+                .join("design")
+                .join("icon_browser_settings.png")
+                .to_string_lossy()
+                .into_owned(),
+            disabled: false,
+            source: WindowsShellSidebarActionSource::StaticSettings(source.destination_kind),
+        });
+    }
+    actions
+}
+
+static STATIC_SETTINGS_SOURCE: OnceLock<
+    Mutex<Option<crate::static_settings::WindowsStaticSettingsSource>>,
+> = OnceLock::new();
+
+pub(crate) fn configure_static_settings_source(
+    destination: Option<&lingxia_app_context::SettingsDestination>,
+) {
+    let source = crate::static_settings::WindowsStaticSettingsSource::from_destination(destination);
+    let state = STATIC_SETTINGS_SOURCE.get_or_init(|| Mutex::new(None));
+    if let Ok(mut state) = state.lock() {
+        *state = source;
+    }
+    if let Some(owner_appid) = shell_owner_appid() {
+        sync_shell_layout(&owner_appid);
+    }
+}
+
+fn static_settings_source() -> Option<crate::static_settings::WindowsStaticSettingsSource> {
+    STATIC_SETTINGS_SOURCE
+        .get()
+        .and_then(|state| state.lock().ok())
+        .and_then(|state| *state)
+}
+
+fn activate_static_settings(item_id: &str) -> bool {
+    static_settings_source()
+        .is_some_and(|source| source.activate(item_id, lingxia::resolve_settings_destination))
 }
 
 fn resolved_sidebar_actions_for_placement(
@@ -2989,7 +3036,13 @@ fn resolved_sidebar_actions_for_placement(
     runtime_sidebar_actions()
         .unwrap_or_default()
         .into_iter()
-        .filter(|item| item.placement == placement)
+        .filter(|item| {
+            item.placement == placement
+                && crate::static_settings::WindowsStaticSettingsSource::accepts_runtime_action(
+                    &item.id,
+                    &item.label,
+                )
+        })
         .collect()
 }
 
@@ -3400,6 +3453,16 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
                 generation,
             }) {
                 log::warn!("shell sidebar action '{panel_id}' failed: {error}");
+            }
+            sync_shell_layout(appid);
+            return;
+        }
+        chrome_command::STATIC_SETTINGS_CLICK => {
+            let Some(item_id) = payload_string(&event, "panel_id") else {
+                return;
+            };
+            if !activate_static_settings(&item_id) {
+                log::warn!("static Settings action '{item_id}' failed");
             }
             sync_shell_layout(appid);
             return;
@@ -5643,6 +5706,15 @@ fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) -> bool
     }
 }
 
+#[cfg(feature = "browser-runtime")]
+fn open_or_present_browser_local_page(
+    appid: &str,
+    session_id: u64,
+    navigation: crate::browser_local_navigation::BrowserLocalNavigation<'_>,
+) -> bool {
+    open_or_present_browser_page(appid, session_id, &navigation.url())
+}
+
 /// An internal page target that carries a query or fragment, e.g.
 /// `lingxia://settings#clear-site-data?tabId=t1`.
 #[cfg(any(feature = "browser-shell", feature = "browser-runtime", test))]
@@ -6065,6 +6137,11 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
             true,
             WindowsDesignIcon::History,
         ),
+        ContextMenuEntry::item(
+            "Settings".to_string(),
+            true,
+            WindowsDesignIcon::BrowserSettings,
+        ),
         ContextMenuEntry::separator(),
         ContextMenuEntry::item(
             lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserClearSiteData),
@@ -6109,12 +6186,23 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
                     open_or_present_browser_page(&appid, app.session_id(), "lingxia://history");
                 }
             }
-            8 if is_web_url => {
+            7 => {
                 if let Some(app) = lxapp::try_get(&appid) {
-                    open_or_present_browser_page(
+                    open_or_present_browser_local_page(
                         &appid,
                         app.session_id(),
-                        &format!("lingxia://settings#clear-site-data?tabId={tab_id}"),
+                        crate::browser_local_navigation::BrowserLocalNavigation::Settings,
+                    );
+                }
+            }
+            9 if is_web_url => {
+                if let Some(app) = lxapp::try_get(&appid) {
+                    open_or_present_browser_local_page(
+                        &appid,
+                        app.session_id(),
+                        crate::browser_local_navigation::BrowserLocalNavigation::ClearSiteData {
+                            tab_id: &tab_id,
+                        },
                     );
                 }
             }

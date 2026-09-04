@@ -343,6 +343,7 @@ mod tests {
             label: label.to_string(),
             icon_path: String::new(),
             disabled: false,
+            source: WindowsShellSidebarActionSource::Runtime,
         }
     }
 
