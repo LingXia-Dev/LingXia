@@ -514,7 +514,7 @@ impl WebViewDelegate for BrowserTabDelegate {
                     }
                     // Authenticated console text is the explicit log payload;
                     // rejection diagnostics above never include it or its binding.
-                    self.log(level, message);
+                    self.log(level, &message);
                     Some(())
                 },
             );
