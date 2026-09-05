@@ -7,6 +7,22 @@ use std::time::Duration;
 
 const DEFAULT_EVAL_TIMEOUT: Duration = Duration::from_secs(5);
 
+async fn wait_for_open_page(
+    mut current_page: impl FnMut() -> Option<String>,
+    timeout: Duration,
+) -> Result<String, String> {
+    tokio::time::timeout(timeout, async {
+        loop {
+            if let Some(instance_id) = current_page() {
+                return instance_id;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .map_err(|_| "lxapp open timed out waiting for its first page".to_string())
+}
+
 pub(crate) fn handle_lxapp_command(
     handler: &str,
     args: Option<Value>,
@@ -161,14 +177,30 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
                     .set_release_type(release_type),
             )
             .map_err(|err| err.to_string())?;
-            let page = run_async(lingxia::dev::lxapp_dev_page_wait(
-                Some(&app.appid),
-                None,
-                None,
-                None,
-                lingxia::dev::LxAppDevPageWaitState::Ready,
-                Duration::from_secs(15),
-            ))?
+            let page = run_async(async {
+                let timeout = Duration::from_secs(15);
+                let deadline = tokio::time::Instant::now() + timeout;
+                // Native containers create the initial page asynchronously.
+                // Bind readiness to that instance only after it exists.
+                let instance_id = wait_for_open_page(
+                    || {
+                        app.current_page()
+                            .ok()
+                            .map(|page| page.instance_id_string())
+                    },
+                    timeout,
+                )
+                .await?;
+                lingxia::dev::lxapp_dev_page_wait(
+                    Some(&app.appid),
+                    Some(&instance_id),
+                    None,
+                    None,
+                    lingxia::dev::LxAppDevPageWaitState::Ready,
+                    deadline.saturating_duration_since(tokio::time::Instant::now()),
+                )
+                .await
+            })?
             .page;
             Ok(Some(json!({
                 "appid": app.appid,
@@ -331,7 +363,32 @@ struct OpenArgs {
 
 #[cfg(test)]
 mod tests {
-    use super::page_paths_match;
+    use super::{page_paths_match, wait_for_open_page};
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn open_waits_for_asynchronously_created_page() {
+        let mut probes = 0;
+        let page = wait_for_open_page(
+            || {
+                probes += 1;
+                (probes == 2).then(|| "page-instance".to_string())
+            },
+            Duration::from_secs(1),
+        )
+        .await
+        .unwrap();
+        assert_eq!(page, "page-instance");
+        assert_eq!(probes, 2);
+    }
+
+    #[tokio::test]
+    async fn open_page_wait_is_bounded() {
+        let error = wait_for_open_page(|| None, Duration::from_millis(1))
+            .await
+            .unwrap_err();
+        assert!(error.contains("timed out waiting for its first page"));
+    }
 
     #[test]
     fn configured_page_status_ignores_query_and_leading_slash() {
