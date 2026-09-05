@@ -673,6 +673,29 @@ mod tests {
     }
 
     #[test]
+    fn addon_only_destination_is_retained_without_a_bundled_destination() {
+        let config = app_config(None);
+        let mut catalog = catalog_for(&config);
+        catalog.set_destination(
+            "native-addon",
+            SettingsDestination::NativeAction {
+                action_id: "preferences".into(),
+            },
+        );
+        catalog.register_native_action("native-addon", "preferences");
+        let assets = FakeAssets::default();
+        let validated = validate_with_inventory(&config, catalog, &assets, |_| Ok(None), false)
+            .expect("native addon Settings declaration is valid");
+        assert!(config.settings_destination.is_none());
+        assert_eq!(
+            serde_json::to_value(validated.destination()).unwrap(),
+            serde_json::json!({"kind": "nativeAction", "actionId": "preferences"})
+        );
+        assert_eq!(assets.reads.get(), 0);
+        assert_eq!(assets.runtime_creations.get(), 0);
+    }
+
+    #[test]
     fn conflicting_destination_writers_fail_deterministically() {
         let config = app_config(None);
         let mut catalog = StaticSettingsTargetCatalog::new();

@@ -204,6 +204,9 @@ mod bridge {
         #[swift_bridge(swift_name = "resolveSettingsDestination")]
         fn resolve_settings_destination_for_host() -> bool;
 
+        #[swift_bridge(swift_name = "staticSettingsDestinationJSON")]
+        fn static_settings_destination_json() -> String;
+
         #[swift_bridge(swift_name = "getDisplayLanguage")]
         fn get_display_language() -> String;
 
@@ -873,6 +876,12 @@ pub fn on_host_locale_changed(locale: &str) {
 /// registries for a native host entry click.
 pub(crate) fn resolve_settings_destination_for_host() -> bool {
     settings_destination_result_to_bool(crate::settings_destination::resolve_settings_destination())
+}
+
+/// Read the merged startup descriptor for native chrome without resolving it.
+pub(crate) fn static_settings_destination_json() -> String {
+    serde_json::to_string(&crate::static_settings_destination())
+        .expect("static Settings descriptor is JSON data")
 }
 
 fn settings_destination_result_to_bool(
