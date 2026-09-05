@@ -1797,6 +1797,7 @@ mod tests {
         assert_eq!(control_scope.storage().temporary(), control.temp_dir);
 
         let file = standard.temp_dir.join("native-grant.txt");
+        std::fs::create_dir_all(&standard.temp_dir).expect("create grant fixture directory");
         std::fs::write(&file, b"scope-owned").expect("write grant fixture");
         let granted = standard
             .grant_transient_file_access(&file)
