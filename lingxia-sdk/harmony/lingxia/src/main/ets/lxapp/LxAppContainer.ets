@@ -186,7 +186,8 @@ export struct LxAppContainer {
       if (extracted) {
         const appId = extracted.appId;
         const path = extracted.path;
-        const actualPath = path.replace(/-/g, '/');
+        // extractWebTag already returns the route; hyphens are literal path characters.
+        const actualPath = path;
 
         // Check if this is the first page (LxApp runtime might not be ready yet)
         const isFirstPage = this.pageShowTriggered.size === 0;
