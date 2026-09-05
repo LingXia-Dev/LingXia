@@ -153,7 +153,8 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
         methods::lxapp::OPEN => {
             let args: OpenArgs = parse_args(handler, args)?;
             let release_type = release_type(args.release_type.as_deref())?;
-            ensure_lxapp_available(&args.appid, release_type)?;
+            let appid = args.appid.clone();
+            run_async(async move { lxapp::prepare_lxapp_open(&appid, release_type).await })?;
             let app = lxapp::open_lxapp(
                 &args.appid,
                 lxapp::LxAppStartupOptions::new(args.path.as_deref().unwrap_or(""))
@@ -250,8 +251,14 @@ fn ensure_lxapp_available(
     if lxapp::installed_lxapp_path(appid, release_type).is_some() {
         return lxapp::ensure_lxapp(appid, release_type).map_err(|err| err.to_string());
     }
-    lxapp::register_builtin_asset_bundle(appid.to_string());
-    lxapp::ensure_builtin_lxapp(appid).map_err(|err| err.to_string())
+    // Only host-shipped assets are builtin. A catalog app that is not installed
+    // yet must not be pinned to bundled assets — that lookup poisons later
+    // opens of the same appid after the package is downloaded.
+    if lxapp::bundled_lxapp_asset_available(appid) {
+        lxapp::register_builtin_asset_bundle(appid.to_string());
+        return lxapp::ensure_builtin_lxapp(appid).map_err(|err| err.to_string());
+    }
+    Err(format!("lxapp '{appid}' is not installed"))
 }
 
 fn resolve_appid(raw: &str) -> Result<String, String> {
