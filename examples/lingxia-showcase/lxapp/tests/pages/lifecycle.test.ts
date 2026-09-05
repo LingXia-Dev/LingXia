@@ -10,6 +10,21 @@ interface SurfaceLifecycleState {
   lastLifecycle: string;
 }
 
+spec('preserve hyphenated routes through show and ready', { id: 'PAGE-LIFECYCLE-008', covers: ['lx.navigateTo', 'lx.navigateBack'], app: SHOWCASE_APP_ID }, async (t) => {
+  const { app, defer } = bindFixture(t, 'PAGE-LIFECYCLE-008');
+  defer(async () => {
+    await app.nav.relaunch({ page: 'home' });
+  });
+
+  await app.nav.relaunch({ page: 'home' });
+  await app.nav.to({ page: 'bridge-repro' });
+  await waitForCurrentPage(app, 'bridge-repro');
+  await app.nav.to({ page: 'feedback' });
+  await waitForCurrentPage(app, 'feedback');
+  await app.nav.back();
+  await waitForCurrentPage(app, 'bridge-repro');
+});
+
 async function surfaceLifecycleState(app: LxAppDriver): Promise<SurfaceLifecycleState | null> {
   return app.eval({
     script: `
