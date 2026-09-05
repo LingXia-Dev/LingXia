@@ -3030,9 +3030,24 @@ fn static_settings_source() -> Option<crate::static_settings::WindowsStaticSetti
 fn activate_static_settings(item_id: &str) -> bool {
     static_settings_source().is_some_and(|source| {
         SETTINGS_RUNTIME.get().is_some_and(|runtime| {
-            source.activate(item_id, || runtime.resolve_settings_destination())
+            source.activate(
+                item_id,
+                || runtime.resolve_settings_destination(),
+                present_static_settings_resolution,
+            )
         })
     })
+}
+
+fn present_static_settings_resolution(resolution: lingxia::SettingsDestinationResolution) {
+    #[cfg(feature = "browser-runtime")]
+    if let lingxia::SettingsDestinationResolution::BrowserControlPage { tab_id, .. } = resolution {
+        let owner_appid = shell_owner_appid()
+            .unwrap_or_else(|| lingxia_browser::BUILTIN_BROWSER_APPID.to_string());
+        present_browser_tab_when_ready(&owner_appid, tab_id);
+    }
+    #[cfg(not(feature = "browser-runtime"))]
+    let _ = resolution;
 }
 
 fn resolved_sidebar_actions_for_placement(

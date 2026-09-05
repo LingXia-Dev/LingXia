@@ -32,14 +32,22 @@ impl WindowsStaticSettingsSource {
         Some(Self { destination_kind })
     }
 
-    pub(crate) fn activate<F>(&self, item_id: &str, resolver: F) -> bool
+    pub(crate) fn activate<F, P>(&self, item_id: &str, resolver: F, present: P) -> bool
     where
         F: FnOnce() -> Result<
             SettingsDestinationResolution,
             lingxia::SettingsDestinationResolveError,
         >,
+        P: FnOnce(SettingsDestinationResolution),
     {
-        item_id == STATIC_SETTINGS_ACTION_ID && settings_resolution_succeeded(resolver())
+        if item_id != STATIC_SETTINGS_ACTION_ID {
+            return false;
+        }
+        let Ok(resolution) = resolver() else {
+            return false;
+        };
+        present(resolution);
+        true
     }
 
     /// Source type, not presentation strings, grants the static resolver.
@@ -47,12 +55,6 @@ impl WindowsStaticSettingsSource {
     pub(crate) fn accepts_runtime_action(id: &str) -> bool {
         id != STATIC_SETTINGS_ACTION_ID
     }
-}
-
-fn settings_resolution_succeeded(
-    result: Result<SettingsDestinationResolution, lingxia::SettingsDestinationResolveError>,
-) -> bool {
-    result.is_ok()
 }
 
 #[cfg(test)]
@@ -118,10 +120,14 @@ mod tests {
         ];
         for resolution in resolutions {
             let called = Cell::new(false);
-            assert!(source.activate(STATIC_SETTINGS_ACTION_ID, || {
-                called.set(true);
-                Ok(resolution)
-            }));
+            assert!(source.activate(
+                STATIC_SETTINGS_ACTION_ID,
+                || {
+                    called.set(true);
+                    Ok(resolution.clone())
+                },
+                |actual| assert_eq!(actual, resolution),
+            ));
             assert!(called.get());
         }
     }
@@ -132,12 +138,16 @@ mod tests {
             destination_kind: StaticSettingsDestinationKind::NativeAction,
         };
         let called = Cell::new(false);
-        assert!(!source.activate("settings", || {
-            called.set(true);
-            Ok(SettingsDestinationResolution::NativeAction {
-                action_id: "preferences".to_string(),
-            })
-        }));
+        assert!(!source.activate(
+            "settings",
+            || {
+                called.set(true);
+                Ok(SettingsDestinationResolution::NativeAction {
+                    action_id: "preferences".to_string(),
+                })
+            },
+            |_| panic!("wrong id must not present a destination"),
+        ));
         assert!(!called.get());
     }
 
@@ -157,13 +167,17 @@ mod tests {
             destination_kind: StaticSettingsDestinationKind::BrowserControlPage,
         };
         let called = Cell::new(false);
-        assert!(!source.activate("settings", || {
-            called.set(true);
-            Ok(SettingsDestinationResolution::BrowserControlPage {
-                tab_id: "settings".to_string(),
-                browser_session_id: 1,
-            })
-        }));
+        assert!(!source.activate(
+            "settings",
+            || {
+                called.set(true);
+                Ok(SettingsDestinationResolution::BrowserControlPage {
+                    tab_id: "settings".to_string(),
+                    browser_session_id: 1,
+                })
+            },
+            |_| panic!("runtime spoof must not present a destination"),
+        ));
         assert!(!called.get());
     }
 }
