@@ -5784,7 +5784,7 @@ fn browser_page_urls_match(current: &str, target: &str) -> bool {
 /// the existing tab whatever query/fragment it carries. A bare re-open only
 /// presents it (keeping scroll and dialog state); a deep link (query or
 /// fragment on the target) navigates the tab so hash routing fires.
-#[cfg(feature = "browser-runtime")]
+#[cfg(feature = "browser-shell")]
 fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) -> bool {
     open_or_present_browser_page_with_authority(
         appid,
@@ -5807,6 +5807,7 @@ fn open_or_present_trusted_browser_page(appid: &str, session_id: u64, url: &str)
 #[cfg(feature = "browser-runtime")]
 #[derive(Clone, Copy)]
 enum BrowserPageOpenAuthority {
+    #[cfg(feature = "browser-shell")]
     AppSession,
     NativeControl,
 }
@@ -5835,6 +5836,7 @@ fn open_browser_page_with_authority(
     authority: BrowserPageOpenAuthority,
 ) -> Result<String, lxapp::LxAppError> {
     match authority {
+        #[cfg(feature = "browser-shell")]
         BrowserPageOpenAuthority::AppSession => {
             lingxia_browser::open_for_app(appid, session_id, url, tab_id)
         }
