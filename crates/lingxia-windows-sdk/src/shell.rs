@@ -71,8 +71,9 @@ mod theme;
 
 pub use chrome::{
     WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellFooterActionLayout,
-    WindowsShellHeaderActionLayout, WindowsShellNavigationBarLayout, WindowsShellTabBarItemLayout,
-    WindowsShellTabBarLayout, WindowsShellTabBarPosition, WindowsShellWindowLayout,
+    WindowsShellHeaderActionLayout, WindowsShellNavigationBarLayout,
+    WindowsShellSidebarActionSource, WindowsShellTabBarItemLayout, WindowsShellTabBarLayout,
+    WindowsShellTabBarPosition, WindowsShellWindowLayout,
 };
 // Inline address-bar editing exists only for self browser tabs.
 #[cfg(feature = "browser-runtime")]
@@ -144,8 +145,8 @@ pub(crate) use runtime::open_declared_browser;
 #[cfg(feature = "terminal-runtime")]
 pub(crate) use runtime::open_declared_terminal;
 pub(crate) use runtime::{
-    open_home_app_with_target, open_self_browser, prime_lxapp_shell_layout, set_shell_owner_app_id,
-    update_surface_width,
+    configure_static_settings_source, open_home_app_with_target, open_self_browser,
+    prime_lxapp_shell_layout, set_shell_owner_app_id, update_surface_width,
 };
 
 pub fn set_windows_default_shell_tabbar_position(position: WindowsShellTabBarPosition) {
@@ -186,6 +187,8 @@ pub(crate) fn windows_shell_frame_colors() -> (u32, u32, bool) {
         theme::is_dark(),
     )
 }
+#[cfg(feature = "terminal-runtime")]
+pub(crate) use terminal_panel::install_terminal_automation_authority;
 pub(crate) use terminal_panel::{
     begin_divider_drag, begin_pane_drag, begin_terminal_selection, close_pane_at,
     divider_orientation_at, end_divider_drag, end_pane_drag, end_terminal_selection,

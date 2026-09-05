@@ -25,9 +25,10 @@ pub type WindowsSidebarActionsHandler =
     Arc<dyn Fn(&[ResolvedShellSidebarAction]) -> bool + Send + Sync>;
 static WINDOWS_SIDEBAR_ACTIONS_HANDLER: Mutex<Option<WindowsSidebarActionsHandler>> =
     Mutex::new(None);
-pub type WindowsBuiltinBrowserPageHandler = Arc<dyn Fn(BuiltinBrowserPage) -> bool + Send + Sync>;
-static WINDOWS_BUILTIN_BROWSER_PAGE_HANDLER: Mutex<Option<WindowsBuiltinBrowserPageHandler>> =
-    Mutex::new(None);
+pub type WindowsBuiltinBrowserDownloadsHandler = Arc<dyn Fn() -> bool + Send + Sync>;
+static WINDOWS_BUILTIN_BROWSER_DOWNLOADS_HANDLER: Mutex<
+    Option<WindowsBuiltinBrowserDownloadsHandler>,
+> = Mutex::new(None);
 pub type WindowsShellPinsHandler = Arc<dyn Fn(&[ShellPin]) -> bool + Send + Sync>;
 static WINDOWS_SHELL_PINS_HANDLER: Mutex<Option<WindowsShellPinsHandler>> = Mutex::new(None);
 pub type WindowsLxAppMainActivationHandler = Arc<dyn Fn(&str) + Send + Sync>;
@@ -45,8 +46,10 @@ pub fn set_windows_sidebar_actions_handler(handler: WindowsSidebarActionsHandler
     }
 }
 
-pub fn set_windows_builtin_browser_page_handler(handler: WindowsBuiltinBrowserPageHandler) {
-    if let Ok(mut slot) = WINDOWS_BUILTIN_BROWSER_PAGE_HANDLER.lock() {
+pub fn set_windows_builtin_browser_downloads_handler(
+    handler: WindowsBuiltinBrowserDownloadsHandler,
+) {
+    if let Ok(mut slot) = WINDOWS_BUILTIN_BROWSER_DOWNLOADS_HANDLER.lock() {
         *slot = Some(handler);
     }
 }
@@ -71,12 +74,16 @@ fn invoke_windows_sidebar_actions_handler(items: &[ResolvedShellSidebarAction]) 
         .is_none_or(|handler| handler(items))
 }
 
-fn invoke_windows_builtin_browser_page_handler(page: BuiltinBrowserPage) -> bool {
-    WINDOWS_BUILTIN_BROWSER_PAGE_HANDLER
+fn invoke_windows_builtin_browser_downloads_handler() -> bool {
+    WINDOWS_BUILTIN_BROWSER_DOWNLOADS_HANDLER
         .lock()
         .ok()
         .and_then(|slot| slot.clone())
-        .is_some_and(|handler| handler(page))
+        .is_some_and(|handler| handler())
+}
+
+fn is_windows_builtin_browser_downloads(page: BuiltinBrowserPage) -> bool {
+    matches!(page, BuiltinBrowserPage::Downloads)
 }
 
 fn invoke_windows_shell_pins_handler(items: &[ShellPin]) -> bool {
@@ -322,7 +329,7 @@ impl Default for Platform {
                 data_dir: base.join("data"),
                 cache_dir: base.join("cache"),
                 asset_dir: default_asset_dir(),
-                locale: default_locale(),
+                locale: current_locale(),
                 app_identifier: DEFAULT_APP_IDENTIFIER.to_string(),
                 product_name: "LingXia".to_string(),
             }
@@ -347,7 +354,7 @@ impl Platform {
             data_dir: root.join("data"),
             cache_dir: root.join("cache"),
             asset_dir,
-            locale: default_locale(),
+            locale: current_locale(),
             app_identifier,
             product_name,
         })
@@ -551,7 +558,9 @@ impl AppRuntime for Platform {
     }
 
     fn open_builtin_browser_page(&self, page: BuiltinBrowserPage) -> Result<(), PlatformError> {
-        if invoke_windows_builtin_browser_page_handler(page) {
+        if is_windows_builtin_browser_downloads(page)
+            && invoke_windows_builtin_browser_downloads_handler()
+        {
             Ok(())
         } else {
             Err(PlatformError::NotSupported(
@@ -787,7 +796,7 @@ fn default_asset_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("assets"))
 }
 
-fn default_locale() -> String {
+pub fn current_locale() -> String {
     use windows::Win32::Globalization::GetUserDefaultLocaleName;
 
     // LOCALE_NAME_MAX_LENGTH (85); the pinned windows-rs rev does not export it.
@@ -829,5 +838,17 @@ impl GeneratedAppConfig {
                 .filter(|value| !value.is_empty())
                 .map(str::to_string),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn windows_builtin_browser_handler_is_downloads_only() {
+        assert!(is_windows_builtin_browser_downloads(
+            BuiltinBrowserPage::Downloads
+        ));
     }
 }

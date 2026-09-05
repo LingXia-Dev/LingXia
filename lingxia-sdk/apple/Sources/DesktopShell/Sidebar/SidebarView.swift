@@ -523,6 +523,11 @@ private final class SidebarRailPagePanel {
 
 /// Minimal display info for a panel icon in the sidebar footer.
 /// SidebarView only needs these — routing details (appId, path) are in Panel.swift.
+enum SidebarActionSource: Equatable {
+    case runtime
+    case staticSettings
+}
+
 struct PanelIconItem {
     var generation: UInt64 = 0
     let id: String
@@ -530,11 +535,14 @@ struct PanelIconItem {
     let label: String
     let active: Bool
     let disabled: Bool
+    var source: SidebarActionSource = .runtime
+    var systemImageName: String? = nil
 }
 
 private struct SidebarActionIdentity {
     let generation: UInt64
     let id: String
+    let source: SidebarActionSource
 }
 
 private struct ShellPinItem: Codable, Equatable {
@@ -595,6 +603,7 @@ extension PanelIconItem: Equatable {
     static func == (lhs: PanelIconItem, rhs: PanelIconItem) -> Bool {
         lhs.id == rhs.id && lhs.iconURL == rhs.iconURL && lhs.label == rhs.label
             && lhs.active == rhs.active && lhs.disabled == rhs.disabled
+            && lhs.source == rhs.source && lhs.systemImageName == rhs.systemImageName
     }
 }
 
@@ -757,7 +766,7 @@ class SidebarView: NSView {
     }
 
     /// Called when a panel icon button is clicked: (panelId)
-    var onPanelItemToggled: ((UInt64, String) -> Void)?
+    var onPanelItemToggled: ((UInt64, String, SidebarActionSource) -> Void)?
 
     /// Called when the update callout is clicked, with its current state
     /// (`.ready` → restart, `.available` → install).
@@ -1419,6 +1428,9 @@ class SidebarView: NSView {
         for item in model.panelItems {
             let iconPath = item.iconURL?.path ?? ""
             let image = Self.sidebarActionIcon(item.iconURL, size: Layout.railIconSize)
+                ?? item.systemImageName.flatMap {
+                    NSImage(systemSymbolName: $0, accessibilityDescription: item.label)
+                }
             let key = "sidebar-action:\(item.id)"
             let button = makeRailButton(
                 key: key,
@@ -1544,7 +1556,7 @@ class SidebarView: NSView {
         guard let key = sender.identifier?.rawValue, key.hasPrefix("sidebar-action:") else { return }
         let id = String(key.dropFirst("sidebar-action:".count))
         guard let item = model.panelItems.first(where: { $0.id == id }) else { return }
-        onPanelItemToggled?(item.generation, id)
+        onPanelItemToggled?(item.generation, id, item.source)
     }
 
     private func browserContextMenu(for id: String) -> NSMenu? {
@@ -1882,7 +1894,8 @@ class SidebarView: NSView {
             button.isEnabled = !item.disabled
             headerActionIdentities[ObjectIdentifier(button)] = SidebarActionIdentity(
                 generation: item.generation,
-                id: item.id
+                id: item.id,
+                source: item.source
             )
             button.target = self
             button.action = #selector(headerActionClicked(_:))
@@ -1964,11 +1977,12 @@ class SidebarView: NSView {
             let row = SidebarActionRowView(
                 label: item.label,
                 iconURL: item.iconURL,
+                systemImageName: item.systemImageName,
                 active: item.active,
                 disabled: item.disabled
             )
             row.onClick = { [weak self] in
-                self?.onPanelItemToggled?(item.generation, item.id)
+                self?.onPanelItemToggled?(item.generation, item.id, item.source)
             }
             entries.append(row)
             panelButtons.append(row)
@@ -2698,7 +2712,7 @@ class SidebarView: NSView {
 
     @objc private func headerActionClicked(_ sender: NSButton) {
         guard let identity = headerActionIdentities[ObjectIdentifier(sender)] else { return }
-        onPanelItemToggled?(identity.generation, identity.id)
+        onPanelItemToggled?(identity.generation, identity.id, identity.source)
     }
 
     @objc private func railExpandClicked() {
@@ -2962,7 +2976,13 @@ final class SidebarActionRowView: NSView {
         8 + Self.iconSize + 8 + titleLabel.intrinsicContentSize.width + 8
     }
 
-    init(label: String, iconURL: URL?, active: Bool, disabled: Bool) {
+    init(
+        label: String,
+        iconURL: URL?,
+        systemImageName: String? = nil,
+        active: Bool,
+        disabled: Bool
+    ) {
         titleLabel = NSTextField(labelWithString: label)
         self.active = active && !disabled
         self.disabled = disabled
@@ -2989,6 +3009,9 @@ final class SidebarActionRowView: NSView {
         addSubview(accentView)
 
         let icon = iconURL.flatMap { NSImage(contentsOf: $0) }
+            ?? systemImageName.flatMap {
+                NSImage(systemSymbolName: $0, accessibilityDescription: label)
+            }
         iconView.imageScaling = .scaleProportionallyDown
         iconView.wantsLayer = true
         iconView.alphaValue = disabled ? 0.42 : (self.active ? 1 : 0.82)

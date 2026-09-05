@@ -93,26 +93,6 @@ fn installed_home_version(
     }))
 }
 
-use std::sync::atomic::{AtomicBool, Ordering};
-
-/// Set by dev/test hosts (the Runner) to grant `lx.automation()` without an
-/// lxapp declaring the `automation`/`host` privilege. Off for product hosts,
-/// where the manifest gates as usual. See `set_automation_auto_grant`.
-static AUTOMATION_AUTO_GRANT: AtomicBool = AtomicBool::new(false);
-
-/// Grant automation privileges to every lxapp in this process, bypassing the
-/// manifest privilege check. Call once at host startup — the Runner does this
-/// so lxapps launched for testing need not declare `automation`/`host`.
-pub fn set_automation_auto_grant(enabled: bool) {
-    AUTOMATION_AUTO_GRANT.store(enabled, Ordering::Relaxed);
-}
-
-/// Whether this host auto-grants automation (Runner/dev harness). A dev session
-/// also implies auto-grant, so callers usually check both.
-pub fn automation_auto_grant() -> bool {
-    AUTOMATION_AUTO_GRANT.load(Ordering::Relaxed)
-}
-
 /// Whether this process is an active `lingxia dev` session: a dev websocket is
 /// configured either via the `LINGXIA_DEV_WS_URL` env var or `app.json`'s
 /// `dev_ws_url` (written by `lingxia dev`). Drives dev-only behaviour such as
@@ -142,6 +122,57 @@ pub fn runner_active() -> bool {
 
 /// Initialize the LxApps singleton using the host app configuration from app-context.
 pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
+    init_with_native_authority(runtime, None, None, Box::new(|_, _, _, _| Ok(())))
+        .map(|(home_app_id, _, _)| home_app_id)
+}
+
+type NativeAuthorityInstaller = dyn FnOnce(
+        crate::NativeControlPlaneAuthority,
+        crate::NativeControlPlaneAuthority,
+        crate::NativeControlPlaneAuthority,
+        crate::terminal_automation::TerminalAutomationAuthority,
+    ) -> Result<(), LxAppError>
+    + 'static;
+
+/// Private Rust-ABI edge used by the `lingxia` platform facade. Keeping this
+/// symbol out of the Rust public API prevents a linked extension from entering
+/// bootstrap, obtaining its token, or pre-installing a resolver through safe
+/// Rust. The ABI edge never returns the native token.
+#[unsafe(export_name = "lingxia_lxapp_platform_bootstrap_v1")]
+pub(crate) extern "Rust" fn platform_bootstrap(
+    runtime: Platform,
+    app_grant_resolver: Option<Arc<crate::host::AppResourceGrantResolver>>,
+    devtools_grant_resolver: Option<Arc<crate::host::DevtoolsResourceGrantResolver>>,
+    install_authorities: Box<NativeAuthorityInstaller>,
+) -> Result<
+    (
+        Option<String>,
+        crate::terminal_automation::TerminalAutomationAuthority,
+        crate::NativeControlPlaneAuthority,
+    ),
+    LxAppError,
+> {
+    init_with_native_authority(
+        runtime,
+        app_grant_resolver,
+        devtools_grant_resolver,
+        install_authorities,
+    )
+}
+
+fn init_with_native_authority(
+    runtime: Platform,
+    app_grant_resolver: Option<Arc<crate::host::AppResourceGrantResolver>>,
+    devtools_grant_resolver: Option<Arc<crate::host::DevtoolsResourceGrantResolver>>,
+    install_authorities: Box<NativeAuthorityInstaller>,
+) -> Result<
+    (
+        Option<String>,
+        crate::terminal_automation::TerminalAutomationAuthority,
+        crate::NativeControlPlaneAuthority,
+    ),
+    LxAppError,
+> {
     // Set up panic hook to capture panic information
     std::panic::set_hook(Box::new(|panic_info| {
         let location = panic_info
@@ -159,12 +190,28 @@ pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
         error!("RUST PANIC: {} at {}", message, location);
     }));
 
-    // Register built-in Host API set. This ensures view->host calls work regardless of
-    // which logic extensions are loaded.
-    crate::host::register_all();
+    // LingXia bootstrap pre-registers these for static validation. Keep the
+    // idempotent call here for embedders that initialize lingxia-lxapp directly.
+    crate::host::register_builtin_routes();
 
     let runtime_arc = Arc::new(runtime.clone());
     super::runtime_registry::set_runtime(runtime_arc.clone());
+    let native_token = crate::terminal_automation::NativeHostRuntimeToken::new(&runtime_arc);
+    crate::host::install_bootstrap_resource_grant_resolvers(
+        app_grant_resolver,
+        devtools_grant_resolver,
+    )
+    .map_err(|message| LxAppError::Runtime(message.to_string()))?;
+    let terminal_authority =
+        crate::terminal_automation::TerminalAutomationAuthority::for_native_runtime(&native_token);
+    install_authorities(
+        crate::NativeControlPlaneAuthority::for_native_runtime(&native_token),
+        crate::NativeControlPlaneAuthority::for_native_runtime(&native_token),
+        crate::NativeControlPlaneAuthority::for_native_runtime(&native_token),
+        terminal_authority.clone(),
+    )?;
+    let browser_registration_authority =
+        crate::NativeControlPlaneAuthority::for_native_runtime(&native_token);
 
     // Prepare directory structure
     if let Err(e) = prepare_directory_structure(runtime_arc.clone()) {
@@ -189,7 +236,7 @@ pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
     ) else {
         info!("LxApps initialized without a home lxapp");
         spawn_cache_cleanup(runtime_arc);
-        return Ok(None);
+        return Ok((None, terminal_authority, browser_registration_authority));
     };
     let home_app_id = home_app_id.to_string();
 
@@ -278,25 +325,15 @@ pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
             }
         }
     }
-    // Create the home LxApp instance (loads lxapp.json once)
-    let home_lxapp =
-        match LxApp::new_as_home(home_app_id.clone(), runtime_arc.clone(), executor.clone()) {
-            Ok(app) => app,
-            Err(e) => {
-                error!("Failed to setup home LxApp: {}", e).with_appid(home_app_id.clone());
-                return Err(e);
-            }
-        };
-
-    let initial_route = home_lxapp.config.get_initial_route();
-    home_lxapp.state.lock().unwrap().startup_options.path = initial_route;
-
-    // Add home lxapp to the manager
-    let home_app = Arc::new(home_lxapp);
-    home_app.bind_arc();
-    lxapps_manager
-        .lxapps
-        .insert(home_app_id.clone(), home_app.clone());
+    // Create the home LxApp instance (loads lxapp.json once) under the same
+    // per-app transition lock used by ordinary opens and restarts.
+    let home_app = match lxapps_manager.initialize_home_lxapp(home_app_id.clone()) {
+        Ok(app) => app,
+        Err(e) => {
+            error!("Failed to setup home LxApp: {}", e).with_appid(home_app_id.clone());
+            return Err(e);
+        }
+    };
 
     // Pre-create JS worker for home lxapp when enabled. Native-only hosts skip this path.
     if let Err(e) = home_app.executor.create_app_svc(home_app.clone()) {
@@ -306,5 +343,9 @@ pub fn init(runtime: Platform) -> Result<Option<String>, LxAppError> {
     info!("LxApps initialized successfully");
 
     spawn_cache_cleanup(runtime_arc.clone());
-    Ok(Some(home_app_id))
+    Ok((
+        Some(home_app_id),
+        terminal_authority,
+        browser_registration_authority,
+    ))
 }

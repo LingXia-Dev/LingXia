@@ -212,6 +212,7 @@ pub(super) mod command_id {
     /// The compact strip's overflow slot; opens the folded items as a menu.
     pub(super) const TAB_BAR_MORE_CLICK: &str = "tabbar.more.click";
     pub(super) const FOOTER_ACTION_CLICK: &str = "sidebar-footer-action.click";
+    pub(super) const STATIC_SETTINGS_CLICK: &str = "static-settings.click";
     pub(super) const NAVIGATION_BACK: &str = "navigation.back";
     pub(super) const NAVIGATION_HOME: &str = "navigation.home";
     pub(super) const BROWSER_NEW_TAB: &str = "browser.new-tab";
@@ -2162,8 +2163,14 @@ pub(super) fn chrome_hit_test(
             .iter()
             .find(|item| item.id == panel_id);
         if action.is_some_and(|item| !item.disabled) && rect_contains(&rect, point) {
+            let command = match action.map(|item| &item.source) {
+                Some(WindowsShellSidebarActionSource::StaticSettings(_)) => {
+                    command_id::STATIC_SETTINGS_CLICK
+                }
+                _ => command_id::FOOTER_ACTION_CLICK,
+            };
             return Some(chrome_command(
-                command_id::FOOTER_ACTION_CLICK,
+                command,
                 json!({
                     "generation": action.map(|item| item.generation).unwrap_or_default(),
                     "panel_id": panel_id,
@@ -2685,17 +2692,17 @@ mod scroll_tests {
         WindowsChromeHit, WindowsChromePanelLayoutInput, WindowsChromeState, WindowsPanelPosition,
         WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout,
         WindowsShellFooterActionLayout, WindowsShellNavigationBarLayout,
-        WindowsShellTabBarItemLayout, WindowsShellTabBarLayout, WindowsShellTabBarPosition,
-        WindowsShellWindowLayout, chrome_hit_test, chrome_rects_for_state, clamp_sidebar_scroll,
-        collapsed_sidebar_popup_tabbar, collapsed_sidebar_tabbar_click_command,
-        collapsed_sidebar_tabbar_popup_hit, collapsed_sidebar_tabbar_popup_item_bounds,
-        collapsed_sidebar_tabbar_popup_size, collapsed_sidebar_tooltip, compute_attached_layout,
-        compute_chrome_rects, covering_panel_layout, footer_action_rects,
-        layout_for_maximized_native_panel, layout_without_covered_main_chrome,
-        phone_browser_bar_active, phone_browser_bar_rects, rect_height,
-        sidebar_auxiliary_rail_index, sidebar_auxiliary_rects, sidebar_caption_contains,
-        sidebar_group_rect, sidebar_item_rect, sidebar_rail_close_rect, sidebar_rail_item_rect,
-        sidebar_rail_pinned_divider_rect, sidebar_top_level_icon_rect,
+        WindowsShellSidebarActionSource, WindowsShellTabBarItemLayout, WindowsShellTabBarLayout,
+        WindowsShellTabBarPosition, WindowsShellWindowLayout, chrome_hit_test,
+        chrome_rects_for_state, clamp_sidebar_scroll, collapsed_sidebar_popup_tabbar,
+        collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tabbar_popup_hit,
+        collapsed_sidebar_tabbar_popup_item_bounds, collapsed_sidebar_tabbar_popup_size,
+        collapsed_sidebar_tooltip, compute_attached_layout, compute_chrome_rects,
+        covering_panel_layout, footer_action_rects, layout_for_maximized_native_panel,
+        layout_without_covered_main_chrome, phone_browser_bar_active, phone_browser_bar_rects,
+        rect_height, sidebar_auxiliary_rail_index, sidebar_auxiliary_rects,
+        sidebar_caption_contains, sidebar_group_rect, sidebar_item_rect, sidebar_rail_close_rect,
+        sidebar_rail_item_rect, sidebar_rail_pinned_divider_rect, sidebar_top_level_icon_rect,
         tabbar_requires_full_repaint, top_bar_controls,
     };
     use lingxia_windows_contract::{
@@ -2809,6 +2816,7 @@ mod scroll_tests {
                 label: "Terminal".to_string(),
                 icon_path: String::new(),
                 disabled: false,
+                source: WindowsShellSidebarActionSource::Runtime,
             }],
             ..Default::default()
         };

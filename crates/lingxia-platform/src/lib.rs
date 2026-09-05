@@ -134,7 +134,7 @@ pub use windows::{
     WindowsVideoCommandDispatcher, apply_staged_windows_update, install_windows_aside_panel_bridge,
     register_windows_media_preview_host, register_windows_video_command_dispatcher,
     set_windows_activate_browser_tab_handler, set_windows_app_exit_handler,
-    set_windows_builtin_browser_page_handler, set_windows_capsule_rect_provider,
+    set_windows_builtin_browser_downloads_handler, set_windows_capsule_rect_provider,
     set_windows_close_browser_tab_handler, set_windows_home_first_ready_handler,
     set_windows_layout_plan_handler, set_windows_lxapp_main_activation_handler,
     set_windows_managed_aside_event_handler, set_windows_managed_native_surface_open_handler,

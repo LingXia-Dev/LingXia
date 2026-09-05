@@ -3,18 +3,20 @@
 //! Built-in host capabilities and third-party host extensions share the same
 //! registry. External crates can define handlers and register them here.
 
+use crate::ControlDocumentAuthority;
 use crate::error::LxAppError;
-use crate::lxapp::LxApp;
+use crate::lxapp::{AppSessionClass, LxApp, LxAppSessionStatus};
 
 use futures::Stream;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::future::Future;
 use std::marker::PhantomData;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::Arc;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 use tokio::sync::{mpsc, oneshot};
 
 #[macro_use]
@@ -66,25 +68,723 @@ pub mod __native {
     }
 }
 
-/// Wire-level method kind, serialized into the handshake schema so the JS
-/// bridge can automatically choose `invoke` vs `stream`.
+/// Wire-level method kind generated for unary and stream handlers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostMethodKind {
     Call,
     Stream,
 }
 
+/// Route family stored in the effective inventory and Ready schema.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum HostRouteKind {
+    Call,
+    Stream,
+    Channel,
+}
+
+/// The admission constraint attached to a host route.
+///
+/// This is deliberately a closed SDK enum. Dispatch policy determines
+/// the caller set for each constraint; callers cannot select one from a bridge
+/// payload or an app manifest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RouteAudience {
+    AppSessionOnly,
+    AuthenticatedReadOnly,
+    ControlAppOnly,
+    BrowserControlOnly,
+    ControlOnly,
+}
+
+/// A privileged native resource that may be assigned to one lxapp session.
+///
+/// Manifest entries are requests, not grants. The native host seals the
+/// granted subset when it creates the session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum AppResourceGrant {
+    Process,
+    Downloads,
+    Automation,
+    AutomationHost,
+}
+
+impl AppResourceGrant {
+    pub const fn manifest_privilege(self) -> &'static str {
+        match self {
+            Self::Process => "process",
+            Self::Downloads => "downloads",
+            Self::Automation => "automation",
+            Self::AutomationHost => "host",
+        }
+    }
+}
+
+/// One-shot authority for assigning manifest-requested resources to a newly
+/// created app session. Only the lxapp session bootstrap constructs it.
+pub struct NativeHostRuntimeAuthority<'a> {
+    app_id: &'a str,
+    session_id: u64,
+    session_class: AppSessionClass,
+    requested: HashSet<AppResourceGrant>,
+    grants: &'a mut HashSet<AppResourceGrant>,
+}
+
+impl NativeHostRuntimeAuthority<'_> {
+    pub fn app_id(&self) -> &str {
+        self.app_id
+    }
+
+    pub const fn session_id(&self) -> u64 {
+        self.session_id
+    }
+
+    pub const fn session_class(&self) -> AppSessionClass {
+        self.session_class
+    }
+
+    pub fn requested(&self, grant: AppResourceGrant) -> bool {
+        self.requested.contains(&grant)
+    }
+
+    pub fn grant(&mut self, grant: AppResourceGrant) -> bool {
+        if !self.requested(grant) {
+            return false;
+        }
+        self.grants.insert(grant);
+        true
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test<'a>(
+        app_id: &'a str,
+        session_id: u64,
+        session_class: AppSessionClass,
+        requested: impl IntoIterator<Item = AppResourceGrant>,
+        grants: &'a mut HashSet<AppResourceGrant>,
+    ) -> NativeHostRuntimeAuthority<'a> {
+        NativeHostRuntimeAuthority {
+            app_id,
+            session_id,
+            session_class,
+            requested: requested.into_iter().collect(),
+            grants,
+        }
+    }
+}
+
+/// One-shot authority reserved for native devtools bootstrap. It cannot grant
+/// process execution or Downloads access.
+pub struct NativeDevtoolsAuthority<'a> {
+    app_id: &'a str,
+    session_id: u64,
+    session_class: AppSessionClass,
+    requested: HashSet<AppResourceGrant>,
+    grants: &'a mut HashSet<AppResourceGrant>,
+}
+
+impl NativeDevtoolsAuthority<'_> {
+    pub fn app_id(&self) -> &str {
+        self.app_id
+    }
+
+    pub const fn session_id(&self) -> u64 {
+        self.session_id
+    }
+
+    pub const fn session_class(&self) -> AppSessionClass {
+        self.session_class
+    }
+
+    pub fn requested(&self, grant: AppResourceGrant) -> bool {
+        self.requested.contains(&grant)
+    }
+
+    pub fn grant(&mut self, grant: AppResourceGrant) -> bool {
+        if !matches!(
+            grant,
+            AppResourceGrant::Automation | AppResourceGrant::AutomationHost
+        ) || !self.requested(grant)
+        {
+            return false;
+        }
+        self.grants.insert(grant);
+        true
+    }
+
+    pub fn grant_automation(&mut self) -> bool {
+        let automation = self.grant(AppResourceGrant::Automation);
+        let host = self.grant(AppResourceGrant::AutomationHost);
+        automation | host
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test<'a>(
+        app_id: &'a str,
+        session_id: u64,
+        session_class: AppSessionClass,
+        requested: impl IntoIterator<Item = AppResourceGrant>,
+        grants: &'a mut HashSet<AppResourceGrant>,
+    ) -> NativeDevtoolsAuthority<'a> {
+        NativeDevtoolsAuthority {
+            app_id,
+            session_id,
+            session_class,
+            requested: requested.into_iter().collect(),
+            grants,
+        }
+    }
+}
+
+pub(crate) type AppResourceGrantResolver =
+    dyn for<'a> Fn(&Arc<LxApp>, &mut NativeHostRuntimeAuthority<'a>) + Send + Sync + 'static;
+pub(crate) type DevtoolsResourceGrantResolver =
+    dyn for<'a> Fn(&Arc<LxApp>, &mut NativeDevtoolsAuthority<'a>) + Send + Sync + 'static;
+
+static APP_RESOURCE_GRANT_RESOLVER: OnceLock<Arc<AppResourceGrantResolver>> = OnceLock::new();
+static DEVTOOLS_RESOURCE_GRANT_RESOLVER: OnceLock<Arc<DevtoolsResourceGrantResolver>> =
+    OnceLock::new();
+
+/// Seal the native host's per-session grant resolvers during the lxapp
+/// bootstrap transaction. There is deliberately no downstream installer:
+/// extensions can contribute through `HostAddon`, but cannot win a race for
+/// these process-wide slots.
+pub(crate) fn install_bootstrap_resource_grant_resolvers(
+    app: Option<Arc<AppResourceGrantResolver>>,
+    devtools: Option<Arc<DevtoolsResourceGrantResolver>>,
+) -> Result<(), &'static str> {
+    if APP_RESOURCE_GRANT_RESOLVER.get().is_some()
+        || (devtools.is_some() && DEVTOOLS_RESOURCE_GRANT_RESOLVER.get().is_some())
+    {
+        return Err("native resource grant resolvers were already installed");
+    }
+    if let Some(resolver) = app {
+        APP_RESOURCE_GRANT_RESOLVER
+            .set(resolver)
+            .map_err(|_| "native app resource grant resolver was already installed")?;
+    }
+    if let Some(resolver) = devtools {
+        DEVTOOLS_RESOURCE_GRANT_RESOLVER
+            .set(resolver)
+            .map_err(|_| "native devtools grant resolver was already installed")?;
+    }
+    Ok(())
+}
+
+pub(crate) fn seal_app_resource_grants(app: &Arc<LxApp>) {
+    let requested: HashSet<_> = [
+        AppResourceGrant::Process,
+        AppResourceGrant::Downloads,
+        AppResourceGrant::Automation,
+        AppResourceGrant::AutomationHost,
+    ]
+    .into_iter()
+    .filter(|grant| {
+        let privilege = crate::LxAppSecurityPrivilege::new(grant.manifest_privilege())
+            .expect("resource grants use valid manifest privilege ids");
+        app.has_security_privilege(&privilege)
+    })
+    .collect();
+    let mut grants = HashSet::new();
+    if let Some(resolver) = APP_RESOURCE_GRANT_RESOLVER.get() {
+        let mut authority = NativeHostRuntimeAuthority {
+            app_id: &app.appid,
+            session_id: app.session_id(),
+            session_class: app.app_session_class(),
+            requested: requested.clone(),
+            grants: &mut grants,
+        };
+        resolver(app, &mut authority);
+    }
+    if let Some(resolver) = DEVTOOLS_RESOURCE_GRANT_RESOLVER.get() {
+        let mut authority = NativeDevtoolsAuthority {
+            app_id: &app.appid,
+            session_id: app.session_id(),
+            session_class: app.app_session_class(),
+            requested,
+            grants: &mut grants,
+        };
+        resolver(app, &mut authority);
+    }
+    app.seal_resource_grants(grants);
+}
+
+/// Native identity of one authenticated lxapp session.
+///
+/// The constructor is crate-private: an app id in a bridge payload or manifest
+/// cannot create or replace this identity.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AppIdentity {
+    app_id: Arc<str>,
+    session_id: u64,
+}
+
+impl AppIdentity {
+    pub fn app_id(&self) -> &str {
+        &self.app_id
+    }
+
+    pub const fn session_id(&self) -> u64 {
+        self.session_id
+    }
+}
+
+/// Filesystem namespace assigned to an lxapp by the native runtime.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppStorageNamespace {
+    storage_file: PathBuf,
+    user_data: PathBuf,
+    user_cache: PathBuf,
+    temporary: PathBuf,
+}
+
+impl AppStorageNamespace {
+    pub fn storage_file(&self) -> &Path {
+        &self.storage_file
+    }
+
+    pub fn user_data(&self) -> &Path {
+        &self.user_data
+    }
+
+    pub fn user_cache(&self) -> &Path {
+        &self.user_cache
+    }
+
+    pub fn temporary(&self) -> &Path {
+        &self.temporary
+    }
+}
+
+/// Native-issued resource grants attached to one live lxapp session.
+///
+/// Transient paths and references are issued by native pickers and keyed by
+/// the immutable app/session identity. A retained scope fails closed once the
+/// native app session is gone.
+#[derive(Clone)]
+pub struct AppResourceGrants {
+    app_id: Arc<str>,
+    session_id: u64,
+    owner: Weak<LxApp>,
+}
+
+impl fmt::Debug for AppResourceGrants {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AppResourceGrants")
+            .field("app_id", &self.app_id)
+            .field("session_id", &self.session_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl AppResourceGrants {
+    fn live_owner(&self) -> Result<Arc<LxApp>, LxAppError> {
+        let app = self.owner.upgrade().ok_or_else(|| {
+            LxAppError::ResourceNotFound("lxapp resource scope is no longer live".to_string())
+        })?;
+        if app.appid != self.app_id.as_ref()
+            || app.session_id() != self.session_id
+            || matches!(
+                app.status(),
+                LxAppSessionStatus::Closed
+                    | LxAppSessionStatus::Closing
+                    | LxAppSessionStatus::Restarting
+            )
+        {
+            return Err(LxAppError::ResourceNotFound(
+                "lxapp resource scope no longer matches its native session".to_string(),
+            ));
+        }
+        Ok(app)
+    }
+
+    /// Resolve a native-issued transient `lx://temp/...` grant.
+    pub fn resolve_transient_file(&self, resource: &str) -> Result<PathBuf, LxAppError> {
+        if !resource.trim().starts_with("lx://temp/") {
+            return Err(LxAppError::InvalidParameter(
+                "expected a native-issued lx://temp resource grant".to_string(),
+            ));
+        }
+        self.live_owner()?.resolve_accessible_path(resource)
+    }
+
+    /// Test a native-issued opaque file reference for this exact app session.
+    pub fn contains_file_reference(&self, reference: &str) -> bool {
+        self.live_owner()
+            .is_ok_and(|app| app.has_transient_file_reference(reference))
+    }
+
+    /// Whether the native host assigned this privileged resource to this live
+    /// session. A manifest declaration alone never makes this return true.
+    pub fn contains(&self, grant: AppResourceGrant) -> bool {
+        self.live_owner()
+            .is_ok_and(|app| app.has_resource_grant(grant))
+    }
+}
+
+/// Native-derived resource scope of an authenticated lxapp session.
+///
+/// This value is constructed from the owning [`LxApp`], never from bridge
+/// payload fields. Route audience admission and resource authorization remain
+/// distinct: handlers use this scope after admission to resolve app-owned
+/// storage or native-issued resource grants.
+#[derive(Debug, Clone)]
+pub struct AppScope {
+    identity: AppIdentity,
+    storage: AppStorageNamespace,
+    resource_grants: AppResourceGrants,
+}
+
+impl AppScope {
+    pub(crate) fn from_lxapp(app: &Arc<LxApp>) -> Self {
+        let app_id: Arc<str> = Arc::from(app.appid.as_str());
+        let session_id = app.session_id();
+        Self {
+            identity: AppIdentity {
+                app_id: Arc::clone(&app_id),
+                session_id,
+            },
+            storage: AppStorageNamespace {
+                storage_file: app.storage_file_path.clone(),
+                user_data: app.user_data_dir.clone(),
+                user_cache: app.user_cache_dir.clone(),
+                temporary: app.temp_dir.clone(),
+            },
+            resource_grants: AppResourceGrants {
+                app_id,
+                session_id,
+                owner: Arc::downgrade(app),
+            },
+        }
+    }
+
+    pub fn identity(&self) -> &AppIdentity {
+        &self.identity
+    }
+
+    pub fn storage(&self) -> &AppStorageNamespace {
+        &self.storage
+    }
+
+    pub fn resource_grants(&self) -> &AppResourceGrants {
+        &self.resource_grants
+    }
+
+    /// Resolve a path only within this app's native storage namespace or its
+    /// native-issued transient grants.
+    pub fn resolve_accessible_path(&self, resource: &str) -> Result<PathBuf, LxAppError> {
+        self.resource_grants
+            .live_owner()?
+            .resolve_accessible_path(resource)
+    }
+
+    fn belongs_to(&self, app: &Arc<LxApp>) -> bool {
+        self.identity.app_id() == app.appid
+            && self.identity.session_id() == app.session_id()
+            && self.resource_grants.owner.ptr_eq(&Arc::downgrade(app))
+    }
+
+    #[cfg(any(test, feature = "test-utils"))]
+    fn for_test(app_id: &str, session_id: u64) -> Self {
+        let app_id: Arc<str> = Arc::from(app_id);
+        Self {
+            identity: AppIdentity {
+                app_id: Arc::clone(&app_id),
+                session_id,
+            },
+            storage: AppStorageNamespace {
+                storage_file: PathBuf::new(),
+                user_data: PathBuf::new(),
+                user_cache: PathBuf::new(),
+                temporary: PathBuf::new(),
+            },
+            resource_grants: AppResourceGrants {
+                app_id,
+                session_id,
+                owner: Weak::new(),
+            },
+        }
+    }
+}
+
+#[cfg(feature = "process")]
+pub(crate) struct ProcessSessionAuthority {
+    scope: AppScope,
+}
+
+#[cfg(feature = "process")]
+impl ProcessSessionAuthority {
+    pub(crate) fn for_lxapp(app: &Arc<LxApp>) -> Self {
+        Self {
+            scope: AppScope::from_lxapp(app),
+        }
+    }
+}
+
+#[cfg(feature = "process")]
+impl ProcessSessionAuthority {
+    pub(crate) fn authorize(&self) -> Result<(), String> {
+        if self
+            .scope
+            .resource_grants()
+            .contains(AppResourceGrant::Process)
+        {
+            Ok(())
+        } else {
+            Err(format!(
+                "process execution requires a live native Process grant for app session {}:{}",
+                self.scope.identity().app_id(),
+                self.scope.identity().session_id()
+            ))
+        }
+    }
+}
+
+/// Authenticated source for a native route invocation.
+///
+/// Browser construction is reserved for the browser document lifecycle TCB:
+/// ordinary bridge frames derive only the `LxAppSession` variant from their
+/// owning native `LxApp` session.
+#[derive(Clone)]
+pub struct AuthenticatedCaller {
+    source: AuthenticatedCallerSource,
+}
+
+#[derive(Clone)]
+enum AuthenticatedCallerSource {
+    LxAppSession {
+        class: AppSessionClass,
+        scope: AppScope,
+    },
+    BrowserDocument {
+        _authority: ControlDocumentAuthority,
+    },
+}
+
+impl AuthenticatedCaller {
+    pub(crate) fn for_lxapp(app: &Arc<LxApp>) -> Self {
+        Self {
+            source: AuthenticatedCallerSource::LxAppSession {
+                class: app.app_session_class(),
+                scope: AppScope::from_lxapp(app),
+            },
+        }
+    }
+
+    /// Host-TCB constructor used only after the browser registry has promoted
+    /// the exact document binding to Active.
+    #[doc(hidden)]
+    pub fn active_browser_document(
+        native_authority: &crate::NativeControlPlaneAuthority,
+        authority: ControlDocumentAuthority,
+    ) -> Result<Self, LxAppError> {
+        if !native_authority.validate() {
+            return Err(LxAppError::UnsupportedOperation(
+                "browser caller promotion requires the live native host authority".to_string(),
+            ));
+        }
+        Ok(Self {
+            source: AuthenticatedCallerSource::BrowserDocument {
+                _authority: authority,
+            },
+        })
+    }
+
+    pub fn app_scope(&self) -> Option<&AppScope> {
+        match &self.source {
+            AuthenticatedCallerSource::LxAppSession { scope, .. } => Some(scope),
+            AuthenticatedCallerSource::BrowserDocument { .. } => None,
+        }
+    }
+
+    #[cfg(test)]
+    fn app_session_for_test(&self) -> Option<(AppSessionClass, &AppScope)> {
+        match &self.source {
+            AuthenticatedCallerSource::LxAppSession { class, scope } => Some((*class, scope)),
+            AuthenticatedCallerSource::BrowserDocument { .. } => None,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn standard_for_test(session_id: u64) -> Self {
+        Self {
+            source: AuthenticatedCallerSource::LxAppSession {
+                class: AppSessionClass::StandardApp,
+                scope: AppScope::for_test("test.standard", session_id),
+            },
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn control_for_test(session_id: u64) -> Self {
+        Self {
+            source: AuthenticatedCallerSource::LxAppSession {
+                class: AppSessionClass::ControlApp,
+                scope: AppScope::for_test("test.control", session_id),
+            },
+        }
+    }
+
+    #[cfg(feature = "test-utils")]
+    pub(crate) fn lxapp_session_for_test(
+        app_id: &str,
+        session_id: u64,
+        class: AppSessionClass,
+    ) -> Self {
+        Self {
+            source: AuthenticatedCallerSource::LxAppSession {
+                class,
+                scope: AppScope::for_test(app_id, session_id),
+            },
+        }
+    }
+
+    #[cfg(feature = "test-utils")]
+    pub(crate) fn browser_document_for_test() -> Self {
+        let native_authority = crate::NativeControlPlaneAuthority::for_test_harness();
+        let (_, authority) = crate::issue_control_document_bootstrap(
+            &native_authority,
+            &ring::rand::SystemRandom::new(),
+        )
+        .expect("native test entropy");
+        Self::active_browser_document(&native_authority, authority).expect("native test authority")
+    }
+}
+
+/// Authenticated, native-created context passed to every host handler.
+///
+/// Its constructor is private to bridge dispatch. Third-party handlers may
+/// inspect or clone it, but cannot mint a different caller or app scope.
+#[derive(Clone)]
+pub struct HostInvocationContext {
+    caller: AuthenticatedCaller,
+    lxapp: Arc<LxApp>,
+}
+
+impl HostInvocationContext {
+    /// Derive an invocation context from a live Logic worker context.
+    ///
+    /// Browser documents do not carry the private app-service context, so this
+    /// cannot turn a browser invocation into its owning app's authority.
+    #[doc(hidden)]
+    #[cfg(feature = "js-appservice")]
+    pub fn for_logic_context(ctx: &rong::JSContext) -> rong::JSResult<Self> {
+        let lxapp = LxApp::from_ctx(ctx)?;
+        Ok(Self {
+            caller: AuthenticatedCaller::for_lxapp(&lxapp),
+            lxapp,
+        })
+    }
+
+    pub(crate) fn for_dispatch(lxapp: Arc<LxApp>, caller: &AuthenticatedCaller) -> Option<Self> {
+        if let AuthenticatedCallerSource::LxAppSession { scope, .. } = &caller.source
+            && !scope.belongs_to(&lxapp)
+        {
+            return None;
+        }
+        Some(Self {
+            caller: caller.clone(),
+            lxapp,
+        })
+    }
+
+    pub fn caller(&self) -> &AuthenticatedCaller {
+        &self.caller
+    }
+
+    pub fn app_scope(&self) -> Option<&AppScope> {
+        self.caller.app_scope()
+    }
+
+    pub fn lxapp(&self) -> Arc<LxApp> {
+        Arc::clone(&self.lxapp)
+    }
+}
+
+/// The sole route-audience decision point.
+pub fn authorize(caller: &AuthenticatedCaller, audience: RouteAudience) -> bool {
+    matches!(
+        (&caller.source, audience),
+        (
+            AuthenticatedCallerSource::LxAppSession { .. },
+            RouteAudience::AppSessionOnly
+        ) | (
+            AuthenticatedCallerSource::LxAppSession { .. },
+            RouteAudience::AuthenticatedReadOnly
+        ) | (
+            AuthenticatedCallerSource::LxAppSession {
+                class: AppSessionClass::ControlApp,
+                ..
+            },
+            RouteAudience::ControlAppOnly | RouteAudience::ControlOnly
+        ) | (
+            AuthenticatedCallerSource::BrowserDocument { .. },
+            RouteAudience::AuthenticatedReadOnly
+                | RouteAudience::BrowserControlOnly
+                | RouteAudience::ControlOnly
+        )
+    )
+}
+
+/// The admission policy resolved when a route is registered.
+///
+/// Policy evaluation is intentionally separate from registration so every
+/// route family can carry the same immutable metadata before dispatch starts
+/// using it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EffectiveRoutePolicy {
+    audience: RouteAudience,
+}
+
+/// Read-only metadata for one production route.
+///
+/// Handlers are deliberately absent: callers can inspect the effective
+/// registration without gaining an invocation capability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EffectiveRouteMetadata {
+    kind: HostRouteKind,
+    policy: EffectiveRoutePolicy,
+}
+
+impl EffectiveRouteMetadata {
+    pub const fn kind(self) -> HostRouteKind {
+        self.kind
+    }
+
+    pub const fn policy(self) -> EffectiveRoutePolicy {
+        self.policy
+    }
+
+    pub const fn audience(self) -> RouteAudience {
+        self.policy.audience()
+    }
+}
+
+impl EffectiveRoutePolicy {
+    pub const fn new(audience: RouteAudience) -> Self {
+        Self { audience }
+    }
+
+    pub const fn audience(self) -> RouteAudience {
+        self.audience
+    }
+}
+
 pub struct HostRegistration {
-    pub namespace: &'static str,
-    pub method: &'static str,
-    pub handler: Arc<dyn HostHandler>,
-    pub kind: HostMethodKind,
+    namespace: &'static str,
+    method: &'static str,
+    handler: Arc<dyn HostHandler>,
+    kind: HostMethodKind,
+    policy: EffectiveRoutePolicy,
 }
 
 impl HostRegistration {
     pub fn new(
         namespace: &'static str,
         method: &'static str,
+        audience: RouteAudience,
         handler: Arc<dyn HostHandler>,
     ) -> Self {
         Self {
@@ -92,12 +792,14 @@ impl HostRegistration {
             method,
             handler,
             kind: HostMethodKind::Call,
+            policy: EffectiveRoutePolicy::new(audience),
         }
     }
 
     pub fn stream(
         namespace: &'static str,
         method: &'static str,
+        audience: RouteAudience,
         handler: Arc<dyn HostHandler>,
     ) -> Self {
         Self {
@@ -105,7 +807,16 @@ impl HostRegistration {
             method,
             handler,
             kind: HostMethodKind::Stream,
+            policy: EffectiveRoutePolicy::new(audience),
         }
+    }
+
+    pub const fn policy(&self) -> EffectiveRoutePolicy {
+        self.policy
+    }
+
+    pub const fn audience(&self) -> RouteAudience {
+        self.policy.audience()
     }
 }
 
@@ -114,35 +825,102 @@ impl HostRegistration {
 /// Design constraints:
 /// - `input` is owned to avoid capturing borrows in `'static` futures.
 /// - `cancel` is reachable so handlers can stop work early.
+/// - `call` only constructs a lazy future; it must not perform a side effect
+///   before that future is first polled. Bridge admission commits that poll
+///   against document revocation and may cancel it before polling begins.
 pub trait HostHandler: Send + Sync + 'static {
     fn call<'a>(
         &'a self,
-        lxapp: Arc<LxApp>,
+        invocation: HostInvocationContext,
         input: Option<String>,
         cancel: HostCancel,
     ) -> HostFuture<'a>;
 }
 
-/// Host API registry - stores host handlers and their method kinds.
-struct HostRegistry {
-    handlers: HashMap<String, Arc<dyn HostHandler>>,
-    kinds: HashMap<String, HostMethodKind>,
+enum RouteHandler {
+    Host(Arc<dyn HostHandler>),
+    Channel(Arc<dyn ChannelHandler>),
 }
 
-impl HostRegistry {
+/// One fully resolved production route. There is no constructor for a handler
+/// without its immutable effective metadata.
+struct EffectiveRouteRecord {
+    metadata: EffectiveRouteMetadata,
+    handler: RouteHandler,
+}
+
+/// Shared inventory for unary, stream, notification, and channel dispatch.
+struct EffectiveRouteRegistry {
+    routes: HashMap<String, EffectiveRouteRecord>,
+}
+
+impl EffectiveRouteRegistry {
     fn new() -> Self {
         Self {
-            handlers: HashMap::new(),
-            kinds: HashMap::new(),
+            routes: HashMap::new(),
+        }
+    }
+
+    fn try_register(&mut self, key: String, route: EffectiveRouteRecord) -> bool {
+        if let std::collections::hash_map::Entry::Vacant(entry) = self.routes.entry(key) {
+            entry.insert(route);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn inventory_for_caller(
+        &self,
+        caller: &AuthenticatedCaller,
+    ) -> HashMap<String, EffectiveRouteMetadata> {
+        self.routes
+            .iter()
+            .filter(|(_, route)| authorize(caller, route.metadata.audience()))
+            .map(|(key, route)| (key.clone(), route.metadata))
+            .collect()
+    }
+
+    fn schema_for_caller(&self, caller: &AuthenticatedCaller) -> HostRouteSchema {
+        HostRouteSchema::from_inventory(self.inventory_for_caller(caller))
+    }
+
+    fn host_for_caller(
+        &self,
+        name: &str,
+        caller: &AuthenticatedCaller,
+    ) -> Option<Arc<dyn HostHandler>> {
+        let route = self.routes.get(name)?;
+        if !authorize(caller, route.metadata.audience()) {
+            return None;
+        }
+        match &route.handler {
+            RouteHandler::Host(handler) => Some(Arc::clone(handler)),
+            RouteHandler::Channel(_) => None,
+        }
+    }
+
+    fn channel_for_caller(
+        &self,
+        name: &str,
+        caller: &AuthenticatedCaller,
+    ) -> Option<Arc<dyn ChannelHandler>> {
+        let route = self.routes.get(name)?;
+        if !authorize(caller, route.metadata.audience()) {
+            return None;
+        }
+        match &route.handler {
+            RouteHandler::Channel(handler) => Some(Arc::clone(handler)),
+            RouteHandler::Host(_) => None,
         }
     }
 }
 
-/// Global host API registry instance.
-static GLOBAL_HOST_REGISTRY: OnceLock<Mutex<HostRegistry>> = OnceLock::new();
+/// Global effective route inventory and handler registry.
+static GLOBAL_ROUTE_REGISTRY: OnceLock<Mutex<EffectiveRouteRegistry>> = OnceLock::new();
 
-fn get_host_registry() -> &'static Mutex<HostRegistry> {
-    GLOBAL_HOST_REGISTRY.get_or_init(|| Mutex::new(HostRegistry::new()))
+fn get_route_registry() -> &'static Mutex<EffectiveRouteRegistry> {
+    GLOBAL_ROUTE_REGISTRY.get_or_init(|| Mutex::new(EffectiveRouteRegistry::new()))
 }
 
 fn validate_host_namespace(namespace: &str) {
@@ -152,30 +930,74 @@ fn validate_host_namespace(namespace: &str) {
     );
 }
 
-pub fn register_host_route(namespace: &str, method: &str, handler: Arc<dyn HostHandler>) {
+fn register_effective_route(key: String, route: EffectiveRouteRecord) {
+    let inserted = {
+        let mut registry = get_route_registry().lock().unwrap();
+        registry.try_register(key.clone(), route)
+    };
+    assert!(
+        inserted,
+        "duplicate effective route registration for host.{key}"
+    );
+}
+
+pub fn register_host_route(
+    namespace: &str,
+    method: &str,
+    audience: RouteAudience,
+    handler: Arc<dyn HostHandler>,
+) {
     validate_host_namespace(namespace);
     let key = format!("{namespace}.{method}");
-    let registry = get_host_registry();
-    let mut reg = registry.lock().unwrap();
-    reg.kinds.insert(key.clone(), HostMethodKind::Call);
-    reg.handlers.insert(key, handler);
+    register_effective_route(
+        key,
+        EffectiveRouteRecord {
+            metadata: EffectiveRouteMetadata {
+                kind: HostRouteKind::Call,
+                policy: EffectiveRoutePolicy::new(audience),
+            },
+            handler: RouteHandler::Host(handler),
+        },
+    );
 }
 
 pub fn register_host(registration: HostRegistration) {
     validate_host_namespace(registration.namespace);
     let key = format!("{}.{}", registration.namespace, registration.method);
-    let registry = get_host_registry();
-    let mut reg = registry.lock().unwrap();
-    reg.kinds.insert(key.clone(), registration.kind);
-    reg.handlers.insert(key, registration.handler);
+    register_effective_route(
+        key,
+        EffectiveRouteRecord {
+            metadata: EffectiveRouteMetadata {
+                kind: match registration.kind {
+                    HostMethodKind::Call => HostRouteKind::Call,
+                    HostMethodKind::Stream => HostRouteKind::Stream,
+                },
+                policy: registration.policy,
+            },
+            handler: RouteHandler::Host(registration.handler),
+        },
+    );
 }
 
 /// Unified registration entry returned by the `#[native]` macro for all modes
-/// (unary, stream, channel). Runtime assembly code dispatches each entry to the
-/// correct registry.
+/// (unary, stream, channel). Runtime assembly seals every entry into the shared
+/// effective route inventory.
 pub enum HostRegistrationEntry {
     Handler(HostRegistration),
     Channel(ChannelRegistration),
+}
+
+impl HostRegistrationEntry {
+    pub const fn policy(&self) -> EffectiveRoutePolicy {
+        match self {
+            Self::Handler(registration) => registration.policy(),
+            Self::Channel(registration) => registration.policy(),
+        }
+    }
+
+    pub const fn audience(&self) -> RouteAudience {
+        self.policy().audience()
+    }
 }
 
 pub fn register_host_entry(entry: HostRegistrationEntry) {
@@ -185,27 +1007,93 @@ pub fn register_host_entry(entry: HostRegistrationEntry) {
     }
 }
 
-pub(crate) fn get_host(name: &str) -> Option<Arc<dyn HostHandler>> {
-    let registry = get_host_registry();
-    registry.lock().unwrap().handlers.get(name).cloned()
+pub(crate) fn get_host_for_caller(
+    name: &str,
+    caller: &AuthenticatedCaller,
+) -> Option<Arc<dyn HostHandler>> {
+    let registry = get_route_registry();
+    let registry = registry.lock().unwrap();
+    registry.host_for_caller(name, caller)
 }
 
-/// Returns a map of `"namespace.method"` → `"call"` | `"stream"` for all
-/// registered host methods. Included in the handshake `Ready` message so
-/// the JS bridge can automatically choose the right wire protocol.
-pub fn host_method_schema() -> HashMap<String, &'static str> {
-    let registry = get_host_registry();
-    let reg = registry.lock().unwrap();
-    reg.kinds
-        .iter()
-        .map(|(k, v)| {
-            let kind_str = match v {
-                HostMethodKind::Call => "call",
-                HostMethodKind::Stream => "stream",
-            };
-            (k.clone(), kind_str)
+/// Inspect only immutable route policy. Browser ingress uses this while its
+/// lifecycle registry lock is held; cloning a handler is deliberately deferred
+/// until after that lock is released.
+pub(crate) fn host_route_is_authorized(name: &str, caller: &AuthenticatedCaller) -> bool {
+    get_route_registry()
+        .lock()
+        .unwrap()
+        .routes
+        .get(name)
+        .is_none_or(|route| {
+            !matches!(
+                route.metadata.kind(),
+                HostRouteKind::Call | HostRouteKind::Stream
+            ) || authorize(caller, route.metadata.audience())
         })
-        .collect()
+}
+
+/// Returns a caller-filtered snapshot of production route metadata.
+pub fn effective_route_inventory(
+    caller: &AuthenticatedCaller,
+) -> HashMap<String, EffectiveRouteMetadata> {
+    get_route_registry()
+        .lock()
+        .unwrap()
+        .inventory_for_caller(caller)
+}
+
+/// Ready schema derived from the same effective inventory used by dispatch.
+pub struct HostRouteSchema {
+    pub methods: HashMap<String, &'static str>,
+    pub channels: Vec<String>,
+}
+
+impl HostRouteSchema {
+    fn from_inventory(inventory: HashMap<String, EffectiveRouteMetadata>) -> Self {
+        let mut methods = HashMap::new();
+        let mut channels = Vec::new();
+        for (name, metadata) in inventory {
+            match metadata.kind() {
+                HostRouteKind::Call => {
+                    methods.insert(name, "call");
+                }
+                HostRouteKind::Stream => {
+                    methods.insert(name, "stream");
+                }
+                HostRouteKind::Channel => channels.push(name),
+            }
+        }
+        channels.sort();
+        Self { methods, channels }
+    }
+}
+
+pub fn host_route_schema(caller: &AuthenticatedCaller) -> HostRouteSchema {
+    get_route_registry()
+        .lock()
+        .unwrap()
+        .schema_for_caller(caller)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("route '{name}' was registered with conflicting audiences {first:?} and {second:?}")]
+pub struct RoutePolicyConflict {
+    pub name: String,
+    pub first: RouteAudience,
+    pub second: RouteAudience,
+}
+
+/// Read one route's immutable admission policy without cloning or invoking its
+/// handler. The unified registry rejects every duplicate before it can replace
+/// the first route, so a readable record always has one sealed policy.
+pub fn route_policy(name: &str) -> Result<Option<EffectiveRoutePolicy>, RoutePolicyConflict> {
+    Ok(get_route_registry()
+        .lock()
+        .unwrap()
+        .routes
+        .get(name)
+        .map(|route| route.metadata.policy()))
 }
 
 pub fn parse_input<T: DeserializeOwned>(input: Option<&str>) -> HostResult<T> {
@@ -522,65 +1410,82 @@ pub trait ChannelHandler: Send + Sync + 'static {
     /// its own async task if it needs to do async work (e.g. via
     /// `tokio::task::spawn`). The method is synchronous so the bridge is not
     /// blocked waiting for the handler.
-    fn on_open(&self, lxapp: Arc<LxApp>, ctx: ChannelContext, params: Option<String>);
+    fn on_open(
+        &self,
+        invocation: HostInvocationContext,
+        ctx: ChannelContext,
+        params: Option<String>,
+    );
 }
 
-/// A channel handler ready to be inserted into the global channel registry.
+/// A channel handler ready to be inserted into the effective route inventory.
 pub struct ChannelRegistration {
-    pub namespace: &'static str,
-    pub method: &'static str,
-    pub handler: Arc<dyn ChannelHandler>,
+    namespace: &'static str,
+    method: &'static str,
+    handler: Arc<dyn ChannelHandler>,
+    policy: EffectiveRoutePolicy,
 }
 
 impl ChannelRegistration {
     pub fn new(
         namespace: &'static str,
         method: &'static str,
+        audience: RouteAudience,
         handler: Arc<dyn ChannelHandler>,
     ) -> Self {
         Self {
             namespace,
             method,
             handler,
+            policy: EffectiveRoutePolicy::new(audience),
         }
     }
-}
 
-struct ChannelRegistry {
-    handlers: HashMap<String, Arc<dyn ChannelHandler>>,
-}
-
-impl ChannelRegistry {
-    fn new() -> Self {
-        Self {
-            handlers: HashMap::new(),
-        }
+    pub const fn policy(&self) -> EffectiveRoutePolicy {
+        self.policy
     }
-}
 
-static GLOBAL_CHANNEL_REGISTRY: OnceLock<Mutex<ChannelRegistry>> = OnceLock::new();
-
-fn get_channel_registry() -> &'static Mutex<ChannelRegistry> {
-    GLOBAL_CHANNEL_REGISTRY.get_or_init(|| Mutex::new(ChannelRegistry::new()))
+    pub const fn audience(&self) -> RouteAudience {
+        self.policy.audience()
+    }
 }
 
 pub fn register_channel_handler(registration: ChannelRegistration) {
     validate_host_namespace(registration.namespace);
     let key = format!("{}.{}", registration.namespace, registration.method);
-    get_channel_registry()
-        .lock()
-        .unwrap()
-        .handlers
-        .insert(key, registration.handler);
+    register_effective_route(
+        key,
+        EffectiveRouteRecord {
+            metadata: EffectiveRouteMetadata {
+                kind: HostRouteKind::Channel,
+                policy: registration.policy,
+            },
+            handler: RouteHandler::Channel(registration.handler),
+        },
+    );
 }
 
-pub(crate) fn get_channel_handler(name: &str) -> Option<Arc<dyn ChannelHandler>> {
-    get_channel_registry()
+pub(crate) fn get_channel_handler_for_caller(
+    name: &str,
+    caller: &AuthenticatedCaller,
+) -> Option<Arc<dyn ChannelHandler>> {
+    let registry = get_route_registry();
+    let registry = registry.lock().unwrap();
+    registry.channel_for_caller(name, caller)
+}
+
+/// See [`host_route_is_authorized`]. Unknown channels remain eligible for the
+/// normal post-lock "not found" response.
+pub(crate) fn channel_route_is_authorized(name: &str, caller: &AuthenticatedCaller) -> bool {
+    get_route_registry()
         .lock()
         .unwrap()
-        .handlers
+        .routes
         .get(name)
-        .cloned()
+        .is_none_or(|route| {
+            route.metadata.kind() != HostRouteKind::Channel
+                || authorize(caller, route.metadata.audience())
+        })
 }
 
 /// Create a linked `(ChannelContext, ChannelContextSender, outbound_rx)` triple.
@@ -610,13 +1515,752 @@ pub(crate) fn new_channel_context(
 
 /// Register built-in Host API set.
 ///
-/// This is invoked once from lxapp initialization so Host API definitions are owned
-/// by `lingxia-lxapp` (not `lingxia-logic` or the host app).
-pub(crate) fn register_all() {
+/// Bootstrap invokes this before static target validation so Host API
+/// definitions are owned by `lingxia-lxapp` and their policy is inspectable
+/// before any lxapp runtime exists.
+#[doc(hidden)]
+pub fn register_builtin_routes() {
     static REGISTERED: OnceLock<()> = OnceLock::new();
     REGISTERED.get_or_init(|| {
         device::register_all();
         navigation::register_all();
         navigator::register_all();
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::appservice::LxAppWorkers;
+    use crate::register_synthetic_lxapp;
+    use lingxia_platform::Platform;
+    use uuid::Uuid;
+
+    #[test]
+    fn native_resource_issuer_cannot_expand_manifest_requests() {
+        let mut grants = HashSet::new();
+        let mut authority = NativeHostRuntimeAuthority::for_test(
+            "same.app",
+            7,
+            AppSessionClass::ControlApp,
+            [AppResourceGrant::Downloads],
+            &mut grants,
+        );
+        assert!(authority.requested(AppResourceGrant::Downloads));
+        assert!(!authority.grant(AppResourceGrant::Process));
+        assert!(authority.grant(AppResourceGrant::Downloads));
+        assert_eq!(grants, HashSet::from([AppResourceGrant::Downloads]));
+    }
+
+    #[test]
+    fn devtools_authority_is_manifest_bounded_and_automation_only() {
+        for requested in [
+            Vec::new(),
+            vec![AppResourceGrant::Automation],
+            vec![AppResourceGrant::AutomationHost],
+            vec![AppResourceGrant::Process, AppResourceGrant::Downloads],
+        ] {
+            let mut grants = HashSet::new();
+            let mut authority = NativeDevtoolsAuthority::for_test(
+                "same.app",
+                21,
+                AppSessionClass::StandardApp,
+                requested.clone(),
+                &mut grants,
+            );
+            authority.grant_automation();
+            assert!(!authority.grant(AppResourceGrant::Process));
+            assert!(!authority.grant(AppResourceGrant::Downloads));
+            assert_eq!(
+                grants,
+                requested
+                    .into_iter()
+                    .filter(|grant| matches!(
+                        grant,
+                        AppResourceGrant::Automation | AppResourceGrant::AutomationHost
+                    ))
+                    .collect()
+            );
+        }
+    }
+
+    fn same_app_id_with_different_classes() -> (tempfile::TempDir, Arc<LxApp>, Arc<LxApp>) {
+        let root = tempfile::tempdir().expect("test app root");
+        let runtime = Arc::new(
+            Platform::new(
+                root.path().join("data").display().to_string(),
+                root.path().join("cache").display().to_string(),
+                "en-US".to_string(),
+            )
+            .expect("test platform"),
+        );
+        let workers = LxAppWorkers::init(1);
+        let app_id = format!("app.lingxia.scope-test.{}", Uuid::new_v4());
+        register_synthetic_lxapp(app_id.clone());
+        let mut standard = LxApp::new_with_session_class_for_test(
+            app_id.clone(),
+            Arc::clone(&runtime),
+            Arc::clone(&workers),
+            AppSessionClass::StandardApp,
+        )
+        .expect("standard app");
+        standard.config.security.privileges = vec![
+            "process".to_string(),
+            "downloads".to_string(),
+            "automation".to_string(),
+            "host".to_string(),
+        ];
+        let standard = Arc::new(standard);
+        standard.bind_arc();
+        standard.set_status(LxAppSessionStatus::Opened);
+        let mut control = LxApp::new_with_session_class_for_test(
+            app_id,
+            runtime,
+            workers,
+            AppSessionClass::ControlApp,
+        )
+        .expect("control app");
+        control.config.security.privileges = vec![
+            "process".to_string(),
+            "downloads".to_string(),
+            "automation".to_string(),
+            "host".to_string(),
+        ];
+        let control = Arc::new(control);
+        control.bind_arc();
+        control.set_status(LxAppSessionStatus::Opened);
+        (root, standard, control)
+    }
+
+    struct TestHostHandler;
+
+    impl HostHandler for TestHostHandler {
+        fn call<'a>(
+            &'a self,
+            _invocation: HostInvocationContext,
+            _input: Option<String>,
+            _cancel: HostCancel,
+        ) -> HostFuture<'a> {
+            Box::pin(async { Ok(HostOutput::Json("null".to_string())) })
+        }
+    }
+
+    struct TestChannelHandler;
+
+    impl ChannelHandler for TestChannelHandler {
+        fn on_open(
+            &self,
+            _invocation: HostInvocationContext,
+            _ctx: ChannelContext,
+            _params: Option<String>,
+        ) {
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct ObservedScope {
+        class: AppSessionClass,
+        app_id: String,
+        session_id: u64,
+    }
+
+    fn observe_scope(invocation: &HostInvocationContext) -> ObservedScope {
+        let (class, scope) = invocation
+            .caller()
+            .app_session_for_test()
+            .expect("expected lxapp caller");
+        ObservedScope {
+            class,
+            app_id: scope.identity().app_id().to_string(),
+            session_id: scope.identity().session_id(),
+        }
+    }
+
+    struct ScopeRecordingHostHandler {
+        observed: Arc<Mutex<Vec<ObservedScope>>>,
+    }
+
+    impl HostHandler for ScopeRecordingHostHandler {
+        fn call<'a>(
+            &'a self,
+            invocation: HostInvocationContext,
+            _input: Option<String>,
+            _cancel: HostCancel,
+        ) -> HostFuture<'a> {
+            Box::pin(async move {
+                self.observed
+                    .lock()
+                    .unwrap()
+                    .push(observe_scope(&invocation));
+                Ok(HostOutput::Json("null".to_string()))
+            })
+        }
+    }
+
+    struct ScopeRecordingChannelHandler {
+        observed: Arc<Mutex<Vec<ObservedScope>>>,
+    }
+
+    impl ChannelHandler for ScopeRecordingChannelHandler {
+        fn on_open(
+            &self,
+            invocation: HostInvocationContext,
+            _ctx: ChannelContext,
+            _params: Option<String>,
+        ) {
+            self.observed
+                .lock()
+                .unwrap()
+                .push(observe_scope(&invocation));
+        }
+    }
+
+    #[tokio::test]
+    async fn invocation_context_carries_native_scope_to_unary_stream_and_channel_handlers() {
+        let (_root, standard, control) = same_app_id_with_different_classes();
+        let standard_caller = AuthenticatedCaller::for_lxapp(&standard);
+        let control_caller = AuthenticatedCaller::for_lxapp(&control);
+
+        assert!(
+            HostInvocationContext::for_dispatch(Arc::clone(&control), &standard_caller).is_none()
+        );
+
+        let host_observed = Arc::new(Mutex::new(Vec::new()));
+        let host_handler = Arc::new(ScopeRecordingHostHandler {
+            observed: Arc::clone(&host_observed),
+        });
+        let stream_registration = HostRegistration::stream(
+            "scope",
+            "stream",
+            RouteAudience::AppSessionOnly,
+            host_handler.clone(),
+        );
+        assert_eq!(stream_registration.kind, HostMethodKind::Stream);
+
+        for (app, caller) in [
+            (Arc::clone(&standard), &standard_caller),
+            (Arc::clone(&control), &control_caller),
+        ] {
+            let invocation =
+                HostInvocationContext::for_dispatch(app, caller).expect("matching scope");
+            let (_cancel_tx, cancel) = oneshot::channel();
+            host_handler
+                .call(invocation, None, cancel)
+                .await
+                .expect("handler result");
+        }
+
+        let channel_observed = Arc::new(Mutex::new(Vec::new()));
+        let channel_handler = ScopeRecordingChannelHandler {
+            observed: Arc::clone(&channel_observed),
+        };
+        for (index, (app, caller)) in [
+            (Arc::clone(&standard), &standard_caller),
+            (Arc::clone(&control), &control_caller),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let invocation =
+                HostInvocationContext::for_dispatch(app, caller).expect("matching scope");
+            let (channel, _sender, _outbound) = new_channel_context(format!("scope-{index}"));
+            channel_handler.on_open(invocation, channel, None);
+        }
+
+        let host_observed = host_observed.lock().unwrap();
+        let channel_observed = channel_observed.lock().unwrap();
+        assert_eq!(host_observed.as_slice(), channel_observed.as_slice());
+        assert_eq!(host_observed.len(), 2);
+        assert_eq!(host_observed[0].app_id, host_observed[1].app_id);
+        assert_ne!(host_observed[0].session_id, host_observed[1].session_id);
+        assert_eq!(host_observed[0].class, AppSessionClass::StandardApp);
+        assert_eq!(host_observed[1].class, AppSessionClass::ControlApp);
+    }
+
+    #[test]
+    fn same_app_id_does_not_share_storage_or_native_resource_grants_between_sessions() {
+        let (_root, standard, control) = same_app_id_with_different_classes();
+        let standard_caller = AuthenticatedCaller::for_lxapp(&standard);
+        let control_caller = AuthenticatedCaller::for_lxapp(&control);
+        let standard_scope = standard_caller.app_scope().expect("standard scope");
+        let control_scope = control_caller.app_scope().expect("control scope");
+
+        assert_eq!(
+            standard_scope.identity().app_id(),
+            control_scope.identity().app_id()
+        );
+        assert_ne!(
+            standard_scope.identity().session_id(),
+            control_scope.identity().session_id()
+        );
+        assert_eq!(standard_scope.storage().user_data(), standard.user_data_dir);
+        assert_eq!(control_scope.storage().temporary(), control.temp_dir);
+
+        let file = standard.temp_dir.join("native-grant.txt");
+        std::fs::create_dir_all(&standard.temp_dir).expect("create grant fixture directory");
+        std::fs::write(&file, b"scope-owned").expect("write grant fixture");
+        let granted = standard
+            .grant_transient_file_access(&file)
+            .expect("native grant")
+            .to_string();
+        assert_eq!(
+            standard_scope
+                .resource_grants()
+                .resolve_transient_file(&granted)
+                .expect("owner resolves grant"),
+            file
+        );
+        assert!(
+            control_scope
+                .resource_grants()
+                .resolve_transient_file(&granted)
+                .is_err(),
+            "same app id must not confer another session's native grant"
+        );
+    }
+
+    #[test]
+    fn privileged_resource_grants_are_native_session_bound_and_expire_on_teardown() {
+        let (_root, standard, takeover) = same_app_id_with_different_classes();
+        let declared_downloads = crate::LxAppSecurityPrivilege::new("downloads").unwrap();
+        let declared_host = crate::LxAppSecurityPrivilege::new("host").unwrap();
+
+        assert!(standard.has_security_privilege(&declared_downloads));
+        assert!(standard.has_security_privilege(&declared_host));
+        assert!(!standard.has_resource_grant(AppResourceGrant::Downloads));
+        assert!(!standard.has_resource_grant(AppResourceGrant::AutomationHost));
+
+        standard.seal_resource_grants(HashSet::from([
+            AppResourceGrant::Downloads,
+            AppResourceGrant::AutomationHost,
+        ]));
+        assert!(standard.has_resource_grant(AppResourceGrant::Downloads));
+        assert!(standard.has_resource_grant(AppResourceGrant::AutomationHost));
+
+        let scope = AuthenticatedCaller::for_lxapp(&standard)
+            .app_scope()
+            .expect("app scope")
+            .clone();
+        assert!(
+            scope
+                .resource_grants()
+                .contains(AppResourceGrant::Downloads)
+        );
+        assert!(
+            !takeover.has_resource_grant(AppResourceGrant::Downloads),
+            "same app id on a different native session must not inherit grants"
+        );
+
+        let native = crate::terminal_automation::TerminalAutomationAuthority::native_for_test();
+        let surface_id = format!("terminal-session-{}", standard.session_id());
+        crate::terminal_automation::publish_snapshot(
+            &native,
+            &surface_id,
+            r#"{"surfaceId":"terminal-session"}"#,
+        )
+        .unwrap();
+        let terminal_authority =
+            crate::terminal_automation::TerminalAutomationAuthority::for_lxapp(&standard).unwrap();
+        let terminal_handle =
+            crate::terminal_automation::bind_surface(&terminal_authority, &surface_id).unwrap();
+        assert!(terminal_handle.snapshot().is_ok());
+
+        standard.set_status(LxAppSessionStatus::Closing);
+        assert!(!standard.has_resource_grant(AppResourceGrant::Downloads));
+        assert!(
+            !scope
+                .resource_grants()
+                .contains(AppResourceGrant::AutomationHost),
+            "retained resource handles must fail as teardown begins"
+        );
+        assert!(terminal_handle.snapshot().is_err());
+        crate::terminal_automation::remove_workspace(&native, &surface_id);
+    }
+
+    #[test]
+    fn terminal_handle_stays_revoked_after_same_app_id_session_takeover() {
+        let (_root, original, successor) = same_app_id_with_different_classes();
+        original.seal_resource_grants(HashSet::from([AppResourceGrant::AutomationHost]));
+        successor.seal_resource_grants(HashSet::from([AppResourceGrant::AutomationHost]));
+
+        let native = crate::terminal_automation::TerminalAutomationAuthority::native_for_test();
+        let surface_id = format!("terminal-takeover-{}", original.session_id());
+        crate::terminal_automation::publish_snapshot(
+            &native,
+            &surface_id,
+            r#"{"surfaceId":"terminal-takeover"}"#,
+        )
+        .unwrap();
+
+        let original_authority =
+            crate::terminal_automation::TerminalAutomationAuthority::for_lxapp(&original).unwrap();
+        let original_handle =
+            crate::terminal_automation::bind_surface(&original_authority, &surface_id).unwrap();
+        assert!(original_handle.snapshot().is_ok());
+
+        original.set_status(LxAppSessionStatus::Restarting);
+        assert!(original_handle.snapshot().is_err());
+
+        let successor_authority =
+            crate::terminal_automation::TerminalAutomationAuthority::for_lxapp(&successor).unwrap();
+        let successor_handle =
+            crate::terminal_automation::bind_surface(&successor_authority, &surface_id).unwrap();
+        assert!(successor_handle.snapshot().is_ok());
+        assert!(
+            original_handle.snapshot().is_err(),
+            "a live same-app successor must not reactivate the stale session handle"
+        );
+
+        crate::terminal_automation::remove_workspace(&native, &surface_id);
+    }
+
+    #[cfg(feature = "process")]
+    #[test]
+    fn process_authority_rejects_manifest_only_and_stale_same_app_id_sessions() {
+        let (_root, original, successor) = same_app_id_with_different_classes();
+        let original_authority = ProcessSessionAuthority::for_lxapp(&original);
+
+        assert!(
+            original
+                .has_security_privilege(&crate::LxAppSecurityPrivilege::new("process").unwrap())
+        );
+        assert!(original_authority.authorize().is_err());
+
+        original.seal_resource_grants(HashSet::from([AppResourceGrant::Process]));
+        assert!(original_authority.authorize().is_ok());
+
+        for status in [
+            LxAppSessionStatus::Closing,
+            LxAppSessionStatus::Restarting,
+            LxAppSessionStatus::Closed,
+        ] {
+            original.set_status(status);
+            assert!(original_authority.authorize().is_err());
+        }
+
+        successor.seal_resource_grants(HashSet::from([AppResourceGrant::Process]));
+        let successor_authority = ProcessSessionAuthority::for_lxapp(&successor);
+        assert!(successor_authority.authorize().is_ok());
+        assert!(original_authority.authorize().is_err());
+    }
+
+    #[test]
+    fn duplicate_same_policy_registration_cannot_replace_the_original_handler() {
+        let original: Arc<dyn HostHandler> = Arc::new(TestHostHandler);
+        register_host_route(
+            "inventory_replacement",
+            "same",
+            RouteAudience::AppSessionOnly,
+            Arc::clone(&original),
+        );
+        let replacement: Arc<dyn HostHandler> = Arc::new(TestHostHandler);
+        let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            register_host_route(
+                "inventory_replacement",
+                "same",
+                RouteAudience::AppSessionOnly,
+                Arc::clone(&replacement),
+            );
+        }));
+
+        assert!(rejected.is_err());
+        let active = get_host_for_caller(
+            "inventory_replacement.same",
+            &AuthenticatedCaller::standard_for_test(80),
+        )
+        .expect("original handler remains active");
+        assert!(Arc::ptr_eq(&active, &original));
+        assert!(!Arc::ptr_eq(&active, &replacement));
+    }
+
+    #[test]
+    fn same_name_across_handler_families_with_conflicting_policy_fails_registration() {
+        let original: Arc<dyn HostHandler> = Arc::new(TestHostHandler);
+        register_host_route(
+            "inventory_cross_family",
+            "same",
+            RouteAudience::AppSessionOnly,
+            Arc::clone(&original),
+        );
+        let rejected = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            register_channel_handler(ChannelRegistration::new(
+                "inventory_cross_family",
+                "same",
+                RouteAudience::BrowserControlOnly,
+                Arc::new(TestChannelHandler),
+            ));
+        }));
+
+        assert!(rejected.is_err());
+        let caller = AuthenticatedCaller::standard_for_test(85);
+        let inventory = effective_route_inventory(&caller);
+        assert_eq!(
+            inventory["inventory_cross_family.same"].kind(),
+            HostRouteKind::Call
+        );
+        let active = get_host_for_caller("inventory_cross_family.same", &caller)
+            .expect("original family remains active");
+        assert!(Arc::ptr_eq(&active, &original));
+        assert!(get_channel_handler_for_caller("inventory_cross_family.same", &caller).is_none());
+    }
+
+    #[test]
+    fn duplicate_registration_cannot_change_effective_policy() {
+        let mut registry = EffectiveRouteRegistry::new();
+        for (index, audience) in [RouteAudience::AppSessionOnly, RouteAudience::ControlAppOnly]
+            .into_iter()
+            .enumerate()
+        {
+            assert_eq!(
+                registry.try_register(
+                    "test.route".to_string(),
+                    EffectiveRouteRecord {
+                        metadata: EffectiveRouteMetadata {
+                            kind: HostRouteKind::Call,
+                            policy: EffectiveRoutePolicy::new(audience),
+                        },
+                        handler: RouteHandler::Host(Arc::new(TestHostHandler)),
+                    },
+                ),
+                index == 0,
+            );
+        }
+    }
+
+    #[test]
+    fn registration_entry_exposes_its_effective_policy() {
+        let handler = HostRegistrationEntry::Handler(HostRegistration::new(
+            "test",
+            "call",
+            RouteAudience::ControlAppOnly,
+            Arc::new(TestHostHandler),
+        ));
+        let channel = HostRegistrationEntry::Channel(ChannelRegistration::new(
+            "test",
+            "channel",
+            RouteAudience::ControlOnly,
+            Arc::new(TestChannelHandler),
+        ));
+
+        assert_eq!(handler.audience(), RouteAudience::ControlAppOnly);
+        assert_eq!(handler.policy().audience(), RouteAudience::ControlAppOnly);
+        assert_eq!(channel.audience(), RouteAudience::ControlOnly);
+        assert_eq!(channel.policy().audience(), RouteAudience::ControlOnly);
+    }
+
+    #[test]
+    fn every_production_registration_path_populates_the_shared_inventory() {
+        register_host_route(
+            "inventory_direct",
+            "call",
+            RouteAudience::AppSessionOnly,
+            Arc::new(TestHostHandler),
+        );
+        register_host_entry(HostRegistrationEntry::Handler(HostRegistration::stream(
+            "inventory_macro",
+            "stream",
+            RouteAudience::ControlAppOnly,
+            Arc::new(TestHostHandler),
+        )));
+        register_host_entry(HostRegistrationEntry::Channel(ChannelRegistration::new(
+            "inventory_macro",
+            "channel",
+            RouteAudience::ControlAppOnly,
+            Arc::new(TestChannelHandler),
+        )));
+
+        let standard = effective_route_inventory(&AuthenticatedCaller::standard_for_test(81));
+        assert_eq!(
+            standard["inventory_direct.call"].kind(),
+            HostRouteKind::Call
+        );
+        assert!(!standard.contains_key("inventory_macro.stream"));
+        assert!(!standard.contains_key("inventory_macro.channel"));
+
+        let control = effective_route_inventory(&AuthenticatedCaller::control_for_test(82));
+        assert_eq!(
+            control["inventory_macro.stream"].kind(),
+            HostRouteKind::Stream
+        );
+        assert_eq!(
+            control["inventory_macro.channel"].kind(),
+            HostRouteKind::Channel
+        );
+        assert_eq!(
+            control["inventory_macro.channel"].audience(),
+            RouteAudience::ControlAppOnly
+        );
+    }
+
+    #[test]
+    fn denied_route_does_not_clone_its_handler() {
+        let handler = Arc::new(TestHostHandler);
+        let mut registry = EffectiveRouteRegistry::new();
+        assert!(registry.try_register(
+            "test.control".to_string(),
+            EffectiveRouteRecord {
+                metadata: EffectiveRouteMetadata {
+                    kind: HostRouteKind::Call,
+                    policy: EffectiveRoutePolicy::new(RouteAudience::ControlAppOnly),
+                },
+                handler: RouteHandler::Host(handler.clone()),
+            },
+        ));
+        let baseline = Arc::strong_count(&handler);
+
+        assert!(
+            registry
+                .host_for_caller("test.control", &AuthenticatedCaller::standard_for_test(83))
+                .is_none()
+        );
+        assert_eq!(Arc::strong_count(&handler), baseline);
+
+        let admitted = registry
+            .host_for_caller("test.control", &AuthenticatedCaller::control_for_test(84))
+            .expect("control handler");
+        assert_eq!(Arc::strong_count(&handler), baseline + 1);
+        drop(admitted);
+    }
+
+    #[test]
+    fn audience_matrix_uses_authenticated_caller_class() {
+        let standard = AuthenticatedCaller::standard_for_test(1);
+        let control = AuthenticatedCaller::control_for_test(1);
+        let native_authority = crate::NativeControlPlaneAuthority::for_test();
+        let (_, authority) = crate::issue_control_document_bootstrap(
+            &native_authority,
+            &ring::rand::SystemRandom::new(),
+        )
+        .expect("native entropy");
+        let browser = AuthenticatedCaller::active_browser_document(&native_authority, authority)
+            .expect("native test authority");
+
+        let audiences = [
+            RouteAudience::AppSessionOnly,
+            RouteAudience::AuthenticatedReadOnly,
+            RouteAudience::ControlAppOnly,
+            RouteAudience::BrowserControlOnly,
+            RouteAudience::ControlOnly,
+        ];
+        assert_eq!(
+            audiences.map(|audience| authorize(&standard, audience)),
+            [true, true, false, false, false]
+        );
+        assert_eq!(
+            audiences.map(|audience| authorize(&control, audience)),
+            [true, true, true, false, true]
+        );
+        assert_eq!(
+            audiences.map(|audience| authorize(&browser, audience)),
+            [false, true, false, true, true]
+        );
+    }
+
+    #[test]
+    fn same_app_id_schema_and_all_dispatch_families_use_authenticated_caller_class() {
+        let native_authority = crate::NativeControlPlaneAuthority::for_test();
+        let (_, authority) = crate::issue_control_document_bootstrap(
+            &native_authority,
+            &ring::rand::SystemRandom::new(),
+        )
+        .expect("native entropy");
+        let callers = [
+            AuthenticatedCaller {
+                source: AuthenticatedCallerSource::LxAppSession {
+                    class: AppSessionClass::StandardApp,
+                    scope: AppScope::for_test("same.app", 42),
+                },
+            },
+            AuthenticatedCaller {
+                source: AuthenticatedCallerSource::LxAppSession {
+                    class: AppSessionClass::ControlApp,
+                    scope: AppScope::for_test("same.app", 43),
+                },
+            },
+            AuthenticatedCaller::active_browser_document(&native_authority, authority)
+                .expect("native test authority"),
+        ];
+        let audiences = [
+            RouteAudience::AppSessionOnly,
+            RouteAudience::AuthenticatedReadOnly,
+            RouteAudience::ControlAppOnly,
+            RouteAudience::BrowserControlOnly,
+            RouteAudience::ControlOnly,
+        ];
+        let mut registry = EffectiveRouteRegistry::new();
+        for (index, audience) in audiences.into_iter().enumerate() {
+            for kind in [
+                HostRouteKind::Call,
+                HostRouteKind::Stream,
+                HostRouteKind::Channel,
+            ] {
+                let family = match kind {
+                    HostRouteKind::Call => "call",
+                    HostRouteKind::Stream => "stream",
+                    HostRouteKind::Channel => "channel",
+                };
+                let handler = match kind {
+                    HostRouteKind::Call | HostRouteKind::Stream => {
+                        RouteHandler::Host(Arc::new(TestHostHandler))
+                    }
+                    HostRouteKind::Channel => RouteHandler::Channel(Arc::new(TestChannelHandler)),
+                };
+                assert!(registry.try_register(
+                    format!("test.{family}{index}"),
+                    EffectiveRouteRecord {
+                        metadata: EffectiveRouteMetadata {
+                            kind,
+                            policy: EffectiveRoutePolicy::new(audience),
+                        },
+                        handler,
+                    },
+                ));
+            }
+        }
+
+        for caller in &callers {
+            let schema = registry.schema_for_caller(caller);
+            for (index, audience) in audiences.iter().copied().enumerate() {
+                let expected = authorize(caller, audience);
+                let call = format!("test.call{index}");
+                let stream = format!("test.stream{index}");
+                let channel = format!("test.channel{index}");
+                assert_eq!(
+                    schema.methods.get(&call).copied(),
+                    expected.then_some("call"),
+                    "unary schema diverged for {call}",
+                );
+                assert_eq!(
+                    schema.methods.get(&stream).copied(),
+                    expected.then_some("stream"),
+                    "stream schema diverged for {stream}",
+                );
+                assert_eq!(
+                    schema.channels.contains(&channel),
+                    expected,
+                    "channel schema diverged for {channel}",
+                );
+                assert_eq!(
+                    registry.host_for_caller(&call, caller).is_some(),
+                    expected,
+                    "request dispatch diverged for {call}",
+                );
+                assert_eq!(
+                    registry.host_for_caller(&call, caller).is_some(),
+                    expected,
+                    "notification dispatch diverged for {call}",
+                );
+                assert_eq!(
+                    registry.host_for_caller(&stream, caller).is_some(),
+                    expected,
+                    "stream dispatch diverged for {stream}",
+                );
+                assert_eq!(
+                    registry.channel_for_caller(&channel, caller).is_some(),
+                    expected,
+                    "channel-open dispatch diverged for {channel}",
+                );
+            }
+        }
+    }
 }

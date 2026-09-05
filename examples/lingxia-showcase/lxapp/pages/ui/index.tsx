@@ -138,7 +138,11 @@ export default function UIPage() {
 
 
   return (
-    <div className="h-screen bg-linear-to-br from-surface-50 to-surface-100 flex flex-col overflow-y-auto">
+    <div
+      className="h-screen bg-linear-to-br from-surface-50 to-surface-100 flex flex-col overflow-y-auto"
+      data-testid="ui-page"
+      data-instance-tag={instanceTag}
+    >
       <div className="flex-1 overflow-y-auto">
         <div className="pb-6 px-4 pt-6">
         {chromeError && (

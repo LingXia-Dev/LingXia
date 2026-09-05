@@ -887,18 +887,16 @@ async fn refresh_gfwlist_result(app_data_dir: &Path) -> Result<ProxySettingsResu
     Ok(result)
 }
 
-#[lingxia::native("proxy.getSettings")]
+#[lingxia::framework_native("proxy.getSettings", audience = "browser-control-only")]
 fn get_proxy_settings(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
-    crate::require_builtin_browser(&app)?;
     get_proxy_settings_result(&app.app_data_dir())
 }
 
-#[lingxia::native("proxy.updateSettings")]
+#[lingxia::framework_native("proxy.updateSettings", audience = "browser-control-only")]
 async fn update_proxy_settings(
     app: Arc<LxApp>,
     input: ProxySettingsInput,
 ) -> HostResult<ProxySettingsResult> {
-    crate::require_builtin_browser(&app)?;
     let app_data_dir = app.app_data_dir();
     let task = rong::RongExecutor::global()
         .spawn_blocking(move || save_proxy_settings_and_schedule_apply(app_data_dir, input));
@@ -934,9 +932,8 @@ async fn update_proxy_settings(
     }
 }
 
-#[lingxia::native("proxy.refreshGfwList")]
+#[lingxia::framework_native("proxy.refreshGfwList", audience = "browser-control-only")]
 async fn refresh_gfwlist(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
-    crate::require_builtin_browser(&app)?;
     let result = refresh_gfwlist_result(&app.app_data_dir()).await;
     match &result {
         Ok(output) => log::info!(
@@ -954,12 +951,11 @@ async fn refresh_gfwlist(app: Arc<LxApp>) -> HostResult<ProxySettingsResult> {
     result
 }
 
-#[lingxia::native("proxy.watch", stream)]
+#[lingxia::framework_native("proxy.watch", stream, audience = "browser-control-only")]
 async fn watch_proxy_settings(
     app: Arc<LxApp>,
     mut stream: StreamContext<ProxySettingsResult>,
 ) -> HostResult<()> {
-    crate::require_builtin_browser(&app)?;
     // Subscribe before building the initial snapshot so state changes that
     // happen in between are not lost.
     let mut rx = proxy_state_sender().subscribe();
@@ -1041,5 +1037,25 @@ pub(crate) fn warmup() {
     update_runtime_snapshot(snapshot);
     if let Ok(result) = get_proxy_settings_result(&app_data_dir) {
         publish_proxy_state(&result);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn framework_routes_are_browser_control_only() {
+        for route in [
+            get_proxy_settings_host(),
+            update_proxy_settings_host(),
+            refresh_gfwlist_host(),
+            watch_proxy_settings_host(),
+        ] {
+            assert_eq!(
+                route.audience(),
+                lxapp::host::RouteAudience::BrowserControlOnly
+            );
+        }
     }
 }

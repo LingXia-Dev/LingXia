@@ -2,15 +2,19 @@
 //! request rewriting, and the shared startup-page bridge.
 
 use crate::BUILTIN_BROWSER_APPID;
+use crate::document_session::BrowserDocumentSessions;
 use crate::policy::{LINGXIA_SCHEME, extract_url_scheme, lingxia_url_host};
 use crate::tabs::{
     INTERNAL_TAB_PATH_PREFIX, ensure_browser_lxapp, lock_state, normalize_runtime_tab_id,
 };
 use crate::webview::browser_find_webview;
 use http::{Request, Response, StatusCode, Uri};
-use lingxia_webview::{WebResourceResponse, WebView, WebViewController};
+use lingxia_webview::{
+    LoadDataRequest, WebResourceResponse, WebView, WebViewController, WebViewError,
+};
 use lxapp::{LxApp, LxAppError, PageInstance};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 const BROWSER_LINGXIA_ASSET_HOSTS: &[&str] = &[
@@ -26,13 +30,14 @@ static BROWSER_STARTUP_PAGE_INIT_MUTEX: OnceLock<Mutex<()>> = OnceLock::new();
 static BROWSER_DOCUMENT_SCRIPTS: OnceLock<Mutex<Vec<Arc<str>>>> = OnceLock::new();
 static BROWSER_INTERNAL_PAGES: OnceLock<Mutex<HashMap<String, BrowserInternalPageRegistration>>> =
     OnceLock::new();
+static BROWSER_REGISTRATION_SEALED: AtomicBool = AtomicBool::new(false);
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct BrowserInternalPageRegistration {
     entry_asset: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum InternalPageTarget {
     StartupPage { page_path: String },
     Registered(BrowserInternalPageRegistration),
@@ -44,11 +49,17 @@ pub(crate) enum InternalPageTarget {
 /// Injection happens in the tab delegate, not through an lxapp
 /// `PageInstance`, so external documents get the scripts without driving any
 /// page lifecycle.
-pub(crate) fn register_browser_document_script(js: impl Into<String>) {
+pub(crate) fn register_browser_document_script(js: impl Into<String>) -> Result<(), LxAppError> {
+    if BROWSER_REGISTRATION_SEALED.load(Ordering::Acquire) {
+        return Err(LxAppError::UnsupportedOperation(
+            "browser control registration is sealed".to_string(),
+        ));
+    }
     let scripts = BROWSER_DOCUMENT_SCRIPTS.get_or_init(|| Mutex::new(Vec::new()));
     if let Ok(mut guard) = scripts.lock() {
         guard.push(Arc::from(js.into()));
     }
+    Ok(())
 }
 
 /// Snapshot of the registered browser document scripts, in registration order.
@@ -69,12 +80,21 @@ pub(crate) fn register_browser_internal_page(
     route: impl Into<String>,
     entry_asset: impl Into<String>,
 ) -> Result<(), LxAppError> {
+    if BROWSER_REGISTRATION_SEALED.load(Ordering::Acquire) {
+        return Err(LxAppError::UnsupportedOperation(
+            "browser control registration is sealed".to_string(),
+        ));
+    }
     let route = normalize_internal_page_route_key(&route.into())?;
     let entry_asset = normalize_internal_page_entry_asset(&entry_asset.into())?;
     let pages = BROWSER_INTERNAL_PAGES.get_or_init(|| Mutex::new(HashMap::new()));
     let mut guard = pages.lock().unwrap_or_else(|e| e.into_inner());
     guard.insert(route, BrowserInternalPageRegistration { entry_asset });
     Ok(())
+}
+
+pub(crate) fn seal_browser_control_registration() {
+    BROWSER_REGISTRATION_SEALED.store(true, Ordering::Release);
 }
 
 fn normalize_internal_page_route_key(raw: &str) -> Result<String, LxAppError> {
@@ -146,6 +166,14 @@ fn internal_page_target_for_url(startup_path: &str, url: &str) -> Option<Interna
     internal_page_target_for_host(startup_path, &host)
 }
 
+pub(crate) fn registered_control_page_route(url: &str) -> Option<String> {
+    if extract_url_scheme(url).as_deref() != Some(LINGXIA_SCHEME) {
+        return None;
+    }
+    let host = lingxia_url_host(url);
+    browser_internal_page_for_host(&host).map(|_| host)
+}
+
 fn is_browser_lingxia_asset_host(host: &str) -> bool {
     BROWSER_LINGXIA_ASSET_HOSTS.contains(&host)
 }
@@ -199,6 +227,45 @@ pub(crate) fn detach_internal_tab_page(tab_path: &str) {
     }
 }
 
+/// Detach only when this exact native WebView still owns the tab binding.
+/// A failed replacement must not tear down a successor that reused its tab.
+pub(crate) fn detach_internal_tab_page_if_matches(
+    tab_path: &str,
+    session_id: u64,
+    create_token: u64,
+    expected: &Arc<WebView>,
+) {
+    let generation_matches = tab_path
+        .strip_prefix(INTERNAL_TAB_PATH_PREFIX)
+        .and_then(normalize_runtime_tab_id)
+        .and_then(|tab_id| {
+            lock_state()
+                .tabs
+                .get(&tab_id)
+                .map(|tab| tab.session_id == session_id && tab.create_token == create_token)
+        })
+        .unwrap_or(false);
+    if !generation_matches {
+        return;
+    }
+    let Some(browser) = lxapp::try_get(BUILTIN_BROWSER_APPID) else {
+        return;
+    };
+    let Some(page) = browser.get_page(tab_path) else {
+        return;
+    };
+    let Ok(current) = browser_find_webview(tab_path, session_id) else {
+        return;
+    };
+    if Arc::ptr_eq(&current, expected)
+        && page
+            .webview()
+            .is_some_and(|attached| Arc::ptr_eq(&attached, expected))
+    {
+        page.detach_webview();
+    }
+}
+
 fn detach_internal_tab_pages_except(tab_path: &str, keep_appid: &str) {
     if let Some(browser) = lxapp::try_get(BUILTIN_BROWSER_APPID)
         && browser.appid != keep_appid
@@ -208,13 +275,43 @@ fn detach_internal_tab_pages_except(tab_path: &str, keep_appid: &str) {
     }
 }
 
-fn bind_internal_tab_page(tab_path: &str, session_id: u64) -> Result<PageInstance, LxAppError> {
+fn prepare_internal_tab_page(tab_path: &str) -> Result<(Arc<LxApp>, PageInstance), LxAppError> {
     let owner = ensure_browser_lxapp()?;
     ensure_browser_startup_page(&owner)?;
     let page = owner.ensure_headless_page_service(tab_path)?;
+    Ok((owner, page))
+}
+
+fn bind_internal_tab_page_for_webview(
+    tab_path: &str,
+    session_id: u64,
+    webview: &Arc<WebView>,
+) -> Result<PageInstance, LxAppError> {
+    let (owner, page) = prepare_internal_tab_page(tab_path)?;
     detach_internal_tab_pages_except(tab_path, &owner.appid);
-    if let Ok(webview) = browser_find_webview(tab_path, session_id) {
-        page.attach_webview(webview);
+    let current = browser_find_webview(tab_path, session_id)?;
+    if !Arc::ptr_eq(&current, webview) {
+        return Err(LxAppError::ResourceNotFound(
+            "browser webview was replaced before the internal page could bind".to_string(),
+        ));
+    }
+    page.attach_webview(current);
+    Ok(page)
+}
+
+fn bound_internal_tab_page(tab_path: &str, session_id: u64) -> Result<PageInstance, LxAppError> {
+    let browser = ensure_browser_lxapp()?;
+    let page = browser.get_page(tab_path).ok_or_else(|| {
+        LxAppError::ResourceNotFound(format!("browser internal page not bound: {tab_path}"))
+    })?;
+    let current = browser_find_webview(tab_path, session_id)?;
+    if !page
+        .webview()
+        .is_some_and(|attached| Arc::ptr_eq(&attached, &current))
+    {
+        return Err(LxAppError::ResourceNotFound(format!(
+            "browser internal page not bound to current webview: {tab_path}"
+        )));
     }
     Ok(page)
 }
@@ -224,7 +321,7 @@ pub(crate) fn browser_resolve_delegate_context(
     session_id: u64,
 ) -> Result<(Arc<LxApp>, PageInstance), LxAppError> {
     let browser = ensure_browser_lxapp()?;
-    let page = bind_internal_tab_page(tab_path, session_id)?;
+    let page = bound_internal_tab_page(tab_path, session_id)?;
     Ok((browser, page))
 }
 
@@ -312,11 +409,11 @@ pub(crate) async fn handle_browser_lingxia_scheme(
     // Map `lingxia://` hosts to browser internal pages.
     let host = req.uri().host().unwrap_or("").to_ascii_lowercase();
     if is_browser_lingxia_asset_host(&host) {
-        let page = match bind_internal_tab_page(&ctx.tab_path, ctx.session_id) {
+        let page = match bound_internal_tab_page(&ctx.tab_path, ctx.session_id) {
             Ok(page) => page,
             Err(err) => {
                 lxapp::warn!(
-                    "[InternalBrowser] Failed to bind asset page for tab {} host {}: {}",
+                    "[InternalBrowser] No bound asset page for tab {} host {}: {}",
                     ctx.tab_id,
                     host,
                     err
@@ -333,11 +430,11 @@ pub(crate) async fn handle_browser_lingxia_scheme(
         );
         return None;
     };
-    let page = match bind_internal_tab_page(&ctx.tab_path, ctx.session_id) {
+    let page = match bound_internal_tab_page(&ctx.tab_path, ctx.session_id) {
         Ok(page) => page,
         Err(err) => {
             lxapp::warn!(
-                "[InternalBrowser] Failed to bind internal page for tab {} host {}: {}",
+                "[InternalBrowser] No bound internal page for tab {} host {}: {}",
                 ctx.tab_id,
                 host,
                 err
@@ -373,26 +470,18 @@ pub(crate) async fn handle_browser_lingxia_scheme(
 /// Attach the given tab WebView to its headless page and load a lingxia:// URL into it.
 /// Waits for the PageSvc to be ready first.
 ///
-/// `page_url`: the `lx://` URL to load. `None` loads the default startup/newtab page;
-/// `Some(url)` loads a specific internal browser page (e.g. `lx://lxapp/.../downloads`).
+/// `page_url`: the presentation `lingxia://` URL to load. `None` loads the
+/// default startup/newtab page; `Some(url)` selects a registered browser page.
 pub(crate) async fn browser_attach_tab_page(
     webview: Arc<WebView>,
+    documents: &BrowserDocumentSessions,
     page_path: &str,
     session_id: u64,
+    create_token: u64,
     tab_id: &str,
     page_url: Option<&str>,
 ) -> Result<(), LxAppError> {
-    let browser = ensure_browser_lxapp()?;
-    // Validate that an explicit URL maps to a registered internal route.
-    if let Some(url) = page_url {
-        internal_page_target_for_url(&browser.initial_route(), url).ok_or_else(|| {
-            LxAppError::ResourceNotFound(format!(
-                "browser internal route not registered for url: {}",
-                url
-            ))
-        })?;
-    }
-    let page = bind_internal_tab_page(page_path, session_id)?;
+    let (_, page) = prepare_internal_tab_page(page_path)?;
 
     // Wait until PageSvc signals ready (ack from JS worker).
     if let Err(e) = page.wait_webview_ready().await {
@@ -403,14 +492,112 @@ pub(crate) async fn browser_attach_tab_page(
         );
     }
 
-    // Attach this tab's WebView so bridge responses are delivered here.
-    page.attach_webview(webview.clone());
-
     // Load the requested URL (or `lingxia://newtab` for the default startup page).
     let url_to_load = page_url
         .map(|u| u.to_string())
         .unwrap_or_else(|| format!("{}://newtab", LINGXIA_SCHEME));
-    webview.load_url(&url_to_load).map_err(LxAppError::from)
+    browser_load_internal_document(
+        webview,
+        documents,
+        page_path,
+        session_id,
+        create_token,
+        &url_to_load,
+    )
+}
+
+/// The only browser host path for an internal document. The selected target
+/// and page binding are fixed before the native direct-load attempt; URL/data
+/// are presentation inputs, never admission evidence.
+pub(crate) fn browser_load_internal_document(
+    webview: Arc<WebView>,
+    documents: &BrowserDocumentSessions,
+    page_path: &str,
+    session_id: u64,
+    create_token: u64,
+    url: &str,
+) -> Result<(), LxAppError> {
+    let browser = ensure_browser_lxapp()?;
+    let target = internal_page_target_for_url(&browser.initial_route(), url).ok_or_else(|| {
+        LxAppError::ResourceNotFound(format!(
+            "browser internal route not registered for url: {url}"
+        ))
+    })?;
+    let (_, page) = prepare_internal_tab_page(page_path)?;
+    let nonce = page.bridge_nonce();
+    let entry_path = internal_page_target_entry_path(&target).to_string();
+    let reservation = webview
+        .prepare_trusted_data_load()
+        .map_err(LxAppError::from)?;
+    let intent = reservation.intent();
+    let (bootstrap, replaced_authority) = documents
+        .prepare(
+            webview.native_view_id(),
+            session_id,
+            create_token,
+            target,
+            intent,
+        )
+        .map_err(|error| {
+            LxAppError::InvalidParameter(format!(
+                "failed to prepare trusted browser document: {error}"
+            ))
+        })?;
+    // `prepare` invalidates the replaced session's gate while it owns the
+    // registry mutex. Cancel its PageBridge work only after that lock is
+    // released, before this replacement can fail or start another load.
+    if let Some(authority) = replaced_authority {
+        let _ = page.revoke_required_v3_document(documents.native_authority(), authority);
+    }
+    let html = match browser.generate_page_html_with_bridge_bootstrap(
+        &entry_path,
+        nonce.as_deref(),
+        bootstrap,
+    ) {
+        Ok(html) => html,
+        Err(error) => {
+            let _ = documents.revoke_if_matches(
+                webview.native_view_id(),
+                session_id,
+                create_token,
+                intent,
+            );
+            return Err(error);
+        }
+    };
+    let html = String::from_utf8_lossy(&html);
+    if let Err(error) = bind_internal_tab_page_for_webview(page_path, session_id, &webview) {
+        let _ =
+            documents.revoke_if_matches(webview.native_view_id(), session_id, create_token, intent);
+        return Err(error);
+    }
+    let request = LoadDataRequest::new(&html, url).with_history_url(url);
+
+    match reservation.load(request) {
+        Ok(_) => Ok(()),
+        // Platforms without a concrete native navigation key retain the
+        // established scheme path, but create no browser Active session.
+        Err(WebViewError::Unsupported(_)) => {
+            let _ = documents.revoke_if_matches(
+                webview.native_view_id(),
+                session_id,
+                create_token,
+                intent,
+            );
+            webview.load_url(url).map_err(LxAppError::from)
+        }
+        Err(error) => {
+            if documents.revoke_if_matches(
+                webview.native_view_id(),
+                session_id,
+                create_token,
+                intent,
+            ) {
+                detach_internal_tab_page_if_matches(page_path, session_id, create_token, &webview);
+            }
+            Err(LxAppError::from(error))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -472,6 +659,18 @@ mod tests {
             internal_page_target_entry_path(&target),
             "pages/settings/index.html"
         );
+    }
+
+    #[test]
+    fn trusted_control_route_requires_a_registered_internal_page() {
+        register_test_browser_internal_pages();
+        assert_eq!(
+            registered_control_page_route("lingxia://settings?section=privacy"),
+            Some("settings".to_string())
+        );
+        assert!(registered_control_page_route("lingxia://unknown").is_none());
+        assert!(registered_control_page_route("lingxia://newtab").is_none());
+        assert!(registered_control_page_route("https://settings.example").is_none());
     }
 
     #[test]

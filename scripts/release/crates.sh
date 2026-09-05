@@ -30,6 +30,7 @@ CRATES=(
   "lingxia-platform"
   "lingxia-provider"
   "lingxia-proxy"
+  "lingxia-rong-command"
   "lingxia-service"
   "lingxia-settings"
   "lingxia-shell"
@@ -41,15 +42,6 @@ CRATES=(
   "lingxia-webview"
   "lingxia-windows-build"
   "lingxia-windows-contract"
-)
-
-# Workspace crates that cannot be published to crates.io. Keep this explicit so
-# adding a new crate under crates/ fails the inventory check until the release
-# policy is decided.
-UNPUBLISHED_CRATES=(
-  # Depends on a git-pinned windows-rs (proc-macros) and crates.io forbids git
-  # dependencies. The windows app template consumes it through a git ref.
-  "lingxia-windows-sdk"
 )
 
 # Order CRATES so every crate publishes after the crates it depends on. cargo
@@ -96,46 +88,9 @@ order_crates() {
     ' "${CRATES[@]}"
 }
 
-array_contains() {
-  local needle="$1"
-  shift
-  local item
-  for item in "$@"; do
-    [[ "$item" == "$needle" ]] && return 0
-  done
-  return 1
-}
-
 verify_crate_inventory() {
-  local manifest crate
-  local missing=()
-
-  for manifest in "$ROOT_DIR"/crates/*/Cargo.toml; do
-    crate="$(awk '
-      /^\[package\]/ {in_package=1; next}
-      /^\[/ {in_package=0}
-      in_package && $1 == "name" {
-        gsub(/"/, "", $3)
-        print $3
-        exit
-      }' "$manifest")"
-
-    if [[ -z "$crate" ]]; then
-      echo "Failed to read package name from $manifest" >&2
-      exit 1
-    fi
-
-    if ! array_contains "$crate" "${CRATES[@]}" &&
-       ! array_contains "$crate" "${UNPUBLISHED_CRATES[@]}"; then
-      missing+=("$crate")
-    fi
-  done
-
-  if [[ "${#missing[@]}" -gt 0 ]]; then
-    echo "Workspace crate(s) missing from the release inventory: ${missing[*]}" >&2
-    echo "Add each crate to CRATES or UNPUBLISHED_CRATES with a reason." >&2
-    exit 1
-  fi
+  cargo metadata --no-deps --format-version 1 --manifest-path "$ROOT_DIR/Cargo.toml" |
+    node "$SCRIPT_DIR/verify-crate-inventory.mjs" "${CRATES[@]}"
 }
 
 usage() {
@@ -330,13 +285,18 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   if [[ "${#ONLY_CRATES[@]}" -gt 0 ]]; then
     echo "Only: ${SELECTED_CRATES[*]}"
   fi
+
+  # Package the selected release set together. Cargo can then normalize
+  # path+version edges between workspace packages that are not on crates.io
+  # yet, matching the dependency order used by the real sequential publish.
+  package_args=(--no-verify)
+  [[ "$ALLOW_DIRTY" -eq 1 ]] && package_args+=(--allow-dirty)
   for crate in "${SELECTED_CRATES[@]}"; do
     echo "==> cargo package -p $crate --no-verify"
-    if [[ "$ALLOW_DIRTY" -eq 1 ]]; then
-      cargo package -p "$crate" --no-verify --allow-dirty >/dev/null
-    else
-      cargo package -p "$crate" --no-verify >/dev/null
-    fi
+    package_args+=(-p "$crate")
+  done
+  cargo package "${package_args[@]}" >/dev/null
+  for crate in "${SELECTED_CRATES[@]}"; do
     echo "✓ $crate package check passed"
   done
 fi

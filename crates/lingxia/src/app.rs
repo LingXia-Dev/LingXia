@@ -9,7 +9,7 @@
 //! - read product metadata such as `product_version` and `lingxia_id`;
 //! - resolve host-owned state paths such as `state_dir` and `state_file`;
 //! - read or set the host display language (`display_language`,
-//!   `set_display_language`);
+//!   `set_display_language_preference`);
 //! - request host app termination with `exit`.
 
 use std::path::{Component, Path, PathBuf};
@@ -18,7 +18,9 @@ use std::sync::OnceLock;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 
 pub use lingxia_app_context::EnvVersion;
-pub use lxapp::DisplayLanguage;
+pub use lxapp::{
+    DisplayLanguageEffectiveSource, DisplayLanguagePreference, DisplayLanguageState, LanguageTag,
+};
 
 static APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 
@@ -70,19 +72,32 @@ pub fn notifications_enabled() -> bool {
 
 /// Returns the effective host display language.
 ///
-/// A pinned [`DisplayLanguage`] takes precedence over the locale supplied
-/// by the native host during runtime initialization. `Auto` follows that
-/// locale.
+/// A pinned [`DisplayLanguagePreference::LanguageTag`] takes precedence over
+/// the native host locale. [`DisplayLanguagePreference::Auto`] follows it.
 pub fn display_language() -> String {
     lxapp::display_language()
 }
 
-/// Set the host display language and persist it.
-///
-/// [`DisplayLanguage::Auto`] follows the system locale. Every lxapp inherits
-/// the resolved tag from [`display_language`].
-pub fn set_display_language(language: DisplayLanguage) -> crate::Result<()> {
-    lxapp::set_display_language_in(&data_dir()?, language).map_err(Into::into)
+/// Return the complete host display-language state.
+pub fn display_language_state() -> DisplayLanguageState {
+    lxapp::display_language_state()
+}
+
+/// Persist a host display-language preference and publish it after the write succeeds.
+pub fn set_display_language_preference(preference: DisplayLanguagePreference) -> crate::Result<()> {
+    lxapp::set_display_language_preference_in(&data_dir()?, preference).map_err(Into::into)
+}
+
+/// Observe actual effective-language changes.
+pub fn on_display_language_change(listener: impl Fn(LanguageTag) + Send + Sync + 'static) {
+    lxapp::add_display_language_effective_listener(Box::new(listener));
+}
+
+/// Observe actual changes to any field in [`DisplayLanguageState`].
+pub fn on_display_language_state_change(
+    listener: impl Fn(DisplayLanguageState) + Send + Sync + 'static,
+) {
+    lxapp::add_display_language_state_listener(Box::new(listener));
 }
 
 pub(crate) fn data_dir() -> crate::Result<PathBuf> {
@@ -114,7 +129,11 @@ pub fn state_file_for(app: &crate::LxApp, name: &str) -> crate::Result<PathBuf> 
 
 /// Requests host app termination through the active platform runtime.
 pub fn exit() -> crate::Result<()> {
-    crate::runtime::platform()?.exit().map_err(Into::into)
+    crate::bootstrap::teardown_runner_display_language_session();
+    crate::runtime::platform()?
+        .exit()
+        .map_err(crate::Error::from)?;
+    Ok(())
 }
 
 fn state_file_in(root: impl AsRef<Path>, name: &str) -> crate::Result<PathBuf> {

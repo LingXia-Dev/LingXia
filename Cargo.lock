@@ -3007,6 +3007,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "language-tags"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4345964bb142484797b161f473a503a434de77149dd8c7427788c6e13379388"
+
+[[package]]
 name = "lazy-regex"
 version = "3.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3202,6 +3208,7 @@ dependencies = [
  "lingxia-settings",
  "lingxia-transfer",
  "lingxia-webview",
+ "ring",
  "rong",
  "serde",
  "serde_json",
@@ -3262,6 +3269,7 @@ dependencies = [
  "indicatif",
  "json5",
  "jsonschema",
+ "language-tags",
  "libc",
  "lingxia-app-context",
  "lingxia-control-protocol",
@@ -3469,12 +3477,14 @@ dependencies = [
  "futures",
  "http",
  "http-body-util",
+ "language-tags",
  "lingxia-app-context",
  "lingxia-log",
  "lingxia-media",
  "lingxia-messaging",
  "lingxia-platform",
  "lingxia-provider",
+ "lingxia-rong-command",
  "lingxia-service",
  "lingxia-settings",
  "lingxia-shell",
@@ -3609,6 +3619,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "lingxia-rong-command"
+version = "0.14.0"
+dependencies = [
+ "libc",
+ "rong",
+ "rong_abort",
+ "rong_buffer",
+ "rong_encoding",
+ "rong_event",
+ "rong_stream",
+ "tokio",
+]
+
+[[package]]
 name = "lingxia-runner-config"
 version = "0.14.0"
 dependencies = [
@@ -3674,6 +3698,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.20",
+ "windows 0.62.2",
 ]
 
 [[package]]

@@ -201,8 +201,13 @@ pub(crate) fn register_runtime() {
 }
 
 #[cfg(feature = "browser-shell")]
-pub(crate) fn register_bundled_assets() {
-    lingxia_browser_shell::register_bundled_assets();
+pub(crate) fn register_route_inventory() {
+    lingxia_browser_shell::register_route_inventory();
+}
+
+#[cfg(feature = "browser-shell")]
+pub(crate) fn register_bundled_assets(authority: &lxapp::NativeControlPlaneAuthority) {
+    lingxia_browser_shell::register_bundled_assets(authority);
 }
 
 #[cfg(feature = "browser-shell")]

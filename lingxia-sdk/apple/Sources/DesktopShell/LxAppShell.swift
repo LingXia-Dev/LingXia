@@ -247,6 +247,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// it. Owned here rather than by the AppUI runtime: the sidebar is the
     /// shell's, and a shell without an AppUI bundle (the Runner's) has one too.
     private var runtimeSidebarActions: [ResolvedRuntimeSidebarAction] = []
+    /// Bootstrap-owned Settings chrome. This stores no destination/runtime
+    /// target; every click resolves the sealed descriptor again in Rust.
+    private var staticSettingsSource: LxAppStaticSettingsSource?
     /// Latest browser entries rendered in the sidebar. Browser tabs are sidebar
     /// content too, so the shell can auto-show when they exist and auto-hide
     /// again when they are gone.
@@ -590,11 +593,21 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         sidebar.onBrowserTabCloseTabsBelowRequested = { [weak self] id in
             self?.browserCoordinator.closeTabsBelow(id: id)
         }
-        sidebar.onPanelItemToggled = { generation, actionID in
-            // The runtime publishes the app event the declaring lxapp is
-            // listening for; no host sits in between, and one that tried would
-            // only be able to forward this call unchanged.
-            _ = shellActivate(generation, actionID)
+        sidebar.onPanelItemToggled = { [weak self] generation, actionID, source in
+            switch source {
+            case .runtime:
+                // The runtime publishes the app event the declaring lxapp is
+                // listening for; no host sits in between.
+                _ = shellActivate(generation, actionID)
+            case .staticSettings:
+                guard let source = self?.staticSettingsSource else { return }
+                if !source.activate(itemID: actionID, using: resolveSettingsDestination) {
+                    LXLog.error(
+                        "static Settings destination resolution failed",
+                        category: "LxAppShell"
+                    )
+                }
+            }
         }
         sidebar.onUpdateActionRequested = { [weak self] state in
             switch state {
@@ -1765,18 +1778,33 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         applyRuntimeSidebarActions()
     }
 
+    func configureStaticSettingsSource(_ source: LxAppStaticSettingsSource?) {
+        guard source != staticSettingsSource else { return }
+        staticSettingsSource = source
+        applyRuntimeSidebarActions()
+    }
+
     private func applyRuntimeSidebarActions() {
         // Before the sidebar exists there is nothing to project into, and the
         // recompute this drives would run against a half-built shell. The
         // declaration is held; `setupSidebarInterface` projects it.
         guard sidebarView != nil else { return }
         updateSidebarHeaderActions(runtimeSidebarActionItems(placement: "header"))
-        updateSidebarHostActions(runtimeSidebarActionItems(placement: "footer"))
+        let footer = LxAppStaticSettingsSource.mergeFooter(
+            runtimeItems: runtimeSidebarActionItems(placement: "footer"),
+            source: staticSettingsSource
+        )
+        updateSidebarHostActions(footer)
     }
 
     private func runtimeSidebarActionItems(placement: String) -> [LxAppUIActionItem] {
         runtimeSidebarActions
             .filter { $0.placement == placement }
+            .filter {
+                LxAppStaticSettingsSource.acceptsRuntimeSidebarAction(
+                    id: $0.id
+                )
+            }
             .map { item in
                 LxAppUIActionItem(
                     generation: item.generation,
@@ -1799,7 +1827,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 iconURL: item.iconURL,
                 label: item.label,
                 active: item.active,
-                disabled: item.disabled
+                disabled: item.disabled,
+                source: item.sidebarActionSource,
+                systemImageName: item.builtInIcon
             )
         }
         sidebarView?.updatePanelItems(sidebarItems)
@@ -1867,17 +1897,14 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         updateReadyCallout = nil
     }
 
-    /// Open a built-in browser surface (downloads / settings) as a main browser
+    /// Open a browser-local management surface as a main browser
     /// tab via the unified switcher — same path as the sidebar buttons, so it
-    /// detaches the lxapp cleanly. Returns `false` for ids that aren't built-in
-    /// routes so the caller can fall through.
+    /// detaches the lxapp cleanly. Only explicit browser-local callers use this;
+    /// generic managed-surface declaration misses never fall through here.
     func openBuiltinShellSurface(id: String) -> Bool {
         switch id {
         case "downloads":
             browserCoordinator.openDownloads()
-            return true
-        case "settings":
-            browserCoordinator.openSettings()
             return true
         case "bookmarks":
             browserCoordinator.openBookmarks()

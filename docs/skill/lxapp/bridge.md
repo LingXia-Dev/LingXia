@@ -472,9 +472,11 @@ Use the host language instead of persisting a second preference:
 - **View**: `useDisplayLanguage()` in React/Vue;
   `getDisplayLanguage()` in `@lingxia/html`.
 - **Logic**: `lx.app.getBaseInfo().displayLanguage` returns the effective tag.
-  The home lxapp may set the host preference with
-  `lx.app.setDisplayLanguage('auto' | 'en-US' | 'zh-CN')`; every other lxapp
-  inherits. `'auto'` follows `getBaseInfo().locale`.
+  The Control lxapp may read `lx.app.getDisplayLanguageState()`, observe it
+  with `lx.app.onDisplayLanguageStateChange()`, and persist any canonical
+  BCP-47 tag (or `'auto'`) with `lx.app.setDisplayLanguagePreference()`.
+  Every other lxapp inherits the effective tag. A Runner session override can
+  shadow the preference without changing it.
 
 The bridge initializes `document.documentElement.lang`. Map the host tag to the
 lxapp's supported catalogs and fallback.

@@ -48,24 +48,36 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
     private weak var overlayHost: NSView?
     private var componentManager: MacNativeComponentManager?
     private var pageKey: String
+    private let surfaceBinding: NativeComponentSurfaceBinding
+    private var active = true
 
     static func attachIfNeeded(to webView: WKWebView, in container: NSView) {
+        guard case .lxAppPage(let requestedBinding) = webView.nativeComponentSurfaceBinding else {
+            webView.lxMacNativeComponentBridge?.invalidate()
+            webView.lxMacNativeComponentBridge = nil
+            webView.lxMacNativeComponentConfigured = false
+            return
+        }
         if webView.lxMacNativeComponentConfigured {
             if let bridge = webView.lxMacNativeComponentBridge {
-                bridge.rebindIfNeeded(in: container)
+                if bridge.surfaceBinding == .lxAppPage(requestedBinding) {
+                    bridge.rebindIfNeeded(in: container)
+                    return
+                }
+                bridge.invalidate()
             } else {
                 registerDefaultComponents()
-                let bridge = MacNativeBridge(webView: webView)
+                let bridge = MacNativeBridge(webView: webView, surfaceBinding: .lxAppPage(requestedBinding))
                 bridge.install(in: container)
                 webView.lxMacNativeComponentBridge = bridge
+                return
             }
-            return
         }
         webView.lxMacNativeComponentConfigured = true
 
         registerDefaultComponents()
 
-        let bridge = MacNativeBridge(webView: webView)
+        let bridge = MacNativeBridge(webView: webView, surfaceBinding: .lxAppPage(requestedBinding))
         bridge.install(in: container)
         webView.lxMacNativeComponentBridge = bridge
     }
@@ -91,9 +103,10 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
         }, context: nil)
     }
 
-    private init(webView: WKWebView) {
+    private init(webView: WKWebView, surfaceBinding: NativeComponentSurfaceBinding) {
         self.webView = webView
         self.pageKey = Self.makePageKey(for: webView)
+        self.surfaceBinding = surfaceBinding
         super.init()
     }
 
@@ -103,6 +116,44 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
                 manager.teardownAll()
             }
         }
+    }
+
+    private func invalidate() {
+        active = false
+        webView?.configuration.userContentController.removeScriptMessageHandler(forName: "NativeComponent")
+        componentManager?.teardownAll()
+        componentManager = nil
+    }
+
+    private func bindingIsCurrent(isMainFrame: Bool) -> Bool {
+        guard active, let webView else { return false }
+        let currentIdentity: UInt?
+        if case .lxAppPage(let binding) = surfaceBinding {
+            let pointer = lingxia.findWebViewByPageInstanceId(binding.pageInstanceID)
+            currentIdentity = pointer == 0 ? nil : pointer
+        } else {
+            currentIdentity = nil
+        }
+        let currentBinding = webView.nativeComponentSurfaceBinding
+        let currentPageInstanceID: String?
+        let currentGeneration: UInt64?
+        if case .lxAppPage(let binding) = currentBinding {
+            currentPageInstanceID = binding.pageInstanceID
+            currentGeneration = binding.attachmentGeneration
+        } else {
+            currentPageInstanceID = nil
+            currentGeneration = nil
+        }
+        return surfaceBinding.admits(
+            isMainFrame: isMainFrame,
+            currentPageInstanceID: currentPageInstanceID,
+            currentWebViewIdentity: currentIdentity,
+            currentAttachmentGeneration: currentGeneration
+        )
+    }
+
+    private func admits(_ message: WKScriptMessage) -> Bool {
+        bindingIsCurrent(isMainFrame: message.frameInfo.isMainFrame)
     }
 
     private func install(in container: NSView) {
@@ -244,6 +295,7 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
         didReceive message: WKScriptMessage
     ) {
         guard message.name == "NativeComponent" else { return }
+        guard admits(message) else { return }
 
         var dict: [String: Any]?
         if let body = message.body as? [String: Any] {
@@ -267,15 +319,14 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
         }
 
         var payloadWithPage = payload
-        if payloadWithPage["pageId"] == nil {
-            payloadWithPage["pageId"] = pageKey
-        }
+        payloadWithPage["pageId"] = pageKey
 
         componentManager?.handle(message: payloadWithPage)
     }
 
     private func sendEventToJavaScript(_ payload: [String: Any]) {
         guard let webView = webView else { return }
+        guard bindingIsCurrent(isMainFrame: true) else { return }
         let fullMessage: [String: Any] = [
             "type": "event",
             "name": "nativecomponent",

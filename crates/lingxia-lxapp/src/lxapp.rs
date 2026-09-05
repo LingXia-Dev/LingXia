@@ -7,7 +7,7 @@ use lingxia_platform::traits::ui::UIUpdate;
 use rong::{JSContext, JSResult, Source, error::HostError};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Read;
@@ -63,24 +63,31 @@ use crate::page::runtime::{
     PageInstanceLifecycleState, PageInstanceRuntimeRecord, transition_page_instance_lifecycle,
 };
 pub use display_language::{
-    DisplayLanguage, add_display_language_change_listener, apply_display_language_override,
-    display_language, set_display_language, set_display_language_in,
+    DisplayLanguageEffectiveSource, DisplayLanguageEffectiveUpdate, DisplayLanguagePreference,
+    DisplayLanguageSessionOwner, DisplayLanguageState, DisplayLanguageStateUpdate, LanguageTag,
+    add_display_language_effective_listener, add_display_language_state_listener,
+    clear_active_display_language_session_override, clear_display_language_session_override,
+    display_language, display_language_state, display_language_state_update,
+    initialize_display_language, install_display_language_session_override,
+    refresh_display_language_system, set_display_language_preference,
+    set_display_language_preference_in, subscribe_display_language_effective,
+    subscribe_display_language_state,
 };
 pub use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 pub use lingxia_surface::Role as SurfaceRole;
 pub use lingxia_update::ReleaseType;
-use lingxia_webview::runtime::destroy_webview;
+use lingxia_webview::runtime::destroy_webview_if_matches;
 pub use runtime_bootstrap::dev_session_active as is_dev_session;
 pub use runtime_bootstrap::init;
 pub use runtime_bootstrap::runner_active as is_runner;
-pub use runtime_bootstrap::{automation_auto_grant, set_automation_auto_grant};
 pub use runtime_ops::{
     close_lxapp, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
-    ensure_builtin_lxapp, ensure_host_surface_owner, ensure_lxapp, get_current_lxapp,
-    installed_lxapp_path, is_lxapp_open, is_pull_down_refresh_enabled, list_lxapps,
-    mark_lxapp_active, notify_lxapp_host_visibility, notify_page_host_visibility,
-    notify_page_instance, notify_page_instance_by_id, on_low_memory, open_lxapp,
-    refresh_auto_appearances, restart_lxapp, touch_page_instance_by_id, uninstall_lxapp,
+    ensure_builtin_lxapp, ensure_control_lxapp, ensure_host_surface_owner, ensure_lxapp,
+    get_current_lxapp, installed_lxapp_path, is_lxapp_open, is_pull_down_refresh_enabled,
+    list_lxapps, mark_lxapp_active, notify_lxapp_host_visibility, notify_page_host_visibility,
+    notify_page_instance, notify_page_instance_by_id, on_low_memory, open_control_lxapp_page,
+    open_lxapp, refresh_auto_appearances, restart_lxapp, touch_page_instance_by_id,
+    uninstall_lxapp,
 };
 pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{find_page_by_instance_id, get_platform, try_get};
@@ -262,6 +269,10 @@ pub struct LxApps {
     /// Pending delayed-destroy timers keyed by appid
     pending_destroy: Mutex<HashMap<String, PendingDestroy>>,
     next_destroy_generation: AtomicU64,
+
+    /// Serializes replacement of one app's session so its native-assigned class
+    /// cannot be lost between removal and reinsertion.
+    session_transition_locks: DashMap<String, Arc<Mutex<()>>>,
 }
 
 struct PendingDestroy {
@@ -314,7 +325,36 @@ impl LxApps {
             lxapp_stack: Mutex::new(VecDeque::with_capacity(capacity)),
             pending_destroy: Mutex::new(HashMap::new()),
             next_destroy_generation: AtomicU64::new(1),
+            session_transition_locks: DashMap::new(),
         }
+    }
+
+    fn session_transition_lock(&self, appid: &str) -> Arc<Mutex<()>> {
+        self.session_transition_locks
+            .entry(appid.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone()
+    }
+
+    fn cleanup_session_transition_lock(&self, appid: &str) {
+        // The map owns one strong reference. A transition in progress (or
+        // waiting for this lock) owns another, so remove only idle entries.
+        // `remove_if` evaluates and removes while holding the map shard write
+        // lock, preventing a concurrent lookup from acquiring a stale lock
+        // between the count check and removal.
+        self.session_transition_locks
+            .remove_if(appid, |_, lock| Arc::strong_count(lock) == 1);
+    }
+
+    fn with_session_transition<T>(&self, appid: &str, operation: impl FnOnce() -> T) -> T {
+        let transition_lock = self.session_transition_lock(appid);
+        let result = {
+            let _transition_guard = transition_lock.lock().unwrap();
+            operation()
+        };
+        drop(transition_lock);
+        self.cleanup_session_transition_lock(appid);
+        result
     }
 
     /// Ensure an LxApp instance exists for the given appid.
@@ -322,6 +362,91 @@ impl LxApps {
         &self,
         appid: String,
         release_type: ReleaseType,
+    ) -> Result<Arc<LxApp>, LxAppError> {
+        let transition_appid = appid.clone();
+        self.with_session_transition(&transition_appid, move || {
+            let session_class = self
+                .lxapps
+                .get(&appid)
+                .map(|app| app.app_session_class())
+                .unwrap_or(AppSessionClass::StandardApp);
+            self.ensure_lxapp_with_session_class(appid, release_type, session_class)
+        })
+    }
+
+    pub(crate) fn ensure_lxapp_for_native_control(
+        &self,
+        appid: String,
+        release_type: ReleaseType,
+    ) -> Result<Arc<LxApp>, LxAppError> {
+        let transition_appid = appid.clone();
+        self.with_session_transition(&transition_appid, move || {
+            if let Some(app) = self.lxapps.get(&appid) {
+                if app.is_control_app() {
+                    return Ok(app.clone());
+                }
+                drop(app);
+                self.destroy_lxapp_with_options(&appid, true);
+            }
+            self.ensure_lxapp_with_session_class(appid, release_type, AppSessionClass::ControlApp)
+        })
+    }
+
+    fn ensure_builtin_lxapp(&self, appid: &str) -> Result<Arc<LxApp>, LxAppError> {
+        self.with_session_transition(appid, || {
+            if let Some(app) = self.lxapps.get(appid) {
+                return Ok(app.clone());
+            }
+            if !matches!(
+                lxapp_bundle_source_for(appid),
+                Some(LxAppBundleSource::BuiltinAssets | LxAppBundleSource::Synthetic)
+            ) {
+                return Err(LxAppError::ResourceNotFound(format!(
+                    "builtin lxapp source not registered: {appid}"
+                )));
+            }
+
+            let app = Arc::new(LxApp::new(
+                appid.to_string(),
+                self.runtime.clone(),
+                self.executor.clone(),
+                ReleaseType::Release,
+            )?);
+            app.bind_arc();
+            crate::host::seal_app_resource_grants(&app);
+            self.lxapps.insert(appid.to_string(), app.clone());
+            Ok(app)
+        })
+    }
+
+    fn initialize_home_lxapp(&self, appid: String) -> Result<Arc<LxApp>, LxAppError> {
+        let transition_appid = appid.clone();
+        self.with_session_transition(&transition_appid, move || {
+            if let Some(app) = self.lxapps.get(&appid) {
+                if app.is_control_app() {
+                    return Ok(app.clone());
+                }
+                drop(app);
+                self.destroy_lxapp_with_options(&appid, true);
+            }
+
+            let app = Arc::new(LxApp::new_as_home(
+                appid.clone(),
+                self.runtime.clone(),
+                self.executor.clone(),
+            )?);
+            app.bind_arc();
+            crate::host::seal_app_resource_grants(&app);
+            self.lxapps.insert(appid, app.clone());
+            Ok(app)
+        })
+    }
+
+    fn ensure_lxapp_with_session_class(
+        &self,
+        appid: String,
+        release_type: ReleaseType,
+        session_class: AppSessionClass,
     ) -> Result<Arc<LxApp>, LxAppError> {
         let has_pending_update = metadata::downloaded_get(&appid, release_type)
             .map(|opt| opt.is_some())
@@ -345,13 +470,19 @@ impl LxApps {
         }
 
         // Create new LxApp
-        let new_lxapp = Arc::new(LxApp::new(
-            appid.clone(),
-            self.runtime.clone(),
-            self.executor.clone(),
-            release_type,
-        )?);
+        let new_lxapp = Arc::new(match session_class {
+            AppSessionClass::StandardApp => LxApp::new(
+                appid.clone(),
+                self.runtime.clone(),
+                self.executor.clone(),
+                release_type,
+            )?,
+            AppSessionClass::ControlApp => {
+                LxApp::new_as_home(appid.clone(), self.runtime.clone(), self.executor.clone())?
+            }
+        });
         new_lxapp.bind_arc();
+        crate::host::seal_app_resource_grants(&new_lxapp);
 
         // Publish with the map entry API. Two concurrent cold opens must both
         // receive the same LxApp instance; otherwise each instance could claim
@@ -386,12 +517,21 @@ impl LxApps {
         appid: String,
         release_type: ReleaseType,
     ) -> Result<Arc<LxApp>, LxAppError> {
-        // Close handshake is handled by restart state machine; avoid a second hide while recreating.
-        self.destroy_lxapp_with_options(&appid, true);
+        let transition_appid = appid.clone();
+        self.with_session_transition(&transition_appid, move || {
+            let session_class = self
+                .lxapps
+                .get(&appid)
+                .map(|app| app.app_session_class())
+                .unwrap_or(AppSessionClass::StandardApp);
 
-        // Delegate to ensure_lxapp so pending downloaded updates are applied
-        // consistently (same path as cold-start navigation).
-        self.ensure_lxapp(appid, release_type)
+            // Close handshake is handled by restart state machine; avoid a second hide while recreating.
+            self.destroy_lxapp_with_options(&appid, true);
+
+            // Delegate to ensure_lxapp so pending downloaded updates are applied
+            // consistently (same path as cold-start navigation).
+            self.ensure_lxapp_with_session_class(appid, release_type, session_class)
+        })
     }
 
     /// Finds and evicts the least recently used LxApp to free up memory.
@@ -621,6 +761,15 @@ pub(crate) enum LxAppBundleSource {
     Synthetic,
 }
 
+/// Native-assigned class for a live LxApp session.
+///
+/// This is not inferred from an app id, bundle source, or manifest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppSessionClass {
+    StandardApp,
+    ControlApp,
+}
+
 pub struct LxApp {
     // Immutable data - initialized once and never changed
     pub appid: String,
@@ -633,6 +782,7 @@ pub struct LxApp {
     pub temp_dir: PathBuf,
     pub fingermark: String,
     pub is_home_lxapp: bool,
+    app_session_class: AppSessionClass,
     pub(crate) release_type: ReleaseType,
     pub(crate) config: LxAppConfig,
     pub(crate) executor: Arc<LxAppWorkers>,
@@ -657,6 +807,9 @@ pub struct LxApp {
     pub(crate) page_chrome_mutation_lock: tokio::sync::Mutex<()>,
 
     self_weak: OnceLock<Weak<LxApp>>,
+
+    /// Native-issued privileged resources, sealed once for this exact session.
+    resource_grants: OnceLock<HashSet<crate::host::AppResourceGrant>>,
 
     // Scripts injected as soon as a page document starts loading.
     document_start_scripts: Mutex<Vec<Arc<str>>>,
@@ -852,6 +1005,16 @@ impl LxApp {
         self.session.id
     }
 
+    /// Returns the native-assigned class for this live app session.
+    pub fn app_session_class(&self) -> AppSessionClass {
+        self.app_session_class
+    }
+
+    /// Whether this session is the native-bootstrapped ControlApp.
+    pub fn is_control_app(&self) -> bool {
+        self.app_session_class == AppSessionClass::ControlApp
+    }
+
     pub fn sync_host_ui(&self) {
         let revision = self.next_page_chrome_revision();
         if let Err(err) = self.runtime.update_navbar_ui(self.appid.clone()) {
@@ -1029,6 +1192,7 @@ impl LxApp {
         let privilege = LxAppSecurityPrivilege::new("process")
             .expect("process is a valid security privilege id");
         self.has_security_privilege(&privilege)
+            && self.has_resource_grant(crate::host::AppResourceGrant::Process)
     }
 
     pub fn app_data_dir(&self) -> PathBuf {
@@ -1402,8 +1566,10 @@ impl LxApp {
     /// so the new
     /// document's handshake finds the new service.
     ///
-    /// The returned receiver resolves as soon as the service is registered;
-    /// the document reload continues independently.
+    /// The returned receiver resolves after the service is registered and its
+    /// document reload has been dispatched; document loading continues
+    /// independently. This ordering keeps a caller's first view command from
+    /// racing ahead of the reload into the parked document.
     fn rebuild_page_on_entry(&self, page: &PageInstance) -> oneshot::Receiver<Result<(), String>> {
         debug!(
             "Rebuilding page for entry (instance {})",
@@ -1431,14 +1597,15 @@ impl LxApp {
         std::mem::drop(crate::executor::spawn(async move {
             match ack_rx.await {
                 Ok(Ok(())) => {
-                    let _ = done_tx.send(Ok(()));
                     // load_html, not WebView::reload: the document came from
                     // loadHTMLString with a logical base URL, and a reload would
                     // fetch that URL's raw source, losing the bridge config and
                     // nonce.
-                    if let Err(err) = page.load_html() {
+                    let result = page.load_html().map_err(|err| {
                         warn!("Failed to reload {} for re-entry: {}", path, err).with_appid(appid);
-                    }
+                        err.to_string()
+                    });
+                    let _ = done_tx.send(result);
                 }
                 Ok(Err(err)) => {
                     warn!("Page service rebuild failed for {}: {}", path, err).with_appid(appid);
@@ -1585,7 +1752,10 @@ impl LxApp {
                 .cloned()
                 .collect::<Vec<_>>()
         };
-        let page_webtags = pages.iter().map(|page| page.webtag()).collect::<Vec<_>>();
+        let page_webviews = pages
+            .iter()
+            .map(|page| (page.webtag(), page.webview()))
+            .collect::<Vec<_>>();
         let page_instance_ids = pages
             .iter()
             .map(|page| page.instance_id_string())
@@ -1607,8 +1777,10 @@ impl LxApp {
             state.page_instance_runtime.lock().unwrap().clear();
             state.page_chrome_layouts.clear();
         }
-        for webtag in &page_webtags {
-            destroy_webview(webtag);
+        for (webtag, webview) in &page_webviews {
+            if let Some(webview) = webview {
+                destroy_webview_if_matches(webtag, webview);
+            }
         }
         let _ = self.clear_page_stack();
         // Terminate AppService (receiver handles its own state)
@@ -1627,6 +1799,7 @@ impl LxApp {
         runtime: Arc<Platform>,
         executor: Arc<LxAppWorkers>,
         release_type: ReleaseType,
+        app_session_class: AppSessionClass,
     ) -> Self {
         let session = LxAppSession::new();
         let bundle_source = lxapp_bundle_source_for(&appid).unwrap_or(LxAppBundleSource::Installed);
@@ -1649,6 +1822,7 @@ impl LxApp {
             temp_dir: PathBuf::new(),
             fingermark: String::new(),
             is_home_lxapp: false,
+            app_session_class,
             release_type,
             config: LxAppConfig::default(),
             executor,
@@ -1661,6 +1835,7 @@ impl LxApp {
             presentation_open_lock: Mutex::new(()),
             page_chrome_mutation_lock: tokio::sync::Mutex::new(()),
             self_weak: OnceLock::new(),
+            resource_grants: OnceLock::new(),
             document_start_scripts: Mutex::new(Vec::new()),
             page_scripts: Mutex::new(Vec::new()),
         }
@@ -1673,7 +1848,13 @@ impl LxApp {
         executor: Arc<LxAppWorkers>,
         release_type: ReleaseType,
     ) -> Result<Self, LxAppError> {
-        let mut app = Self::_new(appid, runtime, executor, release_type);
+        let mut app = Self::_new(
+            appid,
+            runtime,
+            executor,
+            release_type,
+            AppSessionClass::StandardApp,
+        );
         app.setup().inspect_err(|e| {
             error!("Setup failed: {}", e).with_appid(&app.appid);
         })?;
@@ -1686,7 +1867,13 @@ impl LxApp {
         runtime: Arc<Platform>,
         executor: Arc<LxAppWorkers>,
     ) -> Result<Self, LxAppError> {
-        let mut app = Self::_new(appid, runtime, executor, crate::host_channel());
+        let mut app = Self::_new(
+            appid,
+            runtime,
+            executor,
+            crate::host_channel(),
+            AppSessionClass::ControlApp,
+        );
 
         // Mark as home lxapp
         app.is_home_lxapp = true;
@@ -1694,7 +1881,23 @@ impl LxApp {
         app.setup().inspect_err(|e| {
             error!("Setup failed for home app: {}", e).with_appid(&app.appid);
         })?;
+        app.state.lock().unwrap().startup_options.path = app.config.get_initial_route();
         Ok(app)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_with_session_class_for_test(
+        appid: String,
+        runtime: Arc<Platform>,
+        executor: Arc<LxAppWorkers>,
+        class: AppSessionClass,
+    ) -> Result<Self, LxAppError> {
+        match class {
+            AppSessionClass::StandardApp => {
+                Self::new(appid, runtime, executor, ReleaseType::Release)
+            }
+            AppSessionClass::ControlApp => Self::new_as_home(appid, runtime, executor),
+        }
     }
 
     /// Initialize paths and directories for the lxapp
@@ -2256,16 +2459,6 @@ impl LxApp {
         matches!(self.status(), LxAppSessionStatus::Opened)
     }
 
-    /// Register a script to inject on every page load within this LxApp.
-    ///
-    /// Use this for app-specific scripts (e.g. browser context-menu).
-    /// For scripts that should run in *all* apps, use [`add_global_page_script`].
-    pub fn add_page_script(&self, js: impl Into<String>) {
-        if let Ok(mut scripts) = self.page_scripts.lock() {
-            scripts.push(Arc::from(js.into()));
-        }
-    }
-
     pub(crate) fn document_start_scripts_snapshot(&self) -> Vec<Arc<str>> {
         self.document_start_scripts
             .lock()
@@ -2273,13 +2466,12 @@ impl LxApp {
             .unwrap_or_default()
     }
 
-    /// Snapshot page scripts for a new PageInstance: global scripts + this app's scripts.
+    /// Snapshot page scripts for a new PageInstance.
     pub(crate) fn page_scripts_snapshot(&self) -> Vec<Arc<str>> {
-        let mut scripts = crate::page::global_page_scripts_snapshot();
-        if let Ok(app_scripts) = self.page_scripts.lock() {
-            scripts.extend(app_scripts.iter().cloned());
-        }
-        scripts
+        self.page_scripts
+            .lock()
+            .map(|scripts| scripts.clone())
+            .unwrap_or_default()
     }
 
     /// Check if a domain is allowed for network access
@@ -2298,6 +2490,21 @@ impl LxApp {
     /// on the host app and platform permission flow.
     pub fn has_security_privilege(&self, privilege: &LxAppSecurityPrivilege) -> bool {
         self.config.has_security_privilege(privilege)
+    }
+
+    pub(crate) fn seal_resource_grants(&self, grants: HashSet<crate::host::AppResourceGrant>) {
+        let _ = self.resource_grants.set(grants);
+    }
+
+    /// Whether this live native session owns a sealed privileged resource.
+    pub fn has_resource_grant(&self, grant: crate::host::AppResourceGrant) -> bool {
+        matches!(
+            self.status(),
+            LxAppSessionStatus::Opening | LxAppSessionStatus::Opened
+        ) && self
+            .resource_grants
+            .get()
+            .is_some_and(|grants| grants.contains(&grant))
     }
 
     /// Resolve a path to its live page instance.
@@ -2609,8 +2816,11 @@ impl LxApp {
         }
 
         page.cancel_bridge_work();
+        let webview = page.webview();
         page.detach_webview();
-        destroy_webview(&page.webtag());
+        if let Some(webview) = webview {
+            destroy_webview_if_matches(&page.webtag(), &webview);
+        }
     }
 
     pub fn ensure_headless_page_service(&self, path: &str) -> Result<PageInstance, LxAppError> {
@@ -3079,6 +3289,78 @@ pub fn open_region(appid: &str) -> Option<LxAppOpenRegion> {
 mod delayed_destroy_tests {
     use super::*;
     use tokio::sync::oneshot::error::TryRecvError;
+
+    fn class_test_runtime() -> Arc<Platform> {
+        let root = std::env::temp_dir().join(format!("lingxia-lxapp-class-{}", Uuid::new_v4()));
+        Arc::new(
+            Platform::new(
+                root.join("data").display().to_string(),
+                root.join("cache").display().to_string(),
+                "en-US".to_string(),
+            )
+            .expect("test platform"),
+        )
+    }
+
+    #[test]
+    fn app_session_class_is_constructor_assigned_and_preserved_on_rebuild() {
+        let appid = format!("app.lingxia.class-test.{}", Uuid::new_v4());
+        register_synthetic_lxapp(appid.clone());
+
+        let runtime = class_test_runtime();
+        let workers = LxAppWorkers::init(1);
+        let manager = LxApps::new((*runtime).clone(), workers, 1);
+        let standard = manager
+            .ensure_lxapp(appid.clone(), ReleaseType::Release)
+            .expect("standard app");
+        assert!(!manager.session_transition_locks.contains_key(&appid));
+        let control = manager
+            .initialize_home_lxapp(appid.clone())
+            .expect("control app");
+        assert!(!manager.session_transition_locks.contains_key(&appid));
+
+        assert_eq!(standard.appid, control.appid);
+        assert_eq!(standard.bundle_source, control.bundle_source);
+        assert_eq!(standard.app_session_class(), AppSessionClass::StandardApp);
+        assert!(!standard.is_control_app());
+        assert_eq!(control.app_session_class(), AppSessionClass::ControlApp);
+        assert!(control.is_control_app());
+        assert_eq!(
+            control.state.lock().unwrap().startup_options.path,
+            control.config.get_initial_route()
+        );
+
+        let rebuilt = manager
+            .recreate_lxapp(appid.clone(), ReleaseType::Release)
+            .expect("rebuilt control app");
+        assert!(!manager.session_transition_locks.contains_key(&appid));
+        assert_eq!(rebuilt.app_session_class(), AppSessionClass::ControlApp);
+        assert!(rebuilt.is_control_app());
+
+        let ensured = manager
+            .ensure_lxapp(appid, ReleaseType::Release)
+            .expect("ordinary ensure after rebuild");
+        assert_eq!(ensured.app_session_class(), AppSessionClass::ControlApp);
+    }
+
+    #[test]
+    fn session_transition_locks_are_reused_while_live_and_removed_when_idle() {
+        let runtime = class_test_runtime();
+        let manager = LxApps::new((*runtime).clone(), LxAppWorkers::init(1), 1);
+        let appid = format!("app.lingxia.transition-lock-test.{}", Uuid::new_v4());
+
+        let first = manager.session_transition_lock(&appid);
+        manager.cleanup_session_transition_lock(&appid);
+        assert!(manager.session_transition_locks.contains_key(&appid));
+
+        let second = manager.session_transition_lock(&appid);
+        assert!(Arc::ptr_eq(&first, &second));
+
+        drop(second);
+        drop(first);
+        manager.cleanup_session_transition_lock(&appid);
+        assert!(!manager.session_transition_locks.contains_key(&appid));
+    }
 
     #[test]
     fn first_timer_is_registered_and_replacement_is_cancelled() {

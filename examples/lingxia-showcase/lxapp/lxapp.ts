@@ -37,17 +37,6 @@ App({
         },
       },
       {
-        id: "settings",
-        placement: "header",
-        icon: "public/sidebar-settings.svg",
-        label: "Settings",
-        onActivate: () => {
-          void lx.shell
-            .openBuiltin("settings")
-            .catch((error) => console.warn("settings action failed", error));
-        },
-      },
-      {
         id: "chat",
         placement: "footer",
         icon: "public/activator.svg",

@@ -46,6 +46,8 @@ fn request_host_message_loop_exit() {
 mod app_icon;
 #[cfg(all(target_os = "windows", feature = "components"))]
 mod app_menu;
+#[cfg(any(all(target_os = "windows", feature = "browser-shell"), test))]
+mod browser_local_navigation;
 #[cfg(all(target_os = "windows", feature = "components"))]
 mod design_icons;
 #[cfg(all(target_os = "windows", feature = "device-frame"))]
@@ -63,6 +65,9 @@ mod native_components;
 mod pull_to_refresh;
 #[cfg(all(target_os = "windows", feature = "shell-chrome"))]
 mod shell;
+#[cfg(feature = "shell-chrome")]
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+mod static_settings;
 #[cfg(all(target_os = "windows", feature = "terminal-runtime"))]
 mod terminal_fonts;
 #[cfg(all(target_os = "windows", feature = "browser-shell"))]
@@ -346,7 +351,16 @@ pub fn init_runtime(app: WindowsApp) -> Result<RuntimeInfo> {
     // (AppUserModelID) so two apps hosted by the same exe — e.g. two dev
     // runners for different projects — get separate taskbar buttons.
     platform.install_taskbar_identity();
-    Ok(lingxia::windows::init(platform)?)
+    let runtime = lingxia::windows::init(platform)?;
+    #[cfg(feature = "shell-chrome")]
+    shell::configure_static_settings_source(lingxia::static_settings_destination(), &runtime);
+    #[cfg(feature = "terminal-runtime")]
+    if !shell::install_terminal_automation_authority(runtime.terminal_automation_authority()) {
+        return Err(WindowsHostError::OpenTerminal(
+            "native terminal automation authority was already installed".to_string(),
+        ));
+    }
+    Ok(runtime)
 }
 
 /// Installs the SDK-managed native component integrations:

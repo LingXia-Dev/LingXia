@@ -5,6 +5,7 @@ import android.util.Log;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.annotation.RequiresApi;
@@ -36,10 +37,14 @@ public class LingXiaWebViewClient extends WebViewClient {
         LingXiaWebView webView = webViewRef.get();
         if (webView != null) {
             webView.setPageLoaded(false);
+            AndroidDocumentBridgeState.Navigation navigation =
+                    webView.beginTopLevelNavigation();
             webView.onPageStarted(
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 webView.getSessionId(),
+                webView.getNativeViewId(),
+                navigation.loadToken,
                 url != null ? url : ""
             );
         }
@@ -55,10 +60,15 @@ public class LingXiaWebViewClient extends WebViewClient {
             webView.setPageLoaded(true);
             webView.resetViewport();
             webView.pushWebViewState();
+            // API 21/22 have no visible-commit callback. Finishing a load
+            // remains useful navigation state, but must not mint a document
+            // binding from weaker evidence.
             webView.onPageFinished(
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 webView.getSessionId(),
+                webView.getNativeViewId(),
+                webView.currentNavigationLoadToken(),
                 url != null ? url : ""
             );
         }
@@ -69,12 +79,8 @@ public class LingXiaWebViewClient extends WebViewClient {
         super.onPageCommitVisible(view, url);
         // Commit evidence: the displayed document was replaced.
         LingXiaWebView webView = webViewRef.get();
-        if (webView != null) {
-            webView.onPageCommitted(
-                webView.getAppId() != null ? webView.getAppId() : "",
-                webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
-                webView.getSessionId()
-            );
+        if (webView != null && DocumentCommitCallbackPolicy.canBindDocument(Build.VERSION.SDK_INT)) {
+            webView.commitTopLevelDocument();
         }
     }
 
@@ -85,7 +91,7 @@ public class LingXiaWebViewClient extends WebViewClient {
         // the Android signal for "URL / back-forward state changed".
         LingXiaWebView webView = webViewRef.get();
         if (webView != null) {
-            webView.pushWebViewState();
+            webView.handleVisitedHistoryUpdate(url != null ? url : "");
         }
     }
 
@@ -101,6 +107,7 @@ public class LingXiaWebViewClient extends WebViewClient {
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 webView.getSessionId(),
+                webView.getNativeViewId(),
                 url,
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && request.hasGesture(),
                 request.isForMainFrame()
@@ -119,6 +126,8 @@ public class LingXiaWebViewClient extends WebViewClient {
             webView.getAppId() != null ? webView.getAppId() : "",
             webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
             webView.getSessionId(),
+            webView.getNativeViewId(),
+            webView.currentNavigationLoadToken(),
             failingUrl,
             errorCode,
             description
@@ -156,6 +165,17 @@ public class LingXiaWebViewClient extends WebViewClient {
     }
 
     @Override
+    @RequiresApi(api = Build.VERSION_CODES.O)
+    public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+        LingXiaWebView webView = webViewRef.get();
+        if (webView != null) {
+            webView.handleRendererProcessGone();
+        }
+        // This WebView is no longer reusable. The owner will replace or close it.
+        return true;
+    }
+
+    @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
         if (request == null || request.getUrl() == null) {
             return null;
@@ -185,9 +205,11 @@ public class LingXiaWebViewClient extends WebViewClient {
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 webView.getSessionId(),
+                webView.getNativeViewId(),
                 url,
                 method,
-                headerArray
+                headerArray,
+                request.isForMainFrame()
             );
 
             if (response == null) {

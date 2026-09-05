@@ -1,3 +1,4 @@
+use crate::ControlDocumentBootstrap;
 use crate::error;
 use crate::error::LxAppError;
 use crate::info;
@@ -50,6 +51,34 @@ impl LxApp {
         }
 
         injected_data
+    }
+
+    /// Generate one native-owned control document with its V3 bootstrap.
+    ///
+    /// The bootstrap is consumed so a caller cannot accidentally reuse its
+    /// secret for a different document. The base URL supplied to WebView is
+    /// still only resource location; the native document registry performs
+    /// admission separately.
+    #[doc(hidden)]
+    pub fn generate_page_html_with_bridge_bootstrap(
+        &self,
+        path: &str,
+        bridge_nonce: Option<&str>,
+        bootstrap: ControlDocumentBootstrap,
+    ) -> Result<Vec<u8>, LxAppError> {
+        // A missing root is never converted into a bootstrap-bearing 404.
+        let data = self.read_bytes(path).map_err(|_| {
+            LxAppError::ResourceNotFound(format!(
+                "trusted control document root is unavailable: {path}"
+            ))
+        })?;
+        let mut injected_data = self.inject_content_security_policy(&data);
+        injected_data =
+            inject_bridge_config_with_bootstrap(&injected_data, bridge_nonce, Some(bootstrap))?;
+        if let Ok(app_css_data) = self.read_bytes("lxapp.css") {
+            injected_data = self.inject_css(&injected_data, &app_css_data, path)?;
+        }
+        Ok(injected_data)
     }
 
     /// Get 404 page content with path injection
@@ -134,30 +163,8 @@ impl LxApp {
     }
 
     fn inject_bridge_config(&self, html_data: &[u8], bridge_nonce: Option<&str>) -> Vec<u8> {
-        let html_str = String::from_utf8_lossy(html_data);
-        let script_tag = build_bridge_config_script(bridge_nonce);
-
-        if let Some(src_pos) =
-            find_ascii_case_insensitive(&html_str, "lx://assets/bridge-runtime.js")
-            && let Some(script_start) =
-                find_ascii_case_insensitive_rev(&html_str[..src_pos], "<script")
-        {
-            let (before, after) = html_str.split_at(script_start);
-            return format!("{}{}\n{}", before, script_tag, after).into_bytes();
-        }
-        if let Some(head_pos) = find_ascii_case_insensitive(&html_str, "</head>") {
-            let (before, after) = html_str.split_at(head_pos);
-            return format!("{}{}\n{}", before, script_tag, after).into_bytes();
-        }
-        if let Some(body_pos) = find_ascii_case_insensitive(&html_str, "<body")
-            && let Some(body_end) = html_str[body_pos..].find('>')
-        {
-            let insert_pos = body_pos + body_end + 1;
-            let (before, after) = html_str.split_at(insert_pos);
-            return format!("{}{}\n{}", before, script_tag, after).into_bytes();
-        }
-
-        format!("{}\n{}", script_tag, html_str).into_bytes()
+        inject_bridge_config_with_bootstrap(html_data, bridge_nonce, None)
+            .expect("ordinary bridge config injection has a safe fallback")
     }
 
     /// Inject CSS into HTML content
@@ -201,6 +208,113 @@ impl LxApp {
             .with_appid(self.appid.clone());
         Ok(html_data.to_vec())
     }
+}
+
+fn inject_bridge_config_with_bootstrap(
+    html_data: &[u8],
+    bridge_nonce: Option<&str>,
+    bootstrap: Option<ControlDocumentBootstrap>,
+) -> Result<Vec<u8>, LxAppError> {
+    let html_str = String::from_utf8_lossy(html_data);
+    let script_tag = build_bridge_config_script(bridge_nonce);
+
+    if let Some(script_start) = find_bridge_runtime_script_start(&html_str, bootstrap.is_some()) {
+        let (before, after) = html_str.split_at(script_start);
+        let bootstrap_tag = bootstrap
+            .map(build_control_document_bootstrap_script)
+            .unwrap_or_default();
+        return Ok(format!("{}{}\n{}\n{}", before, bootstrap_tag, script_tag, after).into_bytes());
+    }
+    if bootstrap.is_some() {
+        return Err(LxAppError::WebView(
+            "trusted control document is missing the bridge runtime script".to_string(),
+        ));
+    }
+    if let Some(head_pos) = find_ascii_case_insensitive(&html_str, "</head>") {
+        let (before, after) = html_str.split_at(head_pos);
+        return Ok(format!("{}{}\n{}", before, script_tag, after).into_bytes());
+    }
+    if let Some(body_pos) = find_ascii_case_insensitive(&html_str, "<body")
+        && let Some(body_end) = html_str[body_pos..].find('>')
+    {
+        let insert_pos = body_pos + body_end + 1;
+        let (before, after) = html_str.split_at(insert_pos);
+        return Ok(format!("{}{}\n{}", before, script_tag, after).into_bytes());
+    }
+
+    Ok(format!("{}\n{}", script_tag, html_str).into_bytes())
+}
+
+fn build_control_document_bootstrap_script(bootstrap: ControlDocumentBootstrap) -> String {
+    let (session_id, secret) = bootstrap.take_binding();
+    format!(
+        r#"<script>(function(){{let secret="{}";let used=false;Object.defineProperty(window,"__LingXiaTakeControlBootstrap",{{enumerable:false,configurable:true,value:function(){{if(used){{return undefined;}}used=true;let result={{requiredProtocol:3,publicSessionId:"{}",secret:secret}};secret="";delete window.__LingXiaTakeControlBootstrap;return result;}}}});}})();</script>"#,
+        escape_js_string(&secret),
+        escape_js_string(&session_id),
+    )
+}
+
+/// The build pipeline emits this exact tag for its bridge runtime. Trusted
+/// bootstrap injection deliberately requires it: handwritten or ambiguous
+/// runtime tags must not receive a control-document secret.
+const TRUSTED_BRIDGE_RUNTIME_TAG: &str =
+    r#"<script data-lingxia-bridge-runtime="v3-bootstrap" src="lx://assets/bridge-runtime.js">"#;
+const LEGACY_BRIDGE_RUNTIME_TAG: &str = r#"<script src="lx://assets/bridge-runtime.js">"#;
+
+/// Locate the structured bridge-runtime element emitted by the build
+/// pipeline. This is intentionally a small HTML tokenizer rather than a
+/// substring search: comments, attributes, and raw script/style text can all
+/// contain a convincing-looking literal which the browser will not execute.
+fn find_bridge_runtime_script_start(html: &str, require_trusted_sentinel: bool) -> Option<usize> {
+    let mut cursor = 0;
+    while let Some(relative) = html[cursor..].find('<') {
+        let start = cursor + relative;
+        let remaining = &html[start..];
+        if remaining.starts_with("<!--") {
+            let end = remaining.find("-->")?;
+            cursor = start + end + 3;
+            continue;
+        }
+
+        let tag_end_relative = remaining.find('>')?;
+        let tag_end = start + tag_end_relative;
+        let opener = &html[start..=tag_end];
+        if opener == TRUSTED_BRIDGE_RUNTIME_TAG
+            || (!require_trusted_sentinel && opener == LEGACY_BRIDGE_RUNTIME_TAG)
+        {
+            return Some(start);
+        }
+
+        // HTML parses script and style contents as raw text. Skip them as a
+        // browser would, so a literal sentinel in a string cannot be used as
+        // an injection point.
+        if opener
+            .as_bytes()
+            .get(..7)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"<script"))
+            || opener
+                .as_bytes()
+                .get(..6)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"<style"))
+        {
+            let closing = if opener
+                .as_bytes()
+                .get(..7)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"<script"))
+            {
+                "</script"
+            } else {
+                "</style"
+            };
+            let closing_relative = find_ascii_case_insensitive(&html[tag_end + 1..], closing)?;
+            let closing_start = tag_end + 1 + closing_relative;
+            let closing_end = html[closing_start..].find('>')? + closing_start;
+            cursor = closing_end + 1;
+        } else {
+            cursor = tag_end + 1;
+        }
+    }
+    None
 }
 
 fn build_content_security_policy() -> String {
@@ -359,20 +473,15 @@ fn find_ascii_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
         .position(|window| window.eq_ignore_ascii_case(needle))
 }
 
-fn find_ascii_case_insensitive_rev(haystack: &str, needle: &str) -> Option<usize> {
-    let needle = needle.as_bytes();
-    if needle.is_empty() {
-        return Some(haystack.len());
-    }
-    haystack
-        .as_bytes()
-        .windows(needle.len())
-        .rposition(|window| window.eq_ignore_ascii_case(needle))
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{build_content_security_policy, strip_content_security_policy_meta};
+    use super::{
+        LEGACY_BRIDGE_RUNTIME_TAG, TRUSTED_BRIDGE_RUNTIME_TAG, build_content_security_policy,
+        build_control_document_bootstrap_script, find_bridge_runtime_script_start,
+        inject_bridge_config_with_bootstrap, strip_content_security_policy_meta,
+    };
+    use crate::issue_control_document_bootstrap;
+    use ring::rand::SystemRandom;
 
     #[test]
     fn csp_allows_all_https_images() {
@@ -411,6 +520,97 @@ mod tests {
             !stripped
                 .to_ascii_lowercase()
                 .contains("content-security-policy")
+        );
+    }
+
+    #[test]
+    fn control_bootstrap_is_hidden_one_shot_and_precedes_bridge_runtime() {
+        let (bootstrap, _) = issue_control_document_bootstrap(
+            &crate::NativeControlPlaneAuthority::for_test(),
+            &SystemRandom::new(),
+        )
+        .unwrap();
+        let script = build_control_document_bootstrap_script(bootstrap);
+        assert!(script.contains(
+            "Object.defineProperty(window,\"__LingXiaTakeControlBootstrap\",{enumerable:false"
+        ));
+        assert!(script.contains("requiredProtocol:3"));
+        assert!(script.contains("publicSessionId:"));
+        assert!(script.contains("secret=\"\";delete window.__LingXiaTakeControlBootstrap"));
+    }
+
+    #[test]
+    fn bridge_runtime_locator_ignores_fake_strings_before_the_real_script() {
+        let html = r#"<SCRIPT>let fake='<script data-lingxia-bridge-runtime="v3-bootstrap" src="lx://assets/bridge-runtime.js">';</SCRIPT><STYLE>/* <script data-lingxia-bridge-runtime="v3-bootstrap" src="lx://assets/bridge-runtime.js"> */</STYLE><!-- <script data-lingxia-bridge-runtime="v3-bootstrap" src="lx://assets/bridge-runtime.js"> --><div title='<script data-lingxia-bridge-runtime="v3-bootstrap" src="lx://assets/bridge-runtime.js">'></div><script data-src="lx://assets/bridge-runtime.js"></script><script data-lingxia-bridge-runtime="v3-bootstrap" src="lx://assets/bridge-runtime.js"></script>"#;
+        let start = find_bridge_runtime_script_start(html, true).unwrap();
+        assert_eq!(
+            &html[start..start + super::TRUSTED_BRIDGE_RUNTIME_TAG.len()],
+            super::TRUSTED_BRIDGE_RUNTIME_TAG
+        );
+        assert!(find_bridge_runtime_script_start("<html><head></head></html>", true).is_none());
+        assert!(
+            find_bridge_runtime_script_start(
+                r#"<script src="lx://assets/bridge-runtime.js"></script>"#,
+                true,
+            )
+            .is_none()
+        );
+        assert_eq!(
+            find_bridge_runtime_script_start(
+                r#"<script src="lx://assets/bridge-runtime.js"></script>"#,
+                false,
+            ),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn trusted_bootstrap_requires_the_generated_runtime_tag_and_precedes_it() {
+        let html = format!("<html><head>{TRUSTED_BRIDGE_RUNTIME_TAG}</script></head></html>");
+        let (bootstrap, _) = issue_control_document_bootstrap(
+            &crate::NativeControlPlaneAuthority::for_test(),
+            &SystemRandom::new(),
+        )
+        .unwrap();
+        let trusted =
+            inject_bridge_config_with_bootstrap(html.as_bytes(), None, Some(bootstrap)).unwrap();
+        let trusted = String::from_utf8(trusted).unwrap();
+        let bootstrap_at = trusted
+            .find("__LingXiaTakeControlBootstrap")
+            .expect("trusted bootstrap must be emitted");
+        let runtime_at = trusted.find(TRUSTED_BRIDGE_RUNTIME_TAG).unwrap();
+        assert!(bootstrap_at < runtime_at);
+
+        let (bootstrap, _) = issue_control_document_bootstrap(
+            &crate::NativeControlPlaneAuthority::for_test(),
+            &SystemRandom::new(),
+        )
+        .unwrap();
+        assert!(inject_bridge_config_with_bootstrap(
+            b"<html><head><script src=\"lx://assets/bridge-runtime.js\"></script></head></html>",
+            None,
+            Some(bootstrap),
+        )
+        .is_err());
+
+        let ordinary =
+            inject_bridge_config_with_bootstrap(b"<html><head></head></html>", None, None).unwrap();
+        assert!(
+            !String::from_utf8(ordinary)
+                .unwrap()
+                .contains("__LingXiaTakeControlBootstrap")
+        );
+
+        let ordinary = inject_bridge_config_with_bootstrap(
+            b"<html><head><script src=\"lx://assets/bridge-runtime.js\"></script></head></html>",
+            None,
+            None,
+        )
+        .unwrap();
+        let ordinary = String::from_utf8(ordinary).unwrap();
+        assert!(
+            ordinary.find("__LX_BRIDGE_CFG").unwrap()
+                < ordinary.find(LEGACY_BRIDGE_RUNTIME_TAG).unwrap()
         );
     }
 }

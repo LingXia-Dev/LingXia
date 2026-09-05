@@ -3,7 +3,7 @@
 
 use super::*;
 use crate::events::normalizer::{self, NativeNavigationResult, NativeSignal};
-use crate::traits::{LoadError, LoadErrorKind};
+use crate::traits::{ContextualSchemeRequest, LoadError, LoadErrorKind, SchemeRequestFrame};
 
 /// Map a WebView2 `COREWEBVIEW2_WEB_ERROR_STATUS` to the normalized error
 /// kind. Numeric values per the WebView2 SDK enum.
@@ -17,14 +17,57 @@ fn windows_load_error_kind(status: i32) -> LoadErrorKind {
     }
 }
 
+fn windows_message_source(source: String) -> WebMessageSource {
+    WebMessageSource::diagnostic_url(Some(source))
+}
+
+fn windows_web_message_frame(main_document_event: bool) -> WebMessageFrame {
+    if main_document_event {
+        WebMessageFrame::TopLevel
+    } else {
+        WebMessageFrame::Subframe
+    }
+}
+
+fn windows_scheme_request_frame(_context: COREWEBVIEW2_WEB_RESOURCE_CONTEXT) -> SchemeRequestFrame {
+    // WebResourceContext names a resource *type* only. In particular,
+    // `Document` does not bind this request to the top-level frame, and the
+    // callback exposes no frame identity or matching navigation proof. IFRAME
+    // must therefore never be promoted, and neither may Document.
+    SchemeRequestFrame::Unproven
+}
+
+fn native_callback_identity_matches(
+    callback_native_view_id: NativeWebViewId,
+    registered_native_view_id: NativeWebViewId,
+) -> bool {
+    callback_native_view_id == registered_native_view_id
+}
+
+/// Resolve a native callback only if its concrete WebView is still the one
+/// registered for this logical tag. A tag can be reused while an old WebView2
+/// controller is still draining callbacks.
+fn current_native_callback_webview(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+) -> Option<Arc<crate::WebView>> {
+    find_webview_by_native_view_id(webtag, native_view_id).filter(|webview| {
+        native_callback_identity_matches(native_view_id, webview.native_view_id())
+    })
+}
+
 pub(crate) fn register_event_handlers(
     env: &ICoreWebView2Environment,
     webview: &ICoreWebView2,
     webtag: WebTag,
+    native_view_id: NativeWebViewId,
     registered_schemes: &[String],
     memory_pages: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    document_authority: Arc<document::WindowsDocumentAuthority>,
 ) -> StdResult<()> {
     let started_tag = webtag.clone();
+    let started_native_view_id = native_view_id;
+    let started_document_authority = Arc::clone(&document_authority);
     unsafe {
         let mut token = 0;
         webview
@@ -41,7 +84,11 @@ pub(crate) fn register_event_handlers(
                     let mut navigation_id = 0u64;
                     args.NavigationId(&mut navigation_id)?;
 
-                    if let Some(webview) = find_webview(&started_tag)
+                    let trusted_start =
+                        started_document_authority.navigation_start(&uri, navigation_id);
+
+                    if let Some(webview) =
+                        current_native_callback_webview(&started_tag, started_native_view_id)
                         && matches!(
                             webview.handle_navigation(&crate::NavigationRequest::new(
                                 uri.clone(),
@@ -51,10 +98,21 @@ pub(crate) fn register_event_handlers(
                             NavigationPolicy::Cancel
                         )
                     {
+                        if let document::TrustedNavigationStart::Attest { intent, .. }
+                        | document::TrustedNavigationStart::Revoke(intent) = trusted_start
+                        {
+                            started_document_authority.revoke_if_matches(intent);
+                            normalizer::revoke_trusted_load(
+                                &started_tag,
+                                started_native_view_id,
+                                intent,
+                            );
+                        }
                         // Policy rejected before loading: the follow-up
                         // completion for this key is expected and consumed.
                         normalizer::submit(
                             &started_tag,
+                            started_native_view_id,
                             NativeSignal::NavigationSuppressed {
                                 key: Some(navigation_id),
                             },
@@ -63,10 +121,40 @@ pub(crate) fn register_event_handlers(
                         return Ok(());
                     }
 
+                    match trusted_start {
+                        document::TrustedNavigationStart::Attest {
+                            intent,
+                            navigation_key,
+                        } => {
+                            if !normalizer::attest_trusted_load(
+                                &started_tag,
+                                started_native_view_id,
+                                intent,
+                                navigation_key,
+                            ) {
+                                started_document_authority.revoke_if_matches(intent);
+                                normalizer::revoke_trusted_load(
+                                    &started_tag,
+                                    started_native_view_id,
+                                    intent,
+                                );
+                            }
+                        }
+                        document::TrustedNavigationStart::Revoke(intent) => {
+                            normalizer::revoke_trusted_load(
+                                &started_tag,
+                                started_native_view_id,
+                                intent,
+                            );
+                        }
+                        document::TrustedNavigationStart::Untrusted => {}
+                    }
+
                     // Redirect restarts reuse the native id; the tracker
                     // coalesces them into one attempt.
                     normalizer::submit(
                         &started_tag,
+                        started_native_view_id,
                         NativeSignal::NavigationStarted {
                             key: Some(navigation_id),
                             url: uri,
@@ -82,6 +170,7 @@ pub(crate) fn register_event_handlers(
     }
 
     let frame_started_tag = webtag.clone();
+    let frame_started_native_view_id = native_view_id;
     unsafe {
         let mut token = 0;
         webview
@@ -94,14 +183,14 @@ pub(crate) fn register_event_handlers(
                     let mut uri = PWSTR::null();
                     args.Uri(&mut uri)?;
                     let uri = CoTaskMemPWSTR::from(uri).to_string();
-                    if let Some(webview) = find_webview(&frame_started_tag)
-                        && matches!(
-                            webview.handle_navigation(&crate::NavigationRequest::new(
-                                uri, false, false,
-                            )),
-                            NavigationPolicy::Cancel
-                        )
-                    {
+                    if let Some(webview) = current_native_callback_webview(
+                        &frame_started_tag,
+                        frame_started_native_view_id,
+                    ) && matches!(
+                        webview
+                            .handle_navigation(&crate::NavigationRequest::new(uri, false, false,)),
+                        NavigationPolicy::Cancel
+                    ) {
                         args.SetCancel(true)?;
                     }
                     Ok(())
@@ -114,13 +203,27 @@ pub(crate) fn register_event_handlers(
     }
 
     let committed_tag = webtag.clone();
+    let committed_native_view_id = native_view_id;
+    let committed_document_authority = Arc::clone(&document_authority);
     unsafe {
         let mut token = 0;
         webview
             .add_ContentLoading(
-                &ContentLoadingEventHandler::create(Box::new(move |_sender, _args| {
+                &ContentLoadingEventHandler::create(Box::new(move |_sender, args| {
+                    let Some(args) = args else {
+                        return Ok(());
+                    };
+                    let mut navigation_id = 0u64;
+                    args.NavigationId(&mut navigation_id)?;
+                    committed_document_authority.navigation_finished(navigation_id);
                     // Commit evidence: the displayed document was replaced.
-                    normalizer::submit(&committed_tag, NativeSignal::DocumentCommitted);
+                    normalizer::submit(
+                        &committed_tag,
+                        committed_native_view_id,
+                        NativeSignal::DocumentCommitted {
+                            key: Some(navigation_id),
+                        },
+                    );
                     Ok(())
                 })),
                 &mut token,
@@ -129,6 +232,8 @@ pub(crate) fn register_event_handlers(
     }
 
     let finished_tag = webtag.clone();
+    let finished_native_view_id = native_view_id;
+    let finished_document_authority = Arc::clone(&document_authority);
     unsafe {
         let mut token = 0;
         webview
@@ -139,6 +244,7 @@ pub(crate) fn register_event_handlers(
                     };
                     let mut navigation_id = 0u64;
                     args.NavigationId(&mut navigation_id)?;
+                    finished_document_authority.navigation_finished(navigation_id);
                     let mut succeeded = BOOL::default();
                     args.IsSuccess(&mut succeeded)?;
                     let result = if succeeded.as_bool() {
@@ -164,6 +270,7 @@ pub(crate) fn register_event_handlers(
                     };
                     normalizer::submit(
                         &finished_tag,
+                        finished_native_view_id,
                         NativeSignal::NavigationFinished {
                             key: Some(navigation_id),
                             result,
@@ -179,18 +286,52 @@ pub(crate) fn register_event_handlers(
     }
 
     let source_tag = webtag.clone();
+    let source_native_view_id = native_view_id;
     unsafe {
         let mut token = 0;
         webview
             .add_SourceChanged(
-                &SourceChangedEventHandler::create(Box::new(move |sender, _args| {
-                    let Some(sender) = sender else {
+                &SourceChangedEventHandler::create(Box::new(move |sender, args| {
+                    let (Some(sender), Some(args)) = (sender, args) else {
+                        return Ok(());
+                    };
+                    let Some(webview) =
+                        current_native_callback_webview(&source_tag, source_native_view_id)
+                    else {
                         return Ok(());
                     };
                     let mut source = PWSTR::null();
                     sender.Source(&mut source)?;
                     let source = CoTaskMemPWSTR::from(source).to_string();
-                    normalizer::submit(&source_tag, NativeSignal::LocationChanged { url: source });
+                    let mut is_new_document = BOOL::default();
+                    args.IsNewDocument(&mut is_new_document)?;
+
+                    // WebView2 does not give SourceChanged a NavigationId. A
+                    // normal top-level navigation has already invalidated the
+                    // old binding in NavigationStarting. If IsNewDocument is
+                    // true while that binding remains active, fail closed: a
+                    // history/BFCache restore crossed a document boundary
+                    // without the callbacks needed to prove fresh authority.
+                    // IsNewDocument=false is intentionally location-only so
+                    // pushState, replaceState, and fragment changes survive.
+                    if document::source_change_requires_reproof(
+                        is_new_document.as_bool(),
+                        matches!(
+                            webview.current_document_binding(),
+                            crate::DocumentBinding::Bound(_)
+                        ),
+                    ) && normalizer::invalidate_restored_document(
+                        &source_tag,
+                        source_native_view_id,
+                    ) && let Some(delegate) = webview.get_delegate()
+                    {
+                        delegate.on_document_restored(source_native_view_id, &source);
+                    }
+                    normalizer::submit(
+                        &source_tag,
+                        source_native_view_id,
+                        NativeSignal::LocationChanged { url: source },
+                    );
                     Ok(())
                 })),
                 &mut token,
@@ -199,6 +340,7 @@ pub(crate) fn register_event_handlers(
     }
 
     let history_tag = webtag.clone();
+    let history_native_view_id = native_view_id;
     unsafe {
         let mut token = 0;
         webview
@@ -211,8 +353,12 @@ pub(crate) fn register_event_handlers(
                     let mut can_forward = BOOL::default();
                     sender.CanGoBack(&mut can_back)?;
                     sender.CanGoForward(&mut can_forward)?;
+                    // HistoryChanged has no document or navigation identity
+                    // and also follows pushState. It updates UI state only;
+                    // SourceChanged.IsNewDocument owns defensive reproof.
                     normalizer::submit(
                         &history_tag,
+                        history_native_view_id,
                         NativeSignal::BackForwardChanged {
                             can_go_back: can_back.as_bool(),
                             can_go_forward: can_forward.as_bool(),
@@ -226,6 +372,7 @@ pub(crate) fn register_event_handlers(
     }
 
     let title_tag = webtag.clone();
+    let title_native_view_id = native_view_id;
     unsafe {
         let mut token = 0;
         webview
@@ -240,6 +387,7 @@ pub(crate) fn register_event_handlers(
                     if !title.is_empty() {
                         normalizer::submit(
                             &title_tag,
+                            title_native_view_id,
                             NativeSignal::TitleChanged { title: Some(title) },
                         );
                     }
@@ -255,6 +403,7 @@ pub(crate) fn register_event_handlers(
     // Favicon change notifications need ICoreWebView2_15 (newer WebView2
     // runtimes); older runtimes simply do without favicons.
     let favicon_tag = webtag.clone();
+    let favicon_native_view_id = native_view_id;
     if let Ok(webview15) = webview.cast::<ICoreWebView2_15>() {
         let handler = FaviconChangedEventHandler::create(Box::new(move |sender, _args| {
             let Some(sender) = sender else {
@@ -276,7 +425,11 @@ pub(crate) fn register_event_handlers(
                             .as_ref()
                             .and_then(|stream| read_stream_to_end(stream).ok())
                             .filter(|bytes| !bytes.is_empty());
-                        normalizer::submit(&tag, NativeSignal::FaviconChanged { png_bytes });
+                        normalizer::submit(
+                            &tag,
+                            favicon_native_view_id,
+                            NativeSignal::FaviconChanged { png_bytes },
+                        );
                         Ok(())
                     })),
                 )?;
@@ -291,6 +444,7 @@ pub(crate) fn register_event_handlers(
     }
 
     let new_window_tag = webtag.clone();
+    let new_window_native_view_id = native_view_id;
     unsafe {
         let mut token = 0;
         webview
@@ -301,7 +455,9 @@ pub(crate) fn register_event_handlers(
                     };
 
                     let uri = take_request_string(|slot| args.Uri(slot))?;
-                    let Some(webview) = find_webview(&new_window_tag) else {
+                    let Some(webview) =
+                        current_native_callback_webview(&new_window_tag, new_window_native_view_id)
+                    else {
                         args.SetHandled(true)?;
                         return Ok(());
                     };
@@ -328,6 +484,7 @@ pub(crate) fn register_event_handlers(
     }
 
     let download_tag = webtag.clone();
+    let download_native_view_id = native_view_id;
     unsafe {
         let webview4: ICoreWebView2_4 = webview.cast().map_err(|err| {
             WebViewError::WebView(format!("WebView2_4 cast failed for downloads: {err}"))
@@ -339,7 +496,9 @@ pub(crate) fn register_event_handlers(
                     let Some(args) = args else {
                         return Ok(());
                     };
-                    let Some(webview) = find_webview(&download_tag) else {
+                    let Some(webview) =
+                        current_native_callback_webview(&download_tag, download_native_view_id)
+                    else {
                         return Ok(());
                     };
                     if !webview.has_download_handler() {
@@ -357,6 +516,65 @@ pub(crate) fn register_event_handlers(
             .map_err(|err| WebViewError::WebView(format!("add_DownloadStarting failed: {err}")))?;
     }
 
+    // The CoreWebView2-level event is the main document. Iframes have their
+    // own Frame2 event; register it explicitly so frame messages retain a
+    // fail-closed `Subframe` proof instead of being conflated with top-level.
+    let frame_message_tag = webtag.clone();
+    unsafe {
+        let webview4: ICoreWebView2_4 = webview.cast().map_err(|err| {
+            WebViewError::WebView(format!("WebView2_4 cast failed for frame messages: {err}"))
+        })?;
+        let mut token = 0;
+        webview4
+            .add_FrameCreated(
+                &FrameCreatedEventHandler::create(Box::new(move |_sender, args| {
+                    let Some(args) = args else {
+                        return Ok(());
+                    };
+                    if current_native_callback_webview(&frame_message_tag, native_view_id).is_none()
+                    {
+                        return Ok(());
+                    }
+                    let frame = args.Frame()?;
+                    let Ok(frame2) = frame.cast::<ICoreWebView2Frame2>() else {
+                        // Runtimes without Frame2 cannot deliver an iframe
+                        // message with frame proof, so leave it unsubscribed.
+                        return Ok(());
+                    };
+                    let message_tag = frame_message_tag.clone();
+                    let handler = FrameWebMessageReceivedEventHandler::create(Box::new(
+                        move |_frame, args| {
+                            let Some(args) = args else {
+                                return Ok(());
+                            };
+                            let mut message = PWSTR::null();
+                            args.TryGetWebMessageAsString(&mut message)?;
+                            let payload = CoTaskMemPWSTR::from(message).to_string();
+                            let mut source = PWSTR::null();
+                            args.Source(&mut source)?;
+                            let source = CoTaskMemPWSTR::from(source).to_string();
+                            if let Some(webview) =
+                                current_native_callback_webview(&message_tag, native_view_id)
+                            {
+                                webview.enqueue_web_message(
+                                    payload,
+                                    windows_web_message_frame(false),
+                                    WebMessageTransport::WindowsWebMessage,
+                                    windows_message_source(source),
+                                );
+                            }
+                            Ok(())
+                        },
+                    ));
+                    let mut frame_token = 0;
+                    frame2.add_WebMessageReceived(&handler, &mut frame_token)?;
+                    Ok(())
+                })),
+                &mut token,
+            )
+            .map_err(|err| WebViewError::WebView(format!("add_FrameCreated failed: {err}")))?;
+    }
+
     let message_tag = webtag.clone();
     unsafe {
         let mut token = 0;
@@ -370,11 +588,27 @@ pub(crate) fn register_event_handlers(
                     let mut message = PWSTR::null();
                     args.TryGetWebMessageAsString(&mut message)?;
                     let payload = CoTaskMemPWSTR::from(message).to_string();
+                    let mut source = PWSTR::null();
+                    args.Source(&mut source)?;
+                    let source = CoTaskMemPWSTR::from(source).to_string();
 
-                    if let Some(delegate) = find_webview_delegate(&message_tag) {
-                        let _ = thread::Builder::new()
-                            .name(format!("lingxia-web-message-{}", message_tag.key()))
-                            .spawn(move || delegate.handle_post_message(payload));
+                    if let Some(webview) =
+                        current_native_callback_webview(&message_tag, native_view_id)
+                    {
+                        // The CoreWebView2 event is emitted only by the main
+                        // document. Snapshot the normalizer's committed
+                        // generation at this callback linearization point.
+                        webview.enqueue_web_message(
+                            payload,
+                            windows_web_message_frame(true),
+                            WebMessageTransport::WindowsWebMessage,
+                            windows_message_source(source),
+                        );
+                    } else {
+                        log::debug!(
+                            "Dropping script message from stale Windows WebView ({})",
+                            message_tag
+                        );
                     }
                     Ok(())
                 })),
@@ -383,6 +617,34 @@ pub(crate) fn register_event_handlers(
             .map_err(|err| {
                 WebViewError::WebView(format!("add_WebMessageReceived failed: {err}"))
             })?;
+    }
+
+    let failed_tag = webtag.clone();
+    let failed_document_authority = Arc::clone(&document_authority);
+    unsafe {
+        let mut token = 0;
+        webview
+            .add_ProcessFailed(
+                &ProcessFailedEventHandler::create(Box::new(move |_sender, _args| {
+                    if let Some(intent) = failed_document_authority.revoke_pending() {
+                        normalizer::revoke_trusted_load(&failed_tag, native_view_id, intent);
+                    }
+                    normalizer::submit(
+                        &failed_tag,
+                        native_view_id,
+                        NativeSignal::DocumentInvalidated,
+                    );
+                    if let Some(delegate) =
+                        current_native_callback_webview(&failed_tag, native_view_id)
+                            .and_then(|webview| webview.get_delegate())
+                    {
+                        delegate.on_web_content_process_terminated(native_view_id);
+                    }
+                    Ok(())
+                })),
+                &mut token,
+            )
+            .map_err(|err| WebViewError::WebView(format!("add_ProcessFailed failed: {err}")))?;
     }
 
     for scheme in registered_request_schemes(registered_schemes) {
@@ -403,6 +665,7 @@ pub(crate) fn register_event_handlers(
     }
 
     let request_tag = webtag;
+    let request_native_view_id = native_view_id;
     let env = env.clone();
     let memory_pages = memory_pages.clone();
     let custom_schemes = webview2_custom_schemes(registered_schemes);
@@ -416,6 +679,9 @@ pub(crate) fn register_event_handlers(
                     };
 
                     let request = args.Request()?;
+                    let mut resource_context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT::default();
+                    args.ResourceContext(&mut resource_context)?;
+                    let frame = windows_scheme_request_frame(resource_context);
                     let uri = take_request_string(|slot| request.Uri(slot))?;
                     let method = take_request_string(|slot| request.Method(slot))?;
                     if let Some(html) = find_memory_page(&memory_pages, &uri) {
@@ -438,8 +704,18 @@ pub(crate) fn register_event_handlers(
                     populate_request_headers(&request, http_request.headers_mut())?;
 
                     let scheme = request_scheme(&uri);
-                    let response = find_webview(&request_tag)
-                        .and_then(|webview| webview.handle_scheme_request(scheme, http_request));
+                    let response =
+                        current_native_callback_webview(&request_tag, request_native_view_id)
+                            .and_then(|webview| {
+                                webview.handle_contextual_scheme_request(
+                                    scheme,
+                                    ContextualSchemeRequest::new(
+                                        http_request,
+                                        webview.native_view_id(),
+                                        frame,
+                                    ),
+                                )
+                            });
 
                     let Some(response) = response else {
                         // PassThrough (or no webview found): leave the response
@@ -514,4 +790,31 @@ pub(crate) fn take_request_string(
     let mut value = PWSTR::null();
     getter(&mut value)?;
     Ok(CoTaskMemPWSTR::from(value).to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_callback_identity_rejects_a_reused_tag() {
+        let retired = NativeWebViewId::new(1);
+        let replacement = NativeWebViewId::new(2);
+
+        assert!(!native_callback_identity_matches(retired, replacement));
+        assert!(native_callback_identity_matches(replacement, replacement));
+    }
+
+    #[test]
+    fn windows_message_source_is_retained_for_diagnostics_only() {
+        let source = windows_message_source("https://example.test/frame".to_string());
+        assert_eq!(source.reported_url(), Some("https://example.test/frame"));
+        assert_eq!(source.reported_origin(), None);
+    }
+
+    #[test]
+    fn webview2_main_and_frame_message_events_remain_distinct() {
+        assert_eq!(windows_web_message_frame(true), WebMessageFrame::TopLevel);
+        assert_eq!(windows_web_message_frame(false), WebMessageFrame::Subframe);
+    }
 }

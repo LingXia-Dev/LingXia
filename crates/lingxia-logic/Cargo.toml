@@ -66,3 +66,4 @@ rong_modules = { workspace = true, default-features = false, features = ["tls-aw
 
 [dev-dependencies]
 tempfile = "3"
+lxapp = { workspace = true, default-features = false, features = ["standard", "test-utils"] }

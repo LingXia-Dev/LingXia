@@ -2,12 +2,14 @@
 //! and the create-token machinery shared with WebView creation.
 
 use crate::BUILTIN_BROWSER_APPID;
+use crate::internal_pages::registered_control_page_route;
 use crate::policy::{is_lingxia_startup_url, normalize_browser_target_url};
-use crate::types::{BrowserAutomationError, BrowserTabInfo};
+use crate::types::{BrowserAutomationError, BrowserTabInfo, TrustedControlPageNavigation};
 use crate::webview::{
-    browser_create_webview, browser_destroy_webview, browser_find_webview, browser_load_url,
+    browser_create_webview, browser_destroy_webview_if_matches, browser_find_webview,
+    browser_load_url,
 };
-use lingxia_webview::WebViewDataMode;
+use lingxia_webview::{WebView, WebViewDataMode};
 use lxapp::{LxApp, LxAppError};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -81,6 +83,56 @@ pub(crate) struct BrowserTabState {
     pub(crate) owner_session_id: Option<u64>,
 }
 
+fn tab_generation_matches(tab: &BrowserTabState, session_id: u64, create_token: u64) -> bool {
+    tab.session_id == session_id && tab.create_token == create_token
+}
+
+pub(crate) fn browser_tab_generation_matches(
+    tab_id: &str,
+    session_id: u64,
+    create_token: u64,
+) -> bool {
+    let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
+        return false;
+    };
+    lock_state()
+        .tabs
+        .get(&normalized)
+        .is_some_and(|tab| tab_generation_matches(tab, session_id, create_token))
+}
+
+pub(crate) fn browser_internal_url_if_token_matches(
+    tab_id: &str,
+    session_id: u64,
+    create_token: u64,
+) -> Option<String> {
+    let normalized = normalize_runtime_tab_id(tab_id)?;
+    let url = {
+        let state = lock_state();
+        let tab = state.tabs.get(&normalized)?;
+        tab_generation_matches(tab, session_id, create_token)
+            .then(|| tab.pending_url.clone().or_else(|| tab.current_url.clone()))
+            .flatten()?
+    };
+    (crate::policy::extract_url_scheme(&url).as_deref() == Some(crate::policy::LINGXIA_SCHEME))
+        .then_some(url)
+}
+
+fn browser_find_webview_for_generation(
+    tab_id: &str,
+    tab_path: &str,
+    session_id: u64,
+    create_token: u64,
+) -> Option<Arc<WebView>> {
+    let current_generation = lock_state()
+        .tabs
+        .get(tab_id)
+        .is_some_and(|tab| tab_generation_matches(tab, session_id, create_token));
+    current_generation
+        .then(|| browser_find_webview(tab_path, session_id).ok())
+        .flatten()
+}
+
 pub(crate) struct BrowserState {
     // tab_id -> tab lifecycle state (single WebView lifecycle per tab_id)
     pub(crate) tabs: HashMap<String, BrowserTabState>,
@@ -136,24 +188,6 @@ pub(crate) fn set_title_changed_handler(handler: TitleChangedHandler) {
     if let Ok(mut slot) = slot.lock() {
         *slot = Some(handler);
     }
-}
-
-/// Whether the tab's current document is a browser-internal `lingxia://`
-/// page. Uses the pending URL while a load is in flight, else the committed
-/// URL. External documents (http/https/about:blank/…) must never drive an
-/// lxapp `PageInstance` lifecycle or receive its bridge.
-pub(crate) fn browser_tab_document_is_internal(tab_id: &str) -> bool {
-    let document_url = {
-        let state = lock_state();
-        normalize_runtime_tab_id(tab_id)
-            .and_then(|normalized| state.tabs.get(&normalized))
-            .and_then(|tab| tab.pending_url.clone().or_else(|| tab.current_url.clone()))
-    };
-    document_url
-        .as_deref()
-        .and_then(crate::policy::extract_url_scheme)
-        .as_deref()
-        == Some(crate::policy::LINGXIA_SCHEME)
 }
 
 fn records_browser_history(tab: &BrowserTabState) -> bool {
@@ -833,6 +867,11 @@ fn open_internal_browser_tab_with_scope(
         let mut state = lock_state();
         if let Some(existing) = state.tabs.get_mut(&tab_id) {
             validate_reused_tab_policy(existing, data_mode, standalone)?;
+            if existing.session_id != session_id {
+                // The browser lxapp restarted. Its old WebView generation
+                // cannot satisfy a navigation for the new native session.
+                existing.create_in_flight = false;
+            }
             existing.session_id = session_id;
             existing.url_callback.store(url_callback, Ordering::Release);
             if has_target_url {
@@ -903,7 +942,14 @@ fn open_internal_browser_tab_with_scope(
 
     // Existing tab — load target URL if provided.
     if has_target_url {
-        match browser_load_url(&path, session_id, &normalized_target_url) {
+        let create_token = lock_state()
+            .tabs
+            .get(&tab_id)
+            .map(|tab| tab.create_token)
+            .ok_or_else(|| {
+                LxAppError::ResourceNotFound(format!("browser tab not found: {tab_id}"))
+            })?;
+        match browser_load_url(&path, session_id, create_token, &normalized_target_url) {
             Ok(()) => {
                 if let Some(s) = lock_state().tabs.get_mut(&tab_id) {
                     s.pending_url = None;
@@ -922,6 +968,7 @@ fn open_internal_browser_tab_with_scope(
                             let token = next_browser_create_token();
                             tab.create_token = token;
                             tab.create_in_flight = true;
+                            tab.discarded = false;
                             Some(token)
                         }
                         _ => None,
@@ -969,6 +1016,36 @@ pub(crate) fn open_internal_browser_tab(
         WebViewDataMode::ProfileDefault,
         false,
     )
+}
+
+/// Start a new trusted top-level load for a registered browser control page.
+/// Stable-tab reuse never degrades to focus-only: a live tab reloads through
+/// `browser_load_internal_document`, while a missing/discarded generation is
+/// recreated with this URL pending.
+pub(crate) fn navigate_trusted_control_page(
+    url: &str,
+) -> Result<TrustedControlPageNavigation, LxAppError> {
+    let route = registered_control_page_route(url).ok_or_else(|| {
+        LxAppError::InvalidParameter(format!(
+            "trusted browser control route is not registered: {url}"
+        ))
+    })?;
+    let tab_id = open_internal_browser_tab_with_scope(
+        url,
+        Some(&route),
+        BrowserTabScope::Global,
+        false,
+        false,
+        WebViewDataMode::ProfileDefault,
+        false,
+    )?;
+    let identity = browser_tab_info(&tab_id).ok_or_else(|| {
+        LxAppError::ResourceNotFound(format!("trusted browser control tab disappeared: {tab_id}"))
+    })?;
+    Ok(TrustedControlPageNavigation {
+        tab_id,
+        browser_session_id: identity.session_id,
+    })
 }
 
 pub(crate) fn open_internal_browser_tab_for_owner(
@@ -1061,20 +1138,33 @@ pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
         LxAppError::InvalidParameter("tab_id must be a valid runtime browser tab id".to_string())
     })?;
 
+    let tab_path = browser_tab_path_for_runtime_id(&normalized);
+    let generation = {
+        let state = lock_state();
+        state
+            .tabs
+            .get(&normalized)
+            .map(|tab| (tab.session_id, tab.create_token))
+    };
+    // Resolve the concrete instance while this close still names the current
+    // tab generation. A delayed close must never tear down a successor that
+    // reused the same logical tab path.
+    let closing_webview = generation.and_then(|(session_id, create_token)| {
+        browser_find_webview_for_generation(&normalized, &tab_path, session_id, create_token)
+    });
     let removed = {
         let mut state = lock_state();
         state.tabs.remove(&normalized)
     };
     let removed_any = removed.is_some();
     if let Some(tab) = removed {
-        let tab_path = browser_tab_path_for_runtime_id(&normalized);
         // Detach only when this tab currently backs the startup page bridge.
         // Closing a background tab must not break the active tab bridge.
         if let Ok(browser) = ensure_browser_lxapp() {
             let startup_path = browser.initial_route();
             if let Some(page) = browser.get_page(&startup_path) {
                 let startup_webview = page.webview();
-                let closing_tab_webview = browser_find_webview(&tab_path, tab.session_id).ok();
+                let closing_tab_webview = closing_webview.clone();
                 if let (Some(startup_webview), Some(closing_tab_webview)) =
                     (startup_webview, closing_tab_webview)
                     && Arc::ptr_eq(&startup_webview, &closing_tab_webview)
@@ -1090,7 +1180,9 @@ pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
                 browser.remove_pages(std::slice::from_ref(&page.instance_id_string()));
             }
         }
-        browser_destroy_webview(&tab_path, tab.session_id);
+        if let Some(webview) = closing_webview {
+            browser_destroy_webview_if_matches(&tab_path, tab.session_id, &webview);
+        }
     }
     let active_matches_closed = lock_active_tab().as_deref() == Some(normalized.as_str());
     if active_matches_closed {
@@ -1147,6 +1239,13 @@ pub(crate) fn discard_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
     };
     let tab_path = browser_tab_path_for_runtime_id(&normalized);
 
+    let webview = browser_find_webview_for_generation(
+        &normalized,
+        &tab_path,
+        tab.session_id,
+        tab.create_token,
+    );
+
     // Bump the create token BEFORE destroying the WebView. If the WebView is
     // still being created, its in-flight `browser_on_webview_ready` holds the
     // old token; once `wait_ready()` errors after the destroy below, its
@@ -1162,7 +1261,7 @@ pub(crate) fn discard_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
         let startup_path = browser.initial_route();
         if let Some(page) = browser.get_page(&startup_path) {
             let startup_webview = page.webview();
-            let tab_webview = browser_find_webview(&tab_path, tab.session_id).ok();
+            let tab_webview = webview.clone();
             if let (Some(startup_webview), Some(tab_webview)) = (startup_webview, tab_webview)
                 && Arc::ptr_eq(&startup_webview, &tab_webview)
             {
@@ -1177,7 +1276,9 @@ pub(crate) fn discard_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
             browser.remove_pages(std::slice::from_ref(&page.instance_id_string()));
         }
     }
-    browser_destroy_webview(&tab_path, tab.session_id);
+    if let Some(webview) = webview {
+        browser_destroy_webview_if_matches(&tab_path, tab.session_id, &webview);
+    }
 
     // Keep the entry; remember where to reload from on reactivation. Preserve
     // an in-flight `pending_url` (WebView not yet loaded / mid-navigation);
@@ -1324,6 +1425,72 @@ mod tests {
         let mut state = lock_state();
         state.tabs.remove(&tab_id);
         state.user_agent_override = previous_user_agent;
+    }
+
+    #[test]
+    fn tab_generation_match_rejects_a_recreated_tab() {
+        let tab = BrowserTabState {
+            session_id: 42,
+            created_order: 1,
+            create_token: 8,
+            create_in_flight: false,
+            pending_url: None,
+            initial_url: None,
+            current_url: None,
+            title: None,
+            title_url: None,
+            favicon_png: None,
+            can_go_back: false,
+            can_go_forward: false,
+            discarded: false,
+            data_mode: WebViewDataMode::ProfileDefault,
+            url_callback: Arc::new(AtomicBool::new(false)),
+            standalone: false,
+            aside: false,
+            owner_appid: None,
+            owner_session_id: None,
+        };
+
+        assert!(tab_generation_matches(&tab, 42, 8));
+        assert!(!tab_generation_matches(&tab, 42, 7));
+        assert!(!tab_generation_matches(&tab, 41, 8));
+    }
+
+    #[test]
+    fn discarded_or_recreated_tab_rejects_stale_internal_reload() {
+        let tab_id = generate_tab_id();
+        lock_state().tabs.insert(
+            tab_id.clone(),
+            BrowserTabState {
+                session_id: 42,
+                created_order: next_browser_created_order(),
+                create_token: 8,
+                create_in_flight: false,
+                pending_url: None,
+                initial_url: Some("lingxia://settings".to_string()),
+                current_url: Some("lingxia://settings".to_string()),
+                title: None,
+                title_url: None,
+                favicon_png: None,
+                can_go_back: false,
+                can_go_forward: false,
+                discarded: false,
+                data_mode: WebViewDataMode::ProfileDefault,
+                url_callback: Arc::new(AtomicBool::new(false)),
+                standalone: false,
+                aside: false,
+                owner_appid: None,
+                owner_session_id: None,
+            },
+        );
+
+        assert_eq!(
+            browser_internal_url_if_token_matches(&tab_id, 42, 8).as_deref(),
+            Some("lingxia://settings")
+        );
+        lock_state().tabs.get_mut(&tab_id).unwrap().create_token = 9;
+        assert_eq!(browser_internal_url_if_token_matches(&tab_id, 42, 8), None);
+        lock_state().tabs.remove(&tab_id);
     }
 
     #[test]

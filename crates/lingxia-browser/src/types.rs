@@ -139,6 +139,16 @@ pub struct BrowserTabInfo {
     pub can_go_forward: bool,
 }
 
+/// Opaque identity of a newly requested trusted control-page navigation.
+///
+/// Document authority is intentionally absent: only the native navigation
+/// commit can mint and activate it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrustedControlPageNavigation {
+    pub tab_id: String,
+    pub browser_session_id: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrowserRect {
     pub left: f64,

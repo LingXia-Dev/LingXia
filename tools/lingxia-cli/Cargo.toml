@@ -13,6 +13,8 @@ name = "lingxia-cli"
 version = "0.14.0"
 edition.workspace = true
 build = "build.rs"
+# Distributed as signed GitHub Release binaries by scripts/release/cli.sh.
+publish = false
 
 [package.metadata.lingxia]
 # Only what this binary embeds or downloads by exact name. Published
@@ -37,6 +39,7 @@ console = "0.16"
 colored = "3.1"
 indicatif = "0.18"
 include_dir = "0.7"
+language-tags = { workspace = true }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

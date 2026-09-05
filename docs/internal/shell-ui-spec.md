@@ -816,10 +816,11 @@ semantics every language surface MUST share.
   Manual floats require it or an app-owned close path. Modal floats block
   underlying input and restore prior focus on close.
 - Allowed URL schemes are `https:` and host-authorized `file:`. The only public
-  product URLs are exact `lingxia://settings` and `lingxia://downloads`, both
-  restricted to the home lxapp and `capabilities.browser`; every other
-  `lingxia:` value fails with `E_INVALID_ARG`. Handing a URL to the system still
-  passes the host scheme allowlist.
+  product URL is exact `lingxia://downloads`, restricted to the Control app and
+  `capabilities.browser`; every other `lingxia:` value, including
+  `lingxia://settings`, fails with `E_INVALID_ARG`. Settings is bootstrap-owned
+  native chrome or browser-local navigation, never a Logic destination. Handing
+  a URL to the system still passes the host scheme allowlist.
 
 #### 7.1.1 App navigation versus App Surfaces
 

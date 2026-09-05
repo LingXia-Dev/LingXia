@@ -1,5 +1,7 @@
 use crate::bridge::{self, AppServiceCommand};
 use crate::error::LxAppError;
+#[cfg(feature = "process")]
+use crate::host::ProcessSessionAuthority;
 use crate::lx;
 use crate::lxapp::LxApp;
 #[cfg(feature = "process")]
@@ -15,6 +17,20 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 use tokio::sync::oneshot;
+
+// Keep the archive linked: the sealed installer is reached only through the
+// private Rust ABI below, so there is intentionally no safe item reference.
+#[cfg(feature = "process")]
+extern crate rong_command as _;
+
+#[cfg(feature = "process")]
+unsafe extern "Rust" {
+    #[link_name = "lingxia_rong_command_init_with_authority_v1"]
+    fn init_process_module_with_authority(
+        ctx: &JSContext,
+        authorize: Arc<dyn Fn() -> Result<(), String> + Send + Sync + 'static>,
+    ) -> JSResult<()>;
+}
 
 #[path = "app.rs"]
 mod app;
@@ -70,12 +86,6 @@ const RONG_MODULES: [&str; 13] = [
     "storage",
 ];
 
-/// High-authority modules compiled for hosts that declare the corresponding
-/// product capability. Keep this list explicit: adding a module changes the
-/// authority of home-lxapp Logic code.
-#[cfg(feature = "process")]
-const PROCESS_RONG_MODULES: [&str; 1] = ["command"];
-
 #[cfg(test)]
 mod rong_modules_tests {
     #[test]
@@ -84,11 +94,21 @@ mod rong_modules_tests {
             .expect("every requested Rong module must be compiled into this build");
     }
 
-    #[cfg(feature = "process")]
     #[test]
-    fn requested_process_rong_modules_resolve() {
-        rong_modules::resolve_modules(super::PROCESS_RONG_MODULES)
-            .expect("every requested process module must be compiled into this build");
+    fn command_is_neither_compiled_requested_nor_extension_installable() {
+        assert!(!rong_modules::is_compiled("command"));
+        assert!(!super::RONG_MODULES.contains(&"command"));
+        let source = include_str!("js_runtime.rs");
+        let seal = source
+            .find("Object.defineProperty(globalThis, 'Rong'")
+            .expect("reserved Rong namespace seal");
+        let extensions = source
+            .find("with_registered_extensions(")
+            .expect("extension dispatch");
+        assert!(
+            seal < extensions,
+            "Rong must be sealed before extensions run"
+        );
     }
 }
 
@@ -390,16 +410,40 @@ async fn handle_bridge_source(
     message: AppServiceCommand,
 ) -> Result<(), LxAppError> {
     match message {
-        AppServiceCommand::Ready => {
-            page_svc.handle_bridge_ready().await;
+        AppServiceCommand::BeginSessionWork { work_id } => {
+            page_svc.begin_session_work(work_id).await;
             Ok(())
         }
-        AppServiceCommand::StateSnapshot { id, scope } => {
+        AppServiceCommand::CancelSessionWork { work_id } => {
+            page_svc.cancel_session_work(work_id).await;
+            Ok(())
+        }
+        AppServiceCommand::Ready { work_id, outbound } => {
+            page_svc.handle_bridge_ready(work_id, outbound).await;
+            Ok(())
+        }
+        AppServiceCommand::StateSnapshot {
+            work_id,
+            outbound,
+            id,
+            scope,
+        } => {
+            if !page_svc.session_work_is_active(work_id).await {
+                return Ok(());
+            }
             let bridge = page_svc.bridge();
             match page_svc.get_state_snapshot(scope.as_deref()).await {
-                Ok(snapshot) => bridge.send_res_ok(page_svc, id, snapshot)?,
-                Err(err) => bridge.send_res_err(
+                Ok(snapshot) => bridge.send_res_ok_for_context(
                     page_svc,
+                    work_id,
+                    outbound.as_ref(),
+                    id,
+                    snapshot,
+                )?,
+                Err(err) => bridge.send_res_err_for_context(
+                    page_svc,
+                    work_id,
+                    outbound.as_ref(),
                     id,
                     bridge::BRIDGE_INTERNAL_ERROR,
                     Some(err.to_string()),
@@ -409,45 +453,98 @@ async fn handle_bridge_source(
             Ok(())
         }
         AppServiceCommand::Req {
+            work_id,
+            outbound,
             id,
             method,
             params_json,
             cancel_rx,
             pending_request,
         } => {
+            if !page_svc.session_work_is_active(work_id).await {
+                return Ok(());
+            }
             let bridge = page_svc.bridge();
-            let result = page_svc
-                .handle_req(&id, &method, params_json.as_deref(), cancel_rx)
-                .await;
+            let result = page::with_document_callback_work(
+                work_id,
+                outbound.clone(),
+                page_svc.handle_req(
+                    work_id,
+                    outbound.clone(),
+                    &id,
+                    &method,
+                    params_json.as_deref(),
+                    cancel_rx,
+                ),
+            )
+            .await;
             drop(pending_request);
             match result {
-                Ok(json) => bridge.send_res_ok(page_svc, id, json)?,
+                Ok(json) => bridge.send_res_ok_for_context(
+                    page_svc,
+                    work_id,
+                    outbound.as_ref(),
+                    id,
+                    json,
+                )?,
                 Err(err) if err.code == bridge::BRIDGE_CANCELED => {
                     // Cancellation is teardown control flow. Reply while a cached
                     // View still exists, but tolerate a concurrent WebView detach.
-                    let _ = bridge.send_res_err(page_svc, id, &err.code, err.message, err.data);
+                    let _ = bridge.send_res_err_for_context(
+                        page_svc,
+                        work_id,
+                        outbound.as_ref(),
+                        id,
+                        &err.code,
+                        err.message,
+                        err.data,
+                    );
                 }
-                Err(err) => bridge.send_res_err(page_svc, id, &err.code, err.message, err.data)?,
+                Err(err) => bridge.send_res_err_for_context(
+                    page_svc,
+                    work_id,
+                    outbound.as_ref(),
+                    id,
+                    &err.code,
+                    err.message,
+                    err.data,
+                )?,
             }
             Ok(())
         }
         AppServiceCommand::Notify {
+            work_id,
+            outbound,
             method,
             params_json,
         } => {
+            if !page_svc.session_work_is_active(work_id).await {
+                return Ok(());
+            }
             page_svc
-                .handle_notify(&method, params_json.as_deref())
+                .handle_notify(work_id, outbound, &method, params_json.as_deref())
                 .await;
             Ok(())
         }
         AppServiceCommand::ChOpen {
+            work_id,
+            outbound,
             id,
             topic,
             params_json,
         } => {
+            if !page_svc.session_work_is_active(work_id).await {
+                return Ok(());
+            }
             let bridge = page_svc.bridge();
             match page_svc
-                .handle_ch_open(&id, &topic, params_json.as_deref())
+                .handle_ch_open(
+                    work_id,
+                    outbound.clone(),
+                    &id,
+                    &topic,
+                    params_json.as_deref(),
+                )
                 .await
             {
                 Ok(result_rx) => {
@@ -459,11 +556,18 @@ async fn handle_bridge_source(
                         });
                         match result {
                             Ok(()) => {
-                                let _ = bridge.send_ch_ack_ok(&page_svc, id);
+                                let _ = bridge.send_ch_ack_ok_for_context(
+                                    &page_svc,
+                                    work_id,
+                                    outbound.as_ref(),
+                                    id,
+                                );
                             }
                             Err(err) => {
-                                let _ = bridge.send_ch_ack_err(
+                                let _ = bridge.send_ch_ack_err_for_context(
                                     &page_svc,
+                                    work_id,
+                                    outbound.as_ref(),
                                     id,
                                     &err.code,
                                     err.message,
@@ -473,32 +577,53 @@ async fn handle_bridge_source(
                         }
                     });
                 }
-                Err(err) => {
-                    bridge.send_ch_ack_err(page_svc, id, &err.code, err.message, err.data)?
-                }
+                Err(err) => bridge.send_ch_ack_err_for_context(
+                    page_svc,
+                    work_id,
+                    outbound.as_ref(),
+                    id,
+                    &err.code,
+                    err.message,
+                    err.data,
+                )?,
             }
             Ok(())
         }
-        AppServiceCommand::ChData { id, payload_json } => {
-            if let Err(err) = page_svc.handle_ch_data(&id, &payload_json).await {
+        AppServiceCommand::ChData {
+            work_id,
+            id,
+            payload_json,
+        } => {
+            if !page_svc.session_work_is_active(work_id).await {
+                return Ok(());
+            }
+            if let Err(err) = page_svc.handle_ch_data(work_id, &id, &payload_json).await {
                 error!("channel '{}' data handler failed: {}", id, err.code)
                     .with_appid(page_svc.page.appid())
                     .with_path(page_svc.page.path());
             }
             Ok(())
         }
-        AppServiceCommand::ChClose { id, code, reason } => {
+        AppServiceCommand::ChClose {
+            work_id,
+            id,
+            code,
+            reason,
+        } => {
+            if !page_svc.session_work_is_active(work_id).await {
+                return Ok(());
+            }
             page_svc
-                .handle_ch_close(&id, code.as_deref(), reason.as_deref())
+                .handle_ch_close(work_id, &id, code.as_deref(), reason.as_deref())
                 .await;
             Ok(())
         }
-        AppServiceCommand::CloseChannels { code, reason } => {
-            page_svc.close_channels(&code, &reason).await;
-            Ok(())
-        }
-        AppServiceCommand::StateAck { scope, rev } => {
-            page_svc.handle_state_ack(scope, rev).await;
+        AppServiceCommand::StateAck {
+            work_id,
+            scope,
+            rev,
+        } => {
+            page_svc.handle_state_ack(work_id, scope, rev).await;
             Ok(())
         }
     }
@@ -589,41 +714,63 @@ pub(crate) async fn lxapp_service_handler(
             if lxapp.is_home_lxapp && lingxia_app_context::process_enabled() {
                 if !lxapp.process_access_enabled() {
                     warn!(
-                        "[Worker {}] Process capability requires security.privileges: [process]",
+                        "[Worker {}] Process capability requires both security.privileges: [process] and a native ControlApp Process grant",
                         worker_id
                     )
                     .with_appid(lxapp.appid.clone());
-                } else if let Err(e) = rong_modules::init(&ctx, PROCESS_RONG_MODULES) {
-                    error!(
-                        "[Worker {}] Failed to initialize process capability: {}",
-                        worker_id, e
-                    )
-                    .with_appid(lxapp.appid.clone());
-                    return;
+                } else {
+                    let authority = Arc::new(ProcessSessionAuthority::for_lxapp(&lxapp));
+                    let authorize: Arc<dyn Fn() -> Result<(), String> + Send + Sync + 'static> =
+                        Arc::new(move || authority.authorize());
+                    // SAFETY: this binds lingxia-rong-command's private Rust
+                    // ABI. No safe extension API can install or replace the
+                    // per-context authority.
+                    let result = unsafe { init_process_module_with_authority(&ctx, authorize) };
+                    if let Err(e) = result {
+                        error!(
+                            "[Worker {}] Failed to initialize process capability: {}",
+                            worker_id, e
+                        )
+                        .with_appid(lxapp.appid.clone());
+                        return;
+                    }
                 }
             }
             let _ = lx::init(&ctx);
-
-            // Execute a closure with access to the list of registered extensions.
-            crate::lx::extension::with_registered_extensions(|user_extensions| {
-                info!(
-                    "[Worker {}] Initializing {} user-registered extensions",
-                    worker_id,
-                    user_extensions.len()
+            if let Err(e) = ctx.eval::<()>(Source::from_bytes(
+                "Object.defineProperty(globalThis, 'Rong', { value: globalThis.Rong, writable: false, configurable: false }); Object.freeze(globalThis.Rong)",
+            )) {
+                error!(
+                    "[Worker {}] Failed to seal reserved Rong namespace: {}",
+                    worker_id, e
                 )
                 .with_appid(lxapp.appid.clone());
+                return;
+            }
 
-                // Iterate through the list and initialize each extension.
-                for (index, user_extension) in user_extensions.iter().enumerate() {
-                    if let Err(e) = user_extension.init(&ctx) {
-                        error!(
-                            "[Worker {}] Failed to initialize user extension #{}: {}",
-                            worker_id, index, e
-                        )
-                        .with_appid(lxapp.appid.clone());
+            // Execute a closure with access to the list of registered extensions.
+            crate::lx::extension::with_registered_extensions(
+                lxapp.app_session_class(),
+                |user_extensions| {
+                    info!(
+                        "[Worker {}] Initializing {} user-registered extensions",
+                        worker_id,
+                        user_extensions.len()
+                    )
+                    .with_appid(lxapp.appid.clone());
+
+                    // Iterate through the list and initialize each extension.
+                    for (index, user_extension) in user_extensions.iter().enumerate() {
+                        if let Err(e) = user_extension.init(&ctx) {
+                            error!(
+                                "[Worker {}] Failed to initialize user extension #{}: {}",
+                                worker_id, index, e
+                            )
+                            .with_appid(lxapp.appid.clone());
+                        }
                     }
-                }
-            });
+                },
+            );
 
             info!("[Worker {}] Created JS context", worker_id).with_appid(lxapp.appid.clone());
 

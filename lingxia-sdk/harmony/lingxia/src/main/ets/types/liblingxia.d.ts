@@ -140,9 +140,11 @@ declare module 'liblingxia.so' {
 
   export function onHostAppearanceChanged(dark: boolean): void;
 
+  export function onHostLocaleChanged(locale: string): void;
+
   /**
-   * Effective display language. A saved user choice takes precedence over
-   * the locale supplied to lingxiaInit.
+   * Effective display language after resolving a Runner session override,
+   * saved preference, and current system locale.
    */
   export function getDisplayLanguage(): string;
 
@@ -380,6 +382,7 @@ declare module 'liblingxia.so' {
   export function onWebFileChooserRequested(
     requestId: string,
     webtag: string,
+    nativeViewToken: string,
     sourceUrl: string,
     acceptTypesJson: string,
     allowMultiple: boolean,
@@ -509,18 +512,42 @@ declare module 'liblingxia.so' {
   /**
    * Notify native layer that a WebView controller finished creation.
    */
-  export function onWebviewControllerCreated(webtag: string): boolean;
+  export function onWebviewControllerCreated(webtag: string, nativeViewToken: string): boolean;
 
   /**
    * Notify native layer that a WebView controller finished destruction.
    */
-  export function onWebviewControllerDestroyed(webtag: string): boolean;
+  export function onWebviewControllerDestroyed(webtag: string, nativeViewToken: string): boolean;
+
+  export function onWebviewPageBegin(
+    webtag: string,
+    nativeViewToken: string,
+    pageEpoch: string,
+    url: string
+  ): boolean;
+
+  export function onWebviewDocumentCommit(
+    webtag: string,
+    nativeViewToken: string,
+    pageEpoch: string,
+    url: string
+  ): boolean;
+
+  export function onWebviewPageEnd(
+    webtag: string,
+    nativeViewToken: string,
+    pageEpoch: string,
+    url: string
+  ): boolean;
+
+  export function onWebviewRenderExited(webtag: string, nativeViewToken: string): boolean;
 
   /**
    * Ask native layer whether current navigation should be intercepted.
    */
   export function onNavigationPolicy(
     webtag: string,
+    nativeViewToken: string,
     url: string,
     hasUserGesture: boolean,
     isMainFrame: boolean
@@ -531,6 +558,7 @@ declare module 'liblingxia.so' {
    */
   export function onDownloadStart(
     webtag: string,
+    nativeViewToken: string,
     url: string,
     userAgent: string,
     contentDisposition: string,
@@ -539,10 +567,24 @@ declare module 'liblingxia.so' {
   ): boolean;
 
   /**
+   * Push ArkTS-sampled state for one concrete native WebView generation.
+   */
+  export function notifyWebViewState(
+    webTag: string,
+    nativeGeneration: string,
+    url: string,
+    title: string,
+    canGoBack: boolean,
+    canGoForward: boolean
+  ): void;
+
+  /**
    * Forward main-frame Web load error to native layer.
    */
   export function onLoadError(
     webtag: string,
+    nativeGeneration: string,
+    pageEpoch: string,
     url: string,
     errorCode: number,
     description: string

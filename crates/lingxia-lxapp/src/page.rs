@@ -4,7 +4,7 @@ pub(crate) mod runtime;
 
 pub use definition::{register_page_resolver, resolve_page_path};
 
-use crate::bridge::{IncomingMessage, PageBridge};
+use crate::bridge::PageBridge;
 use crate::lifecycle::PageLifecycleEvent;
 use crate::lxapp::{self, LxAppSessionStatus, navbar::NavigationBarState};
 use crate::page::config::{OrientationOverride, PageConfig};
@@ -20,21 +20,16 @@ use lingxia_log::{LogBuilder, LogLevel as LxLogLevel, LogTag};
 use lingxia_platform::traits::app_runtime::{
     AnimationType, AppRuntime, OpenUrlRequest, OpenUrlTarget,
 };
-use lingxia_webview::runtime::destroy_webview;
+use lingxia_webview::runtime::destroy_webview_if_matches;
 use lingxia_webview::{
-    LoadDataRequest, LogLevel, NavigationOutcome, NavigationPolicy, NewWindowPolicy, WebTag,
-    WebView, WebViewBuilder, WebViewController, WebViewDelegate,
+    IncomingWebMessage, LoadDataRequest, LogLevel, NavigationOutcome, NavigationPolicy,
+    NewWindowPolicy, WebTag, WebView, WebViewBuilder, WebViewController, WebViewDelegate,
 };
 use ring::rand::{SecureRandom, SystemRandom};
 
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
-
-/// Global scripts injected into every page across all LxApps on page load.
-///
-/// For per-app scripts, use [`LxApp::add_page_script`] instead.
-static GLOBAL_PAGE_SCRIPTS: OnceLock<Mutex<Vec<Arc<str>>>> = OnceLock::new();
 
 /// How long an isolated page's setup waits for its opener to create the
 /// PageSvc. The opener does that in the same turn it awaits this page, so
@@ -42,25 +37,6 @@ static GLOBAL_PAGE_SCRIPTS: OnceLock<Mutex<Vec<Arc<str>>>> = OnceLock::new();
 /// outside `lx.surface`. Fail loudly instead of leaving the page parked at
 /// `about:blank` with no diagnostic.
 const PAGE_SVC_READY_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Register a script to inject on every page load across all LxApps.
-///
-/// Call at app startup, before any pages are created.
-/// For per-app scripts, use [`LxApp::add_page_script`] instead.
-pub fn add_global_page_script(js: impl Into<String>) {
-    let scripts = GLOBAL_PAGE_SCRIPTS.get_or_init(|| Mutex::new(Vec::new()));
-    if let Ok(mut guard) = scripts.lock() {
-        guard.push(Arc::from(js.into()));
-    }
-}
-
-pub(crate) fn global_page_scripts_snapshot() -> Vec<Arc<str>> {
-    GLOBAL_PAGE_SCRIPTS
-        .get()
-        .and_then(|m| m.lock().ok())
-        .map(|guard| guard.clone())
-        .unwrap_or_default()
-}
 
 /// Fired at most once per process: the home lxapp delivered its first
 /// `OnReady` (first render finished). Hosts dismiss the startup splash
@@ -688,6 +664,64 @@ impl PageInstance {
         self.inner.bridge.clone()
     }
 
+    /// Host-TCB entrypoint for an admitted browser control document. The
+    /// opaque pending lease owns the exact native/context check; callers never
+    /// receive V3 credentials or construct a bridge protocol directly.
+    #[doc(hidden)]
+    pub fn bind_required_v3_document(
+        &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
+        context: &lingxia_webview::WebMessageContext,
+        pending: &dyn crate::RequiredV3DocumentGate,
+    ) -> Result<(), LxAppError> {
+        self.inner
+            .bridge
+            .bind_required_v3_document(native_authority, self, context, pending)
+    }
+
+    /// Host-TCB installer for use inside BrowserDocumentSessions' held
+    /// BootstrapPending closure. Unlike [`Self::bind_required_v3_document`],
+    /// it does not re-enter the browser registry through a lease.
+    #[doc(hidden)]
+    pub fn bind_required_v3_authority(
+        &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
+        context: &lingxia_webview::WebMessageContext,
+        authority: crate::ControlDocumentAuthority,
+        outbound_gate: std::sync::Arc<dyn lingxia_webview::DocumentOutboundGate>,
+    ) -> Result<crate::DeferredRequiredV3Cancellation, LxAppError> {
+        self.inner.bridge.bind_required_v3_authority(
+            native_authority,
+            self,
+            context,
+            authority,
+            outbound_gate,
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn promote_active_browser_document(
+        &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
+        authority: crate::ControlDocumentAuthority,
+    ) -> bool {
+        self.inner
+            .bridge
+            .promote_active_browser_document(native_authority, authority)
+    }
+
+    /// Remove only the active required-V3 bridge work for this authority.
+    #[doc(hidden)]
+    pub fn revoke_required_v3_document(
+        &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
+        authority: crate::ControlDocumentAuthority,
+    ) -> bool {
+        self.inner
+            .bridge
+            .revoke_required_v3_document(native_authority, self, authority)
+    }
+
     fn owning_lxapp(&self) -> Arc<LxApp> {
         self.inner.bridge.lxapp()
     }
@@ -803,10 +837,45 @@ impl PageInstance {
         }
     }
 
-    pub fn handle_incoming_message_json(&self, msg: &str) -> Result<(), LxAppError> {
-        let incoming = IncomingMessage::from_json_str(msg)
-            .map_err(|err| LxAppError::Bridge(format!("Invalid bridge message JSON: {}", err)))?;
-        self.inner.bridge.handle_incoming(self, Arc::new(incoming))
+    /// Admit a platform-attested WebView message into this page's bridge.
+    ///
+    /// The message context remains attached through protocol decode and host
+    /// route dispatch so authorization can be installed at one admission seam.
+    pub fn handle_incoming_web_message(
+        &self,
+        message: IncomingWebMessage,
+    ) -> Result<(), LxAppError> {
+        self.inner.bridge.handle_incoming(self, message)
+    }
+
+    /// Registry-held phase of browser control ingress. It prepares an opaque
+    /// frame without invoking host code or synchronously posting to WebView.
+    #[doc(hidden)]
+    pub fn prepare_required_v3_incoming(
+        &self,
+        native_authority: &crate::NativeControlPlaneAuthority,
+        message: IncomingWebMessage,
+        authority: crate::ControlDocumentAuthority,
+        execution_gate: crate::RequiredV3ExecutionGate,
+    ) -> Result<crate::PreparedRequiredV3Incoming, LxAppError> {
+        self.inner.bridge.prepare_required_v3_incoming(
+            native_authority,
+            self,
+            message,
+            authority,
+            execution_gate,
+        )
+    }
+
+    /// Post-registry-lock phase of browser control ingress.
+    #[doc(hidden)]
+    pub fn execute_prepared_required_v3_incoming(
+        &self,
+        prepared: crate::PreparedRequiredV3Incoming,
+    ) -> Result<(), LxAppError> {
+        self.inner
+            .bridge
+            .execute_prepared_required_v3_incoming(self, prepared)
     }
 
     /// Get complete page state
@@ -1483,8 +1552,11 @@ impl PageInstance {
                     let stack_pages = lxapp.get_page_stack_pages();
                     for page in &stack_pages {
                         page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
+                        let webview = page.webview();
                         page.detach_webview();
-                        destroy_webview(&page.webtag());
+                        if let Some(webview) = webview {
+                            destroy_webview_if_matches(&page.webtag(), &webview);
+                        }
                     }
                     let stack_ids: Vec<String> = stack_pages
                         .iter()
@@ -1856,32 +1928,33 @@ impl WebViewDelegate for PageInstance {
     }
 
     /// Handles a postMessage from the WebView
-    fn handle_post_message(&self, msg: String) {
-        if let Some((level, message)) = decode_console_envelope(&msg) {
+    fn handle_post_message(&self, message: IncomingWebMessage) {
+        // Native-component envelopes can mutate native state without entering
+        // the JSON bridge. Admit every platform-attested message first; bridge
+        // dispatch repeats this idempotent check immediately before decoding.
+        if let Err(e) = self.inner.bridge.admit_incoming(self, message.context()) {
+            error!("Rejected postMessage: {}", e)
+                .with_appid(self.inner.appid.clone())
+                .with_path(self.inner.path.clone());
+            return;
+        }
+        let msg = message.body();
+        if let Some((level, message)) = decode_console_envelope(msg) {
             self.log(level, &message);
             return;
         }
-        if let Some(component_payload) = decode_native_component_envelope(&msg) {
+        if let Some(component_payload) = decode_native_component_envelope(msg) {
             self.handle_native_component_message(component_payload);
             return;
         }
 
-        match IncomingMessage::from_json_str(&msg) {
-            Ok(incoming) => {
-                if let Err(e) = self.bridge().handle_incoming(self, Arc::new(incoming)) {
-                    if self.document_is_departing() || self.webview().is_none() {
-                        debug!("Dropping view message after page unload")
-                            .with_appid(self.inner.appid.clone())
-                            .with_path(self.inner.path.clone());
-                    } else {
-                        error!("Failed to handle view message: {}", e)
-                            .with_appid(self.inner.appid.clone())
-                            .with_path(self.inner.path.clone());
-                    }
-                }
-            }
-            Err(e) => {
-                error!("Invalid postMessage JSON: {}", e)
+        if let Err(e) = self.handle_incoming_web_message(message) {
+            if self.document_is_departing() || self.webview().is_none() {
+                debug!("Dropping view message after page unload")
+                    .with_appid(self.inner.appid.clone())
+                    .with_path(self.inner.path.clone());
+            } else {
+                error!("Invalid postMessage: {}", e)
                     .with_appid(self.inner.appid.clone())
                     .with_path(self.inner.path.clone());
             }

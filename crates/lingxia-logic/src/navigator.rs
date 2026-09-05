@@ -1,9 +1,13 @@
 use crate::I18nKey;
+use crate::authorization;
+#[cfg(feature = "terminal")]
+use crate::authorization::LogicRoute;
 use crate::i18n::{js_error_from_lxapp_error, t};
 use crate::update;
 #[cfg(feature = "terminal")]
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
+use lxapp::host::HostInvocationContext;
 use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType};
 use rong::{FromJSObject, JSContext, JSObject, JSResult};
 use serde_json::Value;
@@ -105,12 +109,31 @@ fn should_navigate_to_app(
     Ok(true)
 }
 
+#[cfg(feature = "terminal")]
+fn ensure_ordinary_app_target(appid: &str) -> Result<(), LxAppError> {
+    if appid == lingxia_terminal_config::SETTINGS_APP_ID {
+        return Err(LxAppError::UnsupportedOperation(
+            "the host Terminal Settings control session is reserved; use lx.shell.openApp"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(feature = "terminal"))]
+fn ensure_ordinary_app_target(_appid: &str) -> Result<(), LxAppError> {
+    Ok(())
+}
+
 pub(crate) async fn prepare_app_open(
     lxapp: &Arc<LxApp>,
     options: &NavigateToAppOptions,
+    control_invocation: Option<&HostInvocationContext>,
 ) -> JSResult<(LxAppStartupOptions, ReleaseType)> {
-    validate_page_selector(options).map_err(|e| js_error_from_lxapp_error(&e))?;
     let target_appid = options.appid.clone();
+    let host_terminal_settings =
+        register_host_terminal_settings_bundle(lxapp, &target_appid, control_invocation)?;
+    validate_page_selector(options).map_err(|e| js_error_from_lxapp_error(&e))?;
     let release_type = parse_env_version(options.env_version.as_deref())
         .map_err(|e| js_error_from_lxapp_error(&e))?;
     let target_version = options
@@ -119,7 +142,6 @@ pub(crate) async fn prepare_app_open(
         .map(str::trim)
         .filter(|value| !value.is_empty());
 
-    let host_terminal_settings = register_host_terminal_settings_bundle(lxapp, &target_appid)?;
     if host_terminal_settings && target_version.is_some() {
         return Err(js_error_from_lxapp_error(&LxAppError::InvalidParameter(
             "the host-bundled Terminal Settings app does not support targetVersion".to_string(),
@@ -142,8 +164,17 @@ pub(crate) async fn prepare_app_open(
         }
     }
 
-    let target_app = lxapp::ensure_lxapp(&target_appid, release_type)
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
+    let target_app = if host_terminal_settings {
+        let authority = crate::native_control_authority().ok_or_else(|| {
+            js_error_from_lxapp_error(&LxAppError::UnsupportedOperation(
+                "native control authority is not initialized".to_string(),
+            ))
+        })?;
+        lxapp::ensure_control_lxapp(authority, &target_appid, release_type)
+    } else {
+        lxapp::ensure_lxapp(&target_appid, release_type)
+    }
+    .map_err(|e| js_error_from_lxapp_error(&e))?;
     let (startup_options, _) =
         build_startup_options(&target_app, options).map_err(|e| js_error_from_lxapp_error(&e))?;
 
@@ -151,9 +182,29 @@ pub(crate) async fn prepare_app_open(
 }
 
 #[cfg(feature = "terminal")]
-fn register_host_terminal_settings_bundle(lxapp: &LxApp, target_appid: &str) -> JSResult<bool> {
+fn register_host_terminal_settings_bundle(
+    lxapp: &Arc<LxApp>,
+    target_appid: &str,
+    control_invocation: Option<&HostInvocationContext>,
+) -> JSResult<bool> {
     if target_appid != lingxia_terminal_config::SETTINGS_APP_ID {
         return Ok(false);
+    }
+    let Some(invocation) = control_invocation else {
+        return Err(js_error_from_lxapp_error(
+            &LxAppError::UnsupportedOperation(
+                "the host Terminal Settings control session is reserved; use lx.shell.openApp"
+                    .to_string(),
+            ),
+        ));
+    };
+    if authorization::authorize(invocation, LogicRoute::ShellOpenHostTerminalSettings).is_err() {
+        return Err(js_error_from_lxapp_error(
+            &LxAppError::UnsupportedOperation(
+                "only the native ControlApp may open the host Terminal Settings control session"
+                    .to_string(),
+            ),
+        ));
     }
     let manifest = format!("{target_appid}/lxapp.json");
     lxapp.runtime.read_asset(&manifest).map_err(|_| {
@@ -166,13 +217,21 @@ fn register_host_terminal_settings_bundle(lxapp: &LxApp, target_appid: &str) -> 
 }
 
 #[cfg(not(feature = "terminal"))]
-fn register_host_terminal_settings_bundle(_lxapp: &LxApp, _target_appid: &str) -> JSResult<bool> {
+fn register_host_terminal_settings_bundle(
+    _lxapp: &Arc<LxApp>,
+    _target_appid: &str,
+    _control_invocation: Option<&HostInvocationContext>,
+) -> JSResult<bool> {
     Ok(false)
 }
 
-async fn do_navigate_to_app(lxapp: Arc<LxApp>, options: NavigateToAppOptions) -> JSResult<()> {
+async fn do_navigate_to_app(
+    invocation: HostInvocationContext,
+    options: NavigateToAppOptions,
+) -> JSResult<()> {
+    let lxapp = invocation.lxapp();
     let target_appid = options.appid.clone();
-    let (startup_options, _) = prepare_app_open(&lxapp, &options).await?;
+    let (startup_options, _) = prepare_app_open(&lxapp, &options, None).await?;
     let release_type = startup_options.release_type;
 
     lxapp
@@ -206,7 +265,11 @@ fn do_navigate_back_lxapp(lxapp: &LxApp) -> Result<(), LxAppError> {
 /// `E_SURFACE_CONFLICT` when the target is currently docked as an aside —
 /// close that aside before opening it as a main.
 async fn navigate_to_app(ctx: JSContext, options: NavigateToAppOptions) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    let invocation = authorization::invocation_from_context(&ctx)?;
+    let lxapp = invocation.lxapp();
+
+    ensure_ordinary_app_target(&options.appid)
+        .map_err(|error| js_error_from_lxapp_error(&error))?;
 
     if !should_navigate_to_app(&lxapp, &options).map_err(|e| js_error_from_lxapp_error(&e))? {
         return Ok(());
@@ -226,7 +289,7 @@ async fn navigate_to_app(ctx: JSContext, options: NavigateToAppOptions) -> JSRes
         .into());
     }
 
-    do_navigate_to_app(lxapp, options).await?;
+    do_navigate_to_app(invocation, options).await?;
     Ok(())
 }
 
@@ -278,5 +341,14 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("page must be a non-empty configured page name"));
+    }
+
+    #[cfg(feature = "terminal")]
+    #[test]
+    fn ordinary_navigation_cannot_promote_a_settings_app_id() {
+        let error = ensure_ordinary_app_target(lingxia_terminal_config::SETTINGS_APP_ID)
+            .expect_err("the fixed shell route is the only control entry");
+        assert!(error.to_string().contains("lx.shell.openApp"));
+        assert!(ensure_ordinary_app_target("same.app").is_ok());
     }
 }

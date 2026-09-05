@@ -36,6 +36,17 @@ impl lingxia::HostAddon for AppHostAddon {
         // lingxia::host::register_host_entry(pick_document_host());
     }
 
+    fn issue_app_resource_grants(
+        &self,
+        authority: &mut lingxia::NativeHostRuntimeAuthority<'_>,
+    ) {
+        // A manifest entry is only a request. Issue the session grant only
+        // after this native product's policy or consent flow approved it.
+        if user_approved_downloads_for(authority.app_id()) {
+            authority.grant(lingxia::host::AppResourceGrant::Downloads);
+        }
+    }
+
     #[cfg(feature = "standard")]
     fn install_logic_extensions(&self) {
         lingxia::js::register_logic_extension(Box::new(WorkspaceDocsExtension));
@@ -114,18 +125,116 @@ async fn pick_document(
 
 Supported parameters:
 
-- optional first parameter: `Arc<lingxia::LxApp>`
+- optional first authority parameter: `Arc<lingxia::LxApp>` for compatibility,
+  or `lingxia::host::HostInvocationContext` when the handler must authorize an
+  app-owned or native-granted resource
 - optional JSON payload parameter
 - optional last parameter: `lingxia::host::HostCancel`
 
 Rules:
 
-- `Arc<lingxia::LxApp>` must be first when present.
+- The authority parameter must be first when present.
 - `HostCancel` must be last when present.
 - Only one JSON payload parameter is supported.
 - Payload types must implement `serde::Deserialize`.
 - Return values must implement `serde::Serialize`.
 - Handler errors should use `lingxia::Result`.
+
+`HostInvocationContext` is created by native dispatch and cannot be constructed
+from request JSON. For an authenticated lxapp caller, `app_scope()` exposes its
+native identity, storage namespace, and native-issued resource grants. Treat a
+payload app id or resource id only as a selector and authorize it against this
+scope before access:
+
+```rust
+#[lingxia::native("editor.openGrantedDocument")]
+async fn open_granted_document(
+    invocation: lingxia::host::HostInvocationContext,
+    resource: String,
+) -> lingxia::Result<String> {
+    let scope = invocation
+        .app_scope()
+        .ok_or_else(|| lingxia::Error::permission_denied("lxapp scope required"))?;
+    let path = scope.resolve_accessible_path(&resource)?;
+    Ok(path.to_string_lossy().into_owned())
+}
+```
+
+Streams and channels accept the same optional first authority parameter before
+their payload and final `StreamContext` or `ChannelContext`.
+
+High-risk manifest privileges (`process`, `downloads`, `automation`, and
+`host`) are requests rather than authority. Their native grants are sealed to
+the session before its Logic runtime starts. `capabilities.process` grants
+`Process` only to the native-assigned ControlApp when that manifest requested
+it. A product that supports user-approved OS Downloads access must issue
+`AppResourceGrant::Downloads` from `HostAddon::issue_app_resource_grants` after
+its own policy/consent check. Standard and Control sessions otherwise start
+without privileged resource grants, even when their app ids or manifests are
+identical.
+
+Loading the process namespace is not a persistent grant. `spawn`, `spawnSync`,
+shell commands, retained child handles, and child stream I/O recheck the exact
+session's live `Process` grant. Closing, restarting, or replacing that session
+revokes its handles and terminates its running process trees; a successor with
+the same app id cannot control them.
+
+The callback receives an unconstructable `NativeHostRuntimeAuthority`; it
+cannot be called from a route or populated from payload fields. Devtools builds
+use the separate `NativeDevtoolsAuthority`, which can issue only session-bound
+automation grants and cannot grant process or Downloads access.
+
+### Route audience metadata
+
+`#[lingxia::native]` accepts optional registration metadata that describes the
+caller class intended for a route. Ordinary host-defined routes may omit it;
+the macro then records `AppSessionOnly` at compile time:
+
+```rust
+#[lingxia::native("editor.loadDocument")]
+async fn load_document() -> lingxia::Result<()> {
+    Ok(())
+}
+
+#[lingxia::native("host.setAccount", audience = "control-app-only")]
+fn set_account() -> lingxia::Result<()> {
+    Ok(())
+}
+
+#[lingxia::native("host.watch", stream, audience = "control-only")]
+async fn watch_host(
+    mut stream: lingxia::host::StreamContext<lingxia::host::JsonValue>,
+) -> lingxia::Result<()> {
+    stream.end(())?;
+    Ok(())
+}
+```
+
+The accepted string values are fixed by the SDK:
+
+| String | Registration metadata |
+| --- | --- |
+| `app-session-only` | `AppSessionOnly` (the default for `native`) |
+| `authenticated-read-only` | `AuthenticatedReadOnly` |
+| `control-app-only` | `ControlAppOnly` |
+| `browser-control-only` | `BrowserControlOnly` |
+| `control-only` | `ControlOnly` |
+
+An unknown value, a non-string value, or duplicate `audience` metadata is a
+compile error. This metadata is fixed in the generated registration companion;
+it is not a client-provided parameter. Registration seals it into the
+production effective route inventory alongside the handler kind. The Ready
+schema and unary, notification, stream, and channel admission all read that
+same caller-filtered inventory.
+
+`#[lingxia::framework_native(...)]` is a doc-hidden framework macro for
+framework-owned routes. It shares the same syntax but requires an explicit
+`audience`; application and extension authors should use `native` instead.
+
+Any duplicate route name is rejected during registration, including a later
+handler that repeats the same kind and audience. Channels are advertised
+separately from `hostMethods`, so older V2 clients can ignore the additional
+schema without mistaking a channel for a call.
 
 ### The macro-generated `<fn>_host()` companion
 
@@ -321,12 +430,16 @@ async fn cache_state(app: Arc<lingxia::LxApp>) -> lingxia::Result<String> {
 }
 ```
 
-Host display language is a product preference on that same facade — `Auto`
-follows the system locale; `EnUs` / `ZhCn` pin the catalogs native chrome
-ships. Every lxapp inherits the resolved tag from `display_language()`.
+Host display language is a product preference on that same facade. `Auto`
+follows the system locale; `LanguageTag` accepts any canonical BCP-47 tag.
+Every lxapp inherits the resolved tag from `display_language()`.
 
 ```rust
-lingxia::app::set_display_language(lingxia::app::DisplayLanguage::ZhCn)?;
+let preference = "zh-CN"
+    .parse::<lingxia::app::DisplayLanguagePreference>()
+    .expect("valid BCP-47 tag");
+lingxia::app::set_display_language_preference(preference)?;
+let state = lingxia::app::display_language_state();
 let tag = lingxia::app::display_language();
 ```
 

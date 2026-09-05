@@ -20,6 +20,19 @@ fn facade_blocking_echo(input: EchoInput) -> lingxia::Result<EchoOutput> {
     Ok(EchoOutput { value: input.value })
 }
 
+#[lingxia::native("facade.scope")]
+fn facade_scope(context: lingxia::host::HostInvocationContext) -> lingxia::Result<()> {
+    let _ = context.caller();
+    if let Some(scope) = context.app_scope() {
+        let _ = scope.identity().app_id();
+        let _ = scope.identity().session_id();
+        let _ = scope.storage().user_data();
+        let _ = scope.resource_grants();
+    }
+    let _ = context.lxapp();
+    Ok(())
+}
+
 #[derive(serde::Serialize)]
 struct StreamEvent {
     value: u32,
@@ -31,6 +44,19 @@ async fn facade_stream(
 ) -> lingxia::Result<()> {
     stream.send(StreamEvent { value: 1 })?;
     stream.end("done".to_string())?;
+    Ok(())
+}
+
+#[lingxia::native("facade.scopeStream", stream)]
+async fn facade_scope_stream(
+    context: lingxia::host::HostInvocationContext,
+    stream: lingxia::host::StreamContext<StreamEvent, String>,
+) -> lingxia::Result<()> {
+    let app_id = context
+        .app_scope()
+        .map(|scope| scope.identity().app_id().to_string())
+        .unwrap_or_default();
+    stream.end(app_id)?;
     Ok(())
 }
 
@@ -56,12 +82,41 @@ async fn facade_channel(
     Ok(())
 }
 
+#[lingxia::native("facade.scopeChannel", channel)]
+async fn facade_scope_channel(
+    context: lingxia::host::HostInvocationContext,
+    mut channel: lingxia::host::ChannelContext<ChannelIn, ChannelOut>,
+) -> lingxia::Result<()> {
+    let _ = context.caller();
+    while let Some(message) = channel.recv().await? {
+        if let lingxia::host::ChannelMessage::Data(input) = message {
+            channel.send(ChannelOut { value: input.value })?;
+        }
+    }
+    Ok(())
+}
+
+#[lingxia::native("facade.control", audience = "control-app-only")]
+fn facade_control() -> lingxia::Result<()> {
+    Ok(())
+}
+
+#[lingxia::framework_native("facade.browser", audience = "browser-control-only")]
+fn facade_browser_control() -> lingxia::Result<()> {
+    Ok(())
+}
+
 #[test]
 fn native_macro_accepts_lingxia_result_handlers() {
     let _ = facade_echo_host();
     let _ = facade_blocking_echo_host();
+    let _ = facade_scope_host();
     let _ = facade_stream_host();
+    let _ = facade_scope_stream_host();
     let _ = facade_channel_host();
+    let _ = facade_scope_channel_host();
+    let _ = facade_control_host();
+    let _ = facade_browser_control_host();
 }
 
 #[test]
@@ -179,4 +234,42 @@ fn native_channel_macro_closes_on_handler_error() {
     .expect("read lingxia-native-macros lib.rs");
     assert!(macro_src.contains("let __lingxia_close = __lingxia_ctx.close_handle();"));
     assert!(macro_src.contains("__lingxia_close.close_with(\"HOST_ERROR\", err.to_string())"));
+}
+
+#[test]
+fn authority_escape_fixture_covers_all_feature_unification_paths() {
+    let manifest = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/authority-escape/Cargo.toml"
+    ))
+    .expect("read authority escape fixture manifest");
+    let source = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/authority-escape/src/main.rs"
+    ))
+    .expect("read authority escape fixture");
+
+    assert!(manifest.contains("lxapp/test-utils"));
+    for forbidden in [
+        "__init_with_native_authority",
+        "NativeHostRuntimeToken",
+        "NativeControlPlaneAuthority::for_test",
+        "NativeControlPlaneAuthority::for_native_runtime",
+        "__install_app_resource_grant_resolver",
+        "__install_devtools_resource_grant_resolver",
+        "AuthenticatedCaller::LxAppSession",
+        "AuthenticatedCaller::BrowserDocument",
+        "add_global_page_script",
+        "LxApp::add_page_script",
+        "resolve_settings_destination",
+        "apple::resolve_settings_destination_for_host",
+        "ProcessAuthority",
+        "rong_command::init",
+        "rong_command::init_with_authority",
+    ] {
+        assert!(
+            source.contains(forbidden),
+            "fixture must attempt {forbidden}"
+        );
+    }
 }

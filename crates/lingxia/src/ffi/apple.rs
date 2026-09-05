@@ -201,8 +201,17 @@ mod bridge {
         #[swift_bridge(swift_name = "ensureHostSurfaceOwner")]
         fn ensure_host_surface_owner() -> String;
 
+        #[swift_bridge(swift_name = "resolveSettingsDestination")]
+        fn resolve_settings_destination_for_host() -> bool;
+
+        #[swift_bridge(swift_name = "staticSettingsDestinationJSON")]
+        fn static_settings_destination_json() -> String;
+
         #[swift_bridge(swift_name = "getDisplayLanguage")]
         fn get_display_language() -> String;
+
+        #[swift_bridge(swift_name = "onHostLocaleChanged")]
+        fn on_host_locale_changed(locale: &str);
 
         #[swift_bridge(swift_name = "splashMarkLaunchFace")]
         fn splash_mark_launch_face(dark: bool);
@@ -469,6 +478,15 @@ mod bridge {
 
         #[swift_bridge(swift_name = "openBrowserTabWithId")]
         fn open_browser_tab_with_id(
+            appid: &str,
+            session_id: u64,
+            url: &str,
+            tab_id: &str,
+        ) -> Option<String>;
+
+        // Native browser chrome only: the authority remains sealed in Rust.
+        #[swift_bridge(swift_name = "openTrustedBrowserTabWithId")]
+        fn open_trusted_browser_tab_with_id(
             appid: &str,
             session_id: u64,
             url: &str,
@@ -811,7 +829,7 @@ fn product_run_cli_if_invoked(data_dir: &str) -> i32 {
 pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::LingxiaInitResult {
     crate::logging::init();
     install_browser_native_input_host();
-    lxapp::add_display_language_change_listener(Box::new(|| {
+    lxapp::add_display_language_effective_listener(Box::new(|_| {
         self::bridge::display_language_changed();
     }));
 
@@ -854,6 +872,49 @@ pub fn lingxia_init(data_dir: &str, cache_dir: &str, locale: &str) -> bridge::Li
 /// Return the effective display language selected by the runtime.
 pub fn get_display_language() -> String {
     crate::app::display_language()
+}
+
+/// Refresh the system input after Foundation reports a locale change.
+pub fn on_host_locale_changed(locale: &str) {
+    if let Err(error) = lxapp::refresh_display_language_system(locale) {
+        log::warn!("Ignoring invalid Apple host locale '{locale}': {error}");
+    }
+}
+
+/// Resolve the bootstrap-sealed Settings destination against current runtime
+/// registries for a native host entry click.
+pub(crate) fn resolve_settings_destination_for_host() -> bool {
+    present_settings_destination_resolution(
+        crate::settings_destination::resolve_settings_destination(),
+        self::bridge::present_internal_browser_tab,
+    )
+}
+
+/// Read the merged startup descriptor for native chrome without resolving it.
+pub(crate) fn static_settings_destination_json() -> String {
+    serde_json::to_string(&crate::static_settings_destination())
+        .expect("static Settings descriptor is JSON data")
+}
+
+fn present_settings_destination_resolution(
+    result: Result<crate::SettingsDestinationResolution, crate::SettingsDestinationResolveError>,
+    present_browser_tab: impl FnOnce(&str) -> bool,
+) -> bool {
+    match result {
+        Ok(crate::SettingsDestinationResolution::BrowserControlPage { tab_id, .. }) => {
+            if present_browser_tab(&tab_id) {
+                true
+            } else {
+                log::error!("failed to present resolved static Settings browser tab: {tab_id}");
+                false
+            }
+        }
+        Ok(_) => true,
+        Err(error) => {
+            log::error!("failed to resolve static Settings destination: {error}");
+            false
+        }
+    }
 }
 
 /// The launch face is on screen, in this appearance — the one the OS frame
@@ -1240,6 +1301,23 @@ pub fn open_browser_tab_with_id(
             Ok(tab_id) => Some(tab_id),
             Err(e) => {
                 log::error!("open_browser_tab_with_id failed: {}", e);
+                None
+            }
+        }
+    })
+}
+
+pub fn open_trusted_browser_tab_with_id(
+    appid: &str,
+    session_id: u64,
+    url: &str,
+    tab_id: &str,
+) -> Option<String> {
+    ffi_catch_unwind!("open_trusted_browser_tab_with_id", None, || {
+        match crate::browser::open_trusted_for_app(appid, session_id, url, Some(tab_id)) {
+            Ok(tab_id) => Some(tab_id),
+            Err(error) => {
+                log::error!("open_trusted_browser_tab_with_id failed: {error}");
                 None
             }
         }
@@ -2562,19 +2640,19 @@ pub fn terminal_refresh_appearance(system_is_dark: bool) {
 }
 
 pub fn terminal_automation_publish_snapshot(surface_id: &str, snapshot_json: &str) -> bool {
-    lxapp::terminal_automation::publish_snapshot(surface_id, snapshot_json).is_ok()
+    crate::terminal_automation::publish_snapshot(surface_id, snapshot_json)
 }
 
 pub fn terminal_automation_remove_workspace(surface_id: &str) {
-    lxapp::terminal_automation::remove_workspace(surface_id);
+    crate::terminal_automation::remove_workspace(surface_id);
 }
 
 pub fn terminal_automation_take_command(surface_id: &str) -> String {
-    lxapp::terminal_automation::take_command(surface_id)
+    crate::terminal_automation::take_command(surface_id)
 }
 
 pub fn terminal_automation_complete_command(id: u64, ok: bool, payload: &str) -> bool {
-    lxapp::terminal_automation::complete_command(id, ok, payload)
+    crate::terminal_automation::complete_command(id, ok, payload)
 }
 
 pub fn terminal_register_fonts(fonts_json: &str) {
@@ -2752,5 +2830,66 @@ pub fn terminal_session_close(id: u64) {
     #[cfg(not(feature = "terminal-runtime"))]
     {
         let _ = id;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn static_settings_click_accepts_every_resolved_destination_variant() {
+        let resolutions = [
+            crate::SettingsDestinationResolution::ControlAppPage {
+                app_id: "control".to_string(),
+                session_id: 1,
+            },
+            crate::SettingsDestinationResolution::BrowserControlPage {
+                tab_id: "settings".to_string(),
+                browser_session_id: 2,
+            },
+            crate::SettingsDestinationResolution::NativeAction {
+                action_id: "preferences".to_string(),
+            },
+        ];
+        for resolution in resolutions {
+            let expected_browser_tab = match &resolution {
+                crate::SettingsDestinationResolution::BrowserControlPage { tab_id, .. } => {
+                    Some(tab_id.clone())
+                }
+                _ => None,
+            };
+            let presented_browser_tab = std::cell::RefCell::new(None);
+            assert!(present_settings_destination_resolution(
+                Ok(resolution),
+                |tab_id| {
+                    *presented_browser_tab.borrow_mut() = Some(tab_id.to_string());
+                    true
+                },
+            ));
+            assert_eq!(*presented_browser_tab.borrow(), expected_browser_tab);
+        }
+    }
+
+    #[test]
+    fn static_settings_click_reports_missing_destination_as_failure() {
+        assert!(!present_settings_destination_resolution(
+            Err(crate::SettingsDestinationResolveError::NotConfigured),
+            |_| panic!("an unresolved destination must not present a browser tab"),
+        ));
+    }
+
+    #[test]
+    fn static_settings_click_reports_browser_presentation_failure() {
+        assert!(!present_settings_destination_resolution(
+            Ok(crate::SettingsDestinationResolution::BrowserControlPage {
+                tab_id: "settings".to_string(),
+                browser_session_id: 2,
+            }),
+            |tab_id| {
+                assert_eq!(tab_id, "settings");
+                false
+            },
+        ));
     }
 }

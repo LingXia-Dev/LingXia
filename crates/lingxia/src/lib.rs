@@ -19,18 +19,20 @@
 
 extern crate self as lingxia;
 pub use host_addon::{HostAddon, register_host_addon};
+#[doc(hidden)]
+pub use lingxia_native_macros::framework_native;
 pub use lingxia_native_macros::native;
+#[cfg(feature = "devtool")]
+pub use lxapp::host::NativeDevtoolsAuthority;
+pub use lxapp::host::NativeHostRuntimeAuthority;
 
 pub use lxapp::host;
 pub use lxapp::host::{ChannelContext, ChannelMessage, StreamContext};
-/// Grant `lx.automation()` to every lxapp in this process without a manifest
-/// privilege declaration. For dev/test hosts (the Runner) only — product hosts
-/// must not call this. A `lingxia dev` session already implies auto-grant.
-pub use lxapp::set_automation_auto_grant;
 // Required by expansions of `#[lingxia::native]`; host applications should
 // receive it through macro-generated parameters rather than orchestrate it.
+pub use lingxia_app_context::SettingsDestination;
 #[doc(hidden)]
-pub use lxapp::LxApp;
+pub use lxapp::{AppSessionClass, LxApp};
 pub use lxapp::{
     FloatDismiss, LxAppSecurityPrivilege, PageQueryInput, PageSurface, PageSurfaceRequest,
     PageSurfaceTarget, SurfaceInteraction, SurfaceKind, SurfacePosition, SurfaceRole,
@@ -41,14 +43,21 @@ pub use lxapp::{
 ///
 /// A browser-only host is valid without a configured lxapp; callers can inspect
 /// [`RuntimeInfo::lxapp_id`] when their launch policy requires one.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct RuntimeInfo {
     lxapp_id: Option<String>,
+    terminal_authority: std::sync::Arc<lxapp::terminal_automation::TerminalAutomationAuthority>,
 }
 
 impl RuntimeInfo {
-    pub(crate) fn new(lxapp_id: Option<String>) -> Self {
-        Self { lxapp_id }
+    pub(crate) fn new(
+        lxapp_id: Option<String>,
+        terminal_authority: lxapp::terminal_automation::TerminalAutomationAuthority,
+    ) -> Self {
+        Self {
+            lxapp_id,
+            terminal_authority: std::sync::Arc::new(terminal_authority),
+        }
     }
 
     /// The configured launch lxapp id, when this host has one.
@@ -60,7 +69,71 @@ impl RuntimeInfo {
     pub fn into_lxapp_id(self) -> Option<String> {
         self.lxapp_id
     }
+
+    /// Native terminal authority for this exact successfully bootstrapped host.
+    /// The capability is available only through this runtime handle; there is
+    /// no process-global getter.
+    #[doc(hidden)]
+    pub fn terminal_automation_authority(
+        &self,
+    ) -> lxapp::terminal_automation::TerminalAutomationAuthority {
+        self.terminal_authority.as_ref().clone()
+    }
+
+    /// Resolve the sealed host Settings destination through this initialized
+    /// platform runtime handle. There is no process-global safe entrypoint.
+    pub fn resolve_settings_destination(
+        &self,
+    ) -> std::result::Result<SettingsDestinationResolution, SettingsDestinationResolveError> {
+        settings_destination::resolve_settings_destination()
+    }
+
+    #[cfg(feature = "browser-runtime")]
+    #[doc(hidden)]
+    pub fn open_trusted_browser_page(
+        &self,
+        url: &str,
+        tab_id: Option<&str>,
+    ) -> std::result::Result<String, lxapp::LxAppError> {
+        lingxia_browser::open_trusted(crate::browser::native_control_authority()?, url, tab_id)
+    }
+
+    #[cfg(feature = "browser-runtime")]
+    #[doc(hidden)]
+    pub fn open_trusted_browser_page_for_app(
+        &self,
+        app_id: &str,
+        session_id: u64,
+        url: &str,
+        tab_id: Option<&str>,
+    ) -> std::result::Result<String, lxapp::LxAppError> {
+        lingxia_browser::open_trusted_for_app(
+            crate::browser::native_control_authority()?,
+            app_id,
+            session_id,
+            url,
+            tab_id,
+        )
+    }
 }
+
+impl std::fmt::Debug for RuntimeInfo {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RuntimeInfo")
+            .field("lxapp_id", &self.lxapp_id)
+            .finish_non_exhaustive()
+    }
+}
+
+impl PartialEq for RuntimeInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.lxapp_id == other.lxapp_id
+            && std::sync::Arc::ptr_eq(&self.terminal_authority, &other.terminal_authority)
+    }
+}
+
+impl Eq for RuntimeInfo {}
 
 /// Explicitly installed realtime capture providers. Only compiled when the
 /// host declared capture; the contract is never an `AppRuntime` supertrait.
@@ -83,12 +156,14 @@ pub mod product_cli;
 
 /// Host app metadata, state-path helpers, and lifecycle helpers.
 pub mod app;
+mod terminal_automation;
 pub use app::{home_app_id, lingxia_id, product_version};
 mod applink;
 /// Host assets packaged by the CLI (`assets:` in `lingxia.yaml`).
 pub mod assets;
 mod bootstrap;
 mod capabilities;
+mod display_language_host;
 pub mod splash;
 /// LxApp devtool helpers for host-side inspection and automation.
 #[cfg(feature = "devtool")]
@@ -134,7 +209,16 @@ pub mod network;
 /// Provider traits and registration helpers.
 pub mod provider;
 mod runtime;
+mod settings_destination;
+mod settings_target;
 pub(crate) mod shell;
+pub use settings_destination::{
+    NativeSettingsActionRegistrar, SettingsDestinationResolution, SettingsDestinationResolveError,
+};
+pub use settings_target::{
+    SealedNativeActionRegistry, StaticSettingsTargetCatalog, StaticSettingsTargetError,
+    ValidatedStaticSettingsTargets, static_settings_destination,
+};
 /// Shared async task helpers backed by LingXia's global executor.
 pub mod task;
 #[cfg(feature = "terminal-runtime")]

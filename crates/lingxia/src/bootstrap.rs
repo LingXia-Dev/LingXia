@@ -204,30 +204,60 @@ fn panel_position_from_edge(edge: &str) -> Option<lingxia_app_context::PanelPosi
     }
 }
 
-const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
+pub(crate) fn teardown_runner_display_language_session() {
+    lxapp::clear_active_display_language_session_override();
+}
 
-fn resolved_display_language_seed(
-    saved: Option<String>,
-    runner_override: Option<&str>,
-) -> Option<String> {
-    match runner_override
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        Some("auto") => None,
-        Some(language) => Some(language.to_string()),
-        None => saved,
+fn seed_display_language(app_data_dir: &std::path::Path, system: &str) {
+    let saved = match lingxia_service::settings::display_language(app_data_dir) {
+        Ok(saved) => saved,
+        Err(error) => {
+            log::warn!("Failed to load display language: {error}");
+            None
+        }
+    };
+    match lxapp::initialize_display_language(saved, system, None) {
+        Ok(_) => {}
+        Err(error) => {
+            log::warn!("Failed to initialize display language: {error}; following system language");
+            if let Err(fallback_error) = lxapp::initialize_display_language(None, system, None) {
+                log::warn!("Failed to initialize system display language: {fallback_error}");
+            }
+        }
     }
 }
 
-fn seed_display_language(app_data_dir: &std::path::Path) {
-    match lingxia_service::settings::display_language(app_data_dir) {
-        Ok(saved) => lxapp::apply_display_language_override(resolved_display_language_seed(
-            saved,
-            std::env::var(RUNNER_DISPLAY_LANGUAGE_ENV).ok().as_deref(),
-        )),
-        Err(error) => log::warn!("Failed to load display language: {error}"),
-    }
+type AppResourceGrantResolver = dyn for<'a> Fn(&std::sync::Arc<lxapp::LxApp>, &mut lxapp::host::NativeHostRuntimeAuthority<'a>)
+    + Send
+    + Sync
+    + 'static;
+type DevtoolsResourceGrantResolver = dyn for<'a> Fn(&std::sync::Arc<lxapp::LxApp>, &mut lxapp::host::NativeDevtoolsAuthority<'a>)
+    + Send
+    + Sync
+    + 'static;
+type NativeAuthorityInstaller = dyn FnOnce(
+        lxapp::NativeControlPlaneAuthority,
+        lxapp::NativeControlPlaneAuthority,
+        lxapp::NativeControlPlaneAuthority,
+        lxapp::terminal_automation::TerminalAutomationAuthority,
+    ) -> Result<(), lxapp::LxAppError>
+    + 'static;
+
+unsafe extern "Rust" {
+    #[link_name = "lingxia_lxapp_platform_bootstrap_v1"]
+    fn lxapp_platform_bootstrap(
+        runtime: lingxia_platform::Platform,
+        app_grant_resolver: Option<std::sync::Arc<AppResourceGrantResolver>>,
+        devtools_grant_resolver: Option<std::sync::Arc<DevtoolsResourceGrantResolver>>,
+        install_authorities: Box<NativeAuthorityInstaller>,
+    ) -> Result<
+        (
+            Option<String>,
+            lxapp::terminal_automation::TerminalAutomationAuthority,
+            lxapp::NativeControlPlaneAuthority,
+        ),
+        lxapp::LxAppError,
+    >;
 }
 
 /// Common initialization after Platform is created.
@@ -243,15 +273,51 @@ pub(crate) fn init_with_platform(
     crate::host_addon::run_before_init();
 
     let runtime = std::sync::Arc::new(platform.clone());
-    crate::runtime::set_platform(runtime.clone());
     #[cfg(feature = "devtool")]
     let app_config = crate::devtool::prepare_host_app_config(&runtime, load_bundled_app_config)
         .ok_or_else(|| crate::Error::internal("failed to load host app configuration"))?;
     #[cfg(not(feature = "devtool"))]
     let app_config = load_bundled_app_config(&runtime)
         .ok_or_else(|| crate::Error::internal("failed to load host app configuration"))?;
+
+    let mut settings_catalog = crate::StaticSettingsTargetCatalog::new();
+    if let Some(destination) = app_config.settings_destination.clone() {
+        settings_catalog.set_destination("app.json", destination);
+    }
+    crate::browser::configure_static_settings_targets(&mut settings_catalog);
+    crate::host_addon::run_configure_static_settings_targets(&mut settings_catalog);
+    // Policy inventory is registered before validation, but no runtime object
+    // is created and no handler is invoked. Conflicting policies remain visible
+    // through the read-only lookup used by validation.
+    crate::host_addon::run_install_host_apis();
+    crate::display_language_host::register();
+    crate::browser::register_builtin_route_inventory();
+    lxapp::host::register_builtin_routes();
+    let validated_settings = crate::settings_target::validate_for_startup(
+        &app_config,
+        settings_catalog,
+        runtime.as_ref(),
+    )
+    .map_err(|error| {
+        crate::Error::internal(format!(
+            "failed to validate static Settings target: {error}"
+        ))
+    })?;
+    let mut native_settings_actions =
+        crate::NativeSettingsActionRegistrar::new(validated_settings.native_actions().clone());
+    crate::host_addon::run_install_native_settings_actions(&mut native_settings_actions).map_err(
+        |error| {
+            crate::Error::internal(format!(
+                "failed to install native Settings actions: {error}"
+            ))
+        },
+    )?;
+    let native_settings_actions = native_settings_actions.seal();
+
+    // Global runtime state begins only after static validation succeeds.
+    crate::runtime::set_platform(runtime.clone());
     crate::app::set_data_dir(runtime.app_data_dir());
-    seed_display_language(&runtime.app_data_dir());
+    seed_display_language(&runtime.app_data_dir(), runtime.get_system_locale());
     install_global_executor();
     lingxia_app_context::set_host_build(crate::capabilities::host_build());
     if let Err(err) = lingxia_app_context::set_app_config(app_config.clone()) {
@@ -259,26 +325,90 @@ pub(crate) fn init_with_platform(
             "failed to initialize app configuration: {err}"
         )));
     }
+    crate::settings_target::install_validated(validated_settings).map_err(|error| {
+        crate::Error::internal(format!(
+            "failed to install static Settings targets: {error}"
+        ))
+    })?;
+    crate::settings_destination::install_native_actions(native_settings_actions).map_err(
+        |error| {
+            crate::Error::internal(format!(
+                "failed to initialize native Settings actions: {error}"
+            ))
+        },
+    )?;
     // App config (with the device dev-ws-url) is now loaded, so a dev session is
     // detectable: default logging to debug unless LINGXIA_LOG_LEVEL pinned it.
     crate::logging::apply_dev_session_level();
     #[cfg(feature = "devtool")]
     crate::devtool::prepare_bundle_sources(&runtime);
     crate::host_addon::run_install_logic_extensions();
-    crate::host_addon::run_install_host_apis();
     crate::browser::register_bundled_app();
     crate::browser::register_builtin_runtime();
     crate::applink::install_handler();
     #[cfg(feature = "standard")]
     lingxia_logic::register_logic_runtime();
-    #[cfg(feature = "automation")]
-    lingxia_automation::register_automation_runtime();
-    let home_app_id = lxapp::init(platform)?;
+    let app_grant_resolver: std::sync::Arc<AppResourceGrantResolver> =
+        std::sync::Arc::new(crate::host_addon::resolve_app_resource_grants);
+    #[cfg(feature = "devtool")]
+    let devtools_grant_resolver: Option<std::sync::Arc<DevtoolsResourceGrantResolver>> = Some(
+        std::sync::Arc::new(crate::host_addon::resolve_devtools_resource_grants),
+    );
+    #[cfg(not(feature = "devtool"))]
+    let devtools_grant_resolver: Option<std::sync::Arc<DevtoolsResourceGrantResolver>> = None;
+    // SAFETY: this private declaration binds the matching non-public Rust ABI
+    // symbol in lingxia-lxapp. It is entered once from the platform bootstrap
+    // after host configuration is sealed; no proof or resolver installer is
+    // exported through either crate's safe Rust API.
+    let (home_app_id, terminal_authority, browser_registration_authority) = unsafe {
+        lxapp_platform_bootstrap(
+            platform,
+            Some(app_grant_resolver),
+            devtools_grant_resolver,
+            Box::new(
+                |settings_authority, logic_authority, browser_authority, terminal_authority| {
+                    crate::settings_destination::install_control_authority(settings_authority)
+                        .map_err(lxapp::LxAppError::Runtime)?;
+                    #[cfg(feature = "standard")]
+                    if !lingxia_logic::__install_native_control_authority(logic_authority) {
+                        return Err(lxapp::LxAppError::Runtime(
+                            "Logic native control authority was already installed".to_string(),
+                        ));
+                    }
+                    #[cfg(not(feature = "standard"))]
+                    drop(logic_authority);
+                    #[cfg(feature = "browser-runtime")]
+                    if !lingxia_browser::__install_native_control_authority(browser_authority) {
+                        return Err(lxapp::LxAppError::Runtime(
+                            "browser native control authority was already installed".to_string(),
+                        ));
+                    }
+                    #[cfg(not(feature = "browser-runtime"))]
+                    drop(browser_authority);
+                    if !crate::terminal_automation::install(terminal_authority.clone()) {
+                        return Err(lxapp::LxAppError::Runtime(
+                            "native terminal authority was already installed".to_string(),
+                        ));
+                    }
+                    #[cfg(feature = "automation")]
+                    if !lingxia_automation::__install_native_terminal_authority(terminal_authority)
+                    {
+                        return Err(lxapp::LxAppError::Runtime(
+                            "automation terminal authority was already installed".to_string(),
+                        ));
+                    }
+                    Ok(())
+                },
+            ),
+        )
+    }?;
     if let Err(error) = crate::shell::initialize(runtime.clone()) {
         log::error!("Failed to initialize host shell state: {error}");
     }
     crate::update::install_auto_trigger(runtime.clone());
-    crate::browser::register_builtin_assets();
+    crate::browser::register_builtin_assets(&browser_registration_authority);
+    crate::browser::install_native_control_authority(browser_registration_authority)
+        .map_err(crate::Error::internal)?;
     crate::host_addon::run_after_init();
     // Between the runtime being up and the home page being ready: the only
     // window where asking the host for a campaign costs the launch nothing.
@@ -286,12 +416,12 @@ pub(crate) fn init_with_platform(
     crate::task::release_deferred();
     crate::browser::warmup();
     crate::host_addon::run_start_services();
-    Ok(crate::RuntimeInfo::new(home_app_id))
+    Ok(crate::RuntimeInfo::new(home_app_id, terminal_authority))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{panels_from_ui_config, resolved_display_language_seed, seed_display_language};
+    use super::{panels_from_ui_config, seed_display_language};
     use lingxia_app_context::PanelPosition;
 
     #[test]
@@ -300,26 +430,32 @@ mod tests {
         lingxia_service::settings::set_display_language(dir.path(), Some("zh-CN"))
             .expect("save display language");
 
-        seed_display_language(dir.path());
+        seed_display_language(dir.path(), "en-US");
 
         assert_eq!(crate::app::display_language(), "zh-CN");
-        lxapp::apply_display_language_override(None);
+        assert_eq!(
+            lxapp::display_language_state().effective_source,
+            lxapp::DisplayLanguageEffectiveSource::Preference
+        );
     }
 
     #[test]
     fn runner_display_language_override_is_session_scoped() {
+        let owner = lxapp::initialize_display_language(
+            Some("zh-CN".to_string()),
+            "en-US",
+            Some("ja-jp".parse().unwrap()),
+        )
+        .unwrap()
+        .unwrap();
+        let state = lxapp::display_language_state();
+        assert_eq!(state.preference.as_str(), "zh-CN");
+        assert_eq!(state.effective.as_str(), "ja-JP");
         assert_eq!(
-            resolved_display_language_seed(Some("zh-CN".to_string()), Some("en-US")),
-            Some("en-US".to_string())
+            state.effective_source,
+            lxapp::DisplayLanguageEffectiveSource::SessionOverride
         );
-        assert_eq!(
-            resolved_display_language_seed(Some("zh-CN".to_string()), Some("auto")),
-            None
-        );
-        assert_eq!(
-            resolved_display_language_seed(Some("zh-CN".to_string()), None),
-            Some("zh-CN".to_string())
-        );
+        lxapp::clear_display_language_session_override(owner);
     }
 
     #[test]

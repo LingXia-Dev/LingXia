@@ -10,10 +10,12 @@
 )]
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::pin::Pin;
-use std::sync::mpsc::{SyncSender, sync_channel};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::mpsc::{Sender, SyncSender, channel, sync_channel};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 use tokio::sync::watch;
@@ -42,19 +44,320 @@ pub(crate) struct WebViewInner {
 }
 
 use crate::traits::{
-    AsyncSchemeHandler, ClickOptions, DownloadHandler, DownloadRequest, FileChooserRequest,
-    FileChooserResponse, FillOptions, NavigationHandler, NavigationPolicy, NavigationRequest,
-    NewWindowHandler, NewWindowPolicy, PressOptions, SchemeOutcome, ScrollOptions, TypeOptions,
-    UserAgentOverride, WebViewInputController,
+    AsyncSchemeHandler, ClickOptions, ContextualSchemeRequest, DownloadHandler, DownloadRequest,
+    FileChooserRequest, FileChooserResponse, FillOptions, NativeWebViewId, NavigationHandler,
+    NavigationPolicy, NavigationRequest, NewWindowHandler, NewWindowPolicy, PressOptions,
+    SchemeOutcome, SchemeRequestFrame, ScrollOptions, TypeOptions, UserAgentOverride,
+    WebMessageContext, WebMessageFrame, WebMessageSource, WebMessageTransport,
+    WebViewInputController,
 };
 use crate::{
-    ClearSiteDataOptions, ClearSiteDataResult, LoadDataRequest, NetworkCaptureSnapshot,
-    WebResourceResponse, WebViewController, WebViewCookie, WebViewCookieSetRequest,
-    WebViewDelegate, WebViewError, WebViewInputError, WebViewScriptError,
+    ClearSiteDataOptions, ClearSiteDataResult, IncomingWebMessage, LoadDataRequest,
+    NetworkCaptureSnapshot, TrustedLoadIntent, WebResourceResponse, WebViewController,
+    WebViewCookie, WebViewCookieSetRequest, WebViewDelegate, WebViewError, WebViewInputError,
+    WebViewScriptError,
 };
 use async_trait::async_trait;
 
 const APPLE_INTERNAL_SCHEME: &str = "lx-apple";
+pub(crate) const MAX_WEB_MESSAGE_BYTES: usize = 64 * 1024;
+const MAX_PENDING_WEB_MESSAGES: usize = 1024;
+const MAX_PENDING_WEB_MESSAGE_BYTES: usize = 1024 * 1024;
+const WEB_MESSAGE_WORKER_COUNT: usize = 4;
+
+static NEXT_NATIVE_WEBVIEW_ID: AtomicU64 = AtomicU64::new(1);
+
+fn next_native_webview_id() -> NativeWebViewId {
+    // Zero is deliberately never allocated, so a platform's default integer
+    // cannot accidentally match a real native instance. Exhaustion is safer
+    // than wrapping and allowing a retired native callback to match again.
+    let raw = NEXT_NATIVE_WEBVIEW_ID
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .expect("native WebView identity space exhausted");
+    NativeWebViewId::new(raw)
+}
+
+#[derive(Default)]
+struct WebMessageIngress {
+    state: Mutex<WebMessageIngressState>,
+}
+
+#[derive(Default)]
+struct WebMessageIngressState {
+    queue: VecDeque<IncomingWebMessage>,
+    queued_bytes: usize,
+    scheduled: bool,
+    closed: bool,
+    in_flight: bool,
+    rejection_counts: [u64; WebMessageRejectReason::COUNT],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WebMessageEnqueue {
+    Queued,
+    Schedule,
+    Rejected {
+        reason: WebMessageRejectReason,
+        count: u64,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WebMessageRejectReason {
+    MessageTooLarge,
+    QueueCountLimit,
+    QueueByteLimit,
+    Closed,
+}
+
+impl WebMessageRejectReason {
+    const COUNT: usize = 4;
+
+    const fn index(self) -> usize {
+        match self {
+            Self::MessageTooLarge => 0,
+            Self::QueueCountLimit => 1,
+            Self::QueueByteLimit => 2,
+            Self::Closed => 3,
+        }
+    }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::MessageTooLarge => "message_too_large",
+            Self::QueueCountLimit => "queue_count_limit",
+            Self::QueueByteLimit => "queue_byte_limit",
+            Self::Closed => "ingress_closed",
+        }
+    }
+}
+
+fn should_sample_rejection(count: u64) -> bool {
+    count == 1 || count.is_power_of_two()
+}
+
+pub(crate) const fn web_message_bytes_within_limit(bytes: usize) -> bool {
+    bytes <= MAX_WEB_MESSAGE_BYTES
+}
+
+impl WebMessageIngress {
+    fn reject_locked(
+        state: &mut WebMessageIngressState,
+        reason: WebMessageRejectReason,
+    ) -> WebMessageEnqueue {
+        let count = &mut state.rejection_counts[reason.index()];
+        *count = count.saturating_add(1);
+        WebMessageEnqueue::Rejected {
+            reason,
+            count: *count,
+        }
+    }
+
+    #[cfg(any(
+        test,
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        all(target_os = "linux", target_env = "ohos")
+    ))]
+    fn reject(&self, reason: WebMessageRejectReason) -> WebMessageEnqueue {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        Self::reject_locked(&mut state, reason)
+    }
+
+    /// Enqueue one message and report whether this instance must be scheduled.
+    /// A bounded queue prevents an untrusted page from growing native memory
+    /// without limit; accepted messages remain FIFO.
+    fn enqueue(&self, message: IncomingWebMessage) -> WebMessageEnqueue {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        let message_bytes = message.body().len();
+        if !web_message_bytes_within_limit(message_bytes) {
+            return Self::reject_locked(&mut state, WebMessageRejectReason::MessageTooLarge);
+        }
+        if state.closed {
+            return Self::reject_locked(&mut state, WebMessageRejectReason::Closed);
+        }
+        if state.queue.len() >= MAX_PENDING_WEB_MESSAGES {
+            return Self::reject_locked(&mut state, WebMessageRejectReason::QueueCountLimit);
+        }
+        let Some(next_bytes) = state.queued_bytes.checked_add(message_bytes) else {
+            return Self::reject_locked(&mut state, WebMessageRejectReason::QueueByteLimit);
+        };
+        if next_bytes > MAX_PENDING_WEB_MESSAGE_BYTES {
+            return Self::reject_locked(&mut state, WebMessageRejectReason::QueueByteLimit);
+        }
+        state.queued_bytes = next_bytes;
+        state.queue.push_back(message);
+        if state.scheduled {
+            WebMessageEnqueue::Queued
+        } else {
+            state.scheduled = true;
+            WebMessageEnqueue::Schedule
+        }
+    }
+
+    /// Stop accepting messages and discard all queued work.
+    ///
+    /// A message becomes in-flight while holding this mutex, immediately
+    /// before its delegate lookup. Closing does not interrupt that already
+    /// admitted delivery, but prevents every queued and future message from
+    /// reaching a delegate.
+    fn close(&self) {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        state.closed = true;
+        state.queue.clear();
+        state.queued_bytes = 0;
+        if !state.in_flight {
+            state.scheduled = false;
+        }
+    }
+
+    /// Pop the next admitted message for this instance's sole scheduled job.
+    /// Delegate code never runs while this lock is held, so re-entrant ingress
+    /// appends after the current message.
+    fn begin_delivery(&self) -> Option<IncomingWebMessage> {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        if state.closed {
+            state.scheduled = false;
+            return None;
+        }
+        match state.queue.pop_front() {
+            Some(message) => {
+                state.queued_bytes = state
+                    .queued_bytes
+                    .checked_sub(message.body().len())
+                    .expect("queued WebView message byte ledger underflow");
+                state.in_flight = true;
+                Some(message)
+            }
+            None => {
+                state.scheduled = false;
+                None
+            }
+        }
+    }
+
+    fn finish_delivery(&self) {
+        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        debug_assert!(state.in_flight);
+        state.in_flight = false;
+    }
+
+    #[cfg(test)]
+    fn queued_bytes(&self) -> usize {
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .queued_bytes
+    }
+
+    #[cfg(test)]
+    fn rejection_count(&self, reason: WebMessageRejectReason) -> u64 {
+        self.state
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .rejection_counts[reason.index()]
+    }
+
+    fn drain<F>(&self, mut deliver: F)
+    where
+        F: FnMut(IncomingWebMessage),
+    {
+        while let Some(message) = self.begin_delivery() {
+            let result = catch_unwind(AssertUnwindSafe(|| deliver(message)));
+            self.finish_delivery();
+            if result.is_err() {
+                log::error!("WebView message delegate panicked; continuing ingress drain");
+            }
+        }
+    }
+}
+
+struct WebMessageJob {
+    ingress: Arc<WebMessageIngress>,
+    webview: std::sync::Weak<WebView>,
+}
+
+/// Process-lifetime, fixed-size executor for WebView message ingress.
+///
+/// Each ingress schedules no more than one job, so an instance stays serial;
+/// different instances are distributed across workers and can make progress in
+/// parallel without creating a thread per callback or idle burst.
+struct WebMessageExecutor {
+    senders: Vec<Sender<WebMessageJob>>,
+    next_worker: AtomicUsize,
+}
+
+impl WebMessageExecutor {
+    fn global() -> &'static Self {
+        static EXECUTOR: OnceLock<WebMessageExecutor> = OnceLock::new();
+        EXECUTOR.get_or_init(Self::new)
+    }
+
+    fn new() -> Self {
+        let mut senders = Vec::with_capacity(WEB_MESSAGE_WORKER_COUNT);
+        for worker_index in 0..WEB_MESSAGE_WORKER_COUNT {
+            let (sender, receiver) = channel::<WebMessageJob>();
+            std::thread::Builder::new()
+                .name(format!("lingxia-web-message-worker-{worker_index}"))
+                .spawn(move || {
+                    while let Ok(job) = receiver.recv() {
+                        let ingress = Arc::clone(&job.ingress);
+                        job.ingress.drain(|message| {
+                            let Some(webview) = job.webview.upgrade() else {
+                                ingress.close();
+                                return;
+                            };
+                            let document = message.context().document();
+                            let mut message = Some(message);
+                            let deliver = &mut || {
+                                if let Some(delegate) = webview.get_delegate() {
+                                    delegate.handle_post_message(
+                                        message
+                                            .take()
+                                            .expect("message delivery closure runs at most once"),
+                                    );
+                                } else {
+                                    log::debug!(
+                                        "Dropping WebView message before delegate installation ({})",
+                                        webview.webtag()
+                                    );
+                                }
+                            };
+                            match document {
+                                crate::DocumentBinding::Bound(generation) => {
+                                    if !crate::events::normalizer::with_current_document_binding(
+                                        webview.native_view_id(),
+                                        generation,
+                                        deliver,
+                                    ) {
+                                        log::debug!(
+                                            "Dropping WebView message after its document generation was revoked ({})",
+                                            webview.webtag()
+                                        );
+                                    }
+                                }
+                                crate::DocumentBinding::Unbound => deliver(),
+                            }
+                        });
+                    }
+                })
+                .expect("failed to start fixed WebView message worker");
+            senders.push(sender);
+        }
+        Self {
+            senders,
+            next_worker: AtomicUsize::new(0),
+        }
+    }
+
+    fn schedule(&self, job: WebMessageJob) -> Result<(), WebMessageJob> {
+        let worker = self.next_worker.fetch_add(1, Ordering::Relaxed) % self.senders.len();
+        self.senders[worker].send(job).map_err(|error| error.0)
+    }
+}
 
 #[cfg(not(any(
     target_os = "android",
@@ -209,6 +512,37 @@ where
 pub(crate) enum SecurityProfile {
     StrictDefault,
     BrowserRelaxed,
+}
+
+/// Native console hooks are safe only for fixed-origin lxapp pages. A
+/// BrowserRelaxed WebView can contain arbitrary external content, so its
+/// BrowserControl document must use the V3-bound main message transport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlatformConsoleBackend {
+    #[cfg(any(target_os = "ios", target_os = "macos", test))]
+    Apple,
+    #[cfg(any(target_os = "android", test))]
+    Android,
+    #[cfg(any(all(target_os = "linux", target_env = "ohos"), test))]
+    Harmony,
+    #[cfg(any(target_os = "windows", test))]
+    Windows,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlatformConsoleDelivery {
+    DirectDelegate,
+    RequiredV3Envelope,
+}
+
+pub(crate) const fn platform_console_delivery(
+    profile: SecurityProfile,
+    _backend: PlatformConsoleBackend,
+) -> PlatformConsoleDelivery {
+    match profile {
+        SecurityProfile::StrictDefault => PlatformConsoleDelivery::DirectDelegate,
+        SecurityProfile::BrowserRelaxed => PlatformConsoleDelivery::RequiredV3Envelope,
+    }
 }
 
 /// Website-data lifetime for a WebView.
@@ -454,9 +788,9 @@ impl WebViewCreateOptions {
     ///   `options.on_scheme("lx", |req| async move { ... })`
     /// - Immediate response:
     ///   `options.on_scheme("lx", |req| async move { immediate(req).into() })`
-    fn on_scheme<F, Fut>(mut self, scheme: &str, handler: F) -> Self
+    fn on_contextual_scheme<F, Fut>(mut self, scheme: &str, handler: F) -> Self
     where
-        F: Fn(http::Request<Vec<u8>>) -> Fut + Send + Sync + 'static,
+        F: Fn(ContextualSchemeRequest) -> Fut + Send + Sync + 'static,
         Fut: std::future::Future<Output = SchemeOutcome> + Send + 'static,
     {
         let normalized = scheme.trim().to_ascii_lowercase();
@@ -470,6 +804,14 @@ impl WebViewCreateOptions {
             );
         }
         self
+    }
+
+    fn on_scheme<F, Fut>(self, scheme: &str, handler: F) -> Self
+    where
+        F: Fn(http::Request<Vec<u8>>) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = SchemeOutcome> + Send + 'static,
+    {
+        self.on_contextual_scheme(scheme, move |request| handler(request.into_request()))
     }
 
     /// Register a navigation handler that decides whether to allow or cancel navigations.
@@ -644,6 +986,17 @@ impl StrictWebViewBuilder {
         self
     }
 
+    /// Register a scheme handler which receives native-instance and frame
+    /// context alongside the HTTP request.
+    pub fn on_contextual_scheme<F, Fut>(mut self, scheme: &str, handler: F) -> Self
+    where
+        F: Fn(ContextualSchemeRequest) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = SchemeOutcome> + Send + 'static,
+    {
+        self.options = self.options.on_contextual_scheme(scheme, handler);
+        self
+    }
+
     pub fn on_navigation<F>(mut self, handler: F) -> Self
     where
         F: Fn(&NavigationRequest) -> NavigationPolicy + Send + Sync + 'static,
@@ -695,6 +1048,17 @@ impl BrowserWebViewBuilder {
         Fut: std::future::Future<Output = SchemeOutcome> + Send + 'static,
     {
         self.options = self.options.on_scheme(scheme, handler);
+        self
+    }
+
+    /// Register a scheme handler which receives native-instance and frame
+    /// context alongside the HTTP request.
+    pub fn on_contextual_scheme<F, Fut>(mut self, scheme: &str, handler: F) -> Self
+    where
+        F: Fn(ContextualSchemeRequest) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = SchemeOutcome> + Send + 'static,
+    {
+        self.options = self.options.on_contextual_scheme(scheme, handler);
         self
     }
 
@@ -777,6 +1141,7 @@ impl PendingCallbacks {
 /// WebView type that includes inner implementation and delegate
 pub struct WebView {
     pub(crate) inner: WebViewInner,
+    native_view_id: NativeWebViewId,
     effective_options: EffectiveWebViewCreateOptions,
     // Hold a strong reference to the delegate; runtime destroy clears it to break cycles.
     delegate: RwLock<Option<Arc<dyn WebViewDelegate>>>,
@@ -786,15 +1151,146 @@ pub struct WebView {
     new_window_handler: RwLock<Option<NewWindowHandler>>,
     download_handler: RwLock<Option<DownloadHandler>>,
     file_chooser_handler: RwLock<Option<FileChooserHandler>>,
+    message_ingress: Arc<WebMessageIngress>,
+}
+
+/// A one-shot reservation for a trusted native HTML load.
+///
+/// It is issued for one exact [`WebView`] and can neither be cloned nor moved
+/// to another view. Consumers register [`Self::intent`] with their own
+/// document state before calling [`Self::load`]. Dropping it, or a failed
+/// load, revokes the intent before it can become an admission.
+pub struct TrustedDataLoadReservation<'a> {
+    webview: &'a WebView,
+    webtag: WebTag,
+    native_view_id: NativeWebViewId,
+    intent: Option<TrustedLoadIntent>,
+}
+
+enum TrustedDataLoadEvidence {
+    #[cfg(any(target_os = "ios", target_os = "macos", target_os = "android"))]
+    NativeKey(crate::events::normalizer::NativeKey),
+    #[cfg(any(target_os = "windows", all(target_os = "linux", target_env = "ohos")))]
+    PlatformAttested,
+}
+
+impl TrustedDataLoadReservation<'_> {
+    /// The opaque token to register before initiating the native load.
+    pub fn intent(&self) -> TrustedLoadIntent {
+        self.intent
+            .expect("trusted data load reservation must retain its intent until consumed")
+    }
+
+    /// Consume this reservation and start its one native HTML load.
+    pub fn load(mut self, request: LoadDataRequest<'_>) -> Result<TrustedLoadIntent, WebViewError> {
+        let intent = self
+            .intent
+            .take()
+            .expect("trusted data load reservation must be consumed once");
+        let evidence = match self.webview.load_trusted_data_on_platform(intent, request) {
+            Ok(evidence) => evidence,
+            Err(error) => {
+                crate::events::normalizer::revoke_trusted_load(
+                    &self.webtag,
+                    self.native_view_id,
+                    intent,
+                );
+                return Err(error);
+            }
+        };
+
+        let attested = match evidence {
+            #[cfg(any(target_os = "ios", target_os = "macos", target_os = "android"))]
+            TrustedDataLoadEvidence::NativeKey(key) => {
+                crate::events::normalizer::attest_trusted_load(
+                    &self.webtag,
+                    self.native_view_id,
+                    intent,
+                    key,
+                )
+            }
+            #[cfg(any(target_os = "windows", all(target_os = "linux", target_env = "ohos")))]
+            TrustedDataLoadEvidence::PlatformAttested => true,
+        };
+        if attested {
+            Ok(intent)
+        } else {
+            // A destroy/recreate or concurrent later direct load won between
+            // issuing and binding. The native load may still render, but it is
+            // intentionally ineligible for trusted admission.
+            crate::events::normalizer::revoke_trusted_load(
+                &self.webtag,
+                self.native_view_id,
+                intent,
+            );
+            Err(WebViewError::WebView(
+                "trusted data load lost its WebView lifecycle binding".to_string(),
+            ))
+        }
+    }
+}
+
+impl Drop for TrustedDataLoadReservation<'_> {
+    fn drop(&mut self) {
+        if let Some(intent) = self.intent.take() {
+            crate::events::normalizer::revoke_trusted_load(
+                &self.webtag,
+                self.native_view_id,
+                intent,
+            );
+        }
+    }
+}
+
+fn snapshot_web_message_context(
+    native_view_id: NativeWebViewId,
+    frame: WebMessageFrame,
+    transport: WebMessageTransport,
+    source: WebMessageSource,
+) -> WebMessageContext {
+    // This load is the message callback's document-binding linearization
+    // point. A navigation start which wins it produces Unbound; a commit which
+    // wins it produces that generation. The queued message retains this value.
+    WebMessageContext::new(
+        native_view_id,
+        crate::events::normalizer::current_document_binding(native_view_id),
+        frame,
+        transport,
+        source,
+    )
+}
+
+/// Android may label a frame top-level only when it arrived through the
+/// one-shot port delivered to the exact currently committed document.
+fn android_document_port_context(
+    native_view: NativeWebViewId,
+    current: crate::DocumentBinding,
+    expected_generation: crate::DocumentGeneration,
+    transport: WebMessageTransport,
+    source: WebMessageSource,
+) -> Option<WebMessageContext> {
+    (transport == WebMessageTransport::AndroidMessagePort
+        && current == crate::DocumentBinding::Bound(expected_generation))
+    .then(|| {
+        WebMessageContext::new(
+            native_view,
+            crate::DocumentBinding::Bound(expected_generation),
+            WebMessageFrame::TopLevel,
+            transport,
+            source,
+        )
+    })
 }
 
 impl WebView {
     pub(crate) fn new(
         inner: WebViewInner,
         effective_options: EffectiveWebViewCreateOptions,
+        native_view_id: NativeWebViewId,
     ) -> Self {
         Self {
             inner,
+            native_view_id,
             effective_options,
             delegate: RwLock::new(None),
             scheme_handlers: RwLock::new(HashMap::new()),
@@ -802,7 +1298,231 @@ impl WebView {
             new_window_handler: RwLock::new(None),
             download_handler: RwLock::new(None),
             file_chooser_handler: RwLock::new(None),
+            message_ingress: Arc::new(WebMessageIngress::default()),
         }
+    }
+
+    /// Opaque identity for this concrete native WebView instance.
+    ///
+    /// It is readable for identity comparison across crates, but cannot be
+    /// constructed, serialized, or converted to a raw platform handle by
+    /// consumers.
+    pub const fn native_view_id(&self) -> NativeWebViewId {
+        self.native_view_id
+    }
+
+    /// Account for a platform adapter rejecting an oversized raw message
+    /// before it allocates the cross-platform `String` used by the queue.
+    #[cfg(any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        all(target_os = "linux", target_env = "ohos")
+    ))]
+    pub(crate) fn reject_oversized_web_message(&self) {
+        let WebMessageEnqueue::Rejected { reason, count } = self
+            .message_ingress
+            .reject(WebMessageRejectReason::MessageTooLarge)
+        else {
+            unreachable!("rejecting an ingress message must return a rejection")
+        };
+        if should_sample_rejection(count) {
+            log::warn!(
+                "Dropping WebView message reason={} count={} ({})",
+                reason.as_str(),
+                count,
+                self.webtag()
+            );
+        }
+    }
+
+    /// Reserve a trusted native HTML load before starting the native operation.
+    ///
+    /// Register [`TrustedDataLoadReservation::intent`] with document state
+    /// before calling `load`; a native callback is permitted to arrive before
+    /// `load` returns. The reservation's Drop implementation revokes an
+    /// unused token. HTML and base URLs are resource-location inputs, never
+    /// authority.
+    pub fn prepare_trusted_data_load(
+        &self,
+    ) -> Result<TrustedDataLoadReservation<'_>, WebViewError> {
+        let webtag = self.webtag();
+        let native_view_id = self.native_view_id;
+        let intent = crate::events::normalizer::issue_trusted_load(&webtag, native_view_id)
+            .ok_or_else(|| {
+                WebViewError::WebView(
+                    "trusted data load requires a live matching WebView lifecycle".to_string(),
+                )
+            })?;
+        Ok(TrustedDataLoadReservation {
+            webview: self,
+            webtag,
+            native_view_id,
+            intent: Some(intent),
+        })
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "macos", target_os = "android"))]
+    fn load_trusted_data_on_platform(
+        &self,
+        _intent: TrustedLoadIntent,
+        request: LoadDataRequest<'_>,
+    ) -> Result<TrustedDataLoadEvidence, WebViewError> {
+        self.inner
+            .load_trusted_data(request)
+            .map(TrustedDataLoadEvidence::NativeKey)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn load_trusted_data_on_platform(
+        &self,
+        intent: TrustedLoadIntent,
+        request: LoadDataRequest<'_>,
+    ) -> Result<TrustedDataLoadEvidence, WebViewError> {
+        self.inner.load_trusted_data(intent, request)?;
+        Ok(TrustedDataLoadEvidence::PlatformAttested)
+    }
+
+    #[cfg(all(target_os = "linux", target_env = "ohos"))]
+    fn load_trusted_data_on_platform(
+        &self,
+        intent: TrustedLoadIntent,
+        request: LoadDataRequest<'_>,
+    ) -> Result<TrustedDataLoadEvidence, WebViewError> {
+        self.inner
+            .load_trusted_data(intent, request)
+            .map(|()| TrustedDataLoadEvidence::PlatformAttested)
+    }
+
+    #[cfg(not(any(
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "windows",
+        target_os = "android",
+        all(target_os = "linux", target_env = "ohos")
+    )))]
+    fn load_trusted_data_on_platform(
+        &self,
+        _intent: TrustedLoadIntent,
+        _request: LoadDataRequest<'_>,
+    ) -> Result<TrustedDataLoadEvidence, WebViewError> {
+        Err(WebViewError::Unsupported(
+            "trusted direct HTML loads require a platform navigation key".to_string(),
+        ))
+    }
+
+    /// Enqueue a platform message whose frame proof is known by the adapter.
+    ///
+    /// The document binding is snapshotted from the normalizer while this
+    /// concrete native WebView is current; adapters cannot claim a generation
+    /// through this entry point.
+    pub(crate) fn enqueue_web_message(
+        self: &Arc<Self>,
+        body: String,
+        frame: WebMessageFrame,
+        transport: WebMessageTransport,
+        source: WebMessageSource,
+    ) {
+        let context = snapshot_web_message_context(self.native_view_id, frame, transport, source);
+        match self
+            .message_ingress
+            .enqueue(IncomingWebMessage::new(body, context))
+        {
+            WebMessageEnqueue::Queued => return,
+            WebMessageEnqueue::Rejected { reason, count } => {
+                if should_sample_rejection(count) {
+                    log::warn!(
+                        "Dropping WebView message reason={} count={} ({})",
+                        reason.as_str(),
+                        count,
+                        self.webtag()
+                    );
+                }
+                return;
+            }
+            WebMessageEnqueue::Schedule => {}
+        }
+
+        if WebMessageExecutor::global()
+            .schedule(WebMessageJob {
+                ingress: Arc::clone(&self.message_ingress),
+                webview: Arc::downgrade(self),
+            })
+            .is_err()
+        {
+            // A fixed worker unexpectedly exiting must not leave this ingress
+            // scheduled forever, nor let later callbacks restart its delivery.
+            self.message_ingress.close();
+            log::error!(
+                "Dropping WebView message queue because the fixed executor stopped ({})",
+                self.webtag()
+            );
+        }
+    }
+
+    /// Enqueue a MessagePort frame only for the exact generation captured
+    /// when that one-shot port was created. A port retained by an old page can
+    /// never be rebound by sampling the successor document's current state.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub(crate) fn enqueue_document_web_message(
+        self: &Arc<Self>,
+        body: String,
+        expected_generation: crate::DocumentGeneration,
+        transport: WebMessageTransport,
+        source: WebMessageSource,
+    ) {
+        let Some(context) = android_document_port_context(
+            self.native_view_id,
+            crate::events::normalizer::current_document_binding(self.native_view_id),
+            expected_generation,
+            transport,
+            source,
+        ) else {
+            log::debug!(
+                "Dropping stale document MessagePort frame ({})",
+                self.webtag()
+            );
+            return;
+        };
+        match self
+            .message_ingress
+            .enqueue(IncomingWebMessage::new(body, context))
+        {
+            WebMessageEnqueue::Queued => return,
+            WebMessageEnqueue::Rejected { reason, count } => {
+                if should_sample_rejection(count) {
+                    log::warn!(
+                        "Dropping document MessagePort frame reason={} count={} ({})",
+                        reason.as_str(),
+                        count,
+                        self.webtag()
+                    );
+                }
+                return;
+            }
+            WebMessageEnqueue::Schedule => {}
+        }
+        if WebMessageExecutor::global()
+            .schedule(WebMessageJob {
+                ingress: Arc::clone(&self.message_ingress),
+                webview: Arc::downgrade(self),
+            })
+            .is_err()
+        {
+            self.message_ingress.close();
+        }
+    }
+
+    fn close_message_ingress(&self) {
+        self.message_ingress.close();
+    }
+
+    /// Read the document binding currently owned by this native WebView.
+    ///
+    /// This is intentionally read-only. Only accepted top-level navigation
+    /// starts and reliable commits in the event normalizer can change it.
+    pub fn current_document_binding(&self) -> crate::DocumentBinding {
+        crate::events::normalizer::current_document_binding(self.native_view_id)
     }
 
     /// Get the appid
@@ -878,13 +1598,36 @@ impl WebView {
 
     /// Synchronously invoke the registered scheme handler for `scheme`.
     /// Returns `None` if no handler is registered or the handler declines.
+    ///
+    /// Compatibility ingress for out-of-tree / older adapters. It preserves
+    /// the exact owning native instance but has no frame proof, so it always
+    /// invokes contextual handlers with [`SchemeRequestFrame::Unproven`].
+    #[allow(dead_code)]
     pub(crate) fn handle_scheme_request(
         &self,
         scheme: &str,
         request: http::Request<Vec<u8>>,
     ) -> Option<WebResourceResponse> {
+        self.handle_contextual_scheme_request(
+            scheme,
+            ContextualSchemeRequest::new(
+                request,
+                self.native_view_id(),
+                SchemeRequestFrame::Unproven,
+            ),
+        )
+    }
+
+    /// Invoke a registered scheme handler with adapter-attested callback
+    /// context. Platform code must validate its callback identity before
+    /// constructing the request.
+    pub(crate) fn handle_contextual_scheme_request(
+        &self,
+        scheme: &str,
+        request: ContextualSchemeRequest,
+    ) -> Option<WebResourceResponse> {
         #[cfg(any(target_os = "ios", target_os = "macos"))]
-        if let Some(response) = self.inner.handle_internal_bridge_request(&request) {
+        if let Some(response) = self.inner.handle_internal_bridge_request(request.request()) {
             return Some(response);
         }
 
@@ -1405,6 +2148,16 @@ impl WebViewController for WebView {
         self.inner.post_message(message)
     }
 
+    fn post_message_to_document(
+        &self,
+        expected_generation: crate::DocumentGeneration,
+        gate: Arc<dyn crate::DocumentOutboundGate>,
+        message: &str,
+    ) -> Result<(), WebViewError> {
+        self.inner
+            .post_message_to_document(expected_generation, gate, message)
+    }
+
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
         self.inner.clear_browsing_data()
     }
@@ -1885,11 +2638,23 @@ impl WebViewSessionSignals {
 pub(crate) struct WebViewCreateSender {
     webtag: WebTag,
     signals: Arc<WebViewSessionSignals>,
+    native_view_id: NativeWebViewId,
 }
 
 impl WebViewCreateSender {
     fn new(webtag: WebTag, signals: Arc<WebViewSessionSignals>) -> Self {
-        Self { webtag, signals }
+        Self {
+            webtag,
+            signals,
+            native_view_id: next_native_webview_id(),
+        }
+    }
+
+    /// The concrete native-instance identity reserved before platform callback
+    /// registration. Platform closures must capture this value and validate it
+    /// against a lookup before delivering a message for a reusable WebTag.
+    pub(crate) const fn native_view_id(&self) -> NativeWebViewId {
+        self.native_view_id
     }
 
     pub(crate) fn succeed(self, webview: Arc<WebView>) {
@@ -2300,7 +3065,7 @@ fn create_webview_session(webtag: WebTag, options: WebViewCreateOptions) -> WebV
     let session = signals.subscribe(webtag.clone());
     let sender = WebViewCreateSender::new(webtag.clone(), signals.clone());
     replace_session_signals(&webtag, signals);
-    crate::events::normalizer::begin(&webtag);
+    crate::events::normalizer::begin(&webtag, sender.native_view_id());
     request_create_webview(&webtag, sender, options);
     session
 }
@@ -2321,6 +3086,7 @@ fn windows_webview_create_lock(webtag_key: &str) -> Arc<Mutex<()>> {
 #[cfg_attr(target_os = "android", allow(dead_code))]
 pub(crate) fn register_webview(webview: Arc<WebView>) {
     let webtag = webview.webtag();
+    crate::events::normalizer::bind_native_view(&webtag, webview.native_view_id());
 
     // Install any pending callbacks
     if let Some(pending) = PENDING_CALLBACKS.get()
@@ -2376,6 +3142,7 @@ pub(crate) fn register_android_webview_if_current(
 
     let instances = WEBVIEW_INSTANCES.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
     let mut webviews = lock_or_recover(instances, "webview_instances.register_android");
+    crate::events::normalizer::bind_native_view(&webtag, webview.native_view_id());
     webviews.insert(webtag.key().to_string(), webview);
     true
 }
@@ -2391,6 +3158,19 @@ pub(crate) fn find_webview(webtag: &WebTag) -> Option<Arc<WebView>> {
     } else {
         None
     }
+}
+
+/// Resolve a logical WebTag only while it still names the native instance
+/// which registered the callback. This prevents a late callback from a
+/// destroyed WebView from being delivered to a replacement that reused its
+/// tag.
+// This is consumed by conditionally compiled platform callback adapters.
+#[allow(dead_code)]
+pub(crate) fn find_webview_by_native_view_id(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+) -> Option<Arc<WebView>> {
+    find_webview(webtag).filter(|webview| webview.native_view_id() == native_view_id)
 }
 
 #[cfg(target_os = "windows")]
@@ -2419,8 +3199,15 @@ pub(crate) fn list_webviews() -> Vec<WebTag> {
     Vec::new()
 }
 
-pub(crate) fn find_webview_delegate(webtag: &WebTag) -> Option<Arc<dyn WebViewDelegate>> {
-    find_webview(webtag).and_then(|webview| webview.get_delegate())
+/// Resolve a delegate only while a callback's concrete native WebView still
+/// owns the logical tag. A retired normalizer must never deliver its queued
+/// output to a replacement delegate.
+pub(crate) fn find_webview_delegate_by_native_view_id(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+) -> Option<Arc<dyn WebViewDelegate>> {
+    find_webview_by_native_view_id(webtag, native_view_id)
+        .and_then(|webview| webview.get_delegate())
 }
 
 fn remove_arc_if_matches<T>(
@@ -2439,6 +3226,10 @@ fn remove_arc_if_matches<T>(
 /// its tag. Tag-scoped session, callback, and navigation state may already
 /// belong to a newer create cycle and is deliberately left untouched.
 pub(crate) fn destroy_webview_if_matches(webtag: &WebTag, expected: &Arc<WebView>) -> bool {
+    // Close before touching the registry: a queued message must not cross the
+    // remove-to-close window and become in-flight. Closing an already detached
+    // expected instance is harmless and still rejects its late native callbacks.
+    expected.close_message_ingress();
     let removed = if let Some(instances) = WEBVIEW_INSTANCES.get()
         && let Ok(mut webviews) = instances.lock()
     {
@@ -2459,8 +3250,17 @@ pub(crate) fn destroy_webview_if_matches(webtag: &WebTag, expected: &Arc<WebView
     }
 }
 
-/// Destroy a WebView instance by WebTag and remove it from global storage
-pub(crate) fn destroy_webview(webtag: &WebTag) {
+/// Destroy whichever WebView is currently registered for `webtag`.
+///
+/// This is intentionally tag-scoped host lifecycle behavior. Callers that
+/// retain a concrete instance must use [`destroy_webview_if_matches`] instead.
+pub(crate) fn destroy_current_webview(webtag: &WebTag) {
+    // Close ingress before lifecycle notifications and native teardown. A
+    // delivery already admitted under its own mutex may finish; queued and
+    // future callbacks are rejected immediately.
+    if let Some(webview) = find_webview(webtag) {
+        webview.close_message_ingress();
+    }
     // Drain active navigations as Cancelled(WebViewDestroyed) while the
     // delegate can still observe them, then drop the normalizer.
     crate::events::normalizer::destroy(webtag);
@@ -2480,6 +3280,7 @@ pub(crate) fn destroy_webview(webtag: &WebTag) {
         None
     };
     if let Some(webview) = removed {
+        webview.close_message_ingress();
         // Windows composition teardown is asynchronous. Hide the controller
         // synchronously while it is still callable so a closed browser tab or
         // surface cannot leave its last composed frame over the replacement.
@@ -2499,11 +3300,499 @@ pub(crate) fn destroy_webview(webtag: &WebTag) {
 #[cfg(test)]
 mod tests {
     use super::{
-        WEBVIEW_SESSIONS, WebTag, WebViewCreateSender, WebViewSessionSignals,
+        MAX_PENDING_WEB_MESSAGE_BYTES, MAX_PENDING_WEB_MESSAGES, MAX_WEB_MESSAGE_BYTES,
+        PlatformConsoleBackend, PlatformConsoleDelivery, SecurityProfile, WEBVIEW_SESSIONS,
+        WebMessageEnqueue, WebMessageIngress, WebMessageRejectReason, WebTag, WebViewCreateOptions,
+        WebViewCreateSender, WebViewSessionSignals, android_document_port_context,
+        block_on_scheme_future, next_native_webview_id, platform_console_delivery,
         remove_arc_if_matches, remove_session_signals_if_matches, replace_session_signals,
+        should_sample_rejection, snapshot_web_message_context, web_message_bytes_within_limit,
+    };
+    use crate::{
+        ContextualSchemeRequest, DocumentBinding, IncomingWebMessage, NativeWebViewId,
+        SchemeOutcome, SchemeRequestFrame, WebMessageContext, WebMessageFrame, WebMessageSource,
+        WebMessageTransport,
     };
     use std::collections::HashMap;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex, mpsc};
+    use std::thread;
+
+    fn message(body: &str, native_view: crate::NativeWebViewId) -> IncomingWebMessage {
+        IncomingWebMessage::new(
+            body.to_string(),
+            WebMessageContext::new(
+                native_view,
+                DocumentBinding::Unbound,
+                WebMessageFrame::Unproven,
+                WebMessageTransport::Other,
+                WebMessageSource::unavailable(),
+            ),
+        )
+    }
+
+    fn assert_browser_console_is_bound(backend: PlatformConsoleBackend) {
+        assert_eq!(
+            platform_console_delivery(SecurityProfile::BrowserRelaxed, backend),
+            PlatformConsoleDelivery::RequiredV3Envelope
+        );
+        assert_eq!(
+            platform_console_delivery(SecurityProfile::StrictDefault, backend),
+            PlatformConsoleDelivery::DirectDelegate
+        );
+    }
+
+    #[test]
+    fn apple_browser_console_requires_v3_envelope() {
+        assert_browser_console_is_bound(PlatformConsoleBackend::Apple);
+    }
+
+    #[test]
+    fn android_browser_console_requires_v3_envelope() {
+        assert_browser_console_is_bound(PlatformConsoleBackend::Android);
+    }
+
+    #[test]
+    fn harmony_browser_console_requires_v3_envelope() {
+        assert_browser_console_is_bound(PlatformConsoleBackend::Harmony);
+    }
+
+    #[test]
+    fn windows_browser_console_requires_v3_envelope() {
+        assert_browser_console_is_bound(PlatformConsoleBackend::Windows);
+    }
+
+    #[test]
+    fn native_webview_ids_are_not_reused_across_logical_tag_reuse() {
+        let retired = next_native_webview_id();
+        let replacement = next_native_webview_id();
+        assert_ne!(retired, replacement);
+
+        let late_message = message("late", retired);
+        assert_ne!(late_message.context().native_view(), replacement);
+        assert_eq!(late_message.context().document(), DocumentBinding::Unbound);
+    }
+
+    #[test]
+    fn android_top_level_proof_requires_current_document_port() {
+        let native_view = next_native_webview_id();
+        let current = crate::DocumentGeneration::new(42);
+        let stale = crate::DocumentGeneration::new(41);
+
+        let context = android_document_port_context(
+            native_view,
+            DocumentBinding::Bound(current),
+            current,
+            WebMessageTransport::AndroidMessagePort,
+            WebMessageSource::unavailable(),
+        )
+        .expect("the exact document port proves the top-level document");
+        assert_eq!(context.frame(), WebMessageFrame::TopLevel);
+        assert_eq!(context.document(), DocumentBinding::Bound(current));
+
+        assert!(
+            android_document_port_context(
+                native_view,
+                DocumentBinding::Bound(current),
+                stale,
+                WebMessageTransport::AndroidMessagePort,
+                WebMessageSource::unavailable(),
+            )
+            .is_none()
+        );
+        assert!(
+            android_document_port_context(
+                native_view,
+                DocumentBinding::Bound(current),
+                current,
+                WebMessageTransport::AndroidJavascriptInterface,
+                WebMessageSource::unavailable(),
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn legacy_scheme_handler_runs_from_contextual_ingress() {
+        let options = WebViewCreateOptions::strict().on_scheme("lx", |request| async move {
+            assert_eq!(request.uri(), "lx://app/index.html");
+            SchemeOutcome::PassThrough
+        });
+        let (_, callbacks) = options.normalize().unwrap();
+        let handler = callbacks.scheme_handlers.get("lx").unwrap();
+        let outcome = block_on_scheme_future(handler(ContextualSchemeRequest::new(
+            http::Request::builder()
+                .uri("lx://app/index.html")
+                .body(Vec::new())
+                .unwrap(),
+            NativeWebViewId::new(101),
+            SchemeRequestFrame::TopLevelDocument,
+        )));
+        assert!(matches!(outcome, SchemeOutcome::PassThrough));
+    }
+
+    #[test]
+    fn ingress_snapshots_document_binding_at_enqueue_time() {
+        let webtag = WebTag::new("test-app", "binding-snapshot", Some(1));
+        let native_view = next_native_webview_id();
+        crate::events::normalizer::begin(&webtag, native_view);
+        crate::events::normalizer::submit(
+            &webtag,
+            native_view,
+            crate::events::normalizer::NativeSignal::NavigationStarted {
+                key: Some(71),
+                url: "https://first/".into(),
+            },
+        );
+        crate::events::normalizer::submit(
+            &webtag,
+            native_view,
+            crate::events::normalizer::NativeSignal::DocumentCommitted { key: Some(71) },
+        );
+
+        let ingress = WebMessageIngress::default();
+        let bound = IncomingWebMessage::new(
+            "bound".to_string(),
+            snapshot_web_message_context(
+                native_view,
+                WebMessageFrame::Unproven,
+                WebMessageTransport::Other,
+                WebMessageSource::unavailable(),
+            ),
+        );
+        assert_eq!(
+            bound.context().document(),
+            DocumentBinding::Bound(crate::DocumentGeneration::new(1))
+        );
+        assert_eq!(ingress.enqueue(bound), WebMessageEnqueue::Schedule);
+
+        crate::events::normalizer::submit(
+            &webtag,
+            native_view,
+            crate::events::normalizer::NativeSignal::NavigationStarted {
+                key: Some(72),
+                url: "https://second/".into(),
+            },
+        );
+        let revoked = IncomingWebMessage::new(
+            "revoked".to_string(),
+            snapshot_web_message_context(
+                native_view,
+                WebMessageFrame::Unproven,
+                WebMessageTransport::Other,
+                WebMessageSource::unavailable(),
+            ),
+        );
+        assert_eq!(revoked.context().document(), DocumentBinding::Unbound);
+        assert_eq!(ingress.enqueue(revoked), WebMessageEnqueue::Queued);
+
+        let mut bindings = Vec::new();
+        while let Some(message) = ingress.begin_delivery() {
+            bindings.push(message.context().document());
+            ingress.finish_delivery();
+        }
+        assert_eq!(
+            bindings,
+            vec![
+                DocumentBinding::Bound(crate::DocumentGeneration::new(1)),
+                DocumentBinding::Unbound,
+            ]
+        );
+        crate::events::normalizer::destroy(&webtag);
+    }
+
+    #[test]
+    fn message_ingress_preserves_fifo_across_reentrant_enqueue() {
+        let ingress = WebMessageIngress::default();
+        let native_view = next_native_webview_id();
+        let delivered = Mutex::new(Vec::new());
+
+        assert_eq!(
+            ingress.enqueue(message("first", native_view)),
+            WebMessageEnqueue::Schedule
+        );
+        while let Some(incoming) = ingress.begin_delivery() {
+            let body = incoming.body().to_string();
+            delivered.lock().unwrap().push(body.clone());
+            if body == "first" {
+                assert_eq!(
+                    ingress.enqueue(message("second", native_view)),
+                    WebMessageEnqueue::Queued
+                );
+                assert_eq!(
+                    ingress.enqueue(message("third", native_view)),
+                    WebMessageEnqueue::Queued
+                );
+            }
+            ingress.finish_delivery();
+        }
+
+        assert_eq!(*delivered.lock().unwrap(), vec!["first", "second", "third"]);
+    }
+
+    #[test]
+    fn message_ingress_bounds_untrusted_backlog_without_reordering_accepted_messages() {
+        let ingress = WebMessageIngress::default();
+        let native_view = next_native_webview_id();
+        assert_eq!(
+            ingress.enqueue(message("0", native_view)),
+            WebMessageEnqueue::Schedule
+        );
+        for index in 1..MAX_PENDING_WEB_MESSAGES {
+            assert_eq!(
+                ingress.enqueue(message(&index.to_string(), native_view)),
+                WebMessageEnqueue::Queued
+            );
+        }
+        assert_eq!(
+            ingress.enqueue(message("overflow", native_view)),
+            WebMessageEnqueue::Rejected {
+                reason: WebMessageRejectReason::QueueCountLimit,
+                count: 1,
+            }
+        );
+
+        let mut accepted = Vec::new();
+        while let Some(incoming) = ingress.begin_delivery() {
+            accepted.push(incoming.body().to_owned());
+            ingress.finish_delivery();
+        }
+        assert_eq!(accepted.len(), MAX_PENDING_WEB_MESSAGES);
+        assert_eq!(accepted.first().map(String::as_str), Some("0"));
+        let last = (MAX_PENDING_WEB_MESSAGES - 1).to_string();
+        assert_eq!(accepted.last().map(String::as_str), Some(last.as_str()));
+    }
+
+    #[test]
+    fn message_ingress_rejects_an_oversized_message_before_queueing() {
+        let ingress = WebMessageIngress::default();
+        let native_view = next_native_webview_id();
+        let oversized = "x".repeat(MAX_WEB_MESSAGE_BYTES + 1);
+
+        assert_eq!(
+            ingress.enqueue(message(&oversized, native_view)),
+            WebMessageEnqueue::Rejected {
+                reason: WebMessageRejectReason::MessageTooLarge,
+                count: 1,
+            }
+        );
+        assert_eq!(ingress.queued_bytes(), 0);
+        assert!(ingress.begin_delivery().is_none());
+    }
+
+    #[test]
+    fn raw_web_message_byte_cap_includes_the_exact_boundary() {
+        assert!(web_message_bytes_within_limit(MAX_WEB_MESSAGE_BYTES - 1));
+        assert!(web_message_bytes_within_limit(MAX_WEB_MESSAGE_BYTES));
+        assert!(!web_message_bytes_within_limit(MAX_WEB_MESSAGE_BYTES + 1));
+        assert!(!web_message_bytes_within_limit(usize::MAX));
+    }
+
+    #[test]
+    fn message_ingress_byte_budget_is_released_on_delivery_and_close() {
+        let ingress = WebMessageIngress::default();
+        let native_view = next_native_webview_id();
+        let chunk = "x".repeat(MAX_WEB_MESSAGE_BYTES);
+        let accepted = MAX_PENDING_WEB_MESSAGE_BYTES / MAX_WEB_MESSAGE_BYTES;
+
+        for index in 0..accepted {
+            assert_eq!(
+                ingress.enqueue(message(&chunk, native_view)),
+                if index == 0 {
+                    WebMessageEnqueue::Schedule
+                } else {
+                    WebMessageEnqueue::Queued
+                }
+            );
+        }
+        assert_eq!(ingress.queued_bytes(), MAX_PENDING_WEB_MESSAGE_BYTES);
+        assert_eq!(
+            ingress.enqueue(message("overflow", native_view)),
+            WebMessageEnqueue::Rejected {
+                reason: WebMessageRejectReason::QueueByteLimit,
+                count: 1,
+            }
+        );
+
+        let first = ingress.begin_delivery().expect("first queued message");
+        assert_eq!(first.body().len(), MAX_WEB_MESSAGE_BYTES);
+        assert_eq!(
+            ingress.queued_bytes(),
+            MAX_PENDING_WEB_MESSAGE_BYTES - MAX_WEB_MESSAGE_BYTES
+        );
+        ingress.finish_delivery();
+        assert_eq!(
+            ingress.enqueue(message(&chunk, native_view)),
+            WebMessageEnqueue::Queued
+        );
+        ingress.close();
+        assert_eq!(ingress.queued_bytes(), 0);
+        assert!(ingress.begin_delivery().is_none());
+    }
+
+    #[test]
+    fn ingress_rejection_counters_are_reason_coded_and_logs_are_sampled() {
+        let ingress = WebMessageIngress::default();
+        let native_view = next_native_webview_id();
+        let oversized = "x".repeat(MAX_WEB_MESSAGE_BYTES + 1);
+        assert_eq!(
+            ingress.reject(WebMessageRejectReason::MessageTooLarge),
+            WebMessageEnqueue::Rejected {
+                reason: WebMessageRejectReason::MessageTooLarge,
+                count: 1,
+            }
+        );
+        for expected_count in 2..=4 {
+            assert_eq!(
+                ingress.enqueue(message(&oversized, native_view)),
+                WebMessageEnqueue::Rejected {
+                    reason: WebMessageRejectReason::MessageTooLarge,
+                    count: expected_count,
+                }
+            );
+        }
+        assert_eq!(
+            ingress.rejection_count(WebMessageRejectReason::MessageTooLarge),
+            4
+        );
+        assert!(should_sample_rejection(1));
+        assert!(should_sample_rejection(2));
+        assert!(!should_sample_rejection(3));
+        assert!(should_sample_rejection(4));
+    }
+
+    #[test]
+    fn message_ingress_preserves_fifo_across_producer_threads() {
+        let ingress = Arc::new(WebMessageIngress::default());
+        let native_view = next_native_webview_id();
+        let (a_to_b_tx, a_to_b_rx) = mpsc::channel();
+        let (b_to_a_tx, b_to_a_rx) = mpsc::channel();
+
+        let a_ingress = Arc::clone(&ingress);
+        let producer_a = thread::spawn(move || {
+            assert_eq!(
+                a_ingress.enqueue(message("0", native_view)),
+                WebMessageEnqueue::Schedule
+            );
+            a_to_b_tx.send(()).unwrap();
+            for value in (2..64).step_by(2) {
+                b_to_a_rx.recv().unwrap();
+                assert_eq!(
+                    a_ingress.enqueue(message(&value.to_string(), native_view)),
+                    WebMessageEnqueue::Queued
+                );
+                a_to_b_tx.send(()).unwrap();
+            }
+        });
+
+        let b_ingress = Arc::clone(&ingress);
+        let producer_b = thread::spawn(move || {
+            for value in (1..64).step_by(2) {
+                a_to_b_rx.recv().unwrap();
+                assert_eq!(
+                    b_ingress.enqueue(message(&value.to_string(), native_view)),
+                    WebMessageEnqueue::Queued
+                );
+                if value != 63 {
+                    b_to_a_tx.send(()).unwrap();
+                }
+            }
+        });
+
+        producer_a.join().unwrap();
+        producer_b.join().unwrap();
+
+        let mut accepted = Vec::new();
+        while let Some(incoming) = ingress.begin_delivery() {
+            accepted.push(incoming.body().to_owned());
+            ingress.finish_delivery();
+        }
+        assert_eq!(
+            accepted,
+            (0..64).map(|value| value.to_string()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn destroying_ingress_discards_queued_messages_but_allows_admitted_delivery() {
+        let ingress = Arc::new(WebMessageIngress::default());
+        let native_view = next_native_webview_id();
+        assert_eq!(
+            ingress.enqueue(message("in-flight", native_view)),
+            WebMessageEnqueue::Schedule
+        );
+        assert_eq!(
+            ingress.enqueue(message("queued", native_view)),
+            WebMessageEnqueue::Queued
+        );
+
+        let delivered = Mutex::new(Vec::new());
+        let ingress_for_delivery = Arc::clone(&ingress);
+        ingress.drain(|incoming| {
+            delivered.lock().unwrap().push(incoming.body().to_owned());
+            ingress_for_delivery.close();
+            assert_eq!(
+                ingress_for_delivery.enqueue(message("after-close", native_view)),
+                WebMessageEnqueue::Rejected {
+                    reason: WebMessageRejectReason::Closed,
+                    count: 1,
+                }
+            );
+        });
+
+        assert_eq!(*delivered.lock().unwrap(), vec!["in-flight"]);
+        assert!(ingress.begin_delivery().is_none());
+    }
+
+    #[test]
+    fn closing_before_registry_removal_prevents_queued_message_admission() {
+        let ingress = WebMessageIngress::default();
+        let native_view = next_native_webview_id();
+        assert_eq!(
+            ingress.enqueue(message("queued", native_view)),
+            WebMessageEnqueue::Schedule
+        );
+
+        // This mirrors `destroy_webview_if_matches`: close is the destroy
+        // linearization point and happens before the registry mutation.
+        ingress.close();
+
+        assert!(ingress.begin_delivery().is_none());
+        assert_eq!(
+            ingress.enqueue(message("late", native_view)),
+            WebMessageEnqueue::Rejected {
+                reason: WebMessageRejectReason::Closed,
+                count: 1,
+            }
+        );
+    }
+
+    #[test]
+    fn delegate_panic_does_not_stall_following_messages() {
+        let ingress = WebMessageIngress::default();
+        let native_view = next_native_webview_id();
+        assert_eq!(
+            ingress.enqueue(message("panic", native_view)),
+            WebMessageEnqueue::Schedule
+        );
+        assert_eq!(
+            ingress.enqueue(message("after", native_view)),
+            WebMessageEnqueue::Queued
+        );
+
+        let delivered = Mutex::new(Vec::new());
+        ingress.drain(|incoming| {
+            if incoming.body() == "panic" {
+                panic!("test delegate panic");
+            }
+            delivered.lock().unwrap().push(incoming.body().to_owned());
+        });
+
+        assert_eq!(*delivered.lock().unwrap(), vec!["after"]);
+        assert_eq!(
+            ingress.enqueue(message("recovered", native_view)),
+            WebMessageEnqueue::Schedule
+        );
+    }
 
     #[test]
     fn conditional_instance_removal_uses_arc_identity() {

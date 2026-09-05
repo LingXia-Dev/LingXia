@@ -23,10 +23,48 @@ spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
     describe: 'UI navigateBack to pop the page instance',
   });
 
+  const readCurrentUiLifecycle = () => app.eval({
+    script: `
+      (() => {
+        const data = getCurrentPages().find((page) => page.route.includes('/ui/'))?.data;
+        return {
+          instanceTag: data?.instanceTag ?? '',
+          onLoadCount: (data?.events ?? []).filter((event) => event.endsWith('onLoad')).length,
+        };
+      })()
+    `,
+  }) as Promise<{ instanceTag: string; onLoadCount: number }>;
+  await eventually(
+    readCurrentUiLifecycle,
+    ({ onLoadCount }) => onLoadCount > 0,
+    { describe: 'current UI page onLoad count before redirect' },
+  );
+  await app.eval({
+    script: `
+      const page = getCurrentPages().find((candidate) => candidate.route.includes('/ui/'));
+      if (!page) throw new Error('current UI PageInstance is missing');
+      page.data.events = [];
+    `,
+  });
   await app.page.click({ page: 'ui', css: '[data-testid="ui-redirect-to"]' });
   await eventually(() => app.nav.stack(), (stack) => stack.length === 1 && stack[0]?.name === 'ui', {
     describe: 'UI redirectTo to replace the current page',
   });
+  // Rendered controls dispatch Logic actions as fire-and-forget notifications.
+  // Observe the redirect in Logic, then wait for that exact instance tag to
+  // reach the rendered document before sending the next UI intent.
+  const redirected = await eventually(
+    readCurrentUiLifecycle,
+    ({ instanceTag, onLoadCount }) => instanceTag !== '' && onLoadCount > 0,
+    { describe: 'same-route redirect onLoad lifecycle event' },
+  );
+  await waitForElementAttribute(
+    app,
+    'ui',
+    '[data-testid="ui-page"]',
+    'data-instance-tag',
+    redirected.instanceTag,
+  );
 
   await app.page.click({ page: 'ui', css: '[data-testid="ui-switch-tab"]' });
   await waitForCurrentPage(app, 'home');

@@ -11,7 +11,11 @@ import {
   onNavigationPolicy as hostOnNavigationPolicy,
   onScreenshotResult as hostOnScreenshotResult,
   onWebviewControllerCreated as hostOnWebviewControllerCreated,
-  onWebviewControllerDestroyed as hostOnWebviewControllerDestroyed
+  onWebviewControllerDestroyed as hostOnWebviewControllerDestroyed,
+  onWebviewDocumentCommit as hostOnWebviewDocumentCommit,
+  onWebviewPageBegin as hostOnWebviewPageBegin,
+  onWebviewPageEnd as hostOnWebviewPageEnd,
+  onWebviewRenderExited as hostOnWebviewRenderExited
 } from 'liblingxia.so';
 
 /// Subset of ArkWeb's `webview.SnapshotInfo` that we care about. Declared
@@ -48,6 +52,7 @@ export interface EffectiveWebViewCreateOptions {
 
 export interface WebViewDownloadRequest {
   webtag: string;
+  nativeViewToken: string;
   url: string;
   userAgent: string;
   contentDisposition: string;
@@ -57,22 +62,30 @@ export interface WebViewDownloadRequest {
 
 export interface WebViewLoadError {
   webtag: string;
+  // Native-view callback token, not a document generation.
+  nativeGeneration: string;
+  pageEpoch: string;
   url: string;
   errorCode: number;
   description: string;
 }
 
 export interface WebViewHostHooks {
-  onControllerCreated?: (webtag: string) => void;
-  onControllerDestroyed?: (webtag: string) => void;
+  onControllerCreated?: (webtag: string, nativeViewToken: string) => void;
+  onControllerDestroyed?: (webtag: string, nativeViewToken: string) => void;
   onNavigationPolicy?: (
     webtag: string,
+    nativeViewToken: string,
     url: string,
     hasUserGesture: boolean,
     isMainFrame: boolean
   ) => boolean;
   onDownloadStart?: (request: WebViewDownloadRequest) => void;
   onLoadError?: (error: WebViewLoadError) => void;
+  onPageBegin?: (webtag: string, nativeViewToken: string, pageEpoch: string, url: string) => boolean;
+  onDocumentCommit?: (webtag: string, nativeViewToken: string, pageEpoch: string, url: string) => boolean;
+  onPageEnd?: (webtag: string, nativeViewToken: string, pageEpoch: string, url: string) => boolean;
+  onRenderExited?: (webtag: string, nativeViewToken: string) => boolean;
 }
 
 interface RawOptionsToken {
@@ -105,7 +118,11 @@ function hasHostHooksConfigured(): boolean {
     hostHooks.onControllerDestroyed ||
     hostHooks.onNavigationPolicy ||
     hostHooks.onDownloadStart ||
-    hostHooks.onLoadError
+    hostHooks.onLoadError ||
+    hostHooks.onPageBegin ||
+    hostHooks.onDocumentCommit ||
+    hostHooks.onPageEnd ||
+    hostHooks.onRenderExited
   );
 }
 
@@ -116,23 +133,25 @@ function bindDefaultHostHooksIfNeeded(): void {
   }
 
   hostHooks = {
-    onControllerCreated: (webtag: string): void => {
-      hostOnWebviewControllerCreated(webtag);
+    onControllerCreated: (webtag: string, nativeViewToken: string): void => {
+      hostOnWebviewControllerCreated(webtag, nativeViewToken);
     },
-    onControllerDestroyed: (webtag: string): void => {
-      hostOnWebviewControllerDestroyed(webtag);
+    onControllerDestroyed: (webtag: string, nativeViewToken: string): void => {
+      hostOnWebviewControllerDestroyed(webtag, nativeViewToken);
     },
     onNavigationPolicy: (
       webtag: string,
+      nativeViewToken: string,
       url: string,
       hasUserGesture: boolean,
       isMainFrame: boolean
     ): boolean => {
-      return hostOnNavigationPolicy(webtag, url, hasUserGesture, isMainFrame);
+      return hostOnNavigationPolicy(webtag, nativeViewToken, url, hasUserGesture, isMainFrame);
     },
     onDownloadStart: (request: WebViewDownloadRequest): void => {
       hostOnDownloadStart(
         request.webtag,
+        request.nativeViewToken,
         request.url,
         request.userAgent,
         request.contentDisposition,
@@ -141,8 +160,19 @@ function bindDefaultHostHooksIfNeeded(): void {
       );
     },
     onLoadError: (error: WebViewLoadError): void => {
-      hostOnLoadError(error.webtag, error.url, error.errorCode, error.description);
-    }
+      hostOnLoadError(
+        error.webtag,
+        error.nativeGeneration,
+        error.pageEpoch,
+        error.url,
+        error.errorCode,
+        error.description
+      );
+    },
+    onPageBegin: hostOnWebviewPageBegin,
+    onDocumentCommit: hostOnWebviewDocumentCommit,
+    onPageEnd: hostOnWebviewPageEnd,
+    onRenderExited: hostOnWebviewRenderExited
   };
   defaultHostHooksBound = true;
 }
@@ -238,25 +268,25 @@ function optionsEqual(a: EffectiveWebViewCreateOptions, b: EffectiveWebViewCreat
     && a.surfaceOwned === b.surfaceOwned;
 }
 
-function notifyControllerCreated(webtag: string): void {
+function notifyControllerCreated(webtag: string, nativeViewToken: string): void {
   const callback = hostHooks.onControllerCreated;
   if (!callback) {
     return;
   }
   try {
-    callback(webtag);
+    callback(webtag, nativeViewToken);
   } catch (error) {
     hilog.error(DOMAIN, TAG, `Host hook onControllerCreated failed for ${webtag}: ${error}`);
   }
 }
 
-function notifyControllerDestroyed(webtag: string): void {
+function notifyControllerDestroyed(webtag: string, nativeViewToken: string): void {
   const callback = hostHooks.onControllerDestroyed;
   if (!callback) {
     return;
   }
   try {
-    callback(webtag);
+    callback(webtag, nativeViewToken);
   } catch (error) {
     hilog.error(DOMAIN, TAG, `Host hook onControllerDestroyed failed for ${webtag}: ${error}`);
   }
@@ -285,6 +315,7 @@ export class WebViewManager {
   // repeat across generations — a stale destroy must not tear down the
   // successor registered under the same tag.
   private static generations: Map<string, string> = new Map();
+  private static documentEpochs: Map<string, number> = new Map();
 
   // Engine UA captured before the first override for each controller.
   private static defaultUserAgents: Map<string, string> = new Map();
@@ -344,6 +375,7 @@ export class WebViewManager {
         );
         const staleInfo = WebViewManager.webViewInfos.get(logicalTag);
         WebViewManager.controllers.delete(logicalTag);
+        WebViewManager.documentEpochs.delete(logicalTag);
         WebViewManager.defaultUserAgents.delete(logicalTag);
         WebViewManager.webViewInfos.delete(logicalTag);
         if (staleInfo) {
@@ -472,6 +504,70 @@ export class WebViewManager {
     return WebViewManager.generations.get(webtag) ?? '';
   }
 
+  /// Return the native-issued generation only when this exact controller still
+  /// owns the tag. A delayed callback from a retired controller fails closed.
+  static getGenerationForController(webtag: string, controller: webview.WebviewController): string {
+    return WebViewManager.controllers.get(webtag) === controller
+      ? WebViewManager.getGeneration(webtag)
+      : '';
+  }
+
+  static pageBegin(webtag: string, controller: webview.WebviewController, url: string): string {
+    const nativeGeneration = WebViewManager.getGenerationForController(webtag, controller);
+    if (!nativeGeneration || !url) {
+      return '';
+    }
+    const nextEpoch = (WebViewManager.documentEpochs.get(webtag) ?? 0) + 1;
+    if (!Number.isSafeInteger(nextEpoch)) {
+      WebViewManager.documentEpochs.delete(webtag);
+      return '';
+    }
+    const pageEpoch = `${nextEpoch}`;
+    WebViewManager.documentEpochs.set(webtag, nextEpoch);
+    bindDefaultHostHooksIfNeeded();
+    return hostHooks.onPageBegin?.(webtag, nativeGeneration, pageEpoch, url) === true
+      ? pageEpoch
+      : '';
+  }
+
+  static documentCommit(
+    webtag: string,
+    controller: webview.WebviewController,
+    pageEpoch: string,
+    url: string
+  ): boolean {
+    const nativeGeneration = WebViewManager.getGenerationForController(webtag, controller);
+    if (!nativeGeneration || !pageEpoch || !url) {
+      return false;
+    }
+    bindDefaultHostHooksIfNeeded();
+    return hostHooks.onDocumentCommit?.(webtag, nativeGeneration, pageEpoch, url) === true;
+  }
+
+  static pageEnd(
+    webtag: string,
+    controller: webview.WebviewController,
+    pageEpoch: string,
+    url: string
+  ): boolean {
+    const nativeGeneration = WebViewManager.getGenerationForController(webtag, controller);
+    if (!nativeGeneration || !pageEpoch || !url) {
+      return false;
+    }
+    bindDefaultHostHooksIfNeeded();
+    return hostHooks.onPageEnd?.(webtag, nativeGeneration, pageEpoch, url) === true;
+  }
+
+  static renderExited(webtag: string, controller: webview.WebviewController): boolean {
+    const nativeGeneration = WebViewManager.getGenerationForController(webtag, controller);
+    if (!nativeGeneration) {
+      return false;
+    }
+    WebViewManager.documentEpochs.delete(webtag);
+    bindDefaultHostHooksIfNeeded();
+    return hostHooks.onRenderExited?.(webtag, nativeGeneration) === true;
+  }
+
   /// True when a destroy notification refers to an older native generation
   /// than the WebView currently registered under the tag.
   static isStaleDestroy(webtag: string, generation?: string): boolean {
@@ -508,6 +604,7 @@ export class WebViewManager {
     WebViewManager.defaultUserAgents.delete(logicalTag);
     WebViewManager.webViewInfos.delete(logicalTag);
     WebViewManager.generations.delete(logicalTag);
+    WebViewManager.documentEpochs.delete(logicalTag);
     WebViewManager.uiCallbacks.forEach(callback => {
       try {
         callback('destroy', webViewInfo);
@@ -516,7 +613,7 @@ export class WebViewManager {
       }
     });
 
-    notifyControllerDestroyed(webtag);
+    notifyControllerDestroyed(webtag, currentGeneration ?? '');
     hilog.info(DOMAIN, TAG, `WebViewManager.destroyWebview completed -> webtag=${webtag} (logical: ${logicalTag})`);
     return true;
   }
@@ -855,8 +952,8 @@ export function removeWebViewUiCallback(callback: (action: string, info: WebView
  * @param webtag - WebView tag
  * @returns true if created successfully, false otherwise
  */
-export function createWebViewController(webtag: string, optionsToken?: string): boolean {
-  return WebViewManager.createWebview(webtag, optionsToken);
+export function createWebViewController(webtag: string, optionsToken?: string, generation?: string): boolean {
+  return WebViewManager.createWebview(webtag, optionsToken, generation);
 }
 
 /**
@@ -900,6 +997,8 @@ export function isEphemeralDataMode(webtag: string): boolean {
 
 export function handleWebViewLoadError(
   webtag: string,
+  nativeGeneration: string,
+  pageEpoch: string,
   url: string,
   errorCode: number,
   description: string
@@ -910,7 +1009,7 @@ export function handleWebViewLoadError(
     return;
   }
   try {
-    callback({ webtag, url, errorCode, description });
+    callback({ webtag, nativeGeneration, pageEpoch, url, errorCode, description });
   } catch (error) {
     hilog.error(DOMAIN, TAG, `Host hook onLoadError failed for ${webtag}: ${error}`);
   }
@@ -922,18 +1021,56 @@ export function setWebViewHostHooks(hooks: WebViewHostHooks): void {
     onControllerDestroyed: hooks.onControllerDestroyed,
     onNavigationPolicy: hooks.onNavigationPolicy,
     onDownloadStart: hooks.onDownloadStart,
-    onLoadError: hooks.onLoadError
+    onLoadError: hooks.onLoadError,
+    onPageBegin: hooks.onPageBegin,
+    onDocumentCommit: hooks.onDocumentCommit,
+    onPageEnd: hooks.onPageEnd,
+    onRenderExited: hooks.onRenderExited
   };
   defaultHostHooksBound = true;
 }
 
-export function notifyWebViewControllerCreated(webtag: string): void {
+export function notifyWebViewControllerCreated(webtag: string, nativeViewToken: string): void {
   bindDefaultHostHooksIfNeeded();
-  notifyControllerCreated(webtag);
+  notifyControllerCreated(webtag, nativeViewToken);
+}
+
+export function notifyWebViewPageBegin(
+  webtag: string,
+  controller: webview.WebviewController,
+  url: string
+): string {
+  return WebViewManager.pageBegin(webtag, controller, url);
+}
+
+export function notifyWebViewDocumentCommit(
+  webtag: string,
+  controller: webview.WebviewController,
+  pageEpoch: string,
+  url: string
+): boolean {
+  return WebViewManager.documentCommit(webtag, controller, pageEpoch, url);
+}
+
+export function notifyWebViewPageEnd(
+  webtag: string,
+  controller: webview.WebviewController,
+  pageEpoch: string,
+  url: string
+): boolean {
+  return WebViewManager.pageEnd(webtag, controller, pageEpoch, url);
+}
+
+export function notifyWebViewRenderExited(
+  webtag: string,
+  controller: webview.WebviewController
+): boolean {
+  return WebViewManager.renderExited(webtag, controller);
 }
 
 export function handleWebViewNavigationPolicy(
   webtag: string,
+  nativeViewToken: string,
   url: string,
   hasUserGesture: boolean,
   isMainFrame: boolean
@@ -947,7 +1084,7 @@ export function handleWebViewNavigationPolicy(
     return false;
   }
   try {
-    return callback(webtag, url, hasUserGesture, isMainFrame) === true;
+    return callback(webtag, nativeViewToken, url, hasUserGesture, isMainFrame) === true;
   } catch (error) {
     hilog.error(DOMAIN, TAG, `Host hook onNavigationPolicy failed for ${webtag}: ${error}`);
     return false;
@@ -956,6 +1093,7 @@ export function handleWebViewNavigationPolicy(
 
 export function handleWebViewDownloadStart(
   webtag: string,
+  nativeViewToken: string,
   url: string,
   userAgent: string,
   contentDisposition: string,
@@ -975,6 +1113,7 @@ export function handleWebViewDownloadStart(
 
   const request: WebViewDownloadRequest = {
     webtag,
+    nativeViewToken,
     url,
     userAgent,
     contentDisposition,

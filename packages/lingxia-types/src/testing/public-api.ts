@@ -126,10 +126,12 @@ const HOST_APP_API = [
   'envVersion',
   'exit',
   'getBaseInfo',
+  'getDisplayLanguageState',
   'onDisplayLanguageChange',
+  'onDisplayLanguageStateChange',
   'screenshot',
   'setBadge',
-  'setDisplayLanguage',
+  'setDisplayLanguagePreference',
 ] as const;
 const HOST_APP_RUNTIME_API = HOST_APP_API.filter((name) => name !== 'autostart');
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
@@ -359,6 +361,7 @@ export const LX_RUNTIME_SURFACES = [
     expression: 'lx.terminal',
     members: TERMINAL_API,
     properties: TERMINAL_API,
+    optionalMembers: ['windows'],
     optional: true,
   },
   {

@@ -158,6 +158,13 @@ pub fn on_host_appearance_changed(dark: bool) {
     lxapp::refresh_auto_appearances();
 }
 
+#[napi]
+pub fn on_host_locale_changed(locale: String) {
+    if let Err(error) = lxapp::refresh_display_language_system(&locale) {
+        log::warn!("Ignoring invalid HarmonyOS host locale '{locale}': {error}");
+    }
+}
+
 /// Return the effective display language selected by the runtime.
 #[napi]
 pub fn get_display_language() -> String {
@@ -216,12 +223,20 @@ pub fn host_log_enabled(level: i32) -> bool {
 #[napi]
 pub fn notify_web_view_state(
     web_tag: String,
+    native_generation: String,
     url: String,
     title: String,
     can_go_back: bool,
     can_go_forward: bool,
 ) {
-    webview_harmony::notify_webview_state(&web_tag, &url, &title, can_go_back, can_go_forward);
+    webview_harmony::notify_webview_state(
+        &web_tag,
+        &native_generation,
+        &url,
+        &title,
+        can_go_back,
+        can_go_forward,
+    );
 }
 
 /// Register custom schemes (must be called before WebEngine initialization)
@@ -817,6 +832,7 @@ fn on_callback(id: String, success: bool, data: String) -> bool {
 fn on_web_file_chooser_requested(
     request_id: String,
     webtag: String,
+    native_view_token: String,
     source_url: String,
     accept_types_json: String,
     allow_multiple: bool,
@@ -825,6 +841,7 @@ fn on_web_file_chooser_requested(
 ) -> bool {
     lingxia_webview::platform::harmony::on_file_chooser_requested(
         &webtag,
+        &native_view_token,
         &request_id,
         &source_url,
         &accept_types_json,
@@ -904,8 +921,8 @@ pub fn camera_take_photo() -> bool {
 }
 
 #[napi]
-pub fn on_webview_controller_created(webtag: String) -> bool {
-    match webview_harmony::webview_controller_created(&webtag) {
+pub fn on_webview_controller_created(webtag: String, native_view_token: String) -> bool {
+    match webview_harmony::webview_controller_created(&webtag, &native_view_token) {
         Ok(_) => true,
         Err(e) => {
             log::error!(
@@ -919,9 +936,53 @@ pub fn on_webview_controller_created(webtag: String) -> bool {
 }
 
 #[napi]
-pub fn on_webview_controller_destroyed(webtag: String) -> bool {
-    webview_harmony::webview_controller_destroyed(&webtag);
+pub fn on_webview_controller_destroyed(webtag: String, native_view_token: String) -> bool {
+    webview_harmony::webview_controller_destroyed(&webtag, &native_view_token);
     true
+}
+
+#[napi]
+pub fn on_webview_page_begin(
+    webtag: String,
+    native_view_token: String,
+    page_epoch: String,
+    url: String,
+) -> bool {
+    let Ok(page_epoch) = page_epoch.parse::<u64>() else {
+        return false;
+    };
+    webview_harmony::on_page_begin(&webtag, &native_view_token, page_epoch, &url)
+}
+
+#[napi]
+pub fn on_webview_document_commit(
+    webtag: String,
+    native_view_token: String,
+    page_epoch: String,
+    url: String,
+) -> bool {
+    let Ok(page_epoch) = page_epoch.parse::<u64>() else {
+        return false;
+    };
+    webview_harmony::on_document_commit(&webtag, &native_view_token, page_epoch, &url)
+}
+
+#[napi]
+pub fn on_webview_page_end(
+    webtag: String,
+    native_view_token: String,
+    page_epoch: String,
+    url: String,
+) -> bool {
+    let Ok(page_epoch) = page_epoch.parse::<u64>() else {
+        return false;
+    };
+    webview_harmony::on_page_end(&webtag, &native_view_token, page_epoch, &url)
+}
+
+#[napi]
+pub fn on_webview_render_exited(webtag: String, native_view_token: String) -> bool {
+    webview_harmony::on_render_exited(&webtag, &native_view_token)
 }
 
 /// ArkTS → Rust callback for `captureScreenshot`.
@@ -959,16 +1020,24 @@ pub fn on_screenshot_result(request_id_str: String, png_base64: String, error: S
 #[napi]
 pub fn on_navigation_policy(
     webtag: String,
+    native_view_token: String,
     url: String,
     has_user_gesture: bool,
     is_main_frame: bool,
 ) -> bool {
-    webview_harmony::check_navigation_policy(&webtag, &url, has_user_gesture, is_main_frame)
+    webview_harmony::check_navigation_policy(
+        &webtag,
+        &native_view_token,
+        &url,
+        has_user_gesture,
+        is_main_frame,
+    )
 }
 
 #[napi]
 pub fn on_download_start(
     webtag: String,
+    native_view_token: String,
     url: String,
     user_agent: String,
     content_disposition: String,
@@ -977,6 +1046,7 @@ pub fn on_download_start(
 ) -> bool {
     webview_harmony::on_download_start(
         &webtag,
+        &native_view_token,
         &url,
         &user_agent,
         &content_disposition,
@@ -986,8 +1056,25 @@ pub fn on_download_start(
 }
 
 #[napi]
-pub fn on_load_error(webtag: String, url: String, error_code: i32, description: String) -> bool {
-    webview_harmony::on_load_error(&webtag, &url, error_code, &description);
+pub fn on_load_error(
+    webtag: String,
+    native_generation: String,
+    page_epoch: String,
+    url: String,
+    error_code: i32,
+    description: String,
+) -> bool {
+    let Ok(page_epoch) = page_epoch.parse::<u64>() else {
+        return false;
+    };
+    webview_harmony::on_load_error(
+        &webtag,
+        &native_generation,
+        page_epoch,
+        &url,
+        error_code,
+        &description,
+    );
     true
 }
 

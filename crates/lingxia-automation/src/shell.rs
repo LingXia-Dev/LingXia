@@ -1,7 +1,7 @@
 //! Host-shell state used to set up and assert end-to-end automation flows.
 
-use crate::auto_err;
 use crate::resolve::json_to_js;
+use crate::{auto_err, require_host_context};
 use lingxia_shell::ShellPinTarget;
 use rong::{FromJSObject, HostError, JSContext, JSResult, JSValue, js_class, js_method};
 
@@ -51,6 +51,7 @@ impl JSShellDriver {
     /// Read the ordered shortcuts currently projected into the host sidebar.
     #[js_method]
     async fn pins(&self, ctx: JSContext) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         pins_to_js(&ctx)
     }
 
@@ -59,6 +60,7 @@ impl JSShellDriver {
     /// Returning the complete order makes physical hit-testing deterministic.
     #[js_method(rename = "setPin")]
     async fn set_pin(&self, ctx: JSContext, options: SetPinOptions) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let target = pin_target(&options.kind, options.key)?;
         lingxia_shell::set_pinned(target, options.pinned)
             .map_err(|error| auto_err(error.to_string()))?;

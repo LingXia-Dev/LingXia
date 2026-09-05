@@ -131,8 +131,8 @@ rong::js_api! {
         /// toggle, default off).
         ///
         /// Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
-        /// are available only to the home lxapp; other lxapps receive a permission
-        /// error.
+        /// are available only to the native-assigned Control app; other lxapps receive
+        /// a permission error.
         ///
         type AutostartApi = r###"{
     /**
@@ -314,8 +314,16 @@ rong::js_api! {
         type BinaryFileData = r###"ArrayBuffer | ArrayBufferView"###;
 
         type AppearancePreference = r###"'auto' | 'light' | 'dark'"###;
-        /// Host display-language setting. `"auto"` follows the system locale.
-        type DisplayLanguageSetting = r###"'auto' | 'en-US' | 'zh-CN'"###;
+        /// Canonical BCP-47 language tag.
+        type LanguageTag = r###"string"###;
+        /// Host display-language preference. `"auto"` follows the system locale.
+        type DisplayLanguagePreference = r###"'auto' | LanguageTag"###;
+        type DisplayLanguageEffectiveSource = r###"'system' | 'preference' | 'sessionOverride'"###;
+        type DisplayLanguageState = r###"{
+    preference: DisplayLanguagePreference;
+    effective: LanguageTag;
+    effectiveSource: DisplayLanguageEffectiveSource;
+}"###;
         type ResolvedAppearance = r###"'light' | 'dark'"###;
         type VisibilityPreference = r###"'auto' | 'hidden'"###;
         type TabBarVisibilityPreference = r###"'auto' | 'visible' | 'hidden'"###;
@@ -835,8 +843,8 @@ rong::js_api! {
 }"###;
 
         /// Built-in browser product page. Opening one requires
-        /// `capabilities.browser` and is restricted to the home lxapp.
-        type BuiltinShellPage = r###"'settings' | 'downloads'"###;
+        /// `capabilities.browser` and is restricted to the native-assigned Control app.
+        type BuiltinShellPage = r###"'downloads'"###;
 
         type OverlaySurfaceSize = r###"{
     /** Width hint. */
@@ -1238,7 +1246,7 @@ true
         ///
         type SurfaceErrorCode = r###"/** The placement cannot be realized by this host build. */
 'unsupported_placement'
-/** A privileged operation was called by an lxapp other than the home lxapp. */
+/** A privileged operation was called by an lxapp other than the native-assigned Control app. */
  | 'denied'
 /** No such declared surface, lxapp, or builtin page. */
  | 'not_declared'
@@ -1349,7 +1357,7 @@ true
     readonly realized: 'main' | 'aside';
 }"###;
 
-        /// A host builtin page such as settings or downloads. The shell owns
+        /// A host builtin page such as downloads. The shell owns
         /// its lifetime and its visibility, so this handle reports identity:
         /// there is no `show` / `hide`, and the inherited `close()` rejects
         /// with `unsupported_placement`.
@@ -1432,7 +1440,7 @@ true
     key?: string;
 }"###;
 
-        /// The declared-surface options only the home lxapp may use.
+        /// The declared-surface options only the native-assigned Control app may use.
         ///
         /// Creating an extra instance and overriding a placement both mutate
         /// shared shell composition, so they live here and not on
@@ -1477,7 +1485,7 @@ true
     key?: string;
 }"###;
 
-        /// Role and edge overrides the home lxapp may apply to a live declared
+        /// Role and edge overrides the native-assigned Control app may apply to a live declared
         /// surface. A stable root rejects non-main roles.
         ///
         type ShellSurfacePatch = r###"{
@@ -1595,7 +1603,7 @@ true
 }"###;
 
         /// Callback-based updates for this lxapp's bundle. Available to every
-        /// lxapp. To update the native host app, the home lxapp uses the
+        /// lxapp. To update the native host app, the Control app uses the
         /// task-based `lx.app.checkUpdate()` API instead.
         ///
         type UpdateManager = r###"{
@@ -1854,7 +1862,7 @@ true
     sidebarActions: ShellSidebarActionsApi;
     /** Compose another lxapp into a shell slot. */
     openApp(appId: string, options: ShellOpenAppOptions): Promise<AppSurface>;
-    /** Open a host builtin page such as settings or downloads. */
+    /** Open a host builtin page such as downloads. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
      * Open a declared surface with shell privileges — the same declaration

@@ -4,19 +4,20 @@ use super::bridge_transport::{
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::WebViewInputError;
-use crate::events::normalizer::{self, NativeNavigationResult, NativeSignal};
+use crate::events::normalizer::{self, NativeKey, NativeNavigationResult, NativeSignal};
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::input_helper::INPUT_HELPER_BOOTSTRAP;
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::input_helper::build_helper_invocation;
 use crate::input_helper::{build_async_eval_body, parse_wrapped_eval_result};
 use crate::traits::{
-    FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
-    NewWindowPolicy,
+    ContextualSchemeRequest, DocumentGeneration, DocumentOutboundGate, FileChooserRequest,
+    FileChooserResponse, LoadError, LoadErrorKind, NativeWebViewId, NavigationPolicy,
+    NewWindowPolicy, SchemeRequestFrame, WebMessageFrame, WebMessageSource, WebMessageTransport,
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use crate::traits::{PressOptions, ScrollOptions, TypeOptions};
-use crate::webview::find_webview;
+use crate::webview::{WebView, find_webview, find_webview_by_native_view_id};
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, DownloadRequest, LoadDataRequest, LogLevel,
     UserAgentOverride, WebResourceResponse, WebViewController, WebViewCookie,
@@ -28,20 +29,19 @@ use dispatch2::DispatchQueue;
 use http::{Method, Response, StatusCode};
 use objc2::runtime::{AnyObject, NSObject, ProtocolObject};
 use objc2::{
-    AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, class, define_class, msg_send,
-    rc::Retained,
+    DefinedClass, MainThreadMarker, MainThreadOnly, class, define_class, msg_send, rc::Retained,
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use objc2_core_foundation::{CFRetained, CGPoint, CGRect};
 use objc2_foundation::{
     NSArray, NSDate, NSDictionary, NSError, NSHTTPCookie, NSHTTPCookieDomain, NSHTTPCookieExpires,
     NSHTTPCookieName, NSHTTPCookieOriginURL, NSHTTPCookiePath, NSHTTPCookiePropertyKey,
-    NSHTTPCookieSameSitePolicy, NSHTTPCookieSecure, NSHTTPCookieValue, NSJSONSerialization,
-    NSJSONWritingOptions, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString, NSURL, NSURLRequest,
+    NSHTTPCookieSameSitePolicy, NSHTTPCookieSecure, NSHTTPCookieValue, NSObjectProtocol, NSPoint,
+    NSRect, NSSize, NSString, NSURL, NSURLRequest,
 };
 use objc2_web_kit::{
     WKAudiovisualMediaTypes, WKContentWorld, WKNavigation, WKNavigationDelegate, WKNavigationType,
-    WKUIDelegate, WKURLSchemeHandler, WKWebViewConfiguration, WKWebsiteDataStore,
+    WKScriptMessage, WKUIDelegate, WKURLSchemeHandler, WKWebViewConfiguration, WKWebsiteDataStore,
 };
 #[cfg(all(feature = "webview-input", target_os = "macos"))]
 use serde::Deserialize;
@@ -73,6 +73,28 @@ fn navigation_type_has_user_gesture(navigation_type: WKNavigationType) -> bool {
             | WKNavigationType::FormSubmitted
             | WKNavigationType::FormResubmitted
     )
+}
+
+fn invalidate_terminated_content_process(webtag: &WebTag, native_view_id: NativeWebViewId) {
+    // WKWebView survives a renderer termination, but its committed document
+    // does not. Clear the generation before notifying consumers so no stale
+    // inbound context or queued outbound gate can cross into the replacement.
+    normalizer::submit(webtag, native_view_id, NativeSignal::DocumentInvalidated);
+}
+
+fn invalidate_restored_document(webtag: &WebTag, native_view_id: NativeWebViewId) -> bool {
+    if !matches!(
+        normalizer::current_document_binding(native_view_id),
+        crate::DocumentBinding::Bound(_)
+    ) {
+        return false;
+    }
+    normalizer::submit(webtag, native_view_id, NativeSignal::DocumentInvalidated);
+    true
+}
+
+fn is_apple_bfcache_restore(message: &str, frame: WebMessageFrame) -> bool {
+    message == "bfcache-restored" && frame == WebMessageFrame::TopLevel
 }
 
 #[link(name = "Network", kind = "framework")]
@@ -755,7 +777,12 @@ fn last_requested_url(webtag: &WebTag) -> Option<String> {
 
 /// Normalize and submit a failed-navigation callback: cancellations terminate
 /// as `Cancelled`, everything else as `Failed`, keyed by WKNavigation identity.
-fn submit_navigation_failure(webtag: &WebTag, navigation: *mut AnyObject, error: *mut NSError) {
+fn submit_navigation_failure(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+    navigation: *mut AnyObject,
+    error: *mut NSError,
+) {
     let key = (!navigation.is_null()).then_some(navigation as usize as u64);
     let result = match unsafe { ns_error_to_navigation_failure(error) } {
         AppleNavigationFailure::Cancelled { description } => {
@@ -770,7 +797,30 @@ fn submit_navigation_failure(webtag: &WebTag, navigation: *mut AnyObject, error:
             NativeNavigationResult::Failed(load_error)
         }
     };
-    normalizer::submit(webtag, NativeSignal::NavigationFinished { key, result });
+    normalizer::submit(
+        webtag,
+        native_view_id,
+        NativeSignal::NavigationFinished { key, result },
+    );
+}
+
+/// Resolve a native callback only while its concrete WKWebView still owns the
+/// logical tag. A retired delegate can otherwise invoke a replacement's
+/// navigation, scheme, download, or chooser handlers.
+fn native_callback_identity_matches(
+    callback_native_view_id: NativeWebViewId,
+    registered_native_view_id: NativeWebViewId,
+) -> bool {
+    callback_native_view_id == registered_native_view_id
+}
+
+fn current_native_callback_webview(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+) -> Option<Arc<crate::WebView>> {
+    find_webview_by_native_view_id(webtag, native_view_id).filter(|webview| {
+        native_callback_identity_matches(native_view_id, webview.native_view_id())
+    })
 }
 
 // KVO observer that turns WKWebView observable state (URL, title,
@@ -779,6 +829,7 @@ fn submit_navigation_failure(webtag: &WebTag, navigation: *mut AnyObject, error:
 // never mirror these values into Rust themselves.
 pub struct LingXiaWebViewStateObserverIvars {
     webtag: WebTag,
+    native_view_id: NativeWebViewId,
 }
 
 define_class!(
@@ -800,20 +851,29 @@ define_class!(
             _context: *mut std::ffi::c_void,
         ) {
             let webtag = &self.ivars().webtag;
+            let native_view_id = self.ivars().native_view_id;
             let key = unsafe { key_path.as_ref() }
                 .map(|s| s.to_string())
                 .unwrap_or_default();
             match key.as_str() {
                 "URL" => {
                     if let Some(url) = source_page_url_from_webview(object) {
-                        normalizer::submit(webtag, NativeSignal::LocationChanged { url });
+                        normalizer::submit(
+                            webtag,
+                            native_view_id,
+                            NativeSignal::LocationChanged { url },
+                        );
                     }
                 }
                 "title" => {
                     let title: *mut AnyObject = unsafe { msg_send![object, title] };
                     let title = LingXiaNavigationDelegate::nsstring_ptr_to_string(title)
                         .filter(|title| !title.is_empty());
-                    normalizer::submit(webtag, NativeSignal::TitleChanged { title });
+                    normalizer::submit(
+                        webtag,
+                        native_view_id,
+                        NativeSignal::TitleChanged { title },
+                    );
                 }
                 "canGoBack" | "canGoForward" => {
                     let can_go_back: objc2::runtime::Bool =
@@ -822,6 +882,7 @@ define_class!(
                         unsafe { msg_send![object, canGoForward] };
                     normalizer::submit(
                         webtag,
+                        native_view_id,
                         NativeSignal::BackForwardChanged {
                             can_go_back: can_go_back.as_bool(),
                             can_go_forward: can_go_forward.as_bool(),
@@ -837,10 +898,17 @@ define_class!(
 const WEBVIEW_STATE_KEY_PATHS: [&str; 4] = ["URL", "title", "canGoBack", "canGoForward"];
 
 impl LingXiaWebViewStateObserver {
-    fn new(webtag: WebTag, mtm: MainThreadMarker) -> Retained<Self> {
-        let observer = mtm
-            .alloc::<LingXiaWebViewStateObserver>()
-            .set_ivars(LingXiaWebViewStateObserverIvars { webtag });
+    fn new(
+        webtag: WebTag,
+        native_view_id: NativeWebViewId,
+        mtm: MainThreadMarker,
+    ) -> Retained<Self> {
+        let observer = mtm.alloc::<LingXiaWebViewStateObserver>().set_ivars(
+            LingXiaWebViewStateObserverIvars {
+                webtag,
+                native_view_id,
+            },
+        );
         unsafe { msg_send![super(observer), init] }
     }
 
@@ -872,6 +940,7 @@ impl LingXiaWebViewStateObserver {
 // Custom Navigation Delegate for handling page lifecycle events
 pub struct LingXiaNavigationDelegateIvars {
     webtag: WebTag,
+    native_view_id: NativeWebViewId,
     intercept_https_navigation: bool,
     pending_browser_download_url: RefCell<Option<String>>,
 }
@@ -900,6 +969,7 @@ define_class!(
                 .unwrap_or_else(|| "about:blank".to_string());
             normalizer::submit(
                 webtag,
+                self.ivars().native_view_id,
                 NativeSignal::NavigationStarted {
                     key: Some(navigation as *const WKNavigation as usize as u64),
                     url,
@@ -908,9 +978,15 @@ define_class!(
         }
 
         #[unsafe(method(webView:didCommitNavigation:))]
-        fn did_commit_navigation(&self, _webview: *mut AnyObject, _navigation: &WKNavigation) {
+        fn did_commit_navigation(&self, _webview: *mut AnyObject, navigation: &WKNavigation) {
             // Commit evidence: the displayed document was replaced.
-            normalizer::submit(&self.ivars().webtag, NativeSignal::DocumentCommitted);
+            normalizer::submit(
+                &self.ivars().webtag,
+                self.ivars().native_view_id,
+                NativeSignal::DocumentCommitted {
+                    key: Some(navigation as *const WKNavigation as usize as u64),
+                },
+            );
         }
 
         #[unsafe(method(webView:didFinishNavigation:))]
@@ -922,6 +998,7 @@ define_class!(
                 source_page_url_from_webview(webview).unwrap_or_else(|| "about:blank".to_string());
             normalizer::submit(
                 webtag,
+                self.ivars().native_view_id,
                 NativeSignal::NavigationFinished {
                     key: (!navigation.is_null()).then_some(navigation as usize as u64),
                     result: NativeNavigationResult::Succeeded { final_url },
@@ -936,7 +1013,12 @@ define_class!(
             _navigation: *mut AnyObject,
             error: *mut NSError,
         ) {
-            submit_navigation_failure(&self.ivars().webtag, _navigation, error);
+            submit_navigation_failure(
+                &self.ivars().webtag,
+                self.ivars().native_view_id,
+                _navigation,
+                error,
+            );
         }
 
         #[unsafe(method(webView:didFailNavigation:withError:))]
@@ -946,7 +1028,24 @@ define_class!(
             _navigation: *mut AnyObject,
             error: *mut NSError,
         ) {
-            submit_navigation_failure(&self.ivars().webtag, _navigation, error);
+            submit_navigation_failure(
+                &self.ivars().webtag,
+                self.ivars().native_view_id,
+                _navigation,
+                error,
+            );
+        }
+
+        #[unsafe(method(webViewWebContentProcessDidTerminate:))]
+        fn web_content_process_did_terminate(&self, _webview: *mut AnyObject) {
+            let webtag = &self.ivars().webtag;
+            let native_view_id = self.ivars().native_view_id;
+            invalidate_terminated_content_process(webtag, native_view_id);
+            if let Some(delegate) = current_native_callback_webview(webtag, native_view_id)
+                .and_then(|webview| webview.get_delegate())
+            {
+                delegate.on_web_content_process_terminated(native_view_id);
+            }
         }
 
         #[unsafe(method(webView:decidePolicyForNavigationAction:decisionHandler:))]
@@ -1022,7 +1121,8 @@ define_class!(
                 value.as_bool()
             };
             if should_perform_download
-                && let Some(managed_webview) = find_webview(webtag)
+                && let Some(managed_webview) =
+                    current_native_callback_webview(webtag, self.ivars().native_view_id)
                 && managed_webview.effective_options().profile == SecurityProfile::BrowserRelaxed
             {
                 self.ivars()
@@ -1038,7 +1138,9 @@ define_class!(
             }
 
             // Check closure-based navigation handler first
-            if let Some(webview) = find_webview(webtag) {
+            if let Some(webview) =
+                current_native_callback_webview(webtag, self.ivars().native_view_id)
+            {
                 let request =
                     crate::NavigationRequest::new(url.clone(), has_user_gesture, is_main_frame);
                 match webview.handle_navigation(&request) {
@@ -1081,8 +1183,19 @@ define_class!(
             };
 
             // Dispatch to closure-based scheme handler
-            let response = if let Some(webview) = find_webview(webtag) {
-                webview.handle_scheme_request("https", http_request)
+            let response = if let Some(webview) =
+                current_native_callback_webview(webtag, self.ivars().native_view_id)
+            {
+                // This navigation-policy callback does not prove a document
+                // relationship for the intercepted request.
+                webview.handle_contextual_scheme_request(
+                    "https",
+                    ContextualSchemeRequest::new(
+                        http_request,
+                        webview.native_view_id(),
+                        SchemeRequestFrame::Unproven,
+                    ),
+                )
             } else {
                 None
             };
@@ -1114,7 +1227,9 @@ define_class!(
             let cancel_navigation = || call_decision_handler(0); // WKNavigationResponsePolicyCancel
 
             let webtag = &self.ivars().webtag;
-            let Some(managed_webview) = find_webview(webtag) else {
+            let Some(managed_webview) =
+                current_native_callback_webview(webtag, self.ivars().native_view_id)
+            else {
                 allow_navigation();
                 return;
             };
@@ -1307,6 +1422,7 @@ impl LingXiaNavigationDelegate {
         appid: String,
         path: String,
         session_id: Option<u64>,
+        native_view_id: NativeWebViewId,
         intercept_https_navigation: bool,
         mtm: MainThreadMarker,
     ) -> Retained<Self> {
@@ -1315,6 +1431,7 @@ impl LingXiaNavigationDelegate {
             mtm.alloc::<LingXiaNavigationDelegate>()
                 .set_ivars(LingXiaNavigationDelegateIvars {
                     webtag,
+                    native_view_id,
                     intercept_https_navigation,
                     pending_browser_download_url: RefCell::new(None),
                 });
@@ -1328,6 +1445,7 @@ impl LingXiaNavigationDelegate {
 // - Shows native NSAlert for JavaScript alert/confirm/prompt dialogs
 pub struct LingXiaUIDelegateIvars {
     webtag: WebTag,
+    native_view_id: NativeWebViewId,
     allow_js_dialogs: bool,
 }
 
@@ -1369,9 +1487,16 @@ define_class!(
                                         webtag,
                                         url
                                     );
-                                    if let Some(wv) = find_webview(webtag)
-                                        && wv.has_new_window_handler()
-                                    {
+                                    let Some(wv) = current_native_callback_webview(
+                                        webtag,
+                                        self.ivars().native_view_id,
+                                    ) else {
+                                        log::debug!(
+                                            "Dropping new-window callback from stale Apple WebView ({webtag})"
+                                        );
+                                        return std::ptr::null_mut();
+                                    };
+                                    if wv.has_new_window_handler() {
                                         let policy = wv.handle_new_window(&url);
                                         log::info!(
                                             "Apple new-window policy webtag={} url={} policy={:?}",
@@ -1481,6 +1606,12 @@ define_class!(
             _frame: *mut AnyObject,
             completion_handler: *mut AnyObject,
         ) {
+            if self.current_webview().is_none() {
+                let handler: &Block<dyn Fn()> =
+                    unsafe { &*(completion_handler as *const Block<dyn Fn()>) };
+                handler.call(());
+                return;
+            }
             if !self.ivars().allow_js_dialogs {
                 log::info!(
                     "Apple suppressed JavaScript alert in strict profile webtag={}",
@@ -1514,6 +1645,12 @@ define_class!(
             _frame: *mut AnyObject,
             completion_handler: *mut AnyObject,
         ) {
+            if self.current_webview().is_none() {
+                let handler: &Block<dyn Fn(objc2::runtime::Bool)> =
+                    unsafe { &*(completion_handler as *const Block<dyn Fn(objc2::runtime::Bool)>) };
+                handler.call((objc2::runtime::Bool::new(false),));
+                return;
+            }
             if !self.ivars().allow_js_dialogs {
                 log::info!(
                     "Apple suppressed JavaScript confirm in strict profile webtag={}",
@@ -1558,6 +1695,12 @@ define_class!(
             _frame: *mut AnyObject,
             completion_handler: *mut AnyObject,
         ) {
+            if self.current_webview().is_none() {
+                let handler: &Block<dyn Fn(*mut AnyObject)> =
+                    unsafe { &*(completion_handler as *const Block<dyn Fn(*mut AnyObject)>) };
+                handler.call((std::ptr::null_mut(),));
+                return;
+            }
             if !self.ivars().allow_js_dialogs {
                 log::info!(
                     "Apple suppressed JavaScript prompt in strict profile webtag={}",
@@ -1646,7 +1789,7 @@ define_class!(
                 }
             };
 
-            let Some(webview) = find_webview(&self.ivars().webtag) else {
+            let Some(webview) = self.current_webview() else {
                 handler.call((std::ptr::null_mut(),));
                 return;
             };
@@ -1709,11 +1852,21 @@ define_class!(
 );
 
 impl LingXiaUIDelegate {
-    pub fn new(webtag: WebTag, allow_js_dialogs: bool, mtm: MainThreadMarker) -> Retained<Self> {
+    fn current_webview(&self) -> Option<Arc<crate::WebView>> {
+        current_native_callback_webview(&self.ivars().webtag, self.ivars().native_view_id)
+    }
+
+    pub fn new(
+        webtag: WebTag,
+        native_view_id: NativeWebViewId,
+        allow_js_dialogs: bool,
+        mtm: MainThreadMarker,
+    ) -> Retained<Self> {
         let delegate = mtm
             .alloc::<LingXiaUIDelegate>()
             .set_ivars(LingXiaUIDelegateIvars {
                 webtag,
+                native_view_id,
                 allow_js_dialogs,
             });
         unsafe { msg_send![super(delegate), init] }
@@ -1722,6 +1875,10 @@ impl LingXiaUIDelegate {
 
 pub struct WebViewInner {
     webview: *mut AnyObject,
+    /// Issued before native creation and never reused. Keep this on the
+    /// platform object rather than recovering it from a raw WKWebView pointer:
+    /// Objective-C addresses may be recycled after a same-tag recreation.
+    native_view_id: NativeWebViewId,
     _navigation_delegate: Retained<LingXiaNavigationDelegate>,
     _ui_delegate: Option<Retained<LingXiaUIDelegate>>,
     _message_handler: Retained<LingXiaMessageHandler>,
@@ -1740,6 +1897,53 @@ pub(super) fn find_webview_for_native(
     native_webview: *mut AnyObject,
 ) -> Option<Arc<crate::WebView>> {
     find_webview(webtag).filter(|webview| webview.inner.webview == native_webview)
+}
+
+fn document_message_script(message: &str) -> String {
+    // `message` is protocol JSON, but quote it as a JavaScript string rather
+    // than interpolating it as code. This is the same document receiver used
+    // by the existing Android, Harmony, and Windows transports.
+    let quoted = serde_json::to_string(message).expect("serializing a Rust string cannot fail");
+    format!(
+        "(function(){{var fn=window.__LingXiaRecvMessage;if(typeof fn==='function'){{fn({quoted});}}}})();"
+    )
+}
+
+fn post_message_to_current_document(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+    expected_generation: DocumentGeneration,
+    gate: &dyn DocumentOutboundGate,
+    script: &str,
+) {
+    let mut post = || unsafe {
+        // This runs while the browser session registry lock is held. Do not
+        // move either revalidation outside that lock: a queued navigation can
+        // otherwise replace the committed document between the check and the
+        // JavaScript call.
+        let Some(webview) = find_webview_by_native_view_id(webtag, native_view_id) else {
+            return;
+        };
+        let mut evaluate = || {
+            let js = NSString::from_str(script);
+            let completion =
+                StackBlock::new(|_result: *mut AnyObject, _error: *mut NSError| {}).copy();
+            let _: () = msg_send![
+                webview.inner.webview,
+                evaluateJavaScript: &*js,
+                completionHandler: Some(&*completion)
+            ];
+        };
+        // Navigation start mutates this same normalizer state lock. Holding it
+        // through evaluateJavaScript closes the gap between generation check
+        // and the actual native post.
+        let _ = crate::events::normalizer::with_current_document_binding(
+            native_view_id,
+            expected_generation,
+            &mut evaluate,
+        );
+    };
+    let _ = gate.with_active(&mut post);
 }
 
 #[cfg(target_os = "macos")]
@@ -1938,12 +2142,24 @@ impl WebViewInner {
         mtm: MainThreadMarker,
         sender: WebViewCreateSender,
     ) {
-        let result = Self::create_with_marker(appid, path, session_id, &effective_options, mtm);
+        let native_view_id = sender.native_view_id();
+        let result = Self::create_with_marker(
+            appid,
+            path,
+            session_id,
+            &effective_options,
+            native_view_id,
+            mtm,
+        );
 
         match result {
             Ok(webview_inner) => {
                 // Wrap WebViewInner in WebView
-                let webview = Arc::new(crate::WebView::new(webview_inner, effective_options));
+                let webview = Arc::new(crate::WebView::new(
+                    webview_inner,
+                    effective_options,
+                    native_view_id,
+                ));
 
                 // Register the WebView instance for future lookups
                 crate::webview::register_webview(webview.clone());
@@ -1958,7 +2174,7 @@ impl WebViewInner {
                         appid,
                         path
                     );
-                    crate::webview::destroy_webview(&webview.webtag());
+                    crate::webview::destroy_webview_if_matches(&webview.webtag(), &webview);
                     return;
                 }
 
@@ -1978,6 +2194,7 @@ impl WebViewInner {
         path: &str,
         session_id: Option<u64>,
         effective_options: &EffectiveWebViewCreateOptions,
+        native_view_id: NativeWebViewId,
         mtm: MainThreadMarker,
     ) -> Result<Self, WebViewError> {
         unsafe {
@@ -2173,6 +2390,7 @@ impl WebViewInner {
                 appid.to_string(),
                 path.to_string(),
                 session_id,
+                native_view_id,
                 // Profile policy on Apple:
                 // - StrictDefault: intercept https:// top-level navigation
                 // - BrowserRelaxed: do not intercept
@@ -2190,7 +2408,8 @@ impl WebViewInner {
             let needs_ui_delegate =
                 is_strict || allow_new_windows || effective_options.has_new_window_handler;
             let ui_delegate = if needs_ui_delegate {
-                let delegate = LingXiaUIDelegate::new(webtag.clone(), !is_strict, mtm);
+                let delegate =
+                    LingXiaUIDelegate::new(webtag.clone(), native_view_id, !is_strict, mtm);
                 let proto_ui_delegate: &ProtocolObject<dyn WKUIDelegate> =
                     ProtocolObject::from_ref(&*delegate);
                 let _: () = msg_send![webview, setUIDelegate: Some(proto_ui_delegate)];
@@ -2211,12 +2430,14 @@ impl WebViewInner {
 
             // Observe URL/title/back-forward state so the Rust delegate is the
             // single source of truth for observable WebView state.
-            let state_observer = LingXiaWebViewStateObserver::new(webtag.clone(), mtm);
+            let state_observer =
+                LingXiaWebViewStateObserver::new(webtag.clone(), native_view_id, mtm);
             state_observer.observe(webview);
 
             // Create WebViewInner instance with navigation delegate and message handler
             let webview_inner = WebViewInner {
                 webview,
+                native_view_id,
                 _navigation_delegate: navigation_delegate,
                 _ui_delegate: ui_delegate,
                 _message_handler: message_handler,
@@ -2241,8 +2462,11 @@ impl WebViewInner {
             // Get the configuration from the WebView
             let config: *mut AnyObject = msg_send![webview, configuration];
             let user_content_controller: *mut AnyObject = msg_send![config, userContentController];
+            let user_script_class = objc2::class!(WKUserScript);
+            let injection_time: objc2::ffi::NSInteger = 0; // WKUserScriptInjectionTimeAtDocumentStart
 
-            let console_script = r#"
+            if inject_platform_baseline {
+                let console_script = r#"
                 (function() {
                     const originalLog = console.log;
                     const originalError = console.error;
@@ -2256,10 +2480,10 @@ impl WebViewInner {
 
                         try {
                             // Use dedicated console handler (like Swift version)
-                            window.webkit.messageHandlers.LingXiaConsole.postMessage({
+                            window.webkit.messageHandlers.LingXiaConsole.postMessage(JSON.stringify({
                                 level: level,
                                 message: message
-                            });
+                            }));
                         } catch (e) {
                             // Fallback if message handler not ready
                         }
@@ -2287,17 +2511,37 @@ impl WebViewInner {
                 })();
             "#;
 
-            // Inject console interceptor script
-            let console_js_string = NSString::from_str(console_script);
-            let user_script_class = objc2::class!(WKUserScript);
-            let console_user_script: *mut AnyObject = msg_send![user_script_class, alloc];
-            let injection_time: objc2::ffi::NSInteger = 0; // WKUserScriptInjectionTimeAtDocumentStart
-            let console_user_script: *mut AnyObject = msg_send![console_user_script,
+                // Inject console interceptor script
+                let console_js_string = NSString::from_str(console_script);
+                let console_user_script: *mut AnyObject = msg_send![user_script_class, alloc];
+                let console_user_script: *mut AnyObject = msg_send![console_user_script,
                 initWithSource: &*console_js_string,
                 injectionTime: injection_time,
                 forMainFrameOnly: false];
 
-            let _: () = msg_send![user_content_controller, addUserScript: console_user_script];
+                let _: () = msg_send![user_content_controller, addUserScript: console_user_script];
+            }
+
+            // WebKit may restore a page from BFCache without producing a new
+            // native start/commit pair. `pageshow.persisted` is document-local
+            // evidence; the native callback still verifies main-frame and
+            // concrete WebView identity before revoking the old generation.
+            let restoration_script = r#"
+                window.addEventListener('pageshow', function(event) {
+                    if (event.persisted === true) {
+                        try {
+                            window.webkit.messageHandlers.LingXiaLifecycle.postMessage('bfcache-restored');
+                        } catch (_) {}
+                    }
+                }, true);
+            "#;
+            let restoration_js_string = NSString::from_str(restoration_script);
+            let restoration_user_script: *mut AnyObject = msg_send![user_script_class, alloc];
+            let restoration_user_script: *mut AnyObject = msg_send![restoration_user_script,
+                initWithSource: &*restoration_js_string,
+                injectionTime: injection_time,
+                forMainFrameOnly: true];
+            let _: () = msg_send![user_content_controller, addUserScript: restoration_user_script];
 
             #[cfg(all(feature = "webview-input", target_os = "macos"))]
             {
@@ -2365,9 +2609,13 @@ impl WebViewInner {
 
             // Register message handlers with userContentController (like Swift version)
             let lingxia_name = NSString::from_str("LingXia");
-            let console_name = NSString::from_str("LingXiaConsole");
+            let lifecycle_name = NSString::from_str("LingXiaLifecycle");
             let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*lingxia_name];
-            let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*console_name];
+            if inject_platform_baseline {
+                let console_name = NSString::from_str("LingXiaConsole");
+                let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*console_name];
+            }
+            let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*lifecycle_name];
             Ok(message_handler)
         }
     }
@@ -2425,6 +2673,29 @@ impl WebViewInner {
                     request.base_url
                 )))
             }
+        }
+    }
+
+    /// Start a direct native HTML load and retain WebKit's exact navigation
+    /// object identity for the normalizer. Unlike `load_data`, this cannot be
+    /// fire-and-forget: the returned `WKNavigation*` is the only evidence that
+    /// binds a later commit to this host-initiated load.
+    fn load_trusted_data_on_main_thread(
+        &self,
+        request: LoadDataRequest<'_>,
+    ) -> Result<NativeKey, WebViewError> {
+        unsafe {
+            let data_nsstring = NSString::from_str(request.data);
+            let base_url_nsstring = NSString::from_str(request.base_url);
+            let Some(base_url) = NSURL::URLWithString(&base_url_nsstring) else {
+                return Err(WebViewError::WebView(format!(
+                    "Invalid base URL: {}",
+                    request.base_url
+                )));
+            };
+            let navigation: *mut WKNavigation =
+                msg_send![self.webview, loadHTMLString: &*data_nsstring, baseURL: &*base_url];
+            apple_navigation_key(navigation)
         }
     }
 
@@ -2922,6 +3193,41 @@ impl WebViewController for WebViewInner {
 
     fn post_message(&self, message: &str) -> Result<(), WebViewError> {
         self.apple_bridge_transport.enqueue_message(message)
+    }
+
+    fn post_message_to_document(
+        &self,
+        expected_generation: DocumentGeneration,
+        gate: Arc<dyn DocumentOutboundGate>,
+        message: &str,
+    ) -> Result<(), WebViewError> {
+        // The ID was allocated before this WKWebView was created. It must not
+        // be rediscovered from `self.webview`: Objective-C can recycle that
+        // pointer for a successor with the same logical WebTag.
+        let webtag = self.webtag.clone();
+        let native_view_id = self.native_view_id;
+        let script = document_message_script(message);
+
+        if MainThreadMarker::new().is_some() {
+            post_message_to_current_document(
+                &webtag,
+                native_view_id,
+                expected_generation,
+                gate.as_ref(),
+                &script,
+            );
+        } else {
+            DispatchQueue::main().exec_async(move || {
+                post_message_to_current_document(
+                    &webtag,
+                    native_view_id,
+                    expected_generation,
+                    gate.as_ref(),
+                    &script,
+                );
+            });
+        }
+        Ok(())
     }
 
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
@@ -3954,6 +4260,59 @@ impl WebViewInner {
     }
 }
 
+impl WebViewInner {
+    /// Execute `loadHTMLString:baseURL:` on WebKit's UI thread and return the
+    /// exact `WKNavigation*` from that same invocation. The synchronous hop is
+    /// intentional: issuing a trusted intent without this key must fail closed.
+    pub(crate) fn load_trusted_data(
+        &self,
+        request: LoadDataRequest<'_>,
+    ) -> Result<NativeKey, WebViewError> {
+        if MainThreadMarker::new().is_some() {
+            return self.load_trusted_data_on_main_thread(request);
+        }
+
+        let webview_retained_addr = self.retain_webview_for_dispatch();
+        let data = request.data.to_string();
+        let base_url = request.base_url.to_string();
+        let (tx, rx) = sync_channel(1);
+        DispatchQueue::main().exec_async(move || unsafe {
+            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
+            let result = load_trusted_html_with_navigation(webview, &data, &base_url);
+            let _ = tx.send(result);
+        });
+        rx.recv().map_err(|_| {
+            WebViewError::WebView("Apple trusted data load did not return a navigation key".into())
+        })?
+    }
+}
+
+fn apple_navigation_key(navigation: *mut WKNavigation) -> Result<NativeKey, WebViewError> {
+    if navigation.is_null() {
+        return Err(WebViewError::WebView(
+            "WKWebView did not return a navigation for trusted data load".to_string(),
+        ));
+    }
+    Ok(navigation as usize as NativeKey)
+}
+
+unsafe fn load_trusted_html_with_navigation(
+    webview: *mut AnyObject,
+    data: &str,
+    base_url: &str,
+) -> Result<NativeKey, WebViewError> {
+    let data = NSString::from_str(data);
+    let base_url_string = NSString::from_str(base_url);
+    let Some(base_url) = NSURL::URLWithString(&base_url_string) else {
+        return Err(WebViewError::WebView(format!(
+            "Invalid base URL: {base_url}"
+        )));
+    };
+    let navigation: *mut WKNavigation =
+        unsafe { msg_send![webview, loadHTMLString: &*data, baseURL: &*base_url] };
+    apple_navigation_key(navigation)
+}
+
 impl Drop for WebViewInner {
     fn drop(&mut self) {
         self.apple_bridge_transport.shutdown();
@@ -4083,6 +4442,43 @@ impl WebViewInner {
 // Message Handler Implementation (like Swift WebViewMessageHandler)
 use objc2_web_kit::WKScriptMessageHandler;
 
+const fn apple_message_frame(is_main_frame: bool) -> WebMessageFrame {
+    if is_main_frame {
+        WebMessageFrame::TopLevel
+    } else {
+        WebMessageFrame::Subframe
+    }
+}
+
+/// Snapshot frame metadata while WebKit's callback owns the script message.
+///
+/// The URL is diagnostic only. A frame classification alone does not bind this
+/// message to a committed document generation, so ingress remains Unbound.
+unsafe fn apple_message_frame_and_source(
+    message: *mut AnyObject,
+) -> (WebMessageFrame, WebMessageSource) {
+    let message = unsafe { &*(message as *const WKScriptMessage) };
+    let frame = unsafe { message.frameInfo() };
+    let message_frame = apple_message_frame(unsafe { frame.isMainFrame() });
+    let url = unsafe { frame.request() }
+        .URL()
+        .and_then(|url| url.absoluteString())
+        .map(|url| url.to_string());
+    let origin = unsafe {
+        let origin = frame.securityOrigin();
+        format!(
+            "{}://{}:{}",
+            origin.protocol(),
+            origin.host(),
+            origin.port()
+        )
+    };
+    (
+        message_frame,
+        WebMessageSource::diagnostic(url, Some(origin)),
+    )
+}
+
 #[derive(Debug)]
 pub struct LingXiaMessageHandlerIvars {
     appid: String,
@@ -4112,50 +4508,21 @@ define_class!(
                 let body: *mut AnyObject = msg_send![message, body];
 
                 let message_string = if !body.is_null() {
-                    // Try to get as string first
                     let is_string: objc2::runtime::Bool =
                         msg_send![body, isKindOfClass: objc2::class!(NSString)];
                     if is_string.as_bool() {
                         let ns_string = &*(body as *const NSString);
-                        ns_string.to_string()
-                    } else {
-                        // Try to convert to JSON if it's a dictionary
-                        let is_dict: objc2::runtime::Bool =
-                            msg_send![body, isKindOfClass: objc2::class!(NSDictionary)];
-                        if is_dict.as_bool() {
-                            // Convert NSDictionary to JSON string (like Swift version)
-                            let body_obj: &AnyObject = &*(body as *const AnyObject);
-                            let json_data =
-                                match NSJSONSerialization::dataWithJSONObject_options_error(
-                                    body_obj,
-                                    NSJSONWritingOptions(0),
-                                ) {
-                                    Ok(data) => data,
-                                    Err(err) => {
-                                        log::error!(
-                                            "Failed to serialize dictionary to JSON: {}",
-                                            err.localizedDescription()
-                                        );
-                                        return;
-                                    }
-                                };
-
-                            let json_string = match NSString::initWithData_encoding(
-                                NSString::alloc(),
-                                &json_data,
-                                4, // NSUTF8StringEncoding
-                            ) {
-                                Some(s) => s,
-                                None => {
-                                    log::error!("Failed to convert JSON data to string");
-                                    return;
-                                }
-                            };
-                            json_string.to_string()
-                        } else {
-                            log::error!("Unsupported message body type");
+                        if !crate::webview::web_message_bytes_within_limit(ns_string.len()) {
+                            self.reject_oversized_message();
                             return;
                         }
+                        ns_string.to_string()
+                    } else {
+                        // All owned producers send JSON text. Rejecting objects
+                        // prevents an attacker from forcing an unbounded
+                        // NSJSONSerialization allocation before the byte cap.
+                        log::warn!("Dropping Apple WebView message with non-string body");
+                        return;
                     }
                 } else {
                     log::error!("Message body is null");
@@ -4174,10 +4541,15 @@ define_class!(
                 // Route to appropriate handler based on name (like Swift version)
                 match handler_name.as_str() {
                     "LingXia" => {
-                        self.handle_bridge_message(message_string);
+                        let (frame, source) = apple_message_frame_and_source(message);
+                        self.handle_bridge_message(message_string, frame, source);
                     }
                     "LingXiaConsole" => {
                         self.handle_console_message(message_string);
+                    }
+                    "LingXiaLifecycle" => {
+                        let (frame, _) = apple_message_frame_and_source(message);
+                        self.handle_document_restored(message_string, frame);
                     }
                     _ => {
                         log::warn!("Unknown message handler: {}", handler_name);
@@ -4189,6 +4561,18 @@ define_class!(
 );
 
 impl LingXiaMessageHandler {
+    fn current_webview(&self) -> Option<Arc<WebView>> {
+        let ivars = self.ivars();
+        let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
+        find_webview_for_native(&webtag, ivars.native_webview as *mut AnyObject)
+    }
+
+    fn reject_oversized_message(&self) {
+        if let Some(webview) = self.current_webview() {
+            webview.reject_oversized_web_message();
+        }
+    }
+
     /// Create a new message handler
     pub fn new(
         appid: String,
@@ -4211,15 +4595,23 @@ impl LingXiaMessageHandler {
     }
 
     /// Handle bridge messages
-    fn handle_bridge_message(&self, message: String) {
+    fn handle_bridge_message(
+        &self,
+        message: String,
+        frame: WebMessageFrame,
+        source: WebMessageSource,
+    ) {
         let ivars = self.ivars();
 
         let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
         let native_webview = ivars.native_webview as *mut AnyObject;
-        if let Some(delegate) = find_webview_for_native(&webtag, native_webview)
-            .and_then(|webview| webview.get_delegate())
-        {
-            delegate.handle_post_message(message);
+        if let Some(webview) = find_webview_for_native(&webtag, native_webview) {
+            webview.enqueue_web_message(
+                message,
+                frame,
+                WebMessageTransport::AppleScriptMessage,
+                source,
+            );
         } else {
             log::debug!("Dropping script message from stale Apple WebView ({webtag})");
         }
@@ -4228,6 +4620,18 @@ impl LingXiaMessageHandler {
     /// Handle console messages
     fn handle_console_message(&self, message: String) {
         let ivars = self.ivars();
+        let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
+        let native_webview = ivars.native_webview as *mut AnyObject;
+        let Some(webview) = find_webview_for_native(&webtag, native_webview) else {
+            return;
+        };
+        if crate::webview::platform_console_delivery(
+            webview.effective_options().profile,
+            crate::webview::PlatformConsoleBackend::Apple,
+        ) != crate::webview::PlatformConsoleDelivery::DirectDelegate
+        {
+            return;
+        }
 
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&message) {
             if let (Some(level), Some(console_message)) = (
@@ -4242,18 +4646,35 @@ impl LingXiaMessageHandler {
                     _ => LogLevel::Info,
                 };
 
-                let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
-                let native_webview = ivars.native_webview as *mut AnyObject;
-                if let Some(delegate) = find_webview_for_native(&webtag, native_webview)
-                    .and_then(|webview| webview.get_delegate())
-                {
+                if let Some(delegate) = webview.get_delegate() {
                     delegate.log(log_level, console_message);
                 }
             } else {
-                log::error!("Failed to parse console message fields: {}", message);
+                log::error!("Failed to parse direct console message fields");
             }
         } else {
-            log::error!("Failed to parse console message JSON: {}", message);
+            log::error!("Failed to parse direct console message JSON");
+        }
+    }
+
+    fn handle_document_restored(&self, message: String, frame: WebMessageFrame) {
+        if !is_apple_bfcache_restore(&message, frame) {
+            return;
+        }
+        let ivars = self.ivars();
+        let webtag = WebTag::new(&ivars.appid, &ivars.path, ivars.session_id);
+        let native_webview = ivars.native_webview as *mut AnyObject;
+        let Some(webview) = find_webview_for_native(&webtag, native_webview) else {
+            return;
+        };
+        let native_view_id = webview.native_view_id();
+        if !invalidate_restored_document(&webtag, native_view_id) {
+            return;
+        }
+        let url = source_page_url_from_webview(native_webview)
+            .unwrap_or_else(|| "about:blank".to_string());
+        if let Some(delegate) = webview.get_delegate() {
+            delegate.on_document_restored(native_view_id, &url);
         }
     }
 }
@@ -4261,6 +4682,28 @@ impl LingXiaMessageHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn apple_raw_string_cap_counts_utf8_bytes_before_copying() {
+        let exact = NSString::from_str(&"é".repeat(crate::webview::MAX_WEB_MESSAGE_BYTES / 2));
+        assert_eq!(exact.len(), crate::webview::MAX_WEB_MESSAGE_BYTES);
+        assert!(crate::webview::web_message_bytes_within_limit(exact.len()));
+
+        let oversized = NSString::from_str(&format!("{}x", exact));
+        assert_eq!(oversized.len(), crate::webview::MAX_WEB_MESSAGE_BYTES + 1);
+        assert!(!crate::webview::web_message_bytes_within_limit(
+            oversized.len()
+        ));
+    }
+
+    #[test]
+    fn apple_native_callback_identity_rejects_a_reused_tag() {
+        let retired = NativeWebViewId::new(1);
+        let replacement = NativeWebViewId::new(2);
+
+        assert!(!native_callback_identity_matches(retired, replacement));
+        assert!(native_callback_identity_matches(replacement, replacement));
+    }
 
     #[test]
     fn apple_navigation_type_preserves_user_initiated_actions() {
@@ -4275,5 +4718,108 @@ mod tests {
         ));
         assert!(!navigation_type_has_user_gesture(WKNavigationType::Other));
         assert!(!navigation_type_has_user_gesture(WKNavigationType::Reload));
+    }
+
+    #[test]
+    fn apple_script_message_frame_is_preserved_without_binding_a_document() {
+        assert_eq!(apple_message_frame(true), WebMessageFrame::TopLevel);
+        assert_eq!(apple_message_frame(false), WebMessageFrame::Subframe);
+    }
+
+    #[test]
+    fn trusted_html_requires_a_non_null_navigation_key() {
+        assert!(apple_navigation_key(std::ptr::null_mut()).is_err());
+        let navigation = std::ptr::NonNull::<WKNavigation>::dangling().as_ptr();
+        assert_eq!(
+            apple_navigation_key(navigation).expect("non-null navigation key"),
+            navigation as usize as NativeKey
+        );
+    }
+
+    #[test]
+    fn document_bound_post_quotes_message_as_data() {
+        let message = r#"{"kind":"event","text":"'\\n"}"#;
+        let script = document_message_script(message);
+        assert!(script.contains("window.__LingXiaRecvMessage"));
+        assert!(script.contains(&format!("fn({})", serde_json::to_string(message).unwrap())));
+        assert!(!script.contains("fn({\"kind\""));
+    }
+
+    #[test]
+    fn apple_renderer_termination_clears_the_committed_generation() {
+        let webtag = WebTag::new("com.example.browser", "/tabs/crash", Some(7));
+        let native_view_id = NativeWebViewId::new(9_301);
+        normalizer::begin(&webtag, native_view_id);
+        normalizer::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(71),
+                url: "lingxia://settings".into(),
+            },
+        );
+        normalizer::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(71) },
+        );
+        assert!(matches!(
+            normalizer::current_document_binding(native_view_id),
+            crate::DocumentBinding::Bound(_)
+        ));
+
+        invalidate_terminated_content_process(&webtag, native_view_id);
+
+        assert_eq!(
+            normalizer::current_document_binding(native_view_id),
+            crate::DocumentBinding::Unbound
+        );
+        normalizer::destroy(&webtag);
+    }
+
+    #[test]
+    fn apple_bfcache_restore_without_navigation_callbacks_revokes_once() {
+        assert!(is_apple_bfcache_restore(
+            "bfcache-restored",
+            WebMessageFrame::TopLevel
+        ));
+        assert!(!is_apple_bfcache_restore(
+            "bfcache-restored",
+            WebMessageFrame::Subframe
+        ));
+
+        let webtag = WebTag::new("com.example.browser", "/tabs/history", Some(8));
+        let native_view_id = NativeWebViewId::new(9_302);
+        normalizer::begin(&webtag, native_view_id);
+        normalizer::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(72),
+                url: "lingxia://settings".into(),
+            },
+        );
+        normalizer::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(72) },
+        );
+        let crate::DocumentBinding::Bound(generation) =
+            normalizer::current_document_binding(native_view_id)
+        else {
+            panic!("test document must commit")
+        };
+
+        // No new start/commit is submitted: this models same-URL BFCache.
+        assert!(invalidate_restored_document(&webtag, native_view_id));
+        assert!(!invalidate_restored_document(&webtag, native_view_id));
+        let mut stale_outbound_ran = false;
+        assert!(!normalizer::with_current_document_binding(
+            native_view_id,
+            generation,
+            &mut || stale_outbound_ran = true,
+        ));
+        assert!(!stale_outbound_ran);
+        normalizer::destroy(&webtag);
     }
 }

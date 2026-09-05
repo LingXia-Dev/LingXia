@@ -8,30 +8,28 @@ pub fn ensure_lxapp(appid: &str, release_type: ReleaseType) -> Result<Arc<LxApp>
     manager.ensure_lxapp(appid.to_string(), release_type)
 }
 
+/// Native-host bootstrap for a bundled control surface. Payload app ids never
+/// select this class; the host calls it only after resolving its own resource.
+#[doc(hidden)]
+pub fn ensure_control_lxapp(
+    authority: &crate::NativeControlPlaneAuthority,
+    appid: &str,
+    release_type: ReleaseType,
+) -> Result<Arc<LxApp>, LxAppError> {
+    if !authority.validate() {
+        return Err(LxAppError::UnsupportedOperation(
+            "control app bootstrap requires the live native host authority".to_string(),
+        ));
+    }
+    let manager = super::runtime_registry::get_lxapps_manager()
+        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
+    manager.ensure_lxapp_for_native_control(appid.to_string(), release_type)
+}
+
 pub fn ensure_builtin_lxapp(appid: &str) -> Result<Arc<LxApp>, LxAppError> {
     let manager = super::runtime_registry::get_lxapps_manager()
         .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
-    if let Some(app) = manager.lxapps.get(appid) {
-        return Ok(app.clone());
-    }
-    if !matches!(
-        lxapp_bundle_source_for(appid),
-        Some(LxAppBundleSource::BuiltinAssets | LxAppBundleSource::Synthetic)
-    ) {
-        return Err(LxAppError::ResourceNotFound(format!(
-            "builtin lxapp source not registered: {appid}"
-        )));
-    }
-
-    let app = Arc::new(LxApp::new(
-        appid.to_string(),
-        manager.runtime.clone(),
-        manager.executor.clone(),
-        ReleaseType::Release,
-    )?);
-    app.bind_arc();
-    manager.lxapps.insert(appid.to_string(), app.clone());
-    Ok(app)
+    manager.ensure_builtin_lxapp(appid)
 }
 
 /// Ensure the SDK's content-less desktop surface owner exists. It provides a
@@ -49,6 +47,47 @@ pub fn open_lxapp(appid: &str, options: LxAppStartupOptions) -> Result<Arc<LxApp
     let app = manager.ensure_lxapp(appid.to_string(), options.release_type)?;
     app.open(options)?;
     Ok(app)
+}
+
+/// Bootstrap-TCB entry for reopening the configured control app at a page.
+///
+/// The app id must be the native-sealed home app id. A missing or stale
+/// StandardApp instance is replaced with a ControlApp before navigation.
+#[doc(hidden)]
+pub fn open_control_lxapp_page(
+    authority: &crate::NativeControlPlaneAuthority,
+    appid: &str,
+    options: LxAppStartupOptions,
+) -> Result<Arc<LxApp>, LxAppError> {
+    if !authority.validate() {
+        return Err(LxAppError::UnsupportedOperation(
+            "control app bootstrap requires the live native host authority".to_string(),
+        ));
+    }
+    let expected = lingxia_app_context::home_app_id().ok_or_else(|| {
+        LxAppError::Runtime("control app identity is not initialized".to_string())
+    })?;
+    if appid != expected {
+        return Err(LxAppError::InvalidParameter(format!(
+            "control app identity mismatch: expected {expected}, got {appid}"
+        )));
+    }
+    let app = ensure_control_lxapp(authority, appid, options.release_type)?;
+    if !app.is_control_app() {
+        return Err(LxAppError::Runtime(format!(
+            "current app session is not ControlApp: {appid}"
+        )));
+    }
+    app.open(options)?;
+    let current = super::runtime_registry::try_get(appid).ok_or_else(|| {
+        LxAppError::ResourceNotFound(format!("current control app session not found: {appid}"))
+    })?;
+    if !current.is_control_app() {
+        return Err(LxAppError::Runtime(format!(
+            "current app session is not ControlApp: {appid}"
+        )));
+    }
+    Ok(current)
 }
 
 pub fn list_lxapps() -> Vec<LxAppRuntimeInfo> {

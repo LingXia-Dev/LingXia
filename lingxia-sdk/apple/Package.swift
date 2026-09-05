@@ -143,5 +143,10 @@ let package = Package(
                 .linkedFramework("PhotosUI", .when(platforms: [.iOS]))
             ]
         ),
+        .testTarget(
+            name: "LingxiaTests",
+            dependencies: ["lingxia"],
+            path: "Tests/LingxiaTests"
+        ),
     ]
 )

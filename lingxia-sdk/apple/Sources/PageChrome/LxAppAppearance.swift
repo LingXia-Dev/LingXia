@@ -11,11 +11,13 @@ import AppKit
 enum LxAppAppearanceRegistry {
     private static var schemes: [String: Bool] = [:]
     private static var webViews: [String: NSHashTable<WKWebView>] = [:]
+    private static var hostLocaleObserver: NSObjectProtocol?
     #if os(macOS)
     private static var hostAppearanceObserver: NSKeyValueObservation?
     #endif
 
     static func hostIsDark() -> Bool {
+        observeHostLocale()
         #if os(iOS)
         return UIScreen.main.traitCollection.userInterfaceStyle == .dark
         #else
@@ -26,6 +28,17 @@ enum LxAppAppearanceRegistry {
         }
         return NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         #endif
+    }
+
+    static func observeHostLocale() {
+        guard hostLocaleObserver == nil else { return }
+        hostLocaleObserver = NotificationCenter.default.addObserver(
+            forName: NSLocale.currentLocaleDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in onHostLocaleChanged(Locale.current.identifier) }
+        }
     }
 
     /// The lxapp's applied scheme, if one has been resolved yet.

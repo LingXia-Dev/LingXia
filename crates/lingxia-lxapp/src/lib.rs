@@ -7,6 +7,7 @@ mod archive;
 pub mod automation;
 pub(crate) mod bridge;
 mod cache;
+mod control_document_bootstrap;
 mod delegate;
 /// Simulated-device control shared by the devtool and `lx.automation()`.
 pub mod device;
@@ -20,6 +21,7 @@ pub mod log {
 #[cfg(feature = "js-appservice")]
 pub mod lx;
 mod lxapp;
+mod native_authority;
 mod native_component;
 mod page;
 pub(crate) mod plugin;
@@ -28,6 +30,8 @@ mod route;
 pub mod startup;
 /// Host-published terminal workspace state for trusted automation drivers.
 pub mod terminal_automation;
+#[cfg(feature = "test-utils")]
+mod test_authority_harness;
 mod update;
 pub(crate) mod view_call;
 
@@ -43,9 +47,18 @@ pub use appservice::event_bus::{
     unregister_app_handler, unregister_app_handler_token, unregister_page_handler,
 };
 pub use appservice::event_bus::{
-    BROWSER_TAB_CLOSED_EVENT, DISPLAY_LANGUAGE_CHANGE_EVENT, publish_app_event, publish_page_event,
+    BROWSER_TAB_CLOSED_EVENT, DISPLAY_LANGUAGE_CHANGE_EVENT, DISPLAY_LANGUAGE_STATE_CHANGE_EVENT,
+    publish_app_event, publish_page_event,
+};
+#[doc(hidden)]
+pub use bridge::{
+    DeferredRequiredV3Cancellation, PreparedRequiredV3Incoming, RequiredV3DocumentGate,
 };
 pub use cache::touch_access_time;
+pub use control_document_bootstrap::{
+    ControlDocumentAuthority, ControlDocumentBootstrap, ControlDocumentBootstrapError,
+    RequiredV3ExecutionGate, RequiredV3ExecutionPermit, issue_control_document_bootstrap,
+};
 pub use delegate::{LxAppDelegate, LxAppUiEventType};
 pub use error::LxAppError;
 pub use lifecycle::{
@@ -62,35 +75,44 @@ pub use lingxia_update::{
 pub use lingxia_webview::url_callback;
 pub use lxapp::set_num_workers;
 pub use lxapp::{
-    CloseReason, CreatePageInstanceRequest, CreatedPageInstance, DisplayLanguage,
+    AppSessionClass, CloseReason, CreatePageInstanceRequest, CreatedPageInstance,
+    DisplayLanguageEffectiveSource, DisplayLanguageEffectiveUpdate, DisplayLanguagePreference,
+    DisplayLanguageSessionOwner, DisplayLanguageState, DisplayLanguageStateUpdate,
     HOST_SURFACE_OWNER_APP_ID, HostMainSurfaceRegistration, HostSurfaceMenuExecution,
-    LXAPP_MORE_ACTION_LIMIT, LxApp, LxAppMoreAction, LxAppMoreActions, LxAppOpenRegion,
-    LxAppRuntimeInfo, LxAppRuntimePageInfo, LxAppRuntimeSurfaceInfo, LxAppSecurityPrivilege,
-    ManagedNativeSurface, PageDefinition, PageInstanceEvent, PageInstanceRuntimeInfo, PageOwner,
-    PageQueryInput, PageSurface, PageSurfaceRequest, PageSurfaceTarget, PageTarget,
-    PresentationKind, ResolvedPage, SceneId, SurfaceKind, SurfacePosition, SurfaceRole,
-    UrlCallbackSurface, UrlCallbackWaitError, add_display_language_change_listener,
-    apply_display_language_override, automation_auto_grant, bundled_lxapp_asset_available,
-    close_lxapp, config::LxAppInfo, create_page_instance, display_language, dispose_page_instance,
-    dispose_page_instance_by_id, ensure_builtin_lxapp, ensure_host_surface_owner, ensure_lxapp,
-    find_page_by_instance_id, get_current_lxapp, get_platform, host_class, init,
-    installed_lxapp_path, is_dev_session, is_public_network_address, is_pull_down_refresh_enabled,
-    list_lxapps, mark_lxapp_active, navbar, notify_lxapp_host_visibility,
-    notify_page_host_visibility, notify_page_instance, notify_page_instance_by_id, on_low_memory,
-    open_lxapp, open_region, page_chrome, refresh_auto_appearances, register_builtin_asset_bundle,
-    register_dev_bundle_source, register_surface_active_main_observer,
-    register_surface_close_observer, register_surface_context_observer,
-    register_surface_visibility_observer, register_synthetic_lxapp, restart_lxapp,
-    set_automation_auto_grant, set_display_language, set_display_language_in, tabbar,
-    touch_page_instance_by_id, try_get, uninstall_lxapp,
+    LXAPP_MORE_ACTION_LIMIT, LanguageTag, LxApp, LxAppMoreAction, LxAppMoreActions,
+    LxAppOpenRegion, LxAppRuntimeInfo, LxAppRuntimePageInfo, LxAppRuntimeSurfaceInfo,
+    LxAppSecurityPrivilege, ManagedNativeSurface, PageDefinition, PageInstanceEvent,
+    PageInstanceRuntimeInfo, PageOwner, PageQueryInput, PageSurface, PageSurfaceRequest,
+    PageSurfaceTarget, PageTarget, PresentationKind, ResolvedPage, SceneId, SurfaceKind,
+    SurfacePosition, SurfaceRole, UrlCallbackSurface, UrlCallbackWaitError,
+    add_display_language_effective_listener, add_display_language_state_listener,
+    bundled_lxapp_asset_available, clear_active_display_language_session_override,
+    clear_display_language_session_override, close_lxapp, config::LxAppInfo, create_page_instance,
+    display_language, display_language_state, display_language_state_update, dispose_page_instance,
+    dispose_page_instance_by_id, ensure_builtin_lxapp, ensure_control_lxapp,
+    ensure_host_surface_owner, ensure_lxapp, find_page_by_instance_id, get_current_lxapp,
+    get_platform, host_class, init, initialize_display_language,
+    install_display_language_session_override, installed_lxapp_path, is_dev_session,
+    is_public_network_address, is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active,
+    navbar, notify_lxapp_host_visibility, notify_page_host_visibility, notify_page_instance,
+    notify_page_instance_by_id, on_low_memory, open_control_lxapp_page, open_lxapp, open_region,
+    page_chrome, refresh_auto_appearances, refresh_display_language_system,
+    register_builtin_asset_bundle, register_dev_bundle_source,
+    register_surface_active_main_observer, register_surface_close_observer,
+    register_surface_context_observer, register_surface_visibility_observer,
+    register_synthetic_lxapp, restart_lxapp, set_display_language_preference,
+    set_display_language_preference_in, subscribe_display_language_effective,
+    subscribe_display_language_state, tabbar, touch_page_instance_by_id, try_get, uninstall_lxapp,
 };
+#[doc(hidden)]
+pub use native_authority::NativeControlPlaneAuthority;
 pub use native_component::{
     NativeComponentHost, on_native_component_event, register_native_component_host,
 };
 pub use page::config::{OrientationConfig, PageOrientation};
 pub use page::{
     NavigationType, PageAutomationState, PageInstance, PageInstanceId, ViewCallOptions,
-    add_global_page_script, register_page_resolver, resolve_page_path,
+    register_page_resolver, resolve_page_path,
 };
 pub use plugin::{build_plugin_page_path, parse_plugin_page_path, parse_plugin_url};
 pub use provider::{

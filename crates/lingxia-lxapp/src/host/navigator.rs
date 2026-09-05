@@ -167,7 +167,7 @@ host_api!(NavigateBackApp, (), |lxapp| {
 });
 
 pub(crate) fn register_all() {
-    register_host_module!("navigator", {
+    register_host_module!("navigator", crate::host::RouteAudience::AppSessionOnly, {
         "navigateToApp" => Arc::new(NavigateToApp),
         "navigateBackApp" => Arc::new(NavigateBackApp)
     });

@@ -29,6 +29,20 @@ export interface ErrorInfo {
   code?: number;
 }
 
+/**
+ * Private, one-shot handoff installed only in host-attested internal HTML.
+ *
+ * This is intentionally not part of the public bridge API and V2 never reads
+ * it. A future V3 bootstrap consumes the handoff before protocol activation.
+ */
+interface ControlBootstrap {
+  readonly requiredProtocol: 3;
+  readonly publicSessionId: string;
+  readonly secret: string;
+}
+
+type TakeControlBootstrap = () => ControlBootstrap | undefined;
+
 // V2 Error Codes (stable)
 export const BRIDGE_ERROR = {
   NOT_READY: 'BRIDGE_NOT_READY',
@@ -155,6 +169,11 @@ declare global {
     __lxDisplayLanguage?: { value: string; listeners: Set<() => void> };
     __LX_BRIDGE_INIT_STATE?: 'initializing' | 'initialized';
     __LX_RUNTIME_CONFIG?: RuntimeConfig;
+    /**
+     * Host-attested, one-shot V3 bootstrap handoff. It is absent for legacy
+     * scheme loads, assets, and all untrusted documents.
+     */
+    __LingXiaTakeControlBootstrap?: TakeControlBootstrap;
     __pageBridge?: { __names: string[]; [key: string]: unknown };
     __LingXiaRecvMessage?: (message: string) => void;
     LingXiaBridge?: LingXiaBridgeInterface;

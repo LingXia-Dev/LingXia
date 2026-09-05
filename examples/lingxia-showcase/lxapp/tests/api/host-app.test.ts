@@ -141,20 +141,20 @@ spec('answer checkUpdate with a decision instead of throwing', {
 
 spec('reject an invalid host display language', {
   id: 'HOSTAPP-LANG-002',
-  covers: ['lx.app.setDisplayLanguage'],
+  covers: ['lx.app.setDisplayLanguagePreference'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-002');
 
   const offered = await app.eval({
-    script: `return typeof lx.app.setDisplayLanguage`,
+    script: `return typeof lx.app.setDisplayLanguagePreference`,
   }) as string;
   expect(offered).toBe('function');
 
-  for (const language of ['', 'ja-JP']) {
+  for (const language of ['', 'en--US']) {
     const rejected = await evalCaught(
       app,
-      `lx.app.setDisplayLanguage(${JSON.stringify(language)})`,
+      `lx.app.setDisplayLanguagePreference(${JSON.stringify(language)})`,
     );
     expect(rejected.ok).toBe(false);
     expect(String(rejected.code)).toBe('E_INVALID_ARG');
@@ -320,6 +320,31 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
     `);
     expect(result.ok).toBeTruthy();
     expect(result.value).toMatch(/^lx:\/\//);
+  });
+
+  await t.step('keep settings-shaped declarations on the generic runtime channel', async () => {
+    const result = await evalCaught(app, `
+      lx.shell.sidebarActions.replace([
+        { id: 'settings', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'ID spoof', onActivate() {} },
+        { id: 'label-spoof', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Settings', onActivate() {} },
+        { id: 'icon-spoof', placement: 'footer', icon: 'public/sidebar-settings.svg', label: 'Icon spoof', onActivate() {} },
+      ]);
+      lx.shell.sidebarActions.update('settings', { label: 'ID spoof live' });
+      lx.shell.sidebarActions.update('label-spoof', { disabled: true });
+      lx.shell.sidebarActions.update('icon-spoof', { label: 'Icon spoof live' });
+      return 'generic';
+    `);
+    expect(result.ok).toBeTruthy();
+
+    // Restore the live set used by the following rollback assertions.
+    const restored = await evalCaught(app, `
+      lx.shell.sidebarActions.replace([
+        { id: 'probe-header', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Probe header', onActivate() {} },
+        { id: 'probe-footer', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Probe footer 2', disabled: true, onActivate() {} },
+      ]);
+      return 'restored';
+    `);
+    expect(restored.ok).toBeTruthy();
   });
 
   await t.step('reject a patch for an id outside the declaration', async () => {

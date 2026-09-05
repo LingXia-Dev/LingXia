@@ -73,6 +73,45 @@ async function desktopApp(): Promise<LxAppDriver> {
   return app;
 }
 
+async function openSettingsMain(
+  app: LxAppDriver,
+  platform: string,
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+): Promise<void> {
+  if (platform === 'windows') {
+    const current = (await desktop.windows()).find((window) => window.id === host.id) ?? host;
+    await desktop.window.focus({ window: current.id });
+    const layout = await app.surfaceLayout();
+    await desktop.pointer.click({
+      at: staticSettingsActionPoint(
+        current,
+        layout.switcherForm === 'rail',
+        DESKTOP_FOOTER_ACTION_COUNT,
+      ),
+    });
+    return;
+  }
+
+  const current = (await desktop.windows()).find((window) => window.id === host.id) ?? host;
+  await desktop.window.focus({ window: current.id });
+  const buttons = await desktop.ax.query({
+    window: current.id,
+    match: 'name:Settings',
+    all: true,
+  });
+  const settings = buttons.filter((node) => (
+    node.role === 'button'
+    && node.enabled
+    && node.name.trim() === 'Settings'
+    && node.rect.w > 0
+    && node.rect.h > 0
+    && node.rect.x < current.bounds.x + Math.min(220, current.bounds.w * 0.3)
+  ));
+  expect(settings.length).toBe(1);
+  await desktop.ax.invoke({ window: current.id, match: `id:${settings[0].id}` });
+}
+
 function switcherIds(layout: SurfaceLayoutSnapshot): string[] {
   return layout.mainSwitcher.items.map((item) => item.surfaceId);
 }
@@ -619,12 +658,10 @@ function pinnedShortcutPoint(
   ];
 }
 
-/// Footer actions the showcase declares on desktop, in `lxapp/lxapp.ts`:
-/// chat, terminal, ping, and terminal settings. The rail lays them out from
-/// the bottom, so the first one's position depends on how many there are —
-/// declaring another without updating this clicks a different action, and the
-/// test then waits for a surface that was never opened.
-const DESKTOP_FOOTER_ACTION_COUNT = 4;
+/// Four runtime actions from `lxapp.ts`, followed by the host-owned static
+/// Settings action. The rail lays them out from the bottom, so adding another
+/// source without updating this clicks a different action.
+const DESKTOP_FOOTER_ACTION_COUNT = 5;
 // The mobile-only Device item is filtered out; every other declared tab is a
 // root page row above dynamic workspaces in the expanded desktop sidebar.
 const SHOWCASE_DESKTOP_TAB_COUNT = 6;
@@ -646,6 +683,24 @@ function firstRailFooterActionPoint(
     host.bounds.x + Math.round(railWidth / 2),
     host.bounds.y + firstTop + Math.round(cell / 2),
   ];
+}
+
+function staticSettingsActionPoint(
+  host: DesktopWindowInfo,
+  rail: boolean,
+  footerActionCount: number,
+): [number, number] {
+  const cell = nativeWindowExtent('windows', host, 30);
+  const margin = nativeWindowExtent('windows', host, 6);
+  if (!rail) {
+    return [
+      host.bounds.x + nativeWindowExtent('windows', host, 92),
+      host.bounds.y + host.bounds.h - margin - cell / 2,
+    ];
+  }
+  const first = firstRailFooterActionPoint(host, footerActionCount);
+  const gap = nativeWindowExtent('windows', host, 4);
+  return [first[0], first[1] + (footerActionCount - 1) * (cell + gap)];
 }
 
 function firstLxappWorkspacePoint(
@@ -1352,10 +1407,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     // only graph state, so a sidebar that failed to reach its icon rail cannot pass.
     await closeChatSurface(app);
     chatOpened = false;
-    await app.eval({
-      timeoutMs: 20_000,
-      script: `await lx.shell.openBuiltin('settings');`,
-    });
+    await openSettingsMain(app, platform, desktop, host);
     const settingsTab = await waitForValue(async () => {
       const current = await browser.current();
       return current?.current_url?.startsWith('lingxia://settings') ? current : undefined;
@@ -1440,7 +1492,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       return inset >= minimumRail ? inset : undefined;
     }, `${platform} compact browser preserves the icon rail`);
 
-    // The registry lists tabs in creation order; settings opened first.
+    // The registry lists tabs in creation order; the website opened first.
     const compactBrowserTabs = (await browser.tabs()).filter((tab) => (
       tab.tab_id === browserTabId || tab.tab_id === secondaryBrowserTabId
     ));
@@ -1971,10 +2023,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
     // changing its lifecycle visibility. A retained handle.show() is an
     // explicit product-level activation request: it must replace that cover,
     // restore the same physical Chat WebView, and emit no duplicate show event.
-    await app.eval({
-      timeoutMs: 20_000,
-      script: `await lx.shell.openBuiltin('settings');`,
-    });
+    await openSettingsMain(app, platform, desktop, host);
     const browserMain = await waitForValue(async () => {
       const current = await browser.current();
       return current?.current_url?.startsWith('lingxia://settings') ? current : undefined;

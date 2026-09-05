@@ -1,3 +1,7 @@
+#[cfg(feature = "devtool")]
+use crate::host::NativeDevtoolsAuthority;
+use crate::host::{AppResourceGrant, NativeHostRuntimeAuthority};
+use crate::{AppSessionClass, LxApp};
 use std::sync::{Arc, Mutex, OnceLock};
 
 /// Host lifecycle extension points that can register additional runtime behavior.
@@ -11,11 +15,30 @@ pub trait HostAddon: Send + Sync {
     fn install_product_cli(&self, _cli: &mut crate::product_cli::ProductCli) {}
     /// Runs before LingXia initialization begins.
     fn before_init(&self) {}
+    /// Contributes immutable Settings target metadata before any lxapp,
+    /// AppService, WebView, or document session is created.
+    fn configure_static_settings_targets(&self, _catalog: &mut crate::StaticSettingsTargetCatalog) {
+    }
+    /// Installs callbacks only for NativeAction ids declared in the static
+    /// Settings target catalog. The registrar is sealed before runtime starts.
+    fn install_native_settings_actions(
+        &self,
+        _registrar: &mut crate::NativeSettingsActionRegistrar,
+    ) -> Result<(), String> {
+        Ok(())
+    }
     /// Registers JS logic extensions when the `standard` feature is enabled.
     #[cfg(feature = "standard")]
     fn install_logic_extensions(&self) {}
     /// Registers native host APIs before the runtime starts serving requests.
     fn install_host_apis(&self) {}
+    /// Assign the manifest-requested privileged resources this native product
+    /// approves for a newly created session. The authority is sealed after
+    /// this callback returns and is never reachable from bridge payloads.
+    fn issue_app_resource_grants(&self, _authority: &mut NativeHostRuntimeAuthority<'_>) {}
+    /// Assign devtools-only automation resources to one newly created session.
+    #[cfg(feature = "devtool")]
+    fn issue_devtools_app_resource_grants(&self, _authority: &mut NativeDevtoolsAuthority<'_>) {}
     /// Picks the campaign screen shown after this cold start's launch face,
     /// with a countdown the user can skip.
     ///
@@ -71,13 +94,47 @@ pub(crate) fn run_before_init() {
     }
 }
 
+pub(crate) fn run_configure_static_settings_targets(
+    catalog: &mut crate::StaticSettingsTargetCatalog,
+) {
+    let installed = snapshot_host_addons();
+    for addon in installed.iter() {
+        addon.configure_static_settings_targets(catalog);
+    }
+}
+
+pub(crate) fn run_install_native_settings_actions(
+    registrar: &mut crate::NativeSettingsActionRegistrar,
+) -> Result<(), String> {
+    let installed = snapshot_host_addons();
+    for addon in installed.iter() {
+        addon.install_native_settings_actions(registrar)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn run_install_logic_extensions() {
-    #[cfg(feature = "standard")]
+    #[cfg(any(feature = "standard", feature = "automation"))]
     {
-        let installed = snapshot_host_addons();
-        for addon in installed.iter() {
-            addon.install_logic_extensions();
+        unsafe extern "Rust" {
+            #[link_name = "lingxia_lxapp_run_host_extension_registration_v1"]
+            fn run_host_extension_registration(action: Box<dyn FnOnce()>);
         }
+        #[cfg(feature = "standard")]
+        let installed = snapshot_host_addons();
+        // SAFETY: this private ABI marks only synchronous native bootstrap
+        // registration as control-capable. Calls through the public extension
+        // API outside this phase remain StandardApp-only.
+        unsafe {
+            run_host_extension_registration(Box::new(move || {
+                #[cfg(feature = "standard")]
+                for addon in installed.iter() {
+                    addon.install_logic_extensions();
+                }
+                #[cfg(feature = "automation")]
+                lingxia_automation::register_automation_runtime();
+            }))
+        };
     }
 }
 
@@ -85,6 +142,74 @@ pub(crate) fn run_install_host_apis() {
     let installed = snapshot_host_addons();
     for addon in installed.iter() {
         addon.install_host_apis();
+    }
+}
+
+pub(crate) fn resolve_app_resource_grants(
+    _app: &Arc<LxApp>,
+    authority: &mut NativeHostRuntimeAuthority<'_>,
+) {
+    // `capabilities.process` is native-authored bootstrap policy, but it
+    // applies only to the native-assigned ControlApp and still intersects the
+    // lxapp's manifest request.
+    issue_builtin_host_grants(authority, lingxia_app_context::process_enabled());
+
+    for addon in snapshot_host_addons() {
+        addon.issue_app_resource_grants(authority);
+    }
+}
+
+#[cfg(feature = "devtool")]
+pub(crate) fn resolve_devtools_resource_grants(
+    _app: &Arc<LxApp>,
+    authority: &mut NativeDevtoolsAuthority<'_>,
+) {
+    // Only a linked native devtools addon receives this authority. A dev
+    // websocket/env signal alone never grants host automation.
+    for addon in snapshot_host_addons() {
+        addon.issue_devtools_app_resource_grants(authority);
+    }
+}
+
+fn issue_builtin_host_grants(
+    authority: &mut NativeHostRuntimeAuthority<'_>,
+    process_enabled: bool,
+) {
+    if should_issue_builtin_process(
+        authority.session_class(),
+        process_enabled,
+        authority.requested(AppResourceGrant::Process),
+    ) {
+        authority.grant(AppResourceGrant::Process);
+    }
+}
+
+const fn should_issue_builtin_process(
+    class: AppSessionClass,
+    process_enabled: bool,
+    requested: bool,
+) -> bool {
+    matches!(class, AppSessionClass::ControlApp) && process_enabled && requested
+}
+
+#[cfg(test)]
+#[allow(clippy::items_after_test_module)]
+mod resource_grant_tests {
+    use super::*;
+
+    #[test]
+    fn process_bootstrap_grant_requires_control_class_host_policy_and_manifest_request() {
+        for (class, enabled, requested, expected) in [
+            (AppSessionClass::StandardApp, true, true, false),
+            (AppSessionClass::ControlApp, false, true, false),
+            (AppSessionClass::ControlApp, true, false, false),
+            (AppSessionClass::ControlApp, true, true, true),
+        ] {
+            assert_eq!(
+                should_issue_builtin_process(class, enabled, requested),
+                expected
+            );
+        }
     }
 }
 

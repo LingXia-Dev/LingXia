@@ -33,12 +33,16 @@ public class LingXiaWebChromeClient extends WebChromeClient {
     @Override
     public boolean onConsoleMessage(ConsoleMessage message) {
         LingXiaWebView webView = webViewRef.get();
-        if (webView != null) {
+        // BrowserRelaxed may be displaying hostile external content. Its
+        // trusted control document forwards console only through the bound V3
+        // document port; direct WebChromeClient delivery would bypass it.
+        if (webView != null && webView.usesStrictSecurityProfile()) {
             int level = getLogLevel(message.messageLevel());
             webView.onConsoleMessage(
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
                 webView.getSessionId(),
+                webView.getNativeViewId(),
                 level,
                 message.message()
             );

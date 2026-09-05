@@ -1,3 +1,4 @@
+use crate::authorization::{self, LogicRoute};
 use futures::{
     StreamExt,
     channel::{mpsc, oneshot},
@@ -446,7 +447,7 @@ async fn open_url(ctx: JSContext, url: String, options: Optional<JSObject>) -> J
     copy_options(&options, &spec, &["edge", "size"])?;
 
     let key = read_surface_key(&options)?;
-    let opened = open_url_spec(ctx.clone(), &spec).await?;
+    let opened = open_url_spec(ctx.clone(), &spec, None).await?;
     browser_tab_handle(&ctx, opened, &realized, key)
 }
 
@@ -470,7 +471,7 @@ async fn open_declared(
     }
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
-    let handle = open_declared_surface_spec(&ctx, &spec).await?;
+    let handle = open_declared_surface_spec(&ctx, &spec, None).await?;
     let realized = handle_realized_placement(&handle);
     finish_handle(&ctx, &handle, "declared", &realized, None, None)
 }
@@ -515,8 +516,15 @@ fn get_surface(ctx: JSContext, key_or_id: String) -> JSResult<JSValue> {
 }
 
 /// `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
-/// slot. Home-lxapp only; the namespace is the privilege.
-async fn shell_open_app(ctx: JSContext, app_id: String, options: JSObject) -> JSResult<JSObject> {
+/// slot. Control-app only; the namespace is the privilege.
+async fn shell_open_app(ctx: JSContext, app_id: JSValue, options: JSValue) -> JSResult<JSObject> {
+    let (invocation, (app_id, options)) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellOpenApp, || {
+            Ok((
+                shell_string_argument(app_id, "lx.shell.openApp appId")?,
+                shell_object_argument(options, "lx.shell.openApp options")?,
+            ))
+        })?;
     reject_unknown_options(
         &options,
         &[
@@ -538,15 +546,18 @@ async fn shell_open_app(ctx: JSContext, app_id: String, options: JSObject) -> JS
         &["as", "edge", "page", "query", "envVersion", "targetVersion"],
     )?;
     let key = read_surface_key(&options)?;
-    let handle = open_app_spec(ctx.clone(), &spec).await?;
+    let handle = open_app_spec(ctx.clone(), &spec, &invocation).await?;
     let realized = handle_realized_placement(&handle);
     finish_handle(&ctx, &handle, "app", &realized, key, None)
 }
 
-/// `lx.shell.openBuiltin(page)` — a host builtin page. Home-lxapp only.
-async fn shell_open_builtin(ctx: JSContext, page: String) -> JSResult<JSObject> {
+/// `lx.shell.openBuiltin(page)` — a host builtin page. Control-app only.
+async fn shell_open_builtin(ctx: JSContext, page: JSValue) -> JSResult<JSObject> {
+    let (invocation, page) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellOpenBuiltin, || {
+            shell_string_argument(page, "lx.shell.openBuiltin page")
+        })?;
     let url = match page.trim() {
-        "settings" => "lingxia://settings",
         "downloads" => "lingxia://downloads",
         other => {
             return Err(surface_error(
@@ -557,20 +568,28 @@ async fn shell_open_builtin(ctx: JSContext, page: String) -> JSResult<JSObject> 
     };
     let spec = JSObject::new(&ctx);
     spec.set("url", url)?;
-    open_url_spec(ctx.clone(), &spec).await?;
+    open_url_spec(ctx.clone(), &spec, Some(&invocation)).await?;
     builtin_surface_handle(&ctx, page.trim())
 }
 
 /// `lx.shell.openDeclared(id, options?)` — the declared surface, plus the
-/// keyed multi-instance form and placement overrides. Home-lxapp only.
+/// keyed multi-instance form and placement overrides. Control-app only.
 async fn shell_open_declared(
     ctx: JSContext,
-    id: String,
-    options: Optional<JSObject>,
+    id: JSValue,
+    options: Optional<JSValue>,
 ) -> JSResult<JSObject> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    require_home_caller(&lxapp, "lx.shell.openDeclared")?;
-    let options = options.0.unwrap_or_else(|| JSObject::new(&ctx));
+    let (invocation, (id, options)) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellOpenDeclared, || {
+            let id = shell_string_argument(id, "lx.shell.openDeclared id")?;
+            let options = options
+                .0
+                .filter(|value| !value.is_undefined() && !value.is_null())
+                .map(|value| shell_object_argument(value, "lx.shell.openDeclared options"))
+                .transpose()?
+                .unwrap_or_else(|| JSObject::new(&ctx));
+            Ok((id, options))
+        })?;
     reject_unknown_options(&options, &["key", "as", "edge"], "lx.shell.openDeclared")?;
     let key = read_surface_key(&options)?;
     let spec = JSObject::new(&ctx);
@@ -581,20 +600,25 @@ async fn shell_open_declared(
     // Overriding the declared placement is the privilege; opening first and
     // reconfiguring after would present the wrong role for a frame.
     copy_options(&options, &spec, &["as", "edge"])?;
-    let handle = open_declared_surface_spec(&ctx, &spec).await?;
+    let handle = open_declared_surface_spec(&ctx, &spec, Some(&invocation)).await?;
     let realized = handle_realized_placement(&handle);
     finish_handle(&ctx, &handle, "declared", &realized, key, None)
 }
 
 /// `lx.shell.reconfigure(id, patch)` — re-place a live declared surface.
-async fn shell_reconfigure(ctx: JSContext, id: String, patch: JSObject) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    require_home_caller(&lxapp, "lx.shell.reconfigure")?;
+async fn shell_reconfigure(ctx: JSContext, id: JSValue, patch: JSValue) -> JSResult<()> {
+    let (invocation, (id, patch)) =
+        authorization::require_before_decode(&ctx, LogicRoute::ShellReconfigure, || {
+            Ok((
+                shell_string_argument(id, "lx.shell.reconfigure id")?,
+                shell_object_argument(patch, "lx.shell.reconfigure patch")?,
+            ))
+        })?;
     reject_unknown_options(&patch, &["as", "edge"], "lx.shell.reconfigure")?;
     let spec = JSObject::new(&ctx);
     spec.set("surface", id)?;
     copy_options(&patch, &spec, &["as", "edge"])?;
-    let handle = open_declared_surface_spec(&ctx, &spec).await?;
+    let handle = open_declared_surface_spec(&ctx, &spec, Some(&invocation)).await?;
     // `openDeclared` hands back a cached object and stamps `realized` once, so
     // without this the handle the caller still holds reports the placement it
     // had before this call.
@@ -1052,18 +1076,22 @@ fn handle_realized_placement(handle: &JSObject) -> String {
         .unwrap_or_else(|_| "aside".to_string())
 }
 
-/// Reject callers other than the home lxapp for the privileged content keys
-/// (`appId`) — the same single-writer model as `lx.shell`. Gates on
-/// the configured home appId (like `ensure_home_lxapp`), not the instance
-/// flag, which a dev-mode reinstall can recreate without.
-fn require_home_caller(lxapp: &LxApp, key: &str) -> JSResult<()> {
-    if lingxia_app_context::home_app_id().is_some_and(|home| lxapp.appid == home) {
-        return Ok(());
-    }
-    Err(surface_error(
-        SurfaceErrorCode::Denied,
-        format!("{key} is restricted to the home lxapp"),
-    ))
+fn shell_string_argument(value: JSValue, label: &str) -> JSResult<String> {
+    value.to_rust::<String>().map_err(|_| {
+        surface_error(
+            SurfaceErrorCode::InvalidArg,
+            format!("{label} must be a string"),
+        )
+    })
+}
+
+fn shell_object_argument(value: JSValue, label: &str) -> JSResult<JSObject> {
+    value.into_object().ok_or_else(|| {
+        surface_error(
+            SurfaceErrorCode::InvalidArg,
+            format!("{label} must be an object"),
+        )
+    })
 }
 
 /// Backs `lx.shell.openApp`. Opens another lxapp
@@ -1071,7 +1099,12 @@ fn require_home_caller(lxapp: &LxApp, key: &str) -> JSResult<()> {
 /// through the same update path as app navigation, then composed independently
 /// from any YAML declaration. Dynamic composition supports main/aside only;
 /// floats need a declaration-owned presentation contract.
-async fn open_app_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
+async fn open_app_spec(
+    ctx: JSContext,
+    spec: &JSObject,
+    invocation: &lxapp::host::HostInvocationContext,
+) -> JSResult<JSObject> {
+    let lxapp = invocation.lxapp();
     let app_id = read_required_string(spec, "appId")?;
     let app_id = app_id.trim().to_string();
     if app_id.is_empty() {
@@ -1081,9 +1114,6 @@ async fn open_app_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
         ));
     }
     let edge = read_validated_edge(spec)?;
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    require_home_caller(&lxapp, "lx.shell.openApp")?;
-
     let as_role = read_required_string(spec, "as")?;
     let as_role = as_role.trim();
     if !matches!(as_role, "main" | "aside") {
@@ -1133,7 +1163,7 @@ async fn open_app_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
         return lxapp_surface_handle(&ctx, lxapp, app_id.clone(), app_id, current_region);
     }
     let (startup_options, release_type) =
-        crate::navigator::prepare_app_open(&lxapp, &target).await?;
+        crate::navigator::prepare_app_open(&lxapp, &target, Some(invocation)).await?;
 
     let (region, shell_surface_id) = match as_role {
         "main" => {
@@ -1171,9 +1201,15 @@ fn open_lxapp_region(
         options.open_mode = lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel;
         options.panel_id = shell_surface_id.to_string();
     }
-    lxapp::open_lxapp(app_id, options)
-        .map(|_| ())
-        .map_err(lxapp_open_error)
+    let app = lxapp::open_lxapp(app_id, options).map_err(lxapp_open_error)?;
+    activate_opened_lxapp_region(region, || app.activate_main());
+    Ok(())
+}
+
+fn activate_opened_lxapp_region(region: lxapp::LxAppOpenRegion, activate_main: impl FnOnce()) {
+    if region == lxapp::LxAppOpenRegion::Main {
+        activate_main();
+    }
 }
 
 async fn show_lxapp_region(
@@ -1225,7 +1261,11 @@ fn lxapp_open_error(err: LxAppError) -> rong::RongJSError {
 }
 
 /// Declaration-id form. Provider kinds stay behind the declaration boundary.
-async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResult<JSObject> {
+async fn open_declared_surface_spec(
+    ctx: &JSContext,
+    spec: &JSObject,
+    privileged_invocation: Option<&lxapp::host::HostInvocationContext>,
+) -> JSResult<JSObject> {
     let id = read_required_string(spec, "surface")?;
     let key = read_optional_string(spec, "key")?.map(|key| key.trim().to_string());
     if key.as_deref().is_some_and(str::is_empty) || key.as_ref().is_some_and(|key| key.len() > 128)
@@ -1245,6 +1285,17 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
         ));
     }
     let requested_role = read_optional_managed_role(spec)?;
+    let has_orchestration_override = has_declared_surface_orchestration_override(
+        key.as_deref(),
+        requested_role,
+        edge.as_deref(),
+    );
+    if has_orchestration_override && privileged_invocation.is_none() {
+        return Err(surface_error(
+            SurfaceErrorCode::Denied,
+            "declared-surface overrides are reserved; use lx.shell.openDeclared",
+        ));
+    }
     if key.is_none()
         && requested_role.is_some_and(|role| role != lingxia_surface::Role::Main)
         && lxapp.surface_switcher_snapshot().root_surface_id.as_deref() == Some(id)
@@ -1262,13 +1313,9 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
         ));
     }
     let declared_app_id = declared_lxapp_app_id(&lxapp, id);
-    if has_declared_surface_orchestration_override(key.as_deref(), requested_role, edge.as_deref())
-    {
-        // Every lxapp may consume a declaration exactly as the host authored
-        // it. Instance creation and placement overrides mutate shared shell
-        // composition, so they stay under the home lxapp's single-writer role.
-        require_home_caller(&lxapp, "overriding a declared surface")?;
-    }
+    // Every lxapp may consume a declaration exactly as the host authored it.
+    // Instance creation and placement overrides mutate shared shell
+    // composition, so they stay under the Control app's single-writer role.
     if key.is_some() && declared_app_id.is_some() {
         return Err(surface_error(
             SurfaceErrorCode::CapabilityMissing,
@@ -1435,38 +1482,44 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
 /// With `as: 'aside'` the url is docked beside the main as a closable browser
 /// tab strip on desktop. Compact hosts project the same request into the
 /// full-screen in-app browser with aside chrome.
-async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
+async fn open_url_spec(
+    ctx: JSContext,
+    spec: &JSObject,
+    privileged_invocation: Option<&lxapp::host::HostInvocationContext>,
+) -> JSResult<JSValue> {
     let raw_url = read_required_string(spec, "url")?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     let trimmed_url = raw_url.trim_matches(|character: char| character.is_ascii_whitespace());
 
-    if let Some(page) = parse_builtin_browser_page(trimmed_url) {
-        validate_builtin_browser_surface_keys(spec)?;
-        require_home_caller(&lxapp, "lx.shell.openBuiltin")?;
-        if !lingxia_app_context::browser_enabled() {
-            return Err(surface_error(
-                SurfaceErrorCode::UnsupportedPlacement,
-                "built-in browser pages require capabilities.browser",
+    match classify_logic_url(trimmed_url) {
+        LogicUrlClassification::BuiltinDownloads => {
+            // URL classification only reserves the target. Authority comes
+            // from the fixed-policy shell entry that supplied this context.
+            ensure_fixed_builtin_entry(privileged_invocation.is_some())?;
+            validate_builtin_browser_surface_keys(spec)?;
+            if !lingxia_app_context::browser_enabled() {
+                return Err(surface_error(
+                    SurfaceErrorCode::UnsupportedPlacement,
+                    "built-in browser pages require capabilities.browser",
+                ));
+            }
+            lxapp
+                .runtime
+                .open_builtin_browser_page(BuiltinBrowserPage::Downloads)
+                .map_err(|err| match err {
+                    lingxia_platform::error::PlatformError::NotSupported(_) => {
+                        surface_error(SurfaceErrorCode::UnsupportedPlacement, err)
+                    }
+                    _ => surface_error(SurfaceErrorCode::Failed, err),
+                })?;
+            return Ok(JSValue::null(&ctx));
+        }
+        LogicUrlClassification::ReservedInternal => {
+            return Err(invalid_surface_target(
+                "only lingxia://downloads is a public built-in URL",
             ));
         }
-        lxapp
-            .runtime
-            .open_builtin_browser_page(page)
-            .map_err(|err| match err {
-                lingxia_platform::error::PlatformError::NotSupported(_) => {
-                    surface_error(SurfaceErrorCode::UnsupportedPlacement, err)
-                }
-                _ => surface_error(SurfaceErrorCode::Failed, err),
-            })?;
-        return Ok(JSValue::null(&ctx));
-    }
-    if trimmed_url
-        .get(.."lingxia:".len())
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("lingxia:"))
-    {
-        return Err(invalid_surface_target(
-            "only lingxia://settings and lingxia://downloads are public built-in URLs",
-        ));
+        LogicUrlClassification::External => {}
     }
 
     match read_optional_string(spec, "as")?.as_deref().map(str::trim) {
@@ -1502,12 +1555,33 @@ async fn open_url_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSValue> {
     }
 }
 
-fn parse_builtin_browser_page(url: &str) -> Option<BuiltinBrowserPage> {
-    match url {
-        "lingxia://settings" => Some(BuiltinBrowserPage::Settings),
-        "lingxia://downloads" => Some(BuiltinBrowserPage::Downloads),
-        _ => None,
+fn ensure_fixed_builtin_entry(has_control_invocation: bool) -> JSResult<()> {
+    if has_control_invocation {
+        return Ok(());
     }
+    Err(invalid_surface_target(
+        "lingxia://downloads is reserved; use lx.shell.openBuiltin('downloads')",
+    ))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LogicUrlClassification {
+    BuiltinDownloads,
+    ReservedInternal,
+    External,
+}
+
+fn classify_logic_url(url: &str) -> LogicUrlClassification {
+    if url == "lingxia://downloads" {
+        return LogicUrlClassification::BuiltinDownloads;
+    }
+    if url
+        .get(.."lingxia:".len())
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("lingxia:"))
+    {
+        return LogicUrlClassification::ReservedInternal;
+    }
+    LogicUrlClassification::External
 }
 
 fn validate_builtin_browser_surface_keys(spec: &JSObject) -> JSResult<()> {
@@ -3379,23 +3453,43 @@ mod tests {
     }
 
     #[test]
-    fn builtin_browser_pages_require_exact_public_urls() {
+    fn downloads_is_reserved_for_the_fixed_shell_entry() {
         assert_eq!(
-            parse_builtin_browser_page("lingxia://settings"),
-            Some(BuiltinBrowserPage::Settings)
-        );
-        assert_eq!(
-            parse_builtin_browser_page("lingxia://downloads"),
-            Some(BuiltinBrowserPage::Downloads)
+            classify_logic_url("lingxia://downloads"),
+            LogicUrlClassification::BuiltinDownloads
         );
         for rejected in [
+            "lingxia://settings",
             "Lingxia://settings",
             "lingxia://settings/",
             "lingxia://settings?tab=privacy",
+            "lingxia://settings#clear-site-data?tabId=tab-1",
             "lingxia://downloads#active",
             "lingxia://history",
         ] {
-            assert_eq!(parse_builtin_browser_page(rejected), None, "{rejected}");
+            assert_eq!(
+                classify_logic_url(rejected),
+                LogicUrlClassification::ReservedInternal,
+                "{rejected}"
+            );
+        }
+        assert_eq!(
+            classify_logic_url("https://example.com"),
+            LogicUrlClassification::External
+        );
+        assert!(ensure_fixed_builtin_entry(false).is_err());
+        assert!(ensure_fixed_builtin_entry(true).is_ok());
+    }
+
+    #[test]
+    fn settings_is_reserved_before_ordinary_or_control_caller_authorization() {
+        for caller_is_control in [false, true] {
+            let classification = classify_logic_url("lingxia://settings?tab=privacy");
+            assert_eq!(
+                classification,
+                LogicUrlClassification::ReservedInternal,
+                "caller_is_control={caller_is_control}"
+            );
         }
     }
 
@@ -3501,6 +3595,23 @@ mod tests {
         assert!(!cache.contains_key(&sibling));
         assert!(cache.contains_key(&restarted));
         assert!(cache.contains_key(&other_app));
+    }
+
+    #[test]
+    fn cold_main_open_requests_explicit_activation_but_aside_open_does_not() {
+        use std::cell::Cell;
+
+        let main_activations = Cell::new(0);
+        activate_opened_lxapp_region(lxapp::LxAppOpenRegion::Main, || {
+            main_activations.set(main_activations.get() + 1);
+        });
+        assert_eq!(main_activations.get(), 1);
+
+        let aside_activations = Cell::new(0);
+        activate_opened_lxapp_region(lxapp::LxAppOpenRegion::Aside, || {
+            aside_activations.set(aside_activations.get() + 1);
+        });
+        assert_eq!(aside_activations.get(), 0);
     }
 
     #[test]

@@ -25,6 +25,19 @@ for live state. A product without settings UI may temporarily default to
 `true`. IPC lives under `<app_data>/lingxia/control`, never under host-owned
 `app_state`.
 
+Host-owned `AutomationRuntime` programs carry a native runtime authority and
+do not impersonate an lxapp. An lxapp manifest's `automation` or `host` entry
+is only a request; cross-lxapp, browser, shell, device, terminal, and desktop
+process operations additionally require a native grant sealed to that exact
+session. Retained drivers are revalidated on each call and expire when their
+owner session begins teardown.
+
+Native terminal snapshots and commands are addressed through an owner-bound
+surface handle, not by a globally authoritative surface-id string. Platform UI
+publishes under native-host authority; lxapp automation binds a handle only
+after its sealed `AutomationHost` grant is checked. The handle is revalidated
+for snapshot, dispatch, and completion, so restart/takeover cannot reuse it.
+
 `--allow-control` acknowledges an authorized mutation; it does not grant
 access. Use `--allow-destructive` only when the request explicitly authorizes
 the destructive effect.

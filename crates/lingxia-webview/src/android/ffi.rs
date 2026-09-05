@@ -1,13 +1,15 @@
 use crate::events::normalizer::{self, NativeNavigationResult, NativeSignal};
 use crate::traits::{
     FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy,
-    NewWindowPolicy,
+    NewWindowPolicy, WebMessageFrame, WebMessageSource, WebMessageTransport,
 };
 use crate::webview::{
-    WebTag, WebViewCreateStage, find_webview, find_webview_delegate,
-    register_android_webview_if_current,
+    WebTag, WebViewCreateStage, find_webview_by_native_view_id, register_android_webview_if_current,
 };
-use crate::{DownloadRequest, LogLevel, WebResourceBody, WebResourceResponse, WebViewError};
+use crate::{
+    ContextualSchemeRequest, DownloadRequest, LogLevel, NativeWebViewId, SchemeRequestFrame,
+    WebResourceBody, WebResourceResponse, WebViewError,
+};
 use http::header::{HeaderMap, HeaderName, HeaderValue};
 use http::{Method, Request};
 use jni::objects::{JByteArray, JObject, JObjectArray, JString, JValue};
@@ -15,9 +17,22 @@ use jni::sys::{jboolean, jint, jlong};
 use jni::{Env, EnvUnowned, errors::ThrowRuntimeExAndDefault, jni_sig, jni_str};
 use std::fs;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // Import from webview.rs
 use crate::android::webview::{WEBVIEW_SENDERS, WebViewInner, complete_pending_eval_request};
+
+static BROWSER_CONTROL_API_BELOW_23: AtomicU64 = AtomicU64::new(0);
+static BROWSER_CONTROL_MESSAGE_PORT_UNAVAILABLE: AtomicU64 = AtomicU64::new(0);
+
+fn native_view_id_from_jni(native_view_id: jlong, callback: &str) -> Option<NativeWebViewId> {
+    (native_view_id > 0)
+        .then(|| NativeWebViewId::new(native_view_id as u64))
+        .or_else(|| {
+            log::warn!("Dropping Android {callback} callback without a native-view identity");
+            None
+        })
+}
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage(
@@ -26,23 +41,170 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handlePostMessage
     appid: JString,
     path: JString,
     session_id: jlong,
+    native_view_id: jlong,
+    transport: jint,
+    load_token: jlong,
+    document_generation: jlong,
+    source_url: JString,
     message: JString,
 ) -> jint {
     env.with_env(|env| -> Result<jint, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
         let message: String = message.try_to_string(env)?;
+        let source_url: String = source_url.try_to_string(env)?;
         let session_id = if session_id > 0 {
             Some(session_id as u64)
         } else {
             None
         };
 
+        let Some(native_view_id) =
+            (native_view_id > 0).then(|| NativeWebViewId::new(native_view_id as u64))
+        else {
+            log::warn!("Dropping Android WebView message without a native-view identity");
+            return Ok(0);
+        };
+        let transport = match transport {
+            1 => WebMessageTransport::AndroidMessagePort,
+            2 => WebMessageTransport::AndroidJavascriptInterface,
+            unexpected => {
+                log::warn!(
+                    "Dropping Android WebView message with unknown transport {}",
+                    unexpected
+                );
+                return Ok(0);
+            }
+        };
         let webtag = WebTag::new(&appid, &path, session_id);
-        if let Some(delegate) = find_webview_delegate(&webtag) {
-            delegate.handle_post_message(message);
+        if let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) {
+            let source =
+                WebMessageSource::diagnostic_url((!source_url.is_empty()).then_some(source_url));
+            match transport {
+                WebMessageTransport::AndroidMessagePort
+                    if load_token > 0 && document_generation > 0 =>
+                {
+                    webview.enqueue_document_web_message(
+                        message,
+                        crate::DocumentGeneration::new(document_generation as u64),
+                        transport,
+                        source,
+                    );
+                }
+                WebMessageTransport::AndroidJavascriptInterface => {
+                    webview.enqueue_web_message(
+                        message,
+                        WebMessageFrame::Unproven,
+                        transport,
+                        source,
+                    );
+                }
+                _ => {
+                    log::debug!("Dropping Android MessagePort frame without a document binding");
+                }
+            }
+        } else {
+            log::debug!(
+                "Dropping stale Android WebView message for {} (native view {:?})",
+                webtag.as_str(),
+                native_view_id
+            );
         }
         Ok(0)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_reportWebMessageRejected(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    native_view_id: jlong,
+) -> jint {
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "ingress rejection")
+        else {
+            return Ok(0);
+        };
+        let session_id = (session_id > 0).then_some(session_id as u64);
+        let webtag = WebTag::new(&appid, &path, session_id);
+        if let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) {
+            webview.reject_oversized_web_message();
+        }
+        Ok(0)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_dispatchDocumentMessage(
+    mut env: EnvUnowned,
+    this: JObject,
+    request_id: jlong,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        let Some(pending) = super::webview::take_pending_document_message(request_id as u64) else {
+            return Ok(false);
+        };
+        let mut posted = false;
+        let mut generation_action = || {
+            let mut native_post = || {
+                let Ok(message) = env.new_string(&pending.message) else {
+                    return;
+                };
+                let Ok(result) = env.call_method(
+                    &this,
+                    jni_str!("postDocumentMessageNow"),
+                    jni_sig!("(JLjava/lang/String;)Z"),
+                    &[(pending.generation.get() as i64).into(), (&message).into()],
+                ) else {
+                    return;
+                };
+                posted = result.z().unwrap_or(false);
+            };
+            let _ = normalizer::with_current_document_binding(
+                pending.native_view_id,
+                pending.generation,
+                &mut native_post,
+            );
+        };
+        let _ = pending.gate.with_active(&mut generation_action);
+        Ok(posted)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onBrowserControlBridgeDegraded(
+    mut env: EnvUnowned,
+    _this: JObject,
+    reason: JString,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let reason: String = reason.try_to_string(env)?;
+        let count = match reason.as_str() {
+            "android_api_below_23" => {
+                BROWSER_CONTROL_API_BELOW_23.fetch_add(1, Ordering::Relaxed) + 1
+            }
+            "android_message_port_unavailable" => {
+                BROWSER_CONTROL_MESSAGE_PORT_UNAVAILABLE.fetch_add(1, Ordering::Relaxed) + 1
+            }
+            _ => {
+                log::warn!("Unknown Android BrowserControl degradation reason: {reason}");
+                return Ok(());
+            }
+        };
+        log::warn!(
+            "metric=browser_control_bridge_degraded reason={} count={}",
+            reason,
+            count
+        );
+        Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -57,6 +219,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onWebViewStateCha
     appid: JString,
     path: JString,
     session_id: jlong,
+    native_view_id: jlong,
     url: JString,
     title: JString,
     can_go_back: jboolean,
@@ -72,23 +235,33 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onWebViewStateCha
         } else {
             None
         };
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "state") else {
+            return Ok(0);
+        };
 
         let webtag = WebTag::new(&appid, &path, session_id);
-        if find_webview(&webtag).is_some() {
-            if !url.is_empty() {
-                normalizer::submit(&webtag, NativeSignal::LocationChanged { url });
-            }
-            if !title.is_empty() {
-                normalizer::submit(&webtag, NativeSignal::TitleChanged { title: Some(title) });
-            }
+        if !url.is_empty() {
             normalizer::submit(
                 &webtag,
-                NativeSignal::BackForwardChanged {
-                    can_go_back,
-                    can_go_forward,
-                },
+                native_view_id,
+                NativeSignal::LocationChanged { url },
             );
         }
+        if !title.is_empty() {
+            normalizer::submit(
+                &webtag,
+                native_view_id,
+                NativeSignal::TitleChanged { title: Some(title) },
+            );
+        }
+        normalizer::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::BackForwardChanged {
+                can_go_back,
+                can_go_forward,
+            },
+        );
         Ok(0)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
@@ -102,6 +275,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onFaviconChanged(
     appid: JString,
     path: JString,
     session_id: jlong,
+    native_view_id: jlong,
     png_bytes: JByteArray,
 ) -> jint {
     env.with_env(|env| -> Result<jint, jni::errors::Error> {
@@ -113,16 +287,18 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onFaviconChanged(
         } else {
             None
         };
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "favicon") else {
+            return Ok(0);
+        };
 
         let webtag = WebTag::new(&appid, &path, session_id);
-        if find_webview(&webtag).is_some() {
-            normalizer::submit(
-                &webtag,
-                NativeSignal::FaviconChanged {
-                    png_bytes: Some(png_bytes),
-                },
-            );
-        }
+        normalizer::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::FaviconChanged {
+                png_bytes: Some(png_bytes),
+            },
+        );
         Ok(0)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
@@ -135,6 +311,8 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
     appid: JString,
     path: JString,
     session_id: jlong,
+    native_view_id: jlong,
+    load_token: jlong,
     url: JString,
 ) -> jint {
     env.with_env(|env| -> Result<jint, jni::errors::Error> {
@@ -146,16 +324,28 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
         } else {
             None
         };
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "page-started") else {
+            return Ok(0);
+        };
+        if load_token <= 0 {
+            log::warn!("Dropping Android page-started callback without a load token");
+            return Ok(0);
+        }
 
         let webtag = WebTag::new(&appid, &path, session_id);
-        if find_webview(&webtag).is_some() {
-            let url = if url.is_empty() {
-                "about:blank".to_string()
-            } else {
-                url
-            };
-            normalizer::submit(&webtag, NativeSignal::NavigationStarted { key: None, url });
-        }
+        let url = if url.is_empty() {
+            "about:blank".to_string()
+        } else {
+            url
+        };
+        normalizer::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(load_token as u64),
+                url,
+            },
+        );
         Ok(0)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
@@ -163,14 +353,16 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
 
 /// `onPageCommitVisible`: commit evidence — the displayed document was replaced.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageCommitted(
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageCommitVisible(
     mut env: EnvUnowned,
     _this: JObject,
     appid: JString,
     path: JString,
     session_id: jlong,
-) -> jint {
-    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+    native_view_id: jlong,
+    load_token: jlong,
+) -> jlong {
+    env.with_env(|env| -> Result<jlong, jni::errors::Error> {
         let appid: String = appid.try_to_string(env)?;
         let path: String = path.try_to_string(env)?;
         let session_id = if session_id > 0 {
@@ -178,11 +370,87 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageCommitted(
         } else {
             None
         };
-        let webtag = WebTag::new(&appid, &path, session_id);
-        if find_webview(&webtag).is_some() {
-            normalizer::submit(&webtag, NativeSignal::DocumentCommitted);
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "page-commit-visible")
+        else {
+            return Ok(0);
+        };
+        if load_token <= 0 {
+            log::warn!("Dropping Android page-commit callback without a load token");
+            return Ok(0);
         }
-        Ok(0)
+        let webtag = WebTag::new(&appid, &path, session_id);
+        Ok(
+            normalizer::submit_document_commit(&webtag, native_view_id, load_token as u64)
+                .map(|generation| generation.get() as jlong)
+                .unwrap_or_default(),
+        )
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onDocumentRestored(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    native_view_id: jlong,
+    url: JString,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let url: String = url.try_to_string(env)?;
+        let session_id = (session_id > 0).then_some(session_id as u64);
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "document-restored")
+        else {
+            return Ok(());
+        };
+        let webtag = WebTag::new(&appid, &path, session_id);
+        let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) else {
+            return Ok(());
+        };
+        if !normalizer::invalidate_restored_document(&webtag, native_view_id) {
+            return Ok(());
+        }
+
+        // Close the shared generation/outbound gate before asking the browser
+        // owner to replace the restored document with a fresh trusted load.
+        if let Some(delegate) = webview.get_delegate() {
+            let url = if url.is_empty() { "about:blank" } else { &url };
+            delegate.on_document_restored(native_view_id, url);
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onRendererProcessGone(
+    mut env: EnvUnowned,
+    _this: JObject,
+    appid: JString,
+    path: JString,
+    session_id: jlong,
+    native_view_id: jlong,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let appid: String = appid.try_to_string(env)?;
+        let path: String = path.try_to_string(env)?;
+        let session_id = (session_id > 0).then_some(session_id as u64);
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "renderer-process-gone")
+        else {
+            return Ok(());
+        };
+        let webtag = WebTag::new(&appid, &path, session_id);
+        let delegate = find_webview_by_native_view_id(&webtag, native_view_id)
+            .and_then(|webview| webview.get_delegate());
+        normalizer::submit(&webtag, native_view_id, NativeSignal::Destroyed);
+        if let Some(delegate) = delegate {
+            delegate.on_web_content_process_terminated(native_view_id);
+        }
+        Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -194,6 +462,8 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
     appid: JString,
     path: JString,
     session_id: jlong,
+    native_view_id: jlong,
+    load_token: jlong,
     url: JString,
 ) -> jint {
     env.with_env(|env| -> Result<jint, jni::errors::Error> {
@@ -205,22 +475,24 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageFinished(
         } else {
             None
         };
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "page-finished") else {
+            return Ok(0);
+        };
 
         let webtag = WebTag::new(&appid, &path, session_id);
-        if find_webview(&webtag).is_some() {
-            let final_url = if url.is_empty() {
-                "about:blank".to_string()
-            } else {
-                url
-            };
-            normalizer::submit(
-                &webtag,
-                NativeSignal::NavigationFinished {
-                    key: None,
-                    result: NativeNavigationResult::Succeeded { final_url },
-                },
-            );
-        }
+        let final_url = if url.is_empty() {
+            "about:blank".to_string()
+        } else {
+            url
+        };
+        normalizer::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationFinished {
+                key: (load_token > 0).then_some(load_token as u64),
+                result: NativeNavigationResult::Succeeded { final_url },
+            },
+        );
         Ok(0)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
@@ -334,6 +606,8 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onLoadError(
     appid: JString,
     path: JString,
     session_id: jlong,
+    native_view_id: jlong,
+    load_token: jlong,
     url: JString,
     error_code: jint,
     description: JString,
@@ -345,6 +619,9 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onLoadError(
             Some(session_id as u64)
         } else {
             None
+        };
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "load-error") else {
+            return Ok(());
         };
         let url: String = url.try_to_string(env)?;
         let description: String = description.try_to_string(env)?;
@@ -366,7 +643,11 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onLoadError(
         };
         normalizer::submit(
             &webtag,
-            NativeSignal::NavigationFinished { key: None, result },
+            native_view_id,
+            NativeSignal::NavigationFinished {
+                key: (load_token > 0).then_some(load_token as u64),
+                result,
+            },
         );
         Ok(())
     })
@@ -380,6 +661,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onDownloadRequest
     appid: JString,
     path: JString,
     session_id: jlong,
+    native_view_id: jlong,
     url: JString,
     user_agent: JString,
     content_disposition: JString,
@@ -399,6 +681,9 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onDownloadRequest
             Some(session_id as u64)
         } else {
             None
+        };
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "download") else {
+            return Ok(());
         };
         let webtag = WebTag::new(&appid, &path, session_id);
 
@@ -433,7 +718,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onDownloadRequest
             },
         };
 
-        if let Some(webview) = find_webview(&webtag) {
+        if let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) {
             webview.handle_download(request);
         }
         Ok(())
@@ -441,8 +726,13 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onDownloadRequest
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
-fn complete_android_file_chooser(webtag: WebTag, request_id: u64, response: FileChooserResponse) {
-    let Some(webview) = find_webview(&webtag) else {
+fn complete_android_file_chooser(
+    webtag: WebTag,
+    native_view_id: NativeWebViewId,
+    request_id: u64,
+    response: FileChooserResponse,
+) {
+    let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) else {
         return;
     };
 
@@ -491,10 +781,11 @@ fn complete_android_file_chooser(webtag: WebTag, request_id: u64, response: File
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onFileChooserRequested(
     mut env: EnvUnowned,
-    _this: JObject,
+    this: JObject,
     appid: JString,
     path: JString,
     session_id: jlong,
+    native_view_id: jlong,
     request_id: jlong,
     source_url: JString,
     accept_types: JObjectArray,
@@ -512,6 +803,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onFileChooserRequ
             None
         };
         let webtag = WebTag::new(&appid, &path, session_id);
+        let native_view_id = native_view_id_from_jni(native_view_id, "file chooser");
 
         let mut accepted = Vec::new();
         let len = accept_types.len(env)?;
@@ -535,11 +827,14 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onFileChooserRequ
             source_page_url: (!source_url.trim().is_empty()).then_some(source_url),
         };
 
-        if let Some(webview) = find_webview(&webtag) {
+        if let Some(native_view_id) = native_view_id
+            && let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id)
+        {
             let webtag_for_callback = webtag.clone();
             let handled = webview.handle_file_chooser(request, move |response| {
                 complete_android_file_chooser(
                     webtag_for_callback.clone(),
+                    native_view_id,
                     request_id as u64,
                     response,
                 );
@@ -547,6 +842,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onFileChooserRequ
             if !handled {
                 complete_android_file_chooser(
                     webtag,
+                    native_view_id,
                     request_id as u64,
                     FileChooserResponse::Cancel,
                 );
@@ -555,7 +851,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onFileChooserRequ
             let request_id = request_id as i64;
             let selected_paths = JObject::null();
             let _ = env.call_method(
-                &_this,
+                &this,
                 jni_str!("completeFileChooserRequest"),
                 jni_sig!("(J[Ljava/lang/String;)V"),
                 &[JValue::Long(request_id), JValue::Object(&selected_paths)],
@@ -573,9 +869,11 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
     appid: JString<'a>,
     path: JString<'a>,
     session_id: jlong,
+    native_view_id: jlong,
     url: JString<'a>,
     method: JString<'a>,
     headers_array: jni::sys::jobjectArray,
+    is_main_frame: jboolean,
 ) -> JObject<'a> {
     env.with_env(|env| -> Result<JObject<'a>, jni::errors::Error> {
         // Convert Java strings to Rust strings
@@ -587,6 +885,9 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
             Some(session_id as u64)
         } else {
             None
+        };
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "scheme request") else {
+            return Ok(JObject::null());
         };
 
         // Parse headers from array: [key1, value1, key2, value2, ...]
@@ -649,11 +950,20 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleRequest<'a>
         // Dispatch to closure-based scheme handler
         let webtag = WebTag::new(&appid, &path, session_id);
         let scheme = request.uri().scheme_str().unwrap_or("").to_string();
-        let response = if let Some(webview) = find_webview(&webtag) {
-            webview.handle_scheme_request(&scheme, request)
-        } else {
-            None
-        };
+        let response =
+            if let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) {
+                let frame = if is_main_frame {
+                    SchemeRequestFrame::TopLevelDocument
+                } else {
+                    SchemeRequestFrame::Subresource
+                };
+                webview.handle_contextual_scheme_request(
+                    &scheme,
+                    ContextualSchemeRequest::new(request, webview.native_view_id(), frame),
+                )
+            } else {
+                None
+            };
         if let Some(response) = response {
             Ok(create_java_response(env, response)?)
         } else {
@@ -768,6 +1078,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleNavigationP
     appid: JString,
     path: JString,
     session_id: jlong,
+    native_view_id: jlong,
     url: JString,
     has_user_gesture: jboolean,
     is_main_frame: jboolean,
@@ -781,9 +1092,13 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleNavigationP
         } else {
             None
         };
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "navigation policy")
+        else {
+            return Ok(false);
+        };
 
         let webtag = WebTag::new(&appid, &path, session_id);
-        if let Some(webview) = find_webview(&webtag) {
+        if let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) {
             let request = crate::NavigationRequest::new(url, has_user_gesture, is_main_frame);
             return Ok(matches!(
                 webview.handle_navigation(&request),
@@ -803,6 +1118,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleNewWindowPo
     appid: JString,
     path: JString,
     session_id: jlong,
+    native_view_id: jlong,
     url: JString,
 ) -> jint {
     env.with_env(|env| -> Result<jint, jni::errors::Error> {
@@ -814,9 +1130,13 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_handleNewWindowPo
         } else {
             None
         };
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "new-window policy")
+        else {
+            return Ok(0);
+        };
 
         let webtag = WebTag::new(&appid, &path, session_id);
-        if let Some(webview) = find_webview(&webtag) {
+        if let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) {
             return Ok(match webview.handle_new_window(&url) {
                 NewWindowPolicy::LoadInSelf => 1,
                 NewWindowPolicy::Cancel => 0,
@@ -835,6 +1155,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
     appid: JString,
     path: JString,
     session_id: jlong,
+    native_view_id: jlong,
     level: jint,
     message: JString,
 ) -> jint {
@@ -847,8 +1168,21 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
         } else {
             None
         };
+        let Some(native_view_id) = native_view_id_from_jni(native_view_id, "console") else {
+            return Ok(0);
+        };
 
         let webtag = WebTag::new(&appid, &path, session_id);
+        let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) else {
+            return Ok(0);
+        };
+        if crate::webview::platform_console_delivery(
+            webview.effective_options().profile,
+            crate::webview::PlatformConsoleBackend::Android,
+        ) != crate::webview::PlatformConsoleDelivery::DirectDelegate
+        {
+            return Ok(0);
+        }
         let log_level = match level {
             2 => LogLevel::Verbose, // VERBOSE
             3 => LogLevel::Debug,   // DEBUG
@@ -858,7 +1192,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onConsoleMessage(
             _ => LogLevel::Info,    // Default to INFO
         };
 
-        if let Some(delegate) = find_webview_delegate(&webtag) {
+        if let Some(delegate) = webview.get_delegate() {
             delegate.log(log_level, &message);
         }
         Ok(1)
@@ -898,13 +1232,17 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
                 match env.new_global_ref(webview_obj) {
                     Ok(global_ref) => {
                         // Create WebViewInner from the Java object
-                        let webview_inner =
-                            WebViewInner::from_java_object(global_ref, webtag.clone());
+                        let webview_inner = WebViewInner::from_java_object(
+                            global_ref,
+                            webtag.clone(),
+                            pending.sender.native_view_id(),
+                        );
 
                         // Create WebView wrapper
                         let webview = Arc::new(crate::WebView::new(
                             webview_inner,
                             pending.effective_options.clone(),
+                            pending.sender.native_view_id(),
                         ));
 
                         // A same-route relaunch can destroy generation N while
@@ -918,6 +1256,25 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_notifyWebViewRead
                                 webtag.as_str()
                             );
                             drop(webview);
+                            return Ok(());
+                        }
+
+                        // Bind Java callbacks to the native instance before it
+                        // enters the reusable WebTag registry. A late callback
+                        // from a replaced Java WebView must not resolve only by
+                        // appid/path/session into its successor.
+                        if let Err(error) = env.call_method(
+                            webview.get_java_webview().as_obj(),
+                            jni_str!("setNativeViewId"),
+                            jni_sig!("(J)V"),
+                            &[JValue::Long(webview.native_view_id().raw() as i64)],
+                        ) {
+                            pending.sender.fail(
+                                WebViewCreateStage::Requested,
+                                WebViewError::WebView(format!(
+                                    "Failed to bind Android WebView native identity: {error:?}"
+                                )),
+                            );
                             return Ok(());
                         }
 

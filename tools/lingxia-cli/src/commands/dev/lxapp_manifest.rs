@@ -293,6 +293,7 @@ mod tests {
             features: None,
             capabilities: None,
             theme: None,
+            settings_destination: None,
             browser: None,
             generated_ui: None,
             surfaces: None,

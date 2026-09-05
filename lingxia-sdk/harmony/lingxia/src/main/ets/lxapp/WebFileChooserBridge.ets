@@ -9,6 +9,7 @@ const pendingResults: Map<string, (selectedPaths: Array<string>) => void> = new 
 
 export function requestWebFileChooser(
   webtag: string,
+  nativeViewToken: string,
   completeSelection: (selectedPaths: Array<string>) => void,
   acceptTypes: Array<string>,
   mode: number,
@@ -21,6 +22,7 @@ export function requestWebFileChooser(
   const handled: boolean = onWebFileChooserRequested(
     requestId,
     webtag,
+    nativeViewToken,
     sourceUrl,
     acceptedJson,
     mode === 1,
