@@ -413,8 +413,22 @@ impl UpdateManager {
             metadata::get(lxappid, release_type)?.map(|rec| PathBuf::from(rec.install_path));
 
         let version = downloaded.version.to_version_string();
-        let install_path =
-            Self::install_archive_to_dir(&runtime, lxappid, release_type, &version, &archive_path)?;
+        let install_path = match Self::install_archive_to_dir(
+            &runtime,
+            lxappid,
+            release_type,
+            &version,
+            &archive_path,
+        ) {
+            Ok(path) => path,
+            Err(error) => {
+                // A corrupt or unreadable download must not stick: the next
+                // open should fetch a fresh archive instead of failing on
+                // the same bytes forever.
+                let _ = metadata::downloaded_remove(lxappid, release_type);
+                return Err(error);
+            }
+        };
 
         if let Err(e) = Self::validate_installed_lxapp_manifest(&install_path) {
             if let Err(cleanup_err) = fs::remove_dir_all(&install_path) {
@@ -451,6 +465,7 @@ impl UpdateManager {
         }
 
         let _ = metadata::downloaded_remove(lxappid, release_type);
+        lxapp_runtime::forget_builtin_bundle_source(lxappid);
         Ok(())
     }
 }

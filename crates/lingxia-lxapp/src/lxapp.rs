@@ -181,6 +181,27 @@ pub fn register_builtin_asset_bundle(appid: impl Into<String>) {
     register_lxapp_bundle_source(appid, LxAppBundleSource::BuiltinAssets);
 }
 
+/// True when the host actually shipped `{appid}/lxapp.json` as a bundled asset.
+pub fn bundled_lxapp_asset_available(appid: &str) -> bool {
+    let Some(runtime) = runtime_registry::get_platform() else {
+        return false;
+    };
+    runtime
+        .read_asset(&format!("{}/lxapp.json", appid.trim_end_matches('/')))
+        .is_ok()
+}
+
+/// Drop a stale BuiltinAssets override so a catalog install is read from disk.
+pub(crate) fn forget_builtin_bundle_source(appid: &str) {
+    let Some(registry) = LXAPP_SOURCE_OVERRIDES.get() else {
+        return;
+    };
+    let mut guard = registry.lock().unwrap_or_else(|e| e.into_inner());
+    if matches!(guard.get(appid), Some(LxAppBundleSource::BuiltinAssets)) {
+        guard.remove(appid);
+    }
+}
+
 /// Register a content-less builtin lxapp host. The LxApp is created with default
 /// empty config (no pages/plugins/logic). A later [`register_builtin_asset_bundle`]
 /// call for the same appid upgrades to a disk-backed bundle — used by browser-shell
@@ -317,6 +338,7 @@ impl LxApps {
                     e
                 )
                 .with_appid(appid.clone());
+                return Err(e);
             }
         } else if let Some(app_arc) = self.lxapps.get(&appid) {
             return Ok(app_arc.clone());
@@ -1708,12 +1730,30 @@ impl LxApp {
                 self.lxapp_dir = root.clone();
             }
             LxAppBundleSource::BuiltinAssets | LxAppBundleSource::Synthetic => {
-                self.lxapp_dir = self
-                    .runtime
-                    .app_data_dir()
-                    .join(LINGXIA_DIR)
-                    .join("builtin")
-                    .join(&dir_name);
+                let usable_install = meta.as_ref().and_then(|record| {
+                    let path = record.install_path.trim();
+                    if path.is_empty() {
+                        return None;
+                    }
+                    let dir = PathBuf::from(path);
+                    dir.join("lxapp.json").is_file().then_some(dir)
+                });
+                // A catalog install must not stay pinned to bundled assets just
+                // because a prior lookup registered the appid as builtin.
+                if matches!(self.bundle_source, LxAppBundleSource::BuiltinAssets)
+                    && !bundled_lxapp_asset_available(&self.appid)
+                    && let Some(install_path) = usable_install
+                {
+                    self.bundle_source = LxAppBundleSource::Installed;
+                    self.lxapp_dir = install_path;
+                } else {
+                    self.lxapp_dir = self
+                        .runtime
+                        .app_data_dir()
+                        .join(LINGXIA_DIR)
+                        .join("builtin")
+                        .join(&dir_name);
+                }
             }
         }
 
