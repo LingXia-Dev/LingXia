@@ -56,6 +56,13 @@ struct ResourceLxAppPath {
 struct RunnerDevtoolAddon;
 
 impl lingxia::HostAddon for RunnerDevtoolAddon {
+    fn issue_devtools_app_resource_grants(
+        &self,
+        authority: &mut lingxia::NativeDevtoolsAuthority<'_>,
+    ) {
+        authority.grant_automation();
+    }
+
     // Cloud provider. Must register in this hook — the logic context is built
     // before `start_services`. Injected via `--with-provider cloud`. The runner
     // env contract is resolved before the provider initializes.
