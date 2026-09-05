@@ -1566,8 +1566,10 @@ impl LxApp {
     /// so the new
     /// document's handshake finds the new service.
     ///
-    /// The returned receiver resolves as soon as the service is registered;
-    /// the document reload continues independently.
+    /// The returned receiver resolves after the service is registered and its
+    /// document reload has been dispatched; document loading continues
+    /// independently. This ordering keeps a caller's first view command from
+    /// racing ahead of the reload into the parked document.
     fn rebuild_page_on_entry(&self, page: &PageInstance) -> oneshot::Receiver<Result<(), String>> {
         debug!(
             "Rebuilding page for entry (instance {})",
@@ -1595,14 +1597,15 @@ impl LxApp {
         std::mem::drop(crate::executor::spawn(async move {
             match ack_rx.await {
                 Ok(Ok(())) => {
-                    let _ = done_tx.send(Ok(()));
                     // load_html, not WebView::reload: the document came from
                     // loadHTMLString with a logical base URL, and a reload would
                     // fetch that URL's raw source, losing the bridge config and
                     // nonce.
-                    if let Err(err) = page.load_html() {
+                    let result = page.load_html().map_err(|err| {
                         warn!("Failed to reload {} for re-entry: {}", path, err).with_appid(appid);
-                    }
+                        err.to_string()
+                    });
+                    let _ = done_tx.send(result);
                 }
                 Ok(Err(err)) => {
                     warn!("Page service rebuild failed for {}: {}", path, err).with_appid(appid);
