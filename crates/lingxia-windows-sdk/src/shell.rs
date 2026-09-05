@@ -145,8 +145,8 @@ pub(crate) use runtime::open_declared_browser;
 #[cfg(feature = "terminal-runtime")]
 pub(crate) use runtime::open_declared_terminal;
 pub(crate) use runtime::{
-    open_home_app_with_target, open_self_browser, prime_lxapp_shell_layout, set_shell_owner_app_id,
-    update_surface_width,
+    configure_static_settings_source, open_home_app_with_target, open_self_browser,
+    prime_lxapp_shell_layout, set_shell_owner_app_id, update_surface_width,
 };
 
 pub fn set_windows_default_shell_tabbar_position(position: WindowsShellTabBarPosition) {
