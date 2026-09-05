@@ -213,7 +213,7 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
 
     await browser.eval({
       tab: settings.tab_id,
-      js: `globalThis.__staticSettingsReloadProbe = 'stale';`,
+      js: `globalThis.__staticSettingsReloadProbe = 'stale'`,
     });
     await openHostSettings(app, platform);
     await eventually(
