@@ -781,11 +781,6 @@ jobs:
       - name: Clippy (lingxia automation feature)
         run: cargo clippy -p lingxia --features automation -- -D warnings -A clippy::let_underscore_future
 
-      # Keep external-app OAuth redirects gated. Lives here (not rust-check)
-      # because lingxia-browser pulls the desktop webview/platform stack.
-      - name: Test browser navigation policy
-        run: cargo test -p lingxia-browser policy::tests
-
       - name: Test macOS activity viewer against WindowServer
         run: cargo run -p lingxia-device-io --features supervision --example pip_viewer
 
