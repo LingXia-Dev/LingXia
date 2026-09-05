@@ -1,6 +1,10 @@
 import { expect, spec } from '@lingxia/test';
 import type { LxAppRuntimeTabBarInfo } from 'lingxia-types/automation';
-import { waitForElementAttribute, waitForCurrentPage } from '../helpers/page.js';
+import {
+  waitForElementAttribute,
+  waitForCurrentPage,
+  waitForElementText,
+} from '../helpers/page.js';
 import { bindFixture, evalCaught, eventually, specNamespace } from '../helpers/poll.js';
 import { showcaseApp, SHOWCASE_APP_ID } from '../helpers/app.js';
 
@@ -23,10 +27,25 @@ spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
     describe: 'UI navigateBack to pop the page instance',
   });
 
+  const instanceBeforeRedirect = await waitForElementText(
+    app,
+    'ui',
+    '[data-testid="lifecycle-instance-tag"]',
+    (text) => text !== '#…',
+  );
   await app.page.click({ page: 'ui', css: '[data-testid="ui-redirect-to"]' });
   await eventually(() => app.nav.stack(), (stack) => stack.length === 1 && stack[0]?.name === 'ui', {
     describe: 'UI redirectTo to replace the current page',
   });
+  // Rendered controls dispatch Logic actions as fire-and-forget notifications.
+  // The graph updates before a same-route redirect finishes its second onLoad,
+  // so observe that lifecycle boundary before sending the next navigation intent.
+  await waitForElementText(
+    app,
+    'ui',
+    '[data-testid="lifecycle-instance-tag"]',
+    (text) => text !== '#…' && text !== instanceBeforeRedirect,
+  );
 
   await app.page.click({ page: 'ui', css: '[data-testid="ui-switch-tab"]' });
   await waitForCurrentPage(app, 'home');
