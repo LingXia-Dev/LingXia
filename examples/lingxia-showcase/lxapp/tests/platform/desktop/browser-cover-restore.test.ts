@@ -26,6 +26,34 @@ function desktopShowcaseHost(windows: DesktopWindowInfo[]): DesktopWindowInfo | 
     ))[0];
 }
 
+function windowContains(outer: DesktopWindowInfo, inner: DesktopWindowInfo): boolean {
+  const tolerance = 8;
+  return inner.bounds.x >= outer.bounds.x - tolerance
+    && inner.bounds.y >= outer.bounds.y - tolerance
+    && inner.bounds.x + inner.bounds.w <= outer.bounds.x + outer.bounds.w + tolerance
+    && inner.bounds.y + inner.bounds.h <= outer.bounds.y + outer.bounds.h + tolerance;
+}
+
+function windowsSidebarUsesRail(
+  host: DesktopWindowInfo,
+  windows: DesktopWindowInfo[],
+): boolean {
+  const main = windows
+    .filter((window) => (
+      window.visible
+      && window.process.toLocaleLowerCase() === 'msedgewebview2'
+      && windowContains(host, window)
+      && window.bounds.w > 0
+      && window.bounds.h > 0
+    ))
+    .sort((left, right) => right.bounds.w * right.bounds.h - left.bounds.w * left.bounds.h)[0];
+  if (!main) throw new Error('visible Windows host WebView was not found');
+  // SurfaceLayout.switcherForm describes the surface graph, not the shell's
+  // persisted 44-DIP icon rail. The physical content inset distinguishes it
+  // from the 184-DIP expanded sidebar.
+  return main.bounds.x - host.bounds.x < 80 * host.scale;
+}
+
 function windowsStaticSettingsPoint(
   host: DesktopWindowInfo,
   rail: boolean,
@@ -55,15 +83,18 @@ async function clickStaticSettings(
   desktop: DesktopDriver,
   footerActionCount = WINDOWS_FOOTER_ACTION_COUNT,
 ): Promise<void> {
-  const host = desktopShowcaseHost(await desktop.windows());
+  const windows = await desktop.windows();
+  const host = desktopShowcaseHost(windows);
   if (!host) throw new Error(`visible ${platform} showcase host window was not found`);
   await desktop.window.focus({ window: host.id });
   if (platform === 'windows') {
-    const layout = await app.surfaceLayout();
+    // Retain the public layout contract coverage while deriving native chrome
+    // geometry from the window tree that the pointer actually targets.
+    await app.surfaceLayout();
     await desktop.pointer.click({
       at: windowsStaticSettingsPoint(
         host,
-        layout.switcherForm === 'rail',
+        windowsSidebarUsesRail(host, windows),
         footerActionCount,
       ),
     });
