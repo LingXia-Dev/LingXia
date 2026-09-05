@@ -15,6 +15,14 @@ struct LxAppStaticSettingsSource: Equatable, Sendable {
 
     let destinationKind: DestinationKind
 
+    static func fromBootstrapJSON(_ json: String) -> Self? {
+        guard let destination = try? JSONDecoder().decode(
+            LxAppGeneratedSettingsDestination.self,
+            from: Data(json.utf8)
+        ) else { return nil }
+        return Self(destination)
+    }
+
     init?(_ destination: LxAppGeneratedSettingsDestination?) {
         guard let destination else { return nil }
         switch destination {

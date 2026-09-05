@@ -175,7 +175,7 @@ final class LxAppMacAppUIRuntime: NSObject {
             self?.performActivator(id: actionID)
         }
         shell.configureStaticSettingsSource(
-            LxAppStaticSettingsSource(appConfig.settingsDestination)
+            LxAppStaticSettingsSource.fromBootstrapJSON(staticSettingsDestinationJSON().toString())
         )
         shell.configureDeclaredBrowser(
             ownerAppId: graphOwnerAppId,

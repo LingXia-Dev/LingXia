@@ -5,6 +5,31 @@ import XCTest
 final class StaticSettingsSourceTests: XCTestCase {
     func testAbsentDestinationProducesNoStaticSource() {
         XCTAssertNil(LxAppStaticSettingsSource(nil))
+        XCTAssertNil(LxAppStaticSettingsSource.fromBootstrapJSON("null"))
+        XCTAssertNil(LxAppStaticSettingsSource.fromBootstrapJSON("{}"))
+    }
+
+    @MainActor
+    func testAddonDestinationProducesFooterWithoutBundledDestination() throws {
+        let app = try JSONDecoder().decode(
+            LxAppGeneratedAppConfig.self,
+            from: Data(#"{"productName":"Native host"}"#.utf8)
+        )
+        XCTAssertNil(app.settingsDestination)
+
+        let source = LxAppStaticSettingsSource.fromBootstrapJSON(
+            #"{"kind":"nativeAction","actionId":"preferences"}"#
+        )
+        XCTAssertEqual(source?.destinationKind, .nativeAction)
+        let footer = LxAppStaticSettingsSource.mergeFooter(runtimeItems: [], source: source)
+        XCTAssertEqual(footer.map(\.id), [LxAppStaticSettingsSource.sidebarItemID])
+        XCTAssertEqual(footer.first?.sidebarActionSource, .staticSettings)
+        var calls = 0
+        XCTAssertTrue(source?.activate(itemID: LxAppStaticSettingsSource.sidebarItemID) {
+            calls += 1
+            return true
+        } == true)
+        XCTAssertEqual(calls, 1)
     }
 
     func testEveryDestinationVariantProducesOneResolvableStaticSource() {
