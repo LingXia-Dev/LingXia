@@ -31,9 +31,10 @@ arkjs = [
     "rong_event/arkjs",
     "rong_stream/arkjs",
 ]
-# Standalone package verification needs one concrete Rong engine. LingXia's
-# target-specific dependencies disable defaults and select the host engine.
-default = ["quickjs"]
+# Engine selection belongs to the embedding target. Keeping the workspace
+# member engine-neutral prevents `--workspace` from unifying its default with
+# the jscore/arkjs engine selected by another target.
+default = []
 jscore = [
     "rong/jscore",
     "rong_abort/jscore",
@@ -60,6 +61,29 @@ path = "src/lib.rs"
 [dependencies.rong]
 version = "0.6.0"
 default-features = false
+
+# The patched command crate is also a publishable workspace member, so Cargo
+# checks it directly in addition to checking it through lingxia-lxapp. Select
+# exactly the engine for the compilation target in that standalone case.
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies.rong]
+version = "0.6.0"
+default-features = false
+features = ["jscore"]
+
+[target.'cfg(target_os = "android")'.dependencies.rong]
+version = "0.6.0"
+default-features = false
+features = ["quickjs"]
+
+[target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies.rong]
+version = "0.6.0"
+default-features = false
+features = ["arkjs"]
+
+[target.'cfg(not(any(target_os = "ios", target_os = "macos", target_os = "android", all(target_os = "linux", target_env = "ohos"))))'.dependencies.rong]
+version = "0.6.0"
+default-features = false
+features = ["quickjs"]
 
 [dependencies.rong_abort]
 version = "0.6.0"
