@@ -46,7 +46,7 @@ fn request_host_message_loop_exit() {
 mod app_icon;
 #[cfg(all(target_os = "windows", feature = "components"))]
 mod app_menu;
-#[cfg(any(all(target_os = "windows", feature = "browser-runtime"), test))]
+#[cfg(any(all(target_os = "windows", feature = "browser-shell"), test))]
 mod browser_local_navigation;
 #[cfg(all(target_os = "windows", feature = "components"))]
 mod design_icons;
