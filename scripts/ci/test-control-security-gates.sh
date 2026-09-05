@@ -38,6 +38,11 @@ grep -Fq 'bash scripts/ci/authority-escape-gate.sh run' "$GATE" || {
   exit 1
 }
 
+grep -Fq "cargo rustc -p lingxia --target \"\$host_target\" --lib -- --crate-type=staticlib" "$GATE" || {
+  echo "Apple security gate does not build the static library required by SwiftPM" >&2
+  exit 1
+}
+
 for filter in core control_security; do
   filter_has_path "$filter" 'third_party/**' || {
     echo "CI filter $filter does not cover publishable third_party crates" >&2
