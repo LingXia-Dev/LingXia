@@ -1,10 +1,6 @@
 import { expect, spec } from '@lingxia/test';
 import type { LxAppRuntimeTabBarInfo } from 'lingxia-types/automation';
-import {
-  waitForElementAttribute,
-  waitForCurrentPage,
-  waitForElementText,
-} from '../helpers/page.js';
+import { waitForElementAttribute, waitForCurrentPage } from '../helpers/page.js';
 import { bindFixture, evalCaught, eventually, specNamespace } from '../helpers/poll.js';
 import { showcaseApp, SHOWCASE_APP_ID } from '../helpers/app.js';
 
@@ -27,24 +23,35 @@ spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
     describe: 'UI navigateBack to pop the page instance',
   });
 
-  const instanceBeforeRedirect = await waitForElementText(
-    app,
-    'ui',
-    '[data-testid="lifecycle-instance-tag"]',
-    (text) => text !== '#…',
+  const readCurrentUiOnLoadCount = () => app.eval({
+    script: `
+      (getCurrentPages().find((page) => page.route.includes('/ui/'))?.data.events ?? [])
+        .filter((event) => event.endsWith('onLoad')).length
+    `,
+  }) as Promise<number>;
+  await eventually(
+    readCurrentUiOnLoadCount,
+    (count) => count > 0,
+    { describe: 'current UI page onLoad count before redirect' },
   );
+  await app.eval({
+    script: `
+      const page = getCurrentPages().find((candidate) => candidate.route.includes('/ui/'));
+      if (!page) throw new Error('current UI PageInstance is missing');
+      page.data.events = [];
+    `,
+  });
   await app.page.click({ page: 'ui', css: '[data-testid="ui-redirect-to"]' });
   await eventually(() => app.nav.stack(), (stack) => stack.length === 1 && stack[0]?.name === 'ui', {
     describe: 'UI redirectTo to replace the current page',
   });
   // Rendered controls dispatch Logic actions as fire-and-forget notifications.
-  // The graph updates before a same-route redirect finishes its second onLoad,
-  // so observe that lifecycle boundary before sending the next navigation intent.
-  await waitForElementText(
-    app,
-    'ui',
-    '[data-testid="lifecycle-instance-tag"]',
-    (text) => text !== '#…' && text !== instanceBeforeRedirect,
+  // The graph updates before the same-route redirect's onLoad. Observe the
+  // retained PageInstance's lifecycle state before sending the next intent.
+  await eventually(
+    readCurrentUiOnLoadCount,
+    (count) => count > 0,
+    { describe: 'same-route redirect onLoad lifecycle event' },
   );
 
   await app.page.click({ page: 'ui', css: '[data-testid="ui-switch-tab"]' });
