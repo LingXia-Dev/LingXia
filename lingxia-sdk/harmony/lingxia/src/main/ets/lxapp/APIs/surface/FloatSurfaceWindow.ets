@@ -132,7 +132,7 @@ export class FloatSurfaceWindowManager {
       LxLog.e(TAG, `open failed key=${key}: ${error}`);
       // Never leave a half-created window behind — even unshown it can hold
       // focus and block the app's input.
-      FloatSurfaceWindowManager.close(key);
+      await FloatSurfaceWindowManager.close(key);
       return false;
     }
   }

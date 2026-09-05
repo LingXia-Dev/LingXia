@@ -188,16 +188,39 @@ export class LxAppSurface {
     LxAppSurface.layouts.set(key, layout);
     LxAppSurface.visibleSurfaceKeys.add(key);
 
-    // Floats live in their own sub-window (never in the main tree — a hidden
-    // in-tree ArkWeb would keep intercepting touches); the window's content
-    // page attaches the page webview and fires mounted/visible itself.
+    // Prefer a sub-window; devices that reject it use the main surface tree.
     if (role === ROLE_FLOAT) {
       FloatSurfaceWindowManager.setCloseHandler((closeId: string, closeAppId: string, reason: string) => {
         LxAppSurface.close(closeId, closeAppId, reason);
       });
       FloatSurfaceWindowManager.open(key, layout).then((opened: boolean) => {
+        // close/replacement can win while createSubWindow is pending.
+        if (LxAppSurface.layouts.get(key) !== layout) {
+          if (FloatSurfaceWindowManager.layoutFor(key) === layout) {
+            FloatSurfaceWindowManager.close(key);
+          }
+          return;
+        }
+        const visible = LxAppSurface.visibleSurfaceKeys.has(key);
+        if (opened && !visible) {
+          FloatSurfaceWindowManager.hide(key);
+        }
         if (!opened) {
-          LxAppSurface.failPageSurface(layout);
+          // Some Harmony devices reject app sub-windows for normal-signed
+          // applications. Keep FLOAT usable by rendering it in the main
+          // SurfaceManager; closing removes it from that tree shortly after
+          // the exit transition, so its ArkWeb cannot keep stealing touches.
+          const manager = LxAppSurface.managerRef;
+          const presented = manager ? manager.present(layout) : false;
+          if (presented) {
+            if (!visible) {
+              manager?.setVisible(appId, false, id);
+            } else if (layout.content === CONTENT_PAGE) {
+              LxAppSurface.showPageSurfaceWhenReady(layout);
+            }
+          } else {
+            LxAppSurface.failPageSurface(layout);
+          }
         }
       });
       return true;
@@ -270,7 +293,7 @@ export class LxAppSurface {
     const key = LxAppSurface.surfaceKey(id, appId);
 	    const layout = LxAppSurface.layouts.get(key) ?? null;
 	    const manager = LxAppSurface.managerRef;
-    if (layout && layout.role === ROLE_FLOAT) {
+    if (layout && layout.role === ROLE_FLOAT && FloatSurfaceWindowManager.has(key)) {
       if (layout.content === CONTENT_PAGE) {
         notifyPageInstanceHidden(layout.pageInstanceId, normalizedReason);
       }
@@ -298,7 +321,7 @@ export class LxAppSurface {
 	      onSurfaceClosed(appId, id, normalizedReason);
 	      return true;
 	    }
-	    const result = manager ? manager.close(id, appId) : true;
+	    const result = manager && manager.hasSurface(id, appId) ? manager.close(id, appId) : true;
 	    if (result) {
 	      if (layout.content === CONTENT_PAGE) {
 	        notifyPageInstanceHidden(layout.pageInstanceId, normalizedReason);
@@ -309,6 +332,9 @@ export class LxAppSurface {
       LxAppSurface.layouts.delete(key);
       LxAppSurface.visibleSurfaceKeys.delete(key);
 	      setTimeout(() => {
+	        if (LxAppSurface.layouts.has(key)) {
+	          return;
+	        }
 	        if (manager) {
 	          manager.finishClose(layout.id, layout.appId);
         }
@@ -344,7 +370,12 @@ export class LxAppSurface {
 	      return false;
 	    }
     const manager = LxAppSurface.managerRef;
-    if (layout.role === ROLE_FLOAT) {
+    if (layout.role === ROLE_FLOAT && !FloatSurfaceWindowManager.has(key)
+      && !manager?.hasSurface(id, appId)) {
+      LxAppSurface.visibleSurfaceKeys.add(key);
+      return true;
+    }
+    if (layout.role === ROLE_FLOAT && FloatSurfaceWindowManager.has(key)) {
       LxAppSurface.visibleSurfaceKeys.add(key);
       FloatSurfaceWindowManager.show(key);
       if (layout.content === CONTENT_PAGE && layout.pageInstanceId) {
@@ -392,7 +423,12 @@ export class LxAppSurface {
 	      hilog.warn(DOMAIN, TAG, `hide: surface not found id=${id} appId=${appId}`);
 	      return manager ? manager.setVisible(appId, false, id) : false;
 	    }
-    if (layout.role === ROLE_FLOAT) {
+    if (layout.role === ROLE_FLOAT && !FloatSurfaceWindowManager.has(key)
+      && !manager?.hasSurface(id, appId)) {
+      LxAppSurface.visibleSurfaceKeys.delete(key);
+      return true;
+    }
+    if (layout.role === ROLE_FLOAT && FloatSurfaceWindowManager.has(key)) {
       LxAppSurface.visibleSurfaceKeys.delete(key);
       FloatSurfaceWindowManager.hide(key);
       if (layout.content === CONTENT_PAGE && layout.pageInstanceId) {

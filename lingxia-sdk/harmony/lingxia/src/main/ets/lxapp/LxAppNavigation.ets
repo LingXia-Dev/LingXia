@@ -579,7 +579,13 @@ export struct LxAppNavigation {
 
   build() {
     Stack() {
-      // Always show home app container to preserve WebViews, but hide when modal is visible
+      // Backing surface so the window is never empty while a guest mounts.
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor(Color.White)
+        .zIndex(0)
+
       if (this.isReady && this.homeAppId && this.homeAppPath) {
         LxAppContainer({
           appId: this.homeAppId,
@@ -589,8 +595,11 @@ export struct LxAppNavigation {
           closeCallback: undefined,
           navigationTrigger: this.navigationTrigger
         })
-        .zIndex(0)
-        .visibility(this.modalAppVisible ? Visibility.Hidden : Visibility.Visible)
+        .width('100%')
+        .height('100%')
+        .zIndex(1)
+        // Keep home painted under the guest. Do not hit-test it while covered.
+        .hitTestBehavior(this.modalAppVisible ? HitTestMode.None : HitTestMode.Default)
       } else if (this.errorMessage) {
         this.buildErrorPage()
       } else {

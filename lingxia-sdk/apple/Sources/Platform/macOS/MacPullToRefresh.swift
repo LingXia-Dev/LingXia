@@ -90,9 +90,13 @@ final class MacPullToRefreshController {
         indicator.translatesAutoresizingMaskIntoConstraints = false
         indicator.isHidden = true
         indicator.alphaValue = 0
-        // Behind the page, revealed by sliding the page down — the model
-        // Android uses.
-        container.addSubview(indicator, positioned: .below, relativeTo: nil)
+        // Directly behind this page — not at the back of the container, where
+        // a leftover sibling web view would cover the dots when the page slides.
+        if let webView, webView.superview === container {
+            container.addSubview(indicator, positioned: .below, relativeTo: webView)
+        } else {
+            container.addSubview(indicator, positioned: .below, relativeTo: nil)
+        }
         let height = indicator.heightAnchor.constraint(equalToConstant: 0)
         indicatorHeight = height
         NSLayoutConstraint.activate([
@@ -126,6 +130,28 @@ final class MacPullToRefreshController {
         }
         indicator.removeFromSuperview()
         install(in: container)
+    }
+
+    /// Restack the strip immediately behind this page. Called after the web
+    /// view joins the container, because `install` often runs before that.
+    func didAttachPage() {
+        guard let webView, let container, webView.superview === container else { return }
+        container.addSubview(indicator, positioned: .below, relativeTo: webView)
+    }
+
+    /// The web view is leaving this container. Take the strip with it so a
+    /// later page does not inherit an extra layer behind its own.
+    func unmount() {
+        isRefreshing = false
+        refreshShownAt = nil
+        indicator.stopLoading()
+        indicator.removeFromSuperview()
+        pageTop = nil
+        pageBottom = nil
+        indicatorHeight = nil
+        pull = 0
+        isPulling = false
+        container = nil
     }
 
     /// The web view's constraints, owned here so the pull can move it.

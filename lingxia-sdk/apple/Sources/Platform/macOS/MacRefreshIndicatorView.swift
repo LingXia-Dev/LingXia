@@ -14,7 +14,8 @@ final class MacRefreshIndicatorView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer?.masksToBounds = false
+        layer?.masksToBounds = true
+        // Opaque so a page sliding down never shows a sibling through the strip.
 
         for dot in dots {
             dot.backgroundColor = NSColor.secondaryLabelColor.cgColor

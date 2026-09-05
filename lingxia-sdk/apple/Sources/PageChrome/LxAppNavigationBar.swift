@@ -384,6 +384,12 @@ class iOSNavigationBarView: UIView, NavigationBarProtocol {
 
         if let state = state, showNavbar {
             let color = UIColor(argb: state.background_color)
+            // A custom-navigation page clears this container. Restore its own
+            // opaque backing before revealing the next default navbar so the
+            // SwiftUI host's first update cannot expose the window underneath.
+            backgroundColor = color
+            layer.backgroundColor = color.cgColor
+            isOpaque = true
             statusBarBackgroundView?.backgroundColor = color
             statusBarBackgroundView?.isHidden = false
         } else {

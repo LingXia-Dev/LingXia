@@ -72,9 +72,10 @@ public final class LxAppPageTransition {
     ///
     /// A page that has not painted shows its content settling — a framework
     /// mounting, images and fonts landing — inside a frame that is already
-    /// moving.
+    /// moving. A non-animated tab switch must wait too; otherwise it removes
+    /// the outgoing page and exposes the container while WebKit is still blank.
     public static func needsPaintWait(_ webView: WKWebView, animation: LxAppAnimation) -> Bool {
-        animation != .none && (webView.isLoading || webView.url == nil)
+        webView.isLoading || webView.url == nil
     }
 
     /// Perform `swap` once the incoming page can draw itself, or once the grace

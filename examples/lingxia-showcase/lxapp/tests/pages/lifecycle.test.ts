@@ -313,6 +313,46 @@ spec("park a left page instead of re-rendering it off-screen", { id: "PAGE-LIFEC
   expect(second.previousInstanceTag).toBe(first.instanceTag);
 });
 
+spec("fire onLoad once per tab instance, not on preload or later switchTab", {
+  id: "PAGE-LIFECYCLE-007",
+  covers: ['lx.switchTab'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-007");
+  defer(async () => {
+    await app.nav.relaunch({ page: 'home' });
+  });
+
+  await app.nav.relaunch({ page: 'home' });
+  await waitForCurrentPage(app, 'home');
+  // Let preloaded tab WebViews handshake. The bug fired onLoad off that
+  // handshake, so switching too early would miss it.
+  await new Promise<void>((resolve) => setTimeout(() => resolve(), 2_000));
+
+  const apiLoadCount = async (): Promise<number | null> => app.eval({
+    script: `
+      const page = getCurrentPages().find((candidate) => candidate.route.includes('/api/'));
+      return page ? page.data.loadCount ?? -1 : null;
+    `,
+  }) as Promise<number | null>;
+
+  await app.nav.switchTab({ page: 'api' });
+  await waitForCurrentPage(app, 'api');
+  const first = await eventually(apiLoadCount, (count) => count === 1, {
+    describe: 'first switchTab onto api to deliver exactly one onLoad',
+  });
+  expect(first).toBe(1);
+
+  await app.nav.switchTab({ page: 'home' });
+  await waitForCurrentPage(app, 'home');
+  await app.nav.switchTab({ page: 'api' });
+  await waitForCurrentPage(app, 'api');
+  const second = await eventually(apiLoadCount, (count) => count != null, {
+    describe: 'api tab to still report its load count after a second switchTab',
+  });
+  expect(second).toBe(1);
+});
+
 spec("unload a pushed page dropped by switchTab", { id: "PAGE-LIFECYCLE-006", covers: ['lx.switchTab', 'lx.navigateTo'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, defer } = bindFixture(t, "PAGE-LIFECYCLE-006");
 

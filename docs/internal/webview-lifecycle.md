@@ -514,9 +514,14 @@ Platform hosts decide *when* to discard:
 `dispatch_lifecycle_event()` enforces ordering:
 - `OnLoad` is ignored before render starts.
 - First-load / re-navigation order: `OnLoad` (query-aware) → `OnShow`
-  (visibility) → `OnReady` (after render finished, once per rendered document —
-  a re-navigation onto a cached instance repeats `OnLoad`/`OnShow` but not
-  `OnReady`, because nothing re-rendered).
+  (visibility) → `OnReady` (after render finished *and* the page has been
+  shown, once per rendered document — a re-navigation onto a cached instance
+  repeats `OnLoad`/`OnShow` but not `OnReady`, because nothing re-rendered).
+- Handshake does **not** auto-boot `onLoad` for a Hidden Idle page. Preloaded
+  tab instances warm a WebView/PageSvc without becoming an entry; the landing
+  page on open, first `switchTab` onto a tab, `navigateTo`/`redirectTo`, and
+  pages already supposed to be shown (surfaces, app-service restart) request
+  `onLoad`. Subsequent `switchTab` onto a warm tab is visibility-only (`onShow`).
 - `OnHide` on visibility loss; `OnUnload` on disposal or on leaving the stack.
 
 `PageState` keeps these on three separate clocks, because they advance
@@ -525,7 +530,8 @@ logical entry, `Visibility` (`Hidden`/`ShowOwed`/`Shown`) owes `onShow`/`onHide`
 per flip, and `ready_dispatched` owes one `onReady` per rendered document and is
 cleared only by `reset_webview_lifecycle_state`. `onUnload` cancels a *pending*
 entry but leaves a *delivered* one alone, so a reused instance does not
-re-request `onLoad` off the back of its existing bridge.
+re-request `onLoad` off the back of its existing bridge. `switchTab` consults
+that same clock and skips `onLoad` unless the tab is still `Idle`.
 
 Browser-profile WebViews only participate in this state machine when their
 delegate resolves to a bound headless `Page`. External-URL tabs and URL-target
