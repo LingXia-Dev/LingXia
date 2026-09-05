@@ -38,8 +38,8 @@ grep -Fq 'bash scripts/ci/authority-escape-gate.sh run' "$GATE" || {
   exit 1
 }
 
-grep -Fq 'cargo test -p lingxia-browser --lib policy::tests' "$GATE" || {
-  echo "portable Rust security gate does not run the browser navigation policy tests" >&2
+grep -Fqx '    cargo test -p lingxia-browser --lib' "$GATE" || {
+  echo "portable Rust security gate does not run all browser library tests" >&2
   exit 1
 }
 
