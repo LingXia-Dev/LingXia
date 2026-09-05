@@ -303,7 +303,12 @@ impl AppStoreConnectClient {
     pub fn find_bundle_id(&self, identifier: &str) -> Result<Option<BundleId>> {
         let response = self.get(&format!("/bundleIds?filter[identifier]={}", identifier))?;
         let bundle_ids: Vec<BundleId> = parse_data_array(&response)?;
-        Ok(bundle_ids.into_iter().next())
+        // App Store Connect may return identifiers that merely contain the
+        // filter value. Picking the first one can sign `app.foo` with the App
+        // ID for `app.foo.extension`, which installs but cannot launch.
+        Ok(bundle_ids
+            .into_iter()
+            .find(|bundle| bundle.attributes.identifier.as_deref() == Some(identifier)))
     }
 
     /// List all bundle IDs

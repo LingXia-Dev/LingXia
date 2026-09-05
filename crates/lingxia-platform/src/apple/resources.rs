@@ -70,13 +70,15 @@ fn get_resource_bundles() -> &'static [Retained<NSBundle>] {
 /// Detect app bundle based on bundle identifier, name, or executable
 fn detect_app_bundle(main_bundle: &NSBundle, bundle_type: &NSString) -> Option<Retained<NSBundle>> {
     unsafe {
-        // Try 1: Bundle identifier based (e.g., app.lingxia.example.lxapp → lxapp_lxapp)
+        // Try 1: Bundle identifier based (e.g., app.lingxia.example.lxapp → lxapp_lxapp).
+        // Developer/preview builds append `.dev` / `.preview`, so the last
+        // component is the env suffix — skip those and keep looking.
         let bundle_identifier: Option<Retained<NSString>> =
             msg_send![main_bundle, bundleIdentifier];
         if let Some(identifier) = bundle_identifier {
             let identifier_str = identifier.to_string();
-            if let Some(last_component) = identifier_str.split('.').next_back()
-                && let Some(bundle) = try_find_spm_bundle(main_bundle, last_component, bundle_type)
+            if let Some(stem) = identifier_spm_stem(&identifier_str)
+                && let Some(bundle) = try_find_spm_bundle(main_bundle, stem, bundle_type)
             {
                 return Some(bundle);
             }
@@ -105,6 +107,17 @@ fn detect_app_bundle(main_bundle: &NSBundle, bundle_type: &NSString) -> Option<R
 
         None
     }
+}
+
+/// SPM resource bundle stems derived from a bundle identifier.
+///
+/// `app.foo.lxapp.dev` must still resolve `lxapp_lxapp.bundle`, not
+/// `dev_dev.bundle`.
+fn identifier_spm_stem(identifier: &str) -> Option<&str> {
+    identifier
+        .split('.')
+        .rev()
+        .find(|part| !part.is_empty() && !matches!(*part, "dev" | "preview" | "debug"))
 }
 
 /// Try to find SPM bundle with format Name_Name.bundle
@@ -249,5 +262,27 @@ pub fn list_asset_directory(dir_path: &str) -> Vec<String> {
         }
 
         Vec::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::identifier_spm_stem;
+
+    #[test]
+    fn identifier_stems_skip_developer_suffix() {
+        assert_eq!(
+            identifier_spm_stem("app.lingxia.example.lxapp.dev"),
+            Some("lxapp")
+        );
+        assert_eq!(
+            identifier_spm_stem("app.lingxia.example.lxapp"),
+            Some("lxapp")
+        );
+        assert_eq!(
+            identifier_spm_stem("app.lingxia.example.lxapp.preview"),
+            Some("lxapp")
+        );
+        assert_eq!(identifier_spm_stem("app.lingxia.runner"), Some("runner"));
     }
 }
