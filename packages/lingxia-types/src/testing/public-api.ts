@@ -362,6 +362,7 @@ export const LX_RUNTIME_SURFACES = [
     expression: 'lx.terminal',
     members: TERMINAL_API,
     properties: TERMINAL_API,
+    optionalMembers: ['windows'],
     optional: true,
   },
   {
