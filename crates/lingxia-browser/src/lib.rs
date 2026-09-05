@@ -541,3 +541,20 @@ pub fn warmup() {
         lxapp::warn!("[InternalBrowser] warmup failed: {}", err);
     }
 }
+
+#[cfg(test)]
+mod authority_tests {
+    use super::*;
+
+    #[test]
+    fn app_owned_navigation_cannot_open_internal_control_routes() {
+        let error = open_for_app("app.example", 7, "lingxia://downloads", Some("downloads"))
+            .expect_err("ordinary app navigation must reject internal routes");
+        assert!(matches!(error, LxAppError::UnsupportedOperation(_)));
+        assert!(
+            error
+                .to_string()
+                .contains("sealed native browser authority")
+        );
+    }
+}

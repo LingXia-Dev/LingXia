@@ -83,6 +83,31 @@ pub(crate) fn open_for_app(
     }
 }
 
+/// Opens one host-selected internal browser route for an existing app-owned
+/// tab. The native authority is supplied here rather than crossing the Apple
+/// FFI, so ordinary app navigation cannot opt into trusted control pages.
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub(crate) fn open_trusted_for_app(
+    appid: &str,
+    session_id: u64,
+    url: &str,
+    tab_id: Option<&str>,
+) -> Result<String, lxapp::LxAppError> {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::open_trusted_for_app(
+        super::native_control_authority()?,
+        appid,
+        session_id,
+        url,
+        tab_id,
+    );
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = (appid, session_id, url, tab_id);
+        unavailable()
+    }
+}
+
 /// Open a tab in the shared browser's API-managed aside group.
 pub(crate) fn open_aside_for_app(
     appid: &str,
