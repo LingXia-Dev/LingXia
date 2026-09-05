@@ -884,7 +884,10 @@ pub fn on_host_locale_changed(locale: &str) {
 /// Resolve the bootstrap-sealed Settings destination against current runtime
 /// registries for a native host entry click.
 pub(crate) fn resolve_settings_destination_for_host() -> bool {
-    settings_destination_result_to_bool(crate::settings_destination::resolve_settings_destination())
+    present_settings_destination_resolution(
+        crate::settings_destination::resolve_settings_destination(),
+        self::bridge::present_internal_browser_tab,
+    )
 }
 
 /// Read the merged startup descriptor for native chrome without resolving it.
@@ -893,10 +896,19 @@ pub(crate) fn static_settings_destination_json() -> String {
         .expect("static Settings descriptor is JSON data")
 }
 
-fn settings_destination_result_to_bool(
+fn present_settings_destination_resolution(
     result: Result<crate::SettingsDestinationResolution, crate::SettingsDestinationResolveError>,
+    present_browser_tab: impl FnOnce(&str) -> bool,
 ) -> bool {
     match result {
+        Ok(crate::SettingsDestinationResolution::BrowserControlPage { tab_id, .. }) => {
+            if present_browser_tab(&tab_id) {
+                true
+            } else {
+                log::error!("failed to present resolved static Settings browser tab: {tab_id}");
+                false
+            }
+        }
         Ok(_) => true,
         Err(error) => {
             log::error!("failed to resolve static Settings destination: {error}");
@@ -2841,14 +2853,43 @@ mod tests {
             },
         ];
         for resolution in resolutions {
-            assert!(settings_destination_result_to_bool(Ok(resolution)));
+            let expected_browser_tab = match &resolution {
+                crate::SettingsDestinationResolution::BrowserControlPage { tab_id, .. } => {
+                    Some(tab_id.clone())
+                }
+                _ => None,
+            };
+            let presented_browser_tab = std::cell::RefCell::new(None);
+            assert!(present_settings_destination_resolution(
+                Ok(resolution),
+                |tab_id| {
+                    *presented_browser_tab.borrow_mut() = Some(tab_id.to_string());
+                    true
+                },
+            ));
+            assert_eq!(*presented_browser_tab.borrow(), expected_browser_tab);
         }
     }
 
     #[test]
     fn static_settings_click_reports_missing_destination_as_failure() {
-        assert!(!settings_destination_result_to_bool(Err(
-            crate::SettingsDestinationResolveError::NotConfigured,
-        )));
+        assert!(!present_settings_destination_resolution(
+            Err(crate::SettingsDestinationResolveError::NotConfigured),
+            |_| panic!("an unresolved destination must not present a browser tab"),
+        ));
+    }
+
+    #[test]
+    fn static_settings_click_reports_browser_presentation_failure() {
+        assert!(!present_settings_destination_resolution(
+            Ok(crate::SettingsDestinationResolution::BrowserControlPage {
+                tab_id: "settings".to_string(),
+                browser_session_id: 2,
+            }),
+            |tab_id| {
+                assert_eq!(tab_id, "settings");
+                false
+            },
+        ));
     }
 }
