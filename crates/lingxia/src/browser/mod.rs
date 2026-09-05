@@ -25,18 +25,14 @@ pub(crate) fn install_native_control_authority(
     }
 }
 
+#[cfg(feature = "browser-runtime")]
 pub(crate) fn native_control_authority()
 -> Result<&'static lxapp::NativeControlPlaneAuthority, lxapp::LxAppError> {
-    #[cfg(feature = "browser-runtime")]
-    return NATIVE_CONTROL_AUTHORITY.get().ok_or_else(|| {
+    NATIVE_CONTROL_AUTHORITY.get().ok_or_else(|| {
         lxapp::LxAppError::UnsupportedOperation(
             "native browser control authority is not initialized".to_string(),
         )
-    });
-    #[cfg(not(feature = "browser-runtime"))]
-    Err(lxapp::LxAppError::UnsupportedOperation(
-        "browser not available (browser feature disabled)".to_string(),
-    ))
+    })
 }
 
 #[cfg(target_os = "android")]
