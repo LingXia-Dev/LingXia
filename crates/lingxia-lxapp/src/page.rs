@@ -1636,12 +1636,12 @@ impl PageInstance {
         // 5. Dispatch lifecycle events for current and target pages
         match nav_type {
             NavigationType::Replace => {
-                self.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
                 // Replacing a page with itself never takes it off screen, so
-                // resetting would reload the document under the user — a white
-                // frame on every redirect. The entry re-runs `onLoad` with the
-                // new query against the instance that is already there.
-                if target_page.instance_id_string() != self.instance_id_string() {
+                // unloading or resetting would retire the live document and
+                // make its next `onLoad` unable to patch the view. The entry
+                // re-runs `onLoad` with the new query against that document.
+                if !Self::replace_reuses_document(&self.inner.id, &target_page.inner.id) {
+                    self.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
                     lxapp.schedule_page_reset(self);
                 }
             }
@@ -1682,6 +1682,10 @@ impl PageInstance {
         // Do not dispatch OnReady here. WebViewDelegate::on_page_finished() will do it.
 
         Ok(target_page)
+    }
+
+    fn replace_reuses_document(source: &PageInstanceId, target: &PageInstanceId) -> bool {
+        source == target
     }
 
     pub fn navigate_back(&self, delta: u32) -> Result<(), LxAppError> {
@@ -2102,6 +2106,33 @@ mod tests {
         state.reset = PageReset::None;
 
         assert_eq!(state.event, None);
+        assert!(!state.document_is_departing());
+    }
+
+    #[test]
+    fn same_instance_replace_keeps_the_document_live() {
+        let source = PageInstanceId::new();
+        let replacement = PageInstanceId::new();
+
+        assert!(PageInstance::replace_reuses_document(&source, &source));
+        assert!(!PageInstance::replace_reuses_document(
+            &source,
+            &replacement
+        ));
+
+        let mut state = test_page_state();
+        state.bridge_ready = true;
+        state.render_status = PageRenderStatus::Finished;
+        state.entry = EntryPhase::Loaded;
+        state.visibility = Visibility::Shown;
+        state.event = Some(PageLifecycleEvent::OnShow);
+
+        PageInstance::request_on_load(&mut state);
+        let mut events = Vec::new();
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+
+        assert_eq!(events[0].0, PageLifecycleEvent::OnLoad);
+        assert!(state.accepts_view_state_patches());
         assert!(!state.document_is_departing());
     }
 
