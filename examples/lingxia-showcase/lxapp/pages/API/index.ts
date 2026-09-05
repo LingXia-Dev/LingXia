@@ -5,12 +5,14 @@ Page({
     // lx.cloud / lx.auth exist only when the host ships the cloud
     // provider; hide the Cloud section entirely otherwise.
     cloudAvailable: false,
+    loadCount: 0,
   },
 
   onLoad: function(options) {
     console.log("Options in onLoad: ", options);
     this.setData({
       cloudAvailable: typeof lx.cloud !== "undefined" || typeof lx.auth !== "undefined",
+      loadCount: (this.data.loadCount || 0) + 1,
     });
   },
 

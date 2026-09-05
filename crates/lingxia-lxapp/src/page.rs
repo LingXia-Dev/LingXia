@@ -825,6 +825,29 @@ impl PageInstance {
         }
     }
 
+    /// Handshake auto-boots `onLoad` only for a page that is already supposed
+    /// to be on screen, or an isolated surface. A Hidden Idle page is a warm
+    /// instance waiting for an entry — preloaded tabs — and must not run
+    /// `onLoad` until switchTab / launch / navigate requests it.
+    fn handshake_should_request_on_load(state: &PageState, isolated: bool) -> bool {
+        state.entry == EntryPhase::Idle
+            && state.reset == PageReset::None
+            && (isolated || state.visibility != Visibility::Hidden)
+    }
+
+    /// `switchTab` onto a warm tab is a visibility flip, not a new entry.
+    fn switch_tab_should_request_on_load(entry: EntryPhase) -> bool {
+        entry == EntryPhase::Idle
+    }
+
+    pub(crate) fn switch_tab_owes_on_load(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .map(|state| Self::switch_tab_should_request_on_load(state.entry))
+            .unwrap_or(true)
+    }
+
     fn should_reset_lifecycle_on_attach(current_webview_is_same: Option<bool>) -> bool {
         matches!(current_webview_is_same, Some(false))
     }
@@ -864,9 +887,12 @@ impl PageInstance {
             state.event = Some(PageLifecycleEvent::OnShow);
         }
 
+        // `onReady` is the first-paint hook of a visible entry. A document
+        // that finished off-screen (preloaded tab) waits until Show.
         if state.entry == EntryPhase::Loaded
             && state.render_status == PageRenderStatus::Finished
             && !state.ready_dispatched
+            && state.visibility == Visibility::Shown
         {
             events_to_fire.push((PageLifecycleEvent::OnReady, None));
             state.ready_dispatched = true;
@@ -963,9 +989,10 @@ impl PageInstance {
             // entry to serve: booting here would deliver `onLoad` (with the
             // previous entry's query) and `onReady` to nobody, and leave the
             // real entry with a second `onLoad` and no `onReady`. Pages that
-            // handshake while live — surfaces, an app-service restart — still
-            // boot from here.
-            if state.entry == EntryPhase::Idle && state.reset == PageReset::None {
+            // handshake while already supposed to be shown — surfaces, an
+            // app-service restart — still boot from here. Hidden Idle pages
+            // are warm instances, not entries.
+            if Self::handshake_should_request_on_load(&state, self.inner.isolated) {
                 Self::request_on_load(&mut state);
             }
             Self::collect_ready_lifecycle_events(&mut state, &mut events_to_fire);
@@ -996,14 +1023,19 @@ impl PageInstance {
     pub(crate) fn dispatch_lifecycle_event(&self, event: PageLifecycleEvent) {
         // Central lifecycle state machine for a single WebView-backed PageInstance.
         // Sources of events:
-        // - First-time creation: WebView/LXPort ready requests onLoad (AppService side)
-        // - Re-navigation with new query (navigateTo): native manually requests onLoad
-        // - Render completion: WebView delegate triggers onReady after page scripts are injected
+        // - First-time entry: open / navigate / first switchTab requests onLoad
+        // - Handshake auto-boots onLoad only when the page is already supposed
+        //   to be shown (surfaces, app-service restart), never a Hidden warm-up
+        // - Re-navigation with new query (navigateTo / redirectTo): native
+        //   requests onLoad again
+        // - Render completion: WebView delegate triggers onReady after page
+        //   scripts are injected, gated on the page having been shown
         // - Visibility changes: native triggers onShow/onHide
         // Goals (Weixin semantics adapted to a single WebView instance):
-        // - onLoad carries query and may occur multiple times across logical navigations
-        //   (first-time + each navigateTo with new params)
-        // - onReady fires once for each logical navigation after render has finished
+        // - onLoad carries query and may occur multiple times across logical
+        //   navigations (first-time + each navigateTo with new params). switchTab
+        //   onto a warm tab is not a new entry.
+        // - onReady fires once per rendered document, after the first Show
         // - onShow fires each time the page becomes visible (after a hide), without query
 
         // Serialize the departure marker with Logic-to-View patch delivery.
@@ -1556,10 +1588,12 @@ impl PageInstance {
             }
         }
 
-        // Request onLoad for the target page; the lifecycle state machine will gate:
-        // - If first-time render hasn't started yet, the request is kept until render starts.
-        // - If the WebView has rendered before (re-navigation), OnLoad is accepted immediately.
-        target_page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
+        // Request onLoad for a new entry. switchTab onto a tab that already
+        // ran onLoad is only a visibility flip — onShow comes from the
+        // platform container, the same way navigateBack reveals a page.
+        if nav_type != NavigationType::SwitchTab || target_page.switch_tab_owes_on_load() {
+            target_page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
+        }
 
         // 6. Perform the native navigation
         (*lxapp.runtime)
@@ -2174,12 +2208,84 @@ mod tests {
         // The bridge-ready auto-request is what boots surfaces and app-service
         // restarts; a torn-down page whose rebuild is racing the entry must
         // stay put instead of firing onLoad at nobody.
-        assert!(!(state.entry == EntryPhase::Idle && state.reset == PageReset::None));
+        assert!(!PageInstance::handshake_should_request_on_load(
+            &state, false
+        ));
+        assert!(!PageInstance::handshake_should_request_on_load(
+            &state, true
+        ));
 
         // The real entry clears it and takes over.
         PageInstance::request_on_load(&mut state);
         assert_eq!(state.reset, PageReset::None);
         assert_eq!(state.entry, EntryPhase::LoadOwed);
+    }
+
+    #[test]
+    fn handshake_does_not_boot_a_hidden_idle_page() {
+        let state = test_page_state();
+        assert_eq!(state.entry, EntryPhase::Idle);
+        assert_eq!(state.visibility, Visibility::Hidden);
+        assert!(!PageInstance::handshake_should_request_on_load(
+            &state, false
+        ));
+    }
+
+    #[test]
+    fn handshake_boots_a_visible_or_isolated_idle_page() {
+        let mut shown = test_page_state();
+        shown.visibility = Visibility::ShowOwed;
+        assert!(PageInstance::handshake_should_request_on_load(
+            &shown, false
+        ));
+
+        let hidden_surface = test_page_state();
+        assert!(PageInstance::handshake_should_request_on_load(
+            &hidden_surface,
+            true
+        ));
+    }
+
+    #[test]
+    fn hidden_warmup_defers_ready_until_shown() {
+        let mut state = test_page_state();
+        let mut events = Vec::new();
+
+        state.bridge_ready = true;
+        PageInstance::request_on_load(&mut state);
+        state.render_status = PageRenderStatus::Finished;
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+
+        assert_eq!(
+            events,
+            vec![(PageLifecycleEvent::OnLoad, Some("{}".to_string()))]
+        );
+        assert!(!state.ready_dispatched);
+
+        events.clear();
+        state.visibility = Visibility::ShowOwed;
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+        assert_eq!(
+            events,
+            vec![
+                (PageLifecycleEvent::OnShow, None),
+                (PageLifecycleEvent::OnReady, None),
+            ]
+        );
+        assert!(state.ready_dispatched);
+    }
+
+    #[test]
+    fn switch_tab_requests_on_load_only_for_a_fresh_entry() {
+        assert!(PageInstance::switch_tab_should_request_on_load(
+            EntryPhase::Idle
+        ));
+        assert!(!PageInstance::switch_tab_should_request_on_load(
+            EntryPhase::LoadOwed
+        ));
+        assert!(!PageInstance::switch_tab_should_request_on_load(
+            EntryPhase::Loaded
+        ));
     }
 
     #[test]

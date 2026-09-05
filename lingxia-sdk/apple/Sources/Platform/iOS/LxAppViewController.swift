@@ -94,8 +94,10 @@ final class LxAppViewController: UIViewController, ObservableObject {
         //  Allow animation to extend beyond main view bounds
         view.clipsToBounds = false
 
-        // Set initial background to prevent black flash
-        view.backgroundColor = UIColor.black
+        // Use the host-declared light canvas until an lxapp resolves its
+        // appearance. A fixed black launch backing leaks through native chrome
+        // while a transparent page changes to a default-navbar page.
+        view.backgroundColor = resolvedCanvasColor()
 
         setupUI()
 
@@ -157,8 +159,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
             navController.setNavigationBarHidden(true, animated: false)
         }
 
-        // Set initial background - use black to prevent white flash
-        view.backgroundColor = UIColor.black
+        // Keep the initial backing consistent with the host page canvas.
+        view.backgroundColor = resolvedCanvasColor()
         view.isOpaque = true
 
         setupRootContainer()
@@ -299,15 +301,23 @@ final class LxAppViewController: UIViewController, ObservableObject {
         if #available(iOS 16.0, *) {
             if let scene = view.window?.windowScene {
                 let preferences = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: mapped.mask)
-                scene.requestGeometryUpdate(preferences) { error in
-                    LXLog.error("requestGeometryUpdate failed", category: "LxAppViewController", error: error)
-                }
+                scene.requestGeometryUpdate(
+                    preferences,
+                    errorHandler: Self.reportGeometryUpdateError
+                )
             }
         } else {
             UIViewController.attemptRotationToDeviceOrientation()
         }
 
         return true
+    }
+
+    // UIKit invokes the geometry error handler on an arbitrary queue. Keeping
+    // it out of this @MainActor class's isolation avoids a Swift concurrency
+    // precondition crash on newer iOS versions.
+    nonisolated private static func reportGeometryUpdateError(_ error: Error) {
+        LXLog.error("requestGeometryUpdate failed", category: "LxAppViewController", error: error)
     }
 
     private func mapRuntimeOrientation(_ orientation: Int32) -> (mask: UIInterfaceOrientationMask, preferred: UIInterfaceOrientation) {
@@ -832,8 +842,27 @@ final class LxAppViewController: UIViewController, ObservableObject {
     private func setOpaqueBackgrounds() {
         let canvas = resolvedCanvasColor()
         view.backgroundColor = canvas
+        view.isOpaque = true
+        view.layer.backgroundColor = canvas.cgColor
         rootContainer?.backgroundColor = canvas
+        rootContainer?.isOpaque = true
+        rootContainer?.layer.backgroundColor = canvas.cgColor
         webViewContainer?.backgroundColor = canvas
+        webViewContainer?.isOpaque = true
+        webViewContainer?.layer.backgroundColor = canvas.cgColor
+
+        // setCompleteTransparency changes these host containers too. Restore
+        // them when the destination page owns a native navbar; otherwise the
+        // navbar's asynchronous SwiftUI redraw can reveal the black compositor
+        // backing left behind the transparent window.
+        if let window = view.window {
+            window.backgroundColor = canvas
+            window.isOpaque = true
+        }
+        if let navController = navigationController {
+            navController.view.backgroundColor = canvas
+            navController.view.isOpaque = true
+        }
 
         // Configure current WebView only - no need to iterate all apps
         if LxAppCore.currentAppId != nil,
@@ -1048,6 +1077,12 @@ final class LxAppViewController: UIViewController, ObservableObject {
         let enabled = isPullDownRefreshEnabled(appId: appId, path: normalizedPath)
 
         os_log("setupPullToRefresh: appId=%@, path=%@, enabled=%@", log: Self.log, type: .info, appId, normalizedPath, enabled ? "true" : "false")
+
+        // WKWebView rubber-bands independently of the refresh helper. A page
+        // that did not opt in must not expose a dead pull gesture; disabling
+        // bounce still preserves ordinary scrolling when content is taller.
+        webView.scrollView.bounces = enabled
+        webView.scrollView.alwaysBounceVertical = enabled
 
         if enabled {
             // Only recreate helper if it doesn't exist or is attached to a different WebView
@@ -1308,13 +1343,10 @@ final class LxAppViewController: UIViewController, ObservableObject {
             targetWebView.scrollView.backgroundColor = canvas
             targetWebView.layer.backgroundColor = canvas.cgColor
 
-            // navigate() already applied the TARGET page's styling; for a
-            // navbar-hidden target that cleared view/rootContainer/window, so
-            // the strip the departing bar vacates would show the black window
-            // for the whole slide. Paint the canvas for the animation;
-            // finalizeWebViewAttachment re-applies transparency afterwards.
-            view.backgroundColor = canvas
-            rootContainer.backgroundColor = canvas
+            // The outgoing custom-navbar page may have cleared the host window.
+            // Restore every backing layer for the transition; the destination
+            // styling is reapplied when attachment is finalized.
+            setOpaqueBackgrounds()
 
             // The content swap below moves (or hides) the shared bar for the
             // incoming page, baring the outgoing page's strip mid-slide — let
@@ -1325,6 +1357,23 @@ final class LxAppViewController: UIViewController, ObservableObject {
                 snapshot.frame = navigationBar.frame
                 rootContainer.addSubview(snapshot)
                 outgoingBarSnapshot = snapshot
+            }
+
+            // A direct navigateTo reaches this method without first applying
+            // the destination chrome. When a custom-navbar page enters a
+            // default-navbar page, the shared bar starts off-screen and its
+            // old transparent window backing is otherwise visible until the
+            // slide completes. Hold the destination bar colour underneath it.
+            let targetNavState = lingxia.getNavigationBarState(appId, path)
+            var enteringBarBackdrop: UIView?
+            if globalNavigationBar?.isHidden == true, targetNavState.show_navbar,
+               let navigationBar = globalNavigationBar {
+                rootContainer.layoutIfNeeded()
+                let backdrop = UIView(frame: navigationBar.frame)
+                backdrop.backgroundColor = UIColor(argb: targetNavState.background_color)
+                backdrop.isOpaque = true
+                rootContainer.addSubview(backdrop)
+                enteringBarBackdrop = backdrop
             }
 
             // Set initial position for target WebView
@@ -1341,6 +1390,9 @@ final class LxAppViewController: UIViewController, ObservableObject {
             // webview's constraints (a visible pre-animation jump).
             updateNavigationBarContent(appId: appId, path: path)
             updateTabBar(for: appId, path: path)
+            if let navigationBar = globalNavigationBar, !navigationBar.isHidden {
+                rootContainer.bringSubviewToFront(navigationBar)
+            }
 
             // Force layout update to ensure proper frame sizes
             rootContainer.layoutIfNeeded()
@@ -1361,6 +1413,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
             }, completion: { _ in
                 // Clean up after animation
                 outgoingBarSnapshot?.removeFromSuperview()
+                enteringBarBackdrop?.removeFromSuperview()
                 currentWebView.isHidden = true
                 currentWebView.pauseWebView()
                 currentWebView.transform = .identity

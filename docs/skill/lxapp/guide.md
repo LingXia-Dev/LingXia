@@ -184,7 +184,7 @@ Page({
 | --- | --- |
 | `onLoad(options)` | Entering the page. `options` carries the query params. |
 | `onShow()` | Becoming visible — on entry, and again every time it comes back. |
-| `onReady()` | The page's document has finished rendering. |
+| `onReady()` | The page's document has finished rendering, after the first `onShow`. |
 | `onHide()` | Another page covered it, or the lxapp went to the background. |
 | `onUnload()` | The page left the stack (`lx.navigateBack`, `lx.redirectTo`, a `lx.switchTab` that drops it). |
 
