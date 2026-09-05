@@ -348,8 +348,6 @@ pub(crate) fn init_with_platform(
     crate::applink::install_handler();
     #[cfg(feature = "standard")]
     lingxia_logic::register_logic_runtime();
-    #[cfg(feature = "automation")]
-    lingxia_automation::register_automation_runtime();
     let app_grant_resolver: std::sync::Arc<AppResourceGrantResolver> =
         std::sync::Arc::new(crate::host_addon::resolve_app_resource_grants);
     #[cfg(feature = "devtool")]
