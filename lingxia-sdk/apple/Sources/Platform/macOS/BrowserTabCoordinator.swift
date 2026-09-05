@@ -952,6 +952,14 @@ final class BrowserTabCoordinator: NSObject {
             return existingTabId
         }
 
+        if requestedStableTabId == nil, openAuthority != .appSession {
+            LXLog.error(
+                "Trusted browser navigation requires a stable native route",
+                category: "BrowserTabCoordinator"
+            )
+            return nil
+        }
+
         let openedTab = if let requestedStableTabId {
             switch openAuthority {
             case .appSession:
@@ -960,13 +968,6 @@ final class BrowserTabCoordinator: NSObject {
                 openTrustedBrowserTabWithId(owner.appId, owner.sessionId, url, requestedStableTabId)
             }
         } else {
-            guard openAuthority == .appSession else {
-                LXLog.error(
-                    "Trusted browser navigation requires a stable native route",
-                    category: "BrowserTabCoordinator"
-                )
-                return nil
-            }
             openBrowserTab(owner.appId, owner.sessionId, url)
         }
 
