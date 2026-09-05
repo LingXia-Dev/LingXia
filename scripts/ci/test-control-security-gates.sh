@@ -43,7 +43,7 @@ grep -Fqx '    cargo test -p lingxia-browser --lib' "$GATE" || {
   exit 1
 }
 
-grep -Fq "cargo rustc -p lingxia --target \"\$host_target\" --lib -- --crate-type=staticlib" "$GATE" || {
+grep -Fq "cargo rustc -p lingxia --target \"\$host_target\" --lib --crate-type staticlib" "$GATE" || {
   echo "Apple security gate does not build the static library required by SwiftPM" >&2
   exit 1
 }
