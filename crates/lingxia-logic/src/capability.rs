@@ -61,6 +61,21 @@ fn terminal_supported(lxapp: &Arc<LxApp>) -> bool {
     }
 }
 
+/// Whether this exact JS context is the focused, host-bundled Terminal
+/// Settings runtime. Terminal support on the owning ControlApp alone is not
+/// enough: its ordinary home context still exposes the full Logic surface.
+fn terminal_settings_context(ctx: &JSContext) -> JSResult<bool> {
+    #[cfg(feature = "terminal")]
+    {
+        crate::terminal::owns_context(ctx)
+    }
+    #[cfg(not(feature = "terminal"))]
+    {
+        let _ = ctx;
+        Ok(false)
+    }
+}
+
 /// `lx.app.autostart`'s presence check, so the two can never disagree. Fenced
 /// exactly like the member: `lingxia_platform::autostart_supported` only
 /// exists where a startup item can exist at all.
@@ -135,7 +150,7 @@ fn has_exact_keys(actual: &[String], expected: &[&str]) -> bool {
 /// a context that does not expose an API reports false for it.
 fn supports(ctx: JSContext, query: JSValue) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let terminal_settings = terminal_supported(&lxapp);
+    let terminal_settings = terminal_settings_context(&ctx)?;
     // Taken as a value, not a `JSObject`: an untyped caller passing a string or
     // null would otherwise be rejected by argument conversion, with a shape
     // that does not match the invalid-parameter errors every other bad query
