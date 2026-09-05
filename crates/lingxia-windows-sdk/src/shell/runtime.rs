@@ -2944,7 +2944,7 @@ fn open_builtin_browser_downloads() -> bool {
         let Some(app) = lxapp::try_get(&appid) else {
             return false;
         };
-        open_or_present_browser_page(&appid, app.session_id(), "lingxia://downloads")
+        open_or_present_trusted_browser_page(&appid, app.session_id(), "lingxia://downloads")
     }
 }
 
@@ -3003,13 +3003,13 @@ fn build_footer_actions(app: &LxApp) -> Vec<WindowsShellFooterActionLayout> {
 static STATIC_SETTINGS_SOURCE: OnceLock<
     Mutex<Option<crate::static_settings::WindowsStaticSettingsSource>>,
 > = OnceLock::new();
-static SETTINGS_RUNTIME: OnceLock<lingxia::RuntimeInfo> = OnceLock::new();
+static HOST_RUNTIME: OnceLock<lingxia::RuntimeInfo> = OnceLock::new();
 
 pub(crate) fn configure_static_settings_source(
     destination: Option<&lingxia_app_context::SettingsDestination>,
     runtime: &lingxia::RuntimeInfo,
 ) {
-    let _ = SETTINGS_RUNTIME.set(runtime.clone());
+    let _ = HOST_RUNTIME.set(runtime.clone());
     let source = crate::static_settings::WindowsStaticSettingsSource::from_destination(destination);
     let state = STATIC_SETTINGS_SOURCE.get_or_init(|| Mutex::new(None));
     if let Ok(mut state) = state.lock() {
@@ -3029,7 +3029,7 @@ fn static_settings_source() -> Option<crate::static_settings::WindowsStaticSetti
 
 fn activate_static_settings(item_id: &str) -> bool {
     static_settings_source().is_some_and(|source| {
-        SETTINGS_RUNTIME.get().is_some_and(|runtime| {
+        HOST_RUNTIME.get().is_some_and(|runtime| {
             source.activate(
                 item_id,
                 || runtime.resolve_settings_destination(),
@@ -4119,7 +4119,7 @@ fn handle_browser_new_tab(appid: &str, session_id: u64) {
     const NEW_TAB_URL: &str = "lingxia://newtab";
     #[cfg(not(feature = "browser-shell"))]
     const NEW_TAB_URL: &str = "about:blank";
-    let trusted_runtime = SETTINGS_RUNTIME.get();
+    let trusted_runtime = HOST_RUNTIME.get();
     if SELF_BROWSER_HOST.load(Ordering::Acquire) {
         let opened = if NEW_TAB_URL.starts_with("lingxia://") {
             trusted_runtime
@@ -4498,7 +4498,11 @@ fn show_pinned_bookmark_context_menu(appid: &str, row_id: &str, screen_x: i32, s
             }
             1 => {
                 if let Some(app) = lxapp::try_get(&appid) {
-                    open_or_present_browser_page(&appid, app.session_id(), "lingxia://bookmarks");
+                    open_or_present_trusted_browser_page(
+                        &appid,
+                        app.session_id(),
+                        "lingxia://bookmarks",
+                    );
                 }
             }
             _ => {}
@@ -5725,6 +5729,65 @@ fn browser_page_urls_match(current: &str, target: &str) -> bool {
 /// fragment on the target) navigates the tab so hash routing fires.
 #[cfg(feature = "browser-runtime")]
 fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) -> bool {
+    open_or_present_browser_page_with_authority(
+        appid,
+        session_id,
+        url,
+        BrowserPageOpenAuthority::AppSession,
+    )
+}
+
+#[cfg(feature = "browser-runtime")]
+fn open_or_present_trusted_browser_page(appid: &str, session_id: u64, url: &str) -> bool {
+    open_or_present_browser_page_with_authority(
+        appid,
+        session_id,
+        url,
+        BrowserPageOpenAuthority::NativeControl,
+    )
+}
+
+#[cfg(feature = "browser-runtime")]
+#[derive(Clone, Copy)]
+enum BrowserPageOpenAuthority {
+    AppSession,
+    NativeControl,
+}
+
+#[cfg(feature = "browser-runtime")]
+fn open_browser_page_with_authority(
+    appid: &str,
+    session_id: u64,
+    url: &str,
+    tab_id: Option<&str>,
+    authority: BrowserPageOpenAuthority,
+) -> Result<String, lxapp::LxAppError> {
+    match authority {
+        BrowserPageOpenAuthority::AppSession => {
+            lingxia_browser::open_for_app(appid, session_id, url, tab_id)
+        }
+        BrowserPageOpenAuthority::NativeControl => {
+            let runtime = HOST_RUNTIME.get().ok_or_else(|| {
+                lxapp::LxAppError::UnsupportedOperation(
+                    "native browser runtime authority is not initialized".to_string(),
+                )
+            })?;
+            if SELF_BROWSER_HOST.load(Ordering::Acquire) {
+                runtime.open_trusted_browser_page(url, tab_id)
+            } else {
+                runtime.open_trusted_browser_page_for_app(appid, session_id, url, tab_id)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "browser-runtime")]
+fn open_or_present_browser_page_with_authority(
+    appid: &str,
+    session_id: u64,
+    url: &str,
+    authority: BrowserPageOpenAuthority,
+) -> bool {
     let existing = browser_tabs().into_iter().find(|tab| {
         tab.current_url
             .as_deref()
@@ -5732,14 +5795,20 @@ fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) -> bool
     });
     if let Some(existing) = existing {
         if browser_internal_page_deep_link(url)
-            && let Err(err) = lingxia_browser::open(url, Some(&existing.tab_id))
+            && let Err(err) = open_browser_page_with_authority(
+                appid,
+                session_id,
+                url,
+                Some(&existing.tab_id),
+                authority,
+            )
         {
             log::error!("failed to navigate browser page {url}: {err}");
         }
         handle_browser_tab_click(appid, &existing.tab_id);
         return true;
     }
-    match lingxia_browser::open_for_app(appid, session_id, url, None) {
+    match open_browser_page_with_authority(appid, session_id, url, None, authority) {
         Ok(tab_id) => {
             present_browser_tab_when_ready(appid, tab_id);
             true
@@ -5757,7 +5826,7 @@ fn open_or_present_browser_local_page(
     session_id: u64,
     navigation: crate::browser_local_navigation::BrowserLocalNavigation<'_>,
 ) -> bool {
-    open_or_present_browser_page(appid, session_id, &navigation.url())
+    open_or_present_trusted_browser_page(appid, session_id, &navigation.url())
 }
 
 /// An internal page target that carries a query or fragment, e.g.
@@ -6223,12 +6292,20 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
             }
             5 => {
                 if let Some(app) = lxapp::try_get(&appid) {
-                    open_or_present_browser_page(&appid, app.session_id(), "lingxia://bookmarks");
+                    open_or_present_trusted_browser_page(
+                        &appid,
+                        app.session_id(),
+                        "lingxia://bookmarks",
+                    );
                 }
             }
             6 => {
                 if let Some(app) = lxapp::try_get(&appid) {
-                    open_or_present_browser_page(&appid, app.session_id(), "lingxia://history");
+                    open_or_present_trusted_browser_page(
+                        &appid,
+                        app.session_id(),
+                        "lingxia://history",
+                    );
                 }
             }
             7 => {
