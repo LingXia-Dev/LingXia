@@ -61,9 +61,16 @@ function windowsStaticSettingsPoint(
 ): [number, number] {
   const scale = host.scale;
   const cell = 30 * scale;
-  const margin = 6 * scale;
+  const margin = 8 * scale;
   if (!rail) {
-    return [host.bounds.x + 92 * scale, host.bounds.y + host.bounds.h - margin - cell / 2];
+    // The host appends the typed Settings action after all runtime actions.
+    // Expanded footer rows pack two actions across the 184-DIP sidebar, so the
+    // trailing action is always in the rightmost cell of its final row.
+    const expandedSidebarWidth = 184 * scale;
+    return [
+      host.bounds.x + expandedSidebarWidth - margin - cell / 2,
+      host.bounds.y + host.bounds.h - margin - cell / 2,
+    ];
   }
   const gap = 4 * scale;
   const expandCell = 34 * scale;
