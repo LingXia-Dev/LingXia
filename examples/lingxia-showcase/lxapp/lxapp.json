@@ -16,7 +16,9 @@
       ]
     },
     "privileges": [
-      "downloads"
+      "automation",
+      "downloads",
+      "host"
     ]
   },
   "pages": [

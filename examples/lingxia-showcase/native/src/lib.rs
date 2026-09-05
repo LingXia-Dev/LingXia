@@ -10,6 +10,14 @@ mod extension;
 struct ExampleHostAddon;
 
 impl lingxia::HostAddon for ExampleHostAddon {
+    #[cfg(feature = "devtools")]
+    fn issue_devtools_app_resource_grants(
+        &self,
+        authority: &mut lingxia::NativeDevtoolsAuthority<'_>,
+    ) {
+        authority.grant_automation();
+    }
+
     #[cfg(feature = "standard")]
     fn install_logic_extensions(&self) {
         lingxia::js::register_logic_extension(Box::new(extension::HelloExtension));
