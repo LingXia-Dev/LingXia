@@ -57,7 +57,7 @@ case "$profile" in
       --lib
     # Keep the external-navigation/OAuth policy on Linux: the same lib-test
     # binary cannot link on macOS without the Swift host bridge implementation.
-    cargo test -p lingxia-browser --lib policy::tests
+    cargo test -p lingxia-browser --lib
     cargo test -p lingxia-transfer --lib download::manager::tests
     cargo test -p lingxia --lib host_addon::tests
     bash scripts/ci/authority-escape-gate.sh run
