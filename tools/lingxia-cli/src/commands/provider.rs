@@ -6,8 +6,9 @@
 //! The CLI hardcodes nothing about any specific provider: the injected crate's
 //! name and its workspace-shared deps are read from the provider crate itself,
 //! and the cargo features to enable are declared by the *host* crate. Per
-//! provider `<NAME>` (which is also the inert host feature `<NAME> = []` to
-//! activate):
+//! provider `<NAME>` (which is either an inert host feature `<NAME> = []` for
+//! temporary injection, or an already-active feature that names the provider
+//! dependency):
 //!   - source, highest priority first:
 //!       1. `--provider-path <dir>`
 //!       2. `LINGXIA_PROVIDER_<NAME>_PATH`
@@ -37,7 +38,10 @@ impl ProviderInjection {
 
 impl Drop for ProviderInjection {
     fn drop(&mut self) {
-        for (path, original) in self.backups.drain(..) {
+        // A standalone native manifest can receive both a dependency override
+        // and a source-wide git patch. Restore repeated backups newest-first so
+        // the original bytes win.
+        for (path, original) in self.backups.drain(..).rev() {
             if let Err(err) = fs::write(&path, &original) {
                 eprintln!("⚠ provider: failed to restore {}: {err}", path.display());
             }
@@ -47,7 +51,7 @@ impl Drop for ProviderInjection {
 
 /// A provider resolved entirely from its source crate + the host manifest.
 struct ResolvedProvider {
-    /// Inert host feature to activate; equal to the `--with-provider` name.
+    /// Host feature to enable; equal to the `--with-provider` name.
     feature: String,
     /// Injected crate's package name, read from its `[package].name`.
     crate_name: String,
@@ -82,8 +86,17 @@ pub fn inject(
     };
     for name in with_provider {
         let resolved = resolve_provider(rust_lib_dir, name, provider_path)?;
+        let provider_git_source = dependency_git_source(rust_lib_dir, &resolved.crate_name)?;
         guard.features.push(resolved.feature.clone());
         patch_native_manifest(rust_lib_dir, &resolved, &mut guard)?;
+        if let Some(git_source) = provider_git_source {
+            patch_git_dependency_source(
+                member_root.as_deref().unwrap_or(rust_lib_dir),
+                &git_source,
+                &resolved,
+                &mut guard,
+            )?;
+        }
         if let Some(root) = member_root.as_deref() {
             let patches: Vec<(String, PathBuf)> = resolved
                 .deps
@@ -103,6 +116,59 @@ pub fn inject(
         describe_source(provider_path)
     );
     Ok(Some(guard))
+}
+
+fn dependency_git_source(dir: &Path, crate_name: &str) -> Result<Option<String>> {
+    let manifest = dir.join("Cargo.toml");
+    let original =
+        fs::read_to_string(&manifest).with_context(|| format!("reading {}", manifest.display()))?;
+    let parsed: toml::Value =
+        toml::from_str(&original).with_context(|| format!("parsing {}", manifest.display()))?;
+    Ok(parsed
+        .get("dependencies")
+        .and_then(toml::Value::as_table)
+        .and_then(|dependencies| dependencies.get(crate_name))
+        .and_then(toml::Value::as_table)
+        .and_then(|dependency| dependency.get("git"))
+        .and_then(toml::Value::as_str)
+        .map(str::to_string))
+}
+
+/// Override the same git package everywhere in the host dependency graph. A
+/// product command crate may depend on the provider beside the native host;
+/// changing only the direct dependency would link two provider singletons.
+fn patch_git_dependency_source(
+    root: &Path,
+    git_source: &str,
+    provider: &ResolvedProvider,
+    guard: &mut ProviderInjection,
+) -> Result<()> {
+    let manifest = root.join("Cargo.toml");
+    let original =
+        fs::read_to_string(&manifest).with_context(|| format!("reading {}", manifest.display()))?;
+    let mut parsed: toml::Table = toml::from_str(&original).context("parsing patch manifest")?;
+    let patches = parsed
+        .entry("patch".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+        .as_table_mut()
+        .context("patch must be a table")?;
+    let source = patches
+        .entry(git_source.to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+        .as_table_mut()
+        .context("patch source must be a table")?;
+    let mut dependency = toml::Table::new();
+    dependency.insert(
+        "path".to_string(),
+        toml::Value::String(provider.dir.to_string_lossy().into_owned()),
+    );
+    source.insert(provider.crate_name.clone(), toml::Value::Table(dependency));
+    let patched = toml::to_string(&parsed).context("serializing provider patch")?;
+    guard
+        .backups
+        .push((manifest.clone(), original.into_bytes()));
+    fs::write(&manifest, patched).with_context(|| format!("patching {}", manifest.display()))?;
+    Ok(())
 }
 
 /// Fail when a framework crate resolves from crates.io beside the local copy.
@@ -381,43 +447,108 @@ fn patch_native_manifest(
     let manifest = dir.join("Cargo.toml");
     let original =
         fs::read_to_string(&manifest).with_context(|| format!("reading {}", manifest.display()))?;
-    if original.contains(&format!("[dependencies.{}]", provider.crate_name)) {
+    let parsed: toml::Value =
+        toml::from_str(&original).with_context(|| format!("parsing {}", manifest.display()))?;
+    let existing_dependency = parsed
+        .get("dependencies")
+        .and_then(toml::Value::as_table)
+        .and_then(|dependencies| dependencies.get(&provider.crate_name));
+    let feature_values = parsed
+        .get("features")
+        .and_then(toml::Value::as_table)
+        .and_then(|features| features.get(&provider.feature))
+        .and_then(toml::Value::as_array);
+    let dependency_feature = format!("dep:{}", provider.crate_name);
+    let feature_is_inert = feature_values.is_some_and(Vec::is_empty);
+    let feature_is_active = feature_values.is_some_and(|values| {
+        values
+            .iter()
+            .any(|value| value.as_str() == Some(dependency_feature.as_str()))
+    });
+    if !feature_is_inert && !feature_is_active {
         bail!(
-            "{} looks already-injected (stale state); run `git checkout -- {}`",
+            "native crate {} must declare `{} = []` or activate `{}` with `{}`",
             manifest.display(),
-            manifest.display()
+            provider.feature,
+            provider.feature,
+            dependency_feature,
         );
     }
-    let inert = format!("{} = []", provider.feature);
-    if !original.lines().any(|l| l.trim() == inert) {
-        bail!(
-            "native crate {} has no inert `{}` feature to activate",
-            manifest.display(),
-            inert
-        );
+    let dependency_is_optional = existing_dependency
+        .and_then(toml::Value::as_table)
+        .and_then(|dependency| dependency.get("optional"))
+        .and_then(toml::Value::as_bool)
+        .unwrap_or(existing_dependency.is_none());
+    let mut patched = original.clone();
+    if feature_is_inert && dependency_is_optional {
+        // Valid TOML may use quoted keys, comments or different spacing.
+        // The guard restores the original formatting after the build.
+        let mut activated = parsed.clone();
+        activated["features"][&provider.feature] =
+            toml::Value::Array(vec![toml::Value::String(dependency_feature)]);
+        patched = toml::to_string(&activated).context("activating provider feature")?;
     }
-    let activated_line = format!("{} = [\"dep:{}\"]", provider.feature, provider.crate_name);
-    let mut patched = original
-        .lines()
-        .map(|l| {
-            if l.trim() == inert {
-                activated_line.clone()
-            } else {
-                l.to_string()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
     if !patched.ends_with('\n') {
         patched.push('\n');
     }
-    patched.push_str(&dep_table_toml(provider)?);
+    if let Some(dependency) = existing_dependency {
+        patched = override_dependency_source(&patched, provider, dependency)?;
+    } else {
+        patched.push_str(&dep_table_toml(provider)?);
+    }
 
     guard
         .backups
         .push((manifest.clone(), original.into_bytes()));
     fs::write(&manifest, patched).with_context(|| format!("patching {}", manifest.display()))?;
     Ok(())
+}
+
+/// Point a dependency already declared by the host at the requested provider
+/// checkout. This is the normal product-app case: release builds keep a pinned
+/// git dependency, while `--provider-path` substitutes a local checkout.
+fn override_dependency_source(
+    manifest: &str,
+    provider: &ResolvedProvider,
+    dependency: &toml::Value,
+) -> Result<String> {
+    let mut spec = dependency.as_table().cloned().unwrap_or_default();
+    for source_key in [
+        "version",
+        "registry",
+        "git",
+        "branch",
+        "tag",
+        "rev",
+        "path",
+        "workspace",
+    ] {
+        spec.remove(source_key);
+    }
+    spec.insert(
+        "path".to_string(),
+        toml::Value::String(provider.dir.to_string_lossy().into_owned()),
+    );
+    if !provider.features.is_empty() {
+        let features = spec
+            .entry("features".to_string())
+            .or_insert_with(|| toml::Value::Array(Vec::new()));
+        let Some(features) = features.as_array_mut() else {
+            bail!(
+                "dependency {} has a non-array `features` value",
+                provider.crate_name
+            );
+        };
+        for feature in &provider.features {
+            if !features.iter().any(|value| value.as_str() == Some(feature)) {
+                features.push(toml::Value::String(feature.clone()));
+            }
+        }
+    }
+
+    let mut parsed: toml::Value = toml::from_str(manifest).context("parsing native manifest")?;
+    parsed["dependencies"][&provider.crate_name] = toml::Value::Table(spec);
+    toml::to_string(&parsed).context("serializing provider dependency override")
 }
 
 fn dep_table_toml(provider: &ResolvedProvider) -> Result<String> {
@@ -520,8 +651,12 @@ fn backup_lock(workspace_dir: &Path, guard: &mut ProviderInjection) {
 
 #[cfg(test)]
 mod tests {
-    use super::duplicated_framework_crates;
+    use super::{
+        ProviderInjection, ResolvedProvider, dependency_git_source, duplicated_framework_crates,
+        patch_git_dependency_source, patch_native_manifest,
+    };
     use serde_json::json;
+    use std::fs;
 
     fn package(name: &str, version: &str, source: Option<&str>) -> serde_json::Value {
         json!({ "name": name, "version": version, "source": source })
@@ -584,5 +719,234 @@ mod tests {
         let rendered = format!("path = {}", toml_path(Path::new(weird)));
         let value: toml::Value = toml::from_str(&rendered).expect("valid TOML");
         assert_eq!(value["path"].as_str(), Some(weird));
+    }
+
+    #[test]
+    fn local_provider_accepts_quoted_keys_and_commented_features() {
+        let temp = tempfile::tempdir().unwrap();
+        let manifest = temp.path().join("Cargo.toml");
+        let original = r#"[package]
+name = "host"
+version = "0.1.0"
+[features]
+"cloud"=[] # opt in during the build
+[dependencies] # private providers
+"lingxia-cloud-client" = { path = "../old", optional = true }
+[patch.'https://example.invalid/cloud.git'.lingxia-cloud-client]
+path = "../old"
+"#;
+        fs::write(&manifest, original).unwrap();
+        let provider = ResolvedProvider {
+            feature: "cloud".into(),
+            crate_name: "lingxia-cloud-client".into(),
+            dir: temp.path().join("cloud"),
+            deps: Vec::new(),
+            features: vec!["dev".into()],
+        };
+        let mut guard = ProviderInjection {
+            backups: Vec::new(),
+            features: Vec::new(),
+        };
+        patch_native_manifest(temp.path(), &provider, &mut guard).unwrap();
+        patch_git_dependency_source(
+            temp.path(),
+            "https://example.invalid/cloud.git",
+            &provider,
+            &mut guard,
+        )
+        .unwrap();
+        let parsed: toml::Value = toml::from_str(&fs::read_to_string(&manifest).unwrap()).unwrap();
+        assert_eq!(
+            parsed["features"]["cloud"][0].as_str(),
+            Some("dep:lingxia-cloud-client")
+        );
+        assert_eq!(
+            parsed["dependencies"]["lingxia-cloud-client"]["path"].as_str(),
+            provider.dir.to_str()
+        );
+        assert_eq!(
+            parsed["patch"]["https://example.invalid/cloud.git"]["lingxia-cloud-client"]["path"]
+                .as_str(),
+            provider.dir.to_str()
+        );
+        drop(guard);
+        assert_eq!(fs::read_to_string(manifest).unwrap(), original);
+    }
+
+    #[test]
+    fn local_provider_overrides_an_existing_git_dependency() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let native = temp.path().join("native");
+        let provider_dir = temp.path().join("cloud");
+        fs::create_dir_all(&native).expect("native dir");
+        fs::create_dir_all(&provider_dir).expect("provider dir");
+        let manifest = native.join("Cargo.toml");
+        let original = r#"[package]
+name = "host"
+version = "0.1.0"
+
+[features]
+cloud = []
+
+[dependencies]
+lingxia-cloud-client = { git = "https://example.invalid/cloud.git", rev = "abc", default-features = false, features = ["cloud"] }
+"#;
+        fs::write(&manifest, original).expect("write manifest");
+        let provider = ResolvedProvider {
+            feature: "cloud".to_string(),
+            crate_name: "lingxia-cloud-client".to_string(),
+            dir: provider_dir.clone(),
+            deps: Vec::new(),
+            features: vec!["dev".to_string()],
+        };
+        let mut guard = ProviderInjection {
+            backups: Vec::new(),
+            features: Vec::new(),
+        };
+
+        let git_source = dependency_git_source(&native, &provider.crate_name)
+            .expect("read dependency source")
+            .expect("git dependency");
+        patch_native_manifest(&native, &provider, &mut guard).expect("patch manifest");
+        patch_git_dependency_source(&native, &git_source, &provider, &mut guard)
+            .expect("patch git source");
+        let patched = fs::read_to_string(&manifest).expect("read patched manifest");
+        let parsed: toml::Value = toml::from_str(&patched).expect("valid patched TOML");
+        let dependency = parsed["dependencies"]["lingxia-cloud-client"]
+            .as_table()
+            .expect("dependency table");
+        assert_eq!(
+            dependency.get("path").and_then(toml::Value::as_str),
+            provider_dir.to_str()
+        );
+        assert!(dependency.get("git").is_none());
+        assert!(dependency.get("rev").is_none());
+        assert_eq!(
+            dependency.get("features").and_then(toml::Value::as_array),
+            Some(&vec![
+                toml::Value::String("cloud".to_string()),
+                toml::Value::String("dev".to_string())
+            ])
+        );
+        assert!(patched.contains("cloud = []"));
+        assert!(!patched.contains("dep:lingxia-cloud-client"));
+        assert_eq!(
+            parsed["patch"]["https://example.invalid/cloud.git"]["lingxia-cloud-client"]["path"]
+                .as_str(),
+            provider_dir.to_str()
+        );
+
+        drop(guard);
+        assert_eq!(
+            fs::read_to_string(manifest).expect("restored manifest"),
+            original
+        );
+    }
+
+    #[test]
+    fn local_provider_accepts_an_already_active_dependency() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let native = temp.path().join("native");
+        let provider_dir = temp.path().join("cloud");
+        fs::create_dir_all(&native).expect("native dir");
+        fs::create_dir_all(&provider_dir).expect("provider dir");
+        let manifest = native.join("Cargo.toml");
+        let original = r#"[package]
+name = "host"
+version = "0.1.0"
+
+[features]
+cloud = ["dep:lingxia-cloud-client"]
+
+[dependencies.lingxia-cloud-client]
+path = "../checked-in-cloud"
+optional = true
+features = []
+"#;
+        fs::write(&manifest, original).expect("write manifest");
+        let provider = ResolvedProvider {
+            feature: "cloud".to_string(),
+            crate_name: "lingxia-cloud-client".to_string(),
+            dir: provider_dir.clone(),
+            deps: Vec::new(),
+            features: vec!["dev".to_string()],
+        };
+        let mut guard = ProviderInjection {
+            backups: Vec::new(),
+            features: Vec::new(),
+        };
+
+        patch_native_manifest(&native, &provider, &mut guard).expect("patch manifest");
+        let patched = fs::read_to_string(&manifest).expect("read patched manifest");
+        let parsed: toml::Value = toml::from_str(&patched).expect("valid patched TOML");
+        assert_eq!(
+            parsed["features"]["cloud"].as_array(),
+            Some(&vec![toml::Value::String(
+                "dep:lingxia-cloud-client".to_string()
+            )])
+        );
+        let dependency = parsed["dependencies"]["lingxia-cloud-client"]
+            .as_table()
+            .expect("dependency table");
+        assert_eq!(
+            dependency.get("path").and_then(toml::Value::as_str),
+            provider_dir.to_str()
+        );
+        assert_eq!(
+            dependency.get("features").and_then(toml::Value::as_array),
+            Some(&vec![toml::Value::String("dev".to_string())])
+        );
+
+        drop(guard);
+        assert_eq!(fs::read_to_string(manifest).expect("restored"), original);
+    }
+
+    #[test]
+    fn local_provider_replaces_an_existing_patch_entry() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let provider_dir = temp.path().join("new-cloud");
+        fs::create_dir_all(&provider_dir).expect("provider dir");
+        let manifest = temp.path().join("Cargo.toml");
+        let original = r#"[workspace]
+
+[patch."https://example.invalid/cloud.git"]
+lingxia-cloud-client = { path = "../old-cloud" }
+other = { path = "../other" }
+"#;
+        fs::write(&manifest, original).expect("write manifest");
+        let provider = ResolvedProvider {
+            feature: "cloud".to_string(),
+            crate_name: "lingxia-cloud-client".to_string(),
+            dir: provider_dir.clone(),
+            deps: Vec::new(),
+            features: Vec::new(),
+        };
+        let mut guard = ProviderInjection {
+            backups: Vec::new(),
+            features: Vec::new(),
+        };
+
+        patch_git_dependency_source(
+            temp.path(),
+            "https://example.invalid/cloud.git",
+            &provider,
+            &mut guard,
+        )
+        .expect("replace patch");
+
+        let patched = fs::read_to_string(&manifest).expect("read patched manifest");
+        let parsed: toml::Value = toml::from_str(&patched).expect("valid patched TOML");
+        assert_eq!(
+            parsed["patch"]["https://example.invalid/cloud.git"]["lingxia-cloud-client"]["path"]
+                .as_str(),
+            provider_dir.to_str()
+        );
+        assert_eq!(
+            parsed["patch"]["https://example.invalid/cloud.git"]["other"]["path"].as_str(),
+            Some("../other")
+        );
+
+        drop(guard);
+        assert_eq!(fs::read_to_string(manifest).expect("restored"), original);
     }
 }

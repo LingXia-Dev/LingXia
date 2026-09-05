@@ -314,16 +314,35 @@ fn prepare_harmony_staging(source: &Path, config: &BuildConfig) -> Result<PathBu
         .join("harmony")
         .join("build")
         .join(config.resolved_env.version.as_str());
-    if staging.exists() {
-        std::fs::remove_dir_all(&staging)
-            .with_context(|| format!("Failed to clean {}", staging.display()))?;
-    }
-    const SKIP: &[&str] = &[".lingxia", "oh_modules", "build"];
-    copy_dir_recursive_excluding(source, &staging, SKIP)
-        .with_context(|| format!("Failed to mirror Harmony project to {}", staging.display()))?;
+    mirror_harmony_project(source, &staging, !config.build_native)?;
     rewrite_staged_source_paths(&staging, source)?;
     rewrite_app_bundle_name(&staging, config)?;
     Ok(staging)
+}
+
+fn mirror_harmony_project(source: &Path, staging: &Path, preserve_native: bool) -> Result<()> {
+    let library = staging.join("entry/libs/arm64-v8a/liblingxia.so");
+    // The source mirror can contain an older library. Preserve the last
+    // successful build before cleaning staging when --skip-native is used.
+    let saved_library = if preserve_native && library.is_file() {
+        let saved = tempfile::NamedTempFile::new()?;
+        std::fs::copy(&library, saved.path())?;
+        Some(saved)
+    } else {
+        None
+    };
+    if staging.exists() {
+        std::fs::remove_dir_all(staging)
+            .with_context(|| format!("Failed to clean {}", staging.display()))?;
+    }
+    const SKIP: &[&str] = &[".lingxia", "oh_modules", "build"];
+    copy_dir_recursive_excluding(source, staging, SKIP)
+        .with_context(|| format!("Failed to mirror Harmony project to {}", staging.display()))?;
+    if let Some(saved) = saved_library {
+        std::fs::create_dir_all(library.parent().unwrap())?;
+        std::fs::copy(saved.path(), &library)?;
+    }
+    Ok(())
 }
 
 /// Walk staging and rewrite every `oh-package.json5` so relative `file:`
@@ -878,6 +897,33 @@ mod tests {
     };
     use std::{fs, path::Path};
     use tempfile::TempDir;
+
+    #[test]
+    fn skip_native_keeps_built_library_instead_of_stale_source_copy() {
+        let root = TempDir::new().unwrap();
+        let source = root.path().join("source");
+        let staging = root.path().join("staging");
+        let relative = "entry/libs/arm64-v8a/liblingxia.so";
+        for directory in [&source, &staging] {
+            fs::create_dir_all(directory.join(relative).parent().unwrap()).unwrap();
+        }
+        fs::write(source.join(relative), b"old source library").unwrap();
+        fs::write(staging.join(relative), b"current built library").unwrap();
+        super::mirror_harmony_project(&source, &staging, true).unwrap();
+        assert_eq!(
+            fs::read(staging.join(relative)).unwrap(),
+            b"current built library"
+        );
+        assert_eq!(
+            fs::read(source.join(relative)).unwrap(),
+            b"old source library"
+        );
+        super::mirror_harmony_project(&source, &staging, false).unwrap();
+        assert_eq!(
+            fs::read(staging.join(relative)).unwrap(),
+            b"old source library"
+        );
+    }
 
     #[test]
     fn upsert_har_dep_inserts_into_empty_dependencies() {

@@ -338,7 +338,9 @@ impl ProvisioningContext {
             _ => return Ok(None),
         };
 
-        let Some(profile_data) = find_reusable_profile(app_path, &self.target_device_udid) else {
+        let Some(profile_data) =
+            find_reusable_profile(app_path, &self.target_device_udid, original_bundle_id)
+        else {
             return Ok(None);
         };
 
@@ -682,7 +684,8 @@ Tip: Ensure your login keychain contains an \"Apple Development\" identity for t
         ) {
             match client.download_provisioning_profile(existing.profile_id) {
                 Ok(profile_data)
-                    if profile_includes_signing_identity(&profile_data, signing_identity)? =>
+                    if profile_includes_signing_identity(&profile_data, signing_identity)?
+                        && profile_matches_bundle_id(&profile_data, bundle_id)? =>
                 {
                     println!(
                         "  {} Reusing provisioning profile: {}",
@@ -692,7 +695,7 @@ Tip: Ensure your login keychain contains an \"Apple Development\" identity for t
                     return Ok(profile_data);
                 }
                 Ok(_) => println!(
-                    "  {} Reusable profile {} does not include current signing certificate, creating a new one",
+                    "  {} Reusable profile {} does not match the current app and signing certificate, creating a new one",
                     "!".yellow(),
                     existing.profile_name
                 ),
@@ -1054,7 +1057,8 @@ Fix options:\n\
         ) {
             match client.download_profile(existing.profile_id) {
                 Ok(profile_data)
-                    if profile_includes_signing_identity(&profile_data, signing_identity)? =>
+                    if profile_includes_signing_identity(&profile_data, signing_identity)?
+                        && profile_matches_bundle_id(&profile_data, bundle_identifier)? =>
                 {
                     println!(
                         "  {} Reusing provisioning profile: {}",
@@ -1064,7 +1068,7 @@ Fix options:\n\
                     return Ok(profile_data);
                 }
                 Ok(_) => println!(
-                    "  {} Reusable profile {} does not include current signing certificate, creating a new one",
+                    "  {} Reusable profile {} does not match the current app and signing certificate, creating a new one",
                     "!".yellow(),
                     existing.profile_name
                 ),
@@ -1204,6 +1208,33 @@ fn profile_includes_signing_identity(profile_data: &[u8], signing_identity: &str
     Ok(false)
 }
 
+fn profile_matches_bundle_id(profile_data: &[u8], bundle_id: &str) -> Result<bool> {
+    let plist = decode_mobileprovision_plist(profile_data)?;
+    Ok(profile_plist_matches_bundle_id(&plist, bundle_id))
+}
+
+fn profile_plist_matches_bundle_id(profile: &plist::Value, bundle_id: &str) -> bool {
+    let application_id = profile
+        .as_dictionary()
+        .and_then(|dict| dict.get("Entitlements"))
+        .and_then(plist::Value::as_dictionary)
+        .and_then(|entitlements| {
+            entitlements
+                .get("application-identifier")
+                .or_else(|| entitlements.get("com.apple.application-identifier"))
+        })
+        .and_then(plist::Value::as_string);
+    let Some((_, profile_bundle_id)) = application_id.and_then(|value| value.split_once('.'))
+    else {
+        return false;
+    };
+    profile_bundle_id == "*"
+        || profile_bundle_id == bundle_id
+        || profile_bundle_id.strip_suffix(".*").is_some_and(|prefix| {
+            bundle_id == prefix || bundle_id.starts_with(&format!("{prefix}."))
+        })
+}
+
 fn decode_mobileprovision_plist(profile_data: &[u8]) -> Result<plist::Value> {
     let mut profile_file = NamedTempFile::new().context("Failed to create profile temp file")?;
     use std::io::Write;
@@ -1276,7 +1307,7 @@ fn cache_profile_for_reuse(profile_data: &[u8]) {
 /// Find a still-valid provisioning profile that covers `udid`, checking the
 /// lingxia cache and any sibling `.app/embedded.mobileprovision` left by previous
 /// builds. Returns the raw profile bytes.
-fn find_reusable_profile(app_path: &Path, udid: &str) -> Option<Vec<u8>> {
+fn find_reusable_profile(app_path: &Path, udid: &str, bundle_id: &str) -> Option<Vec<u8>> {
     let mut candidates: Vec<PathBuf> = Vec::new();
     if let Some(dir) = profiles_cache_dir()
         && let Ok(entries) = std::fs::read_dir(&dir)
@@ -1300,7 +1331,9 @@ fn find_reusable_profile(app_path: &Path, udid: &str) -> Option<Vec<u8>> {
     }
     candidates.into_iter().find_map(|c| {
         let data = std::fs::read(&c).ok()?;
-        profile_covers_device(&data, udid).then_some(data)
+        (profile_covers_device(&data, udid)
+            && profile_matches_bundle_id(&data, bundle_id).unwrap_or(false))
+        .then_some(data)
     })
 }
 
@@ -1604,6 +1637,40 @@ mod tests {
         let encoded = "SGVsbG8gV29ybGQ=";
         let decoded = base64_decode(encoded).unwrap();
         assert_eq!(decoded, b"Hello World");
+    }
+
+    #[test]
+    fn provisioning_profile_requires_the_exact_app_identifier() {
+        let profile = |application_id: &str| {
+            let mut entitlements = plist::Dictionary::new();
+            entitlements.insert(
+                "application-identifier".to_string(),
+                plist::Value::String(application_id.to_string()),
+            );
+            let mut root = plist::Dictionary::new();
+            root.insert(
+                "Entitlements".to_string(),
+                plist::Value::Dictionary(entitlements),
+            );
+            plist::Value::Dictionary(root)
+        };
+
+        assert!(profile_plist_matches_bundle_id(
+            &profile("TEAM123.app.lingxia.example.lxapp"),
+            "app.lingxia.example.lxapp"
+        ));
+        assert!(!profile_plist_matches_bundle_id(
+            &profile("TEAM123.app.lingxia.example.lxapp.boot2linux"),
+            "app.lingxia.example.lxapp"
+        ));
+        assert!(profile_plist_matches_bundle_id(
+            &profile("TEAM123.app.lingxia.*"),
+            "app.lingxia.example.lxapp"
+        ));
+        assert!(profile_plist_matches_bundle_id(
+            &profile("TEAM123.*"),
+            "app.lingxia.example.lxapp"
+        ));
     }
 
     #[test]

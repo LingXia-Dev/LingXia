@@ -390,6 +390,16 @@ let package = Package(
             }
         }
 
+        // These values describe the artifact the CLI just built. A checked-in
+        // Info.plist commonly contains the base release identifier, but must
+        // not erase the active environment suffix (for example `.dev`) or
+        // point at a different executable after the custom fields are merged.
+        info.insert("CFBundleIdentifier".into(), config.bundle_id.clone().into());
+        info.insert(
+            "CFBundleExecutable".into(),
+            config.executable_name.clone().into(),
+        );
+
         // Write Info.plist
         let info_plist_path = app_bundle.join("Info.plist");
         let dict: plist::Dictionary = info.into_iter().collect();
@@ -435,4 +445,67 @@ fn is_static_archive(path: &Path) -> Result<bool> {
     }
 
     Ok(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppBundleConfig, AppBundler};
+    use plist::{Dictionary, Value};
+    use std::fs;
+
+    #[test]
+    fn custom_info_plist_cannot_override_the_resolved_bundle_identifier() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let package = temp.path().join("package");
+        let app = temp.path().join("Demo.app");
+        fs::create_dir_all(&package).expect("package dir");
+        fs::create_dir_all(&app).expect("app dir");
+
+        let custom_path = package.join("Info.plist");
+        let mut custom = Dictionary::new();
+        custom.insert(
+            "CFBundleIdentifier".to_string(),
+            Value::String("com.example.demo".to_string()),
+        );
+        custom.insert(
+            "NSCameraUsageDescription".to_string(),
+            Value::String("Camera".to_string()),
+        );
+        Value::Dictionary(custom)
+            .to_file_xml(&custom_path)
+            .expect("custom plist");
+
+        let config = AppBundleConfig {
+            bundle_id: "com.example.demo.dev".to_string(),
+            bundle_name: "Demo".to_string(),
+            app_name: "Demo".to_string(),
+            swift_product_name: "Demo".to_string(),
+            executable_name: "DemoDev".to_string(),
+            deployment_target: "17.0".to_string(),
+            info_plist_path: Some(custom_path),
+            splash_background: None,
+        };
+        AppBundler::generate_info_plist(&package, &app, &config).expect("generate plist");
+
+        let generated = Value::from_file(app.join("Info.plist")).expect("generated plist");
+        let generated = generated.as_dictionary().expect("plist dictionary");
+        assert_eq!(
+            generated
+                .get("CFBundleIdentifier")
+                .and_then(Value::as_string),
+            Some("com.example.demo.dev")
+        );
+        assert_eq!(
+            generated
+                .get("CFBundleExecutable")
+                .and_then(Value::as_string),
+            Some("DemoDev")
+        );
+        assert_eq!(
+            generated
+                .get("NSCameraUsageDescription")
+                .and_then(Value::as_string),
+            Some("Camera")
+        );
+    }
 }
