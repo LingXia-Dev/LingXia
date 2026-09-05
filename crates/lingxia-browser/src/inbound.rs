@@ -110,7 +110,7 @@ pub(crate) enum BorrowedBrowserEnvelope<'a> {
     Console {
         binding: BorrowedBrowserBinding<'a>,
         level: LogLevel,
-        message: &'a str,
+        message: String,
     },
 }
 
@@ -124,7 +124,9 @@ struct BorrowedEnvelopeProbe<'a> {
     #[serde(rename = "__lingxia_console__")]
     console: Option<bool>,
     level: Option<&'a str>,
-    message: Option<&'a str>,
+    // Console text can contain JSON escapes and therefore cannot always borrow
+    // from the input. The outer byte cap bounds this decoding allocation.
+    message: Option<String>,
 }
 
 /// Read only fixed routing and binding fields before the full typed codec.
@@ -261,9 +263,48 @@ mod tests {
             parsed,
             BorrowedBrowserEnvelope::Console {
                 level: LogLevel::Warn,
-                message: "safe",
+                message,
                 ..
-            }
+            } if message == "safe"
+        ));
+    }
+
+    #[test]
+    fn console_decodes_escaped_text_without_changing_binding_or_size_admission() {
+        for expected in [r#"{"ok":true}"#, "first\nsecond", r"C:\Users\test"] {
+            let frame = serde_json::json!({
+                "v": 3,
+                "kind": "console",
+                "sessionId": "session",
+                "secret": "secret",
+                "__lingxia_console__": true,
+                "level": "info",
+                "message": expected,
+            })
+            .to_string();
+            let BorrowedBrowserEnvelope::Console {
+                binding, message, ..
+            } = parse_browser_envelope(&frame).expect("escaped console text is valid")
+            else {
+                panic!("expected console envelope");
+            };
+            assert_eq!(message, expected);
+            assert_eq!(binding.session_id, "session");
+            assert_eq!(binding.secret, "secret");
+        }
+
+        let oversized = serde_json::json!({
+            "v": 3,
+            "kind": "console",
+            "sessionId": "session",
+            "secret": "secret",
+            "__lingxia_console__": true,
+            "message": "\n".repeat(MAX_BROWSER_INBOUND_BYTES / 2),
+        })
+        .to_string();
+        assert!(matches!(
+            parse_browser_envelope(&oversized),
+            Err(BrowserInboundRejectReason::Oversized)
         ));
     }
 
