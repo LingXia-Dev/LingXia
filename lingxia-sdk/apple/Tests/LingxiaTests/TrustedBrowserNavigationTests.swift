@@ -1,6 +1,6 @@
 #if os(macOS)
 import XCTest
-@testable import Lingxia
+@testable import lingxia
 
 final class TrustedBrowserNavigationTests: XCTestCase {
     func testFixedBrowserRoutesUseNativeControlAuthority() {
