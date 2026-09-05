@@ -260,6 +260,11 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         }
     }
 
+    override fun onDetachedFromWindow() {
+        TabBarOverflowSheet.dismiss(this)
+        super.onDetachedFromWindow()
+    }
+
     fun setConfig(newConfig: TabBarState) {
         if (!isValidConfig(newConfig)) {
             Log.w(TAG, "Invalid TabBar config provided")
@@ -285,6 +290,7 @@ internal class TabBar(context: Context) : LinearLayout(context) {
 
         // Set visibility based on Rust config
         visibility = if (newConfig.visible) View.VISIBLE else View.GONE
+        TabBarOverflowSheet.refresh(this, newConfig, overflowItemIndices())
     }
 
     fun setItems(newItems: List<TabBarItem>) {

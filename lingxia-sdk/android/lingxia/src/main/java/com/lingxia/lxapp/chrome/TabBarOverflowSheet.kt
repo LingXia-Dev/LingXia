@@ -32,6 +32,13 @@ internal object TabBarOverflowSheet {
     private const val CELL_INDICATOR_ALPHA = 0x33
     private var activeAnchor: View? = null
     private var activeDismiss: (() -> Unit)? = null
+    private var activeRefresh: ((TabBarState, List<Int>) -> Unit)? = null
+
+    fun refresh(anchor: View, state: TabBarState, indices: List<Int>) {
+        if (activeAnchor === anchor) {
+            activeRefresh?.invoke(state, indices)
+        }
+    }
 
     fun dismiss(anchor: View) {
         if (activeAnchor === anchor) {
@@ -78,6 +85,7 @@ internal object TabBarOverflowSheet {
                 if (activeAnchor === anchor) {
                     activeAnchor = null
                     activeDismiss = null
+                    activeRefresh = null
                 }
                 onDismiss()
             }
@@ -98,7 +106,7 @@ internal object TabBarOverflowSheet {
             setOnClickListener { dismiss() }
         })
 
-        val panel = buildPanel(activity, palette, state, indices) { index ->
+        var panel = buildPanel(activity, palette, state, indices) { index ->
             onPick(index)
             dismiss()
         }
@@ -113,6 +121,23 @@ internal object TabBarOverflowSheet {
             bottomMargin = gapBelowAnchor + (PANEL_BOTTOM_GAP_DP * density).toInt()
         }
         container.addView(panel)
+        activeRefresh = { nextState, nextIndices ->
+            if (!nextState.visible || nextIndices.isEmpty()) {
+                dismiss()
+            } else {
+                // The open panel is part of the bar: runtime style, label and
+                // badge patches must not leave it showing the previous state.
+                val replacement = buildPanel(activity, OverlayPalette.of(activity), nextState, nextIndices) { index ->
+                    onPick(index)
+                    dismiss()
+                }
+                replacement.layoutParams = panel.layoutParams
+                panel.animate().cancel()
+                container.removeView(panel)
+                container.addView(replacement)
+                panel = replacement
+            }
+        }
 
         container.setOnKeyListener { _, keyCode, event ->
             val back = keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP
@@ -125,11 +150,14 @@ internal object TabBarOverflowSheet {
 
         // The slide-up offset needs a measured height, so the panel stays hidden
         // for the layout pass that produces one.
-        panel.alpha = 0f
-        panel.post {
-            panel.alpha = 1f
-            panel.translationY = panel.height.toFloat()
-            panel.animate().translationY(0f).setDuration(ENTER_DURATION_MS).start()
+        val enteringPanel = panel
+        enteringPanel.alpha = 0f
+        enteringPanel.post {
+            if (!dismissed && panel === enteringPanel) {
+                enteringPanel.alpha = 1f
+                enteringPanel.translationY = enteringPanel.height.toFloat()
+                enteringPanel.animate().translationY(0f).setDuration(ENTER_DURATION_MS).start()
+            }
         }
     }
 
@@ -190,7 +218,7 @@ internal object TabBarOverflowSheet {
             isClickable = true
 
             indices.chunked(COLUMNS).forEach { row ->
-                addView(buildRow(activity, palette, state, row, onPick))
+                addView(buildRow(activity, state, row, onPick))
             }
         }
     }
@@ -201,7 +229,6 @@ internal object TabBarOverflowSheet {
      */
     private fun buildRow(
         activity: Activity,
-        palette: OverlayPalette,
         state: TabBarState,
         indices: List<Int>,
         onPick: (Int) -> Unit
@@ -214,7 +241,7 @@ internal object TabBarOverflowSheet {
         indices.forEach { index ->
             state.list.getOrNull(index)?.let { item ->
                 val selected = item.index == state.selectedIndex
-                addView(buildCell(activity, palette, state, item, selected) {
+                addView(buildCell(activity, state, item, selected) {
                     onPick(item.index)
                 })
             }
@@ -228,7 +255,6 @@ internal object TabBarOverflowSheet {
 
     private fun buildCell(
         activity: Activity,
-        palette: OverlayPalette,
         state: TabBarState,
         item: TabBarItem,
         selected: Boolean,
@@ -294,7 +320,7 @@ internal object TabBarOverflowSheet {
                 if (!item.text.isNullOrBlank()) {
                     addView(TextView(activity).apply {
                         text = item.text
-                        setTextColor(if (selected) state.selectedColor else palette.body)
+                        setTextColor(if (selected) state.selectedColor else state.color)
                         setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, CELL_TEXT_SIZE_SP)
                         gravity = Gravity.CENTER
                         includeFontPadding = false
