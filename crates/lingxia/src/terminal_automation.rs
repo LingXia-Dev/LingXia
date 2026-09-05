@@ -15,6 +15,7 @@ impl NativeAuthoritySlot {
         self.0.set(authority).is_ok()
     }
 
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
     fn with<T>(&self, fallback: T, action: impl FnOnce(&TerminalAutomationAuthority) -> T) -> T {
         self.0.get().map(action).unwrap_or(fallback)
     }
@@ -31,28 +32,33 @@ pub(crate) fn install(authority: TerminalAutomationAuthority) -> bool {
     AUTHORITY.install(authority)
 }
 
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 fn with_authority<T>(fallback: T, action: impl FnOnce(&TerminalAutomationAuthority) -> T) -> T {
     AUTHORITY.with(fallback, action)
 }
 
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) fn publish_snapshot(surface_id: &str, snapshot_json: &str) -> bool {
     with_authority(false, |authority| {
         lxapp::terminal_automation::publish_snapshot(authority, surface_id, snapshot_json).is_ok()
     })
 }
 
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) fn remove_workspace(surface_id: &str) {
     with_authority((), |authority| {
         lxapp::terminal_automation::remove_workspace(authority, surface_id)
     });
 }
 
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) fn take_command(surface_id: &str) -> String {
     with_authority(String::new(), |authority| {
         lxapp::terminal_automation::take_command(authority, surface_id)
     })
 }
 
+#[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) fn complete_command(id: u64, ok: bool, payload: &str) -> bool {
     with_authority(false, |authority| {
         lxapp::terminal_automation::complete_command(authority, id, ok, payload)
