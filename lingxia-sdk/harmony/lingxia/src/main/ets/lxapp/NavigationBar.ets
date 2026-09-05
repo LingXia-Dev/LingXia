@@ -101,7 +101,7 @@ export struct NavigationBar {
   onNavigationClick?: (appId: string, isHomeButton: boolean) => boolean;
 
   build() {
-    Stack() {
+    Stack({ alignContent: Alignment.Top }) {
       // Background layer - only show when navbar should be visible and not transparent
       if (this.shouldShowBackground()) {
         Column()
@@ -110,57 +110,65 @@ export struct NavigationBar {
           .backgroundColor(this.getBackgroundColor())
       }
 
-      // Navigation bar content area (below status bar) - use Row layout
-      Row() {
-        // Left side: Navigation button (back button takes priority over home button)
-        if (this.shouldShowButtons()) {
-          NavigationButton({
-            isBackButton: this.config.showBackButton,
-            color: this.config.navigationBarForegroundColor,
-            onPressed: () => {
-              const isBackButton = this.config.showBackButton;
-              const isHomeButton = !isBackButton;
-              if (this.onNavigationClick) {
-                this.onNavigationClick(this.appId, isHomeButton);
+      // Status spacer + 44vp content row, pinned to the top of the bar.
+      // Stack's default center alignment puts the 44vp title row inside the
+      // status inset, so its center no longer matches the capsule
+      // (status + (44-32)/2). Blank() is elastic and would eat leftover
+      // height; a fixed Column spacer does not.
+      Column() {
+        Column()
+          .width('100%')
+          .height(this.statusBarHeight)
+        Row() {
+          if (this.shouldShowButtons()) {
+            NavigationButton({
+              isBackButton: this.config.showBackButton,
+              color: this.config.navigationBarForegroundColor,
+              onPressed: () => {
+                const isBackButton = this.config.showBackButton;
+                const isHomeButton = !isBackButton;
+                if (this.onNavigationClick) {
+                  this.onNavigationClick(this.appId, isHomeButton);
+                }
               }
-            }
-          })
-          .width(NAVIGATION_BUTTON_SIZE) // Large touch target
-          .height(NAVIGATION_BUTTON_SIZE) // Large touch target
-          .margin({ left: 4 }) // Button margin for optimal positioning
-        } else {
-          // Placeholder to maintain layout balance
-          Blank()
+            })
             .width(NAVIGATION_BUTTON_SIZE)
             .height(NAVIGATION_BUTTON_SIZE)
             .margin({ left: 4 })
-        }
+          } else {
+            Blank()
+              .width(NAVIGATION_BUTTON_SIZE)
+              .height(NAVIGATION_BUTTON_SIZE)
+              .margin({ left: 4 })
+          }
 
-        // Center: Title - only show when navbar is visible
-        if (this.config.showNavbar) {
-          Text(this.config.navigationBarTitleText || '')
-            .fontSize(NAVIGATION_BAR_TITLE_FONT_SIZE)
-            .fontWeight(FontWeight.Medium)
-            .fontColor(this.getTextColor())
-            .textAlign(TextAlign.Center)
-            .layoutWeight(1) // Take remaining space for center alignment
-        } else {
-          Blank().layoutWeight(1) // Take space even when no title
-        }
+          if (this.config.showNavbar) {
+            Text(this.config.navigationBarTitleText || '')
+              .fontSize(NAVIGATION_BAR_TITLE_FONT_SIZE)
+              .fontWeight(FontWeight.Medium)
+              .fontColor(this.getTextColor())
+              .textAlign(TextAlign.Center)
+              .maxLines(1)
+              .height(NAVIGATION_BAR_CONTENT_HEIGHT)
+              .layoutWeight(1)
+          } else {
+            Blank().layoutWeight(1)
+          }
 
-        // Right side: Placeholder for balance
-        Blank()
-          .width(NAVIGATION_BUTTON_SIZE + 10) // Match left side effective width
-          .height(NAVIGATION_BUTTON_SIZE)
+          Blank()
+            .width(NAVIGATION_BUTTON_SIZE + 10)
+            .height(NAVIGATION_BUTTON_SIZE)
+        }
+        .width('100%')
+        .height(NAVIGATION_BAR_CONTENT_HEIGHT)
+        .justifyContent(FlexAlign.SpaceBetween)
+        .alignItems(VerticalAlign.Center)
+        .padding({
+          left: NAVIGATION_BAR_LEFT_PADDING,
+          right: NAVIGATION_BAR_RIGHT_PADDING
+        })
       }
       .width('100%')
-      .height(NAVIGATION_BAR_CONTENT_HEIGHT)
-      .justifyContent(FlexAlign.SpaceBetween) // Distribute space evenly
-      .alignItems(VerticalAlign.Center) // Center vertically
-      .padding({
-        left: NAVIGATION_BAR_LEFT_PADDING,
-        right: NAVIGATION_BAR_RIGHT_PADDING
-      })
 
       if (this.config.showNavbar) {
         Column()
@@ -172,7 +180,6 @@ export struct NavigationBar {
     }
     .width('100%')
     .height(this.getTotalHeight())
-    .alignContent(Alignment.Bottom)
     .translate({ x: `${this.translateX}%`, y: 0 })
     .visibility(this.shouldShowNavBar() ? Visibility.Visible : Visibility.Hidden)
     .hitTestBehavior(HitTestMode.Transparent)

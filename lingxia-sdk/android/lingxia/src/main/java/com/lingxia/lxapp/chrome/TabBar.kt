@@ -17,7 +17,6 @@ import android.graphics.ColorFilter
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.drawable.Drawable
-import java.io.File
 import android.util.Log
 import com.lingxia.app.LxLog
 import android.util.TypedValue
@@ -107,7 +106,7 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         private const val VERTICAL_ITEM_ICON_SIZE_DP = 22
         private const val HORIZONTAL_ITEM_ICON_SIZE_DP = 24
         private const val VERTICAL_ITEM_TEXT_SIZE_SP = 12f
-        private const val HORIZONTAL_ITEM_TEXT_SIZE_SP = 11f  // Slightly smaller for horizontal
+        private const val HORIZONTAL_ITEM_TEXT_SIZE_SP = 10f
         private const val ITEM_ICON_TOP_MARGIN_DP = 1
         private const val ITEM_TEXT_TOP_MARGIN_DP = 2  // More space between icon and text
         private const val ITEM_TEXT_BOTTOM_MARGIN_DP = 2  // More bottom margin
@@ -431,7 +430,7 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     /**
      * The active indicator belongs to the bar, not to an item's artwork, so
      * every slot draws it when selected — a strip must not show two different
-     * selected states.
+     * selected states. Labels remain outside the circular icon background.
      */
     private fun activeIndicatorDrawable(): Drawable = GradientDrawable().apply {
         shape = GradientDrawable.OVAL
@@ -445,6 +444,8 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         return LinearLayout(context).apply {
             orientation = VERTICAL
             gravity = Gravity.CENTER
+            val padH = ((if (isVertical) 6 else 0) * resources.displayMetrics.density).toInt()
+            val padV = (4 * resources.displayMetrics.density).toInt()
 
             layoutParams = if (isVertical) {
                 LayoutParams(
@@ -473,15 +474,9 @@ internal class TabBar(context: Context) : LinearLayout(context) {
                 val iconSizePx = (iconSize * resources.displayMetrics.density).toInt()
 
                 // Minimal extension to accommodate small badge
-                val badgeSpace = (10 * resources.displayMetrics.density).toInt()
-                // The active indicator sits behind the icon, so the wrapper has
-                // to be at least as tall and wide or it squares the circle off.
-                val indicatorSize = (ACTIVE_INDICATOR_SIZE_DP * resources.displayMetrics.density).toInt()
-                val wrapperWidth = maxOf(iconSizePx + badgeSpace, indicatorSize)
-                val wrapperHeight = maxOf(
-                    iconSizePx + (4 * resources.displayMetrics.density).toInt(),
-                    indicatorSize
-                )
+                val badgeSpace = (8 * resources.displayMetrics.density).toInt()
+                val wrapperWidth = iconSizePx + badgeSpace
+                val wrapperHeight = wrapperWidth
 
                 layoutParams = LayoutParams(wrapperWidth, wrapperHeight).apply {
                     gravity = Gravity.CENTER_HORIZONTAL
@@ -490,6 +485,9 @@ internal class TabBar(context: Context) : LinearLayout(context) {
                 // Ensure container doesn't clip children
                 clipChildren = false
                 clipToPadding = false
+                if (isSelected) {
+                    background = activeIndicatorDrawable()
+                }
             }
 
             // Create icon with proper centering
@@ -500,18 +498,13 @@ internal class TabBar(context: Context) : LinearLayout(context) {
                 layoutParams = FrameLayout.LayoutParams(iconSizePx, iconSizePx).apply {
                     gravity = Gravity.CENTER
                 }
-                scaleType = ImageView.ScaleType.FIT_CENTER
+                val iconPath = when (slot) {
+                    is Slot.Tab -> items.getOrNull(slot.itemIndex)?.iconPath.orEmpty()
+                    is Slot.More -> ""
+                }
+                ChromeIcon.applyTo(this, iconPath)
                 setImageDrawable(slotIcon(slot, isSelected))
             }
-
-            // Added before the icon so it sits behind it.
-            iconWrapper.addView(View(context).apply {
-                val size = (ACTIVE_INDICATOR_SIZE_DP * resources.displayMetrics.density).toInt()
-                layoutParams = FrameLayout.LayoutParams(size, size)
-                    .apply { gravity = Gravity.CENTER }
-                background = activeIndicatorDrawable()
-                visibility = if (isSelected) View.VISIBLE else View.INVISIBLE
-            })
 
             iconWrapper.addView(icon)
 
@@ -529,33 +522,41 @@ internal class TabBar(context: Context) : LinearLayout(context) {
                 iconWrapper.addView(redDotView)
             }
 
-            addView(iconWrapper)
+            val content = LinearLayout(context).apply {
+                orientation = VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(padH, padV, padH, padV)
+                layoutParams = LayoutParams(
+                    if (isVertical) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                addView(iconWrapper)
 
-            val label = slotText(slot)
-            if (!label.isNullOrBlank()) {
-                val textView = TextView(context).apply {
-                    text = label
-
-                    // Use config colors with proper alpha handling
-                    setTextColor(if (isSelected) config.selectedColor else config.color)
-                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP,
-                        if (isVertical) VERTICAL_ITEM_TEXT_SIZE_SP else HORIZONTAL_ITEM_TEXT_SIZE_SP)
-                    layoutParams = LayoutParams(
-                        ViewGroup.LayoutParams.WRAP_CONTENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        topMargin = (ITEM_TEXT_TOP_MARGIN_DP * resources.displayMetrics.density).toInt()
-                        bottomMargin = (ITEM_TEXT_BOTTOM_MARGIN_DP * resources.displayMetrics.density).toInt()
-                    }
-                    gravity = Gravity.CENTER
-                    isSingleLine = true
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    // Ensure text has enough space
-                    minWidth = (40 * resources.displayMetrics.density).toInt()
-
+                val label = slotText(slot)
+                if (!label.isNullOrBlank()) {
+                    addView(TextView(context).apply {
+                        text = label
+                        setTextColor(if (isSelected) config.selectedColor else config.color)
+                        setTextSize(
+                            android.util.TypedValue.COMPLEX_UNIT_SP,
+                            if (isVertical) VERTICAL_ITEM_TEXT_SIZE_SP else HORIZONTAL_ITEM_TEXT_SIZE_SP
+                        )
+                        layoutParams = LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            topMargin = (ITEM_TEXT_TOP_MARGIN_DP * resources.displayMetrics.density).toInt()
+                            bottomMargin = (ITEM_TEXT_BOTTOM_MARGIN_DP * resources.displayMetrics.density).toInt()
+                        }
+                        gravity = Gravity.CENTER
+                        includeFontPadding = false
+                        isSingleLine = true
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        minWidth = (40 * resources.displayMetrics.density).toInt()
+                    })
                 }
-                addView(textView)
             }
+            addView(content)
 
             setOnClickListener {
                 when (slot) {
@@ -587,14 +588,14 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     }
 
     private fun updateTabState(tabView: LinearLayout, slot: Slot, selected: Boolean) {
-        val iconContainer = tabView.getChildAt(0) as FrameLayout
-        // The indicator is added before the icon, so it holds index 0.
-        iconContainer.getChildAt(0).visibility = if (selected) View.VISIBLE else View.INVISIBLE
-        val icon = iconContainer.getChildAt(1) as ImageView
+        val content = tabView.getChildAt(0) as LinearLayout
+        val iconContainer = content.getChildAt(0) as FrameLayout
+        iconContainer.background = if (selected) activeIndicatorDrawable() else null
+        val icon = iconContainer.getChildAt(0) as ImageView
         icon.setImageDrawable(slotIcon(slot, selected))
 
-        if (tabView.childCount > 1) {
-            (tabView.getChildAt(1) as? TextView)?.setTextColor(
+        if (content.childCount > 1) {
+            (content.getChildAt(1) as? TextView)?.setTextColor(
                 if (selected) config.selectedColor else config.color
             )
         }
@@ -627,23 +628,12 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     }
 
     private fun getIconDrawable(item: TabBarItem, selected: Boolean): Drawable {
-        val drawable = try {
-            val iconFile = File(item.iconPath)
-            if (iconFile.exists()) {
-                android.graphics.drawable.Drawable.createFromPath(iconFile.absolutePath)
-                    ?: createDefaultIcon(selected)
-            } else {
-                createDefaultIcon(selected)
-            }
+        val tint = if (selected) config.selectedColor else config.color
+        return try {
+            ChromeIcon.load(item.iconPath, tint) { createDefaultIcon(selected) }
         } catch (e: Exception) {
             LxLog.e(TAG, "Failed to load icon: ${e.message}")
             createDefaultIcon(selected)
-        }
-
-        // The icon is a template glyph: the strip owns its colour in both
-        // states, which is why an item never ships selected artwork.
-        return drawable.mutate().apply {
-            setTint(if (selected) config.selectedColor else config.color)
         }
     }
 

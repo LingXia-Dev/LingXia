@@ -506,6 +506,32 @@ Two sidebar regions have fixed ownership:
   call `lx.surface.openPage(...)` or run any other app logic. Redeclare them each
   Logic launch.
 
+`icon` uses the same lxapp-local path model as a runtime tab-bar `iconPath`: a
+bundled relative path, or an `lx://temp`, `lx://usercache`, or `lx://userdata`
+path returned by a LingXia file API. Network URLs, `file:` URLs, native absolute
+paths, and parent traversal are rejected. Download a remote brand logo before
+declaring the action. SVG is host-tinted as a template glyph; raster
+PNG/JPEG/WebP keeps its colours and is center-cropped into the square icon slot.
+Use square raster artwork when cropping would remove meaningful content.
+
+```ts
+const { tempFilePath } = await lx.downloadFile({ url: activeBrand.logoUrl });
+lx.shell.sidebarActions.replace([
+  {
+    id: 'brand',
+    placement: 'footer',
+    icon: tempFilePath,
+    label: activeBrand.shortName,
+    onActivate: () => void openBrandPanel(),
+  },
+]);
+```
+
+The declaration and an `lx://temp` download are both process-local. Repeat the
+download and `replace()` after every Logic launch; never persist a temp path for
+the next launch. Use `update(id, { icon })` for presentation-only changes to an
+existing action, or `replace()` when its placement or callback changes.
+
 The initial `main` is admitted first as the window's stable root and cannot be closed. Other
 main surfaces expose only the actions their content provider supports: browser
 and terminal surfaces may be closed or renamed, while a non-root lxapp

@@ -21,8 +21,9 @@ const TAB_BAR_PADDING_VERTICAL_RIGHT = 8;
 
 // TabBar icon and text constants
 const TAB_BAR_ITEM_ICON_SIZE = 24;                    // Tab icon size
-const TAB_BAR_ITEM_ICON_CONTAINER_SIZE = 48;          // Tab icon container size
-const TAB_BAR_ITEM_TEXT_SIZE_HORIZONTAL = 12;         // Tab text font size - horizontal layout
+const TAB_BAR_ITEM_ICON_CONTAINER_SIZE = 32;          // Badge anchor; never constrains label width
+const TAB_BAR_ITEM_CONTENT_HEIGHT = 56;
+const TAB_BAR_ITEM_TEXT_SIZE_HORIZONTAL = 10;         // Match the iOS compact strip and overflow labels
 const TAB_BAR_ITEM_TEXT_SIZE_VERTICAL = 10;           // Tab text font size - vertical layout
 const TAB_BAR_ITEM_ICON_TEXT_SPACING = 4;             // Icon to text spacing
 
@@ -32,17 +33,15 @@ const TAB_BAR_ITEM_BADGE_BORDER_RADIUS = 8;
 const TAB_BAR_ITEM_BADGE_PADDING = 6;
 const TAB_BAR_ITEM_BADGE_HEIGHT = 16;
 const TAB_BAR_ITEM_BADGE_VERTICAL_PADDING = 2;
-const TAB_BAR_ITEM_BADGE_POSITION_X = 32;  // Position at right of icon (icon center + icon_size/2 + offset)
+const TAB_BAR_ITEM_BADGE_POSITION_X = 24;
 const TAB_BAR_ITEM_BADGE_POSITION_Y = -8;
 
 // Red dot configuration
 const TAB_BAR_ITEM_RED_DOT_SIZE = 8;
-const TAB_BAR_ITEM_RED_DOT_POSITION_X = 32;  // Position at right of icon (icon center + icon_size/2 + offset)
+const TAB_BAR_ITEM_RED_DOT_POSITION_X = 24;
 const TAB_BAR_ITEM_RED_DOT_POSITION_Y = -2;
 
-// Circle drawn behind the icon of a selected item that ships only one icon,
-// standing in for the selected artwork it does not have.
-const TAB_BAR_ACTIVE_INDICATOR_SIZE = 36;
+// Selection belongs to the square icon slot; labels keep their own full width.
 const TAB_BAR_ACTIVE_INDICATOR_OPACITY = 0.2;
 
 // Overflow ("more") slot and its popup
@@ -50,7 +49,6 @@ const TAB_BAR_MORE_DOT_SIZE = 4;
 const TAB_BAR_MORE_DOT_SPACING = 3;
 const TAB_BAR_OVERFLOW_COLUMNS = 5;
 const TAB_BAR_OVERFLOW_CELL_HEIGHT = 64;
-const TAB_BAR_OVERFLOW_CELL_PADDING = 10;
 const TAB_BAR_OVERFLOW_PANEL_PADDING = 8;
 const TAB_BAR_OVERFLOW_RADIUS = 16;
 const TAB_BAR_OVERFLOW_HORIZONTAL_MARGIN = 12;
@@ -115,6 +113,9 @@ export struct TabBar {
   @Prop tabbar: TabBarState;  // Cached static tabbar for performance
   @Prop appId: string = '';
   @Prop refreshKey: number = 0;  // Force refresh when data changes
+  // A transparent/immersive bar has no plate to lend the overflow panel.
+  // In that case, mirror the page canvas just like the Apple hosts do.
+  @Prop pageCanvasColor: ResourceColor = '#FFFFFF';
   // Bottom system-gesture inset (vp): the home-indicator zone swallows taps,
   // so the strip grows and the items sit above it.
   @Prop bottomInset: number = 0;
@@ -183,28 +184,36 @@ export struct TabBar {
   @Builder
   buildTabItem(item: TabBarItem, index: number) {
     Column() {
+      Column() {
       // Tab icon with badge/red dot overlay
       Stack() {
-        // The indicator belongs to the bar, not to an item's artwork:
-        // whatever is selected gets it.
         if (this.isDirectItemSelected(item)) {
           Circle()
-            .width(TAB_BAR_ACTIVE_INDICATOR_SIZE)
-            .height(TAB_BAR_ACTIVE_INDICATOR_SIZE)
-            .fill(this.getSelectedColor())
-            .opacity(TAB_BAR_ACTIVE_INDICATOR_OPACITY)
+            .width(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
+            .height(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
+            .fill(this.getSelectedPlateColor())
         }
-
         // Tab icon - support full path icons from native
         if (item.iconPath) {
-          Image(this.getIconUrl(item))
-            .width(TAB_BAR_ITEM_ICON_SIZE)
-            .height(TAB_BAR_ITEM_ICON_SIZE)
-            .fillColor(this.isDirectItemSelected(item) ? this.getSelectedColor() : this.getNormalColor())
-            .objectFit(ImageFit.Contain)
-            .onError((error: ImageError): void => {
-              LxLog.e(TAG, `Tab ${index} icon load error: ${JSON.stringify(error)}, path: ${item.iconPath}`);
-            })
+          if (this.isTemplateTabIcon(item.iconPath)) {
+            Image(this.getIconUrl(item))
+              .width(TAB_BAR_ITEM_ICON_SIZE)
+              .height(TAB_BAR_ITEM_ICON_SIZE)
+              .fillColor(this.isDirectItemSelected(item) ? this.getSelectedColor() : this.getNormalColor())
+              .objectFit(ImageFit.Contain)
+              .onError((error: ImageError): void => {
+                LxLog.e(TAG, `Tab ${index} icon load error: ${JSON.stringify(error)}, path: ${item.iconPath}`);
+              })
+          } else {
+            Image(this.getIconUrl(item))
+              .width(TAB_BAR_ITEM_ICON_SIZE)
+              .height(TAB_BAR_ITEM_ICON_SIZE)
+              .objectFit(ImageFit.Cover)
+              .borderRadius(6)
+              .onError((error: ImageError): void => {
+                LxLog.e(TAG, `Tab ${index} icon load error: ${JSON.stringify(error)}, path: ${item.iconPath}`);
+              })
+          }
         }
 
         // Badge or red dot
@@ -237,11 +246,12 @@ export struct TabBar {
         }
       }
       .width(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
-      .height(TAB_BAR_ITEM_ICON_SIZE)
+      .height(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
 
       // Tab text - optional, only show if provided
       if (item.text) {
         Text(item.text)
+          .width('100%')
           .fontSize(this.isVertical() ? TAB_BAR_ITEM_TEXT_SIZE_VERTICAL : TAB_BAR_ITEM_TEXT_SIZE_HORIZONTAL)
           .fontColor(this.isDirectItemSelected(item) ? this.getSelectedColor() : this.getNormalColor())
           .margin({ top: TAB_BAR_ITEM_ICON_TEXT_SPACING })
@@ -256,14 +266,32 @@ export struct TabBar {
             offsetY: TEXT_SHADOW_OFFSET_Y
           } : undefined)
       }
+      }
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+      .width('100%')
+      .height(this.isVertical() ? undefined : TAB_BAR_ITEM_CONTENT_HEIGHT)
+      .constraintSize({ maxWidth: 80 })
+      .padding({
+        left: 0,
+        right: 0,
+        top: 2,
+        bottom: 2
+      })
+      .clip(false)
     }
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
     // Each item gets equal weight to distribute space
     .layoutWeight(1)
     .width(this.isVertical() ? '100%' : undefined)
     .height(this.isVertical() ? undefined : '100%')
-    .justifyContent(FlexAlign.Center)
-    .alignItems(HorizontalAlign.Center)
-    .margin({ top: TAB_BAR_ITEM_PADDING, bottom: TAB_BAR_ITEM_PADDING })
+    .padding({
+      left: 2,
+      right: 2,
+      top: 0,
+      bottom: 0
+    })
     .onClick(() => {
       hilog.info(DOMAIN, TAG, `Tab clicked: ${index}, current: ${this.tabbar.selectedIndex}, appId: ${this.appId}, path: ${item.pagePath}`);
 
@@ -364,17 +392,14 @@ export struct TabBar {
   @Builder
   buildMoreItem() {
     Column() {
+      Column() {
       Stack() {
-        // "More" is a slot like any other: a folded selection must not look
-        // unlike a direct one.
         if (this.isMoreSelected()) {
           Circle()
-            .width(TAB_BAR_ACTIVE_INDICATOR_SIZE)
-            .height(TAB_BAR_ACTIVE_INDICATOR_SIZE)
-            .fill(this.getSelectedColor())
-            .opacity(TAB_BAR_ACTIVE_INDICATOR_OPACITY)
+            .width(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
+            .height(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
+            .fill(this.getSelectedPlateColor())
         }
-
         Row({ space: TAB_BAR_MORE_DOT_SPACING }) {
           Circle()
             .width(TAB_BAR_MORE_DOT_SIZE)
@@ -404,9 +429,10 @@ export struct TabBar {
         }
       }
       .width(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
-      .height(TAB_BAR_ITEM_ICON_SIZE)
+      .height(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
 
       Text(this.getMoreLabel())
+        .width('100%')
         .fontSize(TAB_BAR_ITEM_TEXT_SIZE_HORIZONTAL)
         .fontColor(this.isMoreSelected() ? this.getSelectedColor() : this.getNormalColor())
         .margin({ top: TAB_BAR_ITEM_ICON_TEXT_SPACING })
@@ -419,12 +445,30 @@ export struct TabBar {
           offsetX: TEXT_SHADOW_OFFSET_X,
           offsetY: TEXT_SHADOW_OFFSET_Y
         } : undefined)
+      }
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+      .width('100%')
+      .height(TAB_BAR_ITEM_CONTENT_HEIGHT)
+      .constraintSize({ maxWidth: 80 })
+      .padding({
+        left: 0,
+        right: 0,
+        top: 2,
+        bottom: 2
+      })
+      .clip(false)
     }
-    .layoutWeight(1)
-    .height('100%')
     .justifyContent(FlexAlign.Center)
     .alignItems(HorizontalAlign.Center)
-    .margin({ top: TAB_BAR_ITEM_PADDING, bottom: TAB_BAR_ITEM_PADDING })
+    .layoutWeight(1)
+    .height('100%')
+    .padding({
+      left: 2,
+      right: 2,
+      top: 0,
+      bottom: 0
+    })
     .onClick(() => {
       this.moreVisible = !this.moreVisible;
     })
@@ -464,13 +508,9 @@ export struct TabBar {
           .layoutWeight(1)
           .height('100%')
           .onClick(() => {
-            const item: TabBarItem = this.tabbar.items[index];
-            this.moreVisible = false;
-            if (this.onTabSelected) {
-              this.onTabSelected(this.appId, item.index, item);
-            }
+            this.pickTab(index);
           })
-      })
+      }, (index: number) => `strip-hit-${index}`)
       Blank()
         .layoutWeight(1)
         .height('100%')
@@ -494,11 +534,11 @@ export struct TabBar {
         GridItem() {
           this.buildOverflowCell(this.tabbar.items[index], index)
         }
-      })
+      }, (index: number) => `overflow-${index}`)
     }
     .columnsTemplate('1fr 1fr 1fr 1fr 1fr')
     .width(`calc(100% - ${TAB_BAR_OVERFLOW_HORIZONTAL_MARGIN * 2}vp)`)
-    .height(this.getOverflowPanelHeight() - TAB_BAR_OVERFLOW_PANEL_PADDING * 2)
+    .height(this.getOverflowPanelHeight())
     .padding(TAB_BAR_OVERFLOW_PANEL_PADDING)
     .backgroundColor(this.getOverflowPanelColor())
     .borderRadius({
@@ -513,20 +553,27 @@ export struct TabBar {
   @Builder
   buildOverflowCell(item: TabBarItem, index: number) {
     Column() {
+      Column() {
       Stack() {
         if (item.index === this.tabbar.selectedIndex) {
           Circle()
-            .width(TAB_BAR_ACTIVE_INDICATOR_SIZE)
-            .height(TAB_BAR_ACTIVE_INDICATOR_SIZE)
-            .fill(this.getSelectedColor())
-            .opacity(TAB_BAR_ACTIVE_INDICATOR_OPACITY)
+            .width(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
+            .height(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
+            .fill(this.getSelectedPlateColor())
         }
-
-        Image(this.getIconUrl(item))
-          .width(TAB_BAR_ITEM_ICON_SIZE)
-          .height(TAB_BAR_ITEM_ICON_SIZE)
-          .fillColor(item.index === this.tabbar.selectedIndex ? this.getSelectedColor() : this.getNormalColor())
-          .objectFit(ImageFit.Contain)
+        if (this.isTemplateTabIcon(item.iconPath)) {
+          Image(this.getIconUrl(item))
+            .width(TAB_BAR_ITEM_ICON_SIZE)
+            .height(TAB_BAR_ITEM_ICON_SIZE)
+            .fillColor(item.index === this.tabbar.selectedIndex ? this.getSelectedColor() : this.getNormalColor())
+            .objectFit(ImageFit.Contain)
+        } else {
+          Image(this.getIconUrl(item))
+            .width(TAB_BAR_ITEM_ICON_SIZE)
+            .height(TAB_BAR_ITEM_ICON_SIZE)
+            .objectFit(ImageFit.Cover)
+            .borderRadius(6)
+        }
 
         if (item.badge) {
           Text(item.badge)
@@ -555,28 +602,66 @@ export struct TabBar {
         }
       }
       .width(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
-      .height(TAB_BAR_ITEM_ICON_SIZE)
+      .height(TAB_BAR_ITEM_ICON_CONTAINER_SIZE)
 
       if (item.text) {
         Text(item.text)
-          .fontSize(TAB_BAR_ITEM_TEXT_SIZE_HORIZONTAL)
+          .width('100%')
+          // Match iOS overflow typography. Six-character labels such as
+          // "开通续费管理" fit in one five-column cell at 10vp.
+          .fontSize(TAB_BAR_ITEM_TEXT_SIZE_VERTICAL)
+          .fontWeight(FontWeight.Medium)
           .fontColor(item.index === this.tabbar.selectedIndex ? this.getSelectedColor() : this.getNormalColor())
           .margin({ top: TAB_BAR_ITEM_ICON_TEXT_SPACING })
           .maxLines(TAB_BAR_ITEM_TEXT_MAX_LINES_HORIZONTAL)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .textAlign(TextAlign.Center)
       }
+      }
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+      // ArkUI otherwise shrink-wraps this Column to the icon's width, and
+      // ellipsizes the label even when the grid cell has enough room.
+      .width('100%')
+      .height(TAB_BAR_ITEM_CONTENT_HEIGHT)
+      .padding({
+        left: 0,
+        right: 0,
+        top: 4,
+        bottom: 4
+      })
+      .clip(false)
     }
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
     .width('100%')
     .height(TAB_BAR_OVERFLOW_CELL_HEIGHT)
-    .padding({ top: TAB_BAR_OVERFLOW_CELL_PADDING, bottom: TAB_BAR_OVERFLOW_CELL_PADDING })
-    .alignItems(HorizontalAlign.Center)
-    .onClick(() => {
-      this.moreVisible = false;
-      if (this.onTabSelected) {
-        this.onTabSelected(this.appId, item.index, item);
-      }
+    .padding({
+      left: 2,
+      right: 2,
+      top: 0,
+      bottom: 0
     })
+    .onClick(() => {
+      this.pickTab(index);
+    })
+  }
+
+  /**
+   * Fire the tab click before dismissing the overflow sheet. bindSheet tears
+   * the builder down as soon as `moreVisible` flips, which otherwise drops
+   * the callback — overflow destinations never opened on Harmony.
+   */
+  private pickTab(index: number): void {
+    const item: TabBarItem | undefined = this.tabbar.items[index];
+    if (!item) {
+      this.moreVisible = false;
+      return;
+    }
+    if (this.onTabSelected) {
+      this.onTabSelected(this.appId, item.index, item);
+    }
+    this.moreVisible = false;
   }
 
   private getOverflowPanelHeight(): number {
@@ -621,8 +706,16 @@ export struct TabBar {
   /** Overflow surface colour; keeps the floating block legible. */
   private getOverflowPanelColor(): ResourceColor {
     const background: number = this.tabbar.backgroundColor ?? 0;
-    // A transparent/immersive bar has no plate of its own to borrow.
-    return (background >>> 24) === 0 ? this.toResourceColor(0xFFFFFFFF) : this.toResourceColor(background);
+    return (background >>> 24) === 0 ? this.pageCanvasColor : this.toResourceColor(background);
+  }
+
+  /** SVG is a tinted glyph; raster files keep their own colour. */
+  private isTemplateTabIcon(path: string | undefined): boolean {
+    if (!path) {
+      return true;
+    }
+    const lower: string = path.toLowerCase();
+    return lower.endsWith('.svg') || path.indexOf('SF:') === 0;
   }
 
   /**
@@ -652,6 +745,15 @@ export struct TabBar {
    */
   private getSelectedColor(): ResourceColor {
     return this.toResourceColor(this.tabbar.selectedColor ?? 0xFF1677FF);
+  }
+
+  /** Selected tint at the same indicator opacity as the other hosts. */
+  private getSelectedPlateColor(): ResourceColor {
+    const color: number = this.tabbar.selectedColor ?? 0xFF1677FF;
+    const red: number = (color >>> 16) & 0xFF;
+    const green: number = (color >>> 8) & 0xFF;
+    const blue: number = color & 0xFF;
+    return `rgba(${red}, ${green}, ${blue}, ${TAB_BAR_ACTIVE_INDICATOR_OPACITY})`;
   }
 
   /**

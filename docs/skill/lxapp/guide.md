@@ -616,10 +616,31 @@ Rules:
 
 ### Icons
 
-One icon per item, drawn as a **template**: the host tints it with
-`foregroundColor` / `selectedForegroundColor` and marks the active tab with a
-circle behind it. Ship a monochrome glyph — a multi-colour PNG is flattened to
-one colour. There is no second "selected" icon to author.
+One icon per item; there is no second selected icon to author. Rendering follows
+the file format:
+
+- SVG is a template glyph. The host tints it with `foregroundColor` /
+  `selectedForegroundColor`. A circular highlight behind the icon, with the label outside,
+  marks the active tab.
+- Raster PNG/JPEG/WebP retains its own colours and is center-cropped into the
+  square icon slot. Use square artwork for a logo whose edges must remain visible.
+
+In `lxapp.json`, `iconPath` is a bundled project-relative path. A runtime
+`lx.tabBar.update()` may also use an lxapp-accessible `lx://temp`,
+`lx://usercache`, or `lx://userdata` path. It does not accept a network URL,
+`file:` URL, parent traversal, or a native absolute path from app code. Download
+a remote logo first and pass the returned logical path:
+
+```ts
+const { tempFilePath } = await lx.downloadFile({ url: brand.logoUrl });
+await lx.tabBar.update({
+  items: [{ index: 0, text: brand.shortName, iconPath: tempFilePath }],
+});
+```
+
+`lx://temp` is temporary. Re-download and reapply it after a later Logic launch;
+do not persist that path as durable application state. Pass `iconPath: null` to
+restore the item icon declared in `lxapp.json`.
 
 ### 只在某类主机上出现的 item
 

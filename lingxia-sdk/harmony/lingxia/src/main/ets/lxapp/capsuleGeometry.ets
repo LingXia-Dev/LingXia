@@ -35,7 +35,11 @@ export function noteCapsuleFrame(x: number, y: number, width: number, height: nu
   capsuleH = nh;
   capsuleReady = ready;
   if (changed && ready) {
-    listener?.();
+    try {
+      listener?.();
+    } catch {
+      // Harmony kills the ability on an uncaught onAreaChange throw.
+    }
   }
 }
 
@@ -47,7 +51,11 @@ export function notePageOrigin(x: number, y: number): void {
   pageY = ny;
   pageReady = true;
   if (changed && capsuleReady) {
-    listener?.();
+    try {
+      listener?.();
+    } catch {
+      // Harmony kills the ability on an uncaught onAreaChange throw.
+    }
   }
 }
 

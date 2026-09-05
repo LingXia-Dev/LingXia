@@ -173,6 +173,9 @@ export struct LxAppContainer {
   // Per-page navbar visibility; navigationStyle is static page config, so a
   // small cache avoids an FFI query per layout pass.
   private navbarShownByPath: Map<string, boolean> = new Map();
+  // Overflow tabs are created on first pick. Harmony WebView creation is a
+  // queued ArkTS call, so navigate can land before the controller exists.
+  private pendingNavigatePath: string = '';
 
   /**
    * Trigger onPageShow if WebView hasn't triggered it yet
@@ -232,7 +235,11 @@ export struct LxAppContainer {
     // Register this container for TabBar updates
     LxAppContainer.activeContainers.set(this.appId, this);
     setCapsuleGeometryListener(() => {
-      syncLxappHostUI(this.appId);
+      try {
+        syncLxappHostUI(this.appId);
+      } catch (error) {
+        hilog.warn(DOMAIN, TAG, `syncLxappHostUI failed: ${error}`);
+      }
     });
 
     // Initialize animation type from static registry
@@ -644,15 +651,28 @@ export struct LxAppContainer {
           hilog.info(DOMAIN, TAG, `Surface WebView is owned by SurfaceManager: ${info.webtag}`);
           break;
         }
+        const createdPath: string = extracted.path;
+        // Mark current BEFORE inserting into the ForEach. Harmony ArkWeb
+        // never paints a Web that first lays out translated off-screen;
+        // overflow tabs then stay blank after switchTab.
+        const wantCurrent: boolean = !this.currentWebTag
+          || this.pathsEqual(createdPath, this.pendingNavigatePath)
+          || this.pathsEqual(createdPath, this.path)
+          || this.pathsEqual(createdPath, this.externalPath);
+        if (wantCurrent) {
+          this.currentWebTag = info.webtag;
+        }
         this.webViewComponents.set(info.webtag, info.controller);
         this.webViewKeys = Array.from(this.webViewComponents.keys());
         hilog.info(DOMAIN, TAG, `Stored WebView component: ${info.webtag}, total components: ${this.webViewComponents.size}`);
 
-        // If there is no active WebView for this container (e.g. after restart),
-        // automatically promote the first created WebView to current and trigger page show.
-        if (!this.currentWebTag) {
-          this.currentWebTag = info.webtag;
-          hilog.info(DOMAIN, TAG, `No currentWebTag set; promoting ${info.webtag} as current after create`);
+        if (this.pendingNavigatePath && this.pathsEqual(createdPath, this.pendingNavigatePath)) {
+          const pendingPath: string = this.pendingNavigatePath;
+          this.pendingNavigatePath = '';
+          hilog.info(DOMAIN, TAG, `Pending navigate now that WebView exists: ${pendingPath}`);
+          this.navigateToPage(pendingPath);
+        } else if (wantCurrent) {
+          hilog.info(DOMAIN, TAG, `Promoting ${info.webtag} as current after create`);
           this.triggerOnPageShowIfNeeded(info.webtag);
         }
         break;
@@ -779,12 +799,16 @@ export struct LxAppContainer {
 	    .width('100%')
 	    .height('100%')
     .onAreaChange((_, newValue) => {
-      this.reportShellWidth(Number(newValue.width) || 0);
-      // Track where the container actually sits: when the window manager
-      // already insets the page root below the system bar, the chrome must
-      // not add its own status spacer on top of that.
-      const globalY = Number((newValue.globalPosition?.y as number) ?? 0);
-      this.containerTopVp = Math.max(0, Math.round(globalY));
+      try {
+        this.reportShellWidth(Number(newValue.width) || 0);
+        // Track where the container actually sits: when the window manager
+        // already insets the page root below the system bar, the chrome must
+        // not add its own status spacer on top of that.
+        const globalY = Number((newValue.globalPosition?.y as number) ?? 0);
+        this.containerTopVp = Math.max(0, Math.round(globalY));
+      } catch (error) {
+        hilog.warn(DOMAIN, TAG, `container onAreaChange failed: ${error}`);
+      }
     })
 	    .expandSafeArea(this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaType.SYSTEM, SafeAreaType.CUTOUT] : [], this.shouldExpandSafeAreaForContainer() || this.fullscreenComponentId.length > 0 ? [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM] : [])
 	  }
@@ -848,6 +872,7 @@ export struct LxAppContainer {
         tabbar: this.tabBarState,
         appId: this.appId,
         refreshKey: this.tabBarRefreshKey,
+        pageCanvasColor: resolveCanvasColor(this.appearanceDark),
         bottomInset: this.isTabBarVertical() ? 0 : this.bottomIndicatorInset,
         onTabSelected: (appId: string, index: number, item: TabBarItem): void => this.handleTabSelected(index)
       })
@@ -1096,13 +1121,17 @@ export struct LxAppContainer {
     // page's inset (getWrapperPadding), so navigating between pages with
     // different navbar visibility never resizes ArkWeb surfaces.
     .onAreaChange((_, newValue) => {
-      this.webAreaWidthVp = Number(newValue.width) || 0;
-      this.webAreaHeightVp = Number(newValue.height) || 0;
-      notePageOrigin(
-        Number((newValue.globalPosition?.x as number) ?? 0),
-        Number((newValue.globalPosition?.y as number) ?? 0)
-      );
-      this.reportCurrentPageViewport();
+      try {
+        this.webAreaWidthVp = Number(newValue.width) || 0;
+        this.webAreaHeightVp = Number(newValue.height) || 0;
+        notePageOrigin(
+          Number((newValue.globalPosition?.x as number) ?? 0),
+          Number((newValue.globalPosition?.y as number) ?? 0)
+        );
+        this.reportCurrentPageViewport();
+      } catch (error) {
+        hilog.warn(DOMAIN, TAG, `web area onAreaChange failed: ${error}`);
+      }
     })
     .hitTestBehavior(HitTestMode.Transparent)
     .zIndex(this.shouldRenderOverlayMask() ? 10004 : 0)
@@ -1268,6 +1297,33 @@ export struct LxAppContainer {
     let _: boolean = onLxappEvent(this.appId, UiEventType.TabBarClick, index.toString());
   }
 
+  /** Compare lxapp page paths ignoring slash, /index, and view suffix. */
+  private pathsEqual(left: string, right: string): boolean {
+    if (!left || !right) {
+      return false;
+    }
+    return LxAppContainer.normalizePagePath(left) === LxAppContainer.normalizePagePath(right);
+  }
+
+  private static normalizePagePath(path: string): string {
+    let normalized: string = path.trim();
+    if (normalized.startsWith('/')) {
+      normalized = normalized.substring(1);
+    }
+    const suffixes: string[] = ['.tsx', '.ts', '.jsx', '.js', '.vue', '.html'];
+    for (let i = 0; i < suffixes.length; i++) {
+      const suffix: string = suffixes[i];
+      if (normalized.toLowerCase().endsWith(suffix)) {
+        normalized = normalized.substring(0, normalized.length - suffix.length);
+        break;
+      }
+    }
+    if (normalized.endsWith('/index')) {
+      normalized = normalized.substring(0, normalized.length - '/index'.length);
+    }
+    return normalized;
+  }
+
   /**
    * Load navbar state for a page (common for all navigation types)
    */
@@ -1328,9 +1384,11 @@ export struct LxAppContainer {
 
     if (!webViewController) {
       const logicalTag = toWebTag(this.appId, path);
-      hilog.warn(DOMAIN, TAG, `WebView not found for page: ${logicalTag}`);
+      this.pendingNavigatePath = path;
+      hilog.warn(DOMAIN, TAG, `WebView not found for page: ${logicalTag}; waiting for create`);
       return false;
     }
+    this.pendingNavigatePath = '';
 
     // Determine the concrete webTag (Ark-facing) for this controller.
     // Prefer an existing entry from webViewComponents to keep instance IDs opaque.

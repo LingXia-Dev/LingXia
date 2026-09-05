@@ -441,7 +441,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         }
 
         // Create view controller for WebView content
-        let vc = SimulatorViewController(appId: appId, path: path)
+        let vc = SimulatorViewController(appId: appId, path: path, displayScale: appliedScale)
         viewController = vc
         
         // Add view controller's view to phone content
@@ -892,6 +892,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         }
 
         updateDeviceFrameSize(for: layout)
+        viewController?.setDisplayScale(scale)
         updateNotchView()
         updateStatusBarConstraints()
     }
@@ -1394,7 +1395,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         viewController = nil
 
         guard let phoneContent = phoneContentView else { return }
-        let vc = SimulatorViewController(appId: appId, path: path)
+        let vc = SimulatorViewController(appId: appId, path: path, displayScale: appliedScale)
         viewController = vc
         vc.view.translatesAutoresizingMaskIntoConstraints = false
         phoneContent.addSubview(vc.view, positioned: .below, relativeTo: nil)

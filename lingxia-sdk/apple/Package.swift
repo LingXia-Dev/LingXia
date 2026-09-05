@@ -136,6 +136,7 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "-u", "-Xlinker", "_lingxia_register_host_addon"], .when(platforms: [.macOS])),
                 .linkedFramework("JavaScriptCore"),
                 .linkedFramework("WebKit"),
+                .linkedFramework("QuickLookThumbnailing", .when(platforms: [.iOS])),
                 .linkedFramework("AudioToolbox", .when(platforms: [.iOS])),
                 .linkedFramework("CoreLocation", .when(platforms: [.iOS])),
                 .linkedFramework("QuickLook", .when(platforms: [.iOS])),

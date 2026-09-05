@@ -97,6 +97,77 @@ struct TabBarHelper {
     static func isTransparent(_ colorValue: UInt32) -> Bool {
         return (colorValue >> 24) & 0xFF == 0
     }
+
+    /// SVG and SF Symbols are tinted glyphs. Raster files keep their own colour
+    /// so a brand mark is not flattened into a solid square.
+    static func isTemplateIcon(_ path: String) -> Bool {
+        if path.hasPrefix("SF:") { return true }
+        let ext = (path as NSString).pathExtension.lowercased()
+        return ext == "svg" || ext.isEmpty
+    }
+
+    @ViewBuilder
+    static func styledIcon(
+        _ image: Image,
+        path: String,
+        size: CGFloat,
+        tint: Color
+    ) -> some View {
+        if isTemplateIcon(path) {
+            image
+                .renderingMode(.template)
+                .resizable()
+                .frame(width: size, height: size)
+                .foregroundColor(tint)
+        } else {
+            image
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+        }
+    }
+
+    #if os(macOS)
+    /// AppKit does not have SwiftUI's `scaledToFill`, so crop raster artwork to
+    /// a square before assigning it to a fixed native-chrome image view.
+    static func appKitIcon(_ image: NSImage, path: String, size: CGFloat) -> NSImage {
+        let targetSize = NSSize(width: size, height: size)
+        if isTemplateIcon(path) {
+            let copy = image.copy() as? NSImage ?? image
+            copy.size = targetSize
+            copy.isTemplate = true
+            return copy
+        }
+
+        let sourceSize = image.size
+        guard sourceSize.width > 0, sourceSize.height > 0 else { return image }
+        let edge = min(sourceSize.width, sourceSize.height)
+        let sourceRect = NSRect(
+            x: (sourceSize.width - edge) / 2,
+            y: (sourceSize.height - edge) / 2,
+            width: edge,
+            height: edge
+        )
+        let result = NSImage(size: targetSize)
+        result.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .high
+        NSBezierPath(
+            roundedRect: NSRect(origin: .zero, size: targetSize),
+            xRadius: size * 0.22,
+            yRadius: size * 0.22
+        ).addClip()
+        image.draw(
+            in: NSRect(origin: .zero, size: targetSize),
+            from: sourceRect,
+            operation: .copy,
+            fraction: 1
+        )
+        result.unlockFocus()
+        result.isTemplate = false
+        return result
+    }
+    #endif
 }
 
 /// Badge / red-dot red, unified across iOS, Android, and Harmony (#FA5151).
@@ -104,11 +175,6 @@ let lxBadgeRed = Color(red: 0xFA / 255.0, green: 0x51 / 255.0, blue: 0x51 / 255.
 
 /// macOS TabBar that accepts external state manager
 struct MacOSLxAppTabBar: View {
-    private enum Overflow {
-        static let columns = 5
-        static let cellWidth: CGFloat = 64
-    }
-
     let appId: String
     let config: TabBar
     @Binding var selectedIndex: Int
@@ -120,18 +186,18 @@ struct MacOSLxAppTabBar: View {
     /// view so it can sit above the strip inside the simulated screen, rather
     /// than floating out of the window as a desktop popover would.
     let onMoreRequested: () -> Void
-    /// When set, render these item indices as the overflow grid instead of the
-    /// strip. The host uses this for the panel above the bar.
-    let overflowGrid: [Int]?
     /// While the panel is open, it owns selection instead of the prior tab.
     let overflowPresented: Bool
+    /// Runner shrinks tall device frames to fit the current display. Native
+    /// chrome must shrink with the simulated device or it no longer matches iOS.
+    let displayScale: CGFloat
 
     init(
         appId: String,
         config: TabBar,
         selectedIndex: Binding<Int>,
         compact: Bool = true,
-        overflowGrid: [Int]? = nil,
+        displayScale: CGFloat = 1,
         overflowPresented: Bool = false,
         onMoreRequested: @escaping () -> Void = {},
         onTabSelected: @escaping (Int, String) -> Void
@@ -140,7 +206,7 @@ struct MacOSLxAppTabBar: View {
         self.config = config
         self._selectedIndex = selectedIndex
         self.compact = compact
-        self.overflowGrid = overflowGrid
+        self.displayScale = displayScale
         self.overflowPresented = overflowPresented
         self.onMoreRequested = onMoreRequested
         self.onTabSelected = onTabSelected
@@ -150,18 +216,14 @@ struct MacOSLxAppTabBar: View {
         let items = config.getItems(appId: appId)
 
         Group {
-            if let overflowGrid {
-                buildOverflowGrid(items: items, indices: overflowGrid)
-            } else {
-                switch config.positionEnum {
-                case .bottom:
-                    buildHorizontalTabBar(items: items)
-                        .frame(height: config.dimensionPoints)
+            switch config.positionEnum {
+            case .bottom:
+                buildHorizontalTabBar(items: items)
+                    .frame(height: config.dimensionPoints * displayScale)
 
-                case .left, .right:
-                    buildVerticalTabBar(items: items)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+            case .left, .right:
+                buildVerticalTabBar(items: items)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .background(getTabBarBackgroundColor())
@@ -169,7 +231,7 @@ struct MacOSLxAppTabBar: View {
 
     @ViewBuilder
     private func buildTabItem(item: TabBarItem, index: Int) -> some View {
-        let isSelected = (overflowGrid != nil || !overflowPresented) && item.cachedIndex == selectedIndex
+        let isSelected = !overflowPresented && item.cachedIndex == selectedIndex
         // Get state directly from Rust
         let rustItem = getTabBarItem(appId, Int32(index))
 
@@ -181,21 +243,15 @@ struct MacOSLxAppTabBar: View {
             // Always trigger callback - let parent decide if action is needed
             onTabSelected(item.cachedIndex, item.cachedPagePath)
         }) {
-            VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
+            VStack(spacing: LxAppTheme.Metrics.smallSpacing * displayScale) {
                 // Tab icon with badge and red dot overlay
                 ZStack {
-                    // The indicator belongs to the bar, not to an item's
-                    // artwork: whatever is selected gets it.
                     if isSelected {
                         Circle()
                             .fill(Color(PlatformColor(argb: config.selected_color))
                                 .opacity(TabBarMetrics.activeIndicatorOpacity))
-                            .frame(
-                                width: TabBarMetrics.activeIndicatorSize,
-                                height: TabBarMetrics.activeIndicatorSize
-                            )
+                            .frame(width: 32 * displayScale, height: 32 * displayScale)
                     }
-
                     if !item.cachedIconPath.isEmpty {
                         buildTabIcon(item: item, isSelected: isSelected, forceColor: forceColor)
                     }
@@ -203,25 +259,28 @@ struct MacOSLxAppTabBar: View {
                     // Badge overlay (from Rust state)
                     if let rustItem = rustItem, !rustItem.badge.toString().isEmpty {
                         TabBarHelpers.buildBadge(text: rustItem.badge.toString())
-                            .offset(x: 16, y: -6)
+                            .scaleEffect(displayScale)
+                            .offset(x: 16 * displayScale, y: -6 * displayScale)
                     }
                     // Red dot overlay (only show if no badge)
                     else if let rustItem = rustItem, rustItem.has_red_dot {
                         TabBarHelpers.buildRedDot()
-                            .offset(x: 16, y: -4)
+                            .scaleEffect(displayScale)
+                            .offset(x: 16 * displayScale, y: -4 * displayScale)
                     }
                 }
+                .frame(width: 32 * displayScale, height: 32 * displayScale)
 
                 // Tab title
                 if !item.cachedText.isEmpty {
                     Text(item.cachedText)
-                        .font(LxAppTheme.Typography.tabTitle)
+                        .font(.system(size: 10 * displayScale, weight: .medium))
                         .foregroundColor(forceColor)
                         .lineLimit(1)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.vertical, LxAppTheme.Metrics.smallSpacing)
+            .padding(.vertical, LxAppTheme.Metrics.smallSpacing * displayScale)
+            .padding(.horizontal, 2 * displayScale)
             .contentShape(Rectangle())
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -243,7 +302,7 @@ struct MacOSLxAppTabBar: View {
         let start = overflowStart(itemCount: items.count)
         let stripCount = start >= 0 ? start : items.count
 
-        HStack(spacing: LxAppTheme.Metrics.standardSpacing) {
+        HStack(spacing: LxAppTheme.Metrics.standardSpacing * displayScale) {
             ForEach(0..<stripCount, id: \.self) { index in
                 buildTabItem(item: items[index], index: index)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -253,7 +312,7 @@ struct MacOSLxAppTabBar: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .padding(.horizontal, LxAppTheme.Metrics.largeSpacing)
+        .padding(.horizontal, LxAppTheme.Metrics.standardSpacing * displayScale)
         .contentShape(Rectangle())
     }
 
@@ -268,41 +327,40 @@ struct MacOSLxAppTabBar: View {
             Color(PlatformColor(argb: config.color))
 
         Button(action: onMoreRequested) {
-            VStack(spacing: LxAppTheme.Metrics.smallSpacing) {
+            VStack(spacing: LxAppTheme.Metrics.smallSpacing * displayScale) {
                 ZStack {
-                    // "More" is a slot like any other: a folded selection must
-                    // not look unlike a direct one.
                     if isSelected {
                         Circle()
                             .fill(Color(PlatformColor(argb: config.selected_color))
                                 .opacity(TabBarMetrics.activeIndicatorOpacity))
-                            .frame(
-                                width: TabBarMetrics.activeIndicatorSize,
-                                height: TabBarMetrics.activeIndicatorSize
-                            )
+                            .frame(width: 32 * displayScale, height: 32 * displayScale)
                     }
-
                     Image(systemName: "ellipsis")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 24 * displayScale, height: 24 * displayScale)
                         .foregroundColor(forceColor)
 
                     // Folded badges still have to surface, so "more" aggregates
                     // them to a dot.
                     if overflowHasNotification(from: overflowStart, itemCount: items.count) {
-                        TabBarHelpers.buildRedDot().offset(x: 16, y: -4)
+                        TabBarHelpers.buildRedDot()
+                            .scaleEffect(displayScale)
+                            .offset(x: 16 * displayScale, y: -4 * displayScale)
                     }
                 }
+                .frame(width: 32 * displayScale, height: 32 * displayScale)
                 Text(tabBarMoreLabel(for: items))
-                    .font(LxAppTheme.Typography.tabTitle)
+                    .font(.system(size: 10 * displayScale, weight: .medium))
                     .foregroundColor(forceColor)
                     .lineLimit(1)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.vertical, LxAppTheme.Metrics.smallSpacing)
+            .padding(.vertical, LxAppTheme.Metrics.smallSpacing * displayScale)
+            .padding(.horizontal, 2 * displayScale)
             .contentShape(Rectangle())
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
         .buttonStyle(PlainButtonStyle())
     }
 
@@ -314,32 +372,6 @@ struct MacOSLxAppTabBar: View {
             }
         }
         return false
-    }
-
-    /// The folded items as a grid, built from the strip's own cells so the
-    /// panel and the bar cannot drift apart. A short final row keeps the full
-    /// column count, leaving the cells aligned.
-    @ViewBuilder
-    private func buildOverflowGrid(items: [TabBarItem], indices: [Int]) -> some View {
-        let rows = stride(from: 0, to: indices.count, by: Overflow.columns).map { start in
-            Array(indices[start..<min(start + Overflow.columns, indices.count)])
-        }
-
-        VStack(spacing: 0) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                HStack(spacing: 0) {
-                    ForEach(row, id: \.self) { index in
-                        buildTabItem(item: items[index], index: index)
-                            .frame(width: Overflow.cellWidth, height: config.dimensionPoints)
-                    }
-                    ForEach(row.count..<Overflow.columns, id: \.self) { _ in
-                        Color.clear.frame(width: Overflow.cellWidth, height: config.dimensionPoints)
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(LxAppTheme.Metrics.smallSpacing)
     }
 
     @ViewBuilder
@@ -360,35 +392,23 @@ struct MacOSLxAppTabBar: View {
 
         let iconColor = forceColor
 
+        let size = LxAppTheme.Metrics.tabIconSize * displayScale
         if iconPath.hasPrefix("SF:") {
             let symbolName = String(iconPath.dropFirst(3))
             Image(systemName: symbolName)
-                .font(.system(size: LxAppTheme.Metrics.tabIconSize))
+                .font(.system(size: size))
                 .foregroundColor(iconColor)
         } else if iconPath.hasPrefix("/") {
             if let image = loadPlatformImage(from: iconPath) {
-                image
-                    .renderingMode(.template)
-                    .resizable()
-                    .frame(width: LxAppTheme.Metrics.tabIconSize, height: LxAppTheme.Metrics.tabIconSize)
-                    .foregroundColor(iconColor)
+                TabBarHelper.styledIcon(image, path: iconPath, size: size, tint: iconColor)
             }
+        } else if let bundleImage = loadBundleImage(named: iconPath) {
+            TabBarHelper.styledIcon(bundleImage, path: iconPath, size: size, tint: iconColor)
         } else {
-            if let bundleImage = loadBundleImage(named: iconPath) {
-                bundleImage
-                    .renderingMode(.template)
-                    .resizable()
-                    .frame(width: LxAppTheme.Metrics.tabIconSize, height: LxAppTheme.Metrics.tabIconSize)
-                    .foregroundColor(iconColor)
-            } else {
-                let resourcesPath = getResourcesPath()
-                let fullPath = "\(resourcesPath)/\(appId)/\(iconPath)"
-                if let resourceImage = loadPlatformImage(from: fullPath) {
-                    resourceImage
-                        .resizable()
-                        .frame(width: LxAppTheme.Metrics.tabIconSize, height: LxAppTheme.Metrics.tabIconSize)
-                        .foregroundColor(iconColor)
-                }
+            let resourcesPath = getResourcesPath()
+            let fullPath = "\(resourcesPath)/\(appId)/\(iconPath)"
+            if let resourceImage = loadPlatformImage(from: fullPath) {
+                TabBarHelper.styledIcon(resourceImage, path: fullPath, size: size, tint: iconColor)
             }
         }
     }
@@ -450,6 +470,79 @@ protocol TabBarProtocol: AnyObject {
 
 #if os(iOS)
 import UIKit
+import QuickLookThumbnailing
+
+@MainActor
+fileprivate enum UIKitTabIconLoader {
+    private static var cachedSVG: [String: UIImage] = [:]
+    private static var pendingSVG: [String: [(UIImage?) -> Void]] = [:]
+
+    static func load(path: String, completion: @escaping (UIImage?) -> Void) -> UIImage? {
+        if path.hasPrefix("SF:") {
+            return UIImage(systemName: String(path.dropFirst(3)))
+        }
+        if !path.hasPrefix("/") {
+            return UIImage(named: path)
+        }
+        guard (path as NSString).pathExtension.lowercased() == "svg" else {
+            return UIImage(contentsOfFile: path)
+        }
+        if let cached = cachedSVG[path] {
+            return cached
+        }
+        if pendingSVG[path] != nil {
+            pendingSVG[path]?.append(completion)
+            return nil
+        }
+
+        pendingSVG[path] = [completion]
+        let request = QLThumbnailGenerator.Request(
+            fileAt: URL(fileURLWithPath: path),
+            size: CGSize(width: 72, height: 72),
+            scale: UIScreen.main.scale,
+            representationTypes: [.thumbnail]
+        )
+        QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { representation, _ in
+            let image = representation?.uiImage
+            Task { @MainActor in
+                if let image {
+                    cachedSVG[path] = image
+                }
+                let callbacks = pendingSVG.removeValue(forKey: path) ?? []
+                callbacks.forEach { $0(image) }
+            }
+        }
+        return nil
+    }
+}
+
+@MainActor
+func applyUIKitTabIcon(
+    to imageView: UIImageView,
+    path: String,
+    tint: UIColor,
+    fallback: String = "circle.fill"
+) {
+    let template = TabBarHelper.isTemplateIcon(path)
+    let apply: (UIImage?) -> Void = { [weak imageView] image in
+        guard let imageView else { return }
+        imageView.image = (image ?? UIImage(systemName: fallback))?
+            .withRenderingMode(template ? .alwaysTemplate : .alwaysOriginal)
+        imageView.tintColor = template ? tint : nil
+    }
+    if let image = UIKitTabIconLoader.load(path: path, completion: apply) {
+        apply(image)
+    } else if path.hasPrefix("/"),
+              (path as NSString).pathExtension.lowercased() == "svg" {
+        // Avoid flashing the old generic circle while the local SVG is being
+        // rasterized. The completion installs either the real image or the
+        // fallback if Quick Look rejects the file.
+        imageView.image = nil
+        imageView.tintColor = tint
+    } else {
+        apply(nil)
+    }
+}
 
 /// UIKit TabBar implementation for iOS
 @MainActor
@@ -600,7 +693,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         stackView.axis = .horizontal
         stackView.distribution = .fillEqually
         stackView.alignment = .center
-        stackView.spacing = 8
+        stackView.spacing = 0
         stackView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(stackView)
 
@@ -659,25 +752,46 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             textLabel.textAlignment = .center
             textLabel.translatesAutoresizingMaskIntoConstraints = false
             stackView.addArrangedSubview(textLabel)
+            textLabel.widthAnchor.constraint(equalTo: stackView.widthAnchor).isActive = true
         }
 
         button.addSubview(stackView)
         containerView.addSubview(button)
         button.addTarget(self, action: #selector(uikitTabButtonTapped(_:)), for: .touchUpInside)
 
+        if isSelected, !item.icon_path.toString().isEmpty,
+           let iconContainer = stackView.arrangedSubviews.first {
+            let indicator = UIView()
+            indicator.backgroundColor = PlatformColor(argb: config.selected_color)
+                .withAlphaComponent(TabBarMetrics.activeIndicatorOpacity)
+            indicator.layer.cornerRadius = 16
+            indicator.translatesAutoresizingMaskIntoConstraints = false
+            button.insertSubview(indicator, at: 0)
+            NSLayoutConstraint.activate([
+                indicator.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
+                indicator.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
+                indicator.widthAnchor.constraint(equalToConstant: 32),
+                indicator.heightAnchor.constraint(equalToConstant: 32)
+            ])
+        }
+
         NSLayoutConstraint.activate([
             stackView.centerXAnchor.constraint(equalTo: button.centerXAnchor),
             stackView.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-            stackView.leadingAnchor.constraint(greaterThanOrEqualTo: button.leadingAnchor, constant: 8),
-            stackView.trailingAnchor.constraint(lessThanOrEqualTo: button.trailingAnchor, constant: -8),
+            stackView.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 2),
+            stackView.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -2),
 
             button.topAnchor.constraint(equalTo: containerView.topAnchor),
             button.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             button.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             button.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            button.heightAnchor.constraint(equalToConstant: 60),
-            button.widthAnchor.constraint(equalToConstant: 60)
+            button.heightAnchor.constraint(equalToConstant: 60)
         ])
+        // A horizontal slot gets its width from the equal-width strip, not
+        // from the icon/button dimensions used by the vertical rail.
+        if config.position == 1 || config.position == 2 {
+            button.widthAnchor.constraint(equalToConstant: 60).isActive = true
+        }
 
         return containerView
     }
@@ -692,43 +806,14 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
         let iconPath = item.icon_path.toString()
-
-        // The icon is a template glyph the strip tints in both states.
         let iconColor = isSelected
             ? PlatformColor(argb: tabBarConfig?.selected_color ?? 0)
             : PlatformColor(argb: tabBarConfig?.color ?? 0)
-
-        let render: (UIImage?) -> UIImage? = { $0?.withRenderingMode(.alwaysTemplate) }
-        if iconPath.hasPrefix("SF:") {
-            let symbolName = String(iconPath.dropFirst(3))
-            iconView.image = UIImage(systemName: symbolName)
-            iconView.tintColor = iconColor
-        } else {
-            if let bundleImage = UIImage(named: iconPath) {
-                iconView.image = render(bundleImage)
-                iconView.tintColor = iconColor
-            } else {
-                iconView.image = UIImage(systemName: "circle.fill")
-                iconView.tintColor = iconColor
-            }
-        }
-
-        // The indicator belongs to the bar, not to an item's artwork:
-        // whatever is selected gets it.
-        if isSelected {
-            let indicator = UIView()
-            indicator.backgroundColor = PlatformColor(argb: tabBarConfig?.selected_color ?? 0)
-                .withAlphaComponent(TabBarMetrics.activeIndicatorOpacity)
-            indicator.layer.cornerRadius = TabBarMetrics.activeIndicatorSize / 2
-            indicator.translatesAutoresizingMaskIntoConstraints = false
-            iconContainer.addSubview(indicator)
-            NSLayoutConstraint.activate([
-                indicator.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
-                indicator.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
-                indicator.widthAnchor.constraint(equalToConstant: TabBarMetrics.activeIndicatorSize),
-                indicator.heightAnchor.constraint(equalToConstant: TabBarMetrics.activeIndicatorSize)
-            ])
-        }
+        let template = TabBarHelper.isTemplateIcon(iconPath)
+        iconView.contentMode = template ? .scaleAspectFit : .scaleAspectFill
+        iconView.clipsToBounds = !template
+        iconView.layer.cornerRadius = template ? 0 : 6
+        applyUIKitTabIcon(to: iconView, path: iconPath, tint: iconColor)
 
         iconContainer.addSubview(iconView)
 
@@ -816,22 +901,6 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
 
         let iconContainer = UIView()
         iconContainer.translatesAutoresizingMaskIntoConstraints = false
-        // "More" is a slot like any other: a folded selection must not look
-        // unlike a direct one.
-        if isSelected {
-            let indicator = UIView()
-            indicator.backgroundColor = PlatformColor(argb: config.selected_color)
-                .withAlphaComponent(TabBarMetrics.activeIndicatorOpacity)
-            indicator.layer.cornerRadius = TabBarMetrics.activeIndicatorSize / 2
-            indicator.translatesAutoresizingMaskIntoConstraints = false
-            iconContainer.addSubview(indicator)
-            NSLayoutConstraint.activate([
-                indicator.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
-                indicator.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
-                indicator.widthAnchor.constraint(equalToConstant: TabBarMetrics.activeIndicatorSize),
-                indicator.heightAnchor.constraint(equalToConstant: TabBarMetrics.activeIndicatorSize)
-            ])
-        }
         let iconView = UIImageView(image: UIImage(systemName: "ellipsis"))
         iconView.contentMode = .scaleAspectFit
         iconView.tintColor = tint
@@ -862,11 +931,26 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         button.addSubview(stackView)
         containerView.addSubview(button)
 
+        if isSelected {
+            let indicator = UIView()
+            indicator.backgroundColor = PlatformColor(argb: config.selected_color)
+                .withAlphaComponent(TabBarMetrics.activeIndicatorOpacity)
+            indicator.layer.cornerRadius = 16
+            indicator.translatesAutoresizingMaskIntoConstraints = false
+            button.insertSubview(indicator, at: 0)
+            NSLayoutConstraint.activate([
+                indicator.centerXAnchor.constraint(equalTo: iconContainer.centerXAnchor),
+                indicator.centerYAnchor.constraint(equalTo: iconContainer.centerYAnchor),
+                indicator.widthAnchor.constraint(equalToConstant: 32),
+                indicator.heightAnchor.constraint(equalToConstant: 32)
+            ])
+        }
+
         NSLayoutConstraint.activate([
             stackView.centerXAnchor.constraint(equalTo: button.centerXAnchor),
             stackView.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-            stackView.leadingAnchor.constraint(greaterThanOrEqualTo: button.leadingAnchor, constant: 8),
-            stackView.trailingAnchor.constraint(lessThanOrEqualTo: button.trailingAnchor, constant: -8),
+            stackView.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 2),
+            stackView.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -2),
 
             iconContainer.widthAnchor.constraint(equalToConstant: 32),
             iconContainer.heightAnchor.constraint(equalToConstant: 32),
@@ -879,8 +963,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             button.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             button.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             button.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            button.heightAnchor.constraint(equalToConstant: 60),
-            button.widthAnchor.constraint(equalToConstant: 60)
+            button.heightAnchor.constraint(equalToConstant: 60)
         ])
 
         return containerView
@@ -973,13 +1056,11 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     /// Phone-shaped host; see `MacOSLxAppTabBar.compact`. Republished so a
     /// simulated device change re-lays the strip.
     @Published private var compact: Bool = true
+    @Published private var displayScale: CGFloat = 1
     @Published private var morePresented = false
     private var onTabSelectedCallback: ((Int, String) -> Void)?
     /// Panel above the strip listing the folded items, while it is open.
-    private weak var overflowPanel: NSView?
-    /// The plate behind the folded items, kept so its colour can follow a
-    /// change of appearance -- a CGColor is resolved once and never again.
-    private weak var overflowPlate: NSView?
+    private weak var overflowPanel: LxAppTabBarOverflowPanel?
 
     var config: TabBar? {
         return tabBarConfig
@@ -1034,13 +1115,14 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
 
     func setSelectedIndex(_ index: Int, notifyListener: Bool) {
         // A pick from the overflow panel is a tab switch; the panel has done
-        // its job either way.
+        // its job either way. Strip clicks while the panel is open take the
+        // same path so the card cannot outlive the selection it stood in for.
         dismissOverflowPanel()
         if notifyListener, let callback = onTabSelectedCallback, let config = tabBarConfig {
             let items = config.getItems(appId: appId)
-            guard items.indices.contains(index) else { return }
+            guard let item = items.first(where: { $0.cachedIndex == index }) else { return }
             selectedIndex = index
-            callback(index, items[index].page_path.toString())
+            callback(index, item.page_path.toString())
             return
         }
 
@@ -1051,9 +1133,9 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         selectedIndex = index
     }
 
-    /// The folded items, shown flush above the strip. A desktop popover would
-    /// float outside the simulated screen, so the panel is an ordinary subview
-    /// of the same window instead — the phone hosts do the same.
+    /// The folded items, shown as a floating card above the strip. A desktop
+    /// popover would float outside the simulated screen, so the panel is an
+    /// ordinary subview of the same window instead — the phone hosts do the same.
     fileprivate func toggleOverflowPanel() {
         if overflowPanel != nil {
             dismissOverflowPanel()
@@ -1066,122 +1148,39 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         // those would swallow clicks that never belonged to the panel.
         guard let host = window?.contentView, let config = tabBarConfig else { return }
         let screen = superview ?? host
+        let items = config.getItems(appId: appId)
         let start = Int(config.overflow_start_index)
-        let count = Int(config.items_count)
-        guard start >= 0, start < count else { return }
+        guard start >= 0, start < items.count else { return }
         morePresented = true
 
-        let container = NSView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-        // The WebView sibling is layer-backed, and AppKit draws layer-backed
-        // views over non-layer-backed ones whatever the subview order says.
-        container.wantsLayer = true
-
-        let scrim = NSView()
-        scrim.translatesAutoresizingMaskIntoConstraints = false
-        scrim.wantsLayer = true
-        // Invisible, like the phone hosts': it exists to catch the click that
-        // dismisses the panel, not to dim the page behind it.
-        scrim.layer?.backgroundColor = NSColor.clear.cgColor
-        scrim.addGestureRecognizer(
-            NSClickGestureRecognizer(target: self, action: #selector(overflowScrimClicked))
-        )
-        container.addSubview(scrim)
-
-        let grid = MacOSLxAppTabBar(
-            appId: appId,
+        let panel = LxAppTabBarOverflowPanel(
+            items: items,
+            indices: Array(start..<items.count),
             config: config,
-            selectedIndex: Binding(
-                get: { [weak self] in self?.selectedIndex ?? 0 },
-                set: { [weak self] value in self?.setSelectedIndex(value, notifyListener: true) }
-            ),
-            compact: compact,
-            overflowGrid: Array(start..<count)
-        ) { [weak self] index, _ in
-            self?.setSelectedIndex(index, notifyListener: true)
-        }
-        // An immersive bar is transparent; the panel is a surface of its own
-        // and needs a plate, or the folded items float over the page.
-        let panel = NSView()
-        panel.translatesAutoresizingMaskIntoConstraints = false
-        panel.wantsLayer = true
-        container.addSubview(panel)
-        overflowPlate = panel
-        paintOverflowPlate()
-
-        let hosted = NSHostingView(rootView: grid)
-        hosted.translatesAutoresizingMaskIntoConstraints = false
-        panel.addSubview(hosted)
-
-        host.addSubview(container, positioned: .above, relativeTo: nil)
-        // Held so the panel can start below the strip and slide up.
-        let offset = panel.bottomAnchor.constraint(equalTo: topAnchor)
-        NSLayoutConstraint.activate([
-            container.topAnchor.constraint(equalTo: host.topAnchor),
-            container.leadingAnchor.constraint(equalTo: host.leadingAnchor),
-            container.trailingAnchor.constraint(equalTo: host.trailingAnchor),
-            container.bottomAnchor.constraint(equalTo: host.bottomAnchor),
-            // Only over the screen the strip belongs to, not the whole window.
-            scrim.topAnchor.constraint(equalTo: screen.topAnchor),
-            scrim.leadingAnchor.constraint(equalTo: screen.leadingAnchor),
-            scrim.trailingAnchor.constraint(equalTo: screen.trailingAnchor),
-            scrim.bottomAnchor.constraint(equalTo: screen.bottomAnchor),
-            // Flush on top of the strip, and no wider than it, so the panel
-            // stays inside the simulated screen rather than the whole window.
-            offset,
-            panel.leadingAnchor.constraint(equalTo: leadingAnchor),
-            panel.trailingAnchor.constraint(equalTo: trailingAnchor),
-            hosted.topAnchor.constraint(equalTo: panel.topAnchor),
-            hosted.leadingAnchor.constraint(equalTo: panel.leadingAnchor),
-            hosted.trailingAnchor.constraint(equalTo: panel.trailingAnchor),
-            hosted.bottomAnchor.constraint(equalTo: panel.bottomAnchor)
-        ])
-        overflowPanel = container
-
-        // The panel has no height of its own -- it takes the hosting view's
-        // intrinsic size, which is only known after a layout pass. Without
-        // this the first frame draws it collapsed and the second jumps it to
-        // full height. Lay out, park it below the strip, then slide it up;
-        // the phone hosts open the same way.
-        container.layoutSubtreeIfNeeded()
-        offset.constant = panel.frame.height
-        container.layoutSubtreeIfNeeded()
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.16
-            context.allowsImplicitAnimation = true
-            offset.animator().constant = 0
-            container.layoutSubtreeIfNeeded()
-        }
-    }
-
-    /// A CGColor keeps the colour that was current when it was read. The runner
-    /// pins the window's appearance after the window is up, so the plate has to
-    /// be repainted rather than baked. For a transparent bar the plate sits on
-    /// the page, so use the page's declared colour rather than window chrome.
-    private func paintOverflowPlate() {
-        guard let plate = overflowPlate, let config = tabBarConfig else { return }
-        guard TabBarHelper.isTransparent(config.background_color) else {
-            plate.layer?.backgroundColor = PlatformColor(argb: config.background_color).cgColor
-            return
-        }
-        plate.effectiveAppearance.performAsCurrentDrawingAppearance {
-            plate.layer?.backgroundColor = WebViewManager.overflowPanelColor(appId: appId).cgColor
-        }
+            selectedIndex: selectedIndex,
+            appId: appId,
+            displayScale: displayScale,
+            onPick: { [weak self] index in
+                self?.setSelectedIndex(index, notifyListener: true)
+            },
+            onDismiss: { [weak self] in
+                guard let self else { return }
+                self.morePresented = false
+                self.overflowPanel = nil
+            }
+        )
+        panel.present(in: host, above: self, clippedTo: screen)
+        overflowPanel = panel
     }
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        paintOverflowPlate()
-    }
-
-    @objc private func overflowScrimClicked() {
-        dismissOverflowPanel()
+        overflowPanel?.paintPlate()
     }
 
     private func dismissOverflowPanel() {
-        overflowPanel?.removeFromSuperview()
+        overflowPanel?.dismissPanel()
         overflowPanel = nil
-        overflowPlate = nil
         morePresented = false
     }
 
@@ -1190,6 +1189,16 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     func setCompact(_ value: Bool) {
         guard compact != value else { return }
         compact = value
+        updateSwiftUIView()
+    }
+
+    /// Keep SDK-owned chrome proportional to a Runner device frame that was
+    /// reduced to fit the current display.
+    func setDisplayScale(_ value: CGFloat) {
+        let normalized = min(1, max(0.4, value))
+        guard abs(displayScale - normalized) > 0.001 else { return }
+        dismissOverflowPanel()
+        displayScale = normalized
         updateSwiftUIView()
     }
 
@@ -1262,6 +1271,7 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
                 config: config,
                 selectedIndex: $wrapper.selectedIndex,
                 compact: wrapper.compact,
+                displayScale: wrapper.displayScale,
                 overflowPresented: wrapper.morePresented,
                 onMoreRequested: { wrapper.toggleOverflowPanel() }
             ) { index, path in

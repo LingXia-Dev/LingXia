@@ -13,7 +13,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.lingxia.app.NativeApi
-import java.io.File
 
 /**
  * The tab items a compact strip could not fit, shown as a panel directly above
@@ -25,12 +24,11 @@ internal object TabBarOverflowSheet {
     private const val PANEL_HORIZONTAL_MARGIN_DP = 12
     private const val PANEL_BOTTOM_GAP_DP = 8
     private const val PANEL_PADDING_DP = 8
-    private const val CELL_VERTICAL_PADDING_DP = 12
+    private const val CELL_VERTICAL_PADDING_DP = 6
     private const val CELL_ICON_SIZE_DP = 24
     private const val CELL_ICON_TEXT_SPACING_DP = 4
-    private const val CELL_TEXT_SIZE_SP = 11f
+    private const val CELL_TEXT_SIZE_SP = 10f
     private const val ENTER_DURATION_MS = 160L
-    private const val CELL_INDICATOR_SIZE_DP = 36
     private const val CELL_INDICATOR_ALPHA = 0x33
     private var activeAnchor: View? = null
     private var activeDismiss: (() -> Unit)? = null
@@ -245,71 +243,73 @@ internal object TabBarOverflowSheet {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 1f
             )
-            val vertical = (CELL_VERTICAL_PADDING_DP * density).toInt()
-            setPadding(0, vertical, 0, vertical)
             clipChildren = false
             clipToPadding = false
             setOnClickListener { onClick() }
+            val cellInset = (2 * density).toInt()
+            setPadding(cellInset, cellInset, cellInset, cellInset)
 
-            val iconSize = (CELL_ICON_SIZE_DP * density).toInt()
-            val badgeSpace = (10 * density).toInt()
-            // The active indicator sits behind the icon, so the wrapper has to
-            // be at least as tall and wide or it squares the circle off.
-            val indicator = if (selected) {
-                (CELL_INDICATOR_SIZE_DP * density).toInt()
-            } else {
-                0
-            }
-            val iconWrapper = FrameLayout(activity).apply {
+            val vertical = (CELL_VERTICAL_PADDING_DP * density).toInt()
+            val content = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(
-                    maxOf(iconSize + badgeSpace, indicator),
-                    maxOf(iconSize + (4 * density).toInt(), indicator)
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
                 )
+                setPadding(0, vertical, 0, vertical)
                 clipChildren = false
                 clipToPadding = false
-            }
-            // Mirrors the strip: the indicator marks whatever is selected.
-            if (selected) {
-                val indicatorSize = (CELL_INDICATOR_SIZE_DP * density).toInt()
-                iconWrapper.addView(View(activity).apply {
-                    layoutParams = FrameLayout.LayoutParams(indicatorSize, indicatorSize)
-                        .apply { gravity = Gravity.CENTER }
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor((state.selectedColor and 0x00FFFFFF) or (CELL_INDICATOR_ALPHA shl 24))
-                    }
-                })
-            }
-            iconWrapper.addView(ImageView(activity).apply {
-                layoutParams = FrameLayout.LayoutParams(iconSize, iconSize).apply {
-                    gravity = Gravity.CENTER
-                }
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                setImageDrawable(loadIcon(item, selected, state, density))
-            })
-            if (!item.badge.isNullOrBlank()) {
-                iconWrapper.addView(badgeView(activity, item.badge, density))
-            } else if (item.hasRedDot) {
-                iconWrapper.addView(redDotView(activity, density))
-            }
-            addView(iconWrapper)
 
-            if (!item.text.isNullOrBlank()) {
-                addView(TextView(activity).apply {
-                    text = item.text
-                    setTextColor(if (selected) state.selectedColor else palette.body)
-                    setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, CELL_TEXT_SIZE_SP)
-                    gravity = Gravity.CENTER
-                    isSingleLine = true
-                    ellipsize = android.text.TextUtils.TruncateAt.END
+                val iconSize = (CELL_ICON_SIZE_DP * density).toInt()
+                val badgeSpace = (8 * density).toInt()
+                val iconWrapper = FrameLayout(activity).apply {
                     layoutParams = LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        topMargin = (CELL_ICON_TEXT_SPACING_DP * density).toInt()
+                        iconSize + badgeSpace,
+                        iconSize + badgeSpace
+                    )
+                    clipChildren = false
+                    clipToPadding = false
+                    if (selected) {
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor((state.selectedColor and 0x00FFFFFF) or (CELL_INDICATOR_ALPHA shl 24))
+                        }
                     }
+                }
+                iconWrapper.addView(ImageView(activity).apply {
+                    layoutParams = FrameLayout.LayoutParams(iconSize, iconSize).apply {
+                        gravity = Gravity.CENTER
+                    }
+                    ChromeIcon.applyTo(this, item.iconPath)
+                    setImageDrawable(loadIcon(item, selected, state, density))
                 })
+                if (!item.badge.isNullOrBlank()) {
+                    iconWrapper.addView(badgeView(activity, item.badge, density))
+                } else if (item.hasRedDot) {
+                    iconWrapper.addView(redDotView(activity, density))
+                }
+                addView(iconWrapper)
+
+                if (!item.text.isNullOrBlank()) {
+                    addView(TextView(activity).apply {
+                        text = item.text
+                        setTextColor(if (selected) state.selectedColor else palette.body)
+                        setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, CELL_TEXT_SIZE_SP)
+                        gravity = Gravity.CENTER
+                        includeFontPadding = false
+                        isSingleLine = true
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            topMargin = (CELL_ICON_TEXT_SPACING_DP * density).toInt()
+                        }
+                    })
+                }
             }
+            addView(content)
         }
     }
 
@@ -319,21 +319,14 @@ internal object TabBarOverflowSheet {
         state: TabBarState,
         density: Float
     ): android.graphics.drawable.Drawable {
-        val file = File(item.iconPath)
-        val loaded = if (file.exists()) {
-            android.graphics.drawable.Drawable.createFromPath(file.absolutePath)
-        } else {
-            null
-        }
-        val drawable = loaded ?: GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(if (selected) state.selectedColor else state.color)
-            val size = (CELL_ICON_SIZE_DP * density).toInt()
-            setSize(size, size)
-        }
-        // Mirrors the strip: the icon is a template glyph the panel tints.
-        return drawable.mutate().apply {
-            setTint(if (selected) state.selectedColor else state.color)
+        val tint = if (selected) state.selectedColor else state.color
+        return ChromeIcon.load(item.iconPath, tint) {
+            GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(tint)
+                val size = (CELL_ICON_SIZE_DP * density).toInt()
+                setSize(size, size)
+            }
         }
     }
 
