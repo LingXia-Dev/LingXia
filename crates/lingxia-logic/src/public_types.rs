@@ -345,9 +345,9 @@ rong::js_api! {
      * `lx://userdata` path from a LingXia file API. Network URLs are rejected —
      * download first (`lx.downloadFile`) and pass the returned path.
      *
-     * Template-tinted on most hosts (`foregroundColor` /
-     * `selectedForegroundColor`). Ship a monochrome glyph; a colour logo becomes
-     * a flat silhouette. HarmonyOS PNG is the exception — don't rely on it.
+     * SVG (and SF Symbols) are template-tinted with `foregroundColor` /
+     * `selectedForegroundColor`. Raster files (PNG/JPEG/WebP) keep their own
+     * colour so a brand mark is not flattened into a solid square.
      */
     iconPath?: string | null;
     badge?: string | null;
@@ -1901,8 +1901,13 @@ true
      * `public/settings.svg`, or an `lx://temp`, `lx://usercache`, or
      * `lx://userdata` path returned by LingXia file APIs. Native absolute paths,
      * parent traversal, `file:` URLs, and network URLs are rejected; download a
-     * remote icon before registration. For portable rendering, prefer a square,
-     * transparent, monochrome SVG or PNG designed for a 16-point visual.
+     * remote icon before registration.
+     *
+     * SVG is a template glyph tinted by the host. Raster PNG/JPEG/WebP retains
+     * its colour and is center-cropped to the square icon slot, which is suitable
+     * for a brand logo; provide square artwork when the crop matters. A path in
+     * `lx://temp` is temporary, so download and register it again after the next
+     * Logic launch rather than persisting it.
      */
     icon: string;
     /**

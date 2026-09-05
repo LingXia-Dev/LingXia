@@ -770,7 +770,10 @@ fn get_lxapp_session_id(appid: String) -> i64 {
 }
 
 /// Re-measure host chrome and publish the Page Chrome View snapshot.
-#[napi]
+/// `js_name` keeps the acronym as `UI`; napi-ohos would otherwise export
+/// `syncLxappHostUi`, which ArkTS then fails to import as `syncLxappHostUI`
+/// and kills the ability with a SyntaxError.
+#[napi(js_name = "syncLxappHostUI")]
 fn sync_lxapp_host_ui(appid: String) -> bool {
     let Some(lxapp) = lxapp::try_get(&appid) else {
         return false;

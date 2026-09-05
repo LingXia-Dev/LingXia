@@ -205,6 +205,10 @@ enum RunnerSupport {
             LingxiaRunnerSPI.Tabs.setCompact(view, compact: compact)
         }
 
+        static func setDisplayScale(_ view: NSView?, scale: CGFloat) {
+            LingxiaRunnerSPI.Tabs.setDisplayScale(view, scale: scale)
+        }
+
         static func setSelectedIndex(_ view: NSView?, index: Int, notifyListener: Bool) {
             LingxiaRunnerSPI.Tabs.setSelectedIndex(view, index: index, notifyListener: notifyListener)
         }

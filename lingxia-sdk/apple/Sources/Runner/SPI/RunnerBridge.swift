@@ -81,8 +81,7 @@ enum RunnerBridge {
         guard let webView = LxAppCore.getCurrentWebView() else { return }
         // Native components are sibling overlays, so removing only the WebView
         // leaves them visible over the next page.
-        webView.pauseWebView()
-        webView.removeFromSuperview()
+        WebViewManager.detachLxAppWebView(webView)
     }
 
     static func homeLxAppId() -> String? {
@@ -230,6 +229,10 @@ enum RunnerBridge {
 
     static func setTabBarCompact(_ view: NSView?, compact: Bool) {
         (view as? LingXiaTabBar)?.setCompact(compact)
+    }
+
+    static func setTabBarDisplayScale(_ view: NSView?, scale: CGFloat) {
+        (view as? LingXiaTabBar)?.setDisplayScale(scale)
     }
 
     static func setSimulatedHostClass(mobile: Bool) {

@@ -280,7 +280,16 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   const { app } = bindFixture(t, 'HOSTAPP-SIDEBAR-001');
   // The declaration is process-local shell chrome; drop it however the spec ends.
   t.defer(async () => {
-    await app.eval({ script: `try { lx.shell.sidebarActions.clear(); } catch {} return true;` });
+    await app.eval({
+      script: `
+        try { lx.shell.sidebarActions.clear(); } catch {}
+        if (globalThis.__sidebarProbeIcon) {
+          try { await lx.fs.remove(globalThis.__sidebarProbeIcon); } catch {}
+          delete globalThis.__sidebarProbeIcon;
+        }
+        return true;
+      `,
+    });
   });
 
   await t.step('declare a header and a footer action', async () => {
@@ -300,6 +309,17 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
       return 'patched';
     `);
     expect(result.ok).toBeTruthy();
+  });
+
+  await t.step('accept a runtime-managed raster icon', async () => {
+    const result = await evalCaught(app, `
+      const shot = await lx.app.screenshot();
+      globalThis.__sidebarProbeIcon = shot.tempFilePath;
+      lx.shell.sidebarActions.update('probe-footer', { icon: shot.tempFilePath });
+      return shot.tempFilePath;
+    `);
+    expect(result.ok).toBeTruthy();
+    expect(result.value).toMatch(/^lx:\/\//);
   });
 
   await t.step('reject a patch for an id outside the declaration', async () => {

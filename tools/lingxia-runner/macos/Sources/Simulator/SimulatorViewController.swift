@@ -14,6 +14,7 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     
     public let appId: String
     public private(set) var currentPath: String
+    private var displayScale: CGFloat
     
     private var webViewContainer: NSView!
     internal var tabBarView: NSView?
@@ -31,9 +32,10 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     
     // MARK: - Initialization
     
-    public init(appId: String, path: String) {
+    public init(appId: String, path: String, displayScale: CGFloat = 1) {
         self.appId = appId
         self.currentPath = path
+        self.displayScale = min(1, max(0.4, displayScale))
         super.init(nibName: nil, bundle: nil)
     }
     
@@ -110,7 +112,7 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
     }
     
     private func setupTabBarConstraints(tabBar: NSView, config: RunnerTabBarConfig) {
-        let dimension = CGFloat(config.dimension)
+        let dimension = CGFloat(config.dimension) * displayScale
         NSLayoutConstraint.deactivate(tabBarConstraints)
         tabBarConstraints = createTabBarConstraints(tabBar: tabBar, position: config.position, dimension: dimension)
         NSLayoutConstraint.activate(tabBarConstraints)
@@ -242,12 +244,25 @@ public class SimulatorViewController: NSViewController, WKNavigationDelegate {
             tabBarView,
             compact: RunnerApp.shared.selectedDeviceSize.shape == .phone
         )
+        RunnerSupport.TabBar.setDisplayScale(tabBarView, scale: displayScale)
 
         if let tabBar = tabBarView {
             view.addSubview(tabBar, positioned: .above, relativeTo: webViewContainer)
             updateWebViewEdgeConstraints(tabBar: tabBar, config: tabBarConfig)
         }
 
+        view.needsLayout = true
+        view.layoutSubtreeIfNeeded()
+    }
+
+    func setDisplayScale(_ value: CGFloat) {
+        let normalized = min(1, max(0.4, value))
+        guard abs(displayScale - normalized) > 0.001 else { return }
+        displayScale = normalized
+        guard let tabBar = tabBarView, let config = tabBarConfig else { return }
+        setupTabBarConstraints(tabBar: tabBar, config: config)
+        RunnerSupport.TabBar.setDisplayScale(tabBar, scale: normalized)
+        updateWebViewEdgeConstraints(tabBar: tabBar, config: config)
         view.needsLayout = true
         view.layoutSubtreeIfNeeded()
     }

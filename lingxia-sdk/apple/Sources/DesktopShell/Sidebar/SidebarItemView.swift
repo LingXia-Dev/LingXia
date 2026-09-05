@@ -49,6 +49,7 @@ class SidebarItemView: NSView {
     /// The item's single icon; selection is styled, not swapped, exactly like
     /// the mobile tabbar.
     private var iconPath = ""
+    private var iconIsTemplate = true
 
     let itemIndex: Int
     let appId: String
@@ -92,7 +93,8 @@ class SidebarItemView: NSView {
 
         // Icon
         iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.imageScaling = .scaleProportionallyUpOrDown
+        iconView.imageScaling = .scaleProportionallyDown
+        iconView.wantsLayer = true
         addSubview(iconView)
 
         // Title
@@ -217,33 +219,35 @@ class SidebarItemView: NSView {
     }
 
     private func loadIcon(path: String) {
+        let image: NSImage?
         if path.hasPrefix("SF:") {
             let symbolName = String(path.dropFirst(3))
-            iconView.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
-            iconView.contentTintColor = LxAppHostTheme.mutedForeground
+            image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
         } else if path.hasPrefix("/") {
-            if let image = NSImage(contentsOfFile: path) {
-                iconView.image = image
-                iconView.contentTintColor = LxAppHostTheme.mutedForeground
-            }
+            image = NSImage(contentsOfFile: path)
         } else if !path.isEmpty {
             // Try bundle image first, then resources path
             if let bundleImage = NSImage(named: path) {
-                iconView.image = bundleImage
-                iconView.contentTintColor = LxAppHostTheme.mutedForeground
+                image = bundleImage
             } else {
                 let resourcesPath = Bundle.main.resourcePath ?? ""
                 let fullPath = "\(resourcesPath)/\(appId)/\(path)"
-                if let image = NSImage(contentsOfFile: fullPath) {
-                    iconView.image = image
-                    iconView.contentTintColor = LxAppHostTheme.mutedForeground
-                }
+                image = NSImage(contentsOfFile: fullPath)
             }
         } else {
-            // Fallback: generic page icon
-            iconView.image = NSImage(systemSymbolName: "doc", accessibilityDescription: nil)
-            iconView.contentTintColor = LxAppHostTheme.mutedForeground
+            image = nil
         }
+
+        let resolvedPath = image == nil ? "SF:doc" : path
+        let resolvedImage = image
+            ?? NSImage(systemSymbolName: "doc", accessibilityDescription: nil)
+        iconIsTemplate = TabBarHelper.isTemplateIcon(resolvedPath)
+        iconView.image = resolvedImage.map {
+            TabBarHelper.appKitIcon($0, path: resolvedPath, size: Layout.iconSize)
+        }
+        iconView.layer?.cornerRadius = iconIsTemplate ? 0 : Layout.iconSize * 0.22
+        iconView.layer?.masksToBounds = !iconIsTemplate
+        iconView.contentTintColor = iconIsTemplate ? LxAppHostTheme.mutedForeground : nil
     }
 
     private func updateAppearance() {
@@ -266,19 +270,19 @@ class SidebarItemView: NSView {
             }()
             titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .medium)
             titleLabel.textColor = selectedTint ?? LxAppHostTheme.foreground
-            iconView.contentTintColor = accent
+            iconView.contentTintColor = iconIsTemplate ? accent : nil
         } else if isHovered {
             selectionBackground.shadow = nil
             titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
             selectionBackground.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
             titleLabel.textColor = unselectedTint ?? LxAppHostTheme.foreground
-            iconView.contentTintColor = LxAppHostTheme.mutedForeground
+            iconView.contentTintColor = iconIsTemplate ? LxAppHostTheme.mutedForeground : nil
         } else {
             selectionBackground.shadow = nil
             titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
             selectionBackground.layer?.backgroundColor = NSColor.clear.cgColor
             titleLabel.textColor = unselectedTint ?? LxAppHostTheme.foreground
-            iconView.contentTintColor = LxAppHostTheme.mutedForeground
+            iconView.contentTintColor = iconIsTemplate ? LxAppHostTheme.mutedForeground : nil
         }
     }
 

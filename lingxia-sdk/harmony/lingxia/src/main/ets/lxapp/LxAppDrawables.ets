@@ -113,11 +113,21 @@ export struct CloseIcon {
   @Prop color: number = 0xFF000000
 
   build() {
-    Image($rawfile('icons/icon_capsule_close.svg'))
-      .width(28)
-      .height(20)
-      .objectFit(ImageFit.Contain)
-      .fillColor(argbColor(this.color))
+    // Image.fillColor also fills the SVG's hollow outer circle on Harmony.
+    Stack() {
+      Circle()
+        .width(15)
+        .height(15)
+        .fill(Color.Transparent)
+        .stroke(argbColor(this.color))
+        .strokeWidth(1.5)
+      Circle()
+        .width(4.75)
+        .height(4.75)
+        .fill(argbColor(this.color))
+    }
+    .width(28)
+    .height(20)
   }
 }
 

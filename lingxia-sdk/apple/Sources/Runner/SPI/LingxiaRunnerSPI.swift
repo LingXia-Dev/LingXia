@@ -239,6 +239,12 @@ import WebKit
             RunnerBridge.setTabBarCompact(view, compact: compact)
         }
 
+        /// Scale SDK-owned tabbar chrome with a device frame reduced to fit the
+        /// Runner's current display.
+        public static func setDisplayScale(_ view: NSView?, scale: CGFloat) {
+            RunnerBridge.setTabBarDisplayScale(view, scale: scale)
+        }
+
         /// Tell the runtime which machine it is standing in for, so a tab item
         /// declared `showOn: ["mobile"]` appears in a phone shape and not in a
         /// desktop one. Only the runner simulates a host it was not built for.

@@ -99,10 +99,9 @@ final class MacTitlebarActionStrip: NSView {
 
             if let iconURL = item.iconURL,
                let image = NSImage(contentsOf: iconURL) {
-                image.size = NSSize(width: 14, height: 14)
-                image.isTemplate = true
-                button.image = image
-                button.contentTintColor = LxAppHostTheme.mutedForeground
+                let template = TabBarHelper.isTemplateIcon(iconURL.path)
+                button.image = TabBarHelper.appKitIcon(image, path: iconURL.path, size: 14)
+                button.contentTintColor = template ? LxAppHostTheme.mutedForeground : nil
             } else {
                 let fallback = NSImage(systemSymbolName: "square.grid.2x2", accessibilityDescription: item.label)
                 fallback?.size = NSSize(width: 14, height: 14)

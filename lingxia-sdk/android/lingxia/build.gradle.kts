@@ -57,6 +57,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation("androidx.webkit:webkit:1.15.0")
     implementation(libs.material)
+    implementation("com.caverock:androidsvg-aar:1.4")
     implementation("androidx.viewpager2:viewpager2:1.0.0")
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.4.1")

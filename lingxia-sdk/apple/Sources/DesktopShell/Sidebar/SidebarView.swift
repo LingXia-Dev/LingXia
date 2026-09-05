@@ -751,11 +751,9 @@ class SidebarView: NSView {
         return image
     }
 
-    private static func sidebarHeaderActionIcon(_ url: URL?) -> NSImage? {
+    private static func sidebarActionIcon(_ url: URL?, size: CGFloat) -> NSImage? {
         guard let url, let image = NSImage(contentsOf: url) else { return nil }
-        image.isTemplate = true
-        image.size = NSSize(width: 16, height: 16)
-        return image
+        return TabBarHelper.appKitIcon(image, path: url.path, size: size)
     }
 
     /// Called when a panel icon button is clicked: (panelId)
@@ -1419,13 +1417,14 @@ class SidebarView: NSView {
         // Footer actions keep their bottom ownership in the rail. Only their
         // icon remains; the label moves to the tooltip.
         for item in model.panelItems {
-            let image = item.iconURL.flatMap { NSImage(contentsOf: $0) }
+            let iconPath = item.iconURL?.path ?? ""
+            let image = Self.sidebarActionIcon(item.iconURL, size: Layout.railIconSize)
             let key = "sidebar-action:\(item.id)"
             let button = makeRailButton(
                 key: key,
                 tooltip: item.label,
                 image: image,
-                isTemplate: false
+                isTemplate: TabBarHelper.isTemplateIcon(iconPath)
             )
             button.action = #selector(railSidebarActionClicked(_:))
             button.isEnabled = !item.disabled
@@ -1868,14 +1867,16 @@ class SidebarView: NSView {
             $0.removeFromSuperview()
         }
         for item in items {
+            let iconPath = item.iconURL?.path ?? ""
+            let isTemplate = TabBarHelper.isTemplateIcon(iconPath)
             let button = SidebarHeaderActionButton()
             button.translatesAutoresizingMaskIntoConstraints = false
             button.isBordered = false
             button.bezelStyle = .regularSquare
             button.imagePosition = .imageOnly
             button.imageScaling = .scaleProportionallyDown
-            button.contentTintColor = LxAppHostTheme.mutedForeground
-            button.image = Self.sidebarHeaderActionIcon(item.iconURL)
+            button.contentTintColor = isTemplate ? LxAppHostTheme.mutedForeground : nil
+            button.image = Self.sidebarActionIcon(item.iconURL, size: 16)
             button.toolTip = item.label
             button.setAccessibilityLabel(item.label)
             button.isEnabled = !item.disabled
@@ -2044,13 +2045,15 @@ class SidebarView: NSView {
               index < panelButtons.count,
               let url = URL(string: iconFileUrl),
               let image = NSImage(contentsOf: url) else { return }
-        panelButtons[index].setIcon(image)
+        panelButtons[index].setIcon(image, path: url.path)
         if let railButton = railButtons["sidebar-action:\(panelId)"] {
-            let copy = image.copy() as? NSImage ?? image
-            copy.size = NSSize(width: Layout.railIconSize, height: Layout.railIconSize)
-            copy.isTemplate = false
-            railButton.image = copy
-            railButton.contentTintColor = nil
+            let template = TabBarHelper.isTemplateIcon(url.path)
+            railButton.image = TabBarHelper.appKitIcon(
+                image,
+                path: url.path,
+                size: Layout.railIconSize
+            )
+            railButton.contentTintColor = template ? LxAppHostTheme.mutedForeground : nil
         }
     }
 
@@ -2939,12 +2942,15 @@ private enum SidebarActionChromePalette {
 /// NSButton centers its image+title block and cannot left-align it.
 @MainActor
 final class SidebarActionRowView: NSView {
+    private static let iconSize: CGFloat = 18
+
     var onClick: (() -> Void)?
 
     private let iconView = NSImageView()
     private let titleLabel: NSTextField
     private let active: Bool
     private let disabled: Bool
+    private var iconIsTemplate = true
     private var isHovered = false { didSet { updateAppearance() } }
     private var isPressed = false { didSet { updateAppearance() } }
     private var tracking: NSTrackingArea?
@@ -2953,7 +2959,7 @@ final class SidebarActionRowView: NSView {
     private let accentView = NSView()
 
     var preferredCellWidth: CGFloat {
-        8 + 16 + 8 + titleLabel.intrinsicContentSize.width + 8
+        8 + Self.iconSize + 8 + titleLabel.intrinsicContentSize.width + 8
     }
 
     init(label: String, iconURL: URL?, active: Bool, disabled: Bool) {
@@ -2983,12 +2989,14 @@ final class SidebarActionRowView: NSView {
         addSubview(accentView)
 
         let icon = iconURL.flatMap { NSImage(contentsOf: $0) }
-        icon?.size = NSSize(width: 16, height: 16)
-        iconView.image = icon
         iconView.imageScaling = .scaleProportionallyDown
+        iconView.wantsLayer = true
         iconView.alphaValue = disabled ? 0.42 : (self.active ? 1 : 0.82)
         iconView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(iconView)
+        if let icon {
+            setIcon(icon, path: iconURL?.path)
+        }
 
         titleLabel.font = NSFont.systemFont(
             ofSize: 13,
@@ -3012,8 +3020,8 @@ final class SidebarActionRowView: NSView {
             accentView.heightAnchor.constraint(equalToConstant: 18),
             iconView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
             iconView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 16),
-            iconView.heightAnchor.constraint(equalToConstant: 16),
+            iconView.widthAnchor.constraint(equalToConstant: Self.iconSize),
+            iconView.heightAnchor.constraint(equalToConstant: Self.iconSize),
             titleLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 8),
             titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: washView.trailingAnchor, constant: -8),
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -3024,9 +3032,13 @@ final class SidebarActionRowView: NSView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    func setIcon(_ image: NSImage) {
-        image.size = NSSize(width: 16, height: 16)
-        iconView.image = image
+    func setIcon(_ image: NSImage, path: String? = nil) {
+        let iconPath = path ?? ""
+        iconIsTemplate = TabBarHelper.isTemplateIcon(iconPath)
+        iconView.image = TabBarHelper.appKitIcon(image, path: iconPath, size: Self.iconSize)
+        iconView.layer?.cornerRadius = iconIsTemplate ? 0 : Self.iconSize * 0.22
+        iconView.layer?.masksToBounds = !iconIsTemplate
+        iconView.contentTintColor = iconIsTemplate ? SidebarActionChromePalette.mutedText : nil
     }
 
     private func updateAppearance() {
@@ -3034,6 +3046,9 @@ final class SidebarActionRowView: NSView {
         titleLabel.textColor = disabled
             ? LxAppHostTheme.mutedForeground
             : (active ? LxAppHostTheme.accent : SidebarActionChromePalette.mutedText)
+        iconView.contentTintColor = iconIsTemplate
+            ? (active ? LxAppHostTheme.accent : SidebarActionChromePalette.mutedText)
+            : nil
         if isPressed && !disabled {
             washView.layer?.backgroundColor = SidebarActionChromePalette.pressed.cgColor
         } else if active {
