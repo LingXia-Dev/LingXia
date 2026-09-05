@@ -114,21 +114,25 @@ pub(crate) fn run_install_native_settings_actions(
 }
 
 pub(crate) fn run_install_logic_extensions() {
-    #[cfg(feature = "standard")]
+    #[cfg(any(feature = "standard", feature = "automation"))]
     {
         unsafe extern "Rust" {
             #[link_name = "lingxia_lxapp_run_host_extension_registration_v1"]
             fn run_host_extension_registration(action: Box<dyn FnOnce()>);
         }
+        #[cfg(feature = "standard")]
         let installed = snapshot_host_addons();
-        // SAFETY: this private ABI marks only the synchronous HostAddon hook as
-        // control-capable registration. Calls through the public extension API
-        // outside this phase remain StandardApp-only.
+        // SAFETY: this private ABI marks only synchronous native bootstrap
+        // registration as control-capable. Calls through the public extension
+        // API outside this phase remain StandardApp-only.
         unsafe {
             run_host_extension_registration(Box::new(move || {
+                #[cfg(feature = "standard")]
                 for addon in installed.iter() {
                     addon.install_logic_extensions();
                 }
+                #[cfg(feature = "automation")]
+                lingxia_automation::register_automation_runtime();
             }))
         };
     }
