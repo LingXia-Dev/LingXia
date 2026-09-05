@@ -86,7 +86,7 @@ case "$profile" in
       aarch64-apple-darwin|x86_64-apple-darwin) ;;
       *) echo "unsupported Apple CI host target: $host_target" >&2; exit 1 ;;
     esac
-    cargo rustc -p lingxia --target "$host_target" --lib -- --crate-type=staticlib
+    cargo rustc -p lingxia --target "$host_target" --lib --crate-type staticlib
     LINGXIA_BUILD_CONFIG=debug \
       RUNNER_TARGET_TRIPLE="$host_target" \
       swift test --package-path lingxia-sdk/apple
