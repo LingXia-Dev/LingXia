@@ -5755,6 +5755,21 @@ enum BrowserPageOpenAuthority {
 }
 
 #[cfg(feature = "browser-runtime")]
+#[derive(Debug, PartialEq, Eq)]
+enum NativeControlTabTarget<'a> {
+    ExistingRuntimeId(&'a str),
+    NewOwnerScoped,
+}
+
+#[cfg(feature = "browser-runtime")]
+fn native_control_tab_target(tab_id: Option<&str>) -> NativeControlTabTarget<'_> {
+    match tab_id {
+        Some(tab_id) => NativeControlTabTarget::ExistingRuntimeId(tab_id),
+        None => NativeControlTabTarget::NewOwnerScoped,
+    }
+}
+
+#[cfg(feature = "browser-runtime")]
 fn open_browser_page_with_authority(
     appid: &str,
     session_id: u64,
@@ -5772,10 +5787,21 @@ fn open_browser_page_with_authority(
                     "native browser runtime authority is not initialized".to_string(),
                 )
             })?;
-            if SELF_BROWSER_HOST.load(Ordering::Acquire) {
-                runtime.open_trusted_browser_page(url, tab_id)
-            } else {
-                runtime.open_trusted_browser_page_for_app(appid, session_id, url, tab_id)
+            match native_control_tab_target(tab_id) {
+                // `browser_tabs()` returns runtime ids, not owner-stable keys.
+                // Navigating it through `open_*_for_app` would scope it again
+                // and create a hidden sibling instead of updating this tab.
+                NativeControlTabTarget::ExistingRuntimeId(tab_id) => {
+                    runtime.open_trusted_browser_page(url, Some(tab_id))
+                }
+                NativeControlTabTarget::NewOwnerScoped
+                    if !SELF_BROWSER_HOST.load(Ordering::Acquire) =>
+                {
+                    runtime.open_trusted_browser_page_for_app(appid, session_id, url, None)
+                }
+                NativeControlTabTarget::NewOwnerScoped => {
+                    runtime.open_trusted_browser_page(url, None)
+                }
             }
         }
     }
@@ -7311,6 +7337,19 @@ mod tests {
         assert!(!browser_internal_page_deep_link("lingxia://settings"));
         assert!(!browser_internal_page_deep_link("lingxia://settings/"));
         assert!(!browser_internal_page_deep_link("https://example.com/?q=1"));
+    }
+
+    #[cfg(feature = "browser-runtime")]
+    #[test]
+    fn existing_native_control_tab_ids_are_not_owner_scoped_again() {
+        assert_eq!(
+            native_control_tab_target(Some("downloads-ownerhash")),
+            NativeControlTabTarget::ExistingRuntimeId("downloads-ownerhash")
+        );
+        assert_eq!(
+            native_control_tab_target(None),
+            NativeControlTabTarget::NewOwnerScoped
+        );
     }
 
     #[test]
