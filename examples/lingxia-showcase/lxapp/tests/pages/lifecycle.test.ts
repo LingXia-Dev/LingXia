@@ -331,7 +331,7 @@ spec("fire onLoad once per tab instance, not on preload or later switchTab", {
 
   const apiLoadCount = async (): Promise<number | null> => app.eval({
     script: `
-      const page = getCurrentPages().find((candidate) => candidate.route.includes('/api/'));
+      const page = getCurrentPages().find((candidate) => candidate.route.includes('/API/'));
       return page ? page.data.loadCount ?? -1 : null;
     `,
   }) as Promise<number | null>;

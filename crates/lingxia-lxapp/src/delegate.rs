@@ -183,14 +183,14 @@ impl LxAppDelegate for LxApp {
             // components are created in one burst (home tabs + guest tabs).
             // Overflow tabs already load on first pick; on Harmony the strip
             // tabs do too.
-            if !cfg!(target_env = "ohos") {
-                if let Some(tab_pages) = self.get_tabbar().map(|t| t.preload_page_paths()) {
-                    for tab_path in tab_pages {
-                        if tab_path == resolved_path {
-                            continue;
-                        }
-                        let _ = self.get_or_create_page(&tab_path);
+            if !cfg!(target_env = "ohos")
+                && let Some(tab_pages) = self.get_tabbar().map(|t| t.preload_page_paths())
+            {
+                for tab_path in tab_pages {
+                    if tab_path == resolved_path {
+                        continue;
                     }
+                    let _ = self.get_or_create_page(&tab_path);
                 }
             }
             self.set_status(LxAppSessionStatus::Opening);
