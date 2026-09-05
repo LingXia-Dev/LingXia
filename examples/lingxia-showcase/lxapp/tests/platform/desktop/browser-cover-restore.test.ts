@@ -132,6 +132,7 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
       'DesktopDriver.pointer',
       'DesktopAx.invoke',
       'LxAppDriver.surfaceLayout',
+      'lx.shell.openBuiltin',
     ], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, defer } = bindFixture(t, "DESKTOP-BROWSER-001");
 
@@ -212,6 +213,12 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
       timeoutMs: 20_000,
       script: `await lx.shell.openBuiltin('downloads');`,
     });
+    const downloads = await eventually(
+      () => browser.current(),
+      (tab) => Boolean(tab?.current_url?.startsWith('lingxia://downloads')),
+      { describe: 'authorized Downloads builtin to open', timeoutMs: 15_000 },
+    );
+    expect(downloads?.current_url?.startsWith('lingxia://downloads')).toBeTruthy();
 
     const opened = await eventually(
       async () => (await browser.tabs()).filter((tab) => !tabsBefore.has(tab.tab_id)),
