@@ -1201,9 +1201,15 @@ fn open_lxapp_region(
         options.open_mode = lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel;
         options.panel_id = shell_surface_id.to_string();
     }
-    lxapp::open_lxapp(app_id, options)
-        .map(|_| ())
-        .map_err(lxapp_open_error)
+    let app = lxapp::open_lxapp(app_id, options).map_err(lxapp_open_error)?;
+    activate_opened_lxapp_region(region, || app.activate_main());
+    Ok(())
+}
+
+fn activate_opened_lxapp_region(region: lxapp::LxAppOpenRegion, activate_main: impl FnOnce()) {
+    if region == lxapp::LxAppOpenRegion::Main {
+        activate_main();
+    }
 }
 
 async fn show_lxapp_region(
@@ -3589,6 +3595,23 @@ mod tests {
         assert!(!cache.contains_key(&sibling));
         assert!(cache.contains_key(&restarted));
         assert!(cache.contains_key(&other_app));
+    }
+
+    #[test]
+    fn cold_main_open_requests_explicit_activation_but_aside_open_does_not() {
+        use std::cell::Cell;
+
+        let main_activations = Cell::new(0);
+        activate_opened_lxapp_region(lxapp::LxAppOpenRegion::Main, || {
+            main_activations.set(main_activations.get() + 1);
+        });
+        assert_eq!(main_activations.get(), 1);
+
+        let aside_activations = Cell::new(0);
+        activate_opened_lxapp_region(lxapp::LxAppOpenRegion::Aside, || {
+            aside_activations.set(aside_activations.get() + 1);
+        });
+        assert_eq!(aside_activations.get(), 0);
     }
 
     #[test]
