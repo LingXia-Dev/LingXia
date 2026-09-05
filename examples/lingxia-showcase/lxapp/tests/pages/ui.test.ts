@@ -23,15 +23,20 @@ spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
     describe: 'UI navigateBack to pop the page instance',
   });
 
-  const readCurrentUiOnLoadCount = () => app.eval({
+  const readCurrentUiLifecycle = () => app.eval({
     script: `
-      (getCurrentPages().find((page) => page.route.includes('/ui/'))?.data.events ?? [])
-        .filter((event) => event.endsWith('onLoad')).length
+      (() => {
+        const data = getCurrentPages().find((page) => page.route.includes('/ui/'))?.data;
+        return {
+          instanceTag: data?.instanceTag ?? '',
+          onLoadCount: (data?.events ?? []).filter((event) => event.endsWith('onLoad')).length,
+        };
+      })()
     `,
-  }) as Promise<number>;
+  }) as Promise<{ instanceTag: string; onLoadCount: number }>;
   await eventually(
-    readCurrentUiOnLoadCount,
-    (count) => count > 0,
+    readCurrentUiLifecycle,
+    ({ onLoadCount }) => onLoadCount > 0,
     { describe: 'current UI page onLoad count before redirect' },
   );
   await app.eval({
@@ -46,12 +51,19 @@ spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
     describe: 'UI redirectTo to replace the current page',
   });
   // Rendered controls dispatch Logic actions as fire-and-forget notifications.
-  // The graph updates before the same-route redirect's onLoad. Observe the
-  // retained PageInstance's lifecycle state before sending the next intent.
-  await eventually(
-    readCurrentUiOnLoadCount,
-    (count) => count > 0,
+  // Observe the redirect in Logic, then wait for that exact instance tag to
+  // reach the rendered document before sending the next UI intent.
+  const redirected = await eventually(
+    readCurrentUiLifecycle,
+    ({ instanceTag, onLoadCount }) => instanceTag !== '' && onLoadCount > 0,
     { describe: 'same-route redirect onLoad lifecycle event' },
+  );
+  await waitForElementAttribute(
+    app,
+    'ui',
+    '[data-testid="ui-page"]',
+    'data-instance-tag',
+    redirected.instanceTag,
   );
 
   await app.page.click({ page: 'ui', css: '[data-testid="ui-switch-tab"]' });
