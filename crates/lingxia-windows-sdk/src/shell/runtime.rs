@@ -5793,7 +5793,7 @@ fn open_or_present_browser_page(appid: &str, session_id: u64, url: &str) -> bool
     }
 }
 
-#[cfg(feature = "browser-runtime")]
+#[cfg(feature = "browser-shell")]
 fn open_or_present_browser_local_page(
     appid: &str,
     session_id: u64,
