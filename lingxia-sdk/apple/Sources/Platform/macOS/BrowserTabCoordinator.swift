@@ -79,9 +79,6 @@ final class BrowserTabCoordinator: NSObject {
     weak var host: BrowserCoordinatorHost?
 
     // Tab state
-    private let downloadsTabId = "downloads"
-    private let bookmarksTabId = "bookmarks"
-    private let historyTabId = "history"
     private(set) var activeTabId: String?
     private var tabIds: [String] = []
     private var tabTitles: [String: String] = [:]
@@ -289,29 +286,25 @@ final class BrowserTabCoordinator: NSObject {
     }
 
     func openBrowserLocalSettings() {
-        let navigation = BrowserLocalNavigation.settings
-        addTabWithURL(navigation.url, stableTabId: navigation.stableTabID)
+        openBrowserLocalNavigation(.settings)
     }
 
     func openDownloads() {
-        addTabWithURL("lingxia://downloads", stableTabId: downloadsTabId)
+        openBrowserLocalNavigation(.downloads)
     }
 
     /// Open the bookmarks manager page (the archive; pins are its subset).
     func openBookmarks() {
-        addTabWithURL("lingxia://bookmarks", stableTabId: bookmarksTabId)
+        openBrowserLocalNavigation(.bookmarks)
     }
 
     func openHistory() {
-        addTabWithURL("lingxia://history", stableTabId: historyTabId)
+        openBrowserLocalNavigation(.history)
     }
 
     func openBrowserLocalClearSiteData(tabId: String) {
         let navigation = BrowserLocalNavigation.clearSiteData(tabID: tabIdString(tabId))
-        addTabWithURL(
-            navigation.url,
-            stableTabId: navigation.stableTabID
-        )
+        openBrowserLocalNavigation(navigation)
     }
 
     /// Open a bookmark: focus an existing tab with the same URL (Arc pinned
@@ -920,10 +913,20 @@ final class BrowserTabCoordinator: NSObject {
     // MARK: - Internal Tab Operations
 
     @discardableResult
+    private func openBrowserLocalNavigation(_ navigation: BrowserLocalNavigation) -> String? {
+        addTabWithURL(
+            navigation.url,
+            stableTabId: navigation.stableTabID,
+            openAuthority: navigation.openAuthority
+        )
+    }
+
+    @discardableResult
     private func addTabWithURL(
         _ url: String,
         stableTabId: String? = nil,
-        declaredSurfaceID: String? = nil
+        declaredSurfaceID: String? = nil,
+        openAuthority: BrowserTabOpenAuthority = .appSession
     ) -> String? {
         let owner = host?.browserOwnerForNewTab()
             ?? (host?.keepsBrowserRootWithoutTabs == true ? retainedNewTabOwner : nil)
@@ -950,8 +953,20 @@ final class BrowserTabCoordinator: NSObject {
         }
 
         let openedTab = if let requestedStableTabId {
-            openBrowserTabWithId(owner.appId, owner.sessionId, url, requestedStableTabId)
+            switch openAuthority {
+            case .appSession:
+                openBrowserTabWithId(owner.appId, owner.sessionId, url, requestedStableTabId)
+            case .nativeControl:
+                openTrustedBrowserTabWithId(owner.appId, owner.sessionId, url, requestedStableTabId)
+            }
         } else {
+            guard openAuthority == .appSession else {
+                LXLog.error(
+                    "Trusted browser navigation requires a stable native route",
+                    category: "BrowserTabCoordinator"
+                )
+                return nil
+            }
             openBrowserTab(owner.appId, owner.sessionId, url)
         }
 

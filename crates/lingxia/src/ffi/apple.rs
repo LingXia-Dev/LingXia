@@ -484,6 +484,15 @@ mod bridge {
             tab_id: &str,
         ) -> Option<String>;
 
+        // Native browser chrome only: the authority remains sealed in Rust.
+        #[swift_bridge(swift_name = "openTrustedBrowserTabWithId")]
+        fn open_trusted_browser_tab_with_id(
+            appid: &str,
+            session_id: u64,
+            url: &str,
+            tab_id: &str,
+        ) -> Option<String>;
+
         #[swift_bridge(swift_name = "browserTabClose")]
         fn browser_tab_close(tab_id: &str) -> bool;
 
@@ -1280,6 +1289,23 @@ pub fn open_browser_tab_with_id(
             Ok(tab_id) => Some(tab_id),
             Err(e) => {
                 log::error!("open_browser_tab_with_id failed: {}", e);
+                None
+            }
+        }
+    })
+}
+
+pub fn open_trusted_browser_tab_with_id(
+    appid: &str,
+    session_id: u64,
+    url: &str,
+    tab_id: &str,
+) -> Option<String> {
+    ffi_catch_unwind!("open_trusted_browser_tab_with_id", None, || {
+        match crate::browser::open_trusted_for_app(appid, session_id, url, Some(tab_id)) {
+            Ok(tab_id) => Some(tab_id),
+            Err(error) => {
+                log::error!("open_trusted_browser_tab_with_id failed: {error}");
                 None
             }
         }

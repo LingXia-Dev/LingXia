@@ -39,8 +39,6 @@ pub(crate) fn native_control_authority()
 pub(crate) use runtime::navigate;
 #[cfg(all(target_env = "ohos", not(any(target_os = "ios", target_os = "macos"))))]
 pub(crate) use runtime::navigate;
-#[cfg(any(target_os = "ios", target_os = "macos"))]
-pub(crate) use runtime::open;
 pub(crate) use runtime::open_standalone_for_app;
 pub(crate) use runtime::{
     APP_ID, close, mark_active, navigate_trusted_control_page, open_for_app, tab_path,
@@ -54,6 +52,8 @@ pub(crate) use runtime::{
 pub(crate) use runtime::{clear_active, discard, reactivate};
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) use runtime::{download, navigate, update_tab};
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub(crate) use runtime::{open, open_trusted_for_app};
 pub(crate) use runtime::{open_aside_for_app, tab_is_aside};
 #[cfg(any(target_os = "ios", target_os = "macos", target_env = "ohos"))]
 pub(crate) use shell::should_hide_url;
