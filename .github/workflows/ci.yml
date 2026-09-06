@@ -628,6 +628,7 @@ jobs:
         shell: bash
         run: |
           cargo test -p lingxia-webview --lib windows::document::tests
+          cargo test -p lingxia-webview --lib windows::controller::tests::document_messages_enqueue_without_reply_wait_and_preserve_fifo
           cargo test -p lingxia-browser --lib document_session::tests
 
       - name: Clippy Windows browser shell feature

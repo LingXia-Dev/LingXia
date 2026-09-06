@@ -69,6 +69,11 @@ grep -Fq "bash scripts/ci/control-security-gates.sh \${{ matrix.suite }}" "$WORK
   exit 1
 }
 
+job_has_text rust-windows-target 'windows::controller::tests::document_messages_enqueue_without_reply_wait_and_preserve_fifo' || {
+  echo "Windows security gate does not run the bound outbound queue regression" >&2
+  exit 1
+}
+
 for profile in android apple harmony-rust harmony-har; do
   grep -Fq "bash scripts/ci/control-security-gates.sh $profile" "$WORKFLOW" || {
     echo "CI workflow does not invoke control-security profile: $profile" >&2
