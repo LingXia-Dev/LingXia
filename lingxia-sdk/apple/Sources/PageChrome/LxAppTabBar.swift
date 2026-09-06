@@ -573,6 +573,16 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         backgroundColor = UIColor.clear
     }
 
+    /// The overflow panel is parented to the strip's superview (the page root),
+    /// so tearing the bar off does not take the card with it. Dismiss first or
+    /// a leftover panel sits on the next lxapp — the 2nd-lxapp "more" flash.
+    override func willMove(toSuperview newSuperview: UIView?) {
+        if newSuperview == nil {
+            dismissOverflowPanel()
+        }
+        super.willMove(toSuperview: newSuperview)
+    }
+
     func setOnTabSelectedListener(_ listener: @escaping (Int, String) -> Void) {
         self.onTabSelectedCallback = listener
     }
@@ -589,6 +599,10 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
 
     /// `index` is a declaration index, not a position in the shipped list.
     func setSelectedIndex(_ index: Int, notifyListener: Bool) {
+        // A pick from the overflow panel is a tab switch; the panel has done
+        // its job either way. Strip clicks while the panel is open take the
+        // same path so the card cannot outlive the selection it stood in for.
+        dismissOverflowPanel()
         let previousIndex = selectedIndex
         self.selectedIndex = index
 
@@ -605,6 +619,11 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
     }
 
     func refreshLayout() {
+        // The panel lists items from the config about to be replaced, and it
+        // hangs off a strip that is about to be re-laid out: an open panel
+        // cannot survive the rebuild intact.
+        dismissOverflowPanel()
+
         // Get fresh config from Rust instead of using cached tabBarConfig
         guard let freshConfig = getTabBar(appId) else {
             // If no config exists, hide the view.
@@ -860,10 +879,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
     }
 
     @objc private func uikitTabButtonTapped(_ sender: UIButton) {
-        let index = sender.tag
-        overflowPanel?.dismissPanel()
-        // Update local UI selection immediately, and notify listener (which routes to Rust)
-        setSelectedIndex(index, notifyListener: true)
+        setSelectedIndex(sender.tag, notifyListener: true)
     }
 
     /// First folded item index, or -1 when every item has its own slot.
@@ -985,12 +1001,11 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         let start = overflowStart(itemCount: items.count, config: config)
         guard start >= 0 else { return }
 
-        if let overflowPanel {
-            overflowPanel.dismissPanel()
+        if overflowPanel != nil {
+            dismissOverflowPanel()
             return
         }
         morePresented = true
-        setupUIKitLayout(items: items, config: config)
         let panel = LxAppTabBarOverflowPanel(
             items: items,
             indices: Array(start..<items.count),
@@ -1003,6 +1018,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             onDismiss: { [weak self] in
                 guard let self else { return }
                 self.morePresented = false
+                self.overflowPanel = nil
                 if let config = self.tabBarConfig {
                     self.setupUIKitLayout(items: config.getItems(appId: self.appId), config: config)
                 }
@@ -1010,6 +1026,15 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         )
         panel.present(in: host, above: self)
         overflowPanel = panel
+        // Light the more slot after the card is up so the strip does not
+        // flash selected and then get covered.
+        setupUIKitLayout(items: items, config: config)
+    }
+
+    private func dismissOverflowPanel() {
+        overflowPanel?.dismissPanel()
+        overflowPanel = nil
+        morePresented = false
     }
 
     private func createBadgeView(text: String) -> UIView {
@@ -1176,6 +1201,15 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         overflowPanel?.paintPlate()
+    }
+
+    /// Same orphan as iOS: the panel lives on the window, not the strip.
+    /// Removing the bar (Runner `updateTabBar`) must drop the card too.
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil {
+            dismissOverflowPanel()
+        }
+        super.viewWillMove(toWindow: newWindow)
     }
 
     private func dismissOverflowPanel() {

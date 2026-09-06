@@ -3,7 +3,7 @@
 #[cfg(feature = "shell-chrome")]
 mod tabbar_overflow;
 #[cfg(feature = "shell-chrome")]
-pub(crate) use tabbar_overflow::toggle_tabbar_overflow;
+pub(crate) use tabbar_overflow::{dismiss_tabbar_overflow_on_owner, toggle_tabbar_overflow};
 
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
