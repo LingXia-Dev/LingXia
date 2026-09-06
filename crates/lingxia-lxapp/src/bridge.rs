@@ -28,7 +28,8 @@ use crate::page::PageInstance;
 use base64::Engine;
 use futures::StreamExt;
 use lingxia_webview::{
-    DocumentGeneration, DocumentOutboundGate, IncomingWebMessage, WebMessageContext,
+    DocumentBinding, DocumentGeneration, DocumentOutboundGate, IncomingWebMessage,
+    WebMessageContext,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -220,6 +221,10 @@ fn serialize_seq_frame_with_payload(
     Ok(message_json)
 }
 
+fn protocol_for_binding(binding: Option<&V3OutboundBinding>) -> u8 {
+    if binding.is_some() { V3_PROTOCOL } else { 2 }
+}
+
 // RpcError
 #[derive(Debug, Clone)]
 pub(crate) struct RpcError {
@@ -271,7 +276,7 @@ impl SessionWorkId {
 pub(crate) struct OutboundContext {
     expected_generation: DocumentGeneration,
     gate: Arc<dyn DocumentOutboundGate>,
-    binding: V3OutboundBinding,
+    binding: Option<V3OutboundBinding>,
 }
 
 /// One bridge lifetime, legacy or V3. Work must retain this exact connection
@@ -280,6 +285,31 @@ struct BridgeConnection {
     work_id: SessionWorkId,
     outbound: Option<OutboundContext>,
     caller: host::AuthenticatedCaller,
+}
+
+#[cfg(any(target_os = "windows", test))]
+struct LegacySessionOutboundGate {
+    handshake: std::sync::Weak<Mutex<HandshakeState>>,
+    work_id: SessionWorkId,
+}
+
+#[cfg(any(target_os = "windows", test))]
+impl DocumentOutboundGate for LegacySessionOutboundGate {
+    fn with_active(&self, action: &mut dyn FnMut()) -> bool {
+        let Some(handshake) = self.handshake.upgrade() else {
+            return false;
+        };
+        let handshake = handshake.lock().unwrap();
+        if handshake
+            .connection
+            .as_ref()
+            .is_none_or(|connection| connection.work_id != self.work_id)
+        {
+            return false;
+        }
+        action();
+        true
+    }
 }
 
 fn connection_matches_work(
@@ -441,7 +471,7 @@ struct PageBridgeState {
     js_backend: Arc<dyn AppServiceBackend>,
     msg_counter: AtomicUsize,
     next_session_work_id: std::sync::atomic::AtomicU64,
-    handshake: Mutex<HandshakeState>,
+    handshake: Arc<Mutex<HandshakeState>>,
     pending_requests: Arc<PendingRequestRegistry>,
     // The same channel id may occur in successive document sessions.  The
     // work id is part of the registry key; the token additionally protects a
@@ -543,7 +573,7 @@ impl PageBridge {
                 js_backend,
                 msg_counter: AtomicUsize::new(0),
                 next_session_work_id: std::sync::atomic::AtomicU64::new(1),
-                handshake: Mutex::new(HandshakeState::default()),
+                handshake: Arc::new(Mutex::new(HandshakeState::default())),
                 pending_requests: Arc::new(PendingRequestRegistry::default()),
                 active_host_channels: Mutex::new(HashMap::new()),
                 next_host_channel_token: AtomicUsize::new(1),
@@ -587,7 +617,7 @@ impl PageBridge {
                 outbound: Some(OutboundContext {
                     expected_generation,
                     gate: Arc::clone(&gate),
-                    binding,
+                    binding: Some(binding),
                 }),
                 caller: host::AuthenticatedCaller::for_lxapp(&self.inner.lxapp),
             });
@@ -688,7 +718,7 @@ impl PageBridge {
             outbound: Some(OutboundContext {
                 expected_generation,
                 gate: outbound_gate,
-                binding: protocol.outbound_binding(),
+                binding: Some(protocol.outbound_binding()),
             }),
             // Browser audience is a registry-held ingress scope, never a
             // durable bridge property.
@@ -785,10 +815,36 @@ impl PageBridge {
         &self,
         page: &PageInstance,
         expected_work: Option<SessionWorkId>,
-    ) -> Result<Option<SessionWorkId>, LxAppError> {
+        document: DocumentBinding,
+    ) -> Result<Option<Arc<BridgeConnection>>, LxAppError> {
+        let work_id = self.next_session_work_id();
+        #[cfg(target_os = "windows")]
+        let outbound = match document {
+            DocumentBinding::Bound(expected_generation) => Some(OutboundContext {
+                expected_generation,
+                gate: Arc::new(LegacySessionOutboundGate {
+                    handshake: Arc::downgrade(&self.inner.handshake),
+                    work_id,
+                }),
+                binding: None,
+            }),
+            // Older platform adapters which cannot attest a generation retain
+            // their existing V2 transport semantics. A bound message never
+            // downgrades to this path.
+            DocumentBinding::Unbound => None,
+        };
+        // Android's legacy JavascriptInterface can prove a generation without
+        // supporting the document-port sender; Apple and Harmony likewise keep
+        // their established V2 transport. Only Windows needs queued delivery
+        // to avoid blocking its UI callback on the ingress generation lock.
+        #[cfg(not(target_os = "windows"))]
+        let outbound = {
+            let _ = document;
+            None
+        };
         let connection = Arc::new(BridgeConnection {
-            work_id: self.next_session_work_id(),
-            outbound: None,
+            work_id,
+            outbound,
             caller: host::AuthenticatedCaller::for_lxapp(&self.inner.lxapp),
         });
         let replaced = {
@@ -806,7 +862,7 @@ impl PageBridge {
         if let Some(previous) = replaced {
             self.cancel_work(page, previous, "Session replaced");
         }
-        Ok(Some(connection.work_id))
+        Ok(Some(connection))
     }
 
     /// Capture the exact native work identity and document-bound transport at
@@ -1299,13 +1355,15 @@ impl PageBridge {
         }
 
         let session_id = self.new_session_id();
-        let Some(work_id) = self.replace_with_legacy_session_work(page, decoded.work.work_id)?
+        let Some(connection) =
+            self.replace_with_legacy_session_work(page, decoded.work.work_id, _context.document())?
         else {
             return Ok(());
         };
+        let work_id = connection.work_id;
         let work = CapturedSessionWork {
             work_id: Some(work_id),
-            outbound: None,
+            outbound: connection.outbound.clone(),
             caller: Some(host::AuthenticatedCaller::for_lxapp(&self.inner.lxapp)),
             execution_permit: None,
         };
@@ -1935,7 +1993,9 @@ impl PageBridge {
         if !self.is_current_work(work_id) {
             return Ok(());
         }
-        let serialized = if let Some(outbound) = outbound {
+        let serialized = if let Some(binding) =
+            outbound.and_then(|outbound| outbound.binding.as_ref())
+        {
             let mut payload = serde_json::to_value(msg)?;
             let object = payload
                 .as_object_mut()
@@ -1946,7 +2006,7 @@ impl PageBridge {
             object.remove("kind");
             object.remove("sessionId");
             serde_json::to_string(
-                &encode_v3_outbound_frame(&outbound.binding, kind, payload)
+                &encode_v3_outbound_frame(binding, kind, payload)
                     .map_err(|_| LxAppError::Bridge("invalid V3 outbound payload".to_string()))?,
             )?
         } else {
@@ -1977,24 +2037,29 @@ impl PageBridge {
         if !self.is_current_work(work_id) {
             return Ok(());
         }
-        if let Some(outbound) = outbound {
+        if let Some(binding) = outbound.and_then(|outbound| outbound.binding.as_ref()) {
             let payload: Value = serde_json::from_str(payload_json)
                 .map_err(|_| LxAppError::Bridge("invalid V3 outbound payload".to_string()))?;
             let frame = serde_json::json!({ "id": id, "seq": seq, "payload": payload });
-            let frame = encode_v3_outbound_frame(&outbound.binding, v3_kind, frame)
+            let frame = encode_v3_outbound_frame(binding, v3_kind, frame)
                 .map_err(|_| LxAppError::Bridge("invalid V3 outbound payload".to_string()))?;
+            let outbound = outbound.expect("V3 binding belongs to an outbound context");
             return transport.post_message_to_document(
                 outbound.expected_generation,
                 Arc::clone(&outbound.gate),
                 serde_json::to_string(&frame)?,
             );
         }
-        transport.post_message_to_view(serialize_seq_frame_with_payload(
-            kind,
-            id,
-            seq,
-            payload_json,
-        )?)
+        let serialized = serialize_seq_frame_with_payload(kind, id, seq, payload_json)?;
+        if let Some(outbound) = outbound {
+            transport.post_message_to_document(
+                outbound.expected_generation,
+                Arc::clone(&outbound.gate),
+                serialized,
+            )
+        } else {
+            transport.post_message_to_view(serialized)
+        }
     }
 
     fn send_hello_ack<T: ViewTransport>(
@@ -2007,7 +2072,8 @@ impl PageBridge {
     ) -> Result<(), LxAppError> {
         // The captured outbound binding, rather than mutable handshake state,
         // identifies the protocol of the document receiving this frame.
-        let protocol = if outbound.is_some() { V3_PROTOCOL } else { 2 };
+        let protocol =
+            protocol_for_binding(outbound.and_then(|outbound| outbound.binding.as_ref()));
         let msg = HelloAck {
             v: 2,
             kind: "helloAck",
@@ -2839,6 +2905,40 @@ mod tests {
             Some(&successor),
             Some(SessionWorkId::for_test(12))
         ));
+    }
+
+    #[test]
+    fn legacy_document_gate_accepts_current_unready_work_and_rejects_replacement() {
+        let handshake = Arc::new(Mutex::new(HandshakeState {
+            session_id: None,
+            ready: false,
+            protocol: BridgeProtocol::LegacyV2,
+            connection: Some(Arc::new(BridgeConnection {
+                work_id: SessionWorkId::for_test(20),
+                outbound: None,
+                caller: host::AuthenticatedCaller::standard_for_test(1),
+            })),
+        }));
+        let gate = Arc::new(LegacySessionOutboundGate {
+            handshake: Arc::downgrade(&handshake),
+            work_id: SessionWorkId::for_test(20),
+        });
+        assert_eq!(protocol_for_binding(None), 2);
+
+        let mut deliveries = 0;
+        assert!(gate.with_active(&mut || deliveries += 1));
+        assert_eq!(deliveries, 1, "helloAck is allowed before ready");
+
+        handshake.lock().unwrap().connection = Some(Arc::new(BridgeConnection {
+            work_id: SessionWorkId::for_test(21),
+            outbound: None,
+            caller: host::AuthenticatedCaller::standard_for_test(1),
+        }));
+        assert!(!gate.with_active(&mut || deliveries += 1));
+        assert_eq!(deliveries, 1, "retired work cannot reach the same document");
+
+        drop(handshake);
+        assert!(!gate.with_active(&mut || deliveries += 1));
     }
 
     #[test]

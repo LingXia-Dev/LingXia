@@ -716,12 +716,20 @@ impl WebViewController for WebViewInner {
         gate: Arc<dyn crate::DocumentOutboundGate>,
         message: &str,
     ) -> StdResult<()> {
-        self.dispatch_command_same_thread_safe(|resp| UiCommand::PostMessageToDocument {
-            expected_generation,
-            gate,
-            message: message.to_string(),
-            resp,
-        })
+        // Ingress holds the document-generation lock while its delegate may
+        // emit a response. Queueing is the completion boundary here: the UI
+        // thread rechecks both credentials immediately before native delivery.
+        let (resp, _ignored) = mpsc::channel();
+        self.command_tx
+            .send(UiCommand::PostMessageToDocument {
+                expected_generation,
+                gate,
+                message: message.to_string(),
+                resp,
+            })
+            .map_err(|_| WebViewError::WebView("WebView UI thread is unavailable".to_string()))?;
+        self.wake_ui_thread();
+        Ok(())
     }
 
     fn exec_js(&self, js: &str) -> StdResult<()> {
@@ -1419,7 +1427,7 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
                 "document-bound message target is no longer current".to_string(),
             ));
             let mut with_document = || {
-                let mut post = || unsafe {
+                let mut with_session = || unsafe {
                     let message = CoTaskMemPWSTR::from(message.as_str());
                     result = state
                         .webview
@@ -1428,13 +1436,15 @@ pub(crate) fn handle_command(state: &mut UiState, command: UiCommand) -> StdResu
                             WebViewError::WebView(format!("PostWebMessageAsString failed: {err}"))
                         });
                 };
-                let _ = normalizer::with_current_document_binding(
-                    state.native_view_id,
-                    expected_generation,
-                    &mut post,
-                );
+                let _ = gate.with_active(&mut with_session);
             };
-            let _ = gate.with_active(&mut with_document);
+            // Match ingress lock order (document generation, then session)
+            // so an outbound post cannot deadlock a concurrent callback.
+            let _ = normalizer::with_current_document_binding(
+                state.native_view_id,
+                expected_generation,
+                &mut with_document,
+            );
             let _ = resp.send(result);
         }
         UiCommand::SetUserAgentOverride { user_agent, resp } => {
@@ -1744,8 +1754,19 @@ mod tests {
         UiCommand, UiDispatchError, WebViewInner, enter_webview_ui_lifecycle,
         map_eval_dispatch_error, should_update_parent, webview_ui_lifecycle_gate,
     };
-    use crate::{WebTag, WebViewScriptError};
-    use std::sync::{Mutex, mpsc};
+    use crate::{
+        DocumentGeneration, DocumentOutboundGate, WebTag, WebViewController, WebViewScriptError,
+    };
+    use std::sync::{Arc, Mutex, mpsc};
+
+    struct AlwaysActive;
+
+    impl DocumentOutboundGate for AlwaysActive {
+        fn with_active(&self, action: &mut dyn FnMut()) -> bool {
+            action();
+            true
+        }
+    }
 
     #[test]
     fn retired_webview_requests_shutdown_before_final_drop() {
@@ -1762,6 +1783,42 @@ mod tests {
         inner.request_shutdown();
 
         assert!(matches!(command_rx.recv().unwrap(), UiCommand::Shutdown));
+    }
+
+    #[test]
+    fn document_messages_enqueue_without_reply_wait_and_preserve_fifo() {
+        let (command_tx, command_rx) = mpsc::channel();
+        let inner = WebViewInner {
+            command_tx,
+            thread_id: 0,
+            join_handle: Mutex::new(None),
+            webtag: WebTag::new("document-queue-test", "home", Some(1)),
+            native_view: 0,
+            composition_hosted: false,
+        };
+
+        for (generation, message) in [(7, "helloAck"), (7, "ready")] {
+            inner
+                .post_message_to_document(
+                    DocumentGeneration::new(generation),
+                    Arc::new(AlwaysActive),
+                    message,
+                )
+                .unwrap();
+        }
+
+        for expected in ["helloAck", "ready"] {
+            let UiCommand::PostMessageToDocument {
+                expected_generation,
+                message,
+                ..
+            } = command_rx.try_recv().unwrap()
+            else {
+                panic!("expected a document-bound message command");
+            };
+            assert_eq!(expected_generation, DocumentGeneration::new(7));
+            assert_eq!(message, expected);
+        }
     }
 
     #[test]

@@ -152,8 +152,8 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_dispatchDocumentM
             return Ok(false);
         };
         let mut posted = false;
-        let mut generation_action = || {
-            let mut native_post = || {
+        let mut with_document = || {
+            let mut with_session = || {
                 let Ok(message) = env.new_string(&pending.message) else {
                     return;
                 };
@@ -167,13 +167,13 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_dispatchDocumentM
                 };
                 posted = result.z().unwrap_or(false);
             };
-            let _ = normalizer::with_current_document_binding(
-                pending.native_view_id,
-                pending.generation,
-                &mut native_post,
-            );
+            let _ = pending.gate.with_active(&mut with_session);
         };
-        let _ = pending.gate.with_active(&mut generation_action);
+        let _ = normalizer::with_current_document_binding(
+            pending.native_view_id,
+            pending.generation,
+            &mut with_document,
+        );
         Ok(posted)
     })
     .resolve::<ThrowRuntimeExAndDefault>()

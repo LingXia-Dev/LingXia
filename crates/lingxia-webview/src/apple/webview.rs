@@ -1916,15 +1916,11 @@ fn post_message_to_current_document(
     gate: &dyn DocumentOutboundGate,
     script: &str,
 ) {
-    let mut post = || unsafe {
-        // This runs while the browser session registry lock is held. Do not
-        // move either revalidation outside that lock: a queued navigation can
-        // otherwise replace the committed document between the check and the
-        // JavaScript call.
+    let mut with_document = || unsafe {
         let Some(webview) = find_webview_by_native_view_id(webtag, native_view_id) else {
             return;
         };
-        let mut evaluate = || {
+        let mut with_session = || {
             let js = NSString::from_str(script);
             let completion =
                 StackBlock::new(|_result: *mut AnyObject, _error: *mut NSError| {}).copy();
@@ -1934,16 +1930,16 @@ fn post_message_to_current_document(
                 completionHandler: Some(&*completion)
             ];
         };
-        // Navigation start mutates this same normalizer state lock. Holding it
-        // through evaluateJavaScript closes the gap between generation check
-        // and the actual native post.
-        let _ = crate::events::normalizer::with_current_document_binding(
-            native_view_id,
-            expected_generation,
-            &mut evaluate,
-        );
+        let _ = gate.with_active(&mut with_session);
     };
-    let _ = gate.with_active(&mut post);
+    // Ingress holds the document generation before it enters a session gate.
+    // Keep the same order here so a callback and an outbound post cannot each
+    // wait on the other's lock.
+    let _ = crate::events::normalizer::with_current_document_binding(
+        native_view_id,
+        expected_generation,
+        &mut with_document,
+    );
 }
 
 #[cfg(target_os = "macos")]
