@@ -33,6 +33,11 @@ static WINDOWS_SHELL_PINS_HANDLER: Mutex<Option<WindowsShellPinsHandler>> = Mute
 pub type WindowsLxAppMainActivationHandler = Arc<dyn Fn(&str) + Send + Sync>;
 static WINDOWS_LXAPP_MAIN_ACTIVATION_HANDLER: Mutex<Option<WindowsLxAppMainActivationHandler>> =
     Mutex::new(None);
+/// Fired after `hide_lxapp` has hidden that session's webtags. Windows has no
+/// native close-ack (unlike Apple/Android/Harmony FFI), so the shell uses this
+/// to call `on_lxapp_closed` and finish restart's Closed wait.
+pub type WindowsLxAppHiddenHandler = Arc<dyn Fn(&str, u64) + Send + Sync>;
+static WINDOWS_LXAPP_HIDDEN_HANDLER: Mutex<Option<WindowsLxAppHiddenHandler>> = Mutex::new(None);
 pub fn set_windows_app_exit_handler(handler: WindowsAppExitHandler) {
     if let Ok(mut slot) = WINDOWS_APP_EXIT_HANDLER.lock() {
         *slot = Some(handler);
@@ -59,6 +64,12 @@ pub fn set_windows_shell_pins_handler(handler: WindowsShellPinsHandler) {
 
 pub fn set_windows_lxapp_main_activation_handler(handler: WindowsLxAppMainActivationHandler) {
     if let Ok(mut slot) = WINDOWS_LXAPP_MAIN_ACTIVATION_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub fn set_windows_lxapp_hidden_handler(handler: WindowsLxAppHiddenHandler) {
+    if let Ok(mut slot) = WINDOWS_LXAPP_HIDDEN_HANDLER.lock() {
         *slot = Some(handler);
     }
 }
@@ -94,6 +105,16 @@ fn invoke_windows_lxapp_main_activation_handler(appid: &str) {
         .and_then(|slot| slot.clone())
     {
         handler(appid);
+    }
+}
+
+fn invoke_windows_lxapp_hidden_handler(appid: &str, session_id: u64) {
+    if let Some(handler) = WINDOWS_LXAPP_HIDDEN_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+    {
+        handler(appid, session_id);
     }
 }
 
@@ -496,6 +517,7 @@ impl AppRuntime for Platform {
 
     fn hide_lxapp(&self, appid: String, session_id: u64) -> Result<(), PlatformError> {
         surface::hide_lxapp_window(&appid, session_id);
+        invoke_windows_lxapp_hidden_handler(&appid, session_id);
         Ok(())
     }
 

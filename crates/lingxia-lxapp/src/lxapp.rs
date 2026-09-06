@@ -328,7 +328,15 @@ impl LxApps {
             .unwrap_or(false);
 
         if has_pending_update {
-            // Tear down any existing instance before applying new files
+            // A live session that chose Later still has the zip on disk. Applying
+            // it here would hide+tear down the current WebView — "right now", not
+            // "next cold start". Restart, a real close, and process bootstrap
+            // still apply through this path once the instance is gone.
+            if let Some(app_arc) = self.lxapps.get(&appid)
+                && app_arc.status() != LxAppSessionStatus::Closed
+            {
+                return Ok(app_arc.clone());
+            }
             self.destroy_lxapp(&appid);
             if let Err(e) =
                 UpdateManager::apply_downloaded_update(self.runtime.clone(), &appid, release_type)
@@ -344,13 +352,23 @@ impl LxApps {
             return Ok(app_arc.clone());
         }
 
-        // Create new LxApp
-        let new_lxapp = Arc::new(LxApp::new(
-            appid.clone(),
-            self.runtime.clone(),
-            self.executor.clone(),
-            release_type,
-        )?);
+        // Home must come back as home: `LxApp::new` leaves `is_home_lxapp`
+        // false, so applyUpdate would otherwise lose capsule-close, LRU
+        // immunity, in-process OTA checks, and `lx.process`.
+        let new_lxapp = if lingxia_app_context::home_app_id() == Some(appid.as_str()) {
+            Arc::new(LxApp::new_as_home(
+                appid.clone(),
+                self.runtime.clone(),
+                self.executor.clone(),
+            )?)
+        } else {
+            Arc::new(LxApp::new(
+                appid.clone(),
+                self.runtime.clone(),
+                self.executor.clone(),
+                release_type,
+            )?)
+        };
         new_lxapp.bind_arc();
 
         // Publish with the map entry API. Two concurrent cold opens must both
@@ -2938,10 +2956,17 @@ impl LxApp {
             .with_appid(self.appid.clone());
         }
 
-        // Always relaunch to initial route after restart.
-        // Wait for the current session to report Closed (or timeout) before recreate+open,
-        // so close/open callbacks do not race on the same appid.
+        // Always relaunch to initial route after restart, but keep the region
+        // (aside/panel vs main) so applyUpdate does not promote a panel guest
+        // into the main slot.
         let relaunch_path = self.config.get_initial_route();
+        let (open_mode, panel_id) = {
+            let state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+            (
+                state.startup_options.open_mode,
+                state.startup_options.panel_id.clone(),
+            )
+        };
         let appid = self.appid.clone();
         let release_type = self.release_type;
         std::mem::drop(crate::executor::spawn(async move {
@@ -2983,8 +3008,10 @@ impl LxApp {
                 };
 
                 // 2) Initialize startup options for the new app session and open it.
-                let options =
-                    LxAppStartupOptions::new(&relaunch_path).set_release_type(release_type);
+                let options = LxAppStartupOptions::new(&relaunch_path)
+                    .set_release_type(release_type)
+                    .set_open_mode(open_mode)
+                    .set_panel_id(panel_id);
                 if let Err(e) = new_app.open(options) {
                     error!("Failed to start lxapp after restart: {}", e);
                 }

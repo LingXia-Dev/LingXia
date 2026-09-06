@@ -1119,6 +1119,14 @@ pub(super) fn install() {
     lingxia_platform::set_windows_lxapp_main_activation_handler(Arc::new(
         request_lxapp_main_activation,
     ));
+    // hide_lxapp on Windows is synchronous (HWND hide only). Apple/Android/
+    // Harmony ack close from the native container; without this, restart
+    // always waits out the 1.5s Closed timeout and logs `forcing recreate`.
+    lingxia_platform::set_windows_lxapp_hidden_handler(Arc::new(|appid, session_id| {
+        if let Some(app) = lxapp::try_get(appid) {
+            app.on_lxapp_closed(session_id);
+        }
+    }));
     lingxia_platform::set_windows_layout_plan_handler(Arc::new(apply_windows_layout_plan));
     lingxia_platform::set_windows_managed_aside_event_handler(Arc::new(handle_managed_aside_event));
     if lingxia_shell::manager().is_ok_and(|manager| manager.snapshot().sidebar_actions.declared()) {
