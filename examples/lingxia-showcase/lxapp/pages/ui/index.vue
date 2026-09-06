@@ -1,5 +1,9 @@
 <template>
-  <div class="h-screen bg-linear-to-br from-surface-50 to-surface-100 flex flex-col overflow-y-auto">
+  <div
+    class="h-screen bg-linear-to-br from-surface-50 to-surface-100 flex flex-col overflow-y-auto"
+    data-testid="ui-page"
+    :data-instance-tag="instanceTag"
+  >
     <div class="flex-1 overflow-y-auto">
       <div class="pb-6 px-4 pt-6">
         <div v-if="chromeError" data-testid="ui-chrome-error" class="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:text-red-400">
