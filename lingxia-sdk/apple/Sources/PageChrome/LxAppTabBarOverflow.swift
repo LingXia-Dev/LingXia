@@ -459,7 +459,6 @@ final class LxAppTabBarOverflowPanel: NSView {
     private func finishDismiss() {
         guard !didDismiss else { return }
         didDismiss = true
-        isUserInteractionEnabled = false
         removeFromSuperview()
         onDismiss()
     }
