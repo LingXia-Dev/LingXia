@@ -10,6 +10,24 @@ import CLingXiaRustAPI
 // Log instance outside of @MainActor to avoid isolation issues
 private let lxAppViewControllerLog = OSLog(subsystem: "LingXia", category: "LxAppViewController")
 
+/// Page root that prefers the tab strip for hits in its rect. A newly attached
+/// WKWebView's remote layer otherwise steals those taps — first "more" works,
+/// the second (after switchTab) does not.
+private final class LxAppRootContainer: UIView {
+    weak var tabBarHitTarget: UIView?
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if let tabBar = tabBarHitTarget,
+           !tabBar.isHidden,
+           tabBar.alpha > 0.01,
+           tabBar.frame.contains(point) {
+            let local = convert(point, to: tabBar)
+            return tabBar.hitTest(local, with: event) ?? tabBar
+        }
+        return super.hitTest(point, with: event)
+    }
+}
+
 @MainActor
 final class LxAppViewController: UIViewController, ObservableObject {
     private static let log = lxAppViewControllerLog
@@ -21,6 +39,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
     private var currentWebViewBottomConstraint: NSLayoutConstraint?
 
     internal var rootContainer: UIView!
+    private var overflowHostView: UIView?
+    private var overflowHostBottom: NSLayoutConstraint?
     private var webViewContainer: UIView!
     private var globalCapsuleButton: UIView?
     var globalNavigationBar: LingXiaNavigationBar?
@@ -166,6 +186,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
         setupRootContainer()
         setupWebViewContainer()
+        setupOverflowHost()
         setupGlobalNavigationBar()
         setupBackGestureRecognizer()
     }
@@ -198,7 +219,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
     }
 
     private func setupRootContainer() {
-        rootContainer = UIView()
+        rootContainer = LxAppRootContainer()
         rootContainer.backgroundColor = resolvedCanvasColor()
         rootContainer.translatesAutoresizingMaskIntoConstraints = false
         rootContainer.clipsToBounds = false  // 🎬 Allow animation to extend beyond bounds
@@ -227,6 +248,39 @@ final class LxAppViewController: UIViewController, ObservableObject {
             webViewContainer.trailingAnchor.constraint(equalTo: rootContainer.trailingAnchor),
             webViewContainer.bottomAnchor.constraint(equalTo: rootContainer.bottomAnchor)
         ])
+    }
+
+    /// Sibling of the page root, sitting above WKWebView and stopping at the
+    /// tab strip so "more" stays hittable. Empty host does not eat taps.
+    private func setupOverflowHost() {
+        let host = UIView()
+        host.tag = LxAppTabBarOverflowChrome.hostTag
+        host.backgroundColor = .clear
+        host.isUserInteractionEnabled = false
+        host.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(host)
+        overflowHostView = host
+        let bottom = host.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        overflowHostBottom = bottom
+        NSLayoutConstraint.activate([
+            host.topAnchor.constraint(equalTo: view.topAnchor),
+            host.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            bottom
+        ])
+    }
+
+    private func pinOverflowHost(to tabBar: UIView?) {
+        overflowHostBottom?.isActive = false
+        guard let host = overflowHostView else { return }
+        if let tabBar {
+            overflowHostBottom = host.bottomAnchor.constraint(equalTo: tabBar.topAnchor)
+        } else {
+            overflowHostBottom = host.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            host.isUserInteractionEnabled = false
+        }
+        overflowHostBottom?.isActive = true
+        view.bringSubviewToFront(host)
     }
 
     private func setupBackGestureRecognizer() {
@@ -522,6 +576,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
         if let tabBar = currentTabBar, tabBar.appId != appId {
             tabBar.removeFromSuperview()
             currentTabBar = nil
+            (rootContainer as? LxAppRootContainer)?.tabBarHitTarget = nil
+            pinOverflowHost(to: nil)
         }
 
         // If TabBar doesn't exist, create it with fresh config.
@@ -607,6 +663,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
             updateNavigationBar(appId: appId, path: path)
             updateTabBar(for: appId, path: path)
             updatePullToRefreshForCurrentPage()
+            bringUIElementsToFront()
 
             return
         }
@@ -659,6 +716,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
         updateNavigationBar(appId: appId, path: path)
         updateTabBar(for: appId, path: path)
         updatePullToRefreshForCurrentPage()
+        bringUIElementsToFront()
     }
 
     /// Calculate the correct top offset for a WebView based on the target page's NavigationBar state
@@ -978,7 +1036,9 @@ final class LxAppViewController: UIViewController, ObservableObject {
             let appId = notification.object as? String
             guard let self = self else { return }
 
-            Task { @MainActor in
+            // Same turn as the post: a `Task { @MainActor }` hop let the user
+            // reopen overflow, then this dismiss-on-refresh closed it.
+            MainActor.assumeIsolated {
                 if let appId, appId == LxAppCore.currentAppId {
                     self.currentTabBar?.refreshLayout()
                     self.updateWebViewBottomInset(for: appId)
@@ -1161,6 +1221,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
         rootContainer.addSubview(tabBar)
         applyTabBarLayoutParams(tabBar: tabBar, config: config, for: appId)
+        (rootContainer as? LxAppRootContainer)?.tabBarHitTarget = tabBar
+        pinOverflowHost(to: tabBar)
 
         return tabBar
     }
@@ -1178,6 +1240,10 @@ final class LxAppViewController: UIViewController, ObservableObject {
         if let capsule = globalCapsuleButton, !capsule.isHidden {
             rootContainer.bringSubviewToFront(capsule)
         }
+        if let host = overflowHostView {
+            view.bringSubviewToFront(host)
+        }
+        currentTabBar?.bringOverflowToFront()
     }
 
     /// Finalize WebView attachment after animation completes

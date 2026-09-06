@@ -40,6 +40,9 @@ final class LxAppTabBarOverflowPanel: UIView {
         self.onDismiss = onDismiss
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
+        isOpaque = false
+        backgroundColor = .clear
+        layer.zPosition = 10_000
         buildScrim()
         buildPanel(items: items, config: config, selectedIndex: selectedIndex, appId: appId)
     }
@@ -48,25 +51,22 @@ final class LxAppTabBarOverflowPanel: UIView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        panel.frame.contains(point) || scrim.frame.contains(point)
-    }
-
-    /// Installs the panel over `host`, resting on top of `anchor`.
-    func present(in host: UIView, above anchor: UIView) {
+    /// Fills `host`, which the page chrome already pins above the strip.
+    func present(in host: UIView, above _: UIView) {
+        translatesAutoresizingMaskIntoConstraints = false
         host.addSubview(self)
         NSLayoutConstraint.activate([
             topAnchor.constraint(equalTo: host.topAnchor),
             leadingAnchor.constraint(equalTo: host.leadingAnchor),
             trailingAnchor.constraint(equalTo: host.trailingAnchor),
             bottomAnchor.constraint(equalTo: host.bottomAnchor),
-            scrim.bottomAnchor.constraint(equalTo: anchor.topAnchor),
             panel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Metrics.horizontalInset),
             panel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Metrics.horizontalInset),
-            panel.bottomAnchor.constraint(equalTo: anchor.topAnchor, constant: -Metrics.bottomGap)
+            panel.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -Metrics.bottomGap)
         ])
 
         scrim.alpha = 0
+        host.layoutIfNeeded()
         layoutIfNeeded()
         panel.transform = CGAffineTransform(translationX: 0, y: panel.bounds.height)
         UIView.animate(withDuration: Metrics.enterDuration) {
@@ -86,7 +86,12 @@ final class LxAppTabBarOverflowPanel: UIView {
     private func finishDismiss() {
         guard !didDismiss else { return }
         didDismiss = true
+        isUserInteractionEnabled = false
+        let host = superview
         removeFromSuperview()
+        if host?.subviews.contains(where: { $0 is LxAppTabBarOverflowPanel }) != true {
+            host?.isUserInteractionEnabled = false
+        }
         onDismiss()
     }
 
@@ -98,7 +103,8 @@ final class LxAppTabBarOverflowPanel: UIView {
         NSLayoutConstraint.activate([
             scrim.topAnchor.constraint(equalTo: topAnchor),
             scrim.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrim.trailingAnchor.constraint(equalTo: trailingAnchor)
+            scrim.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrim.bottomAnchor.constraint(equalTo: bottomAnchor)
         ])
     }
 
@@ -453,6 +459,7 @@ final class LxAppTabBarOverflowPanel: NSView {
     private func finishDismiss() {
         guard !didDismiss else { return }
         didDismiss = true
+        isUserInteractionEnabled = false
         removeFromSuperview()
         onDismiss()
     }
