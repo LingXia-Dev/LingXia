@@ -93,6 +93,15 @@ enum TabBarMetrics {
     static let activeIndicatorOpacity: CGFloat = 0.2
 }
 
+#if os(iOS)
+enum LxAppTabBarOverflowChrome {
+    /// Sibling of the page root on the view controller's view. Hits pass
+    /// through while empty (`isUserInteractionEnabled = false`).
+    static let hostTag = 0x4F10
+    static let stripStackTag = 0x4F11
+}
+#endif
+
 struct TabBarHelper {
     static func isTransparent(_ colorValue: UInt32) -> Bool {
         return (colorValue >> 24) & 0xFF == 0
@@ -551,7 +560,10 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
     var appId: String = ""
     private var selectedIndex: Int = 0
     private var onTabSelectedCallback: ((Int, String) -> Void)?
-    private weak var overflowPanel: LxAppTabBarOverflowPanel?
+    // Strong while open: a leftover panel can stay alive via host constraints
+    // after removeFromSuperview, and a weak check then treats the next more
+    // tap as "toggle closed" — which is a no-op because it is already gone.
+    private var overflowPanel: LxAppTabBarOverflowPanel?
     private var morePresented = false
 
     // Public accessor for tabBarConfig
@@ -571,11 +583,38 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
 
     private func setupView() {
         backgroundColor = UIColor.clear
+        clipsToBounds = false
+        isUserInteractionEnabled = true
     }
 
-    /// The overflow panel is parented to the strip's superview (the page root),
-    /// so tearing the bar off does not take the card with it. Dismiss first or
-    /// a leftover panel sits on the next lxapp — the 2nd-lxapp "more" flash.
+    /// Map any tap in the strip to the slot that owns that x, so a leftover
+    /// content-sized button (or padding) cannot leave the right of "more" dead.
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard isUserInteractionEnabled, !isHidden, alpha > 0.01, bounds.contains(point) else {
+            return super.hitTest(point, with: event)
+        }
+        if let stack = viewWithTag(LxAppTabBarOverflowChrome.stripStackTag) as? UIStackView,
+           !stack.arrangedSubviews.isEmpty {
+            let count = stack.arrangedSubviews.count
+            let index = min(count - 1, max(0, Int(point.x / bounds.width * CGFloat(count))))
+            let slot = stack.arrangedSubviews[index]
+            let local = convert(point, to: slot)
+            if let hit = slot.hitTest(local, with: event) {
+                return hit
+            }
+            if let button = slot as? UIButton {
+                return button
+            }
+            if let button = slot.subviews.compactMap({ $0 as? UIButton }).first {
+                return button
+            }
+            return slot
+        }
+        return super.hitTest(point, with: event)
+    }
+
+    /// The overflow panel is parented off the strip (overflow host on the
+    /// page chrome). Dismiss first or a leftover card sits on the next lxapp.
     override func willMove(toSuperview newSuperview: UIView?) {
         if newSuperview == nil {
             dismissOverflowPanel()
@@ -599,9 +638,8 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
 
     /// `index` is a declaration index, not a position in the shipped list.
     func setSelectedIndex(_ index: Int, notifyListener: Bool) {
-        // A pick from the overflow panel is a tab switch; the panel has done
-        // its job either way. Strip clicks while the panel is open take the
-        // same path so the card cannot outlive the selection it stood in for.
+        // Strip clicks while the panel is open must close it. A pick from the
+        // panel dismisses itself; calling dismiss here too is idempotent.
         dismissOverflowPanel()
         let previousIndex = selectedIndex
         self.selectedIndex = index
@@ -619,13 +657,9 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
     }
 
     func refreshLayout() {
-        // The panel lists items from the config about to be replaced, and it
-        // hangs off a strip that is about to be re-laid out: an open panel
-        // cannot survive the rebuild intact.
-        dismissOverflowPanel()
-
         // Get fresh config from Rust instead of using cached tabBarConfig
         guard let freshConfig = getTabBar(appId) else {
+            dismissOverflowPanel()
             // If no config exists, hide the view.
             self.isHidden = true
             return
@@ -643,13 +677,21 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         self.isOpaque = ((freshConfig.background_color >> 24) & 0xFF) == 0xFF
 
         let items = freshConfig.getItems(appId: appId)
+        if overflowStart(itemCount: items.count, config: freshConfig) < 0 {
+            dismissOverflowPanel()
+        }
 
-        // Always recreate layout to ensure fresh badge/red dot data
+        // Always recreate layout to ensure fresh badge/red dot data.
+        // Do not dismiss an open overflow card here: switchTab chrome sync
+        // (and the new page's onShow) would close a card the user just opened.
         setupUIKitLayout(items: items, config: freshConfig)
 
         // Apply visibility state
         self.isHidden = !freshConfig.is_visible
         self.alpha = freshConfig.is_visible ? 1.0 : 0.0
+        if !freshConfig.is_visible {
+            dismissOverflowPanel()
+        }
     }
 
     private func createRedDotView() -> UIView {
@@ -711,8 +753,9 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         let stackView = UIStackView()
         stackView.axis = .horizontal
         stackView.distribution = .fillEqually
-        stackView.alignment = .center
+        stackView.alignment = .fill
         stackView.spacing = 0
+        stackView.tag = LxAppTabBarOverflowChrome.stripStackTag
         stackView.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(stackView)
 
@@ -731,20 +774,24 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         }
 
         NSLayoutConstraint.activate([
-            stackView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 8),
-            stackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 8),
-            stackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -8),
-            stackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -8)
+            stackView.topAnchor.constraint(equalTo: containerView.topAnchor),
+            stackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            stackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            stackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
         ])
     }
 
     private func createUIKitTabItem(item: TabBarItem, index: Int, config: TabBar) -> UIView {
         let containerView = UIView()
         containerView.translatesAutoresizingMaskIntoConstraints = false
+        containerView.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         let button = UIButton(type: .custom)
         button.translatesAutoresizingMaskIntoConstraints = false
+        button.backgroundColor = .clear
         button.tag = item.cachedIndex
+        button.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let stackView = UIStackView()
         stackView.axis = .vertical
@@ -797,19 +844,19 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         NSLayoutConstraint.activate([
             stackView.centerXAnchor.constraint(equalTo: button.centerXAnchor),
             stackView.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-            stackView.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 2),
-            stackView.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -2),
+            stackView.leadingAnchor.constraint(greaterThanOrEqualTo: button.leadingAnchor, constant: 2),
+            stackView.trailingAnchor.constraint(lessThanOrEqualTo: button.trailingAnchor, constant: -2),
 
             button.topAnchor.constraint(equalTo: containerView.topAnchor),
             button.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             button.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            button.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            button.heightAnchor.constraint(equalToConstant: 60)
+            button.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
         ])
         // A horizontal slot gets its width from the equal-width strip, not
         // from the icon/button dimensions used by the vertical rail.
         if config.position == 1 || config.position == 2 {
             button.widthAnchor.constraint(equalToConstant: 60).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 60).isActive = true
         }
 
         return containerView
@@ -896,9 +943,13 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
     ) -> UIView {
         let containerView = UIView()
         containerView.translatesAutoresizingMaskIntoConstraints = false
+        containerView.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         let button = UIButton(type: .custom)
         button.translatesAutoresizingMaskIntoConstraints = false
+        button.backgroundColor = .clear
+        button.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         button.addTarget(self, action: #selector(moreButtonTapped), for: .touchUpInside)
 
         let isSelected = morePresented || items[overflowStart...].contains {
@@ -965,8 +1016,8 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         NSLayoutConstraint.activate([
             stackView.centerXAnchor.constraint(equalTo: button.centerXAnchor),
             stackView.centerYAnchor.constraint(equalTo: button.centerYAnchor),
-            stackView.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 2),
-            stackView.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -2),
+            stackView.leadingAnchor.constraint(greaterThanOrEqualTo: button.leadingAnchor, constant: 2),
+            stackView.trailingAnchor.constraint(lessThanOrEqualTo: button.trailingAnchor, constant: -2),
 
             iconContainer.widthAnchor.constraint(equalToConstant: 32),
             iconContainer.heightAnchor.constraint(equalToConstant: 32),
@@ -978,8 +1029,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
             button.topAnchor.constraint(equalTo: containerView.topAnchor),
             button.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             button.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
-            button.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-            button.heightAnchor.constraint(equalToConstant: 60)
+            button.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
         ])
 
         return containerView
@@ -996,15 +1046,53 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
     }
 
     @objc private func moreButtonTapped() {
-        guard let config = tabBarConfig, let host = superview else { return }
+        // A leftover card that is no longer in the tree must not count as
+        // open: dismissing it is a no-op and the button looks dead.
+        if morePresented, overflowPanel?.superview != nil {
+            dismissOverflowPanel()
+            return
+        }
+        presentOverflowPanel()
+    }
+
+    /// Dedicated host on the view controller's view (sibling of the page
+    /// root). Do not parent to `UIWindow`: adding and removing a window
+    /// subview is what made the second more tap miss the strip.
+    private func overflowHost() -> UIView? {
+        var node: UIView? = self
+        while let current = node {
+            if current.tag == LxAppTabBarOverflowChrome.hostTag {
+                return current
+            }
+            if let host = current.subviews.first(where: { $0.tag == LxAppTabBarOverflowChrome.hostTag }) {
+                return host
+            }
+            node = current.superview
+        }
+        return superview
+    }
+
+    func bringOverflowToFront() {
+        guard let panel = overflowPanel, let host = panel.superview else { return }
+        host.bringSubviewToFront(panel)
+        host.superview?.bringSubviewToFront(host)
+        host.isUserInteractionEnabled = true
+    }
+
+    private func presentOverflowPanel() {
+        morePresented = false
+        overflowPanel?.dismissPanel()
+        overflowPanel = nil
+
+        guard let config = tabBarConfig, let host = overflowHost() else { return }
         let items = config.getItems(appId: appId)
         let start = overflowStart(itemCount: items.count, config: config)
         guard start >= 0 else { return }
 
-        if overflowPanel != nil {
-            dismissOverflowPanel()
-            return
-        }
+        host.subviews
+            .compactMap { $0 as? LxAppTabBarOverflowPanel }
+            .forEach { $0.dismissPanel() }
+
         morePresented = true
         let panel = LxAppTabBarOverflowPanel(
             items: items,
@@ -1026,15 +1114,18 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         )
         panel.present(in: host, above: self)
         overflowPanel = panel
-        // Light the more slot after the card is up so the strip does not
-        // flash selected and then get covered.
+        host.isUserInteractionEnabled = true
+        host.superview?.bringSubviewToFront(host)
+        host.bringSubviewToFront(panel)
         setupUIKitLayout(items: items, config: config)
     }
 
     private func dismissOverflowPanel() {
-        overflowPanel?.dismissPanel()
-        overflowPanel = nil
         morePresented = false
+        let panel = overflowPanel
+        overflowPanel = nil
+        panel?.dismissPanel()
+        superview?.bringSubviewToFront(self)
     }
 
     private func createBadgeView(text: String) -> UIView {
