@@ -137,3 +137,151 @@ pub trait PushNotificationProvider: Send + Sync + 'static {
         Box::pin(async { Ok(()) })
     }
 }
+
+/// Server-owned lifecycle state of an lxapp.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LxAppStatus {
+    /// The registry reported nothing for this app — an older server, an app it
+    /// does not know, or a check that never reached it.
+    #[default]
+    Unknown,
+    Published,
+    /// Temporarily unavailable while the operator works on it. Must not open,
+    /// but says something different to the user than `Suspended` does: one is
+    /// "come back later", the other is "this is not yours to open".
+    Maintain,
+    /// No longer offered. An already-installed copy keeps working.
+    Delisted,
+    /// Blocked by the operator. Must not open, installed or not.
+    Suspended,
+}
+
+impl LxAppStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Published => "published",
+            Self::Maintain => "maintain",
+            Self::Delisted => "delisted",
+            Self::Suspended => "suspended",
+        }
+    }
+
+    /// Unrecognized values read as `Unknown` so a newer server cannot brick an
+    /// older client by inventing a state it never blocks on.
+    ///
+    /// Case- and whitespace-insensitive: `Unknown` does not block, so a server
+    /// sending `"Suspended"` against a case-sensitive match would degrade in
+    /// the unsafe direction on the one field that gates opening.
+    pub fn from_str_lossy(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "published" => Self::Published,
+            "maintain" => Self::Maintain,
+            "delisted" => Self::Delisted,
+            "suspended" => Self::Suspended,
+            _ => Self::Unknown,
+        }
+    }
+
+    /// Whether opening must be refused.
+    ///
+    /// `Delisted` does not: it means the app is no longer offered, while an
+    /// installed copy keeps working. `Maintain` does, because the operator has
+    /// taken it down on purpose and a half-working app is worse than a clear
+    /// message.
+    pub const fn blocks_open(self) -> bool {
+        matches!(self, Self::Suspended | Self::Maintain)
+    }
+}
+
+impl std::fmt::Display for LxAppStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// The registry's record for one lxapp: the facts the server owns.
+///
+/// Deliberately carries nothing about a *package* — version, url, checksum,
+/// `minRuntimeVersion` all belong to `UpdatePackageInfo` and travel the update
+/// path. Server-owned facts in, package facts out; the two must never become
+/// two answers to the same question.
+#[derive(Debug, Clone, Default)]
+pub struct LxAppRegistryInfo {
+    pub appid: String,
+    /// Display name as the backend defined it.
+    pub name: Option<String>,
+    pub description: Option<String>,
+    /// Where the icon lives. Also the cache key: the client re-fetches when
+    /// this changes and not otherwise, so a server that edits the artwork
+    /// behind a stable URL will never be picked up. Change the URL — a content
+    /// path, or a version query — when the image changes.
+    pub icon_url: Option<String>,
+    pub status: LxAppStatus,
+}
+
+/// Lookup of registry records, separate from `UpdateProvider` on purpose: an
+/// app's name, icon, and status change without any package changing, and the
+/// update path is gated (OTA-managed only, deduped, force-update aware) in ways
+/// that would silently strand them.
+pub trait LxAppRegistryProvider: Send + Sync + 'static {
+    /// Resolve one app's registry record.
+    ///
+    /// `name` and `description` are the strings the backend stored. The client
+    /// does not send a locale; localization, if any, is a server concern.
+    ///
+    /// `Ok(None)` means the registry does not know the app (HTTP 404). That is
+    /// a negative listing, not a transport failure.
+    fn fetch_registry_info<'a>(
+        &'a self,
+        _appid: &'a str,
+    ) -> BoxFuture<'a, Result<Option<LxAppRegistryInfo>, ProviderError>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+#[cfg(test)]
+mod registry_tests {
+    use super::LxAppStatus;
+
+    #[test]
+    fn only_the_states_that_mean_do_not_open_block() {
+        // Two states block, and they say different things to a user: one is
+        // "come back later", the other is "this is not yours to open".
+        assert!(LxAppStatus::Suspended.blocks_open());
+        assert!(LxAppStatus::Maintain.blocks_open());
+        // Delisted is not offered any more, but an installed copy keeps working.
+        assert!(!LxAppStatus::Delisted.blocks_open());
+        assert!(!LxAppStatus::Published.blocks_open());
+        // An unrecognized state must never lock a user out.
+        assert!(!LxAppStatus::Unknown.blocks_open());
+        assert_eq!(
+            LxAppStatus::from_str_lossy("maintain"),
+            LxAppStatus::Maintain
+        );
+    }
+
+    #[test]
+    fn status_parsing_is_case_insensitive_because_unknown_never_blocks() {
+        assert_eq!(
+            LxAppStatus::from_str_lossy("suspended"),
+            LxAppStatus::Suspended
+        );
+        assert_eq!(
+            LxAppStatus::from_str_lossy("Suspended"),
+            LxAppStatus::Suspended
+        );
+        assert_eq!(
+            LxAppStatus::from_str_lossy(" SUSPENDED "),
+            LxAppStatus::Suspended
+        );
+        assert!(LxAppStatus::from_str_lossy("SUSPENDED").blocks_open());
+
+        assert_eq!(
+            LxAppStatus::from_str_lossy("Delisted"),
+            LxAppStatus::Delisted
+        );
+        assert_eq!(LxAppStatus::from_str_lossy(""), LxAppStatus::Unknown);
+        assert_eq!(LxAppStatus::from_str_lossy("retired"), LxAppStatus::Unknown);
+    }
+}

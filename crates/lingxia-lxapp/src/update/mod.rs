@@ -424,6 +424,7 @@ impl UpdateManager {
         let _ = self.uninstall_installed(lxappid, ReleaseType::Preview);
         let _ = self.uninstall_installed(lxappid, ReleaseType::Developer);
         let _ = metadata::remove_all(lxappid);
+        lxapp_runtime::registry::clear(lxappid);
         Ok(())
     }
 

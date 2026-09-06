@@ -1,3 +1,4 @@
+use crate::i18n::js_error_from_lxapp_error;
 use futures::{
     StreamExt,
     channel::{mpsc, oneshot},
@@ -1278,7 +1279,13 @@ async fn open_declared_surface_spec(ctx: &JSContext, spec: &JSObject) -> JSResul
     if let Some(app_id) = declared_app_id {
         lxapp::prepare_lxapp_open(&app_id, lxapp::host_channel())
             .await
-            .map_err(|err| surface_error(SurfaceErrorCode::NotDeclared, err.to_string()))?;
+            .map_err(|err| {
+                if lxapp::registry_unavailable_status(&err).is_some() {
+                    js_error_from_lxapp_error(&err)
+                } else {
+                    surface_error(SurfaceErrorCode::NotDeclared, err.to_string())
+                }
+            })?;
     }
     if key.is_some() {
         let resolved = lxapp

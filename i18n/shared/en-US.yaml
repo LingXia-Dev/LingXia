@@ -20,6 +20,12 @@ webview:
   load_error_message: "Check your connection and try again."
   retry: "Retry"
 
+# Refusing to open an lxapp the registry reports as unavailable
+lxapp:
+  unavailable_title: "Can't open this mini app"
+  unavailable_maintain: "It's under maintenance. Try again later."
+  unavailable_suspended: "It's no longer available."
+
 # Tab bar
 tabbar:
   more: "More"

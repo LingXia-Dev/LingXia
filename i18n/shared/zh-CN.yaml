@@ -20,6 +20,12 @@ webview:
   load_error_message: "请检查网络连接后重试。"
   retry: "重试"
 
+# 注册表判定小程序不可用时的拒绝提示
+lxapp:
+  unavailable_title: "无法打开该小程序"
+  unavailable_maintain: "该小程序正在维护中，请稍后再试。"
+  unavailable_suspended: "该小程序已停止提供服务。"
+
 # Tab bar
 tabbar:
   more: "更多"

@@ -22,7 +22,7 @@ fn open_target(target: AppLinkTarget) -> i32 {
 
     std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {
         if let Err(err) = lxapp::prepare_lxapp_open(&appid, release_type).await {
-            log::warn!("AppLink prepare failed for {}: {}", appid, err);
+            lxapp::notify_lxapp_open_blocked(&err);
             return;
         }
         if let Err(err) = lxapp::open_lxapp(&appid, options) {
