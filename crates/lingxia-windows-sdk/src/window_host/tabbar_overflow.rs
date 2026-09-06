@@ -29,9 +29,15 @@ pub(crate) fn toggle_tabbar_overflow(owner: isize, tabbar: crate::shell::Windows
 
 fn toggle_tabbar_overflow_on_thread(owner: isize, tabbar: crate::shell::WindowsShellTabBarLayout) {
     let owner_hwnd = hwnd_from_handle(owner);
-    if overlay_for_owner(owner_hwnd).is_some() {
+    // The overlay is keyed only by the owner HWND — one device-frame window
+    // hosts every lxapp. A leftover sheet from app A must not toggle-close
+    // and skip app B's sheet; replace it in the same click.
+    if let Some(existing) = overlay_for_owner(owner_hwnd) {
+        let same_app = existing.layout.tabbar.group_id == tabbar.group_id;
         destroy_tabbar_overflow(owner_hwnd);
-        return;
+        if same_app {
+            return;
+        }
     }
 
     let mut client = RECT::default();
@@ -164,6 +170,18 @@ pub(super) fn dismiss_tabbar_overflow(owner: HWND) -> bool {
     }
     destroy_tabbar_overflow(owner);
     true
+}
+
+/// Drop a leftover overflow sheet when the owner window presents another lxapp.
+pub(crate) fn dismiss_tabbar_overflow_on_owner(owner: isize) {
+    if !post_to_window_thread(
+        owner,
+        Box::new(move || {
+            dismiss_tabbar_overflow(hwnd_from_handle(owner));
+        }),
+    ) {
+        log::warn!("failed to post TabBar overflow dismiss to owner={owner}");
+    }
 }
 
 fn remove_destroyed_overlay(window: HWND) {

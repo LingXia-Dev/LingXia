@@ -3991,6 +3991,10 @@ fn active_host_is_browser() -> bool {
 }
 
 fn present_current_lxapp_main(app: &LxApp) -> bool {
+    #[cfg(feature = "shell-chrome")]
+    if let Some(window) = owner_window_handle(&app.appid) {
+        crate::window_host::dismiss_tabbar_overflow_on_owner(window);
+    }
     let path = app
         .peek_current_page()
         .unwrap_or_else(|| app.initial_route());
