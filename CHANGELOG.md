@@ -19,6 +19,89 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.15.0 — 2026-09-07
+
+### Breaking
+
+- **Breaking** — delete the packaged lxapp icon and read every host's icon from the registry (d499bf5d3)
+- **Breaking** — **lxapp**: address tab bar items by page name (1b011807e)
+
+### Writing an lxapp
+
+- **tabbar**: reopen iOS overflow after a folded-tab pick (1863c17a0)
+- **tabbar**: dismiss overflow when the strip is rebuilt or torn down (35bdbe7de)
+- **lxapp**: key cached artwork to its URL, and repaint expanded chrome (53ae1eda8)
+- **lxapp**: look up one registry record per app, without a locale (0c5c97ae0)
+- **lxapp**: report why a blocked open was refused, as data (3eec071d0)
+- **lxapp**: re-fetch registry artwork the OS purged (70bf508c1)
+- **lxapp**: keep the open gate off the icon download, and repaint on refresh (ac8bc96a5)
+- **lxapp**: cache registry records and gate opening on a fresh status (fc8fc5211)
+- **lxapp**: center the capsule on the navbar title (c72601b4c)
+- **lxapp**: recover package loading without stale builtin overrides (1c950e623)
+- **lxapp**: correct lifecycle test route and satisfy clippy (97799acb9)
+- **lxapp**: preserve page lifecycle and navigation surfaces (74622fa51)
+- **test**: stop claiming covers the recorder cannot emit (71fcb78c5)
+- **test**: mark the eval capture envelope instead of sniffing its shape (4f9e7ea9e)
+- **test**: count a capability as covered only when a spec reached it (2fbac4939)
+- **logic**: require pull-down refresh enablement (f641c3814)
+- **lxapp**: tell an lxapp whether it is on a mobile or a desktop machine (32f886bbb)
+- **lxapp**: say what is wrong with a network URL in an icon path (fec976322)
+
+### Embedding a host app
+
+- **macos**: drop UIKit-only disable from overflow dismiss (50fffc4b6)
+- **windows**: drop unused panel opener and a needless borrow (aa9ec6479)
+- **windows**: resolve the About dialog's name and icon from the registry (719ab4ad0)
+- **windows**: draw sidebar rows from the registry record (1f015b304)
+- **android**: refresh open overflow panels with tabbar state (69b3dddb0)
+- **harmony**: preserve hyphens in page show routes (ff34b6c94)
+- **app**: let the home lxapp set the host display language (119f1b57e)
+- **windows**: simulate the host class with the device frame (3865d2ceb)
+- **android**: keep the pull-to-refresh indicator through an lxapp switch (c78153cfb)
+- **android**: size the tab bar for the lxapp that is opening (6b28229bb)
+- **macos**: stop the tab-bar "more" panel from flashing the window (aaaa1d54d)
+- **macos**: slide a page only once it can draw itself (200e5e85e)
+- **macos**: paint the page cover with the colour the page actually paints (acdf66420)
+- **macos**: stop a page navigation reading as two animations (f4f08d243)
+- **macos**: deliver shell sidebar actions to the shell, not the AppUI runtime (c8b6fc296)
+- **macos**: give lxapp pages a real pull-to-refresh (3303962be)
+- **device-io**: keep focus unconditional, guard only the call that asserts (7bd4eb84a)
+- **device-io**: do not force main/key status on a window that refuses it (6cb31f6fb)
+
+### Rust native extensions
+
+- **control**: await initial page creation before open readiness (49a9820c4)
+- **automation**: report which lx APIs a script actually reached (809c14679)
+
+### CLI and CI
+
+- **cli**: preserve provider configuration and platform build identity (0cd627083)
+- **lxdev**: name the test run budget after its unit (abaac53c6)
+- **runner**: make the simulated appearance reach the lxapp (4031ffe1d)
+- **runner**: size an lxapp's capsule action icon like the built-in ones (29213f180)
+- **cli**: keep the skill hand-off off the Windows build (607d4d6ea)
+- **cli**: keep the agent skill and templates current on their own (c1d853241)
+- **cli**: restore Apple package manifests after builds (327e910c6)
+- **cli**: trust the platform's root certificates (cb51235a4)
+
+### Docs and examples
+
+- **showcase**: make the desktop cases hand the workspace back and stop guessing the host (1e4195e54)
+- **showcase**: stop three new cases from assuming macOS behavior everywhere (88c5bc684)
+- **showcase**: stop a scheduled redirect from leaking into the next case (89dd206f1)
+- **types**: declare in_stack on LxAppRuntimeInfo (48a97df31)
+- **showcase**: let the surface page receive opener messages (e2adebb82)
+
+### Other
+
+- **provider**: add a maintain state, and key cached icons on their URL (d1c33c7c1)
+- **provider**: parse registry status case-insensitively (052c88c88)
+- **provider**: add the lxapp registry contract (a7703de26)
+- **chrome**: align tab overflow layouts and render local icons consistently (3932e1aba)
+- give the tab bar overflow panel the colour it floats over (6d7ba7f4c)
+- **upgrade**: fetch a pinned SDK the cache is still missing (42a1c6082)
+- **upgrade**: name a retry that actually runs after a failed SDK fetch (3471fb8d6)
+
 ## 0.14.0 — 2026-09-01
 
 ### Breaking
