@@ -2,7 +2,7 @@ use crate::lxapp::ReleaseType;
 use crate::{LxApp, LxAppError};
 use lingxia_platform::traits::app_runtime::LxAppOpenMode;
 use lingxia_update::host_channel;
-use serde::{Deserialize, Serialize, Serializer, ser::SerializeMap};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Default)]
@@ -47,20 +47,7 @@ impl serde::Serialize for LxAppStartupOptions {
     where
         S: Serializer,
     {
-        let mut map = serializer.serialize_map(None)?;
-
-        map.serialize_entry("path", &self.path)?;
-        map.serialize_entry("scene", &(self.scene as u32))?;
-
-        if let Ok(query_value) = parse_query_string(&self.query)
-            && let Some(query_map) = query_value.as_object()
-        {
-            for (k, v) in query_map {
-                map.serialize_entry(k, v)?;
-            }
-        }
-
-        map.end()
+        self.launch_options_value().serialize(serializer)
     }
 }
 
@@ -230,6 +217,27 @@ impl LxAppStartupOptions {
         self
     }
 
+    /// JS `AppLaunchOptions`: `{ path, query, scene }`. Query is a nested
+    /// object so home lxapp Logic can route with `lx.navigateTo`.
+    pub fn launch_options_value(&self) -> Value {
+        let query =
+            parse_query_string(&self.query).unwrap_or_else(|_| Value::Object(Default::default()));
+        let mut map = serde_json::Map::new();
+        if !self.path.is_empty() {
+            map.insert("path".to_string(), Value::String(self.path.clone()));
+        }
+        map.insert("query".to_string(), query);
+        map.insert(
+            "scene".to_string(),
+            Value::Number(serde_json::Number::from(self.scene as u32)),
+        );
+        Value::Object(map)
+    }
+
+    pub fn launch_options_json(&self) -> String {
+        self.launch_options_value().to_string()
+    }
+
     /// Sets the open mode for the startup options.
     pub fn set_open_mode(mut self, open_mode: LxAppOpenMode) -> Self {
         self.open_mode = open_mode;
@@ -263,5 +271,20 @@ mod tests {
         assert_eq!(options.page.as_deref(), Some("tray"));
         assert_eq!(options.path, "");
         assert_eq!(options.query, "compact=true&source=menu%20bar");
+    }
+
+    #[test]
+    fn launch_options_nests_query_and_scene() {
+        let options = LxAppStartupOptions::new("pages/home/index")
+            .set_query("page=order&id=42".to_string())
+            .set_scene(super::Scene::AppLink);
+        assert_eq!(
+            options.launch_options_value(),
+            serde_json::json!({
+                "path": "pages/home/index",
+                "query": { "page": "order", "id": "42" },
+                "scene": 8003,
+            })
+        );
     }
 }

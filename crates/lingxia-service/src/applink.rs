@@ -69,17 +69,13 @@ pub fn parse(url: &str) -> Result<Option<AppLinkTarget>, String> {
     let query_parts = parse_query(raw_query, uses_query_routing)?;
     let appid = match route.appid {
         Some(appid) => appid,
-        None => query_parts
-            .appid
-            .ok_or_else(|| "missing lxapp appId".to_string())?,
+        None => query_parts.appid.unwrap_or_default(),
     };
     let path = match route.path {
         Some(path) => path,
         None => query_parts.path.unwrap_or_default(),
     };
-    if appid.trim().is_empty() {
-        return Err("empty lxapp appId".to_string());
-    }
+    // Empty appId is resolved to the host's home lxapp when the link is opened.
 
     Ok(Some(AppLinkTarget {
         appid,
@@ -146,18 +142,37 @@ fn split_path_query(value: &str) -> (&str, Option<&str>) {
     }
 }
 
+const RUNNER_MARKER_ENV: &str = "LINGXIA_RUNNER";
+
+fn runner_process() -> bool {
+    std::env::var(RUNNER_MARKER_ENV)
+        .ok()
+        .is_some_and(|value| !value.trim().is_empty())
+}
+
 fn host_allowed(host: &str) -> bool {
     let Some(config) = lingxia_app_context::app_config() else {
         return true;
     };
-    let Some(app_links) = config.app_links.as_ref() else {
-        return false;
-    };
-    if app_links.hosts.is_empty() {
-        return false;
+    host_allowed_for(
+        host,
+        config
+            .app_links
+            .as_ref()
+            .map(|links| links.hosts.as_slice())
+            .unwrap_or(&[]),
+        runner_process(),
+    )
+}
+
+/// Product hosts must match `appLinks.hosts`. The Runner is not a product and
+/// has no hosts — any AppLink URL is accepted so `lxdev app applink` can use
+/// the URL under test.
+fn host_allowed_for(host: &str, hosts: &[String], is_runner: bool) -> bool {
+    if hosts.is_empty() {
+        return is_runner;
     }
-    app_links
-        .hosts
+    hosts
         .iter()
         .any(|candidate| candidate.eq_ignore_ascii_case(host))
 }
@@ -274,6 +289,16 @@ mod tests {
     }
 
     #[test]
+    fn parses_open_without_appid_for_home_routing() {
+        let target = parse("https://www.lingxia.app/lxapp/open?page=order&id=42")
+            .unwrap()
+            .unwrap();
+        assert_eq!(target.appid, "");
+        assert_eq!(target.path, "");
+        assert_eq!(target.query, "page=order&id=42");
+    }
+
+    #[test]
     fn parses_open_page_and_strips_routing_query() {
         let target = parse(
             "https://www.lingxia.app/lxapp/open?appId=com.example.shop&path=pages%2Fdetail%2Findex.html&envVersion=preview&id=42",
@@ -351,5 +376,24 @@ mod tests {
     #[test]
     fn rejects_invalid_percent_encoding() {
         assert!(parse("https://www.lingxia.app/lxapp/open?appId=%GG").is_err());
+    }
+
+    #[test]
+    fn runner_without_hosts_allows_any_host() {
+        assert!(host_allowed_for("app.example.com", &[], true));
+    }
+
+    #[test]
+    fn product_without_hosts_rejects() {
+        assert!(!host_allowed_for("app.example.com", &[], false));
+    }
+
+    #[test]
+    fn configured_hosts_must_match() {
+        let hosts = vec!["app.example.com".to_string()];
+        assert!(host_allowed_for("app.example.com", &hosts, false));
+        assert!(host_allowed_for("APP.EXAMPLE.COM", &hosts, true));
+        assert!(!host_allowed_for("evil.example", &hosts, false));
+        assert!(!host_allowed_for("evil.example", &hosts, true));
     }
 }

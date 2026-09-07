@@ -42,8 +42,8 @@ actions.
 
 | Parameter | Required | Description |
 |---|---:|---|
-| `appId` | Yes | Target lxapp id. |
-| `path` | No | Target page path inside the lxapp. If omitted, the lxapp initial route is used. |
+| `appId` | No | Target lxapp. Omitted → home. |
+| `path` | No | Target page path. Omitted → current/initial page; Logic routes from `query`. |
 | `envVersion` | No | Target release channel. Matches `navigateToApp`. Omitted, the host build's own channel (its `envVersion`) is used — a developer build opens the target from the developer channel, not release. |
 
 All query keys and values should be URL encoded. Routing parameters are consumed
@@ -74,45 +74,51 @@ appId: shop
 release: preview
 path: pages/detail/index.html
 page query: id=42
-scene: AppLink
+scene: 8003
 ```
+
+Home routes from query. Omit `appId`/`path`; put the page name in query:
+
+```text
+https://app.example.com/lxapp/open?page=order&id=42
+```
+
+```ts
+function routeFromAppLink(options?: { scene?: number; query?: Record<string, string> }) {
+  if (options?.scene !== 8003) return;
+  const page = options.query?.page;
+  if (page) void lx.navigateTo({ page, query: { id: options.query?.id } });
+}
+
+App({
+  onLaunch: routeFromAppLink, // cold
+  onShow: routeFromAppLink,   // warm; cold onShow has no 8003
+});
+```
+
+`scene === 8003` is delivered once per tap: cold → `onLaunch`, warm → `onShow`.
 
 ## Host Configuration
 
-The host is configured in `lingxia.yaml`. A list applies to every env:
+Hosts only, not routing. A list applies to every env; a map (same shape as
+`app.lingxiaServer`) is per env. Omit an env → that build has no App Links.
+Empty for the active env → ignored.
 
 ```yaml
 appLinks:
   hosts:
     - app.example.com
+# hosts:
+#   developer: [app-dev.example.com]
+#   preview: [app-preview.example.com]
+#   release: [app.example.com]
 ```
 
-A per-env map uses the same shape as `app.lingxiaServer` — omit envs that
-should not claim App Links:
-
-```yaml
-appLinks:
-  hosts:
-    developer:
-      - app-dev.example.com
-    preview:
-      - app-preview.example.com
-    release:
-      - app.example.com
-```
-
-This config does not define routing rules. It only declares which verified hosts
-the app accepts. If no hosts are configured for the active env, AppLinks are
-ignored.
-
-`lingxia build --env <env>` writes that env's hosts into generated runtime
-`app.json` and syncs the native platform project metadata. Share URLs use the
-first host from the running build.
-
-`lingxia new -t native-app` does not enable AppLinks by default. Add production
-hosts explicitly after your verification files are ready. Different envs have
-different package/bundle ids (`.dev` / `.preview` suffixes), so each host's
-verification file should list the matching id.
+`lingxia build --env` writes that env's hosts into `app.json` and platform
+association files. Share URLs use the first host of the running build.
+`lingxia new -t native-app` leaves this off. Envs use different package ids
+(`.dev` / `.preview`); each host's `.well-known` file should list the matching
+id.
 
 ## Well-Known Verification Files
 
@@ -254,16 +260,24 @@ The handler:
 3. Parses `/lxapp/open` and its query parameters.
 4. Resolves `envVersion`.
 5. Ensures the requested lxapp release is installed and compatible.
-6. Opens the target lxapp with `scene: AppLink`.
+6. Opens the target (`scene: 8003`). No `appId` → home. No `path` → current/initial page.
+7. `scene === 8003` once per tap: cold `onLaunch`, warm `onShow`. Put the same `scene === 8003` handler on both.
 
-Unknown paths are ignored. Invalid LingXia URLs, such as bad percent encoding or
-a missing `appId`, are rejected.
+Unknown paths are ignored. Bad encoding is rejected. Missing `appId` opens home.
 
 When `scanCode` sees a supported AppLink, the SDK forwards it to the shared
 handler and closes the scanner. The scan result is still returned to the caller,
 so existing `scanCode` callers do not hang.
 
 ## Testing
+
+Warm path (`lingxia dev` / Runner):
+
+```bash
+lxdev app applink "https://app.example.com/lxapp/open?page=order&id=42"
+```
+
+Product host must match `appLinks.hosts`. Runner has no hosts (no `lingxia.yaml`); any AppLink URL is accepted. Does not simulate cold start.
 
 Android:
 
@@ -296,5 +310,5 @@ hdc shell aa start -A ohos.want.action.viewData \
 - Apple entitlements use `applinks:<host>`.
 - Android manifest has verified HTTPS intent filters for each host.
 - Harmony module skill has HTTPS URI entries for each host.
-- AppLink URLs use `/lxapp/open` with `appId` and optional `path` query parameters.
+- AppLink URLs use `/lxapp/open`; `appId` optional (defaults to home).
 - Page parameters are URL encoded and do not rely on `envVersion` being forwarded.
