@@ -1177,7 +1177,7 @@ fn generate_typescript(
     println!("Generated TypeScript: {:?}", i18n_file);
 
     let mut error_content = String::from(GEN_HEADER_RUST);
-    error_content.push_str("import type { I18nKey } from \"./i18n\";\n\n");
+    error_content.push_str("import type { I18nKey } from \"./i18n.js\";\n\n");
     error_content.push_str("export const ERR_CODE_INFO_BY_CODE = {\n");
     for (code, key) in err_code_keys {
         error_content.push_str(&format!(

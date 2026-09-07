@@ -8,12 +8,12 @@
     "directory": "packages/lingxia-types"
   },
   "main": "dist/index.js",
-  "module": "dist/index.js",
+  "module": "dist/esm/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
+      "import": "./dist/esm/index.js",
       "require": "./dist/index.js"
     },
     "./logic-globals": {
@@ -24,92 +24,92 @@
     },
     "./app": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./surface": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./lxapp": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./device": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./display": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./input": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./env": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./storage": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./file": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./transfer": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./location": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./navigator": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./system": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./update": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./media": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./share": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./ui": {
       "types": "./dist/generated/logic.d.ts",
-      "import": "./dist/generated/logic.js",
+      "import": "./dist/esm/generated/logic.js",
       "require": "./dist/generated/logic.js"
     },
     "./automation": {
       "types": "./dist/automation/index.d.ts",
-      "import": "./dist/automation/index.js",
+      "import": "./dist/esm/automation/index.js",
       "require": "./dist/automation/index.js"
     },
     "./automation-test-globals": {
@@ -117,12 +117,12 @@
     },
     "./testing": {
       "types": "./dist/testing/public-api.d.ts",
-      "import": "./dist/testing/public-api.mjs",
+      "import": "./dist/esm/testing/public-api.js",
       "require": "./dist/testing/public-api.js"
     },
     "./error": {
       "types": "./dist/error.d.ts",
-      "import": "./dist/error.js",
+      "import": "./dist/esm/error.js",
       "require": "./dist/error.js"
     }
   },
@@ -136,9 +136,10 @@
     "gen": "npm run gen:i18n && npm run gen:logic",
     "check:logic": "npm run gen:logic -- --check",
     "check:quality": "node scripts/check-generated-quality.mjs",
+    "check:esm": "node scripts/check-esm-exports.mjs",
     "test:types": "tsc -p tests/tsconfig.json",
-    "test:runtime": "npm run build && node tests/error-runtime.mjs",
-    "build": "tsc && node scripts/copy-static-types.mjs",
+    "test:runtime": "npm run build && node tests/error-runtime.mjs && npm run check:esm",
+    "build": "tsc && tsc -p tsconfig.esm.json && node scripts/copy-static-types.mjs",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "prepublishOnly": "npm run clean && npm run build"
   },

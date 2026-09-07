@@ -1,0 +1,16 @@
+{
+  // Second emit pass: real ESM for the `import` condition of every runtime
+  // export. The default pass emits CommonJS (the package has no `"type"`),
+  // which the lxapp Logic bundler cannot inline. Declarations stay in the
+  // CommonJS pass so the `types` condition keeps resolving to one copy —
+  // `src/index.ts` carries `declare global`, and a second copy of it would
+  // collide.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "outDir": "./dist/esm",
+    "declaration": false,
+    "declarationMap": false
+  }
+}
