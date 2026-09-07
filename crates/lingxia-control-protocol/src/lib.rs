@@ -168,6 +168,9 @@ pub mod methods {
         /// Accepts `{window_id?, action}` where action is a tagged object
         /// such as `{kind:"type", text}` or `{kind:"press", key, modifiers?}`.
         pub const KEYBOARD: &str = "app.keyboard";
+
+        /// Inject an App Link. Args: `{url}`.
+        pub const APPLINK: &str = "app.applink";
     }
 
     pub mod runner {

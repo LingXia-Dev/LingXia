@@ -42,7 +42,7 @@ struct Cli {
 /// `myapp app screenshot` asks the user to name the thing they already typed.
 #[derive(clap::Subcommand)]
 enum Command {
-    /// This product's own windows: screenshot, windows, mouse, key
+    /// This product's own windows: screenshot, windows, mouse, key, applink
     #[command(flatten)]
     Own(app::AppCommand),
     /// Drive the in-app browser: tabs, navigation, page content
@@ -146,6 +146,7 @@ const COMMANDS: &[&str] = &[
     "windows",
     "mouse",
     "key",
+    "applink",
     "help",
     "--help",
     "-h",

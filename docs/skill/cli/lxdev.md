@@ -56,6 +56,7 @@ websocket is not a remote machine-management API.
 - `screenshot` — capture the full host surface, including native controls, overlays, and composited WebViews
 - `mouse move|down|up|click|drag|scroll` — raw input in platform window-content units
 - `key type|press` — keyboard input to the host window's focused control
+- `applink <url>` — inject an App Link (same handler as OS/scan/push). Warm `onShow`, `scene === 8003`. Product host must match `appLinks.hosts`; Runner has none, so any AppLink URL is accepted. Returns when accepted, not when navigation finishes.
 
 Mobile reports one host window. Desktop hosts may report several (for example macOS AppUI surfaces); omit `--window` to use the focused/main window. App screenshot JSON always returns the resolved `window_id`, content dimensions, and pixel scale. Mouse coordinates use content pixels on Windows and content points on macOS, so Retina screenshot positions must be divided by the reported scale before feeding them back to `app mouse`.
 
@@ -70,7 +71,7 @@ Mobile reports one host window. Desktop hosts may report several (for example ma
 
 **`test`** — run bundled JavaScript/TypeScript cases in the session (`lxdev test tests/flows/checkout.test.ts`). Install `@lingxia/test`, import its `spec` and `expect`, and keep contracts in `tests/api/`, page behavior in `tests/pages/`, and journeys in `tests/flows/`.
 
-- `const auto = lx.automation()` — select the current app with `auto.lxapp()` or a specific running app with `auto.lxapp(appid)`; the returned driver's `page`, `nav`, `eval`, and read-only `surfaceLayout()` surfaces all target that app. `surfaceLayout()` is the authoritative render plan for end-to-end host assertions, not an app-behavior API. Cross-app lifecycle operations live on `auto.lxapps`.
+- `const auto = lx.automation()` — select the current app with `auto.lxapp()` or a specific running app with `auto.lxapp(appid)`; the returned driver's `page`, `nav`, `eval`, and read-only `surfaceLayout()` surfaces all target that app. `surfaceLayout()` is the authoritative render plan for end-to-end host assertions, not an app-behavior API. Cross-app lifecycle operations live on `auto.lxapps`. `auto.lxapps.applink({ url })` is `lxdev app applink`.
 - `auto.shell.pins()` reads the host sidebar's ordered persisted shortcuts. `auto.shell.setPin({ kind: 'lxapp' | 'bookmark', key, pinned })` idempotently mutates one shortcut and returns the resulting full order; new Pins append, while a host-limit error leaves the old order intact. This host-privileged surface exists for deterministic test setup and cleanup; production lxapp behavior still uses `lx.shell`, and tests must restore any pre-existing Pin state in `finally`.
 - `test.args` — strings from repeatable `--arg key=value`; `test.attach(name, { mimeType, base64 })` — save an artifact, downloaded into `--output-dir` (default `test-results/<run-id>`).
 - `console`, timers, and host-device `fetch`

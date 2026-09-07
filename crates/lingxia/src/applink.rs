@@ -5,15 +5,28 @@ pub(crate) fn install_handler() {
     lingxia_service::applink::register_handler(open_target);
 }
 
+/// Deliver `url` as if the OS posted an App Link.
+///
+/// Same codes as the platform FFI: `1` accepted, `0` not a configured
+/// AppLink, `-1` invalid or no handler. Acceptance is not navigation
+/// complete — `open_lxapp` is spawned after this returns.
+#[cfg(feature = "devtool")]
+pub fn inject(url: &str) -> i32 {
+    lingxia_service::applink::handle(url)
+}
+
 fn open_target(target: AppLinkTarget) -> i32 {
+    let Some(appid) = resolve_target_appid(&target) else {
+        log::warn!("AppLink missing appId and the host has no homeAppId");
+        return -1;
+    };
     log::info!(
         "AppLink accepted: appid={}, path={}, releaseType={}",
-        target.appid,
+        appid,
         target.path,
         target.release_type
     );
 
-    let appid = target.appid.clone();
     let options = LxAppStartupOptions::new(&target.path)
         .set_query(target.query)
         .set_release_type(target.release_type)
@@ -30,4 +43,12 @@ fn open_target(target: AppLinkTarget) -> i32 {
         }
     }));
     1
+}
+
+fn resolve_target_appid(target: &AppLinkTarget) -> Option<String> {
+    let appid = target.appid.trim();
+    if !appid.is_empty() {
+        return Some(appid.to_string());
+    }
+    lingxia_app_context::home_app_id().map(str::to_string)
 }

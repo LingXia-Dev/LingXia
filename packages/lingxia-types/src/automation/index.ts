@@ -612,6 +612,16 @@ export interface LxAppOpenResult {
   path: string;
 }
 
+export interface ApplinkOptions {
+  /** `https://` AppLink URL. */
+  url: string;
+}
+
+export interface ApplinkResult {
+  accepted: boolean;
+  code: number;
+}
+
 /**
  * Cross-lxapp lifecycle and host-window access. Requires `host` outside dev.
  *
@@ -622,6 +632,12 @@ export interface LxAppManager {
   list(): Promise<LxAppRuntimeInfo[]>;
   current(): Promise<LxAppSummary>;
   open(options: LxAppOpenOptions): Promise<LxAppOpenResult>;
+  /**
+   * Inject an App Link (`lxdev app applink`). Warm `onShow`, `scene === 8003`.
+   * Host must match `appLinks.hosts`. Resolves when accepted, not when
+   * navigation finishes.
+   */
+  applink(options: ApplinkOptions): Promise<ApplinkResult>;
   close(options?: LxAppRef): Promise<void>;
   restart(options?: LxAppRef): Promise<void>;
   uninstall(options?: LxAppRef): Promise<void>;
