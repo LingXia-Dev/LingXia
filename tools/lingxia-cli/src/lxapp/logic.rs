@@ -1017,9 +1017,11 @@ Run npm install in the lxapp root if this package is missing.",
             )
         })?;
 
-    if matches!(resolution.module_type(), Some(ModuleType::CommonJs)) {
+    if is_commonjs_resolution(&resolution) {
         bail!(
             "Unsupported CommonJS logic import {specifier:?} from {} -> {}. \
+The logic bundler inlines modules as ESM, so a CommonJS file would throw on \
+`require` at evaluation time and take the whole logic layer down. \
 Use an ESM package or ESM entrypoint for logic-layer imports.",
             relative_to(from_module, project_root),
             relative_to(resolution.path(), project_root)
@@ -1027,6 +1029,55 @@ Use an ESM package or ESM entrypoint for logic-layer imports.",
     }
 
     normalize_path(resolution.path())
+}
+
+/// `oxc_resolver` reports a module type only when the extension or the nearest
+/// `"type"` field settles it. A `.js` file in a package that declares no
+/// `"type"` comes back as `None`, even though Node treats it as CommonJS — that
+/// gap is how a CommonJS dependency used to be inlined verbatim, leaving the
+/// bundle to throw `require is not defined` at eval time with no build error.
+/// Fall back to the source itself there, so packages that ship extensionless
+/// ESM keep resolving while real CommonJS is rejected at build time.
+fn is_commonjs_resolution(resolution: &oxc_resolver::Resolution) -> bool {
+    match resolution.module_type() {
+        Some(ModuleType::CommonJs) => true,
+        Some(_) => false,
+        None => source_looks_commonjs(resolution.path()),
+    }
+}
+
+fn source_looks_commonjs(path: &Path) -> bool {
+    if !matches!(path.extension().and_then(|ext| ext.to_str()), Some("js")) {
+        return false;
+    }
+    let Ok(source) = fs::read_to_string(path) else {
+        return false;
+    };
+    if !source.contains("require(")
+        && !source.contains("module.exports")
+        && !source.contains("exports.")
+    {
+        return false;
+    }
+    let Ok(source_type) = SourceType::from_path(path) else {
+        return false;
+    };
+    let allocator = Allocator::default();
+    let parse_result = Parser::new(&allocator, &source, source_type).parse();
+    if !parse_result.diagnostics.is_empty() {
+        return false;
+    }
+    !parse_result.program.body.iter().any(|statement| {
+        matches!(
+            statement,
+            Statement::ImportDeclaration(_)
+                | Statement::ExportAllDeclaration(_)
+                | Statement::ExportDeclaration(_)
+                | Statement::ExportDefaultDeclaration(_)
+                | Statement::ExportNamedDeclaration(_)
+                | Statement::ExportFromDeclaration(_)
+        )
+    })
 }
 
 fn resolve_import_specifier(
@@ -1193,6 +1244,71 @@ mod tests {
         assert_eq!(
             resolved,
             normalize_path(&temp.path().join("node_modules/demo-pkg/dist/index.mjs")).unwrap()
+        );
+    }
+
+    #[test]
+    fn rejects_commonjs_package_without_a_type_field() {
+        // Regression: `@lingxia/types` shipped a CommonJS `dist/index.js` behind
+        // the `import` condition and declared no `"type"`, so the resolver
+        // reported no module type and the file was inlined verbatim. The bundle
+        // then threw `require is not defined` while evaluating, registering no
+        // page at all.
+        let temp = TempDir::new().unwrap();
+        let module_path = temp.path().join("pages").join("home.ts");
+        fs::create_dir_all(module_path.parent().unwrap()).unwrap();
+        fs::create_dir_all(temp.path().join("node_modules/cjs-pkg/dist")).unwrap();
+        fs::write(
+            temp.path().join("node_modules/cjs-pkg/package.json"),
+            r#"{
+  "name": "cjs-pkg",
+  "exports": {
+    "import": "./dist/index.js",
+    "require": "./dist/index.js"
+  }
+}"#,
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("node_modules/cjs-pkg/dist/index.js"),
+            "\"use strict\";\nObject.defineProperty(exports, \"__esModule\", { value: true });\nexports.demo = require(\"./demo\");\n",
+        )
+        .unwrap();
+
+        let error = resolve_bare_import(&module_path, "cjs-pkg", temp.path()).unwrap_err();
+        let message = format!("{error:#}");
+        assert!(
+            message.contains("Unsupported CommonJS logic import"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn allows_extensionless_esm_package_without_a_type_field() {
+        let temp = TempDir::new().unwrap();
+        let module_path = temp.path().join("pages").join("home.ts");
+        fs::create_dir_all(module_path.parent().unwrap()).unwrap();
+        fs::create_dir_all(temp.path().join("node_modules/esm-pkg/dist")).unwrap();
+        fs::write(
+            temp.path().join("node_modules/esm-pkg/package.json"),
+            r#"{
+  "name": "esm-pkg",
+  "exports": {
+    "import": "./dist/index.js"
+  }
+}"#,
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join("node_modules/esm-pkg/dist/index.js"),
+            "export const demo = 1;\n",
+        )
+        .unwrap();
+
+        let resolved = resolve_bare_import(&module_path, "esm-pkg", temp.path()).unwrap();
+        assert_eq!(
+            resolved,
+            normalize_path(&temp.path().join("node_modules/esm-pkg/dist/index.js")).unwrap()
         );
     }
 
