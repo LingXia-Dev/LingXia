@@ -153,6 +153,11 @@ impl NativeHostRuntimeAuthority<'_> {
     }
 
     pub fn grant(&mut self, grant: AppResourceGrant) -> bool {
+        // Process execution stays ControlApp-only even when a host addon
+        // vouches for another session that requested it.
+        if grant == AppResourceGrant::Process && self.session_class != AppSessionClass::ControlApp {
+            return false;
+        }
         if !self.requested(grant) {
             return false;
         }
@@ -1570,6 +1575,36 @@ mod tests {
         assert!(!authority.grant(AppResourceGrant::Process));
         assert!(authority.grant(AppResourceGrant::Downloads));
         assert_eq!(grants, HashSet::from([AppResourceGrant::Downloads]));
+    }
+
+    #[test]
+    fn process_grant_is_refused_outside_the_control_app_class() {
+        for class in [
+            AppSessionClass::StandardApp,
+            AppSessionClass::ControlSurface,
+        ] {
+            let mut grants = HashSet::new();
+            let mut authority = NativeHostRuntimeAuthority::for_test(
+                "same.app",
+                8,
+                class,
+                [AppResourceGrant::Process, AppResourceGrant::Downloads],
+                &mut grants,
+            );
+            assert!(authority.requested(AppResourceGrant::Process));
+            assert!(!authority.grant(AppResourceGrant::Process));
+            assert!(authority.grant(AppResourceGrant::Downloads));
+            assert_eq!(grants, HashSet::from([AppResourceGrant::Downloads]));
+        }
+        let mut grants = HashSet::new();
+        let mut authority = NativeHostRuntimeAuthority::for_test(
+            "same.app",
+            9,
+            AppSessionClass::ControlApp,
+            [AppResourceGrant::Process],
+            &mut grants,
+        );
+        assert!(authority.grant(AppResourceGrant::Process));
     }
 
     #[test]
