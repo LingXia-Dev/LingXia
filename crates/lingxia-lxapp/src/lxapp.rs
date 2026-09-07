@@ -39,6 +39,7 @@ pub mod host_class;
 use config::{LxAppConfig, LxAppLogicEntry, LxAppPageEntry};
 mod content;
 mod display_language;
+pub mod host_appearance;
 pub(crate) mod metadata;
 pub mod navbar;
 pub mod page_chrome;
@@ -73,6 +74,11 @@ pub use display_language::{
     refresh_display_language_system, set_display_language_preference,
     set_display_language_preference_in, subscribe_display_language_effective,
     subscribe_display_language_state,
+};
+pub use host_appearance::{
+    HostAppearanceState, HostAppearanceUpdate, host_appearance_dark, host_appearance_state,
+    initialize_host_appearance, refresh_host_appearance_system, set_host_appearance_preference,
+    subscribe_host_appearance,
 };
 pub use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 pub use lingxia_surface::Role as SurfaceRole;
@@ -2163,7 +2169,7 @@ impl LxApp {
                 AppearancePreference::Light => ResolvedAppearance::Light,
                 AppearancePreference::Dark => ResolvedAppearance::Dark,
                 AppearancePreference::Auto => {
-                    if self.runtime.host_appearance_dark() {
+                    if crate::lxapp::host_appearance::host_appearance_dark() {
                         ResolvedAppearance::Dark
                     } else {
                         ResolvedAppearance::Light

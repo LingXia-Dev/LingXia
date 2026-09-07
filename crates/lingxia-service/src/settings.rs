@@ -35,6 +35,14 @@ pub fn set_display_language(app_data_dir: &std::path::Path, language: Option<&st
     lingxia_settings::set_display_language(app_data_dir, language)
 }
 
+pub fn host_appearance(app_data_dir: &std::path::Path) -> Result<Option<String>> {
+    lingxia_settings::get_host_appearance(app_data_dir)
+}
+
+pub fn set_host_appearance(app_data_dir: &std::path::Path, preference: Option<&str>) -> Result<()> {
+    lingxia_settings::set_host_appearance(app_data_dir, preference)
+}
+
 pub fn lxapp_appearance(app_data_dir: &std::path::Path, app_id: &str) -> Result<Option<String>> {
     lingxia_settings::get_lxapp_appearance(app_data_dir, app_id)
 }

@@ -158,6 +158,7 @@ pub mod product_cli;
 pub mod app;
 mod terminal_automation;
 pub use app::{home_app_id, lingxia_id, product_version};
+mod appearance_host;
 mod applink;
 /// Host assets packaged by the CLI (`assets:` in `lingxia.yaml`).
 pub mod assets;

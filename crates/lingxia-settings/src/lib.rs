@@ -32,6 +32,10 @@ pub struct Settings {
     /// `lingxia-lxapp`; unknown historical values fall back to the manifest.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub lxapp_appearances: BTreeMap<String, String>,
+    /// User override for the whole host's light/dark appearance; `None`
+    /// follows the system. An lxapp that pinned its own scheme keeps it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host_appearance: Option<String>,
 }
 
 static SETTINGS_CACHE: OnceLock<DashMap<String, Settings>> = OnceLock::new();
@@ -177,6 +181,24 @@ pub fn set_display_language(
     let _guard = store_lock().lock().unwrap_or_else(|e| e.into_inner());
     let mut settings = load(app_data_dir)?;
     settings.display_language = language.map(str::to_string);
+    save(app_data_dir, &settings)
+}
+
+pub fn get_host_appearance(app_data_dir: &Path) -> Result<Option<String>, SettingsError> {
+    Ok(load(app_data_dir)?
+        .host_appearance
+        .filter(|value| !value.trim().is_empty()))
+}
+
+pub fn set_host_appearance(
+    app_data_dir: &Path,
+    preference: Option<&str>,
+) -> Result<(), SettingsError> {
+    let _guard = store_lock()
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let mut settings = load(app_data_dir)?;
+    settings.host_appearance = preference.map(str::to_string);
     save(app_data_dir, &settings)
 }
 

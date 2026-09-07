@@ -123,7 +123,11 @@ pub fn list_lxapps() -> Vec<LxAppRuntimeInfo> {
 }
 
 /// Re-resolve every `auto` lxapp after the host's system appearance changes.
+///
+/// Callers are the platforms' system-appearance callbacks, so this is also
+/// where a host still on `auto` reports its newly resolved value.
 pub fn refresh_auto_appearances() {
+    super::host_appearance::refresh_host_appearance_system();
     let Some(manager) = super::runtime_registry::get_lxapps_manager() else {
         return;
     };

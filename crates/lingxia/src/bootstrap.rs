@@ -290,6 +290,7 @@ pub(crate) fn init_with_platform(
     // is created and no handler is invoked. Conflicting policies remain visible
     // through the read-only lookup used by validation.
     crate::host_addon::run_install_host_apis();
+    crate::appearance_host::register();
     crate::display_language_host::register();
     crate::browser::register_builtin_route_inventory();
     lxapp::host::register_builtin_routes();
@@ -318,6 +319,7 @@ pub(crate) fn init_with_platform(
     crate::runtime::set_platform(runtime.clone());
     crate::app::set_data_dir(runtime.app_data_dir());
     seed_display_language(&runtime.app_data_dir(), runtime.get_system_locale());
+    lxapp::initialize_host_appearance();
     install_global_executor();
     lingxia_app_context::set_host_build(crate::capabilities::host_build());
     if let Err(err) = lingxia_app_context::set_app_config(app_config.clone()) {

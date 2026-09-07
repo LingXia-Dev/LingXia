@@ -30,6 +30,25 @@ enum LxAppAppearanceRegistry {
         #endif
     }
 
+    /// Pin the host's own chrome to a scheme, or hand it back to the system.
+    /// Every lxapp still resolving `auto` follows through the runtime, which
+    /// re-resolves them when this changes `NSApp.effectiveAppearance`.
+    static func setHostColorMode(dark: Bool?) {
+        #if os(macOS)
+        // Read once so the effectiveAppearance observer is installed before the
+        // assignment that will fire it.
+        _ = hostIsDark()
+        guard let dark else {
+            NSApp.appearance = nil
+            return
+        }
+        NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        #else
+        // iOS hosts a single lxapp window; its scheme is applied per lxapp.
+        _ = dark
+        #endif
+    }
+
     static func observeHostLocale() {
         guard hostLocaleObserver == nil else { return }
         hostLocaleObserver = NotificationCenter.default.addObserver(

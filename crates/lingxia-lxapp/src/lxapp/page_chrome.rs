@@ -516,7 +516,7 @@ impl LxApp {
             AppearancePreference::Light => ResolvedAppearance::Light,
             AppearancePreference::Dark => ResolvedAppearance::Dark,
             AppearancePreference::Auto => {
-                if self.runtime.host_appearance_dark() {
+                if super::host_appearance::host_appearance_dark() {
                     ResolvedAppearance::Dark
                 } else {
                     ResolvedAppearance::Light

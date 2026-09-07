@@ -75,11 +75,7 @@ impl JSContextService for TerminalContextService {
         self.active.set(false);
         self.listeners.borrow_mut().clear();
         self.change_pump.borrow_mut().take();
-        let system_is_dark = self
-            .app
-            .upgrade()
-            .map(|app| app.runtime.host_appearance_dark())
-            .unwrap_or(false);
+        let system_is_dark = lxapp::host_appearance_dark();
         for lease in self.previews.borrow_mut().drain() {
             lingxia_terminal_config::runtime::end_theme_preview_for_request(
                 lingxia_terminal_config::runtime::create_theme_preview_request(lease),
@@ -160,7 +156,7 @@ fn child_namespace(parent: &JSObject, ctx: &JSContext, name: &str) -> JSResult<J
 fn context(ctx: &JSContext, route: LogicRoute) -> JSResult<(Arc<LxApp>, PathBuf, bool)> {
     let app = require_access(ctx, route)?;
     let data_dir = app.app_data_dir();
-    let system_is_dark = app.runtime.host_appearance_dark();
+    let system_is_dark = lxapp::host_appearance_dark();
     Ok((app, data_dir, system_is_dark))
 }
 
@@ -342,7 +338,7 @@ async fn schemes_import(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
         &name,
         &scheme,
         options.overwrite.unwrap_or(false),
-        app.runtime.host_appearance_dark(),
+        lxapp::host_appearance_dark(),
     )
     .map_err(|error| match error {
         lingxia_terminal_config::runtime::ThemeImportError::AlreadyExists(_) => {
@@ -508,7 +504,7 @@ fn create_preview(ctx: JSContext) -> JSResult<JSObject> {
                 lingxia_terminal_config::runtime::end_theme_preview_for_request(
                     lingxia_terminal_config::runtime::create_theme_preview_request(lease),
                     &clear_data_dir,
-                    app.runtime.host_appearance_dark(),
+                    lxapp::host_appearance_dark(),
                 );
                 Ok(())
             })();
@@ -529,7 +525,7 @@ fn create_preview(ctx: JSContext) -> JSResult<JSObject> {
                 lingxia_terminal_config::runtime::end_theme_preview_for_request(
                     lingxia_terminal_config::runtime::create_theme_preview_request(lease),
                     &close_data_dir,
-                    app.runtime.host_appearance_dark(),
+                    lxapp::host_appearance_dark(),
                 );
                 lingxia_terminal_config::runtime::retire_theme_preview_lease(lease);
                 leases.borrow_mut().remove(&lease);
@@ -579,14 +575,10 @@ fn install_change_pump(ctx: &JSContext) -> JSResult<()> {
     let active = service.active.clone();
     let listeners = service.listeners.clone();
     let ctx_for_pump = ctx.clone();
-    let app = service.app.clone();
     let pump = Promise::from_future(&ctx.clone(), None, async move {
         let mut seen_revision = lingxia_terminal_config::runtime::generation();
         let mut seen_fonts = lingxia_terminal_config::runtime::font_generation();
-        let mut seen_dark = app
-            .upgrade()
-            .map(|app| app.runtime.host_appearance_dark())
-            .unwrap_or(false);
+        let mut seen_dark = lxapp::host_appearance_dark();
         while active.get() {
             tokio::time::sleep(Duration::from_millis(200)).await;
             if !active.get() || listeners.borrow().iter().all(Option::is_none) {
@@ -594,10 +586,7 @@ fn install_change_pump(ctx: &JSContext) -> JSResult<()> {
             }
             let revision = lingxia_terminal_config::runtime::generation();
             let fonts = lingxia_terminal_config::runtime::font_generation();
-            let system_is_dark = app
-                .upgrade()
-                .map(|app| app.runtime.host_appearance_dark())
-                .unwrap_or(false);
+            let system_is_dark = lxapp::host_appearance_dark();
             if (revision, fonts, system_is_dark) == (seen_revision, seen_fonts, seen_dark) {
                 continue;
             }

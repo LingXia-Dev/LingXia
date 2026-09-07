@@ -29,8 +29,8 @@
 
       'appearance.title': 'Appearance',
       'appearance.mode': 'Mode',
-      'appearance.modeHint': 'Which scheme a terminal uses.',
-      'appearance.system': 'System',
+      'appearance.modeHint': "Which scheme a terminal uses. Following the app means the whole product's Appearance setting decides.",
+      'appearance.system': 'Follow app',
       'appearance.light': 'Light',
       'appearance.dark': 'Dark',
       'appearance.scheme': 'Color scheme',
@@ -87,8 +87,8 @@
 
       'appearance.title': '外观',
       'appearance.mode': '模式',
-      'appearance.modeHint': '终端使用哪一套配色。',
-      'appearance.system': '跟随系统',
+      'appearance.modeHint': '终端使用哪一套配色。跟随应用即由整个产品的外观设置决定。',
+      'appearance.system': '跟随应用',
       'appearance.light': '浅色',
       'appearance.dark': '深色',
       'appearance.scheme': '配色方案',

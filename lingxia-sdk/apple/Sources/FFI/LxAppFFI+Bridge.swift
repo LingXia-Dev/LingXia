@@ -684,6 +684,16 @@ extension LxApp {
         executeOnMain { LxAppAppearanceRegistry.hostIsDark() }
     }
 
+    /// 0 follows the system, 1 pins light, 2 pins dark.
+    nonisolated static func setHostColorMode(mode: Int32) {
+        let dark: Bool? = mode == 1 ? false : (mode == 2 ? true : nil)
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                LxAppAppearanceRegistry.setHostColorMode(dark: dark)
+            }
+        }
+    }
+
     /// Runtime signal: the home page finished its first render — dismiss the
     /// startup splash overlay.
     nonisolated static func onHomeFirstReady() {
