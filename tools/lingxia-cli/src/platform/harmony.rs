@@ -74,10 +74,7 @@ impl Platform for HarmonyPlatform {
             );
         }
 
-        let app_link_hosts = lingxia_config
-            .and_then(|config| config.app_links.as_ref())
-            .map(|app_links| app_links.hosts.as_slice())
-            .unwrap_or(&[]);
+        let app_link_hosts = config.resolved_env.app_link_hosts.as_slice();
         if sync_app_links(&harmony_dir, app_link_hosts)? {
             println!(
                 "{} Synced Harmony AppLinks to module.json5",

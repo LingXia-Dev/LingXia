@@ -39,7 +39,7 @@ touch `packageIdSuffix` at all.
 
 ## Schema in `lingxia.yaml`
 
-Two optional fields on `app`, organized by purpose:
+Two optional fields on `app`, plus top-level `appLinks.hosts`, organized by purpose:
 
 ```yaml
 app:
@@ -61,12 +61,20 @@ app:
   #   developer: .internal
   #   preview: ".preview"
   #   release: ""
+
+# Optional. Same scalar-or-map shape as lingxiaServer, but the value is a
+# host list. A list applies to every env; a map selects per env.
+# appLinks:
+#   hosts:
+#     developer: [app-dev.example.com]
+#     release: [app.example.com]
 ```
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `app.lingxiaServer` | `string` \| `{developer?, preview?, release?}` | Omit entirely for server-less apps. |
 | `app.packageIdSuffix` | `{developer?, preview?, release?}` | Each value: absent → built-in default, `""` → opt out, `"<x>"` → use that. |
+| `appLinks.hosts` | `[string]` \| `{developer?, preview?, release?}` | Each map value is a host list. Omit an env to give that build no App Links. |
 
 `deny_unknown_fields` means typos (e.g. `enviroments:`) surface as parse
 errors instead of being silently ignored.
@@ -120,7 +128,11 @@ pub fn resolve_env(&self, version: EnvVersion) -> Result<ResolvedEnv> {
         version.default_package_id_suffix(),       // built-in fallback
     );
 
-    Ok(ResolvedEnv { version, lingxia_server, package_id_suffix })
+    let app_link_hosts = self.app_links.as_ref()
+        .map(|links| links.hosts.for_env(version).to_vec())
+        .unwrap_or_default();
+
+    Ok(ResolvedEnv { version, lingxia_server, package_id_suffix, app_link_hosts })
 }
 ```
 
@@ -133,6 +145,8 @@ Behavior table (covered by unit tests in `config.rs`):
 | `lingxiaServer: {developer:A, release:B}` | `.dev`, server=A      | none, server=B        |
 | `packageIdSuffix: {developer: ""}`        | **none** (opt-out)    | none                  |
 | `packageIdSuffix: {developer: ".d"}`      | `.d`                  | none                  |
+| `appLinks.hosts: [H]`                     | hosts=`[H]`           | hosts=`[H]`           |
+| `appLinks.hosts: {developer:[D], release:[R]}` | hosts=`[D]`      | hosts=`[R]`           |
 
 ## Validation
 
@@ -144,6 +158,7 @@ Enforced by `LingXiaConfig::validate`:
 | `lingxiaServer` (single form) is empty string | `app.lingxiaServer must not be empty` |
 | `lingxiaServer` (per-env map) has all three entries unset | `app.lingxiaServer must configure at least one of developer, preview, or release` |
 | `lingxiaServer.<env>` empty string | `app.lingxiaServer.<env> must not be empty` |
+| `appLinks.hosts` (per-env map) has all three entries unset | `appLinks.hosts must configure at least one of developer, preview, or release` |
 | `packageIdSuffix.<env>` non-empty but doesn't match `^\.[a-z0-9]+(\.[a-z0-9]+)*$` | `app.packageIdSuffix.<env> must start with '.' and use lowercase a-z 0-9 segments; use "" to opt out of the default` |
 
 Note: missing config is never an error. `--env developer` on a yaml with no
@@ -227,8 +242,8 @@ for the newest hap by mtime.
 ## `app.json` output
 
 `tools/lingxia-cli/src/assets/json.rs::build_app_json_from_config` always
-emits `envVersion`, the resolved server (omitted when empty), and the
-suffixed `lingxiaId`:
+emits `envVersion`, the resolved server (omitted when empty), the
+suffixed `lingxiaId`, and the resolved App Link hosts (omitted when empty):
 
 ```json
 {
@@ -236,7 +251,8 @@ suffixed `lingxiaId`:
   "productVersion": "1.0.0",
   "lingxiaServer": "https://preview.api.myapp.com",
   "lingxiaId": "com.example.myapp.preview",
-  "envVersion": "preview"
+  "envVersion": "preview",
+  "appLinks": { "hosts": ["app-preview.example.com"] }
 }
 ```
 
@@ -316,6 +332,7 @@ omitting `--env` defaults to `developer`; host-app publish always reads
 | Concern | File |
 | --- | --- |
 | YAML schema + validation + resolution | `tools/lingxia-cli/src/config.rs` |
+| App Link hosts per env | `tools/lingxia-cli/src/config.rs::AppLinkHosts` |
 | `--env` CLI flag | `tools/lingxia-cli/src/main.rs::BuildOptions` |
 | Resolve env per invocation | `tools/lingxia-cli/src/commands/build.rs::resolve_build_env` |
 | `app.json` emission | `tools/lingxia-cli/src/assets/json.rs::build_app_json_from_config` |

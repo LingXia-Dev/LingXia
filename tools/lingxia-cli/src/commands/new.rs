@@ -466,6 +466,7 @@ mod native_main_scaffold_tests {
                 version: EnvVersion::Developer,
                 lingxia_server: "https://api.example.com".to_string(),
                 package_id_suffix: Some(".dev".to_string()),
+                app_link_hosts: Vec::new(),
             },
         )
         .unwrap();

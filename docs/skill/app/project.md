@@ -241,6 +241,29 @@ app:
     release: https://api.myapp.com
 ```
 
+### Per-env `appLinks.hosts`
+
+Same scalar-or-map shape as `lingxiaServer`. A list applies to every env; a map selects hosts per env. `lingxia build --env <env>` bakes only that env's hosts into runtime `app.json` and the platform association files (Android intent filters, Apple associated domains, Harmony skills).
+
+```yaml
+appLinks:
+  hosts:
+    - app.example.com
+```
+
+```yaml
+appLinks:
+  hosts:
+    developer:
+      - app-dev.example.com
+    preview:
+      - app-preview.example.com
+    release:
+      - app.example.com
+```
+
+Omit an env to give that build no App Links. Each host still needs its own `.well-known` verification files; see [App Links](./applinks.md).
+
 ### Per-env `packageIdSuffix`
 
 Built-in defaults (`.dev` / `.preview` / `(none)`) cover most apps. Override only when you need custom suffixes:
@@ -257,6 +280,7 @@ Validation rules:
 
 - Each suffix must match `^\.[a-z0-9]+(\.[a-z0-9]+)*$` (start with `.`, lowercase a-z 0-9 segments) — or be `""` to opt out.
 - Empty `lingxiaServer` string is rejected. Per-env map must have at least one entry set.
+- Empty `appLinks.hosts` per-env map (`hosts: {}`) is rejected. Per-env map must have at least one of developer, preview, or release set.
 - Unknown keys (e.g. `enviroments:` typo) surface as YAML parse errors, not silent ignores.
 
 ### Reading the env at runtime

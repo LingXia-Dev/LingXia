@@ -523,12 +523,7 @@ impl Platform for AndroidPlatform {
     fn build(&self, config: &BuildConfig) -> Result<BuildArtifacts> {
         // Resolve Android project directory (handle multi-platform layout)
         let android_root = super::detector::resolve_android_dir(&config.project_root);
-        let app_link_hosts = config
-            .lingxia_config
-            .as_ref()
-            .and_then(|config| config.app_links.as_ref())
-            .map(|app_links| app_links.hosts.as_slice())
-            .unwrap_or(&[]);
+        let app_link_hosts = config.resolved_env.app_link_hosts.as_slice();
         if sync_android_app_links(&android_root, app_link_hosts)? {
             println!(
                 "{} Synced Android AppLinks to AndroidManifest.xml",

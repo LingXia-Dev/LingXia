@@ -151,8 +151,63 @@ fn default_true() -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct AppLinksConfig {
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub hosts: Vec<String>,
+    /// DNS hosts accepted as App Links. A list applies to every env; a
+    /// `{developer?, preview?, release?}` map selects per env, matching
+    /// `app.lingxiaServer`.
+    #[serde(default, skip_serializing_if = "AppLinkHosts::is_empty")]
+    pub hosts: AppLinkHosts,
+}
+
+/// App-link hosts. `Single` applies the same list to every env; `PerEnv`
+/// selects per-env lists. Same untagged shape as [`LingxiaServer`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum AppLinkHosts {
+    Single(Vec<String>),
+    PerEnv(PerEnvHosts),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PerEnvHosts {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub developer: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release: Option<Vec<String>>,
+}
+
+impl Default for AppLinkHosts {
+    fn default() -> Self {
+        Self::Single(Vec::new())
+    }
+}
+
+impl AppLinkHosts {
+    /// Hosts that apply to `version`. `Single` always returns the same list;
+    /// `PerEnv` returns that env's list, or empty if it was omitted.
+    pub fn for_env(&self, version: EnvVersion) -> &[String] {
+        match self {
+            AppLinkHosts::Single(hosts) => hosts.as_slice(),
+            AppLinkHosts::PerEnv(per) => match version {
+                EnvVersion::Developer => per.developer.as_deref().unwrap_or(&[]),
+                EnvVersion::Preview => per.preview.as_deref().unwrap_or(&[]),
+                EnvVersion::Release => per.release.as_deref().unwrap_or(&[]),
+            },
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        match self {
+            AppLinkHosts::Single(hosts) => hosts.is_empty(),
+            AppLinkHosts::PerEnv(per) => {
+                per.developer.as_ref().is_none_or(Vec::is_empty)
+                    && per.preview.as_ref().is_none_or(Vec::is_empty)
+                    && per.release.as_ref().is_none_or(Vec::is_empty)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1300,6 +1355,9 @@ pub struct ResolvedEnv {
     /// this exact string" — `effective_package_id_suffix()` already filters
     /// out empty strings.
     pub package_id_suffix: Option<String>,
+    /// Hosts this build accepts as App Links. Empty when AppLinks are off
+    /// for this env.
+    pub app_link_hosts: Vec<String>,
 }
 
 impl ResolvedEnv {
@@ -1935,9 +1993,7 @@ impl LingXiaConfig {
             }
         }
         if let Some(app_links) = &self.app_links {
-            for host in &app_links.hosts {
-                validate_applink_host(host)?;
-            }
+            validate_app_links(app_links)?;
         }
         if let Some(resources) = &self.resources {
             let mut app_ids = HashSet::new();
@@ -2096,20 +2152,50 @@ fn is_home_forbidden_app_id(app_id: &str) -> bool {
     RESOURCE_FORBIDDEN_APP_IDS.contains(&app_id)
 }
 
-fn validate_applink_host(host: &str) -> Result<()> {
+fn validate_app_links(app_links: &AppLinksConfig) -> Result<()> {
+    match &app_links.hosts {
+        AppLinkHosts::Single(hosts) => {
+            for host in hosts {
+                validate_applink_host(host, "appLinks.hosts")?;
+            }
+        }
+        AppLinkHosts::PerEnv(per) => {
+            let entries = [
+                ("developer", per.developer.as_deref()),
+                ("preview", per.preview.as_deref()),
+                ("release", per.release.as_deref()),
+            ];
+            if entries.iter().all(|(_, hosts)| hosts.is_none()) {
+                return Err(anyhow!(
+                    "appLinks.hosts must configure at least one of developer, preview, or release"
+                ));
+            }
+            for (name, hosts) in entries {
+                if let Some(hosts) = hosts {
+                    for host in hosts {
+                        validate_applink_host(host, &format!("appLinks.hosts.{name}"))?;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_applink_host(host: &str, context: &str) -> Result<()> {
     let raw_host = host;
     let host = raw_host.trim();
     if host.is_empty() {
-        return Err(anyhow!("appLinks.hosts entries must not be empty"));
+        return Err(anyhow!("{context} entries must not be empty"));
     }
     if host.len() != raw_host.len() {
         return Err(anyhow!(
-            "appLinks.hosts entries must not contain surrounding whitespace"
+            "{context} entries must not contain surrounding whitespace"
         ));
     }
     if host.len() > 253 {
         return Err(anyhow!(
-            "appLinks.hosts entries must be DNS host names, got '{host}'"
+            "{context} entries must be DNS host names, got '{host}'"
         ));
     }
     let labels = host.split('.').collect::<Vec<_>>();
@@ -2125,7 +2211,7 @@ fn validate_applink_host(host: &str) -> Result<()> {
         })
     {
         return Err(anyhow!(
-            "appLinks.hosts entries must be DNS host names, got '{host}'"
+            "{context} entries must be DNS host names, got '{host}'"
         ));
     }
 
@@ -2580,6 +2666,9 @@ impl LingXiaConfig {
     /// - `package_id_suffix`: `app.packageIdSuffix.<env>` wins; an explicit
     ///   `""` opts out of the built-in default. Otherwise the env's built-in
     ///   default is used.
+    /// - `app_link_hosts`: `appLinks.hosts` is queried the same way; `Single`
+    ///   applies everywhere, `PerEnv` selects by env. Empty if AppLinks are
+    ///   off for this env.
     pub fn resolve_env(&self, version: EnvVersion) -> Result<ResolvedEnv> {
         let app = self
             .app
@@ -2600,10 +2689,17 @@ impl LingXiaConfig {
         let package_id_suffix =
             resolve_env_suffix(configured_suffix, version.default_package_id_suffix());
 
+        let app_link_hosts = self
+            .app_links
+            .as_ref()
+            .map(|links| links.hosts.for_env(version).to_vec())
+            .unwrap_or_default();
+
         Ok(ResolvedEnv {
             version,
             lingxia_server,
             package_id_suffix,
+            app_link_hosts,
         })
     }
 }
@@ -2946,6 +3042,134 @@ android:
 
         let env = config.resolve_env(EnvVersion::Release).unwrap();
         assert_eq!(env.lingxia_server, "");
+        assert!(env.app_link_hosts.is_empty());
+    }
+
+    #[test]
+    fn resolve_env_single_app_link_hosts_apply_to_every_env() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config.app_links = Some(AppLinksConfig {
+            hosts: AppLinkHosts::Single(vec!["app.example.com".to_string()]),
+        });
+
+        let dev = config.resolve_env(EnvVersion::Developer).unwrap();
+        assert_eq!(dev.app_link_hosts, ["app.example.com"]);
+        let release = config.resolve_env(EnvVersion::Release).unwrap();
+        assert_eq!(release.app_link_hosts, ["app.example.com"]);
+    }
+
+    #[test]
+    fn resolve_env_per_env_app_link_hosts_route_by_version() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        config.app_links = Some(AppLinksConfig {
+            hosts: AppLinkHosts::PerEnv(PerEnvHosts {
+                developer: Some(vec!["app-dev.example.com".to_string()]),
+                preview: None,
+                release: Some(vec!["app.example.com".to_string()]),
+            }),
+        });
+
+        let dev = config.resolve_env(EnvVersion::Developer).unwrap();
+        assert_eq!(dev.app_link_hosts, ["app-dev.example.com"]);
+
+        let preview = config.resolve_env(EnvVersion::Preview).unwrap();
+        assert!(preview.app_link_hosts.is_empty());
+
+        let release = config.resolve_env(EnvVersion::Release).unwrap();
+        assert_eq!(release.app_link_hosts, ["app.example.com"]);
+    }
+
+    #[test]
+    fn app_links_hosts_accepts_single_list_and_per_env_map() {
+        let single = load_config_yaml(
+            r#"
+app:
+  projectName: my-app
+  productName: My App
+  productVersion: 1.0.0
+  platforms: [android]
+  homeAppId: my-app
+android:
+  packageId: com.example.myapp
+resources:
+  bundles:
+    - type: lxapp
+      appId: my-app
+      path: my-app
+appLinks:
+  hosts:
+    - app.example.com
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            single.app_links.unwrap().hosts,
+            AppLinkHosts::Single(vec!["app.example.com".to_string()])
+        );
+
+        let per_env = load_config_yaml(
+            r#"
+app:
+  projectName: my-app
+  productName: My App
+  productVersion: 1.0.0
+  platforms: [android]
+  homeAppId: my-app
+android:
+  packageId: com.example.myapp
+resources:
+  bundles:
+    - type: lxapp
+      appId: my-app
+      path: my-app
+appLinks:
+  hosts:
+    developer:
+      - app-dev.example.com
+    release:
+      - app.example.com
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            per_env.app_links.unwrap().hosts,
+            AppLinkHosts::PerEnv(PerEnvHosts {
+                developer: Some(vec!["app-dev.example.com".to_string()]),
+                preview: None,
+                release: Some(vec!["app.example.com".to_string()]),
+            })
+        );
+    }
+
+    #[test]
+    fn app_links_per_env_map_requires_at_least_one_env() {
+        let err = load_config_yaml(
+            r#"
+app:
+  projectName: my-app
+  productName: My App
+  productVersion: 1.0.0
+  platforms: [android]
+  homeAppId: my-app
+android:
+  packageId: com.example.myapp
+resources:
+  bundles:
+    - type: lxapp
+      appId: my-app
+      path: my-app
+appLinks:
+  hosts: {}
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains(
+                "appLinks.hosts must configure at least one of developer, preview, or release"
+            ),
+            "{err}"
+        );
     }
 
     #[test]
