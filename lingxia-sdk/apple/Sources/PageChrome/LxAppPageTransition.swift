@@ -106,7 +106,8 @@ public final class LxAppPageTransition {
             }
         }
         firstPaintGraceTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(Self.firstPaintGrace))
+            // `sleep(for:)` is macOS 13+; this package's floor is 12.
+            try? await Task.sleep(nanoseconds: UInt64(Self.firstPaintGrace * 1_000_000_000))
             guard !Task.isCancelled else { return }
             self?.commitPendingWait()
         }
