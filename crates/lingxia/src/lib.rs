@@ -93,6 +93,7 @@ pub mod splash;
 /// LxApp devtool helpers for host-side inspection and automation.
 #[cfg(feature = "devtool")]
 pub mod dev {
+    pub use crate::applink::inject as inject_applink;
     pub use crate::devtool::{
         Appearance, DeviceController, DeviceEntry, DeviceState, LxAppDevConfig, LxAppDevIdentity,
         LxAppDevPageInfo, LxAppDevPageWaitResult, LxAppDevPageWaitState, device_get, device_list,

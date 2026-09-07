@@ -39,6 +39,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
 lxapp = { workspace = true, default-features = false, features = ["standard", "automation"] }
+lingxia-service = { workspace = true }
 lingxia-webview = { workspace = true }
 lingxia-platform = { workspace = true }
 lingxia-shell = { workspace = true }

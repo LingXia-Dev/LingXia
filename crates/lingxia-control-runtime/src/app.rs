@@ -79,8 +79,29 @@ fn handle_app_command_impl(handler: &str, args: Option<Value>) -> Result<Option<
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
+        methods::app::APPLINK => {
+            let parsed: ApplinkArgs = match args {
+                Some(value) => serde_json::from_value(value)
+                    .map_err(|e| format!("invalid args for {}: {}", handler, e))?,
+                None => return Err("missing args for app.applink".into()),
+            };
+            let url = parsed.url.trim();
+            if url.is_empty() {
+                return Err("url must not be empty".into());
+            }
+            match lingxia::dev::inject_applink(url) {
+                1 => Ok(Some(json!({ "accepted": true, "code": 1 }))),
+                0 => Err("not a configured AppLink; check appLinks.hosts and /lxapp/open".into()),
+                _ => Err("invalid AppLink (or no handler registered)".into()),
+            }
+        }
         other => Err(format!("unknown app handler: {}", other)),
     }
+}
+
+#[derive(Deserialize)]
+struct ApplinkArgs {
+    url: String,
 }
 
 fn build_app_doctor() -> Value {

@@ -65,6 +65,15 @@ pub enum AppCommand {
         #[command(subcommand)]
         command: KeyCommand,
     },
+    /// Inject an App Link (warm path)
+    Applink {
+        /// `https://` AppLink URL
+        #[arg(allow_hyphen_values = true)]
+        url: String,
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Clone)]
@@ -278,7 +287,19 @@ pub fn execute(context: &AppContext, options: AppOptions) -> Result<()> {
             require_desktop_input(context, "key")?;
             execute_key(context, command)
         }
+        AppCommand::Applink { url, json } => execute_applink(context, url, json),
     }
+}
+
+fn execute_applink(context: &AppContext, url: String, json_output: bool) -> Result<()> {
+    let data = context
+        .transport
+        .request(methods::app::APPLINK, Some(json!({ "url": url })))?
+        .unwrap_or_else(|| json!({ "accepted": true, "code": 1 }));
+    if json_output {
+        println!("{}", encode_machine_json(&data)?);
+    }
+    Ok(())
 }
 
 fn execute_doctor(context: &AppContext, json_output: bool) -> Result<()> {
@@ -608,6 +629,21 @@ mod tests {
             AppCommand::Key {
                 command: KeyCommand::Type(KeyTypeOptions { text, .. })
             } if text == "-typed"
+        ));
+    }
+
+    #[test]
+    fn parses_applink_url() {
+        let cli = TestCli::try_parse_from([
+            "test",
+            "applink",
+            "https://applink.lingxia.app/lxapp/open?page=order&id=42",
+        ])
+        .unwrap();
+        assert!(matches!(
+            cli.app.command,
+            AppCommand::Applink { url, json: false }
+                if url == "https://applink.lingxia.app/lxapp/open?page=order&id=42"
         ));
     }
 

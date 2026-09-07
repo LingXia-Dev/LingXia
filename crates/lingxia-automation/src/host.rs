@@ -84,6 +84,17 @@ struct JSOpenResult {
     path: String,
 }
 
+#[derive(FromJSObject)]
+struct ApplinkOpt {
+    url: String,
+}
+
+#[derive(Debug, Clone, IntoJSObject)]
+struct JSApplinkResult {
+    accepted: bool,
+    code: i32,
+}
+
 fn app_ref(app: &Option<String>) -> &str {
     app.as_deref().unwrap_or("current")
 }
@@ -104,6 +115,26 @@ impl JSLxAppManager {
     async fn current(&self, ctx: JSContext) -> JSResult<JSValue> {
         let (appid, path, _) = lxapp::get_current_lxapp();
         to_js(&ctx, &json!({ "appid": appid, "currentPage": path }))
+    }
+
+    /// Inject an App Link (`lxdev app applink`). Resolves when accepted, not
+    /// when navigation finishes.
+    #[js_method]
+    async fn applink(&self, _ctx: JSContext, options: ApplinkOpt) -> JSResult<JSApplinkResult> {
+        let url = options.url.trim();
+        if url.is_empty() {
+            return Err(auto_err("url must not be empty"));
+        }
+        match lingxia_service::applink::handle(url) {
+            1 => Ok(JSApplinkResult {
+                accepted: true,
+                code: 1,
+            }),
+            0 => Err(auto_err(
+                "not a configured AppLink; check appLinks.hosts and /lxapp/open",
+            )),
+            _ => Err(auto_err("invalid AppLink (or no handler registered)")),
+        }
     }
 
     #[js_method]
