@@ -62,7 +62,7 @@ fn terminal_supported(lxapp: &Arc<LxApp>) -> bool {
 }
 
 /// Whether this exact JS context is the focused, host-bundled Terminal
-/// Settings runtime. Terminal support on the owning ControlApp alone is not
+/// Settings runtime. Terminal support on the ControlSurface class alone is not
 /// enough: its ordinary home context still exposes the full Logic surface.
 fn terminal_settings_context(ctx: &JSContext) -> JSResult<bool> {
     #[cfg(feature = "terminal")]

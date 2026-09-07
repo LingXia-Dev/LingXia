@@ -106,6 +106,30 @@ impl LogicRoute {
         Self::TerminalWindowsSetEnabled,
     ];
 
+    /// `lx.terminal.*` serves the host-bundled Settings surface and nothing
+    /// else; every other direct route belongs to the home ControlApp.
+    pub(crate) const fn audience(self) -> RouteAudience {
+        match self {
+            #[cfg(feature = "terminal")]
+            Self::TerminalSettingsGet
+            | Self::TerminalSettingsUpdate
+            | Self::TerminalSettingsReset
+            | Self::TerminalSettingsOnChange
+            | Self::TerminalSchemesList
+            | Self::TerminalSchemesImport
+            | Self::TerminalPreviewCreate
+            | Self::TerminalPreviewShow
+            | Self::TerminalPreviewClear
+            | Self::TerminalPreviewClose
+            | Self::TerminalFontsList => RouteAudience::ControlSurfaceOnly,
+            #[cfg(all(feature = "terminal", target_os = "windows"))]
+            Self::TerminalWindowsStatus
+            | Self::TerminalWindowsInstall
+            | Self::TerminalWindowsSetEnabled => RouteAudience::ControlSurfaceOnly,
+            _ => RouteAudience::ControlAppOnly,
+        }
+    }
+
     pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::AppExit => "lx.app.exit",
@@ -179,7 +203,7 @@ pub(crate) fn logic_route_inventory() -> &'static HashMap<&'static str, LogicRou
             let previous = inventory.insert(
                 route.name(),
                 LogicRouteMetadata {
-                    policy: EffectiveRoutePolicy::new(RouteAudience::ControlAppOnly),
+                    policy: EffectiveRoutePolicy::new(route.audience()),
                 },
             );
             assert!(
@@ -304,15 +328,30 @@ mod tests {
     }
 
     #[test]
-    fn production_inventory_is_complete_unique_and_control_only() {
+    fn production_inventory_is_complete_unique_and_control_scoped() {
         let inventory = logic_route_inventory();
         assert_eq!(inventory.len(), LogicRoute::ALL.len());
         let names: HashSet<_> = LogicRoute::ALL.iter().map(|route| route.name()).collect();
         assert_eq!(names.len(), LogicRoute::ALL.len());
-        assert!(
-            inventory
-                .values()
-                .all(|metadata| { metadata.policy().audience() == RouteAudience::ControlAppOnly })
+        for route in LogicRoute::ALL {
+            let audience = inventory[route.name()].policy().audience();
+            assert_eq!(audience, route.audience(), "{}", route.name());
+            let is_terminal = route.name().starts_with("lx.terminal.");
+            assert_eq!(
+                audience,
+                if is_terminal {
+                    RouteAudience::ControlSurfaceOnly
+                } else {
+                    RouteAudience::ControlAppOnly
+                },
+                "{}",
+                route.name()
+            );
+        }
+        // The entry that opens the Settings surface stays with home.
+        assert_eq!(
+            LogicRoute::ShellOpenHostTerminalSettings.audience(),
+            RouteAudience::ControlAppOnly
         );
     }
 
@@ -320,16 +359,25 @@ mod tests {
     fn same_app_id_standard_and_browser_are_denied_for_every_direct_family() {
         let standard = app_caller("same.app", 41, AppSessionClass::StandardApp);
         let control = app_caller("same.app", 42, AppSessionClass::ControlApp);
+        let surface = app_caller("same.app", 43, AppSessionClass::ControlSurface);
         let browser = browser_caller();
 
         for route in LogicRoute::ALL {
+            let surface_route = route.audience() == RouteAudience::ControlSurfaceOnly;
             assert!(
                 authorize_caller(&standard, *route).is_err(),
                 "{}",
                 route.name()
             );
-            assert!(
+            assert_eq!(
                 authorize_caller(&control, *route).is_ok(),
+                !surface_route,
+                "{}",
+                route.name()
+            );
+            assert_eq!(
+                authorize_caller(&surface, *route).is_ok(),
+                surface_route,
                 "{}",
                 route.name()
             );

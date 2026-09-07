@@ -222,5 +222,13 @@ mod tests {
             ExtensionAudience::HostAssigned,
             AppSessionClass::ControlApp
         ));
+        assert!(!audience_allows(
+            ExtensionAudience::StandardOnly,
+            AppSessionClass::ControlSurface
+        ));
+        assert!(audience_allows(
+            ExtensionAudience::HostAssigned,
+            AppSessionClass::ControlSurface
+        ));
     }
 }

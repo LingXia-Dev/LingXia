@@ -222,6 +222,7 @@ enum RouteAudience {
     AppSessionOnly,
     AuthenticatedReadOnly,
     ControlAppOnly,
+    ControlSurfaceOnly,
     BrowserControlOnly,
     ControlOnly,
 }
@@ -232,12 +233,13 @@ impl RouteAudience {
             "app-session-only" => Ok(Self::AppSessionOnly),
             "authenticated-read-only" => Ok(Self::AuthenticatedReadOnly),
             "control-app-only" => Ok(Self::ControlAppOnly),
+            "control-surface-only" => Ok(Self::ControlSurfaceOnly),
             "browser-control-only" => Ok(Self::BrowserControlOnly),
             "control-only" => Ok(Self::ControlOnly),
             _ => Err(syn::Error::new_spanned(
                 value,
                 format!(
-                    "unknown audience `{}` in #[{macro_name}(...)]; expected one of `app-session-only`, `authenticated-read-only`, `control-app-only`, `browser-control-only`, or `control-only`",
+                    "unknown audience `{}` in #[{macro_name}(...)]; expected one of `app-session-only`, `authenticated-read-only`, `control-app-only`, `control-surface-only`, `browser-control-only`, or `control-only`",
                     value.value()
                 ),
             )),
@@ -251,6 +253,9 @@ impl RouteAudience {
                 quote!(::lingxia::host::RouteAudience::AuthenticatedReadOnly)
             }
             Self::ControlAppOnly => quote!(::lingxia::host::RouteAudience::ControlAppOnly),
+            Self::ControlSurfaceOnly => {
+                quote!(::lingxia::host::RouteAudience::ControlSurfaceOnly)
+            }
             Self::BrowserControlOnly => {
                 quote!(::lingxia::host::RouteAudience::BrowserControlOnly)
             }

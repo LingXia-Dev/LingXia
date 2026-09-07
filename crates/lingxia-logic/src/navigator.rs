@@ -174,7 +174,7 @@ pub(crate) async fn prepare_app_open(
                 "native control authority is not initialized".to_string(),
             ))
         })?;
-        lxapp::ensure_control_lxapp(authority, &target_appid, release_type)
+        lxapp::ensure_control_surface_lxapp(authority, &target_appid, release_type)
     } else {
         lxapp::ensure_lxapp(&target_appid, release_type)
     }

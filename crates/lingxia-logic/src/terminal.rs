@@ -96,7 +96,7 @@ pub(crate) fn eligible(app: &Arc<LxApp>) -> bool {
         && lingxia_app_context::terminal_enabled()
         // Presence is presentation only. Every call below independently uses
         // the central invocation authorization path.
-        && app.app_session_class() == lxapp::AppSessionClass::ControlApp
+        && app.app_session_class() == lxapp::AppSessionClass::ControlSurface
 }
 
 pub(crate) fn owns_context(ctx: &JSContext) -> JSResult<bool> {
@@ -104,7 +104,7 @@ pub(crate) fn owns_context(ctx: &JSContext) -> JSResult<bool> {
     let app = invocation.lxapp();
     // This chooses the focused settings runtime profile; it is not an
     // authorization decision. Every API call below separately requires the
-    // native-assigned ControlApp session.
+    // native-assigned ControlSurface session.
     Ok(eligible(&app)
         && authorization::authorize(&invocation, LogicRoute::TerminalSettingsGet).is_ok()
         && app.appid == SETTINGS_APP_ID
@@ -117,7 +117,7 @@ fn require_access(ctx: &JSContext, route: LogicRoute) -> JSResult<Arc<LxApp>> {
         HostError::new(
             rong::error::E_PERMISSION_DENIED,
             format!(
-                "{} requires a live native-assigned ControlApp session",
+                "{} requires the host-bundled Terminal Settings control surface",
                 denied.route().name()
             ),
         )
@@ -697,7 +697,7 @@ mod tests {
                 authorization::logic_route_inventory()[route.name()]
                     .policy()
                     .audience(),
-                lxapp::host::RouteAudience::ControlAppOnly
+                lxapp::host::RouteAudience::ControlSurfaceOnly
             );
         }
     }

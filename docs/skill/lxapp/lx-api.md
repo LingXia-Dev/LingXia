@@ -101,8 +101,9 @@ from one registry, so `('terminal' in lx)` and `lx.supports({ capability: 'termi
 can never disagree.
 
 `lx.terminal.settings`, `colorSchemes`, `fonts`, and Windows terminal control
-are additionally restricted to the live session the native host assigned as a
-ControlApp. A matching app id or bundled source does not grant this authority.
+are additionally restricted to the host-bundled Terminal Settings session the
+native host assigned as a ControlSurface; not even the home ControlApp reaches
+them. A matching app id or bundled source does not grant this authority.
 
 ---
 

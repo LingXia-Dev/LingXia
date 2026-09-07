@@ -93,6 +93,10 @@ pub enum RouteAudience {
     AppSessionOnly,
     AuthenticatedReadOnly,
     ControlAppOnly,
+    /// Only the host-bundled `ControlSurface` session (Terminal Settings).
+    /// Deliberately disjoint from `ControlAppOnly`: neither class reaches the
+    /// other's routes.
+    ControlSurfaceOnly,
     BrowserControlOnly,
     ControlOnly,
 }
@@ -627,6 +631,16 @@ impl AuthenticatedCaller {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn surface_for_test(session_id: u64) -> Self {
+        Self {
+            source: AuthenticatedCallerSource::LxAppSession {
+                class: AppSessionClass::ControlSurface,
+                scope: AppScope::for_test("test.surface", session_id),
+            },
+        }
+    }
+
     #[cfg(feature = "test-utils")]
     pub(crate) fn lxapp_session_for_test(
         app_id: &str,
@@ -719,6 +733,12 @@ pub fn authorize(caller: &AuthenticatedCaller, audience: RouteAudience) -> bool 
                 ..
             },
             RouteAudience::ControlAppOnly | RouteAudience::ControlOnly
+        ) | (
+            AuthenticatedCallerSource::LxAppSession {
+                class: AppSessionClass::ControlSurface,
+                ..
+            },
+            RouteAudience::ControlSurfaceOnly
         ) | (
             AuthenticatedCallerSource::BrowserDocument { .. },
             RouteAudience::AuthenticatedReadOnly
@@ -2135,24 +2155,31 @@ mod tests {
         let browser = AuthenticatedCaller::active_browser_document(&native_authority, authority)
             .expect("native test authority");
 
+        let surface = AuthenticatedCaller::surface_for_test(1);
+
         let audiences = [
             RouteAudience::AppSessionOnly,
             RouteAudience::AuthenticatedReadOnly,
             RouteAudience::ControlAppOnly,
+            RouteAudience::ControlSurfaceOnly,
             RouteAudience::BrowserControlOnly,
             RouteAudience::ControlOnly,
         ];
         assert_eq!(
             audiences.map(|audience| authorize(&standard, audience)),
-            [true, true, false, false, false]
+            [true, true, false, false, false, false]
         );
         assert_eq!(
             audiences.map(|audience| authorize(&control, audience)),
-            [true, true, true, false, true]
+            [true, true, true, false, false, true]
+        );
+        assert_eq!(
+            audiences.map(|audience| authorize(&surface, audience)),
+            [true, true, false, true, false, false]
         );
         assert_eq!(
             audiences.map(|audience| authorize(&browser, audience)),
-            [false, true, false, true, true]
+            [false, true, false, false, true, true]
         );
     }
 

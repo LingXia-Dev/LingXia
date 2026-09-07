@@ -217,6 +217,7 @@ The accepted string values are fixed by the SDK:
 | `app-session-only` | `AppSessionOnly` (the default for `native`) |
 | `authenticated-read-only` | `AuthenticatedReadOnly` |
 | `control-app-only` | `ControlAppOnly` |
+| `control-surface-only` | `ControlSurfaceOnly` |
 | `browser-control-only` | `BrowserControlOnly` |
 | `control-only` | `ControlOnly` |
 

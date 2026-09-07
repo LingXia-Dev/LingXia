@@ -201,6 +201,7 @@ mod resource_grant_tests {
     fn process_bootstrap_grant_requires_control_class_host_policy_and_manifest_request() {
         for (class, enabled, requested, expected) in [
             (AppSessionClass::StandardApp, true, true, false),
+            (AppSessionClass::ControlSurface, true, true, false),
             (AppSessionClass::ControlApp, false, true, false),
             (AppSessionClass::ControlApp, true, false, false),
             (AppSessionClass::ControlApp, true, true, true),

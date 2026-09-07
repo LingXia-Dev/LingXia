@@ -92,6 +92,7 @@ privileged bridge message。
 | --- | --- | --- |
 | `StandardApp` | 已认证、但不是控制应用的 lxapp | ordinary 或 downloaded lxapp |
 | `ControlApp` | bootstrap 选定、可使用 app-control routes 的 lxapp | home/control lxapp、可信 `logic: false` control UI |
+| `ControlSurface` | ControlApp 打开的 host-bundled 控制界面；不是 home，只进入自己的 `ControlSurfaceOnly` routes | `app.lingxia.terminal-settings` |
 | `BrowserControlDocument` | 已认证、只管理 browser domain 的当前 document | built-in 或 host 选定的 browser WebUI |
 
 caller class 不在 `lxapp.json` 中声明。manifest 可以描述需求，却不能让 app 自行成为可信主体。
@@ -126,7 +127,7 @@ AppScope {
 AuthenticatedCaller =
   | LxAppSession {
       app_session_id,
-      caller_class: StandardApp | ControlApp,
+      caller_class: StandardApp | ControlApp | ControlSurface,
       app_scope: native-derived AppScope,
     }
   | BrowserDocument {
@@ -153,9 +154,10 @@ browser document 都是 `Unauthenticated`，不是已认证的 `StandardApp`；�
 
 | Audience | 允许的 caller |
 | --- | --- |
-| `AppSessionOnly` | `StandardApp` 或 `ControlApp` 的 authenticated `LxAppSession` |
+| `AppSessionOnly` | `StandardApp`、`ControlApp` 或 `ControlSurface` 的 authenticated `LxAppSession` |
 | `AuthenticatedReadOnly` | 任意 authenticated caller；只读且对所有此类 caller 安全 |
 | `ControlAppOnly` | 仅 `ControlApp` 的 `LxAppSession` |
+| `ControlSurfaceOnly` | 仅 `ControlSurface` 的 `LxAppSession`；与 `ControlAppOnly` 互斥，两类互不进入对方的 routes |
 | `BrowserControlOnly` | 仅 `BrowserControlDocument` 的 active `BrowserDocument` |
 | `ControlOnly` | `ControlApp` 或 `BrowserControlDocument`；明确拒绝 `StandardApp` |
 

@@ -83,12 +83,12 @@ pub use runtime_bootstrap::init;
 pub use runtime_bootstrap::runner_active as is_runner;
 pub use runtime_ops::{
     close_lxapp, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
-    ensure_builtin_lxapp, ensure_control_lxapp, ensure_host_surface_owner, ensure_lxapp,
-    get_current_lxapp, installed_lxapp_path, is_lxapp_open, is_pull_down_refresh_enabled,
-    list_lxapps, mark_lxapp_active, notify_lxapp_host_visibility, notify_page_host_visibility,
-    notify_page_instance, notify_page_instance_by_id, on_low_memory, open_control_lxapp_page,
-    open_lxapp, refresh_auto_appearances, restart_lxapp, touch_page_instance_by_id,
-    uninstall_lxapp,
+    ensure_builtin_lxapp, ensure_control_lxapp, ensure_control_surface_lxapp,
+    ensure_host_surface_owner, ensure_lxapp, get_current_lxapp, installed_lxapp_path,
+    is_lxapp_open, is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active,
+    notify_lxapp_host_visibility, notify_page_host_visibility, notify_page_instance,
+    notify_page_instance_by_id, on_low_memory, open_control_lxapp_page, open_lxapp,
+    refresh_auto_appearances, restart_lxapp, touch_page_instance_by_id, uninstall_lxapp,
 };
 pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{find_page_by_instance_id, get_platform, try_get};
@@ -249,6 +249,16 @@ fn lxapp_bundle_source_for(appid: &str) -> Option<LxAppBundleSource> {
         .and_then(|guard| guard.get(appid).cloned())
 }
 
+/// A control surface must come from the host itself: its bundled assets, or
+/// the dev-served bundle of that same package. Installed, downloaded, and
+/// synthetic sources never qualify.
+fn control_surface_bundle_source_allowed(source: Option<&LxAppBundleSource>) -> bool {
+    matches!(
+        source,
+        Some(LxAppBundleSource::BuiltinAssets | LxAppBundleSource::DevPath { .. })
+    )
+}
+
 /// Manages a collection of lxapp applications
 pub struct LxApps {
     /// Collection of lxapps, keyed by app ID
@@ -375,6 +385,7 @@ impl LxApps {
         })
     }
 
+    /// Only the native-sealed home app id ever becomes the ControlApp.
     pub(crate) fn ensure_lxapp_for_native_control(
         &self,
         appid: String,
@@ -382,6 +393,11 @@ impl LxApps {
     ) -> Result<Arc<LxApp>, LxAppError> {
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
+            if lingxia_app_context::home_app_id() != Some(appid.as_str()) {
+                return Err(LxAppError::InvalidParameter(format!(
+                    "control app identity mismatch: {appid} is not the native-sealed home app"
+                )));
+            }
             if let Some(app) = self.lxapps.get(&appid) {
                 if app.is_control_app() {
                     return Ok(app.clone());
@@ -390,6 +406,41 @@ impl LxApps {
                 self.destroy_lxapp_with_options(&appid, true);
             }
             self.ensure_lxapp_with_session_class(appid, release_type, AppSessionClass::ControlApp)
+        })
+    }
+
+    /// Host-bundled control surface (Terminal Settings). Only a bundle the host
+    /// ships itself qualifies, and never the home app id: that session is the
+    /// ControlApp and must not be downgraded to a surface.
+    pub(crate) fn ensure_lxapp_for_control_surface(
+        &self,
+        appid: String,
+        release_type: ReleaseType,
+    ) -> Result<Arc<LxApp>, LxAppError> {
+        let transition_appid = appid.clone();
+        self.with_session_transition(&transition_appid, move || {
+            if lingxia_app_context::home_app_id() == Some(appid.as_str()) {
+                return Err(LxAppError::InvalidParameter(format!(
+                    "control surface identity mismatch: {appid} is the home app"
+                )));
+            }
+            if !control_surface_bundle_source_allowed(lxapp_bundle_source_for(&appid).as_ref()) {
+                return Err(LxAppError::InvalidParameter(format!(
+                    "control surface must be a host-bundled lxapp: {appid}"
+                )));
+            }
+            if let Some(app) = self.lxapps.get(&appid) {
+                if app.app_session_class() == AppSessionClass::ControlSurface {
+                    return Ok(app.clone());
+                }
+                drop(app);
+                self.destroy_lxapp_with_options(&appid, true);
+            }
+            self.ensure_lxapp_with_session_class(
+                appid,
+                release_type,
+                AppSessionClass::ControlSurface,
+            )
         })
     }
 
@@ -489,6 +540,12 @@ impl LxApps {
             AppSessionClass::ControlApp => {
                 LxApp::new_as_home(appid.clone(), self.runtime.clone(), self.executor.clone())?
             }
+            AppSessionClass::ControlSurface => LxApp::new_control_surface(
+                appid.clone(),
+                self.runtime.clone(),
+                self.executor.clone(),
+                release_type,
+            )?,
         });
         new_lxapp.bind_arc();
         crate::host::seal_app_resource_grants(&new_lxapp);
@@ -776,7 +833,12 @@ pub(crate) enum LxAppBundleSource {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppSessionClass {
     StandardApp,
+    /// The one native-sealed home session; the only class admitted to
+    /// app-control routes.
     ControlApp,
+    /// A host-bundled control UI (Terminal Settings) that the ControlApp opens.
+    /// Never home, and only its own `ControlSurfaceOnly` routes admit it.
+    ControlSurface,
 }
 
 pub struct LxApp {
@@ -1894,6 +1956,28 @@ impl LxApp {
         Ok(app)
     }
 
+    /// Create a host-bundled control surface. Unlike `new_as_home` the home flag
+    /// stays false, so capsule close, LRU eviction, the home OTA check, and
+    /// `lx.process` all treat it as an ordinary guest.
+    fn new_control_surface(
+        appid: String,
+        runtime: Arc<Platform>,
+        executor: Arc<LxAppWorkers>,
+        release_type: ReleaseType,
+    ) -> Result<Self, LxAppError> {
+        let mut app = Self::_new(
+            appid,
+            runtime,
+            executor,
+            release_type,
+            AppSessionClass::ControlSurface,
+        );
+        app.setup().inspect_err(|e| {
+            error!("Setup failed for control surface: {}", e).with_appid(&app.appid);
+        })?;
+        Ok(app)
+    }
+
     #[cfg(test)]
     pub(crate) fn new_with_session_class_for_test(
         appid: String,
@@ -1906,6 +1990,9 @@ impl LxApp {
                 Self::new(appid, runtime, executor, ReleaseType::Release)
             }
             AppSessionClass::ControlApp => Self::new_as_home(appid, runtime, executor),
+            AppSessionClass::ControlSurface => {
+                Self::new_control_surface(appid, runtime, executor, ReleaseType::Release)
+            }
         }
     }
 
@@ -3437,6 +3524,75 @@ mod delayed_destroy_tests {
             .ensure_lxapp(appid, ReleaseType::Release)
             .expect("ordinary ensure after rebuild");
         assert_eq!(ensured.app_session_class(), AppSessionClass::ControlApp);
+    }
+
+    #[test]
+    fn control_surface_is_not_home_and_keeps_its_class_on_ordinary_ensure() {
+        let appid = format!("app.lingxia.surface-test.{}", Uuid::new_v4());
+        register_synthetic_lxapp(appid.clone());
+
+        let runtime = class_test_runtime();
+        let workers = LxAppWorkers::init(1);
+        let manager = LxApps::new((*runtime).clone(), workers.clone(), 1);
+        let surface = Arc::new(
+            LxApp::new_with_session_class_for_test(
+                appid.clone(),
+                runtime.clone(),
+                workers,
+                AppSessionClass::ControlSurface,
+            )
+            .expect("control surface"),
+        );
+        surface.bind_arc();
+        assert_eq!(surface.app_session_class(), AppSessionClass::ControlSurface);
+        assert!(!surface.is_control_app());
+        assert!(!surface.is_home_lxapp);
+
+        manager.lxapps.insert(appid.clone(), surface.clone());
+        let ensured = manager
+            .ensure_lxapp(appid.clone(), ReleaseType::Release)
+            .expect("ordinary ensure keeps the live surface");
+        assert!(Arc::ptr_eq(&ensured, &surface));
+        let rebuilt = manager
+            .recreate_lxapp(appid, ReleaseType::Release)
+            .expect("rebuilt surface");
+        assert_eq!(rebuilt.app_session_class(), AppSessionClass::ControlSurface);
+        assert!(!rebuilt.is_home_lxapp);
+    }
+
+    #[test]
+    fn control_classes_refuse_unsealed_identities() {
+        let appid = format!("app.lingxia.unsealed-test.{}", Uuid::new_v4());
+        register_synthetic_lxapp(appid.clone());
+        let runtime = class_test_runtime();
+        let manager = LxApps::new((*runtime).clone(), LxAppWorkers::init(1), 1);
+
+        // Not the native-sealed home id: never a ControlApp.
+        assert!(
+            manager
+                .ensure_lxapp_for_native_control(appid.clone(), ReleaseType::Release)
+                .is_err()
+        );
+        // Synthetic (and installed/downloaded) bundles are not host-shipped
+        // control surfaces either.
+        assert!(
+            manager
+                .ensure_lxapp_for_control_surface(appid.clone(), ReleaseType::Release)
+                .is_err()
+        );
+        assert!(!manager.lxapps.contains_key(&appid));
+        assert!(!manager.session_transition_locks.contains_key(&appid));
+
+        assert!(control_surface_bundle_source_allowed(Some(
+            &LxAppBundleSource::BuiltinAssets
+        )));
+        assert!(!control_surface_bundle_source_allowed(Some(
+            &LxAppBundleSource::Installed
+        )));
+        assert!(!control_surface_bundle_source_allowed(Some(
+            &LxAppBundleSource::Synthetic
+        )));
+        assert!(!control_surface_bundle_source_allowed(None));
     }
 
     #[test]

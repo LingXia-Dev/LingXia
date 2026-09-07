@@ -8,8 +8,8 @@ pub fn ensure_lxapp(appid: &str, release_type: ReleaseType) -> Result<Arc<LxApp>
     manager.ensure_lxapp(appid.to_string(), release_type)
 }
 
-/// Native-host bootstrap for a bundled control surface. Payload app ids never
-/// select this class; the host calls it only after resolving its own resource.
+/// Native-host bootstrap for the sealed home ControlApp. Any other app id is
+/// refused, so a payload id can never select this class.
 #[doc(hidden)]
 pub fn ensure_control_lxapp(
     authority: &crate::NativeControlPlaneAuthority,
@@ -24,6 +24,24 @@ pub fn ensure_control_lxapp(
     let manager = super::runtime_registry::get_lxapps_manager()
         .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
     manager.ensure_lxapp_for_native_control(appid.to_string(), release_type)
+}
+
+/// Native-host bootstrap for a host-bundled control surface (Terminal
+/// Settings). The id must be a bundle the host ships itself and not home.
+#[doc(hidden)]
+pub fn ensure_control_surface_lxapp(
+    authority: &crate::NativeControlPlaneAuthority,
+    appid: &str,
+    release_type: ReleaseType,
+) -> Result<Arc<LxApp>, LxAppError> {
+    if !authority.validate() {
+        return Err(LxAppError::UnsupportedOperation(
+            "control surface bootstrap requires the live native host authority".to_string(),
+        ));
+    }
+    let manager = super::runtime_registry::get_lxapps_manager()
+        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
+    manager.ensure_lxapp_for_control_surface(appid.to_string(), release_type)
 }
 
 pub fn ensure_builtin_lxapp(appid: &str) -> Result<Arc<LxApp>, LxAppError> {
