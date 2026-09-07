@@ -26,11 +26,14 @@ public final class LxAppPageTransition {
 
     private var endsAt: CFTimeInterval = 0
     private var firstPaintObservation: NSKeyValueObservation?
+    private var firstPaintGraceTask: Task<Void, Never>?
+    private var pending: (stillCurrent: () -> Bool, swap: () -> Void)?
 
     public init() {}
 
     deinit {
         firstPaintObservation?.invalidate()
+        firstPaintGraceTask?.cancel()
     }
 
     /// Whether a slide installed here is still on screen.
@@ -90,23 +93,22 @@ public final class LxAppPageTransition {
         stillCurrent: @escaping () -> Bool,
         swap: @escaping () -> Void
     ) {
-        firstPaintObservation?.invalidate()
-        var committed = false
-        let commit: () -> Void = { [weak self] in
-            guard !committed, stillCurrent() else { return }
-            committed = true
-            self?.firstPaintObservation?.invalidate()
-            self?.firstPaintObservation = nil
-            swap()
-        }
-        firstPaintObservation = webView.observe(\.isLoading, options: [.new]) { _, change in
+        cancelPendingWait()
+        pending = (stillCurrent, swap)
+        firstPaintObservation = webView.observe(\.isLoading, options: [.new]) { [weak self] _, change in
             // KVO reports changes only, so the not-yet-started `false` never
-            // arrives here; this is the load finishing.
+            // arrives here; this is the load finishing. The callback is
+            // nonisolated — hop on weak self; sending the pending closures
+            // is a Swift 6 `sending` error on Xcode 26.5+.
             guard change.newValue == false else { return }
-            Task { @MainActor in commit() }
+            Task { @MainActor [weak self] in
+                self?.commitPendingWait()
+            }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.firstPaintGrace) {
-            commit()
+        firstPaintGraceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.firstPaintGrace))
+            guard !Task.isCancelled else { return }
+            self?.commitPendingWait()
         }
     }
 
@@ -114,6 +116,19 @@ public final class LxAppPageTransition {
     public func cancelPendingWait() {
         firstPaintObservation?.invalidate()
         firstPaintObservation = nil
+        firstPaintGraceTask?.cancel()
+        firstPaintGraceTask = nil
+        pending = nil
+    }
+
+    /// Either signal can arrive first; both tear the wait down, so the loser is
+    /// a no-op. A superseded navigation tears down without swapping, rather
+    /// than leaving its closures — and the webview they capture — armed.
+    private func commitPendingWait() {
+        guard let pending else { return }
+        let swap = pending.stillCurrent() ? pending.swap : nil
+        cancelPendingWait()
+        swap?()
     }
 }
 #endif
