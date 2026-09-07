@@ -512,18 +512,15 @@ App({
   },
 
   async onLaunch(options) {
-    // Called once when the lxapp boots.
-    // `options`: AppLaunchOptions — { path?, query?, scene?, referrerInfo? }
-    //   referrerInfo is populated when this lxapp was opened by another lxapp.
+    // Once per worker. AppLaunchOptions: path?, query?, scene?, referrerInfo?
+    // Cold AppLink: scene 8003 here. referrerInfo when opened by another lxapp.
     const stored = await lx.getStorage().get<string>('userId');
     if (stored) this.globalData.userId = stored;
   },
 
   onShow(args) {
-    // Called every time the lxapp comes to the foreground.
-    // args: AppLifecycleEventArgs
-    //   source: 'host' | 'lxapp'
-    //   reason: 'foreground' | 'background' | 'screenshot' | 'open' | 'close' | 'switch_back' | 'switch_away'
+    // Foreground. source: host|lxapp. reason: foreground|background|screenshot|open|close|switch_back|switch_away.
+    // Warm AppLink: scene 8003 + query. Cold onShow is visibility only (8003 already went to onLaunch).
   },
 
   onHide(args) {

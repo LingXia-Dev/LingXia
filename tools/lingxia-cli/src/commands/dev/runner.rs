@@ -1586,6 +1586,7 @@ mod tests {
             serde_json::from_slice(&fs::read(assets.join("app.json")).unwrap()).unwrap();
 
         assert_eq!(app_json["envVersion"], "preview");
+        assert!(app_json.get("appLinks").is_none());
     }
 
     #[test]
@@ -1602,6 +1603,7 @@ mod tests {
 
         assert!(app_json.get("homeAppId").is_none());
         assert!(app_json.get("homeAppVersion").is_none());
+        assert!(app_json.get("appLinks").is_none());
     }
 
     #[test]

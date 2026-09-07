@@ -29,7 +29,7 @@ use crate::appservice::LxAppWorkers;
 use crate::error::LxAppError;
 use crate::page::config::{OrientationConfig, PageConfig};
 use crate::page::{PageInstance, PageInstanceId, ViewCallOptions};
-use crate::startup::LxAppStartupOptions;
+use crate::startup::{LxAppStartupOptions, Scene};
 use crate::update::UpdateManager;
 use crate::{debug, error, info, warn};
 use security::NetworkSecurity;
@@ -2462,10 +2462,19 @@ impl LxApp {
         {
             return Ok(());
         }
-        if let Err(error) = self.appservice_notify(AppServiceEvent::OnLaunch, None) {
+        let payload = self
+            .state
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .startup_options
+            .launch_options_json();
+        if let Err(error) = self.appservice_notify(AppServiceEvent::OnLaunch, Some(payload)) {
             self.app_launch_dispatched.store(false, Ordering::SeqCst);
             return Err(error);
         }
+        // Cold AppLink is delivered once via onLaunch. Clear so the following
+        // onShow is not a second `scene === 8003` hop.
+        self.consume_app_link_scene();
         Ok(())
     }
 
@@ -2717,6 +2726,11 @@ impl LxApp {
             .unwrap_or_else(|err| err.into_inner());
         let requested_region = LxAppOpenRegion::from(options.open_mode);
         let claimed = self.claim_open_region(requested_region)?;
+        // Already showing this lxapp, and the link did not name a page: keep
+        // the current page and let Logic route from query (`App.onShow`).
+        if !claimed && options.path.is_empty() && options.page.is_none() {
+            return self.reenter_from_link(options);
+        }
         let began_opening =
             self.cas_status(LxAppSessionStatus::Closed, LxAppSessionStatus::Opening);
         let result = self.open_claimed(options);
@@ -2734,6 +2748,80 @@ impl LxApp {
             }
         }
         result
+    }
+
+    fn reenter_from_link(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
+        let current_path = self
+            .peek_current_page_path()
+            .unwrap_or_else(|| self.initial_route());
+        {
+            let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+            state.startup_options.query = options.query;
+            state.startup_options.scene = options.scene;
+            if state.startup_options.path.is_empty() {
+                state.startup_options.path = current_path.clone();
+            }
+        }
+
+        let (current_appid, _, _) = get_current_lxapp();
+        if current_appid != self.appid {
+            let page = self.get_or_create_page(&current_path);
+            let title = self.get_lxapp_info().app_name;
+            let stored = self
+                .state
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .startup_options
+                .clone();
+            self.runtime.show_lxapp(
+                self.appid.clone(),
+                title,
+                current_path,
+                page.webtag().key().to_string(),
+                self.session.id,
+                stored.open_mode,
+                stored.panel_id.clone(),
+            )?;
+        } else {
+            self.runtime.request_lxapp_main_activation(&self.appid);
+            self.emit_app_show(true);
+        }
+        Ok(())
+    }
+
+    fn emit_app_show(&self, already_open: bool) {
+        let options = self
+            .state
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .startup_options
+            .clone();
+        let mut args = options.launch_options_value();
+        if let serde_json::Value::Object(map) = &mut args {
+            map.insert(
+                "source".to_string(),
+                serde_json::to_value(crate::lifecycle::AppServiceEventSource::Lxapp)
+                    .unwrap_or_else(|_| serde_json::Value::String("lxapp".to_string())),
+            );
+            map.insert(
+                "reason".to_string(),
+                serde_json::to_value(if already_open {
+                    crate::lifecycle::AppServiceEventReason::SwitchBack
+                } else {
+                    crate::lifecycle::AppServiceEventReason::Open
+                })
+                .unwrap_or_else(|_| serde_json::Value::String("unknown".to_string())),
+            );
+        }
+        let _ = self.appservice_notify(AppServiceEvent::OnShow, Some(args.to_string()));
+        self.consume_app_link_scene();
+    }
+
+    pub(crate) fn consume_app_link_scene(&self) {
+        let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
+        if state.startup_options.scene == Scene::AppLink {
+            state.startup_options.scene = Scene::System;
+        }
     }
 
     fn open_claimed(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {

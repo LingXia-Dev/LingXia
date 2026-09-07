@@ -216,8 +216,14 @@ impl LxAppDelegate for LxApp {
         }
 
         // App-level onShow still fires here (app layer), independent of page service readiness.
+        // Cold AppLink already went out on onLaunch (`scene` consumed). Replay
+        // query/scene only on re-entry so a `scene === 8003` handler does not hop twice.
         let options = self.state.lock().unwrap().startup_options.clone();
-        let mut args = serde_json::to_value(&options).unwrap_or_else(|_| serde_json::json!({}));
+        let mut args = if was_already_opened {
+            options.launch_options_value()
+        } else {
+            serde_json::json!({})
+        };
         if let serde_json::Value::Object(map) = &mut args {
             map.insert(
                 "source".to_string(),
@@ -236,6 +242,7 @@ impl LxAppDelegate for LxApp {
         }
         let args_str = serde_json::to_string(&args).ok();
         let _ = self.appservice_notify(AppServiceEvent::OnShow, args_str);
+        self.consume_app_link_scene();
         self.trigger_home_update_check_once();
 
         if self.has_pending_restart_request()

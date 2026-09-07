@@ -243,26 +243,18 @@ app:
 
 ### Per-env `appLinks.hosts`
 
-Same scalar-or-map shape as `lingxiaServer`. A list applies to every env; a map selects hosts per env. `lingxia build --env <env>` bakes only that env's hosts into runtime `app.json` and the platform association files (Android intent filters, Apple associated domains, Harmony skills).
+Same list-or-map shape as `lingxiaServer`. `lingxia build --env` writes that env's hosts into `app.json` and platform association files (Android intent filters, Apple associated domains, Harmony skills).
 
 ```yaml
 appLinks:
-  hosts:
-    - app.example.com
+  hosts: [app.example.com]
+# hosts:
+#   developer: [app-dev.example.com]
+#   preview: [app-preview.example.com]
+#   release: [app.example.com]
 ```
 
-```yaml
-appLinks:
-  hosts:
-    developer:
-      - app-dev.example.com
-    preview:
-      - app-preview.example.com
-    release:
-      - app.example.com
-```
-
-Omit an env to give that build no App Links. Each host still needs its own `.well-known` verification files; see [App Links](./applinks.md).
+Omit an env → no App Links for that build. Each host needs `.well-known` files; see [App Links](./applinks.md).
 
 ### Per-env `packageIdSuffix`
 

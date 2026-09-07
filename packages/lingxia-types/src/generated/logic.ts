@@ -263,6 +263,7 @@ export type AppInstance = AppConfig & {
 export type AppLaunchOptions = {
     path?: string;
     query?: Record<string, string>;
+    /** `8003` = AppLink (cold: onLaunch; warm: onShow). */
     scene?: number;
     referrerInfo?: {
         appId?: string;
@@ -273,6 +274,10 @@ export type AppLaunchOptions = {
 export type AppLifecycleEventArgs = {
     source: 'host' | 'lxapp';
     reason: 'foreground' | 'background' | 'screenshot' | 'open' | 'close' | 'switch_back' | 'switch_away';
+    path?: string;
+    query?: Record<string, string>;
+    /** `8003` = AppLink. */
+    scene?: number;
 };
 
 export type AppScreenshotOptions = {

@@ -83,6 +83,7 @@ rong::js_api! {
         type AppLaunchOptions = r###"{
     path?: string;
     query?: Record<string, string>;
+    /** `8003` = AppLink (cold: onLaunch; warm: onShow). */
     scene?: number;
     referrerInfo?: {
         appId?: string;
@@ -93,6 +94,10 @@ rong::js_api! {
         type AppLifecycleEventArgs = r###"{
     source: 'host' | 'lxapp';
     reason: 'foreground' | 'background' | 'screenshot' | 'open' | 'close' | 'switch_back' | 'switch_away';
+    path?: string;
+    query?: Record<string, string>;
+    /** `8003` = AppLink. */
+    scene?: number;
 }"###;
 
         type AppScreenshotOptions = r###"{
