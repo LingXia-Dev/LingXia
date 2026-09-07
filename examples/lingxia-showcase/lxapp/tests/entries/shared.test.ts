@@ -7,6 +7,7 @@ import '../setup.js';
 trackPublicSurface();
 
 import '../api/automation.test.js';
+import '../api/applink.test.js';
 import '../api/surface.test.js';
 import '../api/runtime.test.js';
 import '../api/navigation.test.js';
