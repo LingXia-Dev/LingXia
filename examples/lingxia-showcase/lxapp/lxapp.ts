@@ -20,8 +20,21 @@ interface MyAppInstance {
   ipReadyCallback?: (ip: string) => void;
 }
 
+function routeFromAppLink(options?: { scene?: number; query?: Record<string, string> }) {
+  if (options?.scene !== 8003) return;
+  const page = options.query?.page;
+  if (!page) return;
+  const query = { ...options.query };
+  delete query.page;
+  void lx.navigateTo({ page, query });
+}
+
 App({
-  onLaunch: async function (this: MyAppInstance) {
+  onLaunch: async function (
+    this: MyAppInstance,
+    options?: { scene?: number; query?: Record<string, string> },
+  ) {
+    routeFromAppLink(options);
     const { os } = lx.app.getBaseInfo();
     type SidebarAction = Parameters<typeof lx.shell.sidebarActions.replace>[0][number];
     const sidebarActions: SidebarAction[] = [
@@ -168,7 +181,8 @@ App({
     console.log("App.onHide");
   },
 
-  onShow() {
+  onShow(options?: { scene?: number; query?: Record<string, string> }) {
+    routeFromAppLink(options);
     console.log("App.onShow");
   },
 
