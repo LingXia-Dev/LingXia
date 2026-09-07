@@ -210,6 +210,14 @@ jobs:
               remote_commit="$(printf '%s\n' "$remote_ref" | awk '/\^\{\}$/{c=$1} END{if(c)print c}')"
               [[ -z "$remote_commit" ]] && remote_commit="$(printf '%s\n' "$remote_ref" | awk 'NR==1{print $1}')"
               if [[ -n "$remote_commit" && "$remote_commit" != "$GITHUB_SHA" ]]; then
+                # A workflow-only follow-up (Xcode pin, retry) lands on main
+                # after the component tag. The executor checks out the tag, not
+                # this SHA, so an ancestor tag still publishes the verified
+                # version. Refuse when the tag is not behind this run.
+                if git merge-base --is-ancestor "$remote_commit" "$GITHUB_SHA"; then
+                  echo "Tag already exists at ancestor $remote_commit, reusing: $tag"
+                  return 0
+                fi
                 echo "Tag $tag already exists on origin at $remote_commit, but this run is at $GITHUB_SHA." >&2
                 echo "Refusing to publish from a tag that points at a different commit." >&2
                 exit 1
@@ -333,7 +341,10 @@ jobs:
           publish_cli() {
             local tag="lingxia-cli-v$VERSION"
             local notes_file="docs/releases/cli-${VERSION}.md"
-            if [[ "$COMPONENT" == "all" ]]; then
+            # A unified workspace release writes docs/releases/<ver>.md, not
+            # the CLI-only cli-<ver>.md. Retrying component=cli after `all`
+            # must still find the reviewed notes.
+            if [[ "$COMPONENT" == "all" || ! -f "$notes_file" ]]; then
               notes_file="docs/releases/${VERSION}.md"
             fi
             create_or_reuse_tag "$tag" "Release cli v$VERSION"
