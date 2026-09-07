@@ -8,7 +8,7 @@ use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
     native_client_out_for_host_project, resolve_cargo_target_dir, resolve_lingxia_target_dir,
 };
-use crate::config::IosConfig;
+use crate::config::{EnvVersion, IosConfig, LingXiaConfig};
 use crate::permission_cache::{DEFAULT_MAX_AGE_SECONDS, PermissionCache, PermissionPlatform};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -270,12 +270,7 @@ impl Platform for IosPlatform {
             eprintln!("{} {}", "Warning:".yellow(), err);
         }
 
-        let app_link_hosts = config
-            .lingxia_config
-            .as_ref()
-            .and_then(|config| config.app_links.as_ref())
-            .map(|app_links| app_links.hosts.as_slice())
-            .unwrap_or(&[]);
+        let app_link_hosts = config.resolved_env.app_link_hosts.as_slice();
         if apple::capabilities::sync_ios_capability_files(
             &ios_dir,
             &granted_entitlements,
@@ -485,11 +480,6 @@ impl Platform for IosPlatform {
         apple::ensure_macos()?;
 
         let host_config = crate::config::LingXiaConfig::load(&config.project_root).ok();
-        let app_link_hosts = host_config
-            .as_ref()
-            .and_then(|config| config.app_links.as_ref())
-            .map(|app_links| app_links.hosts.clone())
-            .unwrap_or_default();
         // Determine app path
         let app_path = if let Some(ref path) = config.artifact_path {
             path.clone()
@@ -500,6 +490,8 @@ impl Platform for IosPlatform {
         if !app_path.exists() {
             return Err(anyhow!("App bundle not found at: {}", app_path.display()));
         }
+
+        let app_link_hosts = app_link_hosts_for_install(host_config.as_ref(), &app_path);
 
         let device_identifier = if let Some(device_id) = config.device_id.as_deref() {
             device_id.to_string()
@@ -733,6 +725,45 @@ pub fn generate_icons(
     crate::appicon::generate_ios_icons(source_icon, &resources_dir)
 }
 
+/// Hosts to re-sign into an already-built app. Prefer the list baked into
+/// the bundle's `app.json` so a release artifact is not signed with
+/// developer domains (Apple disables associated domains if any requested
+/// host is missing from the profile).
+fn app_link_hosts_for_install(config: Option<&LingXiaConfig>, app_path: &Path) -> Vec<String> {
+    if let Some(hosts) = app_link_hosts_from_app_json(app_path) {
+        return hosts;
+    }
+    config
+        .and_then(|config| config.app_links.as_ref())
+        .map(|links| links.hosts.for_env(EnvVersion::Release).to_vec())
+        .unwrap_or_default()
+}
+
+fn app_link_hosts_from_app_json(app_path: &Path) -> Option<Vec<String>> {
+    for rel in ["app.json", "Assets/app.json", "Contents/Resources/app.json"] {
+        let path = app_path.join(rel);
+        let Ok(bytes) = fs::read(&path) else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+            continue;
+        };
+        let Some(hosts) = value.get("appLinks").and_then(|links| links.get("hosts")) else {
+            return Some(Vec::new());
+        };
+        let Some(hosts) = hosts.as_array() else {
+            return Some(Vec::new());
+        };
+        return Some(
+            hosts
+                .iter()
+                .filter_map(|value| value.as_str().map(str::to_string))
+                .collect(),
+        );
+    }
+    None
+}
+
 /// Get the resources directory path for an iOS Swift Package
 pub fn get_resources_dir(
     ios_dir: &Path,
@@ -750,6 +781,23 @@ pub fn get_resources_dir(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn install_hosts_come_from_the_bundle_app_json() {
+        let root = tempfile::tempdir().unwrap();
+        let app = root.path().join("Demo.app");
+        fs::create_dir_all(&app).unwrap();
+        fs::write(
+            app.join("app.json"),
+            r#"{"envVersion":"developer","appLinks":{"hosts":["app-dev.example.com"]}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            app_link_hosts_from_app_json(&app).unwrap(),
+            ["app-dev.example.com"]
+        );
+    }
 
     #[test]
     fn embeds_packet_tunnel_with_environment_specific_identity() {

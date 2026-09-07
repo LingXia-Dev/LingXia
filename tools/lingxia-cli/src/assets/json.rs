@@ -14,6 +14,7 @@ use super::ui::effective_ui_config;
 /// - `lingxiaServer` is taken from the resolved environment.
 /// - `lingxiaId` is emitted verbatim (env-independent).
 /// - `envVersion` is always emitted (defaults to `release`).
+/// - `appLinks.hosts` is the resolved list for this env (omitted when empty).
 pub(super) fn build_app_json_from_config(
     config: &LingXiaConfig,
     home_bundle: Option<&PreparedResourceBundle>,
@@ -86,12 +87,10 @@ pub(super) fn build_app_json_from_config(
             );
         }
     }
-    if let Some(app_links) = config.app_links.as_ref()
-        && !app_links.hosts.is_empty()
-    {
+    if !resolved_env.app_link_hosts.is_empty() {
         obj.insert(
             "appLinks".to_string(),
-            serde_json::json!({ "hosts": app_links.hosts }),
+            serde_json::json!({ "hosts": resolved_env.app_link_hosts }),
         );
     }
     if let Some(capabilities) = config.capabilities.as_ref() {

@@ -240,7 +240,7 @@ mod tests {
         assert_eq!(storage.app_storage_max_size_mb, Some(16384));
         assert_eq!(
             lingxia.app_links.as_ref().unwrap().hosts,
-            vec!["demo.example.com"]
+            crate::config::AppLinkHosts::Single(vec!["demo.example.com".to_string()])
         );
         assert!(lingxia.app_service_enabled());
         assert_eq!(

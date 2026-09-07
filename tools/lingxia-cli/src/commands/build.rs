@@ -923,6 +923,7 @@ fn build_standalone_apple_swift_package(
                 version: crate::config::EnvVersion::Release,
                 lingxia_server: String::new(),
                 package_id_suffix: None,
+                app_link_hosts: Vec::new(),
             },
             skip_native_build: false,
             native_only: false,

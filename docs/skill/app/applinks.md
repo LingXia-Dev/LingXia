@@ -23,7 +23,7 @@ https://<host>/lxapp/open?appId=<appId>&path=<pagePath>&envVersion=<release|prev
 | Field | Value | Description |
 |---|---|---|
 | `scheme` | `https` | Required. Platform verified links are HTTPS URLs. |
-| `host` | A host from `lingxia.yaml` `appLinks.hosts` | The OS uses this host to verify and deliver the link to the app. |
+| `host` | A host from `lingxia.yaml` `appLinks.hosts` for this build's env | The OS uses this host to verify and deliver the link to the app. |
 | `path` | `/lxapp/open` | `lxapp` is the LingXia namespace. `open` is the action that opens a target lxapp. |
 | `query` | `appId`, `path`, `envVersion`, plus page params | Routing params select the target. Other params are forwarded to the page. |
 
@@ -79,7 +79,7 @@ scene: AppLink
 
 ## Host Configuration
 
-The host is configured in `lingxia.yaml`:
+The host is configured in `lingxia.yaml`. A list applies to every env:
 
 ```yaml
 appLinks:
@@ -87,14 +87,32 @@ appLinks:
     - app.example.com
 ```
 
-This config does not define routing rules. It only declares which verified hosts
-the app accepts. If no hosts are configured, AppLinks are ignored.
+A per-env map uses the same shape as `app.lingxiaServer` — omit envs that
+should not claim App Links:
 
-`lingxia build` writes the configured hosts into generated runtime `app.json` and
-syncs the native platform project metadata.
+```yaml
+appLinks:
+  hosts:
+    developer:
+      - app-dev.example.com
+    preview:
+      - app-preview.example.com
+    release:
+      - app.example.com
+```
+
+This config does not define routing rules. It only declares which verified hosts
+the app accepts. If no hosts are configured for the active env, AppLinks are
+ignored.
+
+`lingxia build --env <env>` writes that env's hosts into generated runtime
+`app.json` and syncs the native platform project metadata. Share URLs use the
+first host from the running build.
 
 `lingxia new -t native-app` does not enable AppLinks by default. Add production
-hosts explicitly after your verification files are ready.
+hosts explicitly after your verification files are ready. Different envs have
+different package/bundle ids (`.dev` / `.preview` suffixes), so each host's
+verification file should list the matching id.
 
 ## Well-Known Verification Files
 
@@ -232,7 +250,7 @@ handler.
 The handler:
 
 1. Accepts only `https://`.
-2. Checks the host against `appLinks.hosts`.
+2. Checks the host against the hosts baked into this build's `app.json`.
 3. Parses `/lxapp/open` and its query parameters.
 4. Resolves `envVersion`.
 5. Ensures the requested lxapp release is installed and compatible.
@@ -273,7 +291,7 @@ hdc shell aa start -A ohos.want.action.viewData \
 
 ## Checklist
 
-- `lingxia.yaml` has every production host under `appLinks.hosts`.
+- `lingxia.yaml` has every production host under `appLinks.hosts` (a list, or a per-env map matching `app.lingxiaServer`).
 - Each host serves the required `.well-known` verification files.
 - Apple entitlements use `applinks:<host>`.
 - Android manifest has verified HTTPS intent filters for each host.

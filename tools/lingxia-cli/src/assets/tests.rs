@@ -4,7 +4,8 @@ use super::{
     validate_app_ui_svg_icon,
 };
 use crate::config::{
-    EnvVersion, HostAppConfig, LingXiaConfig, LingxiaServer, ResolvedEnv, ThemeConfig,
+    AppLinkHosts, AppLinksConfig, EnvVersion, HostAppConfig, LingXiaConfig, LingxiaServer,
+    PerEnvHosts, ResolvedEnv, ThemeConfig,
 };
 use lingxia_app_context::{ThemeColor, ThemeStyle};
 use std::fs;
@@ -16,6 +17,7 @@ fn test_resolved_env() -> ResolvedEnv {
         version: EnvVersion::Release,
         lingxia_server: "https://api.example.com".to_string(),
         package_id_suffix: None,
+        app_link_hosts: Vec::new(),
     }
 }
 
@@ -55,6 +57,7 @@ fn lingxia_id_is_not_suffixed_by_env() {
         version: EnvVersion::Developer,
         lingxia_server: String::new(),
         package_id_suffix: Some(".dev".to_string()),
+        app_link_hosts: Vec::new(),
     };
     let app_json = build_app_json_from_config(&config, None, None, &dev_env).unwrap();
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
@@ -194,8 +197,8 @@ fn generated_app_json_includes_app_link_hosts() {
         browser: None,
         generated_ui: None,
         surfaces: None,
-        app_links: Some(crate::config::AppLinksConfig {
-            hosts: vec!["www.example.com".into()],
+        app_links: Some(AppLinksConfig {
+            hosts: AppLinkHosts::Single(vec!["www.example.com".into()]),
         }),
         storage: None,
         resources: None,
@@ -203,10 +206,70 @@ fn generated_app_json_includes_app_link_hosts() {
         assets: None,
     };
 
-    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
+    let mut env = test_resolved_env();
+    env.app_link_hosts = vec!["www.example.com".into()];
+    let app_json = build_app_json_from_config(&config, None, None, &env).unwrap();
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
 
     assert_eq!(value["appLinks"]["hosts"][0], "www.example.com");
+}
+
+#[test]
+fn generated_app_json_selects_per_env_app_link_hosts() {
+    let config = LingXiaConfig {
+        app: Some(HostAppConfig {
+            project_name: "demo".into(),
+            rust_lib_dir: None,
+            product_name: "Demo".into(),
+            product_version: "1.2.3".into(),
+            lingxia_server: None,
+            lingxia_id: None,
+            package_id_suffix: None,
+            platforms: vec!["android".into()],
+            home_app_id: Some("demo-home".into()),
+        }),
+        android: None,
+        ios: None,
+        macos: None,
+        harmony: None,
+        windows: None,
+        features: None,
+        capabilities: None,
+        theme: None,
+        browser: None,
+        generated_ui: None,
+        surfaces: None,
+        app_links: Some(AppLinksConfig {
+            hosts: AppLinkHosts::PerEnv(PerEnvHosts {
+                developer: Some(vec!["app-dev.example.com".into()]),
+                preview: None,
+                release: Some(vec!["app.example.com".into()]),
+            }),
+        }),
+        storage: None,
+        resources: None,
+        splash: None,
+        assets: None,
+    };
+
+    let dev = config.resolve_env(EnvVersion::Developer).unwrap();
+    let value: serde_json::Value =
+        serde_json::from_str(&build_app_json_from_config(&config, None, None, &dev).unwrap())
+            .unwrap();
+    assert_eq!(value["appLinks"]["hosts"][0], "app-dev.example.com");
+    assert_eq!(value["appLinks"]["hosts"].as_array().unwrap().len(), 1);
+
+    let preview = config.resolve_env(EnvVersion::Preview).unwrap();
+    let value: serde_json::Value =
+        serde_json::from_str(&build_app_json_from_config(&config, None, None, &preview).unwrap())
+            .unwrap();
+    assert!(value.get("appLinks").is_none());
+
+    let release = config.resolve_env(EnvVersion::Release).unwrap();
+    let value: serde_json::Value =
+        serde_json::from_str(&build_app_json_from_config(&config, None, None, &release).unwrap())
+            .unwrap();
+    assert_eq!(value["appLinks"]["hosts"][0], "app.example.com");
 }
 
 #[test]
