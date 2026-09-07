@@ -1,5 +1,5 @@
 import type { SurfaceErrorCode } from './generated/logic.js';
-import { ERR_CODE_INFO_BY_CODE, type LxErrorCodeInfo } from "./generated/error";
+import { ERR_CODE_INFO_BY_CODE, type LxErrorCodeInfo } from "./generated/error.js";
 
 const ERR_CODE_INDEX = ERR_CODE_INFO_BY_CODE as Record<number, LxErrorCodeInfo>;
 

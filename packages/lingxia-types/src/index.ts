@@ -4,13 +4,13 @@
  * Type declarations for the LingXia JS API, driven by Rust implementation.
  */
 
-export * from './generated/logic';
-export * from './automation';
-export * from './error';
-export * from './generated/error';
-export * from './generated/i18n';
+export * from './generated/logic.js';
+export * from './automation/index.js';
+export * from './error.js';
+export * from './generated/error.js';
+export * from './generated/i18n.js';
 
-import './generated/logic';
+import './generated/logic.js';
 
 import type {
   AppConfig,
@@ -19,8 +19,8 @@ import type {
   FsWriteOptions,
   PageConfig,
   PageInstance,
-} from './generated/logic';
-import type { Automation } from './automation';
+} from './generated/logic.js';
+import type { Automation } from './automation/index.js';
 
 export type Lx = globalThis.Lx;
 
