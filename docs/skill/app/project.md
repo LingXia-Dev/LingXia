@@ -357,13 +357,12 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 
 ## `browser` Section
 
-`browser` overrides the in-app browser webui, used only when `capabilities.browser: true`. Normal apps omit it and use the SDK default. Set exactly one source under `webui`: a project-relative `path:` to a browser-shell webui lxapp source tree (the CLI builds it — for developing a custom webui alongside the app), or a `package:` npm name shipping a prebuilt `lxapp.json` + `dist/` (with an optional `version:`; the CLI version is used when omitted). Setting both is rejected. A custom source must set `controlProtocolVersion: 3`, and both its source and built `lxapp.json` must declare the same `controlProtocolVersion: 3`; missing, older, and unknown future versions fail the build. The SDK's built-in browser catalog is native code fixed to protocol v3, so it needs no duplicate user setting.
+`browser` overrides the in-app browser webui, used only when `capabilities.browser: true`. Normal apps omit it and use the SDK default. Set exactly one source under `webui`: a project-relative `path:` to a browser-shell webui lxapp source tree (the CLI builds it — for developing a custom webui alongside the app), or a `package:` npm name shipping a prebuilt `lxapp.json` + `dist/` (with an optional `version:`; the CLI version is used when omitted). Setting both is rejected. Protocol version is declared on the webui `lxapp.json` (`controlProtocolVersion` equal to the current runtime constant — wire `v` for BrowserControl documents), not in `lingxia.yaml`. Missing, older, and unknown future values fail the build. The SDK's built-in catalog is native code already on that protocol, so a host that does not replace the webui has nothing to pin.
 
 ```yaml
 browser:
   webui:
     path: vendor/browser-shell-webui
-    controlProtocolVersion: 3
 ```
 
 Do not use `app.homeAppId` for browser internals. When present, `homeAppId` is

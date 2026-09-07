@@ -282,6 +282,7 @@ fn generated_app_json_selects_per_env_app_link_hosts() {
         features: None,
         capabilities: None,
         theme: None,
+        settings_destination: None,
         browser: None,
         generated_ui: None,
         surfaces: None,
