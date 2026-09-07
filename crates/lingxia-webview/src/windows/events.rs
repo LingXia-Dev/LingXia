@@ -21,6 +21,19 @@ fn windows_message_source(source: String) -> WebMessageSource {
     WebMessageSource::diagnostic_url(Some(source))
 }
 
+/// Length gate on the native buffer, before any Rust `String` exists.
+fn web_message_within_native_limit(message: &CoTaskMemPWSTR<'_>) -> bool {
+    let wide = message.as_ref();
+    let wide = wide.as_pcwstr();
+    if wide.is_null() {
+        return true;
+    }
+    // SAFETY: WebView2 hands back a NUL-terminated CoTaskMem string that stays
+    // alive until the wrapper drops it.
+    let units = unsafe { wide.len() };
+    web_message_utf16_units_within_limit(units)
+}
+
 fn windows_web_message_frame(main_document_event: bool) -> WebMessageFrame {
     if main_document_event {
         WebMessageFrame::TopLevel
@@ -549,20 +562,26 @@ pub(crate) fn register_event_handlers(
                             };
                             let mut message = PWSTR::null();
                             args.TryGetWebMessageAsString(&mut message)?;
-                            let payload = CoTaskMemPWSTR::from(message).to_string();
+                            let message = CoTaskMemPWSTR::from(message);
+                            let Some(webview) =
+                                current_native_callback_webview(&message_tag, native_view_id)
+                            else {
+                                return Ok(());
+                            };
+                            if !web_message_within_native_limit(&message) {
+                                webview.reject_oversized_web_message();
+                                return Ok(());
+                            }
+                            let payload = message.to_string();
                             let mut source = PWSTR::null();
                             args.Source(&mut source)?;
                             let source = CoTaskMemPWSTR::from(source).to_string();
-                            if let Some(webview) =
-                                current_native_callback_webview(&message_tag, native_view_id)
-                            {
-                                webview.enqueue_web_message(
-                                    payload,
-                                    windows_web_message_frame(false),
-                                    WebMessageTransport::WindowsWebMessage,
-                                    windows_message_source(source),
-                                );
-                            }
+                            webview.enqueue_web_message(
+                                payload,
+                                windows_web_message_frame(false),
+                                WebMessageTransport::WindowsWebMessage,
+                                windows_message_source(source),
+                            );
                             Ok(())
                         },
                     ));
@@ -587,29 +606,34 @@ pub(crate) fn register_event_handlers(
 
                     let mut message = PWSTR::null();
                     args.TryGetWebMessageAsString(&mut message)?;
-                    let payload = CoTaskMemPWSTR::from(message).to_string();
-                    let mut source = PWSTR::null();
-                    args.Source(&mut source)?;
-                    let source = CoTaskMemPWSTR::from(source).to_string();
-
-                    if let Some(webview) =
+                    let message = CoTaskMemPWSTR::from(message);
+                    let Some(webview) =
                         current_native_callback_webview(&message_tag, native_view_id)
-                    {
-                        // The CoreWebView2 event is emitted only by the main
-                        // document. Snapshot the normalizer's committed
-                        // generation at this callback linearization point.
-                        webview.enqueue_web_message(
-                            payload,
-                            windows_web_message_frame(true),
-                            WebMessageTransport::WindowsWebMessage,
-                            windows_message_source(source),
-                        );
-                    } else {
+                    else {
                         log::debug!(
                             "Dropping script message from stale Windows WebView ({})",
                             message_tag
                         );
+                        return Ok(());
+                    };
+                    if !web_message_within_native_limit(&message) {
+                        webview.reject_oversized_web_message();
+                        return Ok(());
                     }
+                    let payload = message.to_string();
+                    let mut source = PWSTR::null();
+                    args.Source(&mut source)?;
+                    let source = CoTaskMemPWSTR::from(source).to_string();
+
+                    // The CoreWebView2 event is emitted only by the main
+                    // document. Snapshot the normalizer's committed
+                    // generation at this callback linearization point.
+                    webview.enqueue_web_message(
+                        payload,
+                        windows_web_message_frame(true),
+                        WebMessageTransport::WindowsWebMessage,
+                        windows_message_source(source),
+                    );
                     Ok(())
                 })),
                 &mut token,

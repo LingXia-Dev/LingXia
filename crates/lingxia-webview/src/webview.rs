@@ -142,6 +142,15 @@ pub(crate) const fn web_message_bytes_within_limit(bytes: usize) -> bool {
     bytes <= MAX_WEB_MESSAGE_BYTES
 }
 
+/// Pre-check for adapters that receive a native UTF-16 buffer. UTF-8 is never
+/// shorter than the UTF-16 unit count, so exceeding the cap in units already
+/// exceeds it in bytes; a copy that does proceed stays under three times the
+/// cap before the byte check runs.
+#[cfg(any(test, target_os = "windows"))]
+pub(crate) const fn web_message_utf16_units_within_limit(units: usize) -> bool {
+    units <= MAX_WEB_MESSAGE_BYTES
+}
+
 impl WebMessageIngress {
     fn reject_locked(
         state: &mut WebMessageIngressState,
@@ -160,6 +169,7 @@ impl WebMessageIngress {
         target_os = "android",
         target_os = "ios",
         target_os = "macos",
+        target_os = "windows",
         all(target_os = "linux", target_env = "ohos")
     ))]
     fn reject(&self, reason: WebMessageRejectReason) -> WebMessageEnqueue {
@@ -1317,6 +1327,7 @@ impl WebView {
         target_os = "android",
         target_os = "ios",
         target_os = "macos",
+        target_os = "windows",
         all(target_os = "linux", target_env = "ohos")
     ))]
     pub(crate) fn reject_oversized_web_message(&self) {
@@ -3307,6 +3318,7 @@ mod tests {
         block_on_scheme_future, next_native_webview_id, platform_console_delivery,
         remove_arc_if_matches, remove_session_signals_if_matches, replace_session_signals,
         should_sample_rejection, snapshot_web_message_context, web_message_bytes_within_limit,
+        web_message_utf16_units_within_limit,
     };
     use crate::{
         ContextualSchemeRequest, DocumentBinding, IncomingWebMessage, NativeWebViewId,
@@ -3584,6 +3596,10 @@ mod tests {
         assert!(web_message_bytes_within_limit(MAX_WEB_MESSAGE_BYTES - 1));
         assert!(web_message_bytes_within_limit(MAX_WEB_MESSAGE_BYTES));
         assert!(!web_message_bytes_within_limit(MAX_WEB_MESSAGE_BYTES + 1));
+        assert!(web_message_utf16_units_within_limit(MAX_WEB_MESSAGE_BYTES));
+        assert!(!web_message_utf16_units_within_limit(
+            MAX_WEB_MESSAGE_BYTES + 1
+        ));
         assert!(!web_message_bytes_within_limit(usize::MAX));
     }
 
