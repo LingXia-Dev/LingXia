@@ -349,7 +349,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.app',
     members: HOST_APP_RUNTIME_API,
-    properties: ['cache', 'envVersion'],
+    properties: ['appearance', 'cache', 'displayLanguage', 'envVersion'],
   },
   {
     name: 'lx.app.autostart',
@@ -375,6 +375,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.app.control',
     members: CONTROL_API,
+    properties: CONTROL_API,
     optional: true,
   },
   {

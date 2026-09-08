@@ -15,6 +15,7 @@ async function systemState(app: LxAppDriver): Promise<SystemPageState> {
       const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
       return {
         appBaseInfo: page?.data?.appBaseInfo ?? null,
+        displayLanguage: page?.data?.displayLanguage ?? null,
         systemSetting: page?.data?.systemSetting ?? null,
       };
     `,

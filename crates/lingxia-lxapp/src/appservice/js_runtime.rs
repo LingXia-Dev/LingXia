@@ -389,9 +389,10 @@ fn script_may_be_function_body(
         .and_then(|value| value.into_object())
         .and_then(|object| object.get::<_, String>("name").ok())
         .is_some_and(|name| name == "SyntaxError");
-    if !is_syntax_error {
-        return false;
-    }
+    is_syntax_error && script_looks_like_function_body(script)
+}
+
+fn script_looks_like_function_body(script: &str) -> bool {
     let trimmed = script.trim_start();
     trimmed.starts_with("return")
         || trimmed.starts_with("const ")
@@ -401,6 +402,8 @@ fn script_may_be_function_body(
         || trimmed.starts_with("for ")
         || trimmed.starts_with("while ")
         || trimmed.starts_with("try ")
+        || trimmed.starts_with("await ")
+        || trimmed.starts_with("await(")
         || trimmed.contains(';')
 }
 
@@ -1445,6 +1448,34 @@ mod worker_assignment_tests {
 
         assert!(!assignments.lock().unwrap().contains_key(&7));
         assert_eq!(free_workers.lock().unwrap().pop_front(), Some(3));
+    }
+}
+
+#[cfg(test)]
+mod eval_script_shape_tests {
+    use super::script_looks_like_function_body;
+
+    #[test]
+    fn await_without_semicolon_is_a_function_body() {
+        assert!(script_looks_like_function_body(
+            r#"await lx.app.control.displayLanguage.setPreference("zh-CN")"#
+        ));
+        assert!(script_looks_like_function_body(
+            "await(lx.app.cache.clear())"
+        ));
+    }
+
+    #[test]
+    fn return_and_declarations_are_function_bodies() {
+        assert!(script_looks_like_function_body(
+            "return lx.app.control.displayLanguage.getPreference()"
+        ));
+        assert!(script_looks_like_function_body("const x = 1; return x"));
+    }
+
+    #[test]
+    fn a_plain_expression_is_not_a_function_body() {
+        assert!(!script_looks_like_function_body("lx.app.getBaseInfo()"));
     }
 }
 
