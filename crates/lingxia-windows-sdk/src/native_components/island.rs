@@ -493,7 +493,8 @@ pub(super) fn present_decoded_island_frame(
     let mut pixels = crate::video_player::scale_bgra_nearest(&pixels, src_w, src_h, tex_w, tex_h);
     if opacity < 1.0 {
         for pixel in &mut pixels {
-            let channel = |shift| (((*pixel >> shift) & 0xff) as f64 * opacity).round() as u32;
+            let channel =
+                |shift: u32| (((*pixel >> shift) & 0xff_u32) as f64 * opacity).round() as u32;
             *pixel = (channel(24) << 24) | (channel(16) << 16) | (channel(8) << 8) | channel(0);
         }
     }
