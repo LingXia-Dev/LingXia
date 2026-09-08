@@ -349,10 +349,9 @@ fn handle_browser_command_impl(
                 [("tab_id", json!(tab_id))],
             )))
         }
-        // Network capture is WebView2/CDP-only; on other runners these fall
-        // through to "unknown handler" (and lxdev gates the subcommand on a
-        // Windows session before ever sending them).
-        #[cfg(target_os = "windows")]
+        // Network capture is available when the selected WebView backend
+        // implements the controller capture methods.
+        #[cfg(any(target_os = "android", target_os = "windows"))]
         methods::browser::NETWORK_ENABLE => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
@@ -363,7 +362,7 @@ fn handle_browser_command_impl(
                 None,
             )))
         }
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "android", target_os = "windows"))]
         methods::browser::NETWORK_DISABLE => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
@@ -374,7 +373,7 @@ fn handle_browser_command_impl(
                 None,
             )))
         }
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "android", target_os = "windows"))]
         methods::browser::NETWORK_LIST => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
@@ -382,7 +381,7 @@ fn handle_browser_command_impl(
                 .and_then(|snapshot| serde_json::to_value(snapshot).map_err(|err| err.to_string()))
                 .map(Some)
         }
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "android", target_os = "windows"))]
         methods::browser::NETWORK_CLEAR => {
             let args: TabArgs = parse_args(handler, args)?;
             let tab_id = resolve_tab_id(&args.tab_id)?;
@@ -393,11 +392,11 @@ fn handle_browser_command_impl(
                 None,
             )))
         }
-        // Network capture depends on the webview backend's devtools protocol and
-        // is compiled in only where available (arms above). Elsewhere answer with
+        // Network capture depends on the webview backend's capture API and is
+        // compiled in only where available (arms above). Elsewhere answer with
         // a clear capability error instead of the generic "unknown handler", so
         // callers can tell "not supported here" apart from a genuine typo.
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(target_os = "android", target_os = "windows")))]
         methods::browser::NETWORK_ENABLE
         | methods::browser::NETWORK_DISABLE
         | methods::browser::NETWORK_LIST
@@ -546,9 +545,19 @@ fn present_browser_tab(tab_id: &str) {
     let _ = lingxia_browser::present(tab_id);
 }
 
+#[cfg(all(feature = "browser", target_os = "android"))]
+fn present_browser_tab(tab_id: &str) {
+    if lingxia_browser::tab_is_standalone(tab_id) {
+        return;
+    }
+    if let Err(error) = lingxia::android::present_browser_tab(tab_id) {
+        log::warn!("Failed to present Android browser tab {tab_id}: {error}");
+    }
+}
+
 #[cfg(all(
     feature = "browser",
-    not(any(target_os = "macos", target_os = "windows"))
+    not(any(target_os = "android", target_os = "macos", target_os = "windows"))
 ))]
 fn present_browser_tab(_tab_id: &str) {}
 

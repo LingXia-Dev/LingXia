@@ -18,6 +18,8 @@ use std::sync::OnceLock;
 
 static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
 
+pub use lingxia_platform::present_browser_tab;
+
 fn initialize_jni(vm: JavaVM) {
     let _ = JAVA_VM.set(vm);
 }
@@ -163,6 +165,11 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_lingxiaInit<'a>(
         let data_dir_str: String = data_dir.try_to_string(env)?;
         let cache_dir_str: String = cache_dir.try_to_string(env)?;
         let locale_str: String = locale.try_to_string(env)?;
+
+        #[cfg(feature = "servo")]
+        lingxia_webview::platform::android::set_servo_data_dir(
+            std::path::PathBuf::from(&data_dir_str).join("servo"),
+        );
 
         log::info!(
             "Initializing Lingxia SDK with data_dir: {}, cache_dir: {}, locale: {}",

@@ -289,7 +289,11 @@ gradle.settingsEvaluated {{ settings ->
                 }
 
                 // Set Android NDK environment variables
-                cmd.env("ANDROID_NDK_ROOT", ndk_path);
+                // Some native build scripts interpolate this value into
+                // whitespace-split clang arguments. Backslashes are consumed
+                // as escapes there, so use a clang-safe path on Windows.
+                let ndk_env = ndk_path.to_string_lossy().replace('\\', "/");
+                cmd.env("ANDROID_NDK_ROOT", ndk_env);
                 cmd.env("ANDROID_API_LEVEL", api_level.to_string());
 
                 // Clear macOS SDK pollution
@@ -315,6 +319,49 @@ gradle.settingsEvaluated {{ settings ->
                 // reorder NDK header resolution (seen as rong_quickjs_sys
                 // failing on NDK r27 with unknown fixed-width int types).
                 cmd.env("BINDGEN_EXTRA_CLANG_ARGS", &bindgen_extra_clang_args);
+
+                // Servo's native dependencies use a mix of Cargo target vars,
+                // conventional TARGET_* vars, and bindgen. Keep this scoped to
+                // the opt-in backend so normal Android builds remain unchanged.
+                if config
+                    .native_features
+                    .iter()
+                    .any(|feature| feature == "servo")
+                {
+                    let sysroot = toolchain_base.join("sysroot");
+                    let sysroot_arg = sysroot.to_string_lossy().replace('\\', "/");
+                    let clang_target = match target {
+                        "aarch64-linux-android" => "aarch64-linux-android",
+                        "armv7-linux-androideabi" => "armv7a-linux-androideabi",
+                        _ => target,
+                    };
+                    let target_flag = format!("--target={clang_target}{api_level}");
+                    let cflags = format!("{target_flag} --sysroot={sysroot_arg}");
+                    let cxxflags = format!("{cflags} -isystem {sysroot_arg}/usr/include/c++/v1");
+                    let clang_path = if cfg!(windows) {
+                        bin_dir.join("clang.exe")
+                    } else {
+                        bin_dir.join("clang")
+                    };
+                    cmd.env("TARGET_CC", &cc_path)
+                        .env("TARGET_CXX", &cxx_path)
+                        .env("TARGET_AR", &ar_path)
+                        .env("CLANG_PATH", clang_path)
+                        .env("TARGET_CFLAGS", &cflags)
+                        .env("TARGET_CXXFLAGS", &cxxflags)
+                        .env("TARGET_PKG_CONFIG_SYSROOT_DIR", &sysroot)
+                        .env("BINDGEN_EXTRA_CLANG_ARGS", &cxxflags);
+
+                    #[cfg(windows)]
+                    if env::var_os("LIBCLANG_PATH").is_none()
+                        && let Some(program_files) = env::var_os("ProgramFiles")
+                    {
+                        let libclang = PathBuf::from(program_files).join("LLVM/bin");
+                        if libclang.join("libclang.dll").exists() {
+                            cmd.env("LIBCLANG_PATH", libclang);
+                        }
+                    }
+                }
 
                 // Old Android (API < 23) requires DT_HASH, not just DT_GNU_HASH
                 if target == "armv7-linux-androideabi" {
@@ -348,6 +395,29 @@ gradle.settingsEvaluated {{ settings ->
             std::fs::create_dir_all(&jni_dir)?;
             let dest = jni_dir.join("liblingxia.so");
             std::fs::copy(&so_path, &dest)?;
+
+            if config
+                .native_features
+                .iter()
+                .any(|feature| feature == "servo")
+            {
+                let ndk_lib_target = match target {
+                    "aarch64-linux-android" => "aarch64-linux-android",
+                    "armv7-linux-androideabi" => "arm-linux-androideabi",
+                    _ => return Err(anyhow!("Unknown NDK library target: {target}")),
+                };
+                let cxx_shared = toolchain_base
+                    .join("sysroot/usr/lib")
+                    .join(ndk_lib_target)
+                    .join("libc++_shared.so");
+                if !cxx_shared.exists() {
+                    return Err(anyhow!(
+                        "Servo requires the NDK C++ runtime, but it was not found at {}",
+                        cxx_shared.display()
+                    ));
+                }
+                std::fs::copy(cxx_shared, jni_dir.join("libc++_shared.so"))?;
+            }
         }
 
         Ok(())

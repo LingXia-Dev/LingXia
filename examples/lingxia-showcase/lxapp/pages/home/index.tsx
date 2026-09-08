@@ -69,7 +69,7 @@ export default function HomePage() {
       {/* Content Container - Centered */}
       <div className="relative z-10 w-full h-full flex flex-col justify-center items-center px-5 py-16">
         {/* Main Card - Apple Style Frosted Glass */}
-        <div className="bg-surface/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 p-6">
+        <div className="max-w-full bg-surface/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 p-6">
           <div className="text-center mb-6">
             <img src="/public/AppIcon.png" alt="Logo" className="w-16 h-16 mx-auto mb-3 rounded-[16px]" />
             <div className="text-[17px] font-semibold text-gray-900">LingXia</div>
@@ -108,7 +108,7 @@ export default function HomePage() {
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
                   </svg>
                 </div>
-                <p className="text-sm text-green-700 dark:text-green-400 leading-relaxed" data-testid="home-greeting">
+                <p className="min-w-0 whitespace-pre-wrap break-words text-sm text-green-700 dark:text-green-400 leading-relaxed" data-testid="home-greeting">
                   {greetingMessage}
                 </p>
               </div>

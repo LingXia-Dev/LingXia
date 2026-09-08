@@ -345,6 +345,17 @@ object Lingxia {
         }
     }
 
+    /** Bring an existing Rust-owned browser tab into the Android browser overlay. */
+    @JvmStatic
+    fun presentBrowserTab(tabId: String): Boolean {
+        if (tabId.isBlank()) return false
+        val activity = LxApp.getCurrentActivity() ?: lastResumedActivity ?: return false
+        activity.runOnUiThread {
+            LxAppBrowser.show(activity, tabId)
+        }
+        return true
+    }
+
     private fun launchExternalUrl(context: Context, uri: String, depth: Int): Boolean {
         if (depth > 2) return false
         return try {

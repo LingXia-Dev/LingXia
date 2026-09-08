@@ -42,7 +42,7 @@ import org.json.JSONObject;
  * LingXiaWebView provides complete WebView functionality for the LingXia platform.
  * This class contains all WebView logic including callbacks, message handling, and native integration.
  */
-public class LingXiaWebView extends WebView {
+public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
     private static final String TAG = "LingXiaWebView";
     private static final String MESSAGEPORT_BRIDGE_CLASS = "com.lingxia.webview.AndroidMessagePortBridge";
     // Older Chromium builds expose createWebMessageChannel but its native
@@ -56,6 +56,9 @@ public class LingXiaWebView extends WebView {
     private static final int NEW_WINDOW_POLICY_LOAD_IN_SELF = 1;
     private static final AtomicLong sProxyRequestRevision = new AtomicLong(0L);
     private static final AtomicLong sFileChooserRequestSeq = new AtomicLong(0L);
+    private static final AtomicLong sServoEvaluationSeq = new AtomicLong(0L);
+    private static final ConcurrentHashMap<Long, ServoEvaluation> sServoEvaluations =
+            new ConcurrentHashMap<>();
     private static final AtomicLong sEphemeralProfileSeq = new AtomicLong(0L);
     private static final String EPHEMERAL_PROFILE_PREFIX = "lingxia_ephemeral_";
 
@@ -75,6 +78,83 @@ public class LingXiaWebView extends WebView {
     private static volatile boolean sHttpProxyEnabled = false;
     private final ConcurrentHashMap<Long, ValueCallback<android.net.Uri[]>> pendingFileChoosers =
             new ConcurrentHashMap<>();
+
+    private static final class ServoEvaluation {
+        final String webTag;
+        final ValueCallback<String> callback;
+
+        ServoEvaluation(String webTag, ValueCallback<String> callback) {
+            this.webTag = webTag;
+            this.callback = callback;
+        }
+    }
+
+    static long registerServoEvaluation(String webTag, ValueCallback<String> callback) {
+        if (callback == null) {
+            return 0L;
+        }
+        long requestId = sServoEvaluationSeq.incrementAndGet();
+        sServoEvaluations.put(requestId, new ServoEvaluation(webTag, callback));
+        return requestId;
+    }
+
+    public static void completeServoEvaluation(final long requestId, final String value) {
+        if (requestId == 0L) {
+            return;
+        }
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                ServoEvaluation pending = sServoEvaluations.remove(requestId);
+                if (pending != null) {
+                    pending.callback.onReceiveValue(value != null ? value : "null");
+                }
+            }
+        });
+    }
+
+    public static void showServoInputMethod(
+            String webTag,
+            int type,
+            String text,
+            int insertionPoint,
+            boolean multiline,
+            boolean allowVirtualKeyboard) {
+        LingXiaServoView.showInputMethod(
+                webTag, type, text, insertionPoint, multiline, allowVirtualKeyboard);
+    }
+
+    public static void hideServoInputMethod(String webTag) {
+        LingXiaServoView.hideInputMethod(webTag);
+    }
+
+    public static void dispatchServoNativeComponentMessage(String webTag, String message) {
+        LingXiaServoView.dispatchNativeComponentMessage(webTag, message);
+    }
+
+    public static void showServoEmbedderControl(
+            String webTag, long requestId, String kind, String payload) {
+        LingXiaServoView.showEmbedderControl(webTag, requestId, kind, payload);
+    }
+
+    public static void hideServoEmbedderControl(String webTag, long requestId) {
+        LingXiaServoView.hideEmbedderControl(webTag, requestId);
+    }
+
+    static void cancelServoEvaluations(final String webTag) {
+        new Handler(Looper.getMainLooper()).post(new Runnable() {
+            @Override
+            public void run() {
+                for (Map.Entry<Long, ServoEvaluation> entry : sServoEvaluations.entrySet()) {
+                    ServoEvaluation pending = entry.getValue();
+                    if (pending != null && pending.webTag.equals(webTag)
+                            && sServoEvaluations.remove(entry.getKey(), pending)) {
+                        pending.callback.onReceiveValue("null");
+                    }
+                }
+            }
+        });
+    }
 
     public static class WebResourceResponseData {
         public final String mimeType;
@@ -198,6 +278,11 @@ public class LingXiaWebView extends WebView {
         this.pageLoaded = false;
     }
 
+    @Override
+    public android.view.View getHostView() {
+        return this;
+    }
+
     private static android.content.Context sApplicationContext;
 
     /**
@@ -284,6 +369,30 @@ public class LingXiaWebView extends WebView {
         return base;
     }
 
+    /** Create the API-embedded Servo backend while preserving the SDK's WebView host contract. */
+    public static void requestServoWebView(final String appId, final String path, final long sessionId, final long requestId, final String optionsToken) {
+        ensureMainThreadStatic(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (sApplicationContext == null) {
+                        throw new RuntimeException("Application context not set. Call LingXiaWebView.setApplicationContext() first.");
+                    }
+                    CreateOptions options = CreateOptions.fromToken(optionsToken);
+                    LingXiaServoView servoView = new LingXiaServoView(creationContextFor(appId));
+                    servoView.initialize(
+                            appId,
+                            path,
+                            sessionId,
+                            "strict_default".equals(options.profile));
+                    notifyWebViewReady(appId, path, sessionId, requestId, servoView);
+                } catch (Throwable e) {
+                    Log.e(TAG, "Failed to create Servo WebView: " + e.getMessage(), e);
+                }
+            }
+        });
+    }
+
     private void ensureMainThread(Runnable action) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             action.run();
@@ -309,6 +418,11 @@ public class LingXiaWebView extends WebView {
 
     public boolean usesStrictSecurityProfile() {
         return createOptions != null && "strict_default".equals(createOptions.profile);
+    }
+
+    @Override
+    public boolean retainsSurfaceWhenHidden() {
+        return false;
     }
 
     private boolean hasDownloadHandler() {
@@ -1255,6 +1369,16 @@ public class LingXiaWebView extends WebView {
 
     public boolean isPageLoaded() {
         return pageLoaded;
+    }
+
+    /** SDK lifecycle hook shared by Chromium and alternative backend views. */
+    public void pause() {
+        onPause();
+    }
+
+    /** SDK lifecycle hook shared by Chromium and alternative backend views. */
+    public void resume() {
+        onResume();
     }
 
     public void setPageLoaded(boolean loaded) {

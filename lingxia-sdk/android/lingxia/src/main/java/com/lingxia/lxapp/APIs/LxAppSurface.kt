@@ -30,6 +30,7 @@ import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.R
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.NativeComponents.NativeBridge
+import com.lingxia.webview.LingXiaWebViewHost
 import com.lingxia.lxapp.APIs.media.ImmersiveWindowUi
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -76,7 +77,8 @@ internal object LxAppSurface {
         val appId: String,
         val pageInstanceId: String?,
         val overlay: FrameLayout,
-        val webView: android.webkit.WebView,
+        val webView: View,
+        val managedHost: LingXiaWebViewHost?,
         val browserTabId: String?,
         val fullScreen: Boolean,
         /**
@@ -370,6 +372,19 @@ internal object LxAppSurface {
     }
 
     private fun mount(activity: Activity, request: Request, webView: android.webkit.WebView) {
+        mount(activity, request, webView, null)
+    }
+
+    private fun mount(activity: Activity, request: Request, host: LingXiaWebViewHost) {
+        mount(activity, request, host.hostView, host)
+    }
+
+    private fun mount(
+        activity: Activity,
+        request: Request,
+        webView: View,
+        managedHost: LingXiaWebViewHost?
+    ) {
         closeEntry(request.id, request.appId, "programmatic", notifyNative = false)
         val requestedVisibility = synchronized(stateLock) {
             pendingRequests.remove(request.id)
@@ -383,8 +398,10 @@ internal object LxAppSurface {
             } else if (request.browserTabId != null) {
                 NativeApi.browserTabClose(request.browserTabId)
             } else {
-                webView.stopLoading()
-                webView.destroy()
+                (webView as? android.webkit.WebView)?.let {
+                    it.stopLoading()
+                    it.destroy()
+                }
             }
             NativeApi.onSurfaceClosed(request.appId, request.id, "failed")
             return
@@ -484,17 +501,15 @@ internal object LxAppSurface {
         rootView.addView(overlay)
         ViewCompat.requestApplyInsets(overlay)
 
-        if (webView is com.lingxia.lxapp.WebView) {
-            NativeBridge.attachIfNeeded(webView)
-        }
+        managedHost?.let(NativeBridge::attachIfNeeded)
         val initiallyVisible = requestedVisibility != PendingVisibility.HIDE
         webView.visibility = if (initiallyVisible) View.VISIBLE else View.GONE
-        if (webView is com.lingxia.lxapp.WebView) {
+        if (managedHost != null) {
             if (request.content == CONTENT_PAGE) {
                 NativeApi.notifyPageInstanceMounted(request.pageInstanceId)
             }
             if (initiallyVisible) {
-                webView.resume()
+                managedHost.resume()
                 if (request.content == CONTENT_PAGE) {
                     NativeApi.notifyPageInstanceVisible(request.pageInstanceId)
                 }
@@ -507,6 +522,7 @@ internal object LxAppSurface {
             pageInstanceId = request.pageInstanceId.takeIf { request.content == CONTENT_PAGE },
             overlay = overlay,
             webView = webView,
+            managedHost = managedHost,
             browserTabId = request.browserTabId,
             fullScreen = fillsScreen,
             immersive = immersive,
@@ -705,11 +721,13 @@ internal object LxAppSurface {
         (entry.overlay.parent as? ViewGroup)?.removeView(entry.overlay)
         if (entry.browserTabId != null) {
             NativeApi.browserTabClose(entry.browserTabId)
-        } else if (entry.webView is com.lingxia.lxapp.WebView) {
-            entry.webView.pause()
+        } else if (entry.managedHost != null) {
+            entry.managedHost.pause()
         } else {
-            entry.webView.stopLoading()
-            entry.webView.destroy()
+            (entry.webView as? android.webkit.WebView)?.let {
+                it.stopLoading()
+                it.destroy()
+            }
         }
 
         if (notifyNative) {
@@ -774,13 +792,13 @@ internal object LxAppSurface {
                 entry.windowSnapshot?.let { ImmersiveWindowUi.restore(activity.window, it) }
             }
         }
-        if (notifyLifecycle && entry.webView is com.lingxia.lxapp.WebView) {
+        if (notifyLifecycle && entry.managedHost != null) {
             if (visible) {
-                entry.webView.resume()
-                NativeBridge.notifyPageActive(entry.webView)
+                entry.managedHost.resume()
+                NativeBridge.notifyPageActive(entry.managedHost)
                 entry.pageInstanceId?.let { NativeApi.notifyPageInstanceVisible(it) }
             } else {
-                entry.webView.pause()
+                entry.managedHost.pause()
                 entry.pageInstanceId?.let { NativeApi.notifyPageInstanceHidden(it, "hidden") }
             }
         }

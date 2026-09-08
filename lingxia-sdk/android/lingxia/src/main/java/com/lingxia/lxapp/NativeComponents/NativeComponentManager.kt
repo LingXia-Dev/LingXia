@@ -8,7 +8,7 @@ import android.view.ViewOutlineProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import com.lingxia.app.NativeApi
-import com.lingxia.webview.LingXiaWebView
+import com.lingxia.webview.LingXiaWebViewHost
 import com.lingxia.lxapp.NativeComponents.Components.VideoComponent
 import android.os.Handler
 import android.os.Looper
@@ -30,7 +30,7 @@ internal class NativeComponentManager(
     hostView: ViewGroup,
     private val defaultPageId: String,
     private val eventSink: (Map<String, Any>) -> Unit,
-    webView: LingXiaWebView? = null
+    webView: LingXiaWebViewHost? = null
 ) {
     private companion object {
         private const val INACTIVE_PAGE_STOP_DELAY_MS = 60_000L
@@ -674,8 +674,8 @@ internal class NativeComponentManager(
 
     private fun contentRectToScreenRect(contentRect: RectF): RectF {
         val webView = webViewRef?.get()
-        val scrollX = (webView?.scrollX ?: 0).toFloat()
-        val scrollY = (webView?.scrollY ?: 0).toFloat()
+        val scrollX = (webView?.hostView?.scrollX ?: 0).toFloat()
+        val scrollY = (webView?.hostView?.scrollY ?: 0).toFloat()
         return RectF(
             contentRect.left - scrollX,
             contentRect.top - scrollY,
@@ -686,8 +686,8 @@ internal class NativeComponentManager(
 
     private fun updateScreenRect(screenRect: RectF, contentRect: RectF) {
         val webView = webViewRef?.get()
-        val scrollX = (webView?.scrollX ?: 0).toFloat()
-        val scrollY = (webView?.scrollY ?: 0).toFloat()
+        val scrollX = (webView?.hostView?.scrollX ?: 0).toFloat()
+        val scrollY = (webView?.hostView?.scrollY ?: 0).toFloat()
         screenRect.set(
             contentRect.left - scrollX,
             contentRect.top - scrollY,

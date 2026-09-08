@@ -3,6 +3,37 @@ export type MeasuredElement = {
   cornerRadius?: number;
 };
 
+function parseAspectRatio(value: string): number | undefined {
+  const parts = value.trim().split("/");
+  const width = parseFloat(parts[0]?.replace(/^auto\s+/, "") ?? "");
+  const height = parts.length > 1 ? parseFloat(parts[1]) : 1;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return undefined;
+  }
+  return width / height;
+}
+
+/**
+ * Supply a min-height when an engine exposes aspect-ratio in computed style but
+ * does not use it to size a custom element. Returns whether the fallback owns
+ * the element's inline min-height.
+ */
+export function ensureAspectRatioFallback(el: HTMLElement, active: boolean): boolean {
+  const rect = el.getBoundingClientRect();
+  if (!active) {
+    if (rect.width <= 0 || rect.height > 0 || el.style.minHeight) return false;
+  }
+
+  const ratio = parseAspectRatio(el.style.aspectRatio || getComputedStyle(el).aspectRatio);
+  if (ratio === undefined || rect.width <= 0) return active;
+  el.style.minHeight = `${rect.width / ratio}px`;
+  return true;
+}
+
+export function clearAspectRatioFallback(el: HTMLElement, active: boolean): void {
+  if (active) el.style.minHeight = "";
+}
+
 export function measureElement(el: HTMLElement): MeasuredElement {
   const rect = el.getBoundingClientRect();
 
