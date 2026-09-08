@@ -12,11 +12,11 @@ pub(super) use footer_action::*;
 /// Phone bottom tab bar: 49px item strip plus a lower safe-area hit region.
 const BOTTOM_TAB_ICON_SIZE: i32 = 22;
 const BOTTOM_TAB_ITEM_HEIGHT: i32 = 49;
-const BOTTOM_TAB_ICON_TOP: i32 = 5;
+const BOTTOM_TAB_ICON_TOP: i32 = 6;
 const BOTTOM_TAB_LABEL_TOP_GAP: i32 = 1;
 /// Circle behind a selected single-icon tab, standing in for the selected
 /// artwork it does not have. Matches the mobile hosts.
-const ACTIVE_INDICATOR_SIZE: i32 = 36;
+const ACTIVE_INDICATOR_SIZE: i32 = 32;
 /// How far the indicator sits from the bar toward the selected colour. GDI has
 /// no alpha here, so the tint is mixed against the plate instead.
 const ACTIVE_INDICATOR_MIX_PERCENT: u32 = 20;
@@ -986,5 +986,19 @@ mod tests {
         assert_eq!(header_action_capacity(narrow), 1);
         assert!(header_action_capacity(narrow) < MAX_HEADER_SIDEBAR_ACTIONS);
         assert_eq!(header_action_capacity(0), 0);
+    }
+
+    #[test]
+    fn selected_indicator_fits_inside_the_49px_strip() {
+        // iOS UIKit draws a 32pt plate on a 32pt icon well. A 36px plate at
+        // icon_top=5 sat at y=-2 and the overlay clipped its top.
+        let center_y = BOTTOM_TAB_ICON_TOP + BOTTOM_TAB_ICON_SIZE / 2;
+        let plate_top = center_y - ACTIVE_INDICATOR_SIZE / 2;
+        let plate_bottom = center_y + ACTIVE_INDICATOR_SIZE / 2;
+        assert!(
+            plate_top >= 0,
+            "indicator top {plate_top} clips the overlay"
+        );
+        assert!(plate_bottom <= BOTTOM_TAB_ITEM_HEIGHT);
     }
 }

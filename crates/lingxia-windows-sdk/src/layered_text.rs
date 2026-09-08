@@ -14,6 +14,14 @@ use windows::core::w;
 
 const TEXT_MASK_SCALE: i32 = 4;
 
+#[derive(Clone, Copy)]
+enum TextComposite {
+    /// Write only into fully transparent pixels (icons already occupy some).
+    FillTransparent,
+    /// Src-over onto an already-premultiplied destination.
+    Over,
+}
+
 /// Draws text into a 4x white grayscale mask, downsamples its coverage, and
 /// composites premultiplied foreground pixels into a top-down layered DIB.
 #[allow(clippy::too_many_arguments)]
@@ -29,13 +37,73 @@ pub(crate) fn draw_supersampled_text_mask(
     font_weight: i32,
     centered: bool,
 ) {
+    composite_supersampled_text_mask(
+        reference_dc,
+        pixels,
+        canvas_width,
+        canvas_height,
+        text,
+        rect,
+        foreground,
+        font_height,
+        font_weight,
+        centered,
+        TextComposite::FillTransparent,
+    );
+}
+
+/// Like [`draw_supersampled_text_mask`], but blends onto pixels that already
+/// carry geometric alpha (scrims, rounded panels).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn blend_supersampled_text_mask(
+    reference_dc: HDC,
+    pixels: &mut [u32],
+    canvas_width: i32,
+    canvas_height: i32,
+    text: &str,
+    rect: RECT,
+    foreground: u32,
+    font_height: i32,
+    font_weight: i32,
+    centered: bool,
+) {
+    composite_supersampled_text_mask(
+        reference_dc,
+        pixels,
+        canvas_width,
+        canvas_height,
+        text,
+        rect,
+        foreground,
+        font_height,
+        font_weight,
+        centered,
+        TextComposite::Over,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn composite_supersampled_text_mask(
+    reference_dc: HDC,
+    pixels: &mut [u32],
+    canvas_width: i32,
+    canvas_height: i32,
+    text: &str,
+    rect: RECT,
+    foreground: u32,
+    font_height: i32,
+    font_weight: i32,
+    centered: bool,
+    composite: TextComposite,
+) {
     let width = rect.right - rect.left;
     let height = rect.bottom - rect.top;
     if text.is_empty() || width <= 0 || height <= 0 || canvas_width <= 0 || canvas_height <= 0 {
         return;
     }
     let Some(mask_width) = width.checked_mul(TEXT_MASK_SCALE) else {
-        draw_text_mask_fallback(
+        fallback_fill_transparent(
+            composite,
             reference_dc,
             pixels,
             canvas_width,
@@ -50,7 +118,8 @@ pub(crate) fn draw_supersampled_text_mask(
         return;
     };
     let Some(mask_height) = height.checked_mul(TEXT_MASK_SCALE) else {
-        draw_text_mask_fallback(
+        fallback_fill_transparent(
+            composite,
             reference_dc,
             pixels,
             canvas_width,
@@ -71,7 +140,8 @@ pub(crate) fn draw_supersampled_text_mask(
     unsafe {
         let mask_dc = CreateCompatibleDC(Some(reference_dc));
         if mask_dc.is_invalid() {
-            draw_text_mask_fallback(
+            fallback_fill_transparent(
+                composite,
                 reference_dc,
                 pixels,
                 canvas_width,
@@ -107,7 +177,8 @@ pub(crate) fn draw_supersampled_text_mask(
             0,
         ) else {
             let _ = DeleteDC(mask_dc);
-            draw_text_mask_fallback(
+            fallback_fill_transparent(
+                composite,
                 reference_dc,
                 pixels,
                 canvas_width,
@@ -124,7 +195,8 @@ pub(crate) fn draw_supersampled_text_mask(
         if bits.is_null() {
             let _ = DeleteObject(HGDIOBJ(bitmap.0));
             let _ = DeleteDC(mask_dc);
-            draw_text_mask_fallback(
+            fallback_fill_transparent(
+                composite,
                 reference_dc,
                 pixels,
                 canvas_width,
@@ -179,8 +251,11 @@ pub(crate) fn draw_supersampled_text_mask(
                     continue;
                 }
                 let target = &mut pixels[(target_y * canvas_width + target_x) as usize];
-                if (*target >> 24) == 0 {
-                    *target = premultiplied_foreground(foreground, coverage);
+                let src = premultiplied_foreground(foreground, coverage);
+                match composite {
+                    TextComposite::FillTransparent if (*target >> 24) != 0 => {}
+                    TextComposite::FillTransparent => *target = src,
+                    TextComposite::Over => *target = premultiplied_src_over(*target, src),
                 }
             }
         }
@@ -209,15 +284,9 @@ pub(crate) fn draw_supersampled_text_mask_over(
     font_weight: i32,
     centered: bool,
 ) {
-    let Some(pixel_count) =
-        (canvas_width.max(0) as usize).checked_mul(canvas_height.max(0) as usize)
-    else {
-        return;
-    };
-    let mut glyphs = vec![0; pixel_count];
-    draw_supersampled_text_mask(
+    blend_supersampled_text_mask(
         reference_dc,
-        &mut glyphs,
+        pixels,
         canvas_width,
         canvas_height,
         text,
@@ -227,28 +296,37 @@ pub(crate) fn draw_supersampled_text_mask_over(
         font_weight,
         centered,
     );
-    for (target, glyph) in pixels.iter_mut().zip(glyphs) {
-        composite_premultiplied(target, glyph);
-    }
 }
 
-fn composite_premultiplied(target: &mut u32, source: u32) {
-    let source_alpha = source >> 24;
-    if source_alpha == 0 {
-        return;
+#[allow(clippy::too_many_arguments)]
+fn fallback_fill_transparent(
+    composite: TextComposite,
+    reference_dc: HDC,
+    pixels: &mut [u32],
+    canvas_width: i32,
+    canvas_height: i32,
+    text: &str,
+    rect: RECT,
+    foreground: u32,
+    font_height: i32,
+    font_weight: i32,
+    centered: bool,
+) {
+    if matches!(composite, TextComposite::FillTransparent) {
+        draw_text_mask_fallback(
+            reference_dc,
+            pixels,
+            canvas_width,
+            canvas_height,
+            text,
+            rect,
+            foreground,
+            font_height,
+            font_weight,
+            centered,
+        );
     }
-    let inverse = 255 - source_alpha;
-    let target_alpha = *target >> 24;
-    let blend = |source_channel: u32, target_channel: u32| {
-        (source_channel + (target_channel * inverse + 127) / 255).min(255)
-    };
-    let alpha = blend(source_alpha, target_alpha);
-    let red = blend((source >> 16) & 0xff, (*target >> 16) & 0xff);
-    let green = blend((source >> 8) & 0xff, (*target >> 8) & 0xff);
-    let blue = blend(source & 0xff, *target & 0xff);
-    *target = (alpha << 24) | (red << 16) | (green << 8) | blue;
 }
-
 fn downsample_coverage(mask: &[u32], mask_width: i32, left: i32, top: i32) -> u32 {
     let mut coverage = 0;
     for y in top..top + TEXT_MASK_SCALE {
@@ -380,6 +458,22 @@ fn premultiplied_foreground(foreground: u32, coverage: u32) -> u32 {
     (coverage << 24) | (red << 16) | (green << 8) | blue
 }
 
+fn premultiplied_src_over(dst: u32, src: u32) -> u32 {
+    let sa = (src >> 24) & 0xff;
+    if sa == 0 {
+        return dst;
+    }
+    if sa == 255 {
+        return src;
+    }
+    let inv = 255 - sa;
+    let blend = |s: u32, d: u32| (s + (d * inv + 127) / 255).min(255);
+    (blend(sa, (dst >> 24) & 0xff) << 24)
+        | (blend((src >> 16) & 0xff, (dst >> 16) & 0xff) << 16)
+        | (blend((src >> 8) & 0xff, (dst >> 8) & 0xff) << 8)
+        | blend(src & 0xff, dst & 0xff)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -435,10 +529,30 @@ mod tests {
 
     #[test]
     fn text_mask_composites_over_opaque_background() {
-        let mut pixel = 0xff10_2030;
+        assert_eq!(
+            premultiplied_src_over(0xff10_2030, 0x80_808080),
+            0xff88_9098
+        );
+    }
 
-        composite_premultiplied(&mut pixel, 0x80_808080);
+    #[test]
+    fn src_over_opaque_replaces_destination() {
+        assert_eq!(
+            premultiplied_src_over(0xff00_00ff, 0xffff_0000),
+            0xffff_0000
+        );
+    }
 
-        assert_eq!(pixel, 0xff88_9098);
+    #[test]
+    fn src_over_transparent_keeps_destination() {
+        assert_eq!(premultiplied_src_over(0xff00_00ff, 0), 0xff00_00ff);
+    }
+
+    #[test]
+    fn src_over_half_coverage_blends_over_opaque_white() {
+        assert_eq!(
+            premultiplied_src_over(0xffff_ffff, 0x8000_0000),
+            0xff7f_7f7f
+        );
     }
 }
