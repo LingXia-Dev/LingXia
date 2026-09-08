@@ -5,12 +5,17 @@ use super::*;
 const OVERFLOW_COLUMNS: usize = 5;
 const OVERFLOW_PANEL_RADIUS: i32 = 16;
 const OVERFLOW_PANEL_PADDING: i32 = 8;
-const OVERFLOW_CELL_WIDTH: i32 = 64;
+const OVERFLOW_HORIZONTAL_INSET: i32 = 12;
+const OVERFLOW_BOTTOM_GAP: i32 = 8;
 const OVERFLOW_CELL_HEIGHT: i32 = 64;
 const OVERFLOW_ICON_SIZE: i32 = 24;
+const OVERFLOW_ICON_CONTAINER: i32 = 32;
 const OVERFLOW_ICON_TEXT_GAP: i32 = 4;
-const OVERFLOW_INDICATOR_SIZE: i32 = 36;
+const OVERFLOW_INDICATOR_SIZE: i32 = 32;
 const OVERFLOW_INDICATOR_MIX_PERCENT: u32 = 20;
+/// Matches iOS/macOS overflow labels (`UIFont.systemFont(ofSize: 10, weight: .medium)`).
+const OVERFLOW_LABEL_POINT_SIZE: i32 = 10;
+const OVERFLOW_LABEL_WEIGHT: i32 = 500;
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TabbarOverflowCell {
@@ -25,6 +30,9 @@ pub(crate) struct TabbarOverflowLayout {
     pub(crate) width: i32,
     pub(crate) height: i32,
     pub(crate) sheet: RECT,
+    /// Top of the compact strip. The overlay is transparent here so the tab
+    /// bar stays visible and clickable, matching iOS/macOS.
+    pub(crate) strip_top: i32,
     pub(crate) cells: Vec<TabbarOverflowCell>,
     pub(crate) tabbar: WindowsShellTabBarLayout,
 }
@@ -55,26 +63,28 @@ pub(crate) fn tabbar_overflow_layout(
 
     let rows = folded.div_ceil(OVERFLOW_COLUMNS) as i32;
     let panel_height = OVERFLOW_PANEL_PADDING * 2 + rows * OVERFLOW_CELL_HEIGHT;
-    let bottom = strip_top.clamp(0, height);
+    let strip_top = strip_top.clamp(0, height);
+    let bottom = (strip_top - OVERFLOW_BOTTOM_GAP).clamp(0, height);
+    let inset = OVERFLOW_HORIZONTAL_INSET.min(width / 2);
     let sheet = normalize_rect(RECT {
-        left: 0,
+        left: inset,
         top: (bottom - panel_height).max(0),
-        right: width,
+        right: width - inset,
         bottom,
     });
-    let grid_width = (OVERFLOW_COLUMNS as i32 * OVERFLOW_CELL_WIDTH)
-        .min((width - OVERFLOW_PANEL_PADDING * 2).max(0));
-    let column_width = grid_width / OVERFLOW_COLUMNS as i32;
-    let grid_left = (width - grid_width) / 2;
+    let inner_left = sheet.left + OVERFLOW_PANEL_PADDING;
+    let inner_right = sheet.right - OVERFLOW_PANEL_PADDING;
+    let inner_width = (inner_right - inner_left).max(0);
+    let column_width = inner_width / OVERFLOW_COLUMNS as i32;
     let mut cells = Vec::with_capacity(folded);
     for (offset, index) in (start..tabbar.items.len()).enumerate() {
         let row = offset / OVERFLOW_COLUMNS;
         let column = offset % OVERFLOW_COLUMNS;
-        let left = grid_left + column as i32 * column_width;
+        let left = inner_left + column as i32 * column_width;
         let right = if column + 1 == OVERFLOW_COLUMNS {
-            grid_left + grid_width
+            inner_right
         } else {
-            grid_left + (column as i32 + 1) * column_width
+            inner_left + (column as i32 + 1) * column_width
         };
         let rect = normalize_rect(RECT {
             left,
@@ -83,17 +93,20 @@ pub(crate) fn tabbar_overflow_layout(
             bottom: sheet.top + OVERFLOW_PANEL_PADDING + (row as i32 + 1) * OVERFLOW_CELL_HEIGHT,
         });
         let center_x = (rect.left + rect.right) / 2;
-        let icon_top = rect.top + 4;
+        // iOS: 32pt well + 24pt icon, so the 32pt selection plate sits fully
+        // inside the cell instead of being clipped at the card's top edge.
+        let icon_box_top = rect.top + OVERFLOW_PANEL_PADDING;
+        let icon_inset = (OVERFLOW_ICON_CONTAINER - OVERFLOW_ICON_SIZE) / 2;
         let icon = normalize_rect(RECT {
             left: center_x - OVERFLOW_ICON_SIZE / 2,
-            top: icon_top,
+            top: icon_box_top + icon_inset,
             right: center_x + OVERFLOW_ICON_SIZE / 2,
-            bottom: icon_top + OVERFLOW_ICON_SIZE,
+            bottom: icon_box_top + icon_inset + OVERFLOW_ICON_SIZE,
         });
         let label = normalize_rect(RECT {
-            left: rect.left + 2,
+            left: rect.left + 4,
             top: icon.bottom + OVERFLOW_ICON_TEXT_GAP,
-            right: rect.right - 2,
+            right: rect.right - 4,
             bottom: rect.bottom - 2,
         });
         cells.push(TabbarOverflowCell {
@@ -108,6 +121,7 @@ pub(crate) fn tabbar_overflow_layout(
         width,
         height,
         sheet,
+        strip_top,
         cells,
         tabbar,
     })
@@ -131,8 +145,6 @@ pub(crate) fn tabbar_overflow_hit(
     }
 }
 
-/// Paints the final panel translated down by `panel_offset` pixels. The host
-/// animates that offset while separately fading the scrim alpha.
 /// The page floor the host declared, as the chrome's `0xRRGGBB`.
 ///
 /// `None` when the host declares nothing, leaving the caller on its own system
@@ -147,7 +159,14 @@ fn declared_page_background() -> Option<u32> {
     u32::from_str_radix(hex, 16).ok()
 }
 
-pub(crate) fn paint_tabbar_overflow(hdc: HDC, layout: &TabbarOverflowLayout, panel_offset: i32) {
+/// Paints the sliding panel and icons. Labels are returned as runs so the host
+/// can composite them after geometric alpha — GDI text on this layered DIB
+/// leaves gray fringes because the alpha pass cannot recover coverage from RGB.
+pub(crate) fn paint_tabbar_overflow(
+    hdc: HDC,
+    layout: &TabbarOverflowLayout,
+    panel_offset: i32,
+) -> Vec<LayeredTextRun> {
     fill_rect(
         hdc,
         RECT {
@@ -176,13 +195,10 @@ pub(crate) fn paint_tabbar_overflow(hdc: HDC, layout: &TabbarOverflowLayout, pan
     } else {
         layout.tabbar.background_color
     };
-    fill_round_rect_aa_corners(
-        hdc,
-        sheet,
-        [OVERFLOW_PANEL_RADIUS, OVERFLOW_PANEL_RADIUS, 0, 0],
-        surface,
-    );
+    fill_round_rect_aa_corners(hdc, sheet, [OVERFLOW_PANEL_RADIUS; 4], surface);
 
+    let font_height = logical_font_height(hdc, OVERFLOW_LABEL_POINT_SIZE);
+    let mut text_runs = Vec::with_capacity(layout.cells.len());
     for cell in &layout.cells {
         let Some(item) = layout.tabbar.items.get(cell.index) else {
             continue;
@@ -229,8 +245,17 @@ pub(crate) fn paint_tabbar_overflow(hdc: HDC, layout: &TabbarOverflowLayout, pan
         } else {
             item.text.as_str()
         };
-        draw_text_antialiased(hdc, label, translate(cell.label), color, DT_CENTER);
+        if !label.is_empty() {
+            text_runs.push(LayeredTextRun {
+                rect: translate(cell.label),
+                color,
+                text: label.to_string(),
+                font_height,
+                font_weight: OVERFLOW_LABEL_WEIGHT,
+            });
+        }
     }
+    text_runs
 }
 
 #[cfg(test)]
@@ -285,17 +310,35 @@ mod tests {
         assert_eq!(
             layout.sheet,
             RECT {
-                left: 0,
-                top: 723,
-                right: 393,
-                bottom: 803
+                left: 12,
+                top: 715,
+                right: 381,
+                bottom: 795
             }
         );
+        assert_eq!(layout.strip_top, 803);
         assert_eq!(layout.cells.len(), 2);
         assert_eq!(layout.cells[0].index, 4);
         assert_eq!(layout.cells[1].index, 5);
-        assert_eq!(layout.cells[0].rect.left, 36);
-        assert_eq!(layout.cells[1].rect.left, 100);
+        // Five equal columns fill the inset plate; a short row stays left-aligned.
+        assert_eq!(layout.cells[0].rect.left, 20);
+        assert_eq!(layout.cells[1].rect.left, 90);
+        assert_eq!(
+            layout.cells[0].rect.right - layout.cells[0].rect.left,
+            layout.cells[1].rect.right - layout.cells[1].rect.left
+        );
+        assert!(layout.cells[0].rect.right - layout.cells[0].rect.left >= 70);
+    }
+
+    #[test]
+    fn five_character_labels_keep_a_wide_enough_cell() {
+        let layout = tabbar_overflow_layout(393, 852, 803, tabbar(6, 0)).unwrap();
+        let width = layout.cells[0].label.right - layout.cells[0].label.left;
+        // 10pt CJK is ~10–12px wide; five glyphs need ~60px plus padding.
+        assert!(
+            width >= 62,
+            "label slot {width}px is too narrow for five glyphs"
+        );
     }
 
     #[test]
@@ -304,7 +347,8 @@ mod tests {
         assert_eq!(layout.cells.len(), 6);
         assert_eq!(layout.cells[5].index, 9);
         assert!(layout.cells[5].rect.top > layout.cells[0].rect.top);
-        assert_eq!(layout.sheet.bottom, 751);
+        assert_eq!(layout.sheet.bottom, 743);
+        assert_eq!(layout.strip_top, 751);
     }
 
     #[test]
@@ -322,12 +366,42 @@ mod tests {
             TabbarOverflowHit::Item(4)
         );
         assert_eq!(
-            tabbar_overflow_hit(&layout, (399, layout.sheet.top + 2)),
+            tabbar_overflow_hit(&layout, (layout.sheet.right - 2, layout.sheet.top + 2)),
             TabbarOverflowHit::Sheet
         );
         assert_eq!(
             tabbar_overflow_hit(&layout, (20, 20)),
             TabbarOverflowHit::Dismiss
         );
+    }
+
+    #[test]
+    fn folded_labels_sit_under_the_icon_inside_the_cell() {
+        let layout = tabbar_overflow_layout(393, 852, 803, tabbar(6, 0)).unwrap();
+        for cell in &layout.cells {
+            assert!(cell.label.top >= cell.icon.bottom);
+            assert!(cell.label.bottom <= cell.rect.bottom);
+            assert!(cell.label.right > cell.label.left);
+            assert!(cell.label.bottom > cell.label.top);
+        }
+    }
+
+    #[test]
+    fn selected_indicator_stays_inside_the_overflow_card() {
+        // iOS: 32pt well + 24pt icon, plate centred on the well. A 36pt plate
+        // at icon_top+4 used to clip the card's top edge.
+        let layout = tabbar_overflow_layout(393, 852, 803, tabbar(6, 4)).unwrap();
+        let cell = &layout.cells[0];
+        let center_y = (cell.icon.top + cell.icon.bottom) / 2;
+        let plate_top = center_y - OVERFLOW_INDICATOR_SIZE / 2;
+        let plate_bottom = center_y + OVERFLOW_INDICATOR_SIZE / 2;
+        assert!(
+            plate_top >= layout.sheet.top,
+            "plate top {plate_top} clips sheet top {}",
+            layout.sheet.top
+        );
+        assert!(plate_top >= cell.rect.top);
+        assert!(plate_bottom <= cell.rect.bottom);
+        assert!(plate_bottom <= layout.sheet.bottom);
     }
 }

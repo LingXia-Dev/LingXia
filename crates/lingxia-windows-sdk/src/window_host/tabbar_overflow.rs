@@ -2,6 +2,7 @@
 
 use super::*;
 use std::time::{Duration, Instant};
+use windows::Win32::System::Threading::GetCurrentThreadId;
 
 const TIMER_ID: usize = 0x5A1A;
 const TIMER_MS: u32 = 16;
@@ -113,18 +114,8 @@ fn toggle_tabbar_overflow_on_thread(owner: isize, tabbar: crate::shell::WindowsS
     }
 
     upload_tabbar_overflow(window, &overlay, 0.0);
-    let mut origin = POINT::default();
+    pin_tabbar_overflow(window, owner_hwnd, Some((width, height)));
     unsafe {
-        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(owner_hwnd, &mut origin);
-        let _ = WindowsAndMessaging::SetWindowPos(
-            window,
-            Some(WindowsAndMessaging::HWND_TOP),
-            origin.x,
-            origin.y,
-            width,
-            height,
-            WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
-        );
         let _ = WindowsAndMessaging::SetTimer(Some(window), TIMER_ID, TIMER_MS, None);
     }
 }
@@ -172,8 +163,59 @@ pub(super) fn dismiss_tabbar_overflow(owner: HWND) -> bool {
     true
 }
 
+/// Owned `WS_POPUP` sheets do not move with their owner, so the More overlay
+/// has to be re-pinned whenever the device window moves or restacks.
+pub(super) fn reposition_tabbar_overflow(owner: HWND) {
+    let Some(overlay) = overlay_for_owner(owner) else {
+        return;
+    };
+    if !is_window_handle_valid(overlay.window) {
+        return;
+    }
+    pin_tabbar_overflow(hwnd_from_handle(overlay.window), owner, None);
+}
+
+fn pin_tabbar_overflow(window: HWND, owner: HWND, size: Option<(i32, i32)>) {
+    if !is_window_visible(owner) || is_minimized(owner) {
+        unsafe {
+            let _ = WindowsAndMessaging::ShowWindow(window, WindowsAndMessaging::SW_HIDE);
+        }
+        return;
+    }
+    let mut origin = POINT::default();
+    let mut flags = WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW;
+    let (width, height) = match size {
+        Some(size) => size,
+        None => {
+            flags |= WindowsAndMessaging::SWP_NOSIZE;
+            (0, 0)
+        }
+    };
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(owner, &mut origin);
+        let _ = WindowsAndMessaging::SetWindowPos(
+            window,
+            Some(WindowsAndMessaging::HWND_TOP),
+            origin.x,
+            origin.y,
+            width,
+            height,
+            flags,
+        );
+    }
+}
+
 /// Drop a leftover overflow sheet when the owner window presents another lxapp.
 pub(crate) fn dismiss_tabbar_overflow_on_owner(owner: isize) {
+    if owner == 0 {
+        return;
+    }
+    let hwnd = hwnd_from_handle(owner);
+    let owner_thread = unsafe { WindowsAndMessaging::GetWindowThreadProcessId(hwnd, None) };
+    if owner_thread != 0 && owner_thread == unsafe { GetCurrentThreadId() } {
+        dismiss_tabbar_overflow(hwnd);
+        return;
+    }
     if !post_to_window_thread(
         owner,
         Box::new(move || {
@@ -227,6 +269,18 @@ unsafe extern "system" fn tabbar_overflow_proc(
     match msg {
         WindowsAndMessaging::WM_MOUSEACTIVATE => {
             LRESULT(WindowsAndMessaging::MA_NOACTIVATE as isize)
+        }
+        WindowsAndMessaging::WM_NCHITTEST => {
+            if let Some(overlay) = overlay_for_window(hwnd) {
+                let mut point = lparam_screen_point(lparam);
+                unsafe {
+                    let _ = windows::Win32::Graphics::Gdi::ScreenToClient(hwnd, &mut point);
+                }
+                if point.y >= overlay.layout.strip_top {
+                    return LRESULT(WindowsAndMessaging::HTTRANSPARENT as isize);
+                }
+            }
+            LRESULT(WindowsAndMessaging::HTCLIENT as isize)
         }
         WindowsAndMessaging::WM_ERASEBKGND => LRESULT(1),
         WindowsAndMessaging::WM_TIMER if wparam.0 == TIMER_ID => {
@@ -328,17 +382,34 @@ fn upload_tabbar_overflow(hwnd: HWND, overlay: &TabbarOverflowOverlay, progress:
         let panel_height = overlay.layout.sheet.bottom - overlay.layout.sheet.top;
         let eased = 1.0 - (1.0 - progress) * (1.0 - progress);
         let panel_offset = ((1.0 - eased) * panel_height as f32).round() as i32;
-        crate::shell::paint_tabbar_overflow(dc, &overlay.layout, panel_offset);
+        let text_runs = crate::shell::paint_tabbar_overflow(dc, &overlay.layout, panel_offset);
         let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), (width * height) as usize);
         apply_tabbar_overflow_alpha(
             pixels,
             width,
             height,
             overlay.layout.sheet,
+            overlay.layout.strip_top,
             panel_offset,
             progress,
             overlay.screen_corner_radius,
         );
+        // Geometric alpha already filled every pixel, so the transparent-only
+        // mask compositor would skip the labels. Blend them over the panel.
+        for text_run in text_runs {
+            crate::layered_text::blend_supersampled_text_mask(
+                dc,
+                pixels,
+                width,
+                height,
+                &text_run.text,
+                text_run.rect,
+                text_run.color,
+                text_run.font_height,
+                text_run.font_weight,
+                true,
+            );
+        }
         let size = SIZE {
             cx: width,
             cy: height,
@@ -375,22 +446,48 @@ fn apply_tabbar_overflow_alpha(
     width: i32,
     height: i32,
     sheet: RECT,
+    strip_top: i32,
     panel_offset: i32,
     progress: f32,
     screen_corner_radius: i32,
 ) {
     const DIM: f32 = 0x59 as f32;
-    let panel_top = sheet.top + panel_offset;
-    let panel_bottom = sheet.bottom;
+    let panel = RECT {
+        left: sheet.left,
+        top: sheet.top + panel_offset,
+        right: sheet.right,
+        bottom: sheet.bottom,
+    };
     let panel_radius = crate::shell::TABBAR_OVERFLOW_PANEL_RADIUS;
     let screen_radius = screen_corner_radius.clamp(0, width.min(height) / 2);
-    let rounded_coverage = |x: i32, y: i32, top: i32, radius: i32| -> f32 {
-        if y >= top + radius || (x >= radius && x < width - radius) {
+    let rounded_rect_coverage = |x: i32, y: i32| -> f32 {
+        if x < panel.left || x >= panel.right || y < panel.top || y >= panel.bottom {
+            return 0.0;
+        }
+        let radius = panel_radius
+            .min((panel.right - panel.left) / 2)
+            .min((panel.bottom - panel.top) / 2)
+            .max(0);
+        if radius == 0 {
             return 1.0;
         }
-        let center_x = if x < radius { radius } else { width - radius };
+        let in_x_mid = x >= panel.left + radius && x < panel.right - radius;
+        let in_y_mid = y >= panel.top + radius && y < panel.bottom - radius;
+        if in_x_mid || in_y_mid {
+            return 1.0;
+        }
+        let center_x = if x < panel.left + radius {
+            panel.left + radius
+        } else {
+            panel.right - radius
+        };
+        let center_y = if y < panel.top + radius {
+            panel.top + radius
+        } else {
+            panel.bottom - radius
+        };
         let dx = x as f32 + 0.5 - center_x as f32;
-        let dy = y as f32 + 0.5 - (top + radius) as f32;
+        let dy = y as f32 + 0.5 - center_y as f32;
         (radius as f32 - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0)
     };
     let screen_coverage = |x: i32, y: i32| -> f32 {
@@ -420,11 +517,11 @@ fn apply_tabbar_overflow_alpha(
         for x in 0..width {
             let index = (y * width + x) as usize;
             let pixel = pixels[index];
-            let alpha = if y >= panel_top && y < panel_bottom {
-                let coverage = rounded_coverage(x, y, panel_top, panel_radius);
-                DIM * progress + (255.0 - DIM * progress) * coverage
+            let alpha = if y >= strip_top {
+                0.0
             } else {
-                DIM * progress
+                let coverage = rounded_rect_coverage(x, y);
+                DIM * progress + (255.0 - DIM * progress) * coverage
             };
             let alpha = (alpha * screen_coverage(x, y)).round() as u32;
             let premultiply = |channel: u32| (channel * alpha + 127) / 255;
@@ -449,16 +546,18 @@ mod tests {
             100,
             100,
             RECT {
-                left: 0,
+                left: 12,
                 top: 40,
-                right: 100,
+                right: 88,
                 bottom: 80,
             },
+            88,
             20,
             1.0,
             0,
         );
         assert_eq!(pixels[70 * 100 + 50] >> 24, 255);
-        assert_eq!(pixels[90 * 100 + 50] >> 24, 0x59);
+        assert_eq!(pixels[70 * 100 + 4] >> 24, 0x59);
+        assert_eq!(pixels[90 * 100 + 50] >> 24, 0);
     }
 }

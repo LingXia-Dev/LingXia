@@ -2882,7 +2882,7 @@ fn sync_window_layout(hwnd: HWND) {
     }
     let Some(webtag_key) = active_webtag_key_for_window(hwnd) else {
         #[cfg(feature = "shell-chrome")]
-        sync_transparent_tabbar_overlay(hwnd, None);
+        sync_chrome_overlays(hwnd, None);
         #[cfg(feature = "device-frame")]
         crate::device_frame::set_device_frame_overlays_visible(hwnd_handle(hwnd), false);
         return;
@@ -2941,7 +2941,13 @@ fn sync_window_layout(hwnd: HWND) {
     #[cfg(not(feature = "device-frame"))]
     let _ = native_panel_takes_focus;
     #[cfg(feature = "shell-chrome")]
-    sync_transparent_tabbar_overlay(hwnd, Some(&webtag_key));
+    sync_chrome_overlays(hwnd, Some(&webtag_key));
+}
+
+#[cfg(feature = "shell-chrome")]
+fn sync_chrome_overlays(hwnd: HWND, webtag_key: Option<&str>) {
+    sync_transparent_tabbar_overlay(hwnd, webtag_key);
+    tabbar_overflow::reposition_tabbar_overflow(hwnd);
 }
 
 #[cfg(feature = "shell-chrome")]
@@ -9071,10 +9077,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     notify_webtag_visibility(&webtag_key, false);
                 }
                 #[cfg(feature = "shell-chrome")]
-                sync_transparent_tabbar_overlay(
-                    hwnd,
-                    active_webtag_key_for_window(hwnd).as_deref(),
-                );
+                sync_chrome_overlays(hwnd, active_webtag_key_for_window(hwnd).as_deref());
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_ACTIVATE => {
@@ -9129,10 +9132,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     deactivate_relaunch_promote();
                 }
                 #[cfg(feature = "shell-chrome")]
-                sync_transparent_tabbar_overlay(
-                    hwnd,
-                    active_webtag_key_for_window(hwnd).as_deref(),
-                );
+                sync_chrome_overlays(hwnd, active_webtag_key_for_window(hwnd).as_deref());
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_ERASEBKGND => {
