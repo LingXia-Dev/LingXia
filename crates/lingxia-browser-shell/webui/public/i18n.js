@@ -89,7 +89,7 @@
       'settings.title': 'Settings',
       'settings.general': 'General',
       'settings.language': 'Language',
-      'settings.languageCopy': 'Use your system language automatically, or choose a language for browser pages.',
+      'settings.languageCopy': 'The language this product uses. Automatic follows your system.',
       'settings.languageAuto': 'Automatic',
       'settings.languageSaveFailed': 'Language could not be saved.',
       'settings.appearance': 'Appearance',
@@ -336,7 +336,7 @@
       'settings.title': '设置',
       'settings.general': '通用',
       'settings.language': '语言',
-      'settings.languageCopy': '自动跟随系统语言，或为浏览器页面手动选择语言。',
+      'settings.languageCopy': '整个产品使用的语言。自动即跟随系统。',
       'settings.languageAuto': '自动',
       'settings.languageSaveFailed': '无法保存语言设置。',
       'settings.appearance': '外观',
@@ -498,36 +498,28 @@
     }
   };
 
-  var LOCALE_STORAGE_KEY = 'lingxia.webui.locale';
-
   function normalizeLocale(value) {
     if (value === 'zh-CN' || /^zh(?:-|$)/i.test(String(value || ''))) return 'zh-CN';
     if (value === 'en-US' || /^en(?:-|$)/i.test(String(value || ''))) return 'en-US';
     return null;
   }
 
-  function storedLocale() {
-    try {
-      return normalizeLocale(global.localStorage.getItem(LOCALE_STORAGE_KEY));
-    } catch (_) {
-      return null;
+  // The product owns the language; these pages only narrow it to a catalog they
+  // actually ship. `navigator` is the fallback for a document opened outside a
+  // host, never a preference of its own.
+  function hostLocale() {
+    var bridge = global.LingXiaBridge;
+    if (bridge && bridge.displayLanguage) {
+      var narrowed = normalizeLocale(bridge.displayLanguage.get());
+      if (narrowed) return narrowed;
     }
-  }
-
-  function systemLocale() {
     var candidates = Array.isArray(navigator.languages) && navigator.languages.length
       ? navigator.languages
       : [navigator.language || 'en-US'];
-    return /^zh(?:-|$)/i.test(String(candidates[0] || ''))
-      ? 'zh-CN'
-      : 'en-US';
+    return normalizeLocale(candidates[0]) || 'en-US';
   }
 
-  function resolveLocale() {
-    return storedLocale() || systemLocale();
-  }
-
-  var locale = resolveLocale();
+  var locale = hostLocale();
 
   function interpolate(value, variables) {
     return String(value).replace(/\{([a-zA-Z0-9_]+)\}/g, function (_, key) {
@@ -561,102 +553,24 @@
     });
   }
 
-  function setLocale(value) {
-    var next = normalizeLocale(value);
-    if (!next) return locale;
+  // Re-apply in place rather than reload: this document was injected with the
+  // bridge configuration, and a reload would race that injection.
+  function adoptHostLocale() {
+    var next = hostLocale();
+    if (next === locale) return;
     locale = next;
     api.locale = locale;
-    try {
-      global.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
-    } catch (_) {}
     apply();
-    return locale;
-  }
-
-  function useSystemLocale() {
-    try {
-      global.localStorage.removeItem(LOCALE_STORAGE_KEY);
-    } catch (_) {}
-    locale = systemLocale();
-    api.locale = locale;
-    apply();
-    return locale;
   }
 
   var api = {
     locale: locale,
     t: t,
-    apply: apply,
-    setLocale: setLocale,
-    useSystemLocale: useSystemLocale,
-    storageKey: LOCALE_STORAGE_KEY
+    apply: apply
   };
   global.LingXiaI18n = api;
 
-  function syncLocaleFromHost() {
-    var bridge = global.LingXiaBridge;
-    if (!bridge || typeof bridge.invoke !== 'function') return;
-    function adoptHostLocale(result) {
-      var hostLocale = normalizeLocale(result);
-      if (!hostLocale || hostLocale === locale) return;
-      setLocale(hostLocale);
-      // Reload only when the locale actually persisted; if localStorage is
-      // unavailable the mismatch would survive the reload and loop forever,
-      // so keep the in-memory apply() from setLocale instead.
-      if (storedLocale() === hostLocale &&
-          global.location && typeof global.location.reload === 'function') {
-        global.location.reload();
-      }
-    }
-    function refreshFromHost() {
-      bridge.invoke('app.getDisplayLanguage').then(adoptHostLocale, function () {});
-    }
-    var languageWatchRetryMs = 1000;
-    var languageWatchRetryTimer = null;
-    function scheduleLanguageWatch() {
-      if (languageWatchRetryTimer != null) return;
-      languageWatchRetryTimer = global.setTimeout(function () {
-        languageWatchRetryTimer = null;
-        attachLanguageWatch();
-      }, languageWatchRetryMs);
-      languageWatchRetryMs = Math.min(languageWatchRetryMs * 2, 30000);
-    }
-    function attachLanguageWatch() {
-      if (typeof bridge.stream !== 'function') return;
-      var watch = bridge.stream('app.watchDisplayLanguage');
-      var startedAt = Date.now();
-      api.languageWatch = watch;
-      watch.onEvent(adoptHostLocale);
-      watch.onError(function () {
-        if (api.languageWatch !== watch) return;
-        api.languageWatch = null;
-        // Transport reset: re-sync immediately, then reconnect with backoff.
-        // Only a stream that stayed healthy for a while resets the backoff —
-        // the seed event must not, or a flapping stream reconnects at the
-        // floor forever.
-        if (Date.now() - startedAt > 30000) languageWatchRetryMs = 1000;
-        refreshFromHost();
-        scheduleLanguageWatch();
-      });
-    }
-    refreshFromHost();
-    attachLanguageWatch();
+  if (global.LingXiaBridge && global.LingXiaBridge.displayLanguage) {
+    global.LingXiaBridge.displayLanguage.subscribe(adoptHostLocale);
   }
-
-  if (typeof global.addEventListener === 'function') {
-    global.addEventListener('storage', function (event) {
-      if (event.key !== LOCALE_STORAGE_KEY) return;
-      var next = normalizeLocale(event.newValue) || resolveLocale();
-      if (next === locale) return;
-      locale = next;
-      api.locale = locale;
-      if (global.location && typeof global.location.reload === 'function') {
-        global.location.reload();
-      } else {
-        apply();
-      }
-    });
-  }
-
-  syncLocaleFromHost();
 })(window);

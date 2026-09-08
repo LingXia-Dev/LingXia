@@ -597,9 +597,9 @@ mod tests {
                 "privacy.clearSiteData",
                 "privacy.getSiteDataContext",
                 "privacy.getUsage",
-                "app.getDisplayLanguageState",
+                "app.getDisplayLanguagePreference",
                 "app.setDisplayLanguagePreference",
-                "app.watchDisplayLanguageState",
+                "app.watchDisplayLanguagePreference",
             ],
         );
         catalog

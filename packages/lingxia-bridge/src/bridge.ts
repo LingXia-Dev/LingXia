@@ -32,7 +32,9 @@ import {
 import {
   BRIDGE_CONFIG,
   getCommunicationMethod,
+  getDisplayLanguage,
   getPlatformOS,
+  subscribeDisplayLanguage,
   isAndroid,
   isHarmony,
   isIOS,
@@ -2091,6 +2093,13 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
   },
 
   debug: createDebugObject(debugFlags),
+
+  // The host language, for documents that cannot bundle `@lingxia/bridge` —
+  // browser internal pages and plain-HTML lxapps load this runtime as a script.
+  displayLanguage: {
+    get: getDisplayLanguage,
+    subscribe: subscribeDisplayLanguage,
+  },
 
   platform: {
     isHarmony,

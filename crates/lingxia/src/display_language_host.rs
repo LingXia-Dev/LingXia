@@ -1,5 +1,5 @@
 use crate::host::{HostResult, StreamContext};
-use lxapp::{DisplayLanguagePreference, DisplayLanguageState, LanguageTag};
+use lxapp::DisplayLanguagePreference;
 use serde::Deserialize;
 use std::sync::OnceLock;
 
@@ -9,69 +9,46 @@ struct SetPreferenceInput {
     preference: DisplayLanguagePreference,
 }
 
-#[lingxia::framework_native("app.getDisplayLanguage", audience = "authenticated-read-only")]
-fn get_display_language() -> HostResult<LanguageTag> {
-    Ok(lxapp::display_language_state().effective)
-}
-
-#[lingxia::framework_native("app.watchDisplayLanguage", stream, audience = "control-only")]
-async fn watch_display_language(stream: StreamContext<LanguageTag>) -> HostResult<()> {
-    stream_effective_language(stream).await
-}
-
-#[lingxia::framework_native(
-    "terminal.watchDisplayLanguage",
-    stream,
-    audience = "control-surface-only"
-)]
-async fn watch_terminal_display_language(stream: StreamContext<LanguageTag>) -> HostResult<()> {
-    stream_effective_language(stream).await
-}
-
-async fn stream_effective_language(mut stream: StreamContext<LanguageTag>) -> HostResult<()> {
-    let (initial, mut receiver) = lxapp::subscribe_display_language_effective();
-    let mut revision = initial.revision;
-    stream.send(initial.effective)?;
-    loop {
-        tokio::select! {
-            _ = stream.canceled() => return Ok(()),
-            received = receiver.recv() => match received {
-                Some(update) if update.revision > revision => {
-                    revision = update.revision;
-                    stream.send(update.effective)?;
-                }
-                Some(_) => {}
-                None => return stream.end(()),
-            }
-        }
-    }
-}
-
-#[lingxia::framework_native("app.getDisplayLanguageState", audience = "control-only")]
-fn get_display_language_state() -> HostResult<DisplayLanguageState> {
-    Ok(lxapp::display_language_state())
+/// The language the product is set to. Documents render in the *effective*
+/// language, which the bridge hands them; only the surface that edits the
+/// setting needs the preference behind it.
+#[lingxia::framework_native("app.getDisplayLanguagePreference", audience = "control-only")]
+fn get_display_language_preference() -> HostResult<DisplayLanguagePreference> {
+    Ok(lxapp::display_language_state().preference)
 }
 
 #[lingxia::framework_native("app.setDisplayLanguagePreference", audience = "control-only")]
-fn set_display_language_preference(input: SetPreferenceInput) -> HostResult<DisplayLanguageState> {
+fn set_display_language_preference(
+    input: SetPreferenceInput,
+) -> HostResult<DisplayLanguagePreference> {
     lxapp::set_display_language_preference(input.preference)?;
-    Ok(lxapp::display_language_state())
+    Ok(lxapp::display_language_state().preference)
 }
 
-#[lingxia::framework_native("app.watchDisplayLanguageState", stream, audience = "control-only")]
-async fn watch_display_language_state(
-    mut stream: StreamContext<DisplayLanguageState>,
+#[lingxia::framework_native(
+    "app.watchDisplayLanguagePreference",
+    stream,
+    audience = "control-only"
+)]
+async fn watch_display_language_preference(
+    mut stream: StreamContext<DisplayLanguagePreference>,
 ) -> HostResult<()> {
     let (initial, mut receiver) = lxapp::subscribe_display_language_state();
     let mut revision = initial.revision;
-    stream.send(initial.state)?;
+    // The state moves whenever the effective language does; the preference does
+    // not. A system flip under `auto` must not wake this stream.
+    let mut preference = initial.state.preference;
+    stream.send(preference.clone())?;
     loop {
         tokio::select! {
             _ = stream.canceled() => return Ok(()),
             received = receiver.recv() => match received {
                 Some(update) if update.revision > revision => {
                     revision = update.revision;
-                    stream.send(update.state)?;
+                    if update.state.preference != preference {
+                        preference = update.state.preference;
+                        stream.send(preference.clone())?;
+                    }
                 }
                 Some(_) => {}
                 None => return stream.end(()),
@@ -83,12 +60,9 @@ async fn watch_display_language_state(
 pub(crate) fn register() {
     static REGISTERED: OnceLock<()> = OnceLock::new();
     REGISTERED.get_or_init(|| {
-        crate::host::register_host_entry(get_display_language_host());
-        crate::host::register_host_entry(watch_display_language_host());
-        crate::host::register_host_entry(watch_terminal_display_language_host());
-        crate::host::register_host_entry(get_display_language_state_host());
+        crate::host::register_host_entry(get_display_language_preference_host());
         crate::host::register_host_entry(set_display_language_preference_host());
-        crate::host::register_host_entry(watch_display_language_state_host());
+        crate::host::register_host_entry(watch_display_language_preference_host());
     });
 }
 
@@ -97,23 +71,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn effective_get_is_read_only_but_persistent_streams_are_control_only() {
-        assert_eq!(
-            get_display_language_host().audience(),
-            crate::host::RouteAudience::AuthenticatedReadOnly
-        );
+    fn the_product_language_preference_is_control_only() {
         for route in [
-            watch_display_language_host(),
-            get_display_language_state_host(),
+            get_display_language_preference_host(),
             set_display_language_preference_host(),
-            watch_display_language_state_host(),
+            watch_display_language_preference_host(),
         ] {
             assert_eq!(route.audience(), crate::host::RouteAudience::ControlOnly);
         }
     }
 
+    /// Reading the effective language is not a route at all: every document is
+    /// handed it at injection and pushed every change. Nothing here is the way
+    /// an ordinary lxapp or a control surface follows the language.
     #[test]
-    fn effective_watch_schema_and_dispatch_require_a_control_caller() {
+    fn only_a_control_caller_reaches_the_preference() {
         use crate::host::{AuthenticatedCaller, authorize, host_route_schema};
         use lxapp::AppSessionClass;
 
@@ -133,59 +105,28 @@ mod tests {
         // not reachable through lxapp's safe downstream API.
         let standard =
             unsafe { test_authenticated_caller("test.standard", 1, AppSessionClass::StandardApp) };
+        let surface =
+            unsafe { test_authenticated_caller("test.surface", 3, AppSessionClass::ControlSurface) };
         let control =
             unsafe { test_authenticated_caller("test.control", 2, AppSessionClass::ControlApp) };
         let browser = unsafe { test_browser_caller() };
-        let surface = unsafe {
-            test_authenticated_caller("test.surface", 3, AppSessionClass::ControlSurface)
-        };
-        let watch_audience = watch_display_language_host().audience();
+        let audience = get_display_language_preference_host().audience();
 
-        assert!(
-            host_route_schema(&standard)
-                .methods
-                .contains_key("app.getDisplayLanguage")
-        );
-        assert!(
-            !host_route_schema(&standard)
-                .methods
-                .contains_key("app.watchDisplayLanguage")
-        );
+        for caller in [&standard, &surface] {
+            assert!(!authorize(caller, audience));
+            assert!(
+                !host_route_schema(caller)
+                    .methods
+                    .contains_key("app.getDisplayLanguagePreference")
+            );
+        }
         for caller in [&control, &browser] {
+            assert!(authorize(caller, audience));
             assert!(
                 host_route_schema(caller)
                     .methods
-                    .contains_key("app.watchDisplayLanguage")
+                    .contains_key("app.getDisplayLanguagePreference")
             );
-        }
-
-        assert!(!authorize(&standard, watch_audience));
-        assert!(authorize(&control, watch_audience));
-        assert!(authorize(&browser, watch_audience));
-        assert!(!authorize(&surface, watch_audience));
-
-        let surface_watch = watch_terminal_display_language_host();
-        for (caller, allowed) in [
-            (&standard, false),
-            (&control, false),
-            (&browser, false),
-            (&surface, true),
-        ] {
-            assert_eq!(authorize(caller, surface_watch.audience()), allowed);
-            assert_eq!(
-                host_route_schema(caller)
-                    .methods
-                    .contains_key("terminal.watchDisplayLanguage"),
-                allowed
-            );
-        }
-        for route in [
-            watch_display_language_host(),
-            get_display_language_state_host(),
-            set_display_language_preference_host(),
-            watch_display_language_state_host(),
-        ] {
-            assert!(!authorize(&surface, route.audience()));
         }
     }
 }

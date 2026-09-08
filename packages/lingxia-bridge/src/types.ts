@@ -207,6 +207,10 @@ export interface LingXiaBridgeInterface {
   _connectWebMessagePort(port: MessagePort): void;
   _receiveEvaluateMessage(messageString: string): void;
   debug: { data: boolean; proto: boolean; all: boolean };
+  displayLanguage: {
+    get(): string;
+    subscribe(listener: () => void): () => void;
+  };
   platform: {
     isHarmony(): boolean;
     isIOS(): boolean;

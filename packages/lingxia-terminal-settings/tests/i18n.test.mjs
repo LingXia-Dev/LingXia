@@ -3,11 +3,8 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
-test('follows the shared effective-language route and stream', async () => {
-  const source = await readFile(new URL('../public/i18n.js', import.meta.url), 'utf8');
-  const invocations = [];
-  const streams = [];
-  const storage = new Map();
+function runI18n(source, hostLanguage) {
+  const listeners = new Set();
   const document = {
     readyState: 'complete',
     documentElement: { lang: '' },
@@ -17,24 +14,13 @@ test('follows the shared effective-language route and stream', async () => {
   };
   const window = {
     LingXiaBridge: {
-      invoke(route) {
-        invocations.push(route);
-        return Promise.resolve('en-US');
+      displayLanguage: {
+        get: () => hostLanguage.value,
+        subscribe(listener) {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
       },
-      stream(route) {
-        const stream = {
-          route,
-          onEvent(callback) { stream.event = callback; },
-          onError(callback) { stream.error = callback; },
-        };
-        streams.push(stream);
-        return stream;
-      },
-    },
-    localStorage: {
-      getItem: (key) => storage.get(key) ?? null,
-      setItem: (key, value) => storage.set(key, value),
-      removeItem: (key) => storage.delete(key),
     },
     addEventListener: () => {},
     setTimeout,
@@ -47,11 +33,41 @@ test('follows the shared effective-language route and stream', async () => {
     Date,
     setTimeout,
   });
-  await Promise.resolve();
 
-  assert.deepEqual(invocations, ['app.getDisplayLanguage']);
-  assert.equal(streams[0].route, 'terminal.watchDisplayLanguage');
-  streams[0].event('zh-Hans-CN');
+  return {
+    window,
+    document,
+    notify(next) {
+      hostLanguage.value = next;
+      for (const listener of [...listeners]) listener();
+    },
+  };
+}
+
+test('follows the product language and has no screen-local override', async () => {
+  const source = await readFile(new URL('../public/i18n.js', import.meta.url), 'utf8');
+  const hostLanguage = { value: 'en-US' };
+  const { window, document, notify } = runI18n(source, hostLanguage);
+
+  assert.equal(window.LingXiaI18n.locale, 'en-US');
+  assert.equal(document.documentElement.lang, 'en');
+
+  notify('zh-Hans-CN');
   assert.equal(window.LingXiaI18n.locale, 'zh-CN');
   assert.equal(document.documentElement.lang, 'zh-Hans');
+
+  // The product owns the language: this screen exposes no way to pick one and
+  // stores nothing of its own.
+  assert.equal(window.LingXiaI18n.setLocale, undefined);
+  assert.equal(window.LingXiaI18n.followApp, undefined);
+  assert.equal(window.LingXiaI18n.storageKey, undefined);
+  assert.equal(window.localStorage, undefined);
+});
+
+test('narrows a language it has no catalog for instead of dropping strings', async () => {
+  const source = await readFile(new URL('../public/i18n.js', import.meta.url), 'utf8');
+  const { window } = runI18n(source, { value: 'ja-JP' });
+
+  assert.equal(window.LingXiaI18n.locale, 'en-US');
+  assert.equal(window.LingXiaI18n.t('app.title'), 'Terminal');
 });

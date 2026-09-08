@@ -810,27 +810,28 @@
           option.disabled = !!disabled;
         });
       }
-      function applyLanguageState(state) {
-        if (!state) return;
-        configuredLanguage = state.preference || 'auto';
+      // Only the radio state. This page renders in the product language the
+      // same way every other document does, through the bridge.
+      function applyLanguagePreference(preference) {
+        if (!preference) return;
+        configuredLanguage = preference;
         syncLanguageOptions(configuredLanguage, false);
-        if (state.effective) i18n.setLocale(state.effective);
       }
       syncLanguageOptions('auto', false);
-      callHost('app.getDisplayLanguageState').then(applyLanguageState, function () {
+      callHost('app.getDisplayLanguagePreference').then(applyLanguagePreference, function () {
         syncLanguageOptions('auto', false);
       });
       if (window.LingXiaBridge && typeof window.LingXiaBridge.stream === 'function') {
-        var languageStateWatch = window.LingXiaBridge.stream('app.watchDisplayLanguageState');
-        languageStateWatch.onEvent(applyLanguageState);
+        var languagePreferenceWatch = window.LingXiaBridge.stream('app.watchDisplayLanguagePreference');
+        languagePreferenceWatch.onEvent(applyLanguagePreference);
       }
       languageOptions.forEach(function (option) {
         option.addEventListener('click', function () {
           var next = option.dataset.language;
           if (next === (configuredLanguage || 'auto')) return;
           syncLanguageOptions(next, true);
-          callHost('app.setDisplayLanguagePreference', { preference: next }).then(function (state) {
-            applyLanguageState(state);
+          callHost('app.setDisplayLanguagePreference', { preference: next }).then(function (preference) {
+            applyLanguagePreference(preference);
           }, function (error) {
             console.error('[Settings] app.setDisplayLanguagePreference error:', error);
             syncLanguageOptions(configuredLanguage || 'auto', false);

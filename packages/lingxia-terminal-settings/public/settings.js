@@ -410,26 +410,6 @@
       .catch(function (error) { toast("Could not import theme: " + message(error), true); });
     this.value = "";
   });
-  var language = byId("language");
-  if (language && window.LingXiaI18n) {
-    // No local override means this screen follows the app's language, which is
-    // what the host reports — not the operating system's. Labelling that
-    // "system" claimed otherwise while the screen rendered in the app's locale.
-    language.value = localStorage.getItem(window.LingXiaI18n.storageKey) || "app";
-    language.addEventListener("change", function () {
-      // Screen-local by design; terminal appearance config does not own the
-      // locale of this settings package.
-      if (language.value === "app") window.LingXiaI18n.followApp();
-      else window.LingXiaI18n.setLocale(language.value);
-      window.LingXiaI18n.apply();
-      if (snapshot) {
-        renderWarnings();
-        renderThemes();
-        setState(dirty ? tr("app.state.dirty") : tr("app.state.clean"));
-      }
-    });
-  }
-
   byId("save").addEventListener("click", save);
   byId("windows-inline-images").addEventListener("change", function () {
     setWindowsInlineImages(this.checked);
