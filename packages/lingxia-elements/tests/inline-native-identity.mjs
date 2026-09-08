@@ -30,6 +30,6 @@ for (const nextId of ['status', 'retry', undefined]) {
   const old = identifyCompiledRoot(compile([{ type: 'LxNativeText', authorId: nextId === undefined ? undefined : 'status', children: 'Loading' }]), rootRef);
   const next = identifyCompiledRoot(compile([{ type: 'LxNativeButton', authorId: nextId, props: { label: 'Retry' } }]), rootRef, old);
   const operations = buildRootCommit(next, old, 2).operations;
-  assert.deepEqual(operations.map(op => op.op), ['unmount', 'mount']);
-  assert.equal(operations[1].node.kind, 'tappable');
+  assert.deepEqual(operations.map(op => op.op), ['mount', 'unmount']);
+  assert.equal(operations[0].node.kind, 'tappable');
 }

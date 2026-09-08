@@ -45,10 +45,8 @@ const render = () => h('lx-native-root', {
   'aria-label': props['aria-label'],
   'aria-description': props['aria-description'],
   'aria-hidden': props['aria-hidden'],
-  'fullscreen-scope': props.fullscreenScope ?? 'root',
   'pointer-events': props.pointerEvents,
   hidden: props.hidden,
-  'hidden-transition': props.hiddenTransition,
   'automation-id': props.automationId,
 }, [
   slots.default?.(),

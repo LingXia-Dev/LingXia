@@ -26,7 +26,6 @@ export const LxNativeCover = forwardRef<HTMLElement, LxNativeCoverProps>(
       style,
       pointerEvents,
       hidden,
-      hiddenTransition,
       scrim,
       scrimOpacity,
       role,
@@ -49,12 +48,11 @@ export const LxNativeCover = forwardRef<HTMLElement, LxNativeCoverProps>(
       if (!el) return;
       setOptionalAttribute(el, "automation-id", automationId);
       setOptionalAttribute(el, "pointer-events", pointerEvents);
-      setOptionalAttribute(el, "hidden-transition", hiddenTransition);
       setOptionalAttribute(el, "scrim", scrim);
       setOptionalAttribute(el, "scrim-opacity", scrimOpacity);
       setOptionalAttribute(el, "role", role);
       applyNativeAria(el, aria);
-    }, [automationId, pointerEvents, hiddenTransition, scrim, scrimOpacity, role, aria]);
+    }, [automationId, pointerEvents, scrim, scrimOpacity, role, aria]);
 
     return React.createElement(
       "lx-native-cover",

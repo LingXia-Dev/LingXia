@@ -281,12 +281,12 @@ fn apply_operations(
                 "node identity does not match the commit RootRef",
             ));
         }
-        if !seen.insert(node_identity(node_ref)) {
+        if !seen.insert((std::mem::discriminant(operation), node_identity(node_ref))) {
             return Err(error(
                 NativeErrorCode::InvalidStructure,
                 root,
                 Some(node_ref.clone()),
-                "duplicate node identity in one commit",
+                "duplicate operation for node identity in one commit",
             ));
         }
         match operation {

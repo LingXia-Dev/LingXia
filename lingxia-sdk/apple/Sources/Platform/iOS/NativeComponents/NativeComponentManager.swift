@@ -1082,7 +1082,11 @@ final class WKContentViewHitTestSwizzler {
             let pointInView = contentView.convert(point, to: superview)
             if view.frame.contains(pointInView) && Self.isEffectivelyVisible(view) && view.isUserInteractionEnabled {
                 // Return the view that should receive touches
-                return view.hitTest(superview.convert(pointInView, to: view), with: nil) ?? view
+                let local = superview.convert(pointInView, to: view)
+                // Island clipping must also apply when WebKit's hit-test bypasses its container.
+                if let mask = view.layer.mask as? CAShapeLayer, let path = mask.path,
+                   !path.contains(local) { continue }
+                return view.hitTest(local, with: nil) ?? view
             }
         }
         return nil

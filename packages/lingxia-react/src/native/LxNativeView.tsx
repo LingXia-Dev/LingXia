@@ -24,7 +24,6 @@ export const LxNativeView = forwardRef<HTMLElement, LxNativeViewProps>(
       style,
       pointerEvents,
       hidden,
-      hiddenTransition,
       role,
       children,
       ...aria
@@ -45,10 +44,9 @@ export const LxNativeView = forwardRef<HTMLElement, LxNativeViewProps>(
       if (!el) return;
       setOptionalAttribute(el, "automation-id", automationId);
       setOptionalAttribute(el, "pointer-events", pointerEvents);
-      setOptionalAttribute(el, "hidden-transition", hiddenTransition);
       setOptionalAttribute(el, "role", role);
       applyNativeAria(el, aria);
-    }, [automationId, pointerEvents, hiddenTransition, role, aria]);
+    }, [automationId, pointerEvents, role, aria]);
 
     return React.createElement(
       "lx-native-view",

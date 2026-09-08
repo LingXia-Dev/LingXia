@@ -251,6 +251,19 @@ internal class InlineNativeIsland(
             node.rectY = number(rect["y"])
             node.rectW = number(rect["width"])
             node.rectH = number(rect["height"])
+            val clipped = android.graphics.RectF(node.rectX.toFloat(), node.rectY.toFloat(),
+                (node.rectX + node.rectW).toFloat(), (node.rectY + node.rectH).toFloat())
+            val clips = entry["clipStack"] as? List<*> ?: emptyList<Any>()
+            for (raw in clips) {
+                val clip = asMap(raw) ?: continue
+                val x = number(clip["x"]).toFloat()
+                val y = number(clip["y"]).toFloat()
+                if (!clipped.intersect(x, y, x + number(clip["width"]).toFloat(), y + number(clip["height"]).toFloat())) {
+                    clipped.setEmpty()
+                    break
+                }
+            }
+            node.clipRect = if (clips.isEmpty()) null else clipped
             node.visible = entry["visible"] as? Boolean ?: true
             applyFrame(node)
         }
@@ -331,9 +344,9 @@ internal class InlineNativeIsland(
         }
         val item = factoryNode(key, rootKey, kind, authorId, automationId, parentKey, order, props)
         nodes[key] = item
-        if (item.view.parent == null) {
-            container.addView(item.view)
-        }
+        (item.view.parent as? ViewGroup)?.removeView(item.view)
+        item.viewport.addView(item.view)
+        container.addView(item.viewport)
         applyFrame(item)
     }
 
@@ -605,11 +618,19 @@ internal class InlineNativeIsland(
     }
 
     private fun applyFrame(node: IslandNode) {
-        val left = (node.rectX * density - scrollXPx).roundToInt()
-        val top = (node.rectY * density - scrollYPx).roundToInt()
+        val clipped = node.clipRect ?: android.graphics.RectF(node.rectX.toFloat(), node.rectY.toFloat(),
+            (node.rectX + node.rectW).toFloat(), (node.rectY + node.rectH).toFloat())
+        val viewport = FrameLayout.LayoutParams((clipped.width() * density).roundToInt().coerceAtLeast(0),
+            (clipped.height() * density).roundToInt().coerceAtLeast(0))
+        viewport.leftMargin = (clipped.left * density - scrollXPx).roundToInt()
+        viewport.topMargin = (clipped.top * density - scrollYPx).roundToInt()
+        node.viewport.layoutParams = viewport
+        node.viewport.visibility = if (node.visible && !clipped.isEmpty) View.VISIBLE else View.GONE
+        val left = ((node.rectX - clipped.left) * density).roundToInt()
+        val top = ((node.rectY - clipped.top) * density).roundToInt()
         val width = (node.rectW * density).roundToInt().coerceAtLeast(1)
         val height = (node.rectH * density).roundToInt().coerceAtLeast(1)
-        node.view.visibility = if (node.visible && node.rectW > 0 && node.rectH > 0) View.VISIBLE else View.GONE
+        node.view.visibility = node.viewport.visibility
         if (node.video != null) {
             // Player positions via translationX/Y; layout margins on the same
             // view would double-offset the picture away from the CSS rect.
@@ -641,9 +662,15 @@ internal class InlineNativeIsland(
         }
         node.view.post {
             val rect = Rect()
-            node.view.getHitRect(rect)
+            node.viewport.getHitRect(rect)
             val extra = (hitSlop * density).roundToInt()
             rect.inset(-extra, -extra)
+            node.clipRect?.let { clip ->
+                if (!rect.intersect((clip.left * density - scrollXPx).roundToInt(),
+                        (clip.top * density - scrollYPx).roundToInt(),
+                        (clip.right * density - scrollXPx).roundToInt(),
+                        (clip.bottom * density - scrollYPx).roundToInt())) rect.setEmpty()
+            }
             touchDelegates.put(node.key, TouchDelegate(rect, node.view))
         }
     }
@@ -664,8 +691,8 @@ internal class InlineNativeIsland(
         }
         append(null)
         ordered.forEachIndexed { index, node ->
-            container.bringChildToFront(node.view)
-            node.view.z = index.toFloat()
+            container.bringChildToFront(node.viewport)
+            node.viewport.z = index.toFloat()
         }
     }
 
@@ -673,7 +700,7 @@ internal class InlineNativeIsland(
         val node = nodes.remove(key) ?: return
         touchDelegates.remove(key)
         node.video?.unmount()
-        container.removeView(node.view)
+        container.removeView(node.viewport)
     }
 
     private fun nodeKey(node: Map<String, Any?>): String? {
@@ -727,8 +754,14 @@ internal class InlineNativeIsland(
         var rectY: Double = 0.0,
         var rectW: Double = 0.0,
         var rectH: Double = 0.0,
-        var visible: Boolean = true
-    )
+        var visible: Boolean = true,
+        var clipRect: android.graphics.RectF? = null
+    ) {
+        val viewport = FrameLayout(view.context).apply {
+            clipChildren = true
+            clipToPadding = true
+        }
+    }
 
     companion object {
         val ALLOWED_KINDS = setOf("root", "view", "text", "tappable", "video")

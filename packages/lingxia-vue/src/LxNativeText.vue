@@ -22,7 +22,6 @@ const render = () => h('lx-native-text', {
   'automation-id': props.automationId,
   'pointer-events': props.pointerEvents,
   hidden: props.hidden,
-  'hidden-transition': props.hiddenTransition,
   'max-lines': props.maxLines,
   dir: props.dir,
   'font-size': props.fontSize,

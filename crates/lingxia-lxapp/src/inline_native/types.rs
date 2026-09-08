@@ -201,6 +201,16 @@ pub struct Rect {
 }
 
 impl Rect {
+    pub fn intersection(&self, other: &Self) -> Self {
+        let x = self.x.max(other.x);
+        let y = self.y.max(other.y);
+        Self {
+            x,
+            y,
+            width: ((self.x + self.width).min(other.x + other.width) - x).max(0.0),
+            height: ((self.y + self.height).min(other.y + other.height) - y).max(0.0),
+        }
+    }
     /// True when the snapshot has a real layout, not the 0×0 / 1×1 placeholder
     /// used before the first measure (or while the document is hidden).
     pub fn is_measured(&self) -> bool {

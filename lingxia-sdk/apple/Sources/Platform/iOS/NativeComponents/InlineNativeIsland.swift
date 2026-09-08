@@ -246,6 +246,7 @@ final class InlineNativeIsland {
                 width: max(cg(rect["width"]), 1),
                 height: max(cg(rect["height"]), 1)
             )
+            node.clipRect = NativeComponentClip.intersection(node.rect, clips: entry["clipStack"])
             node.visible = entry["visible"] as? Bool ?? true
             applyFrame(node)
         }
@@ -400,9 +401,18 @@ final class InlineNativeIsland {
         case "video":
             // The player retains this sink for its lifetime, so hold the node weakly.
             let authorId = item.authorId
-            let video = VideoComponent(id: authorId, initialProps: item.props) { [weak self] event in
+            let video = VideoComponent(id: authorId, initialProps: item.props) { [weak self, weak item] event in
                 guard let name = event["event"] as? String else { return }
                 let detail = event["detail"] as? [String: Any] ?? [:]
+                if name == "fullscreenchange", let item {
+                    if (detail["fullScreen"] as? Bool ?? detail["fullscreen"] as? Bool) == true {
+                        item.view.layer.mask = nil
+                    } else {
+                        DispatchQueue.main.async { [weak self, weak item] in
+                            if let item { self?.applyFrame(item) }
+                        }
+                    }
+                }
                 self?.eventSink(authorId, name, detail)
             }
             video.mount(in: container)
@@ -591,6 +601,16 @@ final class InlineNativeIsland {
             item.view.frame = rect
         }
         item.view.isHidden = !pageActive || !item.visible || item.rect.width <= 0 || item.rect.height <= 0
+        let localClip = item.clipRect?.offsetBy(dx: -textFittedRect(item).minX, dy: -textFittedRect(item).minY)
+        container.setClipRect(localClip, for: item.view)
+        if let localClip {
+            let mask = CAShapeLayer()
+            mask.path = CGPath(rect: localClip, transform: nil)
+            item.view.layer.mask = mask
+            item.view.isHidden = item.view.isHidden || localClip.isEmpty
+        } else {
+            item.view.layer.mask = nil
+        }
         item.scrim?.frame = item.view.bounds
     }
 
@@ -643,6 +663,7 @@ final class InlineNativeIsland {
         if node.video != nil {
             manager?.detachIslandVideo(id: node.authorId)
         }
+        container.setClipRect(nil, for: node.view)
         node.video?.unmount()
         node.view.removeFromSuperview()
     }
@@ -764,6 +785,7 @@ final class InlineNativeIsland {
         var button: UIButton?
         var scrim: CAGradientLayer?
         var rect: CGRect = .zero
+        var clipRect: CGRect?
         var visible = true
 
         init(
@@ -798,16 +820,25 @@ private final class IslandButton: UIButton {
 }
 
 private final class IslandContainerView: UIView {
+    private var clipRects: [ObjectIdentifier: CGRect] = [:]
+
+    func setClipRect(_ rect: CGRect?, for view: UIView) {
+        clipRects[ObjectIdentifier(view)] = rect
+    }
+
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        for button in subviews.reversed().compactMap({ $0 as? IslandButton }) {
-            guard !button.isHidden, button.isUserInteractionEnabled, button.hitSlop > 0 else { continue }
-            let local = convert(point, to: button)
-            if button.bounds.insetBy(dx: -button.hitSlop, dy: -button.hitSlop).contains(local) {
+        guard !isHidden, isUserInteractionEnabled, alpha > 0, bounds.contains(point) else { return nil }
+        for child in subviews.reversed() {
+            guard !child.isHidden, child.isUserInteractionEnabled, child.alpha > 0 else { continue }
+            let local = convert(point, to: child)
+            if let clip = clipRects[ObjectIdentifier(child)], !clip.contains(local) { continue }
+            if let button = child as? IslandButton, button.hitSlop > 0,
+               button.bounds.insetBy(dx: -button.hitSlop, dy: -button.hitSlop).contains(local) {
                 return button
             }
+            if let hit = child.hitTest(local, with: event) { return hit }
         }
-        let hit = super.hitTest(point, with: event)
-        return hit === self ? nil : hit
+        return nil
     }
 }
 #endif

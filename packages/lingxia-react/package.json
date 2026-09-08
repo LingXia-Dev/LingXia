@@ -17,6 +17,7 @@
     "build": "npm run clean && npm --prefix ../lingxia-elements run build && npm --prefix ../lingxia-page-runtime run build && tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build",
+    "test:browser": "npm run build && node tests/native-browser.mjs",
     "test:types": "npm run build && tsc -p tests/tsconfig.json"
   },
   "dependencies": {
@@ -32,7 +33,9 @@
     "@lingxia/elements": "file:../lingxia-elements",
     "@lingxia/page-runtime": "file:../lingxia-page-runtime",
     "@types/react": "^19.2.18",
+    "esbuild": "^0.28.2",
     "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "typescript": "^5.7.2"
   },
   "files": [

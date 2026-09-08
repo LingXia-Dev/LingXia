@@ -7,7 +7,8 @@
 import {
   NativeComponentNodeController,
   NodeControllerParams,
-  NodeControllerUpdateParams
+  NodeControllerUpdateParams,
+  NativeComponentClip
 } from './NativeComponentNodeController';
 import { NativeComponentRecord, NativeComponentValue } from './NativeComponentTypes';
 import { LxNativeVideoPlayer } from '../APIs/media/player/LxNativeVideoPlayer';
@@ -342,6 +343,28 @@ export class InlineNativeIslandHost {
       const update = new NodeControllerUpdateParams();
       update.x = existing.rectX - this.viewportOffsetX;
       update.y = existing.rectY - this.viewportOffsetY;
+      let left = existing.rectX;
+      let top = existing.rectY;
+      let right = left + existing.rectW;
+      let bottom = top + existing.rectH;
+      const clips = entry['clipStack'] as Object[] | undefined;
+      if (clips) {
+        for (const raw of clips) {
+          const clip = raw as Record<string, Object>;
+          const x = (clip['x'] as number) ?? 0;
+          const y = (clip['y'] as number) ?? 0;
+          left = Math.max(left, x);
+          top = Math.max(top, y);
+          right = Math.min(right, x + ((clip['width'] as number) ?? 0));
+          bottom = Math.min(bottom, y + ((clip['height'] as number) ?? 0));
+        }
+      }
+      const clip = new NativeComponentClip();
+      clip.x = left - existing.rectX;
+      clip.y = top - existing.rectY;
+      clip.width = existing.visible ? Math.max(0, right - left) : 0;
+      clip.height = existing.visible ? Math.max(0, bottom - top) : 0;
+      update.clip = clip;
       update.width = existing.visible ? Math.max(existing.rectW, 1) : 0;
       update.height = existing.visible ? Math.max(existing.rectH, 1) : 0;
       existing.controller.updateRenderOption(update);

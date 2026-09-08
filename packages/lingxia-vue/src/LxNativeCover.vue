@@ -22,7 +22,6 @@ const render = () => h('lx-native-cover', {
   'automation-id': props.automationId,
   'pointer-events': props.pointerEvents,
   hidden: props.hidden,
-  'hidden-transition': props.hiddenTransition,
   scrim: props.scrim,
   'scrim-opacity': props.scrimOpacity,
   role: props.role,

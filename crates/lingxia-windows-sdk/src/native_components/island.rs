@@ -471,7 +471,32 @@ pub(super) fn present_decoded_island_frame(
     );
     let tex_w = dest_w.clamp(1, 640) as u32;
     let tex_h = dest_h.clamp(1, 360) as u32;
-    let pixels = crate::video_player::scale_bgra_nearest(&pixels, src_w, src_h, tex_w, tex_h);
+    let props = sessions()
+        .lock()
+        .ok()
+        .and_then(|sessions| sessions.get(&context.page_key)?.paint_props_for(author_id));
+    let props = props.unwrap_or(Value::Null);
+    let clip = clip_fractions(
+        &Rect {
+            x: css.x,
+            y: css.y,
+            width: css.width,
+            height: css.height,
+        },
+        &props,
+    );
+    let opacity = props
+        .pointer("/nativeStyle/opacity")
+        .and_then(|value| value.as_f64().or_else(|| value.as_str()?.parse().ok()))
+        .unwrap_or(1.0)
+        .clamp(0.0, 1.0);
+    let mut pixels = crate::video_player::scale_bgra_nearest(&pixels, src_w, src_h, tex_w, tex_h);
+    if opacity < 1.0 {
+        for pixel in &mut pixels {
+            let channel = |shift| (((*pixel >> shift) & 0xff) as f64 * opacity).round() as u32;
+            *pixel = (channel(24) << 24) | (channel(16) << 16) | (channel(8) << 8) | channel(0);
+        }
+    }
     log::debug!(
         "island video frame {} {}x{} -> {}x{} dest {}x{}",
         author_id,
@@ -486,6 +511,7 @@ pub(super) fn present_decoded_island_frame(
         return;
     };
     let _ = handler.present_island_video_frame(IslandVideoFrame {
+        clip,
         id: author_id.to_string(),
         offset_x,
         offset_y,
@@ -536,6 +562,19 @@ fn island_visuals_from_pending(page_key: &str, pending: &[PendingAttach]) -> Vec
         .collect()
 }
 
+fn clip_fractions(css: &Rect, props: &Value) -> Option<[f32; 4]> {
+    let clip: Rect = serde_json::from_value(props.get("__nativeClipRect")?.clone()).ok()?;
+    if css.width <= 0.0 || css.height <= 0.0 {
+        return Some([0.0; 4]);
+    }
+    Some([
+        ((clip.x - css.x) / css.width).clamp(0.0, 1.0) as f32,
+        ((clip.y - css.y) / css.height).clamp(0.0, 1.0) as f32,
+        ((clip.x + clip.width - css.x) / css.width).clamp(0.0, 1.0) as f32,
+        ((clip.y + clip.height - css.y) / css.height).clamp(0.0, 1.0) as f32,
+    ])
+}
+
 pub(crate) fn build_island_visual_spec(
     id: &str,
     kind: &str,
@@ -562,6 +601,7 @@ pub(crate) fn build_island_visual_spec(
         _ => Some(rasterize_island_kind(kind, width, height, props)),
     };
     IslandVisualSpec {
+        clip: clip_fractions(css, props),
         id: id.to_string(),
         kind: kind.to_string(),
         offset_x,

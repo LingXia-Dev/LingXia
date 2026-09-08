@@ -1,4 +1,4 @@
-import { collectNativeStyleIssues } from "./style.js";
+import { collectNativeStyleIssues, effectiveOpacity, normalizeNativeColor } from "./style.js";
 import { nativeError } from "./errors.js";
 import {
   NATIVE_ACTION_ICONS,
@@ -31,6 +31,10 @@ export function compileInlineNativeRoot(
 ): CompileInlineNativeResult {
   const rootRef = options.rootRef ?? EMPTY_ROOT_REF;
   const diagnostics = collectStyleDiagnostics(author, rootRef);
+  const unsupported = unsupportedAuthorProp(author);
+  if (unsupported) return fail(nativeError("NATIVE_COMPONENT_INVALID_PROPS",
+    `${unsupported} is not supported; fullscreen belongs to LxVideo and visibility changes are immediate`,
+    { root: rootRef }), diagnostics);
   const authorType = normalizeAuthorType(author.type);
 
   if (authorType !== "LxNativeRoot") {
@@ -102,6 +106,18 @@ export function compileInlineNativeRoot(
     children: expanded,
   };
   return { ok: true, root, diagnostics };
+}
+
+function unsupportedAuthorProp(author: AuthorNode): string | undefined {
+  for (const key of ["fullscreenScope", "hiddenTransition"]) {
+    if (author.props?.[key] !== undefined) return key;
+  }
+  for (const child of flattenAuthorChildren(author.children)) {
+    if (child.kind !== "node") continue;
+    const found = unsupportedAuthorProp(child.node);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 /**
@@ -673,6 +689,7 @@ function readElementProps(element: Element): Record<string, unknown> {
   const props: Record<string, unknown> = {};
   const dataset: Record<string, string> = {};
   for (const attr of Array.from(element.attributes)) {
+    if (attr.name === "data-lx-native-measuring" || attr.name === "data-lx-native-paint-hidden") continue;
     const name = attr.name;
     if (name === "id" || name === "automation-id" || name === "class" || name === "style") {
       continue;
@@ -770,16 +787,17 @@ function readComputedNativeStyle(element: Element): Record<string, unknown> {
   const put = (key: string, value: string, skip?: (value: string) => boolean) => {
     const normalized = value.trim();
     if (!normalized || skip?.(normalized)) return;
-    out[key] = normalized;
+    out[key] = key.endsWith("Color") || key === "color"
+      ? normalizeNativeColor(element.ownerDocument, normalized) ?? normalized : normalized;
   };
   put("backgroundColor", style.backgroundColor, (value) => value === "transparent" || value === "rgba(0, 0, 0, 0)");
   put("color", style.color);
   put("accentColor", style.accentColor, (value) => value === "auto");
-  put("opacity", style.opacity, (value) => value === "1");
+  put("opacity", String(effectiveOpacity(element)), (value) => value === "1");
   put("borderColor", style.borderTopColor, (value) => style.borderTopWidth === "0px" && value === inherited?.color);
   put("borderWidth", style.borderTopWidth, (value) => value === "0px");
   put("borderStyle", style.borderTopStyle, (value) => value === "none");
-  put("borderRadius", style.borderTopLeftRadius, (value) => value === "0px");
+  put("borderRadius", style.borderTopLeftRadius);
   put("fontSize", style.fontSize);
   put("fontWeight", style.fontWeight);
   put("lineHeight", style.lineHeight, (value) => value === "normal");

@@ -5,7 +5,6 @@ import {
   type NativeHandler,
 } from "@lingxia/elements";
 import {
-  assignNativeRef,
   bindNativeEvents,
   payloadListener,
   setOptionalAttribute,
@@ -22,7 +21,6 @@ export interface LxNativeRootHandle {
 }
 
 export interface LxNativeRootProps extends LxNativeNodeProps {
-  fullscreenScope?: "root" | "none";
   fallback?: React.ReactNode;
   onReady?: NativeHandler<Record<string, never>>;
   onError?: NativeHandler<NativeError>;
@@ -37,8 +35,6 @@ export const LxNativeRoot = forwardRef<LxNativeRootHandle, LxNativeRootProps>(
       style,
       pointerEvents,
       hidden,
-      hiddenTransition,
-      fullscreenScope = "root",
       fallback,
       onReady,
       onError,
@@ -73,8 +69,7 @@ export const LxNativeRoot = forwardRef<LxNativeRootHandle, LxNativeRootProps>(
     const setRef = useCallback((element: HTMLElement | null) => {
       boundRef.current = bindNativeEvents(boundRef.current, element, listeners.current);
       elementRef.current = element;
-      assignNativeRef(ref, element as unknown as LxNativeRootHandle);
-    }, [ref]);
+    }, []);
 
     useEffect(
       () => () => {
@@ -95,8 +90,6 @@ export const LxNativeRoot = forwardRef<LxNativeRootHandle, LxNativeRootProps>(
       if (!el) return;
       setOptionalAttribute(el, "automation-id", automationId);
       setOptionalAttribute(el, "pointer-events", pointerEvents);
-      setOptionalAttribute(el, "hidden-transition", hiddenTransition);
-      setOptionalAttribute(el, "fullscreen-scope", fullscreenScope);
       setOptionalAttribute(el, "aria-label", aria["aria-label"]);
       setOptionalAttribute(el, "aria-description", aria["aria-description"]);
       if (aria["aria-hidden"] === undefined) {
@@ -107,8 +100,6 @@ export const LxNativeRoot = forwardRef<LxNativeRootHandle, LxNativeRootProps>(
     }, [
       automationId,
       pointerEvents,
-      hiddenTransition,
-      fullscreenScope,
       aria["aria-label"],
       aria["aria-description"],
       aria["aria-hidden"],

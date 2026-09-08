@@ -31,7 +31,6 @@ export const LxNativeText = forwardRef<HTMLElement, LxNativeTextProps>(
       style,
       pointerEvents,
       hidden,
-      hiddenTransition,
       maxLines,
       dir,
       fontSize,
@@ -58,7 +57,6 @@ export const LxNativeText = forwardRef<HTMLElement, LxNativeTextProps>(
       if (!el) return;
       setOptionalAttribute(el, "automation-id", automationId);
       setOptionalAttribute(el, "pointer-events", pointerEvents);
-      setOptionalAttribute(el, "hidden-transition", hiddenTransition);
       setOptionalAttribute(el, "max-lines", maxLines);
       setOptionalAttribute(el, "dir", dir);
       setOptionalAttribute(el, "font-size", fontSize);
@@ -70,7 +68,6 @@ export const LxNativeText = forwardRef<HTMLElement, LxNativeTextProps>(
     }, [
       automationId,
       pointerEvents,
-      hiddenTransition,
       maxLines,
       dir,
       fontSize,

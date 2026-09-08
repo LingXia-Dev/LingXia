@@ -37,12 +37,6 @@ export function buildRootCommit(
   const prevIndex = previous ? indexIdentified(previous) : new Map<string, IdentifiedNode>();
   const nextIndex = indexIdentified(next);
 
-  for (const [key, prev] of prevIndex) {
-    if (!nextIndex.has(key)) {
-      operations.push({ op: "unmount", node: prev.nodeRef });
-    }
-  }
-
   walkMounts(next.children, prevIndex, operations);
 
   for (const [key, current] of nextIndex) {
@@ -63,6 +57,14 @@ export function buildRootCommit(
       operations.push({ op: "update", node: current.nodeRef, patch });
     }
   }
+
+  // Retained children must leave removed parents before the host cascades unmount.
+  for (const [key, prev] of prevIndex) {
+    if (!nextIndex.has(key)) {
+      operations.push({ op: "unmount", node: prev.nodeRef });
+    }
+  }
+
 
   return {
     action: "root.commit",

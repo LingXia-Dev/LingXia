@@ -67,10 +67,6 @@ export const NATIVE_ACTION_ICONS = [
 
 export const POINTER_EVENTS_VALUES = ["auto", "none", "box-only", "box-none"] as const;
 
-export const HIDDEN_TRANSITION_VALUES = ["none", "fade"] as const;
-
-export const FULLSCREEN_SCOPE_VALUES = ["root", "none"] as const;
-
 export const COVER_SCRIM_VALUES = ["none", "top", "bottom", "full"] as const;
 
 export const STRUCTURE_ROLE_VALUES = [
@@ -211,8 +207,6 @@ export const INLINE_NATIVE_SCHEMA = {
   tagToAuthorComponent: TAG_TO_AUTHOR_COMPONENT,
   nativeActionIcons: NATIVE_ACTION_ICONS,
   pointerEvents: POINTER_EVENTS_VALUES,
-  hiddenTransition: HIDDEN_TRANSITION_VALUES,
-  fullscreenScope: FULLSCREEN_SCOPE_VALUES,
   coverScrim: COVER_SCRIM_VALUES,
   structureRoles: STRUCTURE_ROLE_VALUES,
   buttonIntent: BUTTON_INTENT_VALUES,

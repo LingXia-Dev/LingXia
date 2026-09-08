@@ -55,7 +55,6 @@ const render = () => h('lx-native-button', {
   tabindex: props.tabIndex,
   'pointer-events': props.pointerEvents,
   hidden: props.hidden,
-  'hidden-transition': props.hiddenTransition,
 }, slots.default?.());
 </script>
 

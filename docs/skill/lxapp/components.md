@@ -147,7 +147,9 @@ cannot leave a stale video surface or an invisible touch-blocking overlay behind
 
 **Scrolling:** layout snapshots use unscrolled document CSS coordinates plus the
 current page viewport offset. The host moves native visuals with top-level and
-nested scrolling, and removes fully offscreen nodes from paint and hit testing.
+nested scrolling, clips partially visible nodes against overflow containers inside
+and outside Root, and removes fully offscreen nodes from paint and hit testing.
+Clipping preserves the original video dimensions; it does not resize the picture.
 
 Cover and Button are author recipes: they expand to `view` / `tappable` before the host commit. Host factories are only `root`, `view`, `text`, `tappable`, and `video`. `LxPicker` / `LxMediaSwiper` / `LxNavigator` stay on the presenter overlay channel.
 
@@ -182,7 +184,23 @@ part of the supported contract yet.
 Buttons measure their label/icon and have an inline-flex default layout; explicit
 CSS sizing and layout override it. Text typography props participate in DOM
 measurement, with author CSS taking precedence. Inherited font/color styles are
-resolved before sending nodes to native rendering.
+resolved before sending nodes to native rendering. CSSOM updates, pseudo-classes
+and media-query paint changes are observed even when geometry is unchanged.
+Browser-supported colors (including `oklch()` and Display P3) are converted to sRGB
+for native rendering. Ancestor opacity multiplies each native node's opacity;
+this is per-node alpha, not an offscreen group-compositing operation.
+Once active, Root suppresses the measurement DOM's paint so translucent native
+content is not drawn a second time underneath; DOM layout remains available.
+
+Use stable `id` values when retaining nodes across a change of parent. Sorting and
+updating props in the same render preserves node identity and event routing.
+React Root refs expose only `{ retry, getLayout }`, including callback refs.
+
+Fullscreen is owned by `LxVideo`: its controls and `lx.createVideoContext(id)`
+control the player. Custom Root siblings do not move into the player's fullscreen
+window. Root-wide `fullscreenScope` and animated `hiddenTransition` are not
+supported APIs; author attributes with those names are rejected. Visibility
+changes are immediate.
 
 The cross-platform Button event is `onPress` (`@press` in Vue). Focus/hover and
 Root pointer-within callbacks are not public framework APIs yet: host support

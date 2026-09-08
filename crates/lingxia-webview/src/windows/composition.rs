@@ -607,6 +607,7 @@ mod tests {
         queue_island_visuals(
             "test-island-queue",
             vec![IslandVisualSpec {
+                clip: None,
                 id: "lx-video-1".into(),
                 kind: "video".into(),
                 offset_x: 8.0,

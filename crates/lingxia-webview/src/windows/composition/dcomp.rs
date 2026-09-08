@@ -357,6 +357,7 @@ impl DcompTree {
                     frame.dest_width,
                     frame.dest_height,
                 )?;
+                self.apply_island_clip(&visual, width, height, frame.clip)?;
                 // Timer path, not WebMessageReceived — present the new bits.
                 unsafe {
                     self.device
@@ -367,6 +368,7 @@ impl DcompTree {
             }
         }
         let spec = IslandVisualSpec {
+            clip: frame.clip,
             id: frame.id.clone(),
             kind: "video".into(),
             offset_x: frame.offset_x,
@@ -470,6 +472,29 @@ impl DcompTree {
         Ok(())
     }
 
+    fn apply_island_clip(
+        &self,
+        visual: &IDCompositionVisual2,
+        width: i32,
+        height: i32,
+        edges: Option<[f32; 4]>,
+    ) -> StdResult<()> {
+        let [left, top, right, bottom] = edges.unwrap_or([0.0, 0.0, 1.0, 1.0]);
+        unsafe {
+            let clip = self
+                .device
+                .CreateRectangleClip()
+                .map_err(|err| dcomp_error("island clip", err))?;
+            clip.SetLeft2(left * width as f32)
+                .and_then(|_| clip.SetTop2(top * height as f32))
+                .and_then(|_| clip.SetRight2(right * width as f32))
+                .and_then(|_| clip.SetBottom2(bottom * height as f32))
+                .and_then(|_| visual.SetClip(&clip))
+                .map_err(|err| dcomp_error("island clip bounds", err))?;
+        }
+        Ok(())
+    }
+
     fn upsert_island_visual(&mut self, spec: &IslandVisualSpec) -> StdResult<()> {
         let width = spec.width.max(1);
         let height = spec.height.max(1);
@@ -497,6 +522,9 @@ impl DcompTree {
                     spec.dest_height,
                 )?;
             }
+            if let Some(slot) = self.island.get(&spec.id) {
+                self.apply_island_clip(&slot.visual, width, height, spec.clip)?;
+            }
             return Ok(());
         }
         if let Some(previous) = self.island.remove(&spec.id) {
@@ -520,6 +548,7 @@ impl DcompTree {
                 .map_err(|err| dcomp_error("island offset", err))?;
         }
         self.apply_island_scale(&visual, width, height, spec.dest_width, spec.dest_height)?;
+        self.apply_island_clip(&visual, width, height, spec.clip)?;
         self.island.insert(
             spec.id.clone(),
             IslandVisual {
@@ -539,6 +568,8 @@ impl DcompTree {
 /// One island node to attach above the WebView visual.
 #[derive(Debug, Clone)]
 pub struct IslandVisualSpec {
+    /// Local clip edges as fractions of the uncut visual dimensions.
+    pub clip: Option<[f32; 4]>,
     pub id: String,
     pub kind: String,
     pub offset_x: f32,
@@ -562,6 +593,7 @@ pub struct IslandVisualSpec {
 /// A decoded video frame to blit onto an existing island visual.
 #[derive(Debug, Clone)]
 pub struct IslandVideoFrame {
+    pub clip: Option<[f32; 4]>,
     pub id: String,
     pub offset_x: f32,
     pub offset_y: f32,

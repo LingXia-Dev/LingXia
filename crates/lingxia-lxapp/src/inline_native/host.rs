@@ -179,6 +179,41 @@ impl IslandSession {
         })
     }
 
+    pub fn clipped_rect_for_node(&self, node: &IslandPaintNode) -> Rect {
+        let rect = self.paint_rect_for_node(node);
+        self.geometry_for_root(&node.node_ref.root())
+            .and_then(|snapshot| {
+                snapshot
+                    .nodes
+                    .iter()
+                    .find(|entry| entry.node_ref == node.node_ref)
+            })
+            .map(|entry| {
+                entry.clip_stack.iter().fold(rect.clone(), |visible, raw| {
+                    let clip = serde_json::from_value::<Rect>(raw.clone()).unwrap_or(Rect {
+                        x: 0.0,
+                        y: 0.0,
+                        width: 0.0,
+                        height: 0.0,
+                    });
+                    visible.intersection(&clip)
+                })
+            })
+            .unwrap_or(rect)
+    }
+
+    fn clipped_props_for_node(&self, node: &IslandPaintNode) -> Value {
+        let mut props = node.props.clone();
+        if let Some(props) = props.as_object_mut() {
+            props.insert(
+                "__nativeClipRect".into(),
+                serde_json::to_value(self.clipped_rect_for_node(node))
+                    .expect("finite native geometry"),
+            );
+        }
+        props
+    }
+
     fn last_root_content_rect(&self, node: &NodeRef) -> Option<Rect> {
         self.geometry_for_root(&node.root()).and_then(|snapshot| {
             snapshot
@@ -404,7 +439,12 @@ impl IslandSession {
                 .clone()
                 .unwrap_or_else(|| node.node_ref.node_key.clone());
             let rect = self.paint_rect_for_node(&node);
-            compositor.attach_above_webview(&id, &node.kind, &rect, &node.props);
+            compositor.attach_above_webview(
+                &id,
+                &node.kind,
+                &rect,
+                &self.clipped_props_for_node(&node),
+            );
         }
     }
 
@@ -433,7 +473,7 @@ impl IslandSession {
             .composition_nodes()
             .into_iter()
             .find(|node| node.author_id.as_deref() == Some(id) || node.node_ref.node_key == id)?;
-        Some(node.props)
+        Some(self.clipped_props_for_node(&node))
     }
 
     pub fn hit_targets(&self) -> Vec<IslandHitTarget> {
@@ -444,7 +484,7 @@ impl IslandSession {
                     .author_id
                     .clone()
                     .unwrap_or_else(|| node.node_ref.node_key.clone());
-                let rect = self.paint_rect_for_node(&node);
+                let rect = self.clipped_rect_for_node(&node);
                 let visible = self.last_node_visible(&node.node_ref);
                 IslandHitTarget {
                     id,

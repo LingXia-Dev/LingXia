@@ -17,7 +17,6 @@ export interface LxNativeNodeProps {
   style?: NativeStyle;
   pointerEvents?: "auto" | "none" | "box-only" | "box-none";
   hidden?: boolean;
-  hiddenTransition?: "none" | "fade";
   "aria-label"?: string;
   "aria-description"?: string;
   "aria-hidden"?: boolean;

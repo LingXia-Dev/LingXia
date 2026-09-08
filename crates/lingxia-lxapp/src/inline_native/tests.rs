@@ -1277,3 +1277,65 @@ fn unmounting_a_parent_and_its_child_in_one_commit_is_applied() {
     assert!(state.nodes.is_empty());
     assert_ne!(state.lifecycle, RootLifecycle::Failed);
 }
+
+#[test]
+fn javascript_commit_contracts_apply_without_losing_nodes() {
+    let fixtures: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../packages/lingxia-elements/tests/fixtures/inline-native-commits.json"
+    ))
+    .unwrap();
+    for fixture in fixtures.as_array().unwrap() {
+        let mut registry = RootRegistry::new(HostCapabilities::default());
+        let mut final_root = None;
+        for raw in fixture["commits"].as_array().unwrap() {
+            let commit: NativeRootCommit = serde_json::from_value(raw.clone()).unwrap();
+            let outcome = apply_root_commit(&mut registry, &commit);
+            assert!(
+                matches!(outcome, ApplyCommitOutcome::Applied(_)),
+                "{}: {:?}",
+                fixture["name"],
+                outcome
+            );
+            final_root = Some(commit.root);
+        }
+        let state = registry.get(&final_root.unwrap()).unwrap();
+        assert_eq!(
+            state.nodes.len(),
+            fixture["nodes"].as_array().unwrap().len()
+        );
+        for expected in fixture["nodes"].as_array().unwrap() {
+            let actual = &state.nodes[expected["key"].as_str().unwrap()];
+            assert_eq!(actual.parent_key.as_deref(), expected["parent"].as_str());
+            assert_eq!(actual.order as u64, expected["order"].as_u64().unwrap());
+            assert_eq!(actual.kind, expected["kind"].as_str().unwrap());
+            assert_eq!(actual.props, expected["props"]);
+        }
+    }
+}
+
+#[test]
+fn partial_clipping_preserves_content_but_limits_paint_and_hit_regions() {
+    let root = root();
+    let mut session = IslandSession::default();
+    assert!(matches!(session.apply_commit(commit(&root, 0, 1, vec![mount(&root, "play", "tappable", None, 0)])), ApplyCommitOutcome::Applied(_)));
+    activate_lease(&mut session, &root);
+    let snapshot: NativeGeometrySnapshot = serde_json::from_value(serde_json::json!({
+        "action": "geometry.snapshot", "surfaceInstanceId": root.surface_instance_id,
+        "pageInstanceId": root.page_instance_id, "documentInstanceId": root.document_instance_id,
+        "revision": 1, "coordinateSpace": "page-unscrolled-css-px",
+        "roots": [{"ref": root, "basisTreeRevision": 1, "rootOrder": 0, "chainKey": "page", "visible": true,
+            "contentRect": {"x": 10, "y": 20, "width": 200, "height": 180}}],
+        "nodes": [{"ref": node(&root, "play", 1), "chainKey": "page", "visible": true,
+            "contentRect": {"x": 10, "y": 20, "width": 160, "height": 120},
+            "clipStack": [{"x": 10, "y": 20, "width": 200, "height": 80}, {"x": 0, "y": 30, "width": 240, "height": 40}]}],
+        "chains": [{"chainKey": "page", "ancestors": []}]
+    })).unwrap();
+    session.apply_geometry(snapshot);
+    let nodes = session.composition_nodes();
+    assert_eq!(session.paint_rect_for_node(&nodes[0]).height, 120.0);
+    assert_eq!(session.clipped_rect_for_node(&nodes[0]), Rect { x: 10.0, y: 30.0, width: 160.0, height: 40.0 });
+    let targets = session.hit_targets();
+    assert!(matches!(hit_test_island(&targets, 20.0, 25.0), IslandHit::Miss));
+    assert!(!matches!(hit_test_island(&targets, 20.0, 45.0), IslandHit::Miss));
+    assert_eq!(session.paint_props_for("play").unwrap()["__nativeClipRect"]["height"], 40.0);
+}

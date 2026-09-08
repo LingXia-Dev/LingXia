@@ -14,11 +14,64 @@ const layoutProperties = new Set([
   "transform", "translate", "rotate", "scale", "perspective", "clipPath", "maskImage",
 ]);
 
+export const OBSERVED_STYLE_FIELDS = [
+  ...Object.keys(unsupportedDefaults), "display", "visibility", "opacity", "overflowX", "overflowY",
+  "color", "backgroundColor", "accentColor", "fontSize", "fontWeight", "lineHeight", "textAlign", "direction",
+  ...["Top", "Right", "Bottom", "Left"].flatMap(side => ["Width", "Style", "Color"].map(suffix => `border${side}${suffix}`)),
+  "borderTopLeftRadius", "borderTopRightRadius", "borderBottomLeftRadius", "borderBottomRightRadius",
+];
+
+/** Native nodes are flat siblings, so each receives its cumulative alpha. */
+export function effectiveOpacity(element: Element): number {
+  let opacity = 1;
+  for (let node: Element | null = element; node; node = node.parentElement) {
+    opacity *= Number(node.ownerDocument.defaultView?.getComputedStyle(node).opacity ?? 1);
+  }
+  return opacity;
+}
+
+const colorContexts = new WeakMap<Document, CanvasRenderingContext2D>();
+const colors = new Map<string, string>();
+
+/** Canvas resolves browser-supported CSS colors into the hosts' sRGB wire format. */
+export function normalizeNativeColor(document: Document, value: string): string | undefined {
+  if (/^rgba?\([\d.,\s]+\)$/.test(value) || /^#[\da-f]{6}([\da-f]{2})?$/i.test(value)) return value;
+  const cached = colors.get(value);
+  if (cached) return cached;
+  let context = colorContexts.get(document);
+  if (!context) {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    context = canvas.getContext("2d", { willReadFrequently: true, colorSpace: "srgb" }) ?? undefined;
+    if (!context) return undefined;
+    colorContexts.set(document, context);
+  }
+  context.fillStyle = "#010203";
+  context.fillStyle = value;
+  const first = context.fillStyle;
+  context.fillStyle = "#040506";
+  context.fillStyle = value;
+  if (context.fillStyle !== first) return undefined;
+  context.clearRect(0, 0, 1, 1);
+  context.fillRect(0, 0, 1, 1);
+  const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+  const result = `rgba(${r}, ${g}, ${b}, ${a / 255})`;
+  if (colors.size >= 256) colors.clear();
+  colors.set(value, result);
+  return result;
+}
+
 export function collectNativeStyleIssues(element: Element): NonNullable<AuthorNode["styleIssues"]> {
   const view = element.ownerDocument?.defaultView;
   if (!view?.getComputedStyle) return [];
   const style = view.getComputedStyle(element);
   const issues: NonNullable<AuthorNode["styleIssues"]> = [];
+  for (const property of ["color", "backgroundColor", "borderTopColor", "accentColor"] as const) {
+    const value = style[property];
+    if (value && value !== "auto" && !normalizeNativeColor(element.ownerDocument, value)) {
+      issues.push({ property, value, layout: false });
+    }
+  }
   for (const [property, defaults] of Object.entries(unsupportedDefaults)) {
     const value = String(style[property as keyof CSSStyleDeclaration] ?? "").trim();
     if (!value || defaults.includes(value)) continue;

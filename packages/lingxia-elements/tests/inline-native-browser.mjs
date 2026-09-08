@@ -1,69 +1,7 @@
-import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
-import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-const chrome = process.env.CHROME_BIN ?? [
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  '/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser',
-  `${process.env.PROGRAMFILES}/Google/Chrome/Application/chrome.exe`,
-].find(existsSync);
-assert.ok(chrome, 'Set CHROME_BIN to run the native component browser regression tests');
-const rootDir = fileURLToPath(new URL('../', import.meta.url));
-const profile = await mkdtemp(path.join(tmpdir(), 'lingxia-native-browser-'));
-const server = createServer(async (req, res) => {
-  try {
-    if (req.url === '/') { res.setHeader('Content-Type', 'text/html'); res.end('<!doctype html><body></body>'); return; }
-    const filename = path.resolve(rootDir, '.' + new URL(req.url, 'http://localhost').pathname);
-    if (!filename.startsWith(rootDir)) { res.writeHead(403).end(); return; }
-    res.setHeader('Content-Type', 'text/javascript');
-    res.end(await readFile(filename));
-  } catch { res.writeHead(404).end(); }
-});
-await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-const child = spawn(chrome, ['--headless', '--no-sandbox', '--disable-gpu', '--disable-background-networking',
-  '--no-first-run', `--user-data-dir=${profile}`, '--remote-debugging-port=0', 'about:blank'], { stdio: 'ignore' });
-let ws;
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-try {
-  let port;
-  for (let i = 0; i < 100; i++) {
-    try { port = Number((await readFile(path.join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0]); break; } catch { await sleep(100); }
-  }
-  assert.ok(port, 'Chrome did not start');
-  const pages = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
-  ws = new WebSocket(pages.find(page => page.type === 'page').webSocketDebuggerUrl);
-  await new Promise(resolve => ws.addEventListener('open', resolve, { once: true }));
-  let id = 0;
-  const pending = new Map();
-  ws.addEventListener('message', ({ data }) => {
-    const message = JSON.parse(data);
-    if (message.id) { pending.get(message.id)?.(message); pending.delete(message.id); }
-  });
-  const send = (method, params = {}) => new Promise((resolve, reject) => {
-    const key = ++id;
-    const timeout = setTimeout(() => { pending.delete(key); reject(Error(`CDP timeout: ${method}`)); }, 15000);
-    pending.set(key, message => { clearTimeout(timeout); resolve(message); });
-    ws.send(JSON.stringify({ id: key, method, params }));
-  });
-  await send('Page.navigate', { url: `http://127.0.0.1:${server.address().port}` });
-  await sleep(100);
-  const result = await send('Runtime.evaluate', { expression: `(${exercise.toString()})()`, awaitPromise: true, returnByValue: true });
-  assert.equal(result.result?.exceptionDetails, undefined, JSON.stringify(result.result?.exceptionDetails));
-  assert.ok(result.result?.result?.value?.passed >= 20, JSON.stringify(result));
-  console.log(`Native browser regressions: ${result.result.result.value.passed} passed`);
-} finally {
-  ws?.close();
-  child.kill();
-  await new Promise(resolve => child.exitCode !== null ? resolve() : child.once('exit', resolve));
-  server.closeAllConnections();
-  await new Promise(resolve => server.close(resolve));
-  await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-}
+import { runBrowser } from './browser-harness.mjs';
+const result = await runBrowser(fileURLToPath(new URL('../', import.meta.url)), exercise);
+console.log(`Native browser regressions: ${result.passed} passed`);
 
 async function exercise() {
   const { registerInlineNativeAuthorComponents } = await import('/dist/inline-native/elements.js');
@@ -104,6 +42,8 @@ async function exercise() {
   host({ action: 'root.leaseGranted', leaseId: 'lease', sequence: 1, leaseDurationMs: 8000 });
   host({ action: 'root.leaseActive' });
   check(ready === 1 && fallback.hidden, 'activation hides fallback and emits ready');
+  check(getComputedStyle(root).opacity === '0', 'active measurement DOM does not duplicate native paint');
+  check(root.compileNow().root.props.nativeStyle.opacity !== '0', 'paint suppression never enters native props');
   host({ action: 'root.applied' }); host({ action: 'root.applied' }); host({ action: 'root.leaseActive' });
   check(ready === 1, 'commit acknowledgements and duplicate activation do not repeat ready');
   await settle();
@@ -150,5 +90,37 @@ async function exercise() {
   check(!handlers.has('renamed') && !handlers.has(rootMessage.id), 'disconnect unregisters native handlers');
   const count = messages.length; button.label = 'Detached'; await settle();
   check(messages.length === count, 'disconnected root does not publish layout');
+
+  const scroller = document.createElement('div');
+  scroller.style.cssText = 'height:40px;width:240px;overflow:hidden';
+  const clippedRoot = document.createElement('lx-native-root');
+  clippedRoot.style.cssText = 'display:block;height:180px;width:240px';
+  const group = document.createElement('lx-native-view');
+  group.style.cssText = 'display:block;height:80px;width:200px;overflow:hidden;opacity:0';
+  const child = document.createElement('lx-native-button'); child.id = 'clip-child'; child.label = 'Play';
+  child.style.cssText = 'height:120px;width:160px';
+  group.append(child); clippedRoot.append(group); scroller.append(clippedRoot); document.body.append(scroller);
+  await settle();
+  const geometry = () => messages.filter(message => message.action === 'geometry.snapshot').at(-1);
+  const childProps = () => clippedRoot.lastCompileResult().root.children[0].children[0].props;
+  check(geometry().nodes.every(node => !node.visible), 'zero parent opacity hides all native descendants');
+  check(childProps().nativeStyle.opacity === '0', 'zero parent opacity reaches child paint');
+  group.style.opacity = '0.5'; child.style.opacity = '0.5'; await settle();
+  check(childProps().nativeStyle.opacity === '0.25', 'nested opacity is multiplied');
+  const clips = geometry().nodes[1].clipStack;
+  check(clips.some(clip => clip.height === 40) && clips.some(clip => clip.height === 80), 'clip stack includes overflow inside and outside Root');
+  check(geometry().nodes[1].contentRect.height === 120, 'clipping preserves uncut content size');
+  scroller.style.overflow = 'visible'; await settle();
+  check(!geometry().nodes[1].clipStack.some(clip => clip.height === 40), 'removing ancestor overflow releases its clip');
+  const sheet = document.createElement('style'); sheet.textContent = '#clip-child { color: rgb(0, 0, 255); }';
+  document.head.append(sheet); await settle();
+  sheet.sheet.insertRule('#clip-child { color: rgb(255, 0, 0); }', 1); await settle();
+  check(childProps().nativeStyle.color === 'rgb(255, 0, 0)', 'CSSOM paint changes publish without DOM mutations');
+  child.style.color = 'oklch(60% 0.2 30)'; await settle();
+  check(/^rgba?\(/.test(childProps().nativeStyle.color), 'modern CSS color is normalized to host sRGB');
+  check(clippedRoot.lastCompileResult().diagnostics.length === 0, 'normalized CSS colors need no unsupported diagnostic');
+  clippedRoot.setAttribute('fullscreen-scope', 'root'); await settle();
+  check(clippedRoot.lastCompileResult().error?.code === 'NATIVE_COMPONENT_INVALID_PROPS', 'unsupported fullscreen scope is rejected explicitly');
+  scroller.remove(); sheet.remove(); await settle();
   return { passed };
 }

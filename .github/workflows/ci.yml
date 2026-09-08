@@ -1349,7 +1349,9 @@ jobs:
 
       - name: Test native component browser layout and lifecycle
         working-directory: packages
-        run: npm run test:browser --workspace @lingxia/elements
+        run: |
+          npm run test:browser --workspace @lingxia/elements
+          npm run test:browser --workspace @lingxia/react
 
   # The release scripts have their own tests but no change signal of their own:
   # they used to ride on the showcase automation job, which a release-plumbing

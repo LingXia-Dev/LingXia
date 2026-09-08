@@ -233,6 +233,7 @@ struct IslandTappableNode {
 
   build() {
     Button(this.label())
+      .opacity(Math.max(0, Math.min(1, this.styleNumber('opacity', 1))))
       .width('100%')
       .height('100%')
       .id(this.automationId())

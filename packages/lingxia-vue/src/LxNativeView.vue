@@ -22,7 +22,6 @@ const render = () => h('lx-native-view', {
   'automation-id': props.automationId,
   'pointer-events': props.pointerEvents,
   hidden: props.hidden,
-  'hidden-transition': props.hiddenTransition,
   role: props.role,
 }, slots.default?.());
 </script>

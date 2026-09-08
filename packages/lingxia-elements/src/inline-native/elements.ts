@@ -15,6 +15,7 @@ import {
 } from "./runtime.js";
 import { isFallbackElement } from "./structure.js";
 import { applyIslandHostEvent } from "./events.js";
+import { effectiveOpacity } from "./style.js";
 import { observeNativeLayout } from "./layout.js";
 import { ensureComponentId } from "../component.js";
 import {
@@ -64,7 +65,6 @@ class LxNativeBaseElement extends HTMLElement {
       "id",
       "automation-id",
       "hidden",
-      "hidden-transition",
       "pointer-events",
       "aria-label",
       "aria-description",
@@ -91,18 +91,11 @@ class LxNativeBaseElement extends HTMLElement {
   set pointerEvents(value: string | null | undefined) {
     reflectString(this, "pointer-events", value);
   }
-
-  get hiddenTransition(): string | null {
-    return this.getAttribute("hidden-transition");
-  }
-  set hiddenTransition(value: string | null | undefined) {
-    reflectString(this, "hidden-transition", value);
-  }
 }
 
 export class LxNativeRootElement extends LxNativeBaseElement {
   static get observedAttributes(): string[] {
-    return [...LxNativeBaseElement.observedAttributes, "fullscreen-scope"];
+    return LxNativeBaseElement.observedAttributes;
   }
 
   private pending: PendingCompile = { frame: null, timer: null };
@@ -118,13 +111,6 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   private unregisterHost?: () => void;
   private fallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
-  get fullscreenScope(): string {
-    return this.getAttribute("fullscreen-scope") ?? "root";
-  }
-  set fullscreenScope(value: string | null | undefined) {
-    reflectString(this, "fullscreen-scope", value ?? "root");
-  }
-
   lastCompileResult(): CompileInlineNativeResult | null {
     return this.lastResult;
   }
@@ -135,6 +121,10 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   }
 
   connectedCallback(): void {
+    if (!this.shadowRoot) {
+      const shadow = this.attachShadow({ mode: "open" });
+      shadow.innerHTML = '<style>:host([data-lx-native-paint-hidden]:not([data-lx-native-measuring])) { opacity: 0 !important; }</style><slot></slot>';
+    }
     this.style.display = this.style.display || "block";
     this.style.position = this.style.position || "relative";
     this.unregisterHost = registerNativeComponentHandler(this.rootKey, (message) => {
@@ -149,7 +139,9 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     });
     this.updateFallbackVisibility(true);
     sendNativeComponentMessage({ id: this.rootKey, action: "component.ready" });
-    this.observer = new MutationObserver(() => {
+    this.observer = new MutationObserver((records) => {
+      if (records.every(record => record.target === this &&
+          ["data-lx-native-measuring", "data-lx-native-paint-hidden"].includes(record.attributeName ?? ""))) return;
       this.syncResizeObservation();
       this.scheduleCompile();
     });
@@ -245,8 +237,18 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   }
 
   compileNow(): CompileInlineNativeResult {
+    // Measure author CSS synchronously, then suppress its duplicate paint before the browser frame.
+    const measuring = this.hasAttribute("data-lx-native-measuring");
+    this.setAttribute("data-lx-native-measuring", "");
+    try {
+      return this.compileMeasured();
+    } finally {
+      if (!measuring) this.removeAttribute("data-lx-native-measuring");
+    }
+  }
+
+  private compileMeasured(): CompileInlineNativeResult {
     const author = collectAuthorTreeFromElement(this);
-    author.props = { ...(author.props ?? {}), fullscreenScope: this.fullscreenScope };
     const result = compileInlineNativeRoot(author, { rootRef: this.rootRef() });
     this.lastResult = result;
     const nextDiagnostics = new Set(result.diagnostics.map((diagnostic) => diagnostic.message));
@@ -363,6 +365,9 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   }
 
   private updateFallbackVisibility(show: boolean): void {
+    if (this.hasAttribute("data-lx-native-paint-hidden") === show) {
+      this.toggleAttribute("data-lx-native-paint-hidden", !show);
+    }
     for (const fallback of Array.from(this.querySelectorAll("[data-lx-native-fallback]"))) {
       if (fallback instanceof HTMLElement && fallback.closest("lx-native-root") === this) {
         if (fallback.hidden === show) fallback.hidden = !show;
@@ -525,7 +530,7 @@ export class LxNativeButtonElement extends LxNativeBaseElement {
       const style = document.createElement("style");
       style.textContent = `
         :host { display: inline-flex; box-sizing: border-box; align-items: center;
-          justify-content: center; gap: .4em; min-height: 32px; padding: 6px 12px; }
+          justify-content: center; gap: .4em; min-height: 32px; padding: 6px 12px; border-radius: 10px; }
         :host([hidden]:not([hidden="false"])) { display: none; }
         :host([size="compact"]) { min-height: 26px; padding: 4px 8px; }
         :host([icon-position="end"]) { flex-direction: row-reverse; }
@@ -680,7 +685,7 @@ function measureNativeNodeGeometry(root: Element): {
     const tag = child.tagName.toLowerCase();
     const id = ensureComponentId(child as HTMLElement, tag);
     const rect = elementContentRect(child);
-    const clips = overflowClipStack(child, root);
+    const clips = overflowClipStack(child);
     rects[id] = rect;
     visibility[id] = elementIsVisible(child) && clips.every((clip) => rectsIntersect(rect, clip));
     clipStacks[id] = clips;
@@ -697,7 +702,7 @@ function elementIsVisible(element: Element): boolean {
   const html = element as HTMLElement;
   if (typeof getComputedStyle !== "function") return true;
   const style = getComputedStyle(html);
-  if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) {
+  if (style.display === "none" || style.visibility === "hidden" || effectiveOpacity(element) === 0) {
     return false;
   }
   const rect = html.getBoundingClientRect();
@@ -709,17 +714,25 @@ function elementIsVisible(element: Element): boolean {
 }
 
 function overflowClipStack(
-  element: Element,
-  root: Element
+  element: Element
 ): Array<{ x: number; y: number; width: number; height: number }> {
   if (typeof getComputedStyle !== "function") return [];
   const clips: Array<{ x: number; y: number; width: number; height: number }> = [];
-  for (let ancestor = element.parentElement; ancestor && ancestor !== root.parentElement; ancestor = ancestor.parentElement) {
+  for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
     const style = getComputedStyle(ancestor);
     const clipsX = style.overflowX !== "visible";
     const clipsY = style.overflowY !== "visible";
-    if (clipsX || clipsY) clips.push(elementContentRect(ancestor));
-    if (ancestor === root) break;
+    if (clipsX || clipsY) {
+      const box = elementContentRect(ancestor);
+      const own = elementContentRect(element);
+      const html = ancestor as HTMLElement;
+      clips.push({
+        x: clipsX ? box.x + html.clientLeft : own.x,
+        y: clipsY ? box.y + html.clientTop : own.y,
+        width: clipsX ? html.clientWidth : own.width,
+        height: clipsY ? html.clientHeight : own.height,
+      });
+    }
   }
   return clips;
 }

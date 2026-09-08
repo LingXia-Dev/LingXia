@@ -30,6 +30,10 @@ assert.deepEqual(supported.diagnostics, []);
 assert.equal(supported.root.children[0].props.nativeStyle.backgroundColor, "rgb(10, 20, 30)");
 assert.equal(supported.root.children[0].props.nativeStyle.borderRadius, "8px");
 
+for (const corner of ["TopLeft", "TopRight", "BottomRight", "BottomLeft"]) style[`border${corner}Radius`] = "0px";
+assert.equal(collectAuthorTreeFromElement(element).props.nativeStyle.borderRadius, "0px",
+  "zero radius must override the native button recipe's rounded default");
+
 element.tagName = "LX-VIDEO";
 element.baseURI = "https://example.com/page/";
 element.getAttribute = (name) => name === "poster" ? "../poster.png" : null;

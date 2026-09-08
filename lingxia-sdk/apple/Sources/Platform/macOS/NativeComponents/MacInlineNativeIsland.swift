@@ -252,6 +252,7 @@ final class MacInlineNativeIsland {
                 width: max(cg(rect["width"]), 1),
                 height: max(cg(rect["height"]), 1)
             )
+            node.clipRect = NativeComponentClip.intersection(node.rect, clips: entry["clipStack"])
             node.visible = entry["visible"] as? Bool ?? true
             applyFrame(node)
         }
@@ -399,9 +400,18 @@ final class MacInlineNativeIsland {
         case "video":
             // The player retains this sink for its lifetime, so hold the node weakly.
             let authorId = item.authorId
-            let video = MacVideoComponent(id: authorId, initialProps: item.props) { [weak self] event in
+            let video = MacVideoComponent(id: authorId, initialProps: item.props) { [weak self, weak item] event in
                 guard let name = event["event"] as? String else { return }
                 let detail = event["detail"] as? [String: Any] ?? [:]
+                if name == "fullscreenchange", let item {
+                    if (detail["fullScreen"] as? Bool ?? detail["fullscreen"] as? Bool) == true {
+                        item.view.layer?.mask = nil
+                    } else {
+                        DispatchQueue.main.async { [weak self, weak item] in
+                            if let item { self?.applyFrame(item) }
+                        }
+                    }
+                }
                 self?.eventSink(authorId, name, detail)
             }
             video.mount(in: container)
@@ -620,6 +630,16 @@ final class MacInlineNativeIsland {
             item.view.frame = viewportRect
         }
         item.view.isHidden = !pageActive || !item.visible || item.rect.width <= 0 || item.rect.height <= 0
+        let localClip = item.clipRect?.offsetBy(dx: -textFittedRect(item).minX, dy: -textFittedRect(item).minY)
+        container.setClipRect(localClip, for: item.view)
+        if let localClip {
+            let mask = CAShapeLayer()
+            mask.path = CGPath(rect: localClip, transform: nil)
+            item.view.layer?.mask = mask
+            item.view.isHidden = item.view.isHidden || localClip.isEmpty
+        } else {
+            item.view.layer?.mask = nil
+        }
         item.scrim?.frame = item.view.bounds
     }
 
@@ -668,6 +688,7 @@ final class MacInlineNativeIsland {
         if node.video != nil {
             manager?.detachIslandVideo(id: node.authorId)
         }
+        container.setClipRect(nil, for: node.view)
         node.video?.unmount()
         node.view.removeFromSuperview()
     }
@@ -789,6 +810,7 @@ final class MacInlineNativeIsland {
         var button: NSButton?
         var scrim: CAGradientLayer?
         var rect: NSRect = .zero
+        var clipRect: CGRect?
         var visible = true
         var onPress: (() -> Void)?
 
@@ -819,6 +841,12 @@ final class MacInlineNativeIsland {
 }
 
 private final class IslandContainerView: NSView {
+    private var clipRects: [ObjectIdentifier: CGRect] = [:]
+
+    func setClipRect(_ rect: CGRect?, for view: NSView) {
+        clipRects[ObjectIdentifier(view)] = rect
+    }
+
     private var pointerEvents: [ObjectIdentifier: String] = [:]
 
     nonisolated override var isFlipped: Bool { true }
@@ -832,25 +860,22 @@ private final class IslandContainerView: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        if let button = subviews.reversed().compactMap({ $0 as? IslandButton }).first(where: { button in
-            guard button.hitSlop > 0, button.pointerEvents == "auto" || button.pointerEvents == "box-only" else {
-                return false
+        guard !isHidden, alphaValue > 0 else { return nil }
+        let localPoint = convert(point, from: superview)
+        guard bounds.contains(localPoint) else { return nil }
+        for child in subviews.reversed() {
+            guard !child.isHidden, child.alphaValue > 0 else { continue }
+            let mode = pointerEvents[ObjectIdentifier(child)] ?? "auto"
+            guard mode != "none", mode != "box-none" else { continue }
+            let local = convert(localPoint, to: child)
+            if let clip = clipRects[ObjectIdentifier(child)], !clip.contains(local) { continue }
+            if let button = child as? IslandButton, button.hitSlop > 0,
+               button.bounds.insetBy(dx: -button.hitSlop, dy: -button.hitSlop).contains(local) {
+                return button
             }
-            let local = convert(point, to: button)
-            return button.bounds.insetBy(dx: -button.hitSlop, dy: -button.hitSlop).contains(local)
-        }) {
-            return button
+            if let hit = child.hitTest(localPoint) { return mode == "box-only" ? child : hit }
         }
-        guard let hit = super.hitTest(point), hit !== self else { return nil }
-        var directChild = hit
-        while let parent = directChild.superview, parent !== self {
-            directChild = parent
-        }
-        switch pointerEvents[ObjectIdentifier(directChild)] ?? "auto" {
-        case "none", "box-none": return nil
-        case "box-only": return directChild
-        default: return hit
-        }
+        return nil
     }
 }
 

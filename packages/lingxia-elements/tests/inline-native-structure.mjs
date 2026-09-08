@@ -21,7 +21,7 @@ assert.equal(INLINE_NATIVE_SCHEMA.recipes.LxNativeButton.expandsTo, "tappable");
 const valid = compileInlineNativeRoot({
   type: "LxNativeRoot",
   authorId: "player",
-  props: { fullscreenScope: "root" },
+  props: {},
   children: [
     {
       type: "LxVideo",
@@ -214,3 +214,9 @@ assert.equal(htmlBooleanVideo.root.children[0].props.volume, 0.8);
 assert.deepEqual(htmlBooleanVideo.root.children[0].props.qualities, [
   { label: "HD", url: "https://cdn.example.com/hd.mp4" },
 ]);
+
+for (const key of ['fullscreenScope', 'hiddenTransition']) {
+  const removed = compileInlineNativeRoot({ type: 'LxNativeRoot', props: { [key]: 'root' }, children: [] });
+  assert.equal(removed.ok, false);
+  assert.equal(removed.error.code, 'NATIVE_COMPONENT_INVALID_PROPS');
+}

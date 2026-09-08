@@ -43,7 +43,6 @@ export const LxNativeButton = forwardRef<HTMLElement, LxNativeButtonProps>(
       style,
       pointerEvents,
       hidden,
-      hiddenTransition,
       label,
       icon,
       iconPosition,
@@ -92,7 +91,6 @@ export const LxNativeButton = forwardRef<HTMLElement, LxNativeButtonProps>(
       if (!el) return;
       setOptionalAttribute(el, "automation-id", automationId);
       setOptionalAttribute(el, "pointer-events", pointerEvents);
-      setOptionalAttribute(el, "hidden-transition", hiddenTransition);
       setOptionalAttribute(el, "label", label);
       setOptionalAttribute(el, "icon-position", iconPosition);
       setOptionalAttribute(el, "intent", intent);
@@ -111,7 +109,6 @@ export const LxNativeButton = forwardRef<HTMLElement, LxNativeButtonProps>(
     }, [
       automationId,
       pointerEvents,
-      hiddenTransition,
       label,
       icon,
       iconPosition,

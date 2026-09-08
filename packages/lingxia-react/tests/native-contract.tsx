@@ -27,3 +27,8 @@ void [video, button, view, oldEvent, resource, shadow, videoShadow, vueVideo, vu
 // @ts-expect-error Native focus is not a cross-platform framework event yet.
 const nativeFocus = <LxNativeButton onFocus={() => {}} label="Focus" />;
 void nativeFocus;
+
+// @ts-expect-error Root-wide fullscreen is not an implemented contract.
+<LxNativeRoot fullscreenScope="root" />;
+// @ts-expect-error Visibility transitions are not an implemented contract.
+<LxNativeRoot hiddenTransition="fade" />;
