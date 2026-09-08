@@ -483,17 +483,24 @@ final class LxAppTabBarOverflowPanel: NSView {
         paintPlate()
         addSubview(plate)
 
-        let rows = NSStackView()
-        rows.orientation = .vertical
-        rows.spacing = 0
-        rows.alignment = .width
-        rows.setHuggingPriority(.required, for: .vertical)
+        let rows = NSView()
         rows.translatesAutoresizingMaskIntoConstraints = false
         plate.addSubview(rows)
 
+        // NSStackView's gravity areas can shrink these rows to their fitting
+        // width. Pin every row to the plate so short rows keep all five slots.
+        var previousRow: NSView?
         for chunk in indices.chunked(into: Metrics.columns) {
-            rows.addArrangedSubview(buildRow(chunk, items: items, selectedIndex: selectedIndex))
+            let row = buildRow(chunk, items: items, selectedIndex: selectedIndex)
+            rows.addSubview(row)
+            NSLayoutConstraint.activate([
+                row.leadingAnchor.constraint(equalTo: rows.leadingAnchor),
+                row.trailingAnchor.constraint(equalTo: rows.trailingAnchor),
+                row.topAnchor.constraint(equalTo: previousRow?.bottomAnchor ?? rows.topAnchor)
+            ])
+            previousRow = row
         }
+        previousRow?.bottomAnchor.constraint(equalTo: rows.bottomAnchor).isActive = true
 
         NSLayoutConstraint.activate([
             rows.topAnchor.constraint(equalTo: plate.topAnchor, constant: scaled(Metrics.panelPadding)),
@@ -559,6 +566,7 @@ final class LxAppTabBarOverflowPanel: NSView {
     private func buildCell(index: Int, item: TabBarItem, selected: Bool) -> NSView {
         let cell = OverflowCellView()
         cell.translatesAutoresizingMaskIntoConstraints = false
+        cell.toolTip = item.text.toString()
         cell.heightAnchor.constraint(equalToConstant: scaled(Metrics.cellHeight)).isActive = true
         cell.onPick = { [weak self] in
             guard let self else { return }
