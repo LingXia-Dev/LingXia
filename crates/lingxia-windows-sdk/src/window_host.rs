@@ -994,6 +994,10 @@ fn present_webview_in_active_group_with_policy(
     mark_active(webtag);
     notify_webtag_visibility(webtag.key(), true);
     repaint_window_now(host);
+    let parked_parent = hwnd_from_handle(handler.native_view().window);
+    if parked_parent != host {
+        hide_duplicate_workspace_window(parked_parent);
+    }
     hide_other_workspace_windows(host);
     if presentation == GroupMainPresentation::Replace {
         clear_presented_group_main_for_host(host);
@@ -5369,26 +5373,41 @@ fn hide_other_workspace_windows(host: HWND) {
             continue;
         }
         // A parked page parent is never a legitimate separate window, however
-        // it is framed: whatever revealed it, converge it away here.
-        if is_separate_shell_window(hwnd) && !window_is_parked_page_parent(hwnd) {
+        // it is framed: whatever revealed it, converge it away here. An
+        // orphaned parent (no live webtag of its own) is the same silhouette
+        // leak — clicking a not-yet-created overflow tab used to leave it
+        // visible beside the workspace.
+        if is_separate_shell_window(hwnd)
+            && host_window_owner_is_live(hwnd)
+            && !window_is_parked_page_parent(hwnd)
+        {
             continue;
         }
         log::info!("hiding duplicate shell workspace window {:?}", hwnd.0);
-        unsafe {
-            let _ = WindowsAndMessaging::SetWindowPos(
-                hwnd,
-                None,
-                0,
-                0,
-                0,
-                0,
-                WindowsAndMessaging::SWP_NOMOVE
-                    | WindowsAndMessaging::SWP_NOSIZE
-                    | WindowsAndMessaging::SWP_NOZORDER
-                    | WindowsAndMessaging::SWP_NOACTIVATE
-                    | WindowsAndMessaging::SWP_HIDEWINDOW,
-            );
-        }
+        hide_duplicate_workspace_window(hwnd);
+    }
+}
+
+fn hide_duplicate_workspace_window(hwnd: HWND) {
+    if hwnd.0.is_null() || !is_window_handle_valid(hwnd_handle(hwnd)) {
+        return;
+    }
+    #[cfg(feature = "device-frame")]
+    crate::device_frame::hide_window_device_frame(hwnd_handle(hwnd));
+    unsafe {
+        let _ = WindowsAndMessaging::SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            WindowsAndMessaging::SWP_NOMOVE
+                | WindowsAndMessaging::SWP_NOSIZE
+                | WindowsAndMessaging::SWP_NOZORDER
+                | WindowsAndMessaging::SWP_NOACTIVATE
+                | WindowsAndMessaging::SWP_HIDEWINDOW,
+        );
     }
 }
 
