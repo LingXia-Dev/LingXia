@@ -177,7 +177,7 @@ pub(super) fn shell_palette() -> ShellPalette {
     if super::theme::is_high_contrast() {
         return high_contrast_shell_palette(super::theme::system_colors());
     }
-    let dark = super::theme::is_dark();
+    let dark = super::theme::chrome_is_dark();
     let style = lingxia_app_context::theme().and_then(|theme| theme.style(dark));
     palette_for(dark, super::theme::system_accent(), style)
 }
@@ -185,7 +185,7 @@ pub(super) fn shell_palette() -> ShellPalette {
 /// Hover wash (`0xAARRGGBB`) for interactive chrome; an alpha overlay reads
 /// correctly on any surface, including colored lxapp navigation bars.
 pub(super) fn hover_overlay() -> u32 {
-    if super::theme::is_dark() {
+    if super::theme::chrome_is_dark() {
         0x28ffffff
     } else {
         0x1f000000

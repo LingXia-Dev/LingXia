@@ -7,6 +7,12 @@ use crate::traits::ui::UIUpdate;
 
 type WindowsUiUpdateHandler = Arc<dyn Fn(String) + Send + Sync>;
 static WINDOWS_UI_UPDATE_HANDLER: Mutex<Option<WindowsUiUpdateHandler>> = Mutex::new(None);
+/// The shell repaints its own chrome when the product's light/dark setting
+/// moves. A plain host that draws no chrome registers nothing and the call is
+/// a no-op, exactly as it was before the setting existed.
+type WindowsHostColorModeHandler = Arc<dyn Fn() + Send + Sync>;
+static WINDOWS_HOST_COLOR_MODE_HANDLER: Mutex<Option<WindowsHostColorModeHandler>> =
+    Mutex::new(None);
 type WindowsHomeFirstReadyHandler = Arc<dyn Fn() + Send + Sync>;
 static WINDOWS_HOME_FIRST_READY_HANDLER: Mutex<Option<WindowsHomeFirstReadyHandler>> =
     Mutex::new(None);
@@ -33,6 +39,12 @@ pub fn set_windows_capsule_rect_provider(provider: WindowsCapsuleRectProvider) {
 
 pub fn set_windows_host_appearance_dark(dark: bool) {
     WINDOWS_HOST_APPEARANCE_DARK.store(dark, Ordering::Release);
+}
+
+pub fn set_windows_host_color_mode_handler(handler: WindowsHostColorModeHandler) {
+    if let Ok(mut slot) = WINDOWS_HOST_COLOR_MODE_HANDLER.lock() {
+        *slot = Some(handler);
+    }
 }
 
 pub fn set_windows_ui_update_handler(handler: WindowsUiUpdateHandler) {
@@ -123,9 +135,24 @@ impl UIUpdate for Platform {
     }
 
     fn host_appearance_dark(&self) -> bool {
+        // The system's answer. What the product renders in resolves the user's
+        // preference against this, and the shell reads that, not this.
+        //
         // Standard-tier hosts do not wire shell appearance notifications;
         // appearance:auto therefore remains light until shell chrome is enabled.
         WINDOWS_HOST_APPEARANCE_DARK.load(Ordering::Acquire)
+    }
+
+    fn set_host_color_mode(&self, _dark: Option<bool>) {
+        // The scheme itself is read back through `lxapp::host_appearance_dark`
+        // at paint time; this only tells the chrome that it moved.
+        let handler = WINDOWS_HOST_COLOR_MODE_HANDLER
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone());
+        if let Some(handler) = handler {
+            handler();
+        }
     }
 
     fn apply_lxapp_appearance(&self, appid: &str, dark: bool) -> Result<(), PlatformError> {

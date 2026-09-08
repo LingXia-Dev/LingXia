@@ -93,9 +93,20 @@ fn ensure_initialized() {
 }
 
 /// Whether Win11 apps are currently in dark mode.
+/// Whether the *system* is dark. Use it only where the OS is genuinely the
+/// question — a Runner resolving a simulated "follow system", say.
 pub(super) fn is_dark() -> bool {
     ensure_initialized();
     IS_DARK.load(Ordering::Relaxed)
+}
+
+/// The scheme the product's own chrome renders in: the user's light/dark
+/// setting where they pinned one, the system otherwise. Every colour the shell
+/// paints reads this, so a product pinned to light does not sit in a dark
+/// frame because the OS is.
+pub(super) fn chrome_is_dark() -> bool {
+    ensure_initialized();
+    lxapp::host_appearance_dark()
 }
 
 /// The system accent color as `0xRRGGBB` (the format `rgb_to_colorref` expects).

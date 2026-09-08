@@ -1035,6 +1035,11 @@ pub(super) fn install() {
     lingxia_platform::set_windows_ui_update_handler(Arc::new(|appid| {
         sync_related_shell_layouts(&appid);
     }));
+    // The product's light/dark setting moved. The chrome reads the scheme back
+    // at paint time, so it only has to be told to paint.
+    lingxia_platform::set_windows_host_color_mode_handler(Arc::new(|| {
+        crate::window_host::repaint_all_host_chrome();
+    }));
     // Awaited `lx.tabBar.update()` calls: run the layout sync off
     // the caller's thread and complete the callback once it has applied.
     lingxia_platform::set_windows_ui_update_async_handler(Arc::new(|appid, done| {

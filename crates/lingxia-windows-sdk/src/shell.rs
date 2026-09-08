@@ -184,7 +184,7 @@ pub(crate) fn windows_shell_frame_colors() -> (u32, u32, bool) {
     (
         palette.window_background,
         palette.frame_button_icon,
-        theme::is_dark(),
+        theme::chrome_is_dark(),
     )
 }
 #[cfg(feature = "terminal-runtime")]

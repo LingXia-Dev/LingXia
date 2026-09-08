@@ -1173,10 +1173,10 @@ pub(super) fn ensure_configuration_loaded() {
     let _ = lingxia::terminal::load_for_app(system_prefers_dark());
 }
 
-/// Windows' light/dark preference, as the shell chrome already reads it.
+/// The product's light/dark scheme, as the shell chrome already reads it.
 #[cfg(feature = "terminal-runtime")]
 fn system_prefers_dark() -> bool {
-    super::theme::is_dark()
+    super::theme::chrome_is_dark()
 }
 
 #[cfg(feature = "terminal-runtime")]
