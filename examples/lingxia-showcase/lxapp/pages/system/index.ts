@@ -5,7 +5,12 @@ Page({
     systemSetting: null,
     autostartSupported: false,
     autostartEnabled: null,
-    autostartError: ''
+    autostartError: '',
+    cacheBytes: null,
+    cacheFreedBytes: null,
+    cacheBusy: false,
+    cacheError: '',
+    cacheNotice: ''
   },
 
   onLoad: async function (options = {}) {
@@ -17,6 +22,9 @@ Page({
     if (type === 'autostart') {
       await this.refreshAutostart();
     }
+    if (type === 'cache') {
+      await this.refreshCacheSize();
+    }
   },
 
   onShow: function () {
@@ -25,6 +33,9 @@ Page({
     // while this page is hidden — re-read the OS state on every show.
     if (this.data.currentType === 'autostart') {
       this.refreshAutostart();
+    }
+    if (this.data.currentType === 'cache') {
+      this.refreshCacheSize();
     }
   },
 
@@ -64,6 +75,50 @@ Page({
       // Drop the stale value: rendering the old state after a failed re-read
       // would make the next toggle invert against reality.
       this.setData({ autostartSupported: true, autostartEnabled: null, autostartError: String(error) });
+    }
+  },
+
+  // `lx.app.cache` is the whole product's cache, not this lxapp's, which is why
+  // the runtime restricts it to the home lxapp. The showcase *is* the home
+  // lxapp, so the call succeeds here; another lxapp would get a permission
+  // error, and that is the intended answer rather than a bug to work around.
+  refreshCacheSize: async function () {
+    const cache = lx.app.cache;
+    try {
+      const bytes = await cache.size();
+      console.log('Product cache size (bytes):', bytes);
+      this.setData({ cacheBytes: bytes, cacheError: '' });
+    } catch (error) {
+      console.error('Failed to read cache size:', error);
+      this.setData({ cacheBytes: null, cacheError: String(error) });
+    }
+  },
+
+  clearCache: async function () {
+    if (this.data.cacheBusy) {
+      return;
+    }
+    this.setData({ cacheBusy: true, cacheError: '', cacheNotice: '' });
+    const cache = lx.app.cache;
+    try {
+      const result = await cache.clear();
+      const webview = result.webview === 'cleared'
+        ? 'WebView cache cleared.'
+        : result.webview === 'unsupported'
+          ? 'WebView cache clearing is unavailable on this platform.'
+          : 'WebView cache clearing failed.';
+      this.setData({
+        cacheFreedBytes: result.freedBytes,
+        cacheNotice: result.skippedActivePaths > 0
+          ? `Running apps retained their private caches. ${webview}`
+          : webview,
+        cacheError: result.failures.join('\n'),
+      });
+      const bytes = await cache.size();
+      this.setData({ cacheBytes: bytes, cacheBusy: false });
+    } catch (error) {
+      console.error('Failed to clear cache:', error);
+      this.setData({ cacheBusy: false, cacheError: String(error) });
     }
   },
 

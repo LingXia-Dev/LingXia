@@ -288,6 +288,7 @@
       <!-- System - Dropdown -->
       <div class="bg-surface rounded-lg shadow-sm">
         <div
+          data-testid="api-system-section"
           class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
           @click="toggleSection({ section: 'system' })"
         >
@@ -329,6 +330,21 @@
             <div>
               <div class="text-sm text-gray-700">Autostart</div>
               <div class="text-xs text-gray-500 mt-0.5">Launch at system startup (macOS / Windows)</div>
+            </div>
+            <div class="w-4 h-4 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </div>
+          </div>
+          <div
+            data-testid="api-system-cache"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
+            @click="navigateToSystemPage({ type: 'cache' })"
+          >
+            <div>
+              <div class="text-sm text-gray-700">Product Cache</div>
+              <div class="text-xs text-gray-500 mt-0.5">Report and clear every lxapp's cache (home lxapp only)</div>
             </div>
             <div class="w-4 h-4 text-gray-400">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">

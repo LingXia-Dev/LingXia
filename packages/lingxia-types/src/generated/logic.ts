@@ -130,6 +130,12 @@ declare global {
      * agree, so `lx.app.autostart?.…` and the query are interchangeable.
      */
     autostart?: AutostartApi;
+
+    /**
+     * Product-wide cache reporting and clearing for a settings screen.
+     * Restricted to the home lxapp; other lxapps get a permission error.
+     */
+    cache: AppCacheApi;
   }
 
   /** Runtime environment constants backed by abstract `lx://` paths. */
@@ -205,6 +211,32 @@ export type ActionSheetResult = {
 
 /** Every surface handle, narrowable by `kind`. */
 export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface | BuiltinSurface;
+
+/**
+ * The product-wide cache a settings screen reports and clears.
+ * App-scoped, not lxapp-scoped: the figure covers every lxapp the host
+ * has run, which is why — like `checkUpdate` and `screenshot` — it is
+ * available only to the home lxapp and other lxapps get a permission
+ * error.
+ */
+export type AppCacheApi = {
+    /** Estimated reclaimable managed bytes; excludes live session storage and WebView cache. */
+    size(): Promise<number>;
+    /**
+     * Clear reclaimable host caches. Home lxapp only. Live session usercache and
+     * temp are preserved, including the caller's. Does not restart any lxapp.
+     * Userdata, KV, Downloads, cookies, valid installs and host components survive.
+     * Per-category failures are reported; setup/worker failures reject the call.
+     */
+    clear(): Promise<{
+        /** Estimated file bytes successfully removed; excludes WebView cache. */
+        freedBytes: number;
+        /** Protected usercache/session paths skipped, not a count of apps. */
+        skippedActivePaths: number;
+        webview: 'cleared' | 'unsupported' | 'failed';
+        failures: string[];
+    }>;
+};
 
 export type AppConfig = {
     globalData?: Record<string, unknown>;

@@ -156,6 +156,32 @@ rong::js_api! {
     setEnabled(on: boolean): Promise<void>;
 }"###;
 
+        /// The product-wide cache a settings screen reports and clears.
+        ///
+        /// App-scoped, not lxapp-scoped: the figure covers every lxapp the host
+        /// has run, which is why — like `checkUpdate` and `screenshot` — it is
+        /// available only to the home lxapp and other lxapps get a permission
+        /// error.
+        ///
+        type AppCacheApi = r###"{
+    /** Estimated reclaimable managed bytes; excludes live session storage and WebView cache. */
+    size(): Promise<number>;
+    /**
+     * Clear reclaimable host caches. Home lxapp only. Live session usercache and
+     * temp are preserved, including the caller's. Does not restart any lxapp.
+     * Userdata, KV, Downloads, cookies, valid installs and host components survive.
+     * Per-category failures are reported; setup/worker failures reject the call.
+     */
+    clear(): Promise<{
+        /** Estimated file bytes successfully removed; excludes WebView cache. */
+        freedBytes: number;
+        /** Protected usercache/session paths skipped, not a count of apps. */
+        skippedActivePaths: number;
+        webview: 'cleared' | 'unsupported' | 'failed';
+        failures: string[];
+    }>;
+}"###;
+
         type TerminalThemeMode = r###"'system' | 'light' | 'dark'"###;
 
         type TerminalFontSettings = r###"{
