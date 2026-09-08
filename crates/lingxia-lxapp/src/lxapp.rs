@@ -382,13 +382,32 @@ impl LxApps {
     ) -> Result<Arc<LxApp>, LxAppError> {
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
-            let session_class = self
-                .lxapps
-                .get(&appid)
-                .map(|app| app.app_session_class())
-                .unwrap_or(AppSessionClass::StandardApp);
+            let session_class = self.session_class_for(&appid);
             self.ensure_lxapp_with_session_class(appid, release_type, session_class)
         })
+    }
+
+    /// The class a session for `appid` must be created with.
+    ///
+    /// ControlApp follows the native-sealed home identity rather than whatever
+    /// session happens to be live: a home destroyed by eviction, uninstall, or
+    /// the delayed-destroy timer must not come back as an ordinary guest.
+    /// ControlSurface is not an identity — a host-bundled lxapp is only a
+    /// surface while the ControlApp keeps one open — so it is inherited.
+    fn session_class_for(&self, appid: &str) -> AppSessionClass {
+        let live = self.lxapps.get(appid).map(|app| app.app_session_class());
+        Self::session_class_for_identity(appid, lingxia_app_context::home_app_id(), live)
+    }
+
+    fn session_class_for_identity(
+        appid: &str,
+        home_app_id: Option<&str>,
+        live: Option<AppSessionClass>,
+    ) -> AppSessionClass {
+        if home_app_id == Some(appid) {
+            return AppSessionClass::ControlApp;
+        }
+        live.unwrap_or(AppSessionClass::StandardApp)
     }
 
     /// Only the native-sealed home app id ever becomes the ControlApp.
@@ -591,11 +610,7 @@ impl LxApps {
     ) -> Result<Arc<LxApp>, LxAppError> {
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
-            let session_class = self
-                .lxapps
-                .get(&appid)
-                .map(|app| app.app_session_class())
-                .unwrap_or(AppSessionClass::StandardApp);
+            let session_class = self.session_class_for(&appid);
 
             // Close handshake is handled by restart state machine; avoid a second hide while recreating.
             self.destroy_lxapp_with_options(&appid, true);
@@ -3531,6 +3546,46 @@ mod delayed_destroy_tests {
             .ensure_lxapp(appid, ReleaseType::Release)
             .expect("ordinary ensure after rebuild");
         assert_eq!(ensured.app_session_class(), AppSessionClass::ControlApp);
+    }
+
+    #[test]
+    fn control_app_class_follows_the_home_identity_not_the_live_session() {
+        const HOME: &str = "app.lingxia.home";
+        const GUEST: &str = "app.lingxia.guest";
+
+        // The crux: a destroyed home — evicted, uninstalled, or reaped by the
+        // delayed-destroy timer — must not be rebuilt as an ordinary guest.
+        assert_eq!(
+            LxApps::session_class_for_identity(HOME, Some(HOME), None),
+            AppSessionClass::ControlApp
+        );
+        assert_eq!(
+            LxApps::session_class_for_identity(
+                HOME,
+                Some(HOME),
+                Some(AppSessionClass::StandardApp)
+            ),
+            AppSessionClass::ControlApp
+        );
+
+        // ControlSurface is not an identity, so it is inherited, never derived.
+        assert_eq!(
+            LxApps::session_class_for_identity(
+                GUEST,
+                Some(HOME),
+                Some(AppSessionClass::ControlSurface)
+            ),
+            AppSessionClass::ControlSurface
+        );
+        assert_eq!(
+            LxApps::session_class_for_identity(GUEST, Some(HOME), None),
+            AppSessionClass::StandardApp
+        );
+        // A host with no home lxapp has no ControlApp to derive.
+        assert_eq!(
+            LxApps::session_class_for_identity(HOME, None, None),
+            AppSessionClass::StandardApp
+        );
     }
 
     #[test]
