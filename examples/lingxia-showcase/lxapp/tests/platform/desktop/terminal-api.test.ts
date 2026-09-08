@@ -103,9 +103,11 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
         await eventually(
           () => terminal.page.eval({
             page: 'settings',
-            script: 'document.documentElement.lang',
+            // The bridge also writes the HTML language tag. Check translated
+            // content to prove that the Settings language stream was applied.
+            script: "document.querySelector('#type-heading')?.textContent",
           }),
-          (languageTag) => languageTag === (language === 'zh-CN' ? 'zh-Hans' : 'en'),
+          (heading) => heading === (language === 'zh-CN' ? '字体' : 'Type'),
           { describe: `terminal settings to render ${language}`, timeoutMs: 10_000 },
         );
       }
