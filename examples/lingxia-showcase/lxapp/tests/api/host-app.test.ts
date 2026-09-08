@@ -141,20 +141,20 @@ spec('answer checkUpdate with a decision instead of throwing', {
 
 spec('reject an invalid host display language', {
   id: 'HOSTAPP-LANG-002',
-  covers: ['lx.app.setDisplayLanguagePreference'],
+  covers: ['lx.app.control.displayLanguage.setPreference'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-002');
 
   const offered = await app.eval({
-    script: `return typeof lx.app.setDisplayLanguagePreference`,
+    script: `return typeof lx.app.control?.displayLanguage?.setPreference`,
   }) as string;
   expect(offered).toBe('function');
 
   for (const language of ['', 'en--US']) {
     const rejected = await evalCaught(
       app,
-      `lx.app.setDisplayLanguagePreference(${JSON.stringify(language)})`,
+      `await lx.app.control.displayLanguage.setPreference(${JSON.stringify(language)})`,
     );
     expect(rejected.ok).toBe(false);
     expect(String(rejected.code)).toBe('E_INVALID_ARG');
@@ -163,15 +163,15 @@ spec('reject an invalid host display language', {
 
 spec('subscribe to and release the display language listener', {
   id: 'HOSTAPP-LANG-001',
-  covers: ['lx.app.onDisplayLanguageChange'],
+  covers: ['lx.app.displayLanguage.watch'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-001');
 
   const result = await app.eval({
     script: `
-      const first = lx.app.onDisplayLanguageChange(() => {});
-      const second = lx.app.onDisplayLanguageChange(() => {});
+      const first = lx.app.displayLanguage.watch(() => {});
+      const second = lx.app.displayLanguage.watch(() => {});
       first();
       second();
       first();

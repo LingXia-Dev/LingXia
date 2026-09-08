@@ -35,6 +35,7 @@ macro_rules! flag_capabilities {
 }
 
 flag_capabilities! {
+    "control" => |lxapp: &Arc<LxApp>| lxapp.is_control_app();
     "terminal" => |lxapp: &Arc<LxApp>| terminal_supported(lxapp);
     "autostart" => |_: &Arc<LxApp>| autostart_supported();
     "notifications" => |_: &Arc<LxApp>| lingxia_app_context::capability::notifications();
@@ -46,6 +47,13 @@ flag_capabilities! {
     "computerUse" => |_: &Arc<LxApp>| lingxia_app_context::capability::computer_use();
     "browserUse" => |_: &Arc<LxApp>| lingxia_app_context::capability::browser_use();
     "mediaCapture" => |_: &Arc<LxApp>| lingxia_app_context::capability::media_capture();
+}
+
+/// `lx.app.control`'s presence check, so the two can never disagree. The
+/// session class is assigned natively when the session is created; nothing a
+/// caller says reaches it.
+pub(crate) fn is_control_app(ctx: &rong::JSContext) -> bool {
+    LxApp::from_ctx(ctx).is_ok_and(|lxapp| lxapp.is_control_app())
 }
 
 /// `lx.terminal`'s presence check, so the two can never disagree.
@@ -244,7 +252,7 @@ rong::js_api! {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
 
         /// Boolean capability names accepted by `lx.supports`.
-        type LxCapabilityFlag = r###"'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture'"###;
+        type LxCapabilityFlag = r###"'control' | 'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture'"###;
 
         /// Surface placements accepted by `lx.supports`.
         type LxSurfaceCapability = r###"'main' | 'aside' | 'float' | 'window' | 'tab'"###;

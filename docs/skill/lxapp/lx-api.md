@@ -96,9 +96,14 @@ what to render and never replaces handling a rejection: the answer can be stale
 by the time you act on it, and every gated operation still rejects.
 
 A whole namespace that a host may not carry at all stays an optional member —
-`lx.terminal`, `lx.app.autostart`. Presence and `lx.supports()` are answered
-from one registry, so `('terminal' in lx)` and `lx.supports({ capability: 'terminal' })`
-can never disagree.
+`lx.terminal`, `lx.app.autostart`, `lx.app.control`. Presence and
+`lx.supports()` are answered from one registry, so `('terminal' in lx)` and
+`lx.supports({ capability: 'terminal' })` can never disagree.
+
+`lx.app.control` holds the product-wide settings and their single writer. It is
+injected only into the app the host sealed as its Control app at build time, so
+the same lxapp opened as a guest elsewhere simply does not have it. Write
+`lx.app.control?.…`.
 
 `lx.terminal.settings`, `colorSchemes`, `fonts`, and Windows terminal control
 are additionally restricted to the host-bundled Terminal Settings session the

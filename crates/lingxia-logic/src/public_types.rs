@@ -319,15 +319,48 @@ rong::js_api! {
         type BinaryFileData = r###"ArrayBuffer | ArrayBufferView"###;
 
         type AppearancePreference = r###"'auto' | 'light' | 'dark'"###;
-        /// Canonical BCP-47 language tag.
-        type LanguageTag = r###"string"###;
-        /// Host display-language preference. `"auto"` follows the system locale.
-        type DisplayLanguagePreference = r###"'auto' | LanguageTag"###;
-        type DisplayLanguageEffectiveSource = r###"'system' | 'preference' | 'sessionOverride'"###;
-        type DisplayLanguageState = r###"{
-    preference: DisplayLanguagePreference;
-    effective: LanguageTag;
-    effectiveSource: DisplayLanguageEffectiveSource;
+        /// What the product's language is set to: `'auto'` follows the system,
+        /// or any canonical BCP-47 tag. `string & {}` keeps `'auto'` in
+        /// autocomplete while still accepting a tag.
+        type DisplayLanguagePreference = r###"'auto' | (string & {})"###;
+
+        /// `lx.app.displayLanguage` — the language this lxapp renders in.
+        type DisplayLanguageApi = r###"{
+    /**
+     * The language in effect right now, as a canonical BCP-47 tag. Map it to
+     * the catalogs this lxapp actually ships and fall back where it has none;
+     * that narrowing is yours, and is not a language setting of its own.
+     */
+    get(): string;
+    /**
+     * Follow the language, starting with the current value. Returns an
+     * unsubscribe.
+     *
+     * Logic needs this because the strings it hands to native chrome —
+     * navigation bar titles, tab bar labels, modal and action-sheet text — are
+     * the app's own, and nothing re-renders them on its behalf.
+     */
+    watch(callback: (language: string) => void): () => void;
+}"###;
+
+        /// `lx.app.control.displayLanguage` — the preference behind that
+        /// language, for the one surface that edits it.
+        type ControlDisplayLanguageApi = r###"{
+    /** What the user chose: `'auto'`, or a canonical BCP-47 tag. */
+    getPreference(): DisplayLanguagePreference;
+    /** Persist the product's language. Rejects a tag that is not valid BCP-47. */
+    setPreference(preference: DisplayLanguagePreference): Promise<void>;
+    /**
+     * Follow the choice, not what it resolves to: a system locale change under
+     * `'auto'` moves the language without moving the preference. Starts with
+     * the current value and returns an unsubscribe.
+     */
+    watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
+}"###;
+
+        /// `lx.app.control` — product-wide settings, and their single writer.
+        type ControlApi = r###"{
+    readonly displayLanguage: ControlDisplayLanguageApi;
 }"###;
         type ResolvedAppearance = r###"'light' | 'dark'"###;
         type VisibilityPreference = r###"'auto' | 'hidden'"###;

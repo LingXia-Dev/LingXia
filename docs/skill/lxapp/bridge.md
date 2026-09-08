@@ -467,16 +467,37 @@ All of these are fixed for the life of a page, so they resolve once. In the `lin
 
 ## Display Language
 
-Use the host language instead of persisting a second preference:
+The product has one language. Follow it; never keep a second preference of your
+own, and never offer the user a language picker inside a screen — the one that
+edits the setting is the product's Settings surface.
 
-- **View**: `useDisplayLanguage()` in React/Vue;
-  `getDisplayLanguage()` in `@lingxia/html`.
-- **Logic**: `lx.app.getBaseInfo().displayLanguage` returns the effective tag.
-  The Control lxapp may read `lx.app.getDisplayLanguageState()`, observe it
-  with `lx.app.onDisplayLanguageStateChange()`, and persist any canonical
-  BCP-47 tag (or `'auto'`) with `lx.app.setDisplayLanguagePreference()`.
-  Every other lxapp inherits the effective tag. A Runner session override can
-  shadow the preference without changing it.
+- **View**: `useDisplayLanguage()` in React/Vue; `getDisplayLanguage()` and
+  `subscribeDisplayLanguage()` in `@lingxia/html`. A plain-HTML page that
+  bundles nothing reads `window.LingXiaBridge.displayLanguage.get()` and
+  `.subscribe()`.
+- **Logic**: `lx.app.displayLanguage.get()` returns the tag in effect;
+  `lx.app.displayLanguage.watch(cb)` follows it, starting with the current
+  value and returning an unsubscribe. Logic needs the second one because the
+  strings it hands to native chrome — navigation bar titles, tab bar labels,
+  modal text — are yours, and nothing re-renders them for you.
 
-The bridge initializes `document.documentElement.lang`. Map the host tag to the
-lxapp's supported catalogs and fallback.
+Narrowing the tag to the catalogs you ship is yours to do, and is not a
+language setting: `ja-JP` with only `en`/`zh` shipped renders `en`, while the
+product stays in `ja-JP`.
+
+The Settings surface — the Control app, or the host's browser-form settings —
+additionally gets `lx.app.control.displayLanguage`:
+
+```ts
+lx.app.control?.displayLanguage.getPreference()          // 'auto' | BCP-47 tag
+await lx.app.control?.displayLanguage.setPreference('zh-CN')
+lx.app.control?.displayLanguage.watchPreference((p) => …)
+```
+
+`lx.app.control` is present only in that app, so `lx.app.control?.…` and
+`lx.supports({ capability: 'control' })` always agree. `watchPreference` tracks
+what the user chose, so a system locale change under `'auto'` moves
+`displayLanguage.watch` without waking it. A `lingxia dev --display-language`
+session shadows the preference for that session without changing it.
+
+The bridge initializes `document.documentElement.lang`.

@@ -25,6 +25,9 @@ import type {
   AppearanceApi,
   AutostartApi,
   CompressVideoTask,
+  ControlApi,
+  ControlDisplayLanguageApi,
+  DisplayLanguageApi,
   DownloadTask,
   FileSystemApi,
   HostAppApi,
@@ -123,18 +126,27 @@ export const LX_API_NAMES = [
 const HOST_APP_API = [
   'autostart',
   'checkUpdate',
+  'control',
+  'displayLanguage',
   'envVersion',
   'exit',
   'getBaseInfo',
-  'getDisplayLanguageState',
-  'onDisplayLanguageChange',
-  'onDisplayLanguageStateChange',
   'screenshot',
   'setBadge',
-  'setDisplayLanguagePreference',
 ] as const;
-const HOST_APP_RUNTIME_API = HOST_APP_API.filter((name) => name !== 'autostart');
+// `autostart` and `control` are injected only where they apply, so a runtime
+// walk of `lx.app` must not require them.
+const HOST_APP_RUNTIME_API = HOST_APP_API.filter(
+  (name) => name !== 'autostart' && name !== 'control',
+);
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
+const DISPLAY_LANGUAGE_API = ['get', 'watch'] as const;
+const CONTROL_API = ['displayLanguage'] as const;
+const CONTROL_DISPLAY_LANGUAGE_API = [
+  'getPreference',
+  'setPreference',
+  'watchPreference',
+] as const;
 const APPEARANCE_API = ['get', 'set'] as const;
 const NAVIGATION_BAR_API = ['update'] as const;
 const TAB_BAR_API = ['update'] as const;
@@ -336,6 +348,26 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.app.autostart',
     members: AUTOSTART_API,
+    optional: true,
+  },
+  {
+    name: 'lx.app.displayLanguage',
+    layer: 'logic',
+    expression: 'lx.app.displayLanguage',
+    members: DISPLAY_LANGUAGE_API,
+  },
+  {
+    name: 'lx.app.control',
+    layer: 'logic',
+    expression: 'lx.app.control',
+    members: CONTROL_API,
+    optional: true,
+  },
+  {
+    name: 'lx.app.control.displayLanguage',
+    layer: 'logic',
+    expression: 'lx.app.control?.displayLanguage',
+    members: CONTROL_DISPLAY_LANGUAGE_API,
     optional: true,
   },
   {
@@ -670,6 +702,9 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<PublishedLx, typeof LX_API_NAMES>>,
   AssertTrue<Exact<HostAppApi, typeof HOST_APP_API>>,
   AssertTrue<Exact<AutostartApi, typeof AUTOSTART_API>>,
+  AssertTrue<Exact<DisplayLanguageApi, typeof DISPLAY_LANGUAGE_API>>,
+  AssertTrue<Exact<ControlApi, typeof CONTROL_API>>,
+  AssertTrue<Exact<ControlDisplayLanguageApi, typeof CONTROL_DISPLAY_LANGUAGE_API>>,
   AssertTrue<Exact<AppearanceApi, typeof APPEARANCE_API>>,
   AssertTrue<Exact<NavigationBarApi, typeof NAVIGATION_BAR_API>>,
   AssertTrue<Exact<TabBarApi, typeof TAB_BAR_API>>,

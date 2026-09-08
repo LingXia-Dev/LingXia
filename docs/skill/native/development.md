@@ -431,20 +431,21 @@ async fn cache_state(app: Arc<lingxia::LxApp>) -> lingxia::Result<String> {
 }
 ```
 
-Host display language is a product preference on that same facade. `Auto`
-follows the system locale; `LanguageTag` accepts any canonical BCP-47 tag.
-Every lxapp inherits the resolved tag from `display_language()`.
-The Terminal Settings View subscribes to `terminal.watchDisplayLanguage`
-(`ControlSurfaceOnly`) for effective-language updates. This read-only stream
-confers no access to the `ControlOnly` language preference/state routes.
+The product's display language is one preference on that same facade, with one
+writer. `Auto` follows the system locale; `LanguageTag` accepts any canonical
+BCP-47 tag. Every lxapp and every host surface follows the resolved tag —
+narrowing it to the languages you ship is yours to do, and is not a second
+preference.
 
 ```rust
+let tag = lingxia::app::display_language();
+lingxia::app::watch_display_language(|tag| redraw_chrome_in(&tag));
+
 let preference = "zh-CN"
     .parse::<lingxia::app::DisplayLanguagePreference>()
     .expect("valid BCP-47 tag");
 lingxia::app::set_display_language_preference(preference)?;
-let state = lingxia::app::display_language_state();
-let tag = lingxia::app::display_language();
+lingxia::app::display_language_preference();
 ```
 
 For exact function names, parameters, and return types, read the crate docs

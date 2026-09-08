@@ -15,7 +15,7 @@
             </div>
             <div class="flex-1">
               <div class="text-sm text-gray-800 font-semibold">Fetch App Base Info</div>
-              <div class="text-xs text-gray-500 mt-0.5">Get app environment info (locale, display language, OS, version)</div>
+              <div class="text-xs text-gray-500 mt-0.5">Get app identity (OS, product, versions) plus the language it renders in</div>
             </div>
             <button
               data-testid="system-base-info"
@@ -33,12 +33,8 @@
                 <h4 class="text-sm font-semibold text-gray-700">Result</h4>
               </div>
               <div class="flex justify-between items-center py-3 border-b border-line-200">
-                <span class="text-sm text-gray-600">Locale</span>
-                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ appBaseInfo.locale || '--' }}</span>
-              </div>
-              <div class="flex justify-between items-center py-3 border-b border-line-200">
                 <span class="text-sm text-gray-600">Display Language</span>
-                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ appBaseInfo.displayLanguage || '--' }}</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ displayLanguage || '--' }}</span>
               </div>
               <div class="flex justify-between items-center py-3 border-b border-line-200">
                 <span class="text-sm text-gray-600">OS</span>
@@ -184,6 +180,7 @@ const { getBaseInfo, getSystemSetting, toggleAutostart, refreshAutostart } = act
 
 const currentType = computed(() => data.currentType ?? 'appBaseInfo');
 const appBaseInfo = computed(() => data.appBaseInfo ?? null);
+const displayLanguage = computed(() => data.displayLanguage ?? '');
 const systemSetting = computed(() => data.systemSetting ?? null);
 const autostartSupported = computed(() => data.autostartSupported ?? false);
 const autostartEnabled = computed(() => data.autostartEnabled ?? null);

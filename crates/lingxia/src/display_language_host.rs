@@ -105,8 +105,9 @@ mod tests {
         // not reachable through lxapp's safe downstream API.
         let standard =
             unsafe { test_authenticated_caller("test.standard", 1, AppSessionClass::StandardApp) };
-        let surface =
-            unsafe { test_authenticated_caller("test.surface", 3, AppSessionClass::ControlSurface) };
+        let surface = unsafe {
+            test_authenticated_caller("test.surface", 3, AppSessionClass::ControlSurface)
+        };
         let control =
             unsafe { test_authenticated_caller("test.control", 2, AppSessionClass::ControlApp) };
         let browser = unsafe { test_browser_caller() };

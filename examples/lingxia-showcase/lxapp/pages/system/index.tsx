@@ -7,6 +7,7 @@ export default function SystemPage() {
   const {
     currentType = 'appBaseInfo',
     appBaseInfo = null,
+    displayLanguage = '',
     systemSetting = null,
     autostartSupported = false,
     autostartEnabled = null,
@@ -30,7 +31,7 @@ export default function SystemPage() {
                 </div>
                 <div className="flex-1">
                   <div className="text-sm text-gray-800 font-semibold">Fetch App Base Info</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Get app environment info (locale, display language, OS, version)</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Get app identity (OS, product, versions) plus the language it renders in</div>
                 </div>
                 <button
                   data-testid="system-base-info"
@@ -48,8 +49,7 @@ export default function SystemPage() {
                       <span className="w-1 h-4 bg-blue-500 rounded-full"></span>
                       <h4 className="text-sm font-semibold text-gray-700">Result</h4>
                     </div>
-                    <InfoRow label="Locale" value={appBaseInfo.locale} />
-                    <InfoRow label="Display Language" value={appBaseInfo.displayLanguage} />
+                    <InfoRow label="Display Language" value={displayLanguage} />
                     <InfoRow label="OS" value={appBaseInfo.os} />
                     <InfoRow label="Product Name" value={appBaseInfo.productName} />
                     <InfoRow label="Product Version" value={appBaseInfo.version} />

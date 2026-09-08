@@ -130,6 +130,17 @@ declare global {
      * agree, so `lx.app.autostart?.…` and the query are interchangeable.
      */
     autostart?: AutostartApi;
+
+    /** The language this lxapp renders in. Every lxapp follows it. */
+    readonly displayLanguage: DisplayLanguageApi;
+
+    /**
+     * Product-wide settings, and their single writer. Present only in the
+     * Control app the host sealed at build time; its presence and
+     * `lx.supports({ capability: 'control' })` always agree, so
+     * `lx.app.control?.…` and the query are interchangeable.
+     */
+    readonly control?: ControlApi;
   }
 
   /** Runtime environment constants backed by abstract `lx://` paths. */
@@ -527,6 +538,28 @@ export type ConnectWifiOptions = {
     password?: string;
 };
 
+/** `lx.app.control` — product-wide settings, and their single writer. */
+export type ControlApi = {
+    readonly displayLanguage: ControlDisplayLanguageApi;
+};
+
+/**
+ * `lx.app.control.displayLanguage` — the preference behind that
+ * language, for the one surface that edits it.
+ */
+export type ControlDisplayLanguageApi = {
+    /** What the user chose: `'auto'`, or a canonical BCP-47 tag. */
+    getPreference(): DisplayLanguagePreference;
+    /** Persist the product's language. Rejects a tag that is not valid BCP-47. */
+    setPreference(preference: DisplayLanguagePreference): Promise<void>;
+    /**
+     * Follow the choice, not what it resolves to: a system locale change under
+     * `'auto'` moves the language without moving the preference. Starts with
+     * the current value and returns an unsubscribe.
+     */
+    watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
+};
+
 /** A surface declared by the host in `lingxia.yaml`. */
 export type DeclaredSurface = SurfaceBase & SurfaceShowable & {
     readonly kind: 'declared';
@@ -539,16 +572,31 @@ export type DeviceOrientationChangeEvent = {
     value: DeviceOrientation;
 };
 
-export type DisplayLanguageEffectiveSource = 'system' | 'preference' | 'sessionOverride';
-
-/** Host display-language preference. `"auto"` follows the system locale. */
-export type DisplayLanguagePreference = 'auto' | LanguageTag;
-
-export type DisplayLanguageState = {
-    preference: DisplayLanguagePreference;
-    effective: LanguageTag;
-    effectiveSource: DisplayLanguageEffectiveSource;
+/** `lx.app.displayLanguage` — the language this lxapp renders in. */
+export type DisplayLanguageApi = {
+    /**
+     * The language in effect right now, as a canonical BCP-47 tag. Map it to
+     * the catalogs this lxapp actually ships and fall back where it has none;
+     * that narrowing is yours, and is not a language setting of its own.
+     */
+    get(): string;
+    /**
+     * Follow the language, starting with the current value. Returns an
+     * unsubscribe.
+     *
+     * Logic needs this because the strings it hands to native chrome —
+     * navigation bar titles, tab bar labels, modal and action-sheet text — are
+     * the app's own, and nothing re-renders them on its behalf.
+     */
+    watch(callback: (language: string) => void): () => void;
 };
+
+/**
+ * What the product's language is set to: `'auto'` follows the system,
+ * or any canonical BCP-47 tag. `string & {}` keeps `'auto'` in
+ * autocomplete while still accepting a tag.
+ */
+export type DisplayLanguagePreference = 'auto' | (string & {});
 
 export type DownloadDestination = 'app' | 'downloads';
 
@@ -790,16 +838,13 @@ export type KeyEvent = {
 
 export type KeyEventCallback = (event: KeyEvent) => void;
 
-/** Canonical BCP-47 language tag. */
-export type LanguageTag = string;
-
 export type LxAppEnvVersion = 'release' | 'preview' | 'developer';
 
 /** LxApp metadata APIs. */
 export type LxAppReleaseType = 'release' | 'preview' | 'developer';
 
 /** Boolean capability names accepted by `lx.supports`. */
-export type LxCapabilityFlag = 'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
+export type LxCapabilityFlag = 'control' | 'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
 
 /**
  * One capability question per call. The catalog is closed, so
@@ -2184,20 +2229,12 @@ export type WindowsTerminalInlineImageStatus = {
     };
 };
 
-/** Host app base information. */
+/**
+ * Host app identity. Everything here is fixed for the life of the process;
+ * the language the app renders in is not, and lives on
+ * `lx.app.displayLanguage`.
+ */
 export interface AppBaseInfo {
-  /**
-   * Raw system locale, unaffected by a saved in-app language override.
-   * For the language the UI should actually render in, use
-   * `display_language` instead.
-   */
-  locale: string;
-  /**
-   * Effective display language after Runner session override, persisted
-   * preference, and system locale resolution. Native chrome and `lx.*`
-   * i18n strings follow this value.
-   */
-  displayLanguage: string;
   /**
    * Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
    * `"Harmony"`. Matches the View-side `usePlatform().os` value.
@@ -2416,26 +2453,16 @@ declare global {
     checkUpdate(): Promise<HostAppUpdateCheckResult>;
     readonly envVersion: HostAppEnvVersion;
     /**
-     * Read the host app's identity: locale, display language, OS, product name,
-     * product version, and SDK runtime version.
+     * Read the host app's identity: OS, product name, product version, and SDK
+     * runtime version.
      */
     getBaseInfo(): AppBaseInfo;
-    /**
-     * Follow the host's effective display language.
-     * `getBaseInfo().displayLanguage` answers what it is now; this answers when it
-     * changes. Logic needs both because the strings it hands to native chrome —
-     * navigation bar titles, tab bar labels, modal and action-sheet text — are the
-     * app's own, and nothing re-renders them on its behalf.
-     */
-    onDisplayLanguageChange(callback: (language: string) => void): () => void;
     /**
      * Exit the host app immediately without a confirmation dialog.
      * If the user should confirm first, call `lx.showModal(...)` and invoke this
      * only after confirmation.
      */
     exit(): void;
-    getDisplayLanguageState(): DisplayLanguageState;
-    onDisplayLanguageStateChange(callback: (state: DisplayLanguageState) => void): () => void;
     /**
      * Set the app-icon badge, for example an unread count.
      * This targets the dock on macOS, taskbar on Windows, and home/launcher icon
@@ -2443,8 +2470,6 @@ declare global {
      * the call as a no-op.
      */
     setBadge(value: string | number | null): void;
-    /** Persist an arbitrary BCP-47 preference, or `"auto"` to follow the system. */
-    setDisplayLanguagePreference(preference: DisplayLanguagePreference): void;
   }
 }
 

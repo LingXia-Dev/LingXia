@@ -37,12 +37,16 @@ Page({
       const info = lx.app.getBaseInfo();
       console.log('App base info:', info);
       this.setData({
-        appBaseInfo: info
+        appBaseInfo: info,
+        // Identity is fixed for the process; the language is not, so it comes
+        // from its own namespace rather than the identity snapshot.
+        displayLanguage: lx.app.displayLanguage.get()
       });
     } catch (error) {
       console.error('Failed to get app base info:', error);
       this.setData({
-        appBaseInfo: null
+        appBaseInfo: null,
+        displayLanguage: ''
       });
     }
   },

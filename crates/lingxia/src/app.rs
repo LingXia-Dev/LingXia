@@ -78,26 +78,36 @@ pub fn display_language() -> String {
     lxapp::display_language()
 }
 
-/// Return the complete host display-language state.
-pub fn display_language_state() -> DisplayLanguageState {
-    lxapp::display_language_state()
+/// Follow the effective language. Runs only when the tag actually changes.
+pub fn watch_display_language(listener: impl Fn(LanguageTag) + Send + Sync + 'static) {
+    lxapp::add_display_language_effective_listener(Box::new(listener));
 }
 
-/// Persist a host display-language preference and publish it after the write succeeds.
+/// What the user chose: `Auto`, or a pinned tag.
+pub fn display_language_preference() -> DisplayLanguagePreference {
+    lxapp::display_language_state().preference
+}
+
+/// Persist the product's display language and publish it after the write succeeds.
 pub fn set_display_language_preference(preference: DisplayLanguagePreference) -> crate::Result<()> {
     lxapp::set_display_language_preference_in(&data_dir()?, preference).map_err(Into::into)
 }
 
-/// Observe actual effective-language changes.
-pub fn on_display_language_change(listener: impl Fn(LanguageTag) + Send + Sync + 'static) {
-    lxapp::add_display_language_effective_listener(Box::new(listener));
-}
-
-/// Observe actual changes to any field in [`DisplayLanguageState`].
-pub fn on_display_language_state_change(
-    listener: impl Fn(DisplayLanguageState) + Send + Sync + 'static,
+/// Follow the choice, not what it resolves to: a system locale change under
+/// `Auto` moves the effective tag without moving the preference.
+pub fn watch_display_language_preference(
+    listener: impl Fn(DisplayLanguagePreference) + Send + Sync + 'static,
 ) {
-    lxapp::add_display_language_state_listener(Box::new(listener));
+    let last = std::sync::Mutex::new(None::<DisplayLanguagePreference>);
+    lxapp::add_display_language_state_listener(Box::new(move |state: DisplayLanguageState| {
+        let mut last = last.lock().unwrap_or_else(|error| error.into_inner());
+        if last.as_ref() == Some(&state.preference) {
+            return;
+        }
+        *last = Some(state.preference.clone());
+        drop(last);
+        listener(state.preference);
+    }));
 }
 
 pub(crate) fn data_dir() -> crate::Result<PathBuf> {

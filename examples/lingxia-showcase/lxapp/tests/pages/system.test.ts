@@ -5,6 +5,7 @@ import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 interface SystemPageState {
   appBaseInfo: { os?: string; productName?: string } | null;
+  displayLanguage?: string;
   systemSetting: { wifiEnabled?: boolean } | null;
 }
 
@@ -30,7 +31,7 @@ async function waitForSystemState(
   });
 }
 
-spec("render host app and system information through page actions", { id: "SYSTEM-001", covers: ['lx.app.getBaseInfo', 'lx.getSystemSetting'], app: SHOWCASE_APP_ID }, async (t) => {
+spec("render host app and system information through page actions", { id: "SYSTEM-001", covers: ['lx.app.getBaseInfo', 'lx.app.displayLanguage.get', 'lx.getSystemSetting'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "SYSTEM-001");
 
 
@@ -39,7 +40,8 @@ spec("render host app and system information through page actions", { id: "SYSTE
   await app.page.click({ page: 'system', css: '[data-testid="system-base-info"]' });
   const base = await waitForSystemState(
     app,
-    (state) => !!state.appBaseInfo?.os && !!state.appBaseInfo?.productName,
+    (state) => !!state.appBaseInfo?.os && !!state.appBaseInfo?.productName
+      && typeof state.displayLanguage === 'string' && state.displayLanguage.length > 0,
   );
   await app.page.waitFor({ page: 'system', css: '[data-testid="system-base-result"]' });
   const baseResult = await app.page.query({

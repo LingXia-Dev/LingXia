@@ -8,9 +8,9 @@ use std::sync::OnceLock;
 pub(crate) enum LogicRoute {
     AppExit,
     AppSetBadge,
-    AppGetDisplayLanguageState,
+    AppGetDisplayLanguagePreference,
     AppSetDisplayLanguagePreference,
-    AppWatchDisplayLanguageState,
+    AppWatchDisplayLanguagePreference,
     AppCheckUpdate,
     AppApplyUpdate,
     AppScreenshot,
@@ -59,9 +59,9 @@ impl LogicRoute {
     pub(crate) const ALL: &'static [Self] = &[
         Self::AppExit,
         Self::AppSetBadge,
-        Self::AppGetDisplayLanguageState,
+        Self::AppGetDisplayLanguagePreference,
         Self::AppSetDisplayLanguagePreference,
-        Self::AppWatchDisplayLanguageState,
+        Self::AppWatchDisplayLanguagePreference,
         Self::AppCheckUpdate,
         Self::AppApplyUpdate,
         Self::AppScreenshot,
@@ -134,9 +134,11 @@ impl LogicRoute {
         match self {
             Self::AppExit => "lx.app.exit",
             Self::AppSetBadge => "lx.app.setBadge",
-            Self::AppGetDisplayLanguageState => "lx.app.getDisplayLanguageState",
-            Self::AppSetDisplayLanguagePreference => "lx.app.setDisplayLanguagePreference",
-            Self::AppWatchDisplayLanguageState => "lx.app.onDisplayLanguageStateChange",
+            Self::AppGetDisplayLanguagePreference => "lx.app.control.displayLanguage.getPreference",
+            Self::AppSetDisplayLanguagePreference => "lx.app.control.displayLanguage.setPreference",
+            Self::AppWatchDisplayLanguagePreference => {
+                "lx.app.control.displayLanguage.watchPreference"
+            }
             Self::AppCheckUpdate => "lx.app.checkUpdate",
             Self::AppApplyUpdate => "lx.app.checkUpdate.apply",
             Self::AppScreenshot => "lx.app.screenshot",

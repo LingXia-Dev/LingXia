@@ -127,6 +127,17 @@ declare global {
      * agree, so `lx.app.autostart?.…` and the query are interchangeable.
      */
     autostart?: AutostartApi;
+
+    /** The language this lxapp renders in. Every lxapp follows it. */
+    readonly displayLanguage: DisplayLanguageApi;
+
+    /**
+     * Product-wide settings, and their single writer. Present only in the
+     * Control app the host sealed at build time; its presence and
+     * `lx.supports({ capability: 'control' })` always agree, so
+     * `lx.app.control?.…` and the query are interchangeable.
+     */
+    readonly control?: ControlApi;
   }
 
   /** Runtime environment constants backed by abstract `lx://` paths. */
