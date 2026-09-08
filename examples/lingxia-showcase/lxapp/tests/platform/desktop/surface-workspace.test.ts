@@ -1810,7 +1810,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
   id: 'DESKTOP-DYNAMIC-MAIN-001',
   timeout: DESKTOP_CASE_MS,
   covers: ['lx.shell.openApp', 'PageSurface.close', 'PageSurface.onClose'],
-}, async () => {
+}, async (t) => {
   const app = await automationPhase('resolve showcase driver', desktopApp);
   const platform = await automationPhase('read runtime platform', () => runtimePlatform(app));
   const automation = lx.automation();
@@ -2126,6 +2126,28 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
       afterRepeatedClose: await app.surfaceLayout(),
       revisionAfterClose,
     };
+  } catch (error) {
+    // Capture the actual failing presentation before cleanup restores home.
+    await attachDesktopFailure(t, 'dynamic-main-before-cleanup', desktop, host);
+    const [surfaces, inputNodes, chatDocument] = await Promise.all([
+      surfaceFailureDiagnostics(app, desktop, host),
+      desktop.ax.query({ window: host.id, match: 'Message', all: true })
+        .catch((failure) => ({ error: String(failure) })),
+      automation.lxapp('lingxia-chat').page.eval({
+        page: 'chat',
+        script: `JSON.stringify({
+          readyState: document.readyState,
+          input: (() => {
+            const input = document.querySelector('textarea');
+            if (!input) return null;
+            const rect = input.getBoundingClientRect();
+            return { placeholder: input.placeholder, disabled: input.disabled,
+              rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } };
+          })(),
+        })`,
+      }).catch((failure) => ({ error: String(failure) })),
+    ]);
+    throw new Error(`${String(error)}; diagnostics: ${JSON.stringify({ surfaces, inputNodes, chatDocument })}`);
   } finally {
     if (browserTabId) {
       await browser.close({ tab: browserTabId }).catch(() => undefined);
