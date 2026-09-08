@@ -3,7 +3,6 @@ package com.lingxia.lxapp.chrome
 import com.lingxia.lxapp.R
 
 import android.content.Context
-import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
@@ -21,7 +20,7 @@ import android.util.Log
 import com.lingxia.app.LxLog
 import android.util.TypedValue
 import android.widget.FrameLayout
-import java.util.Locale
+import com.lingxia.app.Lingxia
 
 internal data class TabBarState(
     val backgroundColor: Int = Color.WHITE,          // Background color, default white
@@ -394,22 +393,8 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         Slot.More -> moreLabel()
     }
 
-    /** Keep the host-owned slot in the same language as its sibling labels. */
-    private fun moreLabel(): String {
-        val labels = items.mapNotNull { it.text?.trim()?.takeIf(String::isNotEmpty) }
-        val chineseLabels = labels.count { text ->
-            text.any { character ->
-                character.code in 0x3400..0x4DBF || character.code in 0x4E00..0x9FFF
-            }
-        }
-        val locale = if (chineseLabels > labels.size - chineseLabels) {
-            Locale.SIMPLIFIED_CHINESE
-        } else {
-            Locale.ENGLISH
-        }
-        val localized = Configuration(resources.configuration).apply { setLocale(locale) }
-        return context.createConfigurationContext(localized).getString(R.string.lx_tabbar_more)
-    }
+    /** Host-owned overflow label follows the product display language. */
+    private fun moreLabel(): String = Lingxia.localizedString(context, R.string.lx_tabbar_more)
 
     private fun slotIcon(slot: Slot, selected: Boolean): Drawable = when (slot) {
         is Slot.Tab -> getIconDrawable(items[slot.itemIndex], selected)

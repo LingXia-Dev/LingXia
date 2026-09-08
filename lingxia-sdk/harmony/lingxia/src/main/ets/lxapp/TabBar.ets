@@ -1,6 +1,6 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../app/LxLog';
-import { TabBarPosition, type TabBarItem, type TabBarState } from 'liblingxia.so';
+import { TabBarPosition, type TabBarItem, type TabBarState, getDisplayLanguage } from 'liblingxia.so';
 
 // TabBar layout constants
 const TAB_BAR_HORIZONTAL_HEIGHT = 72;    // Horizontal TabBar default height
@@ -681,33 +681,12 @@ export struct TabBar {
       this.getTabBarSize() + this.extraBottomHeight();
   }
 
-  /** Keep the host-owned slot in the same language as its sibling labels. */
+  /** Host-owned overflow label follows the product display language. */
   private getMoreLabel(): string {
-    let chineseLabels: number = 0;
-    let otherLabels: number = 0;
-    for (let index: number = 0; index < this.tabbar.items.length; index++) {
-      const item: TabBarItem = this.tabbar.items[index];
-      const text: string = item.text?.trim() ?? '';
-      if (text.length === 0) {
-        continue;
-      }
-      if (this.containsHanCharacter(text)) {
-        chineseLabels++;
-      } else {
-        otherLabels++;
-      }
-    }
-    return chineseLabels > otherLabels ? '更多' : 'More';
-  }
-
-  private containsHanCharacter(text: string): boolean {
-    for (let index: number = 0; index < text.length; index++) {
-      const code: number = text.charCodeAt(index);
-      if ((code >= 0x3400 && code <= 0x4DBF) || (code >= 0x4E00 && code <= 0x9FFF)) {
-        return true;
-      }
-    }
-    return false;
+    // Matches i18n/shared `tabbar.more`. `$r('app.string.lx_tabbar_more')`
+    // follows the system locale, which can disagree with display language.
+    const tag: string = getDisplayLanguage().replace('_', '-').toLowerCase();
+    return tag === 'zh' || tag.startsWith('zh-') ? '更多' : 'More';
   }
 
   /** Overflow surface colour; keeps the floating block legible. */

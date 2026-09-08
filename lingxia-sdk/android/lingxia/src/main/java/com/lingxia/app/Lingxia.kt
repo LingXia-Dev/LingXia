@@ -6,11 +6,13 @@ import android.app.Application
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.util.Log
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatActivity
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.LxApp
@@ -18,6 +20,7 @@ import com.lingxia.lxapp.LxAppBrowser
 import com.lingxia.lxapp.SplashOverlay
 import com.lingxia.lxapp.APIs.media.ScanCodeFragment
 import java.net.URISyntaxException
+import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -175,6 +178,24 @@ object Lingxia {
             return NativeApi.getDisplayLanguage()
         }
         return getSystemLocale()
+    }
+
+    /**
+     * SDK string in the product display language, not the process locale.
+     * Android resource lookup follows the Activity configuration; display
+     * language is a LingXia preference that can disagree with it.
+     */
+    @JvmStatic
+    internal fun localizedString(context: Context, @StringRes id: Int): String {
+        val locale = localeForDisplayLanguage(getDisplayLanguage())
+        val config = Configuration(context.resources.configuration)
+        config.setLocale(locale)
+        return context.createConfigurationContext(config).getString(id)
+    }
+
+    private fun localeForDisplayLanguage(tag: String): Locale {
+        val primary = tag.replace('_', '-').substringBefore('-').lowercase(Locale.ROOT)
+        return if (primary == "zh") Locale.SIMPLIFIED_CHINESE else Locale.ENGLISH
     }
 
     private fun getSystemLocale(): String {
