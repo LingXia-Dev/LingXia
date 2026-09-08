@@ -136,8 +136,11 @@ the same lxapp opened as a guest elsewhere simply does not have it. Write
 
 `lx.terminal.settings`, `colorSchemes`, `fonts`, and Windows terminal control
 are additionally restricted to the host-bundled Terminal Settings session the
-native host assigned as a ControlSurface; not even the home ControlApp reaches
+native host assigned as a control surface; not even the Control app reaches
 them. A matching app id or bundled source does not grant this authority.
+
+Which session is which, the full list of Control-app-only calls, and what a
+refusal reads like: [The Control app](../app/control-app.md).
 
 ---
 
