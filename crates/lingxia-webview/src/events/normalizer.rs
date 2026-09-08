@@ -927,11 +927,25 @@ pub(crate) fn invalidate_restored_document(
     true
 }
 
-/// Run one native action while an exact committed document remains current.
+/// Whether an exact committed document is still the current binding.
+///
+/// Unlike [`with_current_document_binding`] no lock survives the answer, so
+/// this is the form to use before running code that can re-enter the
+/// normalizer — inbound delivery, or anything that posts back to the document.
+pub(crate) fn document_binding_is_current(
+    native_view_id: NativeWebViewId,
+    expected_generation: DocumentGeneration,
+) -> bool {
+    current_document_binding(native_view_id) == DocumentBinding::Bound(expected_generation)
+}
+
+/// Run one native effect while an exact committed document remains current.
 ///
 /// Keep both the registry and per-WebView state locks through `action`: a
 /// replacement native view or a navigation start must linearize entirely
 /// before or after the action, never between its generation check and effect.
+/// `action` must therefore be a short native call that cannot re-enter the
+/// normalizer, directly or through a delegate.
 pub(crate) fn with_current_document_binding(
     native_view_id: NativeWebViewId,
     expected_generation: DocumentGeneration,
@@ -1975,6 +1989,49 @@ mod tests {
             current_document_binding(native_view_id),
             DocumentBinding::Bound(DocumentGeneration::new(2))
         );
+        destroy(&webtag);
+    }
+
+    // `with_current_document_binding` holds the registry and per-view locks,
+    // which are not reentrant. Inbound delivery therefore uses this form, so a
+    // delegate that posts back on the same thread cannot self-deadlock.
+    #[test]
+    fn document_binding_check_releases_before_it_answers() {
+        let webtag = tag("document-binding-check-releases");
+        let native_view_id = NativeWebViewId::new(8207);
+        super::begin(&webtag, native_view_id);
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(71),
+                url: "https://first/".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::DocumentCommitted { key: Some(71) },
+        );
+
+        let generation = DocumentGeneration::new(1);
+        assert!(document_binding_is_current(native_view_id, generation));
+        // Re-entering on this thread is what an inbound delegate does.
+        assert!(document_binding_is_current(native_view_id, generation));
+        assert!(!document_binding_is_current(
+            native_view_id,
+            DocumentGeneration::new(2)
+        ));
+
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(72),
+                url: "https://second/".into(),
+            },
+        );
+        assert!(!document_binding_is_current(native_view_id, generation));
         destroy(&webtag);
     }
 

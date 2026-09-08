@@ -8,8 +8,8 @@ use crate::harmony_document::{DocumentCommit, HarmonyDocumentAuthority, PageBegi
 use crate::input_helper::{build_async_eval_body, new_eval_token, parse_wrapped_eval_result};
 use crate::traits::{
     DocumentBinding, DocumentGeneration, DocumentOutboundGate, FileChooserRequest,
-    FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy, WebMessageFrame,
-    WebMessageSource, WebMessageTransport,
+    FileChooserResponse, LoadError, LoadErrorKind, NavigationPolicy, WebMessageSource,
+    WebMessageTransport,
 };
 use crate::webview::{
     EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, SecurityProfile,
@@ -2550,27 +2550,23 @@ extern "C" fn on_web_message_received(
             return;
         };
 
-        let mut enqueue = || {
-            webview.enqueue_web_message(
-                msg_str.to_string(),
-                WebMessageFrame::TopLevel,
-                WebMessageTransport::HarmonyMessagePort,
-                WebMessageSource::unavailable(),
-            );
-        };
-        let mut enqueue_if_harmony_document_current = || {
-            webview
-                .inner
-                .document_authority
-                .with_current_generation(binding.document_generation, &mut enqueue);
-        };
-        if !normalizer::with_current_document_binding(
-            native_view_id,
-            binding.document_generation,
-            &mut enqueue_if_harmony_document_current,
-        ) {
+        // Both generation checks release their lock before the next one is
+        // taken: ingress must never own a normalizer lock while enqueueing,
+        // because enqueueing samples the binding through that same lock.
+        if !webview
+            .inner
+            .document_authority
+            .is_current_generation(binding.document_generation)
+        {
             log::debug!("Dropping Harmony message after document revocation for {full_webtag}");
+            return;
         }
+        webview.enqueue_document_web_message(
+            msg_str.to_string(),
+            binding.document_generation,
+            WebMessageTransport::HarmonyMessagePort,
+            WebMessageSource::unavailable(),
+        );
     }
 }
 
@@ -2858,28 +2854,22 @@ extern "C" fn on_console_message_received(
                 _ => LogLevel::Info,
             };
 
-            // Forward to delegate for logging
-            let mut deliver = || {
-                if let Some(delegate) = find_webview_by_native_view_id(&full_webtag, native_view_id)
-                    .and_then(|webview| webview.get_delegate())
-                {
-                    delegate.log(log_level, console_message);
-                }
-            };
-            let mut deliver_if_harmony_document_current = || {
-                if let Some(webview) = find_webview_by_native_view_id(&full_webtag, native_view_id)
-                {
-                    webview
-                        .inner
-                        .document_authority
-                        .with_current_generation(binding.document_generation, &mut deliver);
-                }
-            };
-            normalizer::with_current_document_binding(
-                native_view_id,
-                binding.document_generation,
-                &mut deliver_if_harmony_document_current,
-            );
+            // Forward to delegate for logging. Both generation checks release
+            // before the delegate runs: it is arbitrary host code and may post
+            // back into this WebView on this thread.
+            if let Some(webview) = find_webview_by_native_view_id(&full_webtag, native_view_id)
+                && webview
+                    .inner
+                    .document_authority
+                    .is_current_generation(binding.document_generation)
+                && normalizer::document_binding_is_current(
+                    native_view_id,
+                    binding.document_generation,
+                )
+                && let Some(delegate) = webview.get_delegate()
+            {
+                delegate.log(log_level, console_message);
+            }
         }
     }
 }

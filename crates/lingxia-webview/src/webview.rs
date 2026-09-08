@@ -338,11 +338,19 @@ impl WebMessageExecutor {
                             };
                             match document {
                                 crate::DocumentBinding::Bound(generation) => {
-                                    if !crate::events::normalizer::with_current_document_binding(
+                                    // Check without holding: the delegate may
+                                    // post back synchronously, which re-enters
+                                    // the normalizer on this same thread. The
+                                    // generation the message carries is what
+                                    // downstream authorization reads, and each
+                                    // outbound path re-verifies it under its
+                                    // own document gate.
+                                    if crate::events::normalizer::document_binding_is_current(
                                         webview.native_view_id(),
                                         generation,
-                                        deliver,
                                     ) {
+                                        deliver();
+                                    } else {
                                         log::debug!(
                                             "Dropping WebView message after its document generation was revoked ({})",
                                             webview.webtag()
@@ -1252,6 +1260,15 @@ impl Drop for TrustedDataLoadReservation<'_> {
     }
 }
 
+#[cfg_attr(
+    not(any(
+        target_os = "android",
+        target_os = "ios",
+        target_os = "macos",
+        target_os = "windows"
+    )),
+    allow(dead_code)
+)]
 fn snapshot_web_message_context(
     native_view_id: NativeWebViewId,
     frame: WebMessageFrame,
@@ -1270,18 +1287,20 @@ fn snapshot_web_message_context(
     )
 }
 
-/// Android may label a frame top-level only when it arrived through the
-/// one-shot port delivered to the exact currently committed document.
-fn android_document_port_context(
+/// A one-shot port is handed to exactly one document, so a frame arriving on
+/// it may be labelled top-level only while that generation is still current.
+fn document_port_context(
     native_view: NativeWebViewId,
     current: crate::DocumentBinding,
     expected_generation: crate::DocumentGeneration,
     transport: WebMessageTransport,
     source: WebMessageSource,
 ) -> Option<WebMessageContext> {
-    (transport == WebMessageTransport::AndroidMessagePort
-        && current == crate::DocumentBinding::Bound(expected_generation))
-    .then(|| {
+    let port_transport = matches!(
+        transport,
+        WebMessageTransport::AndroidMessagePort | WebMessageTransport::HarmonyMessagePort
+    );
+    (port_transport && current == crate::DocumentBinding::Bound(expected_generation)).then(|| {
         WebMessageContext::new(
             native_view,
             crate::DocumentBinding::Bound(expected_generation),
@@ -1422,6 +1441,15 @@ impl WebView {
         ))
     }
 
+    #[cfg_attr(
+        not(any(
+            target_os = "android",
+            target_os = "ios",
+            target_os = "macos",
+            target_os = "windows"
+        )),
+        allow(dead_code)
+    )]
     /// Enqueue a platform message whose frame proof is known by the adapter.
     ///
     /// The document binding is snapshotted from the normalizer while this
@@ -1474,7 +1502,10 @@ impl WebView {
     /// Enqueue a MessagePort frame only for the exact generation captured
     /// when that one-shot port was created. A port retained by an old page can
     /// never be rebound by sampling the successor document's current state.
-    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    #[cfg_attr(
+        not(any(target_os = "android", all(target_os = "linux", target_env = "ohos"))),
+        allow(dead_code)
+    )]
     pub(crate) fn enqueue_document_web_message(
         self: &Arc<Self>,
         body: String,
@@ -1482,7 +1513,7 @@ impl WebView {
         transport: WebMessageTransport,
         source: WebMessageSource,
     ) {
-        let Some(context) = android_document_port_context(
+        let Some(context) = document_port_context(
             self.native_view_id,
             crate::events::normalizer::current_document_binding(self.native_view_id),
             expected_generation,
@@ -3314,10 +3345,10 @@ mod tests {
         MAX_PENDING_WEB_MESSAGE_BYTES, MAX_PENDING_WEB_MESSAGES, MAX_WEB_MESSAGE_BYTES,
         PlatformConsoleBackend, PlatformConsoleDelivery, SecurityProfile, WEBVIEW_SESSIONS,
         WebMessageEnqueue, WebMessageIngress, WebMessageRejectReason, WebTag, WebViewCreateOptions,
-        WebViewCreateSender, WebViewSessionSignals, android_document_port_context,
-        block_on_scheme_future, next_native_webview_id, platform_console_delivery,
-        remove_arc_if_matches, remove_session_signals_if_matches, replace_session_signals,
-        should_sample_rejection, snapshot_web_message_context, web_message_bytes_within_limit,
+        WebViewCreateSender, WebViewSessionSignals, block_on_scheme_future, document_port_context,
+        next_native_webview_id, platform_console_delivery, remove_arc_if_matches,
+        remove_session_signals_if_matches, replace_session_signals, should_sample_rejection,
+        snapshot_web_message_context, web_message_bytes_within_limit,
         web_message_utf16_units_within_limit,
     };
     use crate::{
@@ -3385,12 +3416,12 @@ mod tests {
     }
 
     #[test]
-    fn android_top_level_proof_requires_current_document_port() {
+    fn document_port_top_level_proof_requires_current_generation() {
         let native_view = next_native_webview_id();
         let current = crate::DocumentGeneration::new(42);
         let stale = crate::DocumentGeneration::new(41);
 
-        let context = android_document_port_context(
+        let context = document_port_context(
             native_view,
             DocumentBinding::Bound(current),
             current,
@@ -3402,7 +3433,7 @@ mod tests {
         assert_eq!(context.document(), DocumentBinding::Bound(current));
 
         assert!(
-            android_document_port_context(
+            document_port_context(
                 native_view,
                 DocumentBinding::Bound(current),
                 stale,
@@ -3412,11 +3443,35 @@ mod tests {
             .is_none()
         );
         assert!(
-            android_document_port_context(
+            document_port_context(
                 native_view,
                 DocumentBinding::Bound(current),
                 current,
                 WebMessageTransport::AndroidJavascriptInterface,
+                WebMessageSource::unavailable(),
+            )
+            .is_none()
+        );
+
+        // Harmony hands out the same kind of one-shot, per-document port.
+        assert_eq!(
+            document_port_context(
+                native_view,
+                DocumentBinding::Bound(current),
+                current,
+                WebMessageTransport::HarmonyMessagePort,
+                WebMessageSource::unavailable(),
+            )
+            .expect("a current Harmony port proves the top-level document")
+            .frame(),
+            WebMessageFrame::TopLevel
+        );
+        assert!(
+            document_port_context(
+                native_view,
+                DocumentBinding::Bound(current),
+                stale,
+                WebMessageTransport::HarmonyMessagePort,
                 WebMessageSource::unavailable(),
             )
             .is_none()

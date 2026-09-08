@@ -184,6 +184,16 @@ impl HarmonyDocumentAuthority {
             return DocumentCommit::Invalid;
         };
         if active.page_epoch != page_epoch || active.platform_url != observed_url {
+            // Exact-match by design: a commit that does not name the URL its
+            // begin attested cannot inherit that navigation's trust. Logged
+            // because the whole bridge stays silent when it happens.
+            log::warn!(
+                "Harmony document commit rejected: begin was epoch {} url {}, commit is epoch {} url {}",
+                active.page_epoch,
+                active.platform_url,
+                page_epoch,
+                observed_url
+            );
             state.active = None;
             state.trusted = None;
             state.committed_urls = None;
@@ -229,6 +239,13 @@ impl HarmonyDocumentAuthority {
         }
         active.generation = Some(generation);
         true
+    }
+
+    /// Non-holding form of [`Self::with_current_generation`], for callers that
+    /// must not own this lock while acquiring another.
+    pub(crate) fn is_current_generation(&self, generation: DocumentGeneration) -> bool {
+        let state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        state.active.as_ref().and_then(|active| active.generation) == Some(generation)
     }
 
     pub(crate) fn with_current_generation(
