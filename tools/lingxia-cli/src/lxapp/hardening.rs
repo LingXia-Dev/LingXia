@@ -285,7 +285,59 @@ fn relative_path(root: &Path, path: &Path) -> String {
         .replace('\\', "/")
 }
 
+/// `<script>` and `<style>` bodies are not markup: the HTML pass below reads
+/// `'` and `"` as attribute quotes and drops whitespace between tokens, which
+/// joins two ASI-separated statements into one and silently kills the whole
+/// element. Hand each body to the minifier for its own language, and never let
+/// the markup scanner see it.
 fn minify_html(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut rest = source;
+    while let Some((element, open_at)) = next_embedded_element(rest) {
+        let Some(body_at) = rest[open_at..].find('>').map(|i| open_at + i + 1) else {
+            break;
+        };
+        let close = format!("</{element}");
+        let Some(close_at) = find_ascii_case_insensitive(&rest[body_at..], &close) else {
+            break;
+        };
+        let close_at = body_at + close_at;
+        out.push_str(&minify_markup(&rest[..body_at]));
+        out.push_str(&minify_embedded_body(element, &rest[body_at..close_at]));
+        rest = &rest[close_at..];
+    }
+    out.push_str(&minify_markup(rest));
+    out
+}
+
+/// The next `<script`/`<style` open tag, and where it starts.
+fn next_embedded_element(source: &str) -> Option<(&'static str, usize)> {
+    ["script", "style"]
+        .into_iter()
+        .filter_map(|element| {
+            find_ascii_case_insensitive(source, &format!("<{element}")).map(|at| (element, at))
+        })
+        .min_by_key(|(_, at)| *at)
+}
+
+fn find_ascii_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
+    let haystack = haystack.to_ascii_lowercase();
+    haystack.find(&needle.to_ascii_lowercase())
+}
+
+/// A body the minifier for that language could not parse is kept verbatim:
+/// shrinking a page is never worth breaking it.
+fn minify_embedded_body(element: &str, body: &str) -> String {
+    if body.trim().is_empty() {
+        return body.to_string();
+    }
+    match element {
+        "style" => minify_css(body),
+        _ => harden_logic_bundle(body).unwrap_or_else(|_| body.to_string()),
+    }
+}
+
+fn minify_markup(source: &str) -> String {
     let mut out = String::with_capacity(source.len());
     let mut in_quote = None;
     let mut pending_space = false;
@@ -457,6 +509,31 @@ mod tests {
         assert!(out.contains(".a .b{"), "{out}");
         assert!(out.contains(".a :hover{"), "{out}");
         assert!(out.contains("calc(1em + 2px)"), "{out}");
+    }
+
+    /// The markup pass reads `'` and `"` as attribute quotes and drops
+    /// whitespace between tokens. Let it near an inline script and a regex
+    /// holding a quote opens a fake attribute, two ASI-separated statements
+    /// become one, and the element dies with no error anyone sees.
+    #[test]
+    fn html_minify_leaves_an_inline_script_parseable() {
+        let out = minify_html(
+            "<div>x</div>\n<script>\n  (function () {\n    var s = String(1)\n      .replace(/\"/g, '&quot;')\n      .replace(/</g, '&lt;');\n    window.marker = s\n    window.other = 2\n  })();\n</script>",
+        );
+        let body = out
+            .split_once("<script>")
+            .and_then(|(_, rest)| rest.split_once("</script>"))
+            .map(|(body, _)| body)
+            .expect("script element survives");
+        assert!(body.contains("window.marker"), "{out}");
+        assert!(!body.contains("window.marker=s window.other"), "{out}");
+        assert!(out.contains("<div>x</div>"), "{out}");
+    }
+
+    #[test]
+    fn html_minify_keeps_an_unparseable_script_verbatim() {
+        let source = "<script>\n  this is not javascript(\n</script>";
+        assert_eq!(minify_html(source), source);
     }
 
     #[test]

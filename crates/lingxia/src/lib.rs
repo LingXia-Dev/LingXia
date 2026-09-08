@@ -260,7 +260,7 @@ pub mod terminal {
     };
     pub use lingxia_terminal_config::{
         FontConfig, InstalledFont, ResolvedFont, TerminalConfig, ThemeConfig, ThemeDetails,
-        ThemeMode, ThemeStore, resolve_font,
+        ThemeStore, resolve_font,
     };
 }
 /// Host app update helpers and update event types.
