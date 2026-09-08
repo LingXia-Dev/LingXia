@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import type { LxNativeButtonProps } from './types.js';
-import { h, onBeforeUnmount, ref, useAttrs, useSlots, watch } from 'vue';
+import { h, onBeforeUnmount, useAttrs, useSlots, watch } from 'vue';
 import {
   registerNativeButtonComponent,
   unwrapNativeEventPayload,
   type PressPayload,
 } from '@lingxia/elements';
-import { bindElementEvents, unbindElementEvents } from './text_component_shared.js';
+import { bindElementEvents, unbindElementEvents, useNativeHostElement } from './text_component_shared.js';
 
 const props = defineProps<LxNativeButtonProps>();
 const slots = useSlots();
@@ -20,7 +20,7 @@ if (typeof window !== 'undefined') {
   registerNativeButtonComponent();
 }
 
-const elementRef = ref<HTMLElement | null>(null);
+const elementRef = useNativeHostElement(props);
 let bound: HTMLElement | null = null;
 const listeners: Record<string, EventListenerObject> = {
   press: { handleEvent: (event) => emit('press', unwrapNativeEventPayload(event)) },

@@ -2,6 +2,7 @@
 import type { LxNativeViewProps } from './types.js';
 import { h, useAttrs, useSlots } from 'vue';
 import { registerNativeViewComponent } from '@lingxia/elements';
+import { useNativeHostElement } from './text_component_shared.js';
 
 const props = defineProps<LxNativeViewProps>();
 const slots = useSlots();
@@ -11,8 +12,11 @@ if (typeof window !== 'undefined') {
   registerNativeViewComponent();
 }
 
+const elementRef = useNativeHostElement(props);
+
 const render = () => h('lx-native-view', {
   ...attrs,
+  ref: elementRef,
   id: props.id,
   class: props.class,
   style: props.style,

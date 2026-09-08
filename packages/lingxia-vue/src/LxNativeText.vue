@@ -2,6 +2,7 @@
 import type { LxNativeTextProps } from './types.js';
 import { h, useAttrs, useSlots } from 'vue';
 import { registerNativeTextComponent } from '@lingxia/elements';
+import { useNativeHostElement } from './text_component_shared.js';
 
 const props = defineProps<LxNativeTextProps>();
 const slots = useSlots();
@@ -11,8 +12,11 @@ if (typeof window !== 'undefined') {
   registerNativeTextComponent();
 }
 
+const elementRef = useNativeHostElement(props);
+
 const render = () => h('lx-native-text', {
   ...attrs,
+  ref: elementRef,
   id: props.id,
   class: props.class,
   style: props.style,

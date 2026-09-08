@@ -2,6 +2,7 @@
 import type { LxNativeCoverProps } from './types.js';
 import { h, useAttrs, useSlots } from 'vue';
 import { registerNativeCoverComponent } from '@lingxia/elements';
+import { useNativeHostElement } from './text_component_shared.js';
 
 const props = defineProps<LxNativeCoverProps>();
 const slots = useSlots();
@@ -11,8 +12,11 @@ if (typeof window !== 'undefined') {
   registerNativeCoverComponent();
 }
 
+const elementRef = useNativeHostElement(props);
+
 const render = () => h('lx-native-cover', {
   ...attrs,
+  ref: elementRef,
   id: props.id,
   class: props.class,
   style: props.style,

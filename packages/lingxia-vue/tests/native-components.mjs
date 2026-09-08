@@ -13,6 +13,12 @@ for (const name of ["LxNativeRoot", "LxNativeView", "LxNativeCover", "LxNativeBu
     fs: { fileExists: fs.existsSync, readFile: (path) => fs.readFileSync(path, "utf8") },
   });
   assert.ok(compiled.content.includes("style:"), `${name} must declare its constrained style prop`);
+  if (name !== "LxVideo") {
+    assert.ok(
+      compiled.content.includes("useNativeHostElement"),
+      `${name} must write aria-label onto the custom element host`,
+    );
+  }
   if (name === "LxVideo") {
     assert.ok(compiled.content.includes('"volumeChange"'));
     assert.ok(compiled.content.includes('"timeUpdate"'));

@@ -154,11 +154,13 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
 
   const accessibleMenu = await app.page.eval({
     page: 'video',
-    script: '(() => { const menu = document.querySelector("#video-native-menu"); const more = document.querySelector("#video-native-menu-more"); const close = document.querySelector("#video-native-menu-close"); const rect = menu?.getBoundingClientRect(); return { menuRole: menu?.getAttribute("role"), moreRole: more?.getAttribute("role"), closeRole: close?.getAttribute("role"), moreTabIndex: more?.getAttribute("tabindex"), closeTabIndex: close?.getAttribute("tabindex"), visible: !!rect && rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth }; })()',
-  }) as { menuRole: string; moreRole: string; closeRole: string; moreTabIndex: string; closeTabIndex: string; visible: boolean };
+    script: '(() => { const menu = document.querySelector("#video-native-menu"); const more = document.querySelector("#video-native-menu-more"); const close = document.querySelector("#video-native-menu-close"); const rect = menu?.getBoundingClientRect(); return { menuRole: menu?.getAttribute("role"), moreRole: more?.getAttribute("role"), closeRole: close?.getAttribute("role"), moreAriaLabel: more?.getAttribute("aria-label"), closeAriaLabel: close?.getAttribute("aria-label"), moreTabIndex: more?.getAttribute("tabindex"), closeTabIndex: close?.getAttribute("tabindex"), visible: !!rect && rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth }; })()',
+  }) as { menuRole: string; moreRole: string; closeRole: string; moreAriaLabel: string; closeAriaLabel: string; moreTabIndex: string; closeTabIndex: string; visible: boolean };
   expect(accessibleMenu.menuRole).toBe('menu');
   expect(accessibleMenu.moreRole).toBe('button');
   expect(accessibleMenu.closeRole).toBe('button');
+  expect(accessibleMenu.moreAriaLabel).toBe('More native menu actions');
+  expect(accessibleMenu.closeAriaLabel).toBe('Close native menu');
   expect(accessibleMenu.moreTabIndex).toBe('0');
   expect(accessibleMenu.closeTabIndex).toBe('0');
   expect(accessibleMenu.visible).toBeTruthy();
@@ -347,16 +349,18 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
     const accessibleMore = await eventually(
       async () => {
         try {
-          return (await desktop.ax.query({
+          const nodes = await desktop.ax.query({
             window: host.id,
             match: 'More native menu actions',
             all: true,
-          })).find((node) => node.enabled && node.role === 'button' && node.rect.w > 0 && node.rect.h > 0);
+          });
+          return nodes.find((node) => node.enabled && node.role === 'button' && node.rect.w > 0 && node.rect.h > 0)
+            ?? { unmatched: nodes };
         } catch (error) {
           throw new Error(`Windows UIA query failed: ${String(error)}`);
         }
       },
-      (value) => value !== undefined,
+      (value) => value !== undefined && !('unmatched' in (value as object)),
       { timeoutMs: 5_000, describe: 'native menu More action exposed as a Windows UIA button' },
     );
     if (!accessibleMore) throw new Error('native menu More action was absent from Windows UIA');

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { LxNativeRootProps } from './types.js';
-import { h, onBeforeUnmount, ref, useAttrs, useSlots, watch } from 'vue';
+import { h, onBeforeUnmount, useAttrs, useSlots, watch } from 'vue';
 import { registerNativeRootComponent, unwrapNativeEventPayload, type NativeError } from '@lingxia/elements';
-import { bindElementEvents, unbindElementEvents } from './text_component_shared.js';
+import { bindElementEvents, unbindElementEvents, useNativeHostElement } from './text_component_shared.js';
 
 const props = defineProps<LxNativeRootProps>();
 const slots = useSlots();
@@ -17,7 +17,7 @@ if (typeof window !== 'undefined') {
   registerNativeRootComponent();
 }
 
-const elementRef = ref<HTMLElement | null>(null);
+const elementRef = useNativeHostElement(props);
 let bound: HTMLElement | null = null;
 const listeners: Record<string, EventListenerObject> = {
   ready: { handleEvent: (event) => emit('ready', unwrapNativeEventPayload(event)) },
