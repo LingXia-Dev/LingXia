@@ -127,15 +127,7 @@ fn subscribe_with_snapshot(
 
 /// Load the persisted preference during bootstrap. The host chrome is told
 /// about a pinned scheme here; `auto` leaves the platform's own value alone.
-pub fn initialize_host_appearance() {
-    let Some(platform) = get_platform() else {
-        // Called before the runtime registry has one, the saved preference is
-        // never read and the product silently launches on `auto` every time.
-        crate::warn!(
-            "Host appearance initialized without a platform runtime; following the system"
-        );
-        return;
-    };
+pub fn initialize_host_appearance(platform: &lingxia_platform::Platform) {
     let stored = lingxia_service::settings::host_appearance(&platform.app_data_dir())
         .ok()
         .flatten()
@@ -144,7 +136,7 @@ pub fn initialize_host_appearance() {
     *preference_slot()
         .write()
         .unwrap_or_else(|error| error.into_inner()) = stored;
-    publish_host_color_mode(&platform, stored);
+    publish_host_color_mode(platform, stored);
 }
 
 /// Pin the whole host to `light`/`dark`, or follow the system with `auto`.

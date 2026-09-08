@@ -319,6 +319,10 @@ pub(crate) fn init_with_platform(
     crate::runtime::set_platform(runtime.clone());
     crate::app::set_data_dir(runtime.app_data_dir());
     seed_display_language(&runtime.app_data_dir(), runtime.get_system_locale());
+    // Before any lxapp exists: the home app resolves `auto` once while loading
+    // its config and bakes the answer into its document-start script, so a
+    // pinned preference read afterwards would miss the product's first paint.
+    lxapp::initialize_host_appearance(runtime.as_ref());
     install_global_executor();
     lingxia_app_context::set_host_build(crate::capabilities::host_build());
     if let Err(err) = lingxia_app_context::set_app_config(app_config.clone()) {
@@ -403,9 +407,6 @@ pub(crate) fn init_with_platform(
             ),
         )
     }?;
-    // After the lxapp runtime registry has a platform: this reads the saved
-    // preference through it, and returns doing nothing without one.
-    lxapp::initialize_host_appearance();
     if let Err(error) = crate::shell::initialize(runtime.clone()) {
         log::error!("Failed to initialize host shell state: {error}");
     }
