@@ -50,8 +50,20 @@ impl LanguageTag {
         &self.0
     }
 
+    /// Parse a platform locale identifier as a language tag.
+    ///
+    /// Platforms hand back POSIX and ICU spellings that BCP-47 rejects:
+    /// `zh_CN.UTF-8` carries a codeset, and Apple's `Locale.current` grows
+    /// `@calendar=chinese`-style keywords whenever the user overrides region,
+    /// calendar, or number format. Neither `.` nor `@` can appear in a valid
+    /// tag, so both tails are decoration and are dropped.
     fn from_system(value: &str) -> Result<Self, String> {
-        Self::parse(&value.replace('_', "-"))
+        let base = value
+            .split(['@', '.'])
+            .next()
+            .unwrap_or_default()
+            .replace('_', "-");
+        Self::parse(&base)
     }
 }
 
@@ -569,7 +581,12 @@ pub fn initialize_display_language(
         .unwrap_or("auto")
         .parse::<DisplayLanguagePreference>()
         .map_err(LxAppError::InvalidParameter)?;
-    let system = LanguageTag::from_system(system).map_err(LxAppError::InvalidParameter)?;
+    // A system locale this process cannot parse must not cost the user the
+    // language they chose: only the follow-the-system input falls back.
+    let system = LanguageTag::from_system(system).unwrap_or_else(|error| {
+        crate::warn!("Unusable system locale '{system}': {error}; following {FALLBACK_LANGUAGE}");
+        LanguageTag(FALLBACK_LANGUAGE.to_string())
+    });
     dispatch(service().update(|inner| {
         inner.preference = preference;
         inner.system = system;
@@ -632,6 +649,17 @@ pub fn set_display_language_preference_in(
             .map_err(|error| LxAppError::Runtime(error.to_string()))
     })?;
     dispatch(transition);
+    let state = service().state();
+    if state.effective_source == DisplayLanguageEffectiveSource::SessionOverride {
+        // Otherwise a Settings screen looks broken under `lingxia dev
+        // --display-language`: the write succeeds and nothing on screen moves.
+        crate::warn!(
+            "Display language preference saved as '{}', but a dev session override pins the \
+             effective language to '{}'; restart without --display-language to see it apply",
+            state.preference,
+            state.effective
+        );
+    }
     Ok(())
 }
 
