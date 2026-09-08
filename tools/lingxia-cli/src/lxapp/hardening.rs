@@ -196,7 +196,7 @@ fn is_html_document(source: &str) -> bool {
         || (lower.contains("<head") && lower.contains("<body"))
 }
 
-fn write_integrity_manifest(project: &Project) -> Result<()> {
+pub(crate) fn write_integrity_manifest(project: &Project) -> Result<()> {
     let mut files = Vec::new();
     for path in collect_files(&project.output_dir)? {
         let rel = relative_path(&project.output_dir, &path);

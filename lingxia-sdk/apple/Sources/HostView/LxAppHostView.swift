@@ -59,6 +59,7 @@ public final class LxAppHostView: LxAppPlatformView {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            WebViewManager.hideLxAppScrollIndicators(webView)
             hostView?.emit(.didFinishLoading)
             forwardedDelegate?.webView?(webView, didFinish: navigation)
         }
@@ -197,6 +198,7 @@ public final class LxAppHostView: LxAppPlatformView {
         clearEventObservers()
         self.webView?.removeFromSuperview()
         WebViewManager.configureWebViewTransparency(wv, transparent: false)
+        WebViewManager.hideLxAppScrollIndicators(wv)
         let resolvedAppId = appId ?? wv.appId
         let resolvedPath = path ?? wv.currentPath
         if let resolvedAppId, let resolvedPath {

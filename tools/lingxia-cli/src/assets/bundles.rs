@@ -430,6 +430,13 @@ fn prepare_lxapp_plan(
             plan.output_dir.display()
         )
     })?;
+    crate::lxapp::stamp_output_html(&plan.output_dir).with_context(|| {
+        format!(
+            "LxApp bundle {} failed to hide CSS scrollbars in {}",
+            plan.asset_name,
+            plan.output_dir.display()
+        )
+    })?;
 
     let dist_hash = hash_tree(&plan.output_dir, &[])?;
     cache.lxapp_builds.insert(

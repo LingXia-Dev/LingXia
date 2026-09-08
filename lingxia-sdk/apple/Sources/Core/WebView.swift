@@ -260,6 +260,7 @@ final class WebViewManager {
     /// shows a page gets the same set instead of assembling it by hand.
     @MainActor
     static func attachLxAppWebView(_ webView: WKWebView, to container: PlatformView) {
+        hideLxAppScrollIndicators(webView)
         #if os(macOS)
         // A leftover sibling (previous page, or its pull-to-refresh strip) sits
         // behind the current web view. Sliding this page down to reveal the
@@ -374,8 +375,6 @@ final class WebViewManager {
         // Configure scroll behavior
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.indicatorStyle = .default
-        webView.scrollView.showsVerticalScrollIndicator = true
-        webView.scrollView.showsHorizontalScrollIndicator = true
         #else
         let backgroundColor = transparent
             ? PlatformColor.clear
@@ -384,6 +383,23 @@ final class WebViewManager {
         webView.layer?.backgroundColor = backgroundColor.cgColor
         webView.underPageBackgroundColor = backgroundColor
         webView.setValue(transparent, forKey: "drawsTransparentBackground")
+        #endif
+    }
+
+    /// LxApp pages are native surfaces: hide the WebView's overlay scroll
+    /// indicators. Browser-profile WebViews must not call this.
+    static func hideLxAppScrollIndicators(_ webView: WKWebView) {
+        #if os(iOS)
+        webView.scrollView.showsVerticalScrollIndicator = false
+        webView.scrollView.showsHorizontalScrollIndicator = false
+        func hide(_ view: UIView) {
+            if let scroll = view as? UIScrollView {
+                scroll.showsVerticalScrollIndicator = false
+                scroll.showsHorizontalScrollIndicator = false
+            }
+            view.subviews.forEach(hide)
+        }
+        hide(webView)
         #endif
     }
 

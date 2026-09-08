@@ -60,6 +60,10 @@ internal class WebView(context: Context) : LingXiaWebView(context) {
             // Register before strict lxapp content loads; arbitrary browser pages
             // must never receive the native-component JavaScript interface.
             NativeBridge.registerJsInterface(this)
+            // LxApp pages are native surfaces; overlay bars would look like a
+            // webpage. Browser-profile WebViews keep the system bars.
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
         }
         // Disable overscroll glow effect - native components stay fixed at boundaries
         overScrollMode = OVER_SCROLL_NEVER

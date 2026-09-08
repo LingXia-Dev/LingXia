@@ -257,6 +257,8 @@ export struct LingXiaWebView {
         this.cleanupEmbedManager();
         hilog.info(DOMAIN, TAG, `Same-level cleanup for webTag: ${this.webTag}`);
       })
+      .verticalScrollBarAccess(this.isBrowserRelaxed())
+      .horizontalScrollBarAccess(this.isBrowserRelaxed())
       .enableNativeEmbedMode(true)
       .onNativeEmbedLifecycleChange((embed: NativeEmbedDataInfo) => {
         if (this.embedManager) {

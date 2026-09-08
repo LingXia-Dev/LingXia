@@ -951,8 +951,7 @@ final class LxAppViewController: UIViewController, ObservableObject {
         // Configure scroll behavior
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.indicatorStyle = .default
-        webView.scrollView.showsVerticalScrollIndicator = true
-        webView.scrollView.showsHorizontalScrollIndicator = true
+        WebViewManager.hideLxAppScrollIndicators(webView)
     }
 
     private func handlePullToRefresh() {
