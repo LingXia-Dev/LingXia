@@ -400,7 +400,9 @@ mod native_main_scaffold_tests {
         let windows_manifest =
             std::fs::read_to_string(target_dir.join("windows").join("Cargo.toml")).unwrap();
         assert!(!windows_manifest.contains("{{WINDOWS_RS_REV}}"));
-        assert!(windows_manifest.contains(&format!("rev = \"{}\"", windows::WINDOWS_RS_REV)));
+        assert!(!windows_manifest.contains("microsoft/windows-rs.git"));
+        assert!(!windows_manifest.contains("LingXia-Dev/LingXia.git"));
+        assert!(windows_manifest.contains("lingxia-windows-sdk = { version ="));
         create_rust_library(&config, &versions, AppServiceMode::Disabled).unwrap();
         generate_config_file(
             &config,

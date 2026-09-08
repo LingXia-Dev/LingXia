@@ -144,8 +144,8 @@ fn os_version_string() -> String {
 /// Kernel-reported version; unlike GetVersionEx this is not subject to
 /// manifest-based compatibility shims, so Windows 10/11 builds are accurate.
 fn rtl_get_version() -> Option<(u32, u32, u32)> {
-    // OSVERSIONINFOW; declared locally because the pinned windows-rs rev only
-    // exposes RtlGetVersion through the Wdk crate, which is not a dependency.
+    // OSVERSIONINFOW; declared locally because windows 0.62 only exposes
+    // RtlGetVersion through the Wdk crate, which is not a dependency.
     #[repr(C)]
     struct OsVersionInfoW {
         os_version_info_size: u32,

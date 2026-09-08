@@ -452,7 +452,7 @@ and served by the runtime, none of which applies to these raw files.
 
 ## `windows` Section
 
-`windows` is the desktop host for Windows, on the same adaptive `surfaces:` model as macOS (no per-platform UI block). You don't hand-wire the Windows SDK: scaffold with `lingxia new -t native-app -p windows` (combine with other platforms, e.g. `-p macos,windows`) and the generated project drops in the `windows/` Rust host crate and its packaging wired to the right SDK refs — read the generated project rather than pasting git refs or patch blocks here.
+`windows` is the desktop host for Windows, on the same adaptive `surfaces:` model as macOS (no per-platform UI block). You don't hand-wire the Windows SDK: scaffold with `lingxia new -t native-app -p windows` (combine with other platforms, e.g. `-p macos,windows`) and the generated project drops in the `windows/` Rust host crate and its packaging wired to crates.io `lingxia-windows-sdk` — read the generated project rather than pasting dependency tables here.
 
 The `windows:` section carries the packaging identity — `appId` (env suffixes apply like other platforms' package ids), `executableName` (the `windows/Cargo.toml` binary), and `publisher` (the MSIX `Publisher` distinguished name, defaulting to `CN=<productName>`). An optional `store:` block holds the Microsoft Store (Partner Center) `appId` for `lingxia store`. Build with `lingxia build --platform windows`; submit to the MS Store with `lingxia store --platform windows`. As always, the scaffolded `lingxia.yaml` is the authoritative field list.
 

@@ -112,14 +112,11 @@ lingxia-messaging = { workspace = true, optional = true }
 lingxia-platform = { workspace = true, optional = true }
 lingxia-webview = { workspace = true, optional = true }
 lingxia-windows-contract = { workspace = true, optional = true }
-# windows-rs is pinned to a git rev for `proc-macros` (the `#[implement]`
-# attribute used by the MFPlay callback in video_player), which no published
-# windows-core ships. This crate carries the git deps directly so it is
-# self-contained and distributed via git, not crates.io. Consumers add the
-# matching `[patch.crates-io]` (the CLI's Windows template does this) so these
-# unify with the published `windows` used by lingxia-platform/-webview.
-windows-core = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows-core", features = ["proc-macros"], optional = true }
-windows = { git = "https://github.com/microsoft/windows-rs.git", rev = "a1e9fce43c026221f62f0a149267cb6d7d3c607b", package = "windows", features = [
+# crates.io 0.62.2 is the latest published coordinated `windows` set (the
+# 0.100 umbrella crate is not on crates.io yet). `#[implement]` is always
+# on; do not request a `proc-macros` feature — that name exists only on git.
+windows-core = { workspace = true, optional = true }
+windows = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Graphics_Direct3D",
     "Win32_Graphics_Direct3D11",

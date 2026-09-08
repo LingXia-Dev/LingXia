@@ -1785,7 +1785,7 @@ fn create_device() -> Result<(ID3D11Device, ID3D11DeviceContext)> {
             D3D11CreateDevice(
                 None,
                 driver,
-                None,
+                Default::default(),
                 // Required by DirectComposition.
                 if debug {
                     D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_DEBUG

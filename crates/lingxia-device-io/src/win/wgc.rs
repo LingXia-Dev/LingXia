@@ -55,7 +55,7 @@ pub fn capture_window(hwnd: HWND) -> Result<Rgba> {
         D3D11CreateDevice(
             None,
             D3D_DRIVER_TYPE_HARDWARE,
-            None,
+            Default::default(),
             D3D11_CREATE_DEVICE_BGRA_SUPPORT,
             None,
             D3D11_SDK_VERSION,
