@@ -587,64 +587,6 @@ impl PageBridge {
         self.inner.handshake.lock().unwrap().ready
     }
 
-    /// Optional exact-lease installer retained for host integrations that
-    /// already hold an active document gate.
-    #[allow(dead_code)]
-    pub(crate) fn bind_v3_protocol(
-        &self,
-        page: &PageInstance,
-        protocol: BoundV3Protocol,
-        expected_generation: DocumentGeneration,
-        gate: Arc<dyn DocumentOutboundGate>,
-    ) -> Result<(), LxAppError> {
-        let mut outcome = Ok(());
-        let mut replaced = None;
-        let mut protocol = Some(protocol);
-        let mut install = || {
-            let mut handshake = self.inner.handshake.lock().unwrap();
-            if handshake.ready {
-                outcome = Err(LxAppError::Bridge(
-                    "cannot bind V3 protocol after bridge readiness".to_string(),
-                ));
-                return;
-            }
-            let protocol = protocol
-                .take()
-                .expect("active document gate invoked bind more than once");
-            let binding = protocol.outbound_binding();
-            let connection = Arc::new(BridgeConnection {
-                work_id: self.next_session_work_id(),
-                outbound: Some(OutboundContext {
-                    expected_generation,
-                    gate: Arc::clone(&gate),
-                    binding: Some(binding),
-                }),
-                caller: host::AuthenticatedCaller::for_lxapp(&self.inner.lxapp),
-            });
-            // The lease gate is held outside the handshake lock.  Thus a
-            // revoked browser document cannot install an old binding over a
-            // successor, while Begin remains linearized with installation.
-            if let Err(err) = self.begin_work_locked(page, connection.work_id) {
-                outcome = Err(err);
-                return;
-            }
-            replaced = handshake.connection.replace(connection);
-            handshake.protocol = BridgeProtocol::BoundV3(protocol);
-            handshake.session_id = None;
-            handshake.ready = false;
-        };
-        if !gate.with_active(&mut install) {
-            return Err(LxAppError::Bridge(
-                "cannot bind a revoked document session".to_string(),
-            ));
-        }
-        outcome?;
-        if let Some(previous) = replaced {
-            self.cancel_work(page, previous, "Session replaced");
-        }
-        Ok(())
-    }
-
     #[doc(hidden)]
     pub fn bind_required_v3_document(
         &self,
@@ -721,7 +663,9 @@ impl PageBridge {
                 binding: Some(protocol.outbound_binding()),
             }),
             // Browser audience is a registry-held ingress scope, never a
-            // durable bridge property.
+            // durable bridge property: `predecode_inbound` drops this field
+            // for bound-V3 frames, and each one is authorized against the
+            // browser document caller its own ingress establishes.
             caller: host::AuthenticatedCaller::for_lxapp(&self.inner.lxapp),
         });
         let replaced = {
@@ -953,6 +897,15 @@ impl PageBridge {
         let context = incoming.context();
         self.admit_incoming(page, context)?;
         let decoded = self.predecode_inbound(incoming.body())?;
+        if decoded.bound_v3 {
+            // A bound-V3 frame carries a browser document's audience, which
+            // only `prepare_required_v3_incoming` can establish. Dispatching
+            // one here would run it under whatever caller the connection was
+            // built with.
+            return Err(LxAppError::Bridge(
+                "bound V3 frames must enter through the browser document path".to_string(),
+            ));
+        }
 
         self.execute_decoded_incoming(page, context, decoded)
     }
@@ -1085,7 +1038,10 @@ impl PageBridge {
             .map(|connection| CapturedSessionWork {
                 work_id: Some(connection.work_id),
                 outbound: connection.outbound.clone(),
-                caller: Some(connection.caller.clone()),
+                // A bound-V3 connection is owned by a browser document, whose
+                // audience is established per frame. The owning lxapp's
+                // identity must never be inherited by one of its frames.
+                caller: (!bound_v3).then(|| connection.caller.clone()),
                 execution_permit: None,
             })
             .unwrap_or(CapturedSessionWork {
