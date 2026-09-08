@@ -481,7 +481,8 @@ export class LxNativeTextElement extends LxNativeBaseElement {
         ? `${value}px` : value;
       style.setProperty(name, cssValue);
     }
-    this.typography.textContent = `:host { ${style.cssText} }`;
+    // Keep DOM measurement and accessible text without painting a second native label.
+    this.typography.textContent = `:host { ${style.cssText} } slot { opacity: 0; }`;
   }
 
   get maxLines(): number | null {
@@ -529,6 +530,7 @@ export class LxNativeButtonElement extends LxNativeBaseElement {
         :host([size="compact"]) { min-height: 26px; padding: 4px 8px; }
         :host([icon-position="end"]) { flex-direction: row-reverse; }
         .icon { width: 1em; height: 1em; flex: none; }
+        span, slot { opacity: 0; }
         [hidden] { display: none; }
       `;
       this.measuredLabel = document.createElement("span");
