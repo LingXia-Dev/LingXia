@@ -73,16 +73,9 @@ extension TabBarItem {
     var cachedIconPath: String { icon_path.toString() }
 }
 
-/// Keep the host-owned slot in the same language as its sibling labels.
-fileprivate func tabBarMoreLabel(for items: [TabBarItem]) -> String {
-    let labels = items.map(\.cachedText).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
-    let chineseLabels = labels.filter { text in
-        text.unicodeScalars.contains { scalar in
-            (0x3400...0x4DBF).contains(scalar.value)
-                || (0x4E00...0x9FFF).contains(scalar.value)
-        }
-    }.count
-    return chineseLabels > labels.count - chineseLabels ? "更多" : "More"
+/// Host-owned overflow label follows the product display language.
+fileprivate func tabBarMoreLabel() -> String {
+    L10n.string("lx_tabbar_more")
 }
 
 /// TabBar styling helpers
@@ -359,7 +352,7 @@ struct MacOSLxAppTabBar: View {
                     }
                 }
                 .frame(width: 32 * displayScale, height: 32 * displayScale)
-                Text(tabBarMoreLabel(for: items))
+                Text(tabBarMoreLabel())
                     .font(.system(size: 10 * displayScale, weight: .medium))
                     .foregroundColor(forceColor)
                     .lineLimit(1)
@@ -988,7 +981,7 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         }
 
         let textLabel = UILabel()
-        textLabel.text = tabBarMoreLabel(for: items)
+        textLabel.text = tabBarMoreLabel()
         textLabel.font = UIFont.systemFont(ofSize: 10, weight: .medium)
         textLabel.textColor = tint
         textLabel.textAlignment = .center

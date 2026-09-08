@@ -1,9 +1,11 @@
 //! Host-wide display-language state and Runner session overrides.
 
+use super::LxApp;
 use super::runtime_registry::{get_lxapps_manager, get_platform};
 use crate::error::LxAppError;
 use language_tags::LanguageTag as ParsedLanguageTag;
 use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_platform::traits::ui::UIUpdate;
 use lingxia_webview::WebViewController;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::VecDeque;
@@ -737,7 +739,17 @@ fn publish_effective(update: &DisplayLanguageEffectiveUpdate) {
                 }),
             ),
         );
+        refresh_host_tabbar(&appid, &app);
     }
+}
+
+/// Host-owned tab chrome (overflow "More") is painted from display language.
+/// Startup seed may run before native chrome exists; a failed rebuild is ignored.
+fn refresh_host_tabbar(appid: &str, app: &LxApp) {
+    if app.get_tabbar().is_none() {
+        return;
+    }
+    let _ = app.runtime.update_tabbar_ui(appid.to_string());
 }
 
 #[cfg(test)]
