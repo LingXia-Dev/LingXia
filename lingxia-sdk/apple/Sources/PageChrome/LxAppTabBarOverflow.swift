@@ -392,6 +392,7 @@ final class LxAppTabBarOverflowPanel: NSView {
 
     /// Empty regions of the window overlay must not swallow runner chrome.
     override func hitTest(_ point: NSPoint) -> NSView? {
+        guard frame.contains(point) else { return nil }
         let hit = super.hitTest(point)
         return hit === self ? nil : hit
     }
@@ -407,20 +408,23 @@ final class LxAppTabBarOverflowPanel: NSView {
     ///   - screen: the simulated phone, which the scrim and card must stay inside.
     func present(in host: NSView, above anchor: NSView, clippedTo screen: NSView) {
         host.addSubview(self, positioned: .above, relativeTo: nil)
+        // Reveal from behind the strip, not from outside the device frame.
+        // The window-level overlay bypasses the simulated screen's own mask.
+        layer?.masksToBounds = true
         paintPlate()
         let bottom = plate.bottomAnchor.constraint(
             equalTo: anchor.topAnchor,
             constant: -scaled(Metrics.bottomGap)
         )
         NSLayoutConstraint.activate([
-            topAnchor.constraint(equalTo: host.topAnchor),
-            leadingAnchor.constraint(equalTo: host.leadingAnchor),
-            trailingAnchor.constraint(equalTo: host.trailingAnchor),
-            bottomAnchor.constraint(equalTo: host.bottomAnchor),
-            scrim.topAnchor.constraint(equalTo: screen.topAnchor),
-            scrim.leadingAnchor.constraint(equalTo: screen.leadingAnchor),
-            scrim.trailingAnchor.constraint(equalTo: screen.trailingAnchor),
-            scrim.bottomAnchor.constraint(equalTo: anchor.topAnchor),
+            topAnchor.constraint(equalTo: screen.topAnchor),
+            leadingAnchor.constraint(equalTo: screen.leadingAnchor),
+            trailingAnchor.constraint(equalTo: screen.trailingAnchor),
+            bottomAnchor.constraint(equalTo: anchor.topAnchor),
+            scrim.topAnchor.constraint(equalTo: topAnchor),
+            scrim.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrim.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrim.bottomAnchor.constraint(equalTo: bottomAnchor),
             plate.leadingAnchor.constraint(
                 equalTo: anchor.leadingAnchor,
                 constant: scaled(Metrics.horizontalInset)
