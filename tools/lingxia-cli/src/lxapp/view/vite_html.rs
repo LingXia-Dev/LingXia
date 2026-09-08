@@ -340,7 +340,11 @@ pub(crate) fn stamp_output_html(output_dir: &Path) -> Result<bool> {
 
 fn looks_like_html_document(source: &str) -> bool {
     let trimmed = source.trim_start();
-    let lower: String = trimmed.chars().take(256).collect::<String>().to_ascii_lowercase();
+    let lower: String = trimmed
+        .chars()
+        .take(256)
+        .collect::<String>()
+        .to_ascii_lowercase();
     lower.starts_with("<!doctype html")
         || lower.starts_with("<html")
         || (has_html_tag(&lower, "head") && has_html_tag(&lower, "body"))
@@ -380,7 +384,11 @@ fn collect_html_documents_inner(path: &Path, files: &mut Vec<PathBuf>) -> Result
         if !path.is_file() {
             continue;
         }
-        match path.extension().and_then(|value| value.to_str()).map(str::to_ascii_lowercase) {
+        match path
+            .extension()
+            .and_then(|value| value.to_str())
+            .map(str::to_ascii_lowercase)
+        {
             Some(ext) if matches!(ext.as_str(), "html" | "htm" | "ts" | "tsx" | "vue") => {}
             _ => continue,
         }
