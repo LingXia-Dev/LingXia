@@ -61,6 +61,10 @@ const APPLE_DOWNSTREAM_URL = BRIDGE_CONFIG.appleDownstreamURL;
 const APPLE_RECONNECT_BASE_MS = 200;
 const APPLE_RECONNECT_MAX_MS = 2000;
 const BOUND_CONSOLE_MESSAGE_CHARS = 12 * 1024;
+// Native drops a larger frame before it reaches the bridge, so a request that
+// exceeds this would otherwise only surface as a timeout. Mirrors
+// MAX_WEB_MESSAGE_BYTES in the webview crate.
+const MAX_NATIVE_MESSAGE_BYTES = 64 * 1024;
 
 // Keep framework diagnostics and console forwarding on the original methods.
 // RequiredV3 installs a page-facing wrapper later; using it here would recurse
@@ -71,6 +75,8 @@ const nativeConsole = {
   error: console.error.bind(console),
   info: (console.info || console.log).bind(console),
   debug: (console.debug || console.log).bind(console),
+  group: (console.group || console.log).bind(console),
+  groupEnd: (console.groupEnd || (() => {})).bind(console),
 };
 
 const debugFlags = { data: false, proto: false, all: false };
@@ -609,26 +615,34 @@ function encodeForNative(message: unknown): unknown | null {
   return encoded.ok ? encoded.value : null;
 }
 
-function postToNative(message: unknown): void {
+function postToNative(message: unknown): LxBridgeError | null {
   const encodedMessage = encodeForNative(message);
-  if (!encodedMessage) return;
+  if (!encodedMessage) return null;
   const kind = (message as { kind?: string }).kind;
   if (kind === "req" || kind === "notify")
     log(`postToNative: ${kind} ${(message as { method?: string }).method}`);
   if (isDebugEnabled("proto"))
-    // Log the payload before RequiredV3 adds its document secret.
-    console.log("→", JSON.stringify(message, null, 2));
+    // Log the payload before RequiredV3 adds its document secret. The bound
+    // console wrapper posts what it prints, which would re-enter this function.
+    nativeConsole.log("→", JSON.stringify(message, null, 2));
   try {
+    const messageString = stringifyForNative(encodedMessage);
+    const bytes = utf8ByteLength(messageString);
+    if (bytes > MAX_NATIVE_MESSAGE_BYTES) {
+      return {
+        code: BRIDGE_ERROR.MESSAGE_TOO_LARGE,
+        message: `Bridge message of ${bytes} bytes exceeds the ${MAX_NATIVE_MESSAGE_BYTES}-byte native limit`,
+      };
+    }
     if (communicationMethod === "webkit") {
       window.webkit?.messageHandlers[NATIVE_HANDLER_NAME]?.postMessage(
-        stringifyForNative(encodedMessage),
+        messageString,
       );
-      return;
+      return null;
     }
-    const messageString = stringifyForNative(encodedMessage);
     if (communicationMethod === MESSAGE_PORT_TYPE && messagePort) {
       messagePort.postMessage(messageString);
-      return;
+      return null;
     }
     if (
       (communicationMethod === JS_INTERFACE_TYPE ||
@@ -636,13 +650,14 @@ function postToNative(message: unknown): void {
       window.LingXiaProxy?.postMessage
     ) {
       window.LingXiaProxy.postMessage(messageString);
-      return;
+      return null;
     }
     warn("Transport not ready");
   } catch (e) {
     if (protocolMode.kind === "required-v3") error("Send error");
     else error("Send error:", e);
   }
+  return null;
 }
 
 function formatBoundConsoleMessage(args: unknown[]): string {
@@ -819,11 +834,6 @@ let handshakeDone = false;
 let helloSent = false;
 let handshakeRetryCount = 0;
 let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
-
-// Host method schema — populated from handshake `Ready` message.
-// Maps "namespace.method" → "call" | "stream".
-const hostMethodKinds: Record<string, string> = {};
-const hostChannelNames = new Set<string>();
 
 // Request tracking
 let requestCounter = 0;
@@ -1280,6 +1290,22 @@ function removeOutboxByReqId(reqId: string): boolean {
   return false;
 }
 
+// UTF-8 byte length without allocating a copy of the string.
+function utf8ByteLength(value: string): number {
+  if (typeof TextEncoder === "function") return new TextEncoder().encode(value).length;
+  let bytes = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (code >= 0xd800 && code <= 0xdbff) {
+      bytes += 4;
+      i += 1;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
 function send(msg: unknown, reqId?: string): void {
   const kind = (msg as { kind?: string }).kind;
   const isHandshake =
@@ -1300,7 +1326,15 @@ function send(msg: unknown, reqId?: string): void {
     return;
   }
   if (reqId) armPendingOperationTimer(reqId);
-  postToNative(msg);
+  reportPostFailure(postToNative(msg), reqId);
+}
+
+// An oversized frame is dropped by native without a reply, so the caller would
+// otherwise learn about it only when its request timed out.
+function reportPostFailure(failure: LxBridgeError | null, reqId?: string): void {
+  if (!failure) return;
+  error(failure.message);
+  if (reqId) rejectPendingOperation(reqId, failure);
 }
 
 function flushOutbox(): void {
@@ -1309,7 +1343,7 @@ function flushOutbox(): void {
     const item = outbox.shift();
     if (!item) continue;
     if (item.reqId) armPendingOperationTimer(item.reqId);
-    postToNative(item.msg);
+    reportPostFailure(postToNative(item.msg), item.reqId);
   }
 }
 
@@ -1515,9 +1549,9 @@ function applySnapshotFromResult(result: unknown): boolean {
   pageData = obj.state as Record<string, unknown>;
   stateRev = obj.rev;
   if (isDebugEnabled("data")) {
-    console.group("[LX] snapshot(res)");
-    console.log("rev:", stateRev, "state:", deepCopy(pageData));
-    console.groupEnd();
+    nativeConsole.group("[LX] snapshot(res)");
+    nativeConsole.log("rev:", stateRev, "state:", deepCopy(pageData));
+    nativeConsole.groupEnd();
   }
   notifyStateSubscribers(true);
   return true;
@@ -1599,18 +1633,11 @@ function handleIncomingMessage(msg: unknown): void {
       clearHandshakeTimer();
       handshakeDone = true;
       handshakeRetryCount = 0;
-      if (message.hostMethods) {
-        for (const [k, v] of Object.entries(message.hostMethods)) {
-          hostMethodKinds[k] = v;
-        }
-      }
-      if (message.hostChannels) {
-        for (const name of message.hostChannels) hostChannelNames.add(name);
-      }
       if (isDebugEnabled("proto")) {
         log(
           "Handshake complete, host routes:",
-          Object.keys(hostMethodKinds).length + hostChannelNames.size,
+          Object.keys(message.hostMethods || {}).length +
+            (message.hostChannels || []).length,
         );
       }
       flushOutbox();
@@ -1670,9 +1697,9 @@ function handleIncomingMessage(msg: unknown): void {
       pageData = message.state || {};
       stateRev = message.rev;
       if (isDebugEnabled("data")) {
-        console.group("[LX] snapshot");
-        console.log("rev:", stateRev, "state:", deepCopy(pageData));
-        console.groupEnd();
+        nativeConsole.group("[LX] snapshot");
+        nativeConsole.log("rev:", stateRev, "state:", deepCopy(pageData));
+        nativeConsole.groupEnd();
       }
       notifyStateSubscribers(true);
       return;
@@ -1692,9 +1719,9 @@ function handleIncomingMessage(msg: unknown): void {
         return;
       }
       if (isDebugEnabled("data")) {
-        console.group("[LX] patch");
-        console.log("rev:", stateRev, "ops:", message.ops);
-        console.groupEnd();
+        nativeConsole.group("[LX] patch");
+        nativeConsole.log("rev:", stateRev, "ops:", message.ops);
+        nativeConsole.groupEnd();
       }
       notifyStateSubscribers(false);
       if (message.ack)

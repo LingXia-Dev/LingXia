@@ -58,6 +58,7 @@ export const BRIDGE_ERROR = {
   OUTBOX_FULL: 'BRIDGE_OUTBOX_FULL',
   STREAM_OVERFLOW: 'BRIDGE_STREAM_OVERFLOW',
   STREAM_CLOSED: 'BRIDGE_STREAM_CLOSED',
+  MESSAGE_TOO_LARGE: 'BRIDGE_MESSAGE_TOO_LARGE',
 } as const;
 
 export type BridgeErrorCode = (typeof BRIDGE_ERROR)[keyof typeof BRIDGE_ERROR];
@@ -214,7 +215,8 @@ export interface LingXiaBridgeInterface {
   debug: { data: boolean; proto: boolean; all: boolean };
   displayLanguage: {
     get(): string;
-    subscribe(listener: () => void): () => void;
+    /** Change-only; read the current value with `get()`. */
+    subscribe(listener: (language: string) => void): () => void;
   };
   platform: {
     isHarmony(): boolean;

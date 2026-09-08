@@ -472,14 +472,20 @@ own, and never offer the user a language picker inside a screen — the one that
 edits the setting is the product's Settings surface.
 
 - **View**: `useDisplayLanguage()` in React/Vue; `getDisplayLanguage()` and
-  `subscribeDisplayLanguage()` in `@lingxia/html`. A plain-HTML page that
+  `subscribeDisplayLanguage(cb)` in `@lingxia/html`. A plain-HTML page that
   bundles nothing reads `window.LingXiaBridge.displayLanguage.get()` and
-  `.subscribe()`.
+  `.subscribe(cb)`.
 - **Logic**: `lx.app.displayLanguage.get()` returns the tag in effect;
-  `lx.app.displayLanguage.watch(cb)` follows it, starting with the current
-  value and returning an unsubscribe. Logic needs the second one because the
-  strings it hands to native chrome — navigation bar titles, tab bar labels,
-  modal text — are yours, and nothing re-renders them for you.
+  `lx.app.displayLanguage.watch(cb)` follows it and returns an unsubscribe.
+  Logic needs the second one because the strings it hands to native chrome —
+  navigation bar titles, tab bar labels, modal text — are yours, and nothing
+  re-renders them for you.
+
+The two subscriptions differ on purpose. View's `subscribe(cb)` fires **only on
+change**, so it plugs into `useSyncExternalStore` without an extra render; take
+the current value from `get()`. Logic's `watch(cb)` **starts with the current
+value**, and that first call is synchronous — it runs before `watch` returns,
+so the unsubscribe it returns is not yet bound inside it.
 
 Narrowing the tag to the catalogs you ship is yours to do, and is not a
 language setting: `ja-JP` with only `en`/`zh` shipped renders `en`, while the
@@ -497,7 +503,12 @@ lx.app.control?.displayLanguage.watchPreference((p) => …)
 `lx.app.control` is present only in that app, so `lx.app.control?.…` and
 `lx.supports({ capability: 'control' })` always agree. `watchPreference` tracks
 what the user chose, so a system locale change under `'auto'` moves
-`displayLanguage.watch` without waking it. A `lingxia dev --display-language`
-session shadows the preference for that session without changing it.
+`displayLanguage.watch` without waking it.
+
+A `lingxia dev --display-language` session shadows the *effective* language
+without touching the preference. Inside that session `get()` and
+`getPreference()` disagree by design, and a `setPreference(...)` persists but
+changes nothing on screen until the shadow is gone — the runtime logs a warning
+saying so. Check a Settings screen's own effect in a session without the flag.
 
 The bridge initializes `document.documentElement.lang`.
