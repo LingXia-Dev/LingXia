@@ -189,7 +189,7 @@
             <div class="flex-1">
               <div class="text-sm text-gray-800 font-semibold">Product Cache</div>
               <div class="text-xs text-gray-500 mt-0.5">
-                Every lxapp's cache, not just this one — home lxapp only
+                Reclaimable product cache — home lxapp only
               </div>
             </div>
             <button
@@ -208,20 +208,21 @@
                 <h4 class="text-sm font-semibold text-gray-700">State</h4>
               </div>
               <div class="flex items-center justify-between py-2">
-                <span class="text-xs text-gray-500">Size</span>
+                <span class="text-xs text-gray-500">Reclaimable (estimate)</span>
                 <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ formatBytes(cacheBytes) }}</span>
               </div>
               <div class="flex items-center justify-between py-2">
-                <span class="text-xs text-gray-500">Last Freed</span>
+                <span class="text-xs text-gray-500">Last Freed (estimate)</span>
                 <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ formatBytes(cacheFreedBytes) }}</span>
               </div>
+              <div v-if="cacheNotice" class="text-xs text-gray-500">{{ cacheNotice }}</div>
               <div v-if="cacheError" class="flex items-center justify-between py-2">
                 <span class="text-xs text-gray-500">Error</span>
                 <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ cacheError }}</span>
               </div>
               <div class="pt-3 text-xs text-gray-500">
-                Size counts LingXia-managed files only; a clear also drops the
-                WebView cache, so it usually frees more than this shows.
+                Running apps retain their private caches. Use their menu to clear
+                cache and restart. Estimates exclude WebView cache.
               </div>
               <div class="pt-3">
                 <button
@@ -261,6 +262,7 @@ const autostartSupported = computed(() => data.autostartSupported ?? false);
 const autostartEnabled = computed(() => data.autostartEnabled ?? null);
 const autostartError = computed(() => data.autostartError ?? '');
 const cacheBytes = computed(() => data.cacheBytes ?? null);
+const cacheNotice = computed(() => data.cacheNotice ?? '');
 const cacheFreedBytes = computed(() => data.cacheFreedBytes ?? null);
 const cacheBusy = computed(() => data.cacheBusy ?? false);
 const cacheError = computed(() => data.cacheError ?? '');

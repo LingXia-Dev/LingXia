@@ -98,6 +98,31 @@ hopSpec('hop to the bundled chat lxapp and back', {
     expect(isOpen(list, SHOWCASE_APP_ID)).toBe(true);
   });
 
+  await t.step('guest cache APIs reject before touching host storage', async () => {
+    const chat = lx.automation().lxapp(CHAT_APP_ID);
+    await eventually(() => chat.eval({ script: 'return true', timeoutMs: 5_000 }), (ready) => ready === true, {
+      describe: 'chat Logic runtime to answer for cache permission checks',
+      retryIf: () => true,
+    });
+    const denied = await chat.eval({ script: `
+      const results = [];
+      for (const method of ['size', 'clear']) {
+        try {
+          await lx.app.cache[method]();
+          results.push({ method, rejected: false, message: '' });
+        } catch (error) {
+          results.push({ method, rejected: true, message: String(error.message) });
+        }
+      }
+      return results;
+    ` }) as { method: string; rejected: boolean; message: string }[];
+    expect(denied.length).toBe(2);
+    for (const result of denied) {
+      expect(result.rejected).toBe(true);
+      expect(result.message).toContain('only available in the home lxapp');
+    }
+  });
+
   await t.step('navigateBackApp from the target returns to the caller and closes the target', async () => {
     const chat = lx.automation().lxapp(CHAT_APP_ID);
     await eventually(() => chat.eval({ script: 'return true', timeoutMs: 5_000 }), (ready) => ready === true, {

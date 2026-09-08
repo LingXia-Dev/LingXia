@@ -22,6 +22,7 @@ export default function SystemPage() {
     cacheFreedBytes = null,
     cacheBusy = false,
     cacheError = '',
+    cacheNotice = '',
   } = data;
 
   return (
@@ -191,7 +192,7 @@ export default function SystemPage() {
                 <div className="flex-1">
                   <div className="text-sm text-gray-800 font-semibold">Product Cache</div>
                   <div className="text-xs text-gray-500 mt-0.5">
-                    Every lxapp's cache, not just this one — home lxapp only
+                    Reclaimable product cache — home lxapp only
                   </div>
                 </div>
                 <button
@@ -209,12 +210,13 @@ export default function SystemPage() {
                     <span className="w-1 h-4 bg-sky-500 rounded-full"></span>
                     <h4 className="text-sm font-semibold text-gray-700">State</h4>
                   </div>
-                  <InfoRow label="Size" value={formatBytes(cacheBytes)} />
-                  <InfoRow label="Last Freed" value={formatBytes(cacheFreedBytes)} />
+                  <InfoRow label="Reclaimable (estimate)" value={formatBytes(cacheBytes)} />
+                  <InfoRow label="Last Freed (estimate)" value={formatBytes(cacheFreedBytes)} />
+                  {cacheNotice && <InfoRow label="Result" value={cacheNotice} />}
                   {cacheError && <InfoRow label="Error" value={cacheError} />}
                   <div className="pt-3 text-xs text-gray-500">
-                    Size counts LingXia-managed files only; a clear also drops the
-                    WebView cache, so it usually frees more than this shows.
+                    Running apps retain their private caches. Use their menu to clear
+                    cache and restart. Estimates exclude WebView cache.
                   </div>
                   <div className="pt-3">
                     <button

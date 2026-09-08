@@ -651,6 +651,7 @@ pub struct LxApp {
     pub user_cache_dir: PathBuf,
     pub temp_dir: PathBuf,
     temp_cleanup_protection: Option<crate::cache::CleanupProtection>,
+    usercache_cleanup_protection: Option<crate::cache::CleanupProtection>,
     pub fingermark: String,
     pub is_home_lxapp: bool,
     pub(crate) release_type: ReleaseType,
@@ -1668,6 +1669,7 @@ impl LxApp {
             user_cache_dir: PathBuf::new(),
             temp_dir: PathBuf::new(),
             temp_cleanup_protection: None,
+            usercache_cleanup_protection: None,
             fingermark: String::new(),
             is_home_lxapp: false,
             release_type,
@@ -1809,6 +1811,10 @@ impl LxApp {
             .join(USER_CACHE_DIR);
 
         self.user_cache_dir = cache_base_dir.join(&dir_name);
+        // Claim before creating the directory, under the same lock as cleanup.
+        self.usercache_cleanup_protection = Some(crate::cache::protect_from_cleanup([self
+            .user_cache_dir
+            .clone()]));
         if !self.user_cache_dir.exists() {
             std::fs::create_dir_all(&self.user_cache_dir).map_err(|e| {
                 LxAppError::IoError(format!("Failed to create cache directory: {}", e))

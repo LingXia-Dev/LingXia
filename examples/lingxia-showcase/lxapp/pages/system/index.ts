@@ -9,7 +9,8 @@ Page({
     cacheBytes: null,
     cacheFreedBytes: null,
     cacheBusy: false,
-    cacheError: ''
+    cacheError: '',
+    cacheNotice: ''
   },
 
   onLoad: async function (options = {}) {
@@ -97,15 +98,24 @@ Page({
     if (this.data.cacheBusy) {
       return;
     }
-    this.setData({ cacheBusy: true, cacheError: '' });
+    this.setData({ cacheBusy: true, cacheError: '', cacheNotice: '' });
     const cache = lx.app.cache;
     try {
-      const freed = await cache.clear();
-      console.log('Cleared product cache, freed bytes:', freed);
-      // Re-read rather than subtract: the clear also drops the WebView cache,
-      // which never appeared in the reported size.
+      const result = await cache.clear();
+      const webview = result.webview === 'cleared'
+        ? 'WebView cache cleared.'
+        : result.webview === 'unsupported'
+          ? 'WebView cache clearing is unavailable on this platform.'
+          : 'WebView cache clearing failed.';
+      this.setData({
+        cacheFreedBytes: result.freedBytes,
+        cacheNotice: result.skippedActivePaths > 0
+          ? `Running apps retained their private caches. ${webview}`
+          : webview,
+        cacheError: result.failures.join('\n'),
+      });
       const bytes = await cache.size();
-      this.setData({ cacheFreedBytes: freed, cacheBytes: bytes, cacheBusy: false });
+      this.setData({ cacheBytes: bytes, cacheBusy: false });
     } catch (error) {
       console.error('Failed to clear cache:', error);
       this.setData({ cacheBusy: false, cacheError: String(error) });

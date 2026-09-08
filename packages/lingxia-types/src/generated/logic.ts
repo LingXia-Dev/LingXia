@@ -220,27 +220,22 @@ export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface
  * error.
  */
 export type AppCacheApi = {
-    /**
-     * Bytes currently held by LingXia-managed caches: every lxapp's
-     * `lx://usercache`, every idle session's temp, and shared runtime artwork.
-     *
-     * Excludes the WebView's own HTTP cache, which the platform reports as a
-     * site count rather than a byte total — `clear()` still drops it, so present
-     * this as a lower bound rather than an exact total.
-     */
+    /** Estimated reclaimable managed bytes; excludes live session storage and WebView cache. */
     size(): Promise<number>;
     /**
-     * Clear those caches plus the WebView's regenerable cache, resolving with
-     * the bytes freed from LingXia-managed storage.
-     *
-     * Never touches `lx://userdata`, the `lx.getStorage` key-value store, the
-     * user's downloads, or installed lxapp packages — none are regenerable, so
-     * dropping them behind a "clear cache" control is data loss. Cookies and
-     * logins survive: this clears caches, it does not sign anyone out.
-     * Rejects after attempting every category if any LingXia-managed path could
-     * not be removed, so the UI does not report a partial clear as successful.
+     * Clear reclaimable host caches. Home lxapp only. Live session usercache and
+     * temp are preserved, including the caller's. Does not restart any lxapp.
+     * Userdata, KV, Downloads, cookies, valid installs and host components survive.
+     * Per-category failures are reported; setup/worker failures reject the call.
      */
-    clear(): Promise<number>;
+    clear(): Promise<{
+        /** Estimated file bytes successfully removed; excludes WebView cache. */
+        freedBytes: number;
+        /** Protected usercache/session paths skipped, not a count of apps. */
+        skippedActivePaths: number;
+        webview: 'cleared' | 'unsupported' | 'failed';
+        failures: string[];
+    }>;
 };
 
 export type AppConfig = {

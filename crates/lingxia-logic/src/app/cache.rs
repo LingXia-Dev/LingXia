@@ -18,34 +18,31 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     Ok(())
 }
 
-/// Bytes currently held by LingXia-managed caches: every lxapp's usercache,
-/// every idle session's temp, and shared runtime artwork under the cache dir.
-///
-/// The WebView's own HTTP cache is excluded, because the platform stores report
-/// a site count rather than a byte total and any figure here would be invented.
-/// [`cache_clear`] still drops it — a settings screen should say "at least".
+/// Estimated reclaimable managed bytes, excluding live session storage and WebView cache.
 async fn cache_size(ctx: JSContext) -> JSResult<f64> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     super::ensure_home_lxapp(&lxapp, "lx.app.cache.size")?;
     let bytes = tokio::task::spawn_blocking(lxapp::product_cache_usage_bytes)
         .await
-        .unwrap_or(0);
+        .map_err(|err| {
+            js_error_from_lxapp_error(&lxapp::LxAppError::Runtime(format!(
+                "cache size task failed: {err}"
+            )))
+        })?;
     Ok(bytes as f64)
 }
 
-/// Drops those caches plus the WebView's regenerable cache, and resolves with
-/// the bytes freed from LingXia-managed storage.
-///
-/// Never touches userdata, the `lx.getStorage` key-value store, the user's
-/// downloads, or installed lxapp packages: none of those are regenerable, so
-/// removing them behind a "clear cache" control is data loss. Cookies and
-/// logins survive too — this clears caches, it does not sign anyone out. A
-/// partial LingXia-managed clear rejects after attempting every category.
-async fn cache_clear(ctx: JSContext) -> JSResult<f64> {
+/// Report completed, skipped and failed work without concealing partial cleanup.
+async fn cache_clear(ctx: JSContext) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     super::ensure_home_lxapp(&lxapp, "lx.app.cache.clear")?;
-    lxapp::clear_product_cache()
+    let report = lxapp::clear_product_cache()
         .await
-        .map(|bytes| bytes as f64)
-        .map_err(|err| js_error_from_lxapp_error(&err))
+        .map_err(|err| js_error_from_lxapp_error(&err))?;
+    let result = JSObject::new(&ctx);
+    result.set("freedBytes", report.freed_bytes as f64)?;
+    result.set("skippedActivePaths", report.skipped_active_paths as f64)?;
+    result.set("webview", report.webview)?;
+    result.set("failures", report.failures)?;
+    Ok(result)
 }

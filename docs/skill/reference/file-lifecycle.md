@@ -214,57 +214,40 @@ error surfaces to the caller and the lxapp should tell the user.
 
 ## Clearing the product's cache
 
-A settings screen's "clear cache" control is backed by `lx.app.cache`:
+`lx.app.cache` is a host-wide API restricted to the home lxapp. Ordinary
+lxapps receive a permission error for both methods.
 
 ```ts
-const bytes = await lx.app.cache.size();
-const freed = await lx.app.cache.clear();
+const reclaimableBytes = await lx.app.cache.size();
+const result = await lx.app.cache.clear();
+// result: { freedBytes, skippedActivePaths, webview, failures }
 ```
 
-It is **app-scoped, not lxapp-scoped**: the figure a user sees covers the whole
-product, so it spans every lxapp the host has run. That is also why it is
-**restricted to the home lxapp** — an ordinary lxapp clearing every other
-lxapp's cache is not a capability it should have. Other callers get a
-permission error, the same as `checkUpdate` and `screenshot`.
+The clear removes unprotected lxapp usercache, idle session temp, shared runtime
+artwork, and WebView HTTP cache where supported. Native package maintenance also
+reclaims orphaned installs and staged archives, preserving referenced paths,
+active work, recent writes, and paths with uncertain timestamps.
 
-What `clear()` drops:
+**Live runtime instances retain their usercache and temp**, including the home
+caller and hidden apps. Protection begins before storage initialization and
+lasts until the instance is released; lingering runtime work may conservatively
+keep a closed app protected. No app is restarted by this API. To clear a running
+app, use its host-provided "clear cache and restart" menu action.
 
-| | Why it is safe |
-| --- | --- |
-| every lxapp's `lx://usercache` | regenerable by contract, already LRU-evicted |
-| every **idle** session's temp | disposable by definition |
-| shared runtime artwork | re-fetched on demand |
-| the WebView's regenerable HTTP cache | re-fetched on demand; cookies and logins are untouched |
-| orphaned lxapp installs and staged update archives | referenced by no record, so nothing can load them |
+Userdata, KV storage, user Downloads, cookies/site data, valid installs and host
+components such as optional native runtimes are never cleared.
 
-What it never touches — none of these are regenerable, so removing them behind
-a "clear cache" control is data loss, not maintenance:
+`size()` estimates currently reclaimable managed file bytes, not total product
+storage. `freedBytes` sums estimates for successfully removed paths, rather than
+subtracting two global usage snapshots. Neither includes WebView bytes or
+promises physical disk blocks reclaimed. Concurrent work may change the result;
+partially removed paths that fail deletion are not counted.
 
-- `lx://userdata` for any lxapp
-- the `lx.getStorage` key-value store
-- files in the user's Downloads directory
-- installed lxapp packages
-- cookies and site data, so nobody is signed out — clearing those logs the user
-  out of every site, which is a different control with a different name; the
-  browser shell exposes it separately as `privacy.clearBrowsingData`
-- any install or staged archive a record still points at, or anything written in
-  the last hour: an install is unpacked before its record is written, so a
-  narrower rule would delete the very update the user is waiting for
-- install, download, and session paths currently owned by active runtime work;
-  unreadable or future timestamps are kept rather than guessed to be garbage
-
-The **live session's temp is preserved** for every lxapp that is currently
-running: those files back in-flight work — an upload body, a preview being
-written — and the app that owns them has no way to notice they vanished.
-
-`size()` counts LingXia-managed files only. The WebView's HTTP cache is
-excluded because the platform stores report a site count rather than a byte
-total, and any figure would be invented — so `clear()` usually frees more than
-`size()` reported. Present the number as a lower bound. Platforms without a
-WebView cache API simply skip that part rather than failing the call. If any
-LingXia-managed path cannot be removed, `clear()` still attempts the remaining
-categories and then rejects so the UI cannot mistake a partial clear for full
-success.
+`skippedActivePaths` counts protected cache/session directories, not apps.
+`webview` is `cleared`, `unsupported`, or `failed`. `failures` reports errors after
+attempting all categories; a partial clear resolves with this report. Failure to
+initialize or execute the maintenance task rejects. Settings must display
+skipped/failed work and must not promise that all caches were cleared.
 
 ## Storage Summary
 
