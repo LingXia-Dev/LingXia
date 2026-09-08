@@ -270,20 +270,20 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     /// where you are. Distinct from the item accent (two independent levels).
     private func updateActiveAppearance() {
         headerView.layer?.backgroundColor = isActiveGroup
-            ? LxAppHostTheme.selectionBackground.cgColor
+            ? themeCGColor(LxAppHostTheme.selectionBackground)
             : NSColor.clear.cgColor
     }
 
     private func applyColors() {
         updateActiveAppearance()
-        attributionLine.layer?.backgroundColor = attributionBaseColor
-            .withAlphaComponent(0.5).cgColor
+        attributionLine.layer?.backgroundColor =
+            themeCGColor(attributionBaseColor.withAlphaComponent(0.5))
         appNameLabel.textColor = LxAppHostTheme.foreground
         chevronIndicator.contentTintColor = LxAppHostTheme.mutedForeground
         closeButton.contentTintColor = LxAppHostTheme.mutedForeground.withAlphaComponent(0.9)
         // tabbar backgroundColor maps to the expanded items area (the group's
         // own strip surface); unset stays transparent on the sidebar base.
-        itemsBackground.layer?.backgroundColor = (itemsAreaColor ?? NSColor.clear).cgColor
+        itemsBackground.layer?.backgroundColor = themeCGColor((itemsAreaColor ?? NSColor.clear))
     }
 
     override func viewDidChangeEffectiveAppearance() {
@@ -367,7 +367,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         aggregateDot.translatesAutoresizingMaskIntoConstraints = false
         aggregateDot.wantsLayer = true
         aggregateDot.layer?.cornerRadius = 3
-        aggregateDot.layer?.backgroundColor = NSColor.systemRed.cgColor
+        aggregateDot.layer?.backgroundColor = themeCGColor(NSColor.systemRed)
         aggregateDot.isHidden = true
         headerView.addSubview(aggregateDot)
 
@@ -801,7 +801,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             }
         } else if zone == "close" {
             isCloseHovered = true
-            closeButton.layer?.backgroundColor = palette.headerText.withAlphaComponent(0.15).cgColor
+            closeButton.layer?.backgroundColor = themeCGColor(palette.headerText.withAlphaComponent(0.15))
         }
     }
 

@@ -28,6 +28,7 @@ export default {
     { "api": "lx.navigationBar.update", "mode": "automated", "owner": "UI-NAVBAR-001" },
     { "api": "lx.app.control", "mode": "automated", "owner": "UI-APPEARANCE-001" },
     { "api": "lx.app.appearance.get", "mode": "automated", "owner": "UI-APPEARANCE-001" },
+    { "api": "lx.app.appearance.watch", "mode": "automated", "owner": "UI-APPEARANCE-001" },
     { "api": "lx.app.control.appearance.getPreference", "mode": "automated", "owner": "UI-APPEARANCE-001" },
     { "api": "lx.app.control.appearance.setPreference", "mode": "automated", "owner": "UI-APPEARANCE-001" },
     { "api": "lx.cloud.mqtt.onStatusChange", "mode": "optional-provider", "owner": "cloud-provider-suite" },

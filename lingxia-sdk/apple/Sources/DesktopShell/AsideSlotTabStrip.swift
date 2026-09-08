@@ -47,7 +47,7 @@ final class AsideSlotTabStripView: NSView {
 
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.wantsLayer = true
-        separator.layer?.backgroundColor = LxAppHostTheme.separator.cgColor
+        separator.layer?.backgroundColor = themeCGColor(LxAppHostTheme.separator)
         addSubview(separator)
 
         stack.orientation = .horizontal
@@ -95,7 +95,7 @@ final class AsideSlotTabStripView: NSView {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        separator.layer?.backgroundColor = LxAppHostTheme.separator.cgColor
+        separator.layer?.backgroundColor = themeCGColor(LxAppHostTheme.separator)
         applySelection()
     }
 

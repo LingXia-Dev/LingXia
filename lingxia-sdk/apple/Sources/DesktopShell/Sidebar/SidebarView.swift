@@ -215,9 +215,9 @@ private final class SidebarHeaderActionButton: NSButton {
 
     private func updateAppearance() {
         layer?.backgroundColor = if pressed {
-            SidebarActionChromePalette.pressed.cgColor
+            themeCGColor(SidebarActionChromePalette.pressed)
         } else if hovered {
-            SidebarActionChromePalette.hover.cgColor
+            themeCGColor(SidebarActionChromePalette.hover)
         } else {
             NSColor.clear.cgColor
         }
@@ -299,7 +299,7 @@ private final class SidebarRailFloatWindow: NSPanel {
         backdrop.wantsLayer = true
         backdrop.layer?.cornerRadius = radius
         backdrop.layer?.borderWidth = 1
-        backdrop.layer?.borderColor = LxAppHostTheme.separator.cgColor
+        backdrop.layer?.borderColor = backdrop.themeCGColor(LxAppHostTheme.separator)
         backdrop.layer?.masksToBounds = true
 
         content.translatesAutoresizingMaskIntoConstraints = false
@@ -898,7 +898,7 @@ class SidebarView: NSView {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        footerSeparator.layer?.backgroundColor = SidebarActionChromePalette.divider.cgColor
+        footerSeparator.layer?.backgroundColor = themeCGColor(SidebarActionChromePalette.divider)
         updateAddButtonAppearance()
         updateHideButtonAppearance()
         applySelection()
@@ -1005,7 +1005,7 @@ class SidebarView: NSView {
         // A subtle divider grouping the sidebar action dock. `separatorColor` washes
         // out on the sidebar material, so use a low-alpha label tint that keeps a
         // little contrast in both light and dark without being prominent.
-        footerSeparator.layer?.backgroundColor = SidebarActionChromePalette.divider.cgColor
+        footerSeparator.layer?.backgroundColor = themeCGColor(SidebarActionChromePalette.divider)
         footerView.addSubview(footerSeparator)
 
         panelFlow.translatesAutoresizingMaskIntoConstraints = false
@@ -1532,7 +1532,7 @@ class SidebarView: NSView {
                 || activePinnedLxapp
                 || activePinnedBookmark
             btn.layer?.backgroundColor = selected
-                ? LxAppHostTheme.selectionBackground.cgColor
+                ? btn.themeCGColor(LxAppHostTheme.selectionBackground)
                 : NSColor.clear.cgColor
         }
     }
@@ -2334,7 +2334,7 @@ class SidebarView: NSView {
         }
         browserRootHeader.layer?.backgroundColor = {
             if case .browser = model.selection {
-                return LxAppHostTheme.selectionBackground.cgColor
+                return browserRootHeader.themeCGColor(LxAppHostTheme.selectionBackground)
             }
             return NSColor.clear.cgColor
         }()
@@ -2717,7 +2717,7 @@ class SidebarView: NSView {
         addButton.contentTintColor = LxAppHostTheme.mutedForeground
         addButton.wantsLayer = true
         addButton.layer?.cornerRadius = 6
-        addButton.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(0.06).cgColor
+        addButton.layer?.backgroundColor = themeCGColor(LxAppHostTheme.foreground.withAlphaComponent(0.06))
         addButton.target = self
         addButton.action = #selector(addButtonClicked)
     }
@@ -2794,7 +2794,7 @@ class SidebarView: NSView {
 
     private func updateAddButtonAppearance() {
         let alpha: CGFloat = isAddButtonHovered ? 0.12 : 0.06
-        addButton.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(alpha).cgColor
+        addButton.layer?.backgroundColor = themeCGColor(LxAppHostTheme.foreground.withAlphaComponent(alpha))
     }
 
     private func setHideButtonHovered(_ hovered: Bool) {
@@ -2804,7 +2804,7 @@ class SidebarView: NSView {
 
     private func updateHideButtonAppearance() {
         hideButton.layer?.backgroundColor = isHideButtonHovered
-            ? LxAppHostTheme.foreground.withAlphaComponent(0.09).cgColor
+            ? themeCGColor(LxAppHostTheme.foreground.withAlphaComponent(0.09))
             : NSColor.clear.cgColor
         hideButton.contentTintColor = isHideButtonHovered
             ? LxAppHostTheme.foreground
@@ -3024,7 +3024,7 @@ final class SidebarActionRowView: NSView {
         accentView.translatesAutoresizingMaskIntoConstraints = false
         accentView.wantsLayer = true
         accentView.layer?.cornerRadius = 1
-        accentView.layer?.backgroundColor = LxAppHostTheme.accent.cgColor
+        accentView.layer?.backgroundColor = themeCGColor(LxAppHostTheme.accent)
         accentView.isHidden = !self.active
         addSubview(accentView)
 
@@ -3085,7 +3085,7 @@ final class SidebarActionRowView: NSView {
     }
 
     private func updateAppearance() {
-        accentView.layer?.backgroundColor = LxAppHostTheme.accent.cgColor
+        accentView.layer?.backgroundColor = themeCGColor(LxAppHostTheme.accent)
         titleLabel.textColor = disabled
             ? LxAppHostTheme.mutedForeground
             : (active ? LxAppHostTheme.accent : SidebarActionChromePalette.mutedText)
@@ -3093,11 +3093,11 @@ final class SidebarActionRowView: NSView {
             ? (active ? LxAppHostTheme.accent : SidebarActionChromePalette.mutedText)
             : nil
         if isPressed && !disabled {
-            washView.layer?.backgroundColor = SidebarActionChromePalette.pressed.cgColor
+            washView.layer?.backgroundColor = themeCGColor(SidebarActionChromePalette.pressed)
         } else if active {
-            washView.layer?.backgroundColor = SidebarActionChromePalette.activeSurface.cgColor
+            washView.layer?.backgroundColor = themeCGColor(SidebarActionChromePalette.activeSurface)
         } else if isHovered && !disabled {
-            washView.layer?.backgroundColor = SidebarActionChromePalette.hover.cgColor
+            washView.layer?.backgroundColor = themeCGColor(SidebarActionChromePalette.hover)
         } else {
             washView.layer?.backgroundColor = NSColor.clear.cgColor
         }

@@ -146,6 +146,7 @@ spec("round-trip appearance preference through the ui controls", {
   covers: [
     'lx.app.control',
     'lx.app.appearance.get',
+    'lx.app.appearance.watch',
     'lx.app.control.appearance.getPreference',
     'lx.app.control.appearance.setPreference',
   ],

@@ -3,6 +3,7 @@ const globalData = app.globalData;
 
 Page({
   ipReadyCallback: null as ((ip: string) => void) | null,
+  stopWatchingAppearance: null as (() => void) | null,
 
   data: {
     greeting: globalData.greeting,
@@ -67,6 +68,8 @@ Page({
 
   onUnload: function() {
     console.log("[Home] Page unloaded");
+    this.stopWatchingAppearance?.();
+    this.stopWatchingAppearance = null;
     if (app.ipReadyCallback === this.ipReadyCallback) {
       app.ipReadyCallback = undefined;
     }
@@ -76,6 +79,10 @@ Page({
   onLoad: async function() {
     console.log("[Home] Page loaded");
     this._syncAppearance();
+    // The product's scheme can move while this page is open — from the host's
+    // own Settings, or from the system under `auto`. Reading it on show alone
+    // would leave the row claiming the scheme it had when it last appeared.
+    this.stopWatchingAppearance = lx.app.appearance.watch(() => this._syncAppearance());
     try {
       const info = lx.getLxAppInfo();
       const suffix =
