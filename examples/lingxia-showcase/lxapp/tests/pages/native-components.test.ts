@@ -349,18 +349,16 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
     const accessibleMore = await eventually(
       async () => {
         try {
-          const nodes = await desktop.ax.query({
+          return (await desktop.ax.query({
             window: host.id,
             match: 'More native menu actions',
             all: true,
-          });
-          return nodes.find((node) => node.enabled && node.role === 'button' && node.rect.w > 0 && node.rect.h > 0)
-            ?? { unmatched: nodes };
+          })).find((node) => node.enabled && node.role === 'button' && node.rect.w > 0 && node.rect.h > 0);
         } catch (error) {
           throw new Error(`Windows UIA query failed: ${String(error)}`);
         }
       },
-      (value) => value !== undefined && !('unmatched' in (value as object)),
+      (value) => value !== undefined,
       { timeoutMs: 5_000, describe: 'native menu More action exposed as a Windows UIA button' },
     );
     if (!accessibleMore) throw new Error('native menu More action was absent from Windows UIA');
