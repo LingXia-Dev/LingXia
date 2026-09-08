@@ -217,6 +217,7 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
   id: "UI-FEEDBACK-001",
   covers: ['lx.showToast', 'lx.hideToast', 'lx.showModal', 'lx.showActionSheet'],
   app: SHOWCASE_APP_ID,
+  reason: 'Mobile hosts render feedback through native overlays rather than DOM elements.',
   timeout: 60_000,
 }, async (t) => {
   const { app } = bindFixture(t, "UI-FEEDBACK-001");

@@ -129,10 +129,11 @@ fn post_mouse_message(
     message: u32,
     extra_mk: usize,
 ) -> Result<(), PlatformError> {
+    let marked_keys = extra_mk | lingxia_webview::platform::windows::SYNTHETIC_MOUSE_WPARAM_MARKER;
     let (target, client) = deepest_child_at(window, point);
     let lparam = LPARAM(((client.y as isize) << 16) | (client.x as isize & 0xFFFF));
     unsafe {
-        WindowsAndMessaging::PostMessageW(Some(target), message, WPARAM(extra_mk), lparam)
+        WindowsAndMessaging::PostMessageW(Some(target), message, WPARAM(marked_keys), lparam)
             .map_err(|err| PlatformError::Platform(format!("PostMessageW failed: {err}")))
     }
 }

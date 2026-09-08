@@ -165,6 +165,9 @@ declare module 'liblingxia.so' {
    */
   export function getLxAppInfo(appid: string): LxAppInfo | null;
 
+  /** Empty on success; otherwise the app network-policy violation. */
+  export function validateInlineNativeMediaUrls(appid: string, urlsJson: string): string;
+
   /** App-declared More actions as a generation-scoped JSON snapshot. */
   export function getLxAppMoreActions(appid: string): string;
 

@@ -1,3 +1,6 @@
+const ONLINE_DEMO_VIDEO =
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
+
 Page({
   data: {
     videos: [],
@@ -41,25 +44,10 @@ Page({
       videos: [
         {
           id: "lx-video-1",
-          // Big Buck Bunny — (c) Blender Foundation, CC-BY 3.0,
-          // https://peach.blender.org — served from Blender's official mirror.
-          src: "https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_480p_h264.mov",
-          poster:
-            "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Big_buck_bunny_poster_big.jpg/640px-Big_buck_bunny_poster_big.jpg",
-          qualities: [
-            {
-              label: "1080P",
-              url: "https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_1080p_h264.mov",
-            },
-            {
-              label: "720P",
-              url: "https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_720p_h264.mov",
-            },
-            {
-              label: "480P",
-              url: "https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_480p_h264.mov",
-            },
-          ],
+          // MDN's compact CC0 demo supports byte-range playback.
+          src: ONLINE_DEMO_VIDEO,
+          poster: "",
+          qualities: [],
           playbackRates: [1.0, 0.5, 1.5, 2.0],
         },
       ],
@@ -80,28 +68,52 @@ Page({
   },
 
   play: function () {
-    this._getContext()?.play();
+    try {
+      this._getContext()?.play();
+    } catch {
+      /* island player may not be mounted yet */
+    }
   },
 
   pause: function () {
-    this._getContext()?.pause();
+    try {
+      this._getContext()?.pause();
+    } catch {
+      /* island player may not be mounted yet */
+    }
   },
 
   stop: function () {
-    this._getContext()?.stop();
+    try {
+      this._getContext()?.stop();
+    } catch {
+      /* island player may not be mounted yet */
+    }
   },
 
   seek: function (position) {
     const time = typeof position === "number" ? position : Number(position) || 0;
-    this._getContext()?.seek(time);
+    try {
+      this._getContext()?.seek(time);
+    } catch {
+      /* island player may not be mounted yet */
+    }
   },
 
   requestFullScreen: function () {
     this._getContext()?.requestFullScreen();
   },
 
+  onError: function () {
+    this.setData({ eventLog: "Playback error" });
+  },
+
   onPlaying: function () {
-    this.setData({ eventLog: "Playing" });
+    try {
+      this.setData({ eventLog: "Playing" });
+    } catch {
+      /* page may already be tearing down */
+    }
   },
 
   onPause: function () {
@@ -120,8 +132,8 @@ Page({
     this.setData({ eventLog: "Buffering..." });
   },
 
-  onTimeUpdate: function (event = {}) {
-    const detail = event?.detail || {};
+  onTimeUpdate: function (payload = {}) {
+    const detail = payload?.detail || payload;
     const nextData = {};
     if (typeof detail.currentTime === "number") {
       nextData.currentTime = detail.currentTime;
@@ -134,18 +146,19 @@ Page({
     }
   },
 
-  onFullscreenChange: function (event = {}) {
-    const fullScreen = event?.detail?.fullScreen === true;
+  onFullscreenChange: function (payload = {}) {
+    const detail = payload?.detail || payload;
+    const fullScreen = detail.fullScreen === true || detail.fullscreen === true;
     this.setData({ eventLog: `Fullscreen: ${fullScreen ? "on" : "off"}` });
   },
 
-  onQualityChange: function (event = {}) {
-    const detail = event?.detail || {};
-    this.setData({ eventLog: `Quality: ${detail.quality ?? ""}` });
+  onQualityChange: function (payload = {}) {
+    const detail = payload?.detail || payload;
+    this.setData({ eventLog: `Quality: ${detail.quality ?? detail.id ?? ""}` });
   },
 
-  onRateChange: function (event = {}) {
-    const detail = event?.detail || {};
+  onRateChange: function (payload = {}) {
+    const detail = payload?.detail || payload;
     this.setData({ eventLog: `Rate: ${detail.rate ?? ""}` });
   },
 });

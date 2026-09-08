@@ -157,11 +157,16 @@ declare global {
     __LX_RUNTIME_CONFIG?: RuntimeConfig;
     __pageBridge?: { __names: string[]; [key: string]: unknown };
     __LingXiaRecvMessage?: (message: string) => void;
+    /** WebView2 inject script queues inbound payloads here until the bridge binds `__LingXiaRecvMessage`. */
+    __LingXiaEarlyNativeMessages?: string[];
     LingXiaBridge?: LingXiaBridgeInterface;
     LingXiaProxy?: {
       supportsMessagePort: () => boolean;
       getPort: (name: string) => string;
       postMessage: (message: string) => void;
+      nativeComponentUpdate?:
+        | ((payload: string) => void)
+        | ((componentId: string, payload: string) => void);
     };
     NativeComponentBridge?: {
       postMessage: (message: string) => void;

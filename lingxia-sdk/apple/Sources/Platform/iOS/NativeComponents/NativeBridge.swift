@@ -98,6 +98,7 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
             scrollView: webView.scrollView,
             hostView: host,
             webView: webView,
+            appId: webView.appId ?? "app",
             defaultPageId: pageKey,
             eventSink: { [weak self] payload in
                 self?.sendEventToJavaScript(payload)

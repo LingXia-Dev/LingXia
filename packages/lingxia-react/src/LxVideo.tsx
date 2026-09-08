@@ -1,5 +1,12 @@
+import type { NativeStyle } from "./native/shared.js";
 import React, { forwardRef, useCallback, useEffect, useId, useMemo, useRef } from 'react';
-import { registerVideoComponent, type LxVideoAttributes } from '@lingxia/elements';
+import {
+  registerVideoComponent,
+  unwrapNativeEventPayload,
+  type LxVideoAttributes,
+  type LxVideoEventHandlers,
+  type LxVideoEventPayloads,
+} from '@lingxia/elements';
 import {
   buildVideoNativeAttrs,
   VIDEO_DOM_EVENT_MAP,
@@ -11,11 +18,12 @@ import {
 } from './text_component_shared.js';
 
 export interface LxVideoProps
-  extends LxVideoAttributes,
-    Omit<
-      React.HTMLAttributes<HTMLElement>,
-      keyof LxVideoAttributes | "children" | "dangerouslySetInnerHTML" | "ref" | "onPlaying"
-    > {}
+  extends Omit<LxVideoAttributes, `on${string}` | "style">,
+    LxVideoEventHandlers,
+    Omit<React.HTMLAttributes<HTMLElement>,
+      keyof LxVideoAttributes | keyof LxVideoEventHandlers | "children" | "dangerouslySetInnerHTML" | "ref" | "style"> {
+  style?: NativeStyle;
+}
 
 if (typeof window !== "undefined") {
   registerVideoComponent();
@@ -48,6 +56,7 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>(({
   onWaiting,
   onQualityChange,
   onRateChange,
+  onVolumeChange,
   pageBindings,
   className,
   style,
@@ -60,7 +69,7 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>(({
     if (id) return id;
     return `lx-video-${reactId.replace(/[:]/g, "")}`;
   }, [id, reactId]);
-  const handlerRef = useRef({
+  const handlerRef = useRef<LxVideoEventHandlers>({
     onPlayRequest,
     onPlay,
     onPlaying,
@@ -74,6 +83,7 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>(({
     onWaiting,
     onQualityChange,
     onRateChange,
+    onVolumeChange,
   });
   handlerRef.current = {
     onPlayRequest,
@@ -89,6 +99,7 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>(({
     onWaiting,
     onQualityChange,
     onRateChange,
+    onVolumeChange,
   };
   const listenerMapRef = useRef<Record<string, EventListenerObject>>(
     Object.fromEntries(
@@ -98,7 +109,7 @@ export const LxVideo = forwardRef<HTMLElement, LxVideoProps>(({
           handleEvent: (event: Event) => {
             const handler = handlerRef.current[propKey as keyof typeof handlerRef.current];
             if (typeof handler === "function") {
-              handler(event);
+              (handler as (payload: LxVideoEventPayloads[keyof LxVideoEventPayloads]) => void)(unwrapNativeEventPayload(event));
             }
           },
         } satisfies EventListenerObject,

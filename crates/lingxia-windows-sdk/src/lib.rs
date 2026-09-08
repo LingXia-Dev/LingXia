@@ -52,7 +52,11 @@ mod design_icons;
 mod device_frame;
 #[cfg(all(
     target_os = "windows",
-    any(feature = "device-frame", feature = "shell-chrome")
+    any(
+        feature = "components",
+        feature = "device-frame",
+        feature = "shell-chrome"
+    )
 ))]
 mod layered_text;
 #[cfg(all(target_os = "windows", feature = "components"))]

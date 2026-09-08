@@ -96,6 +96,9 @@ export struct LingXiaWebView {
     // Stack's default Center alignment splits the reserved space across
     // top and bottom, opening a band under the navbar.
     .alignContent(Alignment.TopStart)
+    // Native islands are Stack siblings of ArkWeb. Keep offscreen and partially
+    // visible islands inside the same viewport contract as the page itself.
+    .clip(true)
     .translate(this.renderTranslate)
   }
 
@@ -439,15 +442,39 @@ export struct LingXiaWebView {
   buildNodeContainer(componentId: string, refreshKey: number): void {
     // Fullscreen uses separate XComponent in renderFullscreenOverlay(); original stays at same-level position
     if (this.embedManager && this.embedManager.getNodeController(componentId)) {
-      NodeContainer(this.embedManager.getNodeController(componentId)!)
-        .width(this.getNodeContainerWidth(componentId))
-        .height(this.getNodeContainerHeight(componentId))
-        .borderRadius(this.getNodeContainerCornerRadius(componentId))
-        .clip(true)
-        .position(this.getNodeContainerPosition(componentId))
-        .zIndex(this.getNodeContainerZIndex(componentId))
-        .hitTestBehavior(this.getNodeContainerHitTest(componentId))
+      Stack({ alignContent: Alignment.TopStart }) {
+        NodeContainer(this.embedManager.getNodeController(componentId)!)
+          .width(this.getNodeContainerWidth(componentId))
+          .height(this.getNodeContainerHeight(componentId))
+          .borderRadius(this.getNodeContainerCornerRadius(componentId))
+          .clip(true)
+          .position({ x: -this.nodeClipX(componentId), y: -this.nodeClipY(componentId) })
+          .hitTestBehavior(this.getNodeContainerHitTest(componentId))
+      }
+      .width(this.embedManager.getNodeController(componentId)?.getClip()?.width ?? this.getNodeContainerWidth(componentId))
+      .height(this.embedManager.getNodeController(componentId)?.getClip()?.height ?? this.getNodeContainerHeight(componentId))
+      .clip(true)
+      .opacity(this.embedManager.getNodeController(componentId)?.getVideoOpacity() ?? 1)
+      .position(this.clippedNodePosition(componentId))
+      .zIndex(this.getNodeContainerZIndex(componentId))
+      .hitTestBehavior(HitTestMode.Transparent)
     }
+  }
+
+  private nodeClipX(componentId: string): number {
+    return this.embedManager?.getNodeController(componentId)?.getClip()?.x ?? 0;
+  }
+
+  private nodeClipY(componentId: string): number {
+    return this.embedManager?.getNodeController(componentId)?.getClip()?.y ?? 0;
+  }
+
+  private clippedNodePosition(componentId: string): Position | undefined {
+    const controller = this.embedManager?.getNodeController(componentId);
+    if (controller?.getClip()) {
+      return { x: controller.getX() + this.nodeClipX(componentId), y: controller.getY() + this.nodeClipY(componentId) };
+    }
+    return this.getNodeContainerPosition(componentId);
   }
 
   private getNodeContainerCornerRadius(componentId: string): number {

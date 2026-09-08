@@ -93,8 +93,9 @@ fn value_as_bool(value: &Value) -> Option<bool> {
     match value {
         Value::Bool(flag) => Some(*flag),
         Value::String(text) => match text.trim().to_ascii_lowercase().as_str() {
-            "true" | "1" => Some(true),
-            "false" | "0" | "" => Some(false),
+            // HTML boolean attributes serialize as the empty string when present.
+            "true" | "1" | "" => Some(true),
+            "false" | "0" => Some(false),
             _ => None,
         },
         Value::Number(number) => number.as_f64().map(|n| n != 0.0),
@@ -141,7 +142,11 @@ pub(super) fn parse_props(raw: Option<&Value>) -> ComponentProps {
     props.muted = raw.get("muted").and_then(value_as_bool);
     props.volume = raw
         .get("volume")
-        .and_then(Value::as_f64)
+        .and_then(|value| {
+            value
+                .as_f64()
+                .or_else(|| value.as_str().and_then(|text| text.parse().ok()))
+        })
         .filter(|volume| volume.is_finite());
     props.controls = raw.get("controls").and_then(value_as_bool);
     props.progress_bar = raw.get("progressBar").and_then(value_as_bool);

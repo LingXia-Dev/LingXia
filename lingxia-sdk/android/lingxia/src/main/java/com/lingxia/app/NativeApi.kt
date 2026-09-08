@@ -177,6 +177,10 @@ internal object NativeApi {
     @JvmStatic
     external fun getLxAppInfo(appId: String): LxAppInfo?
 
+    /** Returns an error message when an inline-native media URL violates app policy. */
+    @JvmStatic
+    external fun validateInlineNativeMediaUrls(appId: String, urlsJson: String): String?
+
     /** App-declared More actions as a generation-scoped JSON snapshot. */
     @JvmStatic
     external fun getLxAppMoreActions(appId: String): String

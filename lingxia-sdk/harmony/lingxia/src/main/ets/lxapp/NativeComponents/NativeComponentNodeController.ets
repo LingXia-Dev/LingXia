@@ -48,7 +48,15 @@ export class NodeControllerParams {
  * Parameters for updating render options without rebuilding.
  * Keep this as an explicitly-declared type to satisfy ArkTS lint rules.
  */
+export class NativeComponentClip {
+  x: number = 0;
+  y: number = 0;
+  width: number = 0;
+  height: number = 0;
+}
+
 export class NodeControllerUpdateParams {
+  clip?: NativeComponentClip;
   x?: number;
   y?: number;
   width?: number;
@@ -81,6 +89,18 @@ export class NativeComponentNodeController extends NodeController {
   private embedId: string = '';
   private surfaceId: string = '';
   private renderType: NodeRenderType = NodeRenderType.RENDER_TYPE_DISPLAY;
+  private componentClip?: NativeComponentClip;
+
+  getVideoOpacity(): number {
+    if (this.componentType !== 'video') return 1;
+    const style = this.props.get('nativeStyle') as Record<string, NativeComponentValue> | undefined;
+    const raw = style ? style['opacity'] : undefined;
+    const value = typeof raw === 'string' ? parseFloat(raw) : typeof raw === 'number' ? raw : 1;
+    return Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 1;
+  }
+
+  getClip(): NativeComponentClip | undefined { return this.componentClip; }
+
   private componentX: number = 0;
   private componentY: number = 0;
   private componentWidth: number = 0;
@@ -121,6 +141,7 @@ export class NativeComponentNodeController extends NodeController {
    * Keeps the XComponent surface alive while refreshing layout/props
    */
   updateRenderOption(params: NodeControllerUpdateParams): void {
+    if (params.clip !== undefined) this.componentClip = params.clip;
     if (params.x !== undefined) {
       this.componentX = params.x;
     }

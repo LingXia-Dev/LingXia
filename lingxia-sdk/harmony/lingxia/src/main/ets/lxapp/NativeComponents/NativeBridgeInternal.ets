@@ -7,8 +7,63 @@ import { NativeComponentRecord, NativeComponentValue, nativeComponentError, nati
 import { NativeComponentEmbedManager } from './NativeComponentEmbed';
 import { NativeComponentNodeController } from './NativeComponentNodeController';
 import { registerVideoBuilder } from './Builders/VideoBuilder';
+import { registerIslandBuilders } from './Builders/IslandBuilder';
 import { registerPickerBuilder } from './Builders/PickerBuilder';
 import { registerMediaSwiperBuilder } from './Builders/MediaSwiperBuilder';
+import { InlineNativeIslandHost } from './IslandHost';
+
+const islandHosts: Map<string, InlineNativeIslandHost> = new Map();
+
+export function handleIslandMessage(webTag: string, action: string, payload: Record<string, Object>): boolean {
+  const hostKey = resolveManagerKey(webTag) ?? webTag;
+  let host = islandHosts.get(hostKey);
+  if (!host) {
+    host = new InlineNativeIslandHost(hostKey.split(':')[0]);
+    islandHosts.set(hostKey, host);
+  }
+  const handled = host.handle(action, payload);
+  if (!handled) {
+    return false;
+  }
+  const outgoing = host.drainOutgoing();
+  for (let i = 0; i < outgoing.length; i++) {
+    sendEventToJavaScript(webTag, outgoing[i]);
+  }
+  adoptIslandNodes(webTag, host);
+  return true;
+}
+
+function tryHandleIslandMessage(webTag: string, propsJson: string): boolean {
+  let parsed: Record<string, Object> | undefined = undefined;
+  try {
+    parsed = JSON.parse(propsJson) as Record<string, Object>;
+  } catch {
+    return false;
+  }
+  if (!parsed) {
+    return false;
+  }
+  const action = parsed['action'] as string;
+  if (!action) {
+    return false;
+  }
+  return handleIslandMessage(webTag, action, parsed);
+}
+
+function adoptIslandNodes(webTag: string, host: InlineNativeIslandHost): void {
+  const resolvedKey = resolveManagerKey(webTag);
+  const manager = getOrCreateEmbedManager(resolvedKey ?? webTag);
+  const nodes = host.adoptEntries();
+  const componentIds: string[] = [];
+  const controllers: NativeComponentNodeController[] = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const authorId = node.authorId.length > 0 ? node.authorId : node.key;
+    componentIds.push(authorId);
+    controllers.push(node.controller);
+  }
+  manager.syncIslandControllers(componentIds, controllers);
+}
 
 // Embed managers by webTag
 const webViewEmbedManagers: Map<string, NativeComponentEmbedManager> = new Map();
@@ -110,6 +165,7 @@ function registerDefaultBuilders(): void {
   registerVideoBuilder();
   registerPickerBuilder();
   registerMediaSwiperBuilder();
+  registerIslandBuilders();
 }
 
 function resolveLogicalWebTag(webTag: string): string {
@@ -254,6 +310,8 @@ function removePendingPropsForTag(webTag: string): void {
 export function teardownEmbedManager(webTag: string): void {
   cancelDelayedStopForTag(webTag);
   const resolvedKey = resolveManagerKey(webTag);
+  const islandKey = resolvedKey ?? webTag;
+  const island = islandHosts.get(islandKey);
   if (resolvedKey) {
     const manager = webViewEmbedManagers.get(resolvedKey);
     if (manager) {
@@ -278,6 +336,12 @@ export function teardownEmbedManager(webTag: string): void {
       // Then teardown
       manager.teardown();
     }
+  }
+  island?.teardown();
+  islandHosts.delete(islandKey);
+  const logicalIslandKey = resolveLogicalWebTag(islandKey);
+  if (logicalIslandKey !== islandKey) {
+    islandHosts.delete(logicalIslandKey);
   }
   removePendingPropsForTag(webTag);
   if (pendingPropsUpdates.size === 0 && pendingPropsFlushTimer !== null) {
@@ -351,6 +415,9 @@ export function updateNativeComponentProps(
   componentId: string,
   propsJson: string
 ): boolean {
+  if (tryHandleIslandMessage(webTag, propsJson)) {
+    return true;
+  }
   const resolvedKey = resolveManagerKey(webTag);
   if (!resolvedKey) {
     enqueuePendingPropsUpdate(webTag, componentId, propsJson);

@@ -364,7 +364,7 @@ fn try_show_item(window: HWND) -> bool {
                 );
             }
             let sink = preview_video_sink(window.0 as isize, video_generation);
-            let Some(player) = VideoPlayer::new(session.surface, sink) else {
+            let Some(player) = VideoPlayer::new(Some(session.surface), sink) else {
                 return false;
             };
             player.set_source(&path);
