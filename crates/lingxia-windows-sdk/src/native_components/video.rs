@@ -8,8 +8,11 @@ use controls::*;
 
 /// `WM_TIMER` id driving `timeupdate` while a video component plays ("LXVT").
 pub(super) const VIDEO_TIMER_ID: usize = 0x4C58_5654;
+/// Island EVR frame pump ("LXFR") — copies GetCurrentImage onto the DComp visual.
+pub(super) const ISLAND_FRAME_TIMER_ID: usize = 0x4C58_4652;
 /// Video `timeupdate` cadence, matching the HTML media-event ballpark.
 const VIDEO_TIMER_INTERVAL_MS: u32 = 250;
+const ISLAND_FRAME_INTERVAL_MS: u32 = 66;
 
 pub(super) struct VideoComponent {
     pub(super) player: Arc<VideoPlayer>,
@@ -47,6 +50,12 @@ pub(super) struct VideoComponent {
     /// Was playing when its page left the foreground; auto-resumes when
     /// the page returns (mirrors the macOS manager).
     pub(super) resume_on_show: bool,
+    /// The view may have remounted after we last emitted `play`/`playing`.
+    /// The next island rematerialize re-delivers those events so
+    /// `data-lx-playing` can land on the new element.
+    pub(super) view_needs_playback_event: bool,
+    /// True once this ready session has been told about live playback.
+    pub(super) view_ack_playing: bool,
 }
 
 /// Mounts a `video.native` component: an MFPlay player rendering into the
@@ -91,7 +100,7 @@ pub(super) fn mount_video_on_ui(
         return;
     };
     let sink = video_event_sink(key.clone(), container.0 as isize, surface.0 as isize);
-    let Some(player) = VideoPlayer::new(surface, sink) else {
+    let Some(player) = VideoPlayer::new(Some(surface), sink) else {
         log::warn!("failed to create video player for {component_id}");
         unsafe {
             let _ = WindowsAndMessaging::DestroyWindow(container);
@@ -127,8 +136,11 @@ pub(super) fn mount_video_on_ui(
             volume: props.volume.unwrap_or(1.0).clamp(0.0, 1.0),
             playing: false,
             resume_on_show: false,
+            view_needs_playback_event: false,
+            view_ack_playing: false,
         }),
         swiper: None,
+        island_kind: None,
         doc_rect,
         state: ComponentProps::default(),
         last_value: String::new(),
@@ -140,6 +152,279 @@ pub(super) fn mount_video_on_ui(
 
     apply_video_props(&key, &props);
     apply_layout(&key);
+}
+
+/// Island video: off-screen top-level EVR HWND (not a host child) so
+/// `GetCurrentImage` can feed the DComp visual. Never `HWND_TOP`.
+pub(super) fn mount_windowless_island_video(
+    context: PageContext,
+    author_id: String,
+    parent: isize,
+    doc_rect: DocRect,
+    props: ComponentProps,
+) -> bool {
+    let key = component_key(&context.page_key, &author_id);
+    let Some(evr) = create_island_evr_window() else {
+        log::warn!("failed to create island EVR window for {author_id}");
+        return false;
+    };
+    let evr_handle = evr.0 as isize;
+    let sink = video_event_sink(key.clone(), 0, evr_handle);
+    let Some(player) = VideoPlayer::new(Some(evr), sink) else {
+        log::warn!("failed to create island player for {author_id}");
+        unsafe {
+            let _ = WindowsAndMessaging::DestroyWindow(evr);
+        }
+        return false;
+    };
+    let player = Arc::new(player);
+    let should_play =
+        props.src.as_deref().is_some_and(|src| !src.is_empty()) && props.autoplay != Some(false);
+    let entry = ComponentEntry {
+        context,
+        component_id: author_id,
+        multiline: false,
+        parent,
+        container: 0,
+        edit: 0,
+        font: 0,
+        video: Some(VideoComponent {
+            player: player.clone(),
+            last_surface_mouse: None,
+            surface: evr_handle,
+            stopped: true,
+            fullscreen: false,
+            fullscreen_host: 0,
+            controls: None,
+            muted: props.muted == Some(true),
+            current_quality: active_quality_label(&props),
+            current_rate: 1.0,
+            volume: props.volume.unwrap_or(1.0).clamp(0.0, 1.0),
+            playing: false,
+            resume_on_show: false,
+            view_needs_playback_event: false,
+            view_ack_playing: false,
+        }),
+        swiper: None,
+        island_kind: Some("video".into()),
+        doc_rect,
+        state: ComponentProps::default(),
+        last_value: String::new(),
+        // Same handshake as overlay mount: `play`/`playing` queue until
+        // `lx-video` sends `component.ready` for this author id.
+        ready: ready_keys().contains(&key),
+        pending: Vec::new(),
+    };
+    components().insert(key.clone(), entry);
+    apply_video_props(&key, &props);
+    if should_play {
+        player.play();
+        // `component.ready` often lands before this mount. Replay so
+        // `play`/`playing` are queued or posted without waiting for
+        // `MFP_EVENT_TYPE_PLAY` (the off-screen WS_DISABLED EVR may never
+        // fire it).
+        replay_island_playback_after_ready(&key);
+    }
+    true
+}
+
+/// Re-issue autoplay / replay `playing` after an island rematerialize.
+///
+/// `play`/`playing` that landed before `component.ready` sit in `pending`.
+/// A later commit still re-emits them once the view is ready so a leaf
+/// that connected after the first Play still gets `data-lx-playing`.
+pub(super) fn sync_island_video_playback(key: &str, props: &ComponentProps) {
+    let (player, should_play_now, should_emit) = {
+        let mut components = components();
+        let Some(entry) = components.get_mut(key) else {
+            return;
+        };
+        let Some(video) = entry.video.as_mut() else {
+            return;
+        };
+        let src = props
+            .src
+            .as_deref()
+            .or(entry.state.src.as_deref())
+            .unwrap_or("");
+        let autoplay = props.autoplay.or(entry.state.autoplay);
+        let wants_autoplay = !src.is_empty() && autoplay != Some(false);
+        let resume = std::mem::take(&mut video.resume_on_show);
+        let needs_event = std::mem::take(&mut video.view_needs_playback_event);
+        let live = video.playing || video.player.wants_playback();
+        let should_play_now = (resume || (video.stopped && wants_autoplay)) && !video.playing;
+        // Re-emit whenever the view is ready and playback is live — not
+        // only after hide/show. Latch so geometry snapshots don't spam.
+        let should_emit =
+            !should_play_now && entry.ready && live && (needs_event || !video.view_ack_playing);
+        if should_emit {
+            video.view_ack_playing = true;
+        }
+        (video.player.clone(), should_play_now, should_emit)
+    };
+    if should_play_now {
+        player.play();
+        return;
+    }
+    if should_emit {
+        emit_event(key, "play", json!({}));
+        emit_event(key, "playing", json!({}));
+    }
+}
+
+/// Island autoplay: the disabled off-screen EVR often never delivers PLAY.
+/// If the player already wants playback, mark it playing and emit the
+/// events `lx-video` uses for `data-lx-playing`.
+fn announce_island_autoplay(key: &str, surface: isize) {
+    if !super::island::is_island_component_key(key) {
+        return;
+    }
+    let wants = {
+        let components = components();
+        components
+            .get(key)
+            .and_then(|entry| entry.video.as_ref())
+            .is_some_and(|video| video.playing || video.player.wants_playback())
+    };
+    if !wants {
+        return;
+    }
+    set_video_playing(key, true);
+    set_video_stopped(key, false);
+    if surface != 0 {
+        unsafe {
+            let _ = WindowsAndMessaging::SetTimer(
+                Some(HWND(surface as *mut _)),
+                ISLAND_FRAME_TIMER_ID,
+                ISLAND_FRAME_INTERVAL_MS,
+                None,
+            );
+        }
+    }
+    emit_event(key, "play", json!({}));
+    emit_event(key, "playing", json!({}));
+}
+
+/// After `component.ready`, replay live playback so a handler that
+/// registered after the first Play still sees `playing`.
+pub(super) fn replay_island_playback_after_ready(key: &str) {
+    let live = {
+        let mut components = components();
+        let Some(entry) = components.get_mut(key) else {
+            return;
+        };
+        if !super::island::is_island_component_key(key) {
+            return;
+        }
+        let Some(video) = entry.video.as_mut() else {
+            return;
+        };
+        let live = video.playing || video.player.wants_playback();
+        if live {
+            video.view_ack_playing = true;
+        }
+        live
+    };
+    if live {
+        emit_event(key, "play", json!({}));
+        emit_event(key, "playing", json!({}));
+    }
+}
+
+fn create_island_evr_window() -> Option<HWND> {
+    let hwnd = unsafe {
+        WindowsAndMessaging::CreateWindowExW(
+            WINDOW_EX_STYLE(
+                WindowsAndMessaging::WS_EX_TOOLWINDOW.0 | WindowsAndMessaging::WS_EX_NOACTIVATE.0,
+            ),
+            island_evr_class(),
+            PCWSTR::null(),
+            WINDOW_STYLE(WindowsAndMessaging::WS_POPUP.0 | WindowsAndMessaging::WS_DISABLED.0),
+            -32_000,
+            -32_000,
+            320,
+            180,
+            None,
+            None,
+            GetModuleHandleW(None)
+                .ok()
+                .map(|module| HINSTANCE(module.0)),
+            None,
+        )
+    };
+    let hwnd = hwnd.ok()?;
+    unsafe {
+        let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_SHOWNA);
+    }
+    Some(hwnd)
+}
+
+fn island_evr_class() -> PCWSTR {
+    static REGISTERED: OnceLock<()> = OnceLock::new();
+    REGISTERED.get_or_init(|| {
+        let class = WNDCLASSW {
+            lpfnWndProc: Some(island_evr_proc),
+            hInstance: unsafe { GetModuleHandleW(None) }
+                .map(|module| HINSTANCE(module.0))
+                .unwrap_or_default(),
+            lpszClassName: w!("LingXiaIslandEvr"),
+            hbrBackground: HBRUSH(unsafe { GetStockObject(BLACK_BRUSH) }.0),
+            ..Default::default()
+        };
+        unsafe {
+            WindowsAndMessaging::RegisterClassW(&class);
+        }
+    });
+    w!("LingXiaIslandEvr")
+}
+
+unsafe extern "system" fn island_evr_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if msg == WindowsAndMessaging::WM_TIMER && wparam.0 == ISLAND_FRAME_TIMER_ID {
+        on_island_frame_timer(hwnd);
+        return LRESULT(0);
+    }
+    unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+fn on_island_frame_timer(hwnd: HWND) {
+    let handle = hwnd.0 as isize;
+    let snapshot = {
+        let components = components();
+        components.iter().find_map(|(key, entry)| {
+            let video = entry.video.as_ref()?;
+            if video.surface != handle {
+                return None;
+            }
+            Some((
+                key.clone(),
+                entry.context.clone(),
+                entry.component_id.clone(),
+                entry.doc_rect,
+                video.player.clone(),
+                video.playing,
+            ))
+        })
+    };
+    let Some((key, context, author_id, doc_rect, player, playing)) = snapshot else {
+        return;
+    };
+    if playing {
+        super::island::present_decoded_island_frame(
+            &context, &author_id, &doc_rect, &player, handle,
+        );
+        let current_time = player.position();
+        let duration = player.duration();
+        emit_event(
+            &key,
+            "timeupdate",
+            json!({ "currentTime": current_time, "duration": duration }),
+        );
+    }
 }
 
 /// Registers (once) and returns the video-surface window class: the inner
@@ -343,30 +628,47 @@ pub(super) fn apply_video_props(key: &str, props: &ComponentProps) {
 /// Builds the sink translating player transitions into the element's media
 /// events and driving the `timeupdate` timer. MFPlay delivers these on the
 /// UI thread that owns the container window.
-fn video_event_sink(key: String, container: isize, surface: isize) -> VideoEventSink {
+pub(super) fn video_event_sink(key: String, container: isize, surface: isize) -> VideoEventSink {
     Arc::new(move |event| {
         let container_hwnd = HWND(container as *mut _);
         let surface_hwnd = HWND(surface as *mut _);
         match event {
             VideoPlayerEvent::MediaLoaded { duration } => {
+                log::info!("island/video {key} media loaded duration={duration}");
                 emit_event(&key, "loadedmetadata", json!({ "duration": duration }));
+                // Island EVR is WS_DISABLED + off-screen; MFPlay may never
+                // deliver PLAY. Autoplay still owes the view play/playing.
+                announce_island_autoplay(&key, surface);
             }
             VideoPlayerEvent::Play => {
                 set_video_playing(&key, true);
                 set_video_stopped(&key, false);
                 unsafe {
-                    // Bring the surface back after a stop hid it; the
-                    // layout pass re-shows the container.
-                    let _ = WindowsAndMessaging::ShowWindow(
-                        surface_hwnd,
-                        WindowsAndMessaging::SW_SHOWNA,
-                    );
-                    let _ = WindowsAndMessaging::SetTimer(
-                        Some(container_hwnd),
-                        VIDEO_TIMER_ID,
-                        VIDEO_TIMER_INTERVAL_MS,
-                        None,
-                    );
+                    if !super::island::is_island_component_key(&key) {
+                        // Bring the surface back after a stop hid it; the
+                        // layout pass re-shows the container.
+                        let _ = WindowsAndMessaging::ShowWindow(
+                            surface_hwnd,
+                            WindowsAndMessaging::SW_SHOWNA,
+                        );
+                    }
+                    if super::island::is_island_component_key(&key) {
+                        if surface != 0 {
+                            let _ = WindowsAndMessaging::SetTimer(
+                                Some(surface_hwnd),
+                                ISLAND_FRAME_TIMER_ID,
+                                ISLAND_FRAME_INTERVAL_MS,
+                                None,
+                            );
+                        }
+                    } else if container != 0 {
+                        let _ = WindowsAndMessaging::SetTimer(
+                            Some(container_hwnd),
+                            VIDEO_TIMER_ID,
+                            VIDEO_TIMER_INTERVAL_MS,
+                            None,
+                        );
+                    }
                 }
                 apply_layout(&key);
                 poke_video_controls(&key);
@@ -376,6 +678,7 @@ fn video_event_sink(key: String, container: isize, surface: isize) -> VideoEvent
             VideoPlayerEvent::Pause => {
                 set_video_playing(&key, false);
                 stop_video_timer(container_hwnd);
+                stop_island_frame_timer(surface_hwnd);
                 poke_video_controls(&key);
                 emit_event(&key, "pause", json!({}));
             }
@@ -383,35 +686,45 @@ fn video_event_sink(key: String, container: isize, surface: isize) -> VideoEvent
                 set_video_playing(&key, false);
                 set_video_stopped(&key, true);
                 stop_video_timer(container_hwnd);
-                // MFPlay's subclassed surface keeps blitting the released
-                // frame; hide the whole component so the element's DOM
-                // placeholder/poster shows instead.
-                unsafe {
-                    let _ =
-                        WindowsAndMessaging::ShowWindow(surface_hwnd, WindowsAndMessaging::SW_HIDE);
-                    let _ = WindowsAndMessaging::ShowWindow(
-                        container_hwnd,
-                        WindowsAndMessaging::SW_HIDE,
-                    );
+                stop_island_frame_timer(surface_hwnd);
+                // Overlay videos hide so the DOM poster shows. Island
+                // players stay cloaked — hiding would drop DWM frames.
+                if !super::island::is_island_component_key(&key) {
+                    unsafe {
+                        let _ = WindowsAndMessaging::ShowWindow(
+                            surface_hwnd,
+                            WindowsAndMessaging::SW_HIDE,
+                        );
+                        let _ = WindowsAndMessaging::ShowWindow(
+                            container_hwnd,
+                            WindowsAndMessaging::SW_HIDE,
+                        );
+                    }
                 }
                 emit_event(&key, "stop", json!({}));
             }
             VideoPlayerEvent::Ended => {
                 set_video_playing(&key, false);
                 stop_video_timer(container_hwnd);
+                stop_island_frame_timer(surface_hwnd);
                 emit_event(&key, "ended", json!({}));
             }
             VideoPlayerEvent::Error { message } => {
                 set_video_playing(&key, false);
                 set_video_stopped(&key, true);
                 stop_video_timer(container_hwnd);
-                unsafe {
-                    let _ =
-                        WindowsAndMessaging::ShowWindow(surface_hwnd, WindowsAndMessaging::SW_HIDE);
-                    let _ = WindowsAndMessaging::ShowWindow(
-                        container_hwnd,
-                        WindowsAndMessaging::SW_HIDE,
-                    );
+                stop_island_frame_timer(surface_hwnd);
+                if !super::island::is_island_component_key(&key) {
+                    unsafe {
+                        let _ = WindowsAndMessaging::ShowWindow(
+                            surface_hwnd,
+                            WindowsAndMessaging::SW_HIDE,
+                        );
+                        let _ = WindowsAndMessaging::ShowWindow(
+                            container_hwnd,
+                            WindowsAndMessaging::SW_HIDE,
+                        );
+                    }
                 }
                 log::warn!("native video component {key}: {message}");
                 emit_event(&key, "error", json!({ "errMsg": message }));
@@ -443,6 +756,15 @@ fn set_video_stopped(key: &str, stopped: bool) {
 fn stop_video_timer(container: HWND) {
     unsafe {
         let _ = WindowsAndMessaging::KillTimer(Some(container), VIDEO_TIMER_ID);
+    }
+}
+
+fn stop_island_frame_timer(surface: HWND) {
+    if surface.0.is_null() {
+        return;
+    }
+    unsafe {
+        let _ = WindowsAndMessaging::KillTimer(Some(surface), ISLAND_FRAME_TIMER_ID);
     }
 }
 
@@ -485,13 +807,35 @@ pub(super) fn dispatch_video_command(
         components
             .iter()
             .find(|(_, entry)| entry.video.is_some() && entry.component_id == component_id)
-            .map(|(key, entry)| (key.clone(), entry.parent))
+            .map(|(key, entry)| {
+                // Island players may be windowless (`container == 0`); the
+                // host window still owns the UI thread they were created on.
+                let thread_window = if entry.parent != 0 {
+                    entry.parent
+                } else {
+                    entry.container
+                };
+                (key.clone(), thread_window)
+            })
     };
     let Some((key, parent)) = target else {
-        return Err(format!("no native video component '{component_id}'"));
+        return match command {
+            // Island video mounts after the WebView2 message turn. Play/pause/stop
+            // from `lx.createVideoContext` must not throw while that apply is
+            // still queued (the showcase view notifies `play` on autoplay).
+            VideoPlayerCommand::Play | VideoPlayerCommand::Pause | VideoPlayerCommand::Stop => {
+                Ok(())
+            }
+            _ => Err(format!("no native video component '{component_id}'")),
+        };
     };
     let command = command.clone();
-    if run_on_window_thread(parent, move || apply_video_command(&key, &command)) {
+    let quiet = matches!(
+        command,
+        VideoPlayerCommand::Play | VideoPlayerCommand::Pause | VideoPlayerCommand::Stop
+    );
+    let posted = run_on_window_thread(parent, move || apply_video_command(&key, &command));
+    if posted || quiet {
         Ok(())
     } else {
         Err(format!(
@@ -683,4 +1027,25 @@ pub(super) fn set_video_fullscreen(key: &str, fullscreen: bool) {
         }
     }
     emit_event(key, "fullscreenchange", json!({ "fullScreen": fullscreen }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pause_without_a_mounted_video_is_a_noop() {
+        assert_eq!(
+            dispatch_video_command("missing-video", &VideoPlayerCommand::Pause),
+            Ok(())
+        );
+        assert_eq!(
+            dispatch_video_command("missing-video", &VideoPlayerCommand::Stop),
+            Ok(())
+        );
+        assert_eq!(
+            dispatch_video_command("missing-video", &VideoPlayerCommand::Play),
+            Ok(())
+        );
+    }
 }

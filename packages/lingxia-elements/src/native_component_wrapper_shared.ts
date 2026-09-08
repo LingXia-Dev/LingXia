@@ -1,7 +1,7 @@
 import type { NavigatorEnvVersion, NavigatorOpenType, NavigatorTarget } from "./navigator.js";
 import type { NavigatorQuery } from "./navigator.js";
 import type { LxMediaSwiperItem } from "./media_swiper.js";
-import type { LxVideoQuality } from "./video.js";
+import type { LxVideoQuality, LxVideoEventPayloads } from "./video.js";
 
 export function appendDataAttrs(
   attrs: Record<string, unknown>,
@@ -208,7 +208,8 @@ export const VIDEO_DOM_EVENT_MAP = {
   onWaiting: "waiting",
   onQualityChange: "qualitychange",
   onRateChange: "ratechange",
-} as const;
+  onVolumeChange: "volumechange",
+} as const satisfies Record<keyof LxVideoEventPayloads, string>;
 
 export interface VideoNativeAttrOptions {
   id?: string;
@@ -238,7 +239,8 @@ export function buildVideoNativeAttrs(
   if (options.autoplay) result.autoplay = "";
   if (options.loop) result.loop = "";
   if (options.muted) result.muted = "";
-  if (options.controls) result.controls = "";
+  if (options.controls === false) result.controls = "false";
+  else if (options.controls) result.controls = "";
   if (options.progressBar === false) result["progress-bar"] = "false";
   if (options.live) result.live = "";
   if (options.volume !== undefined) result.volume = options.volume;

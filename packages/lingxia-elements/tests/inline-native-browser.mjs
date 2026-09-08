@@ -1,0 +1,126 @@
+import { fileURLToPath } from 'node:url';
+import { runBrowser } from './browser-harness.mjs';
+const result = await runBrowser(fileURLToPath(new URL('../', import.meta.url)), exercise);
+console.log(`Native browser regressions: ${result.passed} passed`);
+
+async function exercise() {
+  const { registerInlineNativeAuthorComponents } = await import('/dist/inline-native/elements.js');
+  const messages = [];
+  const handlers = new Map();
+  window.LingXiaBridge = { nativeComponents: {
+    send: message => messages.push(structuredClone(message)),
+    register: (id, handler) => { handlers.set(id, handler); return () => handlers.delete(id); },
+  } };
+  registerInlineNativeAuthorComponents();
+  let passed = 0;
+  const check = (condition, name) => { if (!condition) throw Error(name); passed++; };
+  const settle = () => new Promise(resolve => setTimeout(resolve, 120));
+  const root = document.createElement('lx-native-root');
+  root.style.cssText = 'width:320px;height:180px';
+  const button = document.createElement('lx-native-button');
+  button.id = 'button'; button.label = 'Play'; button.icon = 'play';
+  const text = document.createElement('lx-native-text');
+  text.id = 'text'; text.textContent = 'Inherited text';
+  const fallback = document.createElement('div');
+  fallback.setAttribute('data-lx-native-fallback', '');
+  fallback.setAttribute('aria-hidden', 'true'); fallback.hidden = true; fallback.textContent = 'Retry';
+  root.append(button, text, fallback); document.body.append(root);
+  await settle();
+  check(root.lastCompileResult()?.ok, 'initial compilation');
+  check(!fallback.hidden && !fallback.hasAttribute('aria-hidden'), 'initial fallback is accessible');
+  let rect = button.getBoundingClientRect();
+  check(rect.width > 30 && rect.height >= 26, 'label and icon have intrinsic dimensions');
+  const oldWidth = rect.width;
+  button.label = 'A much longer playback label'; await settle();
+  check(button.getBoundingClientRect().width > oldWidth, 'label update remeasures button');
+  button.style.width = '240px'; button.style.height = '48px'; await settle();
+  check(button.getBoundingClientRect().width === 240 && button.getBoundingClientRect().height === 48, 'explicit button sizing');
+
+  const rootMessage = messages.find(message => message.action === 'root.commit');
+  const host = handlers.get(rootMessage.id);
+  let ready = 0; root.addEventListener('ready', () => ready++);
+  host({ action: 'root.leaseGranted', leaseId: 'lease', sequence: 1, leaseDurationMs: 8000 });
+  host({ action: 'root.leaseActive' });
+  check(ready === 1 && fallback.hidden, 'activation hides fallback and emits ready');
+  check(getComputedStyle(root).opacity === '0', 'active measurement DOM does not duplicate native paint');
+  check(root.compileNow().root.props.nativeStyle.opacity !== '0', 'paint suppression never enters native props');
+  host({ action: 'root.applied' }); host({ action: 'root.applied' }); host({ action: 'root.leaseActive' });
+  check(ready === 1, 'commit acknowledgements and duplicate activation do not repeat ready');
+  await settle();
+  const latestGeometry = () => messages.filter(message => message.action === 'geometry.snapshot').at(-1);
+  const before = latestGeometry();
+  const banner = document.createElement('div'); banner.style.height = '100px';
+  document.body.prepend(banner); await settle();
+  const after = latestGeometry();
+  check(after.revision > before.revision, 'external sibling invalidates native geometry');
+  check(after.roots[0].contentRect.y === root.getBoundingClientRect().y + window.scrollY
+    && after.roots[0].contentRect.y - before.roots[0].contentRect.y === 100, 'new document position is published');
+  const movementStart = latestGeometry().revision;
+  banner.animate([{ height: '100px' }, { height: '150px' }], { duration: 150, fill: 'forwards' });
+  await new Promise(resolve => setTimeout(resolve, 250));
+  check(latestGeometry().revision > movementStart, 'position changes without DOM mutations are observed');
+
+  document.body.style.color = 'rgb(255, 0, 0)'; document.body.style.fontSize = '32px'; await settle();
+  let props = root.lastCompileResult().root.children.find(node => node.authorId === 'text').props;
+  check(props.color === 'rgb(255, 0, 0)' && props.fontSize === '32px', 'external inherited typography reaches native text');
+  text.setAttribute('font-size', '48'); text.setAttribute('line-height', '60'); await settle();
+  check(getComputedStyle(text).fontSize === '48px' && getComputedStyle(text).lineHeight === '60px', 'typography props affect CSS measurement');
+  check(text.getBoundingClientRect().height > 32, 'text geometry grows with font prop');
+  text.style.fontSize = '24px'; await settle();
+  props = root.lastCompileResult().root.children.find(node => node.authorId === 'text').props;
+  check(props.fontSize === '24px', 'CSS precedence matches native typography');
+  text.removeAttribute('font-size'); text.style.removeProperty('font-size'); await settle();
+  check(getComputedStyle(text).fontSize === '32px', 'removing typography prop restores inheritance');
+
+  let presses = 0; button.addEventListener('press', () => presses++);
+  button.id = 'renamed'; await settle();
+  check(!handlers.has('button') && handlers.has('renamed'), 'id change migrates native handler');
+  handlers.get('renamed')({ event: 'press', detail: { source: 'pointer' } });
+  check(presses === 1, 'press delivered after id change');
+  let focus = 0; button.addEventListener('focus', () => focus++);
+  handlers.get('renamed')({ event: 'focus', detail: { source: 'keyboard' } });
+  check(focus === 1, 'available platform events are not dropped by bridge');
+  host({ action: 'root.error', message: 'test failure' });
+  check(!fallback.hidden && !fallback.hasAttribute('aria-hidden'), 'failure fallback is accessible');
+  await root.retry();
+  host({ action: 'root.leaseGranted', leaseId: 'retry-lease', sequence: 1, leaseDurationMs: 8000 });
+  host({ action: 'root.leaseActive' });
+  check(ready === 2 && fallback.hidden, 'recovered root emits a new ready transition');
+  root.remove(); await settle();
+  check(!handlers.has('renamed') && !handlers.has(rootMessage.id), 'disconnect unregisters native handlers');
+  const count = messages.length; button.label = 'Detached'; await settle();
+  check(messages.length === count, 'disconnected root does not publish layout');
+
+  const scroller = document.createElement('div');
+  scroller.style.cssText = 'height:40px;width:240px;overflow:hidden';
+  const clippedRoot = document.createElement('lx-native-root');
+  clippedRoot.style.cssText = 'display:block;height:180px;width:240px';
+  const group = document.createElement('lx-native-view');
+  group.style.cssText = 'display:block;height:80px;width:200px;overflow:hidden;opacity:0';
+  const child = document.createElement('lx-native-button'); child.id = 'clip-child'; child.label = 'Play';
+  child.style.cssText = 'height:120px;width:160px';
+  group.append(child); clippedRoot.append(group); scroller.append(clippedRoot); document.body.append(scroller);
+  await settle();
+  const geometry = () => messages.filter(message => message.action === 'geometry.snapshot').at(-1);
+  const childProps = () => clippedRoot.lastCompileResult().root.children[0].children[0].props;
+  check(geometry().nodes.every(node => !node.visible), 'zero parent opacity hides all native descendants');
+  check(childProps().nativeStyle.opacity === '0', 'zero parent opacity reaches child paint');
+  group.style.opacity = '0.5'; child.style.opacity = '0.5'; await settle();
+  check(childProps().nativeStyle.opacity === '0.25', 'nested opacity is multiplied');
+  const clips = geometry().nodes[1].clipStack;
+  check(clips.some(clip => clip.height === 40) && clips.some(clip => clip.height === 80), 'clip stack includes overflow inside and outside Root');
+  check(geometry().nodes[1].contentRect.height === 120, 'clipping preserves uncut content size');
+  scroller.style.overflow = 'visible'; await settle();
+  check(!geometry().nodes[1].clipStack.some(clip => clip.height === 40), 'removing ancestor overflow releases its clip');
+  const sheet = document.createElement('style'); sheet.textContent = '#clip-child { color: rgb(0, 0, 255); }';
+  document.head.append(sheet); await settle();
+  sheet.sheet.insertRule('#clip-child { color: rgb(255, 0, 0); }', 1); await settle();
+  check(childProps().nativeStyle.color === 'rgb(255, 0, 0)', 'CSSOM paint changes publish without DOM mutations');
+  child.style.color = 'oklch(60% 0.2 30)'; await settle();
+  check(/^rgba?\(/.test(childProps().nativeStyle.color), 'modern CSS color is normalized to host sRGB');
+  check(clippedRoot.lastCompileResult().diagnostics.length === 0, 'normalized CSS colors need no unsupported diagnostic');
+  clippedRoot.setAttribute('fullscreen-scope', 'root'); await settle();
+  check(clippedRoot.lastCompileResult().error?.code === 'NATIVE_COMPONENT_INVALID_PROPS', 'unsupported fullscreen scope is rejected explicitly');
+  scroller.remove(); sheet.remove(); await settle();
+  return { passed };
+}

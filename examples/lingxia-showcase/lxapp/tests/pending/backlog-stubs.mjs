@@ -224,13 +224,6 @@ export default [
     reason: "channel.test.ts covers happy reconnect only",
   },
   {
-    id: "PEND-NATIVE-ATTR-001",
-    title: "native component attributes and events beyond page open",
-    mode: "planned",
-    covers: ["lx.navigateTo"],
-    reason: "COMPONENTS-001 does not assert attrs or CustomEvent detail",
-  },
-  {
     id: "PEND-ERR-CATALOG-001",
     title: "map SurfaceErrorCode, LxErrorCode, and BRIDGE_* to owners",
     mode: "planned",

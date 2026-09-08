@@ -3,7 +3,14 @@ import '../../tailwind.css';
 
 export default function SystemPage() {
   const { data, actions } = useLxPage();
-  const { getBaseInfo, getSystemSetting, toggleAutostart, refreshAutostart } = actions;
+  const {
+    getBaseInfo,
+    getSystemSetting,
+    toggleAutostart,
+    refreshAutostart,
+    refreshCacheSize,
+    clearCache,
+  } = actions;
   const {
     currentType = 'appBaseInfo',
     appBaseInfo = null,
@@ -12,6 +19,11 @@ export default function SystemPage() {
     autostartSupported = false,
     autostartEnabled = null,
     autostartError = '',
+    cacheBytes = null,
+    cacheFreedBytes = null,
+    cacheBusy = false,
+    cacheError = '',
+    cacheNotice = '',
   } = data;
 
   return (
@@ -162,9 +174,83 @@ export default function SystemPage() {
             </div>
           </>
         )}
+        {currentType === 'cache' && (
+          <>
+            <div className="mb-6 text-center">
+              <h1 className="text-2xl font-light text-gray-800 mb-2">app.cache</h1>
+              <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
+            </div>
+
+            <div
+              data-testid="system-cache-panel"
+              className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden"
+            >
+              <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
+                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-sky-50 to-blue-50">
+                  <span className="text-2xl">🧹</span>
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm text-gray-800 font-semibold">Product Cache</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    Reclaimable product cache — home lxapp only
+                  </div>
+                </div>
+                <button
+                  onClick={clearCache}
+                  disabled={cacheBusy}
+                  className="px-4 py-2 text-xs font-medium bg-sky-500 hover:bg-sky-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
+                >
+                  {cacheBusy ? 'Clearing…' : 'Clear'}
+                </button>
+              </div>
+
+              <div className="p-5">
+                <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="w-1 h-4 bg-sky-500 rounded-full"></span>
+                    <h4 className="text-sm font-semibold text-gray-700">State</h4>
+                  </div>
+                  <InfoRow label="Reclaimable (estimate)" value={formatBytes(cacheBytes)} />
+                  <InfoRow label="Last Freed (estimate)" value={formatBytes(cacheFreedBytes)} />
+                  {cacheNotice && <InfoRow label="Result" value={cacheNotice} />}
+                  {cacheError && <InfoRow label="Error" value={cacheError} />}
+                  <div className="pt-3 text-xs text-gray-500">
+                    Running apps retain their private caches. Use their menu to clear
+                    cache and restart. Estimates exclude WebView cache.
+                  </div>
+                  <div className="pt-3">
+                    <button
+                      onClick={refreshCacheSize}
+                      className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
+                    >
+                      Re-read Size
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
+}
+
+function formatBytes(value: number | null): string {
+  if (typeof value !== 'number') {
+    return '--';
+  }
+  if (value < 1024) {
+    return `${value} B`;
+  }
+  const units = ['KB', 'MB', 'GB'];
+  let size = value / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size.toFixed(1)} ${units[unit]}`;
 }
 
 interface InfoRowProps {

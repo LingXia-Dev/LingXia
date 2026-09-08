@@ -7,6 +7,7 @@ use rong::{IntoJSObject, JSContext, JSObject, JSResult, JSValue};
 mod appearance;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod autostart;
+mod cache;
 mod display_language;
 mod screenshot;
 mod update;
@@ -108,6 +109,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     init_control_namespace(ctx, &app)?;
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     autostart::init(ctx, &app)?;
+    cache::init(ctx, &app)?;
     screenshot::init(ctx)?;
     update::init(ctx)?;
 

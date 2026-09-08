@@ -203,7 +203,9 @@ refresh it explicitly with `lx.fs.stat(path)` / `lx.fs.exists(path)` at session
 start.
 
 **User data** is never auto-cleaned to satisfy quota. It is deleted only by
-explicit delete APIs, lxapp uninstall, or the user clearing app data. Writes
+explicit delete APIs, lxapp uninstall, or the user clearing app data — notably
+*not* by `lx.app.cache.clear()`, which is a cache control and never touches
+userdata. Writes
 that would exceed `dataMaxSizeMB` fail with `USERDATA_QUOTA_EXCEEDED`; writes
 that would exceed `appStorageMaxSizeMB` first trigger usercache cleanup, then
 fail with `APP_STORAGE_QUOTA_EXCEEDED`. Quota failures are ordinary errors to
@@ -214,6 +216,43 @@ succeed.
 first. `lx.fs` writes and `downloadFile` finalization then evict LRU
 usercache (never userdata) and retry once; if the retry still fails, the IO
 error surfaces to the caller and the lxapp should tell the user.
+
+## Clearing the product's cache
+
+`lx.app.cache` is a host-wide API restricted to the home lxapp. Ordinary
+lxapps receive a permission error for both methods.
+
+```ts
+const reclaimableBytes = await lx.app.cache.size();
+const result = await lx.app.cache.clear();
+// result: { freedBytes, skippedActivePaths, webview, failures }
+```
+
+The clear removes unprotected lxapp usercache, idle session temp, shared runtime
+artwork, and WebView HTTP cache where supported. Native package maintenance also
+reclaims orphaned installs and staged archives, preserving referenced paths,
+active work, recent writes, and paths with uncertain timestamps.
+
+**Live runtime instances retain their usercache and temp**, including the home
+caller and hidden apps. Protection begins before storage initialization and
+lasts until the instance is released; lingering runtime work may conservatively
+keep a closed app protected. No app is restarted by this API. To clear a running
+app, use its host-provided "clear cache and restart" menu action.
+
+Userdata, KV storage, user Downloads, cookies/site data, valid installs and host
+components such as optional native runtimes are never cleared.
+
+`size()` estimates currently reclaimable managed file bytes, not total product
+storage. `freedBytes` sums estimates for successfully removed paths, rather than
+subtracting two global usage snapshots. Neither includes WebView bytes or
+promises physical disk blocks reclaimed. Concurrent work may change the result;
+partially removed paths that fail deletion are not counted.
+
+`skippedActivePaths` counts protected cache/session directories, not apps.
+`webview` is `cleared`, `unsupported`, or `failed`. `failures` reports errors after
+attempting all categories; a partial clear resolves with this report. Failure to
+initialize or execute the maintenance task rejects. Settings must display
+skipped/failed work and must not promise that all caches were cleared.
 
 ## Storage Summary
 
@@ -237,3 +276,5 @@ usercache     -> lx://usercache/<path>
 - Use `downloadFile({ filePath })` only for durable userdata destinations.
 - Do not pass `lx://usercache`, host download directories, or native paths to `downloadFile.filePath`.
 - Do not store business-critical references to `tempFilePath`.
+- Use `lx.app.cache` from the home lxapp for a product-wide "clear cache"
+  control; it is unavailable to other lxapps.

@@ -7,10 +7,9 @@ use super::parse_hwnd;
 use super::rect_to;
 use crate::error::{Error, Result};
 use crate::model::{Ack, AxNode, AxQuery};
-use std::sync::Once;
-use windows::Win32::Foundation::POINT;
+use windows::Win32::Foundation::{POINT, RPC_E_CHANGED_MODE};
 use windows::Win32::System::Com::{
-    CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx,
+    CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
 };
 use windows::Win32::UI::Accessibility::{
     CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationExpandCollapsePattern,
@@ -31,13 +30,37 @@ fn bstr_to_string(b: &BSTR) -> String {
     b.display().to_string()
 }
 
+struct ComApartment(bool);
+
+impl Drop for ComApartment {
+    fn drop(&mut self) {
+        if self.0 {
+            unsafe { CoUninitialize() };
+        }
+    }
+}
+
+thread_local! {
+    // Keep the apartment alive for elements returned by flat()/resolve_one_element().
+    static APARTMENT: std::result::Result<ComApartment, String> = {
+        let initialized = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+        if initialized.is_ok() || initialized == RPC_E_CHANGED_MODE {
+            Ok(ComApartment(initialized.is_ok()))
+        } else {
+            Err(format!("COM initialization failed: {initialized}"))
+        }
+    };
+}
+
 fn automation() -> Result<IUIAutomation> {
     super::ensure_dpi_aware();
-    static INIT: Once = Once::new();
-    INIT.call_once(|| unsafe {
-        // Ignore the HRESULT: RPC_E_CHANGED_MODE just means COM is already up.
-        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-    });
+    // Requests run on a blocking pool; COM initialization is per thread.
+    APARTMENT.with(|apartment| {
+        apartment
+            .as_ref()
+            .map(|_| ())
+            .map_err(|error| Error::Unavailable(error.clone()))
+    })?;
     unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) }
         .map_err(|e| Error::Unavailable(format!("UI Automation unavailable: {e}")))
 }
@@ -386,4 +409,19 @@ fn describe(q: &AxQuery) -> String {
         .or_else(|| q.text.clone())
         .or_else(|| q.id.clone())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn automation_initializes_each_worker_thread() {
+        for _ in 0..2 {
+            std::thread::spawn(|| {
+                let automation = super::automation().expect("UIA initializes on a fresh worker");
+                assert!(unsafe { automation.GetRootElement() }.is_ok());
+            })
+            .join()
+            .unwrap();
+        }
+    }
 }

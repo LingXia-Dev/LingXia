@@ -28,6 +28,10 @@ cloud = ["host/cloud"]  # activated by `--with-provider cloud`
 [dependencies]
 lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk", default-features = false }
 host = { package = "native", path = "../native", default-features = false }
+# 1.13.0 does not compile (Lokathor/tinyvec#225). This crate is its own
+# workspace and its lockfile is gitignored, so `lingxia dev` re-resolves
+# from crates.io.
+tinyvec = "=1.12.0"
 
 [build-dependencies]
 lingxia-windows-build = { path = "../../../crates/lingxia-windows-build" }

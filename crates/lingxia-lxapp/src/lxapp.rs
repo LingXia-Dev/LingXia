@@ -49,7 +49,7 @@ mod runtime_bootstrap;
 mod runtime_ops;
 pub(crate) mod runtime_registry;
 mod scheme;
-mod security;
+pub(crate) mod security;
 mod surface;
 pub use security::{LxAppSecurityPrivilege, is_public_network_address};
 pub mod tabbar;
@@ -857,6 +857,8 @@ pub struct LxApp {
     pub user_data_dir: PathBuf,
     pub user_cache_dir: PathBuf,
     pub temp_dir: PathBuf,
+    temp_cleanup_protection: Option<crate::cache::CleanupProtection>,
+    usercache_cleanup_protection: Option<crate::cache::CleanupProtection>,
     pub fingermark: String,
     pub is_home_lxapp: bool,
     app_session_class: AppSessionClass,
@@ -1897,6 +1899,8 @@ impl LxApp {
             user_data_dir: PathBuf::new(),
             user_cache_dir: PathBuf::new(),
             temp_dir: PathBuf::new(),
+            temp_cleanup_protection: None,
+            usercache_cleanup_protection: None,
             fingermark: String::new(),
             is_home_lxapp: false,
             app_session_class,
@@ -2093,6 +2097,10 @@ impl LxApp {
             .join(USER_CACHE_DIR);
 
         self.user_cache_dir = cache_base_dir.join(&dir_name);
+        // Claim before creating the directory, under the same lock as cleanup.
+        self.usercache_cleanup_protection = Some(crate::cache::protect_from_cleanup([self
+            .user_cache_dir
+            .clone()]));
         if !self.user_cache_dir.exists() {
             std::fs::create_dir_all(&self.user_cache_dir).map_err(|e| {
                 LxAppError::IoError(format!("Failed to create cache directory: {}", e))
@@ -2114,12 +2122,14 @@ impl LxApp {
                     .file_name()
                     .and_then(|name| name.to_str())
                     .is_some_and(|name| name != self.session_id().to_string());
-                if stale && path.is_dir() {
+                if stale && path.is_dir() && !crate::cache::is_protected_from_cleanup(&path) {
                     let _ = std::fs::remove_dir_all(path);
                 }
             }
         }
         self.temp_dir = temp_base_dir.join(self.session_id().to_string());
+        self.temp_cleanup_protection =
+            Some(crate::cache::protect_from_cleanup([self.temp_dir.clone()]));
         if !self.temp_dir.exists() {
             std::fs::create_dir_all(&self.temp_dir).map_err(|e| {
                 LxAppError::IoError(format!("Failed to create temp directory: {}", e))
@@ -2560,6 +2570,11 @@ impl LxApp {
             .lock()
             .map(|scripts| scripts.clone())
             .unwrap_or_default()
+    }
+
+    /// Hosts apply this list to island media URLs (`src` / `poster` / quality / commands).
+    pub fn trusted_network_domains(&self) -> Vec<String> {
+        self.config.trusted_domains().to_vec()
     }
 
     /// Check if a domain is allowed for network access

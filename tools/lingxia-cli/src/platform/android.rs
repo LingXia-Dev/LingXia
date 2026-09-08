@@ -261,9 +261,15 @@ gradle.settingsEvaluated {{ settings ->
             "armv7-linux-androideabi" => "arm-linux-androideabi",
             _ => unreachable!("target was normalized above"),
         });
+        // `BINDGEN_EXTRA_CLANG_ARGS` is shell-split even on Windows. Use
+        // forward slashes and quote each path so drive letters, backslashes,
+        // and spaces in an SDK installation path survive that parse.
         let bindgen_include_args = [&resource_include, &sysroot_include, &target_include]
             .iter()
-            .map(|dir| format!("-I{}", dir.display()))
+            .map(|dir| {
+                let path = dir.to_string_lossy().replace('\\', "/");
+                format!(r#"-I"{}""#, path)
+            })
             .collect::<Vec<_>>()
             .join(" ");
         let bindgen_extra_clang_args = match env::var("BINDGEN_EXTRA_CLANG_ARGS") {
@@ -315,6 +321,14 @@ gradle.settingsEvaluated {{ settings ->
                 // reorder NDK header resolution (seen as rong_quickjs_sys
                 // failing on NDK r27 with unknown fixed-width int types).
                 cmd.env("BINDGEN_EXTRA_CLANG_ARGS", &bindgen_extra_clang_args);
+                // Bindgen checks the target-qualified variable first during a
+                // cross-compile. Cargo can provide that variable independently,
+                // so set it explicitly instead of relying on the generic
+                // fallback.
+                cmd.env(
+                    format!("BINDGEN_EXTRA_CLANG_ARGS_{}", target_env),
+                    &bindgen_extra_clang_args,
+                );
 
                 // Old Android (API < 23) requires DT_HASH, not just DT_GNU_HASH
                 if target == "armv7-linux-androideabi" {

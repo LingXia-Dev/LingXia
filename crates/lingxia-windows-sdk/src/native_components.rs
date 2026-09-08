@@ -54,6 +54,7 @@ use windows::core::{PCWSTR, w};
 use super::video_controls::{ControlsAction, ControlsState, VideoControls};
 use super::video_player::{VideoEventSink, VideoPlayer, VideoPlayerEvent};
 
+mod island;
 mod model;
 mod swiper;
 mod text;
@@ -75,6 +76,7 @@ pub(crate) fn install() {
         log::warn!("a native-component host was already registered; Windows manager inactive");
     }
     lingxia_platform::register_windows_video_command_dispatcher(Arc::new(dispatch_video_command));
+    island::install_island_pointer_filter();
     super::media_preview::install();
 }
 struct ShellNativeComponentHost;
@@ -129,6 +131,9 @@ struct ComponentEntry {
     video: Option<VideoComponent>,
     /// Paged carousel of a `media-swiper.native` component, `None` otherwise.
     swiper: Option<MediaSwiperComponent>,
+    /// Core island kind (`view` / `text` / `tappable`) when this
+    /// container is an overlay node in the inline native tree.
+    island_kind: Option<String>,
     doc_rect: DocRect,
     state: ComponentProps,
     last_value: String,
@@ -249,6 +254,10 @@ fn handle_message(
         view.target = target;
     }
 
+    if island::handle_island_message(&context, message) {
+        return;
+    }
+
     match action {
         "component.mount" => handle_mount(&context, message),
         "component.update" => handle_update(&context, message),
@@ -279,6 +288,73 @@ fn message_component_id(message: &Value) -> Option<String> {
 enum MountKind {
     Edit { multiline: bool },
     Video,
+}
+
+/// Windowless MFPlay for an island video leaf. Decode and media events
+/// only — no WS_CHILD / EVR HWND (those fight the page DComp device).
+/// Paint lives on the WebView composition tree.
+fn ensure_island_video(
+    context: &PageContext,
+    author_id: &str,
+    props: &Value,
+    rect: Option<DocRect>,
+) -> Option<isize> {
+    let key = component_key(&context.page_key, author_id);
+    island::island_component_keys().insert(key.clone());
+    if components().contains_key(&key) {
+        if let Some(rect) = rect
+            && rect.width >= 2.0
+            && rect.height >= 2.0
+            && let Some(entry) = components().get_mut(&key)
+        {
+            entry.doc_rect = rect;
+        }
+        let parsed = parse_props(Some(props));
+        apply_props(&key, &parsed);
+        sync_island_video_playback(&key, &parsed);
+        return Some(0);
+    }
+    let Some(parent) = parent_window_for_page(&context.page_key) else {
+        log::warn!(
+            "no webview window for page {}; dropping island video {author_id}",
+            context.page_key
+        );
+        return None;
+    };
+    let doc_rect = rect.unwrap_or(DocRect {
+        x: 0.0,
+        y: 0.0,
+        width: 16.0,
+        height: 16.0,
+    });
+    let parsed = parse_props(Some(props));
+    if mount_windowless_island_video(
+        context.clone(),
+        author_id.to_string(),
+        parent,
+        doc_rect,
+        parsed,
+    ) {
+        Some(0)
+    } else {
+        None
+    }
+}
+
+fn retain_island_videos(page_key: &str, live_ids: &HashSet<String>) {
+    let prefix = format!("{page_key}\u{1}");
+    let stale: Vec<String> = island::island_component_keys()
+        .iter()
+        .filter(|key| key.starts_with(&prefix))
+        .filter_map(|key| {
+            let id = key.strip_prefix(&prefix)?;
+            (!live_ids.contains(id)).then(|| key.clone())
+        })
+        .collect();
+    for key in stale {
+        destroy_component(&key);
+        island::island_component_keys().remove(&key);
+    }
 }
 
 fn handle_mount(context: &PageContext, message: &Value) {
@@ -467,6 +543,7 @@ fn handle_ready(context: &PageContext, message: &Value) {
     for (event, detail) in pending {
         emit_event(&key, &event, detail);
     }
+    replay_island_playback_after_ready(&key);
 }
 
 fn handle_focus_action(context: &PageContext, message: &Value, focus: bool) {
@@ -521,6 +598,7 @@ fn handle_page_scroll(context: &PageContext, message: &Value) {
         for key in keys {
             apply_layout(&key);
         }
+        island::refresh_scroll_layout(&page_key);
     });
 }
 
@@ -562,6 +640,38 @@ fn apply_component_visibility(key: &str, visible: bool) {
         return;
     }
 
+    if island::is_island_component_key(key) {
+        if let Some((player, resume)) = {
+            let mut components = components();
+            components.get_mut(key).and_then(|entry| {
+                entry.video.as_mut().map(|video| {
+                    if visible {
+                        video.view_needs_playback_event = true;
+                        (
+                            video.player.clone(),
+                            std::mem::take(&mut video.resume_on_show),
+                        )
+                    } else {
+                        video.resume_on_show = video.playing || video.player.wants_playback();
+                        video.view_needs_playback_event = true;
+                        video.view_ack_playing = false;
+                        (video.player.clone(), false)
+                    }
+                })
+            })
+        } {
+            if visible {
+                apply_layout(key);
+                if resume {
+                    player.play();
+                }
+            } else {
+                player.pause();
+            }
+        }
+        return;
+    }
+
     if !visible {
         // A fullscreen video must leave its screen-sized window before the
         // page hides, or the black host would stay covering the monitor.
@@ -588,7 +698,7 @@ fn apply_component_visibility(key: &str, visible: bool) {
                     std::mem::take(&mut video.resume_on_show),
                 )
             } else {
-                video.resume_on_show = video.playing;
+                video.resume_on_show = video.playing || video.player.wants_playback();
                 (video.player.clone(), false)
             }
         });
@@ -623,6 +733,7 @@ fn apply_component_visibility(key: &str, visible: bool) {
 
 /// Destroys every component mounted by `page_key` and drops its view state.
 fn teardown_page(page_key: &str) {
+    island::teardown_island(page_key);
     page_views().remove(page_key);
     {
         let mut ready = ready_keys();
@@ -779,6 +890,39 @@ fn container_class() -> PCWSTR {
     w!("LingXiaNativeComponentHost")
 }
 
+/// Sizes the cloaked island video HWND to the node's physical rect and
+/// parks it on the screen over the composition surface so DWM still
+/// composites frames. The window stays cloaked — this is not a z-order
+/// restack and does not call `SetWindowPos`.
+fn layout_island_video(
+    container_hwnd: HWND,
+    doc_rect: &DocRect,
+    context: &PageContext,
+    video: Option<&VideoLayout>,
+) {
+    let Some(view) = page_views().get(&context.page_key).copied() else {
+        return;
+    };
+    if !page_is_foreground(context) {
+        return;
+    }
+    let scale = if view.target.scale > 0.0 {
+        view.target.scale
+    } else {
+        1.0
+    };
+    let width = (doc_rect.width * scale).round().max(1.0) as i32;
+    let height = (doc_rect.height * scale).round().max(1.0) as i32;
+    let _ = view;
+    unsafe {
+        let _ =
+            WindowsAndMessaging::MoveWindow(container_hwnd, -32_000, -32_000, width, height, true);
+    }
+    if let Some(video) = video {
+        video.layout_children(width, height);
+    }
+}
+
 /// Repositions a component's container over the webview content from its
 /// document rect, the page scroll offset, and the content-window geometry;
 /// clips it to the content area (chrome regions stay clean) and to the
@@ -816,7 +960,15 @@ fn apply_layout(key: &str) {
         return;
     };
     let container_hwnd = HWND(container as *mut _);
-    if !page_is_foreground(&context) || video.as_ref().is_some_and(|video| video.stopped) {
+    if island::is_island_component_key(key) {
+        if container != 0 {
+            layout_island_video(container_hwnd, &doc_rect, &context, video.as_ref());
+        }
+        return;
+    }
+
+    let hide_stopped_overlay = video.as_ref().is_some_and(|video| video.stopped);
+    if !page_is_foreground(&context) || hide_stopped_overlay {
         // Background pages keep their overlays hidden; a stopped video
         // hides too, letting the element's DOM placeholder/poster show.
         unsafe {
@@ -994,7 +1146,7 @@ fn apply_props(key: &str, props: &ComponentProps) {
 /// Destroys a component's windows and removes all its bookkeeping. Runs on
 /// the owning UI thread (window destruction requirement).
 fn destroy_component(key: &str) {
-    let Some((container, font, fullscreen_host)) = ({
+    let Some((container, font, fullscreen_host, evr)) = ({
         let components = components();
         components.get(key).map(|entry| {
             (
@@ -1005,6 +1157,7 @@ fn destroy_component(key: &str) {
                     .as_ref()
                     .map(|video| video.fullscreen_host)
                     .unwrap_or(0),
+                entry.video.as_ref().map(|video| video.surface).unwrap_or(0),
             )
         })
     }) else {
@@ -1017,8 +1170,11 @@ fn destroy_component(key: &str) {
         // destroying it tears both down.
         if fullscreen_host != 0 && is_window(fullscreen_host) {
             let _ = WindowsAndMessaging::DestroyWindow(HWND(fullscreen_host as *mut _));
-        } else {
+        } else if container != 0 {
             let _ = WindowsAndMessaging::DestroyWindow(HWND(container as *mut _));
+        }
+        if evr != 0 && evr != container && evr != fullscreen_host {
+            let _ = WindowsAndMessaging::DestroyWindow(HWND(evr as *mut _));
         }
         if font != 0 {
             let _ = DeleteObject(HGDIOBJ(font as *mut _));
@@ -1168,6 +1324,59 @@ fn container_is_video(container: HWND) -> bool {
         .is_some_and(|entry| entry.video.is_some())
 }
 
+fn container_is_island(hwnd: HWND) -> bool {
+    let Some(key) = component_key_for_container(hwnd) else {
+        return false;
+    };
+    components().get(&key).is_some_and(|entry| {
+        entry
+            .island_kind
+            .as_deref()
+            .is_some_and(|kind| kind != "video")
+    })
+}
+
+fn paint_island_container(hwnd: HWND) {
+    let Some(key) = component_key_for_container(hwnd) else {
+        return;
+    };
+    let (kind, text) = {
+        let components = components();
+        let Some(entry) = components.get(&key) else {
+            return;
+        };
+        (
+            entry.island_kind.clone().unwrap_or_default(),
+            entry.last_value.clone(),
+        )
+    };
+    let mut paint = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();
+    unsafe {
+        let hdc = windows::Win32::Graphics::Gdi::BeginPaint(hwnd, &mut paint);
+        let mut rect = RECT::default();
+        let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut rect);
+        let _ = windows::Win32::Graphics::Gdi::FillRect(
+            hdc,
+            &rect,
+            HBRUSH(GetStockObject(BLACK_BRUSH).0),
+        );
+        if kind == "text" && !text.is_empty() {
+            SetBkColor(hdc, COLORREF(0));
+            SetTextColor(hdc, COLORREF(0x00ff_ffff));
+            let mut wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+            let _ = windows::Win32::Graphics::Gdi::DrawTextW(
+                hdc,
+                &mut wide,
+                &mut rect,
+                windows::Win32::Graphics::Gdi::DT_LEFT
+                    | windows::Win32::Graphics::Gdi::DT_TOP
+                    | windows::Win32::Graphics::Gdi::DT_NOPREFIX,
+            );
+        }
+        let _ = windows::Win32::Graphics::Gdi::EndPaint(hwnd, &paint);
+    }
+}
+
 unsafe extern "system" fn container_proc(
     hwnd: HWND,
     msg: u32,
@@ -1229,6 +1438,10 @@ unsafe extern "system" fn container_proc(
                 );
             }
             LRESULT(1)
+        }
+        WindowsAndMessaging::WM_PAINT if container_is_island(hwnd) => {
+            paint_island_container(hwnd);
+            LRESULT(0)
         }
         WindowsAndMessaging::WM_PAINT if container_is_video(hwnd) || container_is_swiper(hwnd) => {
             let mut paint = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();

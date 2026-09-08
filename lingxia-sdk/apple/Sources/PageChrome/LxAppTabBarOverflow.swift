@@ -392,6 +392,7 @@ final class LxAppTabBarOverflowPanel: NSView {
 
     /// Empty regions of the window overlay must not swallow runner chrome.
     override func hitTest(_ point: NSPoint) -> NSView? {
+        guard frame.contains(point) else { return nil }
         let hit = super.hitTest(point)
         return hit === self ? nil : hit
     }
@@ -407,20 +408,23 @@ final class LxAppTabBarOverflowPanel: NSView {
     ///   - screen: the simulated phone, which the scrim and card must stay inside.
     func present(in host: NSView, above anchor: NSView, clippedTo screen: NSView) {
         host.addSubview(self, positioned: .above, relativeTo: nil)
+        // Reveal from behind the strip, not from outside the device frame.
+        // The window-level overlay bypasses the simulated screen's own mask.
+        layer?.masksToBounds = true
         paintPlate()
         let bottom = plate.bottomAnchor.constraint(
             equalTo: anchor.topAnchor,
             constant: -scaled(Metrics.bottomGap)
         )
         NSLayoutConstraint.activate([
-            topAnchor.constraint(equalTo: host.topAnchor),
-            leadingAnchor.constraint(equalTo: host.leadingAnchor),
-            trailingAnchor.constraint(equalTo: host.trailingAnchor),
-            bottomAnchor.constraint(equalTo: host.bottomAnchor),
-            scrim.topAnchor.constraint(equalTo: screen.topAnchor),
-            scrim.leadingAnchor.constraint(equalTo: screen.leadingAnchor),
-            scrim.trailingAnchor.constraint(equalTo: screen.trailingAnchor),
-            scrim.bottomAnchor.constraint(equalTo: anchor.topAnchor),
+            topAnchor.constraint(equalTo: screen.topAnchor),
+            leadingAnchor.constraint(equalTo: screen.leadingAnchor),
+            trailingAnchor.constraint(equalTo: screen.trailingAnchor),
+            bottomAnchor.constraint(equalTo: anchor.topAnchor),
+            scrim.topAnchor.constraint(equalTo: topAnchor),
+            scrim.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrim.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrim.bottomAnchor.constraint(equalTo: bottomAnchor),
             plate.leadingAnchor.constraint(
                 equalTo: anchor.leadingAnchor,
                 constant: scaled(Metrics.horizontalInset)
@@ -483,17 +487,24 @@ final class LxAppTabBarOverflowPanel: NSView {
         paintPlate()
         addSubview(plate)
 
-        let rows = NSStackView()
-        rows.orientation = .vertical
-        rows.spacing = 0
-        rows.alignment = .width
-        rows.setHuggingPriority(.required, for: .vertical)
+        let rows = NSView()
         rows.translatesAutoresizingMaskIntoConstraints = false
         plate.addSubview(rows)
 
+        // NSStackView's gravity areas can shrink these rows to their fitting
+        // width. Pin every row to the plate so short rows keep all five slots.
+        var previousRow: NSView?
         for chunk in indices.chunked(into: Metrics.columns) {
-            rows.addArrangedSubview(buildRow(chunk, items: items, selectedIndex: selectedIndex))
+            let row = buildRow(chunk, items: items, selectedIndex: selectedIndex)
+            rows.addSubview(row)
+            NSLayoutConstraint.activate([
+                row.leadingAnchor.constraint(equalTo: rows.leadingAnchor),
+                row.trailingAnchor.constraint(equalTo: rows.trailingAnchor),
+                row.topAnchor.constraint(equalTo: previousRow?.bottomAnchor ?? rows.topAnchor)
+            ])
+            previousRow = row
         }
+        previousRow?.bottomAnchor.constraint(equalTo: rows.bottomAnchor).isActive = true
 
         NSLayoutConstraint.activate([
             rows.topAnchor.constraint(equalTo: plate.topAnchor, constant: scaled(Metrics.panelPadding)),
@@ -559,6 +570,7 @@ final class LxAppTabBarOverflowPanel: NSView {
     private func buildCell(index: Int, item: TabBarItem, selected: Bool) -> NSView {
         let cell = OverflowCellView()
         cell.translatesAutoresizingMaskIntoConstraints = false
+        cell.toolTip = item.text.toString()
         cell.heightAnchor.constraint(equalToConstant: scaled(Metrics.cellHeight)).isActive = true
         cell.onPick = { [weak self] in
             guard let self else { return }

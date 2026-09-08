@@ -7,7 +7,9 @@ const NATIVE_COMPONENT_LAYOUT_INVALIDATED_EVENT = "lingxia:native-component-layo
 let pendingLayoutInvalidationFrame: number | null = null;
 const pendingLayoutInvalidationTimers = new Map<number, number>();
 
-export function sendNativeComponentMessage(message: NativeComponentMessage) {
+/// Returns false when the native channel is not up yet and the message was
+/// dropped, so callers that carry state (an island's first commit) can retry.
+export function sendNativeComponentMessage(message: NativeComponentMessage): boolean {
   const sender =
     typeof window !== "undefined"
       ? window.LingXiaBridge?.nativeComponents?.send
@@ -17,9 +19,10 @@ export function sendNativeComponentMessage(message: NativeComponentMessage) {
       warnedNoHandler = true;
       console.warn("[LingXia NativeComponent] message handler not available");
     }
-    return;
+    return false;
   }
   sender(message);
+  return true;
 }
 
 export function registerNativeComponentHandler(
@@ -33,19 +36,11 @@ export function registerNativeComponentHandler(
   const registerFn = nativeComponents?.register;
   if (typeof registerFn === "function") {
     const unregister = registerFn(id, handler as Parameters<typeof registerFn>[1]);
-    const platform = window.LingXiaBridge?.platform;
-    const requiresReadyHandshake = !!(
-      platform?.isIOS?.() ||
-      platform?.isAndroid?.() ||
-      platform?.isMacOS?.()
-    );
-    const hasHandler = nativeComponents?.hasHandler;
     const send = nativeComponents?.send;
+    // Always announce ready after the leaf handler is registered, including
+    // Windows: island video queues play/playing until this id's handshake.
     if (typeof send === "function") {
-      const nativeReady = typeof hasHandler === "function" ? hasHandler() : true;
-      if (requiresReadyHandshake || nativeReady) {
-        send({ action: "component.ready", id });
-      }
+      send({ action: "component.ready", id });
     }
     return unregister;
   }

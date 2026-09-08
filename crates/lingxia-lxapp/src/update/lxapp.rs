@@ -413,7 +413,7 @@ impl UpdateManager {
             metadata::get(lxappid, release_type)?.map(|rec| PathBuf::from(rec.install_path));
 
         let version = downloaded.version.to_version_string();
-        let install_path = match Self::install_archive_to_dir(
+        let (install_path, _cleanup_protection) = match Self::install_archive_to_dir(
             &runtime,
             lxappid,
             release_type,

@@ -2,6 +2,15 @@ import { expect, spec } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture, evalCaught } from '../helpers/poll.js';
 
+const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args
+  ?? {} as Record<string, string>;
+// The published API intentionally omits autostart on mobile hosts. Keep the
+// behavioral case for desktop hosts, where the login-item contract exists.
+const MOBILE_HOSTS = new Set(['android', 'ios']);
+const autostartSpec = MOBILE_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '')
+  ? spec.skip
+  : spec;
+
 spec('publish the lxapp sandbox roots through lx.env', {
   id: 'ENV-001',
   covers: ['lx.env', 'lx.env.USER_DATA_PATH', 'lx.env.USER_CACHE_PATH'],
@@ -183,10 +192,11 @@ spec('subscribe to and release the display language listener', {
   expect(result.distinct).toBeTruthy();
 });
 
-spec('report autostart state and accept an idempotent write', {
+autostartSpec('report autostart state and accept an idempotent write', {
   id: 'HOSTAPP-AUTOSTART-001',
   covers: ['lx.app.autostart', 'lx.app.autostart.isEnabled', 'lx.app.autostart.setEnabled'],
   app: SHOWCASE_APP_ID,
+  reason: 'Autostart is intentionally absent on mobile hosts.',
   // `SMAppService.mainApp.status` costs ~6s per call on macOS; the spec pays
   // that twice rather than pretending the API is cheap.
   timeout: 90_000,
@@ -219,6 +229,58 @@ spec('report autostart state and accept an idempotent write', {
 
   expect(typeof result.before).toBe('boolean');
   expect(result.after).toBe(result.before);
+});
+
+spec('clear product caches while preserving live app storage', {
+  id: 'HOSTAPP-CACHE-001',
+  covers: ['lx.app.cache', 'lx.app.cache.size', 'lx.app.cache.clear'],
+  app: SHOWCASE_APP_ID,
+  // A clear walks every lxapp's storage and asks the WebView store to drop its
+  // cache; both are slower than a plain property read.
+  timeout: 90_000,
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-CACHE-001');
+
+  const result = await app.eval({
+    timeoutMs: 60_000,
+    script: `
+      const payload = 'x'.repeat(256 * 1024);
+      const cached = lx.env.USER_CACHE_PATH + '/automation/cache-probe.txt';
+      const durable = 'automation/cache-probe.txt';
+      await lx.fs.write(cached, payload, { overwrite: true });
+      await lx.fs.write(durable, payload, { overwrite: true });
+
+      await lx.getStorage().set('automation-cache-probe', 'keep');
+      const before = await lx.app.cache.size();
+      const report = await lx.app.cache.clear();
+      const after = await lx.app.cache.size();
+
+      const cachedSurvived = await lx.fs.exists(cached);
+      const durableSurvived = await lx.fs.exists(durable);
+      const kv = await lx.getStorage().get('automation-cache-probe');
+      await lx.getStorage().delete('automation-cache-probe');
+      await lx.fs.remove(durable);
+      await lx.fs.remove(cached);
+
+      return { before, report, after, cachedSurvived, durableSurvived, kv };
+    `,
+  }) as {
+    kv: unknown;
+    before: number;
+    report: { freedBytes: number; skippedActivePaths: number; webview: string; failures: string[] };
+    after: number;
+    cachedSurvived: boolean;
+    durableSurvived: boolean;
+  };
+
+  expect(result.before).toBeGreaterThanOrEqual(0);
+  expect(result.report.freedBytes).toBeGreaterThanOrEqual(0);
+  expect(result.report.skippedActivePaths).toBeGreaterThanOrEqual(1);
+  expect(['cleared', 'unsupported', 'failed']).toContain(result.report.webview);
+  expect(result.after).toBeGreaterThanOrEqual(0);
+  expect(result.cachedSurvived).toBe(true);
+  expect(result.durableSurvived).toBe(true);
+  expect(result.kv).toBe('keep');
 });
 
 spec('show, label, and retract the host tray item', {

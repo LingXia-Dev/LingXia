@@ -18,6 +18,7 @@ pub mod lifecycle;
 pub mod log {
     pub use lingxia_log::{LogLevel, LogMessage, LogProvider};
 }
+pub mod inline_native;
 #[cfg(feature = "js-appservice")]
 pub mod lx;
 mod lxapp;
@@ -54,6 +55,10 @@ pub use appservice::event_bus::{
 #[doc(hidden)]
 pub use bridge::{
     DeferredRequiredV3Cancellation, PreparedRequiredV3Incoming, RequiredV3DocumentGate,
+};
+pub use cache::product::{
+    ClearReport as ProductCacheClearReport, clear as clear_product_cache,
+    usage_bytes as product_cache_usage_bytes,
 };
 pub use cache::touch_access_time;
 pub use control_document_bootstrap::{

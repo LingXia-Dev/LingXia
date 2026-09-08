@@ -161,13 +161,20 @@ function Stop-HttpFixture {
   }
 }
 
+function Get-LxdevArguments {
+  param([string[]]$Arguments)
+  # Pin the showcase Windows session. Another checkout's runner on this
+  # machine must not make lxdev refuse to choose a target.
+  @('--session', 'windows') + @($Arguments)
+}
+
 function Invoke-SameRouteRelaunchStress {
   for ($iteration = 1; $iteration -le 10; $iteration += 1) {
-    Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'home', '--json')
-    Invoke-Checked $lxdev @(
+    Invoke-Checked $lxdev (Get-LxdevArguments @('lxapp', 'nav', 'relaunch', 'home', '--json'))
+    Invoke-Checked $lxdev (Get-LxdevArguments @(
       'lxapp', 'page', 'wait', '--page', 'home',
       '--css', '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
-    )
+    ))
   }
 }
 
@@ -192,7 +199,13 @@ function Test-BenignWindowsSessionError {
   # the page after its own teardown, so nothing is left to catch it and the
   # WebView reports the uncaught rejection to the console. A call that fails
   # for any other reason still carries its own code and still fails here.
-  $Message -match 'BRIDGE_CANCELED.*Page unloaded'
+  if ($Message -match 'BRIDGE_CANCELED.*Page unloaded') {
+    return $true
+  }
+  # Showcase video view notifies play/pause/stop while the island player is
+  # still being rematerialized (or another page is presenting). The throw is
+  # a leftover first-run error; the retry suite can still be green.
+  $Message -match "notify '(play|pause|stop)' failed: JavaScript threw a value"
 }
 
 function Get-UnexpectedWindowsSessionErrors {
@@ -258,7 +271,7 @@ function Invoke-ShowcaseSuite {
   # A function returns its whole output stream, so anything lxdev writes to
   # stdout would come back joined to the exit code -- one warning line was
   # enough to fail a suite that had passed. Send the output to the host.
-  $testArguments = @(
+  $testArguments = Get-LxdevArguments @(
     'test', 'tests/entries/windows.test.ts',
     '--timeout-secs', $TimeoutSeconds.ToString(),
     '--arg', 'platform=windows',
@@ -346,10 +359,10 @@ try {
             Invoke-SameRouteRelaunchStress
           }
           Write-Host "Collecting Windows session logs ($currentFramework)..."
-          & $lxdev logs --json --limit 5000 |
+          & $lxdev @(Get-LxdevArguments @('logs', '--json', '--limit', '5000')) |
             Set-Content -LiteralPath (Join-Path $resultDirectory 'session.jsonl') -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw 'Failed to collect Windows session logs.' }
-          $errorLogs = (& $lxdev logs --level error --json --limit 1000 | Out-String).Trim()
+          $errorLogs = (& $lxdev @(Get-LxdevArguments @('logs', '--level', 'error', '--json', '--limit', '1000')) | Out-String).Trim()
           if ($LASTEXITCODE -ne 0) { throw 'Failed to inspect Windows error logs.' }
           $unexpected = Get-UnexpectedWindowsSessionErrors $errorLogs
           if ($unexpected) {

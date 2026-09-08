@@ -23,6 +23,7 @@ import type {
 } from '../automation/index.js';
 import type {
   AppearanceApi,
+  AppCacheApi,
   AutostartApi,
   CompressVideoTask,
   ControlApi,
@@ -126,6 +127,7 @@ export const LX_API_NAMES = [
 const HOST_APP_API = [
   'appearance',
   'autostart',
+  'cache',
   'checkUpdate',
   'control',
   'displayLanguage',
@@ -141,6 +143,7 @@ const HOST_APP_RUNTIME_API = HOST_APP_API.filter(
   (name) => name !== 'autostart' && name !== 'control',
 );
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
+const APP_CACHE_API = ['clear', 'size'] as const;
 const DISPLAY_LANGUAGE_API = ['get', 'watch'] as const;
 const CONTROL_API = ['appearance', 'displayLanguage'] as const;
 const CONTROL_DISPLAY_LANGUAGE_API = [
@@ -346,7 +349,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.app',
     members: HOST_APP_RUNTIME_API,
-    properties: ['envVersion'],
+    properties: ['cache', 'envVersion'],
   },
   {
     name: 'lx.app.autostart',
@@ -354,6 +357,12 @@ export const LX_RUNTIME_SURFACES = [
     expression: 'lx.app.autostart',
     members: AUTOSTART_API,
     optional: true,
+  },
+  {
+    name: 'lx.app.cache',
+    layer: 'logic',
+    expression: 'lx.app.cache',
+    members: APP_CACHE_API,
   },
   {
     name: 'lx.app.displayLanguage',
@@ -472,6 +481,10 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation()',
     members: AUTOMATION_API,
+    // The desktop tier is deliberately absent on mobile hosts. Keep the
+    // portable shape contract honest while the desktop entry covers it on
+    // Windows and macOS.
+    optionalMembers: ['desktop'],
     properties: ['browser', 'desktop', 'device', 'lxapps', 'shell', 'terminal'],
   },
   { name: 'ShellDriver', layer: 'automation', expression: 'lx.automation().shell', members: SHELL_DRIVER_API },
@@ -513,16 +526,17 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation().desktop',
     members: DESKTOP_DRIVER_API,
+    optional: true,
     properties: ['app', 'ax', 'clipboard', 'key', 'pointer', 'process', 'wait', 'window'],
   },
-  { name: 'DesktopPointer', layer: 'automation', expression: 'lx.automation().desktop.pointer', members: DESKTOP_POINTER_API },
-  { name: 'DesktopKey', layer: 'automation', expression: 'lx.automation().desktop.key', members: DESKTOP_KEY_API },
-  { name: 'DesktopWindow', layer: 'automation', expression: 'lx.automation().desktop.window', members: DESKTOP_WINDOW_API },
-  { name: 'DesktopClipboard', layer: 'automation', expression: 'lx.automation().desktop.clipboard', members: DESKTOP_CLIPBOARD_API },
-  { name: 'DesktopAx', layer: 'automation', expression: 'lx.automation().desktop.ax', members: DESKTOP_AX_API },
-  { name: 'DesktopWait', layer: 'automation', expression: 'lx.automation().desktop.wait', members: DESKTOP_WAIT_API },
-  { name: 'DesktopApp', layer: 'automation', expression: 'lx.automation().desktop.app', members: DESKTOP_APP_API },
-  { name: 'DesktopProcess', layer: 'automation', expression: 'lx.automation().desktop.process', members: DESKTOP_PROCESS_API },
+  { name: 'DesktopPointer', layer: 'automation', expression: 'lx.automation().desktop.pointer', members: DESKTOP_POINTER_API, optional: true },
+  { name: 'DesktopKey', layer: 'automation', expression: 'lx.automation().desktop.key', members: DESKTOP_KEY_API, optional: true },
+  { name: 'DesktopWindow', layer: 'automation', expression: 'lx.automation().desktop.window', members: DESKTOP_WINDOW_API, optional: true },
+  { name: 'DesktopClipboard', layer: 'automation', expression: 'lx.automation().desktop.clipboard', members: DESKTOP_CLIPBOARD_API, optional: true },
+  { name: 'DesktopAx', layer: 'automation', expression: 'lx.automation().desktop.ax', members: DESKTOP_AX_API, optional: true },
+  { name: 'DesktopWait', layer: 'automation', expression: 'lx.automation().desktop.wait', members: DESKTOP_WAIT_API, optional: true },
+  { name: 'DesktopApp', layer: 'automation', expression: 'lx.automation().desktop.app', members: DESKTOP_APP_API, optional: true },
+  { name: 'DesktopProcess', layer: 'automation', expression: 'lx.automation().desktop.process', members: DESKTOP_PROCESS_API, optional: true },
 ] as const;
 
 /** Canonical identifiers used by behavioral automation coverage. */
@@ -695,7 +709,8 @@ export const LX_REQUIRED_RUNTIME_SHAPE_NAMES = [
       .map((member) => `shape:${surface.name}.${member}`);
   }),
   ...LX_RETURNED_OBJECT_SURFACES
-    .filter(({ fixture }) => fixture === 'runtime-safe')
+    .filter((surface) => surface.fixture === 'runtime-safe'
+      && !('optional' in surface && surface.optional))
     .flatMap(({ name, members }) => members.map((member) => `shape:${name}.${member}`)),
 ];
 
@@ -714,6 +729,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<PublishedLx, typeof LX_API_NAMES>>,
   AssertTrue<Exact<HostAppApi, typeof HOST_APP_API>>,
   AssertTrue<Exact<AutostartApi, typeof AUTOSTART_API>>,
+  AssertTrue<Exact<AppCacheApi, typeof APP_CACHE_API>>,
   AssertTrue<Exact<DisplayLanguageApi, typeof DISPLAY_LANGUAGE_API>>,
   AssertTrue<Exact<ControlApi, typeof CONTROL_API>>,
   AssertTrue<Exact<ControlDisplayLanguageApi, typeof CONTROL_DISPLAY_LANGUAGE_API>>,

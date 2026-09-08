@@ -1,0 +1,1049 @@
+[
+  {
+    "name": "sort-and-update",
+    "commits": [
+      {
+        "action": "root.commit",
+        "root": {
+          "surfaceInstanceId": "s",
+          "pageInstanceId": "p",
+          "documentInstanceId": "d",
+          "rootKey": "r",
+          "rootEpoch": 1
+        },
+        "baseRevision": 0,
+        "revision": 1,
+        "operations": [
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-1",
+                "nodeEpoch": 1
+              },
+              "kind": "tappable",
+              "parent": null,
+              "order": 0,
+              "authorType": "LxNativeButton",
+              "authorId": "a",
+              "props": {
+                "label": "a",
+                "intent": "neutral",
+                "emphasis": "secondary",
+                "size": "regular",
+                "iconPosition": "start",
+                "pointerEvents": "auto",
+                "content": {
+                  "text": "a"
+                }
+              }
+            }
+          },
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-2",
+                "nodeEpoch": 1
+              },
+              "kind": "tappable",
+              "parent": null,
+              "order": 1,
+              "authorType": "LxNativeButton",
+              "authorId": "b",
+              "props": {
+                "label": "b",
+                "intent": "neutral",
+                "emphasis": "secondary",
+                "size": "regular",
+                "iconPosition": "start",
+                "pointerEvents": "auto",
+                "content": {
+                  "text": "b"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "action": "root.commit",
+        "root": {
+          "surfaceInstanceId": "s",
+          "pageInstanceId": "p",
+          "documentInstanceId": "d",
+          "rootKey": "r",
+          "rootEpoch": 1
+        },
+        "baseRevision": 1,
+        "revision": 2,
+        "operations": [
+          {
+            "op": "reorder",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-2",
+              "nodeEpoch": 1
+            },
+            "order": 0
+          },
+          {
+            "op": "update",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-2",
+              "nodeEpoch": 1
+            },
+            "patch": {
+              "label": "New label",
+              "content": {
+                "text": "New label"
+              }
+            }
+          },
+          {
+            "op": "reorder",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-1",
+              "nodeEpoch": 1
+            },
+            "order": 1
+          }
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "key": "n-2",
+        "parent": null,
+        "order": 0,
+        "kind": "tappable",
+        "props": {
+          "label": "New label",
+          "intent": "neutral",
+          "emphasis": "secondary",
+          "size": "regular",
+          "iconPosition": "start",
+          "pointerEvents": "auto",
+          "content": {
+            "text": "New label"
+          }
+        }
+      },
+      {
+        "key": "n-1",
+        "parent": null,
+        "order": 1,
+        "kind": "tappable",
+        "props": {
+          "label": "a",
+          "intent": "neutral",
+          "emphasis": "secondary",
+          "size": "regular",
+          "iconPosition": "start",
+          "pointerEvents": "auto",
+          "content": {
+            "text": "a"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "remove-wrapper",
+    "commits": [
+      {
+        "action": "root.commit",
+        "root": {
+          "surfaceInstanceId": "s",
+          "pageInstanceId": "p",
+          "documentInstanceId": "d",
+          "rootKey": "r",
+          "rootEpoch": 1
+        },
+        "baseRevision": 0,
+        "revision": 1,
+        "operations": [
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-3",
+                "nodeEpoch": 1
+              },
+              "kind": "view",
+              "parent": null,
+              "order": 0,
+              "authorType": "LxNativeView",
+              "authorId": "wrapper",
+              "props": {
+                "pointerEvents": "auto"
+              }
+            }
+          },
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-4",
+                "nodeEpoch": 1
+              },
+              "kind": "tappable",
+              "parent": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-3",
+                "nodeEpoch": 1
+              },
+              "order": 0,
+              "authorType": "LxNativeButton",
+              "authorId": "play",
+              "props": {
+                "label": "play",
+                "intent": "neutral",
+                "emphasis": "secondary",
+                "size": "regular",
+                "iconPosition": "start",
+                "pointerEvents": "auto",
+                "content": {
+                  "text": "play"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "action": "root.commit",
+        "root": {
+          "surfaceInstanceId": "s",
+          "pageInstanceId": "p",
+          "documentInstanceId": "d",
+          "rootKey": "r",
+          "rootEpoch": 1
+        },
+        "baseRevision": 1,
+        "revision": 2,
+        "operations": [
+          {
+            "op": "reparent",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-4",
+              "nodeEpoch": 1
+            },
+            "parent": null
+          },
+          {
+            "op": "unmount",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-3",
+              "nodeEpoch": 1
+            }
+          }
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "key": "n-4",
+        "parent": null,
+        "order": 0,
+        "kind": "tappable",
+        "props": {
+          "label": "play",
+          "intent": "neutral",
+          "emphasis": "secondary",
+          "size": "regular",
+          "iconPosition": "start",
+          "pointerEvents": "auto",
+          "content": {
+            "text": "play"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "replace-wrapper",
+    "commits": [
+      {
+        "action": "root.commit",
+        "root": {
+          "surfaceInstanceId": "s",
+          "pageInstanceId": "p",
+          "documentInstanceId": "d",
+          "rootKey": "r",
+          "rootEpoch": 1
+        },
+        "baseRevision": 0,
+        "revision": 1,
+        "operations": [
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-5",
+                "nodeEpoch": 1
+              },
+              "kind": "view",
+              "parent": null,
+              "order": 0,
+              "authorType": "LxNativeView",
+              "authorId": "old",
+              "props": {
+                "pointerEvents": "auto"
+              }
+            }
+          },
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-6",
+                "nodeEpoch": 1
+              },
+              "kind": "tappable",
+              "parent": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-5",
+                "nodeEpoch": 1
+              },
+              "order": 0,
+              "authorType": "LxNativeButton",
+              "authorId": "play",
+              "props": {
+                "label": "play",
+                "intent": "neutral",
+                "emphasis": "secondary",
+                "size": "regular",
+                "iconPosition": "start",
+                "pointerEvents": "auto",
+                "content": {
+                  "text": "play"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "action": "root.commit",
+        "root": {
+          "surfaceInstanceId": "s",
+          "pageInstanceId": "p",
+          "documentInstanceId": "d",
+          "rootKey": "r",
+          "rootEpoch": 1
+        },
+        "baseRevision": 1,
+        "revision": 2,
+        "operations": [
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-7",
+                "nodeEpoch": 1
+              },
+              "kind": "view",
+              "parent": null,
+              "order": 0,
+              "authorType": "LxNativeView",
+              "authorId": "new",
+              "props": {
+                "pointerEvents": "auto"
+              }
+            }
+          },
+          {
+            "op": "reparent",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-6",
+              "nodeEpoch": 1
+            },
+            "parent": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-7",
+              "nodeEpoch": 1
+            }
+          },
+          {
+            "op": "update",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-6",
+              "nodeEpoch": 1
+            },
+            "patch": {
+              "label": "Pause",
+              "content": {
+                "text": "Pause"
+              }
+            }
+          },
+          {
+            "op": "unmount",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-5",
+              "nodeEpoch": 1
+            }
+          }
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "key": "n-7",
+        "parent": null,
+        "order": 0,
+        "kind": "view",
+        "props": {
+          "pointerEvents": "auto"
+        }
+      },
+      {
+        "key": "n-6",
+        "parent": "n-7",
+        "order": 0,
+        "kind": "tappable",
+        "props": {
+          "label": "Pause",
+          "intent": "neutral",
+          "emphasis": "secondary",
+          "size": "regular",
+          "iconPosition": "start",
+          "pointerEvents": "auto",
+          "content": {
+            "text": "Pause"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "reverse-ancestry",
+    "commits": [
+      {
+        "action": "root.commit",
+        "root": {
+          "surfaceInstanceId": "s",
+          "pageInstanceId": "p",
+          "documentInstanceId": "d",
+          "rootKey": "r",
+          "rootEpoch": 1
+        },
+        "baseRevision": 0,
+        "revision": 1,
+        "operations": [
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-8",
+                "nodeEpoch": 1
+              },
+              "kind": "view",
+              "parent": null,
+              "order": 0,
+              "authorType": "LxNativeView",
+              "authorId": "a",
+              "props": {
+                "pointerEvents": "auto"
+              }
+            }
+          },
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-9",
+                "nodeEpoch": 1
+              },
+              "kind": "view",
+              "parent": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-8",
+                "nodeEpoch": 1
+              },
+              "order": 0,
+              "authorType": "LxNativeView",
+              "authorId": "b",
+              "props": {
+                "pointerEvents": "auto"
+              }
+            }
+          },
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-a",
+                "nodeEpoch": 1
+              },
+              "kind": "tappable",
+              "parent": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-9",
+                "nodeEpoch": 1
+              },
+              "order": 0,
+              "authorType": "LxNativeButton",
+              "authorId": "play",
+              "props": {
+                "label": "play",
+                "intent": "neutral",
+                "emphasis": "secondary",
+                "size": "regular",
+                "iconPosition": "start",
+                "pointerEvents": "auto",
+                "content": {
+                  "text": "play"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "action": "root.commit",
+        "root": {
+          "surfaceInstanceId": "s",
+          "pageInstanceId": "p",
+          "documentInstanceId": "d",
+          "rootKey": "r",
+          "rootEpoch": 1
+        },
+        "baseRevision": 1,
+        "revision": 2,
+        "operations": [
+          {
+            "op": "reparent",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-9",
+              "nodeEpoch": 1
+            },
+            "parent": null
+          },
+          {
+            "op": "reparent",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-8",
+              "nodeEpoch": 1
+            },
+            "parent": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-9",
+              "nodeEpoch": 1
+            }
+          },
+          {
+            "op": "reparent",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-a",
+              "nodeEpoch": 1
+            },
+            "parent": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-8",
+              "nodeEpoch": 1
+            }
+          }
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "key": "n-9",
+        "parent": null,
+        "order": 0,
+        "kind": "view",
+        "props": {
+          "pointerEvents": "auto"
+        }
+      },
+      {
+        "key": "n-8",
+        "parent": "n-9",
+        "order": 0,
+        "kind": "view",
+        "props": {
+          "pointerEvents": "auto"
+        }
+      },
+      {
+        "key": "n-a",
+        "parent": "n-8",
+        "order": 0,
+        "kind": "tappable",
+        "props": {
+          "label": "play",
+          "intent": "neutral",
+          "emphasis": "secondary",
+          "size": "regular",
+          "iconPosition": "start",
+          "pointerEvents": "auto",
+          "content": {
+            "text": "play"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "change-kind",
+    "commits": [
+      {
+        "action": "root.commit",
+        "root": {
+          "surfaceInstanceId": "s",
+          "pageInstanceId": "p",
+          "documentInstanceId": "d",
+          "rootKey": "r",
+          "rootEpoch": 1
+        },
+        "baseRevision": 0,
+        "revision": 1,
+        "operations": [
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-b",
+                "nodeEpoch": 1
+              },
+              "kind": "text",
+              "parent": null,
+              "order": 0,
+              "authorType": "LxNativeText",
+              "authorId": "status",
+              "props": {
+                "pointerEvents": "none",
+                "text": "Loading"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "action": "root.commit",
+        "root": {
+          "surfaceInstanceId": "s",
+          "pageInstanceId": "p",
+          "documentInstanceId": "d",
+          "rootKey": "r",
+          "rootEpoch": 1
+        },
+        "baseRevision": 1,
+        "revision": 2,
+        "operations": [
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-c",
+                "nodeEpoch": 1
+              },
+              "kind": "tappable",
+              "parent": null,
+              "order": 0,
+              "authorType": "LxNativeButton",
+              "authorId": "status",
+              "props": {
+                "label": "Retry",
+                "intent": "neutral",
+                "emphasis": "secondary",
+                "size": "regular",
+                "iconPosition": "start",
+                "pointerEvents": "auto",
+                "content": {
+                  "text": "Retry"
+                }
+              }
+            }
+          },
+          {
+            "op": "unmount",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-b",
+              "nodeEpoch": 1
+            }
+          }
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "key": "n-c",
+        "parent": null,
+        "order": 0,
+        "kind": "tappable",
+        "props": {
+          "label": "Retry",
+          "intent": "neutral",
+          "emphasis": "secondary",
+          "size": "regular",
+          "iconPosition": "start",
+          "pointerEvents": "auto",
+          "content": {
+            "text": "Retry"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "remove-and-reinsert",
+    "commits": [
+      {
+        "action": "root.commit",
+        "root": {
+          "surfaceInstanceId": "s",
+          "pageInstanceId": "p",
+          "documentInstanceId": "d",
+          "rootKey": "r",
+          "rootEpoch": 1
+        },
+        "baseRevision": 0,
+        "revision": 1,
+        "operations": [
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-d",
+                "nodeEpoch": 1
+              },
+              "kind": "tappable",
+              "parent": null,
+              "order": 0,
+              "authorType": "LxNativeButton",
+              "authorId": "a",
+              "props": {
+                "label": "a",
+                "intent": "neutral",
+                "emphasis": "secondary",
+                "size": "regular",
+                "iconPosition": "start",
+                "pointerEvents": "auto",
+                "content": {
+                  "text": "a"
+                }
+              }
+            }
+          },
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-e",
+                "nodeEpoch": 1
+              },
+              "kind": "tappable",
+              "parent": null,
+              "order": 1,
+              "authorType": "LxNativeButton",
+              "authorId": "b",
+              "props": {
+                "label": "b",
+                "intent": "neutral",
+                "emphasis": "secondary",
+                "size": "regular",
+                "iconPosition": "start",
+                "pointerEvents": "auto",
+                "content": {
+                  "text": "b"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "action": "root.commit",
+        "root": {
+          "surfaceInstanceId": "s",
+          "pageInstanceId": "p",
+          "documentInstanceId": "d",
+          "rootKey": "r",
+          "rootEpoch": 1
+        },
+        "baseRevision": 1,
+        "revision": 2,
+        "operations": [
+          {
+            "op": "reorder",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-e",
+              "nodeEpoch": 1
+            },
+            "order": 0
+          },
+          {
+            "op": "unmount",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-d",
+              "nodeEpoch": 1
+            }
+          }
+        ]
+      },
+      {
+        "action": "root.commit",
+        "root": {
+          "surfaceInstanceId": "s",
+          "pageInstanceId": "p",
+          "documentInstanceId": "d",
+          "rootKey": "r",
+          "rootEpoch": 1
+        },
+        "baseRevision": 2,
+        "revision": 3,
+        "operations": [
+          {
+            "op": "mount",
+            "node": {
+              "ref": {
+                "surfaceInstanceId": "s",
+                "pageInstanceId": "p",
+                "documentInstanceId": "d",
+                "rootKey": "r",
+                "rootEpoch": 1,
+                "nodeKey": "n-f",
+                "nodeEpoch": 1
+              },
+              "kind": "tappable",
+              "parent": null,
+              "order": 0,
+              "authorType": "LxNativeButton",
+              "authorId": "a",
+              "props": {
+                "label": "a",
+                "intent": "neutral",
+                "emphasis": "secondary",
+                "size": "regular",
+                "iconPosition": "start",
+                "pointerEvents": "auto",
+                "content": {
+                  "text": "a"
+                }
+              }
+            }
+          },
+          {
+            "op": "reorder",
+            "node": {
+              "surfaceInstanceId": "s",
+              "pageInstanceId": "p",
+              "documentInstanceId": "d",
+              "rootKey": "r",
+              "rootEpoch": 1,
+              "nodeKey": "n-e",
+              "nodeEpoch": 1
+            },
+            "order": 1
+          }
+        ]
+      }
+    ],
+    "nodes": [
+      {
+        "key": "n-f",
+        "parent": null,
+        "order": 0,
+        "kind": "tappable",
+        "props": {
+          "label": "a",
+          "intent": "neutral",
+          "emphasis": "secondary",
+          "size": "regular",
+          "iconPosition": "start",
+          "pointerEvents": "auto",
+          "content": {
+            "text": "a"
+          }
+        }
+      },
+      {
+        "key": "n-e",
+        "parent": null,
+        "order": 1,
+        "kind": "tappable",
+        "props": {
+          "label": "b",
+          "intent": "neutral",
+          "emphasis": "secondary",
+          "size": "regular",
+          "iconPosition": "start",
+          "pointerEvents": "auto",
+          "content": {
+            "text": "b"
+          }
+        }
+      }
+    ]
+  }
+]

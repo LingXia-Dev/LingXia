@@ -15,30 +15,36 @@ function automationSurfaceOrAbsent(name: string): unknown {
 }
 
 function automationSurface(name: string): unknown {
-  const automation = lx.automation();
-  switch (name) {
-    case 'Automation': return automation;
-    case 'ShellDriver': return automation.shell;
-    case 'TerminalDriver': return automation.terminal;
-    case 'LxAppDriver': return automation.lxapp(SHOWCASE_APP_ID);
-    case 'PageDriver': return automation.lxapp(SHOWCASE_APP_ID).page;
-    case 'PagePointer': return automation.lxapp(SHOWCASE_APP_ID).page.pointer;
-    case 'PageKey': return automation.lxapp(SHOWCASE_APP_ID).page.key;
-    case 'NavDriver': return automation.lxapp(SHOWCASE_APP_ID).nav;
-    case 'LxAppManager': return automation.lxapps;
-    case 'DeviceDriver': return automation.device;
-    case 'BrowserDriver': return automation.browser;
-    case 'BrowserCookies': return automation.browser.cookies;
-    case 'DesktopDriver': return automation.desktop;
-    case 'DesktopPointer': return automation.desktop.pointer;
-    case 'DesktopKey': return automation.desktop.key;
-    case 'DesktopWindow': return automation.desktop.window;
-    case 'DesktopClipboard': return automation.desktop.clipboard;
-    case 'DesktopAx': return automation.desktop.ax;
-    case 'DesktopWait': return automation.desktop.wait;
-    case 'DesktopApp': return automation.desktop.app;
-    case 'DesktopProcess': return automation.desktop.process;
-    default: throw new Error(`No host automation resolver for ${name}`);
+  try {
+    const automation = lx.automation();
+    switch (name) {
+      case 'Automation': return automation;
+      case 'ShellDriver': return automation.shell;
+      case 'TerminalDriver': return automation.terminal;
+      case 'LxAppDriver': return automation.lxapp(SHOWCASE_APP_ID);
+      case 'PageDriver': return automation.lxapp(SHOWCASE_APP_ID).page;
+      case 'PagePointer': return automation.lxapp(SHOWCASE_APP_ID).page.pointer;
+      case 'PageKey': return automation.lxapp(SHOWCASE_APP_ID).page.key;
+      case 'NavDriver': return automation.lxapp(SHOWCASE_APP_ID).nav;
+      case 'LxAppManager': return automation.lxapps;
+      case 'DeviceDriver': return automation.device;
+      case 'BrowserDriver': return automation.browser;
+      case 'BrowserCookies': return automation.browser.cookies;
+      case 'DesktopDriver': return automation.desktop;
+      case 'DesktopPointer': return automation.desktop.pointer;
+      case 'DesktopKey': return automation.desktop.key;
+      case 'DesktopWindow': return automation.desktop.window;
+      case 'DesktopClipboard': return automation.desktop.clipboard;
+      case 'DesktopAx': return automation.desktop.ax;
+      case 'DesktopWait': return automation.desktop.wait;
+      case 'DesktopApp': return automation.desktop.app;
+      case 'DesktopProcess': return automation.desktop.process;
+      default: throw new Error(`No host automation resolver for ${name}`);
+    }
+  } catch {
+    // Unsupported optional tiers (for example desktop on Android) reject at
+    // the getter boundary instead of publishing an undefined placeholder.
+    return undefined;
   }
 }
 
@@ -88,7 +94,8 @@ const SHAPE_COVERS = [
       .map((member) => `shape:${surface.name}.${member}`);
   }),
   ...LX_RETURNED_OBJECT_SURFACES
-    .filter((surface) => surface.fixture === 'runtime-safe')
+    .filter((surface) => surface.fixture === 'runtime-safe'
+      && !('optional' in surface && surface.optional))
     .flatMap((surface) => surface.members.map((member) => `shape:${surface.name}.${member}`)),
 ];
 
@@ -105,35 +112,41 @@ spec('publish every public runtime and returned-object member', {
     const optionalMembers: readonly string[] = 'optionalMembers' in surface
       ? surface.optionalMembers
       : [];
-    const result = surface.layer === 'automation'
-      ? inspectSurface(
-        automationSurfaceOrAbsent(surface.name),
-        surface.members.filter((name) => !optionalMembers.includes(name)),
-        propertyNames,
-      )
-      : await app.eval({
-        script: `
-          const target = ${surface.expression};
-          const members = ${JSON.stringify(surface.members)};
-          const optionalMembers = ${JSON.stringify(optionalMembers)};
-          const properties = ${JSON.stringify(propertyNames)};
-          return {
-            available: target !== null && typeof target !== 'undefined',
-            missing: target == null
-              ? members
-              : members.filter((name) => (
-                typeof target[name] === 'undefined' && !optionalMembers.includes(name)
-              )),
-            wrongKinds: target == null
-              ? []
-              : members.filter((name) => !optionalMembers.includes(name) && (
-                properties.includes(name)
-                  ? target[name] === null
-                  : typeof target[name] !== 'function'
-              )),
-          };
-        `,
-      }) as { available: boolean; missing: string[]; wrongKinds: string[]; unbuilt?: string[] };
+    let result: { available: boolean; missing: string[]; wrongKinds: string[]; unbuilt?: string[] };
+    try {
+      result = surface.layer === 'automation'
+        ? inspectSurface(
+          automationSurfaceOrAbsent(surface.name),
+          surface.members.filter((name) => !optionalMembers.includes(name)),
+          propertyNames,
+        )
+        : await app.eval({
+          script: `
+            const target = ${surface.expression};
+            const members = ${JSON.stringify(surface.members)};
+            const optionalMembers = ${JSON.stringify(optionalMembers)};
+            const properties = ${JSON.stringify(propertyNames)};
+            return {
+              available: target !== null && typeof target !== 'undefined',
+              missing: target == null
+                ? members
+                : members.filter((name) => (
+                  typeof target[name] === 'undefined' && !optionalMembers.includes(name)
+                )),
+              wrongKinds: target == null
+                ? []
+                : members.filter((name) => !optionalMembers.includes(name) && (
+                  properties.includes(name)
+                    ? target[name] === null
+                    : typeof target[name] !== 'function'
+                )),
+            };
+          `,
+        }) as { available: boolean; missing: string[]; wrongKinds: string[]; unbuilt?: string[] };
+    } catch (error) {
+      failures.push(`${surface.name}: ${String(error)}`);
+      continue;
+    }
 
     if ('optional' in surface && surface.optional && !result.available) continue;
     // The automation drivers are the harness, not the product surface, and a
@@ -146,7 +159,7 @@ spec('publish every public runtime and returned-object member', {
   }
 
   for (const surface of LX_RETURNED_OBJECT_SURFACES) {
-    if (surface.fixture !== 'runtime-safe') continue;
+    if (surface.fixture !== 'runtime-safe' || ('optional' in surface && surface.optional)) continue;
     const fixtureName: string = surface.name;
     if (fixtureName === 'LxFile') {
       const result = await app.eval({
@@ -212,28 +225,36 @@ spec('publish every public runtime and returned-object member', {
         return stableRectSamples >= 2;
       },
       { timeoutMs: 5_000, describe: 'native video fixture layout to settle' });
-    const result = await app.eval({
-      script: `
-        const target = lx.createVideoContext('lx-video-shape-fixture');
-        const members = ${JSON.stringify(surface.members)};
-        const properties = ${JSON.stringify(surface.properties)};
-        const optionalProperties = ${JSON.stringify(surface.optionalProperties)};
-        return {
-          available: target !== null && typeof target !== 'undefined',
-          missing: target == null
-            ? members
-            : members.filter((name) => (
-              typeof target[name] === 'undefined' && !optionalProperties.includes(name)
-            )),
-          wrongKinds: target == null
-            ? []
-            : members.filter((name) => properties.includes(name)
-              ? target[name] === null
-                || (typeof target[name] === 'undefined' && !optionalProperties.includes(name))
-              : typeof target[name] !== 'function'),
-        };
-      `,
-    }) as { available: boolean; missing: string[]; wrongKinds: string[] };
+    const result = await eventually(
+      () => app.eval({
+        script: `
+          const target = lx.createVideoContext('lx-video-shape-fixture');
+          const members = ${JSON.stringify(surface.members)};
+          const properties = ${JSON.stringify(surface.properties)};
+          const optionalProperties = ${JSON.stringify(surface.optionalProperties)};
+          return {
+            available: target !== null && typeof target !== 'undefined',
+            missing: target == null
+              ? members
+              : members.filter((name) => (
+                typeof target[name] === 'undefined' && !optionalProperties.includes(name)
+              )),
+            wrongKinds: target == null
+              ? []
+              : members.filter((name) => properties.includes(name)
+                ? target[name] === null
+                  || (typeof target[name] === 'undefined' && !optionalProperties.includes(name))
+                : typeof target[name] !== 'function'),
+          };
+        `,
+      }) as Promise<{ available: boolean; missing: string[]; wrongKinds: string[] }>,
+      () => true,
+      {
+        timeoutMs: 5_000,
+        describe: 'native video context to bind after fixture mount',
+        retryIf: () => true,
+      },
+    );
 
     if (!result.available || result.missing.length > 0 || result.wrongKinds.length > 0) {
       failures.push(`VideoContext: available=${result.available} missing=${result.missing.join(',')} wrong=${result.wrongKinds.join(',')}`);

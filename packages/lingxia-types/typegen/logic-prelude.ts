@@ -141,6 +141,12 @@ declare global {
      * `lx.app.control?.…` and the query are interchangeable.
      */
     readonly control?: ControlApi;
+
+    /**
+     * Product-wide cache reporting and clearing for a settings screen.
+     * Restricted to the home lxapp; other lxapps get a permission error.
+     */
+    cache: AppCacheApi;
   }
 
   /** Runtime environment constants backed by abstract `lx://` paths. */

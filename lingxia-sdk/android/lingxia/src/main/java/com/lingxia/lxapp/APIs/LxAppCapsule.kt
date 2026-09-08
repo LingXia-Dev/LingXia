@@ -13,7 +13,7 @@ internal object LxAppCapsule {
     fun getCapsuleRect(callbackId: Long, appId: String) {
         val activity = LxApp.getCurrentActivity()
         if (activity == null) {
-            LxLog.e(TAG, "Current activity not available")
+            LxLog.w(TAG, "Current activity not available")
             NativeApi.onCallback(callbackId, false, "2001") // System error
             return
         }
