@@ -1,4 +1,4 @@
-const HOST_EVENTS = new Set(["press"]);
+const HOST_EVENTS = new Set(["press", "focus", "blur", "pointerenter", "pointerleave", "pointerwithinchange"]);
 
 export type IslandHostMessage = {
   event?: string;
@@ -10,7 +10,7 @@ export type IslandEventTarget = {
   dispatchEvent(event: Event): boolean;
 };
 
-/** Dispatch a host press onto an author element. */
+/** Dispatch native interaction payloads onto the author element. */
 export function applyIslandHostEvent(
   target: IslandEventTarget,
   message: IslandHostMessage

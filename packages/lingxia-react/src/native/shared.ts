@@ -4,9 +4,11 @@ import {
   bindElementEvents,
   unbindElementEvents,
 } from "../text_component_shared.js";
-import { unwrapNativeEventPayload } from "@lingxia/elements";
+import { unwrapNativeEventPayload, type NativeStyleProperty } from "@lingxia/elements";
 
-export type NativeStyle = CSSProperties;
+export type NativeStyle = Omit<Pick<CSSProperties, NativeStyleProperty>, "borderStyle"> & {
+  borderStyle?: "solid" | "none";
+};
 
 export interface LxNativeNodeProps {
   id?: string;

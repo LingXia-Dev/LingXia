@@ -61,6 +61,7 @@ export interface AuthorNode {
   props?: Record<string, unknown>;
   children?: AuthorChild;
   textContent?: string | number;
+  styleIssues?: Array<{ property: string; value: string; layout: boolean }>;
 }
 
 export interface CoreNode {

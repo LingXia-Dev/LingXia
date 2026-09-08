@@ -15,6 +15,7 @@ import {
 } from "./runtime.js";
 import { isFallbackElement } from "./structure.js";
 import { applyIslandHostEvent } from "./events.js";
+import { observeNativeLayout } from "./layout.js";
 import { ensureComponentId } from "../component.js";
 import {
   registerNativeComponentHandler,
@@ -108,7 +109,9 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   private observer?: MutationObserver;
   private documentObserver?: MutationObserver;
   private resizeObserver?: ResizeObserver;
+  private stopLayoutObservation?: () => void;
   private lastResult: CompileInlineNativeResult | null = null;
+  private styleDiagnostics = new Set<string>();
   private rootKey = nextOpaqueKey("root");
   private rootEpoch = 1;
   private runtime: RootRuntimeState = createRootRuntimeState();
@@ -168,6 +171,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     }
     document.addEventListener("scroll", this.onViewportGeometryChanged, true);
     window.addEventListener("resize", this.onViewportGeometryChanged);
+    this.stopLayoutObservation = observeNativeLayout(this, () => this.scheduleCompile());
     this.scheduleCompile();
   }
 
@@ -184,6 +188,8 @@ export class LxNativeRootElement extends LxNativeBaseElement {
     this.unregisterHost = undefined;
     this.resizeObserver?.disconnect();
     this.resizeObserver = undefined;
+    this.stopLayoutObservation?.();
+    this.stopLayoutObservation = undefined;
     document.removeEventListener("scroll", this.onViewportGeometryChanged, true);
     window.removeEventListener("resize", this.onViewportGeometryChanged);
     if (this.pending.frame != null && typeof cancelAnimationFrame === "function") {
@@ -241,8 +247,16 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   compileNow(): CompileInlineNativeResult {
     const author = collectAuthorTreeFromElement(this);
     author.props = { ...(author.props ?? {}), fullscreenScope: this.fullscreenScope };
-    const result = compileInlineNativeRoot(author);
+    const result = compileInlineNativeRoot(author, { rootRef: this.rootRef() });
     this.lastResult = result;
+    const nextDiagnostics = new Set(result.diagnostics.map((diagnostic) => diagnostic.message));
+    const previousDiagnostics = this.styleDiagnostics;
+    this.styleDiagnostics = nextDiagnostics;
+    for (const diagnostic of result.diagnostics) {
+      if (previousDiagnostics.has(diagnostic.message)) continue;
+      console.warn(`[LingXia] ${diagnostic.code}: ${diagnostic.message}`);
+      this.dispatchEvent(new CustomEvent(ROOT_INVALID_EVENT, { detail: diagnostic }));
+    }
     if (!result.ok) {
       this.destroyPublishedRoot();
       this.updateFallbackVisibility(true);
@@ -318,6 +332,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
       );
       return;
     }
+    const wasReady = this.runtime.lease.phase === "active";
     const applied = applyHostLeaseMessage(this.runtime, message, Date.now());
     this.runtime = applied.state;
     if (applied.leaseAccept) {
@@ -329,7 +344,7 @@ export class LxNativeRootElement extends LxNativeBaseElement {
         this.fallbackTimer = null;
       }
       this.updateFallbackVisibility(false);
-      this.dispatchEvent(new CustomEvent("ready", { detail: {} }));
+      if (!wasReady) this.dispatchEvent(new CustomEvent("ready", { detail: {} }));
     } else {
       this.armFallbackDeadline();
     }
@@ -350,7 +365,9 @@ export class LxNativeRootElement extends LxNativeBaseElement {
   private updateFallbackVisibility(show: boolean): void {
     for (const fallback of Array.from(this.querySelectorAll("[data-lx-native-fallback]"))) {
       if (fallback instanceof HTMLElement && fallback.closest("lx-native-root") === this) {
-        fallback.hidden = !show;
+        if (fallback.hidden === show) fallback.hidden = !show;
+        if (show && fallback.hasAttribute("aria-hidden")) fallback.removeAttribute("aria-hidden");
+        else if (!show && fallback.getAttribute("aria-hidden") !== "true") fallback.setAttribute("aria-hidden", "true");
       }
     }
   }
@@ -423,6 +440,7 @@ export class LxNativeCoverElement extends LxNativeBaseElement {
 }
 
 export class LxNativeTextElement extends LxNativeBaseElement {
+  private typography?: HTMLStyleElement;
   static get observedAttributes(): string[] {
     return [
       ...LxNativeBaseElement.observedAttributes,
@@ -438,9 +456,32 @@ export class LxNativeTextElement extends LxNativeBaseElement {
 
   connectedCallback(): void {
     super.connectedCallback();
+    if (!this.shadowRoot) {
+      const shadow = this.attachShadow({ mode: "open" });
+      this.typography = document.createElement("style");
+      shadow.append(this.typography, document.createElement("slot"));
+    }
+    this.syncTypography();
     if (!this.style.pointerEvents) {
       this.style.pointerEvents = "none";
     }
+  }
+
+  attributeChangedCallback(): void {
+    this.syncTypography();
+  }
+
+  private syncTypography(): void {
+    if (!this.typography) return;
+    const style = document.createElement("span").style;
+    for (const name of ["font-size", "font-weight", "line-height", "text-align", "color"]) {
+      const value = this.getAttribute(name);
+      if (!value) continue;
+      const cssValue = (name === "font-size" || name === "line-height") && /^\d+(\.\d+)?$/.test(value)
+        ? `${value}px` : value;
+      style.setProperty(name, cssValue);
+    }
+    this.typography.textContent = `:host { ${style.cssText} }`;
   }
 
   get maxLines(): number | null {
@@ -456,6 +497,10 @@ export class LxNativeTextElement extends LxNativeBaseElement {
 
 export class LxNativeButtonElement extends LxNativeBaseElement {
   private unregisterHost?: () => void;
+  private registeredId?: string;
+  private measuredLabel?: HTMLSpanElement;
+  private measuredIcon?: HTMLSpanElement;
+  private contentSlot?: HTMLSlotElement;
   private dispatchAccessiblePress(source: "keyboard" | "pointer"): void {
     if (this.disabled || this.loading) return;
     this.dispatchEvent(new CustomEvent("press", {
@@ -474,12 +519,39 @@ export class LxNativeButtonElement extends LxNativeBaseElement {
 
   connectedCallback(): void {
     super.connectedCallback();
-    const id = ensureComponentId(this, "lx-native-button");
+    if (!this.shadowRoot) {
+      const shadow = this.attachShadow({ mode: "open" });
+      const style = document.createElement("style");
+      style.textContent = `
+        :host { display: inline-flex; box-sizing: border-box; align-items: center;
+          justify-content: center; gap: .4em; min-height: 32px; padding: 6px 12px; }
+        :host([hidden]:not([hidden="false"])) { display: none; }
+        :host([size="compact"]) { min-height: 26px; padding: 4px 8px; }
+        :host([icon-position="end"]) { flex-direction: row-reverse; }
+        .icon { width: 1em; height: 1em; flex: none; }
+        [hidden] { display: none; }
+      `;
+      this.measuredLabel = document.createElement("span");
+      this.measuredIcon = document.createElement("span");
+      this.measuredIcon.className = "icon";
+      this.measuredIcon.setAttribute("aria-hidden", "true");
+      this.contentSlot = document.createElement("slot");
+      shadow.append(style, this.measuredIcon, this.measuredLabel, this.contentSlot);
+    }
+    this.syncMeasurement();
     if (!this.hasAttribute("role")) this.setAttribute("role", "button");
     if (!this.hasAttribute("tabindex")) this.tabIndex = 0;
     this.syncAccessibility();
     this.addEventListener("click", this.onAccessibleClick);
     this.addEventListener("keydown", this.onAccessibleKeyDown);
+    this.registerEventBridge();
+  }
+
+  private registerEventBridge(): void {
+    const id = ensureComponentId(this, "lx-native-button");
+    if (this.registeredId === id) return;
+    this.unregisterHost?.();
+    this.registeredId = id;
     this.unregisterHost = registerNativeComponentHandler(id, (message) => {
       applyIslandHostEvent(this, message as { event?: string; action?: string; detail?: unknown });
     });
@@ -490,10 +562,21 @@ export class LxNativeButtonElement extends LxNativeBaseElement {
     this.removeEventListener("keydown", this.onAccessibleKeyDown);
     this.unregisterHost?.();
     this.unregisterHost = undefined;
+    this.registeredId = undefined;
   }
 
-  attributeChangedCallback(): void {
+  attributeChangedCallback(name: string): void {
+    if (name === "id" && this.isConnected) this.registerEventBridge();
+    this.syncMeasurement();
     this.syncAccessibility();
+  }
+
+  private syncMeasurement(): void {
+    if (!this.measuredLabel || !this.measuredIcon || !this.contentSlot) return;
+    this.measuredLabel.textContent = this.label ?? "";
+    this.measuredLabel.hidden = !this.label;
+    this.contentSlot.hidden = Boolean(this.label);
+    this.measuredIcon.hidden = !this.icon;
   }
 
   private syncAccessibility(): void {
@@ -529,13 +612,8 @@ export class LxNativeButtonElement extends LxNativeBaseElement {
   get icon(): string | null {
     return this.getAttribute("icon");
   }
-  set icon(value: string | Record<string, unknown> | null | undefined) {
-    if (value && typeof value === "object") {
-      asRecord(this).__lxIconResource = value;
-      this.removeAttribute("icon");
-      return;
-    }
-    delete asRecord(this).__lxIconResource;
+  set icon(value: string | null | undefined) {
+    // Invalid JS values remain visible to the compiler instead of disappearing.
     reflectString(this, "icon", value);
   }
 

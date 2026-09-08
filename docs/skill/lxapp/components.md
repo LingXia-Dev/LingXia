@@ -138,7 +138,7 @@ The island is one native composition tree laid out by CSS. The page still has ex
 </LxNativeRoot>
 ```
 
-`LxVideo` is a **direct** child of `LxNativeRoot`. Nested Root, DOM inside Root, a bare `LxVideo`, or Video inside View/Cover is `NATIVE_ROOT_INVALID_STRUCTURE`. `controls={true}` cannot share a Root with a play/pause/mute/fullscreen `LxNativeButton`. Seek is the video leaf's built-in progress bar, not a separate island slider.
+`LxVideo` is a **direct** child of `LxNativeRoot`. Nested Root, DOM inside Root, a bare `LxVideo`, or Video inside View/Cover is `NATIVE_ROOT_INVALID_STRUCTURE`. Built-in `controls` can coexist with any `LxNativeButton`; button icons do not determine their behavior. Seek is the video leaf's built-in progress bar, not a separate island slider.
 
 **Lifecycle:** the host owns the island container. Removing an `LxNativeRoot`, or
 destroying/replacing its page WebView, unmounts every node owned by that Root, stops
@@ -150,6 +150,77 @@ current page viewport offset. The host moves native visuals with top-level and
 nested scrolling, and removes fully offscreen nodes from paint and hit testing.
 
 Cover and Button are author recipes: they expand to `view` / `tappable` before the host commit. Host factories are only `root`, `view`, `text`, `tappable`, and `video`. `LxPicker` / `LxMediaSwiper` / `LxNavigator` stay on the presenter overlay channel.
+
+### Styles and composition limits
+
+Use these components for UI on native surfaces, such as a video menu. Ordinary
+page UI stays in HTML; Web component libraries cannot be placed inside a Root.
+
+React/Vue `style` accepts a constrained `NativeStyle`. CSS classes use the same
+native rendering limits:
+
+| Area | Supported contract |
+|---|---|
+| Layout | DOM-measured flex/grid, sizing, positioning, spacing, aspect ratio and overflow clipping |
+| Paint | Solid background color, opacity, uniform solid border and a uniform circular corner radius in CSS pixels |
+| Text | Font size/weight, line height, text alignment and color; `LxNativeText` also exposes these as props |
+| Unsupported | Transforms, shadows, gradients, filters, masks, CSS animation/transitions, per-side borders and unequal/elliptical/percentage corner radii |
+
+Unsupported computed styles (including class styles) produce recoverable
+`NATIVE_ROOT_UNSUPPORTED_STYLE` / `NATIVE_ROOT_UNSUPPORTED_LAYOUT` diagnostics
+through Root `onError` and the console. Diagnostics name the component/id and
+property, and repeat only when the problem changes or reappears. The Root keeps
+rendering its supported subset; a style diagnostic does not activate fallback.
+Do not rely on the unsupported effect being reproduced by native rendering.
+
+`LxNativeButton.icon` accepts `close`, `play`, `pause`, `mute`, `unmute`,
+`fullscreen`, or `more`. These are visual symbols, not automatic video commands;
+connect behavior with `onPress`. Arbitrary strings and `{ resource }` icons are
+rejected with `NATIVE_COMPONENT_INVALID_PROPS`. Custom resource icons are not
+part of the supported contract yet.
+
+Buttons measure their label/icon and have an inline-flex default layout; explicit
+CSS sizing and layout override it. Text typography props participate in DOM
+measurement, with author CSS taking precedence. Inherited font/color styles are
+resolved before sending nodes to native rendering.
+
+The cross-platform Button event is `onPress` (`@press` in Vue). Focus/hover and
+Root pointer-within callbacks are not public framework APIs yet: host support
+varies. Platform events that do arrive remain available as raw element events.
+
+Root `onReady` fires when a Root becomes active, not on subsequent commits. The
+optional React `fallback` prop / Vue `#fallback` slot supplies ordinary DOM for
+initialization or failure; it never switches playback to a Web video element.
+Shown fallback content is accessible, and becomes hidden when the Root is ready.
+
+### Migrating existing video pages
+
+1. Wrap each formerly bare `LxVideo` in `LxNativeRoot`, keeping the video as a
+   direct child. Give the player an explicit size/aspect ratio. Put native
+   overlays in a sibling `LxNativeCover`; keep ordinary DOM outside the Root.
+2. Change React/Vue callbacks from `event.detail.currentTime` to
+   `payload.currentTime`. HTML listeners continue to receive `CustomEvent`.
+   Import `LxVideoEventPayloads` from your framework package for named handlers.
+3. Use `payload.fullscreen` in View callbacks; the element normalizes the
+   platform's `fullScreen` alias. Video errors always provide `code` and
+   `message`; `recoverable` is optional. Metadata dimensions are optional when
+   a backend only supplies duration. `onVolumeChange` receives `{ volume, muted? }`.
+4. Keep media hosts in `security.network.trustedDomains`. Protocol-relative
+   URLs and unsupported URL schemes are rejected. `lx.createVideoContext(id)`
+   remains the imperative control API.
+
+```tsx
+import { LxNativeRoot, LxVideo, type LxVideoEventPayloads } from '@lingxia/react';
+
+const onProgress = ({ currentTime }: LxVideoEventPayloads['onTimeUpdate']) => {
+  console.log(currentTime);
+};
+
+<LxNativeRoot style={{ aspectRatio: '16 / 9' }}>
+  <LxVideo id="hero" src={src} controls
+    style={{ width: '100%', height: '100%' }} onTimeUpdate={onProgress} />
+</LxNativeRoot>
+```
 
 ## `LxVideo`
 
@@ -169,8 +240,8 @@ every remote media URL (`src`, `poster`, watermark/quality URLs, and
 behavior are doc-only: event reshaping and imperative control.
 
 **Events** — React/Vue handlers receive the **payload** (`onTimeUpdate` →
-`{ currentTime }`, `onError` → `{ code, message, recoverable }`,
-`onLoadedMetadata` → `{ duration, width, height }`, `onFullscreenChange` →
+`{ currentTime }`, `onError` → `{ code, message, recoverable? }`,
+`onLoadedMetadata` → `{ duration, width?, height? }`, `onFullscreenChange` →
 `{ fullscreen }`). HTML still reads `CustomEvent.detail`. Lifecycle events
 (`onPlayRequest`, `onPlay`, `onPlaying`, `onPause`, `onStop`, `onEnded`,
 `onWaiting`) carry `{}`.

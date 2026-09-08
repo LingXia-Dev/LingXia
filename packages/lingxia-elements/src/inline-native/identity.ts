@@ -3,6 +3,7 @@ import type { CompiledNativeRoot, CoreNode, NodeRef, RootRef } from "./types.js"
 export interface IdentityRecord {
   nodeKey: string;
   nodeEpoch: number;
+  kind: CoreNode["kind"];
   authorId?: string;
   path: string;
 }
@@ -39,7 +40,7 @@ export function identifyCompiledRoot(
   rootRef: RootRef,
   previous: IdentifiedRoot | null = null
 ): IdentifiedRoot {
-  const table: IdentityTable = { byPath: {}, byAuthorId: {} };
+  const table: IdentityTable = { byPath: Object.create(null), byAuthorId: Object.create(null) };
   const livePrev = previous ? liveNodeKeys(previous) : new Set<string>();
   const children = compiled.children.map((child, index) =>
     identifyNode(child, rootRef, null, index, String(index), previous, livePrev, table)
@@ -70,21 +71,17 @@ function identifyNode(
   table: IdentityTable
 ): IdentifiedNode {
   const authorId = node.authorId;
-  const prev =
-    (authorId ? previous?.table.byAuthorId[authorId] : undefined) ?? previous?.table.byPath[path];
+  const prev = authorId ? previous?.table.byAuthorId[authorId] : previous?.table.byPath[path];
   let nodeKey: string;
   let nodeEpoch: number;
-  if (prev && livePrev.has(prev.nodeKey)) {
+  if (prev && prev.kind === node.kind && prev.authorId === authorId && livePrev.delete(prev.nodeKey)) {
     nodeKey = prev.nodeKey;
     nodeEpoch = prev.nodeEpoch;
-  } else if (prev && !livePrev.has(prev.nodeKey)) {
-    nodeKey = prev.nodeKey;
-    nodeEpoch = prev.nodeEpoch + 1;
   } else {
     nodeKey = nextOpaqueKey("n");
     nodeEpoch = 1;
   }
-  const record: IdentityRecord = { nodeKey, nodeEpoch, authorId, path };
+  const record: IdentityRecord = { nodeKey, nodeEpoch, kind: node.kind, authorId, path };
   table.byPath[path] = record;
   if (authorId) {
     table.byAuthorId[authorId] = record;

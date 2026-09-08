@@ -144,19 +144,29 @@ assert.equal(unknownSlider.ok, false);
 assert.equal(unknownSlider.error.code, "NATIVE_ROOT_INVALID_STRUCTURE");
 assert.match(unknownSlider.error.message, /DOM or unregistered/);
 
-const controlsPlusPlay = compileInlineNativeRoot({
-  type: "LxNativeRoot",
-  children: [
-    { type: "LxVideo", props: { src: "x", controls: true } },
-    {
-      type: "LxNativeButton",
-      props: { icon: "play", "aria-label": "Play" },
-    },
-  ],
-});
-assert.equal(controlsPlusPlay.ok, false);
-assert.equal(controlsPlusPlay.error.code, "NATIVE_ROOT_INVALID_STRUCTURE");
-assert.match(controlsPlusPlay.error.message, /play/);
+for (const icon of INLINE_NATIVE_SCHEMA.nativeActionIcons) {
+  const combined = compileInlineNativeRoot({
+    type: "LxNativeRoot",
+    children: [
+      { type: "LxVideo", props: { src: "x", controls: true } },
+      { type: "LxNativeCover", children: [
+        { type: "LxNativeButton", props: { icon, "aria-label": "Custom action" } },
+      ] },
+    ],
+  });
+  assert.equal(combined.ok, true, combined.ok ? "" : combined.error.message);
+  assert.equal(combined.root.children[1].children[0].props.content.icon.name, icon);
+}
+
+for (const icon of [{ resource: { url: "https://example.com/icon.png" } }, "brand-logo", 42]) {
+  const invalid = compileInlineNativeRoot({
+    type: "LxNativeRoot",
+    children: [{ type: "LxNativeButton", props: { label: "Action", icon } }],
+  });
+  assert.equal(invalid.ok, false);
+  assert.equal(invalid.error.code, "NATIVE_COMPONENT_INVALID_PROPS");
+  assert.match(invalid.error.message, /NativeActionIcon/);
+}
 
 const controlsPlusMore = compileInlineNativeRoot({
   type: "LxNativeRoot",

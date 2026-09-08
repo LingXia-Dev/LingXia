@@ -1,22 +1,9 @@
 <script setup lang="ts">
+import type { LxNativeTextProps } from './types.js';
 import { h, useAttrs, useSlots } from 'vue';
 import { registerNativeTextComponent } from '@lingxia/elements';
 
-const props = defineProps<{
-  id?: string;
-  automationId?: string;
-  class?: string;
-  pointerEvents?: 'auto' | 'none' | 'box-only' | 'box-none';
-  hidden?: boolean;
-  hiddenTransition?: 'none' | 'fade';
-  maxLines?: number;
-  dir?: 'ltr' | 'rtl' | 'auto';
-  fontSize?: number | string;
-  fontWeight?: number | string;
-  lineHeight?: number | string;
-  textAlign?: 'start' | 'center' | 'end';
-  color?: string;
-}>();
+const props = defineProps<LxNativeTextProps>();
 const slots = useSlots();
 const attrs = useAttrs();
 
@@ -28,6 +15,10 @@ const render = () => h('lx-native-text', {
   ...attrs,
   id: props.id,
   class: props.class,
+  style: props.style,
+  'aria-label': props['aria-label'],
+  'aria-description': props['aria-description'],
+  'aria-hidden': props['aria-hidden'],
   'automation-id': props.automationId,
   'pointer-events': props.pointerEvents,
   hidden: props.hidden,

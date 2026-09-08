@@ -16,7 +16,8 @@
   "scripts": {
     "build": "npm run clean && npm --prefix ../lingxia-elements run build && npm --prefix ../lingxia-page-runtime run build && tsc -p tsconfig.json && node scripts/copy-sfc-assets.mjs",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test:components": "npm run build && node tests/native-components.mjs"
   },
   "dependencies": {
     "@lingxia/bridge": "~0.15.0",

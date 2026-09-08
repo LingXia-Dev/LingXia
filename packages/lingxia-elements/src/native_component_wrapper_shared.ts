@@ -1,7 +1,7 @@
 import type { NavigatorEnvVersion, NavigatorOpenType, NavigatorTarget } from "./navigator.js";
 import type { NavigatorQuery } from "./navigator.js";
 import type { LxMediaSwiperItem } from "./media_swiper.js";
-import type { LxVideoQuality } from "./video.js";
+import type { LxVideoQuality, LxVideoEventPayloads } from "./video.js";
 
 export function appendDataAttrs(
   attrs: Record<string, unknown>,
@@ -208,7 +208,8 @@ export const VIDEO_DOM_EVENT_MAP = {
   onWaiting: "waiting",
   onQualityChange: "qualitychange",
   onRateChange: "ratechange",
-} as const;
+  onVolumeChange: "volumechange",
+} as const satisfies Record<keyof LxVideoEventPayloads, string>;
 
 export interface VideoNativeAttrOptions {
   id?: string;

@@ -2,6 +2,8 @@ export {
   registerVideoComponent,
   LxVideoElement,
   type LxVideoAttributes,
+  type LxVideoEventPayloads,
+  type LxVideoEventHandlers,
 } from "./video.js";
 
 export {
@@ -124,4 +126,5 @@ export {
   type PointerPayload,
   type NativeHandler,
   type NativeActionIcon,
+  type NativeStyleProperty,
 } from "./inline-native/index.js";

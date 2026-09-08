@@ -26,7 +26,6 @@ export interface LxNativeRootProps extends LxNativeNodeProps {
   fallback?: React.ReactNode;
   onReady?: NativeHandler<Record<string, never>>;
   onError?: NativeHandler<NativeError>;
-  onPointerWithinChange?: NativeHandler<{ within: boolean }>;
 }
 
 export const LxNativeRoot = forwardRef<LxNativeRootHandle, LxNativeRootProps>(
@@ -43,7 +42,6 @@ export const LxNativeRoot = forwardRef<LxNativeRootHandle, LxNativeRootProps>(
       fallback,
       onReady,
       onError,
-      onPointerWithinChange,
       children,
       ...aria
     },
@@ -51,15 +49,12 @@ export const LxNativeRoot = forwardRef<LxNativeRootHandle, LxNativeRootProps>(
   ) => {
     const elementRef = useRef<HTMLElement | null>(null);
     const boundRef = useRef<HTMLElement | null>(null);
-    const handlers = useRef({ onReady, onError, onPointerWithinChange });
-    handlers.current = { onReady, onError, onPointerWithinChange };
+    const handlers = useRef({ onReady, onError });
+    handlers.current = { onReady, onError };
 
     const listeners = useRef({
       ready: payloadListener<Record<string, never>>(() => handlers.current.onReady),
       error: payloadListener<NativeError>(() => handlers.current.onError),
-      pointerwithinchange: payloadListener<{ within: boolean }>(
-        () => handlers.current.onPointerWithinChange
-      ),
     });
 
     useImperativeHandle(ref, () => ({

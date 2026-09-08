@@ -65,15 +65,6 @@ export const NATIVE_ACTION_ICONS = [
   "more",
 ] as const;
 
-/** Icons that collide with LxVideo built-in chrome when `controls` is on. */
-export const CONFLICTING_CONTROL_ICONS = [
-  "play",
-  "pause",
-  "mute",
-  "unmute",
-  "fullscreen",
-] as const;
-
 export const POINTER_EVENTS_VALUES = ["auto", "none", "box-only", "box-none"] as const;
 
 export const HIDDEN_TRANSITION_VALUES = ["none", "fade"] as const;
@@ -109,7 +100,7 @@ export const WATERMARK_CORNER_VALUES = [
   "bottom-end",
 ] as const;
 
-/** Author NativeStyle fields consumed by the DOM anchor. Anything else is rejected. */
+/** Layout fields measured from the DOM anchor. */
 export const NATIVE_STYLE_LAYOUT_FIELDS = [
   "display",
   "position",
@@ -163,10 +154,6 @@ export const NATIVE_STYLE_PAINT_FIELDS = [
   "borderColor",
   "borderStyle",
   "borderRadius",
-  "borderTopLeftRadius",
-  "borderTopRightRadius",
-  "borderBottomRightRadius",
-  "borderBottomLeftRadius",
 ] as const;
 
 export const NATIVE_STYLE_UNSUPPORTED_LAYOUT_FIELDS = [
@@ -223,7 +210,6 @@ export const INLINE_NATIVE_SCHEMA = {
   authorComponentToTag: AUTHOR_COMPONENT_TO_TAG,
   tagToAuthorComponent: TAG_TO_AUTHOR_COMPONENT,
   nativeActionIcons: NATIVE_ACTION_ICONS,
-  conflictingControlIcons: CONFLICTING_CONTROL_ICONS,
   pointerEvents: POINTER_EVENTS_VALUES,
   hiddenTransition: HIDDEN_TRANSITION_VALUES,
   fullscreenScope: FULLSCREEN_SCOPE_VALUES,
@@ -241,7 +227,7 @@ export const INLINE_NATIVE_SCHEMA = {
     paint: NATIVE_STYLE_PAINT_FIELDS,
     unsupportedLayout: NATIVE_STYLE_UNSUPPORTED_LAYOUT_FIELDS,
     unsupportedPaint: NATIVE_STYLE_UNSUPPORTED_PAINT_FIELDS,
-    textPropsNotStyle: TEXT_STYLE_PROP_FIELDS,
+    text: TEXT_STYLE_PROP_FIELDS,
   },
   interactiveAuthorComponents: INTERACTIVE_AUTHOR_COMPONENTS,
   containerAuthorComponents: CONTAINER_AUTHOR_COMPONENTS,
@@ -260,4 +246,8 @@ export type PublicElementTag = (typeof PUBLIC_ELEMENT_TAGS)[number];
 export type CoreKind = (typeof CORE_KINDS)[number];
 export type HostFactoryKind = (typeof HOST_FACTORY_KINDS)[number];
 export type NativeActionIcon = (typeof NATIVE_ACTION_ICONS)[number];
-export type ConflictingControlIcon = (typeof CONFLICTING_CONTROL_ICONS)[number];
+
+export type NativeStyleProperty =
+  | (typeof NATIVE_STYLE_LAYOUT_FIELDS)[number]
+  | (typeof NATIVE_STYLE_PAINT_FIELDS)[number]
+  | (typeof TEXT_STYLE_PROP_FIELDS)[number];

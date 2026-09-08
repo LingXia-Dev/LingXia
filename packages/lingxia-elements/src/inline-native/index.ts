@@ -8,7 +8,6 @@ export {
   AUTHOR_COMPONENT_TO_TAG,
   TAG_TO_AUTHOR_COMPONENT,
   NATIVE_ACTION_ICONS,
-  CONFLICTING_CONTROL_ICONS,
   POINTER_EVENTS_VALUES,
   HIDDEN_TRANSITION_VALUES,
   FULLSCREEN_SCOPE_VALUES,
@@ -19,6 +18,7 @@ export {
   type CoreKind,
   type HostFactoryKind,
   type NativeActionIcon,
+  type NativeStyleProperty,
 } from "./schema.js";
 
 export {

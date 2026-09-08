@@ -4,8 +4,6 @@ import {
   type NativeActionIcon,
   type NativeHandler,
   type PressPayload,
-  type FocusPayload,
-  type PointerPayload,
 } from "@lingxia/elements";
 import {
   assignNativeRef,
@@ -22,7 +20,7 @@ if (typeof window !== "undefined") {
 
 export interface LxNativeButtonProps extends LxNativeNodeProps {
   label?: string;
-  icon?: NativeActionIcon | { resource: unknown };
+  icon?: NativeActionIcon;
   iconPosition?: "start" | "end";
   intent?: "neutral" | "accent" | "destructive";
   emphasis?: "primary" | "secondary" | "quiet";
@@ -34,10 +32,6 @@ export interface LxNativeButtonProps extends LxNativeNodeProps {
   loading?: boolean;
   tabIndex?: 0 | -1;
   onPress?: NativeHandler<PressPayload>;
-  onFocus?: NativeHandler<FocusPayload>;
-  onBlur?: NativeHandler<FocusPayload>;
-  onPointerEnter?: NativeHandler<PointerPayload>;
-  onPointerLeave?: NativeHandler<PointerPayload>;
 }
 
 export const LxNativeButton = forwardRef<HTMLElement, LxNativeButtonProps>(
@@ -63,10 +57,6 @@ export const LxNativeButton = forwardRef<HTMLElement, LxNativeButtonProps>(
       loading,
       tabIndex,
       onPress,
-      onFocus,
-      onBlur,
-      onPointerEnter,
-      onPointerLeave,
       children,
       ...aria
     },
@@ -74,14 +64,10 @@ export const LxNativeButton = forwardRef<HTMLElement, LxNativeButtonProps>(
   ) => {
     const elementRef = useRef<HTMLElement | null>(null);
     const boundRef = useRef<HTMLElement | null>(null);
-    const handlers = useRef({ onPress, onFocus, onBlur, onPointerEnter, onPointerLeave });
-    handlers.current = { onPress, onFocus, onBlur, onPointerEnter, onPointerLeave };
+    const handlers = useRef({ onPress });
+    handlers.current = { onPress };
     const listeners = useRef({
       press: payloadListener<PressPayload>(() => handlers.current.onPress),
-      focus: payloadListener<FocusPayload>(() => handlers.current.onFocus),
-      blur: payloadListener<FocusPayload>(() => handlers.current.onBlur),
-      pointerenter: payloadListener<PointerPayload>(() => handlers.current.onPointerEnter),
-      pointerleave: payloadListener<PointerPayload>(() => handlers.current.onPointerLeave),
     });
 
     const setRef = useCallback(
@@ -102,7 +88,7 @@ export const LxNativeButton = forwardRef<HTMLElement, LxNativeButtonProps>(
     );
 
     useEffect(() => {
-      const el = elementRef.current as (HTMLElement & { icon?: unknown }) | null;
+      const el = elementRef.current;
       if (!el) return;
       setOptionalAttribute(el, "automation-id", automationId);
       setOptionalAttribute(el, "pointer-events", pointerEvents);
@@ -121,11 +107,7 @@ export const LxNativeButton = forwardRef<HTMLElement, LxNativeButtonProps>(
       if (typeof tabIndex === "number") {
         el.tabIndex = tabIndex;
       }
-      if (icon && typeof icon === "object") {
-        el.icon = icon;
-      } else {
-        setOptionalAttribute(el, "icon", icon);
-      }
+      setOptionalAttribute(el, "icon", icon);
     }, [
       automationId,
       pointerEvents,

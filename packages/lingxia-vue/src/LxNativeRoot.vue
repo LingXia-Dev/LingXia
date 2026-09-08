@@ -1,24 +1,16 @@
 <script setup lang="ts">
+import type { LxNativeRootProps } from './types.js';
 import { h, onBeforeUnmount, ref, useAttrs, useSlots, watch } from 'vue';
 import { registerNativeRootComponent, unwrapNativeEventPayload, type NativeError } from '@lingxia/elements';
 import { bindElementEvents, unbindElementEvents } from './text_component_shared.js';
 
-const props = defineProps<{
-  id?: string;
-  automationId?: string;
-  class?: string;
-  fullscreenScope?: 'root' | 'none';
-  pointerEvents?: 'auto' | 'none' | 'box-only' | 'box-none';
-  hidden?: boolean;
-  hiddenTransition?: 'none' | 'fade';
-}>();
+const props = defineProps<LxNativeRootProps>();
 const slots = useSlots();
 const attrs = useAttrs();
 
 const emit = defineEmits<{
   ready: [payload: Record<string, never>];
   error: [payload: NativeError];
-  pointerWithinChange: [payload: { within: boolean }];
 }>();
 
 if (typeof window !== 'undefined') {
@@ -30,9 +22,6 @@ let bound: HTMLElement | null = null;
 const listeners: Record<string, EventListenerObject> = {
   ready: { handleEvent: (event) => emit('ready', unwrapNativeEventPayload(event)) },
   error: { handleEvent: (event) => emit('error', unwrapNativeEventPayload(event)) },
-  pointerwithinchange: {
-    handleEvent: (event) => emit('pointerWithinChange', unwrapNativeEventPayload(event)),
-  },
 };
 
 watch(elementRef, (element) => {
@@ -52,6 +41,10 @@ const render = () => h('lx-native-root', {
   ref: elementRef,
   id: props.id,
   class: props.class,
+  style: props.style,
+  'aria-label': props['aria-label'],
+  'aria-description': props['aria-description'],
+  'aria-hidden': props['aria-hidden'],
   'fullscreen-scope': props.fullscreenScope ?? 'root',
   'pointer-events': props.pointerEvents,
   hidden: props.hidden,

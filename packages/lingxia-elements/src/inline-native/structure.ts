@@ -1,6 +1,6 @@
+import { collectNativeStyleIssues } from "./style.js";
 import { nativeError } from "./errors.js";
 import {
-  CONFLICTING_CONTROL_ICONS,
   NATIVE_ACTION_ICONS,
   PUBLIC_COMPONENT_NAMES,
   TAG_TO_AUTHOR_COMPONENT,
@@ -19,7 +19,6 @@ import {
 } from "./types.js";
 
 const PUBLIC_NAME_SET = new Set<string>(PUBLIC_COMPONENT_NAMES);
-const CONFLICTING_ICON_SET = new Set<string>(CONFLICTING_CONTROL_ICONS);
 const ACTION_ICON_SET = new Set<string>(NATIVE_ACTION_ICONS);
 
 /**
@@ -31,7 +30,7 @@ export function compileInlineNativeRoot(
   options: CompileInlineNativeOptions = {}
 ): CompileInlineNativeResult {
   const rootRef = options.rootRef ?? EMPTY_ROOT_REF;
-  const diagnostics: NativeError[] = [];
+  const diagnostics = collectStyleDiagnostics(author, rootRef);
   const authorType = normalizeAuthorType(author.type);
 
   if (authorType !== "LxNativeRoot") {
@@ -80,15 +79,6 @@ export function compileInlineNativeRoot(
 
   const props = { ...(author.props ?? {}) };
   const defaultVideoControls = options.defaultVideoControls !== false;
-  const structureError = validateRootAuthorChildren(
-    authorChildren,
-    rootRef,
-    defaultVideoControls
-  );
-  if (structureError) {
-    return fail(structureError, diagnostics);
-  }
-
   const expanded: CoreNode[] = [];
   for (const child of authorChildren) {
     const result = expandAuthorNode(child, rootRef, {
@@ -234,68 +224,6 @@ export function normalizeAuthorType(type: string | undefined): PublicComponentNa
   return undefined;
 }
 
-function validateRootAuthorChildren(
-  children: readonly AuthorNode[],
-  rootRef: RootRef,
-  defaultVideoControls: boolean
-): NativeError | undefined {
-  let hasControlsVideo = false;
-  let conflictingButton: string | undefined;
-
-  for (const child of children) {
-    const type = normalizeAuthorType(child.type);
-    if (type === "LxNativeRoot") {
-      return nativeError(
-        "NATIVE_ROOT_INVALID_STRUCTURE",
-        "LxNativeRoot cannot nest another LxNativeRoot",
-        { root: rootRef }
-      );
-    }
-    if (type === "LxVideo" && videoControlsEnabled(child.props, defaultVideoControls)) {
-      hasControlsVideo = true;
-    }
-  }
-
-  walkForConflicts(children);
-
-  if (hasControlsVideo && conflictingButton) {
-    return nativeError(
-      "NATIVE_ROOT_INVALID_STRUCTURE",
-      `controls={true} cannot share a Root with a ${conflictingButton} Button; set controls={false} or use a non-chrome icon`,
-      { root: rootRef }
-    );
-  }
-  return undefined;
-
-  function walkForConflicts(nodes: readonly AuthorNode[]): void {
-    for (const node of nodes) {
-      const type = normalizeAuthorType(node.type);
-      if (type === "LxNativeButton") {
-        const icon = readButtonIcon(node.props);
-        if (icon && CONFLICTING_ICON_SET.has(icon)) {
-          conflictingButton = icon;
-        }
-      }
-      const nested = flattenAuthorChildren(node.children)
-        .filter((entry): entry is { kind: "node"; node: AuthorNode } => entry.kind === "node")
-        .map((entry) => entry.node);
-      if (nested.length > 0) {
-        walkForConflicts(nested);
-      }
-    }
-  }
-}
-
-function videoControlsEnabled(
-  props: Record<string, unknown> | undefined,
-  defaultVideoControls: boolean
-): boolean {
-  if (!props || !("controls" in props) || props.controls === undefined || props.controls === null) {
-    return defaultVideoControls;
-  }
-  return parseBooleanAttr(props.controls, defaultVideoControls);
-}
-
 export function parseBooleanAttr(value: unknown, defaultValue = false): boolean {
   if (value === true || value === "") return true;
   if (value === false) return false;
@@ -308,14 +236,6 @@ export function parseBooleanAttr(value: unknown, defaultValue = false): boolean 
     return value !== 0;
   }
   return defaultValue;
-}
-
-function readButtonIcon(props: Record<string, unknown> | undefined): string | undefined {
-  const icon = props?.icon;
-  if (typeof icon === "string" && icon.trim()) {
-    return icon.trim();
-  }
-  return undefined;
 }
 
 interface ExpandContext {
@@ -485,12 +405,12 @@ function expandAuthorNode(
         diagnostics: [],
       };
     }
-    if (typeof icon === "string" && icon && !ACTION_ICON_SET.has(icon) && !isResourceIcon(icon)) {
+    if (icon != null && icon !== "" && (typeof icon !== "string" || !ACTION_ICON_SET.has(icon))) {
       return {
         ok: false,
         error: nativeError(
           "NATIVE_COMPONENT_INVALID_PROPS",
-          `LxNativeButton icon "${icon}" is not a NativeActionIcon or { resource }`,
+          "LxNativeButton icon must be a supported NativeActionIcon; resource icons are not supported",
           { root: rootRef, scope: "node", recoverable: true }
         ),
         diagnostics: [],
@@ -639,17 +559,11 @@ function nonEmptyAriaLabel(props: Record<string, unknown> | undefined): boolean 
   return typeof label === "string" && label.trim().length > 0;
 }
 
-function isResourceIcon(icon: unknown): boolean {
-  return !!icon && typeof icon === "object" && icon !== null && "resource" in (icon as object);
-}
-
 function buildButtonContent(label: string, icon: unknown): Record<string, unknown> {
   const content: Record<string, unknown> = {};
   if (label) content.text = label;
   if (typeof icon === "string" && icon) {
     content.icon = { kind: "semantic", name: icon };
-  } else if (isResourceIcon(icon)) {
-    content.icon = { kind: "resource", resource: (icon as { resource: unknown }).resource };
   }
   return content;
 }
@@ -700,6 +614,7 @@ function readElementAsAuthor(element: Element): AuthorNode {
   const tag = element.tagName.toLowerCase();
   const type = normalizeAuthorType(tag) ?? tag;
   const props = readElementProps(element);
+  const styleIssues = collectNativeStyleIssues(element);
   const authorId = element.getAttribute("id") ?? undefined;
   const automationId = element.getAttribute("automation-id") ?? undefined;
   if (type === "LxNativeText") {
@@ -709,6 +624,7 @@ function readElementAsAuthor(element: Element): AuthorNode {
       automationId,
       props,
       textContent: element.textContent ?? "",
+      styleIssues,
     };
   }
   const children: AuthorNode[] = [];
@@ -725,7 +641,7 @@ function readElementAsAuthor(element: Element): AuthorNode {
     if (isFallbackElement(el)) continue;
     children.push(readElementAsAuthor(el));
   }
-  return { type, authorId, automationId, props, children };
+  return { type, authorId, automationId, props, children, styleIssues };
 }
 
 export function findInlineNativeRoot(element: Element): Element | null {
@@ -837,7 +753,7 @@ function readElementProps(element: Element): Record<string, unknown> {
   const type = normalizeAuthorType(element.tagName.toLowerCase());
   if (type === "LxNativeText") {
     for (const key of ["fontSize", "fontWeight", "lineHeight", "textAlign", "color", "dir"] as const) {
-      if (props[key] === undefined && nativeStyle[key] !== undefined) {
+      if (nativeStyle[key] !== undefined) {
         props[key] = nativeStyle[key];
       }
     }
@@ -857,16 +773,16 @@ function readComputedNativeStyle(element: Element): Record<string, unknown> {
     out[key] = normalized;
   };
   put("backgroundColor", style.backgroundColor, (value) => value === "transparent" || value === "rgba(0, 0, 0, 0)");
-  put("color", style.color, (value) => value === inherited?.color);
+  put("color", style.color);
   put("accentColor", style.accentColor, (value) => value === "auto");
   put("opacity", style.opacity, (value) => value === "1");
   put("borderColor", style.borderTopColor, (value) => style.borderTopWidth === "0px" && value === inherited?.color);
   put("borderWidth", style.borderTopWidth, (value) => value === "0px");
   put("borderStyle", style.borderTopStyle, (value) => value === "none");
   put("borderRadius", style.borderTopLeftRadius, (value) => value === "0px");
-  put("fontSize", style.fontSize, (value) => value === inherited?.fontSize);
-  put("fontWeight", style.fontWeight, (value) => value === inherited?.fontWeight);
-  put("lineHeight", style.lineHeight, (value) => value === "normal" || value === inherited?.lineHeight);
+  put("fontSize", style.fontSize);
+  put("fontWeight", style.fontWeight);
+  put("lineHeight", style.lineHeight, (value) => value === "normal");
   put("textAlign", style.textAlign, (value) => value === "start");
   put("dir", style.direction, (value) => value === "ltr");
   return out;
@@ -874,4 +790,16 @@ function readComputedNativeStyle(element: Element): Record<string, unknown> {
 
 function camelize(name: string): string {
   return name.replace(/-([a-z])/g, (_, ch: string) => ch.toUpperCase());
+}
+
+function collectStyleDiagnostics(author: AuthorNode, root: RootRef): NativeError[] {
+  const diagnostics = (author.styleIssues ?? []).map(({ property, value, layout }) =>
+    nativeError(layout ? "NATIVE_ROOT_UNSUPPORTED_LAYOUT" : "NATIVE_ROOT_UNSUPPORTED_STYLE",
+      `${author.type}${author.authorId ? `#${author.authorId}` : ""}: ${property}: ${value} is not supported by native rendering`,
+      { root, scope: author.type === "LxNativeRoot" ? "root" : "node", recoverable: true })
+  );
+  for (const child of flattenAuthorChildren(author.children)) {
+    if (child.kind === "node") diagnostics.push(...collectStyleDiagnostics(child.node, root));
+  }
+  return diagnostics;
 }

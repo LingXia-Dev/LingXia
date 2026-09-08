@@ -16,7 +16,8 @@
   "scripts": {
     "build": "npm run clean && npm --prefix ../lingxia-elements run build && npm --prefix ../lingxia-page-runtime run build && tsc -p tsconfig.json",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test:types": "npm run build && tsc -p tests/tsconfig.json"
   },
   "dependencies": {
     "@lingxia/bridge": "~0.15.0",

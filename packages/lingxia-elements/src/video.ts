@@ -1,9 +1,42 @@
+import { normalizeVideoEventDetail } from "./video-events.js";
 import { ensureComponentId } from "./component.js";
 import { registerNativeComponentHandler } from "./nativecomponent.js";
 import { findInlineNativeRoot } from "./inline-native/structure.js";
 
 export type LxVideoQuality = { label: string; url?: string };
-type LxVideoViewEventHandler = (e: Event) => void;
+export interface LxVideoEventPayloads {
+  onPlayRequest: Record<string, never>;
+  onPlay: Record<string, never>;
+  onPlaying: Record<string, never>;
+  onPause: Record<string, never>;
+  onStop: Record<string, never>;
+  onEnded: Record<string, never>;
+  onWaiting: Record<string, never>;
+  onTimeUpdate: { currentTime: number; duration?: number };
+  onError: { code: string; message: string; recoverable?: boolean };
+  onLoadedMetadata: { duration: number; width?: number; height?: number };
+  onFullscreenChange: { fullscreen: boolean; direction?: string };
+  onQualityChange: { quality: string; url?: string };
+  onRateChange: { rate: number };
+  onVolumeChange: { volume: number; muted?: boolean };
+}
+
+export interface LxVideoEventHandlers {
+  onPlayRequest?: (payload: LxVideoEventPayloads["onPlayRequest"]) => void;
+  onPlay?: (payload: LxVideoEventPayloads["onPlay"]) => void;
+  onPlaying?: (payload: LxVideoEventPayloads["onPlaying"]) => void;
+  onPause?: (payload: LxVideoEventPayloads["onPause"]) => void;
+  onStop?: (payload: LxVideoEventPayloads["onStop"]) => void;
+  onEnded?: (payload: LxVideoEventPayloads["onEnded"]) => void;
+  onWaiting?: (payload: LxVideoEventPayloads["onWaiting"]) => void;
+  onTimeUpdate?: (payload: LxVideoEventPayloads["onTimeUpdate"]) => void;
+  onError?: (payload: LxVideoEventPayloads["onError"]) => void;
+  onLoadedMetadata?: (payload: LxVideoEventPayloads["onLoadedMetadata"]) => void;
+  onFullscreenChange?: (payload: LxVideoEventPayloads["onFullscreenChange"]) => void;
+  onQualityChange?: (payload: LxVideoEventPayloads["onQualityChange"]) => void;
+  onRateChange?: (payload: LxVideoEventPayloads["onRateChange"]) => void;
+  onVolumeChange?: (payload: LxVideoEventPayloads["onVolumeChange"]) => void;
+}
 
 export type LxVideoAttributes = {
   id?: string;
@@ -23,19 +56,20 @@ export type LxVideoAttributes = {
   className?: string;
   style?: unknown;
   ref?: unknown;
-  onPlayRequest?: LxVideoViewEventHandler;
-  onPlay?: LxVideoViewEventHandler;
-  onPlaying?: LxVideoViewEventHandler;
-  onPause?: LxVideoViewEventHandler;
-  onStop?: LxVideoViewEventHandler;
-  onEnded?: LxVideoViewEventHandler;
-  onTimeUpdate?: LxVideoViewEventHandler;
-  onError?: LxVideoViewEventHandler;
-  onLoadedMetadata?: LxVideoViewEventHandler;
-  onFullscreenChange?: LxVideoViewEventHandler;
-  onWaiting?: LxVideoViewEventHandler;
-  onQualityChange?: LxVideoViewEventHandler;
-  onRateChange?: LxVideoViewEventHandler;
+  onPlayRequest?: (event: CustomEvent<LxVideoEventPayloads["onPlayRequest"]>) => void;
+  onPlay?: (event: CustomEvent<LxVideoEventPayloads["onPlay"]>) => void;
+  onPlaying?: (event: CustomEvent<LxVideoEventPayloads["onPlaying"]>) => void;
+  onPause?: (event: CustomEvent<LxVideoEventPayloads["onPause"]>) => void;
+  onStop?: (event: CustomEvent<LxVideoEventPayloads["onStop"]>) => void;
+  onEnded?: (event: CustomEvent<LxVideoEventPayloads["onEnded"]>) => void;
+  onTimeUpdate?: (event: CustomEvent<LxVideoEventPayloads["onTimeUpdate"]>) => void;
+  onError?: (event: CustomEvent<LxVideoEventPayloads["onError"]>) => void;
+  onLoadedMetadata?: (event: CustomEvent<LxVideoEventPayloads["onLoadedMetadata"]>) => void;
+  onFullscreenChange?: (event: CustomEvent<LxVideoEventPayloads["onFullscreenChange"]>) => void;
+  onWaiting?: (event: CustomEvent<LxVideoEventPayloads["onWaiting"]>) => void;
+  onQualityChange?: (event: CustomEvent<LxVideoEventPayloads["onQualityChange"]>) => void;
+  onRateChange?: (event: CustomEvent<LxVideoEventPayloads["onRateChange"]>) => void;
+  onVolumeChange?: (event: CustomEvent<LxVideoEventPayloads["onVolumeChange"]>) => void;
   pageBindings?: Record<string, string>;
 };
 
@@ -204,15 +238,7 @@ export class LxVideoElement extends HTMLElement {
     if (!this.componentId) return;
     this.unregister = registerNativeComponentHandler(this.componentId, (message) => {
       if (!message.event) return;
-      let detail = message.detail || message.payload || {};
-      if (
-        ["playrequest", "play", "playing", "pause", "stop", "ended", "waiting"].includes(
-          message.event
-        ) &&
-        Object.keys(detail).length === 0
-      ) {
-        detail = {};
-      }
+      const detail = normalizeVideoEventDetail(message.event, message.detail || message.payload || {});
       if (message.event === "playing" || message.event === "play") {
         this.islandPlaybackIdle = false;
         this.setAttribute("data-lx-playing", "true");

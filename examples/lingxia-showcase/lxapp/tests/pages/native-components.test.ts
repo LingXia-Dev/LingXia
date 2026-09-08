@@ -163,6 +163,47 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
   expect(accessibleMenu.closeTabIndex).toBe('0');
   expect(accessibleMenu.visible).toBeTruthy();
 
+  const contract = await app.page.eval({
+    page: 'video',
+    script: `(() => {
+      const root = document.querySelector('#video-native-root');
+      const more = document.querySelector('#video-native-menu-more');
+      const css = document.createElement('style');
+      css.textContent = '.native-contract-shadow { box-shadow: 0 2px 4px black; }';
+      document.head.appendChild(css);
+      const errors = [];
+      const onError = (event) => errors.push(event.detail);
+      root.addEventListener('error', onError);
+      try {
+        more.setAttribute('icon', 'play');
+        more.classList.add('native-contract-shadow');
+        const first = root.compileNow();
+        const count = errors.length;
+        root.compileNow();
+        const deduplicated = errors.length === count;
+        more.classList.remove('native-contract-shadow');
+        const restored = root.compileNow();
+        return {
+          combined: first.ok,
+          diagnosed: errors.some((error) => error.code === 'NATIVE_ROOT_UNSUPPORTED_STYLE'
+            && error.message.includes('video-native-menu-more') && error.message.includes('boxShadow')),
+          deduplicated,
+          recovered: restored.ok && !restored.diagnostics.some((error) => error.message.includes('boxShadow')),
+        };
+      } finally {
+        more.setAttribute('icon', 'more');
+        more.classList.remove('native-contract-shadow');
+        css.remove();
+        root.removeEventListener('error', onError);
+        root.compileNow();
+      }
+    })()`,
+  }) as { combined: boolean; diagnosed: boolean; deduplicated: boolean; recovered: boolean };
+  expect(contract.combined).toBeTruthy();
+  expect(contract.diagnosed).toBeTruthy();
+  expect(contract.deduplicated).toBeTruthy();
+  expect(contract.recovered).toBeTruthy();
+
   const moreDispatched = await app.page.eval({
     page: 'video',
     script:

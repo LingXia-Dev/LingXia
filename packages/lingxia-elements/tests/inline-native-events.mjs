@@ -53,3 +53,10 @@ assert.deepEqual(button.events[0].detail, { source: "pointer" });
 
 assert.equal(applyIslandHostEvent(button, { event: "playing" }), false);
 assert.equal(button.events.length, 1);
+
+for (const name of ['focus', 'blur', 'pointerenter', 'pointerleave', 'pointerwithinchange']) {
+  const detail = name === 'pointerwithinchange' ? { within: true } : { source: 'pointer' };
+  assert.equal(applyIslandHostEvent(button, { event: name, detail }), true);
+  assert.equal(button.events.at(-1).type, name);
+  assert.deepEqual(button.events.at(-1).detail, detail);
+}

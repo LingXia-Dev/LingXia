@@ -3,11 +3,19 @@ import type {
   LxMediaSwiperAttributes,
   LxNavigatorEvent,
   LxVideoAttributes,
+  LxVideoEventHandlers,
+  LxVideoEventPayloads,
+  NativeActionIcon,
+  NativeStyleProperty,
   NavigatorEnvVersion,
   NavigatorOpenType,
   NavigatorQuery,
   NavigatorTarget,
 } from '@lingxia/elements';
+
+export type NativeStyle = Omit<Pick<CSSProperties, NativeStyleProperty>, "borderStyle"> & {
+  borderStyle?: "solid" | "none";
+};
 
 export interface LxVideoProps {
   id?: string;
@@ -25,39 +33,42 @@ export interface LxVideoProps {
   qualities?: Array<{ label: string; url?: string }>;
   playbackRates?: number[];
   class?: string;
-  style?: CSSProperties;
-  onPlayRequest?: (event: Event) => void;
-  onPlay?: (event: Event) => void;
-  onPlaying?: (event: Event) => void;
-  onPause?: (event: Event) => void;
-  onStop?: (event: Event) => void;
-  onEnded?: (event: Event) => void;
-  onTimeUpdate?: (event: Event) => void;
-  onError?: (event: Event) => void;
-  onLoadedMetadata?: (event: Event) => void;
-  onFullscreenChange?: (event: Event) => void;
-  onWaiting?: (event: Event) => void;
-  onQualityChange?: (event: Event) => void;
-  onRateChange?: (event: Event) => void;
+  style?: NativeStyle;
+  onPlayRequest?: (payload: LxVideoEventPayloads["onPlayRequest"]) => void;
+  onPlay?: (payload: LxVideoEventPayloads["onPlay"]) => void;
+  onPlaying?: (payload: LxVideoEventPayloads["onPlaying"]) => void;
+  onPause?: (payload: LxVideoEventPayloads["onPause"]) => void;
+  onStop?: (payload: LxVideoEventPayloads["onStop"]) => void;
+  onEnded?: (payload: LxVideoEventPayloads["onEnded"]) => void;
+  onWaiting?: (payload: LxVideoEventPayloads["onWaiting"]) => void;
+  onTimeUpdate?: (payload: LxVideoEventPayloads["onTimeUpdate"]) => void;
+  onError?: (payload: LxVideoEventPayloads["onError"]) => void;
+  onLoadedMetadata?: (payload: LxVideoEventPayloads["onLoadedMetadata"]) => void;
+  onFullscreenChange?: (payload: LxVideoEventPayloads["onFullscreenChange"]) => void;
+  onQualityChange?: (payload: LxVideoEventPayloads["onQualityChange"]) => void;
+  onRateChange?: (payload: LxVideoEventPayloads["onRateChange"]) => void;
+  onVolumeChange?: (payload: LxVideoEventPayloads["onVolumeChange"]) => void;
   pageBindings?: Record<string, string>;
 }
 
-export interface LxNativeRootProps {
+export interface LxNativeNodeProps {
   id?: string;
   automationId?: string;
   class?: string;
-  style?: CSSProperties;
-  fullscreenScope?: 'root' | 'none';
+  style?: NativeStyle;
   pointerEvents?: 'auto' | 'none' | 'box-only' | 'box-none';
   hidden?: boolean;
   hiddenTransition?: 'none' | 'fade';
+  'aria-label'?: string;
+  'aria-description'?: string;
+  'aria-hidden'?: boolean;
 }
 
-export interface LxNativeViewProps {
-  id?: string;
-  class?: string;
-  style?: CSSProperties;
-  pointerEvents?: 'auto' | 'none' | 'box-only' | 'box-none';
+export interface LxNativeRootProps extends LxNativeNodeProps {
+  fullscreenScope?: 'root' | 'none';
+}
+
+export interface LxNativeViewProps extends LxNativeNodeProps {
   role?: 'group' | 'region' | 'status' | 'presentation' | 'none';
 }
 
@@ -66,23 +77,29 @@ export interface LxNativeCoverProps extends LxNativeViewProps {
   scrimOpacity?: number;
 }
 
-export interface LxNativeTextProps {
-  id?: string;
-  class?: string;
-  style?: CSSProperties;
+export interface LxNativeTextProps extends LxNativeNodeProps {
   maxLines?: number;
   dir?: 'ltr' | 'rtl' | 'auto';
+  fontSize?: number | string;
+  fontWeight?: number | string;
+  lineHeight?: number | string;
+  textAlign?: 'start' | 'center' | 'end';
+  color?: string;
 }
 
-export interface LxNativeButtonProps {
-  id?: string;
-  class?: string;
-  style?: CSSProperties;
+export interface LxNativeButtonProps extends LxNativeNodeProps {
   label?: string;
-  icon?: string | { resource: unknown };
+  icon?: NativeActionIcon;
+  iconPosition?: 'start' | 'end';
   intent?: 'neutral' | 'accent' | 'destructive';
   emphasis?: 'primary' | 'secondary' | 'quiet';
   size?: 'compact' | 'regular';
+  hitSlop?: number;
+  disabled?: boolean;
+  pressed?: boolean;
+  expanded?: boolean;
+  loading?: boolean;
+  tabIndex?: 0 | -1;
 }
 
 type LxMediaSwiperItem =
@@ -135,8 +152,12 @@ type IsExact<Left, Right> =
     : false;
 type AssertExact<Value extends true> = Value;
 type _VideoPropsMatchElements = AssertExact<IsExact<
-  Omit<LxVideoAttributes, 'ref' | 'className' | 'style'>,
-  Omit<LxVideoProps, 'class' | 'style'>
+  Omit<LxVideoAttributes, 'ref' | 'className' | 'style' | `on${string}`>,
+  Omit<LxVideoProps, 'class' | 'style' | keyof LxVideoEventHandlers>
+>>;
+type _VideoHandlersMatchElements = AssertExact<IsExact<
+  Pick<LxVideoProps, keyof LxVideoEventHandlers>,
+  LxVideoEventHandlers
 >>;
 type _MediaSwiperPropsMatchElements = AssertExact<IsExact<
   Omit<LxMediaSwiperAttributes, 'ref' | 'className' | 'style'>,

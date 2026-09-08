@@ -26,3 +26,6 @@ export type {
   PageChromeLayoutSnapshot,
   PageChromeRect,
 } from "@lingxia/page-runtime";
+
+export type { LxVideoEventPayloads, LxVideoEventHandlers, NativeActionIcon } from "@lingxia/elements";
+export type { NativeStyle } from "./native/shared.js";

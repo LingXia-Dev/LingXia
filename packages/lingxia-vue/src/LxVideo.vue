@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, h, onBeforeUnmount, useAttrs, useId, watch } from 'vue';
-import { registerVideoComponent, unwrapNativeEventPayload } from '@lingxia/elements';
+import { registerVideoComponent, unwrapNativeEventPayload, type LxVideoEventPayloads } from '@lingxia/elements';
 import {
   buildVideoNativeAttrs,
   VIDEO_DOM_EVENT_MAP,
@@ -19,19 +19,20 @@ const props = withDefaults(defineProps<LxVideoProps>(), {
 const attrs = useAttrs();
 
 const emit = defineEmits<{
-  playRequest: [payload: unknown];
-  play: [payload: unknown];
-  playing: [payload: unknown];
-  pause: [payload: unknown];
-  stop: [payload: unknown];
-  ended: [payload: unknown];
-  timeUpdate: [payload: unknown];
-  error: [payload: unknown];
-  loadedMetadata: [payload: unknown];
-  fullscreenChange: [payload: unknown];
-  waiting: [payload: unknown];
-  qualityChange: [payload: unknown];
-  rateChange: [payload: unknown];
+  playRequest: [payload: LxVideoEventPayloads["onPlayRequest"]];
+  play: [payload: LxVideoEventPayloads["onPlay"]];
+  playing: [payload: LxVideoEventPayloads["onPlaying"]];
+  pause: [payload: LxVideoEventPayloads["onPause"]];
+  stop: [payload: LxVideoEventPayloads["onStop"]];
+  ended: [payload: LxVideoEventPayloads["onEnded"]];
+  timeUpdate: [payload: LxVideoEventPayloads["onTimeUpdate"]];
+  error: [payload: LxVideoEventPayloads["onError"]];
+  loadedMetadata: [payload: LxVideoEventPayloads["onLoadedMetadata"]];
+  fullscreenChange: [payload: LxVideoEventPayloads["onFullscreenChange"]];
+  waiting: [payload: LxVideoEventPayloads["onWaiting"]];
+  qualityChange: [payload: LxVideoEventPayloads["onQualityChange"]];
+  rateChange: [payload: LxVideoEventPayloads["onRateChange"]];
+  volumeChange: [payload: LxVideoEventPayloads["onVolumeChange"]];
 }>();
 
 if (typeof window !== 'undefined') {
@@ -57,6 +58,7 @@ const videoEventListeners: Record<string, EventListenerObject> = {
   [VIDEO_DOM_EVENT_MAP.onFullscreenChange]: { handleEvent: (event: Event) => emit('fullscreenChange', unwrapNativeEventPayload(event)) },
   [VIDEO_DOM_EVENT_MAP.onWaiting]: { handleEvent: (event: Event) => emit('waiting', unwrapNativeEventPayload(event)) },
   [VIDEO_DOM_EVENT_MAP.onQualityChange]: { handleEvent: (event: Event) => emit('qualityChange', unwrapNativeEventPayload(event)) },
+  [VIDEO_DOM_EVENT_MAP.onVolumeChange]: { handleEvent: (event: Event) => emit('volumeChange', unwrapNativeEventPayload(event)) },
   [VIDEO_DOM_EVENT_MAP.onRateChange]: { handleEvent: (event: Event) => emit('rateChange', unwrapNativeEventPayload(event)) },
 };
 
