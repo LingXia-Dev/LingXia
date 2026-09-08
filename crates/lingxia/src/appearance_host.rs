@@ -11,19 +11,29 @@ struct SetPreferenceInput {
 
 /// The product's light/dark setting. A document renders in the scheme it is
 /// given; only the surface that edits the setting needs the preference.
-#[lingxia::framework_native("app.getAppearancePreference", audience = "control-only")]
+#[lingxia::framework_native(
+    "app.getAppearancePreference",
+    audience = "control-app-or-browser-only"
+)]
 fn get_appearance_preference() -> HostResult<AppearancePreference> {
     Ok(lxapp::host_appearance_state().preference)
 }
 
 /// Product-wide light/dark. An lxapp that pinned its own scheme in its manifest
 /// keeps it; the rest, and the host's own chrome, follow this.
-#[lingxia::framework_native("app.setAppearancePreference", audience = "control-only")]
+#[lingxia::framework_native(
+    "app.setAppearancePreference",
+    audience = "control-app-or-browser-only"
+)]
 fn set_appearance_preference(input: SetPreferenceInput) -> HostResult<AppearancePreference> {
     lxapp::set_host_appearance_preference(input.preference).map(|state| state.preference)
 }
 
-#[lingxia::framework_native("app.watchAppearancePreference", stream, audience = "control-only")]
+#[lingxia::framework_native(
+    "app.watchAppearancePreference",
+    stream,
+    audience = "control-app-or-browser-only"
+)]
 async fn watch_appearance_preference(
     mut stream: StreamContext<AppearancePreference>,
 ) -> HostResult<()> {
@@ -71,7 +81,10 @@ mod tests {
             set_appearance_preference_host(),
             watch_appearance_preference_host(),
         ] {
-            assert_eq!(route.audience(), crate::host::RouteAudience::ControlOnly);
+            assert_eq!(
+                route.audience(),
+                crate::host::RouteAudience::ControlAppOrBrowserOnly
+            );
         }
     }
 

@@ -179,6 +179,10 @@ session's live `Process` grant. Closing, restarting, or replacing that session
 revokes its handles and terminates its running process trees; a successor with
 the same app id cannot control them.
 
+The callback runs while the session it describes is still being created, under
+that session's creation lock. Decide from the authority alone: opening,
+restarting, or closing an lxapp from inside it deadlocks.
+
 The callback receives an unconstructable `NativeHostRuntimeAuthority`; it
 cannot be called from a route or populated from payload fields. Devtools builds
 use the separate `NativeDevtoolsAuthority`, which can issue only session-bound
@@ -201,7 +205,7 @@ fn set_account() -> lingxia::Result<()> {
     Ok(())
 }
 
-#[lingxia::native("host.watch", stream, audience = "control-only")]
+#[lingxia::native("host.watch", stream, audience = "control-app-or-browser-only")]
 async fn watch_host(
     mut stream: lingxia::host::StreamContext<lingxia::host::JsonValue>,
 ) -> lingxia::Result<()> {
@@ -212,14 +216,19 @@ async fn watch_host(
 
 The accepted string values are fixed by the SDK:
 
-| String | Registration metadata |
+| String | Admits |
 | --- | --- |
-| `app-session-only` | `AppSessionOnly` (the default for `native`) |
-| `authenticated-read-only` | `AuthenticatedReadOnly` |
-| `control-app-only` | `ControlAppOnly` |
-| `control-surface-only` | `ControlSurfaceOnly` |
-| `browser-control-only` | `BrowserControlOnly` |
-| `control-only` | `ControlOnly` |
+| `app-session-only` | any lxapp session (the default for `native`) |
+| `any-authenticated` | any lxapp session, plus a browser control document |
+| `control-app-only` | the ControlApp session only |
+| `control-surface-only` | the host-bundled control surface session only |
+| `browser-control-only` | a browser control document only |
+| `control-app-or-browser-only` | the ControlApp session, plus a browser control document |
+
+The classes are disjoint, so a name never implies a superset: the control
+surface is not admitted by `control-app-only`, and the ControlApp is not
+admitted by `control-surface-only`. `any-authenticated` constrains the caller
+class only — it does not make a route read-only.
 
 An unknown value, a non-string value, or duplicate `audience` metadata is a
 compile error. This metadata is fixed in the generated registration companion;

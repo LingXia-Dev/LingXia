@@ -35,6 +35,10 @@ pub trait HostAddon: Send + Sync {
     /// Assign the manifest-requested privileged resources this native product
     /// approves for a newly created session. The authority is sealed after
     /// this callback returns and is never reachable from bridge payloads.
+    ///
+    /// Runs while that session's creation lock is held: decide from the
+    /// authority alone. Opening, restarting, or closing an lxapp from here
+    /// deadlocks.
     fn issue_app_resource_grants(&self, _authority: &mut NativeHostRuntimeAuthority<'_>) {}
     /// Assign devtools-only automation resources to one newly created session.
     #[cfg(feature = "devtool")]

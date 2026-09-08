@@ -90,15 +90,22 @@ pub enum HostRouteKind {
 /// payload or an app manifest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RouteAudience {
+    /// Any lxapp session, of any class.
     AppSessionOnly,
-    AuthenticatedReadOnly,
+    /// Any lxapp session, plus a browser control document. Constrains the
+    /// caller class only; it does not make the route read-only.
+    AnyAuthenticated,
+    /// The `ControlApp` session only.
     ControlAppOnly,
     /// Only the host-bundled `ControlSurface` session (Terminal Settings).
     /// Deliberately disjoint from `ControlAppOnly`: neither class reaches the
     /// other's routes.
     ControlSurfaceOnly,
+    /// A browser control document only.
     BrowserControlOnly,
-    ControlOnly,
+    /// The `ControlApp` session, plus a browser control document. The
+    /// `ControlSurface` is a distinct class and is not admitted.
+    ControlAppOrBrowserOnly,
 }
 
 /// A privileged native resource that may be assigned to one lxapp session.
@@ -731,13 +738,13 @@ pub fn authorize(caller: &AuthenticatedCaller, audience: RouteAudience) -> bool 
             RouteAudience::AppSessionOnly
         ) | (
             AuthenticatedCallerSource::LxAppSession { .. },
-            RouteAudience::AuthenticatedReadOnly
+            RouteAudience::AnyAuthenticated
         ) | (
             AuthenticatedCallerSource::LxAppSession {
                 class: AppSessionClass::ControlApp,
                 ..
             },
-            RouteAudience::ControlAppOnly | RouteAudience::ControlOnly
+            RouteAudience::ControlAppOnly | RouteAudience::ControlAppOrBrowserOnly
         ) | (
             AuthenticatedCallerSource::LxAppSession {
                 class: AppSessionClass::ControlSurface,
@@ -746,9 +753,9 @@ pub fn authorize(caller: &AuthenticatedCaller, audience: RouteAudience) -> bool 
             RouteAudience::ControlSurfaceOnly
         ) | (
             AuthenticatedCallerSource::BrowserDocument { .. },
-            RouteAudience::AuthenticatedReadOnly
+            RouteAudience::AnyAuthenticated
                 | RouteAudience::BrowserControlOnly
-                | RouteAudience::ControlOnly
+                | RouteAudience::ControlAppOrBrowserOnly
         )
     )
 }
@@ -2093,14 +2100,17 @@ mod tests {
         let channel = HostRegistrationEntry::Channel(ChannelRegistration::new(
             "test",
             "channel",
-            RouteAudience::ControlOnly,
+            RouteAudience::ControlAppOrBrowserOnly,
             Arc::new(TestChannelHandler),
         ));
 
         assert_eq!(handler.audience(), RouteAudience::ControlAppOnly);
         assert_eq!(handler.policy().audience(), RouteAudience::ControlAppOnly);
-        assert_eq!(channel.audience(), RouteAudience::ControlOnly);
-        assert_eq!(channel.policy().audience(), RouteAudience::ControlOnly);
+        assert_eq!(channel.audience(), RouteAudience::ControlAppOrBrowserOnly);
+        assert_eq!(
+            channel.policy().audience(),
+            RouteAudience::ControlAppOrBrowserOnly
+        );
     }
 
     #[test]
@@ -2194,11 +2204,11 @@ mod tests {
 
         let audiences = [
             RouteAudience::AppSessionOnly,
-            RouteAudience::AuthenticatedReadOnly,
+            RouteAudience::AnyAuthenticated,
             RouteAudience::ControlAppOnly,
             RouteAudience::ControlSurfaceOnly,
             RouteAudience::BrowserControlOnly,
-            RouteAudience::ControlOnly,
+            RouteAudience::ControlAppOrBrowserOnly,
         ];
         assert_eq!(
             audiences.map(|audience| authorize(&standard, audience)),
@@ -2244,10 +2254,10 @@ mod tests {
         ];
         let audiences = [
             RouteAudience::AppSessionOnly,
-            RouteAudience::AuthenticatedReadOnly,
+            RouteAudience::AnyAuthenticated,
             RouteAudience::ControlAppOnly,
             RouteAudience::BrowserControlOnly,
-            RouteAudience::ControlOnly,
+            RouteAudience::ControlAppOrBrowserOnly,
         ];
         let mut registry = EffectiveRouteRegistry::new();
         for (index, audience) in audiences.into_iter().enumerate() {

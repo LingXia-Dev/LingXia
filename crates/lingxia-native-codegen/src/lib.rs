@@ -928,7 +928,7 @@ mod tests {
             )]
             pub async fn watch(ctx: StreamContext<String, ()>) -> HostResult<()> { todo!() }
 
-            #[framework_native("host.update", audience = "control-only", channel)]
+            #[framework_native("host.update", audience = "control-app-or-browser-only", channel)]
             pub async fn update(ctx: ChannelContext<String>) -> HostResult<()> { todo!() }
         "#,
         );
@@ -947,7 +947,7 @@ mod tests {
         let generated = render(&manifest, OutputKind::TypeScriptModule).unwrap();
         assert!(!generated.contains("app-session-only"));
         assert!(!generated.contains("browser-control-only"));
-        assert!(!generated.contains("control-only"));
+        assert!(!generated.contains("control-app-or-browser-only"));
         assert!(generated.contains("editor"));
         assert!(!generated.contains("browser.watch"));
         assert!(!generated.contains("host.update"));

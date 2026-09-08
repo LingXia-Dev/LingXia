@@ -12,12 +12,18 @@ struct SetPreferenceInput {
 /// The language the product is set to. Documents render in the *effective*
 /// language, which the bridge hands them; only the surface that edits the
 /// setting needs the preference behind it.
-#[lingxia::framework_native("app.getDisplayLanguagePreference", audience = "control-only")]
+#[lingxia::framework_native(
+    "app.getDisplayLanguagePreference",
+    audience = "control-app-or-browser-only"
+)]
 fn get_display_language_preference() -> HostResult<DisplayLanguagePreference> {
     Ok(lxapp::display_language_state().preference)
 }
 
-#[lingxia::framework_native("app.setDisplayLanguagePreference", audience = "control-only")]
+#[lingxia::framework_native(
+    "app.setDisplayLanguagePreference",
+    audience = "control-app-or-browser-only"
+)]
 fn set_display_language_preference(
     input: SetPreferenceInput,
 ) -> HostResult<DisplayLanguagePreference> {
@@ -28,7 +34,7 @@ fn set_display_language_preference(
 #[lingxia::framework_native(
     "app.watchDisplayLanguagePreference",
     stream,
-    audience = "control-only"
+    audience = "control-app-or-browser-only"
 )]
 async fn watch_display_language_preference(
     mut stream: StreamContext<DisplayLanguagePreference>,
@@ -77,7 +83,10 @@ mod tests {
             set_display_language_preference_host(),
             watch_display_language_preference_host(),
         ] {
-            assert_eq!(route.audience(), crate::host::RouteAudience::ControlOnly);
+            assert_eq!(
+                route.audience(),
+                crate::host::RouteAudience::ControlAppOrBrowserOnly
+            );
         }
     }
 

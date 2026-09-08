@@ -268,7 +268,7 @@ fn validate_with_inventory(
                         matches!(
                             audience,
                             lxapp::host::RouteAudience::ControlAppOnly
-                                | lxapp::host::RouteAudience::ControlOnly
+                                | lxapp::host::RouteAudience::ControlAppOrBrowserOnly
                         )
                     },
                 )?;
@@ -295,7 +295,7 @@ fn validate_with_inventory(
                         matches!(
                             audience,
                             lxapp::host::RouteAudience::BrowserControlOnly
-                                | lxapp::host::RouteAudience::ControlOnly
+                                | lxapp::host::RouteAudience::ControlAppOrBrowserOnly
                         )
                     },
                 )?;
@@ -951,12 +951,12 @@ mod tests {
             &browser_assets(),
             |_| {
                 Ok(Some(lxapp::host::EffectiveRoutePolicy::new(
-                    lxapp::host::RouteAudience::ControlOnly,
+                    lxapp::host::RouteAudience::ControlAppOrBrowserOnly,
                 )))
             },
             true,
         )
-        .expect("ControlOnly is compatible with both control target classes");
+        .expect("ControlAppOrBrowserOnly is compatible with both control target classes");
     }
 
     #[test]
