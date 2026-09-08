@@ -88,20 +88,34 @@ fn host_appearance_update() -> HostAppearanceUpdate {
     }
 }
 
-/// Subscribe without an initial-snapshot race: the snapshot and the channel
-/// are taken under one lock, and later updates carry a higher revision.
+/// Register before reading the snapshot so no update is lost. Consumers
+/// discard queued updates already covered by the snapshot's revision.
 #[doc(hidden)]
 pub fn subscribe_host_appearance() -> (
     HostAppearanceUpdate,
     mpsc::UnboundedReceiver<HostAppearanceUpdate>,
 ) {
-    let mut registered = subscribers()
-        .lock()
-        .unwrap_or_else(|error| error.into_inner());
+    subscribe_with_snapshot(subscribers(), host_appearance_update)
+}
+
+fn subscribe_with_snapshot(
+    subscribers: &Mutex<Vec<mpsc::UnboundedSender<HostAppearanceUpdate>>>,
+    snapshot: impl FnOnce() -> HostAppearanceUpdate,
+) -> (
+    HostAppearanceUpdate,
+    mpsc::UnboundedReceiver<HostAppearanceUpdate>,
+) {
     let (sender, receiver) = mpsc::unbounded_channel();
-    registered.retain(|subscriber| !subscriber.is_closed());
-    registered.push(sender);
-    (host_appearance_update(), receiver)
+    {
+        let mut registered = subscribers
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        registered.retain(|subscriber| !subscriber.is_closed());
+        registered.push(sender);
+    }
+    // Resolving auto may synchronously query the native main thread. That
+    // thread also publishes appearance changes and needs the subscriber lock.
+    (snapshot(), receiver)
 }
 
 /// Load the persisted preference during bootstrap. The host chrome is told
@@ -183,6 +197,44 @@ fn publish_host_color_mode(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn snapshot_allows_native_publication_without_losing_updates() {
+        let subscribers = Mutex::new(Vec::new());
+        let update = HostAppearanceUpdate {
+            revision: 2,
+            state: HostAppearanceState {
+                preference: AppearancePreference::Auto,
+                resolved: ResolvedAppearance::Dark,
+            },
+        };
+        let (initial, mut receiver) = subscribe_with_snapshot(&subscribers, || {
+            // Model the main thread publishing while a background subscriber
+            // waits for its native appearance query. This must not need a lock
+            // retained by that waiting subscriber.
+            let registered = subscribers
+                .try_lock()
+                .expect("snapshot holds subscriber lock");
+            assert_eq!(registered.len(), 1);
+            registered[0].send(update).unwrap();
+            update
+        });
+        assert_eq!(initial.revision, update.revision);
+        assert_eq!(initial.state, update.state);
+        assert_eq!(receiver.try_recv().unwrap().revision, initial.revision);
+
+        let later = HostAppearanceUpdate {
+            revision: 3,
+            state: HostAppearanceState {
+                resolved: ResolvedAppearance::Light,
+                ..update.state
+            },
+        };
+        subscribers.lock().unwrap()[0].send(later).unwrap();
+        let received = receiver.try_recv().unwrap();
+        assert!(received.revision > initial.revision);
+        assert_eq!(received.state, later.state);
+    }
 
     #[test]
     fn a_pinned_preference_resolves_without_the_platform() {
