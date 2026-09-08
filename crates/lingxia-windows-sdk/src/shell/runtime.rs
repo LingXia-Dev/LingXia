@@ -3490,6 +3490,10 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             let Some(index) = payload_usize(&event, "index") else {
                 return;
             };
+            // iOS `setSelectedIndex` always dismisses the overflow card, including
+            // a strip tap that does not change the selected index.
+            #[cfg(feature = "shell-chrome")]
+            dismiss_owner_tabbar_overflow(appid);
             // Clear browser presentation state without restoring the saved
             // lxapp first. That restore target may be an older tab page; showing
             // it before SwitchTab presents the requested page creates a very
@@ -3993,6 +3997,13 @@ fn chrome_command_is_page_scoped(command: &str) -> bool {
     )
 }
 
+#[cfg(feature = "shell-chrome")]
+fn dismiss_owner_tabbar_overflow(appid: &str) {
+    if let Some(window) = owner_window_handle(appid) {
+        crate::window_host::dismiss_tabbar_overflow_on_owner(window);
+    }
+}
+
 /// Presents the compact strip's folded items in an in-frame grid sheet.
 fn show_tabbar_overflow(appid: &str) {
     let Some(app) = lxapp::try_get(appid) else {
@@ -4151,9 +4162,7 @@ fn active_host_is_browser() -> bool {
 
 fn present_current_lxapp_main(app: &LxApp) -> bool {
     #[cfg(feature = "shell-chrome")]
-    if let Some(window) = owner_window_handle(&app.appid) {
-        crate::window_host::dismiss_tabbar_overflow_on_owner(window);
-    }
+    dismiss_owner_tabbar_overflow(&app.appid);
     let path = app
         .peek_current_page()
         .unwrap_or_else(|| app.initial_route());
