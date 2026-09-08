@@ -4,7 +4,7 @@
   /*
    * Same contract as the browser package's i18n: `data-i18n` attributes in the
    * markup, a two-locale dictionary, and the host's language followed live
-   * through `app.watchDisplayLanguage`. Sharing the shape matters more than
+   * through `terminal.watchDisplayLanguage`. Sharing the shape matters more than
    * sharing the file - a settings screen that picked its own convention would
    * be the one surface a translator has to learn twice.
    */
@@ -275,7 +275,7 @@
     }
     function attachLanguageWatch() {
       if (typeof bridge.stream !== 'function') return;
-      var watch = bridge.stream('app.watchDisplayLanguage');
+      var watch = bridge.stream('terminal.watchDisplayLanguage');
       var startedAt = Date.now();
       api.languageWatch = watch;
       watch.onEvent(adoptHostLocale);

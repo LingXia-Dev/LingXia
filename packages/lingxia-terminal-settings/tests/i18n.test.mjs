@@ -50,7 +50,7 @@ test('follows the shared effective-language route and stream', async () => {
   await Promise.resolve();
 
   assert.deepEqual(invocations, ['app.getDisplayLanguage']);
-  assert.equal(streams[0].route, 'app.watchDisplayLanguage');
+  assert.equal(streams[0].route, 'terminal.watchDisplayLanguage');
   streams[0].event('zh-Hans-CN');
   assert.equal(window.LingXiaI18n.locale, 'zh-CN');
   assert.equal(document.documentElement.lang, 'zh-Hans');

@@ -15,7 +15,20 @@ fn get_display_language() -> HostResult<LanguageTag> {
 }
 
 #[lingxia::framework_native("app.watchDisplayLanguage", stream, audience = "control-only")]
-async fn watch_display_language(mut stream: StreamContext<LanguageTag>) -> HostResult<()> {
+async fn watch_display_language(stream: StreamContext<LanguageTag>) -> HostResult<()> {
+    stream_effective_language(stream).await
+}
+
+#[lingxia::framework_native(
+    "terminal.watchDisplayLanguage",
+    stream,
+    audience = "control-surface-only"
+)]
+async fn watch_terminal_display_language(stream: StreamContext<LanguageTag>) -> HostResult<()> {
+    stream_effective_language(stream).await
+}
+
+async fn stream_effective_language(mut stream: StreamContext<LanguageTag>) -> HostResult<()> {
     let (initial, mut receiver) = lxapp::subscribe_display_language_effective();
     let mut revision = initial.revision;
     stream.send(initial.effective)?;
@@ -72,6 +85,7 @@ pub(crate) fn register() {
     REGISTERED.get_or_init(|| {
         crate::host::register_host_entry(get_display_language_host());
         crate::host::register_host_entry(watch_display_language_host());
+        crate::host::register_host_entry(watch_terminal_display_language_host());
         crate::host::register_host_entry(get_display_language_state_host());
         crate::host::register_host_entry(set_display_language_preference_host());
         crate::host::register_host_entry(watch_display_language_state_host());
@@ -122,6 +136,9 @@ mod tests {
         let control =
             unsafe { test_authenticated_caller("test.control", 2, AppSessionClass::ControlApp) };
         let browser = unsafe { test_browser_caller() };
+        let surface = unsafe {
+            test_authenticated_caller("test.surface", 3, AppSessionClass::ControlSurface)
+        };
         let watch_audience = watch_display_language_host().audience();
 
         assert!(
@@ -145,5 +162,30 @@ mod tests {
         assert!(!authorize(&standard, watch_audience));
         assert!(authorize(&control, watch_audience));
         assert!(authorize(&browser, watch_audience));
+        assert!(!authorize(&surface, watch_audience));
+
+        let surface_watch = watch_terminal_display_language_host();
+        for (caller, allowed) in [
+            (&standard, false),
+            (&control, false),
+            (&browser, false),
+            (&surface, true),
+        ] {
+            assert_eq!(authorize(caller, surface_watch.audience()), allowed);
+            assert_eq!(
+                host_route_schema(caller)
+                    .methods
+                    .contains_key("terminal.watchDisplayLanguage"),
+                allowed
+            );
+        }
+        for route in [
+            watch_display_language_host(),
+            get_display_language_state_host(),
+            set_display_language_preference_host(),
+            watch_display_language_state_host(),
+        ] {
+            assert!(!authorize(&surface, route.audience()));
+        }
     }
 }

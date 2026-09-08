@@ -434,6 +434,9 @@ async fn cache_state(app: Arc<lingxia::LxApp>) -> lingxia::Result<String> {
 Host display language is a product preference on that same facade. `Auto`
 follows the system locale; `LanguageTag` accepts any canonical BCP-47 tag.
 Every lxapp inherits the resolved tag from `display_language()`.
+The Terminal Settings View subscribes to `terminal.watchDisplayLanguage`
+(`ControlSurfaceOnly`) for effective-language updates. This read-only stream
+confers no access to the `ControlOnly` language preference/state routes.
 
 ```rust
 let preference = "zh-CN"
