@@ -637,7 +637,7 @@ surfaces:
 The tray's dynamic content is updated from page/app logic:
 
 - `lx.tray.setIcon(path)` / `lx.tray.setTitle(text)` / `lx.tray.setBadge(value)` — update the status item's icon, its text (macOS), and a badge (e.g. an unread count).
-- `lx.app.setBadge(value)` — the dock (macOS) / taskbar (Windows) badge.
+- `lx.app.setBadge(value)` — the dock (macOS) / taskbar (Windows) badge. This is the product's own icon, so it is Control app only; other lxapps get a permission error.
 
 Pass `null` / empty to clear a badge or title. The tray *shape* is declared in `lingxia.yaml`; these APIs only change its runtime content.
 

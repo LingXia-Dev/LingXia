@@ -144,7 +144,7 @@ declare global {
 
     /**
      * Product-wide cache reporting and clearing for a settings screen.
-     * Restricted to the home lxapp; other lxapps get a permission error.
+     * Restricted to the Control app; other lxapps get a permission error.
      */
     cache: AppCacheApi;
   }

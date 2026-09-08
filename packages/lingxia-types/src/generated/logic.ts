@@ -147,7 +147,7 @@ declare global {
 
     /**
      * Product-wide cache reporting and clearing for a settings screen.
-     * Restricted to the home lxapp; other lxapps get a permission error.
+     * Restricted to the Control app; other lxapps get a permission error.
      */
     cache: AppCacheApi;
   }
@@ -230,14 +230,14 @@ export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface
  * The product-wide cache a settings screen reports and clears.
  * App-scoped, not lxapp-scoped: the figure covers every lxapp the host
  * has run, which is why — like `checkUpdate` and `screenshot` — it is
- * available only to the home lxapp and other lxapps get a permission
+ * available only to the Control app and other lxapps get a permission
  * error.
  */
 export type AppCacheApi = {
     /** Estimated reclaimable managed bytes; excludes live session storage and WebView cache. */
     size(): Promise<number>;
     /**
-     * Clear reclaimable host caches. Home lxapp only. Live session usercache and
+     * Clear reclaimable host caches. Control app only. Live session usercache and
      * temp are preserved, including the caller's. Does not restart any lxapp.
      * Userdata, KV, Downloads, cookies, valid installs and host components survive.
      * Per-category failures are reported; setup/worker failures reject the call.
@@ -356,7 +356,12 @@ export type AppearanceApi = {
      * `lxapp.json` reports that; every other lxapp reports the product's.
      */
     get(): ResolvedAppearance;
-    /** Follow it, starting with the current value. Returns an unsubscribe. */
+    /**
+     * Follow it, starting with the current value. Returns an unsubscribe.
+     *
+     * The first callback runs synchronously, before `watch` returns, so the
+     * unsubscribe is not yet bound inside it.
+     */
     watch(callback: (resolved: ResolvedAppearance) => void): () => void;
 };
 
@@ -586,7 +591,16 @@ export type ConnectWifiOptions = {
     password?: string;
 };
 
-/** `lx.app.control` — product-wide settings, and their single writer. */
+/**
+ * `lx.app.control` — product-wide settings, and their single writer.
+ * Present only in the Control app. Bind it once rather than repeating
+ * `lx.app.control!`:
+ * ```js
+ * const control = lx.app.control;
+ * if (!control) return; // not the Control app
+ * await control.appearance.setPreference('dark');
+ * ```
+ */
 export type ControlApi = {
     readonly displayLanguage: ControlDisplayLanguageApi;
     readonly appearance: ControlAppearanceApi;
@@ -603,7 +617,9 @@ export type ControlAppearanceApi = {
     setPreference(preference: AppearancePreference): Promise<void>;
     /**
      * Follow the choice, not what it resolves to: a system flip under `'auto'`
-     * moves `lx.app.appearance.watch` and leaves this quiet.
+     * moves `lx.app.appearance.watch` and leaves this quiet. Starts with the
+     * current value; that first callback runs synchronously, before
+     * `watchPreference` returns.
      */
     watchPreference(callback: (preference: AppearancePreference) => void): () => void;
 };
@@ -620,7 +636,8 @@ export type ControlDisplayLanguageApi = {
     /**
      * Follow the choice, not what it resolves to: a system locale change under
      * `'auto'` moves the language without moving the preference. Starts with
-     * the current value and returns an unsubscribe.
+     * the current value and returns an unsubscribe; that first callback runs
+     * synchronously, before `watchPreference` returns.
      */
     watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
 };
@@ -652,6 +669,9 @@ export type DisplayLanguageApi = {
      * Logic needs this because the strings it hands to native chrome —
      * navigation bar titles, tab bar labels, modal and action-sheet text — are
      * the app's own, and nothing re-renders them on its behalf.
+     *
+     * The first callback runs synchronously, before `watch` returns, so the
+     * unsubscribe is not yet bound inside it.
      */
     watch(callback: (language: string) => void): () => void;
 };
@@ -1415,8 +1435,8 @@ export type ShareTitleOptions = {
 };
 
 /**
- * App-owned host-shell chrome. Mutations are available only to the home
- * lxapp's Logic context; other lxapps receive a permission error.
+ * App-owned host-shell chrome. Mutations are available only to the
+ * Control app's Logic context; other lxapps receive a permission error.
  */
 export type ShellApi = {
     /**
@@ -2510,6 +2530,8 @@ declare global {
     getBaseInfo(): AppBaseInfo;
     /**
      * Exit the host app immediately without a confirmation dialog.
+     * Control app only: quitting the product is not an lxapp's decision. Other
+     * lxapps get a permission error.
      * If the user should confirm first, call `lx.showModal(...)` and invoke this
      * only after confirmation.
      */
@@ -2517,8 +2539,9 @@ declare global {
     /**
      * Set the app-icon badge, for example an unread count.
      * This targets the dock on macOS, taskbar on Windows, and home/launcher icon
-     * on mobile. Null or an empty string clears it. Unsupported platforms treat
-     * the call as a no-op.
+     * on mobile — the product's own icon, not the calling lxapp's, so it is
+     * Control app only and other lxapps get a permission error. Null or an empty
+     * string clears it. Unsupported platforms treat the call as a no-op.
      */
     setBadge(value: string | number | null): void;
   }
@@ -2776,7 +2799,7 @@ declare global {
     readonly tray: TrayApi;
     /**
      * Return the callback-based update manager for this lxapp's bundle. This is
-     * available to every lxapp and is distinct from the home-only
+     * available to every lxapp and is distinct from the Control-app-only
      * `lx.app.checkUpdate()`, which updates the native host app.
      */
     getUpdateManager(): UpdateManager;
@@ -2844,8 +2867,8 @@ declare global {
      */
     remove(id: string): void;
     /**
-     * Atomically clears every runtime sidebar action and callback. Only the home
-     * lxapp may call this API. Equivalent to `replace([])` and safe when already
+     * Atomically clears every runtime sidebar action and callback. Only the
+     * Control app may call this API. Equivalent to `replace([])` and safe when already
      * empty; the Control app must still redeclare actions after the next Logic launch.
      */
     clear(): void;

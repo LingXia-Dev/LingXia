@@ -43,6 +43,9 @@ fn get_app_base_info(_ctx: JSContext) -> JSResult<AppBaseInfo> {
 
 /// Exit the host app immediately without a confirmation dialog.
 ///
+/// Control app only: quitting the product is not an lxapp's decision. Other
+/// lxapps get a permission error.
+///
 /// If the user should confirm first, call `lx.showModal(...)` and invoke this
 /// only after confirmation.
 fn exit_app(ctx: JSContext) -> JSResult<()> {
@@ -58,8 +61,9 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
 /// Set the app-icon badge, for example an unread count.
 ///
 /// This targets the dock on macOS, taskbar on Windows, and home/launcher icon
-/// on mobile. Null or an empty string clears it. Unsupported platforms treat
-/// the call as a no-op.
+/// on mobile — the product's own icon, not the calling lxapp's, so it is
+/// Control app only and other lxapps get a permission error. Null or an empty
+/// string clears it. Unsupported platforms treat the call as a no-op.
 fn set_app_badge(ctx: JSContext, value: JSValue) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::AppSetBadge)?;
     let lxapp = invocation.lxapp();

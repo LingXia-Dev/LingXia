@@ -250,8 +250,8 @@ fn sidebar_actions_remove(ctx: JSContext, id: JSValue) -> JSResult<()> {
     commit_generation(&ctx, |next| next.remove(&id), handlers)
 }
 
-/// Atomically clears every runtime sidebar action and callback. Only the home
-/// lxapp may call this API. Equivalent to `replace([])` and safe when already
+/// Atomically clears every runtime sidebar action and callback. Only the
+/// Control app may call this API. Equivalent to `replace([])` and safe when already
 /// empty; the Control app must still redeclare actions after the next Logic launch.
 fn sidebar_actions_clear(ctx: JSContext) -> JSResult<()> {
     authorization::require(&ctx, LogicRoute::ShellSidebarClear)?;

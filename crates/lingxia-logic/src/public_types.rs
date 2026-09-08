@@ -160,14 +160,14 @@ rong::js_api! {
         ///
         /// App-scoped, not lxapp-scoped: the figure covers every lxapp the host
         /// has run, which is why — like `checkUpdate` and `screenshot` — it is
-        /// available only to the home lxapp and other lxapps get a permission
+        /// available only to the Control app and other lxapps get a permission
         /// error.
         ///
         type AppCacheApi = r###"{
     /** Estimated reclaimable managed bytes; excludes live session storage and WebView cache. */
     size(): Promise<number>;
     /**
-     * Clear reclaimable host caches. Home lxapp only. Live session usercache and
+     * Clear reclaimable host caches. Control app only. Live session usercache and
      * temp are preserved, including the caller's. Does not restart any lxapp.
      * Userdata, KV, Downloads, cookies, valid installs and host components survive.
      * Per-category failures are reported; setup/worker failures reject the call.
@@ -352,7 +352,12 @@ rong::js_api! {
      * `lxapp.json` reports that; every other lxapp reports the product's.
      */
     get(): ResolvedAppearance;
-    /** Follow it, starting with the current value. Returns an unsubscribe. */
+    /**
+     * Follow it, starting with the current value. Returns an unsubscribe.
+     *
+     * The first callback runs synchronously, before `watch` returns, so the
+     * unsubscribe is not yet bound inside it.
+     */
     watch(callback: (resolved: ResolvedAppearance) => void): () => void;
 }"###;
 
@@ -367,7 +372,9 @@ rong::js_api! {
     setPreference(preference: AppearancePreference): Promise<void>;
     /**
      * Follow the choice, not what it resolves to: a system flip under `'auto'`
-     * moves `lx.app.appearance.watch` and leaves this quiet.
+     * moves `lx.app.appearance.watch` and leaves this quiet. Starts with the
+     * current value; that first callback runs synchronously, before
+     * `watchPreference` returns.
      */
     watchPreference(callback: (preference: AppearancePreference) => void): () => void;
 }"###;
@@ -391,6 +398,9 @@ rong::js_api! {
      * Logic needs this because the strings it hands to native chrome —
      * navigation bar titles, tab bar labels, modal and action-sheet text — are
      * the app's own, and nothing re-renders them on its behalf.
+     *
+     * The first callback runs synchronously, before `watch` returns, so the
+     * unsubscribe is not yet bound inside it.
      */
     watch(callback: (language: string) => void): () => void;
 }"###;
@@ -405,12 +415,22 @@ rong::js_api! {
     /**
      * Follow the choice, not what it resolves to: a system locale change under
      * `'auto'` moves the language without moving the preference. Starts with
-     * the current value and returns an unsubscribe.
+     * the current value and returns an unsubscribe; that first callback runs
+     * synchronously, before `watchPreference` returns.
      */
     watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
 }"###;
 
         /// `lx.app.control` — product-wide settings, and their single writer.
+        ///
+        /// Present only in the Control app. Bind it once rather than repeating
+        /// `lx.app.control!`:
+        ///
+        /// ```js
+        /// const control = lx.app.control;
+        /// if (!control) return; // not the Control app
+        /// await control.appearance.setPreference('dark');
+        /// ```
         type ControlApi = r###"{
     readonly displayLanguage: ControlDisplayLanguageApi;
     readonly appearance: ControlAppearanceApi;
@@ -1941,8 +1961,8 @@ true
         type TabBarApi = "globalThis.TabBarApi";
         type TrayApi = "globalThis.TrayApi";
 
-        /// App-owned host-shell chrome. Mutations are available only to the home
-        /// lxapp's Logic context; other lxapps receive a permission error.
+        /// App-owned host-shell chrome. Mutations are available only to the
+        /// Control app's Logic context; other lxapps receive a permission error.
         type ShellApi = r###"{
     /**
      * Declares runtime actions in the desktop shell's sidebar header or footer.

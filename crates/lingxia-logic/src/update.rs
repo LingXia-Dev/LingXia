@@ -271,7 +271,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 }
 
 /// Return the callback-based update manager for this lxapp's bundle. This is
-/// available to every lxapp and is distinct from the home-only
+/// available to every lxapp and is distinct from the Control-app-only
 /// `lx.app.checkUpdate()`, which updates the native host app.
 fn get_update_manager(ctx: JSContext) -> JSResult<JSObject> {
     ensure_update_handlers(&ctx)?;
