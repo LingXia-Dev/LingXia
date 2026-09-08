@@ -129,6 +129,11 @@ fn subscribe_with_snapshot(
 /// about a pinned scheme here; `auto` leaves the platform's own value alone.
 pub fn initialize_host_appearance() {
     let Some(platform) = get_platform() else {
+        // Called before the runtime registry has one, the saved preference is
+        // never read and the product silently launches on `auto` every time.
+        crate::warn!(
+            "Host appearance initialized without a platform runtime; following the system"
+        );
         return;
     };
     let stored = lingxia_service::settings::host_appearance(&platform.app_data_dir())
