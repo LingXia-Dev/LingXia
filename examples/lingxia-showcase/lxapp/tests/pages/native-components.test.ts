@@ -352,8 +352,8 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
             match: 'More native menu actions',
             all: true,
           })).find((node) => node.enabled && node.role === 'button' && node.rect.w > 0 && node.rect.h > 0);
-        } catch {
-          return undefined;
+        } catch (error) {
+          throw new Error(`Windows UIA query failed: ${String(error)}`);
         }
       },
       (value) => value !== undefined,

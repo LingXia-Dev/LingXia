@@ -952,6 +952,10 @@ jobs:
             sleep "$delay"
           done
 
+      - name: Test Windows UI Automation worker initialization
+        if: runner.os == 'Windows'
+        run: cargo test -p lingxia-device-io --features ax --lib automation_initializes_each_worker_thread
+
       - name: Run showcase automation
         if: runner.os == 'Windows'
         working-directory: examples/lingxia-showcase
