@@ -821,7 +821,7 @@ fn default_asset_dir() -> PathBuf {
 pub fn current_locale() -> String {
     use windows::Win32::Globalization::GetUserDefaultLocaleName;
 
-    // LOCALE_NAME_MAX_LENGTH (85); the pinned windows-rs rev does not export it.
+    // LOCALE_NAME_MAX_LENGTH (85); windows 0.62 does not export the constant.
     let mut buffer = [0u16; 85];
     let len = unsafe { GetUserDefaultLocaleName(&mut buffer) };
     if len > 1 {

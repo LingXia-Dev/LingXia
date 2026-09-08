@@ -27,7 +27,7 @@ use windows::core::BSTR;
 const DEFAULT_MAX_NODES: usize = 2000;
 
 fn bstr_to_string(b: &BSTR) -> String {
-    b.display().to_string()
+    b.to_string()
 }
 
 struct ComApartment(bool);

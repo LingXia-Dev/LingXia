@@ -289,9 +289,9 @@ Applying a newer line:
 - **Apple (iOS/macOS):** the SDK source zip into `~/.lingxia/sdk/apple/<ver>/`,
   then `Package.swift` is pointed at that cache via `.package(path:)` (the SDK
   uses `unsafeFlags`, so it cannot be a remote SwiftPM URL)
-- **Windows:** `lingxia-windows-sdk` git ref (not on crates.io) and
-  `lingxia-windows-build` crate requirement, then
-  `cargo update -p lingxia-windows-sdk` / `-p lingxia-windows-build`
+- **Windows:** `lingxia-windows-sdk` and `lingxia-windows-build` crate
+  requirements, then `cargo update -p lingxia-windows-sdk` /
+  `-p lingxia-windows-build`
 - **Harmony:** the HAR into `~/.lingxia/sdk/harmony/<ver>/`
 
 In-workspace checkouts already depend on SDK source paths and are not

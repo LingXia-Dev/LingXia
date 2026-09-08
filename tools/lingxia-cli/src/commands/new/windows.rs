@@ -5,8 +5,6 @@ use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use std::fs;
 
-pub(super) const WINDOWS_RS_REV: &str = "a1e9fce43c026221f62f0a149267cb6d7d3c607b";
-
 pub(super) fn create_windows_project(config: &ProjectConfig) -> Result<()> {
     let windows_dir = config.target_dir.join("windows");
     fs::create_dir_all(&windows_dir)?;
@@ -33,11 +31,6 @@ pub(super) fn create_windows_project(config: &ProjectConfig) -> Result<()> {
         "LINGXIA_VERSION".to_string(),
         crate::versions::cargo_compat_req(),
     );
-    vars.insert(
-        "LINGXIA_WINDOWS_SDK_GIT_REF".to_string(),
-        crate::versions::windows_sdk_git_ref(),
-    );
-    vars.insert("WINDOWS_RS_REV".to_string(), WINDOWS_RS_REV.to_string());
 
     process_template_dir(&template_dir, &windows_dir, &vars)?;
     println!("  Created Windows host project: windows/");
@@ -46,34 +39,25 @@ pub(super) fn create_windows_project(config: &ProjectConfig) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::WINDOWS_RS_REV;
-
     #[test]
-    fn windows_sdk_git_ref_is_valid_inline_table_fragment() {
-        let fragment = crate::versions::windows_sdk_git_ref();
-        assert!(
-            fragment.starts_with("rev = \"") || fragment.starts_with("tag = \"lingxia-crates-v"),
-            "{fragment}"
-        );
-    }
-
-    #[test]
-    fn windows_rs_patch_matches_the_sdk_revision() {
+    fn windows_host_takes_sdk_and_windows_rs_from_crates_io() {
         let sdk_manifest = include_str!("../../../../../crates/lingxia-windows-sdk/Cargo.toml");
-        let expected = format!("rev = \"{WINDOWS_RS_REV}\"");
-        assert!(sdk_manifest.contains(&expected));
+        assert!(
+            !sdk_manifest.contains("microsoft/windows-rs.git"),
+            "windows-sdk must take windows-rs from crates.io"
+        );
 
         let template = include_str!("../../../templates/windows/Cargo.toml.template");
-        let patch_lines = template
-            .lines()
-            .filter(|line| line.contains("microsoft/windows-rs.git"))
-            .collect::<Vec<_>>();
-        assert!(!patch_lines.is_empty());
         assert!(
-            patch_lines
-                .iter()
-                .all(|line| line.contains("{{WINDOWS_RS_REV}}"))
+            !template.contains("microsoft/windows-rs.git"),
+            "generated Windows hosts must not git-pin windows-rs"
         );
+        assert!(!template.contains("{{WINDOWS_RS_REV}}"));
+        assert!(
+            !template.contains("LingXia-Dev/LingXia.git"),
+            "generated Windows hosts must take lingxia-windows-sdk from crates.io"
+        );
+        assert!(template.contains("version = \"{{LINGXIA_VERSION}}\""));
     }
 
     #[test]

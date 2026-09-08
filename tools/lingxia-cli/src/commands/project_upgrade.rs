@@ -5,8 +5,8 @@
 //!
 //! Pins the project owns, rewritten string-level so formatting stays put:
 //! `@lingxia/*` npm ranges, scaffolded LingXia crate requirements in
-//! `native/Cargo.toml`, the `lingxia-windows-sdk` git ref +
-//! `lingxia-windows-build` crate req, and the gradle `lingxia.sdkVersion`
+//! `native/Cargo.toml`, the `lingxia-windows-sdk` +
+//! `lingxia-windows-build` crate reqs, and the gradle `lingxia.sdkVersion`
 //! fallback.
 //!
 //! SDK packages differ by platform and are fetched (or lock-refreshed) here
@@ -14,7 +14,7 @@
 //! - Android: Maven zip into `~/.lingxia/sdk/android-maven/<ver>/`
 //! - Apple: source zip into `~/.lingxia/sdk/apple/<ver>/`, then point
 //!   `ios/` and `macos/` `Package.swift` at it
-//! - Windows: `cargo update -p lingxia-windows-sdk` (git, not crates.io)
+//! - Windows: `cargo update -p lingxia-windows-sdk` / `-p lingxia-windows-build`
 //! - Harmony: HAR into `~/.lingxia/sdk/harmony/<ver>/`
 //!
 //! In-workspace checkouts already have the SDK as source paths; those are
@@ -435,7 +435,7 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
         let content = fs::read_to_string(&windows_cargo)
             .with_context(|| format!("read {}", windows_cargo.display()))?;
         let (content, mut changes) =
-            rewrite_windows_sdk_ref(&content, &crate::versions::windows_sdk_git_ref());
+            rewrite_windows_sdk_dep(&content, &crate::versions::cargo_compat_req());
         let mut cargo_update = Vec::new();
         if changes.iter().any(|c| c.starts_with("lingxia-windows-sdk")) {
             cargo_update.push("lingxia-windows-sdk".to_string());
@@ -811,9 +811,10 @@ fn rewrite_cargo_dep_req(content: &str, crate_name: &str, req: &str) -> (String,
     (out, changes)
 }
 
-/// Rewrite the git ref (`rev = "…"` or `tag = "…"`) on the
-/// `lingxia-windows-sdk` dependency line.
-fn rewrite_windows_sdk_ref(content: &str, git_ref: &str) -> (String, Vec<String>) {
+/// Rewrite `lingxia-windows-sdk` to the crates.io requirement. Git tables
+/// (the old unpublished-SDK pin) become `{ version = "req", … }`; version
+/// tables get the quoted req updated in place.
+fn rewrite_windows_sdk_dep(content: &str, req: &str) -> (String, Vec<String>) {
     let mut changes = Vec::new();
     let mut out = String::with_capacity(content.len());
     let mut in_dependencies = false;
@@ -823,35 +824,42 @@ fn rewrite_windows_sdk_ref(content: &str, git_ref: &str) -> (String, Vec<String>
             out.push_str(line);
             continue;
         }
-        if !in_dependencies || !line.trim_start().starts_with("lingxia-windows-sdk") {
+        let trimmed = line.trim_start();
+        if !in_dependencies || !trimmed.starts_with("lingxia-windows-sdk") {
             out.push_str(line);
             continue;
         }
-        let old_ref = ["rev = \"", "tag = \"", "rev=\"", "tag=\""]
-            .iter()
-            .find_map(|marker| {
-                let start = line.find(marker)? + marker.len();
-                let end = line[start..].find('"')? + start;
-                Some((line[start..end].to_string(), marker, start, end))
-            });
-        match old_ref {
-            Some((old, marker, start, end)) => {
-                // `current`/`git_ref` are full fragments incl. both quotes,
-                // e.g. `tag = "lingxia-crates-v0.11.2"`.
-                let current = format!("{marker}{old}\"");
-                if current == git_ref {
-                    out.push_str(line);
-                    continue;
-                }
-                let new_line = format!(
-                    "{}{git_ref}{}",
-                    &line[..start - marker.len()],
-                    &line[end + 1..]
-                );
-                changes.push(format!("lingxia-windows-sdk: {current} -> {git_ref}"));
+        let is_git = trimmed.contains("git =") || trimmed.contains("git=");
+        if is_git {
+            let indent_len = line.len() - trimmed.len();
+            let indent = &line[..indent_len];
+            let newline = if line.ends_with('\n') { "\n" } else { "" };
+            let default_false = trimmed.contains("default-features = false")
+                || trimmed.contains("default-features=false");
+            let new_line = if default_false {
+                format!(
+                    "{indent}lingxia-windows-sdk = {{ version = \"{req}\", default-features = false }}{newline}"
+                )
+            } else {
+                format!("{indent}lingxia-windows-sdk = {{ version = \"{req}\" }}{newline}")
+            };
+            changes.push(format!("lingxia-windows-sdk: git -> {req}"));
+            out.push_str(&new_line);
+            continue;
+        }
+        let rewritten = if trimmed.contains('{') {
+            rewrite_quoted_after(line, "version = ", req)
+                .or_else(|| rewrite_quoted_after(line, "version=", req))
+        } else {
+            rewrite_quoted_after(line, "lingxia-windows-sdk = ", req)
+                .or_else(|| rewrite_quoted_after(line, "lingxia-windows-sdk=", req))
+        };
+        match rewritten {
+            Some((new_line, old)) if old != req => {
+                changes.push(format!("lingxia-windows-sdk: {old} -> {req}"));
                 out.push_str(&new_line);
             }
-            None => out.push_str(line),
+            _ => out.push_str(line),
         }
     }
     (out, changes)
@@ -993,6 +1001,9 @@ fn pinned_gradle_sdk(root: &Path) -> Option<String> {
 
 fn pinned_windows_sdk_version(root: &Path) -> Option<String> {
     let content = fs::read_to_string(root.join("windows").join("Cargo.toml")).ok()?;
+    if let Some(req) = cargo_dependency_req(&content, "lingxia-windows-sdk") {
+        return Some(req);
+    }
     let mut in_dependencies = false;
     for line in content.lines() {
         if let Some(table) = cargo_table_name(line) {
@@ -1294,24 +1305,28 @@ mod tests {
     }
 
     #[test]
-    fn windows_git_ref_is_rewritten() {
+    fn windows_sdk_git_dep_becomes_crates_io_version() {
         let content = "[dependencies]\nlingxia-windows-sdk = { git = \"https://github.com/LingXia-Dev/LingXia.git\", tag = \"lingxia-crates-v0.11.2\", package = \"lingxia-windows-sdk\", default-features = false }\n";
-        let (out, changes) = rewrite_windows_sdk_ref(content, "rev = \"abc1234\"");
-        assert_eq!(changes.len(), 1);
-        assert!(out.contains("rev = \"abc1234\", package"));
-        assert!(!out.contains("tag ="));
+        let (out, changes) = rewrite_windows_sdk_dep(content, "~0.15.0");
+        assert_eq!(changes, vec!["lingxia-windows-sdk: git -> ~0.15.0"]);
+        assert_eq!(
+            out,
+            "[dependencies]\nlingxia-windows-sdk = { version = \"~0.15.0\", default-features = false }\n"
+        );
+        assert!(!out.contains("git"));
 
-        // Same ref again: no change reported.
-        let (again, changes) = rewrite_windows_sdk_ref(&out, "rev = \"abc1234\"");
+        let (again, changes) = rewrite_windows_sdk_dep(&out, "~0.15.0");
         assert!(changes.is_empty());
         assert_eq!(again, out);
 
         let compact =
             "[dependencies]\nlingxia-windows-sdk={git=\"repo\",tag=\"lingxia-crates-v0.11.2\"}\n";
-        let (out, changes) = rewrite_windows_sdk_ref(compact, "rev = \"abc1234\"");
-        assert_eq!(changes.len(), 1);
-        assert!(out.contains("rev = \"abc1234\""));
-        assert!(!out.contains("tag="));
+        let (out, changes) = rewrite_windows_sdk_dep(compact, "~0.15.0");
+        assert_eq!(changes, vec!["lingxia-windows-sdk: git -> ~0.15.0"]);
+        assert_eq!(
+            out,
+            "[dependencies]\nlingxia-windows-sdk = { version = \"~0.15.0\" }\n"
+        );
     }
 
     #[test]
@@ -1434,14 +1449,19 @@ mod tests {
     }
 
     #[test]
-    fn windows_git_ref_and_build_crate_compose() {
+    fn windows_sdk_and_build_crate_compose() {
         let content = "[dependencies]\nlingxia-windows-sdk = { git = \"https://github.com/LingXia-Dev/LingXia.git\", tag = \"lingxia-crates-v0.11.2\", package = \"lingxia-windows-sdk\", default-features = false }\n\n[build-dependencies]\nlingxia-windows-build = { version = \"0.11.2\" }\n";
-        let (mid, sdk_changes) = rewrite_windows_sdk_ref(content, "rev = \"abc1234\"");
+        let (mid, sdk_changes) = rewrite_windows_sdk_dep(content, "~0.12.0");
         let (out, build_changes) = rewrite_cargo_dep_req(&mid, "lingxia-windows-build", "~0.12.0");
-        assert_eq!(sdk_changes.len(), 1);
+        assert_eq!(sdk_changes, vec!["lingxia-windows-sdk: git -> ~0.12.0"]);
         assert_eq!(build_changes.len(), 1);
-        assert!(out.contains("rev = \"abc1234\""));
+        assert!(
+            out.contains(
+                "lingxia-windows-sdk = { version = \"~0.12.0\", default-features = false }"
+            )
+        );
         assert!(out.contains("lingxia-windows-build = { version = \"~0.12.0\" }"));
+        assert!(!out.contains("git"));
     }
 
     #[test]

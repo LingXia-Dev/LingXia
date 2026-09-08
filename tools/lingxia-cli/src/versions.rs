@@ -43,20 +43,6 @@ pub fn cargo_compat_req() -> String {
     format!("~{}", env!("LINGXIA_RUST_CRATE_VERSION"))
 }
 
-/// Git ref for the `lingxia-windows-sdk` dependency (not on crates.io): the
-/// exact commit for dev builds of the CLI, the crates release tag otherwise.
-pub fn windows_sdk_git_ref() -> String {
-    let hash = env!("LINGXIA_COMMIT_HASH");
-    if hash != "unknown" && hash.len() >= 7 {
-        format!("rev = \"{hash}\"")
-    } else {
-        format!(
-            "tag = \"lingxia-crates-v{}\"",
-            env!("LINGXIA_RUST_CRATE_VERSION")
-        )
-    }
-}
-
 /// `~M.m.0` from a full semver. Used by scaffolds so an older framework
 /// patch still resolves after a base-only bump.
 pub fn minor_tilde_range(version: &str) -> String {

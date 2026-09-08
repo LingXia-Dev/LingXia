@@ -41,6 +41,7 @@ CRATES=(
   "lingxia-webview"
   "lingxia-windows-build"
   "lingxia-windows-contract"
+  "lingxia-windows-sdk"
 )
 
 # Order CRATES so every crate publishes after the crates it depends on. cargo

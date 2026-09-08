@@ -123,8 +123,8 @@ fn build_location_payload(
     let longitude = coordinate
         .Longitude()
         .map_err(|err| PlatformError::Platform(format!("failed to read longitude: {err}")))?;
-    // The published and git windows-rs projections expose nullable WinRT
-    // values differently. Read their stable ABI so both sources behave alike.
+    // windows-rs projected getters for nullable WinRT values differ across
+    // 0.62 releases. Read the stable ABI so Accuracy/Altitude stay numeric.
     let horizontal_accuracy = sanitize_measurement(coordinate.Accuracy().unwrap_or(0.0));
     let coordinate_interface: IGeocoordinate = coordinate.cast().map_err(|err| {
         PlatformError::Platform(format!("failed to access location coordinate: {err}"))
