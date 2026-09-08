@@ -10,6 +10,20 @@ The repo ships agent-oriented docs as a skill rooted at [docs/skill/SKILL.md](do
 - `docs/skill/native/` — Rust native routes and host addons
 - `docs/skill/reference/` — file lifecycle
 
+## Internal docs
+
+`docs/internal/` is the other half, and it is not part of the skill: it is for
+work *on* this repo, not on apps built with it. Read the relevant one before
+changing the subsystem it covers — each states invariants that are not
+recoverable from the code alone.
+
+- [`trusted-control-plane.md`](docs/internal/trusted-control-plane.md) — session classes, route audiences, and the ingress lock discipline. Read before touching authorization, session creation, or WebView message ingress.
+- [`bridge-protocol.md`](docs/internal/bridge-protocol.md) — normative wire contract for `LegacyV2` / `RequiredV3`.
+- [`webview-lifecycle.md`](docs/internal/webview-lifecycle.md) — WebView creation, presentation, and teardown across platforms.
+- [`lingxia-facade-boundary.md`](docs/internal/lingxia-facade-boundary.md) — what stays behind the `lingxia` crate facade.
+- [`shell-ui-spec.md`](docs/internal/shell-ui-spec.md) · [`view-environment-spec.md`](docs/internal/view-environment-spec.md) — surface layout and View environment contracts.
+- [`logging.md`](docs/internal/logging.md) · [`env-version.md`](docs/internal/env-version.md) · [`release-versioning.md`](docs/internal/release-versioning.md) — log pipeline, env version, release version rules.
+
 ## Example projects
 
 Two examples under `examples/`, one per project shape:

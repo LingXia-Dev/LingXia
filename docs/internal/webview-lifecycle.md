@@ -7,6 +7,11 @@
 > legacy per-callback surface (`on_page_started`/`on_page_finished`/…) is
 > gone. See the rustdoc on `WebViewDelegate` for the full invariants.
 
+> The normalizer's registry lock is process-wide and not reentrant, so which
+> of its two document-binding checks you use is a correctness question, not a
+> style one: [`trusted-control-plane.md`](trusted-control-plane.md#ingress-lock-discipline)
+> has the rule. Read it before adding a call on an ingress path.
+
 ## Purpose
 
 This document explains the end-to-end lifecycle of LingXia WebView instances —

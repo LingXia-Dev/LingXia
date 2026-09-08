@@ -443,6 +443,7 @@ Common error codes:
 | `BRIDGE_METHOD_NOT_FOUND` | method name doesn't match any Logic handler |
 | `BRIDGE_TOPIC_NOT_FOUND` | channel topic not registered |
 | `BRIDGE_TIMEOUT` | request timed out |
+| `BRIDGE_MESSAGE_TOO_LARGE` | the encoded frame exceeded the 64 KiB native message limit — split the payload, or move the bulk through a file or a stream |
 | `BRIDGE_INTERNAL_ERROR` | unexpected error in Logic or Bridge |
 
 For streams, check `chat.error` after `chat.streaming` becomes `false`. For channels, check `session.error` after `session.connected` becomes `false`.
