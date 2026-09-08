@@ -247,6 +247,12 @@ pub(crate) fn window_has_device_frame(window: isize) -> bool {
     native::window_has_frame(window)
 }
 
+/// Hide the bezel and companion overlays for a parked page parent so it cannot
+/// sit beside the workspace as a second runner silhouette.
+pub(crate) fn hide_window_device_frame(window: isize) {
+    native::hide_device_frame_for_handle(window);
+}
+
 /// Visible content HWND currently wrapped in a simulator device frame, if any.
 /// Navigation uses this so relaunch/replace cannot escape the runner silhouette.
 #[cfg_attr(not(feature = "shell-chrome"), allow(dead_code))]

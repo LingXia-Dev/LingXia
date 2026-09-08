@@ -594,6 +594,10 @@ pub(super) fn set_frame_overlays_visible(content: isize, visible: bool) {
     }
 }
 
+pub(super) fn hide_device_frame_for_handle(handle: isize) {
+    hide_device_frame_chrome(hwnd_from_handle(handle));
+}
+
 fn hide_device_frame_chrome(content: HWND) {
     let handle = hwnd_handle(content);
     info_sheet::dismiss_info_sheet_for_content(handle);
@@ -709,6 +713,15 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
         log::warn!("ignoring device frame with empty screen: {spec:?}");
         return;
     }
+    // One runner silhouette. Overflow tabs spawn a temporary top-level parent
+    // before present; wrapping it here would flash a second empty bezel.
+    let handle = hwnd_handle(content);
+    if framed_content_windows().into_iter().any(|existing| {
+        existing != handle
+            && unsafe { WindowsAndMessaging::IsWindowVisible(hwnd_from_handle(existing)).as_bool() }
+    }) {
+        return;
+    }
     // Fit the simulated device to the monitor work area (the macOS runner's
     // fitScale): every geometric spec field scales together, so the frame,
     // overlays, and corner visuals stay proportionate. The factor is kept on
@@ -719,7 +732,6 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
         scale_spec(&mut spec, fit);
     }
     install_device_frame_subclass(content);
-    let handle = hwnd_handle(content);
     // The status bar's transparent/foreground/background are page-driven — the
     // shell sets them per active page (e.g. an immersive `custom` page floats a
     // transparent strip). The device frame only owns the bar's geometry, so
