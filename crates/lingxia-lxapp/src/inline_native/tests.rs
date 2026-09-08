@@ -1317,7 +1317,15 @@ fn javascript_commit_contracts_apply_without_losing_nodes() {
 fn partial_clipping_preserves_content_but_limits_paint_and_hit_regions() {
     let root = root();
     let mut session = IslandSession::default();
-    assert!(matches!(session.apply_commit(commit(&root, 0, 1, vec![mount(&root, "play", "tappable", None, 0)])), ApplyCommitOutcome::Applied(_)));
+    assert!(matches!(
+        session.apply_commit(commit(
+            &root,
+            0,
+            1,
+            vec![mount(&root, "play", "tappable", None, 0)]
+        )),
+        ApplyCommitOutcome::Applied(_)
+    ));
     activate_lease(&mut session, &root);
     let snapshot: NativeGeometrySnapshot = serde_json::from_value(serde_json::json!({
         "action": "geometry.snapshot", "surfaceInstanceId": root.surface_instance_id,
@@ -1333,9 +1341,26 @@ fn partial_clipping_preserves_content_but_limits_paint_and_hit_regions() {
     session.apply_geometry(snapshot);
     let nodes = session.composition_nodes();
     assert_eq!(session.paint_rect_for_node(&nodes[0]).height, 120.0);
-    assert_eq!(session.clipped_rect_for_node(&nodes[0]), Rect { x: 10.0, y: 30.0, width: 160.0, height: 40.0 });
+    assert_eq!(
+        session.clipped_rect_for_node(&nodes[0]),
+        Rect {
+            x: 10.0,
+            y: 30.0,
+            width: 160.0,
+            height: 40.0
+        }
+    );
     let targets = session.hit_targets();
-    assert!(matches!(hit_test_island(&targets, 20.0, 25.0), IslandHit::Miss));
-    assert!(!matches!(hit_test_island(&targets, 20.0, 45.0), IslandHit::Miss));
-    assert_eq!(session.paint_props_for("play").unwrap()["__nativeClipRect"]["height"], 40.0);
+    assert!(matches!(
+        hit_test_island(&targets, 20.0, 25.0),
+        IslandHit::Miss
+    ));
+    assert!(!matches!(
+        hit_test_island(&targets, 20.0, 45.0),
+        IslandHit::Miss
+    ));
+    assert_eq!(
+        session.paint_props_for("play").unwrap()["__nativeClipRect"]["height"],
+        40.0
+    );
 }
