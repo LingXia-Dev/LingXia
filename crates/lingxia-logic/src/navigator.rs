@@ -202,13 +202,12 @@ fn register_host_terminal_settings_bundle(
             ),
         ));
     };
-    if authorization::authorize(invocation, LogicRoute::ShellOpenHostTerminalSettings).is_err() {
-        return Err(js_error_from_lxapp_error(
-            &LxAppError::UnsupportedOperation(
-                "only the native ControlApp may open the host Terminal Settings control session"
-                    .to_string(),
-            ),
-        ));
+    if let Err(denied) =
+        authorization::authorize(invocation, LogicRoute::ShellOpenHostTerminalSettings)
+    {
+        // A caller that lacks the audience is denied, not unsupported: every
+        // control-plane refusal reaches JS as E_PERMISSION_DENIED.
+        return Err(authorization::denial_error(denied));
     }
     let manifest = format!("{target_appid}/lxapp.json");
     lxapp.runtime.read_asset(&manifest).map_err(|_| {

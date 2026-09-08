@@ -117,9 +117,37 @@ impl LogicRoute {
     ];
 
     /// `lx.terminal.*` serves the host-bundled Settings surface and nothing
-    /// else; every other direct route belongs to the home ControlApp.
+    /// else; every other direct route belongs to the ControlApp.
+    ///
+    /// Deliberately exhaustive: a catch-all arm would silently make the next
+    /// route ControlApp-only, which is a breaking change for every guest
+    /// lxapp that expected to call it.
     pub(crate) const fn audience(self) -> RouteAudience {
         match self {
+            Self::AppExit
+            | Self::AppSetBadge
+            | Self::AppCacheSize
+            | Self::AppCacheClear
+            | Self::AppGetAppearancePreference
+            | Self::AppSetAppearancePreference
+            | Self::AppWatchAppearancePreference
+            | Self::AppGetDisplayLanguagePreference
+            | Self::AppSetDisplayLanguagePreference
+            | Self::AppWatchDisplayLanguagePreference
+            | Self::AppCheckUpdate
+            | Self::AppApplyUpdate
+            | Self::AppScreenshot
+            | Self::AppAutostartIsEnabled
+            | Self::AppAutostartSetEnabled
+            | Self::ShellSidebarReplace
+            | Self::ShellSidebarUpdate
+            | Self::ShellSidebarRemove
+            | Self::ShellSidebarClear
+            | Self::ShellOpenApp
+            | Self::ShellOpenBuiltin
+            | Self::ShellOpenDeclared
+            | Self::ShellReconfigure
+            | Self::ShellOpenHostTerminalSettings => RouteAudience::ControlAppOnly,
             #[cfg(feature = "terminal")]
             Self::TerminalSettingsGet
             | Self::TerminalSettingsUpdate
@@ -136,7 +164,6 @@ impl LogicRoute {
             Self::TerminalWindowsStatus
             | Self::TerminalWindowsInstall
             | Self::TerminalWindowsSetEnabled => RouteAudience::ControlSurfaceOnly,
-            _ => RouteAudience::ControlAppOnly,
         }
     }
 
@@ -270,7 +297,7 @@ fn authorize_caller(
 
 /// Name the class that would have been admitted. A ControlSurface author told
 /// to become "the Control app" is being pointed at the wrong fix.
-fn denial_detail(denied: LogicAuthorizationDenied) -> rong::RongJSError {
+pub(crate) fn denial_error(denied: LogicAuthorizationDenied) -> rong::RongJSError {
     let route = denied.route();
     let audience = match route.audience() {
         RouteAudience::ControlSurfaceOnly => "the host-bundled control surface",
@@ -284,7 +311,7 @@ fn denial_detail(denied: LogicAuthorizationDenied) -> rong::RongJSError {
 
 pub(crate) fn require(ctx: &JSContext, route: LogicRoute) -> JSResult<HostInvocationContext> {
     let invocation = invocation_from_context(ctx)?;
-    authorize(&invocation, route).map_err(denial_detail)?;
+    authorize(&invocation, route).map_err(denial_error)?;
     Ok(invocation)
 }
 
@@ -297,7 +324,7 @@ pub(crate) fn require_before_decode<T>(
 ) -> JSResult<(HostInvocationContext, T)> {
     let invocation = invocation_from_context(ctx)?;
     let decoded =
-        authorize_caller_then(invocation.caller(), route, decode).map_err(denial_detail)??;
+        authorize_caller_then(invocation.caller(), route, decode).map_err(denial_error)??;
     Ok((invocation, decoded))
 }
 
