@@ -22,10 +22,26 @@ fn normalize_locale(locale: &str) -> String {
     match primary.as_str() {
         "en" => "en-US".to_string(),
         "zh" => "zh-CN".to_string(),
+        // The product accepts any BCP-47 tag; the framework's own strings ship
+        // in two languages and fall back. That is a catalog gap, reported once
+        // per language — `t()` runs on every framework string, and a line per
+        // call would bury the log it belongs in.
         _ => {
-            log::warn!("Unsupported locale `{}`; using en-US.", locale);
+            report_missing_catalog(&primary);
             "en-US".to_string()
         }
+    }
+}
+
+fn report_missing_catalog(language: &str) {
+    static REPORTED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+        std::sync::OnceLock::new();
+    let mut reported = REPORTED
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    if reported.insert(language.to_string()) {
+        log::info!("No built-in `lx.*` strings for `{language}`; using en-US.");
     }
 }
 

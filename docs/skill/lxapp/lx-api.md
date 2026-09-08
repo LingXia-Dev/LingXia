@@ -75,6 +75,35 @@ OS process APIs are a separate host capability with opt-in declarations at
 
 ## Runtime convention
 
+### The product owns its settings
+
+A setting the user recognises as belonging to the whole product — its language,
+its light/dark scheme — has exactly one value and exactly one writer, the
+product's Settings surface. No lxapp, panel, or built-in screen keeps a second
+one, and none offers the user a picker of its own.
+
+Narrowing what the product hands you is a different thing, and is invisible to
+the user: shipping catalogs for two languages and falling back for the rest, or
+declaring in `lxapp.json` that this lxapp's UI only works in dark. Those are
+static properties of your code, not preferences someone chose.
+
+So each of these reads the same way: a pair on `lx.app` that every lxapp
+follows, and a writer behind `lx.app.control` that only the Control app has.
+
+```ts
+lx.app.displayLanguage.get();        lx.app.displayLanguage.watch(cb);
+lx.app.appearance.get();             lx.app.appearance.watch(cb);
+
+lx.app.control?.displayLanguage.setPreference('zh-CN');
+lx.app.control?.appearance.setPreference('dark');
+```
+
+`get`/`watch` answer what is in effect. `getPreference`/`setPreference`/
+`watchPreference` answer what the user chose — a system change under `'auto'`
+moves the first pair and leaves the second quiet.
+
+### Everything else
+
 Unsupported cosmetic capabilities with no meaningful result, such as desktop
 tray presentation on mobile, are silent no-ops. Result-bearing operations and
 invalid usage reject or throw. Each generated method's JSDoc is authoritative

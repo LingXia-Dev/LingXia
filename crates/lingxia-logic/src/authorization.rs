@@ -262,17 +262,23 @@ fn authorize_caller(
         .ok_or(LogicAuthorizationDenied { route })
 }
 
+/// Name the class that would have been admitted. A ControlSurface author told
+/// to become "the Control app" is being pointed at the wrong fix.
+fn denial_detail(denied: LogicAuthorizationDenied) -> rong::RongJSError {
+    let route = denied.route();
+    let audience = match route.audience() {
+        RouteAudience::ControlSurfaceOnly => "the host-bundled control surface",
+        _ => "the Control app",
+    };
+    js_error_from_business_code_with_detail(
+        3000,
+        format!("{} is only available in {audience}", route.name()),
+    )
+}
+
 pub(crate) fn require(ctx: &JSContext, route: LogicRoute) -> JSResult<HostInvocationContext> {
     let invocation = invocation_from_context(ctx)?;
-    authorize(&invocation, route).map_err(|denied| {
-        js_error_from_business_code_with_detail(
-            3000,
-            format!(
-                "{} is only available in the Control app",
-                denied.route().name()
-            ),
-        )
-    })?;
+    authorize(&invocation, route).map_err(denial_detail)?;
     Ok(invocation)
 }
 
@@ -285,15 +291,7 @@ pub(crate) fn require_before_decode<T>(
 ) -> JSResult<(HostInvocationContext, T)> {
     let invocation = invocation_from_context(ctx)?;
     let decoded =
-        authorize_caller_then(invocation.caller(), route, decode).map_err(|denied| {
-            js_error_from_business_code_with_detail(
-                3000,
-                format!(
-                    "{} is only available in the Control app",
-                    denied.route().name()
-                ),
-            )
-        })??;
+        authorize_caller_then(invocation.caller(), route, decode).map_err(denial_detail)??;
     Ok((invocation, decoded))
 }
 
