@@ -1,5 +1,4 @@
 use crate::host::{HostResult, StreamContext};
-use lxapp::HostAppearanceState;
 use lxapp::page_chrome::AppearancePreference;
 use serde::Deserialize;
 use std::sync::OnceLock;
@@ -10,30 +9,40 @@ struct SetPreferenceInput {
     preference: AppearancePreference,
 }
 
-#[lingxia::framework_native("app.getAppearanceState", audience = "control-only")]
-fn get_appearance_state() -> HostResult<HostAppearanceState> {
-    Ok(lxapp::host_appearance_state())
+/// The product's light/dark setting. A document renders in the scheme it is
+/// given; only the surface that edits the setting needs the preference.
+#[lingxia::framework_native("app.getAppearancePreference", audience = "control-only")]
+fn get_appearance_preference() -> HostResult<AppearancePreference> {
+    Ok(lxapp::host_appearance_state().preference)
 }
 
-/// Product-wide light/dark. An lxapp that pinned its own scheme keeps it; the
-/// rest, and the host's own chrome, follow this.
+/// Product-wide light/dark. An lxapp that pinned its own scheme in its manifest
+/// keeps it; the rest, and the host's own chrome, follow this.
 #[lingxia::framework_native("app.setAppearancePreference", audience = "control-only")]
-fn set_appearance_preference(input: SetPreferenceInput) -> HostResult<HostAppearanceState> {
-    lxapp::set_host_appearance_preference(input.preference)
+fn set_appearance_preference(input: SetPreferenceInput) -> HostResult<AppearancePreference> {
+    lxapp::set_host_appearance_preference(input.preference).map(|state| state.preference)
 }
 
-#[lingxia::framework_native("app.watchAppearanceState", stream, audience = "control-only")]
-async fn watch_appearance_state(mut stream: StreamContext<HostAppearanceState>) -> HostResult<()> {
+#[lingxia::framework_native("app.watchAppearancePreference", stream, audience = "control-only")]
+async fn watch_appearance_preference(
+    mut stream: StreamContext<AppearancePreference>,
+) -> HostResult<()> {
     let (initial, mut receiver) = lxapp::subscribe_host_appearance();
     let mut revision = initial.revision;
-    stream.send(initial.state)?;
+    // The state also moves when the system flips under `auto`; the preference
+    // does not, and this stream is about the choice.
+    let mut preference = initial.state.preference;
+    stream.send(preference)?;
     loop {
         tokio::select! {
             _ = stream.canceled() => return Ok(()),
             received = receiver.recv() => match received {
                 Some(update) if update.revision > revision => {
                     revision = update.revision;
-                    stream.send(update.state)?;
+                    if update.state.preference != preference {
+                        preference = update.state.preference;
+                        stream.send(preference)?;
+                    }
                 }
                 Some(_) => {}
                 None => return stream.end(()),
@@ -45,9 +54,9 @@ async fn watch_appearance_state(mut stream: StreamContext<HostAppearanceState>) 
 pub(crate) fn register() {
     static REGISTERED: OnceLock<()> = OnceLock::new();
     REGISTERED.get_or_init(|| {
-        crate::host::register_host_entry(get_appearance_state_host());
+        crate::host::register_host_entry(get_appearance_preference_host());
         crate::host::register_host_entry(set_appearance_preference_host());
-        crate::host::register_host_entry(watch_appearance_state_host());
+        crate::host::register_host_entry(watch_appearance_preference_host());
     });
 }
 
@@ -58,9 +67,9 @@ mod tests {
     #[test]
     fn the_product_wide_scheme_is_control_only() {
         for route in [
-            get_appearance_state_host(),
+            get_appearance_preference_host(),
             set_appearance_preference_host(),
-            watch_appearance_state_host(),
+            watch_appearance_preference_host(),
         ] {
             assert_eq!(route.audience(), crate::host::RouteAudience::ControlOnly);
         }

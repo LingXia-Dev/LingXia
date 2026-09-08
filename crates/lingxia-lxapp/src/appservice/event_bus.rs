@@ -7,6 +7,10 @@ use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
 pub const BROWSER_TAB_CLOSED_EVENT: &str = "__lingxiaBrowserTabClosed";
+/// App-scoped event carrying this lxapp's resolved light/dark scheme.
+pub const APPEARANCE_CHANGE_EVENT: &str = "AppearanceChange";
+/// App-scoped event carrying the product's light/dark preference.
+pub const HOST_APPEARANCE_CHANGE_EVENT: &str = "HostAppearanceChange";
 /// App-scoped event carrying the host's effective display language.
 pub const DISPLAY_LANGUAGE_CHANGE_EVENT: &str = "DisplayLanguageChange";
 /// App-scoped event carrying the complete host display-language state.

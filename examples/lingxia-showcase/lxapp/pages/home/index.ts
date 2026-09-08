@@ -15,13 +15,17 @@ Page({
     appearance: { preference: "auto", resolved: "light" },
   },
 
-  // The lxapp's own light/dark branch, independent of the host shell. The
-  // preference persists per lxapp, so it is re-read on every show rather than
-  // tracked locally. Guarded because this also runs from onLoad on the app's
-  // first screen: a host that predates lx.appearance must not take it down.
+  // The product's light/dark scheme. Showcase is its host's Control app, so it
+  // owns the setting; the scheme it renders in is read separately, because an
+  // lxapp that pinned one in its manifest does not follow the product.
   _syncAppearance: function () {
     try {
-      this.setData({ appearance: lx.appearance.get() });
+      this.setData({
+        appearance: {
+          preference: lx.app.control?.appearance.getPreference() ?? "auto",
+          resolved: lx.app.appearance.get(),
+        },
+      });
     } catch (error) {
       console.warn("[Home] Appearance unavailable:", error);
     }
@@ -30,7 +34,7 @@ Page({
   setAppearance: async function (options: { preference?: "auto" | "light" | "dark" } = {}) {
     const preference = options.preference || "auto";
     try {
-      await lx.appearance.set(preference);
+      await lx.app.control?.appearance.setPreference(preference);
     } catch (error) {
       console.warn("[Home] Failed to set appearance:", error);
       lx.showToast({ title: "Appearance unavailable", icon: "none" });

@@ -87,9 +87,9 @@ fn settings_required_routes() -> Vec<&'static str> {
         "app.getDisplayLanguagePreference",
         "app.setDisplayLanguagePreference",
         "app.watchDisplayLanguagePreference",
-        "app.getAppearanceState",
+        "app.getAppearancePreference",
         "app.setAppearancePreference",
-        "app.watchAppearanceState",
+        "app.watchAppearancePreference",
     ];
     #[cfg(feature = "proxy")]
     let routes = {

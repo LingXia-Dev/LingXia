@@ -14,22 +14,11 @@ use std::path::{Path, PathBuf};
 /// Directory of imported themes, inside the app's state directory.
 const THEME_DIR: &str = "themes";
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ThemeMode {
-    /// Follow the OS appearance.
-    #[default]
-    System,
-    Light,
-    Dark,
-}
-
+/// A light scheme and a dark one. Which is in use follows the product's
+/// light/dark setting; the terminal has no scheme switch of its own.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default, deny_unknown_fields)]
 pub struct ThemeConfig {
-    pub mode: ThemeMode,
-    /// Theme used in light appearance; both are named so following the system
-    /// works without further configuration.
     pub light: String,
     pub dark: String,
 }
@@ -37,7 +26,6 @@ pub struct ThemeConfig {
 impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
-            mode: ThemeMode::System,
             light: "lingxia-light".to_string(),
             dark: "lingxia-dark".to_string(),
         }
@@ -45,13 +33,12 @@ impl Default for ThemeConfig {
 }
 
 impl ThemeConfig {
-    /// The theme name for the current appearance.
+    /// The theme name for the scheme the product is in.
     pub fn selected(&self, system_is_dark: bool) -> &str {
-        match self.mode {
-            ThemeMode::Light => &self.light,
-            ThemeMode::Dark => &self.dark,
-            ThemeMode::System if system_is_dark => &self.dark,
-            ThemeMode::System => &self.light,
+        if system_is_dark {
+            &self.dark
+        } else {
+            &self.light
         }
     }
 }
@@ -467,20 +454,10 @@ mod tests {
     }
 
     #[test]
-    fn mode_selects_by_appearance() {
+    fn the_scheme_pair_follows_the_product() {
         let config = ThemeConfig::default();
         assert_eq!(config.selected(true), "lingxia-dark");
         assert_eq!(config.selected(false), "lingxia-light");
-
-        let pinned = ThemeConfig {
-            mode: ThemeMode::Light,
-            ..ThemeConfig::default()
-        };
-        assert_eq!(
-            pinned.selected(true),
-            "lingxia-light",
-            "pinned beats system"
-        );
     }
 
     #[test]

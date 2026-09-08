@@ -6,7 +6,7 @@
 //! pin it for the whole product. An lxapp that pinned its own scheme keeps it.
 
 use super::page_chrome::{AppearancePreference, ResolvedAppearance};
-use super::runtime_registry::get_platform;
+use super::runtime_registry::{get_lxapps_manager, get_platform};
 use crate::error::LxAppError;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::ui::UIUpdate;
@@ -42,6 +42,13 @@ fn preference_slot() -> &'static RwLock<AppearancePreference> {
 fn revision_counter() -> &'static AtomicU64 {
     static REVISION: AtomicU64 = AtomicU64::new(1);
     &REVISION
+}
+
+/// The last state every subscriber has seen, so a system flip under a pinned
+/// preference — which changes nothing observable — wakes nobody.
+fn last_published() -> &'static Mutex<Option<HostAppearanceState>> {
+    static LAST: OnceLock<Mutex<Option<HostAppearanceState>>> = OnceLock::new();
+    LAST.get_or_init(|| Mutex::new(None))
 }
 
 fn subscribers() -> &'static Mutex<Vec<mpsc::UnboundedSender<HostAppearanceUpdate>>> {
@@ -136,19 +143,14 @@ pub fn initialize_host_appearance() {
 }
 
 /// Pin the whole host to `light`/`dark`, or follow the system with `auto`.
+///
+/// Persist first, then publish: a caller that was told the write failed must
+/// not find the product already running in the scheme it rejected.
 pub fn set_host_appearance_preference(
     preference: AppearancePreference,
 ) -> Result<HostAppearanceState, LxAppError> {
     let platform = get_platform()
         .ok_or_else(|| LxAppError::Runtime("platform runtime is not initialized".to_string()))?;
-    let changed = {
-        let mut slot = preference_slot()
-            .write()
-            .unwrap_or_else(|error| error.into_inner());
-        let changed = *slot != preference;
-        *slot = preference;
-        changed
-    };
     // `auto` clears the stored override rather than pinning today's answer:
     // the next launch must follow the system as it is then.
     let stored = match preference {
@@ -157,29 +159,80 @@ pub fn set_host_appearance_preference(
     };
     lingxia_service::settings::set_host_appearance(&platform.app_data_dir(), stored)
         .map_err(|error| LxAppError::Runtime(error.to_string()))?;
+    let changed = {
+        let mut slot = preference_slot()
+            .write()
+            .unwrap_or_else(|error| error.into_inner());
+        let changed = *slot != preference;
+        *slot = preference;
+        changed
+    };
     if changed {
         revision_counter().fetch_add(1, Ordering::AcqRel);
         publish_host_color_mode(&platform, preference);
-        // Every lxapp still on `auto` resolves against the new host value.
-        // That call also broadcasts the new state to live Logic workers.
+        // Every lxapp that follows the product re-resolves against the new
+        // value, and each one tells its own Logic worker.
         super::runtime_ops::refresh_auto_appearances();
+        notify();
     }
     Ok(host_appearance_state())
 }
 
-/// The system flipped underneath us. Only `auto` moves with it, but the
-/// resolved value it reports changes either way.
+/// The system flipped underneath us. Only `auto` moves with it, so a pinned
+/// product reports nothing: its state is unchanged.
 pub fn refresh_host_appearance_system() {
+    let state = host_appearance_state();
+    {
+        let mut last = last_published()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if *last == Some(state) {
+            return;
+        }
+        *last = Some(state);
+    }
     revision_counter().fetch_add(1, Ordering::AcqRel);
     notify();
 }
 
 fn notify() {
     let update = host_appearance_update();
-    let mut registered = subscribers()
+    *last_published()
         .lock()
-        .unwrap_or_else(|error| error.into_inner());
-    registered.retain(|subscriber| subscriber.send(update).is_ok());
+        .unwrap_or_else(|error| error.into_inner()) = Some(update.state);
+    {
+        let mut registered = subscribers()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        registered.retain(|subscriber| subscriber.send(update).is_ok());
+    }
+    publish_to_logic(&update);
+}
+
+/// The product's own setting, for the Logic context that edits it. An lxapp's
+/// resolved scheme travels separately, per lxapp, because a manifest pin can
+/// hold it still while this moves.
+fn publish_to_logic(update: &HostAppearanceUpdate) {
+    let Some(manager) = get_lxapps_manager() else {
+        return;
+    };
+    let payload = format!(
+        "{{\"revision\":{},\"preference\":\"{}\"}}",
+        update.revision,
+        update.state.preference.as_str()
+    );
+    let appids: Vec<_> = manager
+        .lxapps
+        .iter()
+        .map(|entry| entry.key().clone())
+        .collect();
+    for appid in appids {
+        crate::appservice::event_bus::publish_app_event(
+            &appid,
+            crate::HOST_APPEARANCE_CHANGE_EVENT,
+            Some(payload.clone()),
+        );
+    }
 }
 
 fn publish_host_color_mode(

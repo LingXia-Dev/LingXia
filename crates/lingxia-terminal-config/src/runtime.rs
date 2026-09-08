@@ -162,12 +162,13 @@ fn load_locked(app_data_dir: PathBuf, system_is_dark: bool) -> TerminalConfig {
         log::warn!("{error}; continuing on defaults");
     }
     log::info!(
-        "terminal config: {} ({}), font {:?} {}pt, theme mode {:?}",
+        "terminal config: {} ({}), font {:?} {}pt, schemes {:?}/{:?}",
         path.display(),
         if path.exists() { "found" } else { "absent" },
         config.font.family,
         config.font.size,
-        config.theme.mode
+        config.theme.light,
+        config.theme.dark
     );
     let before = generation();
     let revision = publish(config.clone());
@@ -706,10 +707,9 @@ mod tests {
     #[test]
     fn importing_an_unselected_scheme_does_not_change_settings() {
         let mut config = TerminalConfig::default();
-        config.theme.mode = crate::ThemeMode::Dark;
         config.theme.dark = "selected".into();
-        assert!(imported_theme_is_active("selected", &config, false));
-        assert!(!imported_theme_is_active("new-scheme", &config, false));
+        assert!(imported_theme_is_active("selected", &config, true));
+        assert!(!imported_theme_is_active("new-scheme", &config, true));
     }
 
     #[test]

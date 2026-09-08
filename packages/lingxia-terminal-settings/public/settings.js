@@ -91,9 +91,10 @@
     });
     return 0.2126 * luminance[0] + 0.7152 * luminance[1] + 0.0722 * luminance[2] >= 0.45 ? "light" : "dark";
   }
-  function slotForMode() {
-    if (draft.theme.mode === "light" || draft.theme.mode === "dark") return draft.theme.mode;
-    return snapshot.effective.systemAppearance;
+  // The terminal ships a light scheme and a dark one; which is shown follows
+  // the product, never a switch of this screen's own.
+  function activeSchemeSlot() {
+    return snapshot.effective.appearance;
   }
   function themesForSlot(slot) {
     return themes.filter(function (entry) { return themeTone(entry.scheme) === slot; });
@@ -178,13 +179,9 @@
     snapshot = snapshotValue;
     pendingExternal = null;
     draft = clone(snapshot.value);
-    activeSlot = slotForMode();
+    activeSlot = activeSchemeSlot();
     var repairedSelection = ensureSelectionForSlot(activeSlot);
     if (window.LingXiaI18n) window.LingXiaI18n.apply();
-    document.querySelectorAll("[data-mode]").forEach(function (button) {
-      button.classList.toggle("active", button.dataset.mode === draft.theme.mode);
-      button.setAttribute("aria-pressed", button.dataset.mode === draft.theme.mode ? "true" : "false");
-    });
     byId("font-family").value = snapshot.effective.font.family;
     // The styled picker keeps the native select as its source of truth, but a
     // property assignment does not emit an event. Notify it after every fill
@@ -365,7 +362,7 @@
     if (dirty) {
       var previousSlot = activeSlot;
       snapshot = next;
-      activeSlot = slotForMode();
+      activeSlot = activeSchemeSlot();
       ensureSelectionForSlot(activeSlot);
       renderThemes();
       renderWarnings();
@@ -384,20 +381,6 @@
     });
   }
 
-  document.querySelectorAll("[data-mode]").forEach(function (button) {
-    button.addEventListener("click", function () {
-      draft.theme.mode = button.dataset.mode;
-      document.querySelectorAll("[data-mode]").forEach(function (item) {
-        item.classList.toggle("active", item === button);
-        item.setAttribute("aria-pressed", item === button ? "true" : "false");
-      });
-      activeSlot = slotForMode();
-      ensureSelectionForSlot(activeSlot);
-      setDirty(true);
-      renderThemes();
-      previewSelection();
-    });
-  });
   document.querySelectorAll("[data-reset]").forEach(function (button) { button.addEventListener("click", function () { reset(button.dataset.reset); }); });
   ["font-family", "font-size", "line-height", "ligatures"].forEach(function (id) {
     byId(id).addEventListener("input", function () { collect(); setDirty(true); });

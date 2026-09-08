@@ -39,7 +39,10 @@ async function waitForTabBar(
 
 async function appearanceOf(app: LxAppDriver): Promise<{ preference: string; resolved: string }> {
   return app.eval({
-    script: 'return lx.appearance.get();',
+    script: `return {
+      preference: lx.app.control.appearance.getPreference(),
+      resolved: lx.app.appearance.get(),
+    };`,
   }) as Promise<{ preference: string; resolved: string }>;
 }
 
@@ -140,13 +143,19 @@ spec("apply navigationBar title, colors, home button, and reset", {
 
 spec("round-trip appearance preference through the ui controls", {
   id: "UI-APPEARANCE-001",
-  covers: ['lx.appearance', 'lx.appearance.get', 'lx.appearance.set'],
+  covers: [
+    'lx.app.control',
+    'lx.app.appearance.get',
+    'lx.app.control.appearance.getPreference',
+    'lx.app.control.appearance.setPreference',
+  ],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
   const { app, defer } = bindFixture(t, "UI-APPEARANCE-001");
   defer(async () => {
-    await app.eval({ script: `await lx.appearance.set('auto');` }).catch(() => undefined);
+    await app.eval({ script: `await lx.app.control.appearance.setPreference('auto');` })
+      .catch(() => undefined);
   });
 
   await app.nav.relaunch({ page: 'ui', query: { type: 'appearance' } });
@@ -179,7 +188,7 @@ spec("round-trip appearance preference through the ui controls", {
 
   await t.step('reject an invalid preference and keep the previous state', async () => {
     const before = await appearanceOf(app);
-    const rejected = await evalCaught(app, `await lx.appearance.set('sepia');`);
+    const rejected = await evalCaught(app, `await lx.app.control.appearance.setPreference('sepia');`);
     expect(rejected.ok).toBeFalsy();
     expect(rejected.code).toBe('E_INVALID_ARG');
     expect(await appearanceOf(app)).toEqual(before);

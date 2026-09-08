@@ -42,15 +42,3 @@ pub fn host_appearance(app_data_dir: &std::path::Path) -> Result<Option<String>>
 pub fn set_host_appearance(app_data_dir: &std::path::Path, preference: Option<&str>) -> Result<()> {
     lingxia_settings::set_host_appearance(app_data_dir, preference)
 }
-
-pub fn lxapp_appearance(app_data_dir: &std::path::Path, app_id: &str) -> Result<Option<String>> {
-    lingxia_settings::get_lxapp_appearance(app_data_dir, app_id)
-}
-
-pub fn set_lxapp_appearance(
-    app_data_dir: &std::path::Path,
-    app_id: &str,
-    preference: &str,
-) -> Result<()> {
-    lingxia_settings::set_lxapp_appearance(app_data_dir, app_id, preference)
-}

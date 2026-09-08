@@ -935,7 +935,7 @@ export default function UIPage() {
               <div className="px-4 py-3 border-b border-line-100">
                 <h3 className="text-base font-medium text-gray-900">Light / Dark</h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  <code className="text-xs">lx.appearance.set()</code> picks this lxapp&apos;s branch
+                  <code className="text-xs">lx.app.control.appearance.setPreference()</code> sets the product&apos;s scheme
                   independently of the host shell; the preference persists per lxapp.
                 </p>
               </div>

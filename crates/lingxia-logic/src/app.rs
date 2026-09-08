@@ -4,6 +4,7 @@ use lingxia_app_context::{app_config, env_version};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use rong::{IntoJSObject, JSContext, JSObject, JSResult, JSValue};
 
+mod appearance;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod autostart;
 mod display_language;
@@ -121,7 +122,9 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 pub(crate) fn init_base(ctx: &JSContext) -> JSResult<()> {
     register_app_property(ctx)?;
     register_app_base_api(ctx)?;
-    display_language::init_follower(ctx, &app_namespace(ctx)?)
+    let app = app_namespace(ctx)?;
+    display_language::init_follower(ctx, &app)?;
+    appearance::init_follower(ctx, &app)
 }
 
 /// `lx.app.control` — the members that edit product-wide settings, and the one
@@ -134,6 +137,7 @@ fn init_control_namespace(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     }
     let control = JSObject::new(ctx);
     display_language::init_control(ctx, &control)?;
+    appearance::init_control(ctx, &control)?;
     app.set("control", control)?;
     Ok(())
 }

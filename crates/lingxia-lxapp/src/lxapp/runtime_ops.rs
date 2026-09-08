@@ -122,10 +122,11 @@ pub fn list_lxapps() -> Vec<LxAppRuntimeInfo> {
     apps
 }
 
-/// Re-resolve every `auto` lxapp after the host's system appearance changes.
+/// Re-resolve every lxapp that follows the product after its scheme moves.
 ///
-/// Callers are the platforms' system-appearance callbacks, so this is also
-/// where a host still on `auto` reports its newly resolved value.
+/// Callers are the platforms' system-appearance callbacks and the product's own
+/// setting, so this is also where a host still on `auto` reports its newly
+/// resolved value.
 pub fn refresh_auto_appearances() {
     super::host_appearance::refresh_host_appearance_system();
     let Some(manager) = super::runtime_registry::get_lxapps_manager() else {
@@ -136,14 +137,13 @@ pub fn refresh_auto_appearances() {
         .iter()
         .filter_map(|entry| {
             let app = entry.value().clone();
+            // An lxapp that pinned a scheme in its manifest is not following.
             (app.appearance_state().preference == AppearancePreference::Auto).then_some(app)
         })
         .collect();
     for app in apps {
         std::mem::drop(crate::executor::spawn(async move {
-            let _ = app
-                .set_appearance_preference(AppearancePreference::Auto)
-                .await;
+            let _ = app.refresh_appearance().await;
         }));
     }
 }

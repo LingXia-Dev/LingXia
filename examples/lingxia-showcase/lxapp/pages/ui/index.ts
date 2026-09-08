@@ -171,13 +171,18 @@ Page({
     });
   },
 
-  // Appearance is part of Page Chrome: the lxapp picks its own light/dark branch
-  // and the runtime projects the resolved one into every page as `color-scheme`
-  // plus `data-theme` on <html>. The preference persists per lxapp, so it is
-  // re-read from the runtime instead of being mirrored in page state.
+  // Appearance is part of Page Chrome: the product picks light/dark and the
+  // runtime projects the resolved scheme into every page as `color-scheme` plus
+  // `data-theme` on <html>. Both halves are read from the runtime rather than
+  // mirrored in page state.
   _syncAppearance: function () {
     try {
-      this.setData({ appearance: lx.appearance.get() });
+      this.setData({
+        appearance: {
+          preference: lx.app.control?.appearance.getPreference() ?? "auto",
+          resolved: lx.app.appearance.get(),
+        },
+      });
     } catch (error) {
       this.setData({ chromeError: `Appearance unavailable: ${surfaceErrorMessage(error)}` });
     }
@@ -186,7 +191,7 @@ Page({
   setAppearance: async function (options: { preference?: "auto" | "light" | "dark" } = {}) {
     const preference = options.preference || "auto";
     const applied = await this._runChromeUpdate("Appearance update", () =>
-      lx.appearance.set(preference),
+      lx.app.control!.appearance.setPreference(preference),
     );
     this._syncAppearance();
     return applied;

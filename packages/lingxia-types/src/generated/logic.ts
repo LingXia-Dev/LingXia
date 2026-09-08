@@ -134,6 +134,9 @@ declare global {
     /** The language this lxapp renders in. Every lxapp follows it. */
     readonly displayLanguage: DisplayLanguageApi;
 
+    /** The light/dark scheme this lxapp renders in. */
+    readonly appearance: AppearanceApi;
+
     /**
      * Product-wide settings, and their single writer. Present only in the
      * Control app the host sealed at build time; its presence and
@@ -314,8 +317,21 @@ export type AppSurface = SurfaceBase & SurfaceShowable & {
     readonly realized: 'main' | 'aside';
 };
 
-export type AppearanceApi = globalThis.AppearanceApi;
+/** `lx.app.appearance` — the scheme this lxapp renders in. */
+export type AppearanceApi = {
+    /**
+     * The scheme this lxapp is rendering in. An lxapp that pinned one in its
+     * `lxapp.json` reports that; every other lxapp reports the product's.
+     */
+    get(): ResolvedAppearance;
+    /** Follow it, starting with the current value. Returns an unsubscribe. */
+    watch(callback: (resolved: ResolvedAppearance) => void): () => void;
+};
 
+/**
+ * What the product's light/dark scheme is set to. `'auto'` follows
+ * the system.
+ */
 export type AppearancePreference = 'auto' | 'light' | 'dark';
 
 /**
@@ -541,6 +557,23 @@ export type ConnectWifiOptions = {
 /** `lx.app.control` — product-wide settings, and their single writer. */
 export type ControlApi = {
     readonly displayLanguage: ControlDisplayLanguageApi;
+    readonly appearance: ControlAppearanceApi;
+};
+
+/** `lx.app.control.appearance` — the product's own light/dark setting. */
+export type ControlAppearanceApi = {
+    /** What the user chose for the whole product. */
+    getPreference(): AppearancePreference;
+    /**
+     * Pin the product to `'light'` or `'dark'`, or follow the system with
+     * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
+     */
+    setPreference(preference: AppearancePreference): Promise<void>;
+    /**
+     * Follow the choice, not what it resolves to: a system flip under `'auto'`
+     * moves `lx.app.appearance.watch` and leaves this quiet.
+     */
+    watchPreference(callback: (preference: AppearancePreference) => void): () => void;
 };
 
 /**
@@ -1922,8 +1955,7 @@ export type TerminalSettingsSnapshot = {
     /** Resolved configuration after all valid layers. */
     value: TerminalSettingsValue;
     effective: {
-        /** Host appearance before applying terminal.theme.mode. */
-        systemAppearance: 'light' | 'dark';
+        /** The scheme the product is in, and therefore the terminal too. */
         appearance: 'light' | 'dark';
         colorScheme: string | null;
         font: {
@@ -1945,10 +1977,11 @@ export type TerminalSettingsWarning = {
     message: string;
 };
 
-export type TerminalThemeMode = 'system' | 'light' | 'dark';
-
+/**
+ * A light scheme and a dark one. Which is in use follows the
+ * product's light/dark setting; the terminal has no switch of its own.
+ */
 export type TerminalThemeSettings = {
-    mode: TerminalThemeMode;
     light: string;
     dark: string;
 };
@@ -2245,11 +2278,6 @@ export interface AppBaseInfo {
   SDKVersion: string;
 }
 
-export interface AppearanceState {
-  preference: AppearancePreference;
-  resolved: ResolvedAppearance;
-}
-
 /** Device info APIs. */
 export interface DeviceInfo {
   brand: string;
@@ -2394,15 +2422,6 @@ export declare class LxFile {
   exists(): Promise<boolean>;
   /** Read metadata for this managed path. */
   stat(): Promise<FileStats>;
-}
-
-declare global {
-  interface AppearanceApi {
-    /** Read the appearance preference and the light/dark value it resolves to. */
-    get(): AppearanceState;
-    /** Set the appearance preference to `auto`, `light`, or `dark`. */
-    set(preference: AppearancePreference): Promise<void>;
-  }
 }
 
 declare global {
@@ -2659,7 +2678,6 @@ declare global {
      * an invalid selection.
      */
     showActionSheet(options: ShowActionSheetOptions): Promise<ActionSheetResult>;
-    readonly appearance: AppearanceApi;
     /**
      * Shows a confirmation modal.
      * Resolves `{ canceled: false }` when the user confirms and `{ canceled: true }`

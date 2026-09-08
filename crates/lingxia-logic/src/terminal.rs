@@ -1,12 +1,9 @@
 //! Trusted terminal-settings API.
 
 use crate::authorization::{self, LogicRoute};
-use lingxia_platform::traits::ui::UIUpdate;
 use lingxia_terminal::TerminalTheme;
 use lingxia_terminal_config::runtime::{MutationError, ThemePreviewLease};
-use lingxia_terminal_config::{
-    ConfigError, SETTINGS_APP_ID, TerminalConfig, ThemeMode, ThemeStore,
-};
+use lingxia_terminal_config::{ConfigError, SETTINGS_APP_ID, ThemeStore};
 use lxapp::LxApp;
 use rong::{
     FromJSObject, HostError, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue,
@@ -212,17 +209,8 @@ fn mutation_error(error: MutationError) -> RongJSError {
     }
 }
 
-fn effective_is_dark(config: &TerminalConfig, system_is_dark: bool) -> bool {
-    match config.theme.mode {
-        ThemeMode::System => system_is_dark,
-        ThemeMode::Light => false,
-        ThemeMode::Dark => true,
-    }
-}
-
 fn snapshot_value(data_dir: &Path, system_is_dark: bool) -> serde_json::Value {
     let state = lingxia_terminal_config::runtime::settings_snapshot(data_dir, system_is_dark);
-    let effective_dark = effective_is_dark(&state.value, system_is_dark);
     let selected = state.value.theme.selected(system_is_dark);
     let scheme_exists = ThemeStore::new(data_dir).get(selected).is_some();
     let mut warnings = Vec::new();
@@ -254,8 +242,9 @@ fn snapshot_value(data_dir: &Path, system_is_dark: bool) -> serde_json::Value {
         "overrides": state.overrides,
         "value": state.value,
         "effective": {
-            "systemAppearance": if system_is_dark { "dark" } else { "light" },
-            "appearance": if effective_dark { "dark" } else { "light" },
+            // The terminal ships a light scheme and a dark one; which is in
+            // use follows the product, so there is one answer, not two.
+            "appearance": if system_is_dark { "dark" } else { "light" },
             "colorScheme": scheme_exists.then_some(selected),
             "font": resolved,
         },
@@ -664,17 +653,6 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn effective_appearance_honors_pinned_mode() {
-        let mut config = TerminalConfig::default();
-        config.theme.mode = ThemeMode::Light;
-        assert!(!effective_is_dark(&config, true));
-        config.theme.mode = ThemeMode::Dark;
-        assert!(effective_is_dark(&config, false));
-        config.theme.mode = ThemeMode::System;
-        assert!(effective_is_dark(&config, true));
-    }
 
     #[test]
     fn every_terminal_api_is_in_the_central_control_inventory() {

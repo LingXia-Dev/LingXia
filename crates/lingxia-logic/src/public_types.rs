@@ -156,8 +156,6 @@ rong::js_api! {
     setEnabled(on: boolean): Promise<void>;
 }"###;
 
-        type TerminalThemeMode = r###"'system' | 'light' | 'dark'"###;
-
         type TerminalFontSettings = r###"{
     /** Ordered candidates; the first installed monospaced family wins. */
     family: string[];
@@ -166,8 +164,9 @@ rong::js_api! {
     ligatures: boolean;
 }"###;
 
+        /// A light scheme and a dark one. Which is in use follows the
+        /// product's light/dark setting; the terminal has no switch of its own.
         type TerminalThemeSettings = r###"{
-    mode: TerminalThemeMode;
     light: string;
     dark: string;
 }"###;
@@ -197,8 +196,7 @@ rong::js_api! {
     /** Resolved configuration after all valid layers. */
     value: TerminalSettingsValue;
     effective: {
-        /** Host appearance before applying terminal.theme.mode. */
-        systemAppearance: 'light' | 'dark';
+        /** The scheme the product is in, and therefore the terminal too. */
         appearance: 'light' | 'dark';
         colorScheme: string | null;
         font: {
@@ -318,7 +316,36 @@ rong::js_api! {
 
         type BinaryFileData = r###"ArrayBuffer | ArrayBufferView"###;
 
+        /// What the product's light/dark scheme is set to. `'auto'` follows
+        /// the system.
         type AppearancePreference = r###"'auto' | 'light' | 'dark'"###;
+
+        /// `lx.app.appearance` — the scheme this lxapp renders in.
+        type AppearanceApi = r###"{
+    /**
+     * The scheme this lxapp is rendering in. An lxapp that pinned one in its
+     * `lxapp.json` reports that; every other lxapp reports the product's.
+     */
+    get(): ResolvedAppearance;
+    /** Follow it, starting with the current value. Returns an unsubscribe. */
+    watch(callback: (resolved: ResolvedAppearance) => void): () => void;
+}"###;
+
+        /// `lx.app.control.appearance` — the product's own light/dark setting.
+        type ControlAppearanceApi = r###"{
+    /** What the user chose for the whole product. */
+    getPreference(): AppearancePreference;
+    /**
+     * Pin the product to `'light'` or `'dark'`, or follow the system with
+     * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
+     */
+    setPreference(preference: AppearancePreference): Promise<void>;
+    /**
+     * Follow the choice, not what it resolves to: a system flip under `'auto'`
+     * moves `lx.app.appearance.watch` and leaves this quiet.
+     */
+    watchPreference(callback: (preference: AppearancePreference) => void): () => void;
+}"###;
         /// What the product's language is set to: `'auto'` follows the system,
         /// or any canonical BCP-47 tag. `string & {}` keeps `'auto'` in
         /// autocomplete while still accepting a tag.
@@ -361,6 +388,7 @@ rong::js_api! {
         /// `lx.app.control` — product-wide settings, and their single writer.
         type ControlApi = r###"{
     readonly displayLanguage: ControlDisplayLanguageApi;
+    readonly appearance: ControlAppearanceApi;
 }"###;
         type ResolvedAppearance = r###"'light' | 'dark'"###;
         type VisibilityPreference = r###"'auto' | 'hidden'"###;
@@ -1881,7 +1909,6 @@ true
 
         // Runtime namespaces are emitted as global interfaces. Re-export their
         // public module types without maintaining a second declaration.
-        type AppearanceApi = "globalThis.AppearanceApi";
         type FileSystemApi = "globalThis.FileSystemApi";
         type HostAppApi = "globalThis.HostAppApi";
         type LxEnv = "globalThis.LxEnv";

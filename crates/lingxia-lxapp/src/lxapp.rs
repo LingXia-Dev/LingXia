@@ -22,8 +22,8 @@ use uuid::Uuid;
 
 use self::navbar::NavigationBarState;
 use self::page_chrome::{
-    AppearancePreference, EffectivePageChromeLayout, LxAppAppearanceState, ResolvedAppearance,
-    TabBarPresentation, TabBarVisibilityPreference, VisibilityPreference,
+    AppearancePreference, EffectivePageChromeLayout, LxAppAppearanceState, TabBarPresentation,
+    TabBarVisibilityPreference, VisibilityPreference,
 };
 use crate::appservice::LxAppWorkers;
 use crate::error::LxAppError;
@@ -2157,25 +2157,11 @@ impl LxApp {
                 state.tabbar = Some(tabbar_config.with_absolute_paths(&self.lxapp_dir));
             }
 
-            let manifest_preference = self.config.appearance;
-            let saved_preference = lingxia_service::settings::lxapp_appearance(
-                &self.runtime.app_data_dir(),
-                &self.appid,
-            )
-            .map_err(|error| LxAppError::IoError(error.to_string()))?
-            .and_then(|value| value.parse::<AppearancePreference>().ok());
-            let preference = saved_preference.unwrap_or(manifest_preference);
-            let resolved = match preference {
-                AppearancePreference::Light => ResolvedAppearance::Light,
-                AppearancePreference::Dark => ResolvedAppearance::Dark,
-                AppearancePreference::Auto => {
-                    if crate::lxapp::host_appearance::host_appearance_dark() {
-                        ResolvedAppearance::Dark
-                    } else {
-                        ResolvedAppearance::Light
-                    }
-                }
-            };
+            // The manifest is the only lxapp-scoped input: an lxapp declares
+            // the scheme its own UI needs, the way a page declares
+            // `color-scheme`. Everything else follows the product.
+            let preference = self.config.appearance;
+            let resolved = page_chrome::resolve_appearance(preference);
             self.state.lock().unwrap().appearance = LxAppAppearanceState {
                 preference,
                 resolved,

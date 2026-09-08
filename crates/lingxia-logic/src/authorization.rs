@@ -8,6 +8,9 @@ use std::sync::OnceLock;
 pub(crate) enum LogicRoute {
     AppExit,
     AppSetBadge,
+    AppGetAppearancePreference,
+    AppSetAppearancePreference,
+    AppWatchAppearancePreference,
     AppGetDisplayLanguagePreference,
     AppSetDisplayLanguagePreference,
     AppWatchDisplayLanguagePreference,
@@ -59,6 +62,9 @@ impl LogicRoute {
     pub(crate) const ALL: &'static [Self] = &[
         Self::AppExit,
         Self::AppSetBadge,
+        Self::AppGetAppearancePreference,
+        Self::AppSetAppearancePreference,
+        Self::AppWatchAppearancePreference,
         Self::AppGetDisplayLanguagePreference,
         Self::AppSetDisplayLanguagePreference,
         Self::AppWatchDisplayLanguagePreference,
@@ -134,6 +140,9 @@ impl LogicRoute {
         match self {
             Self::AppExit => "lx.app.exit",
             Self::AppSetBadge => "lx.app.setBadge",
+            Self::AppGetAppearancePreference => "lx.app.control.appearance.getPreference",
+            Self::AppSetAppearancePreference => "lx.app.control.appearance.setPreference",
+            Self::AppWatchAppearancePreference => "lx.app.control.appearance.watchPreference",
             Self::AppGetDisplayLanguagePreference => "lx.app.control.displayLanguage.getPreference",
             Self::AppSetDisplayLanguagePreference => "lx.app.control.displayLanguage.setPreference",
             Self::AppWatchDisplayLanguagePreference => {

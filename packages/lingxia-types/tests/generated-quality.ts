@@ -3,7 +3,8 @@ import type {
   AppDownloadOptions,
   AppDownloadResult,
   AppScreenshotResult,
-  AppearanceState,
+  AppearancePreference,
+  ResolvedAppearance,
   DownloadTask,
   DownloadsDownloadOptions,
   DownloadsDownloadResult,
@@ -28,8 +29,12 @@ declare const files: FileSystemApi;
 declare const app: HostAppApi;
 declare const videoInfo: VideoInfo;
 
-const appearanceState: AppearanceState = lx.appearance.get();
-const appearanceSetResult: Promise<void> = lx.appearance.set("dark");
+const resolvedAppearance: ResolvedAppearance = lx.app.appearance.get();
+const appearanceUnwatch: () => void = lx.app.appearance.watch(() => {});
+const appearanceSetResult: Promise<void> | undefined =
+  lx.app.control?.appearance.setPreference("dark");
+const appearancePreference: AppearancePreference | undefined =
+  lx.app.control?.appearance.getPreference();
 const navigationUpdateResult: Promise<void> = lx.navigationBar.update({ title: null });
 const tabBarUpdateResult: Promise<void> = lx.tabBar.update({ visibility: "auto" });
 const forcedTabBarUpdateResult: Promise<void> = lx.tabBar.update({ visibility: "visible" });
@@ -70,7 +75,9 @@ type DownloadsPathIsBranded = Assert<Not<string extends SystemDownloadsPath ? tr
 type BrandsStayDistinct = Assert<Not<AppDownloadFilePath extends SystemDownloadsPath ? true : false>>;
 
 export type GeneratedQualityGate = [
-  typeof appearanceState,
+  typeof resolvedAppearance,
+  typeof appearanceUnwatch,
+  typeof appearancePreference,
   typeof appearanceSetResult,
   typeof navigationUpdateResult,
   typeof tabBarUpdateResult,
