@@ -4,7 +4,7 @@ use super::vite_assets::copy_dir_recursive;
 use crate::lxapp::project::Project;
 use anyhow::{Context, Result};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub(super) fn copy_html_page(project: &Project, page_path: &str) -> Result<()> {
     let source_path = project.root.join(page_path);
@@ -286,19 +286,122 @@ pub(super) fn inject_runtime_script(mut html: String, include_polyfills: bool) -
     };
     // Preserve hand-authored/older V2 pages without injecting a second runtime.
     // Trusted V3 bootstrap intentionally requires the generated sentinel.
-    if html.contains(BRIDGE_RUNTIME_SCRIPT) || html.contains(LEGACY_BRIDGE_RUNTIME_SCRIPT) {
+    if !(html.contains(BRIDGE_RUNTIME_SCRIPT) || html.contains(LEGACY_BRIDGE_RUNTIME_SCRIPT)) {
+        if let Some(index) = html.find("</head>") {
+            html.insert_str(index, &to_insert);
+        } else {
+            html = format!("{to_insert}{html}");
+        }
+    }
+    inject_app_chrome_style(html)
+}
+
+/// Classic CSS scrollbars steal layout inside the host WebView. Stamp last
+/// in `<body>` so page stylesheets cannot restore them.
+const APP_CHROME_NO_SCROLLBAR_MARKER: &str = "data-lx-chrome=\"no-scrollbar\"";
+const APP_CHROME_NO_SCROLLBAR_STYLE: &str = concat!(
+    "<style data-lx-chrome=\"no-scrollbar\">",
+    "*{scrollbar-width:none!important;-ms-overflow-style:none!important}",
+    "*::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}",
+    "</style>",
+);
+
+fn inject_app_chrome_style(mut html: String) -> String {
+    if html.contains(APP_CHROME_NO_SCROLLBAR_MARKER) {
+        return html;
+    }
+    if let Some(index) = html.rfind("</body>") {
+        html.insert_str(index, APP_CHROME_NO_SCROLLBAR_STYLE);
         return html;
     }
     if let Some(index) = html.find("</head>") {
-        html.insert_str(index, &to_insert);
+        html.insert_str(index, APP_CHROME_NO_SCROLLBAR_STYLE);
         return html;
     }
-    format!("{to_insert}{html}")
+    format!("{APP_CHROME_NO_SCROLLBAR_STYLE}{html}")
+}
+
+/// Host embedding can skip View finalize; restamp every built page document.
+/// Returns whether any file was rewritten.
+pub(crate) fn stamp_output_html(output_dir: &Path) -> Result<bool> {
+    let mut wrote = false;
+    for path in collect_html_documents(output_dir)? {
+        let source = fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read {}", path.display()))?;
+        if source.contains(APP_CHROME_NO_SCROLLBAR_MARKER) {
+            continue;
+        }
+        let stamped = inject_app_chrome_style(source);
+        fs::write(&path, stamped).with_context(|| format!("Failed to write {}", path.display()))?;
+        wrote = true;
+    }
+    Ok(wrote)
+}
+
+fn looks_like_html_document(source: &str) -> bool {
+    let trimmed = source.trim_start();
+    let lower: String = trimmed.chars().take(256).collect::<String>().to_ascii_lowercase();
+    lower.starts_with("<!doctype html")
+        || lower.starts_with("<html")
+        || (has_html_tag(&lower, "head") && has_html_tag(&lower, "body"))
+}
+
+fn has_html_tag(lower: &str, name: &str) -> bool {
+    let needle = format!("<{name}");
+    let mut from = 0;
+    while let Some(rel) = lower[from..].find(&needle) {
+        let at = from + rel + needle.len();
+        match lower.as_bytes().get(at) {
+            Some(b'>' | b'/' | b' ' | b'\t' | b'\n' | b'\r') | None => return true,
+            _ => from = at,
+        }
+    }
+    false
+}
+
+fn collect_html_documents(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    collect_html_documents_inner(root, &mut files)?;
+    files.sort();
+    Ok(files)
+}
+
+fn collect_html_documents_inner(path: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(path).with_context(|| format!("Failed to read {}", path.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            collect_html_documents_inner(&path, files)?;
+            continue;
+        }
+        if !path.is_file() {
+            continue;
+        }
+        match path.extension().and_then(|value| value.to_str()).map(str::to_ascii_lowercase) {
+            Some(ext) if matches!(ext.as_str(), "html" | "htm" | "ts" | "tsx" | "vue") => {}
+            _ => continue,
+        }
+        let Ok(source) = fs::read_to_string(&path) else {
+            continue;
+        };
+        if looks_like_html_document(&source) {
+            files.push(path);
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn inject_bridge_metadata(mut html: String, actions: &[PageAction]) -> String {
     let metadata = format!("<script>\n{}\n</script>", bridge_metadata_script(actions));
     if html.contains(&metadata) {
+        return html;
+    }
+    // Keep the no-scrollbar stamp last in `<body>` so it still beats page CSS.
+    if let Some(index) = html.find(APP_CHROME_NO_SCROLLBAR_STYLE) {
+        html.insert_str(index, &metadata);
         return html;
     }
     if let Some(index) = html.find("</body>") {
@@ -477,15 +580,151 @@ mod tests {
         let output =
             fs::read_to_string(project.output_dir.join("pages/settings/index.html")).unwrap();
         assert!(output.contains(BRIDGE_RUNTIME_SCRIPT));
+        assert!(output.contains(APP_CHROME_NO_SCROLLBAR_MARKER));
+        let style_at = output.find(APP_CHROME_NO_SCROLLBAR_STYLE).unwrap();
+        let body_close = output.rfind("</body>").unwrap();
+        assert!(
+            style_at < body_close,
+            "no-scrollbar style must land before </body> so page CSS cannot restore bars"
+        );
+    }
+
+    fn assert_hides_css_scrollbars(html: &str) {
+        assert!(html.contains(APP_CHROME_NO_SCROLLBAR_MARKER), "{html}");
+        assert!(html.contains("scrollbar-width:none!important"), "{html}");
+        assert!(html.contains("-ms-overflow-style:none!important"), "{html}");
+        assert!(html.contains("::-webkit-scrollbar"), "{html}");
+        assert!(html.contains("display:none!important"), "{html}");
     }
 
     #[test]
     fn runtime_injection_preserves_legacy_v2_runtime_without_a_sentinel() {
         let html = format!("<html><head>{LEGACY_BRIDGE_RUNTIME_SCRIPT}</head></html>");
-        let output = inject_runtime_script(html.clone(), false);
+        let output = inject_runtime_script(html, false);
 
-        assert_eq!(output, html);
+        assert!(output.contains(LEGACY_BRIDGE_RUNTIME_SCRIPT));
+        assert_eq!(output.matches(LEGACY_BRIDGE_RUNTIME_SCRIPT).count(), 1);
         assert!(!output.contains("data-lingxia-bridge-runtime"));
+        assert_hides_css_scrollbars(&output);
+    }
+
+    #[test]
+    fn inject_runtime_script_hides_css_scrollbars_once() {
+        let html = "<!DOCTYPE html><html><head></head><body><p>hi</p></body></html>";
+        let once = inject_runtime_script(html.to_string(), false);
+        let twice = inject_runtime_script(once.clone(), false);
+        assert_eq!(
+            once.matches(APP_CHROME_NO_SCROLLBAR_MARKER).count(),
+            1,
+            "{once}"
+        );
+        assert_eq!(twice.matches(APP_CHROME_NO_SCROLLBAR_MARKER).count(), 1);
+        assert_hides_css_scrollbars(&once);
+        let style_at = once.find(APP_CHROME_NO_SCROLLBAR_STYLE).unwrap();
+        assert!(style_at < once.rfind("</body>").unwrap());
+    }
+
+    #[test]
+    fn inject_runtime_script_stamps_pages_that_already_have_bridge() {
+        let html = concat!(
+            "<!DOCTYPE html><html><head>",
+            "<script src=\"lx://assets/bridge-runtime.js\"></script>",
+            "</head><body></body></html>",
+        );
+        let stamped = inject_runtime_script(html.to_string(), false);
+        assert_hides_css_scrollbars(&stamped);
+        assert!(!stamped.contains("data-lingxia-bridge-runtime"));
+
+        let v3 = format!(
+            "<!DOCTYPE html><html><head>{BRIDGE_RUNTIME_SCRIPT}</head><body></body></html>"
+        );
+        let stamped_v3 = inject_runtime_script(v3, false);
+        assert_hides_css_scrollbars(&stamped_v3);
+        assert_eq!(
+            stamped_v3.matches(BRIDGE_RUNTIME_SCRIPT).count(),
+            1,
+            "{stamped_v3}"
+        );
+    }
+
+    #[test]
+    fn inject_runtime_script_hides_scrollbars_on_legacy_es5_pages() {
+        let html = "<!DOCTYPE html><html><head></head><body></body></html>";
+        let stamped = inject_runtime_script(html.to_string(), true);
+        assert!(stamped.contains("lx://assets/polyfills.es5.js"));
+        assert_hides_css_scrollbars(&stamped);
+    }
+
+    #[test]
+    fn inject_app_chrome_style_falls_back_without_body() {
+        let head_only = inject_app_chrome_style(
+            "<!DOCTYPE html><html><head><title>x</title></head></html>".to_string(),
+        );
+        assert_hides_css_scrollbars(&head_only);
+        let style_at = head_only.find(APP_CHROME_NO_SCROLLBAR_STYLE).unwrap();
+        assert!(style_at < head_only.find("</head>").unwrap());
+
+        let fragment = inject_app_chrome_style("<div id=\"root\"></div>".to_string());
+        assert_hides_css_scrollbars(&fragment);
+        assert!(fragment.starts_with(APP_CHROME_NO_SCROLLBAR_STYLE));
+    }
+
+    #[test]
+    fn inject_bridge_metadata_leaves_no_scrollbar_style_last() {
+        let html = inject_runtime_script(
+            "<!DOCTYPE html><html><head></head><body></body></html>".to_string(),
+            false,
+        );
+        let html = inject_bridge_metadata(
+            html,
+            &[PageAction {
+                name: "greet".to_string(),
+                mode: PageActionMode::Call,
+            }],
+        );
+        let style_at = html.find(APP_CHROME_NO_SCROLLBAR_STYLE).unwrap();
+        let meta_at = html.find("__names").unwrap();
+        let body_close = html.rfind("</body>").unwrap();
+        assert!(meta_at < style_at && style_at < body_close, "{html}");
+    }
+
+    #[test]
+    fn stamp_output_html_covers_prebuilt_html_and_react_page_files() {
+        let temp = tempdir().unwrap();
+        let dist = temp.path().join("dist");
+        write_file(
+            &dist,
+            "pages/home/index.html",
+            "<!DOCTYPE html><html><head></head><body><p>home</p></body></html>",
+        );
+        write_file(
+            &dist,
+            "pages/shop/index.tsx",
+            "<!DOCTYPE html><html><head></head><body><div id=\"root\"></div></body></html>",
+        );
+        write_file(&dist, "logic.js", "export const x = 1;\n");
+
+        stamp_output_html(&dist).unwrap();
+        stamp_output_html(&dist).unwrap();
+
+        let html = fs::read_to_string(dist.join("pages/home/index.html")).unwrap();
+        let react = fs::read_to_string(dist.join("pages/shop/index.tsx")).unwrap();
+        let logic = fs::read_to_string(dist.join("logic.js")).unwrap();
+        assert_eq!(html.matches(APP_CHROME_NO_SCROLLBAR_MARKER).count(), 1);
+        assert_eq!(react.matches(APP_CHROME_NO_SCROLLBAR_MARKER).count(), 1);
+        assert!(!logic.contains(APP_CHROME_NO_SCROLLBAR_MARKER));
+
+        write_file(
+            &dist,
+            "pages/note.ts",
+            "<header></header><body class=\"page\"></body>\nexport const x = 1;\n",
+        );
+        stamp_output_html(&dist).unwrap();
+        let note = fs::read_to_string(dist.join("pages/note.ts")).unwrap();
+        assert!(
+            !note.contains(APP_CHROME_NO_SCROLLBAR_MARKER),
+            "a <header> tag must not count as <head>: {note}"
+        );
     }
 
     #[test]

@@ -2539,6 +2539,7 @@ extension LxAppShell {
             // loading spinner) so they don't stack up behind the new page.
             container.subviews.filter { $0 !== webView }.forEach { $0.removeFromSuperview() }
             WebViewManager.configureWebViewTransparency(webView, transparent: false)
+            WebViewManager.hideLxAppScrollIndicators(webView)
             WebViewManager.attachWebViewToContainer(webView, container: container)
             return
         }

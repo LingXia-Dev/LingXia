@@ -788,6 +788,13 @@ mod tests {
 
         finalize_component_page(&project, &vite_dist, &page).unwrap();
 
+        let built = fs::read_to_string(project.output_dir.join("pages/home/index.tsx")).unwrap();
+        assert!(
+            built.contains("data-lx-chrome=\"no-scrollbar\""),
+            "React/Vue finalize must stamp CSS scrollbar hiding: {built}"
+        );
+        assert!(built.contains("scrollbar-width:none!important"), "{built}");
+
         assert!(project.output_dir.join("pages/home/view.js").is_file());
         assert!(
             project

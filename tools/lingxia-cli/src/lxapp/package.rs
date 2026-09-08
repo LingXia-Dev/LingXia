@@ -26,6 +26,9 @@ pub fn package_dist(project: &Project) -> Result<PathBuf> {
     // without this CLI having built it — an older CLI, or an edit made after
     // the build. Audit what is actually about to ship.
     crate::lxapp::media::audit_output_media(&project.output_dir)?;
+    if crate::lxapp::stamp_output_html(&project.output_dir)? {
+        crate::lxapp::hardening::write_integrity_manifest(project)?;
+    }
 
     let default_name = match project.kind {
         crate::lxapp::project::ProjectKind::LxApp => "lingxia-app",
