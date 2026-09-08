@@ -907,7 +907,8 @@ jobs:
     name: automation-${{ matrix.platform }}-${{ matrix.profile }}
     if: ${{ needs.changes.outputs.automation == 'true' }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 75
+    # Windows PRs miss rust-cache (saved on main only) and need a longer cold CLI compile.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 120 || 75 }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.changes.outputs.automation_matrix) }}
@@ -964,6 +965,7 @@ jobs:
           ../../scripts/automation/run-windows-showcase.ps1
           -Framework '${{ matrix.framework }}'
           -TimeoutSeconds 600
+          -BuildJobs 4
 
       - name: Run showcase automation
         if: runner.os == 'macOS'
