@@ -1,10 +1,14 @@
 import { showcaseApp } from "../../shared/lib/app";
+import { homeCopy, homeGreeting, type HomeCopy } from "../../i18n";
+
 const app = showcaseApp();
+
 const globalData = app.globalData;
 
 Page({
   ipReadyCallback: null as ((ip: string) => void) | null,
   stopWatchingAppearance: null as (() => void) | null,
+  stopWatchingLanguage: null as (() => void) | null,
 
   data: {
     greeting: globalData.greeting,
@@ -15,6 +19,7 @@ Page({
     greetCount: 0,
     appVersion: "",
     appearance: { preference: "auto", resolved: "light" },
+    copy: homeCopy("en-US") as HomeCopy,
   },
 
   // The product's light/dark scheme. Showcase is its host's Control app, so it
@@ -39,7 +44,7 @@ Page({
       await lx.app.control?.appearance.setPreference(preference);
     } catch (error) {
       console.warn("[Home] Failed to set appearance:", error);
-      lx.showToast({ title: "Appearance unavailable", icon: "none" });
+      lx.showToast({ title: this.data.copy.appearanceUnavailable, icon: "none" });
     }
     this._syncAppearance();
   },
@@ -67,10 +72,21 @@ Page({
     }
   },
 
+  _syncCopy: function () {
+    const copy = homeCopy();
+    const patch: { copy: HomeCopy; greeting?: string } = { copy };
+    if (this.data.greetCount === 0) {
+      patch.greeting = copy.defaultGreeting;
+    }
+    this.setData(patch);
+  },
+
   onUnload: function() {
     console.log("[Home] Page unloaded");
     this.stopWatchingAppearance?.();
     this.stopWatchingAppearance = null;
+    this.stopWatchingLanguage?.();
+    this.stopWatchingLanguage = null;
     if (app.ipReadyCallback === this.ipReadyCallback) {
       app.ipReadyCallback = undefined;
     }
@@ -79,6 +95,7 @@ Page({
 
   onLoad: async function() {
     console.log("[Home] Page loaded");
+    this.stopWatchingLanguage = lx.app.displayLanguage.watch(() => this._syncCopy());
     this._syncAppearance();
     // The product's scheme can move while this page is open — from the host's
     // own Settings, or from the system under `auto`. Reading it on show alone
@@ -125,10 +142,7 @@ Page({
     const count = this.data.greetCount + 1;
     this.setData(
       {
-        greeting: `👋 Hello ${name}! (#${count})
-
-🌍 Greetings from appservice powered by Rust and JS engine
-🕒 ${new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`,
+        greeting: homeGreeting(name, count),
         greetCount: count,
       },
       () => {

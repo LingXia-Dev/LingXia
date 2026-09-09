@@ -1,5 +1,5 @@
 export const SHOWCASE_PAGE_EXPECTATIONS = [
-  { page: 'home', text: 'Lightweight Application Framework' },
+  { page: 'home', text: ['Lightweight Application Framework', '轻量应用框架'] },
   { page: 'surface', text: 'Page lifecycle' },
   { page: 'feedback', text: 'Help us improve' },
   { page: 'api', text: 'capabilities provided by LingXia' },

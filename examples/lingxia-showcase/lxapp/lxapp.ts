@@ -1,5 +1,7 @@
 import type { ConfiguredPageName } from "@lingxia/types";
 import type { ShowcaseAppInstance } from "./shared/lib/app";
+import { applyShowcaseTabBar } from "./i18n";
+
 async function testManagedFileAccess() {
   try {
     const filePath = "debug/app-launch.txt";
@@ -98,6 +100,11 @@ App({
       },
     );
     lx.shell.sidebarActions.replace(sidebarActions);
+    lx.app.displayLanguage.watch((tag) => {
+      void applyShowcaseTabBar(tag).catch((error) =>
+        console.warn("tab bar language update failed", error),
+      );
+    });
     lx.setMoreActions([
       {
         icon: "public/showcase-icon.png",
