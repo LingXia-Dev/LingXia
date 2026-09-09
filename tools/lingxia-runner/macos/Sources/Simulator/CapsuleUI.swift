@@ -1,27 +1,60 @@
 import AppKit
 @_spi(Runner) import lingxia
 
+/// Colors for the runner's capsule click sheet. Matches the iOS overlay palette
+/// (`LxAppAppearanceRegistry.overlayColors`) against the simulated host scheme.
+@MainActor
+struct CapsuleOverlayPalette {
+    let scrim: NSColor
+    let surface: NSColor
+    let title: NSColor
+    let secondary: NSColor
+    let separator: NSColor
+    let icon: NSColor
+
+    static func current() -> CapsuleOverlayPalette {
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        if dark {
+            return CapsuleOverlayPalette(
+                scrim: NSColor.black.withAlphaComponent(0.55),
+                surface: NSColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 1),
+                title: .white,
+                secondary: NSColor(white: 0.63, alpha: 1),
+                separator: NSColor(white: 1, alpha: 0.12),
+                icon: NSColor(white: 0.90, alpha: 1)
+            )
+        }
+        return CapsuleOverlayPalette(
+            scrim: NSColor.black.withAlphaComponent(0.4),
+            surface: .white,
+            title: .black,
+            secondary: NSColor(white: 0.60, alpha: 1),
+            separator: NSColor(srgbRed: 0.93, green: 0.93, blue: 0.93, alpha: 1),
+            icon: NSColor(srgbRed: 0.20, green: 0.20, blue: 0.20, alpha: 1)
+        )
+    }
+}
+
 /// Capsule button images for Runner - uses SDK's LxIcon to load PDF icons
 @MainActor
 public struct CapsuleButtonImages {
-    
+
     /// Get capsule menu icon (three dots)
     public static func createThreeDotsImage() -> NSImage? {
-        guard let image = RunnerSupport.Assets.image(named: "icon_capsule_menu", size: CGSize(width: 20, height: 14)) else {
-            return nil
-        }
-        // Disable template mode to show original black color
-        image.isTemplate = false
-        return image
+        templateImage(named: "icon_capsule_menu", size: CGSize(width: 20, height: 14))
     }
-    
+
     /// Get capsule close icon
     public static func createCloseButtonImage() -> NSImage? {
-        guard let image = RunnerSupport.Assets.image(named: "icon_capsule_close", size: CGSize(width: 20, height: 14)) else {
+        templateImage(named: "icon_capsule_close", size: CGSize(width: 20, height: 14))
+    }
+
+    private static func templateImage(named name: String, size: CGSize) -> NSImage? {
+        guard let source = RunnerSupport.Assets.image(named: name, size: size) else {
             return nil
         }
-        // Disable template mode to show original black color
-        image.isTemplate = false
+        let image = (source.copy() as? NSImage) ?? source
+        image.isTemplate = true
         return image
     }
     

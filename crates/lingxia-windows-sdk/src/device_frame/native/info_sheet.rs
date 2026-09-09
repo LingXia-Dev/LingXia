@@ -4,8 +4,8 @@ use crate::{WindowsDeviceFrameSheetIcon, draw_windows_design_icon_with_color};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CombineRgn, CreateFontW, CreateRoundRectRgn, CreateSolidBrush, DT_CENTER,
     DT_END_ELLIPSIS, DT_LEFT, DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK, DeleteObject, DrawTextW,
-    EndPaint, FillRect, HBRUSH, HGDIOBJ, PAINTSTRUCT, RGN_AND, SelectObject, SetBkMode,
-    SetTextColor, SetWindowRgn, TRANSPARENT,
+    EndPaint, FillRect, HBRUSH, HGDIOBJ, InvalidateRect, PAINTSTRUCT, RGN_AND, SelectObject,
+    SetBkMode, SetTextColor, SetWindowRgn, TRANSPARENT,
 };
 use windows::Win32::UI::WindowsAndMessaging::LWA_ALPHA;
 
@@ -24,17 +24,47 @@ const BUTTON_GAP: i32 = 4;
 const BUTTON_ICON_SIZE: i32 = 24;
 const BUTTON_ICON_TOP: i32 = 12;
 const BUTTON_LABEL_GAP: i32 = 6;
-const MASK_ALPHA: u8 = 128;
-const PRIMARY_TEXT_COLOR: u32 = 0x000000;
-const SECONDARY_TEXT_COLOR: u32 = 0x999999;
-const SEPARATOR_TEXT_COLOR: u32 = 0xCCCCCC;
-const ACTION_TEXT_COLOR: u32 = 0x333333;
-const SEPARATOR_COLOR: u32 = 0xEEEEEE;
 const SHEET_CORNER_RADIUS: i32 = 16;
 const BADGE_HEIGHT: i32 = 16;
 const BADGE_MIN_WIDTH: i32 = 34;
 const BADGE_TEXT_HORIZONTAL_PADDING: i32 = 10;
 const BADGE_VERSION_GAP: i32 = 4;
+
+/// Opaque RGB (0xRRGGBB) for the capsule click sheet. Matches the iOS/Android
+/// overlay palettes; the simulated host scheme, not the OS.
+struct OverlayPalette {
+    surface: u32,
+    primary: u32,
+    secondary: u32,
+    separator_text: u32,
+    action: u32,
+    separator: u32,
+    mask_alpha: u8,
+}
+
+fn overlay_palette() -> OverlayPalette {
+    if super::overlay_is_dark() {
+        OverlayPalette {
+            surface: 0x1C1C1E,
+            primary: 0xFFFFFF,
+            secondary: 0xA1A1A1,
+            separator_text: 0x8E8E93,
+            action: 0xE5E5EA,
+            separator: 0x3A3A3C,
+            mask_alpha: 140,
+        }
+    } else {
+        OverlayPalette {
+            surface: 0xFFFFFF,
+            primary: 0x000000,
+            secondary: 0x999999,
+            separator_text: 0xCCCCCC,
+            action: 0x333333,
+            separator: 0xEEEEEE,
+            mask_alpha: 102,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(in crate::device_frame) struct DeviceFrameInfoSheet {
@@ -144,7 +174,7 @@ pub(super) fn show_info_sheet(content: HWND, info: DeviceFrameInfoSheet) {
         let _ = WindowsAndMessaging::SetLayeredWindowAttributes(
             mask,
             COLORREF(0),
-            MASK_ALPHA,
+            overlay_palette().mask_alpha,
             LWA_ALPHA,
         );
     }
@@ -316,7 +346,7 @@ fn sheet_hit_at(hwnd: HWND, x: i32, y: i32) -> Option<SheetHit> {
     None
 }
 
-fn draw_separator(dc: HDC, left: i32, top: i32, right: i32) {
+fn draw_separator(dc: HDC, left: i32, top: i32, right: i32, color: u32) {
     let line = RECT {
         left,
         top,
@@ -324,20 +354,25 @@ fn draw_separator(dc: HDC, left: i32, top: i32, right: i32) {
         bottom: top + 1,
     };
     unsafe {
-        let brush = CreateSolidBrush(rgb_to_colorref(SEPARATOR_COLOR));
+        let brush = CreateSolidBrush(rgb_to_colorref(color));
         let _ = FillRect(dc, &line, brush);
         let _ = DeleteObject(HGDIOBJ(brush.0));
     }
 }
 
-fn paint_capsule_menu(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet) {
-    paint_header(dc, client, info);
+fn paint_capsule_menu(
+    dc: HDC,
+    client: &RECT,
+    info: &DeviceFrameInfoSheet,
+    palette: &OverlayPalette,
+) {
+    paint_header(dc, client, info, palette);
     let separator_top = HEADER_TOP + HEADER_HEIGHT + HEADER_SEPARATOR_TOP_GAP;
-    draw_separator(dc, 0, separator_top, client.right);
-    paint_action_buttons(dc, client, info);
+    draw_separator(dc, 0, separator_top, client.right, palette.separator);
+    paint_action_buttons(dc, client, info, palette);
 }
 
-fn paint_header(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet) {
+fn paint_header(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet, palette: &OverlayPalette) {
     let left = HORIZONTAL_PADDING;
     let top = HEADER_TOP;
     let mut cursor = left;
@@ -355,7 +390,7 @@ fn paint_header(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet) {
             },
             -16,
             600,
-            PRIMARY_TEXT_COLOR,
+            palette.primary,
             DT_LEFT,
         );
         cursor += width;
@@ -371,7 +406,7 @@ fn paint_header(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet) {
         },
         -16,
         400,
-        SEPARATOR_TEXT_COLOR,
+        palette.separator_text,
         DT_LEFT,
     );
     cursor += 18;
@@ -408,7 +443,7 @@ fn paint_header(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet) {
         version_rect,
         -14,
         400,
-        SECONDARY_TEXT_COLOR,
+        palette.secondary,
         DT_LEFT,
     );
     if let Some(badge) = info.badge.as_ref() {
@@ -434,7 +469,12 @@ fn paint_header(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet) {
     }
 }
 
-fn paint_action_buttons(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet) {
+fn paint_action_buttons(
+    dc: HDC,
+    client: &RECT,
+    info: &DeviceFrameInfoSheet,
+    palette: &OverlayPalette,
+) {
     let actions = &info.actions;
     if actions.is_empty() {
         return;
@@ -450,8 +490,7 @@ fn paint_action_buttons(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet) {
         };
         match &action.icon {
             WindowsDeviceFrameSheetIcon::Design(icon) => {
-                let _ =
-                    draw_windows_design_icon_with_color(dc, *icon, icon_rect, ACTION_TEXT_COLOR);
+                let _ = draw_windows_design_icon_with_color(dc, *icon, icon_rect, palette.action);
             }
             WindowsDeviceFrameSheetIcon::Path(path) => {
                 let _ =
@@ -469,7 +508,7 @@ fn paint_action_buttons(dc: HDC, client: &RECT, info: &DeviceFrameInfoSheet) {
             },
             -13,
             400,
-            ACTION_TEXT_COLOR,
+            palette.action,
             DT_CENTER,
         );
     }
@@ -524,9 +563,10 @@ fn paint_sheet(hwnd: HWND) {
     unsafe {
         let _ = WindowsAndMessaging::GetClientRect(hwnd, &mut client);
     }
-    fill_rect(dc, client, 0xFFFFFF);
+    let palette = overlay_palette();
+    fill_rect(dc, client, palette.surface);
 
-    paint_capsule_menu(dc, &client, &info);
+    paint_capsule_menu(dc, &client, &info, &palette);
 
     unsafe {
         let _ = EndPaint(hwnd, &ps);
@@ -864,6 +904,34 @@ pub(super) fn dismiss_info_sheet_for_content(content: isize) {
     };
     destroy_about_windows(windows);
     restore_frame_overlays(content);
+}
+
+/// Re-apply the current overlay palette to an already-open sheet (appearance
+/// flip while the capsule menu is showing).
+pub(super) fn restyle_info_sheets() {
+    let Some(sheets) = ABOUT_SHEETS.get().and_then(|sheets| sheets.lock().ok()) else {
+        return;
+    };
+    let palette = overlay_palette();
+    for windows in sheets.values() {
+        let mask = hwnd_from_handle(windows.mask);
+        let sheet = hwnd_from_handle(windows.sheet);
+        if is_window_handle_valid(windows.mask) {
+            unsafe {
+                let _ = WindowsAndMessaging::SetLayeredWindowAttributes(
+                    mask,
+                    COLORREF(0),
+                    palette.mask_alpha,
+                    LWA_ALPHA,
+                );
+            }
+        }
+        if is_window_handle_valid(windows.sheet) {
+            unsafe {
+                let _ = InvalidateRect(Some(sheet), None, true);
+            }
+        }
+    }
 }
 
 fn destroy_about_windows(windows: AboutSheetWindows) {

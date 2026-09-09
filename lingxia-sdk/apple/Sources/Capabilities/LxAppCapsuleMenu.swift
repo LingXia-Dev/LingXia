@@ -44,6 +44,7 @@ class LxAppCapsuleMenu {
 
         let menuView = createCapsuleMenuView(appId: appId, appInfo: appInfo)
         presentCapsuleMenu(menuView, on: topViewController)
+        topViewController.view.bringSubviewToFront(menuView)
     }
 
     @MainActor
@@ -53,27 +54,30 @@ class LxAppCapsuleMenu {
         let version = appInfo.version.toString()
         let releaseType = appInfo.release_type.toString()
 
+        let palette = LxAppAppearanceRegistry.overlayColors()
         let backgroundView = UIView(frame: UIScreen.main.bounds)
-        backgroundView.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        backgroundView.backgroundColor = palette.scrim
         backgroundView.alpha = 0
 
         let containerView = UIView()
         containerView.tag = sheetContainerTag
-        containerView.backgroundColor = .white
+        containerView.backgroundColor = palette.surface
         containerView.layer.cornerRadius = 16
         containerView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         containerView.translatesAutoresizingMaskIntoConstraints = false
 
         // Header: App name and version on one line
-        let headerView = createHeaderView(appName: appName, version: version, releaseType: releaseType)
+        let headerView = createHeaderView(
+            appName: appName, version: version, releaseType: releaseType, palette: palette)
         containerView.addSubview(headerView)
 
         // Separator
-        let separator = createSeparator()
+        let separator = createSeparator(palette: palette)
         containerView.addSubview(separator)
 
         // Action grid
-        let buttonsGrid = createButtonsGrid(appId: appId, backgroundView: backgroundView)
+        let buttonsGrid = createButtonsGrid(
+            appId: appId, backgroundView: backgroundView, palette: palette)
         containerView.addSubview(buttonsGrid)
 
         // Full-screen dismiss area behind the bottom sheet.
@@ -124,7 +128,12 @@ class LxAppCapsuleMenu {
     }
 
     @MainActor
-    private static func createHeaderView(appName: String, version: String, releaseType: String) -> UIView {
+    private static func createHeaderView(
+        appName: String,
+        version: String,
+        releaseType: String,
+        palette: LxAppAppearanceRegistry.OverlayColors
+    ) -> UIView {
         let headerView = UIView()
         headerView.translatesAutoresizingMaskIntoConstraints = false
         headerView.clipsToBounds = false
@@ -133,21 +142,21 @@ class LxAppCapsuleMenu {
         let nameLabel = UILabel()
         nameLabel.text = appName
         nameLabel.font = .boldSystemFont(ofSize: 16)
-        nameLabel.textColor = .black
+        nameLabel.textColor = palette.title
         nameLabel.translatesAutoresizingMaskIntoConstraints = false
 
         // Separator (·)
         let dotLabel = UILabel()
         dotLabel.text = " · "
         dotLabel.font = .systemFont(ofSize: 16)
-        dotLabel.textColor = UIColor(red: 0.8, green: 0.8, blue: 0.8, alpha: 1)
+        dotLabel.textColor = palette.secondary
         dotLabel.translatesAutoresizingMaskIntoConstraints = false
 
         // Version
         let versionLabel = UILabel()
         versionLabel.text = version
         versionLabel.font = .systemFont(ofSize: 14)
-        versionLabel.textColor = UIColor(red: 0.6, green: 0.6, blue: 0.6, alpha: 1)
+        versionLabel.textColor = palette.secondary
         versionLabel.translatesAutoresizingMaskIntoConstraints = false
 
         headerView.addSubview(nameLabel)
@@ -207,7 +216,11 @@ class LxAppCapsuleMenu {
     }
 
     @MainActor
-    private static func createButtonsGrid(appId: String, backgroundView: UIView) -> UIView {
+    private static func createButtonsGrid(
+        appId: String,
+        backgroundView: UIView,
+        palette: LxAppAppearanceRegistry.OverlayColors
+    ) -> UIView {
         typealias Action = (iconName: String?, iconPath: String?, title: String, token: String, isDestructive: Bool)
         let snapshot = LxAppMoreActionSnapshot.load(appId: appId)
         let customActions: [Action] = snapshot.items.enumerated().map { index, item in
@@ -238,7 +251,8 @@ class LxAppCapsuleMenu {
                     iconName: action.iconName,
                     iconPath: action.iconPath,
                     title: action.title,
-                    isDestructive: action.isDestructive
+                    isDestructive: action.isDestructive,
+                    palette: palette
                 ) {
                     dismissCapsuleMenu(backgroundView) {
                         _ = onLxappEvent(appId, LxAppEvent.capsuleClick, action.token)
@@ -253,7 +267,15 @@ class LxAppCapsuleMenu {
     }
 
     @MainActor
-    private static func createActionButton(appId: String, iconName: String?, iconPath: String?, title: String, isDestructive: Bool, action: @escaping () -> Void) -> UIView {
+    private static func createActionButton(
+        appId: String,
+        iconName: String?,
+        iconPath: String?,
+        title: String,
+        isDestructive: Bool,
+        palette: LxAppAppearanceRegistry.OverlayColors,
+        action: @escaping () -> Void
+    ) -> UIView {
         let containerView = UIControl()
         containerView.translatesAutoresizingMaskIntoConstraints = false
 
@@ -265,7 +287,7 @@ class LxAppCapsuleMenu {
                 url.isFileURL ? url.path : nil
             } ?? resolved
             if let icon = UIImage(contentsOfFile: filePath) {
-                iconView.image = icon
+                iconView.image = icon.withRenderingMode(.alwaysTemplate)
             } else {
                 let exists = FileManager.default.fileExists(atPath: filePath)
                 let size = (try? FileManager.default.attributesOfItem(atPath: filePath)[.size]) ?? "unknown"
@@ -279,14 +301,18 @@ class LxAppCapsuleMenu {
             iconView.image = icon.withRenderingMode(.alwaysTemplate)
         }
         iconView.contentMode = .scaleAspectFit
-        iconView.tintColor = isDestructive ? UIColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1) : UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1)
+        iconView.tintColor = isDestructive
+            ? UIColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1)
+            : palette.icon
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
         // Title
         let titleLabel = UILabel()
         titleLabel.text = title
         titleLabel.font = .systemFont(ofSize: 13)
-        titleLabel.textColor = isDestructive ? UIColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1) : UIColor(red: 0.2, green: 0.2, blue: 0.2, alpha: 1)
+        titleLabel.textColor = isDestructive
+            ? UIColor(red: 1.0, green: 0.23, blue: 0.19, alpha: 1)
+            : palette.icon
         titleLabel.textAlignment = .center
         titleLabel.numberOfLines = 2
         titleLabel.lineBreakMode = .byWordWrapping
@@ -325,9 +351,9 @@ class LxAppCapsuleMenu {
     }
 
     @MainActor
-    private static func createSeparator() -> UIView {
+    private static func createSeparator(palette: LxAppAppearanceRegistry.OverlayColors) -> UIView {
         let separator = UIView()
-        separator.backgroundColor = UIColor(red: 0.93, green: 0.93, blue: 0.93, alpha: 1)
+        separator.backgroundColor = palette.separator
         separator.translatesAutoresizingMaskIntoConstraints = false
         return separator
     }

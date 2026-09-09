@@ -63,9 +63,9 @@ export class CapsuleMenuManager {
     }
   }
 
-  public static show(appId: string): boolean {
+  public static show(appId: string, appearanceDark: boolean = false): boolean {
     if (CapsuleMenuManager.managerRef) {
-      CapsuleMenuManager.managerRef.show(appId);
+      CapsuleMenuManager.managerRef.show(appId, appearanceDark);
       return true;
     }
     LxLog.e(TAG, 'CapsuleMenuManager: managerRef is null');
@@ -88,6 +88,7 @@ export struct CapsuleMenuBottomSheetComponent {
   @State appId: string = '';
   @State appInfo: LxAppInfo | null = null;
   @State customActions: MenuAction[] = [];
+  @State appearanceDark: boolean = false;
 
   private readonly actions: MenuAction[] = [
     {
@@ -125,7 +126,7 @@ export struct CapsuleMenuBottomSheetComponent {
         Column()
           .width('100%')
           .height('100%')
-          .backgroundColor('rgba(0, 0, 0, 0.5)')
+          .backgroundColor(this.appearanceDark ? 'rgba(0, 0, 0, 0.65)' : 'rgba(0, 0, 0, 0.5)')
           .onClick(() => this.hide())
 
         // Bottom sheet container
@@ -135,17 +136,17 @@ export struct CapsuleMenuBottomSheetComponent {
             Text(this.appInfo.appName)
               .fontSize(16)
               .fontWeight(FontWeight.Bold)
-              .fontColor('#000000')
+              .fontColor(this.appearanceDark ? '#FFFFFF' : '#000000')
 
             Text(' · ')
               .fontSize(16)
-              .fontColor('#CCCCCC')
+              .fontColor(this.appearanceDark ? '#A1A1AA' : '#CCCCCC')
               .margin({ left: 4, right: 4 })
 
             Row() {
               Text(this.appInfo.version)
                 .fontSize(14)
-                .fontColor('#999999')
+                .fontColor(this.appearanceDark ? '#A1A1AA' : '#999999')
 
               if (this.releaseBadge()) {
                 Text(this.releaseBadge()?.text ?? '')
@@ -167,7 +168,7 @@ export struct CapsuleMenuBottomSheetComponent {
           // Separator
           Divider()
             .height(1)
-            .color('#EEEEEE')
+            .color(this.appearanceDark ? '#3A3A3C' : '#EEEEEE')
 
           Column() {
             this.actionRow(this.menuActions().slice(0, 5))
@@ -179,13 +180,13 @@ export struct CapsuleMenuBottomSheetComponent {
           .padding({ top: 12, bottom: 12 })
         }
         .width('100%')
-        .backgroundColor('#FFFFFF')
+        .backgroundColor(this.appearanceDark ? '#1C1C1E' : '#FFFFFF')
         .borderRadius({ topLeft: 16, topRight: 16 })
         .padding({ left: 20, right: 20, bottom: 16 })
       }
       .width('100%')
       .height('100%')
-      .zIndex(1000)
+      .zIndex(15000)
     }
   }
 
@@ -199,25 +200,27 @@ export struct CapsuleMenuBottomSheetComponent {
                     .width(24)
                     .height(24)
                     .objectFit(ImageFit.Contain)
+                    .fillColor(item.isDestructive ? '#FF3B30' : (this.appearanceDark ? '#E5E5E7' : '#333333'))
                     .margin({ bottom: 6 })
                 } else {
                   Image(item.iconPath.startsWith('/') ? `file://${item.iconPath}` : item.iconPath)
                     .width(24)
                     .height(24)
                     .objectFit(ImageFit.Contain)
+                    .fillColor(item.isDestructive ? '#FF3B30' : (this.appearanceDark ? '#E5E5E7' : '#333333'))
                     .margin({ bottom: 6 })
                 }
 
                 if (item.title) {
                   Text(item.title)
                     .fontSize(13)
-                    .fontColor(item.isDestructive ? '#FF3B30' : '#555555')
+                    .fontColor(item.isDestructive ? '#FF3B30' : (this.appearanceDark ? '#E5E5E7' : '#555555'))
                     .textAlign(TextAlign.Center)
                     .maxLines(2)
                 } else if (item.titleKey) {
                   Text(localizedString(getContext(this).resourceManager, item.titleKey))
                     .fontSize(13)
-                    .fontColor(item.isDestructive ? '#FF3B30' : '#555555')
+                    .fontColor(item.isDestructive ? '#FF3B30' : (this.appearanceDark ? '#E5E5E7' : '#555555'))
                     .textAlign(TextAlign.Center)
                     .maxLines(2)
                 }
@@ -232,8 +235,9 @@ export struct CapsuleMenuBottomSheetComponent {
     .justifyContent(FlexAlign.Center)
   }
 
-  public show(appId: string): void {
+  public show(appId: string, appearanceDark: boolean = false): void {
     hilog.info(DOMAIN, TAG, `Showing capsule menu for app: ${appId}`);
+    this.appearanceDark = appearanceDark;
 
     // Get app info
     const info: LxAppInfo | null = getLxAppInfo(appId);

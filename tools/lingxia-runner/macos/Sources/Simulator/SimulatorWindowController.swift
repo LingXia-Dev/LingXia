@@ -85,6 +85,9 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     private var statusBarHeightConstraint: NSLayoutConstraint?
     private var navigationBar: NSView?
     private var floatingCapsuleContainer: NSView?
+    private var floatingCapsuleMoreButton: NSButton?
+    private var floatingCapsuleCloseButton: NSButton?
+    private var floatingCapsuleDivider: NSView?
     private let phoneBrowserSurface = RunnerPhoneBrowserSurface()
 
     // Status bar components
@@ -541,6 +544,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.updateStatusBarTextColors(textStyle: self.statusBarTextStyle)
+                self.applyCapsuleChrome(from: RunnerSupport.Navigation.currentState())
+                self.applyCapsuleSheetPalette(CapsuleOverlayPalette.current())
             }
         }
         
@@ -763,14 +768,13 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     private func setupFloatingCapsuleButtons(in contentView: NSView) {
         guard floatingCapsuleContainer == nil else { return }
         
-        // Mirrors the iOS LxAppUnifiedCapsuleView: white pill, hairline stroke, a
-        // 0.5pt divider between the two buttons (··· and close).
+        // Mirrors the iOS LxAppUnifiedCapsuleView: rounded pill, hairline stroke,
+        // a 0.5pt divider between the two buttons (··· and close). Fill/icon
+        // colors follow the simulated host scheme.
         let capsuleContainer = NSView()
         capsuleContainer.wantsLayer = true
-        capsuleContainer.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.9).cgColor
         capsuleContainer.layer?.cornerRadius = Layout.capsuleContainerHeight / 2
         capsuleContainer.layer?.borderWidth = 0.5
-        capsuleContainer.layer?.borderColor = NSColor.gray.withAlphaComponent(0.3).cgColor
         capsuleContainer.translatesAutoresizingMaskIntoConstraints = false
         capsuleContainer.shadow = NSShadow()
         capsuleContainer.layer?.shadowColor = NSColor.black.cgColor
@@ -784,7 +788,6 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         let closeButton = makeButton(image: CapsuleButtonImages.createCloseButtonImage(), action: #selector(closeButtonClicked))
         let divider = NSView()
         divider.wantsLayer = true
-        divider.layer?.backgroundColor = NSColor.gray.withAlphaComponent(0.3).cgColor
         capsuleContainer.addSubview(moreButton)
         capsuleContainer.addSubview(divider)
         capsuleContainer.addSubview(closeButton)
@@ -806,8 +809,41 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         closeButton.frame = NSRect(x: edge + buttonWidth + 0.5, y: 0, width: buttonWidth, height: h)
 
         self.floatingCapsuleContainer = capsuleContainer
+        self.floatingCapsuleMoreButton = moreButton
+        self.floatingCapsuleCloseButton = closeButton
+        self.floatingCapsuleDivider = divider
+        applyCapsuleChrome(from: RunnerSupport.Navigation.currentState())
         applyCapsuleEnabled()
         RunnerApp.shared.capsuleDidBecomeReady(self)
+    }
+
+    /// Fill, stroke, and icon tint for the floating pill. Prefers the rust
+    /// resolved capsule style (same as iOS); falls back to the simulated
+    /// host scheme when no page chrome has landed yet.
+    private func applyCapsuleChrome(from config: NavigationBarState?) {
+        guard let capsule = floatingCapsuleContainer else { return }
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let background: NSColor
+        let foreground: NSColor
+        let divider: NSColor
+        if let config {
+            background = Self.colorFromARGB(config.capsule_background_color)
+            foreground = Self.colorFromARGB(config.capsule_foreground_color)
+            divider = Self.colorFromARGB(config.capsule_divider_color)
+        } else if dark {
+            background = NSColor(srgbRed: 0x1C / 255, green: 0x1C / 255, blue: 0x1E / 255, alpha: 0.95)
+            foreground = NSColor(srgbRed: 0xE5 / 255, green: 0xE5 / 255, blue: 0xEA / 255, alpha: 1)
+            divider = NSColor.white.withAlphaComponent(0.18)
+        } else {
+            background = NSColor.white.withAlphaComponent(0.9)
+            foreground = NSColor(srgbRed: 0x3C / 255, green: 0x3C / 255, blue: 0x43 / 255, alpha: 1)
+            divider = NSColor.gray.withAlphaComponent(0.3)
+        }
+        capsule.layer?.backgroundColor = background.cgColor
+        capsule.layer?.borderColor = divider.cgColor
+        floatingCapsuleDivider?.layer?.backgroundColor = divider.cgColor
+        floatingCapsuleMoreButton?.contentTintColor = foreground
+        floatingCapsuleCloseButton?.contentTintColor = foreground
     }
 
     /// Re-apply the capsule setting to the live pill.
@@ -1021,6 +1057,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             navBar.isHidden = false
             viewController?.updateTopMargin(0)
         }
+        applyCapsuleChrome(from: config)
     }
     
     private static func colorFromARGB(_ argb: UInt32) -> NSColor {
@@ -1115,9 +1152,15 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private var capsuleSheetOverlay: NSView?
+    private var capsuleSheetDimmed: NSView?
+    private var capsuleSheetSurface: NSView?
+    private var capsuleSheetTitle: NSTextField?
+    private var capsuleSheetVersion: NSTextField?
+    private var capsuleSheetSeparator: NSView?
+    private var capsuleSheetActionButtons: [NSButton] = []
 
     @objc private func moreButtonClicked() {
-        // Match iOS's "···" sheet: a dimmed backdrop with a white rounded bottom
+        // Match iOS's "···" sheet: a dimmed backdrop with a rounded bottom
         // sheet — name + version header, then a clean/restart action row.
         guard let phoneContent = phoneContentView, capsuleSheetOverlay == nil else { return }
         // Mirror iOS: show the lxapp's own name, version, and channel badge from
@@ -1130,6 +1173,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         let versionText = appVersion.isEmpty ? "—" : "v\(appVersion)"
         let releaseType = info.release_type.toString().lowercased()
 
+        let palette = CapsuleOverlayPalette.current()
         let overlay = NSView(frame: phoneContent.bounds)
         overlay.autoresizingMask = [.width, .height]
         phoneContent.addSubview(overlay)
@@ -1139,45 +1183,41 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         let dimmed = CapsuleSheetDismissView(frame: overlay.bounds)
         dimmed.autoresizingMask = [.width, .height]
         dimmed.wantsLayer = true
-        dimmed.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.4).cgColor
         dimmed.onMouseDown = { [weak self] in self?.dismissCapsuleSheet() }
         overlay.addSubview(dimmed)
 
         let sheet = NSView()
         sheet.translatesAutoresizingMaskIntoConstraints = false
         sheet.wantsLayer = true
-        sheet.layer?.backgroundColor = NSColor.white.cgColor
         sheet.layer?.cornerRadius = 16
         sheet.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         overlay.addSubview(sheet)
 
         let name = NSTextField(labelWithString: displayName)
         name.font = .boldSystemFont(ofSize: 16)
-        name.textColor = .black
         name.translatesAutoresizingMaskIntoConstraints = false
         let ver = NSTextField(labelWithString: versionText)
         ver.font = .systemFont(ofSize: 13)
-        ver.textColor = NSColor(white: 0.6, alpha: 1)
         ver.translatesAutoresizingMaskIntoConstraints = false
 
         let separator = NSView()
         separator.translatesAutoresizingMaskIntoConstraints = false
         separator.wantsLayer = true
-        separator.layer?.backgroundColor = NSColor(white: 0.9, alpha: 1).cgColor
 
-        let clean = makeCapsuleSheetButton(symbol: "trash", title: "Clear cache", action: #selector(capsuleCleanTapped))
-        let restart = makeCapsuleSheetButton(symbol: "arrow.clockwise", title: "Restart", action: #selector(capsuleRestartTapped))
+        let clean = makeCapsuleSheetButton(symbol: "trash", title: "Clear cache", action: #selector(capsuleCleanTapped), palette: palette)
+        let restart = makeCapsuleSheetButton(symbol: "arrow.clockwise", title: "Restart", action: #selector(capsuleRestartTapped), palette: palette)
         let snapshot = RunnerSupport.MoreActions.load(appId: appId)
-        let customButtons = snapshot.items.enumerated().map { index, item -> NSView in
+        let customButtons = snapshot.items.enumerated().map { index, item -> NSButton in
             let button = makeCapsuleSheetButton(
                 imagePath: item.iconPath,
                 title: item.label,
-                action: #selector(capsuleMoreTapped(_:))
+                action: #selector(capsuleMoreTapped(_:)),
+                palette: palette
             )
             button.identifier = NSUserInterfaceItemIdentifier(snapshot.token(at: index))
             return button
         }
-        let actionButtons: [NSView] = [clean, restart] + customButtons
+        let actionButtons: [NSButton] = [clean, restart] + customButtons
         let actions = NSStackView()
         actions.orientation = .vertical
         actions.distribution = .fill
@@ -1227,6 +1267,25 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         }
 
         capsuleSheetOverlay = overlay
+        capsuleSheetDimmed = dimmed
+        capsuleSheetSurface = sheet
+        capsuleSheetTitle = name
+        capsuleSheetVersion = ver
+        capsuleSheetSeparator = separator
+        capsuleSheetActionButtons = actionButtons
+        applyCapsuleSheetPalette(palette)
+    }
+
+    private func applyCapsuleSheetPalette(_ palette: CapsuleOverlayPalette) {
+        guard capsuleSheetOverlay != nil else { return }
+        capsuleSheetDimmed?.layer?.backgroundColor = palette.scrim.cgColor
+        capsuleSheetSurface?.layer?.backgroundColor = palette.surface.cgColor
+        capsuleSheetTitle?.textColor = palette.title
+        capsuleSheetVersion?.textColor = palette.secondary
+        capsuleSheetSeparator?.layer?.backgroundColor = palette.separator.cgColor
+        for button in capsuleSheetActionButtons {
+            styleCapsuleSheetButton(button, palette: palette)
+        }
     }
 
     /// A DEV/PRE channel pill for the capsule sheet, mirroring iOS's release
@@ -1266,7 +1325,12 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         return pill
     }
 
-    private func makeCapsuleSheetButton(symbol: String, title: String, action: Selector) -> NSView {
+    private func makeCapsuleSheetButton(
+        symbol: String,
+        title: String,
+        action: Selector,
+        palette: CapsuleOverlayPalette
+    ) -> NSButton {
         let button = NSButton()
         button.translatesAutoresizingMaskIntoConstraints = false
         button.isBordered = false
@@ -1276,16 +1340,21 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
                 NSImage.SymbolConfiguration(pointSize: Self.capsuleActionIconSize, weight: .regular)
             )
         button.title = title
-        button.contentTintColor = NSColor(white: 0.2, alpha: 1)
         button.font = .systemFont(ofSize: 11)
         button.cell?.wraps = true
         button.cell?.usesSingleLineMode = false
         button.target = self
         button.action = action
+        styleCapsuleSheetButton(button, palette: palette)
         return button
     }
 
-    private func makeCapsuleSheetButton(imagePath: String, title: String, action: Selector) -> NSButton {
+    private func makeCapsuleSheetButton(
+        imagePath: String,
+        title: String,
+        action: Selector,
+        palette: CapsuleOverlayPalette
+    ) -> NSButton {
         let button = NSButton()
         button.translatesAutoresizingMaskIntoConstraints = false
         button.isBordered = false
@@ -1293,13 +1362,25 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         button.image = Self.capsuleActionIcon(contentsOfFile: imagePath)
         button.imageScaling = .scaleProportionallyUpOrDown
         button.title = title
-        button.contentTintColor = NSColor(white: 0.2, alpha: 1)
         button.font = .systemFont(ofSize: 11)
         button.cell?.wraps = true
         button.cell?.usesSingleLineMode = false
         button.target = self
         button.action = action
+        styleCapsuleSheetButton(button, palette: palette)
         return button
+    }
+
+    private func styleCapsuleSheetButton(_ button: NSButton, palette: CapsuleOverlayPalette) {
+        let title = button.attributedTitle.string.isEmpty ? button.title : button.attributedTitle.string
+        button.contentTintColor = palette.icon
+        button.attributedTitle = NSAttributedString(
+            string: title,
+            attributes: [
+                .foregroundColor: palette.icon,
+                .font: NSFont.systemFont(ofSize: 11),
+            ]
+        )
     }
 
     /// One size for every capsule action, built-in or lxapp-supplied.
@@ -1322,6 +1403,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         }
         let scale = min(box / size.width, box / size.height)
         image.size = NSSize(width: size.width * scale, height: size.height * scale)
+        image.isTemplate = true
         return image
     }
 
@@ -1346,6 +1428,12 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     @objc private func dismissCapsuleSheet() {
         capsuleSheetOverlay?.removeFromSuperview()
         capsuleSheetOverlay = nil
+        capsuleSheetDimmed = nil
+        capsuleSheetSurface = nil
+        capsuleSheetTitle = nil
+        capsuleSheetVersion = nil
+        capsuleSheetSeparator = nil
+        capsuleSheetActionButtons = []
     }
 
     @objc private func closeButtonClicked() {
