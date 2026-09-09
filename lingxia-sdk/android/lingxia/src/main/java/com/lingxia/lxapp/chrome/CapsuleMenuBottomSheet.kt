@@ -2,6 +2,7 @@ package com.lingxia.lxapp.chrome
 
 import com.lingxia.lxapp.R
 
+import com.lingxia.app.Lingxia
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.LxAppInfo
 
@@ -48,17 +49,17 @@ internal object CapsuleMenuBottomSheet {
         val items = listOf(
             MenuItem(
                 iconResId = R.drawable.icon_clean_cache,
-                title = activity.getString(R.string.lx_capsule_clean_cache),
+                title = Lingxia.localizedString(activity, R.string.lx_capsule_clean_cache),
                 action = NativeApi.CAPSULE_ACTION_CLEAN_CACHE_RESTART
             ),
             MenuItem(
                 iconResId = R.drawable.icon_restart,
-                title = activity.getString(R.string.lx_capsule_restart),
+                title = Lingxia.localizedString(activity, R.string.lx_capsule_restart),
                 action = NativeApi.CAPSULE_ACTION_RESTART
             ),
             MenuItem(
                 iconResId = R.drawable.icon_uninstall,
-                title = activity.getString(R.string.lx_capsule_uninstall),
+                title = Lingxia.localizedString(activity, R.string.lx_capsule_uninstall),
                 action = NativeApi.CAPSULE_ACTION_UNINSTALL
             )
         ) + parseMoreActions(NativeApi.getLxAppMoreActions(appId))

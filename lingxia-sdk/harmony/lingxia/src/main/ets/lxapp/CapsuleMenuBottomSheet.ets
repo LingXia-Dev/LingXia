@@ -5,7 +5,14 @@
 
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../app/LxLog';
-import { getLxAppInfo, getLxAppMoreActions, onLxappEvent, UiEventType, type LxAppInfo } from 'liblingxia.so';
+import { localizedString } from '../app/DisplayLanguageResources';
+import {
+  getLxAppInfo,
+  getLxAppMoreActions,
+  onLxappEvent,
+  UiEventType,
+  type LxAppInfo
+} from 'liblingxia.so';
 import {
   CAPSULE_ACTION_CLEAN_CACHE_RESTART,
   CAPSULE_ACTION_RESTART,
@@ -208,7 +215,7 @@ export struct CapsuleMenuBottomSheetComponent {
                     .textAlign(TextAlign.Center)
                     .maxLines(2)
                 } else if (item.titleKey) {
-                  Text($r(`app.string.${item.titleKey}`))
+                  Text(this.hostActionTitle(item.titleKey))
                     .fontSize(13)
                     .fontColor(item.isDestructive ? '#FF3B30' : '#555555')
                     .textAlign(TextAlign.Center)
@@ -282,6 +289,11 @@ export struct CapsuleMenuBottomSheetComponent {
 
   private menuActions(): MenuAction[] {
     return this.actions.concat(this.customActions).slice(0, 10);
+  }
+
+  /** Host-owned capsule labels follow the product display language. */
+  private hostActionTitle(key: string): string {
+    return localizedString(getContext(this).resourceManager, key);
   }
 
   private releaseBadge(): ReleaseBadge | null {

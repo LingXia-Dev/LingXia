@@ -1,6 +1,7 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../app/LxLog';
-import { TabBarPosition, type TabBarItem, type TabBarState, getDisplayLanguage } from 'liblingxia.so';
+import { TabBarPosition, type TabBarItem, type TabBarState } from 'liblingxia.so';
+import { localizedString } from '../app/DisplayLanguageResources';
 
 // TabBar layout constants
 const TAB_BAR_HORIZONTAL_HEIGHT = 72;    // Horizontal TabBar default height
@@ -683,10 +684,7 @@ export struct TabBar {
 
   /** Host-owned overflow label follows the product display language. */
   private getMoreLabel(): string {
-    // Matches i18n/shared `tabbar.more`. `$r('app.string.lx_tabbar_more')`
-    // follows the system locale, which can disagree with display language.
-    const tag: string = getDisplayLanguage().replace('_', '-').toLowerCase();
-    return tag === 'zh' || tag.startsWith('zh-') ? '更多' : 'More';
+    return localizedString(getContext(this).resourceManager, 'lx_tabbar_more');
   }
 
   /** Overflow surface colour; keeps the floating block legible. */
