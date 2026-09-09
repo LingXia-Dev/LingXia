@@ -76,12 +76,12 @@ impl LxApp {
     /// Find the actual configured page path that matches the given path.
     /// Returns the path with proper extension if found.
     pub fn find_page_path(&self, path: &str) -> Option<String> {
-        let pages = self.config.page_paths();
+        let pages = self.config().page_paths();
         find_matching_page_path(&pages, path).map(|s| s.to_string())
     }
 
     pub fn find_page_path_by_name(&self, name: &str) -> Option<String> {
-        self.config.page_path_by_name(name)
+        self.config().page_path_by_name(name)
     }
 
     /// Validate that a page URL resolves to a configured page before navigation.
@@ -116,7 +116,7 @@ impl LxApp {
     }
 
     fn is_configured_page(&self, path: &str) -> bool {
-        let pages = self.config.page_paths();
+        let pages = self.config().page_paths();
         !path.trim_start_matches('/').is_empty() && find_matching_page_path(&pages, path).is_some()
     }
 
@@ -126,9 +126,8 @@ impl LxApp {
         resolved_page_path: &str,
         original_url: &str,
     ) -> bool {
-        let plugin_cfg = match self.config.plugins.get(plugin_name) {
-            Some(cfg) => cfg,
-            None => return false,
+        let Some(plugin_cfg) = self.config().plugins.get(plugin_name).cloned() else {
+            return false;
         };
 
         let requested_path = extract_plugin_page_path(original_url)
@@ -143,7 +142,7 @@ impl LxApp {
         }
 
         if let Some(pages) =
-            crate::plugin::load_plugin_manifest_pages(&self.runtime, plugin_name, plugin_cfg)
+            crate::plugin::load_plugin_manifest_pages(&self.runtime, plugin_name, &plugin_cfg)
         {
             return plugin_page_map_contains(&pages, &requested_path, resolved_page_path);
         }
@@ -163,7 +162,7 @@ impl LxApp {
             PageTarget::Path(path) => {
                 let trimmed = path.trim();
                 if trimmed.is_empty() {
-                    self.config.get_initial_route()
+                    self.config().get_initial_route()
                 } else {
                     trimmed.to_string()
                 }
@@ -188,7 +187,7 @@ impl LxApp {
     }
 
     fn page_definition_for_resolved_path(&self, resolved_path: &str) -> PageDefinition {
-        let page_entries = self.config.page_entries();
+        let page_entries = self.config().page_entries();
         let matched_entry = page_entries
             .into_iter()
             .find(|entry| normalize_page_path(&entry.path) == normalize_page_path(resolved_path));

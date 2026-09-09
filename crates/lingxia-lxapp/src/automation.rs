@@ -98,10 +98,6 @@ pub fn resolve_webview(app: &Arc<LxApp>, page_name: Option<&str>) -> Result<Arc<
 }
 
 /// A page name the session does not know, with the names it does know.
-///
-/// The page registry is built once when the session starts, so a name that is
-/// in `lxapp.json` but not here means the file was edited after the fact —
-/// the error has to say that, or the edit looks like it silently did nothing.
 pub fn unknown_page_name(app: &Arc<LxApp>, page_name: &str) -> String {
     let configured: Vec<String> = app
         .page_entries()
@@ -109,7 +105,7 @@ pub fn unknown_page_name(app: &Arc<LxApp>, page_name: &str) -> String {
         .map(|page| page.name)
         .collect();
     format!(
-        "unknown page name: {page_name} (this session knows: {}). A page added to lxapp.json needs a `lingxia dev` restart; reload only rebuilds the bundle.",
+        "unknown page name: {page_name} (this session knows: {})",
         if configured.is_empty() {
             "none".to_string()
         } else {

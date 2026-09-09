@@ -6,7 +6,7 @@ use rong::{JSContext, JSFunc, JSResult, Source, error::HostError};
 pub(crate) async fn ensure_plugin_logic_loaded(ctx: &JSContext, plugin_name: &str) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(ctx)?;
 
-    let Some(plugin_cfg) = lxapp.config.plugins.get(plugin_name) else {
+    let Some(plugin_cfg) = lxapp.config().plugins.get(plugin_name).cloned() else {
         error!("Plugin not configured: {}", plugin_name).with_appid(lxapp.appid.clone());
         return Err(HostError::new(
             rong::error::E_INTERNAL,
@@ -15,13 +15,13 @@ pub(crate) async fn ensure_plugin_logic_loaded(ctx: &JSContext, plugin_name: &st
         .into());
     };
 
-    let mut logic_js_path = plugin::get_plugin_logic_js(&lxapp.runtime, plugin_name, plugin_cfg);
+    let mut logic_js_path = plugin::get_plugin_logic_js(&lxapp.runtime, plugin_name, &plugin_cfg);
     if logic_js_path.is_none() {
         // Plugin might not be installed yet; wait/trigger download so navigation doesn't fail.
-        match plugin::download_and_install(lxapp.runtime.clone(), plugin_name, plugin_cfg).await {
+        match plugin::download_and_install(lxapp.runtime.clone(), plugin_name, &plugin_cfg).await {
             Ok(_) => {
                 logic_js_path =
-                    plugin::get_plugin_logic_js(&lxapp.runtime, plugin_name, plugin_cfg);
+                    plugin::get_plugin_logic_js(&lxapp.runtime, plugin_name, &plugin_cfg);
             }
             Err(e) => {
                 error!("Failed to download/install plugin {}: {}", plugin_name, e)

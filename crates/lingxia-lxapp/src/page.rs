@@ -821,6 +821,26 @@ impl PageInstance {
         }
     }
 
+    /// Apply a re-read page JSON to a retained instance. Dev reload uses this
+    /// so `navigationStyle` and the rest of the native chrome follow the file.
+    pub(crate) fn apply_reloaded_page_json(&self, lxapp: &LxApp) {
+        let (page_config, config_load_error) = match PageConfig::from_json(lxapp, &self.path()) {
+            Ok(config) => (config, None),
+            Err(error) => {
+                error!("Page config load failed for {}: {}", self.path(), error)
+                    .with_appid(lxapp.appid.clone())
+                    .with_path(self.path().to_string());
+                (PageConfig::default(), Some(error.to_string()))
+            }
+        };
+        if let Ok(mut state) = self.inner.state.lock() {
+            state.navbar_state = page_config.create_navbar_state();
+            state.config_load_error = config_load_error;
+            state.enable_pull_down_refresh = page_config.is_pull_down_refresh_enabled();
+            state.orientation_override = page_config.get_orientation_override();
+        }
+    }
+
     /// Attach WebView to this page (called when WebView is ready)
     pub fn attach_webview(&self, webview: Arc<WebView>) {
         let mut should_reset_lifecycle = false;
@@ -1546,7 +1566,7 @@ impl PageInstance {
             .is_some_and(|tabbar| tabbar.is_tabbar_page(&path));
         let is_tab_switch = nav_type == NavigationType::SwitchTab
             || (nav_type == NavigationType::Launch && is_tabbar_page);
-        let is_initial_route = path == lxapp.config.get_initial_route();
+        let is_initial_route = path == lxapp.config().get_initial_route();
 
         // 2. Handle page stack modifications
         match nav_type {
@@ -1733,7 +1753,7 @@ impl PageInstance {
             let new_stack_size = lxapp.get_page_stack_size();
             {
                 let dest_page = dest.clone();
-                let is_initial_route = path == lxapp.config.get_initial_route();
+                let is_initial_route = path == lxapp.config().get_initial_route();
                 let show_home_button = new_stack_size <= 1 && !is_tabbar_page && !is_initial_route;
                 dest_page.get_navbar_state_mut(|navbar| {
                     let allow_buttons = navbar.show_navbar;

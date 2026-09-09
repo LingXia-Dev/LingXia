@@ -871,7 +871,9 @@ pub struct LxApp {
     pub is_home_lxapp: bool,
     app_session_class: AppSessionClass,
     pub(crate) release_type: ReleaseType,
-    pub(crate) config: LxAppConfig,
+    /// Manifest. Dev reload re-reads `lxapp.json` so `pages` / `tabBar` apply
+    /// without a new `lingxia dev` session.
+    pub(crate) config: Mutex<LxAppConfig>,
     pub(crate) executor: Arc<LxAppWorkers>,
     host_permissions: permissions::HostPermissions,
     home_update_check_dispatched: AtomicBool,
@@ -1343,8 +1345,14 @@ impl LxApp {
         self.runtime.app_data_dir()
     }
 
-    pub fn page_entries(&self) -> Vec<LxAppRuntimePageInfo> {
+    pub(crate) fn config(&self) -> std::sync::MutexGuard<'_, LxAppConfig> {
         self.config
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+    }
+
+    pub fn page_entries(&self) -> Vec<LxAppRuntimePageInfo> {
+        self.config()
             .page_entries()
             .into_iter()
             .map(|LxAppPageEntry { name, path }| LxAppRuntimePageInfo { name, path })
@@ -1971,7 +1979,7 @@ impl LxApp {
             is_home_lxapp: false,
             app_session_class,
             release_type,
-            config: LxAppConfig::default(),
+            config: Mutex::new(LxAppConfig::default()),
             executor,
             host_permissions: permissions::HostPermissions::default(),
             home_update_check_dispatched: AtomicBool::new(false),
@@ -2030,7 +2038,7 @@ impl LxApp {
         app.setup().inspect_err(|e| {
             error!("Setup failed for home app: {}", e).with_appid(&app.appid);
         })?;
-        app.state.lock().unwrap().startup_options.path = app.config.get_initial_route();
+        app.state.lock().unwrap().startup_options.path = app.config().get_initial_route();
         Ok(app)
     }
 
@@ -2231,6 +2239,19 @@ impl LxApp {
 
     /// Load and parse lxapp.json configuration
     pub fn load_config(&mut self) -> Result<(), LxAppError> {
+        self.apply_lxapp_json(true)
+    }
+
+    /// Re-read `lxapp.json` from the live bundle. Dev reload uses this so
+    /// `pages` / `tabBar` edits apply without a new `lingxia dev` session.
+    pub(crate) fn reload_manifest(&self) -> Result<(), LxAppError> {
+        if matches!(self.bundle_source, LxAppBundleSource::Synthetic) {
+            return Ok(());
+        }
+        self.apply_lxapp_json(false)
+    }
+
+    fn apply_lxapp_json(&self, first_load: bool) -> Result<(), LxAppError> {
         let lxapp_json_path = self.lxapp_dir.join("lxapp.json");
         info!(
             " [{}] Loading lxapp.json from: {}",
@@ -2238,46 +2259,61 @@ impl LxApp {
             lxapp_json_path.display()
         );
 
-        // Load app configuration if it exists
-        self.read_json("lxapp.json").map(|app_json| {
-            self.config = LxAppConfig::from_value(app_json)
-                .map_err(|e| LxAppError::InvalidJsonFile(format!("lxapp.json: {}", e)))?;
+        let app_json = self.read_json("lxapp.json")?;
+        let config = LxAppConfig::from_value(app_json)
+            .map_err(|e| LxAppError::InvalidJsonFile(format!("lxapp.json: {}", e)))?;
 
-            // An absent `appId` is not a claim to be another app, and failing
-            // the load would leave an installed package with no way back: the
-            // instance never comes up, so the update that replaces it never runs.
-            if !self.config.appId.is_empty() && self.config.appId != self.appid {
-                return Err(LxAppError::InvalidJsonFile(format!(
-                    "lxapp.json appId '{}' does not match the host-selected application '{}'",
-                    self.config.appId, self.appid
-                )));
+        // An absent `appId` is not a claim to be another app, and failing
+        // the load would leave an installed package with no way back: the
+        // instance never comes up, so the update that replaces it never runs.
+        if !config.appId.is_empty() && config.appId != self.appid {
+            return Err(LxAppError::InvalidJsonFile(format!(
+                "lxapp.json appId '{}' does not match the host-selected application '{}'",
+                config.appId, self.appid
+            )));
+        }
+
+        let tabbar = config
+            .tabBar
+            .as_ref()
+            .map(|tabbar| tabbar.with_absolute_paths(&self.lxapp_dir));
+        let preference = config.appearance;
+        let resolved = page_chrome::resolve_appearance(preference);
+        *self
+            .config
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = config;
+
+        {
+            let mut state = self.state.lock().unwrap();
+            state.tabbar = tabbar;
+            if first_load {
+                state.appearance = LxAppAppearanceState {
+                    preference,
+                    resolved,
+                    revision: 0,
+                };
+            } else {
+                state.appearance.preference = preference;
+                state.appearance.resolved = resolved;
             }
-
-            // Initialize TabBar state if config has TabBar
-            if let Some(tabbar_config) = &self.config.tabBar {
-                let mut state = self.state.lock().unwrap();
-                // Convert icon paths to absolute paths using the lxapp directory as base
-                state.tabbar = Some(tabbar_config.with_absolute_paths(&self.lxapp_dir));
-            }
-
-            // The manifest is the only lxapp-scoped input: an lxapp declares
-            // the scheme its own UI needs, the way a page declares
-            // `color-scheme`. Everything else follows the product.
-            let preference = self.config.appearance;
-            let resolved = page_chrome::resolve_appearance(preference);
-            self.state.lock().unwrap().appearance = LxAppAppearanceState {
-                preference,
-                resolved,
-                revision: 0,
-            };
-            self.runtime
-                .apply_lxapp_appearance(&self.appid, resolved.is_dark())?;
+        }
+        self.runtime
+            .apply_lxapp_appearance(&self.appid, resolved.is_dark())?;
+        if first_load {
             self.document_start_scripts.lock().unwrap().push(Arc::from(
                 page_chrome::bootstrap_script(&EffectivePageChromeLayout::default(), resolved),
             ));
+        }
+        Ok(())
+    }
 
-            Ok(())
-        })?
+    /// Re-read each live page's JSON so `navigationStyle` and the rest of the
+    /// native chrome follow a reload.
+    fn refresh_live_page_config(&self) {
+        for page in self.live_page_instances() {
+            page.apply_reloaded_page_json(self);
+        }
     }
 
     /// Initialize paths and load configuration
@@ -2288,7 +2324,7 @@ impl LxApp {
             // `Some("logic.js")` (documented default for normal lxapps); force it off so
             // `logic_enabled()` / `logic_entry_source` don't spin up JS workers we have
             // no source for.
-            self.config.logic = Some(LxAppLogicEntry::Enabled(false));
+            self.config().logic = Some(LxAppLogicEntry::Enabled(false));
         } else {
             self.load_config()?;
             self.host_permissions = permissions::HostPermissions::start(
@@ -2311,12 +2347,12 @@ impl LxApp {
     }
 
     pub fn logic_enabled(&self) -> bool {
-        self.config.logic_entry().is_some()
+        self.config().logic_entry().is_some()
     }
 
     #[cfg(feature = "js-appservice")]
     pub async fn logic_entry_source(&self, ctx: &JSContext) -> JSResult<Option<Source>> {
-        let Some(entry) = self.config.logic_entry() else {
+        let Some(entry) = self.config().logic_entry() else {
             return Ok(None);
         };
         if Path::new(&entry).extension().and_then(|ext| ext.to_str()) != Some("js") {
@@ -2392,9 +2428,10 @@ impl LxApp {
                 self.appid
             )));
         }
+        let plugins = self.config().plugins.clone();
         let file_path = match crate::plugin::resolve_plugin_resource_path_from_internal_path(
             &self.runtime,
-            &self.config.plugins,
+            &plugins,
             relative_path,
         )? {
             Some(path) => path,
@@ -2857,7 +2894,7 @@ impl LxApp {
     }
 
     pub fn initial_route(&self) -> String {
-        self.config.get_initial_route()
+        self.config().get_initial_route()
     }
 
     /// Ensure the JS app service worker is running for this app.
@@ -2945,6 +2982,9 @@ impl LxApp {
 
     fn begin_in_place_restart(&self) -> Result<Vec<PendingPageServiceRestart>, LxAppError> {
         self.restart_app_service_in_place()?;
+        self.reload_manifest()?;
+        self.refresh_live_page_config();
+        self.sync_host_ui();
         let pages: Vec<PageInstance> = {
             let state = self
                 .state
@@ -3472,7 +3512,7 @@ impl LxApp {
         // Always relaunch to initial route after restart, but keep the region
         // (aside/panel vs main) so applyUpdate does not promote a panel guest
         // into the main slot.
-        let relaunch_path = self.config.get_initial_route();
+        let relaunch_path = self.config().get_initial_route();
         let (open_mode, panel_id) = {
             let state = self.state.lock().unwrap_or_else(|error| error.into_inner());
             (
@@ -3535,7 +3575,7 @@ impl LxApp {
     }
 
     pub fn get_lxapp_info(&self) -> config::LxAppInfo {
-        self.config.get_lxapp_info(self.release_type.as_str())
+        self.config().get_lxapp_info(self.release_type.as_str())
     }
 }
 
@@ -3736,7 +3776,7 @@ mod delayed_destroy_tests {
         assert!(control.is_control_app());
         assert_eq!(
             control.state.lock().unwrap().startup_options.path,
-            control.config.get_initial_route()
+            control.config().get_initial_route()
         );
 
         let rebuilt = manager
@@ -3970,5 +4010,158 @@ mod delayed_destroy_tests {
             .sum::<usize>();
         assert_eq!(winners, 1);
         assert_eq!(session.status(), LxAppSessionStatus::Restarting);
+    }
+}
+
+#[cfg(test)]
+mod manifest_reload_tests {
+    use super::*;
+    use crate::page::PageInstance;
+
+    fn write_manifest(root: &std::path::Path, appid: &str, body: &str) {
+        std::fs::write(root.join("lxapp.json"), body.replace("APPID", appid)).unwrap();
+    }
+
+    fn test_runtime() -> Arc<Platform> {
+        let root = std::env::temp_dir().join(format!("lingxia-lxapp-reload-{}", Uuid::new_v4()));
+        let data = root.join("data");
+        let cache = root.join("cache");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::create_dir_all(&cache).unwrap();
+        Arc::new(
+            Platform::new(
+                data.display().to_string(),
+                cache.display().to_string(),
+                "en-US".to_string(),
+            )
+            .expect("test platform"),
+        )
+    }
+
+    fn dev_app(root: &std::path::Path, appid: &str) -> Arc<LxApp> {
+        register_dev_bundle_source(appid, root);
+        let runtime = test_runtime();
+        let workers = LxAppWorkers::init(1);
+        let app = LxApp::new(appid.to_string(), runtime, workers, ReleaseType::Developer)
+            .expect("dev lxapp");
+        let app = Arc::new(app);
+        app.bind_arc();
+        app
+    }
+
+    #[test]
+    fn reload_manifest_picks_up_pages_and_tabbar() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let appid = format!("app.lingxia.reload-pages.{}", Uuid::new_v4());
+        write_manifest(
+            root,
+            &appid,
+            r#"{
+              "appId": "APPID",
+              "appName": "Reload",
+              "version": "1.0.0",
+              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+              "pages": [
+                {"name": "home", "path": "pages/home/index"},
+                {"name": "list", "path": "pages/list/index"}
+              ]
+            }"#,
+        );
+        let app = dev_app(root, &appid);
+        assert_eq!(
+            app.page_entries()
+                .into_iter()
+                .map(|page| page.name)
+                .collect::<Vec<_>>(),
+            ["home", "list"]
+        );
+        assert!(app.get_tabbar().is_none());
+
+        write_manifest(
+            root,
+            &appid,
+            r#"{
+              "appId": "APPID",
+              "appName": "Reload",
+              "version": "1.0.0",
+              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+              "pages": [
+                {"name": "home", "path": "pages/home/index"},
+                {"name": "list", "path": "pages/list/index"},
+                {"name": "settings", "path": "pages/settings/index"}
+              ],
+              "tabBar": {
+                "items": [
+                  {"page": "home", "text": "Home"},
+                  {"page": "settings", "text": "Settings"}
+                ]
+              }
+            }"#,
+        );
+        app.reload_manifest().expect("reload manifest");
+        assert_eq!(
+            app.page_entries()
+                .into_iter()
+                .map(|page| page.name)
+                .collect::<Vec<_>>(),
+            ["home", "list", "settings"]
+        );
+        assert_eq!(
+            app.find_page_path_by_name("settings").as_deref(),
+            Some("pages/settings/index")
+        );
+        let tabbar = app.get_tabbar().expect("tabbar after reload");
+        assert_eq!(tabbar.items.len(), 2);
+        assert_eq!(tabbar.items[0].page, "home");
+        assert_eq!(tabbar.items[1].page, "settings");
+    }
+
+    #[test]
+    fn reload_applies_page_json_navigation_style() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let appid = format!("app.lingxia.reload-navbar.{}", Uuid::new_v4());
+        write_manifest(
+            root,
+            &appid,
+            r#"{
+              "appId": "APPID",
+              "appName": "Reload",
+              "version": "1.0.0",
+              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+              "pages": [{"name": "home", "path": "pages/home/index"}]
+            }"#,
+        );
+        let page_dir = root.join("pages/home");
+        std::fs::create_dir_all(&page_dir).unwrap();
+        std::fs::write(
+            page_dir.join("index.json"),
+            r#"{"navigationStyle":"default"}"#,
+        )
+        .unwrap();
+        let app = dev_app(root, &appid);
+        let page =
+            PageInstance::new_headless(app.appid.clone(), "pages/home/index".to_string(), &app);
+        assert!(
+            page.get_page_state()
+                .expect("page state")
+                .navbar_state
+                .show_navbar
+        );
+
+        std::fs::write(
+            page_dir.join("index.json"),
+            r#"{"navigationStyle":"custom"}"#,
+        )
+        .unwrap();
+        page.apply_reloaded_page_json(&app);
+        assert!(
+            !page
+                .get_page_state()
+                .expect("page state")
+                .navbar_state
+                .show_navbar
+        );
     }
 }

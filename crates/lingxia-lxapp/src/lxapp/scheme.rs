@@ -359,9 +359,10 @@ impl LxApp {
             return Err(LxAppError::ResourceNotFound(uri.to_string()));
         }
 
+        let plugins = self.config().plugins.clone();
         let last_err = match plugin::resolve_plugin_resource_path(
             &self.runtime,
-            &self.config.plugins,
+            &plugins,
             plugin_name,
             normalized,
         ) {
