@@ -4,7 +4,8 @@
   "description": "LLM chatbox demo using LingXia streaming bridge",
   "type": "module",
   "scripts": {
-    "build": "lingxia build --framework react"
+    "build": "lingxia build --framework react",
+    "typecheck": "tsc -b tsconfig.json"
   },
   "keywords": [
     "lingxia",
@@ -17,10 +18,10 @@
   "dependencies": {
     "@lingxia/bridge": "file:../../packages/lingxia-bridge",
     "@lingxia/react": "file:../../packages/lingxia-react",
+    "@lingxia/types": "file:../../packages/lingxia-types",
     "@lingxia/vue": "file:../../packages/lingxia-vue",
     "@tailwindcss/postcss": "^4.3.3",
     "echarts": "^6.1.0",
-    "lingxia-types": "file:../../packages/lingxia-types",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "tailwindcss": "^4.3.3",

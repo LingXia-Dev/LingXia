@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import * as echarts from 'echarts';
 import { useLxPage, useLxStream } from '@lingxia/react';
 import type { LxStream } from '@lingxia/bridge';
-import type { Message, ChatChunk, ChartData } from './index';
+import type { Message, ChatChunk, ChartData } from '../../shared/chat';
 import '../../tailwind.css';
 
 const PALETTE = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4'];
