@@ -18,7 +18,9 @@
         <div class="text-center mb-6">
           <img src="/public/AppIcon.png" alt="Logo" class="w-16 h-16 mx-auto mb-3 rounded-[16px]" />
           <div class="text-[17px] font-semibold text-gray-900">LingXia</div>
-          <div class="text-[13px] text-gray-500 mt-0.5">Lightweight Application Framework</div>
+          <div class="text-[13px] text-gray-500 mt-0.5" data-testid="home-tagline">
+            {{ copy.tagline }}
+          </div>
         </div>
 
         <div class="space-y-3">
@@ -26,7 +28,7 @@
             data-testid="home-name"
             :data-controlled-value="name"
             type="text"
-            placeholder="Enter your name"
+            :placeholder="copy.namePlaceholder"
             v-model="name"
             @keydown.enter="handleGreet"
             class="w-full h-[44px] px-4 bg-surface-100/80 border-0 rounded-[10px] text-[17px] text-gray-900 placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 transition-all"
@@ -39,7 +41,7 @@
             :disabled="!name.trim() || isSending"
             class="w-full h-[50px] bg-primary hover:bg-primary-dark active:bg-primary-dark disabled:bg-primary/50 disabled:cursor-not-allowed rounded-[12px] text-[17px] text-white font-semibold transition-colors"
           >
-            {{ isSending ? 'Sending...' : 'Say Hello' }}
+            {{ isSending ? copy.sending : copy.sayHello }}
           </button>
         </div>
 
@@ -60,9 +62,9 @@
         <!-- lxapp-owned light/dark branch — `auto` follows the host shell. -->
         <div class="mt-4" data-testid="home-appearance">
           <div class="flex items-center justify-between mb-1.5">
-            <span class="text-[11px] font-medium text-gray-500">Appearance</span>
+            <span class="text-[11px] font-medium text-gray-500">{{ copy.appearance }}</span>
             <span class="text-[11px] text-gray-400" data-testid="home-appearance-resolved">
-              {{ resolvedAppearance }}
+              {{ resolvedLabel }}
             </span>
           </div>
           <div class="flex gap-1 p-1 bg-surface-100 rounded-[10px]">
@@ -73,10 +75,10 @@
               :data-testid="`home-appearance-${option}`"
               :data-selected="preference === option"
               @click="setAppearance({ preference: option })"
-              class="flex-1 h-8 rounded-[8px] text-[13px] font-medium capitalize transition-colors"
+              class="flex-1 h-8 rounded-[8px] text-[13px] font-medium transition-colors"
               :class="preference === option ? 'bg-surface text-gray-900 shadow-sm' : 'text-gray-500'"
             >
-              {{ option }}
+              {{ appearanceLabels[option] }}
             </button>
           </div>
         </div>
@@ -90,7 +92,7 @@
       <div v-if="ipAddress" class="mt-4 flex justify-center">
         <div class="inline-flex items-center gap-2 px-4 py-2 bg-black/20 backdrop-blur-md rounded-full text-white/90">
           <span class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-          <span class="text-xs font-medium tracking-wide">My IP </span>
+          <span class="text-xs font-medium tracking-wide">{{ copy.myIp }} </span>
           <span class="text-xs font-mono">{{ ipAddress }}</span>
         </div>
       </div>
@@ -106,12 +108,25 @@ import '../../tailwind.css';
 
 type AppearancePreference = 'auto' | 'light' | 'dark';
 
+type HomeCopy = {
+  tagline: string;
+  namePlaceholder: string;
+  sayHello: string;
+  sending: string;
+  appearance: string;
+  appearanceAuto: string;
+  appearanceLight: string;
+  appearanceDark: string;
+  myIp: string;
+};
+
 type PageData = {
   greeting?: string;
   imageUrl?: string;
   ipAddr?: string;
   appVersion?: string;
   appearance?: { preference: AppearancePreference; resolved: 'light' | 'dark' };
+  copy?: HomeCopy;
 };
 
 type PageActions = {
@@ -133,6 +148,25 @@ const imageUrl = computed(() => typeof data?.imageUrl === 'string' ? data.imageU
 const appVersion = computed(() => typeof data?.appVersion === 'string' ? data.appVersion : '');
 const preference = computed<AppearancePreference>(() => data?.appearance?.preference ?? 'auto');
 const resolvedAppearance = computed(() => data?.appearance?.resolved ?? 'light');
+const copy = computed<HomeCopy>(() => data?.copy ?? {
+  tagline: 'Lightweight Application Framework',
+  namePlaceholder: 'Enter your name',
+  sayHello: 'Say Hello',
+  sending: 'Sending...',
+  appearance: 'Appearance',
+  appearanceAuto: 'Auto',
+  appearanceLight: 'Light',
+  appearanceDark: 'Dark',
+  myIp: 'My IP',
+});
+const appearanceLabels = computed<Record<AppearancePreference, string>>(() => ({
+  auto: copy.value.appearanceAuto,
+  light: copy.value.appearanceLight,
+  dark: copy.value.appearanceDark,
+}));
+const resolvedLabel = computed(() =>
+  resolvedAppearance.value === 'dark' ? copy.value.appearanceDark : copy.value.appearanceLight,
+);
 
 watch(greetingMessage, (newVal) => {
   if (isSending.value && newVal) {
