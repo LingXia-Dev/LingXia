@@ -1,4 +1,4 @@
-import type { LxAppDriver } from 'lingxia-types/automation';
+import type { LxAppDriver } from '@lingxia/types/automation';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';

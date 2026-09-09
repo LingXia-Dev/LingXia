@@ -1,6 +1,17 @@
-const app = getApp();
+import type { ConnectWifiOptions } from "@lingxia/types";
+import { showcaseApp } from "../../shared/lib/app";
+import { errorMessage } from "../../shared/lib/errors";
+const app = showcaseApp();
 
-function startWifiConnectedListener(page) {
+// The two module-level listener helpers take the page instance, so they need a
+// name for the slice of it they touch.
+interface WifiPage {
+  data: { wifiListenerEnabled: boolean; wifiConnectedEvents: unknown[] };
+  _offWifiConnected: (() => void) | null;
+  setData(patch: Record<string, unknown>): void;
+}
+
+function startWifiConnectedListener(page: WifiPage) {
   if (page.data.wifiListenerEnabled) {
     return;
   }
@@ -22,7 +33,7 @@ function startWifiConnectedListener(page) {
   }
 }
 
-function stopWifiConnectedListener(page) {
+function stopWifiConnectedListener(page: WifiPage) {
   if (!page.data.wifiListenerEnabled) {
     return;
   }
@@ -42,8 +53,12 @@ Page({
     connectedWifi: null,
     wifiModuleEnabled: false,
     wifiListenerEnabled: false,
-    wifiConnectedEvents: [],
+    wifiConnectedEvents: [] as unknown[],
   },
+
+  // The unsubscribe handle is not serializable state, so it lives on the
+  // instance rather than in `data`.
+  _offWifiConnected: null as (() => void) | null,
 
   onLoad: async function (options) {
     console.log("WiFi page onLoad options:", options);
@@ -87,7 +102,7 @@ Page({
       this.setData({ wifiModuleEnabled: true });
     } catch (error) {
       console.error("Failed to start WiFi:", error);
-      lx.showToast({ title: error.message, icon: "none" });
+      lx.showToast({ title: errorMessage(error, "Wi-Fi request failed"), icon: "none" });
     }
   },
 
@@ -117,7 +132,7 @@ Page({
       this.setData({ wifiList });
     } catch (error) {
       console.error("Failed to get WiFi list:", error);
-      lx.showToast({ title: error.message, icon: "none" });
+      lx.showToast({ title: errorMessage(error, "Wi-Fi request failed"), icon: "none" });
     }
   },
 
@@ -131,7 +146,7 @@ Page({
     }
   },
 
-  connectWifi: async function (options) {
+  connectWifi: async function (options: ConnectWifiOptions) {
     try {
       await lx.connectWifi(options);
       console.log("WiFi connection requested:", options?.SSID);

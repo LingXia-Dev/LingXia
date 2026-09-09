@@ -4,7 +4,7 @@ import type {
   TerminalPaneSnapshot,
   TerminalPaneTree,
   TerminalWorkspaceSnapshot,
-} from 'lingxia-types/automation';
+} from '@lingxia/types/automation';
 import { showcaseApp } from '../../helpers/app.js';
 
 const targetPlatform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLocaleLowerCase();

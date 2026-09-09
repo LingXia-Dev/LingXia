@@ -145,7 +145,7 @@ Page({
   pageActive: false,
 
   data: {
-    type: CLOUD_PAGE_TYPES.AUTH,
+    type: CLOUD_PAGE_TYPES.AUTH as CloudPageType,
     status: "Idle",
     tenant: null,
     user: null,

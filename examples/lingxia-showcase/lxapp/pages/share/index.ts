@@ -1,7 +1,10 @@
-function mediaPath(entry) {
+import type { ShareOptions } from "@lingxia/types";
+import { errorMessage } from "../../shared/lib/errors";
+function mediaPath(entry: unknown): string {
   if (!entry) return "";
   if (typeof entry === "string") return entry;
-  return entry.tempFilePath || entry.path || entry.filePath || "";
+  const media = entry as { tempFilePath?: string; path?: string; filePath?: string };
+  return media.tempFilePath || media.path || media.filePath || "";
 }
 
 Page({
@@ -11,7 +14,7 @@ Page({
     selectedFilePath: "",
   },
 
-  async _runShare(options) {
+  async _runShare(options: ShareOptions) {
     try {
       this.setData({ statusText: "Opening system share sheet..." });
       const result = await lx.share(options);
@@ -24,7 +27,7 @@ Page({
               : "Share opened",
       });
     } catch (error) {
-      const message = error?.message || "share failed";
+      const message = errorMessage(error, "share failed");
       this.setData({ statusText: message });
       lx.showToast({ title: message, icon: "none" });
     }
@@ -64,7 +67,7 @@ Page({
         statusText: "Image selected",
       });
     } catch (error) {
-      const message = error?.message || "chooseMedia failed";
+      const message = errorMessage(error, "chooseMedia failed");
       this.setData({ statusText: message });
       lx.showToast({ title: message, icon: "none" });
     }
@@ -90,7 +93,7 @@ Page({
         statusText: result.canceled ? "File selection canceled" : "File selected",
       });
     } catch (error) {
-      const message = error?.message || "chooseFile failed";
+      const message = errorMessage(error, "chooseFile failed");
       this.setData({ statusText: message });
       lx.showToast({ title: message, icon: "none" });
     }

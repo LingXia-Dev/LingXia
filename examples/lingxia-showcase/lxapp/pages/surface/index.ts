@@ -1,3 +1,5 @@
+import type { PageMessagePort, PageSurface } from "@lingxia/types";
+
 Page({
   data: {
     queryString: "",
@@ -12,7 +14,7 @@ Page({
     inboundCount: 0,
     lastInbound: "",
   },
-  _offInbound: [],
+  _offInbound: [] as (() => void)[],
 
   onLoad: async function (options) {
     const entries = Object.entries(options || {}).map(([key, value]) => ({
@@ -36,7 +38,7 @@ Page({
 
   _listenInbound: function () {
     this._stopInbound();
-    const receive = (message) => {
+    const receive = (message: unknown) => {
       const next = (this.data.inboundCount || 0) + 1;
       this.setData({
         inboundCount: next,
@@ -45,7 +47,9 @@ Page({
     };
     // A page opened as a surface hears its opener on `surface`; one pushed by
     // navigateTo hears it on `opener`. Both are absent for a plain tab/stack page.
-    const ports = [this.surface, this.opener].filter(Boolean);
+    const ports = [this.surface, this.opener].filter(
+      (port): port is PageSurface | PageMessagePort => Boolean(port),
+    );
     this._offInbound = ports.map((port) => port.onMessage(receive));
   },
 
@@ -72,7 +76,7 @@ Page({
     });
   },
 
-  logSurfaceMessage: async function (params) {
+  logSurfaceMessage: async function (params?: { message?: unknown }) {
     const raw =
       params && typeof params.message === "string" ? params.message : "";
     const message = raw.trim();
@@ -95,6 +99,8 @@ Page({
   },
 
   hideSelf: async function () {
+    // Absent unless this page was opened as a surface.
+    if (!this.surface) return;
     try {
       await this.surface.hide();
     } catch (error) {
@@ -103,6 +109,7 @@ Page({
   },
 
   closeSelf: async function () {
+    if (!this.surface) return;
     try {
       await this.surface.close();
     } catch (error) {

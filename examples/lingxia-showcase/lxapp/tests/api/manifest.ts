@@ -7,4 +7,4 @@ export {
   LX_RUNTIME_CAPABILITY_NAMES,
   LX_RUNTIME_SHAPE_NAMES,
   LX_RUNTIME_SURFACES,
-} from 'lingxia-types/testing';
+} from '@lingxia/types/testing';

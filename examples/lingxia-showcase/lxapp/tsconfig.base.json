@@ -1,16 +1,12 @@
 {
   "compilerOptions": {
-    "composite": true,
-    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.view.tsbuildinfo",
     "target": "ES2020",
     "module": "ESNext",
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "jsx": "{{JSX_MODE}}",
+    "moduleResolution": "bundler",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
@@ -18,7 +14,5 @@
     "paths": {
       "@lingxia/page-types/*": ["./.lingxia/types/*"]
     }
-  },
-  "include": [{{VIEW_INCLUDE}}, "shared/**/*.ts", ".lingxia/types/**/*.d.ts", "global.d.ts"],
-  "exclude": ["node_modules", "dist"]
+  }
 }

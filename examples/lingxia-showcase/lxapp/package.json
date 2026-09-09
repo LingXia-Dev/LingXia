@@ -22,18 +22,19 @@
     "test:automation:backlog-stubs": "node tests/scripts/check-backlog-stubs.mjs",
     "test:automation:covers": "node tests/scripts/check-covers.mjs",
     "test:automation:types": "npm run test:automation:logic-coverage && npm run test:automation:backlog-stubs && tsc -p tests/tsconfig.json",
-    "test:harness": "node --test tests/harness/*.test.mjs"
+    "test:harness": "node --test tests/harness/*.test.mjs",
+    "typecheck": "tsc -b tsconfig.logic.json"
   },
   "dependencies": {
     "@lingxia/bridge": "file:../../../packages/lingxia-bridge",
     "@lingxia/react": "file:../../../packages/lingxia-react",
+    "@lingxia/types": "file:../../../packages/lingxia-types",
     "@lingxia/vue": "file:../../../packages/lingxia-vue",
     "@radix-ui/react-slot": ">=1.3.3",
     "@tailwindcss/postcss": ">=4.3.3",
     "class-variance-authority": ">=0.7.1",
     "clsx": ">=2.1.1",
     "echarts": ">=6.1.0",
-    "lingxia-types": "file:../../../packages/lingxia-types",
     "lodash-es": ">=4.18.1",
     "react": ">=19.2.8",
     "react-dom": ">=19.2.8",

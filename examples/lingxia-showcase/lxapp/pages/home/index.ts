@@ -1,4 +1,5 @@
-const app = getApp();
+import { showcaseApp } from "../../shared/lib/app";
+const app = showcaseApp();
 const globalData = app.globalData;
 
 Page({
@@ -119,7 +120,7 @@ Page({
     this._syncAppearance();
   },
 
-  greet: function(option = {}) {
+  greet: function(option: { name?: string } = {}) {
     const name = typeof option.name === "string" && option.name ? option.name : "LingXia";
     const count = this.data.greetCount + 1;
     this.setData(

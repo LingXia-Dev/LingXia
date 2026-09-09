@@ -1,4 +1,4 @@
-import type { LxAppDriver } from 'lingxia-types/automation';
+import type { LxAppDriver } from '@lingxia/types/automation';
 
 export const SHOWCASE_APP_ID = 'lingxia-showcase';
 

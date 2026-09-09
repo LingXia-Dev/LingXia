@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.logic.tsbuildinfo",
+    "lib": ["ES2020"],
+    "types": ["@lingxia/types", "@lingxia/types/logic-globals"]
+  },
+  "include": [
+    "lxapp.ts",
+    "lxapp.config.ts",
+    "pages/**/*.ts",
+    "shared/lib/app.ts",
+    "shared/lib/errors.ts",
+    "shared/lib/native-events.ts",
+    "shared/lib/todo-utils.ts",
+    "provider.d.ts",
+    ".lingxia/types/**/*.d.ts"
+  ],
+  "exclude": ["node_modules", "dist", "tests"]
+}

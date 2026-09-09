@@ -1,4 +1,4 @@
-import type { LxAppDriver, PageInfo } from 'lingxia-types/automation';
+import type { LxAppDriver, PageInfo } from '@lingxia/types/automation';
 import { eventually } from './poll.js';
 
 export async function waitForElementEnabled(

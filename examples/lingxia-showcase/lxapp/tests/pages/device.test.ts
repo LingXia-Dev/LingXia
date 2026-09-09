@@ -1,5 +1,5 @@
 import { expect, spec } from '@lingxia/test';
-import type { LxAppDriver } from 'lingxia-types/automation';
+import type { LxAppDriver } from '@lingxia/types/automation';
 import { waitForElementText } from '../helpers/page.js';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
 import { showcaseApp, SHOWCASE_APP_ID } from '../helpers/app.js';

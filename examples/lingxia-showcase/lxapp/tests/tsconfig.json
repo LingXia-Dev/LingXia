@@ -1,9 +1,11 @@
 {
-  "extends": "../tsconfig.json",
+  "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2020"],
     "types": [],
-    "noEmit": true
+    // The suite pulls its backlog registry from a plain `.mjs` module.
+    "allowJs": true,
+    "checkJs": false
   },
   "include": ["**/*.ts", "globals.d.ts"],
   "exclude": []

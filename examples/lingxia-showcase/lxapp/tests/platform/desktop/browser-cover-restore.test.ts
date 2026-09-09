@@ -7,7 +7,7 @@ import type {
   DesktopDriver,
   DesktopWindowInfo,
   LxAppDriver,
-} from 'lingxia-types/automation';
+} from '@lingxia/types/automation';
 
 const WINDOWS_FOOTER_ACTION_COUNT = 5;
 

@@ -4,7 +4,7 @@ import type {
   DesktopAxNode,
   DesktopDriver,
   DesktopWindowInfo,
-} from 'lingxia-types/automation';
+} from '@lingxia/types/automation';
 import { runtimePlatform } from '../../helpers/platform.js';
 
 function locationPrompt(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefined {
