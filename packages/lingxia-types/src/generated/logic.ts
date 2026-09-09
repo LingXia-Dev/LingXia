@@ -261,6 +261,7 @@ type StorageEntry<S extends object> = {
 export type TypedStorage<S extends object> = {
   get<K extends StorageKey<S>>(key: K): Promise<S[K] | undefined>;
   set(...entry: StorageEntry<S>): Promise<void>;
+  has(key: StorageKey<S>): Promise<boolean>;
   delete(key: StorageKey<S>): Promise<void>;
   clear(): Promise<void>;
   list(prefix?: string): Promise<string[]>;
@@ -1697,6 +1698,12 @@ export type Storage = {
      */
     get<T = unknown>(key: string): Promise<T | undefined>;
     set(key: string, value: unknown): Promise<void>;
+    /**
+     * Resolves whether an exact key exists, without reading its value. Prefer
+     * it over comparing `get` against `undefined`: presence is a key lookup,
+     * while `get` also reads and deserializes the stored value.
+     */
+    has(key: string): Promise<boolean>;
     delete(key: string): Promise<void>;
     clear(): Promise<void>;
     /** Resolves every key, optionally filtered by prefix. */

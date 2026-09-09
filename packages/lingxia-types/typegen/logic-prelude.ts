@@ -258,6 +258,7 @@ type StorageEntry<S extends object> = {
 export type TypedStorage<S extends object> = {
   get<K extends StorageKey<S>>(key: K): Promise<S[K] | undefined>;
   set(...entry: StorageEntry<S>): Promise<void>;
+  has(key: StorageKey<S>): Promise<boolean>;
   delete(key: StorageKey<S>): Promise<void>;
   clear(): Promise<void>;
   list(prefix?: string): Promise<string[]>;
