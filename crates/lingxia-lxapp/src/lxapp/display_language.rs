@@ -745,11 +745,21 @@ fn publish_effective(update: &DisplayLanguageEffectiveUpdate) {
 
 /// Host-owned tab chrome (overflow "More") is painted from display language.
 /// Startup seed may run before native chrome exists; a failed rebuild is ignored.
+///
+/// The rebuild is spawned, never awaited here. `lx.app.setDisplayLanguage`
+/// runs on a JS worker and this path holds `PREFERENCE_WRITE_LOCK`, while the
+/// synchronous `update_tabbar_ui` hops to the platform main queue and blocks
+/// there — the wait a JS worker must never take, since the main thread can
+/// itself be waiting on that worker (a synchronous open) or on this lock.
 fn refresh_host_tabbar(appid: &str, app: &LxApp) {
     if app.get_tabbar().is_none() {
         return;
     }
-    let _ = app.runtime.update_tabbar_ui(appid.to_string());
+    let runtime = app.runtime.clone();
+    let appid = appid.to_string();
+    std::mem::drop(crate::executor::spawn(async move {
+        let _ = runtime.update_tabbar_ui_async(appid).await;
+    }));
 }
 
 #[cfg(test)]
