@@ -49,6 +49,9 @@ lingxia new my-app -t native-app -p macos,windows --package-id com.example.myapp
 The CLI emits the authoritative layout for the `lingxia` on your `PATH`; a hand-written sample drifts, the generated one can't. At a conceptual level a host app owns:
 
 - `lingxia.yaml` — the build-time host project config and source of truth for metadata + UI.
+  Permissions are not YAML settings: network hosts and privilege classes are
+  [host grants](../native/permissions.md) (default allow until a provider
+  constrains them).
 - a native Rust crate in `native/` — the host library (routes, addons); `lingxia.yaml` records its directory as `app.rustLibDir`.
 - one per-platform host directory for each enabled platform — `macos/`, `windows/`, `android/`, `ios/`, `harmony/`.
 - optionally, an embedded control lxapp source (scaffold default `lxapp/`).
@@ -346,7 +349,7 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 - `browser` — the in-app browser (its newtab / settings / downloads pages and shell runtime). Cross-platform; bundles the browser webui, overridable via the [`browser`](#browser-section) section.
 - `terminal` — the built-in terminal runtime. Required before a `native: terminal` surface can be declared (desktop only).
 - `proxy` — the in-app browser's HTTP proxy (desktop). Requires `browser`.
-- `process` — OS process launch/management for trusted Agent-style products (macOS/Windows). Available only to the [Control app](./control-app.md) — the session created from `app.homeAppId` — which must also declare `security.privileges: [process]`; adds `Rong.spawn`, `Rong.spawnSync`, and `Rong.$` plus the opt-in `@lingxia/types/process` declarations.
+- `process` — OS process launch/management for trusted Agent-style products (macOS/Windows). Available only to the [Control app](./control-app.md) — the session created from `app.homeAppId` — and still needs a host privilege grant plus a native Process grant; adds `Rong.spawn`, `Rong.spawnSync`, and `Rong.$` plus the opt-in `@lingxia/types/process` declarations.
 - `autostart` — unlocks `lx.app.autostart` (launch at system startup; macOS/Windows, [Control app](./control-app.md) only). Declaring it never registers the app by itself — enabling is a runtime user decision via the API.
 - `appUse` — lets a command line or agent skill on the same machine drive this product's own windows (screenshot, window list, mouse, keyboard), and turns the product's executable into its own command line. macOS/Windows. The local socket this needs is derived, not declared — which IPC carries it is plumbing. Declaring it ships the ability, not the decision: the endpoint stays closed until the user turns it on, the same way `autostart` works.
 - `computerUse` — extends that to the machine, and implies `appUse` because it already contains it (an agent that can drive any window can drive this product's): screenshots of any window, synthetic input, the accessibility tree. Named for what the user grants, because they will be asked — macOS prompts for Accessibility and Screen Recording, and the entry in System Settings is this product. Commands run inside the app rather than in the calling process, so that grant stays attached to the product no matter which terminal invoked it.

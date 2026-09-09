@@ -88,17 +88,19 @@ Two things it never means: it is not the user declining (dismissable APIs
 resolve a `canceled` result instead), and it is not a missing capability
 (`lx.supports()` answers that, and an absent namespace is simply absent).
 
-## Privileges are requests, grants are decisions
+## Privileges are grants, never claims
 
-An `lxapp.json` privilege — `process`, `downloads`, `automation`, `host` — is
-a *request*. The native host decides, per session, whether to grant it, and
-the grant is sealed before that session's Logic starts. Two sessions with
-identical app ids and identical manifests can end up with different grants.
+A privilege — `process`, `downloads`, `automation`, `host` — is decided by the
+host, per session: the app registry says which classes this app id may use on
+this channel, and the native host seals the resulting grant before that
+session's Logic starts. An lxapp asks for nothing in its manifest, and two
+sessions with identical app ids and identical packages can end up with
+different grants.
 
-`capabilities.process` is granted only to the Control app, and only when its
-manifest asked. Loading the namespace is not the grant: every `spawn`, shell
-command, and retained child handle rechecks the live session's grant, and
-closing or replacing that session terminates its process trees.
+`capabilities.process` is granted only to the Control app. Loading the
+namespace is not the grant: every `spawn`, shell command, and retained child
+handle rechecks the live session's grant, and closing or replacing that session
+terminates its process trees.
 
 ## For host and extension authors
 

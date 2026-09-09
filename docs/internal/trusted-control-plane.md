@@ -89,9 +89,14 @@ Two independent gates therefore apply, and both are rechecked live:
   and retained child handles recheck the session's live grant, so closing or
   replacing a session revokes its handles.
 
-`issue_app_resource_grants` runs under that session's creation lock. An addon
-that opens, restarts, or closes an lxapp from it deadlocks; the trait doc and
-the skill both say so.
+`issue_app_resource_grants` runs exactly once per session — the seal is claimed
+with a compare-exchange, because both the creation path and every waiter on the
+permission snapshot reach it. It runs under that session's creation lock when
+the grant is already decided, and otherwise on the task that lands the
+snapshot, which can be after the user closed the lxapp. So a resolver decides
+from the authority alone: no prompt, no blocking on a person, and no opening,
+restarting or closing an lxapp — that deadlocks. Sealing a closed session
+grants nothing; `has_resource_grant` refuses a session that is not live.
 
 ## Ingress lock discipline
 

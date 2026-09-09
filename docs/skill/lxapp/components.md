@@ -223,7 +223,7 @@ Shown fallback content is accessible, and becomes hidden when the Root is ready.
    platform's `fullScreen` alias. Video errors always provide `code` and
    `message`; `recoverable` is optional. Metadata dimensions are optional when
    a backend only supplies duration. `onVolumeChange` receives `{ volume, muted? }`.
-4. Keep media hosts in `security.network.trustedDomains`. Protocol-relative
+4. Ensure the host grants guest access to media hosts. Protocol-relative
    URLs and unsupported URL schemes are rejected. `lx.createVideoContext(id)`
    remains the imperative control API.
 
@@ -254,7 +254,7 @@ available yet.
 The full attribute list (`src`, `poster`, `objectFit`, `controls`, `qualities`,
 `playbackRates`, …) is the exported `LxVideoAttributes` from `@lingxia/elements`;
 every remote media URL (`src`, `poster`, watermark/quality URLs, and
-`setStreamSource`) must be under `security.network.trustedDomains`. Two pieces of
+`setStreamSource`) must be allowed by the host-granted network policy. Two pieces of
 behavior are doc-only: event reshaping and imperative control.
 
 **Events** — React/Vue handlers receive the **payload** (`onTimeUpdate` →

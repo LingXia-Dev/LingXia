@@ -62,11 +62,11 @@ const task = lx.downloadFile({
 });
 ```
 
-This requires `"downloads"` in `lxapp.json` `security.privileges`. App-owned
+This requires the host privilege grant for `downloads` (the default allow,
+unless a provider constrains privileges) **and** a native session-bound
+Downloads grant after the host's own policy or user-approval flow. App-owned
 output (`destination: "app"`, the default) does not require that privilege.
-The manifest entry is only a request: the native host must also issue a
-session-bound Downloads grant after its own policy or user-approval flow.
-Without that native grant, the operation fails closed. A grant held by a
+Without the native grant, the operation fails closed. A grant held by a
 closing session cannot be resumed or inherited by a replacement session with
 the same app id.
 
