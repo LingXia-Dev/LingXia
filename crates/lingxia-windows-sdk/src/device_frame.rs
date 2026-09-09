@@ -417,6 +417,14 @@ pub fn set_windows_browser_emulation_profile(
     }
 }
 
+/// Pins what `lx.appearance` Auto resolves against. `None` follows the host
+/// OS. Matches macOS `NSApp.appearance`: WebView2 `prefers-color-scheme`
+/// alone cannot restamp `data-theme`.
+pub fn set_windows_simulated_host_appearance(dark: Option<bool>) {
+    lingxia_platform::windows::set_windows_host_appearance_override(dark);
+    lxapp::refresh_auto_appearances();
+}
+
 /// Pins the color scheme new and existing WebViews serve through
 /// `prefers-color-scheme`; `Auto` restores following the host OS.
 pub fn set_windows_preferred_color_scheme(

@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::Platform;
@@ -23,6 +23,10 @@ type WindowsUiUpdateAsyncHandler = Arc<dyn Fn(String, Box<dyn FnOnce(bool) + Sen
 static WINDOWS_UI_UPDATE_ASYNC_HANDLER: Mutex<Option<WindowsUiUpdateAsyncHandler>> =
     Mutex::new(None);
 static WINDOWS_HOST_APPEARANCE_DARK: AtomicBool = AtomicBool::new(false);
+/// 0 = follow the OS cache, 1 = light, 2 = dark. The Runner pins this the
+/// way macOS pins `NSApp.appearance`, so `lx.appearance` Auto tracks the
+/// simulated screen rather than the host OS.
+static WINDOWS_HOST_APPEARANCE_OVERRIDE: AtomicU8 = AtomicU8::new(0);
 
 /// Host-registered capsule geometry, answered as the JSON payload the shared
 /// Page Chrome pipeline parses (`{width,height,top,right,bottom,left}` in the
@@ -44,6 +48,28 @@ pub fn set_windows_host_appearance_dark(dark: bool) {
 pub fn set_windows_host_color_mode_handler(handler: WindowsHostColorModeHandler) {
     if let Ok(mut slot) = WINDOWS_HOST_COLOR_MODE_HANDLER.lock() {
         *slot = Some(handler);
+    }
+}
+
+/// Pin (`Some`) or release (`None`) the value `lx.appearance` Auto resolves
+/// against. `None` follows the OS cache written by
+/// [`set_windows_host_appearance_dark`].
+pub fn set_windows_host_appearance_override(dark: Option<bool>) {
+    WINDOWS_HOST_APPEARANCE_OVERRIDE.store(
+        match dark {
+            None => 0,
+            Some(false) => 1,
+            Some(true) => 2,
+        },
+        Ordering::Release,
+    );
+}
+
+pub(crate) fn windows_host_appearance_is_dark() -> bool {
+    match WINDOWS_HOST_APPEARANCE_OVERRIDE.load(Ordering::Acquire) {
+        1 => false,
+        2 => true,
+        _ => WINDOWS_HOST_APPEARANCE_DARK.load(Ordering::Acquire),
     }
 }
 
@@ -140,7 +166,7 @@ impl UIUpdate for Platform {
         //
         // Standard-tier hosts do not wire shell appearance notifications;
         // appearance:auto therefore remains light until shell chrome is enabled.
-        WINDOWS_HOST_APPEARANCE_DARK.load(Ordering::Acquire)
+        windows_host_appearance_is_dark()
     }
 
     fn set_host_color_mode(&self, _dark: Option<bool>) {
@@ -185,5 +211,33 @@ impl UIUpdate for Platform {
 
     fn clear_lxapp_appearance(&self, appid: &str) {
         lingxia_webview::platform::windows::clear_windows_lxapp_preferred_color_scheme(appid);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn override_wins_over_the_os_cache() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let previous_override = WINDOWS_HOST_APPEARANCE_OVERRIDE.load(Ordering::Acquire);
+        let previous_os = WINDOWS_HOST_APPEARANCE_DARK.load(Ordering::Acquire);
+        set_windows_host_appearance_dark(false);
+        set_windows_host_appearance_override(Some(true));
+        assert!(windows_host_appearance_is_dark());
+        set_windows_host_appearance_override(Some(false));
+        assert!(!windows_host_appearance_is_dark());
+        set_windows_host_appearance_override(None);
+        set_windows_host_appearance_dark(true);
+        assert!(windows_host_appearance_is_dark());
+        set_windows_host_appearance_override(None);
+        set_windows_host_appearance_dark(false);
+        assert!(!windows_host_appearance_is_dark());
+        WINDOWS_HOST_APPEARANCE_OVERRIDE.store(previous_override, Ordering::Release);
+        WINDOWS_HOST_APPEARANCE_DARK.store(previous_os, Ordering::Release);
     }
 }
