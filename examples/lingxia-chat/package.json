@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "lingxia build --framework react",
-    "typecheck": "tsc -b tsconfig.json"
+    "typecheck": "tsc -b tsconfig.logic.json"
   },
   "keywords": [
     "lingxia",

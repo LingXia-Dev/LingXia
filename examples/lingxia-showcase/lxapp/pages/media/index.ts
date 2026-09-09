@@ -763,7 +763,8 @@ Page({
       this.setData({ previewSessionBusy: false, previewSessionResult: result, previewSessionError: "" });
       return result;
     } catch (error) {
-      const isAbort = error instanceof Error && error.name === "AbortError";
+      const abortLike = error as { name?: string; code?: string } | null;
+      const isAbort = abortLike?.name === "AbortError" || abortLike?.code === "E_ABORT";
       this.setData({
         previewSessionBusy: false,
         previewSessionError: isAbort ? "" : (errorMessage(error, "Preview failed")),

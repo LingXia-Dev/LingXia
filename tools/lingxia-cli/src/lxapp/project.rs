@@ -23,7 +23,7 @@ pub struct Project {
     pub output_dir: PathBuf,
     pub pages: Vec<String>,
     /// Configured page names, in manifest order. The CLI writes these into
-    /// `.lingxia/types/pages.d.ts` so navigation calls narrow to real pages.
+    /// `.lingxia/types/` so navigation calls narrow to real pages.
     pub page_names: Vec<String>,
     pub logic_entry: Option<String>,
     pub plugin_id: Option<String>,

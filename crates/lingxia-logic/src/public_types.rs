@@ -88,9 +88,9 @@ rong::js_api! {
         /// `/pages/home/index` are internal runtime details. Discover names
         /// with `lxdev lxapp pages`.
         ///
-        /// Narrows to the project's own names once the CLI has written
-        /// `.lingxia/types/pages.d.ts`; plain `string` before that, so a
-        /// project that never ran a build still compiles.
+        /// Narrows to the project's own names once `lingxia dev` or
+        /// `lingxia build` has generated them; plain `string` before that, so
+        /// a project that never ran a build still compiles.
         type ConfiguredPageName = r###"keyof LxAppPages extends never ? string : keyof LxAppPages"###;
 
         /// Configured page name belonging to *another* lxapp. This app's own

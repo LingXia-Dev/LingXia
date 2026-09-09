@@ -779,5 +779,9 @@ fn resolve_preview_path(lxapp: &LxApp, raw: &str) -> JSResult<String> {
 }
 
 fn js_abort_error(detail: impl AsRef<str>) -> RongJSError {
-    HostError::new(rong::error::E_ABORT, detail.as_ref()).into()
+    // `AbortError` is what an AbortSignal caller checks for, the same name
+    // `video_file.rs` already gives its own abort.
+    HostError::new(rong::error::E_ABORT, detail.as_ref())
+        .with_name("AbortError")
+        .into()
 }

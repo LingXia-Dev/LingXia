@@ -158,7 +158,9 @@ enum UploadIteratorMessage {
 }
 
 fn js_abort_error(detail: impl AsRef<str>) -> rong::RongJSError {
-    HostError::new(rong::error::E_ABORT, detail.as_ref()).into()
+    HostError::new(rong::error::E_ABORT, detail.as_ref())
+        .with_name("AbortError")
+        .into()
 }
 
 fn upload_failure_to_js_error(error: UploadFailure) -> rong::RongJSError {
