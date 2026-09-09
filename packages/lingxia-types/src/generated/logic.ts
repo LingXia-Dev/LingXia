@@ -2880,6 +2880,7 @@ declare global {
     openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface>;
     /** `lx.shell.reconfigure(id, patch)` — re-place a live declared surface. */
     reconfigure(id: string, patch: ShellSurfacePatch): Promise<void>;
+    readonly sidebarActions: ShellSidebarActionsApi;
   }
 }
 

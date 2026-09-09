@@ -334,6 +334,7 @@ fn js_error(error: ShellError) -> rong::HostError {
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let _ = handler_registry(ctx);
     register_shell_property(ctx)?;
+    register_sidebar_actions_property(ctx)?;
     register_sidebar_actions_api(ctx)
 }
 
@@ -341,6 +342,13 @@ rong::js_api! {
     fn register_shell_property(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         const shell: "ShellApi" = shell_namespace(ctx)?;
+    }
+}
+
+rong::js_api! {
+    fn register_sidebar_actions_property(ctx) {
+        namespace ShellApi = shell_namespace(ctx)?;
+        const sidebarActions: "ShellSidebarActionsApi" = sidebar_actions_namespace(ctx)?;
     }
 }
 
