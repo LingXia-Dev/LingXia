@@ -1,6 +1,8 @@
 import type { ConfiguredPageName } from "@lingxia/types";
 import type { ShowcaseAppInstance } from "./shared/lib/app";
-import { applyShowcaseTabBar } from "./i18n";
+import { applyShowcaseTabBar, getAppMessages } from "./logic/app-messages";
+import { resolveDisplayLanguage } from "./shared/display-language";
+
 
 async function testManagedFileAccess() {
   try {
@@ -28,6 +30,96 @@ function routeFromAppLink(options?: { scene?: number; query?: Record<string, str
   void lx.navigateTo({ page: page as ConfiguredPageName, query });
 }
 
+function applyHostChrome(os: string, tag: string) {
+  const { t } = getAppMessages(resolveDisplayLanguage(tag));
+  type SidebarAction = Parameters<typeof lx.shell.sidebarActions.replace>[0][number];
+  const sidebarActions: SidebarAction[] = [
+    {
+      id: "downloads",
+      placement: "header",
+      icon: "public/sidebar-downloads.svg",
+      label: t("sidebarDownloads"),
+      onActivate: () => {
+        void lx.shell
+          .openBuiltin("downloads")
+          .catch((error) => console.warn("downloads action failed", error));
+      },
+    },
+    {
+      id: "chat",
+      placement: "footer",
+      icon: "public/activator.svg",
+      label: t("sidebarChat"),
+      onActivate: () => {
+        void lx.surface
+          .openDeclared("lingxia-chat")
+          .catch((error) => console.warn("chat action failed", error));
+      },
+    },
+  ];
+
+  if (os === "macOS" || os === "Windows") {
+    sidebarActions.push({
+      id: "terminal-settings",
+      placement: "footer",
+      icon: "public/sidebar-terminal.svg",
+      label: t("sidebarTerminalSettings"),
+      onActivate: () => {
+        void lx.shell
+          .openApp("app.lingxia.terminal-settings", { as: "aside", edge: "right" })
+          .catch((error) => console.warn("terminal settings action failed", error));
+      },
+    });
+    sidebarActions.push({
+      id: "terminal",
+      placement: "footer",
+      icon: "public/activator.svg",
+      label: t("sidebarTerminal"),
+      onActivate: () => {
+        void lx.surface
+          .openDeclared("terminal")
+          .catch((error) => console.warn("terminal action failed", error));
+      },
+    });
+  }
+
+  sidebarActions.push({
+    id: "ping",
+    placement: "footer",
+    icon: "public/activator.svg",
+    label: t("sidebarPing"),
+    onActivate: () => {
+      lx.showToast({ title: t("pingToast"), icon: "success" });
+    },
+  });
+  lx.shell.sidebarActions.replace(sidebarActions);
+  lx.setMoreActions([
+    {
+      icon: "public/showcase-icon.png",
+      label: t("moreFeedback"),
+      onClick: async () => {
+        try {
+          await lx.surface.openPage("feedback", {
+            as: "float",
+            position: "bottom",
+            size: { width: "100%", height: "80%" },
+            interaction: {
+              closeButton: true,
+              dismiss: "manual",
+              modal: true,
+            },
+          });
+        } catch (error) {
+          console.warn("failed to open feedback surface", error);
+        }
+      },
+    },
+  ]);
+  void applyShowcaseTabBar(tag).catch((error) =>
+    console.warn("tab bar language update failed", error),
+  );
+}
+
 App({
   onLaunch: async function (
     this: ShowcaseAppInstance,
@@ -35,98 +127,9 @@ App({
   ) {
     routeFromAppLink(options);
     const { os } = lx.app.getBaseInfo();
-    type SidebarAction = Parameters<typeof lx.shell.sidebarActions.replace>[0][number];
-    const sidebarActions: SidebarAction[] = [
-      {
-        id: "downloads",
-        placement: "header",
-        icon: "public/sidebar-downloads.svg",
-        label: "Downloads",
-        onActivate: () => {
-          void lx.shell
-            .openBuiltin("downloads")
-            .catch((error) => console.warn("downloads action failed", error));
-        },
-      },
-      {
-        id: "chat",
-        placement: "footer",
-        icon: "public/activator.svg",
-        label: "chat",
-        onActivate: () => {
-          void lx.surface
-            .openDeclared("lingxia-chat")
-            .catch((error) => console.warn("chat action failed", error));
-        },
-      },
-    ];
-
-    if (os === "macOS" || os === "Windows") {
-      // Footer: the header is a two-slot corner of the caption row, and
-      // terminal settings is scoped to the terminal rather than app-wide.
-      sidebarActions.push({
-        id: "terminal-settings",
-        placement: "footer",
-        icon: "public/sidebar-terminal.svg",
-        label: "Terminal Settings",
-        onActivate: () => {
-          void lx.shell
-            .openApp("app.lingxia.terminal-settings", { as: "aside", edge: "right" })
-            .catch((error) => console.warn("terminal settings action failed", error));
-        },
-      });
-      sidebarActions.push({
-        id: "terminal",
-        placement: "footer",
-        icon: "public/activator.svg",
-        label: "Terminal",
-        onActivate: () => {
-          void lx.surface
-            .openDeclared("terminal")
-            .catch((error) => console.warn("terminal action failed", error));
-        },
-      });
-    }
-
-    sidebarActions.push(
-      {
-        id: "ping",
-        placement: "footer",
-        icon: "public/activator.svg",
-        label: "Ping",
-        onActivate: () => {
-          lx.showToast({ title: "sidebar action clicked", icon: "success" });
-        },
-      },
-    );
-    lx.shell.sidebarActions.replace(sidebarActions);
     lx.app.displayLanguage.watch((tag) => {
-      void applyShowcaseTabBar(tag).catch((error) =>
-        console.warn("tab bar language update failed", error),
-      );
+      applyHostChrome(os, tag);
     });
-    lx.setMoreActions([
-      {
-        icon: "public/showcase-icon.png",
-        label: "Feedback",
-        onClick: async () => {
-          try {
-            await lx.surface.openPage("feedback", {
-              as: "float",
-              position: "bottom",
-              size: { width: "100%", height: "80%" },
-              interaction: {
-                closeButton: true,
-                dismiss: "manual",
-                modal: true,
-              },
-            });
-          } catch (error) {
-            console.warn("failed to open feedback surface", error);
-          }
-        },
-      },
-    ]);
 
     const um = lx.getUpdateManager();
     um.onUpdateReady(async (info) => {
@@ -137,12 +140,13 @@ App({
       }
 
       console.log("Update ready; asking user to apply...");
+      const { t } = getAppMessages(resolveDisplayLanguage(lx.app.displayLanguage.get()));
       const applyNow = await lx.showModal({
-        title: "Update Available",
-        content: "A new version is ready. Apply now?",
+        title: t("updateTitle"),
+        content: t("updateBody"),
         showCancel: true,
-        cancelText: "Later",
-        confirmText: "Apply",
+        cancelText: t("updateLater"),
+        confirmText: t("updateApply"),
       });
       if (!applyNow.canceled) {
         um.applyUpdate();

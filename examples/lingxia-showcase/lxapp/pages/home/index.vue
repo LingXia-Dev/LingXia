@@ -12,14 +12,15 @@
     <div class="absolute inset-0 bg-linear-to-b from-black/10 via-transparent to-black/40" />
 
     <!-- Content Container - Centered -->
-    <div class="relative z-10 w-full h-full flex flex-col justify-center items-center px-5 py-16">
+    <div class="relative z-10 w-full h-full overflow-y-auto">
+    <div class="min-h-full flex flex-col justify-center items-center px-5 py-10">
       <!-- Main Card - Apple Style Frosted Glass -->
       <div class="bg-surface/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 p-6">
         <div class="text-center mb-6">
           <img src="/public/AppIcon.png" alt="Logo" class="w-16 h-16 mx-auto mb-3 rounded-[16px]" />
           <div class="text-[17px] font-semibold text-gray-900">LingXia</div>
           <div class="text-[13px] text-gray-500 mt-0.5" data-testid="home-tagline">
-            {{ copy.tagline }}
+            {{ t('tagline') }}
           </div>
         </div>
 
@@ -28,7 +29,7 @@
             data-testid="home-name"
             :data-controlled-value="name"
             type="text"
-            :placeholder="copy.namePlaceholder"
+            :placeholder="t('namePlaceholder')"
             v-model="name"
             @keydown.enter="handleGreet"
             class="w-full h-[44px] px-4 bg-surface-100/80 border-0 rounded-[10px] text-[17px] text-gray-900 placeholder:text-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/30 transition-all"
@@ -41,7 +42,7 @@
             :disabled="!name.trim() || isSending"
             class="w-full h-[50px] bg-primary hover:bg-primary-dark active:bg-primary-dark disabled:bg-primary/50 disabled:cursor-not-allowed rounded-[12px] text-[17px] text-white font-semibold transition-colors"
           >
-            {{ isSending ? copy.sending : copy.sayHello }}
+            {{ isSending ? t('sending') : t('sayHello') }}
           </button>
         </div>
 
@@ -62,9 +63,9 @@
         <!-- lxapp-owned light/dark branch — `auto` follows the host shell. -->
         <div class="mt-4" data-testid="home-appearance">
           <div class="flex items-center justify-between mb-1.5">
-            <span class="text-[11px] font-medium text-gray-500">{{ copy.appearance }}</span>
+            <span class="text-[11px] font-medium text-gray-500">{{ t('appearance') }}</span>
             <span class="text-[11px] text-gray-400" data-testid="home-appearance-resolved">
-              {{ resolvedLabel }}
+              {{ resolvedAppearanceLabel }}
             </span>
           </div>
           <div class="flex gap-1 p-1 bg-surface-100 rounded-[10px]">
@@ -83,6 +84,29 @@
           </div>
         </div>
 
+        <div class="mt-3" data-testid="home-language">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[11px] font-medium text-gray-500">{{ t('language') }}</span>
+            <span class="text-[11px] text-gray-400" data-testid="home-language-resolved">
+              {{ resolvedLanguageLabel }}
+            </span>
+          </div>
+          <div class="flex gap-1 p-1 bg-surface-100 rounded-[10px]">
+            <button
+              v-for="option in LANGUAGE_OPTIONS"
+              :key="option"
+              type="button"
+              :data-testid="`home-language-${option}`"
+              :data-selected="languagePreference === option"
+              @click="setDisplayLanguage({ preference: option })"
+              class="flex-1 h-8 rounded-[8px] text-[13px] font-medium transition-colors"
+              :class="languagePreference === option ? 'bg-surface text-gray-900 shadow-sm' : 'text-gray-500'"
+            >
+              {{ languageLabels[option] }}
+            </button>
+          </div>
+        </div>
+
         <div v-if="appVersion" class="mt-1 text-left leading-none">
           <span class="text-[10px] text-gray-500 font-medium">{{ appVersion }}</span>
         </div>
@@ -92,10 +116,11 @@
       <div v-if="ipAddress" class="mt-4 flex justify-center">
         <div class="inline-flex items-center gap-2 px-4 py-2 bg-black/20 backdrop-blur-md rounded-full text-white/90">
           <span class="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-          <span class="text-xs font-medium tracking-wide">{{ copy.myIp }} </span>
+          <span class="text-xs font-medium tracking-wide">{{ t('myIp') }} </span>
           <span class="text-xs font-mono">{{ ipAddress }}</span>
         </div>
       </div>
+    </div>
     </div>
 
   </div>
@@ -103,22 +128,15 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { useLxPage } from '@lingxia/vue';
+import { useDisplayLanguage, useLxPage } from '@lingxia/vue';
+import {
+  resolveDisplayLanguage,
+  type DisplayLanguagePreference,
+} from '../../shared/display-language';
+import { getMessages } from './messages';
 import '../../tailwind.css';
 
 type AppearancePreference = 'auto' | 'light' | 'dark';
-
-type HomeCopy = {
-  tagline: string;
-  namePlaceholder: string;
-  sayHello: string;
-  sending: string;
-  appearance: string;
-  appearanceAuto: string;
-  appearanceLight: string;
-  appearanceDark: string;
-  myIp: string;
-};
 
 type PageData = {
   greeting?: string;
@@ -126,19 +144,23 @@ type PageData = {
   ipAddr?: string;
   appVersion?: string;
   appearance?: { preference: AppearancePreference; resolved: 'light' | 'dark' };
-  copy?: HomeCopy;
+  displayLanguage?: { preference: DisplayLanguagePreference; resolved: string };
 };
 
 type PageActions = {
   data: PageData;
   greet(payload: { name: string }): void;
   setAppearance(payload: { preference: AppearancePreference }): void;
+  setDisplayLanguage(payload: { preference: DisplayLanguagePreference }): void;
 };
 
 const APPEARANCE_OPTIONS: AppearancePreference[] = ['auto', 'light', 'dark'];
+const LANGUAGE_OPTIONS: DisplayLanguagePreference[] = ['auto', 'en-US', 'zh-CN'];
 
 const { data, actions } = useLxPage();
-const { greet, setAppearance } = actions;
+const { greet, setAppearance, setDisplayLanguage } = actions;
+const hostLanguage = useDisplayLanguage();
+const t = computed(() => getMessages(resolveDisplayLanguage(hostLanguage.value)).t);
 const name = ref('');
 const isSending = ref(false);
 
@@ -148,24 +170,26 @@ const imageUrl = computed(() => typeof data?.imageUrl === 'string' ? data.imageU
 const appVersion = computed(() => typeof data?.appVersion === 'string' ? data.appVersion : '');
 const preference = computed<AppearancePreference>(() => data?.appearance?.preference ?? 'auto');
 const resolvedAppearance = computed(() => data?.appearance?.resolved ?? 'light');
-const copy = computed<HomeCopy>(() => data?.copy ?? {
-  tagline: 'Lightweight Application Framework',
-  namePlaceholder: 'Enter your name',
-  sayHello: 'Say Hello',
-  sending: 'Sending...',
-  appearance: 'Appearance',
-  appearanceAuto: 'Auto',
-  appearanceLight: 'Light',
-  appearanceDark: 'Dark',
-  myIp: 'My IP',
-});
+const languagePreference = computed<DisplayLanguagePreference>(
+  () => data?.displayLanguage?.preference ?? 'auto',
+);
 const appearanceLabels = computed<Record<AppearancePreference, string>>(() => ({
-  auto: copy.value.appearanceAuto,
-  light: copy.value.appearanceLight,
-  dark: copy.value.appearanceDark,
+  auto: t.value('appearanceAuto'),
+  light: t.value('appearanceLight'),
+  dark: t.value('appearanceDark'),
 }));
-const resolvedLabel = computed(() =>
-  resolvedAppearance.value === 'dark' ? copy.value.appearanceDark : copy.value.appearanceLight,
+const languageLabels = computed<Record<DisplayLanguagePreference, string>>(() => ({
+  auto: t.value('languageAuto'),
+  'en-US': t.value('languageEn'),
+  'zh-CN': t.value('languageZh'),
+}));
+const resolvedAppearanceLabel = computed(() =>
+  resolvedAppearance.value === 'dark' ? t.value('appearanceDark') : t.value('appearanceLight'),
+);
+const resolvedLanguageLabel = computed(() =>
+  resolveDisplayLanguage(data?.displayLanguage?.resolved ?? hostLanguage.value) === 'zh-CN'
+    ? t.value('languageZh')
+    : t.value('languageEn'),
 );
 
 watch(greetingMessage, (newVal) => {
