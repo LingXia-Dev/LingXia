@@ -1,6 +1,7 @@
 use crate::lxapp::logic::{self, LogicBuildStatus};
 use crate::lxapp::options::{BuildOptions, ProgressMode};
 use crate::lxapp::package;
+use crate::lxapp::page_types;
 use crate::lxapp::project::Project;
 use crate::lxapp::view::{self, ViewProgress};
 use anyhow::{Result, anyhow};
@@ -50,6 +51,10 @@ fn run_with_context(args: &[String], cwd: &Path, dev_session: bool) -> Result<()
         project.framework.as_str()
     );
     println!();
+
+    // Before either half builds: the page names are what a Logic author's
+    // editor completes against, so they must exist even if the build then fails.
+    page_types::generate(&project)?;
 
     if project.output_dir.exists() {
         fs::remove_dir_all(&project.output_dir)?;

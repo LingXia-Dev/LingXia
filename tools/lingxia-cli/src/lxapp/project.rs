@@ -22,6 +22,9 @@ pub struct Project {
     pub framework: ProjectFramework,
     pub output_dir: PathBuf,
     pub pages: Vec<String>,
+    /// Configured page names, in manifest order. The CLI writes these into
+    /// `.lingxia/types/pages.d.ts` so navigation calls narrow to real pages.
+    pub page_names: Vec<String>,
     pub logic_entry: Option<String>,
     pub plugin_id: Option<String>,
     pub package_name: Option<String>,
@@ -41,6 +44,7 @@ impl Project {
             validate_lxapp_manifest(&manifest)?;
             let framework = resolve_framework(project_root, &manifest, framework_override)?;
             let pages = resolve_lxapp_pages(project_root, &manifest, framework)?;
+            let page_names = resolve_page_names(&manifest);
             validate_page_configs(project_root, &pages)?;
             let logic_entry = resolve_logic_entry(&manifest)?;
             let version = non_empty_str(manifest.get("version"), "version in lxapp.json")?;
@@ -51,6 +55,7 @@ impl Project {
                 framework,
                 output_dir: project_root.join("dist"),
                 pages,
+                page_names,
                 logic_entry,
                 plugin_id: None,
                 package_name,
@@ -68,6 +73,7 @@ impl Project {
                     anyhow!("lxplugin.json pages must be an array of objects with name/path")
                 })?;
             let mut pages = Vec::with_capacity(pages_obj.len());
+            let mut ordered_names = Vec::with_capacity(pages_obj.len());
             let mut page_names = BTreeSet::new();
             for value in pages_obj {
                 let entry = value.as_object().ok_or_else(|| {
@@ -85,6 +91,7 @@ impl Project {
                 if !page_names.insert(name) {
                     return Err(anyhow!("lxplugin.json page name must be unique: {name:?}"));
                 }
+                ordered_names.push(name.to_string());
                 let page = entry
                     .get("path")
                     .and_then(Value::as_str)
@@ -104,6 +111,7 @@ impl Project {
                 framework,
                 output_dir: project_root.join("dist-plugin"),
                 pages,
+                page_names: ordered_names,
                 logic_entry: Some("logic.js".to_string()),
                 plugin_id: Some(plugin_id),
                 package_name,
@@ -445,6 +453,21 @@ fn validate_lxapp_pages(pages: Option<&Value>) -> Result<()> {
             "lxapp.json pages must be an array of objects with name/path"
         )),
     }
+}
+
+/// Manifest page names, already validated by `validate_lxapp_pages`.
+fn resolve_page_names(manifest: &Value) -> Vec<String> {
+    manifest
+        .get("pages")
+        .and_then(Value::as_array)
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|entry| entry.get("name").and_then(Value::as_str))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn is_valid_page_name(name: &str) -> bool {

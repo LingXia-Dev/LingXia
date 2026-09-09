@@ -1,3 +1,4 @@
+import type { ConfiguredPageName } from "@lingxia/types";
 import type { ShowcaseAppInstance } from "./shared/lib/app";
 async function testManagedFileAccess() {
   try {
@@ -20,7 +21,9 @@ function routeFromAppLink(options?: { scene?: number; query?: Record<string, str
   if (!page) return;
   const query = { ...options.query };
   delete query.page;
-  void lx.navigateTo({ page, query });
+  // An AppLink carries whatever the caller wrote, so the name cannot be checked
+  // here — navigateTo rejects one this lxapp does not have.
+  void lx.navigateTo({ page: page as ConfiguredPageName, query });
 }
 
 App({

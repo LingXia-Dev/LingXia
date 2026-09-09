@@ -165,6 +165,16 @@ export interface DownloadTask<TDownloadResult extends DownloadResult = DownloadR
 }
 
 declare global {
+  /**
+   * The lxapp's configured page names, one key per page.
+   *
+   * Empty here on purpose. `lingxia dev` / `lingxia build` writes the project's
+   * own names into `.lingxia/types/pages.d.ts`, which merges into this
+   * interface; until then `ConfiguredPageName` stays `string` and every
+   * navigation call compiles exactly as before.
+   */
+  interface LxAppPages {}
+
   // HostAppApi/LxEnv members are emitted from the Rust js_api metadata; these
   // merges only add what Rong cannot express — the cfg-gated autostart member
   // and doc comments (js_api consts cannot carry docs). envVersion re-declares
@@ -650,8 +660,11 @@ export type CompressVideoTask = PromiseLike<CompressVideoResult> & AsyncIterable
  * navigation accepts only this name; full routes such as
  * `/pages/home/index` are internal runtime details. Discover names
  * with `lxdev lxapp pages`.
+ * Narrows to the project's own names once the CLI has written
+ * `.lingxia/types/pages.d.ts`; plain `string` before that, so a
+ * project that never ran a build still compiles.
  */
-export type ConfiguredPageName = string;
+export type ConfiguredPageName = keyof LxAppPages extends never ? string : keyof LxAppPages;
 
 export type ConnectWifiOptions = {
     SSID: string;
@@ -785,6 +798,13 @@ export type DownloadsDownloadResult = {
     mimeType?: string;
     size: number;
 };
+
+/**
+ * Configured page name belonging to *another* lxapp. This app's own
+ * page union cannot check it, so it stays a plain string and the
+ * target runtime rejects a name it does not have.
+ */
+export type ExternalPageName = string;
 
 export type ExtractVideoThumbnailOptions = {
     /**
@@ -1085,7 +1105,7 @@ export type NavigateToAppOptions = {
      * open the target app's initial page. Full routes such as
      * `/pages/home/index` are not supported.
      */
-    page?: ConfiguredPageName;
+    page?: ExternalPageName;
     query?: PageQuery;
     envVersion?: LxAppEnvVersion;
     targetVersion?: string;
@@ -1541,7 +1561,7 @@ export type ShellOpenAppOptions = {
      * Configured page name from the target lxapp's `lxapp.json`. Omit it to
      * open that app's initial page. Full page routes are not supported.
      */
-    page?: ConfiguredPageName;
+    page?: ExternalPageName;
     query?: PageQuery;
     /** Defaults to 'release'. */
     envVersion?: LxAppEnvVersion;

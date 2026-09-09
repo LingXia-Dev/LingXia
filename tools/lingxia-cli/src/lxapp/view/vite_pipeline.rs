@@ -774,6 +774,7 @@ mod tests {
             framework: ProjectFramework::React,
             output_dir: root.join("dist"),
             pages: vec!["pages/home/index.tsx".to_string()],
+            page_names: Vec::new(),
             logic_entry: None,
             plugin_id: None,
             package_name: Some("test-app".to_string()),

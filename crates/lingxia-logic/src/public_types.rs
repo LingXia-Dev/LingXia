@@ -87,7 +87,16 @@ rong::js_api! {
         /// navigation accepts only this name; full routes such as
         /// `/pages/home/index` are internal runtime details. Discover names
         /// with `lxdev lxapp pages`.
-        type ConfiguredPageName = r###"string"###;
+        ///
+        /// Narrows to the project's own names once the CLI has written
+        /// `.lingxia/types/pages.d.ts`; plain `string` before that, so a
+        /// project that never ran a build still compiles.
+        type ConfiguredPageName = r###"keyof LxAppPages extends never ? string : keyof LxAppPages"###;
+
+        /// Configured page name belonging to *another* lxapp. This app's own
+        /// page union cannot check it, so it stays a plain string and the
+        /// target runtime rejects a name it does not have.
+        type ExternalPageName = r###"string"###;
 
         /// Launch scene. `8003` is AppLink (cold: `onLaunch`; warm: `onShow`).
         /// Other numeric scenes stay valid; completion offers `8003`.
@@ -919,7 +928,7 @@ rong::js_api! {
      * open the target app's initial page. Full routes such as
      * `/pages/home/index` are not supported.
      */
-    page?: ConfiguredPageName;
+    page?: ExternalPageName;
     query?: PageQuery;
     envVersion?: LxAppEnvVersion;
     targetVersion?: string;
@@ -1605,7 +1614,7 @@ true
      * Configured page name from the target lxapp's `lxapp.json`. Omit it to
      * open that app's initial page. Full page routes are not supported.
      */
-    page?: ConfiguredPageName;
+    page?: ExternalPageName;
     query?: PageQuery;
     /** Defaults to 'release'. */
     envVersion?: LxAppEnvVersion;

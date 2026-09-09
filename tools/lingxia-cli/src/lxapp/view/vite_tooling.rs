@@ -368,6 +368,7 @@ mod tests {
             framework,
             output_dir: root.join("dist"),
             pages: vec!["pages/home/index".to_string()],
+            page_names: Vec::new(),
             logic_entry: Some("logic.js".to_string()),
             plugin_id: None,
             package_name: Some("demo".to_string()),
