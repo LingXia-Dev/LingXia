@@ -110,7 +110,7 @@ impl LxAppDelegate for LxApp {
         let previous_appid = lxapp::get_current_lxapp().0;
 
         let raw_url = if path.is_empty() {
-            self.config.get_initial_route()
+            self.config().get_initial_route()
         } else {
             path
         };
@@ -487,7 +487,7 @@ impl LxApp {
     /// Reset to the entry page in-session: SwitchTab when the initial route is
     /// a tab page, reLaunch otherwise. Clears the page stack either way.
     fn navigate_to_initial_route(self: &Arc<Self>) -> bool {
-        let home_route = self.config.get_initial_route();
+        let home_route = self.config().get_initial_route();
         if self
             .peek_current_page_path()
             .is_some_and(|path| path == home_route)

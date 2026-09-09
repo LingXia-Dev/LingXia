@@ -359,6 +359,19 @@ impl Default for Platform {
 }
 
 impl Platform {
+    /// Test/host helper matching the Apple constructor. Production Windows
+    /// hosts use [`from_env`] / [`from_asset_dir`].
+    pub fn new(data_dir: String, cache_dir: String, locale: String) -> Result<Self, PlatformError> {
+        Ok(Self {
+            data_dir: PathBuf::from(data_dir),
+            cache_dir: PathBuf::from(cache_dir),
+            asset_dir: default_asset_dir(),
+            locale,
+            app_identifier: DEFAULT_APP_IDENTIFIER.to_string(),
+            product_name: "LingXia".to_string(),
+        })
+    }
+
     pub fn from_env() -> Result<Self, PlatformError> {
         Self::from_asset_dir(default_asset_dir())
     }

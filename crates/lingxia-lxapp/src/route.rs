@@ -53,12 +53,9 @@ pub(crate) fn resolve_route(lxapp: &LxApp, url: &str) -> Result<ResolvedRoute, L
         plugin::parse_plugin_url(&path).or_else(|| plugin::parse_plugin_page_path(&path));
 
     if let Some((plugin_name, page_path)) = plugin_info {
-        let resolved_path = plugin::resolve_plugin_page(
-            &lxapp.runtime,
-            &lxapp.config.plugins,
-            &plugin_name,
-            &page_path,
-        )?;
+        let plugins = lxapp.config().plugins.clone();
+        let resolved_path =
+            plugin::resolve_plugin_page(&lxapp.runtime, &plugins, &plugin_name, &page_path)?;
         return Ok(ResolvedRoute {
             original,
             query,

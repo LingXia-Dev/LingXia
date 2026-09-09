@@ -96,18 +96,16 @@ pub fn execute(project_root: &Path, ws_url: &str, options: &ReloadOptions) -> Re
         }
         if let Some(drift) = drift {
             eprintln!(
-                "warning: lxapp.json declares a different page list than this session is \
-running ({drift}). Restart `lingxia dev` to apply it; a reload only rebuilds the bundle."
+                "warning: lxapp.json still disagrees with the running page list after reload \
+({drift}). Check the session log; a failed in-place restart leaves the previous catalog."
             );
         }
     }
     Ok(())
 }
 
-/// The session builds its page registry when it starts, so a page added to
-/// `lxapp.json` afterwards is invisible to a reload. Saying nothing leaves the
-/// next `nav` answering `unknown page name` for a page the file clearly
-/// declares — the build succeeded, so the edit looks applied.
+/// After a successful reload the running catalog should match `lxapp.json`.
+/// A leftover mismatch means the in-place restart did not apply the manifest.
 fn page_registry_drift(project_root: &Path, ws_url: &str, appid: &str) -> Option<String> {
     let declared = manifest_page_names(project_root, appid)?;
     let running = session_page_names(ws_url, appid)?;
