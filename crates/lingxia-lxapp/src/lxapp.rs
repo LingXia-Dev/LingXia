@@ -3200,6 +3200,10 @@ impl LxApp {
             .presentation_open_lock
             .lock()
             .unwrap_or_else(|err| err.into_inner());
+        // A reused session (close then navigateToApp before delayed destroy)
+        // still carries the scheme from last show. Re-resolve Auto now so the
+        // capsule and overlays paint in the product's current scheme.
+        self.adopt_host_appearance();
         let requested_region = LxAppOpenRegion::from(options.open_mode);
         let claimed = self.claim_open_region(requested_region)?;
         // Already showing this lxapp, and the link did not name a page: keep

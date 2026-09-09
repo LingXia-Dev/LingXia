@@ -316,12 +316,6 @@ impl LxApp {
         state.page_chrome_revision
     }
 
-    fn restore_page_chrome_revision(&self, revision: u64) -> u64 {
-        let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
-        state.page_chrome_revision = rollback_revision(state.page_chrome_revision, revision);
-        state.page_chrome_revision
-    }
-
     pub(crate) fn publish_page_chrome(
         &self,
         page: &PageInstance,
@@ -430,18 +424,6 @@ impl LxApp {
         })
     }
 
-    async fn compensate_page_chrome_rollback(
-        &self,
-        page: &PageInstance,
-        failed_revision: u64,
-        appearance: ResolvedAppearance,
-    ) {
-        let restored_revision = self.restore_page_chrome_revision(failed_revision);
-        let _ = self
-            .apply_page_chrome_commit(page, restored_revision, appearance)
-            .await;
-    }
-
     pub async fn commit_navigation_bar(
         &self,
         page: PageInstance,
@@ -501,17 +483,18 @@ impl LxApp {
         Ok(())
     }
 
-    /// Re-resolve this lxapp's scheme against the product's current one and
-    /// apply it. An lxapp that pinned a scheme in its manifest keeps it; the
-    /// rest follow. There is no lxapp-scoped preference to write.
-    pub(crate) async fn refresh_appearance(&self) -> Result<(), LxAppError> {
-        let _guard = self.page_chrome_mutation_lock.lock().await;
+    /// Re-resolve Auto against the product's current scheme and apply it to
+    /// native chrome. A cached lxapp that was last shown under a previous
+    /// product scheme must not reopen with that stale palette — including
+    /// when it currently has no page (closed, delayed-destroy).
+    ///
+    /// Returns the new resolution when it changed.
+    pub(crate) fn adopt_host_appearance(&self) -> Option<(ResolvedAppearance, u64)> {
         let original = self.appearance_state();
         let resolved = resolve_appearance(original.preference);
         if original.resolved == resolved {
-            return Ok(());
+            return None;
         }
-        let page = self.current_page_for_chrome()?;
         let revision = self.next_page_chrome_revision();
         {
             let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
@@ -521,30 +504,17 @@ impl LxApp {
                 revision,
             };
         }
-        let applied = match self
+        if let Err(error) = self
             .runtime
             .apply_lxapp_appearance(&self.appid, resolved.is_dark())
-            .map_err(LxAppError::from)
         {
-            Ok(()) => {
-                self.apply_page_chrome_commit(&page, revision, resolved)
-                    .await
-            }
-            Err(error) => Err(error),
-        };
-        if let Err(error) = applied {
             {
                 let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
                 restore_appearance_state(&mut state.appearance, original);
             }
-            let _ = self
-                .runtime
-                .apply_lxapp_appearance(&self.appid, original.resolved.is_dark());
-            self.compensate_page_chrome_rollback(&page, revision, original.resolved)
-                .await;
-            return Err(error);
+            warn!("Failed to apply appearance: {error}").with_appid(self.appid.clone());
+            return None;
         }
-        self.publish_appearance_to_background_pages(&page, revision, resolved);
         crate::appservice::event_bus::publish_app_event(
             &self.appid,
             crate::APPEARANCE_CHANGE_EVENT,
@@ -553,6 +523,24 @@ impl LxApp {
                 resolved.as_str()
             )),
         );
+        Some((resolved, revision))
+    }
+
+    /// Re-resolve this lxapp's scheme against the product's current one and
+    /// apply it. An lxapp that pinned a scheme in its manifest keeps it; the
+    /// rest follow. There is no lxapp-scoped preference to write.
+    ///
+    /// Native apply does not need a live page. Page-chrome paint is
+    /// best-effort when one exists.
+    pub(crate) async fn refresh_appearance(&self) -> Result<(), LxAppError> {
+        let _guard = self.page_chrome_mutation_lock.lock().await;
+        let Some((resolved, revision)) = self.adopt_host_appearance() else {
+            return Ok(());
+        };
+        if let Ok(page) = self.current_page_for_chrome() {
+            self.apply_page_chrome_keep(&page, revision, resolved).await;
+            self.publish_appearance_to_background_pages(&page, revision, resolved);
+        }
         Ok(())
     }
 
@@ -598,6 +586,7 @@ impl LxApp {
     }
 }
 
+#[cfg(test)]
 const fn rollback_revision(current: u64, failed: u64) -> u64 {
     if current == failed {
         failed.saturating_sub(1)

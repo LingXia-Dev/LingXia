@@ -310,8 +310,10 @@ impl LxAppDelegate for LxApp {
         // Mark the page as active for LRU tracking
         page.mark_active();
 
-        // Re-stamp the resolved scheme: a backgrounded (paused) webview can
-        // drop the broadcast publication of an appearance change.
+        // Re-resolve Auto against the product, then re-stamp the document.
+        // A backgrounded (paused) webview can drop the broadcast of a host
+        // pin, and a reused session may still hold the previous scheme.
+        self.adopt_host_appearance();
         self.republish_page_scheme(&page);
 
         self.sync_host_ui();
