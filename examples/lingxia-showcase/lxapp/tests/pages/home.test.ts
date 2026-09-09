@@ -2,11 +2,24 @@ import { expect, spec } from '@lingxia/test';
 import { showcaseApp } from '../helpers/app.js';
 import { eventually } from '../helpers/poll.js';
 import {
+  currentPageOrNull,
+  waitForCurrentPage,
   waitForCurrentPageVisible,
   waitForElementAttribute,
   waitForElementEnabled,
   waitForElementText,
 } from '../helpers/page.js';
+
+spec('home View MessagePort is up without relaunch', async () => {
+  const app = showcaseApp();
+  const current = await currentPageOrNull(app);
+  if (current?.name !== 'home') {
+    await app.nav.switchTab({ page: 'home' });
+  }
+  // `ready` waits on View handshake. Do not relaunch: that remounts a visible
+  // WebView and hides the cold-start MessagePort miss.
+  await waitForCurrentPage(app, 'home', 20_000);
+});
 
 spec('greets through real page input and the Logic bridge', async () => {
   const app = showcaseApp();

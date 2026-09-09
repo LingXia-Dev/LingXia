@@ -155,6 +155,10 @@ final class AndroidDocumentBridgeState {
                 && committedGeneration == generation;
     }
 
+    synchronized boolean hasCommittedDocument() {
+        return committedLoadToken != 0L && committedGeneration != 0L;
+    }
+
     synchronized void revoke() {
         preparedLoadToken = 0L;
         preparedTrustedHostLoad = false;
