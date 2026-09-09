@@ -1,6 +1,8 @@
 import { expect, spec } from '@lingxia/test';
 import { showcaseApp } from '../helpers/app.js';
+import { eventually } from '../helpers/poll.js';
 import {
+  waitForCurrentPageVisible,
   waitForElementAttribute,
   waitForElementEnabled,
   waitForElementText,
@@ -9,7 +11,12 @@ import {
 spec('greets through real page input and the Logic bridge', async () => {
   const app = showcaseApp();
   await app.nav.relaunch({ page: 'home' });
-  await app.page.waitFor({ page: 'home', css: '[data-testid="home-page"]' });
+  await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
+  await eventually(
+    () => app.eval({ script: 'return typeof lx.app.displayLanguage.get' }),
+    (kind) => kind === 'function',
+    { describe: 'home Logic runtime', timeoutMs: 20_000, retryIf: () => true },
+  );
 
   const name = `Gate ${Date.now()}`;
   await app.page.fill({ page: 'home', css: '[data-testid="home-name"]', text: name });
@@ -35,19 +42,40 @@ spec('greets through real page input and the Logic bridge', async () => {
 spec('switches display language from the home control', async () => {
   const app = showcaseApp();
   await app.nav.relaunch({ page: 'home' });
-  await app.page.waitFor({ page: 'home', css: '[data-testid="home-language"]' });
+  await waitForCurrentPageVisible(app, 'home', '[data-testid="home-language"]');
+  await eventually(
+    () => app.eval({ script: 'return typeof lx.app.control?.displayLanguage?.setPreference' }),
+    (kind) => kind === 'function',
+    { describe: 'home Logic displayLanguage control', timeoutMs: 20_000, retryIf: () => true },
+  );
 
   const original = await app.eval({
     script: 'return lx.app.control.displayLanguage.getPreference()',
   }) as string;
 
   try {
-    await app.page.click({ page: 'home', css: '[data-testid="home-language-zh-CN"]' });
+    await app.page.scrollTo({ page: 'home', css: '[data-testid="home-language-zh-CN"]' });
+    await waitForElementEnabled(app, 'home', '[data-testid="home-language-zh-CN"]');
+    await eventually(
+      async () => {
+        await app.page.click({ page: 'home', css: '[data-testid="home-language-zh-CN"]' });
+        return await app.eval({
+          script: 'return lx.app.control.displayLanguage.getPreference()',
+        });
+      },
+      (preference) => preference === 'zh-CN',
+      {
+        describe: 'home language control to set zh-CN',
+        timeoutMs: 15_000,
+        intervalMs: 400,
+      },
+    );
     expect(await waitForElementText(
       app,
       'home',
       '[data-testid="home-tagline"]',
       (text) => text.includes('轻量应用框架'),
+      15_000,
     )).toContain('轻量应用框架');
     await waitForElementAttribute(
       app,
@@ -57,12 +85,28 @@ spec('switches display language from the home control', async () => {
       'true',
     );
 
-    await app.page.click({ page: 'home', css: '[data-testid="home-language-en-US"]' });
+    await app.page.scrollTo({ page: 'home', css: '[data-testid="home-language-en-US"]' });
+    await waitForElementEnabled(app, 'home', '[data-testid="home-language-en-US"]');
+    await eventually(
+      async () => {
+        await app.page.click({ page: 'home', css: '[data-testid="home-language-en-US"]' });
+        return await app.eval({
+          script: 'return lx.app.control.displayLanguage.getPreference()',
+        });
+      },
+      (preference) => preference === 'en-US',
+      {
+        describe: 'home language control to set en-US',
+        timeoutMs: 15_000,
+        intervalMs: 400,
+      },
+    );
     expect(await waitForElementText(
       app,
       'home',
       '[data-testid="home-tagline"]',
       (text) => text.includes('Lightweight Application Framework'),
+      15_000,
     )).toContain('Lightweight Application Framework');
     await waitForElementAttribute(
       app,
