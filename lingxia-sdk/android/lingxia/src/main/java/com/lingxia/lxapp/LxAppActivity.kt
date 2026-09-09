@@ -148,17 +148,8 @@ class LxAppActivity : AppCompatActivity() {
             if (activity != null && activity.appId == appId) {
                 val updateTask = {
                     try {
-                        // Get fresh TabBar state from Rust
-                        val newTabBarConfig = NativeApi.getTabBarState(appId)
-                        if (newTabBarConfig != null) {
-                            // Update existing TabBar with new configuration
-                            activity.setupTabBar(newTabBarConfig)
-                            true
-
-                        } else {
-                            Log.w(TAG, "No TabBar config available for refresh")
-                            false
-                        }
+                        activity.setupTabBar(NativeApi.getTabBarState(appId))
+                        true
                     } catch (e: Exception) {
                         LxLog.e(TAG, "Failed to refresh TabBar from Rust: ${e.message}", e)
                         false
@@ -853,7 +844,12 @@ class LxAppActivity : AppCompatActivity() {
 
     private fun setupTabBar(config: TabBarState?) {
         if (config == null) {
+            tabBar?.let { bar ->
+                (bar.parent as? ViewGroup)?.removeView(bar)
+            }
+            tabBar = null
             syncNavigationBarToTabBar(visible = false)
+            updateLayoutMargins()
             return
         }
 

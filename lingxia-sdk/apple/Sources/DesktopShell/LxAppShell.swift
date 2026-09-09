@@ -870,6 +870,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 }
                 guard let self, let appId else { return }
                 self.sidebarView?.refreshAppGroup(appId: appId)
+                self.refreshNavigationBar(for: appId)
                 if let activeAppId = self.tabManager.activeTab?.appId, activeAppId == appId {
                     self.sidebarView?.setActiveHighlight(appId: appId)
                 }
