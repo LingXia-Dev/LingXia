@@ -172,3 +172,15 @@ async function queryRejectsStructuredValues(): Promise<void> {
 }
 
 export type SurfaceQueryGate = [typeof queryRejectsStructuredValues];
+
+// `lx.shell` resolves to the global `ShellApi`, not the exported alias, so a
+// member declared on only one of the two is unreachable at the call site it
+// exists for. `sidebarActions` was exactly that.
+function sidebarActionsAreReachableThroughLxShell(): void {
+  lx.shell.sidebarActions.replace([]);
+  lx.shell.sidebarActions.update("id", { label: "Renamed" });
+  lx.shell.sidebarActions.remove("id");
+  lx.shell.sidebarActions.clear();
+}
+
+export type ShellSidebarGate = [typeof sidebarActionsAreReachableThroughLxShell];
