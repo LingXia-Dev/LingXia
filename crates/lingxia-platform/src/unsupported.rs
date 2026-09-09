@@ -79,7 +79,7 @@ impl Device for Platform {
             brand: "unsupported".to_string(),
             model: std::env::consts::OS.to_string(),
             market_name: std::env::consts::OS.to_string(),
-            os_name: std::env::consts::OS.to_string(),
+            os_name: crate::os_label().to_string(),
             os_version: String::new(),
         }
     }
