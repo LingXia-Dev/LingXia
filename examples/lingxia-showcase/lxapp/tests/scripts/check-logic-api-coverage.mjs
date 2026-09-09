@@ -285,7 +285,7 @@ const missing = [...scanned.keys()].filter((api) => !declared.has(api));
 const stale = [...declared.keys()].filter((api) => !scanned.has(api));
 const invalid = manifest.apis.filter((entry) => (
   !entry.api
-  || !['automated', 'external-fixture', 'external-ui', 'optional-provider', 'destructive'].includes(entry.mode)
+  || !['automated', 'external-fixture', 'external-ui', 'destructive'].includes(entry.mode)
   || !entry.owner
 ));
 const duplicates = manifest.apis
@@ -306,7 +306,7 @@ if (missing.length || stale.length || invalid.length || duplicates.length || own
 }
 
 const modes = Object.fromEntries(
-  ['automated', 'external-fixture', 'external-ui', 'optional-provider', 'destructive'].map((mode) => [
+  ['automated', 'external-fixture', 'external-ui', 'destructive'].map((mode) => [
     mode,
     manifest.apis.filter((entry) => entry.mode === mode).length,
   ]),
