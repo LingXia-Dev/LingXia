@@ -1,19 +1,6 @@
-export interface ChartData {
-  kind: 'bar' | 'line' | 'pie';
-  title: string;
-  series: { label: string; value: number }[];
-}
+import type { ChartData, ChatChunk, Message } from '../../shared/chat';
 
-export interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  chart?: ChartData;
-}
-
-export type ChatChunk =
-  | { type: 'token'; token: string }
-  | { type: 'artifact'; chart: ChartData };
+export type { ChartData, ChatChunk, Message };
 
 interface MockScenario {
   text: string;
@@ -171,14 +158,16 @@ Page({
         | ((params: { messages: { role: string; content: string }[] }) => AsyncIterable<{ token: string }>)
         | undefined;
 
+      // Read `data` before the generator: a generator function expression has
+      // its own `this`, and the IIFE below is called without a receiver.
+      const history = this.data.messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
       const stream = nativeChatStream
         ? (async function* () {
-            for await (const chunk of nativeChatStream({
-              messages: (this as any).data.messages.map((m: Message) => ({
-                role: m.role,
-                content: m.content,
-              })),
-            })) {
+            for await (const chunk of nativeChatStream({ messages: history })) {
               yield { type: 'token' as const, token: chunk.token };
             }
           })()
