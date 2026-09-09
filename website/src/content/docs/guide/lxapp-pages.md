@@ -25,8 +25,8 @@ Vue uses `index.vue`; HTML projects use `index.html`. A project selects one View
 ```ts
 type PageData = { count: number }
 
-Page<PageData>({
-  data: { count: 0 },
+Page({
+  data: { count: 0 } as PageData,
 
   increment() {
     this.setData({ count: this.data.count + 1 })
