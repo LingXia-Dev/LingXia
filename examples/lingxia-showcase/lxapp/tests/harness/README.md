@@ -16,10 +16,13 @@ lxdev test tests/ --arg httpBase=http://127.0.0.1:<port>
 
 `is_domain_allowed` and the rebinding guard in
 `crates/lingxia-logic/src/fs/network_security.rs` both reject non-public
-addresses before `trustedDomains` is consulted. Both relax for one case: a dev
-session, on a host the lxapp's own `trustedDomains` names — the Showcase lists
-`127.0.0.1`, and `"*"` works too. A release build has no dev session, so a
-shipped app still cannot reach the user's network.
+addresses before the effective policy is consulted. Both relax for one case: a
+dev session, on a host the grant allows — Showcase home gets `*` public
+network, and a dev session then also allows loopback. A standalone Runner is a
+guest: with no provider it is unrestricted (dev session then allows loopback);
+an explicit grant still needs `*` or `127.0.0.1`. A
+release build has no dev session, so a shipped app still cannot reach the
+user's network.
 
 That grants no new authority: a dev session already carries an automation
 channel that evaluates arbitrary code in the Logic runtime. What it buys is a
