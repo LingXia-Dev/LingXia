@@ -162,6 +162,16 @@ export interface DownloadTask<TDownloadResult extends DownloadResult = DownloadR
 }
 
 declare global {
+  /**
+   * The lxapp's configured page names, one key per page.
+   *
+   * Empty here on purpose. `lingxia dev` / `lingxia build` writes the project's
+   * own names into `.lingxia/types/pages.d.ts`, which merges into this
+   * interface; until then `ConfiguredPageName` stays `string` and every
+   * navigation call compiles exactly as before.
+   */
+  interface LxAppPages {}
+
   // HostAppApi/LxEnv members are emitted from the Rust js_api metadata; these
   // merges only add what Rong cannot express — the cfg-gated autostart member
   // and doc comments (js_api consts cannot carry docs). envVersion re-declares

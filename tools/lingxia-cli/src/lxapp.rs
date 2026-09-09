@@ -6,6 +6,7 @@ mod logic;
 mod media;
 mod options;
 mod package;
+mod page_types;
 mod project;
 mod view;
 

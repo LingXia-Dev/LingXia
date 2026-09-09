@@ -43,6 +43,14 @@ editor applies the correct environment to each file.
 
 ## Find a method or type
 
+- Navigation takes a configured page name, and after a build the editor
+  completes only this lxapp's own names: `lingxia dev` / `lingxia build` writes
+  them to `.lingxia/types/pages.d.ts`, which the project tsconfig already
+  includes. Before the first build the name is a plain string. A name that is
+  genuinely dynamic (an AppLink query, say) needs
+  `page as ConfiguredPageName` — the runtime still rejects a page that does not
+  exist. A page of *another* lxapp (`lx.navigateToApp`, `lx.shell.openApp`)
+  stays a plain string, because this app's names cannot describe it.
 - Type `lx.` in the editor and hover a member to read its generated JSDoc.
 - Import reusable shapes from the package root, for example
   `import type { ScanCodeResult } from '@lingxia/types'`.

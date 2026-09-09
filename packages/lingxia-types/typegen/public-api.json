@@ -51,6 +51,7 @@
     "DownloadTask",
     "DownloadsDownloadOptions",
     "DownloadsDownloadResult",
+    "ExternalPageName",
     "ExtractVideoThumbnailOptions",
     "ExtractVideoThumbnailResult",
     "FileDialogFilter",

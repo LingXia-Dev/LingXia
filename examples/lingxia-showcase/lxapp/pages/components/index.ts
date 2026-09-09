@@ -1,4 +1,4 @@
-import type { PageQuery } from "@lingxia/types";
+import type { ConfiguredPageName, PageQuery } from "@lingxia/types";
 
 Page({
   data: {},
@@ -7,7 +7,7 @@ Page({
     console.log("Components page onLoad options:", options);
   },
 
-  navigateTo: async function (params: { page?: string; query?: PageQuery } = {}) {
+  navigateTo: async function (params: { page?: ConfiguredPageName; query?: PageQuery } = {}) {
     const { page, query } = params;
     if (!page) {
       return;

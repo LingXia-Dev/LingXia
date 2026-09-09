@@ -1187,6 +1187,7 @@ mod tests {
             framework: ProjectFramework::Html,
             output_dir: root.join("dist"),
             pages: Vec::new(),
+            page_names: Vec::new(),
             logic_entry: Some("logic.js".to_string()),
             plugin_id: None,
             package_name: Some("@test/app".to_string()),
