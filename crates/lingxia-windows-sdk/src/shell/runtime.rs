@@ -1031,14 +1031,43 @@ enum PanelTarget {
     Terminal(TerminalPanelRequest),
 }
 
+fn apply_windows_host_color_mode() {
+    let scheme = match lxapp::host_appearance_state().preference {
+        lxapp::page_chrome::AppearancePreference::Auto => {
+            lingxia_webview::platform::windows::WindowsPreferredColorScheme::Auto
+        }
+        lxapp::page_chrome::AppearancePreference::Light => {
+            lingxia_webview::platform::windows::WindowsPreferredColorScheme::Light
+        }
+        lxapp::page_chrome::AppearancePreference::Dark => {
+            lingxia_webview::platform::windows::WindowsPreferredColorScheme::Dark
+        }
+    };
+    lingxia_webview::platform::windows::set_windows_preferred_color_scheme_for_new_webviews(scheme);
+    for webtag in lingxia_webview::runtime::list_webviews() {
+        if let Some(handler) = lingxia_webview::platform::windows::find_webview_handler(&webtag)
+            && let Err(error) = handler.set_preferred_color_scheme(scheme)
+        {
+            log::warn!(
+                "failed to apply host appearance to WebView {}: {}",
+                webtag,
+                error
+            );
+        }
+    }
+    crate::window_host::repaint_all_host_chrome();
+    #[cfg(feature = "terminal-runtime")]
+    lingxia::terminal::refresh_appearance_for_app(lxapp::host_appearance_dark());
+}
+
 pub(super) fn install() {
     lingxia_platform::set_windows_ui_update_handler(Arc::new(|appid| {
         sync_related_shell_layouts(&appid);
     }));
-    // The product's light/dark setting moved. The chrome reads the scheme back
-    // at paint time, so it only has to be told to paint.
+    // The product's light/dark setting moved. Chrome paints from
+    // `host_appearance_dark()`; WebViews and the terminal must be told too.
     lingxia_platform::set_windows_host_color_mode_handler(Arc::new(|| {
-        crate::window_host::repaint_all_host_chrome();
+        apply_windows_host_color_mode();
     }));
     // Awaited `lx.tabBar.update()` calls: run the layout sync off
     // the caller's thread and complete the callback once it has applied.

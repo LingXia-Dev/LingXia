@@ -813,9 +813,8 @@
       // Only the radio state. This page renders in the product language the
       // same way every other document does, through the bridge.
       function applyLanguagePreference(preference) {
-        if (!preference) return;
-        configuredLanguage = preference;
-        syncLanguageOptions(configuredLanguage, false);
+        if (preference) configuredLanguage = preference;
+        syncLanguageOptions(configuredLanguage || 'auto', false);
       }
       syncLanguageOptions('auto', false);
       callHost('app.getDisplayLanguagePreference').then(applyLanguagePreference, function () {
@@ -852,9 +851,8 @@
         });
       }
       function applyAppearancePreference(preference) {
-        if (!preference) return;
-        configuredAppearance = preference;
-        syncAppearanceOptions(configuredAppearance, false);
+        if (preference) configuredAppearance = preference;
+        syncAppearanceOptions(configuredAppearance || 'auto', false);
       }
       syncAppearanceOptions('auto', false);
       callHost('app.getAppearancePreference').then(applyAppearancePreference, function () {

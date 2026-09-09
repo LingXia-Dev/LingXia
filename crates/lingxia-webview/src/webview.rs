@@ -1199,6 +1199,14 @@ impl TrustedDataLoadReservation<'_> {
             .expect("trusted data load reservation must retain its intent until consumed")
     }
 
+    /// Keep the issued token live without calling `load`. Used when the HTML is
+    /// delivered through a scheme handler for the same navigation.
+    pub fn disarm(mut self) -> TrustedLoadIntent {
+        self.intent
+            .take()
+            .expect("trusted data load reservation must retain its intent until consumed")
+    }
+
     /// Consume this reservation and start its one native HTML load.
     pub fn load(mut self, request: LoadDataRequest<'_>) -> Result<TrustedLoadIntent, WebViewError> {
         let intent = self

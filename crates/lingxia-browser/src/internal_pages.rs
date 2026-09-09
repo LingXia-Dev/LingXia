@@ -442,7 +442,10 @@ pub(crate) async fn handle_browser_lingxia_scheme(
             return None;
         }
     };
-    // Serve page HTML (with bridge nonce) for the document root.
+    // Document HTML for a trusted load is served from the in-memory page
+    // the native Navigate armed. This path is the fallback when that page
+    // is gone (reload, in-document link); the tab delegate then replaces
+    // the untrusted commit with a fresh trusted load.
     let req_path = req.uri().path();
     if req_path == "/" || req_path.is_empty() {
         let nonce = page.bridge_nonce();

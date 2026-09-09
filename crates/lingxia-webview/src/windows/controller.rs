@@ -490,12 +490,13 @@ impl WebViewInner {
         &self,
         scheme: WindowsPreferredColorScheme,
     ) -> StdResult<()> {
-        self.dispatch_ui(
-            |resp| UiCommand::SetPreferredColorScheme { scheme, resp },
-            Some(BROWSER_EMULATION_TIMEOUT),
-        )
-        .map_err(|err| err.into_webview_error("set preferred color scheme"))??;
-        Ok(())
+        // Same-thread-safe: the host color-mode handler can run on the window
+        // thread after a product appearance change. Blocking `dispatch_ui`
+        // would self-deadlock there and freeze the shell.
+        self.dispatch_command_same_thread_safe(|resp| UiCommand::SetPreferredColorScheme {
+            scheme,
+            resp,
+        })
     }
 
     pub(crate) fn set_browser_emulation_profile(

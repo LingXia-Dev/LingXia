@@ -52,6 +52,18 @@ pub(super) enum TrustedNavigationStart {
     Untrusted,
 }
 
+/// WebView2 canonicalizes `lingxia://settings` to `lingxia://settings/` when
+/// the scheme is registered with an authority component. Memory pages already
+/// ignore that trailing slash; attestation must too, or the host-issued token
+/// is revoked before hello and the Settings bridge never becomes ready.
+fn trusted_navigation_urls_match(expected: &str, actual: &str) -> bool {
+    fn canonical(url: &str) -> String {
+        let without_fragment = url.split_once('#').map(|(head, _)| head).unwrap_or(url);
+        super::scheme::normalize_memory_page_url(without_fragment).to_ascii_lowercase()
+    }
+    canonical(expected) == canonical(actual)
+}
+
 /// Per-WebView state shared only by its STA command loop and event callbacks.
 ///
 /// WebView2's `Navigate` does not return a navigation object. The host arms an
@@ -92,7 +104,7 @@ impl WindowsDocumentAuthority {
             Some(TrustedLoadCorrelation::Pending {
                 intent,
                 expected_url,
-            }) if navigation_key != 0 && expected_url == url => {
+            }) if navigation_key != 0 && trusted_navigation_urls_match(&expected_url, url) => {
                 *correlation = Some(TrustedLoadCorrelation::Attested {
                     intent,
                     expected_url,
@@ -107,7 +119,9 @@ impl WindowsDocumentAuthority {
                 intent,
                 expected_url,
                 navigation_key: attested_key,
-            }) if attested_key == navigation_key && expected_url == url => {
+            }) if attested_key == navigation_key
+                && trusted_navigation_urls_match(&expected_url, url) =>
+            {
                 *correlation = Some(TrustedLoadCorrelation::Attested {
                     intent,
                     expected_url,
@@ -167,6 +181,30 @@ mod tests {
 
     fn intent(raw: u64) -> TrustedLoadIntent {
         TrustedLoadIntent::new(raw)
+    }
+
+    #[test]
+    fn trailing_slash_and_scheme_case_still_attest_the_host_issued_load() {
+        let authority = WindowsDocumentAuthority::default();
+        assert!(
+            authority
+                .arm(intent(1), "lingxia://settings".into())
+                .is_none()
+        );
+        assert!(matches!(
+            authority.navigation_start("lingxia://settings/", 41),
+            TrustedNavigationStart::Attest {
+                intent: bound,
+                navigation_key: 41,
+            } if bound == intent(1)
+        ));
+
+        let authority = WindowsDocumentAuthority::default();
+        authority.arm(intent(2), "lingxia://settings/".into());
+        assert!(matches!(
+            authority.navigation_start("Lingxia://Settings", 42),
+            TrustedNavigationStart::Attest { intent: bound, .. } if bound == intent(2)
+        ));
     }
 
     #[test]

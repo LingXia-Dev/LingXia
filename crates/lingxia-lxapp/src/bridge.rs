@@ -2468,6 +2468,15 @@ impl PageBridge {
                 // this insertion. Do not start a handler in that gap.
                 if !self.is_current_work(Some(work_id)) || !Self::work_effect_is_active(work) {
                     drop(pending_request);
+                    let _ = self.send_res_err_for_context(
+                        &page,
+                        Some(work_id),
+                        work.outbound.as_ref(),
+                        id,
+                        BRIDGE_CANCELED,
+                        Some(PAGE_UNLOADED.to_string()),
+                        None,
+                    );
                     return Ok(());
                 }
                 let task_id = id.clone();
@@ -2485,6 +2494,15 @@ impl PageBridge {
                         .is_none_or(crate::RequiredV3ExecutionPermit::is_active)
                     {
                         drop(pending_request);
+                        let _ = bridge.send_res_err_for_context(
+                            &task_page,
+                            Some(work_id),
+                            task_outbound.as_ref(),
+                            task_id.clone(),
+                            BRIDGE_CANCELED,
+                            Some(PAGE_UNLOADED.to_string()),
+                            None,
+                        );
                         return;
                     }
                     let (tx, rx) = oneshot::channel();

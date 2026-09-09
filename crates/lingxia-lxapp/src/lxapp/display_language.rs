@@ -710,17 +710,17 @@ fn publish_effective(update: &DisplayLanguageEffectiveUpdate) {
     let quoted = serde_json::to_string(update.effective.as_str())
         .unwrap_or_else(|_| format!("\"{FALLBACK_LANGUAGE}\""));
     let script = format!("var f = globalThis.__lingxiaApplyDisplayLanguage; if (f) f({quoted});");
-    let apps: Vec<_> = manager
+    for webtag in lingxia_webview::runtime::list_webviews() {
+        if let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) {
+            let _ = webview.exec_js(&script);
+        }
+    }
+    let appids: Vec<_> = manager
         .lxapps
         .iter()
-        .map(|entry| (entry.key().clone(), entry.value().clone()))
+        .map(|entry| entry.key().clone())
         .collect();
-    for (appid, app) in apps {
-        for page in app.live_page_instances() {
-            if let Some(webview) = page.webview() {
-                let _ = webview.exec_js(&script);
-            }
-        }
+    for appid in appids {
         crate::appservice::event_bus::publish_app_event(
             &appid,
             crate::DISPLAY_LANGUAGE_CHANGE_EVENT,
